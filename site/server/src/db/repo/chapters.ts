@@ -1,10 +1,11 @@
-import { allChapterNumbers, directionOf, lineOf, type CatalogEntry } from '@book/shared';
+import { allChapterNumbers, directionOf, partOf, type CatalogEntry } from '@book/shared';
 
 import type { Db } from '../db.ts';
 
 export type ChapterRow = {
   n: number;
   rev: number;
+  title: string | null;
   sha256: string;
   chars: number;
   block_count: number;
@@ -36,6 +37,7 @@ export function upsertChapterRow(
   row: {
     n: number;
     rev: number;
+    title: string | null;
     sha256: string;
     chars: number;
     blockCount: number;
@@ -44,10 +46,11 @@ export function upsertChapterRow(
   },
 ): void {
   db.prepare(
-    `INSERT INTO chapters (n, rev, sha256, chars, block_count, written_at, updated_at, parse_error)
-     VALUES (@n, @rev, @sha256, @chars, @blockCount, @writtenAt, @updatedAt, NULL)
+    `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at, parse_error)
+     VALUES (@n, @rev, @title, @sha256, @chars, @blockCount, @writtenAt, @updatedAt, NULL)
      ON CONFLICT(n) DO UPDATE SET
        rev = excluded.rev,
+       title = excluded.title,
        sha256 = excluded.sha256,
        chars = excluded.chars,
        block_count = excluded.block_count,
@@ -91,8 +94,9 @@ export function replaceBlocks(
 }
 
 /**
- * The catalog of §9: all 67 slots, unwritten ones with `rev: 0`. The SPA renders the
- * опись from this without a request per slot.
+ * The catalog of §9: all 67 slots, unwritten ones with `rev: 0` and `title: null`. The
+ * SPA renders the опись from this without a request per slot; `part` is the TOC volume,
+ * `direction` only says which lane drafted the chapter.
  */
 export function listCatalog(db: Db): CatalogEntry[] {
   const rows = new Map(listChapterRows(db).map((row) => [row.n, row]));
@@ -101,6 +105,8 @@ export function listCatalog(db: Db): CatalogEntry[] {
     const written = row !== undefined && row.block_count > 0;
     return {
       n,
+      part: partOf(n),
+      title: row?.title ?? null,
       rev: row?.rev ?? 0,
       chars: row?.chars ?? 0,
       blocks: row?.block_count ?? 0,
@@ -108,7 +114,6 @@ export function listCatalog(db: Db): CatalogEntry[] {
       writtenAt: written ? (row?.written_at ?? null) : null,
       updatedAt: written ? (row?.updated_at ?? null) : null,
       direction: directionOf(n),
-      line: lineOf(n),
     };
   });
 }

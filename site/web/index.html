@@ -13,23 +13,8 @@
     <meta property="og:title" content="Книга — пишется публично" />
     <meta property="og:locale" content="ru_RU" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <script>
-      /* Theme before first paint: a flash of the wrong paper is a layout lie. */
-      (function () {
-        var theme = null;
-        try {
-          theme = localStorage.getItem('book.theme');
-        } catch (error) {
-          theme = null;
-        }
-        if (theme !== 'day' && theme !== 'night') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', theme === 'night' ? '#0F1113' : '#E9E8E2');
-      })();
-    </script>
+    <!-- A blocking same-origin file, not an inline script: the CSP has no `unsafe-inline`. -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

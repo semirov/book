@@ -1,0 +1,309 @@
+/**
+ * Decisions tailing (ARCHITECTURE.md §12.6, §10).
+ *
+ * `feedback.mjs decide` appends one line to `decisions.jsonl`; the site tails the file and
+ * turns each line into a fact: the comment's status, a queued change (acceptance), and the
+ * reader-visible events `comment:decision` / `change:queued`. Files are the source of truth,
+ * so the whole path works with the site stopped and reconciles on boot.
+ *
+ * Idempotent by construction: first decision wins, a re-read line changes nothing, and an
+ * accepted line whose change already exists is only re-announced once.
+ */
+
+import { readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { validateIntent, type CommentDecisionPayload } from '@book/shared';
+
+import type { Db } from '../db/db.ts';
+import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
+import { countRows, safeJson } from '../engineState/rows.ts';
+import { readQueue } from '../engineState/reader.ts';
+import { readAuthor, publicIntent } from '../engineState/changes.ts';
+import type { ChangeRow } from '../engineState/rows.ts';
+import { acceptComment } from './accept.ts';
+
+export type DecisionEmit = (type: 'comment:decision' | 'change:queued' | 'feedback:batch', data: unknown) => void;
+
+export type DecisionLine = {
+  id: string;
+  status: 'accepted' | 'rejected';
+  reason: string;
+  intent?: string | null;
+  at: string;
+  batch?: string | null;
+  changeId?: string | null;
+  rev?: { chapter: number; rev: number } | null;
+  base?: { sha256: string } | null;
+};
+
+export type DecisionsTailerOptions = {
+  db: Db;
+  dir: string;
+  emit: DecisionEmit;
+  now?: () => Date;
+  /** Apply the whole file on start (tests); a running site primes to the end instead. */
+  replay?: boolean;
+};
+
+const OFFSET_KEY = 'feedback_decisions_offset';
+const BATCH_KEY = 'feedback_batch_cursor';
+
+export class DecisionsTailer {
+  private readonly db: Db;
+  private readonly file: string;
+  private readonly emit: DecisionEmit;
+  private readonly now: () => Date;
+  private readonly replay: boolean;
+  private offset = 0;
+  private batchCursor: string | null = null;
+
+  constructor(options: DecisionsTailerOptions) {
+    this.db = options.db;
+    this.file = join(options.dir, 'decisions.jsonl');
+    this.emit = options.emit;
+    this.now = options.now ?? (() => new Date());
+    this.replay = options.replay === true;
+  }
+
+  /** Read the cursor once: a restart must not replay yesterday's decisions as news. */
+  prime(): void {
+    if (this.replay) {
+      this.offset = 0;
+      this.batchCursor = null;
+      return;
+    }
+    const stored = this.db.prepare('SELECT v FROM meta WHERE k = ?').get(OFFSET_KEY) as { v: string } | undefined;
+    this.offset = stored === undefined ? this.fileSize() : Number.parseInt(stored.v, 10);
+    if (!Number.isFinite(this.offset) || this.offset < 0 || this.offset > this.fileSize()) this.offset = 0;
+    const cursor = this.db.prepare('SELECT v FROM meta WHERE k = ?').get(BATCH_KEY) as { v: string } | undefined;
+    this.batchCursor = cursor?.v ?? null;
+    if (this.batchCursor === null) this.batchCursor = this.currentBatchCursor();
+  }
+
+  /** One tick: apply new decision lines, then announce new batches. Returns the events emitted. */
+  poll(): number {
+    let emitted = 0;
+    for (const line of this.readNewLines()) {
+      emitted += this.apply(line);
+    }
+    emitted += this.announceBatches();
+    return emitted;
+  }
+
+  /** Applies one decision; public so a test can call it without a file. */
+  apply(line: unknown): number {
+    const decision = parseDecision(line);
+    if (decision === null) return 0;
+    const comment = readCommentRow(this.db, decision.id);
+    if (comment === undefined) return 0;
+
+    const at = typeof decision.at === 'string' ? decision.at : this.now().toISOString();
+    if (comment.decided_at !== null) {
+      // First decision wins. A replay of the same decision is announced once more (the CLI
+      // writes the DB state before the tailer reads the line, so this is the normal path);
+      // a different decision is recorded and ignored.
+      const sameChange =
+        decision.status === 'accepted'
+          ? decision.changeId !== null && comment.change_id === decision.changeId
+          : comment.status === 'rejected';
+      if (!sameChange) {
+        appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'first decision wins' });
+        return 0;
+      }
+      this.emit('comment:decision', {
+        id: comment.id,
+        status: decision.status,
+        reason: comment.reason ?? decision.reason,
+        decidedAt: comment.decided_at,
+        batchId: comment.batch_id,
+        changeId: comment.change_id,
+        queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
+        source: 'llm',
+      } satisfies CommentDecisionPayload);
+      if (comment.change_id !== null) this.announceQueued(comment.change_id);
+      return 1;
+    }
+
+    if (decision.status === 'rejected') {
+      this.reject(comment, decision.reason, at, decision.batch ?? null);
+      return 1;
+    }
+
+    const verdict = validateIntent(decision.intent ?? '', comment.chapter);
+    if (!verdict.ok) {
+      this.reject(comment, verdict.reason, at, decision.batch ?? null);
+      return 1;
+    }
+
+    const accepted = acceptComment(this.db, {
+      comment,
+      intent: verdict.intent,
+      at,
+      reason: decision.reason,
+      changeId: decision.changeId ?? null,
+      baseRev: decision.rev?.rev ?? null,
+      batch: decision.batch ?? null,
+    });
+    if ('error' in accepted) {
+      this.reject(comment, accepted.error, at, decision.batch ?? null);
+      return 1;
+    }
+
+    const queue = readQueue(this.db, this.now().getTime());
+    const change = this.db.prepare('SELECT * FROM changes WHERE id = ?').get(accepted.changeId) as
+      | ChangeRow
+      | undefined;
+    const ahead =
+      change === undefined
+        ? 0
+        : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq < ?`, change.seq);
+    const payload: CommentDecisionPayload = {
+      id: comment.id,
+      status: 'accepted',
+      reason: decision.reason,
+      decidedAt: at,
+      batchId: decision.batch ?? null,
+      changeId: accepted.changeId,
+      queue: { depth: queue.depth, ahead },
+      source: 'llm',
+    };
+    this.emit('comment:decision', payload);
+    this.announceQueued(accepted.changeId);
+    return 1;
+  }
+
+  /** The `change:queued` frame for a change that already exists (new or applied by the CLI). */
+  private announceQueued(changeId: string): void {
+    const change = this.db.prepare('SELECT * FROM changes WHERE id = ?').get(changeId) as ChangeRow | undefined;
+    if (change === undefined) return;
+    const depth = readQueue(this.db, this.now().getTime()).depth;
+    const ahead = countRows(
+      this.db,
+      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq < ?`,
+      change.seq,
+    );
+    this.emit('change:queued', {
+      id: change.id,
+      seq: change.seq,
+      kind: change.kind,
+      chapter: change.chapter,
+      intent: publicIntent(change.intent),
+      source: { commentId: change.source_comment, author: readAuthor(this.db, change.source_comment) },
+      queue: { depth, ahead },
+      base: { rev: change.base_rev },
+      scopeHint: change.scope_hint,
+    });
+  }
+
+  private reject(comment: CommentRow, reason: string, at: string, batch: string | null): void {
+    const publicReason = reason.slice(0, 200);
+    this.db
+      .prepare(
+        `UPDATE comments SET status = 'rejected', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id)
+          WHERE id = ?`,
+      )
+      .run(at, publicReason, batch, comment.id);
+    appendCommentEvent(this.db, comment.id, 'decided', at, { status: 'rejected' });
+    this.emit('comment:decision', {
+      id: comment.id,
+      status: 'rejected',
+      reason: publicReason,
+      decidedAt: at,
+      batchId: batch,
+      changeId: null,
+      queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
+      source: 'llm',
+    } satisfies CommentDecisionPayload);
+  }
+
+  private announceBatches(): number {
+    const cursor = this.batchCursor;
+    const rows = this.db
+      .prepare('SELECT id, created_at, count, chapter FROM feedback_batches ORDER BY created_at, id')
+      .all() as Array<{ id: string; created_at: string; count: number; chapter: number | null }>;
+    let emitted = 0;
+    for (const row of rows) {
+      const marker = `${row.created_at}|${row.id}`;
+      if (cursor !== null && marker <= cursor) continue;
+      this.emit('feedback:batch', {
+        batchId: row.id,
+        count: row.count,
+        chapter: row.chapter,
+        createdAt: row.created_at,
+      });
+      this.batchCursor = marker;
+      emitted += 1;
+    }
+    if (this.batchCursor !== null) {
+      this.db
+        .prepare('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v')
+        .run(BATCH_KEY, this.batchCursor);
+    }
+    return emitted;
+  }
+
+  private readNewLines(): unknown[] {
+    const size = this.fileSize();
+    if (size <= this.offset) {
+      if (size < this.offset) this.offset = 0;
+      return [];
+    }
+    let buffer: Buffer;
+    try {
+      buffer = readFileSync(this.file);
+    } catch {
+      return [];
+    }
+    const chunk = buffer.subarray(this.offset);
+    const text = chunk.toString('utf8');
+    const lastBreak = text.lastIndexOf('\n');
+    if (lastBreak < 0) return [];
+    const complete = text.slice(0, lastBreak);
+    this.offset += Buffer.byteLength(text.slice(0, lastBreak + 1), 'utf8');
+    this.db
+      .prepare('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v')
+      .run(OFFSET_KEY, String(this.offset));
+
+    return complete
+      .split('\n')
+      .filter((line) => line.trim().length > 0)
+      .map((line) => safeJson<unknown>(line))
+      .filter((value) => value !== null);
+  }
+
+  private fileSize(): number {
+    try {
+      return statSync(this.file).size;
+    } catch {
+      return 0;
+    }
+  }
+
+  private currentBatchCursor(): string | null {
+    const row = this.db
+      .prepare('SELECT id, created_at FROM feedback_batches ORDER BY created_at DESC, id DESC LIMIT 1')
+      .get() as { id: string; created_at: string } | undefined;
+    return row === undefined ? null : `${row.created_at}|${row.id}`;
+  }
+}
+
+/** A line is a decision only when it names a comment, a status and a reason. */
+export function parseDecision(raw: unknown): DecisionLine | null {
+  if (raw === null || typeof raw !== 'object') return null;
+  const value = raw as Partial<DecisionLine>;
+  if (typeof value.id !== 'string' || value.id.length === 0) return null;
+  if (value.status !== 'accepted' && value.status !== 'rejected') return null;
+  if (typeof value.reason !== 'string' || value.reason.trim().length === 0) return null;
+  return {
+    id: value.id,
+    status: value.status,
+    reason: value.reason,
+    intent: typeof value.intent === 'string' ? value.intent : null,
+    at: typeof value.at === 'string' ? value.at : new Date().toISOString(),
+    batch: typeof value.batch === 'string' ? value.batch : null,
+    changeId: typeof value.changeId === 'string' ? value.changeId : null,
+    rev: value.rev ?? null,
+    base: value.base ?? null,
+  };
+}

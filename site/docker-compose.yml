@@ -1,0 +1,49 @@
+# book.semirov.dev on the Mac mini (192.168.1.76); Caddy on the home-server proxies to it
+# (ARCHITECTURE.md §15.2–§15.4). The port is published on the LAN address only: the site is
+# never reachable directly from the internet, and Caddy passes X-Forwarded-For.
+services:
+  book:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-site:local
+    container_name: book-site
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      BOOK_ROOT: /book
+      DATA_DIR: /data
+      EXCHANGE_DIR: /data/exchange
+      PORT: "8080"
+      HOST: 0.0.0.0
+      WEB_DIST: ./web/dist
+      IMPRINT_PATH: ./config/imprint.json
+      WATCH_POLL_MS: "700"
+      TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.0/24"
+    ports:
+      - "192.168.1.76:8090:8080"
+    volumes:
+      # manuscript: read-only, straight from the repository (outside ~/Documents: macOS TCC
+      # makes every non-approved process hang on that folder, container or launchd alike).
+      - /Users/filipp/projects/book:/book:ro
+      # SQLite lives on a Docker volume, NOT on a host bind mount: SQLite's WAL needs a
+      # shared-memory mmap, and virtiofs (OrbStack bind mounts) makes the WAL pragma hang.
+      # Backups: `docker run --rm -v book_book-data:/data -v $PWD:/out alpine tar czf /out/book-data.tgz -C /data .`
+      - book-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  book-data:

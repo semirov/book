@@ -8,6 +8,7 @@ function fact(n: number, overrides: Partial<ChapterFact> = {}): ChapterFact {
   return {
     n,
     rev: 1,
+    title: `Глава ${n}`,
     chars: 9000,
     blocks: 120,
     writtenAt: '2026-10-25T09:00:00Z',
@@ -57,6 +58,31 @@ describe('empty book', () => {
       source: 'files',
     });
     expect(state.phase).toBe('draft');
+    expect(state.front).toEqual({ title: null, about: null, rev: 0, updatedAt: null });
+  });
+
+  it('serves a 67-entry TOC even when nothing is written', () => {
+    expect(state.toc).toHaveLength(67);
+    expect(state.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
+    expect(state.toc[66]).toEqual({ part: 4, n: 67, title: null, written: false, rev: 0 });
+  });
+});
+
+describe('the first sheet', () => {
+  it('paints the cover and page 2 from the parsed file only', () => {
+    const withFront = deriveState({
+      facts: [],
+      now,
+      version: 1,
+      front: { title: 'Земля, которая больше не кормит', about: 'О чём эта книга.', rev: 3, updatedAt: '2026-10-25T10:00:00Z' },
+    });
+    expect(withFront.front).toMatchObject({ title: 'Земля, которая больше не кормит', rev: 3 });
+  });
+
+  it('puts chapter titles into the TOC and keeps an untitled chapter as a slot', () => {
+    const withTitles = derive([fact(1), fact(2, { title: null })]);
+    expect(withTitles.toc[0]).toEqual({ part: 1, n: 1, title: 'Глава 1', written: true, rev: 1 });
+    expect(withTitles.toc[1]).toEqual({ part: 1, n: 2, title: null, written: true, rev: 1 });
   });
 });
 
@@ -147,5 +173,12 @@ describe('stateFingerprint', () => {
 
   it('changes when a revision changes', () => {
     expect(stateFingerprint([fact(1)])).not.toBe(stateFingerprint([fact(1, { rev: 2 })]));
+  });
+
+  it('changes when a title or the first sheet changes', () => {
+    expect(stateFingerprint([fact(1)])).not.toBe(stateFingerprint([fact(1, { title: 'Другое' })]));
+    expect(stateFingerprint([], { title: null, about: null, rev: 0, updatedAt: null })).not.toBe(
+      stateFingerprint([], { title: 'Книга', about: 'О чём.', rev: 1, updatedAt: '2026-10-25T10:00:00Z' }),
+    );
   });
 });

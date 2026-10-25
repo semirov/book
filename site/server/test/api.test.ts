@@ -12,6 +12,16 @@ import { StateService } from '../src/ingest/stateService.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
+const ABOUT =
+  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
+  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
+  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
+  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+const UNTITLED =
+  'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал: он лежал у порога.\n' +
+  'В пятницу к нему прибавился след от колеса.\n\n' +
+  'К субботе половик стал похож на карту местности.';
 
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
@@ -60,6 +70,19 @@ describe('GET /api/state', () => {
     expect(body.chapters.written).toEqual([]);
     expect(body.chapters.empty).toHaveLength(67);
     expect(body.engine.status).toBe('unknown');
+    expect(body.front).toEqual({ title: null, about: null, rev: 0, updatedAt: null });
+    expect(body.toc).toHaveLength(67);
+    expect(body.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
+  });
+
+  it('serves the first sheet and the live TOC in the same snapshot', async () => {
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
+    const response = await app!.inject({ method: 'GET', url: '/api/state' });
+    const body = response.json();
+    expect(body.front).toMatchObject({ title: 'Земля, которая больше не кормит', rev: 1 });
+    expect(body.front.about).toContain('Книга о том');
+    expect(body.toc).toHaveLength(67);
+    expect(body.toc[0]).toMatchObject({ n: 1, part: 1, title: 'Заголовок главы', written: true, rev: 1 });
   });
 
   it('returns an ETag and honours If-None-Match', async () => {
@@ -84,20 +107,21 @@ describe('GET /api/chapters', () => {
     expect(response.statusCode).toBe(200);
     const catalog = response.json() as Array<Record<string, unknown>>;
     expect(catalog).toHaveLength(67);
-    expect(catalog[0]).toMatchObject({ n: 1, rev: 0, written: false, direction: 'forward', line: 0 });
-    expect(catalog[66]).toMatchObject({ n: 67, direction: 'backward', line: 0 });
-    expect(catalog[22]).toMatchObject({ n: 23, line: 4 });
+    expect(catalog[0]).toMatchObject({ n: 1, part: 1, title: null, rev: 0, written: false, direction: 'forward' });
+    expect(catalog[66]).toMatchObject({ n: 67, part: 4, direction: 'backward' });
+    expect(catalog[22]).toMatchObject({ n: 23, part: 2 });
   });
 });
 
 describe('GET /api/chapters/:n', () => {
-  it('returns the prose with an ETag', async () => {
+  it('returns the prose with an ETag and the title line', async () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     expect(response.statusCode).toBe(200);
     expect(response.headers.etag).toBe('"ch01-r1"');
     const body = response.json();
     expect(body.n).toBe(1);
+    expect(body.title).toBe('Заголовок главы');
     expect(body.rev).toBe(1);
     expect(body.blocks[0]).toMatchObject({ i: 0, text: 'Первый абзац главы.' });
     expect(body.blocks[0].id).toMatch(/^ch01#[0-9a-f]{8}$/u);
@@ -112,6 +136,21 @@ describe('GET /api/chapters/:n', () => {
       headers: { 'if-none-match': first.headers.etag as string },
     });
     expect(second.statusCode).toBe(304);
+  });
+
+  it('still publishes a chapter without a title line: F022 is a commit gate, not a reader gate', async () => {
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': UNTITLED } });
+    const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.title).toBeNull();
+    expect(body.blocks.length).toBeGreaterThan(0);
+    expect(body.blocks[0].text.startsWith('Половик в тамбуре')).toBe(true);
+
+    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
+      Record<string, unknown>
+    >;
+    expect(catalog[0]).toMatchObject({ n: 1, written: true, title: null });
   });
 
   it('answers 404 for an unwritten slot — the normal case at launch', async () => {
@@ -137,10 +176,17 @@ describe('GET /healthz', () => {
     expect(response.json()).toMatchObject({
       ok: true,
       version: 'test',
-      engine: { status: 'unknown', heartbeatAt: null },
+      engine: { status: 'absent', heartbeatAt: null },
       lane: { holder: null },
+      front: { present: false },
       db: { chapters: 1, comments: 0 },
     });
+  });
+
+  it('reports the first sheet as present', async () => {
+    await boot({ chapters: { '00-front.md': FRONT } });
+    const response = await app!.inject({ method: 'GET', url: '/healthz' });
+    expect(response.json()).toMatchObject({ front: { present: true } });
   });
 
   it('does not bump the state version', async () => {
@@ -172,5 +218,44 @@ describe('the shell', () => {
     const response = await app!.inject({ method: 'GET', url: '/' });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ code: 'UI_NOT_BUILT' });
+  });
+});
+
+describe('GET /api/front', () => {
+  it('serves the live title, page 2, the TOC and the imprint in one call', async () => {
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
+    const response = await app!.inject({ method: 'GET', url: '/api/front' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).toBe('"front-1"');
+    const body = response.json();
+    expect(body).toMatchObject({
+      title: 'Земля, которая больше не кормит',
+      about: ABOUT,
+      rev: 1,
+      imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
+    });
+    expect(body.toc).toHaveLength(67);
+    expect(body.toc[0]).toMatchObject({ part: 1, n: 1, title: 'Заголовок главы', written: true, rev: 1 });
+    expect(body.toc[66]).toMatchObject({ part: 4, n: 67, title: null, written: false, rev: 0 });
+  });
+
+  it('answers 304 for a matching ETag', async () => {
+    await boot({ chapters: { '00-front.md': FRONT } });
+    const first = await app!.inject({ method: 'GET', url: '/api/front' });
+    const second = await app!.inject({
+      method: 'GET',
+      url: '/api/front',
+      headers: { 'if-none-match': first.headers.etag as string },
+    });
+    expect(second.statusCode).toBe(304);
+  });
+
+  it('is honest at launch when there is no first sheet: null title and page 2', async () => {
+    await boot();
+    const response = await app!.inject({ method: 'GET', url: '/api/front' });
+    const body = response.json();
+    expect(body).toMatchObject({ title: null, about: null, rev: 0 });
+    expect(body.toc).toHaveLength(67);
+    expect(body.toc.every((entry: { written: boolean }) => !entry.written)).toBe(true);
   });
 });

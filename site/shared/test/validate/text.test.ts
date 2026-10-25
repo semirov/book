@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ABOUT_MAX_CHARS,
+  ABOUT_MIN_CHARS,
+  TITLE_MAX_CHARS,
   countChars,
   findWords,
-  findPhrase,
+  foldRu,
+  hasMarkdown,
   lineAt,
   manuscriptChapterFile,
   normalizeText,
+  parseFrontMatter,
+  parseTitleLine,
   splitBlocks,
   stemRu,
-  foldRu,
   FORBIDDEN_PROSE,
   PROCESS_PROSE,
 } from '../../src/validate/index.ts';
@@ -84,17 +89,6 @@ describe('findWords', () => {
   });
 });
 
-describe('findPhrase', () => {
-  it('is tolerant of case, ё and whitespace runs', () => {
-    expect(findPhrase('РУКА  пошла\nи не дошла.', 'Рука пошла и не дошла')).toHaveLength(1);
-  });
-
-  it('finds every occurrence', () => {
-    const text = 'рука пошла и не дошла, рука пошла и не дошла';
-    expect(findPhrase(text, 'Рука пошла и не дошла')).toHaveLength(2);
-  });
-});
-
 describe('lineAt', () => {
   it('counts 1-based lines', () => {
     const text = 'one\ntwo\nthree';
@@ -116,7 +110,125 @@ describe('manuscriptChapterFile', () => {
   });
 
   it('ignores files that are not chapter files at all', () => {
-    expect(manuscriptChapterFile('PLAN.md')).toBeNull();
+    expect(manuscriptChapterFile('00-front.md')).toBeNull();
     expect(manuscriptChapterFile('ch08.txt')).toBeNull();
+  });
+});
+
+describe('hasMarkdown', () => {
+  it('sees headings, links and footnotes', () => {
+    expect(hasMarkdown('## Вторник')).toBe(true);
+    expect(hasMarkdown('текст [ссылка](https://example.org)')).toBe(true);
+    expect(hasMarkdown('текст[^1]')).toBe(true);
+  });
+
+  it('does not see an ordinary number sign inside a word', () => {
+    expect(hasMarkdown('дом № 5 и #1 во дворе')).toBe(false);
+  });
+});
+
+describe('parseTitleLine', () => {
+  it('takes line 1 as the title and the rest as the body', () => {
+    const parsed = parseTitleLine('Половик в тамбуре\n\nПервый абзац.\n\nВторой.');
+    expect(parsed.title).toBe('Половик в тамбуре');
+    expect(parsed.problems).toEqual([]);
+    expect(splitBlocks(parsed.body)).toEqual(['Первый абзац.', 'Второй.']);
+  });
+
+  it('normalizes CRLF and trailing whitespace before reading line 1', () => {
+    const parsed = parseTitleLine('  Половик в тамбуре  \r\n\r\nТекст.');
+    expect(parsed.title).toBe('Половик в тамбуре');
+  });
+
+  it('reports a missing title and gives null', () => {
+    const parsed = parseTitleLine('');
+    expect(parsed.title).toBeNull();
+    expect(parsed.problems).toContain('title line is missing');
+  });
+
+  it('rejects a title longer than the limit', () => {
+    const parsed = parseTitleLine('я'.repeat(TITLE_MAX_CHARS + 1) + '\n\nТекст.');
+    expect(parsed.title).toBeNull();
+    expect(parsed.problems.join(' ')).toContain(`${TITLE_MAX_CHARS + 1} characters`);
+  });
+
+  it('accepts a title exactly at the limit', () => {
+    const parsed = parseTitleLine('я'.repeat(TITLE_MAX_CHARS) + '\n\nТекст.');
+    expect(parsed.title).toHaveLength(TITLE_MAX_CHARS);
+    expect(parsed.problems).toEqual([]);
+  });
+
+  it('rejects markdown and a trailing colon', () => {
+    expect(parseTitleLine('## Половик\n\nТекст.').problems).toContain('title contains markdown');
+    expect(parseTitleLine('Половик:\n\nТекст.').problems).toContain('title ends with a colon');
+  });
+
+  it('requires line 2 to be blank', () => {
+    const parsed = parseTitleLine('Половик\nПервый абзац без пустой строки.');
+    expect(parsed.title).toBeNull();
+    expect(parsed.problems).toContain('line 2 must be blank');
+  });
+
+  it('accepts a title-only file: the prose is simply empty', () => {
+    const parsed = parseTitleLine('Половик в тамбуре');
+    expect(parsed.title).toBe('Половик в тамбуре');
+    expect(splitBlocks(parsed.body)).toEqual([]);
+  });
+});
+
+const ABOUT =
+  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
+  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
+  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
+  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+
+describe('parseFrontMatter', () => {
+  it('reads the live title and the annotation', () => {
+    const parsed = parseFrontMatter(`Земля, которая больше не кормит\n\n${ABOUT}`);
+    expect(parsed.title).toBe('Земля, которая больше не кормит');
+    expect(parsed.about).toBe(ABOUT);
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.chars).toBe(ABOUT.length);
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.chars).toBeGreaterThanOrEqual(ABOUT_MIN_CHARS);
+    expect(parsed.chars).toBeLessThanOrEqual(ABOUT_MAX_CHARS);
+  });
+
+  it('keeps the title when only the annotation is malformed', () => {
+    const parsed = parseFrontMatter('Земля\n\nСлишком короткая аннотация.');
+    expect(parsed.title).toBe('Земля');
+    expect(parsed.about).toBeNull();
+    expect(parsed.problems.join(' ')).toContain('expected 300–900');
+  });
+
+  it('rejects an annotation above 900 characters', () => {
+    const parsed = parseFrontMatter(`Земля\n\n${'я'.repeat(ABOUT_MAX_CHARS + 1)}`);
+    expect(parsed.about).toBeNull();
+    expect(parsed.problems.join(' ')).toContain(`${ABOUT_MAX_CHARS + 1} characters`);
+  });
+
+  it('rejects more than four annotation blocks', () => {
+    const block = 'а'.repeat(100);
+    const parsed = parseFrontMatter(`Земля\n\n${[block, block, block, block, block].join('\n\n')}`);
+    expect(parsed.about).toBeNull();
+    expect(parsed.problems.join(' ')).toContain('5 blocks');
+  });
+
+  it('rejects markdown in the annotation', () => {
+    const parsed = parseFrontMatter(`Земля\n\n${ABOUT}\n\n[ссылка](https://example.org)`);
+    expect(parsed.problems).toContain('annotation contains markdown');
+  });
+
+  it('requires a blank line 2 and a non-empty title', () => {
+    expect(parseFrontMatter(`Земля\n${ABOUT}`).problems).toContain('line 2 must be blank');
+    expect(parseFrontMatter(`\n\n${ABOUT}`).problems).toContain('title line is missing');
+  });
+
+  it('reports an empty file as missing title and annotation', () => {
+    const parsed = parseFrontMatter('');
+    expect(parsed.title).toBeNull();
+    expect(parsed.about).toBeNull();
+    expect(parsed.problems).toContain('title line is missing');
+    expect(parsed.problems.join(' ')).toContain('0 blocks');
   });
 });

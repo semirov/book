@@ -4,14 +4,23 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getChapterRow, listBlocks, listCatalog } from '../src/db/repo/chapters.ts';
+import { getFrontRow } from '../src/db/repo/front.ts';
 import { listRevisions } from '../src/db/repo/revisions.ts';
 import { parseChapter } from '../src/ingest/parseChapter.ts';
+import { parseFront } from '../src/ingest/parseFront.ts';
 import { reconcile, rememberScan } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const CHAPTER_TWO = longProse(['Начало второй главы.']);
+
+const ABOUT =
+  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
+  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
+  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
+  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -41,7 +50,20 @@ describe('reconcile — empty manuscript', () => {
     rmSync(fixture.manuscript, { recursive: true, force: true });
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.scanned).toBe(0);
+    expect(report.missing).toBe(true);
     expect(listCatalog(fixture.db)).toHaveLength(67);
+  });
+
+  it('keeps the last known text when the directory disappears (a bad mount, §6.2)', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    rmSync(fixture.manuscript, { recursive: true, force: true });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.missing).toBe(true);
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)).toBeDefined();
+    expect(getFrontRow(fixture.db)).toBeDefined();
   });
 });
 
@@ -65,7 +87,7 @@ describe('reconcile — first sighting', () => {
     expect(revisions[0]).toMatchObject({
       kind: 'create',
       attributed: 0,
-      cause_kind: 'local',
+      cause_kind: 'draft',
       added: expected.blocks.length,
     });
     expect(existsSync(join(fixture.dataDir, String(revisions[0]?.snapshot)))).toBe(true);
@@ -156,6 +178,9 @@ describe('state version', () => {
       removed: [],
       ignored: [],
       readErrors: [],
+      front: 'missing',
+      frontProblems: [],
+      missing: false,
       at: '2026-10-25T12:00:00Z',
     });
 
@@ -170,5 +195,66 @@ describe('state version', () => {
     const afterWrite = state.snapshot();
     expect(afterWrite.version).toBe(first.version + 1);
     expect(afterWrite.chapters.written).toEqual([1]);
+  });
+});
+
+describe('reconcile — front matter', () => {
+  it('projects the live title and page 2, with a content-addressed snapshot', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.front).toBe('created');
+    expect(report.frontProblems).toEqual([]);
+    expect(report.ignored).not.toContain('00-front.md');
+    const row = getFrontRow(fixture.db);
+    expect(row).toMatchObject({ id: 1, title: 'Земля, которая больше не кормит', about: ABOUT, rev: 1 });
+    const expected = parseFront(FRONT);
+    expect(row?.sha256).toBe(expected.sha256);
+    expect(existsSync(join(fixture.dataDir, 'versions', 'front', `${expected.sha256}.md`))).toBe(true);
+    expect(listCatalog(fixture.db).every((entry) => !entry.written)).toBe(true);
+  });
+
+  it('is idempotent: a second scan keeps rev 1', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    const second = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(second.front).toBe('unchanged');
+    expect(getFrontRow(fixture.db)?.rev).toBe(1);
+  });
+
+  it('bumps rev when the title or the annotation changes', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    fixture.write('00-front.md', FRONT.replace('Земля, которая больше не кормит', 'Земля, которая молчит'));
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('revised');
+    expect(getFrontRow(fixture.db)).toMatchObject({
+      title: 'Земля, которая молчит',
+      rev: 2,
+    });
+  });
+
+  it('removes the first sheet when the file disappears and reports a missing one otherwise', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    rmSync(join(fixture.manuscript, '00-front.md'));
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('removed');
+    expect(getFrontRow(fixture.db)).toBeUndefined();
+    expect(reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir }).front).toBe('missing');
+  });
+
+  it('keeps the title and nulls page 2 when the annotation is malformed', () => {
+    fixture = createFixture({ '00-front.md': 'Земля\n\nСлишком коротко.' });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('created');
+    expect(report.frontProblems.length).toBeGreaterThan(0);
+    expect(getFrontRow(fixture.db)).toMatchObject({ title: 'Земля', about: '' });
+  });
+
+  it('hides page 2 when the title line is malformed, even if the annotation reads well', () => {
+    fixture = createFixture({ '00-front.md': `${'я'.repeat(81)}\n\n${ABOUT}` });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getFrontRow(fixture.db)).toMatchObject({ title: '', about: '' });
   });
 });

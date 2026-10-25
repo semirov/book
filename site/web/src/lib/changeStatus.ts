@@ -1,0 +1,191 @@
+/**
+ * The words a change gets on the page (ARCHITECTURE.md §11.6, §11.7, §21.6; DESIGN §8.4–8.6).
+ *
+ * A comment thread shows **two** lines and never collapses them into one «готово»:
+ * acceptance is a promise, application is a fact, and how far the consequence travelled is
+ * a third fact (`принято → внесено → дошло до глав 7–9`). Nothing here names a gate, a
+ * finding or a role: those are not in the public DTO at all (§6B.6).
+ */
+
+import {
+  TOTAL_CHAPTERS,
+  type ChangeDto,
+  type ChangeOutcome,
+  type ChangeStepDto,
+  type ChangeSummaryDto,
+  type PublicRelevance,
+  type SeamBoundary,
+} from '@book/shared';
+
+import { plural } from './format.ts';
+
+export type ChangeLines = {
+  first: string;
+  second: string;
+  tone: 'waiting' | 'live' | 'done' | 'quiet' | 'escalated';
+};
+
+/** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
+export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'>): string {
+  if (change.status === 'pending') return 'ждёт очереди';
+  if (change.status === 'processing') return 'идёт';
+  if (change.status === 'stale') return 'основа изменилась';
+  if (change.status === 'escalated') return 'ждёт решения';
+  if (change.status === 'failed') return 'не внесено';
+  if (isDropped(change)) return 'снято';
+  return change.outcome === 'adapted' ? 'внесено частично' : 'внесено';
+}
+
+/** `14` → `014`, the change's public number (§DESIGN 7.12). */
+export function changeNumber(seq: number): string {
+  return String(Math.trunc(seq)).padStart(3, '0');
+}
+
+function reached(change: Pick<ChangeSummaryDto, 'chapters' | 'chapter'>): number[] {
+  return change.chapters.filter((chapter) => chapter !== change.chapter);
+}
+
+/** `7–9`, `6 и 9`, `7` — a readable reach, never a percentage of the book. */
+export function chapterRange(chapters: readonly number[]): string {
+  const sorted = [...new Set(chapters)].sort((left, right) => left - right);
+  if (sorted.length === 0) return '';
+  if (sorted.length === 1) return String(sorted[0]);
+  const contiguous = sorted.every((chapter, index) => index === 0 || chapter === (sorted[index - 1] ?? 0) + 1);
+  if (contiguous && sorted.length > 2) return `${String(sorted[0])}–${String(sorted.at(-1))}`;
+  return `${sorted.slice(0, -1).join(', ')} и ${String(sorted.at(-1))}`;
+}
+
+export function reachCopy(change: Pick<ChangeSummaryDto, 'chapters' | 'chapter'>): string {
+  const wings = reached(change);
+  if (wings.length === 0) return `осталось в главе ${change.chapter}`;
+  return `дошло до глав ${chapterRange(wings)}`;
+}
+
+function isDropped(change: Pick<ChangeSummaryDto, 'status' | 'outcome'>): boolean {
+  return change.status === 'void' || change.outcome === 'dropped' || change.outcome === 'superseded';
+}
+
+/** The thread's two lines. The first is the promise, the second is the fact. */
+export function changeLines(change: ChangeSummaryDto): ChangeLines {
+  if (change.status === 'pending') {
+    return {
+      first: `принято · ${change.position ?? 1}-я в очереди`,
+      second: 'правки идут по одной, в порядке записи',
+      tone: 'waiting',
+    };
+  }
+  if (change.status === 'stale') {
+    return {
+      first: 'принято · основа изменилась',
+      second: 'решается, применять ли правку',
+      tone: 'live',
+    };
+  }
+  if (change.status === 'processing') {
+    return {
+      first: 'принято · правится',
+      second: `глава ${change.chapter}`,
+      tone: 'live',
+    };
+  }
+  if (change.status === 'escalated') {
+    return {
+      first: 'принято · ждёт решения автора',
+      second: change.reason ?? 'правка остановлена',
+      tone: 'escalated',
+    };
+  }
+  if (change.status === 'failed') {
+    return {
+      first: 'не удалось внести',
+      second: 'замечание сохранено',
+      tone: 'escalated',
+    };
+  }
+  if (isDropped(change)) {
+    return {
+      first: change.outcome === 'superseded' ? 'перекрыто более поздней правкой' : 'снято',
+      second: change.reason ?? 'уже не нужно — текст изменился',
+      tone: 'quiet',
+    };
+  }
+  return {
+    first: change.outcome === 'adapted' ? 'внесено частично' : 'внесено',
+    second: change.outcome === 'adapted' ? `основа изменилась · ${reachCopy(change)}` : reachCopy(change),
+    tone: 'done',
+  };
+}
+
+/** The one-line trace `принято → внесено → дошло до глав 7–9` (§20 M4). */
+export function progressLine(change: ChangeSummaryDto): string {
+  if (change.status === 'pending') return 'принято → ждёт очереди';
+  if (change.status === 'escalated') return 'принято → ждёт решения автора';
+  if (change.status === 'failed') return 'принято → не удалось внести';
+  if (isDropped(change)) return 'принято → снято';
+  if (change.status === 'done') return `принято → внесено → ${reachCopy(change)}`;
+  return 'принято → правится';
+}
+
+// ── the change card's vocabulary (public fields only) ────────────────────────
+
+export function relevanceCopy(grade: PublicRelevance['grade']): string {
+  if (grade === 'fresh') return 'основа та же';
+  if (grade === 'rebased') return 'основа сдвинулась, правка перенесена';
+  if (grade === 'partial') return 'основа изменилась частично';
+  if (grade === 'void') return 'уже не нужно';
+  return 'основа не проверена';
+}
+
+export function outcomeCopy(outcome: ChangeOutcome | null): string {
+  if (outcome === 'applied') return 'внесено';
+  if (outcome === 'adapted') return 'внесено частично';
+  if (outcome === 'dropped') return 'снято';
+  if (outcome === 'superseded') return 'перекрыто';
+  if (outcome === 'budget') return 'остановлено бюджетом';
+  if (outcome === 'oscillation') return 'остановлено: ходит по кругу';
+  if (outcome === 'origin') return 'остановлено: нужно решение';
+  if (outcome === 'delta') return 'остановлено: слишком много текста';
+  if (outcome === 'finding') return 'внесено · замечание сохранено';
+  if (outcome === 'ending') return 'финал проверен, нужно решение';
+  if (outcome === 'gate_timeout') return 'остановлено: проверка не ответила';
+  return 'идёт';
+}
+
+/** `8` → `стык 7 | 8`; the sentinels name the first sheet and the ending (§6A.5). */
+export function boundaryLabel(boundary: SeamBoundary): string {
+  if (boundary === 'front') return 'обложка | 1';
+  if (boundary === 'ending') return `${TOTAL_CHAPTERS} | финал`;
+  return `${boundary - 1} | ${boundary}`;
+}
+
+export function stepLabel(step: ChangeStepDto): string {
+  if (step.pass === 'front') return 'обложка и страница 2';
+  if (step.pass === 'ending') return 'финал проверен';
+  if (step.chapter === null) return step.pass;
+  if (step.outcome === 'rewritten') return `глава ${step.chapter} переписана`;
+  if (step.outcome === 'published_with_finding') return `глава ${step.chapter} переписана · замечание сохранено`;
+  if (step.outcome === 'holds') return `глава ${step.chapter} проверена, правок нет`;
+  if (step.outcome === 'evaluated') return `глава ${step.chapter} проверена`;
+  if (step.outcome === 'escalated') return `глава ${step.chapter}: ждёт решения`;
+  if (step.outcome === 'interrupted') return `глава ${step.chapter}: прервана`;
+  return `глава ${step.chapter}: идёт`;
+}
+
+/** `←` down the book, `→` up it, `·` a local step (§DESIGN 7.13). */
+export function wingGlyph(step: ChangeStepDto): string {
+  if (step.wing === 'downward') return '←';
+  if (step.wing === 'upward') return '→';
+  return '·';
+}
+
+export function changeHeading(change: Pick<ChangeDto, 'seq' | 'chapter'>): string {
+  return `правка ${changeNumber(change.seq)} · глава ${change.chapter}`;
+}
+
+/** `3 главы` in the card's «затронуто» line, never in the ribbon. */
+export function touchedCopy(change: Pick<ChangeDto, 'steps'>): string {
+  const chapters = new Set<number>();
+  for (const step of change.steps) if (typeof step.chapter === 'number') chapters.add(step.chapter);
+  const count = chapters.size;
+  return `${count} ${plural(count, 'глава', 'главы', 'глав')}`;
+}

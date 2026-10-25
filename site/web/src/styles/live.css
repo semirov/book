@@ -1,0 +1,303 @@
+/* ============================================================================
+   LIVE — M2: the table of contents, the 0/67 screen, printing, carets,
+   revisions, the ribbon and the ticket. Additive to book.css.
+   ============================================================================ */
+
+/* ---------- the first sheet changes in place, it does not reflow ---------- */
+.fade-in {
+  animation: fade-in var(--dur-fade) var(--ease-out) both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- оглавление: four parts, 67 live rows ---------- */
+.toc {
+  padding-top: 44px;
+}
+.toc-heading {
+  margin: 16px 0 4px;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--ink-2);
+  text-wrap: balance;
+}
+.toc-part {
+  margin-top: 12px;
+}
+.toc-part-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0 6px;
+  border-bottom: 1px solid var(--rule-2);
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.toc-part-range {
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  font-size: 9.5px;
+}
+.toc-slot .slot-inner {
+  text-decoration: none;
+  gap: 9px;
+}
+.toc-slot .leader {
+  flex: 0 0 16px;
+  opacity: 0.7;
+}
+.toc-slot .t {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.toc-slot .t.muted {
+  font-style: italic;
+  color: var(--ink-3);
+}
+.toc-slot.current .t {
+  color: var(--live);
+}
+.toc-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--live);
+  align-self: center;
+}
+
+/* ---------- 0/67: a beginning, not a broken page ---------- */
+.start {
+  padding-top: 40px;
+}
+.start-frame {
+  margin-top: 14px;
+  border: 1px solid var(--rule-2);
+  background: var(--paper-2);
+  padding: 22px 16px 16px;
+}
+.start-line {
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 19px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+.start-sub {
+  text-align: center;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 5px;
+}
+.start-spine {
+  position: relative;
+  height: 4px;
+  margin: 22px 0 18px;
+  background: var(--paper-3);
+}
+.start-spine::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, var(--rule) 0 0.5px, transparent 0.5px 4px);
+  opacity: 0.6;
+}
+.start-spine .caret {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  width: 2px;
+  height: 10px;
+  background: var(--live);
+  animation: blink 1.06s steps(1, end) infinite;
+}
+.start-spine .caret.right {
+  left: auto;
+  right: 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px 14px;
+  list-style: none;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--rule);
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ---------- empty chapter slots: slim, quiet, always present ---------- */
+.ch-empty {
+  padding-top: 0;
+}
+.ch-empty .ch-h {
+  border-top-color: var(--rule);
+  padding: 11px 0 7px;
+  margin-bottom: 0;
+}
+.ch-empty .ch-n {
+  font-size: 17px;
+  color: var(--ink-2);
+}
+
+/* ---------- printing (§11.5): only the active paragraph is left-aligned ---------- */
+.p.is-printing {
+  text-align: left;
+}
+.caret-inline {
+  display: inline-block;
+  width: 2px;
+  height: 1.02em;
+  margin-left: 1px;
+  vertical-align: -0.12em;
+  background: var(--live);
+}
+.caret-inline.blink {
+  animation: blink 1.06s steps(1, end) infinite;
+}
+.caret-inline.resting {
+  background: var(--ink-3);
+  opacity: 0.5;
+}
+.show-now {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 6px;
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule-2);
+}
+
+/* ---------- a block the step is revising (§11.4) ---------- */
+.p.is-revising {
+  padding: 7px 10px 7px 10px;
+  margin-left: -10px;
+  margin-right: -10px;
+  background: linear-gradient(90deg, var(--revise) 0 2px, var(--revise-bg) 2px);
+}
+.revising-label {
+  display: block;
+  margin-bottom: 3px;
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--revise);
+}
+.p.is-revised {
+  animation: settle var(--dur-fade) var(--ease-out) both;
+}
+@keyframes settle {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- the cascade ribbon (§11.7): only while a ripple runs ---------- */
+.ribbon {
+  position: relative;
+  height: 4px;
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: transparent;
+}
+.ribbon-band {
+  position: absolute;
+  top: 1px;
+  height: 2px;
+  background: var(--live);
+  opacity: 0.55;
+}
+.ribbon-step {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 8px;
+  background: var(--live);
+}
+
+/* ---------- талон: one quiet notice, never a count ---------- */
+.ticket {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 55;
+  display: flex;
+  align-items: stretch;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--rule-2);
+}
+.ticket-go,
+.ticket-x {
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: var(--label);
+  font-size: 9.5px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+.ticket-x {
+  border-left: 1px solid rgba(233, 232, 226, 0.28);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+/* ---------- 100 readers, then the waiting screen (§14) ---------- */
+.waiting {
+  min-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  text-align: center;
+}
+.waiting-copy {
+  max-width: 24ch;
+  font-size: 17px;
+  line-height: 1.55;
+}
+.waiting-retry {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  font-family: var(--label);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}

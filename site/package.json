@@ -14,12 +14,14 @@
   ],
   "scripts": {
     "build": "npm run build -w @book/shared && npm run build -w @book/server && npm run build -w @book/web",
-    "typecheck": "tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "typecheck": "npm run build -w @book/shared && tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "arch": "node scripts/arch.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "validate": "node bin/validate.mjs",
     "start": "node server/dist/index.js",
+    "engine": "node server/dist/engine.js",
+    "engine:cli": "node bin/engine.mjs",
     "dev": "node scripts/dev.mjs",
     "verify": "npm run typecheck && npm run arch && npm run test"
   },

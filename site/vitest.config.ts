@@ -10,12 +10,12 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['shared/test/**/*.test.ts', 'server/test/**/*.test.ts', 'web/src/**/*.test.ts'],
+    include: ['shared/test/**/*.test.ts', 'server/test/**/*.test.ts', 'web/src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib/**/*.ts', 'web/src/api.ts'],
-      exclude: ['shared/src/protocol.ts', 'server/src/index.ts'],
+      exclude: ['shared/src/protocol.ts', 'server/src/index.ts', 'server/src/engine.ts'],
       thresholds: {
         lines: 80,
         functions: 80,

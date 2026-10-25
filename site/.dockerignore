@@ -1,0 +1,12 @@
+# Secrets and local state never enter the build context (§17, secrets rule).
+.env
+.env.*
+!.env.example
+.data
+coverage
+node_modules
+**/node_modules
+**/dist
+!web/dist
+*.log
+.git

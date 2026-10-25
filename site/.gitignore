@@ -5,4 +5,9 @@ coverage/
 *.log
 .DS_Store
 .env
+.env.*
+!.env.example
 .env.local
+
+# the triage file exchange is runtime data, not source
+data/

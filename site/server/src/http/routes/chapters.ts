@@ -34,6 +34,7 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
 
     const body: ChapterDto = {
       n: row.n,
+      title: row.title,
       rev: row.rev,
       chars: row.chars,
       writtenAt: row.written_at,

@@ -1,0 +1,405 @@
+/* ============================================================================
+   FOCUS — M6c: the прицел (§11.9, DESIGN §7.14). A mode of the same page: the
+   page goes dark, one sheet stays lit. The housing is the same instrument in
+   both themes; the paper is always the day sheet, so it reads as a document
+   under a lamp even at night.
+   ============================================================================ */
+
+body.is-focus {
+  overflow: hidden;
+}
+
+.focus {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  background: rgba(10, 12, 14, 0.78);
+  color: #e9e8e2;
+  overflow: hidden;
+}
+.focus-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  height: 100dvh;
+  background: #14171a;
+  border-left: 1px solid rgba(233, 232, 226, 0.1);
+  border-right: 1px solid rgba(233, 232, 226, 0.1);
+}
+
+/* ---------- top bar ---------- */
+.focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid rgba(233, 232, 226, 0.17);
+}
+.focus-tag,
+.focus-n {
+  font-family: var(--label);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.focus-tag {
+  color: #8b8f8c;
+}
+.focus-n {
+  flex: 1;
+  color: #e9e8e2;
+}
+.focus-exit {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -10px -6px -10px 0;
+  font-family: var(--label);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+
+/* ---------- the body ---------- */
+.focus-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 20px;
+}
+.focus-where {
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b8f8c;
+}
+
+/* ---------- the lit sheet ---------- */
+.focus-stage {
+  position: relative;
+  padding: 5px;
+}
+.focus-paper {
+  --paper: #f4f2ec;
+  --ink: #16181a;
+  --ink-2: #4e5357;
+  --ink-3: #64686a;
+  --rule: #c7c6be;
+  --rule-2: #a6a79e;
+  --live: #2e6274;
+  min-height: 150px;
+  padding: 18px 20px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--fs-lead);
+  line-height: 1.62;
+}
+.focus-p {
+  margin: 0 0 0.9em;
+}
+.focus-p:last-of-type {
+  margin-bottom: 0;
+}
+.focus-removed {
+  margin: 0.9em 0 0;
+  padding-top: 0.5em;
+  border-top: 1px dashed var(--rule-2, #a6a79e);
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.focus-sheet-note {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.focus-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: #2e6274;
+  animation: focus-caret 1s steps(1) infinite;
+}
+@keyframes focus-caret {
+  50% {
+    opacity: 0;
+  }
+}
+.focus-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid #7fa8c0;
+  border-left: 1px solid #7fa8c0;
+  pointer-events: none;
+}
+.focus-corner:not(.is-ne):not(.is-sw):not(.is-se) {
+  top: 0;
+  left: 0;
+}
+.focus-corner.is-ne {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-right: 1px solid #7fa8c0;
+}
+.focus-corner.is-sw {
+  bottom: 0;
+  left: 0;
+  border-top: 0;
+  border-bottom: 1px solid #7fa8c0;
+}
+.focus-corner.is-se {
+  right: 0;
+  bottom: 0;
+  border-top: 0;
+  border-left: 0;
+  border-right: 1px solid #7fa8c0;
+  border-bottom: 1px solid #7fa8c0;
+}
+
+.focus-evidence {
+  margin: 10px 0 0;
+  padding: 0 0 0 16px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b0b2ae;
+}
+
+/* ---------- readout and ring field ---------- */
+.focus-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-readout span + span::before {
+  content: '·';
+  margin-right: 14px;
+  color: #64686a;
+}
+.focus-rings {
+  position: relative;
+  height: 48px;
+  margin: 4px 4px 0;
+}
+.focus-axis {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(233, 232, 226, 0.22);
+}
+.focus-link {
+  position: absolute;
+  top: 19px;
+  height: 2px;
+  background: #6f9bb5;
+  opacity: 0.55;
+}
+.focus-tick {
+  position: absolute;
+  top: 17px;
+  width: 1px;
+  height: 7px;
+  margin-left: -0.5px;
+  background: rgba(233, 232, 226, 0.34);
+}
+.focus-tick-label {
+  position: absolute;
+  top: 29px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 7.5px;
+  color: #64686a;
+}
+.focus-origin {
+  position: absolute;
+  top: 14px;
+  width: 1px;
+  height: 13px;
+  margin-left: -0.5px;
+  background: #e9e8e2;
+}
+.focus-ring {
+  position: absolute;
+  top: 12px;
+  width: 17px;
+  height: 17px;
+  margin-left: -8.5px;
+  border: 1px solid #8fb8d0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(143, 184, 208, 0.1);
+  transition: left 400ms var(--ease-out);
+  animation: focus-ring 2.6s linear infinite;
+}
+@keyframes focus-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(143, 184, 208, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(143, 184, 208, 0);
+  }
+}
+
+/* ---------- the footnote form ---------- */
+.focus-note {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  background: #191c1f;
+  border-top: 1px solid rgba(233, 232, 226, 0.17);
+}
+.focus-note-h {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(233, 232, 226, 0.17);
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-note-h > span:first-child {
+  flex: 1;
+}
+.focus-stamp {
+  color: #8fb8d0;
+}
+.focus-rows {
+  margin: 0;
+}
+.focus-rows > div {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(233, 232, 226, 0.08);
+}
+.focus-rows > div:first-child {
+  border-top: 0;
+}
+.focus-rows dt {
+  font-family: var(--label);
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8b8f8c;
+}
+.focus-rows dd {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #e9e8e2;
+}
+.focus-intent {
+  font-style: italic;
+}
+.focus-quiet {
+  font-style: italic;
+  color: #8b8f8c;
+}
+.focus-cost {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: #b0b2ae;
+}
+.focus-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.focus-steps li {
+  padding: 2px 0;
+}
+.focus-steps button,
+.focus-steps span {
+  font-family: var(--serif);
+  font-size: 13px;
+  text-align: left;
+  color: #b0b2ae;
+  border-bottom: 1px solid transparent;
+}
+.focus-steps button {
+  min-height: 26px;
+}
+.focus-steps button.is-on {
+  color: #e9e8e2;
+  border-bottom-color: #6f9bb5;
+}
+.focus-reason {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(233, 232, 226, 0.08);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #b0b2ae;
+}
+
+/* ---------- actions ---------- */
+.focus-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #14171a;
+  border-top: 1px solid rgba(233, 232, 226, 0.17);
+}
+.focus-action {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid rgba(233, 232, 226, 0.35);
+  font-family: var(--label);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #e9e8e2;
+}
+.focus-action.is-on {
+  border-color: #6f9bb5;
+  color: #8fb8d0;
+}
+
+@media (min-width: 700px) {
+  .focus {
+    align-items: center;
+    padding: 4dvh 0;
+  }
+  .focus-panel {
+    height: min(92dvh, 920px);
+    border: 1px solid rgba(233, 232, 226, 0.17);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-ring,
+  .focus-caret {
+    animation: none;
+  }
+  .focus-ring {
+    transition: none;
+  }
+}

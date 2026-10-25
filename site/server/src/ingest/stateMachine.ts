@@ -1,9 +1,9 @@
 /**
  * Derive `StateSnapshot` from text facts (ARCHITECTURE.md §7.1–7.2), pure and testable.
  *
- * M0 has no engine: the journal overlay is empty, so the snapshot honestly reports
+ * M0/M2 have no engine: the journal overlay is empty, so the snapshot honestly reports
  * `engine.status = 'unknown'` and an empty queue (ADR-003 degraded mode). M3 fills the
- * overlay; the shape and rules 1–3, 9–10 stay exactly as they are.
+ * overlay; the shape and rules 1–3, 9–12 stay exactly as they are.
  */
 
 import {
@@ -11,24 +11,42 @@ import {
   FORWARD_LAST,
   TOTAL_CHAPTERS,
   allChapterNumbers,
+  partOf,
   type DraftCursor,
   type StateSnapshot,
+  type TocEntry,
 } from '@book/shared';
+
+import type { EngineOverlay } from '../engineState/reader.ts';
 
 /** A chapter as the projection knows it. Only chapters with at least one block count as written. */
 export type ChapterFact = {
   n: number;
   rev: number;
+  title: string | null;
   chars: number;
   blocks: number;
   writtenAt: string;
   updatedAt: string;
 };
 
+/** The first sheet as it was last read (§6C.2); absent means the cover has no title yet. */
+export type FrontFact = {
+  title: string | null;
+  about: string | null;
+  rev: number;
+  updatedAt: string | null;
+};
+
+export const EMPTY_FRONT: FrontFact = { title: null, about: null, rev: 0, updatedAt: null };
+
 export type DeriveInput = {
   facts: ChapterFact[];
   now: Date;
   version: number;
+  front?: FrontFact;
+  /** Engine facts (queue, ripple, unresolved seams, live lease); absent in degraded mode. */
+  overlay?: EngineOverlay;
 };
 
 export function deriveState(input: DeriveInput): StateSnapshot {
@@ -58,8 +76,9 @@ export function deriveState(input: DeriveInput): StateSnapshot {
   return {
     version: input.version,
     at: input.now.toISOString().replace(/\.\d{3}Z$/u, 'Z'),
-    engine: { status: 'unknown', heartbeatAt: null, laneId: null },
+    engine: input.overlay?.engine ?? { status: 'unknown', heartbeatAt: null, laneId: null },
     phase: 'draft',
+    front: input.front ?? EMPTY_FRONT,
     chapters: {
       total: TOTAL_CHAPTERS,
       written,
@@ -71,6 +90,7 @@ export function deriveState(input: DeriveInput): StateSnapshot {
       forward: cursorFor('forward', forwardFront),
       backward: cursorFor('backward', backwardFront),
     },
+    toc: buildToc(facts),
     meeting: {
       forwardFront,
       backwardFront,
@@ -78,8 +98,8 @@ export function deriveState(input: DeriveInput): StateSnapshot {
       converged,
       seam: converged ? 'open' : 'not_reached',
     },
-    cascade: null,
-    queue: {
+    cascade: input.overlay?.cascade ?? null,
+    queue: input.overlay?.queue ?? {
       depth: 0,
       byState: { pending: 0, processing: 0, stale: 0, escalated: 0, done24h: 0 },
       head: null,
@@ -87,15 +107,30 @@ export function deriveState(input: DeriveInput): StateSnapshot {
       lastDecidedAt: null,
     },
     revising: [],
-    current: null,
-    unresolved: [],
+    current: input.overlay?.current ?? null,
+    unresolved: input.overlay?.unresolved ?? [],
     activity: {
       lastFileChangeAt,
-      lastEngineEventAt: null,
+      lastEngineEventAt: input.overlay?.engine.heartbeatAt ?? null,
       lastLogLineAt: null,
-      source: 'files',
+      source: input.overlay === undefined ? 'files' : 'mixed',
     },
   };
+}
+
+/** Exactly 67 entries, always (§7.2 rule 11); `title` comes only from a chapter's line 1. */
+export function buildToc(facts: readonly ChapterFact[]): TocEntry[] {
+  const byNumber = new Map(facts.filter((fact) => fact.blocks > 0).map((fact) => [fact.n, fact]));
+  return allChapterNumbers().map((n) => {
+    const fact = byNumber.get(n);
+    return {
+      part: partOf(n),
+      n,
+      title: fact?.title ?? null,
+      written: fact !== undefined,
+      rev: fact?.rev ?? 0,
+    };
+  });
 }
 
 function cursorFor(lane: 'forward' | 'backward', front: number | null): DraftCursor {
@@ -116,11 +151,21 @@ function cursorFor(lane: 'forward' | 'backward', front: number | null): DraftCur
   };
 }
 
-/** Fingerprint of everything that changes the snapshot except `version` and `at` (§7.2 rule 10). */
-export function stateFingerprint(facts: ChapterFact[]): string {
-  return JSON.stringify(
-    [...facts]
+/**
+ * Fingerprint of everything that changes the snapshot except `version` and `at`
+ * (§7.2 rule 10). Titles and the first sheet are included: a retitled chapter and a
+ * rewritten annotation are changes a reader must see.
+ */
+export function stateFingerprint(
+  facts: ChapterFact[],
+  front: FrontFact = EMPTY_FRONT,
+  engine = '',
+): string {
+  return JSON.stringify({
+    chapters: [...facts]
       .sort((a, b) => a.n - b.n)
-      .map((fact) => [fact.n, fact.rev, fact.chars, fact.blocks, fact.updatedAt]),
-  );
+      .map((fact) => [fact.n, fact.rev, fact.title, fact.chars, fact.blocks, fact.updatedAt]),
+    front: [front.rev, front.title, front.about, front.updatedAt],
+    engine,
+  });
 }

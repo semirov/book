@@ -18,6 +18,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: apiTarget, changeOrigin: false },
       '/healthz': { target: apiTarget, changeOrigin: false },
+      '/ws': { target: apiTarget, ws: true },
     },
   },
   preview: { port: 5174, host: '127.0.0.1' },

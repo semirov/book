@@ -44,11 +44,12 @@ export function createFixture(chapters: Record<string, string> = {}): Fixture {
   };
 }
 
-export function longProse(paragraphs: string[] = []): string {
+/** Prose inside the band, with the title line the chapter format requires (§6C.3). */
+export function longProse(paragraphs: string[] = [], title = 'Заголовок главы'): string {
   const filler =
     'Он стоял у окна и смотрел, как по стеклу идёт вода: капля доходила до рамы и поворачивала вбок. ' +
     'За окном был пустой двор, доска на двух кирпичах и след от колеса, оставшийся с ночи.';
   const blocks = [...paragraphs];
   while (blocks.join('\n\n').length < 6500) blocks.push(filler.repeat(2));
-  return blocks.join('\n\n');
+  return `${title}\n\n${blocks.join('\n\n')}`;
 }

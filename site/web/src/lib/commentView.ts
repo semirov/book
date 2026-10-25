@@ -1,0 +1,63 @@
+import type { CommentDto } from '@book/shared';
+
+/**
+ * How a reader's own note is told apart from a decision (§11.6, §12.6).
+ *
+ * The thread never collapses "accepted" into "applied": acceptance is a promise, application
+ * is a later fact, and a note that was never considered says so. The line is data-driven and
+ * carries no gate vocabulary.
+ */
+
+export type CommentLine = { state: string; detail: string | null; tone: 'quiet' | 'live' | 'done' | 'stopped' };
+
+export function commentStatusLine(comment: CommentDto): CommentLine {
+  switch (comment.status) {
+    case 'new':
+      return { state: 'ждёт рассмотрения', detail: null, tone: 'quiet' };
+    case 'batched':
+    case 'delivered':
+      return { state: 'в проходе триажа', detail: null, tone: 'live' };
+    case 'accepted':
+      return {
+        state: 'принято · правка в очереди',
+        detail: comment.reason,
+        tone: 'live',
+      };
+    case 'applied':
+      return {
+        state: comment.applied === null ? 'внесено' : `внесено в главу ${comment.applied.chapter}`,
+        detail: comment.reason,
+        tone: 'done',
+      };
+    case 'superseded':
+      return { state: 'снято: текст успел измениться', detail: comment.reason, tone: 'stopped' };
+    case 'rejected':
+      return { state: 'отклонено', detail: comment.reason, tone: 'stopped' };
+    case 'quarantined':
+      return { state: 'проверяется', detail: comment.reason, tone: 'stopped' };
+    case 'expired':
+      return { state: 'не рассмотрено: проход не состоялся', detail: comment.reason, tone: 'stopped' };
+    case 'hidden':
+      return { state: 'скрыто', detail: comment.reason, tone: 'stopped' };
+    default:
+      return { state: 'ждёт рассмотрения', detail: null, tone: 'quiet' };
+  }
+}
+
+/** `2026-10-25T12:04:11Z` → «25.10, 12:04» — absolute, because readers return days later. */
+export function commentStamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${day}.${month}, ${time}`;
+}
+
+/** The anchor quote, shortened for a phone; never re-flowed into the comment body. */
+export function anchorCopy(comment: CommentDto): string | null {
+  if (!comment.anchor.resolved) return 'абзац изменился';
+  const quote = comment.anchor.quote;
+  if (quote === null || quote.length === 0) return null;
+  return quote.length > 90 ? `${quote.slice(0, 89).trimEnd()}…` : quote;
+}

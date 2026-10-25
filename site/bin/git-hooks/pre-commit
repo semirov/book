@@ -1,0 +1,16 @@
+#!/bin/sh
+# The commit gate (ARCHITECTURE.md §13.1, §13.4 point 3) — the one gate an LLM cannot skip
+# by forgetting a step. It reads the *index*, not the working tree, so what it blesses is
+# exactly what is being committed: F001–F009 and F019–F022 over the staged manuscript, plus
+# F010 (one book file per commit, unless the subject starts with `sweep:`).
+#
+# Install once per clone (the repository is the book; hooks are not committed):
+#   git config core.hooksPath site/bin/git-hooks
+#   chmod +x site/bin/git-hooks/pre-commit
+#
+# A human in a hurry can still bypass it with `git commit --no-verify`; CI runs the same
+# gate without that door (§13.4 point 6).
+set -eu
+
+# The hook runs with the repository root as the working directory.
+exec node "$(git rev-parse --show-toplevel)/site/bin/validate.mjs" --staged

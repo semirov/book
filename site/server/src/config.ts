@@ -1,8 +1,10 @@
 /**
- * Config (ARCHITECTURE.md §21.2). Parsed once at boot, fail-fast, no secret values here:
- * files named in the environment are read by the components that need them (M1+).
+ * Config (ARCHITECTURE.md §21.2). Parsed once at boot, fail-fast, never a secret value in
+ * an error message: every secret is resolved from `${NAME}_FILE` (a `0600` mount) or from
+ * the plain variable, and the checks below refuse a shape that would degrade silently.
  */
 
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,49 +17,229 @@ const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),
   dataDir: z.string().default(resolve(SITE_ROOT, '.data')),
   webDist: z.string().default(resolve(SITE_ROOT, 'web', 'dist')),
+  /** The read-only imprint config (§6C.6); F020 and the boot both validate it. */
+  imprintPath: z.string().default(resolve(SITE_ROOT, 'config', 'imprint.json')),
+  /** The hand-curated legal denylist (§13.4, F005); read, never refreshed from the book. */
+  denylistPath: z.string().default(resolve(SITE_ROOT, 'config', 'legal.denylist.json')),
+  /** The admin surface (`/api/admin/*`) is token-guarded; empty means it does not exist. */
+  adminTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'admin.token')),
+  adminToken: z.string().default(''),
   host: z.string().default('127.0.0.1'),
   port: z.coerce.number().int().min(1).max(65535).default(8080),
+  /** The engine's internal API (no public port, §4.2); loopback only by default. */
+  engineHost: z.string().default('127.0.0.1'),
+  enginePort: z.coerce.number().int().min(1).max(65535).default(8081),
   publicOrigin: z.string().default('https://book.semirov.dev'),
   logLevel: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   /** Display timezone for chapter meta and the ledger (§DESIGN 4.3). */
   tz: z.string().default('Europe/Moscow'),
   // Reserved budgets — read by M3 (the engine); defined now so the config is complete.
   maxWs: z.coerce.number().int().min(1).default(100),
+  /** Soft per-IP socket cap; the oldest connection of that IP is closed on overflow (§10.1). */
+  wsPerIp: z.coerce.number().int().min(1).default(4),
+  /** Protocol ping interval; two missed pongs terminate a socket (§10.1). */
+  wsHeartbeatMs: z.coerce.number().int().min(1_000).default(30_000),
+  /** `X-Forwarded-For` is believed only from these peers (§14). */
+  trustedProxies: z.string().default('127.0.0.1,::1,192.168.1.0/24'),
   commentsPerHour: z.coerce.number().int().min(1).default(10),
-  queueSoftCap: z.coerce.number().int().min(1).default(25),
-  budgetMaxWave: z.coerce.number().int().min(1).default(4),
-  budgetMaxChapters: z.coerce.number().int().min(1).default(7),
-  budgetMaxSteps: z.coerce.number().int().min(1).default(14),
-  budgetMaxWallMs: z.coerce.number().int().min(1).default(900_000),
-  leaseTtlMs: z.coerce.number().int().min(1).default(90_000),
+  /** Anti-farming limit on the identity, the same number as the SPEC's per-IP limit (§14). */
+  commentsPerHourIdentity: z.coerce.number().int().min(1).default(10),
+  /** §14 + SPEC «Load & network»: one reader edit per day, per identity. */
+  editSubmissionsPerDay: z.coerce.number().int().min(1).default(1),
+  queueSoftCap: z.coerce.number().int().min(1).default(15),
+  /** The file exchange with triage (§12.2, §12.6): batches and `decisions.jsonl`. */
+  feedbackDir: z.string().default(resolve(SITE_ROOT, 'data', 'feedback')),
+  // ── identity (ADR-021) ── placeholders until the owner registers the OAuth app ──
+  yandexClientId: z.string().default(''),
+  yandexClientSecret: z.string().default(''),
+  /** Defaults to `${publicOrigin}/auth/yandex/callback` when empty. */
+  yandexRedirectUri: z.string().default(''),
+  yandexAuthorizeUrl: z.string().default('https://oauth.yandex.ru/authorize'),
+  yandexTokenUrl: z.string().default('https://oauth.yandex.ru/token'),
+  yandexInfoUrl: z.string().default('https://login.yandex.ru/info?format=json'),
+  oauthStartPerHour: z.coerce.number().int().min(1).default(10),
+  oauthStateTtlMs: z.coerce.number().int().min(10_000).default(600_000),
+  sessionTtlMs: z.coerce.number().int().min(60_000).default(30 * 24 * 60 * 60 * 1000),
+  /** Signs the OAuth `state`; empty means an ephemeral per-boot secret (tests, local dev). */
+  sessionSecret: z.string().default(''),
+  /** Salt for the persisted IP hash; empty means an ephemeral per-boot salt. */
+  ipSalt: z.string().default(''),
+  // ── CAPTCHA (§12.8) ──
+  captchaProvider: z.enum(['turnstile', 'hcaptcha', 'none']).default('none'),
+  captchaSiteKey: z.string().default(''),
+  captchaSecret: z.string().default(''),
+  captchaTimeoutMs: z.coerce.number().int().min(500).max(10_000).default(3_000),
+  /** Empty = no script, no third-party origin in the CSP (§15.6). */
+  metrikaId: z.string().default(''),
+  /** Cascade bounds (§6A.6, frozen per cascade at open). */
+  budgetMaxWave: z.coerce.number().int().min(1).default(3),
+  budgetMaxChapters: z.coerce.number().int().min(1).default(5),
+  budgetMaxSteps: z.coerce.number().int().min(1).default(8),
+  budgetMaxWallMs: z.coerce.number().int().min(1).default(1_800_000),
+  budgetMaxTokens: z.coerce.number().int().min(1).default(1_500_000),
+  budgetDailyTokens: z.coerce.number().int().min(1).default(24_000_000),
+  maxRewritesPerChapter: z.coerce.number().int().min(1).default(1),
+  upwardLagWaves: z.coerce.number().int().min(0).default(1),
+  /** A repair may replace at most this share of its chapter (§6A.6 MAX_DELTA_RATIO). */
+  maxDeltaRatio: z.coerce.number().min(0).max(1).default(0.35),
+  /** Writer revisions per step before the text is published with its finding (§6B.4). */
+  gateCycles: z.coerce.number().int().min(1).default(3),
+  gateTtlMs: z.coerce.number().int().min(1).default(300_000),
+  leaseTtlMs: z.coerce.number().int().min(1).default(120_000),
+  /** A lane whose holder stopped beating is reclaimed after this long (§6A.3). */
+  laneTtlMs: z.coerce.number().int().min(1).default(90_000),
+  reaperMs: z.coerce.number().int().min(100).default(15_000),
+  maxConcurrentSteps: z.coerce.number().int().min(1).max(5).default(2),
+  maxConcurrentProcesses: z.coerce.number().int().min(1).max(10).default(6),
+  /** The engine's internal API is loopback/compose only; the token is read from a file. */
+  engineTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'engine.token')),
+  /** Test/CLI convenience only: an inline token never belongs in a deployed environment. */
+  engineToken: z.string().default(''),
   watchPollMs: z.coerce.number().int().min(50).default(700),
+  /** Collapses a truncate-then-write burst into one revision (§6.2). */
+  watchCoalesceMs: z.coerce.number().int().min(0).default(1_500),
+  /** How long an empty write waits for its follow-up before the old revision is kept (§6.2). */
+  emptyWriteGraceMs: z.coerce.number().int().min(0).default(5_000),
 });
 
 export type Config = z.infer<typeof schema>;
+
+/**
+ * Secrets that accept a file mount (§21.2). `ADMIN_TOKEN`/`ENGINE_TOKEN` are absent on
+ * purpose: their `*_FILE` contract is already implemented next to them (`readAdminToken`,
+ * the engine mints its token on a local first boot), and a missing optional panel token
+ * must keep disabling the panel instead of failing the whole boot.
+ */
+type MountedSecret =
+  | 'SESSION_SECRET'
+  | 'IP_SALT'
+  | 'YANDEX_CLIENT_ID'
+  | 'YANDEX_CLIENT_SECRET'
+  | 'CAPTCHA_SECRET';
+
+/**
+ * A mounted file wins over the plain variable: deployment keeps `0600` files, tests and
+ * local development keep the variable. A declared file that is missing, unreadable or
+ * empty is a boot failure — never a silent "no session secret, no CAPTCHA secret". The
+ * message carries the variable name only.
+ */
+function readMountedSecret(env: NodeJS.ProcessEnv, name: MountedSecret): string | undefined {
+  const file = env[`${name}_FILE`];
+  if (file === undefined || file.trim().length === 0) return env[name];
+  let value: string;
+  try {
+    value = readFileSync(file.trim(), 'utf8').trim();
+  } catch {
+    throw new Error(`invalid configuration: cannot read ${name}_FILE`);
+  }
+  if (value.length === 0) throw new Error(`invalid configuration: ${name}_FILE is empty`);
+  return value;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = schema.safeParse({
     bookRoot: env.BOOK_ROOT,
     dataDir: env.DATA_DIR,
     webDist: env.WEB_DIST,
+    imprintPath: env.IMPRINT_PATH,
+    denylistPath: env.DENYLIST_PATH,
+    adminTokenFile: env.ADMIN_TOKEN_FILE,
+    adminToken: env.ADMIN_TOKEN,
     host: env.HOST,
     port: env.PORT,
+    engineHost: env.ENGINE_HOST ?? env.HOST,
+    enginePort: env.ENGINE_PORT ?? (env.PORT === undefined ? undefined : env.PORT),
     publicOrigin: env.PUBLIC_ORIGIN,
     logLevel: env.LOG_LEVEL,
     tz: env.BOOK_TZ,
     maxWs: env.MAX_WS,
-    commentsPerHour: env.COMMENTS_PER_HOUR,
+    wsPerIp: env.WS_PER_IP,
+    wsHeartbeatMs: env.WS_HEARTBEAT_MS,
+    trustedProxies: env.TRUSTED_PROXIES,
+    commentsPerHour: env.COMMENTS_PER_HOUR_IP ?? env.COMMENTS_PER_HOUR,
+    commentsPerHourIdentity: env.COMMENTS_PER_HOUR_IDENTITY,
+    editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
     queueSoftCap: env.QUEUE_SOFT_CAP,
+    feedbackDir: env.FEEDBACK_DIR ?? (env.EXCHANGE_DIR === undefined ? undefined : resolve(env.EXCHANGE_DIR, 'feedback')),
+    yandexClientId: readMountedSecret(env, 'YANDEX_CLIENT_ID'),
+    yandexClientSecret: readMountedSecret(env, 'YANDEX_CLIENT_SECRET'),
+    yandexRedirectUri: env.YANDEX_REDIRECT_URI ?? env.OAUTH_REDIRECT_URI,
+    yandexAuthorizeUrl: env.YANDEX_AUTHORIZE_URL,
+    yandexTokenUrl: env.YANDEX_TOKEN_URL,
+    yandexInfoUrl: env.YANDEX_INFO_URL,
+    oauthStartPerHour: env.OAUTH_START_PER_HOUR,
+    oauthStateTtlMs: env.OAUTH_STATE_TTL_MS,
+    sessionTtlMs: env.SESSION_TTL_MS,
+    sessionSecret: readMountedSecret(env, 'SESSION_SECRET'),
+    ipSalt: readMountedSecret(env, 'IP_SALT'),
+    captchaProvider: env.CAPTCHA_PROVIDER,
+    captchaSiteKey: env.CAPTCHA_SITE_KEY,
+    captchaSecret: readMountedSecret(env, 'CAPTCHA_SECRET'),
+    captchaTimeoutMs: env.CAPTCHA_TIMEOUT_MS,
+    metrikaId: env.METRIKA_ID,
     budgetMaxWave: env.BUDGET_MAX_WAVE,
     budgetMaxChapters: env.BUDGET_MAX_CHAPTERS,
     budgetMaxSteps: env.BUDGET_MAX_STEPS,
     budgetMaxWallMs: env.BUDGET_MAX_WALL_MS,
+    budgetMaxTokens: env.BUDGET_MAX_TOKENS,
+    budgetDailyTokens: env.BUDGET_DAILY_TOKENS,
+    maxRewritesPerChapter: env.BUDGET_MAX_REWRITES_PER_CHAPTER,
+    upwardLagWaves: env.BUDGET_UPWARD_LAG_WAVES,
+    maxDeltaRatio: env.BUDGET_MAX_DELTA_RATIO,
+    gateCycles: env.GATE_CYCLES,
+    gateTtlMs: env.GATE_TTL_MS,
     leaseTtlMs: env.LEASE_TTL_MS,
+    laneTtlMs: env.LANE_TTL_MS,
+    reaperMs: env.ENGINE_REAPER_MS,
+    maxConcurrentSteps: env.ENGINE_MAX_CONCURRENT_STEPS,
+    maxConcurrentProcesses: env.ENGINE_MAX_CONCURRENT_PROCESSES,
+    engineTokenFile: env.ENGINE_TOKEN_FILE,
+    engineToken: env.ENGINE_TOKEN,
     watchPollMs: env.WATCH_POLL_MS,
+    watchCoalesceMs: env.WATCH_COALESCE_MS,
+    emptyWriteGraceMs: env.EMPTY_WRITE_GRACE_MS,
   });
   if (!parsed.success) {
     const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
     throw new Error(`invalid configuration: ${details}`);
   }
-  return parsed.data;
+  const config = parsed.data;
+  // Fail closed, loudly: an unprotected write path into the model is worse than an hour
+  // without comments (§12.8). `none` is a test/local shape only and never a prod default.
+  if (config.captchaProvider === 'none' && env.NODE_ENV === 'production') {
+    throw new Error('invalid configuration: CAPTCHA_PROVIDER=none is refused in production (§12.8)');
+  }
+  if (config.captchaProvider !== 'none' && config.captchaSecret.length === 0) {
+    throw new Error(`invalid configuration: CAPTCHA_SECRET is required for provider ${config.captchaProvider}`);
+  }
+  // A configured provider with no public key renders a dead widget: the composer would be
+  // visible, the challenge unrenderable, and every post would fail with CAPTCHA_FAILED.
+  if (config.captchaProvider !== 'none' && config.captchaSiteKey.trim().length === 0) {
+    throw new Error(`invalid configuration: CAPTCHA_SITE_KEY is required for provider ${config.captchaProvider}`);
+  }
+  if (env.NODE_ENV === 'production') {
+    // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart
+    // and makes the persisted IP hash useless; an http origin drops the cookie's `Secure`.
+    if (config.sessionSecret.length === 0) {
+      throw new Error('invalid configuration: SESSION_SECRET is required in production');
+    }
+    if (config.ipSalt.length === 0) {
+      throw new Error('invalid configuration: IP_SALT is required in production');
+    }
+    if (!config.publicOrigin.startsWith('https://')) {
+      throw new Error('invalid configuration: PUBLIC_ORIGIN must be https:// in production');
+    }
+  }
+  return config;
+}
+
+/** The OAuth callback URL: configured explicitly, or derived from the public origin. */
+export function yandexRedirectUri(config: Config): string {
+  if (config.yandexRedirectUri.length > 0) return config.yandexRedirectUri;
+  return `${config.publicOrigin.replace(/\/+$/u, '')}/auth/yandex/callback`;
+}
+
+/** Yandex is configured only when both credentials exist (a placeholder is `''`). */
+export function yandexConfigured(config: Config): boolean {
+  return config.yandexClientId.length > 0 && config.yandexClientSecret.length > 0;
 }

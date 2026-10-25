@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template for the live launchd service on the Mac mini (drafts/runbook: BOOK-DOC-2).
+     Install: cp to ~/Library/LaunchAgents/dev.book-site.plist, adjust paths, then
+     `launchctl load ~/Library/LaunchAgents/dev.book-site.plist`.
+     Secrets come from site/.env (mode 0600) via --env-file; none are listed here. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.book-site</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>--env-file=/Users/filipp/projects/book/site/.env</string>
+    <string>server/dist/index.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/filipp/projects/book/site</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key><string>production</string>
+    <key>HOST</key><string>192.168.1.76</string>
+    <key>PORT</key><string>8091</string>
+    <key>BOOK_ROOT</key><string>/Users/filipp/projects/book</string>
+    <key>DATA_DIR</key><string>/Users/filipp/book-site-data</string>
+    <key>EXCHANGE_DIR</key><string>/Users/filipp/book-site-data/exchange</string>
+    <key>WATCH_POLL_MS</key><string>700</string>
+    <key>TRUSTED_PROXIES</key><string>127.0.0.1/32,::1/128,192.168.1.44/32</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/filipp/Library/Logs/book-site.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/filipp/Library/Logs/book-site.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

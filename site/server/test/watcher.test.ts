@@ -1,0 +1,336 @@
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+
+import type { CatalogEntry } from '@book/shared';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { listCatalog } from '../src/db/repo/chapters.ts';
+import { reconcile } from '../src/ingest/reconcile.ts';
+import { StateService } from '../src/ingest/stateService.ts';
+import {
+  ManuscriptWatcher,
+  type IngestEvent,
+  chapterNumberOf,
+  isIgnoredPath,
+} from '../src/ingest/watcher.ts';
+import { createFixture, type Fixture } from './helpers.ts';
+
+const ABOUT =
+  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
+  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
+  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
+  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+const FRONT_TWO = `Тишина в пределах участка\n\n${ABOUT.replace('Книга о том', 'Роман о том')}\n`;
+
+type Harness = {
+  fixture: Fixture;
+  state: StateService;
+  watcher: ManuscriptWatcher;
+  events: IngestEvent[];
+  stop: () => Promise<void>;
+};
+
+let harness: Harness | null = null;
+
+async function start(options: { emptyGraceMs?: number } = {}): Promise<Harness> {
+  const fixture = createFixture({ '00-front.md': FRONT });
+  reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+  const state = new StateService(fixture.db);
+  const events: IngestEvent[] = [];
+  const watcher = new ManuscriptWatcher({
+    db: fixture.db,
+    state,
+    bookRoot: fixture.root,
+    dataDir: fixture.dataDir,
+    pollMs: 20,
+    stabilityMs: 20,
+    coalesceMs: 40,
+    emptyGraceMs: options.emptyGraceMs ?? 120,
+    emit: (event) => events.push(event),
+    log: () => undefined,
+  });
+  await watcher.start();
+  // Polling sees mtime/size: let the initial stat settle before rewriting a same-size
+  // file in the same millisecond (production writes are minutes apart and much larger).
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  harness = {
+    fixture,
+    state,
+    watcher,
+    events,
+    stop: async () => {
+      await watcher.stop();
+      fixture.close();
+    },
+  };
+  return harness;
+}
+
+async function waitFor<T>(check: () => T | null | undefined | false, timeoutMs = 8_000): Promise<T> {
+  const started = Date.now();
+  for (;;) {
+    const value = check();
+    if (value !== null && value !== undefined && value !== false) return value;
+    if (Date.now() - started > timeoutMs) throw new Error('timed out waiting for the watcher');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+function catalog(): CatalogEntry[] {
+  return listCatalog(harness!.fixture.db);
+}
+
+afterEach(async () => {
+  await harness?.stop();
+  harness = null;
+});
+
+describe('watcher path classifier', () => {
+  const root = '/book/manuscript';
+
+  it('sees chapters 1..67 and the first sheet', () => {
+    expect(chapterNumberOf('ch01.md')).toBe(1);
+    expect(chapterNumberOf('ch67.md')).toBe(67);
+    expect(chapterNumberOf('ch68.md')).toBeNull();
+    expect(chapterNumberOf('ch1.md')).toBeNull();
+    expect(chapterNumberOf('00-front.md')).toBeNull();
+  });
+
+  it('ignores archives, temporaries and planning files (§6.1)', () => {
+    expect(isIgnoredPath(join(root, 'archive', 'ch01.md'), root)).toBe(true);
+    expect(isIgnoredPath(join(root, 'PLAN.md'), root)).toBe(true);
+    expect(isIgnoredPath(join(root, '.gitkeep'), root)).toBe(true);
+    expect(isIgnoredPath(join(root, 'ch01.md.tmp'), root)).toBe(true);
+    expect(isIgnoredPath(join(root, 'ch01.md~'), root)).toBe(true);
+    expect(isIgnoredPath(join(root, 'ch01.md'), root)).toBe(false);
+    expect(isIgnoredPath(join(root, '00-front.md'), root)).toBe(false);
+    expect(isIgnoredPath(root, root)).toBe(false);
+  });
+});
+
+describe('watcher: a chapter appears', () => {
+  it('creates revision 1, parses the title line and broadcasts created + state', async () => {
+    await start();
+    harness!.fixture.write(
+      'ch01.md',
+      'Половик в тамбуре\n\nПервый абзац главы.\n\nВторой абзац главы, подлиннее первого.\n',
+    );
+
+    const created = await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+    expect(created).toMatchObject({
+      type: 'chapter:created',
+      data: { n: 1, rev: 1, title: 'Половик в тамбуре', part: 1, direction: 'forward', attributed: false },
+    });
+    if (created.type !== 'chapter:created') throw new Error('narrowing');
+    expect(created.data.chars).toBeGreaterThan(0);
+    expect(created.data.fetch).toEqual({ path: '/api/chapters/1', etag: 'ch01-r1' });
+
+    const stateEvent = await waitFor(() => harness!.events.find((event) => event.type === 'state:updated'));
+    expect(stateEvent.type).toBe('state:updated');
+    if (stateEvent.type !== 'state:updated') throw new Error('narrowing');
+    expect(stateEvent.data.reason).toBe('file');
+    expect(stateEvent.data.chapters.written).toEqual([1]);
+
+    expect(catalog()[0]).toMatchObject({ n: 1, title: 'Половик в тамбуре', rev: 1, written: true });
+  }, 10_000);
+});
+
+describe('watcher: a chapter is edited', () => {
+  it('bumps rev, re-parses the title line and sends a block patch', async () => {
+    await start();
+    harness!.fixture.write('ch01.md', 'Старое название\n\nПервый абзац.\n\nВторой абзац.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+
+    harness!.fixture.write('ch01.md', 'Новое название\n\nПервый абзац.\n\nВторой абзац.\n\nТретий абзац.\n');
+    const revision = await waitFor(() =>
+      harness!.events.find((event) => event.type === 'chapter:revision'),
+    );
+    if (revision.type !== 'chapter:revision') throw new Error('narrowing');
+    expect(revision.data).toMatchObject({
+      n: 1,
+      rev: 2,
+      title: 'Новое название',
+      kind: 'edit',
+      delta: 'Третий абзац.'.length,
+    });
+    expect(revision.data.patch).toHaveLength(1);
+    expect(revision.data.patch[0]).toMatchObject({ op: 'insert', i: 2, text: 'Третий абзац.' });
+    expect(catalog()[0]).toMatchObject({ title: 'Новое название', rev: 2 });
+  }, 10_000);
+
+  it('never blanks a chapter when the file is temporarily empty (§6.2)', async () => {
+    await start({ emptyGraceMs: 200 });
+    harness!.fixture.write('ch01.md', 'Заголовок\n\nЕдинственный абзац, который нельзя потерять.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+    const before = catalog()[0];
+
+    harness!.fixture.write('ch01.md', '');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const after = catalog()[0];
+    expect(after).toMatchObject({ written: true, rev: before?.rev, chars: before?.chars });
+    expect(harness!.events.filter((event) => event.type === 'chapter:revision')).toHaveLength(0);
+    const row = harness!.fixture.db.prepare('SELECT parse_error FROM chapters WHERE n = 1').get() as {
+      parse_error: string | null;
+    };
+    expect(row.parse_error).toContain('empty write');
+  }, 10_000);
+
+  it('does not publish a first write with zero blocks as a chapter', async () => {
+    await start();
+    harness!.fixture.write('ch02.md', '');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(harness!.events.filter((event) => event.type === 'chapter:created')).toHaveLength(0);
+    expect(catalog()[1]).toMatchObject({ n: 2, written: false, rev: 0 });
+  }, 10_000);
+});
+
+describe('watcher: a chapter disappears', () => {
+  it('removes the projection and says so through state:updated', async () => {
+    await start();
+    harness!.fixture.write('ch03.md', 'Третья\n\nАбзац третьей главы.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+    const before = harness!.events.length;
+
+    rmSync(join(harness!.fixture.manuscript, 'ch03.md'));
+    const stateEvent = await waitFor(() =>
+      harness!.events
+        .slice(before)
+        .find((event) => event.type === 'state:updated' && event.data.chapters.written.length === 0),
+    );
+    expect(stateEvent.type).toBe('state:updated');
+    expect(catalog()[2]).toMatchObject({ n: 3, written: false });
+  }, 10_000);
+});
+
+describe('watcher: infrastructure faults', () => {
+  it('catches up a write that landed between the boot scan and ready', async () => {
+    const fixture = createFixture({});
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    fixture.write('ch05.md', 'Пятая\n\nАбзац, написанный во время загрузки.\n');
+    const state = new StateService(fixture.db);
+    const events: IngestEvent[] = [];
+    const watcher = new ManuscriptWatcher({
+      db: fixture.db,
+      state,
+      bookRoot: fixture.root,
+      dataDir: fixture.dataDir,
+      pollMs: 20,
+      stabilityMs: 20,
+      coalesceMs: 40,
+      emit: (event) => events.push(event),
+      log: () => undefined,
+    });
+    await watcher.start();
+    expect(events.find((event) => event.type === 'chapter:created')).toMatchObject({
+      data: { n: 5, rev: 1, title: 'Пятая' },
+    });
+    await watcher.stop();
+    fixture.close();
+  }, 10_000);
+
+  it('starts on a missing manuscript directory and says so instead of pretending it is empty', async () => {
+    const fixture = createFixture({});
+    rmSync(fixture.manuscript, { recursive: true, force: true });
+    const state = new StateService(fixture.db);
+    const watcher = new ManuscriptWatcher({
+      db: fixture.db,
+      state,
+      bookRoot: fixture.root,
+      dataDir: fixture.dataDir,
+      pollMs: 20,
+      stabilityMs: 20,
+      coalesceMs: 40,
+      emit: () => undefined,
+      log: () => undefined,
+    });
+    await watcher.start();
+    expect(watcher.status.missing).toBe(true);
+    await watcher.stop();
+    fixture.close();
+  }, 10_000);
+
+  it('keeps the last text when the whole directory disappears', async () => {
+    await start();
+    harness!.fixture.write('ch04.md', 'Четвёртая\n\nАбзац четвёртой главы.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+
+    rmSync(harness!.fixture.manuscript, { recursive: true, force: true });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(harness!.watcher.status.missing).toBe(true);
+    expect(catalog()[3]).toMatchObject({ n: 4, written: true, title: 'Четвёртая' });
+  }, 10_000);
+});
+
+/** A live `front` lease inside an open ripple: the engine row set, not a mock (§6A.11). */
+function seedFrontLease(db: Fixture['db']): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO changes (seq, id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint,
+       status, cascade_id, enqueued_at, started_at, attempts)
+     VALUES (1, 'chg_f', 'accepted_comment', 1, 'название должно звучать иначе', 1, 'sha', '[]', 'chapter',
+       'processing', 'csc_f', ?, ?, 0)`,
+  ).run(now, now);
+  db.prepare(
+    `INSERT INTO cascades (id, change_id, status, wave, depth_fwd, depth_bwd, step_count, tokens, budget, opened_at)
+     VALUES ('csc_f', 'chg_f', 'open', 2, 0, 1, 2, 0, '{}', ?)`,
+  ).run(now);
+  db.prepare(
+    `INSERT INTO leases (id, step_id, change_id, cascade_id, lane, chapter, is_front, kind, session,
+       expected_rev, acquired_at, heartbeat_at, expires_at, released_at)
+     VALUES ('lea_f', 'stp_f', 'chg_f', 'csc_f', NULL, NULL, 1, 'front', 'fwd', 1, ?, ?, ?, NULL)`,
+  ).run(now, now, new Date(Date.now() + 120_000).toISOString());
+}
+
+describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and the TOC heading live', async () => {
+    await start();
+    harness!.fixture.write('00-front.md', FRONT_TWO);
+
+    const front = await waitFor(() => harness!.events.find((event) => event.type === 'front:updated'));
+    if (front.type !== 'front:updated') throw new Error('narrowing');
+    expect(front.data).toMatchObject({
+      title: 'Тишина в пределах участка',
+      rev: 2,
+      previousRev: 1,
+      changed: { title: true, about: true },
+    });
+    expect(front.data.about).toContain('Роман о том');
+    // A hand edit matches no lease: the site says "draft", never a change it cannot prove.
+    expect(front.data.cause).toEqual({ kind: 'draft', changeId: null, cascadeId: null, stepId: null });
+
+    const stateEvent = await waitFor(() =>
+      harness!.events.find((event) => event.type === 'state:updated' && event.data.front.rev === 2),
+    );
+    expect(stateEvent.type).toBe('state:updated');
+    expect(harness!.state.snapshot().front.title).toBe('Тишина в пределах участка');
+  }, 10_000);
+
+  it('attributes a cascade front rewrite so the title takes the ring gesture', async () => {
+    await start();
+    seedFrontLease(harness!.fixture.db);
+    harness!.fixture.write('00-front.md', FRONT_TWO);
+
+    const front = await waitFor(() => harness!.events.find((event) => event.type === 'front:updated'));
+    if (front.type !== 'front:updated') throw new Error('narrowing');
+    expect(front.data.cause).toEqual({
+      kind: 'cascade',
+      changeId: 'chg_f',
+      cascadeId: 'csc_f',
+      stepId: 'stp_f',
+    });
+  }, 10_000);
+
+  it('clears the cover title and page 2 when the file is removed', async () => {
+    await start();
+    rmSync(join(harness!.fixture.manuscript, '00-front.md'));
+    const front = await waitFor(() =>
+      harness!.events.find(
+        (event) => event.type === 'front:updated' && event.data.title === null && event.data.rev === 0,
+      ),
+    );
+    if (front.type !== 'front:updated') throw new Error('narrowing');
+    expect(front.data.changed).toEqual({ title: true, about: true });
+    expect(harness!.state.snapshot().front.title).toBeNull();
+  }, 10_000);
+});

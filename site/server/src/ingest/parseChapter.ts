@@ -1,12 +1,19 @@
 /**
- * File → blocks (ARCHITECTURE.md §6.3).
+ * File → title + blocks (ARCHITECTURE.md §6.3, §6C.3).
  *
- * A chapter is plain prose: paragraphs separated by blank lines, no markdown. Block ids
- * are content-derived and position-independent (`ch08#9c1f0a3b`) so a comment keeps
- * pointing at its paragraph when the ones above it are rewritten.
+ * Line 1 of a chapter is its title, not prose: it is not a block, is not printed by the
+ * reveal, is not counted in `chars` and is not quoted by comments. The remainder splits
+ * into blocks on blank lines. Block ids are content-derived and position-independent
+ * (`ch08#9c1f0a3b`) so a comment keeps pointing at its paragraph when the ones above it
+ * are rewritten.
  */
 
-import { chapterLabel } from '@book/shared';
+import {
+  chapterLabel,
+  normalizeBookText,
+  parseTitleLine,
+  splitParagraphs,
+} from '@book/shared';
 
 import { sha1Hex, sha256Hex } from '../util/hash.ts';
 
@@ -19,9 +26,15 @@ export type ParsedBlock = {
 
 export type ParsedChapter = {
   n: number;
-  /** Normalized full text (CRLF → LF, trailing spaces stripped). */
+  /** Line 1, or null when it is absent/malformed — F022 blocks the commit, never the reader. */
+  title: string | null;
+  titleProblems: string[];
+  /** Normalized full text (CRLF → LF, trailing spaces stripped), title line included. */
   text: string;
+  /** Everything after the title line. */
+  body: string;
   sha256: string;
+  /** Prose only: the title line and separators are excluded (§6D.1). */
   chars: number;
   blocks: ParsedBlock[];
 };
@@ -33,19 +46,11 @@ export function normalizeForHash(text: string): string {
 
 /** CRLF → LF, trailing whitespace on a line removed. */
 export function normalizeChapterText(raw: string): string {
-  return raw
-    .replace(/\r\n/gu, '\n')
-    .replace(/\r/gu, '\n')
-    .split('\n')
-    .map((line) => line.replace(/[ \t]+$/u, ''))
-    .join('\n');
+  return normalizeBookText(raw);
 }
 
 export function splitChapterBlocks(text: string): string[] {
-  return text
-    .split(/\n\s*\n/u)
-    .map((block) => block.trim())
-    .filter((block) => block.length > 0);
+  return splitParagraphs(text);
 }
 
 /** `ch08#9c1f0a3b`, with `-2`, `-3` for identical paragraphs inside one chapter. */
@@ -56,8 +61,9 @@ export function blockId(n: number, normalizedText: string, duplicate: number): s
 }
 
 export function parseChapter(n: number, raw: string): ParsedChapter {
-  const text = normalizeChapterText(raw);
-  const texts = splitChapterBlocks(text);
+  const title = parseTitleLine(raw);
+  const text = normalizeBookText(raw);
+  const texts = splitParagraphs(title.body);
   const seen = new Map<string, number>();
   const blocks: ParsedBlock[] = texts.map((blockText, index) => {
     const normalized = normalizeForHash(blockText);
@@ -73,7 +79,10 @@ export function parseChapter(n: number, raw: string): ParsedChapter {
 
   return {
     n,
+    title: title.title,
+    titleProblems: title.problems,
     text,
+    body: title.body,
     sha256: sha256Hex(text),
     chars: blocks.reduce((sum, block) => sum + block.text.length, 0),
     blocks,

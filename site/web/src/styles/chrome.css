@@ -140,14 +140,15 @@
   color: var(--ink-3);
 }
 .title {
-  font-size: 34px;
-  line-height: 1;
-  letter-spacing: 0.26em;
-  text-indent: 0.26em;
-  text-transform: uppercase;
+  font-size: 28px;
+  line-height: 1.18;
+  letter-spacing: 0.02em;
+  text-indent: 0;
+  text-transform: none;
   font-weight: 400;
   margin: 16px 0 10px;
   color: var(--ink);
+  text-wrap: balance;
 }
 .subtitle {
   font-style: italic;
@@ -228,4 +229,124 @@
   display: inline-flex;
   align-items: center;
   letter-spacing: 0.14em;
+}
+
+/* ---------- обложка: live title, author, copyright (§11.8) ---------- */
+.titul {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.author {
+  margin: 0 0 20px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.cover-note {
+  margin: 22px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.copyright {
+  margin: 7px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+}
+@media (min-width: 1024px) {
+  .title {
+    font-size: 34px;
+  }
+}
+
+/* ---------- page 2: «о чём эта книга» (§11.8) ---------- */
+.annotation {
+  padding-top: 34px;
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--rule-2);
+}
+.annotation .p {
+  margin-top: 14px;
+}
+.annotation .p:first-of-type {
+  margin-top: 18px;
+}
+
+/* ---------- концевая страница: «Авторы» (§6C.5) ---------- */
+.authors {
+  padding-top: 40px;
+  padding-bottom: 40px;
+  border-top: 1px solid var(--rule-2);
+}
+.authors-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.authors-note,
+.authors-empty,
+.authors-updated {
+  margin: 8px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.authors-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.authors-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid var(--rule);
+}
+.authors-row.is-author .authors-name {
+  font-family: var(--serif);
+  font-size: 17px;
+}
+.authors-name {
+  font-size: 15px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.authors-role {
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.authors-share {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.authors-link {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.authors-copyright {
+  margin-top: 22px;
 }

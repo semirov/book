@@ -1,0 +1,315 @@
+/**
+ * The FIFO lane and the jobs it hands out (ARCHITECTURE.md §6A.3, §6A.4 steps 1–3, §6A.10).
+ *
+ * One change at a time, in the order admitted: claiming the lane is a conditional UPDATE, so
+ * two engine processes (or two session polls) cannot both win. A change is claimed only when
+ * no ripple is open anywhere — a second cascade would rewrite overlapping seams, and the
+ * oscillation guard only bounds *within* one ripple (§6A.3).
+ *
+ * Drafting shares this module because a draft is the other kind of job the same session polls
+ * for: it is not in the queue and never reorders a change.
+ */
+
+import {
+  INTENT_MAX_CHARS,
+  type ChangeStatus,
+  type Relevance,
+  type WriterAssignment,
+} from '@book/shared';
+
+import { appendChangeEvent, appendEvent } from '../history/log.ts';
+import { toIso } from '../util/time.ts';
+import { newChangeId, newStepId } from '../util/ulid.ts';
+import { dailyTokens, nextDraftChapter, type DraftLane } from './draft.ts';
+import {
+  boundaryFor,
+  changeForStep,
+  processingChange,
+  safeJson,
+} from './helpers.ts';
+import { acquireLease } from './leases.ts';
+import { gradeRelevance, needsWriterDecision } from './relevance.ts';
+import { currentRev } from './close.ts';
+import * as store from './store.ts';
+import { readChapter, writtenChapters } from './text.ts';
+import { writerAssignment } from './trace.ts';
+import { refuse, type EngineDeps } from './types.ts';
+
+export type EnqueueInput = {
+  kind: 'reader_edit' | 'accepted_comment' | 'continuity' | 'operator';
+  chapter: number;
+  intent: string;
+  anchor?: { blockIds: string[]; quote: string; prefix: string; suffix: string } | null;
+  proposedText?: string | null;
+  scopeHint?: 'phrase' | 'chapter';
+  commentId?: string | null;
+  sessionId?: string | null;
+};
+
+type Refusal = { code: string };
+
+function refusalCode(error: unknown): string | null {
+  if (error instanceof Error && 'code' in error) return (error as Refusal).code;
+  return null;
+}
+
+export function createQueue(deps: EngineDeps) {
+  const { db, config, bookRoot } = deps;
+  const iso = (ms: number = deps.clock.now()): string => toIso(ms);
+
+  const assignment = (step: store.StepRow, leaseId: string): WriterAssignment =>
+    writerAssignment(deps, step, leaseId, changeForStep(db, step)?.id ?? null);
+
+  // ── admission ─────────────────────────────────────────────────────────────
+
+  function enqueue(input: EnqueueInput): { id: string; seq: number; status: ChangeStatus } {
+    const chapter = Math.trunc(input.chapter);
+    if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
+      refuse('INVALID_CHAPTER', 422, 'a change belongs to a chapter in 1..67');
+    }
+    if (chapter === 67 && (input.kind === 'reader_edit' || input.kind === 'accepted_comment')) {
+      // ADR-024: a reader-driven path may not reach the ending.
+      refuse('ENDING_FROZEN', 422, 'финал не переписывается по замечаниям');
+    }
+    const intent = input.intent.replace(/\s+/gu, ' ').trim();
+    if (intent.length === 0) refuse('INVALID_INTENT', 422, 'an empty intent is not a change');
+    if (intent.length > INTENT_MAX_CHARS) {
+      refuse('INVALID_INTENT', 422, `intent is ${intent.length} characters, limit is ${INTENT_MAX_CHARS}`);
+    }
+    const text = readChapter(bookRoot, chapter);
+    if (!text.exists || text.blocks.length === 0) {
+      refuse('CHAPTER_EMPTY', 409, `глава ${chapter} ещё не написана`);
+    }
+    if (store.countPending(db) >= config.queueSoftCap) {
+      refuse('QUEUE_FULL', 503, 'очередь правок заполнена — попробуйте позже');
+    }
+
+    const anchor = input.anchor
+      ? JSON.stringify({
+          blockIds: input.anchor.blockIds.slice(0, 8),
+          quote: input.anchor.quote.slice(0, 280),
+          prefix: input.anchor.prefix.slice(0, 40),
+          suffix: input.anchor.suffix.slice(0, 40),
+        })
+      : null;
+    const id = newChangeId(deps.clock.now());
+    const seq = store.insertChange(db, {
+      id,
+      kind: input.kind,
+      chapter,
+      anchor,
+      intent,
+      proposedText: input.proposedText ?? null,
+      sourceComment: input.commentId ?? null,
+      sourceSession: input.sessionId ?? null,
+      baseRev: currentRev(db, chapter),
+      baseSha: text.sha256,
+      baseBlocks: JSON.stringify(text.blocks.map((block) => block.hash)),
+      scopeHint: input.scopeHint ?? 'phrase',
+      enqueuedAt: iso(),
+    });
+    appendChangeEvent(db, id, 'queued', { chapter, kind: input.kind }, deps.clock.now());
+    appendEvent(
+      db,
+      { kind: 'change.queued', changeId: id, chapter, authorKind: 'reader', payload: { seq, intent } },
+      deps.clock.now(),
+    );
+    return { id, seq, status: 'pending' };
+  }
+
+  /** Deterministic evidence that the base moved — no model, no judgement (§6A.7). */
+  function relevanceOf(change: store.ChangeRow): Relevance {
+    const chapter = readChapter(bookRoot, change.chapter);
+    const anchor = safeJson<{ blockIds?: string[]; quote?: string }>(change.anchor);
+    const revNow =
+      chapter.sha256 === change.base_sha256
+        ? change.base_rev
+        : Math.max(currentRev(db, change.chapter), change.base_rev + 1);
+    return gradeRelevance({
+      baseRev: change.base_rev,
+      baseBlocks: safeJson<string[]>(change.base_blocks) ?? [],
+      anchor: anchor
+        ? { blockIds: Array.isArray(anchor.blockIds) ? anchor.blockIds : [], quote: anchor.quote ?? '' }
+        : null,
+      current: { rev: revNow, blocks: chapter.blocks, text: chapter.text },
+    });
+  }
+
+  // ── jobs ──────────────────────────────────────────────────────────────────
+
+  function originStep(change: store.ChangeRow, at: number): store.StepRow {
+    const stepId = newStepId(at);
+    store.insertStep(db, {
+      stepId,
+      cascadeId: null,
+      seq: 0,
+      wave: 0,
+      lane: null,
+      pass: 'change',
+      chapter: change.chapter,
+      boundary: boundaryFor(change.chapter),
+      seamsIn: '[]',
+      revBefore: currentRev(db, change.chapter),
+      at: iso(at),
+    });
+    appendEvent(
+      db,
+      {
+        kind: 'step.opened',
+        stepId,
+        changeId: change.id,
+        chapter: change.chapter,
+        payload: { pass: 'change', origin: true },
+      },
+      at,
+    );
+    return store.getStep(db, stepId) as store.StepRow;
+  }
+
+  /**
+   * Which lane a step belongs to. `change`, `front` and `ending` are lane-neutral: any free
+   * writer may take them; a ripple repair belongs to the wing that owns it.
+   */
+  function laneOf(step: store.StepRow): DraftLane | null {
+    if (step.lane === 'backward') return 'bwd';
+    if (step.lane === 'forward') return 'fwd';
+    if (step.pass === 'draft' && step.chapter !== null) return step.chapter <= 34 ? 'fwd' : 'bwd';
+    return null;
+  }
+
+  /** An already-created step (a ripple repair, a title rewrite, an ending check) is claimed. */
+  function claimOpenStep(session: string, lane: DraftLane): WriterAssignment | null {
+    const candidates = store
+      .listOpenSteps(db)
+      .filter((step) => store.liveLeaseForStep(db, step.step_id) === undefined)
+      .filter((step) => !(step.pass === 'cascade' && step.chapter === 67))
+      .filter((step) => {
+        const expected = laneOf(step);
+        return expected === null || expected === lane;
+      });
+    for (const step of candidates) {
+      try {
+        const lease = acquireLease(deps, {
+          step,
+          session,
+          expectedRev: step.rev_before ?? (step.chapter === null ? 0 : currentRev(db, step.chapter)),
+          changeId: changeForStep(db, step)?.id ?? null,
+        });
+        return assignment(step, lease.id);
+      } catch (error) {
+        if (refusalCode(error) === 'LEASE_HELD') continue;
+        throw error;
+      }
+    }
+    return null;
+  }
+
+  /** The head of the FIFO lane becomes the change in `processing`. */
+  function claimHead(session: string): WriterAssignment | null {
+    if (store.readLane(db).holder !== null) return null;
+    if (processingChange(db)) return null;
+    if (store.listOpenCascades(db).length > 0) return null;
+    const head = store.headPending(db);
+    if (!head) return null;
+    // A change whose step already exists is re-issued to a session, not re-created here.
+    if (store.stepsOfChange(db, head.id).some((step) => step.outcome === null)) return null;
+    const at = deps.clock.now();
+    if (!store.claimLaneRow(db, head.id, iso(at))) return null;
+    let created: store.StepRow | null = null;
+    try {
+      const current = store.getChange(db, head.id);
+      if (!current || current.status !== 'pending') {
+        store.releaseLaneRow(db, head.id);
+        return null;
+      }
+      store.updateChange(db, head.id, { status: 'processing', started_at: iso(at) });
+      appendChangeEvent(db, head.id, 'processing', {}, at);
+      appendEvent(db, { kind: 'change.processing', changeId: head.id, chapter: current.chapter }, at);
+
+      const relevance = relevanceOf(current);
+      store.updateChange(db, head.id, {
+        relevance: JSON.stringify(relevance),
+        outcome: relevance.grade === 'fresh' || relevance.grade === 'rebased' ? 'applied' : null,
+      });
+      if (needsWriterDecision(relevance)) {
+        appendChangeEvent(db, head.id, 'stale', { grade: relevance.grade }, at);
+        appendEvent(
+          db,
+          { kind: 'change.stale', changeId: head.id, chapter: current.chapter, payload: { grade: relevance.grade } },
+          at,
+        );
+      }
+      created = originStep(current, at);
+      const lease = acquireLease(deps, {
+        step: created,
+        session,
+        expectedRev: currentRev(db, current.chapter),
+        changeId: current.id,
+      });
+      return assignment(created, lease.id);
+    } catch (error) {
+      // The claim rolled back: the change returns to the queue and the step it created must
+      // not survive as an orphan that another session could pick up.
+      store.updateChange(db, head.id, { status: 'pending', started_at: null });
+      store.releaseLaneRow(db, head.id);
+      if (created) {
+        store.updateStep(db, created.step_id, {
+          outcome: 'interrupted',
+          closed_at: iso(at),
+          note: 'the lease could not be acquired',
+        });
+        appendEvent(
+          db,
+          { kind: 'step.closed', stepId: created.step_id, changeId: head.id, chapter: created.chapter, payload: { outcome: 'interrupted' } },
+          at,
+        );
+      }
+      const code = refusalCode(error);
+      if (code === 'STEP_CAP' || code === 'PROCESS_CAP' || code === 'LEASE_HELD') return null;
+      throw error;
+    }
+  }
+
+  /** Drafting is pulled in the gaps of the lane; it never enters the queue (§6A.9). */
+  function startDraft(session: string, lane: DraftLane, at: number): WriterAssignment | null {
+    if (dailyTokens(db, at) >= config.budgetDailyTokens) return null;
+    const chapter = nextDraftChapter(writtenChapters(bookRoot), lane);
+    if (chapter === null) return null;
+    if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) return null;
+
+    const stepId = newStepId(at);
+    store.insertStep(db, {
+      stepId,
+      cascadeId: null,
+      seq: 0,
+      wave: 0,
+      lane: lane === 'fwd' ? 'forward' : 'backward',
+      pass: 'draft',
+      chapter,
+      boundary: boundaryFor(chapter),
+      seamsIn: '[]',
+      revBefore: currentRev(db, chapter),
+      at: iso(at),
+    });
+    appendEvent(db, { kind: 'step.opened', stepId, chapter, payload: { pass: 'draft', lane } }, at);
+    try {
+      const lease = acquireLease(deps, {
+        step: store.getStep(db, stepId) as store.StepRow,
+        session,
+        expectedRev: currentRev(db, chapter),
+        changeId: null,
+      });
+      return assignment(store.getStep(db, stepId) as store.StepRow, lease.id);
+    } catch (error) {
+      // No capacity for a draft: the job is withdrawn, not left as a stranded open step.
+      store.updateStep(db, stepId, { outcome: 'interrupted', closed_at: iso(at), note: 'no capacity' });
+      appendEvent(db, { kind: 'step.closed', stepId, chapter, payload: { outcome: 'interrupted' } }, at);
+      if (refusalCode(error) === 'PROCESS_CAP' || refusalCode(error) === 'STEP_CAP') return null;
+      throw error;
+    }
+  }
+
+  return { enqueue, relevanceOf, claimOpenStep, claimHead, startDraft };
+}
+
+export type Queue = ReturnType<typeof createQueue>;
