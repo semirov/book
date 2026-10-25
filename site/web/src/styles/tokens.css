@@ -1,0 +1,188 @@
+/* ============================================================================
+   TOKENS — copied from design/prototype.html (:root and [data-theme="night"]).
+   Self-hosted PT superfamily: Cyrillic + Latin by unicode-range, no CDN.
+   ============================================================================ */
+
+@font-face {
+  font-family: 'PT Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptserif-400-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptserif-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PT Serif';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ptserif-700-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Serif';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ptserif-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PT Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptserif-400i-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptserif-400i-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptsansnarrow-400-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptsansnarrow-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ptsansnarrow-700-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Sans Narrow';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/ptsansnarrow-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'PT Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptmono-400-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptmono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'PT Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptsans-400-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'PT Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ptsans-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* paper / ink — day ("бланк") */  --paper: #e9e8e2;
+  --paper-2: #f1f0ea;
+  --paper-3: #deddd4;
+  --ink: #16181a;
+  --ink-2: #4e5357;
+  --ink-3: #64686a;
+  --rule: #c7c6be;
+  --rule-2: #a6a79e;
+
+  /* live accent — cold steel, the caret, anything happening now */
+  --live: #2e6274;
+  --live-bg: rgba(46, 98, 116, 0.07);
+
+  /* revision — muted ochre, nothing to do with "warning" */
+  --revise: #8a5a1c;
+  --revise-bg: rgba(138, 90, 28, 0.075);
+
+  --scrim: rgba(22, 24, 26, 0.46);
+  --shadow: 0 30px 60px -44px rgba(22, 24, 26, 0.55);
+
+  /* type */
+  --serif: 'PT Serif', Literata, Georgia, 'Times New Roman', serif;
+  --ui: 'PT Sans', 'Helvetica Neue', Arial, sans-serif;
+  --label: 'PT Sans Narrow', 'PT Sans', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'PT Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-nano: 9.5px;
+  --fs-label: 10.5px;
+  --fs-meta: 12.5px;
+  --fs-note: 13.5px;
+  --fs-body: 17px;
+  --fs-lead: 18.5px;
+
+  /* space */
+  --gut: 24px;
+  --measure: 34rem;
+
+  /* motion */
+  --dur-tick: 120ms;
+  --dur-ui: 220ms;
+  --dur-fade: 400ms;
+  --ease-out: cubic-bezier(0.22, 0.68, 0.24, 1);
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme='night'] {
+  --paper: #0f1113;
+  --paper-2: #15181b;
+  --paper-3: #1b1f22;
+  --ink: #e8e6e1;
+  --ink-2: #b0b2ae;
+  --ink-3: #8b8f8c;
+  --rule: #2c3134;
+  --rule-2: #3e4549;
+  --live: #6f9bb5;
+  --live-bg: rgba(111, 155, 181, 0.09);
+  --revise: #c89a4e;
+  --revise-bg: rgba(200, 154, 78, 0.09);
+  --scrim: rgba(5, 7, 9, 0.66);
+  --shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.9);
+}

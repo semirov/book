@@ -1,0 +1,126 @@
+/**
+ * Derive `StateSnapshot` from text facts (ARCHITECTURE.md §7.1–7.2), pure and testable.
+ *
+ * M0 has no engine: the journal overlay is empty, so the snapshot honestly reports
+ * `engine.status = 'unknown'` and an empty queue (ADR-003 degraded mode). M3 fills the
+ * overlay; the shape and rules 1–3, 9–10 stay exactly as they are.
+ */
+
+import {
+  BACKWARD_FIRST,
+  FORWARD_LAST,
+  TOTAL_CHAPTERS,
+  allChapterNumbers,
+  type DraftCursor,
+  type StateSnapshot,
+} from '@book/shared';
+
+/** A chapter as the projection knows it. Only chapters with at least one block count as written. */
+export type ChapterFact = {
+  n: number;
+  rev: number;
+  chars: number;
+  blocks: number;
+  writtenAt: string;
+  updatedAt: string;
+};
+
+export type DeriveInput = {
+  facts: ChapterFact[];
+  now: Date;
+  version: number;
+};
+
+export function deriveState(input: DeriveInput): StateSnapshot {
+  const facts = [...input.facts].filter((fact) => fact.blocks > 0).sort((a, b) => a.n - b.n);
+  const written = facts.map((fact) => fact.n);
+  const writtenSet = new Set(written);
+  const empty = allChapterNumbers().filter((n) => !writtenSet.has(n));
+  const totalChars = facts.reduce((sum, fact) => sum + fact.chars, 0);
+
+  const forwardFront = written.filter((n) => n <= FORWARD_LAST).at(-1) ?? null;
+  const backwardFront = written.filter((n) => n >= BACKWARD_FIRST).at(0) ?? null;
+
+  const haveBothFronts = forwardFront !== null && backwardFront !== null;
+  const gap = haveBothFronts ? Math.max(0, backwardFront - forwardFront - 1) : TOTAL_CHAPTERS - facts.length;
+  // Adjacent (33|34) or overlapping (34|34) fronts have gap 0. ARCHITECTURE §7.2 rule 3
+  // spells the test as `forwardFront + 1 >= backwardFront - 1`, which would call a
+  // one-chapter hole "converged"; the prose ("adjacent or overlapping") and the gap
+  // itself are the definition used here.
+  const converged = haveBothFronts && gap === 0;
+
+  const lastFileChangeAt =
+    facts
+      .map((fact) => fact.updatedAt)
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    version: input.version,
+    at: input.now.toISOString().replace(/\.\d{3}Z$/u, 'Z'),
+    engine: { status: 'unknown', heartbeatAt: null, laneId: null },
+    phase: 'draft',
+    chapters: {
+      total: TOTAL_CHAPTERS,
+      written,
+      empty,
+      count: facts.length,
+      totalChars,
+    },
+    cursors: {
+      forward: cursorFor('forward', forwardFront),
+      backward: cursorFor('backward', backwardFront),
+    },
+    meeting: {
+      forwardFront,
+      backwardFront,
+      gap: Math.max(0, gap),
+      converged,
+      seam: converged ? 'open' : 'not_reached',
+    },
+    cascade: null,
+    queue: {
+      depth: 0,
+      byState: { pending: 0, processing: 0, stale: 0, escalated: 0, done24h: 0 },
+      head: null,
+      processing: null,
+      lastDecidedAt: null,
+    },
+    revising: [],
+    current: null,
+    unresolved: [],
+    activity: {
+      lastFileChangeAt,
+      lastEngineEventAt: null,
+      lastLogLineAt: null,
+      source: 'files',
+    },
+  };
+}
+
+function cursorFor(lane: 'forward' | 'backward', front: number | null): DraftCursor {
+  const from = lane === 'forward' ? 1 : TOTAL_CHAPTERS;
+  const to = lane === 'forward' ? FORWARD_LAST : BACKWARD_FIRST;
+  const next =
+    front === null ? from : lane === 'forward' ? (front < FORWARD_LAST ? front + 1 : null) : front > BACKWARD_FIRST ? front - 1 : null;
+  return {
+    lane,
+    from,
+    to,
+    cursor: front,
+    next,
+    // Degraded mode: files say what exists, not whether a lane is running.
+    status: 'idle',
+    lastPassAt: null,
+    lastPass: null,
+  };
+}
+
+/** Fingerprint of everything that changes the snapshot except `version` and `at` (§7.2 rule 10). */
+export function stateFingerprint(facts: ChapterFact[]): string {
+  return JSON.stringify(
+    [...facts]
+      .sort((a, b) => a.n - b.n)
+      .map((fact) => [fact.n, fact.rev, fact.chars, fact.blocks, fact.updatedAt]),
+  );
+}

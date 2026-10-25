@@ -1,0 +1,231 @@
+/* ============================================================================
+   CHROME — sticky header, spine, title sheet, ledger.
+   ============================================================================ */
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--paper);
+  padding-top: env(safe-area-inset-top);
+  box-shadow: 0 1px 0 var(--rule);
+  transition: background var(--dur-fade) var(--ease-inout);
+}
+.top-in {
+  padding-top: 11px;
+  padding-bottom: 8px;
+}
+.top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.top-row + .top-row {
+  margin-top: 5px;
+}
+.brand {
+  letter-spacing: 0.19em;
+  color: var(--ink-2);
+}
+.count {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--live);
+}
+.live.idle {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+.dot {
+  width: 5px;
+  height: 5px;
+  background: var(--live);
+  display: inline-block;
+  flex: none;
+}
+.live.idle .dot {
+  background: transparent;
+  border: 1px solid var(--ink-3);
+}
+.queue {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  text-align: right;
+}
+
+.spine {
+  position: relative;
+  height: 6px;
+  margin: 0 auto;
+  max-width: var(--measure);
+  background: var(--paper-3);
+}
+.spine::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, var(--rule) 0 0.5px, transparent 0.5px 4px);
+  opacity: 0.55;
+}
+.spine-l,
+.spine-r {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-2);
+  opacity: 0.55;
+}
+.spine-l {
+  left: 0;
+}
+.spine-r {
+  right: 0;
+}
+.spine-seam {
+  position: absolute;
+  left: 51.4%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--rule-2);
+}
+.spine-caret {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: var(--live);
+  animation: blink 1.06s steps(1, end) infinite;
+}
+.spine-caret.l {
+  left: 0;
+}
+.spine-caret.r {
+  right: 0;
+}
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.titul {
+  padding-top: 44px;
+  padding-bottom: 34px;
+  text-align: center;
+}
+.kicker {
+  letter-spacing: 0.3em;
+  color: var(--ink-3);
+}
+.title {
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  text-transform: uppercase;
+  font-weight: 400;
+  margin: 16px 0 10px;
+  color: var(--ink);
+}
+.subtitle {
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink-2);
+  letter-spacing: 0.01em;
+}
+.double-rule {
+  width: 46px;
+  height: 3px;
+  margin: 26px auto 22px;
+  border-top: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule-2);
+}
+.premise {
+  max-width: 26ch;
+  margin: 0 auto;
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  font-style: italic;
+  text-wrap: balance;
+}
+
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 30px 0 0;
+  padding: 11px 0;
+  border-top: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule-2);
+  text-align: left;
+}
+.ledger > div {
+  padding: 0 12px;
+}
+.ledger > div:first-child {
+  padding-left: 0;
+}
+.ledger > div + div {
+  border-left: 1px solid var(--rule);
+}
+.ledger dt {
+  font-family: var(--label);
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  font-size: var(--fs-nano);
+  color: var(--ink-3);
+  margin-bottom: 3px;
+}
+.ledger dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* a failing fetch is a sentence and a retry, never a spinner */
+.state-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 44px 0;
+  font-family: var(--label);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.state-line button {
+  color: var(--live);
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 2px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.14em;
+}

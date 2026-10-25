@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@book/shared": ["./shared/src/index.ts"]
+    }
+  },
+  "include": [
+    "shared/test/**/*.ts",
+    "server/test/**/*.ts",
+    "web/src/**/*.test.ts",
+    "vitest.config.ts"
+  ]
+}

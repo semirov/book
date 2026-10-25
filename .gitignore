@@ -1,0 +1,24 @@
+# Build artifacts
+site/node_modules/
+site/dist/
+site/coverage/
+site/.data/
+
+# Secrets / local config (never commit real values)
+.env
+.env.local
+*.local
+
+# Internal design + deployment runbook (kept out of the public repo)
+site/ARCHITECTURE.md
+
+# Writing-engine process logs + orchestration templates (internal)
+process/
+
+# Superseded concept drafts (thought trail)
+concept/_drafts/
+
+# Misc
+notes/
+.DS_Store
+*.log

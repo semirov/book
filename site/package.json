@@ -1,0 +1,33 @@
+{
+  "name": "book-site",
+  "private": true,
+  "version": "0.1.0",
+  "description": "book.semirov.dev — the book, written in public",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build -w @book/shared && npm run build -w @book/server && npm run build -w @book/web",
+    "typecheck": "tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "arch": "node scripts/arch.mjs",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "validate": "node bin/validate.mjs",
+    "start": "node server/dist/index.js",
+    "dev": "node scripts/dev.mjs",
+    "verify": "npm run typecheck && npm run arch && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
