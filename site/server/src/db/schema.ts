@@ -1,14 +1,15 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 8** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 9** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
- * adds `front_matter.about_sha256`, the hash of the page-2 text an owner edit publishes).
+ * adds `front_matter.about_sha256`, the hash of the page-2 text an owner edit publishes;
+ * BOOK-9 adds the auditor's verdict to a comment, recorded before triage can accept it).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -276,6 +277,12 @@ CREATE TABLE comments (
   change_id    TEXT REFERENCES changes(id),    -- the queued change, when accepted
   applied_chapter INTEGER,
   applied_rev  INTEGER,
+  -- The auditor's verdict (BOOK-9): one row, written once, before triage. FITS is the
+  -- only permission a change has; OFF also refuses the comment in the same act.
+  audit_verdict TEXT CHECK (audit_verdict IN ('FITS','OFF')),
+  audit_reason  TEXT,                          -- the auditor's plain reason (≤200 chars), never a taxonomy
+  audited_at    TEXT,
+  audited_by    TEXT,                          -- the operator/session label, ≤64 chars
   idem_key     TEXT UNIQUE
 );
 CREATE INDEX comments_chapter ON comments(chapter, created_at);

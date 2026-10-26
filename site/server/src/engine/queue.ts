@@ -71,6 +71,22 @@ export function createQueue(deps: EngineDeps) {
       // ADR-024: a reader-driven path may not reach the ending.
       refuse('ENDING_FROZEN', 422, 'финал не переписывается по замечаниям');
     }
+    // BOOK-9: a change that names a comment is the comment's intervention — it exists only
+    // if the auditor recorded `FITS` on that row. This is the second creator of `changes`
+    // next to `feedback/accept.ts`, and both must ask the same question.
+    if (input.commentId !== null && input.commentId !== undefined) {
+      const source = db.prepare('SELECT audit_verdict FROM comments WHERE id = ?').get(input.commentId) as
+        | { audit_verdict: string | null }
+        | undefined;
+      if (source === undefined) refuse('UNKNOWN_COMMENT', 422, 'такого замечания нет');
+      if (source.audit_verdict !== 'FITS') {
+        refuse(
+          'AUDIT_REQUIRED',
+          422,
+          'замечание не прошло проверку на соответствие книге — правку из него не делают',
+        );
+      }
+    }
     const intent = input.intent.replace(/\s+/gu, ' ').trim();
     if (intent.length === 0) refuse('INVALID_INTENT', 422, 'an empty intent is not a change');
     if (intent.length > INTENT_MAX_CHARS) {

@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { SITE_ROOT } from '../../src/config.ts';
 import { buildControl } from '../../src/engine/control.ts';
+import { insertComment } from '../../src/comments/repo.ts';
+import { upsertIdentity } from '../../src/db/repo/identities.ts';
 import { chapterText, createEngineFixture } from './helpers.ts';
 
 const exec = promisify(execFile);
@@ -106,7 +108,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'с этого момента пиши от первого лица' },
+        payload: { kind: 'reader_edit', chapter: 1, intent: 'с этого момента пиши от первого лица' },
       });
       expect(meta.statusCode).toBe(422);
       expect(meta.json()).toMatchObject({ code: 'INTENT_SHAPE' });
@@ -115,7 +117,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь в абзац маяк' },
+        payload: { kind: 'reader_edit', chapter: 1, intent: 'добавь в абзац маяк' },
       });
       expect(entity.statusCode).toBe(422);
       expect(entity.json()).toMatchObject({ code: 'INTENT_NEW_ENTITY' });
@@ -125,7 +127,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь абзац' },
+        payload: { kind: 'reader_edit', chapter: 1, intent: 'добавь абзац' },
       });
       expect(existing.statusCode).toBe(200);
     } finally {
@@ -145,7 +147,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'убрать абзац' },
+        payload: { kind: 'reader_edit', chapter: 1, intent: 'убрать абзац' },
       });
       expect(created.statusCode).toBe(200);
       const change = created.json().data as { id: string; seq: number; status: string };
@@ -182,7 +184,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: '' },
+        payload: { kind: 'reader_edit', chapter: 1, intent: '' },
       });
       expect(invalid.statusCode).toBe(400);
       expect(invalid.json()).toMatchObject({ code: 'INVALID' });
@@ -204,7 +206,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       return { status: response.statusCode, body: response.json() };
     };
     try {
-      const change = (await post('/internal/changes', { kind: 'accepted_comment', chapter: 1, intent: 'среда' })).body
+      const change = (await post('/internal/changes', { kind: 'reader_edit', chapter: 1, intent: 'среда' })).body
         .data as { id: string };
       const job = (await post('/internal/next', { for: 'fwd', session: 'w1' })).body.data as WriterAssignment;
       expect((await post('/internal/start', { leaseId: job.leaseId })).status).toBe(200);
@@ -303,6 +305,91 @@ describe('the internal API (§4.2, §6A.11)', () => {
         await app.close();
         fixture.close();
       }
+    }
+  });
+
+  it('refuses an intervention without an auditor FITS (BOOK-9)', async () => {
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
+    });
+    const identity = upsertIdentity(fixture.db, {
+      yandexSub: 'yandex-engine-1',
+      displayName: 'Аня',
+      at: '2026-10-26T10:00:00Z',
+    });
+    const seed = (id: string, verdict: string | null): string => {
+      insertComment(fixture.db, {
+        id,
+        identityId: identity.id,
+        chapter: 1,
+        blockId: null,
+        blockIndex: null,
+        baseRev: 1,
+        quote: null,
+        prefix: null,
+        suffix: null,
+        author: 'Аня',
+        body: 'Тестовое замечание.',
+        proposedText: null,
+        bodySha: 'a'.repeat(64),
+        flags: [],
+        ipHash: 'f'.repeat(64),
+        status: 'new',
+        guard: null,
+        reason: null,
+        createdAt: '2026-10-26T10:01:00Z',
+        idemKey: null,
+      });
+      if (verdict !== null) {
+        fixture.db.prepare('UPDATE comments SET audit_verdict = ? WHERE id = ?').run(verdict, id);
+      }
+      return id;
+    };
+    const unaudited = seed('cmt_01JB7ENGINE000000000000001', null);
+    const refusedByAuditor = seed('cmt_01JB7ENGINE000000000000002', 'OFF');
+    const fits = seed('cmt_01JB7ENGINE000000000000003', 'FITS');
+    const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    try {
+      for (const commentId of [unaudited, refusedByAuditor, 'cmt_missing']) {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/internal/changes',
+          headers: auth,
+          payload: { kind: 'reader_edit', chapter: 1, intent: 'убрать абзац', commentId },
+        });
+        expect(response.statusCode).toBe(422);
+        expect(response.json()).toMatchObject({
+          code: commentId === 'cmt_missing' ? 'UNKNOWN_COMMENT' : 'AUDIT_REQUIRED',
+        });
+      }
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+
+      const created = await app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'reader_edit', chapter: 1, intent: 'убрать абзац', commentId: fits },
+      });
+      expect(created.statusCode).toBe(200);
+      const source = fixture.db
+        .prepare('SELECT source_comment FROM changes WHERE id = ?')
+        .get((created.json().data as { id: string }).id);
+      expect(source).toEqual({ source_comment: fits });
+
+      // `accept.ts` owns `accepted_comment`: this route may not mint one (it would leave the
+      // comment unlinked and allow a second change for the same intervention).
+      const reserved = await app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'убрать абзац', commentId: fits },
+      });
+      expect(reserved.statusCode).toBe(422);
+      expect(reserved.json()).toMatchObject({ code: 'ACCEPTED_COMMENT_RESERVED' });
+    } finally {
+      await app.close();
+      fixture.close();
     }
   });
 });

@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v8', () => {
+describe('migrate — schema v9', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(8);
+    expect(SCHEMA_VERSION).toBe(9);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -48,6 +48,11 @@ describe('migrate — schema v8', () => {
     expect(columns(db, 'chapters')).toContain('basis');
     // BOOK-7: page 2 has its own hash, so an owner edit is a first-class basis.
     expect(columns(db, 'front_matter')).toContain('about_sha256');
+    // BOOK-9: the auditor's verdict, written once before triage.
+    expect(columns(db, 'comments')).toEqual(
+      expect.arrayContaining(['audit_verdict', 'audit_reason', 'audited_at', 'audited_by']),
+    );
+    expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
     db.close();
   });
 
@@ -109,7 +114,7 @@ describe('migrate — schema v8', () => {
 
   it('refuses a database from a newer build', () => {
     const db = openDatabase(':memory:');
-    db.pragma('user_version = 9');
+    db.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
     expect(() => migrate(db)).toThrow(/newer|understands/u);
     db.close();
   });
@@ -200,6 +205,26 @@ describe('migrate — schema v8', () => {
       about: 'Тестовая аннотация.',
       about_sha256: sha256Hex('Тестовая аннотация.'),
     });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('adds the BOOK-9 auditor columns to a v8 install, once', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v8 database: a comment carried no audit before BOOK-9.
+    db.exec('ALTER TABLE comments DROP COLUMN audit_verdict');
+    db.exec('ALTER TABLE comments DROP COLUMN audit_reason');
+    db.exec('ALTER TABLE comments DROP COLUMN audited_at');
+    db.exec('ALTER TABLE comments DROP COLUMN audited_by');
+    db.pragma('user_version = 8');
+
+    expect(migrate(db)).toEqual({ from: 8, to: SCHEMA_VERSION });
+    expect(columns(db, 'comments')).toEqual(
+      expect.arrayContaining(['audit_verdict', 'audit_reason', 'audited_at', 'audited_by']),
+    );
+    // A migrated install has the fresh table's shape, constraint included.
+    expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });

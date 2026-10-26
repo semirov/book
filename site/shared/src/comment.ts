@@ -44,6 +44,17 @@ export type CommentStatus =
 
 export type CommentGuard = 'legal' | 'instruction' | 'spam' | 'dup';
 
+/**
+ * §12.6, BOOK-9 — the auditor's verdict on an intervention, recorded **before** triage.
+ *
+ * It is data on the comment row, not a public field: the reader is told the human reason
+ * behind a refusal, never the verdict's name (`CommentDto` carries none of this).
+ */
+export type CommentAuditVerdict = 'FITS' | 'OFF';
+
+/** BOOK-9 — the operator/session label stamped next to a verdict (provenance, not prose). */
+export const COMMENT_AUDITED_BY_MAX_CHARS = 64;
+
 /** The anchor is a quote from one revision; `resolved:false` means the quote is gone. */
 export type CommentAnchor = {
   blockId: string | null;

@@ -44,6 +44,11 @@ export type CommentRow = {
   change_id: string | null;
   applied_chapter: number | null;
   applied_rev: number | null;
+  /** BOOK-9 — the auditor's verdict, written once before triage; null = not audited. */
+  audit_verdict: string | null;
+  audit_reason: string | null;
+  audited_at: string | null;
+  audited_by: string | null;
   idem_key: string | null;
 };
 
@@ -186,7 +191,8 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     status: row.status as CommentStatus,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
-    // taxonomy is a map of the detector.
+    // taxonomy is a map of the detector. BOOK-9: `audit_*` never leaves the row either;
+    // an `OFF` reaches the reader only as this `reason`.
     reason: row.reason,
     createdAt: row.created_at,
     decidedAt: row.decided_at,

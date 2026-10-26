@@ -111,6 +111,8 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     const id = await comment(h);
     expect(cli(h, 'inbox').code).toBe(0);
 
+    // BOOK-9: triage may accept only a comment the auditor has judged FITS.
+    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
     const decided = cli(
       h,
       'decide',
@@ -272,6 +274,8 @@ describe('decisions tailing — the site turns a file line into an event', () =>
   it('applies an accepted line once: change queued, reader events emitted', async () => {
     const h = await boot();
     const id = await comment(h);
+    // The operator's verdict is already on the row when the line is tailed (BOOK-9).
+    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
     const emitted: Array<{ type: string; data: unknown }> = [];
     const tailer = new DecisionsTailer({
       db: h.db,
@@ -317,6 +321,7 @@ describe('decisions tailing — the site turns a file line into an event', () =>
     const h = await boot();
     const id = await comment(h);
     expect(cli(h, 'inbox').code).toBe(0);
+    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
     expect(
       cli(
         h,

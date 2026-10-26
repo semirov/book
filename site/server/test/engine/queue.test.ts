@@ -44,7 +44,7 @@ describe('the FIFO lane (§6A.3)', () => {
             method: 'POST',
             url: '/internal/changes',
             headers: { authorization: 'Bearer test-token' },
-            payload: { kind: 'accepted_comment', chapter: 1, intent: `правка ${index}` },
+            payload: { kind: 'reader_edit', chapter: 1, intent: `правка ${index}` },
           }),
         ),
       );

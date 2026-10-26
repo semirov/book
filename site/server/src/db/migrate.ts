@@ -97,6 +97,24 @@ const MIGRATIONS: Migration[] = [
       for (const row of rows) update.run(sha256Hex(row.about), row.id);
     },
   },
+  {
+    // BOOK-9: the auditor's verdict on an intervention, recorded before triage. Four plain
+    // rows on the comment; existing comments stay unaudited (null) and therefore cannot be
+    // accepted — fail closed, never "assume fits". The CHECK travels with the ADD COLUMN so
+    // a migrated install has the same shape as a fresh one.
+    to: 9,
+    up(db) {
+      const columns = new Set(
+        (db.pragma('table_info(comments)') as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (!columns.has('audit_verdict')) {
+        db.exec(`ALTER TABLE comments ADD COLUMN audit_verdict TEXT CHECK (audit_verdict IN ('FITS','OFF'))`);
+      }
+      if (!columns.has('audit_reason')) db.exec('ALTER TABLE comments ADD COLUMN audit_reason TEXT');
+      if (!columns.has('audited_at')) db.exec('ALTER TABLE comments ADD COLUMN audited_at TEXT');
+      if (!columns.has('audited_by')) db.exec('ALTER TABLE comments ADD COLUMN audited_by TEXT');
+    },
+  },
 ];
 
 function tableExists(db: Db, name: string): boolean {

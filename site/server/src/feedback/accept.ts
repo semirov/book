@@ -8,6 +8,12 @@
  *
  * Insert and link happen in one transaction: a crash can never leave a queued change with
  * no comment pointing at it (or a comment "accepted" with nothing in the queue).
+ *
+ * BOOK-9: acceptance also requires a recorded auditor verdict `FITS` on the comment. The
+ * check lives here, not in a caller, so the CLI and the decisions tailer cannot skip it; the
+ * one other creator of a `changes` row that names a comment — the internal queue route — asks
+ * the same question (`engine/queue.ts`). A row that already points at a change keeps its
+ * idempotent answer (pre-BOOK-9 rows are read, never re-decided).
  */
 
 import { insertChange } from '../engine/store.ts';
@@ -15,7 +21,9 @@ import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { newChangeId } from '../util/ulid.ts';
 
-export type AcceptResult = { changeId: string; created: boolean } | { error: string };
+export type AcceptResult =
+  | { changeId: string; created: boolean }
+  | { error: string; code?: 'AUDIT_REQUIRED' };
 
 export type AcceptInput = {
   comment: CommentRow;
@@ -30,8 +38,21 @@ export type AcceptInput = {
 export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
   const run = db.transaction((): AcceptResult => {
     const comment = readCommentRow(db, input.comment.id) ?? input.comment;
+
+    // A row created before BOOK-9 (or any row that already owns a change) keeps the
+    // idempotent answer: a replay returns the change it has, and nothing is created here.
     if (comment.change_id !== null) {
       return { changeId: comment.change_id, created: false };
+    }
+
+    // BOOK-9: a recorded `FITS` is the only permission a new change has. Fail closed — no
+    // default, no "assume fits" — because both the host CLI and the site's decisions tailer
+    // call this one function and neither may skip the gate.
+    if (comment.audit_verdict !== 'FITS') {
+      return {
+        code: 'AUDIT_REQUIRED',
+        error: 'замечание не прошло проверку на соответствие книге — правку из него не делают',
+      };
     }
 
     const chapter = db.prepare('SELECT rev, sha256 FROM chapters WHERE n = ?').get(comment.chapter) as

@@ -213,6 +213,15 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   });
   app.post('/internal/changes', async (request, reply) => {
     const body = enqueueBody.parse(request.body ?? {});
+    // BOOK-9: `feedback/accept.ts` is the only creator of `accepted_comment` — it writes the
+    // change and links the comment to it in one transaction. A change minted here would leave
+    // the comment "not accepted" and allow a second change for the same intervention.
+    if (body.kind === 'accepted_comment') {
+      return reply.code(422).send({
+        code: 'ACCEPTED_COMMENT_RESERVED',
+        message: 'принятое замечание ставит в очередь триаж, а не этот маршрут',
+      });
+    }
     // §12.3: the intent is the second injection surface — it reaches a writer prompt. The
     // same schema the CLI and the decisions tailer use runs here, before the row exists, and
     // it refuses the frozen ending for a reader-driven change (ADR-024).

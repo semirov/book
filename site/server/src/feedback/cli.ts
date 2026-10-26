@@ -7,11 +7,17 @@
  * writes prose and never touches the manuscript.
  *
  *   feedback.mjs inbox  [--limit 20] [--chapter 8]
+ *   feedback.mjs audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
  *   feedback.mjs read   <batchId>
  *   feedback.mjs decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
  *   feedback.mjs decide <commentId> rejected --reason "…"
  *   feedback.mjs close  <batchId>
  *   feedback.mjs list   [--status new] [--limit 50]
+ *
+ * Every comment is audited (`audit`, BOOK-9) before it can be decided: the auditor judges
+ * whether the intervention fits the book's canvas — `process/ROLE_PROMPTS.md` §0 is the
+ * brief, and this CLI only records its verdict. `FITS` permits a later `decide`; `OFF`
+ * refuses the comment to the reader, with the auditor's reason, in the same act.
  *
  * The core is here, not in `bin/`, so the rules are unit-tested with a real database; the
  * `bin/feedback.mjs` wrapper only resolves paths and the exit code.
@@ -21,6 +27,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  COMMENT_AUDITED_BY_MAX_CHARS,
   EDIT_DAY_MS,
   validateIntent,
   validateReason,
@@ -32,6 +39,7 @@ import { readCommentRow } from '../comments/repo.ts';
 import { editIdentityKey } from '../rate/policy.ts';
 import { RateLimiter } from '../rate/limiter.ts';
 import { acceptComment } from './accept.ts';
+import { recordAudit } from './audit.ts';
 import {
   closeBatch,
   createBatch,
@@ -81,8 +89,9 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
   return { command: positionals.shift() ?? null, positionals, flags };
 }
 
-const USAGE = `usage: feedback.mjs <inbox|read|decide|close|list> [...]
+const USAGE = `usage: feedback.mjs <inbox|audit|read|decide|close|list> [...]
   inbox  [--limit 20] [--chapter 8]
+  audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
   read   <batchId>
   decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
   decide <commentId> rejected --reason "…"
@@ -108,6 +117,8 @@ export function runFeedback(argv: string[], io: FeedbackIo): number {
     switch (parsed.command) {
       case 'inbox':
         return inbox(parsed, io, now);
+      case 'audit':
+        return audit(parsed, io, now);
       case 'read':
         return read(parsed, io);
       case 'decide':
@@ -149,6 +160,7 @@ function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   io.print(`batch ${result.batchId} → ${result.path}`);
   for (const id of result.ids) io.print(`  ${id}`);
+  io.print('  каждое замечание сначала проходит audit (FITS|OFF): без FITS decide откажет');
   return 0;
 }
 
@@ -180,6 +192,80 @@ function close(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   closeBatch(io.db, batchId, now().toISOString());
   io.print(`${batchId}: closed`);
+  return 0;
+}
+
+/**
+ * `audit <commentId> --verdict FITS|OFF --reason "…" [--by label]` (BOOK-9).
+ *
+ * The verdict is recorded once, before triage. `OFF` is also the refusal: the comment becomes
+ * `rejected` with the auditor's plain reason and a decision line, exactly like any other
+ * refusal, and no change exists. `FITS` only permits a later `decide`.
+ */
+function audit(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
+  const commentId = parsed.positionals[0];
+  const verdict = parsed.flags.get('verdict');
+  if (commentId === undefined || (verdict !== 'FITS' && verdict !== 'OFF')) {
+    io.print('usage: feedback.mjs audit <commentId> --verdict FITS|OFF --reason "…" [--by label]');
+    return 2;
+  }
+  const comment = readCommentRow(io.db, commentId);
+  if (comment === undefined) {
+    io.print(`unknown comment: ${commentId}`);
+    return 1;
+  }
+  if (comment.audit_verdict !== null) {
+    io.print(`refused: ${commentId} already has a verdict (first verdict wins)`);
+    return 1;
+  }
+  if (comment.decided_at !== null) {
+    io.print(`refused: ${commentId} is already decided — triage is not audited after the fact`);
+    return 1;
+  }
+
+  const rawReason = parsed.flags.get('reason');
+  const checked = rawReason === undefined ? null : validateReason(rawReason);
+  if (checked !== null && !checked.ok) {
+    io.print(`refused: ${checked.reason}`);
+    return 1;
+  }
+  const reason = checked === null ? null : checked.reason;
+  const label = (parsed.flags.get('by') ?? '').replace(/\s+/gu, ' ').trim();
+  if (label.length > COMMENT_AUDITED_BY_MAX_CHARS) {
+    io.print(`refused: --by is longer than ${COMMENT_AUDITED_BY_MAX_CHARS} characters`);
+    return 1;
+  }
+  const by = label.length === 0 ? null : label;
+
+  const at = now().toISOString();
+  if (verdict === 'OFF') {
+    if (reason === null) {
+      io.print('refused: OFF needs --reason "…" — the reader sees that line as the refusal');
+      return 1;
+    }
+    const recorded = recordAudit(io.db, { commentId: comment.id, verdict, reason, by, at });
+    if (!recorded.ok) {
+      io.print(`refused (${recorded.code}): ${recorded.message}`);
+      return 1;
+    }
+    appendDecision(io.dir, {
+      id: comment.id,
+      status: 'rejected',
+      reason,
+      at,
+      batch: comment.batch_id,
+      changeId: null,
+    });
+    io.print(`${comment.id}: OFF · отклонено, читатель увидит причину`);
+    return 0;
+  }
+
+  const recorded = recordAudit(io.db, { commentId: comment.id, verdict, reason, by, at });
+  if (!recorded.ok) {
+    io.print(`refused (${recorded.code}): ${recorded.message}`);
+    return 1;
+  }
+  io.print(`${comment.id}: FITS · можно решать`);
   return 0;
 }
 
@@ -282,7 +368,8 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     batch: comment.batch_id,
   });
   if ('error' in accepted) {
-    io.print(`refused: ${accepted.error}`);
+    const prefix = accepted.code === undefined ? 'refused' : `refused (${accepted.code})`;
+    io.print(`${prefix}: ${accepted.error}`);
     return 1;
   }
   // The slot is taken only once the change exists: a refusal must leave the budget intact.
