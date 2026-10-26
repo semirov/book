@@ -46,7 +46,7 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment | null;
       if (assignment === null) throw new Error('the forward lane offered no draft');
       fixture.engine.start(assignment.leaseId);
-      fixture.writeChapterBlocks(1, 'Половик в тамбуре', ['Половик намок в четверг.']);
+      fixture.writeChapterBlocks(1, 'Тестовая глава', ['Тестовый абзац.']);
       fixture.engine.land(assignment.leaseId);
 
       seedCascadeRevisionOfTheEnding(fixture);
@@ -83,23 +83,23 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
   it('evaluates the ending instead of rewriting it when a ripple reaches chapter 67', () => {
     const fixture = createEngineFixture({
       chapters: {
-        65: chapterText('Глава 65', ['Смена кончилась, лампа в коридоре щёлкала и гасла.']),
-        66: chapterText('Глава 66', ['Половик в тамбуре намок ещё в четверг.']),
-        67: chapterText('Глава 67', ['Конец не спрятан: к нему ведут шестьдесят семь глав.']),
+        65: chapterText('Глава 65', ['Служебный текст для проверки, он не является текстом книги.']),
+        66: chapterText('Глава 66', ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
+        67: chapterText('Глава 67', ['Служебный текст для проверки.']),
       },
     });
     try {
       fixture.engine.enqueue({
         kind: 'operator',
         chapter: 66,
-        intent: 'половик в тамбуре должен просохнуть к утру',
+        intent: 'абзац должен измениться к утру',
       });
 
       const origin = runStubStep(
         fixture,
         {
           title: 'Глава 66',
-          blocks: ['Половик в тамбуре намок ещё в четверг.', 'К утру он просох.'],
+          blocks: ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Изменённый абзац.'],
           seams: [{ boundary: 67, reason: 'следующая глава начинается с того же утра' }],
         },
         'fwd',
@@ -111,7 +111,7 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
         fixture,
         {
           title: 'Глава 65',
-          blocks: ['Смена кончилась, лампа в коридоре щёлкала и гасла.', 'Утром половик был сухим.'],
+          blocks: ['Служебный текст для проверки, он не является текстом книги.', 'Изменённый абзац.'],
           seams: [],
         },
         'bwd',

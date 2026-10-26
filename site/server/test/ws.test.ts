@@ -14,9 +14,7 @@ import { WsHub, type WsHubOptions } from '../src/ws/hub.ts';
 import { createFixture, type Fixture } from './helpers.ts';
 import type { Config } from '../src/config.ts';
 
-const FRONT = `Земля, которая больше не кормит\n\n${'Книга о том, как вещи научились обходиться без тех, кто их завёл. '.repeat(
-  5,
-)}\n`;
+const FRONT = `Без названия\n\n${'Тестовая аннотация для проверки. '.repeat(20)}\n`;
 
 type Frame = { v: number; type: string; seq: number; ts: string; data: Record<string, unknown> };
 
@@ -143,7 +141,7 @@ describe('hello', () => {
     expect(hello.data.protocolVersion).toBe(3);
     expect(hello.data.limits).toMatchObject({ commentsPerHour: 10, maxConnections: 100, perIp: 4 });
     expect(hello.data.front).toMatchObject({
-      title: 'Земля, которая больше не кормит',
+      title: 'Без названия',
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
     });
     expect((hello.data.catalog as unknown[]).length).toBe(67);

@@ -6,7 +6,7 @@ import { applyFrontFile } from '../../src/ingest/applyFront.ts';
 
 import { historyFixture } from './helpers.ts';
 
-const TEXT = 'Первая\n\nПоловик в тамбуре намок насквозь ещё в четверг.';
+const TEXT = 'Первая\n\nТестовый абзац номер один. Это служебный текст, он не является текстом книги.';
 
 describe('one observed write, two processes (§6F.1)', () => {
   it('the loser of a landing race records nothing rather than failing', () => {
@@ -33,7 +33,7 @@ describe('one observed write, two processes (§6F.1)', () => {
   it('the same race on the first sheet is a no-op when the text agrees', () => {
     const fixture = historyFixture();
     const other = openDatabase(databaseFile(fixture.dataDir));
-    const front = 'Земля, которая больше не кормит\n\nКнига о том, как вещи научились обходиться без тех, кто их завёл.';
+    const front = 'Без названия\n\nТестовая аннотация.';
     try {
       applyFrontFile({ db: fixture.db, dataDir: fixture.dataDir, raw: front, mtimeMs: 1, nowMs: 1 });
       const raced = applyFrontFile({ db: other, dataDir: fixture.dataDir, raw: front, mtimeMs: 2, nowMs: 2 });

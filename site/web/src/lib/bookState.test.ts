@@ -45,7 +45,7 @@ function state(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     at: '',
     engine: { status: 'unknown', heartbeatAt: null, laneId: null },
     phase: 'draft',
-    front: { title: 'Земля', about: 'О чём.', rev: 1, updatedAt: '' },
+    front: { title: 'Название', about: 'О чём.', rev: 1, updatedAt: '' },
     chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [] },
     cursors: {} as StateSnapshot['cursors'],
     toc: catalog.map((row) => ({ part: row.part, n: row.n, title: row.title, written: row.written, rev: row.rev })),
@@ -71,7 +71,7 @@ function data(overrides: Partial<BookData> = {}): BookData {
   return {
     state: current,
     catalog,
-    front: { title: 'Земля', about: 'О чём.', rev: 1, toc: current.toc, imprint: { author: 'А', copyright: '© А' } },
+    front: { title: 'Название', about: 'О чём.', rev: 1, toc: current.toc, imprint: { author: 'А', copyright: '© А' } },
     ...overrides,
   };
 }
@@ -90,7 +90,7 @@ const hello: HelloPayload = {
   },
   composer: { captcha: { provider: 'none', siteKey: null }, minChars: 3, maxChars: 1200 },
   viewer: { signedIn: false, displayName: null },
-  front: { title: 'Земля', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' } },
+  front: { title: 'Название', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' } },
   catalog: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', rev: 1, written: true } : row)),
   state: state({
     chapters: { total: 67, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
@@ -103,7 +103,7 @@ const hello: HelloPayload = {
 describe('bookFromHello', () => {
   it('paints the cover, page 2, the TOC and the catalog from one frame', () => {
     const book = bookFromHello(hello);
-    expect(book.front).toMatchObject({ title: 'Земля', about: 'О чём.', rev: 2 });
+    expect(book.front).toMatchObject({ title: 'Название', about: 'О чём.', rev: 2 });
     expect(book.front.imprint.copyright).toBe('© А');
     expect(book.catalog).toHaveLength(67);
     expect(book.state.toc[0]).toMatchObject({ n: 1, title: 'Начало' });

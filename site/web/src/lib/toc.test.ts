@@ -34,7 +34,7 @@ const catalog = [
   ...Array.from({ length: 67 }, (_, index) => entry(index + 1)),
   // Override two slots: a titled chapter and an untitled written one.
 ].map((item) => {
-  if (item.n === 1) return { ...item, title: 'Половик в тамбуре', written: true, rev: 1 };
+  if (item.n === 1) return { ...item, title: 'Тестовая глава', written: true, rev: 1 };
   if (item.n === 2) return { ...item, title: null, written: true, rev: 2 };
   return item;
 });
@@ -49,7 +49,7 @@ const basisCatalog = catalog.map((item) => {
 
 describe('slotLabel', () => {
   it('returns the title line verbatim and nothing when there is no title', () => {
-    expect(slotLabel('Половик в тамбуре')).toBe('Половик в тамбуре');
+    expect(slotLabel('Тестовая глава')).toBe('Тестовая глава');
     expect(slotLabel(null)).toBe('');
     expect(slotLabel('   ')).toBe('');
   });
@@ -105,7 +105,7 @@ describe('tocParts', () => {
   it('carries the live title line and marks the chapter being written', () => {
     expect(parts[0]?.entries[0]).toMatchObject({
       n: 1,
-      text: 'Половик в тамбуре',
+      text: 'Тестовая глава',
       written: true,
       current: false,
       href: '#ch-1',

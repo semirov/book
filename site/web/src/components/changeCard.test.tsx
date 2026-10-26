@@ -12,7 +12,7 @@ const change: ChangeDto = {
   seq: 14,
   kind: 'accepted_comment',
   chapter: 8,
-  intent: 'в абзаце дважды «намок» — оставить одно упоминание',
+  intent: 'в абзаце дважды «слово» — оставить одно упоминание',
   source: { commentId: 'cmt_1', author: 'Аня' },
   base: { rev: 3 },
   scopeHint: 'phrase',
@@ -120,7 +120,7 @@ describe('ChangeCard', () => {
   it('shows the quoted intent, the steps, the seams and the outcome', () => {
     const html = renderToStaticMarkup(<ChangeCard change={change} onClose={() => undefined} />);
     expect(html).toContain('правка 014 · глава 8');
-    expect(html).toContain('в абзаце дважды «намок»');
+    expect(html).toContain('в абзаце дважды «слово»');
     expect(html).toContain('формулировка автора · из замечания Аня');
     expect(html).toContain('основа сдвинулась, правка перенесена');
     expect(html).toContain('глава 8 переписана · замечание сохранено');
@@ -163,7 +163,7 @@ describe('the thread’s two-line status', () => {
     id: 'chg_1',
     seq: 14,
     chapter: 8,
-    intent: 'в абзаце дважды «намок»',
+    intent: 'в абзаце дважды «слово»',
     status: 'done',
     outcome: 'applied',
     reason: null,
@@ -189,10 +189,10 @@ describe('the thread’s two-line status', () => {
     const comment: CommentDto = {
       id: 'cmt_1',
       chapter: 8,
-      anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'намок', prefix: null, suffix: null, resolved: true },
+      anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },
       author: 'Аня',
       authorColor: '#2e6274',
-      body: 'тут дважды «намок»',
+      body: 'тут дважды «слово»',
       proposedText: null,
       status: 'applied',
       reason: null,

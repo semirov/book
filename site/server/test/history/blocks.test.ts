@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { reconcile } from '../../src/ingest/reconcile.ts';
 import { chapterText, createEngineFixture, type Fixture } from '../engine/helpers.ts';
 
-const A = 'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал.';
-const B = 'В пятницу к нему прибавился след от колеса, оставшийся с ночи.';
-const C = 'К субботе половик стал похож на карту местности: тёмное пятно посреди, по краям — светлое.';
-const B_REWRITTEN = 'В пятницу к нему прибавился след от колеса, оставшийся с ночи, и немного грязи.';
-const D = 'Смена кончилась в шесть, лампа в коридоре щёлкала и гасла до утра.';
+// Fixture paragraphs: distinct synthetic placeholders, never book text.
+const A = 'Первый тестовый абзац: альфа, бета и гамма.';
+const B = 'Второй тестовый абзац: дельта, эпсилон и дзета.';
+const C = 'Третий тестовый абзац: эта, тета и йота.';
+const B_REWRITTEN = 'Второй тестовый абзац: дельта, эпсилон, дзета и ещё одна буква.';
+const D = 'Четвёртый тестовый абзац: каппа, лямбда и мю.';
 
 function ingest(fixture: Fixture, title: string, blocks: string[]): void {
   fixture.writeChapterBlocks(1, title, blocks);
@@ -28,12 +29,12 @@ describe('the paragraph chain (§6F.3)', () => {
   it('keeps one identity across a rewrite and records the erasure of a removed paragraph', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A, B, C]);
+      ingest(fixture, 'Тестовая глава', [A, B, C]);
       const first = chain(fixture);
       expect(first).toHaveLength(3);
       expect(first.every((row) => row.op === 'introduced')).toBe(true);
 
-      ingest(fixture, 'Половик в тамбуре', [A, B_REWRITTEN, D]);
+      ingest(fixture, 'Тестовая глава', [A, B_REWRITTEN, D]);
       const second = chain(fixture).filter((row) => row.rev === 2);
       const revised = second.filter((row) => row.op === 'revised');
       const introduced = second.filter((row) => row.op === 'introduced');
@@ -72,8 +73,8 @@ describe('the paragraph chain (§6F.3)', () => {
   it('records an erasure with no heir as a removal, not an invented continuation', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A, B, C]);
-      ingest(fixture, 'Половик в тамбуре', [A, B]);
+      ingest(fixture, 'Тестовая глава', [A, B, C]);
+      ingest(fixture, 'Тестовая глава', [A, B]);
       const erased = fixture.db
         .prepare(`SELECT replaced_by FROM block_versions WHERE chapter = 1 AND op = 'erased'`)
         .all() as Array<{ replaced_by: string | null }>;
@@ -87,10 +88,10 @@ describe('the paragraph chain (§6F.3)', () => {
   it('a second revision of a chapter never duplicates the chain of an unchanged text', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A, B]);
+      ingest(fixture, 'Тестовая глава', [A, B]);
       const before = chain(fixture).length;
       // Same text: the ingest is idempotent by sha and writes nothing at all.
-      ingest(fixture, 'Половик в тамбуре', [A, B]);
+      ingest(fixture, 'Тестовая глава', [A, B]);
       expect(chain(fixture)).toHaveLength(before);
       const revisions = fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get() as { n: number };
       expect(revisions.n).toBe(1);
@@ -102,8 +103,8 @@ describe('the paragraph chain (§6F.3)', () => {
   it('writes the lineage row for every block that ever existed', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A, B]);
-      ingest(fixture, 'Половик в тамбуре', [A, B_REWRITTEN]);
+      ingest(fixture, 'Тестовая глава', [A, B]);
+      ingest(fixture, 'Тестовая глава', [A, B_REWRITTEN]);
       const lineage = fixture.db
         .prepare('SELECT block_id, first_rev, last_rev, replaced_by, cause_kind FROM block_lineage ORDER BY first_rev')
         .all() as Array<{
@@ -128,12 +129,12 @@ describe('the paragraph chain (§6F.3)', () => {
   it('an unchanged chapter text keeps the same block text and title in the event', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A, B]);
+      ingest(fixture, 'Тестовая глава', [A, B]);
       const event = fixture.db
         .prepare(`SELECT payload FROM events WHERE kind = 'chapter.created' AND chapter = 1`)
         .get() as { payload: string };
       const payload = JSON.parse(event.payload) as { title: string; chars: number; attributed: boolean };
-      expect(payload.title).toBe('Половик в тамбуре');
+      expect(payload.title).toBe('Тестовая глава');
       expect(payload.chars).toBe(A.length + B.length);
       expect(payload.attributed).toBe(false);
     } finally {
@@ -144,8 +145,8 @@ describe('the paragraph chain (§6F.3)', () => {
   it('exposes the title line of a written chapter to the chain reader', () => {
     const fixture = createEngineFixture({ front: null });
     try {
-      ingest(fixture, 'Половик в тамбуре', [A]);
-      expect(chapterText('Половик в тамбуре', [A])).toContain('Половик');
+      ingest(fixture, 'Тестовая глава', [A]);
+      expect(chapterText('Тестовая глава', [A])).toContain('Тестовая глава');
     } finally {
       fixture.close();
     }

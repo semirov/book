@@ -38,7 +38,7 @@ describe('findDenylisted', () => {
   });
 
   it('stays quiet on ordinary capitalized words', () => {
-    expect(findDenylisted('Снег лежал до утра. Потом вошёл Матвей.', index)).toEqual([]);
+    expect(findDenylisted('Служебная строка. Потом вошёл Матвей.', index)).toEqual([]);
   });
 
   it('returns the offset of the word, not of the boundary', () => {

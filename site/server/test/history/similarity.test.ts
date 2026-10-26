@@ -7,22 +7,22 @@ import {
   textSimilarity,
 } from '../../src/history/similarity.ts';
 
-const PARAGRAPH = 'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал.';
+const PARAGRAPH = 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
 
 describe('paragraph similarity (§6F.3)', () => {
   it('is 1 for the same text modulo whitespace, case and punctuation', () => {
     expect(textSimilarity(PARAGRAPH, `  ${PARAGRAPH.toUpperCase()}  `)).toBe(1);
-    expect(normalizeForSimilarity('Он — стоял; у окна!')).toBe('он стоял у окна');
+    expect(normalizeForSimilarity('Текст — стоит; здесь!')).toBe('текст стоит здесь');
   });
 
   it('is 0 for texts that share nothing', () => {
-    expect(textSimilarity('Половик в тамбуре', 'Смена кончилась в шесть')).toBeLessThan(0.2);
+    expect(textSimilarity('Тестовая глава', 'Совсем другие слова здесь')).toBeLessThan(0.2);
   });
 
   it('is high for a rewritten sentence and low for a different one', () => {
-    const rewritten = `${PARAGRAPH} След от колеса остался с ночи.`;
+    const rewritten = `${PARAGRAPH} Тестовый абзац номер два. Это служебный текст, он не является текстом книги.`;
     expect(textSimilarity(PARAGRAPH, rewritten)).toBeGreaterThan(REPLACE_SIMILARITY);
-    expect(textSimilarity(PARAGRAPH, 'Двор был пуст, доска лежала на двух кирпичах.')).toBeLessThan(
+    expect(textSimilarity(PARAGRAPH, 'Совершенно другой служебный текст.')).toBeLessThan(
       REPLACE_SIMILARITY,
     );
   });
@@ -35,13 +35,13 @@ describe('paragraph similarity (§6F.3)', () => {
 
   it('pairs exact paragraphs first, then by similarity, deterministically', () => {
     const before = [
-      { text: 'Абзац один про половик и след от колеса.', hash: 'aaa' },
-      { text: 'Абзац два про смену и лампу в коридоре.', hash: 'bbb' },
-      { text: 'Абзац три про бумаги, которые пережили составителей.', hash: 'ccc' },
+      { text: 'Первый служебный абзац для проверки.', hash: 'aaa' },
+      { text: 'Второй служебный абзац про очередь и счёт.', hash: 'bbb' },
+      { text: 'Третий служебный абзац про датчик и бланк.', hash: 'ccc' },
     ];
     const after = [
-      { text: 'Абзац три про бумаги, которые пережили составителей.', hash: 'ccc' },
-      { text: 'Абзац один про половик, след от колеса и грязь.', hash: 'ddd' },
+      { text: 'Третий служебный абзац про датчик и бланк.', hash: 'ccc' },
+      { text: 'Первый служебный абзац для проверки с дополнением.', hash: 'ddd' },
     ];
     const pairs = pairBySimilarity(before, after);
     expect(pairs).toEqual(

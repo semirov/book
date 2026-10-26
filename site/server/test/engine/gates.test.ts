@@ -13,7 +13,7 @@ const blocker = (defect = 'the chapter contradicts its neighbour'): Finding[] =>
 function draftOnce(fixture: ReturnType<typeof createEngineFixture>): WriterAssignment {
   const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
   fixture.engine.start(assignment.leaseId);
-  fixture.writeChapterBlocks(1, 'Начало', ['Половик намок ещё в четверг.', 'Никто его не поднимал.']);
+  fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац.', 'Это служебный текст.']);
   fixture.engine.land(assignment.leaseId);
   return assignment;
 }
@@ -136,29 +136,29 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
   it('sends the writer back on a blocker, re-asks after a revision, and publishes after the cap', () => {
     const fixture = createEngineFixture({
       chapters: {
-        5: chapterText('Перед', ['Двор был пуст.']),
-        6: chapterText('Середина', ['Половик намок ещё в четверг.']),
-        7: chapterText('После', ['След от колеса остался с ночи.']),
+        5: chapterText('Перед', ['Служебная строка.']),
+        6: chapterText('Середина', ['Тестовый абзац.']),
+        7: chapterText('После', ['Тестовый абзац номер два. Это служебный текст, он не является текстом книги.']),
       },
     });
     try {
-      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 6, intent: 'убрать половик' });
+      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 6, intent: 'убрать абзац' });
       const origin = runStubStep(fixture, {
         title: 'Середина',
-        blocks: ['Половик намок ещё в четверг.'],
+        blocks: ['Тестовый абзац.'],
         seams: [{ boundary: 7, reason: 'соседняя глава продолжает сцену' }],
       });
       expect(origin?.result.cascadeId).toBeTruthy();
 
       // The downward wing first: chapter 5 holds.
-      const down = runStubStep(fixture, { title: 'Перед', blocks: ['Двор был пуст.'], seams: [] }, 'bwd');
+      const down = runStubStep(fixture, { title: 'Перед', blocks: ['Служебная строка.'], seams: [] }, 'bwd');
       expect(down?.assignment.chapter).toBe(5);
 
       // Three revisions are allowed; the fourth blocker publishes with its finding and
       // escalates the ripple (the text is never hidden — §6B.4 rule 3).
       const repair = runStubStep(fixture, {
         title: 'После',
-        blocks: ['След от колеса остался с ночи.'],
+        blocks: ['Тестовый абзац номер два. Это служебный текст, он не является текстом книги.'],
         seams: [],
         editor: { verdict: 'GAP', findings: blocker('the neighbour still mentions the rug') },
       });
@@ -231,7 +231,7 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
     return createEngineFixture({
       chapters: {
         65: chapterText('Перед финалом', ['Свет в коридоре щёлкнул и погас.']),
-        66: chapterText('Ночь', ['Снег лежал на подоконнике.', 'Никто не спал.']),
+        66: chapterText('Ночь', ['Служебная строка.', 'Никто не спал.']),
         67: chapterText('Финал', ['Свет погас окончательно.']),
       },
     });
@@ -243,7 +243,7 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
       const change = fixture.engine.enqueue({ kind: 'operator', chapter: 66, intent: 'связать ночь с финалом' });
       const origin = runStubStep(fixture, {
         title: 'Ночь',
-        blocks: ['Снег лежал на подоконнике.', 'Никто не спал.'],
+        blocks: ['Служебная строка.', 'Никто не спал.'],
         seams: [{ boundary: 67, reason: 'финал должен продолжать эту ночь' }],
       });
       expect(origin?.assignment.pass).toBe('change');
@@ -296,7 +296,7 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
       fixture.engine.enqueue({ kind: 'operator', chapter: 66, intent: 'связать ночь с финалом' });
       runStubStep(fixture, {
         title: 'Ночь',
-        blocks: ['Снег лежал на подоконнике.', 'Никто не спал.'],
+        blocks: ['Служебная строка.', 'Никто не спал.'],
         seams: [{ boundary: 67, reason: 'финал должен продолжать эту ночь' }],
       });
       runStubStep(fixture, { title: 'Перед финалом', blocks: ['Свет в коридоре щёлкнул и погас.'], seams: [] }, 'bwd');

@@ -17,11 +17,8 @@ const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const CHAPTER_TWO = longProse(['Начало второй главы.']);
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
-const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
+const FRONT = `Без названия\n\n${ABOUT}\n`;
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -242,7 +239,7 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
-    expect(state.front.title).toBe('Земля, которая больше не кормит');
+    expect(state.front.title).toBe('Без названия');
     expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
     expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
   });
@@ -329,7 +326,7 @@ describe('reconcile — front matter', () => {
     expect(report.frontProblems).toEqual([]);
     expect(report.ignored).not.toContain('00-front.md');
     const row = getFrontRow(fixture.db);
-    expect(row).toMatchObject({ id: 1, title: 'Земля, которая больше не кормит', about: ABOUT, rev: 1 });
+    expect(row).toMatchObject({ id: 1, title: 'Без названия', about: ABOUT, rev: 1 });
     const expected = parseFront(FRONT);
     expect(row?.sha256).toBe(expected.sha256);
     expect(existsSync(join(fixture.dataDir, 'versions', 'front', `${expected.sha256}.md`))).toBe(true);
@@ -347,11 +344,11 @@ describe('reconcile — front matter', () => {
   it('bumps rev when the title or the annotation changes', () => {
     fixture = createFixture({ '00-front.md': FRONT });
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
-    fixture.write('00-front.md', FRONT.replace('Земля, которая больше не кормит', 'Земля, которая молчит'));
+    fixture.write('00-front.md', FRONT.replace('Без названия', 'Другое название'));
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.front).toBe('revised');
     expect(getFrontRow(fixture.db)).toMatchObject({
-      title: 'Земля, которая молчит',
+      title: 'Другое название',
       rev: 2,
     });
   });
@@ -367,11 +364,11 @@ describe('reconcile — front matter', () => {
   });
 
   it('keeps the title and nulls page 2 when the annotation is malformed', () => {
-    fixture = createFixture({ '00-front.md': 'Земля\n\nСлишком коротко.' });
+    fixture = createFixture({ '00-front.md': 'Название\n\nСлишком коротко.' });
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.front).toBe('created');
     expect(report.frontProblems.length).toBeGreaterThan(0);
-    expect(getFrontRow(fixture.db)).toMatchObject({ title: 'Земля', about: '' });
+    expect(getFrontRow(fixture.db)).toMatchObject({ title: 'Название', about: '' });
   });
 
   it('hides page 2 when the title line is malformed, even if the annotation reads well', () => {

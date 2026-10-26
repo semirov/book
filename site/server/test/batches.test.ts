@@ -14,7 +14,7 @@ import { createFixture, type Fixture } from './helpers.ts';
  * looked at and which comes from an identity provider (audit M3).
  */
 
-const CHAPTER = `Глава\n\n${'Половик в тамбуре намок ещё в четверг, и никто его не поднимал. '.repeat(6)}`;
+const CHAPTER = `Глава\n\n${'Тестовый абзац номер один. Это служебный текст, он не является текстом книги. '.repeat(6)}`;
 
 function withFixture(run: (fixture: Fixture, dir: string) => void): void {
   const fixture = createFixture({ 'ch01.md': CHAPTER });

@@ -43,11 +43,11 @@ describe('T-time — the book at any moment (§6F.2)', () => {
   it('scrubbing to the moment before a second revision shows the earlier text', () => {
     const fixture = historyFixture();
     try {
-      const first = 'Глава 9\n\nПервый абзац девятой главы: половик намок ещё в четверг.\n\nВторой абзац: его никто не поднимал.';
+      const first = 'Глава 9\n\nПервый абзац девятой главы: служебный текст.\n\nВторой абзац: ещё служебный текст.';
       ingest(fixture, 'ch09.md', first);
       const beforeSecond = lastHseq(fixture.db);
 
-      const second = `${first}\n\nТретий абзац появился позже: след от колеса остался с ночи.`;
+      const second = `${first}\n\nТретий абзац появился позже: ещё служебный текст.`;
       ingest(fixture, 'ch09.md', second);
 
       const then = chapterAt(fixture.db, fixture.dataDir, 9, beforeSecond);
@@ -89,7 +89,7 @@ describe('T-time — the book at any moment (§6F.2)', () => {
       ingest(
         fixture,
         'ch01.md',
-        'Глава 1\n\nПервый абзац: половик в тамбуре намок ещё в четверг.',
+        'Глава 1\n\nПервый абзац: служебный текст.',
         new Date('2026-10-25T09:00:00Z'),
       );
       const firstAt = (fixture.db.prepare('SELECT at FROM events ORDER BY hseq LIMIT 1').get() as { at: string }).at;
@@ -98,7 +98,7 @@ describe('T-time — the book at any moment (§6F.2)', () => {
       ingest(
         fixture,
         'ch02.md',
-        'Глава 2\n\nВторой абзац: след от колеса остался с ночи.',
+        'Глава 2\n\nВторой абзац: ещё служебный текст.',
         new Date('2026-10-25T09:30:00Z'),
       );
       expect(resolveMoment(fixture.db, firstAt)).toBe(firstHseq);

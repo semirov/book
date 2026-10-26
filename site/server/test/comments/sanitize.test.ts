@@ -4,11 +4,11 @@ import { sanitizeAffix, sanitizeBody, sanitizeProposed, sanitizeQuote } from '..
 
 describe('comment sanitizer (§12.4)', () => {
   it('normalizes NFKC, drops controls, zero-width and bidi overrides', () => {
-    const raw = 'Он\u0000 сказал\u200B: «на\u202Eмок»\uFEFF дважды.';
+    const raw = 'Он\u0000 сказал\u200B: «с\u202Eлово»\uFEFF дважды.';
     const result = sanitizeBody(raw);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.text).toBe('Он сказал: «намок» дважды.');
+    expect(result.text).toBe('Он сказал: «слово» дважды.');
     expect(result.text).not.toMatch(/[\u0000\u200B\u202E\uFEFF]/u);
   });
 
@@ -44,8 +44,8 @@ describe('comment sanitizer (§12.4)', () => {
   });
 
   it('hashes the normalized form, not the raw bytes', () => {
-    const first = sanitizeBody('Он  сказал: «намок»');
-    const second = sanitizeBody('Он сказал:  «намок» ');
+    const first = sanitizeBody('Он  сказал: «слово»');
+    const second = sanitizeBody('Он сказал:  «слово» ');
     expect(first.ok && second.ok).toBe(true);
     if (!first.ok || !second.ok) return;
     expect(first.hash).toBe(second.hash);

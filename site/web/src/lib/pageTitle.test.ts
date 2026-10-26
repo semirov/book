@@ -5,8 +5,8 @@ import { documentTitle, UNTITLED } from './pageTitle.ts';
 
 describe('documentTitle', () => {
   it('names the book exactly as the first sheet does, and its author', () => {
-    expect(documentTitle('Земля, которая больше не кормит')).toBe(
-      `Земля, которая больше не кормит — ${IMPRINT_AUTHOR}`,
+    expect(documentTitle('Без названия')).toBe(
+      `Без названия — ${IMPRINT_AUTHOR}`,
     );
   });
 

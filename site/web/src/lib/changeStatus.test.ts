@@ -19,7 +19,7 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
     id: 'chg_1',
     seq: 4,
     chapter: 8,
-    intent: 'в абзаце дважды «намок» — оставить одно',
+    intent: 'в абзаце дважды «слово» — оставить одно',
     status: 'done',
     outcome: 'applied',
     reason: null,

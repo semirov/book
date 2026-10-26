@@ -16,12 +16,9 @@ import {
 import { createFixture, type Fixture } from './helpers.ts';
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
-const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
-const FRONT_TWO = `Тишина в пределах участка\n\n${ABOUT.replace('Книга о том', 'Роман о том')}\n`;
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
+const FRONT = `Без названия\n\n${ABOUT}\n`;
+const FRONT_TWO = `Тестовая глава\n\n${ABOUT} Дополнительное служебное предложение.\n`;
 
 type Harness = {
   fixture: Fixture;
@@ -114,13 +111,13 @@ describe('watcher: a chapter appears', () => {
     await start();
     harness!.fixture.write(
       'ch01.md',
-      'Половик в тамбуре\n\nПервый абзац главы.\n\nВторой абзац главы, подлиннее первого.\n',
+      'Тестовая глава\n\nПервый абзац главы.\n\nВторой абзац главы, подлиннее первого.\n',
     );
 
     const created = await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
     expect(created).toMatchObject({
       type: 'chapter:created',
-      data: { n: 1, rev: 1, title: 'Половик в тамбуре', part: 1, direction: 'forward', attributed: false },
+      data: { n: 1, rev: 1, title: 'Тестовая глава', part: 1, direction: 'forward', attributed: false },
     });
     if (created.type !== 'chapter:created') throw new Error('narrowing');
     expect(created.data.chars).toBeGreaterThan(0);
@@ -132,7 +129,7 @@ describe('watcher: a chapter appears', () => {
     expect(stateEvent.data.reason).toBe('file');
     expect(stateEvent.data.chapters.written).toEqual([1]);
 
-    expect(catalog()[0]).toMatchObject({ n: 1, title: 'Половик в тамбуре', rev: 1, written: true });
+    expect(catalog()[0]).toMatchObject({ n: 1, title: 'Тестовая глава', rev: 1, written: true });
   }, 10_000);
 });
 
@@ -363,12 +360,12 @@ describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and 
     const front = await waitFor(() => harness!.events.find((event) => event.type === 'front:updated'));
     if (front.type !== 'front:updated') throw new Error('narrowing');
     expect(front.data).toMatchObject({
-      title: 'Тишина в пределах участка',
+      title: 'Тестовая глава',
       rev: 2,
       previousRev: 1,
       changed: { title: true, about: true },
     });
-    expect(front.data.about).toContain('Роман о том');
+    expect(front.data.about).toContain('Дополнительное служебное предложение');
     // A hand edit matches no lease: the site says "draft", never a change it cannot prove.
     expect(front.data.cause).toEqual({ kind: 'draft', changeId: null, cascadeId: null, stepId: null });
 
@@ -376,7 +373,7 @@ describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and 
       harness!.events.find((event) => event.type === 'state:updated' && event.data.front.rev === 2),
     );
     expect(stateEvent.type).toBe('state:updated');
-    expect(harness!.state.snapshot().front.title).toBe('Тишина в пределах участка');
+    expect(harness!.state.snapshot().front.title).toBe('Тестовая глава');
   }, 10_000);
 
   it('attributes a cascade front rewrite so the title takes the ring gesture', async () => {

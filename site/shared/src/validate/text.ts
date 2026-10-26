@@ -144,7 +144,7 @@ const ENDINGS = [
 
 /**
  * Crude Russian stemmer: strips one inflectional ending.
- * Enough to match «Зоя / Зои / Зою» and «Мельникова / Мельниковых» against one name.
+ * Enough to match «Тестова / Тестовой / Тестову» and «Тестовский / Тестовских» against one name.
  */
 export function stemRu(value: string): string {
   const folded = foldRu(value);

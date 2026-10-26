@@ -91,14 +91,14 @@ describe('the internal API (§4.2, §6A.11)', () => {
 
   it('runs the intent schema on the enqueue path (audit m6)', async () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
     });
     const app = await buildControl({
       engine: fixture.engine,
       token: TOKEN,
       logger: false,
       // The engine's own projection: the chapter's words, injected by the process (§12.3).
-      vocabulary: () => ['Половик намок в тамбуре.'],
+      vocabulary: () => ['Тестовый абзац.'],
     });
     const auth = { authorization: `Bearer ${TOKEN}` };
     try {
@@ -125,7 +125,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь половик в тамбуре' },
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь абзац' },
       });
       expect(existing.statusCode).toBe(200);
     } finally {
@@ -136,7 +136,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
 
   it('admits a change, hands out the job, and refuses the ending', async () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок.']), 67: chapterText('Финал', ['Свет погас.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']), 67: chapterText('Финал', ['Свет погас.']) },
     });
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     const auth = { authorization: `Bearer ${TOKEN}` };
@@ -145,7 +145,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'accepted_comment', chapter: 1, intent: 'убрать половик' },
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'убрать абзац' },
       });
       expect(created.statusCode).toBe(200);
       const change = created.json().data as { id: string; seq: number; status: string };
@@ -193,7 +193,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
   });
 
   it('carries one step through the whole session protocol', async () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     const auth = { authorization: `Bearer ${TOKEN}` };
     const post = async (
@@ -209,7 +209,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       const job = (await post('/internal/next', { for: 'fwd', session: 'w1' })).body.data as WriterAssignment;
       expect((await post('/internal/start', { leaseId: job.leaseId })).status).toBe(200);
 
-      fixture.writeChapterBlocks(1, 'Начало', ['Половик намок в среду.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       const landed = await post('/internal/land', { leaseId: job.leaseId });
       expect(landed.body.data).toMatchObject({ landed: true, changed: true, revAfter: 1 });
 
@@ -257,7 +257,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
 
   it('serves the documented CLI protocol end to end', async () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок.']), 2: chapterText('Вторая', ['Двор был пуст.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']), 2: chapterText('Вторая', ['Служебная строка.']) },
     });
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     try {
@@ -280,7 +280,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       expect(beat.code).toBe(0);
       expect(JSON.parse(beat.stdout)).toMatchObject({ leaseId: assignment.leaseId });
 
-      const pending = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'уточнить половик' });
+      const pending = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'уточнить абзац' });
       const trace = await cli(url, ['trace', pending.id]);
       expect(trace.code).toBe(0);
       expect(trace.stdout).toContain(`change ${pending.id}`);

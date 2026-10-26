@@ -16,12 +16,12 @@ function seedReaderChange(db: Db, options: { chapter: number; cascadeId?: string
   ).run();
   db.prepare(
     `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES ('cmt_1', 'idt_1', ?, 'Аня', 'половик слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
+     VALUES ('cmt_1', 'idt_1', ?, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
   ).run(options.chapter);
   db.prepare(
     `INSERT INTO changes (id, kind, chapter, intent, source_comment, base_rev, base_sha256, base_blocks,
                           scope_hint, status, enqueued_at)
-     VALUES ('chg_1', 'accepted_comment', ?, 'убрать второе упоминание половика', 'cmt_1', 1, 'sha', '[]',
+     VALUES ('chg_1', 'accepted_comment', ?, 'убрать второе упоминание абзаца', 'cmt_1', 1, 'sha', '[]',
              'phrase', 'processing', '2026-10-25T08:00:00Z')`,
   ).run(options.chapter);
   if (options.cascadeId !== undefined) {
@@ -47,9 +47,9 @@ describe('T-history — every revision is a fact with a clock (§6F.1)', () => {
   it('writes one event per revision, and the revision carries its hseq', () => {
     const fixture = historyFixture();
     try {
-      ingest(fixture, 'ch01.md', chapterFile(1, ['Первый абзац.'], 'Половик в тамбуре'));
-      ingest(fixture, 'ch01.md', chapterFile(1, ['Первый абзац.', 'Второй абзац.'], 'Половик в тамбуре'));
-      ingest(fixture, '00-front.md', 'Земля, которая больше не кормит\n\nКнига о том, как вещи научились обходиться без тех, кто их завёл.');
+      ingest(fixture, 'ch01.md', chapterFile(1, ['Первый абзац.'], 'Тестовая глава'));
+      ingest(fixture, 'ch01.md', chapterFile(1, ['Первый абзац.', 'Второй абзац.'], 'Тестовая глава'));
+      ingest(fixture, '00-front.md', 'Без названия\n\nТестовая аннотация.');
 
       const revisions = listRevisions(fixture.db, 1) as Array<{ rev: number; hseq: number }>;
       expect(revisions).toHaveLength(2);
@@ -72,7 +72,7 @@ describe('T-history — every revision is a fact with a clock (§6F.1)', () => {
         rev: number;
       };
       expect(frontEvent).toEqual({ kind: 'front.revised', is_front: 1, rev: front.rev });
-      expect(front.title).toBe('Земля, которая больше не кормит');
+      expect(front.title).toBe('Без названия');
     } finally {
       fixture.close();
     }
@@ -118,7 +118,7 @@ describe('T-history — every revision is a fact with a clock (§6F.1)', () => {
     const fixture = historyFixture();
     try {
       seedReaderChange(fixture.db, { chapter: 5 });
-      ingest(fixture, 'ch05.md', chapterFile(5, ['Половик в тамбуре намок ещё в четверг.', 'След от колеса остался с ночи.']), new Date(AT));
+      ingest(fixture, 'ch05.md', chapterFile(5, ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Тестовый абзац номер два. Это служебный текст, он не является текстом книги.']), new Date(AT));
 
       const revision = (listRevisions(fixture.db, 5) as Array<Record<string, unknown>>).at(-1);
       expect(revision).toMatchObject({ rev: 1, cause_kind: 'change', change_id: 'chg_1', step_id: 'stp_1', attributed: 1 });
@@ -142,7 +142,7 @@ describe('T-history — every revision is a fact with a clock (§6F.1)', () => {
     const fixture = historyFixture();
     try {
       seedReaderChange(fixture.db, { chapter: 5, cascadeId: 'csc_1' });
-      ingest(fixture, 'ch05.md', chapterFile(5, ['Половик в тамбуре намок ещё в четверг.']), new Date(AT));
+      ingest(fixture, 'ch05.md', chapterFile(5, ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']), new Date(AT));
       const revision = (listRevisions(fixture.db, 5) as Array<Record<string, unknown>>).at(-1);
       expect(revision).toMatchObject({ cause_kind: 'cascade', cascade_id: 'csc_1', change_id: 'chg_1', attributed: 1 });
       const overwrite = listEventRows(fixture.db, { kind: 'overwrite' });

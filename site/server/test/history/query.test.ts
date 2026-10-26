@@ -5,9 +5,9 @@ import { readDiff, readParagraphChain } from '../../src/history/query.ts';
 import { lastHseq } from '../../src/history/events.ts';
 import { historyFixture, ingest, releaseLease, seedChange } from './helpers.ts';
 
-const A = 'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал.';
-const B = 'В пятницу к нему прибавился след от колеса, оставшийся с ночи.';
-const B2 = 'В пятницу к нему прибавился след от колеса, оставшийся с ночи, и немного грязи.';
+const A = 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
+const B = 'Тестовый абзац номер два. Это служебный текст, он не является текстом книги.';
+const B2 = 'Тестовый абзац номер два, изменённый. Это служебный текст, он не является текстом книги.';
 
 describe('the paragraph chain of a removed line (§6F.3)', () => {
   it('ends the chain with «убрано», without inventing an heir', () => {
@@ -67,7 +67,7 @@ describe('a paragraph rewritten by the writing process itself (§6F.3)', () => {
                    '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z', '2026-10-25T23:00:00Z')`,
         )
         .run();
-      ingest(fixture, 'ch07.md', 'Седьмая\n\nПоловик намок ещё в четверг, и его не поднимали.', new Date('2026-10-25T09:00:00Z'));
+      ingest(fixture, 'ch07.md', 'Седьмая\n\nТестовый абзац номер один. Это служебный текст, он не является текстом книги.', new Date('2026-10-25T09:00:00Z'));
       releaseLease(fixture.db, 'lea_c1');
 
       fixture.db
@@ -87,7 +87,7 @@ describe('a paragraph rewritten by the writing process itself (§6F.3)', () => {
       ingest(
         fixture,
         'ch07.md',
-        'Седьмая\n\nПоловик намок ещё в четверг, и его так и не подняли.',
+        'Седьмая\n\nТестовый абзац номер один, изменённый. Это служебный текст, он не является текстом книги.',
         new Date('2026-10-25T10:00:00Z'),
       );
 
@@ -114,7 +114,7 @@ describe('the change log of a span (§6F.2)', () => {
       ingest(
         fixture,
         'ch04.md',
-        `Четвёртая\n\n${A}\n\n${B2}\n\nНовый абзац: смена кончилась в шесть, лампа гасла.`,
+        `Четвёртая\n\n${A}\n\n${B2}\n\nНовый абзац: служебный текст.`,
         new Date('2026-10-25T10:00:00Z'),
       );
       releaseLease(fixture.db, mark.leaseId);

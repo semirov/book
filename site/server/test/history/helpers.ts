@@ -6,12 +6,9 @@ import { createFixture, longProse, type Fixture } from '../helpers.ts';
 const HOUR_MS = 3_600_000;
 
 export const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
-export const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+export const FRONT = `Без названия\n\n${ABOUT}\n`;
 
 /**
  * The one clock the history fixtures write at — absolute, never the wall clock.
@@ -42,7 +39,7 @@ export function chapterFile(n: number, paragraphs: string[] = [], title?: string
 export function fullBook(): Record<string, string> {
   const files: Record<string, string> = { '00-front.md': FRONT };
   for (let n = 1; n <= 67; n += 1) {
-    files[`ch${String(n).padStart(2, '0')}.md`] = `Глава ${n}\n\nАбзац главы ${n}: половик в тамбуре намок ещё в четверг, его никто не поднимал.`;
+    files[`ch${String(n).padStart(2, '0')}.md`] = `Глава ${n}\n\nАбзац главы ${n}: служебный текст для проверки, он не из книги.`;
   }
   return files;
 }
@@ -84,12 +81,12 @@ export function seedChange(
   }
   db.prepare(
     `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES (?, ?, ?, ?, 'половик слишком часто', ?, 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
+     VALUES (?, ?, ?, ?, 'абзац слишком часто', ?, 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
   ).run(commentId, identityId, options.chapter, label, `sha-${index}`);
   db.prepare(
     `INSERT INTO changes (id, kind, chapter, intent, source_comment, base_rev, base_sha256, base_blocks,
                           scope_hint, status, enqueued_at)
-     VALUES (?, 'accepted_comment', ?, 'убрать второе упоминание половика', ?, 1, 'sha', '[]',
+     VALUES (?, 'accepted_comment', ?, 'убрать второе упоминание абзаца', ?, 1, 'sha', '[]',
              'phrase', 'processing', '2026-10-25T08:00:00Z')`,
   ).run(changeId, options.chapter, commentId);
   if (options.cascadeId !== undefined) {

@@ -31,7 +31,7 @@ function addStep(
 
 describe('leases — the write lock (§6A.11)', () => {
   it('refuses a second live lease on the same chapter', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const a = addStep(fixture, { id: 'stp_a', chapter: 1 });
       const b = addStep(fixture, { id: 'stp_b', chapter: 1 });
@@ -77,7 +77,7 @@ describe('leases — the write lock (§6A.11)', () => {
   });
 
   it('dies on expiry and cannot be beaten after release', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const step = addStep(fixture, { id: 'stp_exp', chapter: 1 });
       const lease = acquireLease(fixture.deps, { step, session: 'w1', expectedRev: 0, changeId: null });
@@ -97,7 +97,7 @@ describe('leases — the write lock (§6A.11)', () => {
 
 describe('the reaper gives up only after three attempts (§6A.11)', () => {
   it('escalates a change whose session never lands anything', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -127,7 +127,7 @@ describe('the reaper gives up only after three attempts (§6A.11)', () => {
 
 describe('gate dispatch bookkeeping (§6B.3)', () => {
   it('refuses a dispatch before landing, after closing, and to a second session', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -136,7 +136,7 @@ describe('gate dispatch bookkeeping (§6B.3)', () => {
       if (!step) throw new Error('step missing');
       expect(() => openDispatch(fixture.deps, step, 'editor', 'editor-1')).toThrow(/no landed text/u);
 
-      fixture.writeChapterBlocks(1, 'Начало', ['Половик намок в среду.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       fixture.engine.land(assignment.leaseId);
       const landed = store.getStep(fixture.db, assignment.stepId);
       if (!landed) throw new Error('step missing');
@@ -173,7 +173,7 @@ describe('gate dispatch bookkeeping (§6B.3)', () => {
 
 describe('land — shapes the engine refuses to bless (§6A.11)', () => {
   it('records an unchanged file as a hold, not a revision', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -196,7 +196,7 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
   });
 
   it('refuses an empty write and an over-long chapter', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -248,12 +248,12 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
 
 describe('a malformed report is refused, never read as silence', () => {
   it('refuses a seam with an unknown boundary and a drop of a fresh change', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
       fixture.engine.start(assignment.leaseId);
-      fixture.writeChapterBlocks(1, 'Начало', ['Половик намок в среду.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       fixture.engine.land(assignment.leaseId);
       expect(() => fixture.engine.done(assignment.leaseId, { seams: [{ boundary: 999, reason: 'x' }] })).toThrow(
         /unknown seam boundary/u,
@@ -265,7 +265,7 @@ describe('a malformed report is refused, never read as silence', () => {
   });
 
   it('a fresh change cannot be dropped without a citation of what made it unnecessary', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -290,7 +290,7 @@ describe('escalate — the reason selects the outcome (§6A.6)', () => {
 
   for (const [because, outcome] of cases) {
     it(`maps «${because}» to ${outcome}`, () => {
-      const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+      const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
       try {
         const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
         const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;

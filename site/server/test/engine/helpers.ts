@@ -62,11 +62,11 @@ export type Fixture = {
 };
 
 export const DEFAULT_ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: к нему ведут шестьдесят семь глав, и каждая ' +
-  'пишется в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
+/**
+ * Fixture text is synthetic on purpose: a test never depends on the book's prose. A fixture
+ * front carries the live untitled name «Без названия» until a scripted front step changes it.
+ */
 
 export function chapterText(title: string, blocks: string[]): string {
   return `${title}\n\n${blocks.join('\n\n')}\n`;
@@ -115,7 +115,7 @@ export function createEngineFixture(options: {
   };
 
   if (options.front !== null) {
-    const front = options.front ?? { title: 'Земля, которая больше не кормит', about: DEFAULT_ABOUT };
+    const front = options.front ?? { title: 'Без названия', about: DEFAULT_ABOUT };
     writeFront(front.title, front.about);
   }
   for (const [n, text] of Object.entries(options.chapters ?? {})) {
@@ -185,14 +185,14 @@ export type StubRun = {
 
 function defaultBlocks(pass: StepPass, chapter: number | 'front'): string[] {
   return [
-    `Черновик ${pass} ${String(chapter)}: половик в тамбуре намок ещё в четверг.`,
-    'Никто его не поднимал: смена кончилась, лампа в коридоре щёлкала и гасла.',
+    `Черновик ${pass} ${String(chapter)}: служебный текст для проверки.`,
+    'Это служебный текст, он не является текстом книги.',
   ];
 }
 
 function writeFor(fixture: Fixture, assignment: WriterAssignment, script: StubScript, blocks: string[]): void {
   if (assignment.chapter === 'front') {
-    fixture.writeFront(script.title ?? 'Земля, которая больше не кормит', blocks.join('\n\n'));
+    fixture.writeFront(script.title ?? 'Без названия', blocks.join('\n\n'));
     return;
   }
   fixture.writeChapterBlocks(assignment.chapter, script.title ?? `Глава ${assignment.chapter}`, blocks);

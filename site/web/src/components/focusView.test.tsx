@@ -10,7 +10,7 @@ const change: ChangeDto = {
   seq: 14,
   kind: 'accepted_comment',
   chapter: 8,
-  intent: 'в абзаце дважды «намок» — оставить одно упоминание',
+  intent: 'в абзаце дважды «слово» — оставить одно упоминание',
   source: { commentId: 'cmt_1', author: 'Аня' },
   base: { rev: 3 },
   scopeHint: 'phrase',
@@ -148,7 +148,7 @@ describe('the focus view', () => {
     expect(html).toContain('прицел');
     expect(html).toContain('правка 014');
     expect(html).toContain('выйти');
-    expect(html).toContain('в абзаце дважды «намок»');
+    expect(html).toContain('в абзаце дважды «слово»');
     expect(html).toContain('сноска 014');
     expect(html).toContain('итерация 014 · волна 2 из 3');
     expect(html).toContain('волна 2 из 3 · этап: готово');

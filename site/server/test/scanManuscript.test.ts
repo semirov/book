@@ -26,10 +26,10 @@ describe('scanManuscript', () => {
   });
 
   it('separates the first sheet from the chapters', () => {
-    const created = fixture({ '00-front.md': 'Земля\n\nАннотация.', 'ch01.md': 'Заголовок.\n\nТекст.' });
+    const created = fixture({ '00-front.md': 'Название\n\nАннотация.', 'ch01.md': 'Заголовок.\n\nТекст.' });
     const result = scanManuscript(created.root);
     expect(result.front?.fileName).toBe('00-front.md');
-    expect(result.front?.raw).toContain('Земля');
+    expect(result.front?.raw).toContain('Название');
     expect(result.chapters.map((chapter) => chapter.n)).toEqual([1]);
     expect(result.ignored).not.toContain('00-front.md');
   });

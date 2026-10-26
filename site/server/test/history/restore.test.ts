@@ -8,14 +8,14 @@ describe('operator restore (§6F.1 rule 3, §13.3)', () => {
   it('reads a past revision back for the operator, without touching the manuscript', () => {
     const fixture = historyFixture();
     try {
-      ingest(fixture, 'ch01.md', 'Первая\n\nПервый абзац: половик намок ещё в четверг.');
+      ingest(fixture, 'ch01.md', 'Первая\n\nПервый абзац: служебный текст.');
       const first = lastHseq(fixture.db);
-      ingest(fixture, 'ch01.md', 'Первая\n\nВторой абзац: половик давно выбросили.');
+      ingest(fixture, 'ch01.md', 'Первая\n\nВторой абзац: текст давно изменили.');
 
       const source = readRestoreSource(fixture.db, fixture.dataDir, 1, 1);
       expect(source?.rev).toBe(1);
-      expect(source?.text).toContain('половик намок ещё в четверг');
-      expect(source?.text).not.toContain('выбросили');
+      expect(source?.text).toContain('Первый абзац: служебный текст.');
+      expect(source?.text).not.toContain('давно изменили');
       expect(source?.snapshot).toMatch(/^versions\/ch01\//u);
       expect(first).toBeLessThan(lastHseq(fixture.db));
 

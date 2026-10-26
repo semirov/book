@@ -4,9 +4,9 @@ import { chapterMentions, validateIntent, validateReason } from '@book/shared';
 
 describe('--intent validation (§12.3)', () => {
   it('accepts a concrete goal about the comment’s own chapter', () => {
-    expect(validateIntent('в абзаце дважды «намок» — оставить одно упоминание', 8)).toEqual({
+    expect(validateIntent('в абзаце дважды «слово» — оставить одно упоминание', 8)).toEqual({
       ok: true,
-      intent: 'в абзаце дважды «намок» — оставить одно упоминание',
+      intent: 'в абзаце дважды «слово» — оставить одно упоминание',
     });
     expect(validateIntent('в главе 8 убрать повтор «тропинка» в третьем абзаце', 8).ok).toBe(true);
   });
@@ -62,7 +62,7 @@ describe('--intent validation (§12.3)', () => {
 
   it('refuses a request for a new entity, and keeps the chapter’s own words (M4)', () => {
     const vocabulary = [
-      'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал: он лежал у порога.',
+      'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.',
     ];
 
     for (const intent of [
@@ -81,10 +81,10 @@ describe('--intent validation (§12.3)', () => {
 
     // A thing the chapter already has, a punctuation mark and a quoted word are not new.
     for (const intent of [
-      'добавь половик в конце',
-      'добавь запятую после «намок»',
+      'добавь тестовый в конце',
+      'добавь запятую после «абзац»',
       'добавь в абзац слово «маяк»',
-      'убрать второе упоминание половика',
+      'убрать второе упоминание абзаца',
     ]) {
       expect(validateIntent(intent, 8, { vocabulary }).ok, intent).toBe(true);
     }

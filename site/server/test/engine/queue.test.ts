@@ -11,7 +11,7 @@ import { chapterText, createEngineFixture, driveStub, runStubStep, FakeClock } f
 
 function bookBlocks(n: number): string[] {
   return Array.from({ length: 8 }, (_, index) => {
-    const tail = 'Он стоял у окна и смотрел, как по стеклу идёт вода: капля доходила до рамы и поворачивала вбок.';
+    const tail = 'Служебный абзац для проверки объёма. Это предложение повторяется, чтобы набрать нужную длину, и не является текстом книги.';
     return `Абзац ${index + 1} главы ${n}. ${tail}`;
   });
 }
@@ -35,7 +35,7 @@ function changeOfLease(fixture: ReturnType<typeof createEngineFixture>, leaseId:
 
 describe('the FIFO lane (§6A.3)', () => {
   it('keeps the admission order under 50 concurrent enqueues and hands heads out by seq', async () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) }, env: { QUEUE_SOFT_CAP: '100' } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) }, env: { QUEUE_SOFT_CAP: '100' } });
     const app = await buildControl({ engine: fixture.engine, token: 'test-token', logger: false });
     try {
       const responses = await Promise.all(
@@ -66,7 +66,7 @@ describe('the FIFO lane (§6A.3)', () => {
         expect(row.seq).toBe(position);
         fixture.engine.start(assignment.leaseId, {
           decision: 'void',
-          reason: 'в главе уже одно упоминание половика',
+          reason: 'в главе уже одно упоминание абзаца',
         });
       }
       expect(fixture.db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'`).get()).toEqual({ n: 0 });
@@ -78,7 +78,7 @@ describe('the FIFO lane (§6A.3)', () => {
   });
 
   it('refuses admission past the soft cap rather than letting the queue lie about its depth', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) }, env: { QUEUE_SOFT_CAP: '2' } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) }, env: { QUEUE_SOFT_CAP: '2' } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'раз' });
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'два' });
@@ -93,21 +93,21 @@ describe('the FIFO lane (§6A.3)', () => {
   it('refuses a change on a slot that holds only its basis sentence (BOOK-6)', () => {
     // Chapter 1 exists and holds one paragraph — the frozen frame — and is still unwritten:
     // a change must not be admitted against it, or it would be enqueued over baseRev 0.
-    const fixture = createEngineFixture({ chapters: { 1: FRAME_FIRST_SENTENCE, 2: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: FRAME_FIRST_SENTENCE, 2: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'поправить первую строку' })).toThrow(
         /ещё не написана/u,
       );
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
       // A written neighbour still admits, so the refusal is about the slot, not the queue.
-      expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'уточнить половик' })).not.toThrow();
+      expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'уточнить абзац' })).not.toThrow();
     } finally {
       fixture.close();
     }
   });
 
   it('refuses to start a non-draft pass on a chapter emptied to its basis sentence (BOOK-6)', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -127,7 +127,7 @@ describe('the FIFO lane (§6A.3)', () => {
   });
 
   it('holds the lane for one change at a time, even across two engine processes', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     const db2 = openDatabase(databaseFile(fixture.dataDir));
     migrate(db2);
     const second = createEngine({
@@ -154,7 +154,7 @@ describe('the FIFO lane (§6A.3)', () => {
   });
 
   it('keeps the lane on live work after a killed process and re-issues one step, not two', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const first = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;

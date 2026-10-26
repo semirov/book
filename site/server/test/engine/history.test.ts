@@ -19,8 +19,8 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
     const fixture = createEngineFixture();
     try {
       // 1. Two drafts: the writer's own passes, attributed to a lease.
-      runStubStep(fixture, { title: 'Половик в тамбуре', blocks: ['Половик намок ещё в четверг.', 'Никто не поднимал.'] });
-      runStubStep(fixture, { title: 'Вторая глава', blocks: ['Во дворе стояла доска на двух кирпичах.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.', 'Это служебный текст.'] });
+      runStubStep(fixture, { title: 'Вторая глава', blocks: ['Ещё один служебный абзац для проверки, он не является текстом книги и не содержит литературных образов.'] });
 
       // 2. A reader's change, its ripple up to chapter 2, then the first sheet.
       fixture.db
@@ -32,28 +32,28 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
       fixture.db
         .prepare(
           `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-           VALUES ('cmt_9', 'idt_9', 1, 'Аня', 'половик слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
+           VALUES ('cmt_9', 'idt_9', 1, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
         )
         .run();
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'убрать второе упоминание половика',
+        intent: 'убрать второе упоминание абзаца',
         commentId: 'cmt_9',
       });
       runStubStep(fixture, {
-        title: 'Половик в тамбуре',
-        blocks: ['Половик намок ещё в четверг.'],
-        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же половика' }],
+        title: 'Тестовая глава',
+        blocks: ['Тестовый абзац.'],
+        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же абзаца' }],
       });
       runStubStep(fixture, {
         title: 'Вторая глава',
-        blocks: ['Во дворе стояла доска на двух кирпичах.', 'Половик унесли.'],
+        blocks: ['Ещё один служебный абзац для проверки, он не является текстом книги и не содержит литературных образов.', 'Добавленный абзац номер два.'],
       });
       runStubStep(fixture, {
-        title: 'Земля, которая больше не кормит',
+        title: 'Без названия',
         // A real rewrite of page 2, so the first sheet gets a revision of its own (§6C.2).
-        blocks: [`${fixture.readFrontBlocks()} След от колеса остался с ночи.`],
+        blocks: [`${fixture.readFrontBlocks()} Тестовый абзац номер два. Это служебный текст, он не является текстом книги.`],
         seams: [],
       });
 
@@ -107,7 +107,7 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
         cascade_id: string | null;
       };
       expect(frontEvent).toMatchObject({ kind: 'front.revised', is_front: 1, rev: front.rev });
-      expect(front.title).toBe('Земля, которая больше не кормит');
+      expect(front.title).toBe('Без названия');
 
       // The step's history span is filled from the log (§6F.1: `hseq_from`/`hseq_to`).
       const spans = fixture.db
@@ -126,7 +126,7 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
   it('a re-land of the same text never duplicates a revision', () => {
     const fixture = createEngineFixture();
     try {
-      runStubStep(fixture, { title: 'Половик', blocks: ['Половик намок ещё в четверг.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.'] });
       const before = fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get() as { n: number };
       // A second ingest of the same file (the watcher would do exactly this) is a no-op.
       reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });

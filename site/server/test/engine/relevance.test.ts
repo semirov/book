@@ -11,8 +11,8 @@ import {
 import { chapterText, createEngineFixture } from './helpers.ts';
 
 const BLOCKS = [
-  { id: 'ch01#a', hash: 'a', text: 'Половик в тамбуре намок ещё в четверг.' },
-  { id: 'ch01#b', hash: 'b', text: 'Никто его не поднимал.' },
+  { id: 'ch01#a', hash: 'a', text: 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.' },
+  { id: 'ch01#b', hash: 'b', text: 'Это служебный текст.' },
 ];
 
 function input(
@@ -26,7 +26,7 @@ function input(
   return {
     baseRev: overrides.baseRev ?? 3,
     baseBlocks: overrides.baseBlocks ?? ['a', 'b'],
-    anchor: overrides.anchor === undefined ? { blockIds: ['ch01#a'], quote: 'Половик в тамбуре' } : overrides.anchor,
+    anchor: overrides.anchor === undefined ? { blockIds: ['ch01#a'], quote: 'Тестовая глава' } : overrides.anchor,
     current: {
       rev: overrides.current?.rev ?? 3,
       blocks: overrides.current?.blocks ?? BLOCKS,
@@ -63,8 +63,8 @@ describe('gradeRelevance — deterministic evidence (§6A.7)', () => {
       input({
         current: {
           rev: 5,
-          blocks: [BLOCKS[0]!, { id: 'ch01#c', hash: 'c', text: 'Двор был пуст.' }],
-          text: 'Половик в тамбуре намок ещё в четверг.\n\nДвор был пуст.',
+          blocks: [BLOCKS[0]!, { id: 'ch01#c', hash: 'c', text: 'Служебная строка.' }],
+          text: 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.\n\nСлужебная строка.',
         },
       }),
     );
@@ -94,10 +94,10 @@ describe('gradeRelevance — deterministic evidence (§6A.7)', () => {
   it('finds the paragraph by its quote when the block id changed (anchor moved)', () => {
     const grade = gradeRelevance(
       input({
-        anchor: { blockIds: ['ch01#old'], quote: 'Половик в тамбуре намок ещё в четверг.' },
+        anchor: { blockIds: ['ch01#old'], quote: 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.' },
         current: {
           rev: 4,
-          blocks: [{ id: 'ch01#new', hash: 'a', text: 'Половик в тамбуре намок ещё в четверг.' }, BLOCKS[1]!],
+          blocks: [{ id: 'ch01#new', hash: 'a', text: 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.' }, BLOCKS[1]!],
         },
       }),
     );
@@ -142,17 +142,17 @@ describe('the writer decides, the vocabulary follows (§6A.7)', () => {
 describe('relevance at dequeue — the service records what it saw', () => {
   it('grades against the file and refuses to touch a moved base without a decision', () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок ещё в четверг.', 'Никто его не поднимал.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.', 'Это служебный текст.']) },
     });
     try {
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
         intent: 'заменить четверг на среду во всём абзаце',
-        anchor: { blockIds: [], quote: 'Половик намок ещё в четверг.', prefix: '', suffix: '' },
+        anchor: { blockIds: [], quote: 'Тестовый абзац.', prefix: '', suffix: '' },
       });
       // Someone else rewrote the chapter before its turn came: the base moved.
-      fixture.writeChapterBlocks(1, 'Начало', ['Двор был пуст.', 'Доска на кирпичах.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       expect(assignment.relevance?.grade).toBe('unknown');
       expect(() => fixture.engine.start(assignment.leaseId)).toThrow(/decide adapt\/drop\/void/u);
@@ -177,26 +177,26 @@ describe('relevance at dequeue — the service records what it saw', () => {
 
   it('adapt records the narrowed intent and keeps the original', () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок ещё в четверг.', 'Никто его не поднимал.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.', 'Это служебный текст.']) },
     });
     try {
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'убрать половик из главы и из разговора',
+        intent: 'убрать абзац из главы и из разговора',
       });
-      fixture.writeChapterBlocks(1, 'Начало', ['Двор был пуст.', 'Доска на кирпичах.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       fixture.engine.start(assignment.leaseId, {
         decision: 'adapt',
         reason: 'в главе остался только один абзац',
-        intent: 'убрать половик из оставшегося абзаца',
+        intent: 'убрать абзац из оставшегося текста',
       });
       const row = fixture.db
         .prepare('SELECT intent, intent_original, outcome FROM changes WHERE id = ?')
         .get(change.id) as { intent: string; intent_original: string; outcome: string };
-      expect(row.intent).toBe('убрать половик из оставшегося абзаца');
-      expect(row.intent_original).toBe('убрать половик из главы и из разговора');
+      expect(row.intent).toBe('убрать абзац из оставшегося текста');
+      expect(row.intent_original).toBe('убрать абзац из главы и из разговора');
       expect(row.outcome).toBe('adapted');
     } finally {
       fixture.close();

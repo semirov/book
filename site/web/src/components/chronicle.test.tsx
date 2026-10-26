@@ -50,7 +50,7 @@ const CATALOG: CatalogEntry[] = [
   {
     n: 8,
     part: 1,
-    title: 'Половик в тамбуре',
+    title: 'Тестовая глава',
     rev: 5,
     chars: 9_000,
     blocks: 120,
@@ -94,7 +94,7 @@ describe('the chronicle’s surface (§11.10)', () => {
     expect(html).toContain('написано');
     expect(html).toContain('ch08#0b7e9c31');
     // The chain never shows the text of any version — it is metadata and ids only.
-    expect(html).not.toContain('Половик');
+    expect(html).not.toContain('Тестовая глава');
   });
 
   it('says so when a paragraph has no history', () => {

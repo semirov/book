@@ -74,9 +74,9 @@ describe('the first sheet', () => {
       facts: [],
       now,
       version: 1,
-      front: { title: 'Земля, которая больше не кормит', about: 'О чём эта книга.', rev: 3, updatedAt: '2026-10-25T10:00:00Z' },
+      front: { title: 'Без названия', about: 'О чём эта книга.', rev: 3, updatedAt: '2026-10-25T10:00:00Z' },
     });
-    expect(withFront.front).toMatchObject({ title: 'Земля, которая больше не кормит', rev: 3 });
+    expect(withFront.front).toMatchObject({ title: 'Без названия', rev: 3 });
   });
 
   it('puts chapter titles into the TOC and keeps an untitled chapter as a slot', () => {

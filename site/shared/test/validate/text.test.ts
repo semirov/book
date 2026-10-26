@@ -49,13 +49,13 @@ describe('countChars', () => {
 
 describe('stemRu', () => {
   it('collapses the case forms of a first name', () => {
-    expect(stemRu('Зоя')).toBe(stemRu('Зои'));
-    expect(stemRu('Зоя')).toBe(stemRu('Зою'));
+    expect(stemRu('Тестова')).toBe(stemRu('Тестовой'));
+    expect(stemRu('Тестова')).toBe(stemRu('Тестову'));
   });
 
   it('collapses a surname across endings', () => {
-    expect(stemRu('Мельникова')).toBe(stemRu('Мельниковых'));
-    expect(stemRu('Прокопьевна')).toBe(stemRu('Прокопьевну'));
+    expect(stemRu('Тестовский')).toBe(stemRu('Тестовских'));
+    expect(stemRu('Тестовна')).toBe(stemRu('Тестовну'));
   });
 
   it('folds ё and case', () => {
@@ -103,15 +103,15 @@ describe('hasMarkdown', () => {
 
 describe('parseTitleLine', () => {
   it('takes line 1 as the title and the rest as the body', () => {
-    const parsed = parseTitleLine('Половик в тамбуре\n\nПервый абзац.\n\nВторой.');
-    expect(parsed.title).toBe('Половик в тамбуре');
+    const parsed = parseTitleLine('Тестовая глава\n\nПервый абзац.\n\nВторой.');
+    expect(parsed.title).toBe('Тестовая глава');
     expect(parsed.problems).toEqual([]);
     expect(splitBlocks(parsed.body)).toEqual(['Первый абзац.', 'Второй.']);
   });
 
   it('normalizes CRLF and trailing whitespace before reading line 1', () => {
-    const parsed = parseTitleLine('  Половик в тамбуре  \r\n\r\nТекст.');
-    expect(parsed.title).toBe('Половик в тамбуре');
+    const parsed = parseTitleLine('  Тестовая глава  \r\n\r\nТекст.');
+    expect(parsed.title).toBe('Тестовая глава');
   });
 
   it('reports a missing title and gives null', () => {
@@ -133,33 +133,30 @@ describe('parseTitleLine', () => {
   });
 
   it('rejects markdown and a trailing colon', () => {
-    expect(parseTitleLine('## Половик\n\nТекст.').problems).toContain('title contains markdown');
-    expect(parseTitleLine('Половик:\n\nТекст.').problems).toContain('title ends with a colon');
+    expect(parseTitleLine('## Тестовая запись\n\nТекст.').problems).toContain('title contains markdown');
+    expect(parseTitleLine('Тестовая глава:\n\nТекст.').problems).toContain('title ends with a colon');
   });
 
   it('requires line 2 to be blank', () => {
-    const parsed = parseTitleLine('Половик\nПервый абзац без пустой строки.');
+    const parsed = parseTitleLine('Тестовая глава\nПервый абзац без пустой строки.');
     expect(parsed.title).toBeNull();
     expect(parsed.problems).toContain('line 2 must be blank');
   });
 
   it('accepts a title-only file: the prose is simply empty', () => {
-    const parsed = parseTitleLine('Половик в тамбуре');
-    expect(parsed.title).toBe('Половик в тамбуре');
+    const parsed = parseTitleLine('Тестовая глава');
+    expect(parsed.title).toBe('Тестовая глава');
     expect(splitBlocks(parsed.body)).toEqual([]);
   });
 });
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
 describe('parseFrontMatter', () => {
   it('reads the live title and the annotation', () => {
-    const parsed = parseFrontMatter(`Земля, которая больше не кормит\n\n${ABOUT}`);
-    expect(parsed.title).toBe('Земля, которая больше не кормит');
+    const parsed = parseFrontMatter(`Без названия\n\n${ABOUT}`);
+    expect(parsed.title).toBe('Без названия');
     expect(parsed.about).toBe(ABOUT);
     expect(parsed.blocks).toHaveLength(1);
     expect(parsed.chars).toBe(ABOUT.length);
@@ -169,32 +166,32 @@ describe('parseFrontMatter', () => {
   });
 
   it('keeps the title when only the annotation is malformed', () => {
-    const parsed = parseFrontMatter('Земля\n\nСлишком короткая аннотация.');
-    expect(parsed.title).toBe('Земля');
+    const parsed = parseFrontMatter('Название\n\nСлишком короткая аннотация.');
+    expect(parsed.title).toBe('Название');
     expect(parsed.about).toBeNull();
     expect(parsed.problems.join(' ')).toContain('expected 300–900');
   });
 
   it('rejects an annotation above 900 characters', () => {
-    const parsed = parseFrontMatter(`Земля\n\n${'я'.repeat(ABOUT_MAX_CHARS + 1)}`);
+    const parsed = parseFrontMatter(`Название\n\n${'я'.repeat(ABOUT_MAX_CHARS + 1)}`);
     expect(parsed.about).toBeNull();
     expect(parsed.problems.join(' ')).toContain(`${ABOUT_MAX_CHARS + 1} characters`);
   });
 
   it('rejects more than four annotation blocks', () => {
     const block = 'а'.repeat(100);
-    const parsed = parseFrontMatter(`Земля\n\n${[block, block, block, block, block].join('\n\n')}`);
+    const parsed = parseFrontMatter(`Название\n\n${[block, block, block, block, block].join('\n\n')}`);
     expect(parsed.about).toBeNull();
     expect(parsed.problems.join(' ')).toContain('5 blocks');
   });
 
   it('rejects markdown in the annotation', () => {
-    const parsed = parseFrontMatter(`Земля\n\n${ABOUT}\n\n[ссылка](https://example.org)`);
+    const parsed = parseFrontMatter(`Название\n\n${ABOUT}\n\n[ссылка](https://example.org)`);
     expect(parsed.problems).toContain('annotation contains markdown');
   });
 
   it('requires a blank line 2 and a non-empty title', () => {
-    expect(parseFrontMatter(`Земля\n${ABOUT}`).problems).toContain('line 2 must be blank');
+    expect(parseFrontMatter(`Название\n${ABOUT}`).problems).toContain('line 2 must be blank');
     expect(parseFrontMatter(`\n\n${ABOUT}`).problems).toContain('title line is missing');
   });
 

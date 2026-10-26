@@ -12,10 +12,7 @@ import { createFixture, longProse, type Fixture } from '../helpers.ts';
 import { ingest, releaseLease, seedChange } from './helpers.ts';
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
@@ -39,12 +36,12 @@ afterEach(async () => {
   fixture = null;
 });
 
-const CHAPTER = longProse(['Половик в тамбуре намок насквозь ещё в четверг.'], 'Половик в тамбуре');
+const CHAPTER = longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.'], 'Тестовая глава');
 
 describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
   it('serves the scratch timeline newest first, with summaries and a cursor', async () => {
     const local = await boot();
-    ingest(local, '00-front.md', `Земля, которая больше не кормит\n\n${ABOUT}\n`);
+    ingest(local, '00-front.md', `Без названия\n\n${ABOUT}\n`);
     ingest(local, 'ch01.md', CHAPTER);
 
     const response = await app!.inject({ method: 'GET', url: '/api/history/timeline' });
@@ -107,12 +104,12 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
   it('serves a chapter as it was, with an ETag, and 404 before it existed', async () => {
     const local = await boot();
-    ingest(local, 'ch09.md', 'Девятая\n\nПервый абзац девятой главы: половик намок ещё в четверг.');
+    ingest(local, 'ch09.md', 'Девятая\n\nПервый абзац девятой главы: служебный текст.');
     const before = lastHseq(local.db);
     ingest(
       local,
       'ch09.md',
-      'Девятая\n\nПервый абзац девятой главы: половик намок ещё в четверг.\n\nВторой абзац появился позже.',
+      'Девятая\n\nПервый абзац девятой главы: служебный текст.\n\nВторой абзац появился позже.',
     );
 
     const then = await app!.inject({ method: 'GET', url: `/api/history/chapters/9?at=${before}` });
@@ -147,8 +144,8 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
       local,
       'ch01.md',
       longProse(
-        ['Половик в тамбуре намок насквозь ещё в четверг.', 'След от колеса остался с ночи.'],
-        'Половик в тамбуре',
+        ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Тестовый абзац номер два. Это служебный текст, он не является текстом книги.'],
+        'Тестовая глава',
       ),
     );
     releaseLease(local.db, seeded.leaseId);
@@ -185,7 +182,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
   it('serves a paragraph chain with the SPEC’s public copy', async () => {
     const local = await boot();
     const first = seedChange(local.db, { index: 1, chapter: 8, label: 'Аня' });
-    ingest(local, 'ch08.md', longProse(['Половик в тамбуре намок насквозь ещё в четверг.'], 'Восьмая'));
+    ingest(local, 'ch08.md', longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.'], 'Восьмая'));
     const original = (local.db.prepare('SELECT id FROM blocks WHERE chapter = 8').get() as { id: string }).id;
     releaseLease(local.db, first.leaseId);
 
@@ -193,7 +190,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     ingest(
       local,
       'ch08.md',
-      longProse(['Половик в тамбуре намок насквозь ещё в четверг, и никто его не поднимал.'], 'Восьмая'),
+      longProse(['Тестовый абзац номер один, изменённый. Это служебный текст, он не является текстом книги.'], 'Восьмая'),
     );
     releaseLease(local.db, second.leaseId);
 
@@ -269,7 +266,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(body.chars).toBe(0);
     expect(body.title).toBeNull();
     expect(body.blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
-    expect(JSON.stringify(body)).not.toContain('Половик в тамбуре намок насквозь ещё в четверг.');
+    expect(JSON.stringify(body)).not.toContain('Тестовый абзац номер один. Это служебный текст, он не является текстом книги.');
 
     const at = await app!.inject({ method: 'GET', url: '/api/history/at/now' });
     expect(at.statusCode).toBe(200);

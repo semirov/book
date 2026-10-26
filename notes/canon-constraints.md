@@ -35,9 +35,8 @@ The book begins with nothing. 67 fixed slots, all empty — no titles, no body �
 never touches them. Any later text must join them organically (`F023`). No writing pass starts until
 the owner says so.
 
-The front page keeps **the first annotation in the owner's own words** — the «Небольшой посёлок, две
-тысячи двадцатый год…» block ending «В графе, где должна стоять подпись, осталось пусто. Больше её
-никто не заполнял.» It is basis, like the frame: not rewritten, not paraphrased, not summarised.
+The front page keeps **the first annotation in the owner's own words** (`manuscript/00-front.md`); it is
+basis, like the frame: not rewritten, not paraphrased, not summarised.
 
 ## Not canon any more — code that still assumes it
 

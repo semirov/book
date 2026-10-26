@@ -87,8 +87,8 @@ describe('the engine’s public reads (M4)', () => {
 
 describe('getFront', () => {
   it('reads the live title and page 2 over REST', async () => {
-    respond({ title: 'Земля', about: 'Аннотация', rev: 1, toc: [], imprint: {} });
-    await expect(getFront()).resolves.toMatchObject({ title: 'Земля', about: 'Аннотация' });
+    respond({ title: 'Название', about: 'Аннотация', rev: 1, toc: [], imprint: {} });
+    await expect(getFront()).resolves.toMatchObject({ title: 'Название', about: 'Аннотация' });
   });
 });
 
@@ -130,13 +130,13 @@ describe('the comment thread (M5)', () => {
   it('posts JSON with the CAPTCHA token and no author field', async () => {
     const spy = vi.fn(async () => new Response('{"comment":{"id":"cmt_1"}}', { status: 201 }));
     vi.stubGlobal('fetch', spy);
-    await postComment({ chapter: 8, body: 'Тут дважды «намок».', captchaToken: 'token-1' });
+    await postComment({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
     const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/comments');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
     const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
-    expect(payload).toMatchObject({ chapter: 8, body: 'Тут дважды «намок».', captchaToken: 'token-1' });
+    expect(payload).toMatchObject({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
     expect(payload).not.toHaveProperty('author');
   });
 

@@ -163,14 +163,14 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
     const h = await boot();
     const first = await post(
       h,
-      commentBody({ body: 'Первый абзац лучше начать с половика.', proposedText: 'Половик в тамбуре намок.' }),
+      commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
     );
     expect(first.statusCode).toBe(201);
     expect(first.json().remaining.editsRemaining).toBe(0);
 
     const second = await post(
       h,
-      commentBody({ body: 'Второй абзац тоже стоит сократить.', proposedText: 'След от колеса.' }),
+      commentBody({ body: 'Второй абзац тоже стоит сократить.', proposedText: 'Тестовый абзац номер два.' }),
     );
     expect(second.statusCode).toBe(429);
     expect(second.json()).toMatchObject({ code: 'EDIT_DAILY_LIMIT' });

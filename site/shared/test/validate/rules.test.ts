@@ -15,15 +15,12 @@ const IMPRINT: Imprint = {
 const DENYLIST: LegalDenylist = { persons: [], characters: [], organisations: [], patterns: [] };
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
-const FRONT: ManuscriptFile = { name: '00-front.md', text: `Земля, которая больше не кормит\n\n${ABOUT}` };
+const FRONT: ManuscriptFile = { name: '00-front.md', text: `Без названия\n\n${ABOUT}` };
 
 /** A chapter that is inside the band, so F007 stays quiet unless a test says otherwise. */
-function chapter(title = 'Половик в тамбуре', body = 'а'.repeat(20_001)): ManuscriptFile {
+function chapter(title = 'Тестовая глава', body = 'а'.repeat(20_001)): ManuscriptFile {
   return { name: 'ch05.md', text: `${title}\n\n${body}` };
 }
 
@@ -45,8 +42,8 @@ describe('the clean sheet', () => {
     const result = run();
     expect(result.findings).toEqual([]);
     expect(result.errors).toBe(0);
-    expect(result.front).toMatchObject({ title: 'Земля, которая больше не кормит' });
-    expect(result.chapters[0]).toMatchObject({ n: 5, title: 'Половик в тамбуре', blocks: 1 });
+    expect(result.front).toMatchObject({ title: 'Без названия' });
+    expect(result.chapters[0]).toMatchObject({ n: 5, title: 'Тестовая глава', blocks: 1 });
   });
 
   it('accepts an empty manuscript with only 00-front.md: 67 empty slots', () => {
@@ -141,7 +138,7 @@ describe('F005 — the legal denylist', () => {
     const result = run({
       files: [
         FRONT,
-        chapter('Уборка', 'В двадцать минут пятого пришла Александра Фёдоровна, уборщица, и стала мыть пол.'),
+        chapter('Уборка', 'В двадцать минут пятого пришла Александра и стала мыть пол.'),
       ],
       denylist: { ...DENYLIST, persons: ['Александр Лукашенко'] },
     });
@@ -276,25 +273,25 @@ describe('F021 — the front matter', () => {
   });
 
   it('rejects an annotation of 200 characters', () => {
-    const result = run({ files: [{ name: '00-front.md', text: `Земля\n\n${'я'.repeat(200)}` }] });
+    const result = run({ files: [{ name: '00-front.md', text: `Название\n\n${'я'.repeat(200)}` }] });
     expect(withRule(result, 'F021')[0]?.message).toContain('expected 300–900');
   });
 
   it('rejects an annotation of 1 000 characters', () => {
-    const result = run({ files: [{ name: '00-front.md', text: `Земля\n\n${'я'.repeat(1_000)}` }] });
+    const result = run({ files: [{ name: '00-front.md', text: `Название\n\n${'я'.repeat(1_000)}` }] });
     expect(withRule(result, 'F021')[0]?.message).toContain('1000 characters');
   });
 
   it('rejects a fifth annotation block', () => {
     const block = 'а'.repeat(100);
     const result = run({
-      files: [{ name: '00-front.md', text: `Земля\n\n${[block, block, block, block, block].join('\n\n')}` }],
+      files: [{ name: '00-front.md', text: `Название\n\n${[block, block, block, block, block].join('\n\n')}` }],
     });
     expect(withRule(result, 'F021')[0]?.message).toContain('5 blocks');
   });
 
   it('rejects markdown in the annotation', () => {
-    const result = run({ files: [{ name: '00-front.md', text: `Земля\n\n${ABOUT}\n\n[ссылка](https://example.org)` }] });
+    const result = run({ files: [{ name: '00-front.md', text: `Название\n\n${ABOUT}\n\n[ссылка](https://example.org)` }] });
     expect(withRule(result, 'F021')[0]?.message).toContain('markdown');
   });
 });
@@ -315,20 +312,20 @@ describe('F022 — the chapter title line', () => {
   });
 
   it('rejects a trailing colon and markdown in the title', () => {
-    expect(withRule(run({ files: [FRONT, chapter('Половик:', 'Текст.')] }), 'F022')[0]?.message).toContain('colon');
-    expect(withRule(run({ files: [FRONT, chapter('## Половик', 'Текст.')] }), 'F022')[0]?.message).toContain(
+    expect(withRule(run({ files: [FRONT, chapter('Тестовая глава:', 'Текст.')] }), 'F022')[0]?.message).toContain('colon');
+    expect(withRule(run({ files: [FRONT, chapter('## Тестовая запись', 'Текст.')] }), 'F022')[0]?.message).toContain(
       'markdown',
     );
   });
 
   it('rejects a non-blank line 2', () => {
-    const result = run({ files: [FRONT, { name: 'ch01.md', text: 'Половик\nПервый абзац без пустой строки.' }] });
+    const result = run({ files: [FRONT, { name: 'ch01.md', text: 'Тестовая глава\nПервый абзац без пустой строки.' }] });
     expect(withRule(result, 'F022')[0]?.message).toContain('line 2 must be blank');
   });
 
   it('accepts a title line and keeps the title out of chars', () => {
-    const result = run({ files: [FRONT, chapter('Половик в тамбуре', 'а'.repeat(20_001))] });
-    expect(result.chapters[0]).toMatchObject({ title: 'Половик в тамбуре', chars: 20_001 });
+    const result = run({ files: [FRONT, chapter('Тестовая глава', 'а'.repeat(20_001))] });
+    expect(result.chapters[0]).toMatchObject({ title: 'Тестовая глава', chars: 20_001 });
   });
 });
 
@@ -376,9 +373,9 @@ describe('F029 — the frozen frame', () => {
   });
 
   it('rejects ch01 without the frozen sentence', () => {
-    const result = run({ files: [FRONT, framed(1, 'Виктор Ильич пришёл на работу раньше всех.')] });
+    const result = run({ files: [FRONT, framed(1, 'Тестовый абзац пришёл на работу раньше всех.')] });
     expect(found(result)).toHaveLength(1);
-    expect(found(result)[0]?.message).toContain('found «Виктор Ильич пришёл на работу раньше всех.»');
+    expect(found(result)[0]?.message).toContain('found «Тестовый абзац пришёл на работу раньше всех.»');
   });
 
   it('rejects ch67 without the last sentence', () => {

@@ -59,10 +59,10 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
   it('does not print the frame for a written chapter, and carries the catalog characters', () => {
     // A written slot renders a placeholder sized from the viewport before its prose arrives.
     vi.stubGlobal('window', { innerWidth: 390 });
-    const html = render(entry(1, { written: true, basis: false, chars: 22_628, blocks: 180, title: 'Половик' }));
+    const html = render(entry(1, { written: true, basis: false, chars: 22_628, blocks: 180, title: 'Тестовая глава' }));
     expect(html).not.toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('не написана');
     expect(html).not.toContain('ch-empty');
-    expect(html).toContain('Половик');
+    expect(html).toContain('Тестовая глава');
   });
 });

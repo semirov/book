@@ -105,7 +105,7 @@ describe('dailyTokens — the input to the throttled state (§6A.12)', () => {
   });
 
   it('a draft keeps the title line and writes into an empty slot', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment | null;
       expect(assignment).toMatchObject({ pass: 'draft', chapter: 2 });

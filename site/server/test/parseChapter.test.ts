@@ -36,8 +36,8 @@ describe('parseChapter', () => {
   });
 
   it('takes line 1 as the title and the rest as blocks', () => {
-    const parsed = parseChapter(8, 'Половик в тамбуре\r\n\r\nПервый абзац.\r\n\r\nВторой абзац.\r\n');
-    expect(parsed.title).toBe('Половик в тамбуре');
+    const parsed = parseChapter(8, 'Тестовая глава\r\n\r\nПервый абзац.\r\n\r\nВторой абзац.\r\n');
+    expect(parsed.title).toBe('Тестовая глава');
     expect(parsed.titleProblems).toEqual([]);
     expect(parsed.blocks).toHaveLength(2);
     expect(parsed.blocks[0]).toMatchObject({ i: 0, text: 'Первый абзац.' });
@@ -54,8 +54,8 @@ describe('parseChapter', () => {
   });
 
   it('accepts a title-only file: an empty chapter in progress', () => {
-    const parsed = parseChapter(3, 'Половик в тамбуре');
-    expect(parsed.title).toBe('Половик в тамбуре');
+    const parsed = parseChapter(3, 'Тестовая глава');
+    expect(parsed.title).toBe('Тестовая глава');
     expect(parsed.blocks).toEqual([]);
     expect(parsed.chars).toBe(0);
   });

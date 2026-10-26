@@ -34,7 +34,7 @@ const change: ChangeDto = {
   seq: 14,
   kind: 'accepted_comment',
   chapter: 8,
-  intent: 'в абзаце дважды «намок» — оставить одно упоминание',
+  intent: 'в абзаце дважды «слово» — оставить одно упоминание',
   source: { commentId: 'cmt_1', author: 'Аня' },
   base: { rev: 3 },
   scopeHint: 'phrase',

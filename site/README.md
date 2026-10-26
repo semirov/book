@@ -9,7 +9,7 @@ that owns the FIFO lane, the leases, the three-role gate cycle, the seam-driven 
 (ripple) and its budgets (§6A, §6B).
 
 The requirements live in [`SPEC.md`](./SPEC.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md);
-the look lives in [`design/DESIGN.md`](./design/DESIGN.md) and `design/prototype.html`.
+the look lives in [`design/DESIGN.md`](./design/DESIGN.md).
 Read those, not this file, for the *why*.
 
 ## Layout

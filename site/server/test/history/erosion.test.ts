@@ -4,8 +4,8 @@ import { computeShares, measureContributions, readSeries } from '../../src/histo
 import { readContributors } from '../../src/history/query.ts';
 import { historyFixture, ingest, releaseLease, seedChange } from './helpers.ts';
 
-const INTRO = 'Половик в тамбуре намок насквозь ещё в четверг.';
-const REWRITTEN = 'Половик в тамбуре намок насквозь ещё в четверг, и его никто не поднимал.';
+const INTRO = 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
+const REWRITTEN = 'Тестовый абзац номер один, изменённый. Это служебный текст, он не является текстом книги.';
 
 function twoReaders(): ReturnType<typeof historyFixture> {
   const fixture = historyFixture();

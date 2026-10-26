@@ -40,20 +40,17 @@ async function validate(args: string[]): Promise<{ code: number; out: string }> 
 }
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
-const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+const FRONT = `Без названия\n\n${ABOUT}\n`;
 
 function prose(body: string): string {
   const filler =
-    'Он стоял у окна и смотрел, как по стеклу идёт вода: капля доходила до рамы и поворачивала вбок. ' +
-    'За окном был пустой двор, доска на двух кирпичах и след от колеса, оставшийся с ночи.';
+    'Служебный абзац для проверки объёма. Это предложение повторяется, чтобы набрать нужную длину, и не является текстом книги. ' +
+    'Служебный абзац для проверки объёма. Это предложение повторяется, чтобы набрать нужную длину, и не является текстом книги.';
   let text = body;
   while (text.length < 6_000) text += `\n\n${filler}`;
-  return `Половик в тамбуре\n\n${text}\n`;
+  return `Тестовая глава\n\n${text}\n`;
 }
 
 describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', () => {
@@ -62,7 +59,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
     try {
       fixture.write(
         'ch09.md',
-        prose('Владимир Путин приехал в посёлок на две минуты и уехал, не выходя из машины.'),
+        prose('Вчера Владимир Путин приехал в город.'),
       );
       const result = await validate([`--root=${fixture.root}`]);
       expect(result.code).toBe(1);
@@ -76,14 +73,14 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
   it('rejects a protected character and an illegal-content pattern', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
-      fixture.write('ch09.md', prose('Во дворе стоял Гарри Поттер и смотрел на доску.'));
+      fixture.write('ch09.md', prose('Гарри Поттер стоял здесь.'));
       const character = await validate([`--root=${fixture.root}`]);
       expect(character.code).toBe(1);
       expect(character.out).toMatch(/protected character: «Гарри Поттер»/u);
 
       fixture.write(
         'ch09.md',
-        prose('Он записал рецепт: метамфетамин варили в сарае за огородом, аккуратно и без спешки.'),
+        prose('Он записал рецепт: метамфетамин.'),
       );
       const pattern = await validate([`--root=${fixture.root}`]);
       expect(pattern.code).toBe(1);
@@ -96,7 +93,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
   it('lets an invented name through — no rule polices a name', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
-      fixture.write('ch09.md', prose('Половик поднял Ерофей Ильич, сторож с ночной смены.'));
+      fixture.write('ch09.md', prose('Тестовый абзац поднял Тестов Тестович, сторож с ночной смены.'));
       const result = await validate([`--root=${fixture.root}`]);
       expect(result.code).toBe(0);
       expect(result.out).not.toMatch(/F019/u);
@@ -148,7 +145,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
   it('emits machine-readable findings for CI', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
-      fixture.write('ch09.md', prose('Владимир Путин приехал в посёлок.'));
+      fixture.write('ch09.md', prose('Владимир Путин приехал в город.'));
       const result = await validate([`--root=${fixture.root}`, '--json']);
       expect(result.code).toBe(1);
       const parsed = JSON.parse(result.out) as { errors: number; findings: Array<{ rule: string }> };

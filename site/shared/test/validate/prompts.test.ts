@@ -6,42 +6,42 @@ const DOSSIERS = `# Досье персонажей
 
 Персонажи заранее не задаются.
 
-## Половик
-Сторож по прозвищу Ерофей, ночная смена, ничего не решает.
+## Тестовая запись
+Сторож по прозвищу Тестов, ночная смена, ничего не решает.
 `;
 
 describe('F024 — no names in prompts (§6E.2)', () => {
   it('takes the recorded names from the dossiers file and the chapter titles', () => {
-    const names = promptGuardNames(DOSSIERS, ['Половик в тамбуре', '', 'Глава 2']);
-    expect(names).toContain('Ерофей');
-    expect(names).toContain('Половик в тамбуре');
+    const names = promptGuardNames(DOSSIERS, ['Тестовая глава', '', 'Глава 2']);
+    expect(names).toContain('Тестов');
+    expect(names).toContain('Тестовая глава');
     // A short or empty title line is not a name.
     expect(names).not.toContain('');
     expect(names).not.toContain('Глава 2');
   });
 
   it('reports a template that carries a name or a title line', () => {
-    const names = promptGuardNames(DOSSIERS, ['Половик в тамбуре']);
+    const names = promptGuardNames(DOSSIERS, ['Тестовая глава']);
     const findings = checkPromptNames(
       [
         {
           file: 'process/WRITE_FWD_TEMPLATE.md',
-          text: 'Ты пишешь главу рядом с Ерофей и не меняешь «Половик в тамбуре».',
+          text: 'Ты пишешь главу рядом с Тестов и не меняешь «Тестовая глава».',
         },
       ],
       names,
     );
-    // Three: «Ерофей», the dossier heading «Половик» and the title line «Половик в тамбуре».
+    // Three: «Тестов», the dossier heading «Тестовая запись» and the title line «Тестовая глава».
     expect(findings.every((finding) => finding.rule === 'F024')).toBe(true);
     expect(findings.every((finding) => finding.severity === 'error')).toBe(true);
     const messages = findings.map((finding) => finding.message).join('\n');
-    expect(messages).toContain('«Ерофей»');
-    expect(messages).toContain('«Половик в тамбуре»');
+    expect(messages).toContain('«Тестов»');
+    expect(messages).toContain('«Тестовая глава»');
     expect(findings.every((finding) => finding.file === 'process/WRITE_FWD_TEMPLATE.md')).toBe(true);
   });
 
   it('stays quiet on a template that only describes the job', () => {
-    const names = promptGuardNames(DOSSIERS, ['Половик в тамбуре']);
+    const names = promptGuardNames(DOSSIERS, ['Тестовая глава']);
     const findings = checkPromptNames(
       [{ file: 'process/RUN_TEMPLATE.md', text: 'Прочитай главу, соседей и правила. Не придумывай имён.' }],
       names,

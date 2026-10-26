@@ -53,11 +53,11 @@ describe('migrate — schema v7', () => {
     migrate(db);
     db.prepare(
       `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
-       VALUES (1, 1, 'Половик в тамбуре', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+       VALUES (1, 1, 'Тестовая глава', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
     ).run();
 
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
-    expect(db.prepare('SELECT title FROM chapters WHERE n = 1').get()).toEqual({ title: 'Половик в тамбуре' });
+    expect(db.prepare('SELECT title FROM chapters WHERE n = 1').get()).toEqual({ title: 'Тестовая глава' });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     db.close();
   });
@@ -147,12 +147,12 @@ describe('migrate — schema v7', () => {
     db.exec('ALTER TABLE chapters DROP COLUMN basis');
     db.exec(
       `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
-       VALUES (1, 2, 'Половик в тамбуре', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+       VALUES (1, 2, 'Тестовая глава', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
     );
     // A paragraph that references the rebuilt table by name: the swap must not orphan it.
     db.exec(
       `INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev)
-       VALUES ('ch01#aaaaaaaa', 1, 0, 'Половик намок.', 'aaaaaaaa', 1, 2)`,
+       VALUES ('ch01#aaaaaaaa', 1, 0, 'Тестовый абзац.', 'aaaaaaaa', 1, 2)`,
     );
     db.pragma('user_version = 6');
 
@@ -161,7 +161,7 @@ describe('migrate — schema v7', () => {
     // A pre-BOOK-6 row is a written chapter, not a basis slot.
     expect(db.prepare('SELECT basis, title FROM chapters WHERE n = 1').get()).toEqual({
       basis: 0,
-      title: 'Половик в тамбуре',
+      title: 'Тестовая глава',
     });
     // The rebuild kept the paragraph, and its foreign key still resolves after the swap.
     expect(db.prepare('SELECT chapter FROM blocks WHERE id = ?').get('ch01#aaaaaaaa')).toEqual({ chapter: 1 });

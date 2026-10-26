@@ -24,10 +24,7 @@ const PROMPT_CANARY = 'ПОДСКАЗКА-ПИСАТЕЛЮ-2b81de';
 const MANUSCRIPT_CANARY = 'РУКОПИСЬ-НЕ-ДЛЯ-СЕТИ-94ac17';
 
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
 describe('F023 — no support file is served (§6E.3)', () => {
   let app: FastifyInstance | null = null;
@@ -35,8 +32,8 @@ describe('F023 — no support file is served (§6E.3)', () => {
 
   async function boot(): Promise<FastifyInstance> {
     const fixture = createFixture({
-      '00-front.md': `Земля, которая больше не кормит\n\n${ABOUT}\n`,
-      'ch01.md': `Половик в тамбуре\n\n${MANUSCRIPT_CANARY} намок в четверг.\n`,
+      '00-front.md': `Без названия\n\n${ABOUT}\n`,
+      'ch01.md': `Тестовая глава\n\n${MANUSCRIPT_CANARY} стоит здесь.\n`,
     });
     mkdirSync(join(fixture.root, 'bible'), { recursive: true });
     mkdirSync(join(fixture.root, 'process'), { recursive: true });
@@ -91,7 +88,7 @@ describe('F023 — no support file is served (§6E.3)', () => {
       const running = await boot();
       const chapter = await running.inject({ method: 'GET', url: '/api/chapters/1' });
       expect(chapter.statusCode).toBe(200);
-      expect(chapter.body).toContain('Половик');
+      expect(chapter.body).toContain('Тестовая глава');
       expect(chapter.body).toContain(MANUSCRIPT_CANARY);
     } finally {
       await app?.close();

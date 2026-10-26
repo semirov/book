@@ -9,15 +9,15 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
   it('records the impact of a change that lands without a ripple', () => {
     const fixture = createEngineFixture();
     try {
-      runStubStep(fixture, { title: 'Половик в тамбуре', blocks: ['Половик намок ещё в четверг.', 'Никто не поднимал.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.', 'Это служебный текст.'] });
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'убрать второе упоминание половика',
+        intent: 'убрать второе упоминание абзаца',
       });
       const origin = runStubStep(fixture, {
-        title: 'Половик в тамбуре',
-        blocks: ['Половик намок ещё в четверг.'],
+        title: 'Тестовая глава',
+        blocks: ['Тестовый абзац.'],
       });
       expect(origin?.assignment.pass).toBe('change');
       expect(origin?.result.cascadeId).toBeNull();
@@ -44,30 +44,30 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
   it('records a cascade: the chapters it touched and how far it went', () => {
     const fixture = createEngineFixture();
     try {
-      runStubStep(fixture, { title: 'Половик в тамбуре', blocks: ['Половик намок ещё в четверг.', 'Никто не поднимал.'] });
-      runStubStep(fixture, { title: 'Вторая глава', blocks: ['Во дворе стояла доска на двух кирпичах.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.', 'Это служебный текст.'] });
+      runStubStep(fixture, { title: 'Вторая глава', blocks: ['Ещё один служебный абзац для проверки, он не является текстом книги и не содержит литературных образов.'] });
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'убрать второе упоминание половика',
+        intent: 'убрать второе упоминание абзаца',
       });
       const origin = runStubStep(fixture, {
-        title: 'Половик в тамбуре',
-        blocks: ['Половик намок ещё в четверг.'],
-        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же половика' }],
+        title: 'Тестовая глава',
+        blocks: ['Тестовый абзац.'],
+        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же абзаца' }],
       });
       expect(origin?.result.cascadeId).toBeTruthy();
 
       const repair = runStubStep(fixture, {
         title: 'Вторая глава',
-        blocks: ['Во дворе стояла доска на двух кирпичах.', 'Половик унесли.'],
+        blocks: ['Ещё один служебный абзац для проверки, он не является текстом книги и не содержит литературных образов.', 'Добавленный абзац номер два.'],
       });
       expect(repair?.assignment.pass).toBe('cascade');
       expect(repair?.assignment.chapter).toBe(2);
 
       // The ripple reaches the first sheet; that step closes the cascade and the change.
       const front = runStubStep(fixture, {
-        title: 'Земля, которая больше не кормит',
+        title: 'Без названия',
         blocks: [fixture.readFrontBlocks()],
         seams: [],
       });
@@ -92,9 +92,9 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
   it('is a projection: a rebuild reproduces the same numbers', () => {
     const fixture = createEngineFixture();
     try {
-      runStubStep(fixture, { title: 'Половик', blocks: ['Половик намок ещё в четверг.', 'Никто не поднимал.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.', 'Это служебный текст.'] });
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'сократить' });
-      runStubStep(fixture, { title: 'Половик', blocks: ['Половик намок ещё в четверг.'] });
+      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.'] });
       // Finish the change so a close-time projection exists, then wipe and rebuild it.
       fixture.db.prepare(`UPDATE changes SET finished_at = '2026-10-25T10:00:00Z', status = 'done' WHERE id = ?`).run(
         change.id,
@@ -118,7 +118,7 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
     try {
       runStubStep(fixture, {
         title: 'Девятая',
-        blocks: ['Половик намок ещё в четверг.', 'Никто не поднимал: смена кончилась.'],
+        blocks: ['Тестовый абзац.', 'Это служебный текст.'],
       }, 'fwd');
       const events = listEventRows(fixture.db, { chapter: 1 });
       expect(events.some((row) => row.kind === 'chapter.created')).toBe(true);

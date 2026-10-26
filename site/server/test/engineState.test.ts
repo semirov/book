@@ -172,7 +172,7 @@ function seed(db: Db): void {
     seq: 1,
     chapter: 8,
     status: 'pending',
-    intent: '  в абзаце дважды «намок» —   оставить одно упоминание  ',
+    intent: '  в абзаце дважды «слово» —   оставить одно упоминание  ',
   });
   insertChange(db, {
     id: 'chg_open',
@@ -315,7 +315,7 @@ describe('GET /api/changes', () => {
     const body = response.json() as Array<Record<string, unknown>>;
     expect(body.map((row) => row.id)).toEqual(['chg_escalated', 'chg_open', 'chg_pending']);
     expect(body[2]).toMatchObject({ chapter: 8, status: 'pending', position: 1 });
-    expect(body[2]?.intent).toBe('в абзаце дважды «намок» — оставить одно упоминание');
+    expect(body[2]?.intent).toBe('в абзаце дважды «слово» — оставить одно упоминание');
     expect(body[1]).toMatchObject({ status: 'processing', position: null });
     expect(body[1]?.chapters).toEqual([9, 10]);
     expect(body[0]).toMatchObject({ reason: 'правка остановлена бюджетом — нужно решение' });

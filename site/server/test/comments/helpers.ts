@@ -93,7 +93,7 @@ export async function bootComments(options: {
 } = {}): Promise<Harness> {
   const fixture = createFixture(
     options.chapters ?? {
-      'ch08.md': longProse(['Половик в тамбуре намок насквозь ещё в четверг.', 'В пятницу к нему прибавился след от колеса.']),
+      'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Тестовый абзац номер два. Это служебный текст.']),
     },
   );
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
@@ -202,7 +202,7 @@ export type CommentBody = {
 export function commentBody(overrides: Partial<CommentBody> = {}): CommentBody {
   return {
     chapter: 8,
-    body: 'Тут «намок» и «насквозь» рядом — второй раз за главу.',
+    body: 'Тут «слово» и «словосочетание» рядом — второй раз за главу.',
     captchaToken: 'valid-token',
     ...overrides,
   };

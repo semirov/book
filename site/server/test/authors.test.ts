@@ -9,16 +9,13 @@ import { createFixture, type Fixture } from './helpers.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 
 const FRONT =
-  'Земля, которая больше не кормит\n\n' +
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.\n';
+  'Без названия\n\n' +
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
+// Fixture prose: neutral repeated sentences, never book text.
 const AUTHOR_TEXT =
-  'Половик в тамбуре\n\n' +
-  'Половик в тамбуре намок ещё в четверг, и никто его не поднимал: смена кончилась, лампа в коридоре ' +
-  'щёлкала и гасла. Утром на половике остался след от колеса — тележку провезли мимо, не останавливаясь.';
+  'Тестовая глава\n\n' +
+  'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
 
 function ingest(fixture: Fixture, name: string, text: string): void {
   fixture.write(name, text);
@@ -32,7 +29,7 @@ describe('the authors list (§6C.5)', () => {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       // A reader's change holds a live lease, writes the chapter, then lets go.
       const seeded = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан и там забыли.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, seeded.leaseId);
 
       const authors = readAuthors(fixture.db, 'Филипп Семиров');
@@ -62,7 +59,7 @@ describe('the authors list (§6C.5)', () => {
     try {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       const seeded = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, seeded.leaseId);
 
       const first = readAuthors(fixture.db, 'Филипп Семиров');
@@ -78,7 +75,7 @@ describe('the authors list (§6C.5)', () => {
     try {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       const seeded = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, seeded.leaseId);
 
       const authors = readAuthors(fixture.db, 'Филипп Семиров');
@@ -95,7 +92,7 @@ describe('the authors list (§6C.5)', () => {
     try {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       const seeded = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, seeded.leaseId);
 
       const before = readAuthors(fixture.db, 'Филипп Семиров');
@@ -118,11 +115,11 @@ describe('the authors list (§6C.5)', () => {
     try {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       const anya = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, anya.leaseId);
 
       const boris = seedChange(fixture.db, { index: 2, chapter: 1, label: 'Борис' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.\n\nСлед от колеса остался с ночи.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.\n\nТестовый абзац номер два. Это служебный текст, он не является текстом книги.`);
       releaseLease(fixture.db, boris.leaseId);
 
       const authors = readAuthors(fixture.db, 'Филипп Семиров');
@@ -175,7 +172,7 @@ describe('the authors list (§6C.5)', () => {
     try {
       ingest(fixture, 'ch01.md', AUTHOR_TEXT);
       const seeded = seedChange(fixture.db, { index: 1, chapter: 1, label: 'Аня' });
-      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Половик унесли в чулан.`);
+      ingest(fixture, 'ch01.md', `${AUTHOR_TEXT} Добавленный абзац номер два.`);
       releaseLease(fixture.db, seeded.leaseId);
 
       fixture.db

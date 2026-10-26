@@ -17,14 +17,14 @@ describe('M3 acceptance — the scripted session', () => {
     try {
       // 1. draft ch01: the first job of the forward lane on an empty book.
       const draft = runStubStep(fixture, {
-        title: 'Половик в тамбуре',
-        blocks: ['Половик в тамбуре намок ещё в четверг.', 'Никто его не поднимал.'],
+        title: 'Тестовая глава',
+        blocks: ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Это служебный текст.'],
       });
       expect(draft).not.toBeNull();
       expect(draft?.assignment.pass).toBe('draft');
       expect(draft?.assignment.chapter).toBe(1);
       expect(draft?.result.outcome).toBe('rewritten');
-      expect(fixture.readChapter(1)).toContain('Половик в тамбуре');
+      expect(fixture.readChapter(1)).toContain('Тестовая глава');
 
       const draftTrace = fixture.engine.trace(draft?.stepId ?? '');
       expect(draftTrace?.kind).toBe('step');
@@ -36,7 +36,7 @@ describe('M3 acceptance — the scripted session', () => {
       // 2. draft ch02, so the change has somewhere to ripple to.
       const second = runStubStep(fixture, {
         title: 'Вторая глава',
-        blocks: ['Во дворе стояла доска на двух кирпичах.', 'След от колеса остался с ночи.'],
+        blocks: ['Ещё один служебный абзац для проверки.', 'Тестовый абзац номер два. Это служебный текст, он не является текстом книги.'],
       });
       expect(second?.assignment.chapter).toBe(2);
 
@@ -44,15 +44,15 @@ describe('M3 acceptance — the scripted session', () => {
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'убрать второе упоминание половика, оставить одно',
+        intent: 'убрать второе упоминание абзаца, оставить одно',
       });
       expect(change.status).toBe('pending');
 
       // 4. the origin step writes ch01 and reports the 1|2 seam.
       const origin = runStubStep(fixture, {
-        title: 'Половик в тамбуре',
-        blocks: ['Половик в тамбуре намок ещё в четверг.'],
-        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же половика' }],
+        title: 'Тестовая глава',
+        blocks: ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.'],
+        seams: [{ boundary: 2, reason: 'соседняя глава начинается с того же абзаца' }],
       });
       expect(origin?.assignment.pass).toBe('change');
       expect(origin?.assignment.chapter).toBe(1);
@@ -62,7 +62,7 @@ describe('M3 acceptance — the scripted session', () => {
       // 5. the ripple goes upward to ch02 (the downward side reached chapter 1 at once).
       const repair = runStubStep(fixture, {
         title: 'Вторая глава',
-        blocks: ['Во дворе стояла доска на двух кирпичах.', 'След от колеса остался с ночи.', 'Половик унесли.'],
+        blocks: ['Ещё один служебный абзац для проверки.', 'Тестовый абзац номер два. Это служебный текст, он не является текстом книги.', 'Добавленный абзац номер два.'],
         seams: [],
       });
       expect(repair?.assignment.pass).toBe('cascade');
@@ -72,13 +72,9 @@ describe('M3 acceptance — the scripted session', () => {
 
       // 6. the ripple reached the first sheet: one front step rewrites title and annotation.
       const front = runStubStep(fixture, {
-        title: 'Земля без половика',
+        title: 'Другое название',
         blocks: [
-          'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-            'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: ' +
-            'её обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают ' +
-            'само, без человека. Конец у этой книги один, и он не спрятан: к нему ведут шестьдесят семь глав, ' +
-            'и каждая пишется в открытую.',
+          'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.',
         ],
         seams: [],
       });
@@ -119,31 +115,27 @@ describe('M3 acceptance — the scripted session', () => {
   it('records a front step as holds when the first sheet did not change (§6C.2)', () => {
     const fixture = createEngineFixture({
       chapters: {
-        1: chapterText('Начало', ['Половик намок ещё в четверг.']),
-        2: chapterText('Вторая', ['Во дворе стояла доска.']),
+        1: chapterText('Начало', ['Тестовый абзац.']),
+        2: chapterText('Вторая', ['Служебная строка.']),
       },
     });
     try {
-      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 2, intent: 'уточнить двор' });
+      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 2, intent: 'уточнить абзац' });
       runStubStep(fixture, {
         title: 'Вторая',
-        blocks: ['Во дворе стояла доска на двух кирпичах.'],
-        seams: [{ boundary: 3, reason: 'следующая глава продолжает двор' }],
+        blocks: ['Ещё один служебный абзац для проверки.'],
+        seams: [{ boundary: 3, reason: 'следующая глава продолжает абзац' }],
       });
       const down = runStubStep(
         fixture,
-        { title: 'Начало', blocks: ['Половик намок ещё в четверг.'], seams: [] },
+        { title: 'Начало', blocks: ['Тестовый абзац.'], seams: [] },
         'bwd',
       );
       expect(down?.result.outcome).toBe('holds');
       const front = runStubStep(fixture, {
-        title: 'Земля, которая больше не кормит',
+        title: 'Без названия',
         blocks: [
-          'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-            'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: ' +
-            'её обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают ' +
-            'само, без человека. Конец у этой книги один, и он не спрятан: к нему ведут шестьдесят семь глав, ' +
-            'и каждая пишется в открытую.',
+          'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.',
         ],
         seams: [],
       });
@@ -162,7 +154,7 @@ describe('M3 acceptance — the scripted session', () => {
 
   it('refuses a change aimed at the fixed ending (ADR-024)', () => {
     const fixture = createEngineFixture({
-      chapters: { 66: chapterText('Пролог', ['Снег лежал на подоконнике.']), 67: chapterText('Финал', ['Свет погас.']) },
+      chapters: { 66: chapterText('Пролог', ['Служебная строка.']), 67: chapterText('Финал', ['Свет погас.']) },
     });
     try {
       expect(() =>
@@ -179,18 +171,18 @@ describe('M3 acceptance — the scripted session', () => {
 describe('M3 acceptance — a killed engine', () => {
   it('resumes the step, keeps the verdict, and does not duplicate the revision', () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок ещё в четверг.', 'Никто его не поднимал.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.', 'Это служебный текст.']) },
     });
     try {
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',
         chapter: 1,
-        intent: 'половик должен намокнуть не в четверг, а в среду',
+        intent: 'абзац должен измениться не в четверг, а в среду',
       });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       expect(assignment.pass).toBe('change');
       fixture.engine.start(assignment.leaseId);
-      fixture.writeChapterBlocks(1, 'Начало', ['Половик намок ещё в среду.', 'Никто его не поднимал.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.', 'Это служебный текст.']);
       const landed = fixture.engine.land(assignment.leaseId);
       expect(landed.revAfter).toBe(1);
 
@@ -258,14 +250,14 @@ describe('M3 acceptance — a killed engine', () => {
 
   it('takes a write that landed before the session died as landed, and re-issues one that did not', () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Половик намок ещё в четверг.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
     });
     try {
       // A session writes and dies before `land`; the lease expires.
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда вместо четверга' });
       const a = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       fixture.engine.start(a.leaseId);
-      fixture.writeChapterBlocks(1, 'Начало', ['Половик намок ещё в среду.']);
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       fixture.clock.advance(fixture.config.leaseTtlMs + 1_000);
       const report = fixture.engine.reap();
       expect(report.recovered).toEqual([a.stepId]);

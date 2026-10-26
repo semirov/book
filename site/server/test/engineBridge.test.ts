@@ -176,7 +176,7 @@ describe('change:* mapping', () => {
         seq: 1,
         chapter: 8,
         status: 'void',
-        intent: 'убрать второй «намок»',
+        intent: 'убрать второй «слово»',
         outcome: 'dropped',
         finishedAt: new Date(T0 + 5_000).toISOString(),
       });

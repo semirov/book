@@ -23,10 +23,10 @@ async function boot(options: Parameters<typeof bootComments>[0] = {}): Promise<H
   harness = await bootComments({
     chapters: {
       'ch08.md': longProse([
-        'Половик в тамбуре намок насквозь ещё в четверг.',
-        'В пятницу к нему прибавился след от колеса.',
+        'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.',
+        'Тестовый абзац номер два. Это служебный текст.',
       ]),
-      'ch67.md': longProse(['Углеродная жизнь заканчивается тихо.']),
+      'ch67.md': longProse(['Служебный текст для проверки.']),
     },
     ...options,
   });
@@ -47,7 +47,7 @@ function cli(h: Harness, ...argv: string[]): { code: number; out: string[] } {
   return { code, out };
 }
 
-async function comment(h: Harness, body = 'В абзаце дважды «намок» — оставить одно упоминание.'): Promise<string> {
+async function comment(h: Harness, body = 'В абзаце дважды «абзац» — оставить одно упоминание.'): Promise<string> {
   const response = await h.app.inject({
     method: 'POST',
     url: '/api/comments',
@@ -78,7 +78,7 @@ describe('feedback.mjs inbox — the only thing a model sees', () => {
     // Batch values are JSON scalars, never markdown containers.
     const raw = readFileSync(join(dir ?? '', batch.path), 'utf8');
     expect(raw.split('\n').filter(Boolean)).toHaveLength(1);
-    expect(JSON.parse(raw.trim()).text).toContain('намок');
+    expect(JSON.parse(raw.trim()).text).toContain('дважды');
     expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'batched' });
 
     expect(cli(h, 'read', batch.id).code).toBe(0);
@@ -117,9 +117,9 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       id,
       'accepted',
       '--reason',
-      '«намок» и «насквозь» рядом — оставил одно',
+      '«слово» и «словосочетание» рядом — оставил одно',
       '--intent',
-      'в абзаце дважды «намок» — оставить одно упоминание',
+      'в абзаце дважды «слово» — оставить одно упоминание',
       '--rev',
       'ch08@1',
     );
@@ -147,7 +147,7 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       status: 'pending',
       kind: 'accepted_comment',
       chapter: 8,
-      intent: 'в абзаце дважды «намок» — оставить одно упоминание',
+      intent: 'в абзаце дважды «слово» — оставить одно упоминание',
       source_comment: id,
       base_rev: 1,
       scope_hint: 'phrase',
@@ -240,7 +240,7 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       method: 'POST',
       url: '/api/comments',
       headers: h.headers(),
-      payload: commentBody({ body: 'Первый абзац лучше начать с половика.', proposedText: 'Половик в тамбуре намок.' }),
+      payload: commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
     });
     expect(proposed.statusCode).toBe(201);
     const plainId = await comment(h, 'Второй абзац стоит сократить.');
@@ -289,7 +289,7 @@ describe('decisions tailing — the site turns a file line into an event', () =>
         id,
         status: 'accepted',
         reason: 'оставить одно упоминание',
-        intent: 'в абзаце дважды «намок» — оставить одно',
+        intent: 'в абзаце дважды «слово» — оставить одно',
         at: h.clock.now().toISOString(),
         batch: null,
         changeId: 'chg_tail1',
@@ -326,7 +326,7 @@ describe('decisions tailing — the site turns a file line into an event', () =>
         '--reason',
         'оставить одно упоминание',
         '--intent',
-        'в абзаце дважды «намок» — оставить одно',
+        'в абзаце дважды «слово» — оставить одно',
       ).code,
     ).toBe(0);
 

@@ -18,7 +18,7 @@ describe('history:event on the reader socket (§10.3, §11.10)', () => {
         now: () => Date.parse('2026-10-25T12:00:00Z'),
       });
       bridge.prime();
-      ingest(fixture, 'ch01.md', 'Первая\n\nПоловик в тамбуре намок насквозь ещё в четверг.');
+      ingest(fixture, 'ch01.md', 'Первая\n\nТестовый абзац номер один. Это служебный текст, он не является текстом книги.');
 
       bridge.tick();
       const history = frames.filter((frame) => frame.type === 'history:event').map((frame) => frame.data);
@@ -31,7 +31,7 @@ describe('history:event on the reader socket (§10.3, §11.10)', () => {
         author: { kind: 'unattributed', label: 'правка вне процесса' },
       });
       expect(history[0]?.summary).toContain('глава 1 написана');
-      expect(JSON.stringify(history[0])).not.toContain('половик');
+      expect(JSON.stringify(history[0])).not.toContain('служебный');
 
       // A second tick with no new facts emits nothing (the cursor is a cursor, not a replay).
       const before = frames.filter((frame) => frame.type === 'history:event').length;

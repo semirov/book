@@ -11,7 +11,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
     authorColor: '#6f9bb5',
-    body: 'Тут дважды «намок».',
+    body: 'Тут дважды «слово».',
     proposedText: null,
     status: 'new',
     reason: null,

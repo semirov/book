@@ -3,10 +3,10 @@
 **Status:** proposal v1 · **Owner:** designer · **Date:** 2026-10-25
 **Sources:** `site/SPEC.md`, `site/ARCHITECTURE.md` (rev. 2, §7, §10, §11, §12), `concept/CONCEPT.md`,
 `style/VOICE.md`.
-**Artifacts:** `prototype.html` (self-contained, 390 px), `shots/` (rendered states), this document.
+**Artifacts:** this document; the live implementation is `web/src` (components and `styles/`).
 
-The prototype is the specification of the look. Where this document and the prototype disagree, the
-prototype wins; where the architecture and this document disagree on *behaviour*, the architecture wins.
+This document specifies the look. Where this document and the live implementation disagree on
+*behaviour*, the architecture wins.
 
 ---
 
@@ -69,7 +69,7 @@ night, and it matches the palette already fixed in `ARCHITECTURE.md` §11.1 (`#0
 | `--revise` | `#8A5A1C` | `#C89A4E` | under revision |
 | `--revise-bg` | `rgba(138,90,28,.075)` | `rgba(200,154,78,.09)` | revision tint |
 | `--scrim` | `rgba(22,24,26,.46)` | `rgba(5,7,9,.66)` | overlay veil |
-| rail | `#16181A` | `#05070A` | prototype furniture only |
+| rail | `#16181A` | `#05070A` | design furniture only |
 
 **Contrast (day / night):** ink 14.4 / 14.9; ink-2 6.3 / 8.7; ink-3 4.7 / 5.7; live 5.5 / 6.2;
 revise 4.8 / 7.2. All text passes AA at its size; `--rule` is decorative and never carries text.
@@ -110,8 +110,7 @@ Georgia has Cyrillic on macOS and Windows and keeps the page readable if the web
 
 **Self-host** (do not use the Google Fonts CDN in production): `PT Serif 400/700/400i`, `PT Sans Narrow
 400/700`, `PT Mono 400`, Cyrillic + Latin subsets, WOFF2, `font-display: swap`, preload the two faces used
-above the fold (serif 400, narrow 400). Budget ≈ 90–110 KB. The prototype links Google Fonts only to stay
-a single file.
+above the fold (serif 400, narrow 400). Budget ≈ 90–110 KB.
 
 ### 4.2 Scale
 
@@ -124,7 +123,7 @@ a single file.
 | `--fs-body` | 17 / 1.68 | serif | prose |
 | `--fs-lead` | 18.5 / 1.62 | serif | the paragraph inside the прицел |
 | chapter numeral | 26 / 1 | serif 700 | `07`, `08`, `67` |
-| title | 34 / 1, tracking .26 em | serif | «КНИГА» on the title sheet |
+| title | 34 / 1, tracking .26 em | serif | «БЕЗ НАЗВАНИЯ» on the title sheet |
 | plate title | 22 / 1, tracking .24 em | serif | the 0/67 plate |
 
 No size below 9 px carries meaning; 9–9.5 px is used only for tracked uppercase where the shapes are
@@ -132,7 +131,7 @@ still distinguishable. Everything that must be read on a phone at arm's length i
 
 ### 4.3 Russian specifics (normative)
 
-- Quotes: «ёлочки», nested „лапки“. The prototype copy follows this.
+- Quotes: «ёлочки», nested „лапки“. The UI copy follows this.
 - Dash: em dash with a non-breaking space before it (`— `).
 - Numbers with a space: `99 410`, non-breaking, tabular. Never `99,410`, never `99410`.
 - Dates in the UI: `25.10.2026` in ledgers, `12:04` for times, `13-го` only inside prose.
@@ -175,7 +174,7 @@ action. No hover-only affordances; everything reachable on a phone without a lon
 
 ```
 sticky header   brand · count │ live chip · queue │ spine 6 px │ ribbon 4 px (only while a cascade runs)
-title sheet     РОМАН / КНИГА / «в шестидесяти семи главах» / rule / premise / 3-column ledger
+title sheet     title (a live slot) / author / caption / rule / 3-column ledger
 ch 07           rule · 07 · meta │ prose, one revised paragraph, footnote 013
 ch 08           rule · 08 · meta › правится │ prose, one paragraph under revision
 cascade band    правка 014 · идёт │ intent quote │ ring field │ readout │ stage ledger │ прицел →
@@ -187,7 +186,7 @@ plate 0/67      the day-one screen, pasted in like an exhibit
 colophon        counts, time, theme switch
 ```
 
-The order is the book's order. There is no sidebar, no tab bar (the prototype's bottom rail is
+The order is the book's order. There is no sidebar, no tab bar (the bottom rail is design
 furniture), no navigation except: the header chip (jump to the live chapter), the spine (jump to a
 chapter by tapping a position), the опись rows (jump), and the прицел.
 
@@ -207,8 +206,8 @@ chapter by tapping a position), the опись rows (jump), and the прицел
 ### 5.4 Desktop
 
 The phone layout is the design; desktop adds air and one thing more: the column is centred with generous
-margins, and a chapter's footnote form may hang 24 px into the outer margin (planned enhancement, not in
-the v1 prototype). No multi-column reading, no side navigation, no wider type.
+margins, and a chapter's footnote form may hang 24 px into the outer margin (planned enhancement).
+No multi-column reading, no side navigation, no wider type.
 
 ---
 
@@ -299,9 +298,9 @@ with a text summary in the header for screen readers.
 
 ### 7.3 Title sheet
 
-Centred. `РОМАН` (nano, .3 em) → `КНИГА` (34 px, .26 em, uppercase; **the title is a slot** — swap the
-word when the book is named, the block does not depend on its length) → italic «в шестидесяти семи
-главах» → 46 px double rule → premise in italic, max 26 ch, `text-wrap: balance` → **ledger**.
+Centred. `БЕЗ НАЗВАНИЯ` (34 px, .26 em, uppercase; **the title is a live slot** — it follows
+`manuscript/00-front.md`, and the block does not depend on its length) → author → 46 px double rule →
+caption in italic, max 26 ch.
 
 ### 7.4 Ledger
 
@@ -340,8 +339,8 @@ A **form**, not a tooltip: 1 px `--rule-2` border, `--paper-2` body, `--paper-3`
 
 ```
 ОСНОВАНИЕ     замечание Игоря · 12:03 · глава 8
-ЧТО ИЗМЕНЕНО  «к вечеру» → «к полудню»; снег сведён с шестой главой
-ЧТО ВНЕСЛО    полдень закреплён как точка отсчёта первой половины
+ЧТО ИЗМЕНЕНО  «…» → «…»; соседняя глава сведена
+ЧТО ВНЕСЛО    «…» — следствие, названное обычным словом
 ЗАТРОНУТО     07 · 08 (глава 6 проверена, правок нет)
 ОЦЕНКА        черновик · волна 1 · 2 главы · −4 знака
 ```
@@ -436,9 +435,9 @@ the dashed box and keeps the 44 px height; no badge floats over the page.
 ### 7.18 Plate 0/67
 
 The day-one screen pasted into the page like an exhibit: 1 px border, mini header (`КНИГА · 67 ГЛАВ`,
-`0 / 67`), a 4 px hollow spine with **a caret at each end**, `КНИГА`, «книга начинается», `→ 01
+`0 / 67`), a 4 px hollow spine with **a caret at each end**, `БЕЗ НАЗВАНИЯ`, `→ 01
 ВПЕРЁД / ← 67 НАЗАД`, and `ЧИСТЫЙ ЛИСТ · 67 ГРАФ · 0 ЗНАКОВ`. Used as the empty state of the site and
-as the "начало" reference in the prototype.
+as the "начало" reference.
 
 ### 7.19 Anchoring a comment (deviation from §11.6)
 
@@ -448,7 +447,7 @@ overlap the text or shrink the measure to ~32 characters. The design keeps the m
 ways in, all reachable with one thumb:
 
 1. **Chapter composer** at the chapter footer (`ОСТАВИТЬ ЗАМЕЧАНИЕ`) — always visible, anchors to the
-   chapter. This is the primary path and the one the prototype shows.
+   chapter. This is the primary path and the one the design shows.
 2. **Selection action** — the system selection toolbar carries «прокомментировать»; the chosen range
    fills `quote` and the anchor, exactly as §11.6 already specifies.
 3. **Tap on a paragraph's revision label** (when present) opens the прицел, not the composer; a
@@ -464,7 +463,7 @@ above the bottom safe area on the right. It appears only when something happened
 is **not** looking at: `НОВАЯ ГЛАВА 9 ↓` on `chapter:created`, `ГЛАВА 9 ПОПРАВЛЕНА ↓` on
 `chapter:revision`. It never appears for the chapter the reader is in (the header chip carries that), it
 never counts, it never pulses, and it disappears once the chapter enters the viewport or is tapped.
-Designed, not included in the v1 prototype (it requires the scroll state the static page does not have).
+Designed, not yet implemented (it requires the scroll state the static page does not have).
 
 ---
 
@@ -551,10 +550,10 @@ The interface speaks like a registry clerk: short, exact, no exclamation, no ell
 | stages | `ПРАВИТСЯ` `СОЗДАНА` `ПРОВЕРЕНА, ПРАВОК НЕТ` `ПЕРЕПИСАНА` `ЖДЁТ РЕШЕНИЯ` |
 | опись | `ПУСТО` · `10—65 ⋯ 56 ГЛАВ · ОПИСЬ НЕ ЗАПОЛНЕНА` · `ПОДГРУЖАЕТСЯ ПО ХОДУ ЧТЕНИЯ` |
 | decision | `ПРИНЯТО` · `ВНЕСЕНО` · `СНЯТО` · `ЖДЁТ ОЧЕРЕДИ` · `ПОХОЖЕ НА ИНСТРУКЦИЮ` · `НЕ РАССМОТРЕНО` |
-| decision reasons | one line, concrete, about the text: «одно упоминание «намок» — оставил первое» · «вне рамок: не про текст» |
+| decision reasons | one line, concrete, about the text: «одно упоминание — оставил первое» · «вне рамок: не про текст» |
 | composer | `ОСТАВИТЬ ЗАМЕЧАНИЕ` · placeholder `о тексте этой главы — не о том, что должно случиться` · `ПЕРЕДАТЬ` |
 | прицел | `ПРИЦЕЛ` · `ГЛАВА 08 · АБЗАЦ 3` · `СЛЕДИТЬ` · `К ГЛАВЕ 8` · `ВЫЙТИ` |
-| empty | `0 / 67` · `КНИГА НАЧИНАЕТСЯ` · `ЧИСТЫЙ ЛИСТ · 67 ГРАФ · 0 ЗНАКОВ` |
+| empty | `0 / 67` · `БЕЗ НАЗВАНИЯ` · `ЧИСТЫЙ ЛИСТ · 67 ГРАФ · 0 ЗНАКОВ` |
 
 **Forbidden:** «онлайн», «в реальном времени» as a boast (a factual «печатается по ходу письма» is allowed), percentages of the book, «ИИ печатает»,
 spinners with «подождите», «осталось ~N минут», emoji, exclamation marks, any English UI word except
@@ -587,8 +586,7 @@ spinners with «подождите», «осталось ~N минут», emoji,
 ### 11.1 Tokens
 
 Everything in §3–§6 is a CSS custom property in `:root` and `[data-theme="night"]`, exactly as named in
-`prototype.html`. The coder should copy that `:root` block verbatim; the component CSS follows the
-prototype's section order.
+`web/src/styles/tokens.css`. The component CSS follows that token order.
 
 ### 11.2 Markup contracts (suggested)
 
@@ -649,8 +647,8 @@ progress rings, avatars, emoji, gradients, glow, blur/glass, rounded cards, icon
 
 **Open:**
 
-1. The book has no title yet — the title sheet carries the word `КНИГА` as a slot. When it is named,
-   only that line changes; the sheet is built for 5–12 characters.
+1. The title is a live slot: `manuscript/00-front.md` line 1 starts as «Без названия» and changes when a
+   front step lands. Only that line changes; the sheet is built for 5–12 characters.
 2. Deep links into the прицел (`/p/chg_…`) — recommended, makes a change shareable; needs a 404 state
    for an old change («правка закрыта · сноска 013»).
 3. The desktop outer-margin rail (footnote forms hanging into the margin at ≥ 1024 px) — drawn in this

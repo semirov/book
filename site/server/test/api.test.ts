@@ -14,15 +14,12 @@ import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const ABOUT =
-  'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
-  'заявки, очереди и бумаги, которые пережили своих составителей. Земля в ней больше не кормит: её ' +
-  'обслуживают. Поля стали участками, участки — строками в реестре, реестр — тем, что закрывают само, ' +
-  'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.';
-const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
+const FRONT = `Без названия\n\n${ABOUT}\n`;
 const UNTITLED =
-  'Половик в тамбуре намок насквозь ещё в четверг, и с тех пор его никто не поднимал: он лежал у порога.\n' +
-  'В пятницу к нему прибавился след от колеса.\n\n' +
-  'К субботе половик стал похож на карту местности.';
+  'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.\n' +
+  'Тестовый абзац номер два. Это служебный текст.\n\n' +
+  'Тестовый абзац номер три. Это служебный текст.';
 
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
@@ -160,8 +157,8 @@ describe('GET /api/state', () => {
     await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/api/state' });
     const body = response.json();
-    expect(body.front).toMatchObject({ title: 'Земля, которая больше не кормит', rev: 1 });
-    expect(body.front.about).toContain('Книга о том');
+    expect(body.front).toMatchObject({ title: 'Без названия', rev: 1 });
+    expect(body.front.about).toContain('Тестовая аннотация');
     expect(body.toc).toHaveLength(67);
     expect(body.toc[0]).toMatchObject({ n: 1, part: 1, title: 'Заголовок главы', written: true, rev: 1 });
   });
@@ -260,7 +257,7 @@ describe('GET /api/chapters/:n', () => {
     const body = response.json();
     expect(body.title).toBeNull();
     expect(body.blocks.length).toBeGreaterThan(0);
-    expect(body.blocks[0].text.startsWith('Половик в тамбуре')).toBe(true);
+    expect(body.blocks[0].text.startsWith('Тестовый абзац номер один')).toBe(true);
 
     const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
       Record<string, unknown>
@@ -411,7 +408,7 @@ describe('GET /api/front', () => {
     expect(response.headers.etag).toBe('"front-1"');
     const body = response.json();
     expect(body).toMatchObject({
-      title: 'Земля, которая больше не кормит',
+      title: 'Без названия',
       about: ABOUT,
       rev: 1,
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },

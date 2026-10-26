@@ -8,7 +8,7 @@ import { TableOfContents } from './TableOfContents.tsx';
 import { COVER_CAPTION, TitleSheet } from './TitleSheet.tsx';
 
 const front: FrontDto = {
-  title: 'Земля, которая больше не кормит',
+  title: 'Без названия',
   about: 'Первый абзац аннотации.\n\nВторой абзац аннотации.',
   rev: 1,
   toc: [],
@@ -64,7 +64,7 @@ const state = {
 } as unknown as StateSnapshot;
 
 const writtenCatalog: CatalogEntry[] = catalog.map((row) => {
-  if (row.n === 1) return { ...row, basis: false, title: 'Половик в тамбуре', written: true, rev: 2, chars: 12 };
+  if (row.n === 1) return { ...row, basis: false, title: 'Тестовая глава', written: true, rev: 2, chars: 12 };
   if (row.n === 2) return { ...row, title: null, written: true, rev: 1, chars: 20 };
   return row;
 });
@@ -81,7 +81,7 @@ function textOf(html: string): string {
 describe('cover', () => {
   it('is the title, the signature and the caption — and nothing else', () => {
     expect(textOf(coverHtml())).toBe(
-      `Земля, которая больше не кормит${'Филипп Семиров'}${COVER_CAPTION}`,
+      `Без названия${'Филипп Семиров'}${COVER_CAPTION}`,
     );
   });
 
@@ -228,7 +228,7 @@ describe('the live table of contents', () => {
     const written = renderToStaticMarkup(
       <TableOfContents catalog={writtenCatalog} state={state} currentChapter={1} />,
     );
-    expect(written).toContain('Половик в тамбуре');
+    expect(written).toContain('Тестовая глава');
     expect(written).toContain('пишется сейчас');
     // Row 2 is written but has no title line: it still opens its chapter, with no text.
     expect(tocRows(written).filter((row) => row.includes('<a '))).toHaveLength(3);
