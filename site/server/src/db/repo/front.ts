@@ -6,6 +6,8 @@ export type FrontRow = {
   about: string;
   rev: number;
   sha256: string;
+  /** Hash of `about` as published — the basis an owner edit may replace. */
+  about_sha256: string;
   updated_at: string;
 };
 
@@ -16,14 +18,15 @@ export function getFrontRow(db: Db): FrontRow | undefined {
 
 export function upsertFrontRow(
   db: Db,
-  row: { title: string; about: string; rev: number; sha256: string; updatedAt: string },
+  row: { title: string; about: string; aboutSha256: string; rev: number; sha256: string; updatedAt: string },
 ): void {
   db.prepare(
-    `INSERT INTO front_matter (id, title, about, rev, sha256, updated_at)
-     VALUES (1, @title, @about, @rev, @sha256, @updatedAt)
+    `INSERT INTO front_matter (id, title, about, about_sha256, rev, sha256, updated_at)
+     VALUES (1, @title, @about, @aboutSha256, @rev, @sha256, @updatedAt)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        about = excluded.about,
+       about_sha256 = excluded.about_sha256,
        rev = excluded.rev,
        sha256 = excluded.sha256,
        updated_at = excluded.updated_at`,

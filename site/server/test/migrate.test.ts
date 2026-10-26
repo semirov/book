@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { ensureStepLifecycle, migrate } from '../src/db/migrate.ts';
 import { REQUIRED_TABLES, REQUIRED_TRIGGERS, SCHEMA_VERSION, CHAPTERS_COLUMNS } from '../src/db/schema.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 
 function tables(db: Db): string[] {
   return db
@@ -29,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v7', () => {
+describe('migrate — schema v8', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(7);
+    expect(SCHEMA_VERSION).toBe(8);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -45,6 +46,8 @@ describe('migrate — schema v7', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM lane').get()).toEqual({ n: 1 });
     // BOOK-6: a slot may hold only its basis sentence, which is not a written chapter.
     expect(columns(db, 'chapters')).toContain('basis');
+    // BOOK-7: page 2 has its own hash, so an owner edit is a first-class basis.
+    expect(columns(db, 'front_matter')).toContain('about_sha256');
     db.close();
   });
 
@@ -176,6 +179,27 @@ describe('migrate — schema v7', () => {
         )
         .run(),
     ).toThrow(/CHECK/u);
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('adds the BOOK-7 page-2 hash to a v7 install, once, backfilling the text that stands', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v7 database: page 2 had no hash of its own before BOOK-7.
+    db.exec('ALTER TABLE front_matter DROP COLUMN about_sha256');
+    db.prepare(
+      `INSERT INTO front_matter (id, title, about, rev, sha256, updated_at)
+       VALUES (1, 'Без названия', 'Тестовая аннотация.', 1, 'file-sha', '2026-10-25T09:00:00Z')`,
+    ).run();
+    db.pragma('user_version = 7');
+
+    expect(migrate(db)).toEqual({ from: 7, to: SCHEMA_VERSION });
+    expect(columns(db, 'front_matter')).toContain('about_sha256');
+    expect(db.prepare('SELECT about, about_sha256 FROM front_matter WHERE id = 1').get()).toEqual({
+      about: 'Тестовая аннотация.',
+      about_sha256: sha256Hex('Тестовая аннотация.'),
+    });
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });

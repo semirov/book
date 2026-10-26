@@ -13,12 +13,14 @@ import {
   chapterNumberOf,
   isIgnoredPath,
 } from '../src/ingest/watcher.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, type Fixture } from './helpers.ts';
 
 const ABOUT =
   'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 const FRONT = `Без названия\n\n${ABOUT}\n`;
-const FRONT_TWO = `Тестовая глава\n\n${ABOUT} Дополнительное служебное предложение.\n`;
+const NEW_ABOUT = `${ABOUT} Дополнительное служебное предложение.`;
+const FRONT_TWO = `Тестовая глава\n\n${NEW_ABOUT}\n`;
 
 type Harness = {
   fixture: Fixture;
@@ -354,7 +356,7 @@ function seedFrontLease(db: Fixture['db']): void {
 }
 
 describe('watcher: the first sheet', () => {
-  it('updates the title live and keeps page 2 frozen (BOOK-DOC-6)', async () => {
+  it('accepts an owner hand edit of page 2 and updates both live (BOOK-7)', async () => {
     await start();
     harness!.fixture.write('00-front.md', FRONT_TWO);
 
@@ -365,12 +367,20 @@ describe('watcher: the first sheet', () => {
       rev: 2,
       previousRev: 1,
     });
-    // The file tried to add a sentence to the annotation: the owner's basis wins, verbatim.
-    expect(front.data.about).toBe(ABOUT);
+    // No lease owns the front: this is the owner's hand edit, so page 2 follows the file.
+    expect(front.data.about).toBe(NEW_ABOUT);
     const logged = harness!.fixture.db
-      .prepare(`SELECT payload FROM events WHERE kind = 'front.revised' ORDER BY hseq DESC LIMIT 1`)
-      .get() as { payload: string };
-    expect(JSON.parse(logged.payload)).toMatchObject({ annotationRejected: 'FRONT_ANNOTATION_FROZEN' });
+      .prepare(`SELECT payload, author_kind, author_label FROM events WHERE kind = 'front.revised' ORDER BY hseq DESC LIMIT 1`)
+      .get() as { payload: string; author_kind: string; author_label: string };
+    expect(JSON.parse(logged.payload)).toMatchObject({
+      titleChanged: true,
+      annotationChanged: true,
+      aboutSha256: sha256Hex(NEW_ABOUT),
+    });
+    expect(JSON.parse(logged.payload)).not.toHaveProperty('annotationRejected');
+    // The history names the hand edit honestly, with the one wording the book already uses.
+    expect(logged.author_kind).toBe('unattributed');
+    expect(logged.author_label).toBe('правка вне процесса');
     // A hand edit matches no lease: the site says "draft", never a change it cannot prove.
     expect(front.data.cause).toEqual({ kind: 'draft', changeId: null, cascadeId: null, stepId: null });
 
@@ -379,10 +389,10 @@ describe('watcher: the first sheet', () => {
     );
     expect(stateEvent.type).toBe('state:updated');
     expect(harness!.state.snapshot().front.title).toBe('Тестовая глава');
-    expect(harness!.state.snapshot().front.about).toBe(ABOUT);
+    expect(harness!.state.snapshot().front.about).toBe(NEW_ABOUT);
   }, 10_000);
 
-  it('attributes a cascade front rewrite so the title takes the ring gesture', async () => {
+  it('keeps page 2 frozen while a live front lease owns the write', async () => {
     await start();
     seedFrontLease(harness!.fixture.db);
     harness!.fixture.write('00-front.md', FRONT_TWO);
@@ -395,6 +405,13 @@ describe('watcher: the first sheet', () => {
       cascadeId: 'csc_f',
       stepId: 'stp_f',
     });
+    // A leased pass may retitle the book; the owner's basis wins over its annotation.
+    expect(front.data.title).toBe('Тестовая глава');
+    expect(front.data.about).toBe(ABOUT);
+    const logged = harness!.fixture.db
+      .prepare(`SELECT payload FROM events WHERE kind = 'front.revised' ORDER BY hseq DESC LIMIT 1`)
+      .get() as { payload: string };
+    expect(JSON.parse(logged.payload)).toMatchObject({ annotationRejected: 'FRONT_ANNOTATION_FROZEN' });
   }, 10_000);
 
   it('clears the cover title and page 2 when the file is removed', async () => {

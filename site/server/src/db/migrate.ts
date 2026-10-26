@@ -1,5 +1,6 @@
 import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, chaptersTableSql } from './schema.ts';
 import type { Db } from './db.ts';
+import { sha256Hex } from '../util/hash.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -77,6 +78,23 @@ const MIGRATIONS: Migration[] = [
       );
       db.exec('DROP TABLE chapters');
       db.exec('ALTER TABLE chapters_v7 RENAME TO chapters');
+    },
+  },
+  {
+    // BOOK-7: the published annotation has its own hash, so an owner hand edit of page 2 is
+    // a first-class revision and a later pass can be compared to the exact text that stands.
+    // Existing rows are backfilled from the text they already hold; the step is idempotent.
+    to: 8,
+    up(db) {
+      const columns = new Set(
+        (db.pragma('table_info(front_matter)') as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (!columns.has('about_sha256')) {
+        db.exec(`ALTER TABLE front_matter ADD COLUMN about_sha256 TEXT NOT NULL DEFAULT ''`);
+      }
+      const rows = db.prepare('SELECT id, about FROM front_matter').all() as Array<{ id: number; about: string }>;
+      const update = db.prepare('UPDATE front_matter SET about_sha256 = ? WHERE id = ?');
+      for (const row of rows) update.run(sha256Hex(row.about), row.id);
     },
   },
 ];

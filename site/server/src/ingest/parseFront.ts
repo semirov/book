@@ -3,8 +3,9 @@
  *
  * One file, one lease, one `front` step — but only the title line is a target: page 2 is
  * the owner's annotation, basis like the frozen frame (BOOK-DOC-6). The title may change on
- * every wave; the annotation may not change at all, so `aboutSha256` is what a pass is
- * measured against (`FRONT_ANNOTATION_FROZEN`, `engine/write.ts`). The parser is the
+ * every wave; the annotation is basis against the process, so `aboutSha256` is what a pass is
+ * measured against (`FRONT_ANNOTATION_FROZEN`, `engine/write.ts`). An owner hand edit of the
+ * file, with no lease, may replace it and becomes the new basis (BOOK-7). The parser is the
  * validator's parser (`parseFrontMatter`), because a second reader of the first sheet would
  * eventually disagree with F021 about what a valid first sheet is.
  */

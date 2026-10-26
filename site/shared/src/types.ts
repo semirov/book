@@ -170,6 +170,8 @@ export type FrontDto = {
   title: string | null;
   /** «о чём эта книга»; null when the first sheet is malformed (page 2 renders nothing, §11.8). */
   about: string | null;
+  /** Hash of `about` as published — the basis a leased pass is compared against (BOOK-7). */
+  aboutSha256?: string | null;
   rev: number;
   toc: TocEntry[];
   imprint: { author: string; copyright: string };

@@ -189,7 +189,7 @@ export type FrontUpdatedPayload = {
   about: string | null;
   rev: number;
   previousRev: number;
-  /** The title is the only field a front revision may carry (BOOK-DOC-6); `about` never moves. */
+  /** A front revision may change the title alone; page 2 changes only on an owner edit (BOOK-7). */
   cause: { kind: string; changeId: string | null; cascadeId: string | null; stepId: string | null };
 };
 

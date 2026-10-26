@@ -82,11 +82,13 @@ export function summarize(subject: SummarySubject): string {
     case 'chapter.restored':
       return `${where} восстановлена из прежней ревизии`;
     case 'front.revised':
-      // Page 2 is basis (BOOK-DOC-6): a front revision is a title revision. The only other
-      // fact the log can carry is a refused attempt to rewrite the annotation.
+      // Page 2 is basis against a pass (BOOK-DOC-6), but an owner hand edit may replace it
+      // (BOOK-7). A refused rewrite still says so; an accepted annotation change is named
+      // with the page, not with the title line it did not move.
       if (subject.payload.titleChanged === false && subject.payload.annotationRejected !== undefined) {
         return `страница 2 — основа: переписать не дали${by}`;
       }
+      if (subject.payload.annotationChanged === true) return `${target(subject)} изменилась${by}`;
       return `название изменилось${by}`;
     case 'change.queued':
       return `правка ${subject.changeSeq ?? '?'} встала в очередь`;

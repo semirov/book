@@ -56,7 +56,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(body.items.length).toBeGreaterThanOrEqual(2);
     expect(body.items[0]?.hseq).toBeGreaterThan(body.items[1]?.hseq ?? 0);
     expect(body.items.some((item) => item.summary.includes('глава 1'))).toBe(true);
-    expect(body.items.some((item) => item.summary.includes('название'))).toBe(true);
+    expect(body.items.some((item) => /первая страница|название/u.test(item.summary))).toBe(true);
     expect(body.nextBefore).toBe(body.items.at(-1)?.hseq ?? null);
 
     // Cursor semantics: `before` is exclusive, so the next page starts after the last row.

@@ -29,7 +29,7 @@ describe('one line per fact (§11.10)', () => {
     );
   });
 
-  it('describes the first sheet as a title revision, never a page-2 edit', () => {
+  it('names a front revision by the field that moved, and a hand edit as out of process', () => {
     expect(
       summarize(subject({ isFront: true, chapter: null, kind: 'front.revised', payload: { title: 'Новое', titleChanged: true } })),
     ).toBe('название изменилось правкой 7 (Аня)');
@@ -44,6 +44,19 @@ describe('one line per fact (§11.10)', () => {
         }),
       ),
     ).toBe('страница 2 — основа: переписать не дали правкой 7 (Аня)');
+    // BOOK-7: an accepted owner edit moves page 2, and the line says so with the existing wording.
+    expect(
+      summarize(
+        subject({
+          isFront: true,
+          chapter: null,
+          kind: 'front.revised',
+          changeSeq: null,
+          authorKind: 'unattributed',
+          payload: { title: 'Новое', titleChanged: true, annotationChanged: true },
+        }),
+      ),
+    ).toBe('первая страница изменилась — правка вне процесса');
   });
 
   it('never repeats a gate finding: a verdict is only «замечание сохранено»', () => {

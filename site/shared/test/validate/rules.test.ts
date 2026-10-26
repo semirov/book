@@ -353,17 +353,19 @@ describe('F029 — the frozen frame', () => {
 
   it('accepts a frame rewrapped across lines', () => {
     const opening = run({
-      files: [FRONT, framed(1, 'Рано утром я проснулся по будильнику,\nбыл обычный будний день. Потом он сел.')],
+      files: [FRONT, framed(1, 'Я вошёл в пустую комнату.\nЕё освещал яркий свет. Потом он сел.')],
     });
     expect(found(opening)).toEqual([]);
 
-    const closing = run({ files: [FRONT, framed(67, 'Всё стихло.\nИ никого\nне стало.')] });
+    const closing = run({
+      files: [FRONT, framed(67, 'Всё стихло.\nСвет погас, потому что не осталось\nглаз, которым он был бы нужен.')],
+    });
     expect(found(closing)).toEqual([]);
   });
 
   it('rejects a changed word in the opening sentence', () => {
     const result = run({
-      files: [FRONT, framed(1, 'Рано утром я проснулся по будильнику, был обычный рабочий день. Потом он сел.')],
+      files: [FRONT, framed(1, 'Я вошёл в тёмную комнату. Её освещал яркий свет. Потом он сел.')],
     });
     expect(found(result)).toEqual([
       expect.objectContaining({
@@ -372,7 +374,7 @@ describe('F029 — the frozen frame', () => {
         message: expect.stringContaining('must begin with'),
       }),
     ]);
-    expect(found(result)[0]?.message).toContain('found «Рано утром я проснулся по будильнику, был обычный рабочий день.»');
+    expect(found(result)[0]?.message).toContain('found «Я вошёл в тёмную комнату.»');
   });
 
   it('rejects ch01 without the frozen sentence', () => {

@@ -114,10 +114,12 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
     }
   });
 
-  it('records an annotation-only attempt as a refused rewrite, never as a title change', () => {
+  it('records an annotation-only attempt as a refused rewrite while a lease owns the front', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
       seedBasis(fixture);
+      // A live front lease is a pass writing: page 2 is basis against it (BOOK-7).
+      openFrontLease(fixture, 'stp_front_direct');
       const result = applyFrontFile({
         db: fixture.db,
         dataDir: fixture.dataDir,
@@ -136,6 +138,92 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
         titleChanged: false,
         annotationRejected: FRONT_ANNOTATION_FROZEN,
       });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('accepts an owner hand edit of page 2 with no lease: the annotation becomes the new basis', () => {
+    const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
+    try {
+      seedBasis(fixture);
+      // No step, no lease: the owner edited `00-front.md` by hand (BOOK-7).
+      const edited = applyFrontFile({
+        db: fixture.db,
+        dataDir: fixture.dataDir,
+        raw: `Новое название\n\n${OTHER_ABOUT}\n`,
+        mtimeMs: fixture.clock.now(),
+        nowMs: fixture.clock.now(),
+      });
+      if (edited.status === 'unchanged') throw new Error('expected a revision');
+      expect(edited.annotationChanged).toBe(true);
+      expect(edited.annotationRejected).toBeNull();
+      expect(edited.about).toBe(OTHER_ABOUT);
+      expect(edited.aboutSha256).toBe(sha256Hex(OTHER_ABOUT));
+      expect(edited.actor).toMatchObject({ kind: 'unattributed', label: 'правка вне процесса' });
+      expect(getFrontRow(fixture.db)).toMatchObject({
+        title: 'Новое название',
+        about: OTHER_ABOUT,
+        about_sha256: sha256Hex(OTHER_ABOUT),
+        rev: 2,
+      });
+      // The history line names the hand edit, not a pass it cannot prove.
+      const logged = fixture.db
+        .prepare(`SELECT payload, author_kind, author_label FROM events WHERE kind = 'front.revised' ORDER BY hseq DESC LIMIT 1`)
+        .get() as { payload: string; author_kind: string; author_label: string };
+      expect(logged.author_kind).toBe('unattributed');
+      expect(logged.author_label).toBe('правка вне процесса');
+      expect(JSON.parse(logged.payload)).toMatchObject({
+        annotationChanged: true,
+        aboutSha256: sha256Hex(OTHER_ABOUT),
+      });
+
+      // The new text is the basis now: a pass that tries to move it is refused by name.
+      const leaseId = openFrontLease(fixture, 'stp_front_after_owner');
+      fixture.writeFront('Новое название', `${OTHER_ABOUT} Волна.`);
+      let refusal: EngineError | null = null;
+      try {
+        fixture.engine.land(leaseId);
+      } catch (error) {
+        refusal = error as EngineError;
+      }
+      expect(refusal?.code).toBe(FRONT_ANNOTATION_FROZEN);
+      expect(getFrontRow(fixture.db)?.about).toBe(OTHER_ABOUT);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('keeps the annotation as it was when an old snapshot is restored', () => {
+    const fixture = createEngineFixture({ front: { title: 'Старое название', about: DEFAULT_ABOUT } });
+    try {
+      seedBasis(fixture);
+      // An owner edit moves page 2, so the restore has a different annotation to put back.
+      const edited = applyFrontFile({
+        db: fixture.db,
+        dataDir: fixture.dataDir,
+        raw: `Новое название\n\n${OTHER_ABOUT}\n`,
+        mtimeMs: fixture.clock.now(),
+        nowMs: fixture.clock.now(),
+      });
+      if (edited.status === 'unchanged') throw new Error('expected a revision');
+      expect(edited.about).toBe(OTHER_ABOUT);
+
+      const first = fixture.db
+        .prepare('SELECT snapshot FROM front_revisions ORDER BY rev ASC LIMIT 1')
+        .get() as { snapshot: string };
+      const restored = applyFrontFile({
+        db: fixture.db,
+        dataDir: fixture.dataDir,
+        raw: readFileSync(join(fixture.dataDir, first.snapshot), 'utf8'),
+        mtimeMs: fixture.clock.now(),
+        nowMs: fixture.clock.now(),
+      });
+      if (restored.status === 'unchanged') throw new Error('expected a restored revision');
+      expect(restored.title).toBe('Старое название');
+      expect(restored.about).toBe(DEFAULT_ABOUT);
+      expect(restored.aboutSha256).toBe(sha256Hex(DEFAULT_ABOUT));
+      expect(getFrontRow(fixture.db)?.about).toBe(DEFAULT_ABOUT);
     } finally {
       fixture.close();
     }

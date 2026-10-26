@@ -11,6 +11,7 @@ import { loadConfig } from '../src/config.ts';
 import { applyFrontFile } from '../src/ingest/applyFront.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
@@ -164,11 +165,12 @@ describe('GET /api/state', () => {
     expect(body.toc[0]).toMatchObject({ n: 1, part: 1, title: 'Заголовок главы', written: true, rev: 1 });
   });
 
-  it('keeps page 2 verbatim while a front revision changes only the title', async () => {
+  it('keeps page 2 while a title-only revision lands, and lets an owner edit replace it (BOOK-7)', async () => {
     const fixture = await boot({ chapters: { '00-front.md': FRONT } });
     const before = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
     expect(before.title).toBe('Без названия');
     expect(before.about).toBe(ABOUT);
+    expect(before.aboutSha256).toBe(sha256Hex(ABOUT));
 
     applyFrontFile({
       db: fixture.db,
@@ -181,18 +183,23 @@ describe('GET /api/state', () => {
     expect(retitled.title).toBe('Другое название');
     expect(retitled.about).toBe(ABOUT);
     expect(retitled.rev).toBe(before.rev + 1);
+    expect(retitled.aboutSha256).toBe(before.aboutSha256);
 
-    // A file that also rewrote the annotation still answers with the basis: page 2 is frozen.
+    // No lease owns the front: this is a hand edit, so page 2 follows the file (BOOK-7).
+    const ownerAbout = ABOUT.replace('Тестовая аннотация', 'Собственная аннотация');
     applyFrontFile({
       db: fixture.db,
       dataDir: fixture.dataDir,
-      raw: `Третье название\n\n${ABOUT.replace('Тестовая аннотация', 'Чужая аннотация')}\n`,
+      raw: `Третье название\n\n${ownerAbout}\n`,
       mtimeMs: Date.now(),
       nowMs: Date.now(),
     });
-    const frozen = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
-    expect(frozen.title).toBe('Третье название');
-    expect(frozen.about).toBe(ABOUT);
+    const edited = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    expect(edited.title).toBe('Третье название');
+    expect(edited.about).toBe(ownerAbout);
+    expect(edited.rev).toBe(before.rev + 2);
+    expect(edited.aboutSha256).toBe(sha256Hex(ownerAbout));
+    expect(edited.aboutSha256).not.toBe(before.aboutSha256);
   });
 
   it('returns an ETag and honours If-None-Match', async () => {

@@ -68,8 +68,8 @@ export const IMPRINT_COPYRIGHT = '© Филипп Семиров';
  * a ripple, not a reader's change. One copy, so the validator and the engine cannot disagree
  * about what "the frame" is.
  */
-export const FRAME_FIRST_SENTENCE = 'Рано утром я проснулся по будильнику, был обычный будний день.';
-export const FRAME_LAST_SENTENCE = 'И никого не стало.';
+export const FRAME_FIRST_SENTENCE = 'Я вошёл в пустую комнату. Её освещал яркий свет.';
+export const FRAME_LAST_SENTENCE = 'Свет погас, потому что не осталось глаз, которым он был бы нужен.';
 
 /** The basis sentence a chapter carries, or null when the chapter has none. */
 export function frameSentenceOf(n: number): string | null {

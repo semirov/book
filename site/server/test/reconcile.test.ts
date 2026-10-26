@@ -11,6 +11,7 @@ import { parseChapter } from '../src/ingest/parseChapter.ts';
 import { parseFront } from '../src/ingest/parseFront.ts';
 import { reconcile, rememberScan } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
@@ -351,6 +352,28 @@ describe('reconcile — front matter', () => {
       title: 'Другое название',
       rev: 2,
     });
+  });
+
+  it('heals a live DB whose stored annotation differs from the file (BOOK-7)', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getFrontRow(fixture.db)?.about).toBe(ABOUT);
+
+    // The owner replaced page 2 by hand while the site was stopped; boot must follow the file.
+    const ownerAbout = ABOUT.replace('Тестовая аннотация', 'Собственная аннотация');
+    fixture.write('00-front.md', `Без названия\n\n${ownerAbout}\n`);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.front).toBe('revised');
+    expect(report.frontProblems).toEqual([]);
+    expect(getFrontRow(fixture.db)).toMatchObject({
+      title: 'Без названия',
+      about: ownerAbout,
+      about_sha256: sha256Hex(ownerAbout),
+      rev: 2,
+    });
+    // And a second boot is idempotent: the healed projection matches the file.
+    expect(reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir }).front).toBe('unchanged');
   });
 
   it('removes the first sheet when the file disappears and reports a missing one otherwise', () => {

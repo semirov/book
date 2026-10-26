@@ -2,10 +2,14 @@
  * One observed `00-front.md` → the live title and page 2 (§6C.2, F021) and one front
  * revision in the log (§6F.2).
  *
- * The title line is a slot; the annotation is basis (BOOK-DOC-6). Once page 2 has been
- * published, a file whose annotation differs is published as a **title-only** revision: the
- * stored annotation wins, page 2 never changes, and the event names the rejected rewrite
- * (`FRONT_ANNOTATION_FROZEN`) so the pass that wrote it can be refused at the engine gate.
+ * Who writes decides what the annotation may do (BOOK-7):
+ * - **inside a lease** (a ripple/writer pass, engine `land`, or the watcher observing that
+ *   pass's file) page 2 is basis: a different annotation is published as a title-only
+ *   revision, the stored text wins, and the event names the rejected rewrite
+ *   (`FRONT_ANNOTATION_FROZEN`) so the pass is refused at the engine gate;
+ * - **outside any lease** it is the owner's hand edit, the same class as a chapter hand
+ *   edit: the new annotation is projected, its `aboutSha256` stored, `rev` bumped, and the
+ *   history says «правка вне процесса». A later pass is compared to this new basis.
  *
  * A malformed first sheet is stored as empty strings, never as a fabricated title or
  * blurb: the cover falls back to the site's own word «Книга» — and a malformed rewrite never
@@ -19,6 +23,7 @@ import type { Db } from '../db/db.ts';
 import { getFrontRow, upsertFrontRow } from '../db/repo/front.ts';
 import { appendEvent } from '../history/log.ts';
 import { toIso } from '../util/time.ts';
+import { sha256Hex } from '../util/hash.ts';
 import { writeFrontSnapshot } from '../versions/snapshots.ts';
 import { actorForCause, frontWriteCause, type WriteActor, type WriteCause } from './attribution.ts';
 import { parseFront } from './parseFront.ts';
@@ -34,11 +39,12 @@ export type ApplyFrontInput = {
 };
 
 export type ApplyFrontResult =
-  | { status: 'unchanged'; title: string | null; about: string | null; rev: number; problems: string[] }
+  | { status: 'unchanged'; title: string | null; about: string | null; aboutSha256: string; rev: number; problems: string[] }
   | {
       status: 'created' | 'revised';
       title: string | null;
       about: string | null;
+      aboutSha256: string;
       rev: number;
       previousRev: number;
       problems: string[];
@@ -47,7 +53,9 @@ export type ApplyFrontResult =
       hseq: number;
       cause: WriteCause;
       actor: WriteActor;
-      /** Set when the file tried to rewrite page 2: the stored annotation wins. */
+      /** Whether this revision replaced the page-2 text (an owner edit, not a wave). */
+      annotationChanged: boolean;
+      /** Set when a leased pass tried to rewrite page 2: the stored annotation wins. */
       annotationRejected: typeof FRONT_ANNOTATION_FROZEN | null;
     };
 
@@ -59,18 +67,25 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
   // sheet (§11.8) — while a valid title still carries the cover.
   const title = parsed.title ?? '';
   const written = parsed.problems.length > 0 ? '' : (parsed.about ?? '');
-  // Page 2 is basis: the annotation published once is the one page 2 keeps, whatever a later
-  // file says. A first valid landing establishes it; after that it is frozen for good.
-  const basis = existing !== undefined && existing.about.length > 0 ? existing.about : null;
-  const about = basis ?? written;
-  const annotationRejected = basis !== null && written !== basis ? FRONT_ANNOTATION_FROZEN : null;
+  // A live front lease means a pass is writing: page 2 is basis against that pass. Without a
+  // lease the write is a hand edit and page 2 follows the file (BOOK-7).
+  const cause = input.cause ?? frontWriteCause(db, input.nowMs);
+  const published = existing !== undefined && existing.about.length > 0 ? existing.about : null;
+  const frozen = cause.leaseId !== null && published !== null;
+  // An empty/malformed sheet never blanks a standing annotation; a valid one replaces it
+  // outside a lease and is ignored inside one.
+  const about = frozen ? published : written.length > 0 ? written : (published ?? '');
+  const aboutSha256 = sha256Hex(about);
+  const annotationChanged = (existing?.about ?? '') !== about;
+  const annotationRejected = frozen && written !== published ? FRONT_ANNOTATION_FROZEN : null;
   const updatedAt = toIso(Math.min(input.mtimeMs, input.nowMs));
 
-  if (existing !== undefined && existing.sha256 === parsed.sha256) {
+  if (existing !== undefined && existing.sha256 === parsed.sha256 && existing.about === about) {
     return {
       status: 'unchanged',
       title: existing.title.length > 0 ? existing.title : null,
       about: existing.about.length > 0 ? existing.about : null,
+      aboutSha256: existing.about_sha256.length > 0 ? existing.about_sha256 : aboutSha256,
       rev: existing.rev,
       problems: parsed.problems,
     };
@@ -79,11 +94,10 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
   const previousRev = existing?.rev ?? 0;
   const rev = previousRev + 1;
   const titleChanged = (existing?.title ?? '') !== title;
-  const cause = input.cause ?? frontWriteCause(db, input.nowMs);
   const actor = actorForCause(db, cause);
 
   const run = db.transaction((): ApplyFrontResult => {
-    upsertFrontRow(db, { title, about, rev, sha256: parsed.sha256, updatedAt });
+    upsertFrontRow(db, { title, about, aboutSha256, rev, sha256: parsed.sha256, updatedAt });
     const snapshot = writeFrontSnapshot(input.dataDir, parsed.sha256, parsed.text);
     const hseq = appendEvent(
       db,
@@ -100,6 +114,8 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
         payload: {
           title,
           titleChanged,
+          annotationChanged,
+          aboutSha256,
           sha256: parsed.sha256,
           aboutChars: about.length,
           ...(annotationRejected === null ? {} : { annotationRejected }),
@@ -125,6 +141,7 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
       status: existing === undefined ? 'created' : 'revised',
       title: title.length > 0 ? title : null,
       about: about.length > 0 ? about : null,
+      aboutSha256,
       rev,
       previousRev,
       problems: parsed.problems,
@@ -132,6 +149,7 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
       hseq,
       cause,
       actor,
+      annotationChanged,
       annotationRejected,
     };
   });
@@ -142,13 +160,14 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
     // The same race as a chapter write: the site and the engine may both publish this
     // first sheet. Whoever loses finds the revision published and the text equal.
     const message = error instanceof Error ? error.message : '';
-    const published = getFrontRow(db);
-    if (/UNIQUE constraint failed|PRIMARY KEY/u.test(message) && published?.sha256 === parsed.sha256) {
+    const publishedRow = getFrontRow(db);
+    if (/UNIQUE constraint failed|PRIMARY KEY/u.test(message) && publishedRow?.sha256 === parsed.sha256) {
       return {
         status: 'unchanged',
-        title: published.title.length > 0 ? published.title : null,
-        about: published.about.length > 0 ? published.about : null,
-        rev: published.rev,
+        title: publishedRow.title.length > 0 ? publishedRow.title : null,
+        about: publishedRow.about.length > 0 ? publishedRow.about : null,
+        aboutSha256: publishedRow.about_sha256,
+        rev: publishedRow.rev,
         problems: parsed.problems,
       };
     }

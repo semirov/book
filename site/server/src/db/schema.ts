@@ -1,13 +1,14 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 7** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 8** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
- * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence). Text
- * tables are a projection of the manuscript files; the engine tables are the only home of
- * process facts. Every table §8 names exists here, and the retired `obligations` table does
- * not (§23.5, ADR-023).
+ * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
+ * adds `front_matter.about_sha256`, the hash of the page-2 text an owner edit publishes).
+ * Text tables are a projection of the manuscript files; the engine tables are the only home
+ * of process facts. Every table §8 names exists here, and the retired `obligations` table
+ * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -113,6 +114,7 @@ CREATE TABLE front_matter (                    -- manuscript/00-front.md: title 
   about       TEXT    NOT NULL,                -- page 2, 300–4 000 chars in up to 12 blocks, validated by F021
   rev         INTEGER NOT NULL DEFAULT 1,
   sha256      TEXT    NOT NULL,                -- hash of the whole file
+  about_sha256 TEXT   NOT NULL DEFAULT '',     -- hash of the published annotation (owner edit / basis)
   updated_at  TEXT    NOT NULL
 );
 
