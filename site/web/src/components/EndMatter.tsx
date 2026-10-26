@@ -1,4 +1,4 @@
-import type { AuthorsCountDto, AuthorsDto, MyTraceDto } from '@book/shared';
+import type { AuthorsCountDto, AuthorsDto, MyDecisionsDto, MyTraceDto } from '@book/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 import { getAuthors, getMyTrace, postAuthorsHide } from '../api.ts';
@@ -22,12 +22,15 @@ export function EndMatter({
   signedIn,
   onOpenChronicle,
   onAuthorsCount,
+  decisions = null,
 }: {
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
   signedIn: boolean;
   onOpenChronicle: () => void;
   onAuthorsCount?: (count: AuthorsCountDto) => void;
+  /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
+  decisions?: MyDecisionsDto | null;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
   const [ownTrace, setOwnTrace] = useState<MyTraceDto | null>(null);
@@ -90,6 +93,7 @@ export function EndMatter({
         onOpenChronicle();
       }}
       ownTrace={ownTrace}
+      decisions={decisions}
       hidePending={hidePending}
       onToggleHidden={(hidden) => void toggleHidden(hidden)}
     />

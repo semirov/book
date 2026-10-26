@@ -5,10 +5,8 @@ import type {
   ChangeDecidedPayload,
   ChangeProcessingPayload,
   ChangeStalePayload,
-  ChangeSummaryDto,
   ChapterCreatedPayload,
   ChapterRevisionPayload,
-  CommentDto,
   Envelope,
   FrontUpdatedPayload,
   HelloPayload,
@@ -19,14 +17,7 @@ import type {
 } from '@book/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  getChanges,
-  getChapters,
-  getComments,
-  getFront,
-  getQueue,
-  getState,
-} from './api.ts';
+import { getChapters, getFront, getQueue, getState } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { ChangeCard } from './components/ChangeCard.tsx';
@@ -57,6 +48,7 @@ import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { useChangeCard } from './useChangeCard.ts';
+import { useReaderFeed } from './useReaderFeed.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { useFocusMode } from './useFocus.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
@@ -80,8 +72,6 @@ export function App() {
   const [fresh, setFresh] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
-  const [changes, setChanges] = useState<ChangeSummaryDto[]>([]);
-  const [comments, setComments] = useState<CommentDto[]>([]);
   const [viewer, setViewer] = useState<ViewerDto>({ signedIn: false, displayName: null });
   const [composer, setComposer] = useState(EMPTY_COMPOSER);
   const [titleMotion, setTitleMotion] = useState<TitleMotion>(IDLE_TITLE);
@@ -106,6 +96,11 @@ export function App() {
   const helloSeen = useRef(false);
   const timers = useRef<number[]>([]);
   const dataRef = useRef<BookData | null>(null);
+  /**
+   * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
+   * only the trigger, the own-only endpoint is the durable line the page reloads into.
+   */
+  const { changes, comments, decisions, refreshChanges, refreshComments, noteRecord } = useReaderFeed();
 
   /**
    * REST fallback and resync. The initial call must not overwrite a `hello` that already
@@ -136,23 +131,6 @@ export function App() {
 
   const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
     setData((current) => (current === null ? current : withAuthorsCount(current, count)));
-  }, []);
-
-  const refreshChanges = useCallback(async () => {
-    try {
-      setChanges(await getChanges(6));
-    } catch {
-      /* the thread is a view, not the book: the next event retries */
-    }
-  }, []);
-
-  /** The public thread (§9); a `comment:added`/`comment:decision` frame refreshes it. */
-  const refreshComments = useCallback(async () => {
-    try {
-      setComments((await getComments({ limit: 20 })).items);
-    } catch {
-      /* the next comment event or reconnect retries */
-    }
   }, []);
 
   useEffect(() => {
@@ -195,6 +173,7 @@ export function App() {
             setRevising({});
             setFresh(null);
             setFailed(false);
+            noteRecord({ kind: 'hello', signedIn: hello.viewer.signedIn });
             void refreshChanges();
             void refreshComments();
             break;
@@ -303,8 +282,14 @@ export function App() {
             break;
           }
           case 'comment:added':
-          case 'comment:decision':
           case 'feedback:batch': {
+            void refreshComments();
+            break;
+          }
+          case 'comment:decision': {
+            // A decision frame is a broadcast; only the viewer's own comment earns a reload
+            // of the durable record. Everybody else's is simply the thread's business.
+            noteRecord({ kind: 'frame', type: frame.type, data: frame.data });
             void refreshComments();
             break;
           }
@@ -332,6 +317,7 @@ export function App() {
           }
           case 'change:decided': {
             const decided = frame.data as ChangeDecidedPayload;
+            noteRecord({ kind: 'frame', type: frame.type, data: decided });
             setRibbon((current) => reduceRibbon(current, { type: frame.type, data: decided }));
             void refreshChanges();
             card.refresh(decided.id);
@@ -355,7 +341,7 @@ export function App() {
       for (const timer of timers.current) window.clearTimeout(timer);
       timers.current = [];
     };
-  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, card.refresh, focus.bump, applyAuthorsCount]);
+  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, noteRecord, card.refresh, focus.bump, applyAuthorsCount]);
 
   if (connection === 'capacity') {
     return (
@@ -469,6 +455,7 @@ export function App() {
         imprint={front.imprint}
         lastRevisionAt={state.activity.lastFileChangeAt}
         signedIn={viewer.signedIn}
+        decisions={decisions}
         onAuthorsCount={applyAuthorsCount}
         onOpenChronicle={() => setView('chronicle')}
       />
@@ -480,7 +467,12 @@ export function App() {
         viewer={viewer}
         composer={composer}
         chapters={catalog}
-        onPosted={() => void refreshComments()}
+        onPosted={() => {
+          void refreshComments();
+          // A fresh intervention is the viewer's own: the endpoint now lists its id, so the
+          // live frame that follows can be recognised as theirs.
+          noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
+        }}
       />
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}

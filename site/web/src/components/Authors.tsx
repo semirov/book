@@ -1,6 +1,7 @@
-import { formatShare, type AuthorsDto, type MyTraceDto } from '@book/shared';
+import { formatShare, type AuthorsDto, type MyDecisionsDto, type MyTraceDto } from '@book/shared';
 
 import { formatDate } from '../lib/format.ts';
+import { OwnDecisions } from './OwnDecisions.tsx';
 import { OwnTrace } from './OwnTrace.tsx';
 
 /**
@@ -23,6 +24,7 @@ export function Authors({
   ownTrace = null,
   onToggleHidden,
   hidePending = false,
+  decisions = null,
 }: {
   authors: AuthorsDto | null;
   imprint: { author: string; copyright: string };
@@ -32,6 +34,8 @@ export function Authors({
   ownTrace?: MyTraceDto | null;
   onToggleHidden?: (hidden: boolean) => void;
   hidePending?: boolean;
+  /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
+  decisions?: MyDecisionsDto | null;
 }) {
   const contributors = authors?.contributors ?? [];
   return (
@@ -66,6 +70,7 @@ export function Authors({
           {...(onToggleHidden === undefined ? {} : { onToggleHidden })}
         />
       )}
+      <OwnDecisions decisions={decisions} />
       <button className="authors-link" type="button" onClick={onOpenChronicle}>
         как менялись доли
       </button>

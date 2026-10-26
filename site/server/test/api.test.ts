@@ -319,7 +319,7 @@ describe('GET /api/chapters/:n', () => {
 });
 
 describe('the read API budget (audit M6)', () => {
-  it('bounds /api/history and /api/state per network, and leaves the catalogue alone', async () => {
+  it('bounds /api/history, /api/state and /api/me per network, and leaves the catalogue alone', async () => {
     await boot({ env: { READ_PER_MINUTE: '3' } });
     for (let attempt = 0; attempt < 3; attempt += 1) {
       expect((await app!.inject({ method: 'GET', url: '/api/history/status' })).statusCode).toBe(200);
@@ -333,6 +333,9 @@ describe('the read API budget (audit M6)', () => {
 
     // One budget for every expensive read: the state poll shares it.
     expect((await app!.inject({ method: 'GET', url: '/api/state' })).statusCode).toBe(429);
+    // The reader's own record measures the whole book per request and shares the window —
+    // refused before the session is even read, so a script cannot loop it.
+    expect((await app!.inject({ method: 'GET', url: '/api/me/decisions' })).statusCode).toBe(429);
     // The catalogue is cheap and cached: it is not part of the budget.
     expect((await app!.inject({ method: 'GET', url: '/api/chapters' })).statusCode).toBe(200);
   });

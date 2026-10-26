@@ -7,6 +7,7 @@ export * from './authors.ts';
 export * from './publicChange.ts';
 export * from './captcha.ts';
 export * from './comment.ts';
+export * from './decisions.ts';
 export * from './injection.ts';
 export * from './intent.ts';
 

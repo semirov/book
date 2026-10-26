@@ -13,6 +13,7 @@ import type {
   HistoryChapterDto,
   HistoryDiffDto,
   HistoryTimelineDto,
+  MyDecisionsDto,
   MyTraceDto,
   ParagraphChainDto,
   PostCommentInput,
@@ -198,6 +199,15 @@ export function getAuthors(options: { fresh?: boolean } = {}): Promise<AuthorsDt
 /** The reader's own trace (BOOK-DOC-4): own only, and 401 for an anonymous visitor. */
 export function getMyTrace(): Promise<MyTraceDto> {
   return readJson<MyTraceDto>('/api/authors/me');
+}
+
+/**
+ * The reader's own decisions (BOOK-13): what became of their interventions, own only, and
+ * 401 for an anonymous visitor. It is the durable record the page reloads into — the frame
+ * that announced the decision is a broadcast, this is the reader's copy of it.
+ */
+export function getMyDecisions(): Promise<MyDecisionsDto> {
+  return readJson<MyDecisionsDto>('/api/me/decisions');
 }
 
 /**

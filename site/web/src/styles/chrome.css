@@ -325,6 +325,71 @@
   cursor: default;
 }
 
+/* «Ваши правки» (BOOK-13): the durable summary of the reader's own interventions. A list of
+   plain lines, no meter and no animation — the block must not resize while the reader is
+   reading, so nothing here fades, slides or reserves a moving height. */
+.own-decisions {
+  margin-top: 18px;
+}
+.own-decisions-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.own-decisions-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.own-decision {
+  margin: 0;
+  padding: 10px 0 0;
+}
+.own-decision + .own-decision {
+  margin-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.own-decision-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.own-decision.is-live .own-decision-line {
+  color: var(--ink-2);
+}
+.own-decision.is-stopped .own-decision-line {
+  color: var(--ink-2);
+}
+.own-decision-intent {
+  margin: 4px 0 0;
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.own-decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 6px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.own-decision-open {
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 /* The static documents (audit M5): «приватность» and «правила». Same measure and voice as
    the book, no card, no third-party byte — they must read when the API is down. */
 .legal {

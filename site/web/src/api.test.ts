@@ -9,6 +9,7 @@ import {
   getChapters,
   getComments,
   getFront,
+  getMyDecisions,
   getMyTrace,
   getQueue,
   getState,
@@ -157,6 +158,31 @@ describe('the reader’s own surfaces (BOOK-DOC-4)', () => {
   it('keeps the 401 code so the end matter can fall silent', async () => {
     respond({ code: 'UNAUTHENTICATED', message: 'войдите' }, 401);
     const error = await getMyTrace().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('the reader’s own decisions (BOOK-13)', () => {
+  it('reads them from the own-only path, with no id in it', async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response('{"items":[],"open":["cmt_1"],"share":0}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', spy);
+    await expect(getMyDecisions()).resolves.toEqual({ items: [], open: ['cmt_1'], share: 0 });
+    expect(spy.mock.calls[0]).toEqual([
+      '/api/me/decisions',
+      { credentials: 'same-origin', headers: { accept: 'application/json' } },
+    ]);
+  });
+
+  it('is refused for an anonymous visitor, and the caller keeps the code', async () => {
+    respond({ code: 'UNAUTHENTICATED', message: 'войдите' }, 401);
+    const error = await getMyDecisions().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
   });

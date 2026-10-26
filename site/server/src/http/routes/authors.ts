@@ -7,26 +7,14 @@
  * parameter, and the answer carries no identity key — the display name is the only handle.
  */
 
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 
 import { readAuthors } from '../../authors/contributions.ts';
 import { readMyTrace } from '../../authors/trace.ts';
-import { SESSION_COOKIE, type SessionLookup } from '../../identity/session.ts';
 import { hideSpecs } from '../../rate/policy.ts';
-import { parseCookies } from '../../util/cookies.ts';
 import { checkMutation } from '../origin.ts';
 import type { RouteDeps } from '../deps.ts';
-
-function sessionOf(deps: RouteDeps, request: FastifyRequest): SessionLookup | null {
-  return deps.sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
-}
-
-function unauthenticated(reply: FastifyReply): FastifyReply {
-  return reply
-    .code(401)
-    .header('cache-control', 'no-store')
-    .send({ code: 'UNAUTHENTICATED', message: 'войдите через Яндекс, чтобы продолжить' });
-}
+import { sessionOf, unauthenticated } from '../session.ts';
 
 export function registerAuthorsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/authors', async (_request, reply) => {

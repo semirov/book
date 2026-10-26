@@ -7,7 +7,7 @@ import { isReadLimited, READ_WINDOW_MS, readLimitKey } from '../src/http/readLim
  * integration path (a 429 with `retry-after`) is in `api.test.ts`.
  */
 describe('the read API budget', () => {
-  it('limits the history projections, the state poll and the change list only', () => {
+  it('limits the history projections, the state poll, the change list and the reader’s own record', () => {
     for (const url of [
       '/api/history',
       '/api/history/timeline?limit=5',
@@ -15,11 +15,21 @@ describe('the read API budget', () => {
       '/api/history/contributors',
       '/api/state',
       '/api/changes?limit=6',
+      '/api/me/decisions',
     ]) {
       expect(isReadLimited(url), url).toBe(true);
     }
     // A longer word that merely starts with a limited prefix is another route.
-    for (const url of ['/api/chapters', '/api/comments', '/api/front', '/healthz', '/api/historyz', '/api/states']) {
+    for (const url of [
+      '/api/chapters',
+      '/api/comments',
+      '/api/front',
+      '/api/authors/me',
+      '/healthz',
+      '/api/historyz',
+      '/api/states',
+      '/api/memory',
+    ]) {
       expect(isReadLimited(url), url).toBe(false);
     }
   });
