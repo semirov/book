@@ -268,7 +268,7 @@ export function createWriteOps(deps: EngineDeps) {
         );
       }
       if (front === null || !front.exists || front.title === null || front.about === null) {
-        refuse('INVALID_FRONT', 422, 'the first sheet needs a title ≤80 chars and an annotation of 300–900 chars', {
+        refuse('INVALID_FRONT', 422, 'the first sheet needs a title ≤80 chars and an annotation of 300–4 000 chars in up to 12 blocks', {
           problems: front?.problems ?? [],
         });
       }

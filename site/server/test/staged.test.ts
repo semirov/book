@@ -51,7 +51,7 @@ describe('the staged view of a commit (§13.1)', () => {
     const fixture = createFixture();
     try {
       const run = vi.fn((args: string[]) => {
-        if (args[0] === 'diff') return 'site/server/src/app.ts\u0000bible/dossiers.md\u0000';
+        if (args[0] === 'diff') return 'site/server/src/app.ts\u0000site/README.md\u0000';
         if (args[0] === 'rev-parse') return '/nonexistent/git-dir\n';
         throw new Error('the reader must not fetch a blob outside the manuscript');
       });

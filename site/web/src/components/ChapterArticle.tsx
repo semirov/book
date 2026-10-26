@@ -47,8 +47,8 @@ export type ChapterArticleProps = {
   caret: { show: boolean; live: boolean } | null;
   /** This chapter arrived while the reader was here: print its opening. */
   fresh: boolean;
-  /** «⋯ откуда эта фраза» (§11.10): the paragraph's lineage chain. */
-  onProvenance?: (blockId: string) => void;
+  /** «⋯ откуда эта фраза» (§11.10): the paragraph's lineage chain, anchored on the button. */
+  onProvenance?: (blockId: string, anchor: HTMLElement) => void;
 };
 
 export function ChapterArticle({ entry, revision, revising, caret, fresh, onProvenance }: ChapterArticleProps) {
@@ -205,11 +205,6 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
   const header = (
     <header className="ch-h">
       <span className="ch-id">
-        {entry.direction === 'backward' ? (
-          <span className="dir" aria-hidden="true">
-            ←
-          </span>
-        ) : null}
         <h2 className="ch-n" aria-hidden="true">
           {chapterLabel(entry.n)}
         </h2>
@@ -278,7 +273,7 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
                     type="button"
                     className="prov"
                     aria-label="откуда эта фраза"
-                    onClick={() => onProvenance(block.id)}
+                    onClick={(event) => onProvenance(block.id, event.currentTarget)}
                   >
                     ⋯
                   </button>

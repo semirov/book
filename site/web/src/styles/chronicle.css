@@ -298,6 +298,14 @@
   padding: 14px var(--gut) 22px;
   z-index: 40;
 }
+/* Anchored over the tapped phrase: geometry is inline (lib/popover.ts), the sheet defaults
+   above must not fight it. Raised over the ticket (55), below the change card (60). */
+.chain.chain-anchored {
+  bottom: auto;
+  left: auto;
+  transform: none;
+  z-index: 58;
+}
 .chain-head {
   display: flex;
   align-items: baseline;

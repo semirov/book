@@ -169,20 +169,29 @@ describe('parseFrontMatter', () => {
     const parsed = parseFrontMatter('Название\n\nСлишком короткая аннотация.');
     expect(parsed.title).toBe('Название');
     expect(parsed.about).toBeNull();
-    expect(parsed.problems.join(' ')).toContain('expected 300–900');
+    expect(parsed.problems.join(' ')).toContain(`expected ${ABOUT_MIN_CHARS}–${ABOUT_MAX_CHARS}`);
   });
 
-  it('rejects an annotation above 900 characters', () => {
+  it('rejects an annotation above the character limit', () => {
     const parsed = parseFrontMatter(`Название\n\n${'я'.repeat(ABOUT_MAX_CHARS + 1)}`);
     expect(parsed.about).toBeNull();
     expect(parsed.problems.join(' ')).toContain(`${ABOUT_MAX_CHARS + 1} characters`);
   });
 
-  it('rejects more than four annotation blocks', () => {
+  it('rejects more than the block limit', () => {
     const block = 'а'.repeat(100);
-    const parsed = parseFrontMatter(`Название\n\n${[block, block, block, block, block].join('\n\n')}`);
+    const blocks = Array.from({ length: 13 }, () => block);
+    const parsed = parseFrontMatter(`Название\n\n${blocks.join('\n\n')}`);
     expect(parsed.about).toBeNull();
-    expect(parsed.problems.join(' ')).toContain('5 blocks');
+    expect(parsed.problems.join(' ')).toContain('13 blocks');
+  });
+
+  it('accepts the block limit itself: twelve paragraphs are valid', () => {
+    const block = 'а'.repeat(100);
+    const blocks = Array.from({ length: 12 }, () => block);
+    const parsed = parseFrontMatter(`Название\n\n${blocks.join('\n\n')}`);
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.blocks).toHaveLength(12);
   });
 
   it('rejects markdown in the annotation', () => {

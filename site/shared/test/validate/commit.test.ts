@@ -19,18 +19,20 @@ describe('F010 — one book file per commit (§13.1)', () => {
       'manuscript/ch1.md',
       'manuscript/notes.md',
       'manuscript/archive/ch01.md',
-      'bible/dossiers.md',
+      'notes/product-rules-gap.md',
       'site/README.md',
     ]) {
       expect(isBookFile(path)).toBe(false);
     }
-    expect(stagedBookFiles(['manuscript/ch02.md', 'site/x.ts', 'bible/dossiers.md'])).toEqual(['manuscript/ch02.md']);
+    expect(stagedBookFiles(['manuscript/ch02.md', 'site/x.ts', 'notes/product-rules-gap.md'])).toEqual([
+      'manuscript/ch02.md',
+    ]);
   });
 
-  it('accepts a step: one chapter plus the dossiers append', () => {
-    expect(checkCommitScope(['manuscript/ch09.md', 'bible/dossiers.md'], 'cascade csc_01/2 fwd: ch09 rewritten')).toEqual(
-      [],
-    );
+  it('accepts a step: one chapter plus any non-book file', () => {
+    expect(
+      checkCommitScope(['manuscript/ch09.md', 'site/README.md'], 'cascade csc_01/2 fwd: ch09 rewritten'),
+    ).toEqual([]);
   });
 
   it('accepts a commit that touches no book file at all', () => {

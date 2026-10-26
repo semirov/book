@@ -33,7 +33,6 @@ import {
 } from './denylist.ts';
 import { checkFrame } from './frame.ts';
 import {
-  CAPITALIZED_WORD,
   type ChapterFile,
   type Finding,
   type RuleId,
@@ -42,7 +41,6 @@ import {
   type ValidateResult,
   countParagraphChars,
   excerptAt,
-  foldRu,
   hasMarkdown,
   lineAt,
   manuscriptChapterFile,
@@ -342,18 +340,6 @@ function checkLegal(
     );
   }
   return findings;
-}
-
-/**
- * The record of people already on the page: every capitalised word in `bible/dossiers.md`.
- * The file is an optional record — nothing enforces it and no rule reads it — so this is
- * only what the integrity panel counts.
- */
-export function recordedNames(dossiers: { text: string } | null | undefined): Set<string> {
-  if (dossiers === null || dossiers === undefined) return new Set();
-  const names = new Set<string>();
-  for (const match of dossiers.text.matchAll(CAPITALIZED_WORD)) names.add(foldRu(match[0]));
-  return names;
 }
 
 const TOTAL_PATTERNS: RegExp[] = [

@@ -44,7 +44,8 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     const html = render(entry(67, { basis: true, blocks: 1 }));
     expect(html).toContain(FRAME_LAST_SENTENCE);
     expect(html).not.toContain('не написана');
-    // Chapter 67 is drafted backwards, so its slot carries the lane arrow.
+    // Chapter 67 is drafted backwards; its slot shows the same header as any other, no arrow.
+    expect(html).not.toContain('←');
     expect(html).toContain('data-basis="true"');
   });
 

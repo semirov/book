@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Imprint, LegalDenylist } from '../../src/book.ts';
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
+import { ABOUT_MAX_CHARS, ABOUT_MIN_CHARS, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
 import type { ManuscriptFile, ValidateOptions } from '../../src/validate/index.ts';
 import { runValidation } from '../../src/validate/index.ts';
 
@@ -274,20 +274,23 @@ describe('F021 — the front matter', () => {
 
   it('rejects an annotation of 200 characters', () => {
     const result = run({ files: [{ name: '00-front.md', text: `Название\n\n${'я'.repeat(200)}` }] });
-    expect(withRule(result, 'F021')[0]?.message).toContain('expected 300–900');
+    expect(withRule(result, 'F021')[0]?.message).toContain(`expected ${ABOUT_MIN_CHARS}–${ABOUT_MAX_CHARS}`);
   });
 
-  it('rejects an annotation of 1 000 characters', () => {
-    const result = run({ files: [{ name: '00-front.md', text: `Название\n\n${'я'.repeat(1_000)}` }] });
-    expect(withRule(result, 'F021')[0]?.message).toContain('1000 characters');
-  });
-
-  it('rejects a fifth annotation block', () => {
-    const block = 'а'.repeat(100);
+  it('rejects an annotation above the character limit', () => {
     const result = run({
-      files: [{ name: '00-front.md', text: `Название\n\n${[block, block, block, block, block].join('\n\n')}` }],
+      files: [{ name: '00-front.md', text: `Название\n\n${'я'.repeat(ABOUT_MAX_CHARS + 1)}` }],
     });
-    expect(withRule(result, 'F021')[0]?.message).toContain('5 blocks');
+    expect(withRule(result, 'F021')[0]?.message).toContain(`${ABOUT_MAX_CHARS + 1} characters`);
+  });
+
+  it('rejects an annotation of thirteen blocks', () => {
+    const block = 'а'.repeat(100);
+    const blocks = Array.from({ length: 13 }, () => block);
+    const result = run({
+      files: [{ name: '00-front.md', text: `Название\n\n${blocks.join('\n\n')}` }],
+    });
+    expect(withRule(result, 'F021')[0]?.message).toContain('13 blocks');
   });
 
   it('rejects markdown in the annotation', () => {

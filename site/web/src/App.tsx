@@ -13,7 +13,6 @@ import type {
   FrontUpdatedPayload,
   HelloPayload,
   HistoryEventFrame,
-  ParagraphChainDto,
   ServerEventType,
   StateUpdatedPayload,
   ViewerDto,
@@ -25,7 +24,6 @@ import {
   getChapters,
   getComments,
   getFront,
-  getHistoryParagraph,
   getQueue,
   getState,
 } from './api.ts';
@@ -58,6 +56,7 @@ import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { useChangeCard } from './useChangeCard.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { useFocusMode } from './useFocus.ts';
+import { useParagraphChain } from './useParagraphChain.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
@@ -90,8 +89,13 @@ export function App() {
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
   const [historyTick, setHistoryTick] = useState(0);
-  const [chain, setChain] = useState<ParagraphChainDto | null>(null);
-  const [chainLoading, setChainLoading] = useState(false);
+  const {
+    chain,
+    loading: chainLoading,
+    anchor: chainAnchor,
+    open: openChain,
+    close: closeChain,
+  } = useParagraphChain();
   /**
    * The card and the focus view («прицел», §11.9). The focus view is a mode of this page,
    * selected by `#правка-<id>`; its session (hash, change, impact) lives in `useFocusMode`.
@@ -145,18 +149,6 @@ export function App() {
       setComments((await getComments({ limit: 20 })).items);
     } catch {
       /* the next comment event or reconnect retries */
-    }
-  }, []);
-
-  /** «⋯ откуда эта фраза» — the question is asked while reading (§11.10). */
-  const openChain = useCallback(async (blockId: string) => {
-    setChainLoading(true);
-    try {
-      setChain(await getHistoryParagraph(blockId));
-    } catch {
-      setChain(null);
-    } finally {
-      setChainLoading(false);
     }
   }, []);
 
@@ -429,7 +421,7 @@ export function App() {
         />
         {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}
         {chainLoading || chain !== null ? (
-          <ParagraphChain chain={chain} loading={chainLoading} onClose={() => setChain(null)} />
+          <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
         ) : null}
         {focusView}
       </>
@@ -463,7 +455,7 @@ export function App() {
               revising={revising[entry.n] ?? null}
               caret={show ? { show, live } : null}
               fresh={fresh === entry.n}
-              onProvenance={(blockId) => void openChain(blockId)}
+              onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
             />
           );
         })}
@@ -487,7 +479,7 @@ export function App() {
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}
       {chainLoading || chain !== null ? (
-        <ParagraphChain chain={chain} loading={chainLoading} onClose={() => setChain(null)} />
+        <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
       ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       {focusView}

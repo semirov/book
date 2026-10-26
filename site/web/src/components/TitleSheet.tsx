@@ -3,10 +3,12 @@ import type { FrontDto } from '@book/shared';
 import { IDLE_TITLE, titleMotionClass, type TitleMotion } from '../lib/titleChange.ts';
 
 /**
- * The cover caption (owner, 2026-10-26; editor-approved site copy). It is web-layer copy, not
- * manuscript text and not a server field: the book's own words arrive on page 2.
+ * The cover caption (owner, 2026-10-27). It is web-layer copy, not manuscript text and not a
+ * server field: the book's own words arrive on page 2. CSS sets it in uppercase; the line
+ * carries no period. The owner's second sentence — where the two lines meet — is guidance for
+ * the book, not cover copy, and stays off the cover.
  */
-export const COVER_CAPTION = 'Два почерка пишут навстречу и сходятся в одной букве';
+export const COVER_CAPTION = 'Восемь линий, четыре из начала в конец, четыре из конца в начало';
 
 /**
  * Обложка (BOOK-DOC-5 §2, ARCHITECTURE §11.8): the title, the signature and one caption.

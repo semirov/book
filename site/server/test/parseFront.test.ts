@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { ABOUT_MAX_CHARS, ABOUT_MIN_CHARS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { parseFront } from '../src/ingest/parseFront.ts';
@@ -35,7 +39,19 @@ describe('parseFront', () => {
     const parsed = parseFront('Название\n\nСлишком коротко.');
     expect(parsed.title).toBe('Название');
     expect(parsed.about).toBeNull();
-    expect(parsed.problems.join(' ')).toContain('expected 300–900');
+    expect(parsed.problems.join(' ')).toContain(`expected ${ABOUT_MIN_CHARS}–${ABOUT_MAX_CHARS}`);
+  });
+
+  it('accepts the owner\'s real first sheet as written: seven paragraphs, zero problems', () => {
+    // The file itself, not a copy: the annotation is the owner's and it is longer and more
+    // paragraphs than the old band allowed. Reading it keeps the test honest when it changes.
+    const raw = readFileSync(join(import.meta.dirname, '..', '..', '..', 'manuscript', '00-front.md'), 'utf8');
+    const parsed = parseFront(raw);
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.title).toBe('Без названия');
+    expect(parsed.blocks).toHaveLength(7);
+    expect(parsed.chars).toBeGreaterThanOrEqual(ABOUT_MIN_CHARS);
+    expect(parsed.chars).toBeLessThanOrEqual(ABOUT_MAX_CHARS);
   });
 
   it('nulls the title when line 1 is malformed', () => {

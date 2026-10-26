@@ -2,8 +2,7 @@
  * F010 — one book file per commit (ARCHITECTURE.md §13.1, ADR-008).
  *
  * A commit is the writer's step made visible: it carries exactly one chapter (or the first
- * sheet) plus, at most, the append-only `bible/dossiers.md` record of a person who just
- * appeared. Everything else is a bulk rewrite and must say so in its first line —
+ * sheet). Everything else is a bulk rewrite and must say so in its first line —
  * `sweep: …` — because a commit that silently touches twenty chapters destroys the answer to
  * «why did chapter 9 change, and did a gate bless it?».
  *
@@ -15,8 +14,7 @@ import type { Finding } from './text.ts';
 
 /** `manuscript/chNN.md` for 01..67, or the first sheet; nothing else is a book file. */
 const BOOK_FILE = /^manuscript\/(?:ch(?:0[1-9]|[1-5][0-9]|6[0-7])\.md|00-front\.md)$/u;
-/** The record a step may append without becoming a second write (§6C.5). */
-export const DOSSIERS_FILE = 'bible/dossiers.md';
+
 export const SWEEP_PREFIX = 'sweep:';
 
 export function isBookFile(path: string): boolean {
@@ -43,7 +41,7 @@ export function isSweep(message: string): boolean {
 
 /**
  * F010: more than one book file in a commit is an error unless the subject starts with
- * `sweep:`. The dossiers append is free — it is part of the step, not a second write.
+ * `sweep:`. Non-book paths are free — a step may edit the site, the notes or a test.
  */
 export function checkCommitScope(staged: readonly string[], message: string): Finding[] {
   const bookFiles = stagedBookFiles(staged);

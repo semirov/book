@@ -66,19 +66,19 @@
   color: var(--ink);
 }
 
-/* The same three columns for a row that opens nothing: the caret dot still has its place. */
+/* The same columns for a row that opens nothing. */
 .toc-line {
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: 34px 1fr;
   column-gap: 12px;
   align-items: center;
   height: 24px;
 }
 
-/* A row with text opens its chapter: numeral, title line (or frozen sentence), caret dot. */
+/* A row with text opens its chapter: numeral and title line (or frozen sentence), nothing else. */
 .toc-link {
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: 34px 1fr;
   column-gap: 12px;
   align-items: baseline;
   min-height: 44px;
@@ -97,14 +97,6 @@
   color: var(--ink);
   text-wrap: pretty;
   overflow-wrap: break-word;
-}
-.toc-dot {
-  width: 5px;
-  height: 5px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--live);
-  align-self: center;
 }
 
 /* ---------- the chapter caret blinks only while its lane writes (§11.3–11.4) ---------- */

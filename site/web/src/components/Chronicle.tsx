@@ -4,11 +4,10 @@ import type {
   HistoryChapterDto,
   HistoryEventDto,
   HistoryTimelineDto,
-  ParagraphChainDto,
 } from '@book/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getHistoryAt, getHistoryChapter, getHistoryParagraph, getHistoryTimeline } from '../api.ts';
+import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
 import {
   HISTORY_FILTERS,
   compareToNow,
@@ -22,6 +21,7 @@ import {
 import { focusHash } from '../lib/focus.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
 import { ParagraphChain } from './ParagraphChain.tsx';
+import { useParagraphChain } from '../useParagraphChain.ts';
 
 /**
  * The chronicle and the time-travel scrubber (ARCHITECTURE §11.10, §6F.2, §6F.3).
@@ -49,8 +49,13 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [moment, setMoment] = useState<number | null>(null);
   const [past, setPast] = useState<BookAtDto | null>(null);
-  const [chain, setChain] = useState<ParagraphChainDto | null>(null);
-  const [chainLoading, setChainLoading] = useState(false);
+  const {
+    chain,
+    loading: chainLoading,
+    anchor: chainAnchor,
+    open: openChain,
+    close: closeChain,
+  } = useParagraphChain();
 
   const refresh = useCallback(async () => {
     try {
@@ -90,17 +95,6 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
   const lastHseq = timeline?.lastHseq ?? 0;
   const ticks = useMemo(() => scrubTicks(items, lastHseq), [items, lastHseq]);
   const difference = useMemo(() => (past === null ? null : compareToNow(past, catalog, frontRev)), [past, catalog, frontRev]);
-
-  const openChain = useCallback(async (blockId: string) => {
-    setChainLoading(true);
-    try {
-      setChain(await getHistoryParagraph(blockId));
-    } catch {
-      setChain(null);
-    } finally {
-      setChainLoading(false);
-    }
-  }, []);
 
   return (
     <section className="chronicle page" aria-label="хроника книги">
@@ -188,7 +182,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
                       n={chapter.n}
                       hseq={past.hseq}
                       title={chapter.title}
-                      onProvenance={(blockId) => void openChain(blockId)}
+                      onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
                     />
                   ))}
               </div>
@@ -226,7 +220,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
       ) : null}
 
       {chainLoading || chain !== null ? (
-        <ParagraphChain chain={chain} loading={chainLoading} onClose={() => setChain(null)} />
+        <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
       ) : null}
     </section>
   );
@@ -271,7 +265,7 @@ function PastChapter({
   n: number;
   hseq: number;
   title: string | null;
-  onProvenance: (blockId: string) => void;
+  onProvenance: (blockId: string, anchor: HTMLElement) => void;
 }) {
   const [chapter, setChapter] = useState<HistoryChapterDto | null>(null);
   const [failed, setFailed] = useState(false);
@@ -310,7 +304,7 @@ function PastChapter({
             type="button"
             className="prov"
             aria-label="откуда эта фраза"
-            onClick={() => onProvenance(block.id)}
+            onClick={(event) => onProvenance(block.id, event.currentTarget)}
           >
             ⋯
           </button>

@@ -7,8 +7,7 @@
  * operator would otherwise ask the database by hand:
  *
  * - is the text legal and well-formed right now (`validator`, `legal`)?
- * - is there an optional record of people on the page (`cast`) and does the denylist have
- *   teeth (`legal`)? Nothing enforces the record; the panel only counts it.
+ * - does the denylist have teeth (`legal`)?
  * - is anything on the page uncredited (`attribution`, F015)?
  * - is any chapter sitting on a restore that never ran the gates (`ungated`, §13.3)?
  *
@@ -16,11 +15,8 @@
  * than a slow one, and the route is called by an operator, not by a reader.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import type { Imprint, LegalDenylist, ValidatorFinding } from '@book/shared';
-import { recordedNames, runValidation, type ValidateResult } from '@book/shared';
+import { runValidation, type ValidateResult } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { scanManuscript } from '../ingest/scanManuscript.ts';
@@ -59,11 +55,6 @@ export type IntegrityReport = {
     total: number;
     totalChars: number;
     thin: number[];
-  };
-  cast: {
-    dossiers: boolean;
-    /** Capitalised names recorded in `bible/dossiers.md`, an optional record. */
-    recorded: number;
   };
   legal: {
     denylistVersion: number | null;
@@ -107,16 +98,6 @@ export type IntegrityOptions = {
 
 type CountRow = { n: number };
 
-function readDossiers(bookRoot: string): { present: boolean; text: string } {
-  const path = join(bookRoot, 'bible', 'dossiers.md');
-  if (!existsSync(path)) return { present: false, text: '' };
-  try {
-    return { present: true, text: readFileSync(path, 'utf8') };
-  } catch {
-    return { present: true, text: '' };
-  }
-}
-
 function validate(options: IntegrityOptions, denylist: LegalDenylist | null): ValidateResult {
   const scan = scanManuscript(options.bookRoot);
   const files = [
@@ -129,7 +110,6 @@ function validate(options: IntegrityOptions, denylist: LegalDenylist | null): Va
 export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityReport {
   const nowMs = options.nowMs ?? Date.now();
   const at = toIso(nowMs);
-  const dossiers = readDossiers(options.bookRoot);
   const loaded =
     options.denylist === undefined ? loadDenylist(options.denylistPath) : { denylist: options.denylist, problems: [] };
   const denylist = loaded.denylist;
@@ -170,8 +150,6 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
       totalChars: totalChars.n,
       thin,
     },
-    // An optional record, not a rule: the panel reports whether it exists and how it grew.
-    cast: { dossiers: dossiers.present, recorded: recordedNames(dossiers).size },
     legal: {
       denylistVersion: denylist?.version ?? null,
       persons: denylist?.persons.length ?? 0,

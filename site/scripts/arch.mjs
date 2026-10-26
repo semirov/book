@@ -217,9 +217,9 @@ if (canaries.length > 0 && existsSync(distDir)) {
 }
 
 /**
- * F024, the F024-era prompt-name guard, is gone: it guarded names recorded in
- * `bible/dossiers.md`, and the dossier mandate is retired — with no record and no title
- * lines, the check could only pass vacuously. The rule id stays in `validate/text.ts`.
+ * F024, the F024-era prompt-name guard, is gone: it guarded names recorded in the dossier
+ * record, and the dossier mandate is retired — with no record and no title lines, the check
+ * could only pass vacuously. The rule id stays in `validate/text.ts`.
  */
 
 if (problems.length > 0) {

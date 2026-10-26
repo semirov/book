@@ -20,11 +20,6 @@
   align-items: baseline;
   gap: 9px;
 }
-.ch-h .dir {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-3);
-}
 .ch-n {
   font-family: var(--serif);
   font-weight: 700;

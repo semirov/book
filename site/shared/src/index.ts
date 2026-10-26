@@ -15,9 +15,9 @@ export * from './intent.ts';
  * they need are exported by name. A bare `export *` would collide with `Imprint` and
  * `LegalDenylist`, which `book.ts` already owns.
  */
-export { runValidation, recordedNames } from './validate/rules.ts';
+export { runValidation } from './validate/rules.ts';
 export { compilePatterns } from './validate/denylist.ts';
-export { checkCommitScope, commitSubject, isBookFile, isSweep, stagedBookFiles, DOSSIERS_FILE, SWEEP_PREFIX } from './validate/commit.ts';
+export { checkCommitScope, commitSubject, isBookFile, isSweep, stagedBookFiles, SWEEP_PREFIX } from './validate/commit.ts';
 export type {
   // `Finding` is already `change.ts`'s (a gate's finding); the validator's own record of a
   // broken rule is exported under its qualified name so the two cannot be confused.

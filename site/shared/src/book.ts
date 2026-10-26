@@ -45,8 +45,9 @@ export const BOOK_CHARS = { min: 107_200, max: 1_675_000 } as const;
 
 export const TITLE_MAX_CHARS = 80;
 export const ABOUT_MIN_CHARS = 300;
-export const ABOUT_MAX_CHARS = 900;
-export const ABOUT_MAX_BLOCKS = 4;
+/** The annotation is prose the owner writes whole: seven paragraphs and ~1 600 characters today. */
+export const ABOUT_MAX_CHARS = 4_000;
+export const ABOUT_MAX_BLOCKS = 12;
 
 /**
  * The named refusal of a pass that would rewrite page 2 (BOOK-DOC-6): the title is a slot, the
@@ -235,7 +236,9 @@ export type FrontMatterParse = {
 
 /**
  * `manuscript/00-front.md`: line 1 the live title, line 2 blank, then the annotation as
- * 1–4 blocks of 300–900 characters, plain text (§6C.2, F021).
+ * 1–12 blocks of 300–4 000 characters, plain text (§6C.2, F021). The band is a guard against
+ * an empty blurb and an unbounded dump, not a page budget: the owner's annotation is seven
+ * paragraphs and is valid as written.
  */
 export function parseFrontMatter(raw: string): FrontMatterParse {
   const text = normalizeBookText(raw);

@@ -25,7 +25,7 @@ export type TocEntryView = {
   text: string | null;
   /** A row is a link when it opens prose — a written chapter or a basis sentence. */
   link: boolean;
-  /** The chapter the writer's caret is in — a dot in the TOC, not a caret in the prose. */
+  /** The chapter the writer's caret is in; the fact keeps the row exposed, no glyph is drawn. */
   current: boolean;
   href: string;
 };

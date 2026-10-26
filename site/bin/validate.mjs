@@ -17,7 +17,7 @@
  *   node bin/validate.mjs --strict                 # exit 1 on warnings too (CI)
  *
  * F003, F004, F008, F013, F016, F018 and F019 are retired in v3; F024 (no names in prompts)
- * retired with the dossier mandate, since it guarded names in `bible/dossiers.md`;
+ * retired with the dossier mandate, since it guarded names in the dossier record;
  * F011–F018 and F025–F028 live in the engine, git hooks and build tests (§23.5). `--staged` is
  * the pre-commit hook's mode: it reads the index, not the working tree, and adds F010 (one
  * book file per commit).

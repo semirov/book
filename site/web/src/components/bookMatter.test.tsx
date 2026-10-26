@@ -87,10 +87,12 @@ describe('cover', () => {
 
   it('carries the approved caption exactly once, with no period added', () => {
     const html = coverHtml();
-    expect(html.match(/Два почерка пишут навстречу и сходятся в одной букве/gu)).toHaveLength(1);
-    expect(COVER_CAPTION).toBe('Два почерка пишут навстречу и сходятся в одной букве');
+    expect(html.match(/Восемь линий, четыре из начала в конец, четыре из конца в начало/gu)).toHaveLength(1);
+    expect(COVER_CAPTION).toBe('Восемь линий, четыре из начала в конец, четыре из конца в начало');
     expect(COVER_CAPTION.endsWith('.')).toBe(false);
     expect(html).toContain('class="cover-caption"');
+    // The owner's second sentence is guidance for the book, not cover copy.
+    expect(html).not.toContain('схождени');
   });
 
   it('carries none of the rejected front-page copy (BOOK-DOC-5 §2)', () => {
@@ -101,7 +103,6 @@ describe('cover', () => {
       'написано',
       'знаков',
       'открытую',
-      'линии',
       '©',
       '67',
       'kicker',
@@ -141,6 +142,23 @@ describe('page 2', () => {
     expect(html).not.toContain('о чём эта книга</');
   });
 
+  it('renders a hard-wrapped paragraph as one continuous line, with a single space', () => {
+    // The manuscript is hard-wrapped at ~100 characters; inside a paragraph those breaks
+    // are soft, or a justified 390 px column keeps a ragged break (the page-2 defect).
+    const wrapped = 'Описание входит в описываемое и не\nзамыкается.\n\nВторой абзац\nтоже.';
+    const html = renderToStaticMarkup(<Annotation front={{ ...front, about: wrapped }} />);
+
+    expect(html).toContain('<p class="p">Описание входит в описываемое и не замыкается.</p>');
+    expect(html).toContain('<p class="p">Второй абзац тоже.</p>');
+    expect(html).not.toContain('не\n');
+    expect(html).not.toContain('не  ');
+    expect(textOf(html)).toBe('Описание входит в описываемое и не замыкается.Второй абзац тоже.');
+    // Two paragraphs stay two, and the author's dash is left exactly as typed.
+    expect(html.match(/<p class="p">/gu)).toHaveLength(2);
+    const dashed = renderToStaticMarkup(<Annotation front={{ ...front, about: 'Конец —\nсчёт.' }} />);
+    expect(dashed).toContain('<p class="p">Конец — счёт.</p>');
+  });
+
   it('renders nothing when the annotation is malformed: no fabricated blurb', () => {
     expect(renderToStaticMarkup(<Annotation front={{ ...front, about: null }} />)).toBe('');
   });
@@ -176,6 +194,9 @@ describe('the live table of contents', () => {
     expect(links).toHaveLength(2);
     expect(links[0]).toContain('href="#ch-1"');
     expect(links[1]).toContain('href="#ch-67"');
+    // A basis row is its numeral and the frozen sentence, nothing else (no arrow, no dot).
+    expect(textOf(links[0] ?? '')).toBe(`01${FRAME_FIRST_SENTENCE}`);
+    expect(textOf(links[1] ?? '')).toBe(`67${FRAME_LAST_SENTENCE}`);
 
     for (const row of rows.filter((item) => !item.includes('<a '))) {
       expect(row).not.toContain('href');
@@ -211,25 +232,29 @@ describe('the live table of contents', () => {
     expect(fourth).toContain(FRAME_LAST_SENTENCE);
   });
 
-  it('keeps the caret dot on a row the writer is in before its first line lands', () => {
+  it('marks the current row for assistive tech but draws no caret or arrow', () => {
     const html = renderToStaticMarkup(
       <TableOfContents catalog={catalog} state={state} currentChapter={5} />,
     );
     const row = tocRows(html)[4] ?? '';
-    expect(row).toContain('toc-dot');
-    expect(row).toContain('пишется сейчас');
+    expect(row).not.toContain('toc-dot');
+    expect(row).not.toContain('пишется сейчас');
+    expect(row).not.toContain('←');
+    expect(row).not.toContain('→');
     expect(row).not.toContain('aria-hidden');
     expect(row).not.toContain('<a ');
-    // The dot is the only addition: the row still carries its numeral and no invented text.
+    // The row still carries its numeral and no invented text.
     expect(textOf(row).trim()).toBe('05');
   });
 
-  it('keeps the written title line, the untitled written row and the caret dot', () => {
+  it('keeps the written title line, the untitled written row and no marker', () => {
     const written = renderToStaticMarkup(
       <TableOfContents catalog={writtenCatalog} state={state} currentChapter={1} />,
     );
     expect(written).toContain('Тестовая глава');
-    expect(written).toContain('пишется сейчас');
+    expect(written).not.toContain('toc-dot');
+    expect(written).not.toContain('пишется сейчас');
+    expect(written).not.toContain('←');
     // Row 2 is written but has no title line: it still opens its chapter, with no text.
     expect(tocRows(written).filter((row) => row.includes('<a '))).toHaveLength(3);
     expect(tocRows(written)[1]).toContain('class="toc-link"');

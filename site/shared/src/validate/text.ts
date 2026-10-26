@@ -33,8 +33,8 @@ export type Severity = 'error' | 'warn';
  *
  * F003 (forbidden vocabulary) and F008 (process vocabulary) are tombstones: the author's
  * directive is that the only taboos are copyright and RF law, so only F005 polices words.
- * F019 (the dossiers warning) is retired outright — the record is optional and no rule reads
- * it — so it has no id here; F029 is the frozen frame of ch01/ch67.
+ * F019 (the dossier warning) is retired outright — the record is gone and no rule reads it —
+ * so it has no id here; F029 is the frozen frame of ch01/ch67.
  */
 export type RuleId =
   | 'F001'

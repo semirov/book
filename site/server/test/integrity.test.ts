@@ -115,7 +115,6 @@ describe('the integrity panel (§13.4 point 5, §17)', () => {
       expect(body.ungated).toEqual([]);
       expect(body.restores).toMatchObject({ total: 0 });
       expect(body.reconciles).toEqual([]);
-      expect(body.cast).toMatchObject({ dossiers: false, recorded: 0 });
     } finally {
       await app.close();
       fixture.close();

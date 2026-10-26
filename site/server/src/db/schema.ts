@@ -110,7 +110,7 @@ ${CHAPTERS_TABLE_SQL}
 CREATE TABLE front_matter (                    -- manuscript/00-front.md: title + annotation (§6C.2)
   id          INTEGER PRIMARY KEY CHECK (id = 1),
   title       TEXT    NOT NULL,                -- line 1, ≤80 chars, validated by F021
-  about       TEXT    NOT NULL,                -- page 2, 300–900 chars, validated by F021
+  about       TEXT    NOT NULL,                -- page 2, 300–4 000 chars in up to 12 blocks, validated by F021
   rev         INTEGER NOT NULL DEFAULT 1,
   sha256      TEXT    NOT NULL,                -- hash of the whole file
   updated_at  TEXT    NOT NULL

@@ -8,10 +8,11 @@ import { tocAriaLabel, tocParts, writtenCount } from '../lib/toc.ts';
  * rows, and no invented titles. A row shows its chapter's title line, or the frozen frame
  * sentence of a basis slot (ch01/ch67); an empty row is its numeral and nothing else — no
  * link, no focus ring, no scroll on tap. No leader dots, no row rules, no part ranges, no
- * repeated book title: the column of numbers is the structural mark.
+ * repeated book title, and no marker beside the numeral: the column of numbers is the
+ * structural mark (owner, 2026-10-27: no arrows and no caret dot in the TOC).
  *
- * The caret dot is a live fact, so it is drawn on an inert row too (a chapter the writer is
- * in before its first line lands) and that row is not hidden from assistive tech.
+ * `current` still decides whether an inert row is exposed to assistive tech — the fact stays,
+ * the glyph does not.
  */
 export function TableOfContents({
   catalog,
@@ -50,12 +51,10 @@ export function TableOfContents({
                   >
                     <span className="toc-num">{chapterLabel(entry.n)}</span>
                     {entry.text === null ? null : <span className="toc-text">{entry.text}</span>}
-                    {entry.current ? <i className="toc-dot" aria-label="пишется сейчас" /> : null}
                   </a>
                 ) : (
                   <span className="toc-line">
                     <span className="toc-num">{chapterLabel(entry.n)}</span>
-                    {entry.current ? <i className="toc-dot" aria-label="пишется сейчас" /> : null}
                   </span>
                 )}
               </li>
