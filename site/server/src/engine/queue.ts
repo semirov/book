@@ -31,7 +31,7 @@ import { acquireLease } from './leases.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
-import { readChapter, writtenChapters } from './text.ts';
+import { isWrittenChapter, readChapter, writtenChapters } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -77,7 +77,8 @@ export function createQueue(deps: EngineDeps) {
       refuse('INVALID_INTENT', 422, `intent is ${intent.length} characters, limit is ${INTENT_MAX_CHARS}`);
     }
     const text = readChapter(bookRoot, chapter);
-    if (!text.exists || text.blocks.length === 0) {
+    // A basis-only slot (ch01/ch67) is unwritten: its frozen sentence is not a base for edits.
+    if (!isWrittenChapter(text)) {
       refuse('CHAPTER_EMPTY', 409, `глава ${chapter} ещё не написана`);
     }
     if (store.countPending(db) >= config.queueSoftCap) {

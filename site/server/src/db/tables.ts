@@ -7,6 +7,46 @@
  * fresh install) and not on the server (an upgrade).
  */
 
+/**
+ * `chapters` — the prose projection of the manuscript, and the one table BOOK-6 widened.
+ * It is a named constant because migration v7 has to build the *same* table (SQLite cannot
+ * add a CHECK to an existing column), and a migrated install must be indistinguishable from
+ * a fresh one.
+ */
+export const CHAPTERS_TABLE_SQL = `CREATE TABLE chapters (
+  n           INTEGER PRIMARY KEY CHECK (n BETWEEN 1 AND 67),
+  rev         INTEGER NOT NULL DEFAULT 0,      -- increments per observed file change
+  title       TEXT,                            -- line 1 of the file; null = «Глава N» (§6C.3)
+  sha256      TEXT    NOT NULL,
+  chars       INTEGER NOT NULL,                -- prose only; the title line is excluded
+  block_count INTEGER NOT NULL,
+  basis       INTEGER NOT NULL DEFAULT 0 CHECK (basis IN (0,1)),
+                                               -- 1 = the file is exactly its basis sentence (BOOK-6):
+                                               -- one block to read, no title, no chars, not written
+  written_at  TEXT    NOT NULL,                -- first sighting
+  updated_at  TEXT    NOT NULL,
+  parse_error TEXT
+);`;
+
+/** The same table under another name — migration v7 builds it, copies, then swaps the names. */
+export function chaptersTableSql(name: string): string {
+  return CHAPTERS_TABLE_SQL.replace('CREATE TABLE chapters', `CREATE TABLE ${name}`);
+}
+
+/** Every column of `chapters`, in table order — the v7 rebuild copies exactly these. */
+export const CHAPTERS_COLUMNS = [
+  'n',
+  'rev',
+  'title',
+  'sha256',
+  'chars',
+  'block_count',
+  'basis',
+  'written_at',
+  'updated_at',
+  'parse_error',
+] as const;
+
 export const BLOCK_VERSIONS_TABLE_SQL = `CREATE TABLE block_versions (               -- stable paragraph identity across rewrites (§6F.3)
   block_uid   TEXT NOT NULL,                   -- ULID; survives a rewrite that changes the text
   ver         INTEGER NOT NULL,                -- 1..n, monotonic inside a uid

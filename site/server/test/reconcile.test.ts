@@ -151,8 +151,8 @@ describe('reconcile — a revision', () => {
   });
 });
 
-describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () => {
-  it('empties the projection instead of keeping the old text', () => {
+describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () => {
+  it('projects the basis sentence as one paragraph instead of keeping the old text', () => {
     fixture = createFixture({ 'ch01.md': CHAPTER_ONE, '00-front.md': FRONT });
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
@@ -162,12 +162,14 @@ describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () =>
 
     expect(report.emptied).toEqual([1]);
     expect(report.removed).toEqual([]);
-    expect(getChapterRow(fixture.db, 1)).toMatchObject({ block_count: 0, chars: 0, title: null });
-    expect(listBlocks(fixture.db, 1)).toEqual([]);
-    // The slot is empty in every projection: the catalog, the state and the reader default.
-    expect(listCatalog(fixture.db)[0]).toMatchObject({ n: 1, written: false, chars: 0 });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ block_count: 1, chars: 0, title: null, basis: 1 });
+    // The reader sees the frozen frame: one block, the sentence itself.
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    // The slot is unwritten in every projection: the catalog, the state and the reader default.
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ n: 1, written: false, basis: true, chars: 0, blocks: 1 });
     const state = new StateService(fixture.db).snapshot();
     expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
     expect(state.chapters.empty).toHaveLength(67);
 
@@ -175,16 +177,56 @@ describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () =>
     expect(listRevisions(fixture.db, 1).length).toBeGreaterThan(0);
   });
 
-  it('is idempotent: a second scan finds the slot already empty', () => {
+  it('projects a basis-only file on its first sight, before any chapter existed', () => {
+    fixture = createFixture({ 'ch67.md': FRAME_LAST_SENTENCE });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.emptied).toEqual([67]);
+    expect(report.created).toEqual([]);
+    expect(getChapterRow(fixture.db, 67)).toMatchObject({ rev: 0, block_count: 1, chars: 0, basis: 1 });
+    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+    expect(listRevisions(fixture.db, 67)).toEqual([]);
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.totalChars).toBe(0);
+  });
+
+  it('is idempotent: a second scan keeps exactly one block', () => {
     fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    const before = getChapterRow(fixture.db, 1);
 
     const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(again.emptied).toEqual([]);
     expect(again.unchanged).toEqual([1]);
-    expect(getChapterRow(fixture.db, 1)?.block_count).toBe(0);
+    expect(getChapterRow(fixture.db, 1)).toEqual(before);
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBe(1);
+    expect(listBlocks(fixture.db, 1)).toHaveLength(1);
+  });
+
+  it('heals a row left by the pre-BOOK-6 install: same sha, no blocks, no basis flag', () => {
+    // The live install before this change: `blankChapter` stored the file's sha with
+    // block_count = 0, and the new `basis` column defaults to 0 on migration. The fast path
+    // must not call that "unchanged", or the two sentences would never appear.
+    fixture = createFixture({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    const parsed = parseChapter(1, FRAME_FIRST_SENTENCE);
+    fixture.db
+      .prepare(
+        `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at)
+         VALUES (1, 4, NULL, ?, 0, 0, 0, '2026-10-20T09:00:00Z', '2026-10-20T09:00:00Z')`,
+      )
+      .run(parsed.sha256);
+
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([1]);
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ rev: 4, block_count: 1, chars: 0, basis: 1 });
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+
+    // And the second scan is a no-op.
+    const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(again.unchanged).toEqual([1]);
   });
 
   it('takes the empty book end to end: ch01 and ch67 hold one sentence each', () => {
@@ -201,6 +243,8 @@ describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () =>
     expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
     expect(state.front.title).toBe('Земля, которая больше не кормит');
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
   });
 
   it('still guards a zero-byte write: an empty file keeps the old text (§6.2)', () => {
@@ -211,6 +255,19 @@ describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () =>
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.emptied).toEqual([]);
     expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
+    expect(getChapterRow(fixture.db, 1)?.basis).toBe(0);
+  });
+
+  it('returns a basis slot to prose when the writer fills it in', () => {
+    fixture = createFixture({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 1, rev: 0 });
+
+    fixture.write('ch01.md', CHAPTER_ONE);
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 0, rev: 1, chars: parseChapter(1, CHAPTER_ONE).chars });
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ written: true, basis: false });
+    expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([1]);
   });
 });
 

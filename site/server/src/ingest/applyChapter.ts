@@ -9,7 +9,7 @@
  * It never touches the manuscript: the file is already read by the caller.
  */
 
-import { directionOf, isBasisOnly, partOf, type Lane, type PatchOp, type Part } from '@book/shared';
+import { directionOf, partOf, type Lane, type PatchOp, type Part } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import {
@@ -18,6 +18,7 @@ import {
   replaceBlocks,
   upsertChapterRow,
   type BlockRow,
+  type ChapterRow,
 } from '../db/repo/chapters.ts';
 import { insertRevision } from '../db/repo/revisions.ts';
 import { recordBlockRevision, type BlockOverwrite } from '../history/blocks.ts';
@@ -32,7 +33,7 @@ import {
   type WriteActor,
   type WriteCause,
 } from './attribution.ts';
-import { parseChapter } from './parseChapter.ts';
+import { parseChapter, type ParsedChapter } from './parseChapter.ts';
 import { PATCH_MAX_BYTES, patchBlocks, patchSize } from './patchBlocks.ts';
 import { restoreCause, restoredFrom } from './restore.ts';
 
@@ -82,8 +83,9 @@ export type ApplyChapterResult =
   /** Zero blocks: an empty slot in progress, or a truncate-then-write the caller must guard. */
   | { status: 'empty'; n: number }
   /**
-   * The file now holds only its basis sentence (ch01/ch67): a legitimately emptied slot, not
-   * an empty write between two saves (§6.2, BOOK-6). The projection is blank; the history is not.
+   * The file now holds only its basis sentence (ch01/ch67): the slot is projected as that
+   * one paragraph and stays unwritten — a legitimately empty slot, not an empty write
+   * between two saves (§6.2, BOOK-6). The history is not touched.
    */
   | { status: 'emptied'; n: number }
   | ({ status: 'created' } & AppliedChapter)
@@ -97,11 +99,20 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
   const existing = getChapterRow(db, n);
   const observedAt = toIso(Math.min(input.mtimeMs, input.nowMs));
 
-  if (existing !== undefined && existing.sha256 === parsed.sha256) return { status: 'unchanged', n };
-  if (parsed.blocks.length === 0) {
-    if (existing !== undefined && isBasisOnly(n, input.raw)) return blankChapter(db, n, parsed.sha256, observedAt);
-    return { status: 'empty', n };
-  }
+  // "Unchanged" must mean the projection already says what the file says: a row left with the
+  // file's sha but no blocks (an install from before the basis projection, BOOK-6) is healed
+  // by the next scan instead of staying empty forever.
+  const unchanged =
+    existing !== undefined &&
+    existing.sha256 === parsed.sha256 &&
+    existing.basis === (parsed.basis ? 1 : 0) &&
+    existing.block_count === parsed.blocks.length;
+  if (unchanged) return { status: 'unchanged', n };
+  // A slot that holds only its basis sentence (ch01/ch67, BOOK-6) is projected as the one
+  // paragraph the reader must see — and as nothing else: no revision, no log entry, no
+  // snapshot, because nobody wrote it and it is not a chapter.
+  if (parsed.basis) return projectBasis(db, n, existing, parsed, observedAt);
+  if (parsed.blocks.length === 0) return { status: 'empty', n };
 
   const observed = input.cause ?? chapterWriteCause(db, n, input.nowMs);
   // §13.3: with no lease, a text that is byte-identical to an earlier stored revision is a
@@ -126,6 +137,7 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
         sha256: parsed.sha256,
         chars: parsed.chars,
         blockCount: parsed.blocks.length,
+        basis: false,
         writtenAt: observedAt,
         updatedAt: observedAt,
       });
@@ -223,6 +235,7 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
       sha256: parsed.sha256,
       chars: parsed.chars,
       blockCount: parsed.blocks.length,
+      basis: false,
       writtenAt: existing.written_at,
       updatedAt: observedAt,
     });
@@ -328,18 +341,35 @@ function isConstraintError(error: unknown): boolean {
 }
 
 /**
- * Blank a chapter that was reduced to its basis sentence (§BOOK-6). The row stays — the
- * append-only history keeps its revisions — and `block_count = 0` is what makes every
- * projection (catalog, `/api/state`, `/api/chapters/:n`, `written`) treat the slot as empty.
+ * Project a slot that is exactly its basis sentence (§BOOK-6), whether it was emptied down
+ * to that sentence or first seen with it. The frozen sentence becomes the chapter's one
+ * paragraph — the reader must see the opening of chapter 1 and the close of chapter 67 — and
+ * nothing else changes: `chars = 0`, `basis = 1`, `written` stays false everywhere, and
+ * there is no revision, log entry or snapshot, because nobody wrote it. A former chapter's
+ * append-only history stays as it is.
  */
-function blankChapter(db: Db, n: number, sha256: string, observedAt: string): ApplyChapterResult {
+function projectBasis(
+  db: Db,
+  n: number,
+  existing: ChapterRow | undefined,
+  parsed: ParsedChapter,
+  observedAt: string,
+): ApplyChapterResult {
+  const rev = existing?.rev ?? 0;
   const run = db.transaction(() => {
-    replaceBlocks(db, n, 0, []);
-    db.prepare(
-      `UPDATE chapters
-          SET title = NULL, sha256 = ?, chars = 0, block_count = 0, updated_at = ?, parse_error = NULL
-        WHERE n = ?`,
-    ).run(sha256, observedAt, n);
+    upsertChapterRow(db, {
+      n,
+      rev,
+      title: null,
+      sha256: parsed.sha256,
+      chars: 0,
+      blockCount: parsed.blocks.length,
+      basis: true,
+      writtenAt: existing?.written_at ?? observedAt,
+      updatedAt: observedAt,
+    });
+    // The chapter row must exist first: `blocks` references it.
+    replaceBlocks(db, n, rev, parsed.blocks);
   });
   run();
   return { status: 'emptied', n };

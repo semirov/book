@@ -11,6 +11,7 @@ import {
   FORWARD_LAST,
   TOTAL_CHAPTERS,
   allChapterNumbers,
+  isChapterNumber,
   partOf,
   type DraftCursor,
   type StateSnapshot,
@@ -45,6 +46,8 @@ export type DeriveInput = {
   now: Date;
   version: number;
   front?: FrontFact;
+  /** Slots that hold only their basis sentence (ch01/ch67); a subset of `empty` (BOOK-6). */
+  basis?: number[];
   /** Engine facts (queue, ripple, unresolved seams, live lease); absent in degraded mode. */
   overlay?: EngineOverlay;
 };
@@ -54,6 +57,9 @@ export function deriveState(input: DeriveInput): StateSnapshot {
   const written = facts.map((fact) => fact.n);
   const writtenSet = new Set(written);
   const empty = allChapterNumbers().filter((n) => !writtenSet.has(n));
+  const basis = [...new Set(input.basis ?? [])]
+    .filter((n) => isChapterNumber(n) && !writtenSet.has(n))
+    .sort((a, b) => a - b);
   const totalChars = facts.reduce((sum, fact) => sum + fact.chars, 0);
 
   const forwardFront = written.filter((n) => n <= FORWARD_LAST).at(-1) ?? null;
@@ -85,6 +91,7 @@ export function deriveState(input: DeriveInput): StateSnapshot {
       empty,
       count: facts.length,
       totalChars,
+      basis,
     },
     cursors: {
       forward: cursorFor('forward', forwardFront),
@@ -154,18 +161,21 @@ function cursorFor(lane: 'forward' | 'backward', front: number | null): DraftCur
 /**
  * Fingerprint of everything that changes the snapshot except `version` and `at`
  * (§7.2 rule 10). Titles and the first sheet are included: a retitled chapter and a
- * rewritten annotation are changes a reader must see.
+ * rewritten annotation are changes a reader must see. `basis` is included too: a slot that
+ * gains or loses its basis sentence changes what the page shows (BOOK-6).
  */
 export function stateFingerprint(
   facts: ChapterFact[],
   front: FrontFact = EMPTY_FRONT,
   engine = '',
+  basis: readonly number[] = [],
 ): string {
   return JSON.stringify({
     chapters: [...facts]
       .sort((a, b) => a.n - b.n)
       .map((fact) => [fact.n, fact.rev, fact.title, fact.chars, fact.blocks, fact.updatedAt]),
     front: [front.rev, front.title, front.about, front.updatedAt],
+    basis: [...basis].sort((a, b) => a - b),
     engine,
   });
 }

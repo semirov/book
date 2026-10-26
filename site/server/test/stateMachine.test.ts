@@ -181,4 +181,31 @@ describe('stateFingerprint', () => {
       stateFingerprint([], { title: 'Книга', about: 'О чём.', rev: 1, updatedAt: '2026-10-25T10:00:00Z' }),
     );
   });
+
+  it('changes when a slot gains or loses its basis sentence (BOOK-6)', () => {
+    expect(stateFingerprint([], undefined, '', [1, 67])).not.toBe(stateFingerprint([], undefined, '', []));
+    // Order is not identity here either.
+    expect(stateFingerprint([], undefined, '', [67, 1])).toBe(stateFingerprint([], undefined, '', [1, 67]));
+  });
+});
+
+describe('a slot that holds only its basis sentence (BOOK-6)', () => {
+  it('is named explicitly and counted as no chapter and no character', () => {
+    const state = deriveState({ facts: [], basis: [1, 67], now, version: 1 });
+    expect(state.chapters.basis).toEqual([1, 67]);
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    // The basis slots are part of the explicit complement the page draws its slots from.
+    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.toc.every((entry) => !entry.written)).toBe(true);
+  });
+
+  it('cannot be both written and a basis slot, and never invents a number', () => {
+    const state = deriveState({ facts: [], basis: [1, 1, 99, -3], now, version: 1 });
+    expect(state.chapters.basis).toEqual([1]);
+    const written = deriveState({ facts: [fact(1)], basis: [1, 67], now, version: 1 });
+    expect(written.chapters.basis).toEqual([67]);
+    expect(written.chapters.written).toEqual([1]);
+  });
 });

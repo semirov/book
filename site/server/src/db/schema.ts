@@ -1,21 +1,28 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 6** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 7** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
- * §13.3). Text tables are a projection of the manuscript files; the engine tables are the
- * only home of process facts. Every table §8 names exists here, and the retired
- * `obligations` table does not (§23.5, ADR-023).
+ * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence). Text
+ * tables are a projection of the manuscript files; the engine tables are the only home of
+ * process facts. Every table §8 names exists here, and the retired `obligations` table does
+ * not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
- * an incremental migration need them (§13.3, §6F.3); they are re-exported so a reader of the
- * schema still finds every table in one place.
+ * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
+ * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
 
-export { BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL };
+export {
+  BLOCK_VERSIONS_TABLE_SQL,
+  CHAPTERS_COLUMNS,
+  CHAPTERS_TABLE_SQL,
+  RECONCILES_TABLE_SQL,
+  chaptersTableSql,
+} from './tables.ts';
 
 export const STEPS_TABLE_SQL = `CREATE TABLE steps (                             -- one step = one chapter edit + its two gates
   step_id     TEXT PRIMARY KEY,                  -- 'stp_01JB7…'
@@ -98,17 +105,7 @@ export const STEPS_COLUMNS = [
 ] as const;
 
 export const SCHEMA_SQL = `
-CREATE TABLE chapters (
-  n           INTEGER PRIMARY KEY CHECK (n BETWEEN 1 AND 67),
-  rev         INTEGER NOT NULL DEFAULT 0,      -- increments per observed file change
-  title       TEXT,                            -- line 1 of the file; null = «Глава N» (§6C.3)
-  sha256      TEXT    NOT NULL,
-  chars       INTEGER NOT NULL,                -- prose only; the title line is excluded
-  block_count INTEGER NOT NULL,
-  written_at  TEXT    NOT NULL,                -- first sighting
-  updated_at  TEXT    NOT NULL,
-  parse_error TEXT
-);
+${CHAPTERS_TABLE_SQL}
 
 CREATE TABLE front_matter (                    -- manuscript/00-front.md: title + annotation (§6C.2)
   id          INTEGER PRIMARY KEY CHECK (id = 1),

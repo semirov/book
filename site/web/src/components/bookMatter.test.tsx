@@ -26,6 +26,7 @@ const catalog: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
     chars: 0,
     blocks: 0,
     written: false,
+    basis: false,
     writtenAt: null,
     updatedAt: null,
     direction: n <= 34 ? 'forward' : 'backward',

@@ -94,6 +94,8 @@ function entryFromCreated(previous: CatalogEntry | null, created: ChapterCreated
     chars: created.chars,
     blocks: previous?.blocks ?? 0,
     written: true,
+    // A created chapter is prose: a basis-only slot is never announced as `chapter:created`.
+    basis: false,
     writtenAt: previous?.writtenAt ?? created.createdAt,
     updatedAt: created.createdAt,
     direction: created.direction,
@@ -114,6 +116,9 @@ function entryFromRevision(previous: CatalogEntry | null, revision: ChapterRevis
     rev: revision.rev,
     chars: revision.chars,
     written: revision.rev > 0,
+    // A revision means prose: a slot that was showing only its basis sentence is now a
+    // chapter, and the frame paragraph no longer stands for it (BOOK-6).
+    basis: false,
     updatedAt: revision.updatedAt,
   };
 }
@@ -125,18 +130,22 @@ export function withChapterRevision(data: BookData, revision: ChapterRevisionPay
   return entry === null ? data : { ...data, catalog: withCatalogEntry(data.catalog, entry) };
 }
 
-/** A `state:updated` whose TOC disagrees with the catalog means the catalog is stale. */
+/**
+ * A `state:updated` whose TOC disagrees with the catalog means the catalog is stale.
+ *
+ * A basis slot (ch01/ch67) is unwritten in both, so `rev` and `title` only mean something
+ * for a written row — a former chapter's retained `rev` is not a disagreement. Its `basis`
+ * flag is one, though: gaining or losing the frozen sentence changes what the reader sees.
+ */
 export function catalogOutOfSync(state: StateSnapshot, catalog: readonly CatalogEntry[]): boolean {
   if (catalog.length !== state.toc.length) return true;
   const toc = new Map(state.toc.map((entry) => [entry.n, entry]));
+  const basis = new Set(state.chapters.basis);
   return catalog.some((row) => {
     const entry = toc.get(row.n);
-    return (
-      entry === undefined ||
-      row.written !== entry.written ||
-      row.rev !== entry.rev ||
-      (row.title ?? null) !== (entry.title ?? null)
-    );
+    if (entry === undefined || row.written !== entry.written) return true;
+    if (basis.has(row.n) !== row.basis) return true;
+    return row.written && (row.rev !== entry.rev || (row.title ?? null) !== (entry.title ?? null));
   });
 }
 

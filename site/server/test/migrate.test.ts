@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { ensureStepLifecycle, migrate } from '../src/db/migrate.ts';
-import { REQUIRED_TABLES, REQUIRED_TRIGGERS, SCHEMA_VERSION } from '../src/db/schema.ts';
+import { REQUIRED_TABLES, REQUIRED_TRIGGERS, SCHEMA_VERSION, CHAPTERS_COLUMNS } from '../src/db/schema.ts';
 
 function tables(db: Db): string[] {
   return db
@@ -22,12 +22,19 @@ function columns(db: Db, table: string): string[] {
   return (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name);
 }
 
-describe('migrate — schema v6', () => {
+function tableSql(db: Db, table: string): string {
+  const row = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table) as
+    | { sql: string }
+    | undefined;
+  return row?.sql ?? '';
+}
+
+describe('migrate — schema v7', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(6);
+    expect(SCHEMA_VERSION).toBe(7);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -36,6 +43,8 @@ describe('migrate — schema v6', () => {
     expect(present).not.toContain('cascade_stages');
     expect(triggers(db).sort()).toEqual([...REQUIRED_TRIGGERS].sort());
     expect(db.prepare('SELECT COUNT(*) AS n FROM lane').get()).toEqual({ n: 1 });
+    // BOOK-6: a slot may hold only its basis sentence, which is not a written chapter.
+    expect(columns(db, 'chapters')).toContain('basis');
     db.close();
   });
 
@@ -127,6 +136,46 @@ describe('migrate — schema v6', () => {
 
     expect(migrate(db)).toEqual({ from: 5, to: SCHEMA_VERSION });
     expect(tables(db)).toContain('reconciles');
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('adds the BOOK-6 basis column to a v6 install, once, keeping the projection', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v6 database: `chapters.basis` did not exist before BOOK-6.
+    db.exec('ALTER TABLE chapters DROP COLUMN basis');
+    db.exec(
+      `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
+       VALUES (1, 2, 'Половик в тамбуре', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+    );
+    // A paragraph that references the rebuilt table by name: the swap must not orphan it.
+    db.exec(
+      `INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev)
+       VALUES ('ch01#aaaaaaaa', 1, 0, 'Половик намок.', 'aaaaaaaa', 1, 2)`,
+    );
+    db.pragma('user_version = 6');
+
+    expect(migrate(db)).toEqual({ from: 6, to: SCHEMA_VERSION });
+    expect(columns(db, 'chapters')).toEqual([...CHAPTERS_COLUMNS]);
+    // A pre-BOOK-6 row is a written chapter, not a basis slot.
+    expect(db.prepare('SELECT basis, title FROM chapters WHERE n = 1').get()).toEqual({
+      basis: 0,
+      title: 'Половик в тамбуре',
+    });
+    // The rebuild kept the paragraph, and its foreign key still resolves after the swap.
+    expect(db.prepare('SELECT chapter FROM blocks WHERE id = ?').get('ch01#aaaaaaaa')).toEqual({ chapter: 1 });
+    // SQLite cannot add a CHECK with ALTER, so v7 rebuilds the table: a migrated install has
+    // the same shape as a fresh one, including the constraint.
+    expect(tableSql(db, 'chapters')).toContain('CHECK (basis IN (0,1))');
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO chapters (n, rev, sha256, chars, block_count, basis, written_at, updated_at)
+           VALUES (2, 1, 'x', 0, 1, 2, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+        )
+        .run(),
+    ).toThrow(/CHECK/u);
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });

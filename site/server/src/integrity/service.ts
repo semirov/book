@@ -136,7 +136,9 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
   const result = validate(options, denylist);
 
   // A slot is written when it has prose: a basis-only or zero-block row is an empty slot (BOOK-6).
-  const written = db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE block_count > 0').get() as CountRow;
+  const written = db
+    .prepare('SELECT COUNT(*) AS n FROM chapters WHERE block_count > 0 AND basis = 0')
+    .get() as CountRow;
   const totalChars = db.prepare('SELECT COALESCE(SUM(chars), 0) AS n FROM chapters').get() as CountRow;
   const thin = result.chapters.filter((chapter) => chapter.chars < THIN_LIMIT).map((chapter) => chapter.n);
 

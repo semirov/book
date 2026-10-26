@@ -29,6 +29,7 @@ function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
     chars: 0,
     blocks: 0,
     written: false,
+    basis: false,
     writtenAt: null,
     updatedAt: null,
     direction: n <= 34 ? 'forward' : 'backward',
@@ -45,7 +46,7 @@ function state(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     engine: { status: 'unknown', heartbeatAt: null, laneId: null },
     phase: 'draft',
     front: { title: 'Земля', about: 'О чём.', rev: 1, updatedAt: '' },
-    chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0 },
+    chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [] },
     cursors: {} as StateSnapshot['cursors'],
     toc: catalog.map((row) => ({ part: row.part, n: row.n, title: row.title, written: row.written, rev: row.rev })),
     meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
@@ -92,7 +93,7 @@ const hello: HelloPayload = {
   front: { title: 'Земля', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' } },
   catalog: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', rev: 1, written: true } : row)),
   state: state({
-    chapters: { total: 67, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10 },
+    chapters: { total: 67, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
     toc: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', written: true, rev: 1 } : row)),
   }),
   currentChapter: null,
@@ -152,11 +153,26 @@ describe('state merges', () => {
   it('flags a catalog that disagrees with the snapshot TOC', () => {
     expect(catalogOutOfSync(state(), catalog)).toBe(false);
     const written = state({
-      chapters: { total: 67, written: [1], empty: [], count: 1, totalChars: 10 },
+      chapters: { total: 67, written: [1], empty: [], count: 1, totalChars: 10, basis: [] },
       toc: catalog.map((row) => (row.n === 1 ? { ...row, written: true, rev: 1, title: 'Глава' } : row)),
     });
     expect(catalogOutOfSync(written, catalog)).toBe(true);
     expect(catalogOutOfSync(written, withCatalogEntry(catalog, entry(1, { written: true, rev: 1, title: 'Глава' })))).toBe(false);
+  });
+
+  it('follows the basis flag of an unwritten slot (BOOK-6)', () => {
+    const withBasis = withCatalogEntry(catalog, entry(1, { basis: true, blocks: 1, rev: 4 }));
+    const basisState = state({
+      chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [1] },
+    });
+
+    // Agreement: the slot is unwritten in both, and a former chapter's retained rev is not
+    // a disagreement — only the basis flag is, because it changes what the reader sees.
+    expect(catalogOutOfSync(basisState, withBasis)).toBe(false);
+    // The frozen sentence appearing or disappearing must refresh the catalog.
+    expect(catalogOutOfSync(basisState, catalog)).toBe(true);
+    expect(catalogOutOfSync(state(), withBasis)).toBe(true);
+    expect(catalogOutOfSync(state(), catalog)).toBe(false);
   });
 });
 
@@ -169,7 +185,7 @@ describe('chapter events', () => {
     part: 1,
     direction: 'forward',
     cause: { kind: 'draft', lane: 'forward', leaseId: null, changeId: null, cascadeId: null, stepId: null },
-    fetch: { path: '/api/chapters/2', etag: 'ch02-r1' },
+    fetch: { path: '/api/chapters/2', etag: 'ch02-r1-b0' },
     createdAt: '2026-10-25T12:04:11Z',
     attributed: false,
   };
@@ -217,6 +233,34 @@ describe('chapter events', () => {
   it('ignores a revision for a chapter the catalog does not know', () => {
     const book = data({ catalog: [] });
     expect(withChapterRevision(book, { ...created, rev: 2 } as unknown as ChapterRevisionPayload)).toBe(book);
+  });
+
+  it('turns a basis slot into a chapter when its first revision arrives (BOOK-6)', () => {
+    const basis = data({ catalog: withCatalogEntry(catalog, entry(1, { basis: true, blocks: 1 })) });
+    const revision: ChapterRevisionPayload = {
+      n: 1,
+      rev: 1,
+      title: 'Начало',
+      chars: 120,
+      delta: 120,
+      kind: 'create',
+      cause: {
+        changeId: null,
+        cascadeId: null,
+        wave: null,
+        lane: 'forward',
+        direction: 'forward',
+        stepId: null,
+        seamsIn: [],
+        seamsOut: [],
+      },
+      patch: [],
+      patchTruncated: false,
+      attributed: false,
+      updatedAt: '2026-10-25T12:05:00Z',
+    };
+    const next = withChapterRevision(basis, revision);
+    expect(next.catalog[0]).toMatchObject({ n: 1, written: true, basis: false, rev: 1 });
   });
 });
 

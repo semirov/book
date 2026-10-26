@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
+
 import { buildApp } from '../../src/app.ts';
 import { loadConfig } from '../../src/config.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
@@ -253,5 +255,31 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
     const status = await app!.inject({ method: 'GET', url: '/api/history/status' });
     expect((status.json() as { hseq: number }).hseq).toBe(lastHseq(local.db));
+  });
+
+  it('serves a slot emptied to its basis sentence as the frame at the right edge (BOOK-6)', async () => {
+    const local = await boot();
+    ingest(local, 'ch01.md', CHAPTER);
+    // The emptying writes no revision: the last revision is still 22 628 characters of prose.
+    ingest(local, 'ch01.md', FRAME_FIRST_SENTENCE);
+
+    const chapter = await app!.inject({ method: 'GET', url: '/api/history/chapters/1?at=now' });
+    expect(chapter.statusCode).toBe(200);
+    const body = chapter.json() as { rev: number; chars: number; title: string | null; blocks: Array<{ text: string }> };
+    expect(body.chars).toBe(0);
+    expect(body.title).toBeNull();
+    expect(body.blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    expect(JSON.stringify(body)).not.toContain('Половик в тамбуре намок насквозь ещё в четверг.');
+
+    const at = await app!.inject({ method: 'GET', url: '/api/history/at/now' });
+    expect(at.statusCode).toBe(200);
+    const book = at.json() as { chapters: Array<{ n: number; written: boolean; chars: number; title: string | null }> };
+    expect(book.chapters.find((entry) => entry.n === 1)).toEqual({
+      n: 1,
+      rev: 1,
+      written: false,
+      title: null,
+      chars: 0,
+    });
   });
 });

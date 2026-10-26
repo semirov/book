@@ -14,9 +14,7 @@ import chokidar, { type FSWatcher } from 'chokidar';
 
 import {
   FRONT_FILE,
-  chapterLabel,
   directionOf,
-  isBasisOnly,
   isChapterNumber,
   partOf,
   type ChapterCreatedPayload,
@@ -27,6 +25,7 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
+import { chapterEtag } from '../util/etag.ts';
 import { toIso } from '../util/time.ts';
 import { type AppliedChapter, applyChapterFile, removeChapter } from './applyChapter.ts';
 import { applyFrontFile, removeFront } from './applyFront.ts';
@@ -235,30 +234,33 @@ export class ManuscriptWatcher {
     const parsed = parseChapter(n, observed.raw);
     const existing = getChapterRow(this.db, n);
 
-    if (parsed.blocks.length === 0) {
-      if (isBasisOnly(n, observed.raw)) {
-        // §BOOK-6: reduced to its basis sentence is a legitimately emptied slot, not a
-        // truncate-then-write. It must not be resurrected by the §6.2 empty-write guard.
-        this.emptyWaited.delete(path);
-        this.emptyFinal.delete(path);
-        const emptied = applyChapterFile({
-          db: this.db,
-          dataDir: this.dataDir,
-          n,
-          raw: observed.raw,
-          mtimeMs: observed.mtimeMs,
-          nowMs: this.now().getTime(),
-        });
-        if (emptied.status === 'emptied') {
-          this.status.lastEventAt = toIso(this.now());
-          this.log('chapter emptied to its basis sentence', { n });
-          this.emitState('file');
-        }
-        return;
+    if (parsed.basis) {
+      // §BOOK-6: the file holds only its basis sentence. That is a legitimately empty slot —
+      // one paragraph of frozen frame, no title, no chars — not a truncate-then-write, so the
+      // §6.2 empty-write guard must not hold it back or resurrect the old text.
+      this.emptyWaited.delete(path);
+      this.emptyFinal.delete(path);
+      const emptied = applyChapterFile({
+        db: this.db,
+        dataDir: this.dataDir,
+        n,
+        raw: observed.raw,
+        mtimeMs: observed.mtimeMs,
+        nowMs: this.now().getTime(),
+      });
+      if (emptied.status === 'emptied') {
+        this.status.lastEventAt = toIso(this.now());
+        this.log('chapter reduced to its basis sentence', { n });
+        this.emitState('file');
       }
-      if (existing !== undefined && existing.block_count > 0) {
-        // §6.2 empty-write guard: an editor writing the file in two steps must never
-        // blank the chapter. Wait once for a follow-up write, then keep the old text.
+      return;
+    }
+
+    if (parsed.blocks.length === 0) {
+      // §6.2 empty-write guard: an editor writing the file in two steps must never blank a
+      // chapter. A basis-only slot is not one — it has no prose to lose, so an empty file is
+      // just an empty slot and must not be stamped with a parse error (BOOK-6).
+      if (existing !== undefined && existing.block_count > 0 && existing.basis === 0) {
         if (this.emptyFinal.has(path)) {
           this.emptyFinal.delete(path);
           this.db
@@ -415,7 +417,8 @@ function createdPayload(chapter: AppliedChapter): ChapterCreatedPayload {
     part: partOf(chapter.n),
     direction: directionOf(chapter.n),
     cause: chapter.cause,
-    fetch: { path: `/api/chapters/${chapter.n}`, etag: `ch${chapterLabel(chapter.n)}-r${chapter.rev}` },
+    // A created chapter is prose: the basis projection never announces itself this way.
+    fetch: { path: `/api/chapters/${chapter.n}`, etag: chapterEtag(chapter.n, chapter.rev, false) },
     createdAt: chapter.updatedAt,
     attributed: chapter.attributed,
   };

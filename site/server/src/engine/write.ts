@@ -26,7 +26,7 @@ import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
 import * as store from './store.ts';
-import { readChapter, readFront } from './text.ts';
+import { isWrittenChapter, readChapter, readFront } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export type StartOptions = {
@@ -174,7 +174,8 @@ export function createWriteOps(deps: EngineDeps) {
     const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
     if (step.pass === 'front' && !front?.exists) refuse('FRONT_MISSING', 409, 'the first sheet does not exist yet');
     // A draft starts from nothing; every other pass revises text that must already exist.
-    if (step.pass !== 'draft' && chapter !== null && (!chapter.exists || chapter.blocks.length === 0)) {
+    // A basis-only slot (ch01/ch67) is that same nothing — its frozen sentence is not prose.
+    if (step.pass !== 'draft' && chapter !== null && !isWrittenChapter(chapter)) {
       refuse('CHAPTER_EMPTY', 409, `глава ${step.chapter} ещё не написана`);
     }
     const sha = step.pass === 'front' ? (front?.sha256 ?? '') : (chapter?.sha256 ?? '');
@@ -218,7 +219,7 @@ export function createWriteOps(deps: EngineDeps) {
 
     if (options.noWrite === true) {
       if (step.pass === 'draft') refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
-      if (chapter !== null && chapter.blocks.length === 0) {
+      if (chapter !== null && !isWrittenChapter(chapter)) {
         refuse('CHAPTER_EMPTY', 409, 'an empty chapter cannot be landed');
       }
       store.updateStep(db, step.step_id, {
@@ -255,7 +256,7 @@ export function createWriteOps(deps: EngineDeps) {
           problems: front?.problems ?? [],
         });
       }
-    } else if (chapter === null || !chapter.exists || chapter.blocks.length === 0) {
+    } else if (chapter === null || !isWrittenChapter(chapter)) {
       refuse('NOT_WRITTEN', 409, 'the file was not written (or holds no paragraphs)');
     } else if (chapter.chars > CHAPTER_CHARS.max) {
       refuse('CHAPTER_TOO_LONG', 409, `chapter is ${chapter.chars} characters; the maximum is ${CHAPTER_CHARS.max}`);

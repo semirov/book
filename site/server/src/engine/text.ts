@@ -43,9 +43,21 @@ export function readFront(bookRoot: string): ParsedFront & { exists: boolean; ra
   return { ...parseFront(raw), exists: true, raw };
 }
 
-/** A chapter is written when its file exists and holds at least one paragraph. */
+/**
+ * A chapter that may carry prose edits: the file exists and holds real paragraphs.
+ *
+ * A basis-only slot (ch01/ch67, one frozen sentence, BOOK-6) reads as one paragraph but is
+ * an empty slot for every process fact — no change may be admitted against it, no pass may
+ * start on it, and nothing may take its frame as landed text. One predicate, so the engine
+ * cannot mean two things by "written".
+ */
+export function isWrittenChapter(chapter: ChapterText | null): chapter is ChapterText {
+  return chapter !== null && chapter.exists && chapter.blocks.length > 0 && !chapter.basis;
+}
+
+/** A chapter is written when its file exists and holds a paragraph that is not the basis sentence. */
 export function isWritten(bookRoot: string, n: number): boolean {
-  return readChapter(bookRoot, n).blocks.length > 0;
+  return isWrittenChapter(readChapter(bookRoot, n));
 }
 
 /** Chapter numbers the cascade may walk into: written, in 1..67. */

@@ -1,4 +1,5 @@
 import type { WriterAssignment } from '@book/shared';
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
@@ -84,6 +85,42 @@ describe('the FIFO lane (§6A.3)', () => {
       expect(() => fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'три' })).toThrow(
         /очередь правок заполнена/u,
       );
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('refuses a change on a slot that holds only its basis sentence (BOOK-6)', () => {
+    // Chapter 1 exists and holds one paragraph — the frozen frame — and is still unwritten:
+    // a change must not be admitted against it, or it would be enqueued over baseRev 0.
+    const fixture = createEngineFixture({ chapters: { 1: FRAME_FIRST_SENTENCE, 2: chapterText('Начало', ['Половик намок.']) } });
+    try {
+      expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'поправить первую строку' })).toThrow(
+        /ещё не написана/u,
+      );
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+      // A written neighbour still admits, so the refusal is about the slot, not the queue.
+      expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'уточнить половик' })).not.toThrow();
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('refuses to start a non-draft pass on a chapter emptied to its basis sentence (BOOK-6)', () => {
+    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Половик намок.']) } });
+    try {
+      fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
+      const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
+      expect(assignment.pass).toBe('change');
+      // The file is emptied down to its basis sentence while the step is open.
+      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
+
+      expect(() => fixture.engine.start(assignment.leaseId)).toThrow(/ещё не написана/u);
+      // Nothing was captured as a pre-image of a chapter that has no prose.
+      const step = fixture.db.prepare('SELECT start_sha FROM steps WHERE step_id = ?').get(assignment.stepId) as {
+        start_sha: string | null;
+      };
+      expect(step.start_sha).toBeNull();
     } finally {
       fixture.close();
     }

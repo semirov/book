@@ -21,6 +21,7 @@ function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
     chars: 0,
     blocks: 0,
     written: false,
+    basis: false,
     writtenAt: null,
     updatedAt: null,
     direction: n <= 34 ? 'forward' : 'backward',

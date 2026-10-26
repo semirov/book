@@ -53,6 +53,12 @@ export type StateSnapshot = {
     empty: number[];
     count: number;
     totalChars: number;
+    /**
+     * Slots that hold only their basis sentence (ch01 opens with the frozen frame, ch67 closes
+     * with it): they are not written, count no characters, and the reader still sees that one
+     * paragraph (BOOK-6). A subset of `empty`, never of `written`.
+     */
+    basis: number[];
   };
   cursors: { forward: DraftCursor; backward: DraftCursor };
   /**
@@ -137,6 +143,12 @@ export type CatalogEntry = {
   chars: number;
   blocks: number;
   written: boolean;
+  /**
+   * The slot holds only its basis sentence (ch01/ch67, BOOK-6): one paragraph of the frozen
+   * frame, served like prose but never written prose. `basis` is true exactly when the
+   * reader must see that paragraph while `written` stays false and `chars` stays 0.
+   */
+  basis: boolean;
   writtenAt: string | null;
   updatedAt: string | null;
   /** Which lane drafted the chapter; says nothing about who may revise it (§9). */
@@ -171,13 +183,16 @@ export type BlockDto = {
   hash: string;
 };
 
-/** `GET /api/chapters/:n` — 404 for an unwritten slot. */
+/** `GET /api/chapters/:n` — 404 for an unwritten slot that holds no basis sentence. */
 export type ChapterDto = {
   n: number;
   /** Chapter title from line 1; null when the writer omitted it (F022 is a commit gate). */
   title: string | null;
   rev: number;
+  /** Written prose only: a basis-only slot serves its paragraph with `chars: 0` (BOOK-6). */
   chars: number;
+  /** True when the whole chapter is its basis sentence: prose to read, not a written chapter. */
+  basis: boolean;
   blocks: BlockDto[];
   writtenAt: string;
   updatedAt: string;

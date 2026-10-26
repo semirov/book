@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, type CatalogEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { listCatalog } from '../src/db/repo/chapters.ts';
@@ -124,7 +124,7 @@ describe('watcher: a chapter appears', () => {
     });
     if (created.type !== 'chapter:created') throw new Error('narrowing');
     expect(created.data.chars).toBeGreaterThan(0);
-    expect(created.data.fetch).toEqual({ path: '/api/chapters/1', etag: 'ch01-r1' });
+    expect(created.data.fetch).toEqual({ path: '/api/chapters/1', etag: 'ch01-r1-b0' });
 
     const stateEvent = await waitFor(() => harness!.events.find((event) => event.type === 'state:updated'));
     expect(stateEvent.type).toBe('state:updated');
@@ -177,12 +177,12 @@ describe('watcher: a chapter is edited', () => {
     expect(row.parse_error).toContain('empty write');
   }, 10_000);
 
-  it('publishes a chapter emptied to its basis sentence as an empty slot (BOOK-6)', async () => {
+  it('publishes a chapter reduced to its basis sentence as one paragraph, still unwritten (BOOK-6)', async () => {
     await start({ emptyGraceMs: 200 });
     harness!.fixture.write('ch01.md', 'Заголовок\n\nАбзац, который потом уберут.\n');
     await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
     const before = catalog()[0];
-    expect(before).toMatchObject({ written: true });
+    expect(before).toMatchObject({ written: true, basis: false });
 
     harness!.fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
     await waitFor(() =>
@@ -192,7 +192,12 @@ describe('watcher: a chapter is edited', () => {
     );
 
     const after = catalog()[0];
-    expect(after).toMatchObject({ written: false, chars: 0, blocks: 0, title: null });
+    expect(after).toMatchObject({ written: false, basis: true, chars: 0, blocks: 1, title: null });
+    // The frozen frame is what the reader sees: one block, the sentence itself.
+    const blocks = harness!.fixture.db.prepare('SELECT text FROM blocks WHERE chapter = 1').all() as Array<{
+      text: string;
+    }>;
+    expect(blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
     // The §6.2 grace must not resurrect the text: this emptiness is the basis, not a save in two steps.
     const row = harness!.fixture.db.prepare('SELECT parse_error FROM chapters WHERE n = 1').get() as {
       parse_error: string | null;
@@ -201,6 +206,48 @@ describe('watcher: a chapter is edited', () => {
     const state = harness!.state.snapshot();
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.totalChars).toBe(0);
+  }, 10_000);
+
+  it('keeps one block when the basis sentence is rewritten to the same file (BOOK-6)', async () => {
+    await start();
+    harness!.fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    await waitFor(() =>
+      harness!.events.find((event) => event.type === 'state:updated' && event.data.chapters.written.length === 0),
+    );
+    expect(catalog()[66]).toMatchObject({ n: 67, written: false, basis: true, blocks: 1 });
+
+    // A save that changes nothing visible (a trailing newline) must not duplicate the block.
+    harness!.fixture.write('ch67.md', `${FRAME_LAST_SENTENCE}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const blocks = harness!.fixture.db.prepare('SELECT text FROM blocks WHERE chapter = 67').all() as Array<{
+      text: string;
+    }>;
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]?.text).toBe(FRAME_LAST_SENTENCE);
+    expect(harness!.events.filter((event) => event.type === 'chapter:created')).toHaveLength(0);
+  }, 10_000);
+
+  it('does not stamp an empty write on a slot that holds only its basis sentence (BOOK-6)', async () => {
+    await start();
+    harness!.fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    await waitFor(() =>
+      harness!.events.find(
+        (event) => event.type === 'state:updated' && event.data.chapters.basis.includes(67),
+      ),
+    );
+
+    harness!.fixture.write('ch67.md', '');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    // The frame has no prose to lose: an empty file is just an empty slot, not a torn save.
+    const row = harness!.fixture.db.prepare('SELECT parse_error, block_count FROM chapters WHERE n = 67').get() as {
+      parse_error: string | null;
+      block_count: number;
+    };
+    expect(row.parse_error).toBeNull();
+    expect(row.block_count).toBe(1);
+    expect(harness!.events.some((event) => event.type === 'chapter:revision')).toBe(false);
   }, 10_000);
 
   it('does not publish a first write with zero blocks as a chapter', async () => {

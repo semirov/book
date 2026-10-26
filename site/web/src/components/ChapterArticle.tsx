@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getChapter } from '../api.ts';
 import { nearViewport, reducedMotion } from '../dom.ts';
+import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
@@ -34,7 +35,9 @@ import {
  * - a revision is applied by `rev`; a rewrite cross-fades, it never re-types old text;
  * - the caret sits after the block being printed, or after the last block of the lane's
  *   chapter; a cascade moves no caret;
- * - blocks named by `block:revising` carry the ochre rule, not the whole chapter.
+ * - blocks named by `block:revising` carry the ochre rule, not the whole chapter;
+ * - a basis-only slot (ch01/ch67) is read like a chapter of one paragraph and is still not
+ *   written: it prints its frozen frame, never the «не написана» label (BOOK-6).
  */
 export type ChapterArticleProps = {
   entry: CatalogEntry;
@@ -60,6 +63,9 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
   const speed = useRef(1);
 
   const printing = reveal !== null && !revealComplete(reveal);
+  /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
+  const showsText = entry.written || entry.basis;
+  const basisSentence = basisSentenceOf(entry);
 
   const startReveal = useCallback((loaded: ChapterDto) => {
     const reduce = reducedMotion();
@@ -97,7 +103,7 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
   // Load when the slot comes within 1.5 viewports (mobile-first: a 45 KB chapter is not
   // fetched until it is nearly on screen).
   useEffect(() => {
-    if (!entry.written) return;
+    if (!showsText) return;
     const node = article.current;
     if (node === null) return;
     const observer = new IntersectionObserver(
@@ -111,16 +117,18 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [entry.n, entry.written]);
+  }, [entry.n, showsText]);
 
   // Apply or refetch on a revision. `rev` is the only ordering authority (§10.4).
   useEffect(() => {
-    if (!entry.written || !inView) return;
+    if (!showsText || !inView) return;
     if (chapter === null) {
       void load();
       return;
     }
-    if (chapter.rev === entry.rev) return;
+    // A chapter emptied down to its basis sentence keeps `rev`: the projection is not a
+    // revision, so the loading slot must drop the prose it still holds (§BOOK-6).
+    if (chapterMatchesEntry(entry, chapter)) return;
 
     if (
       revision !== null &&
@@ -145,7 +153,7 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
       }
     }
     void load();
-  }, [chapter, entry.n, entry.rev, entry.written, inView, load, revision]);
+  }, [chapter, entry, showsText, inView, load, revision]);
 
   // One animation loop while the queue prints; it stops when the queue is empty.
   useEffect(() => {
@@ -208,12 +216,16 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
       </span>
       <span className="ch-meta">
         {printing ? '■ печатается · ' : ''}
-        {entry.written ? `${formatChars(entry.chars)} · ${formatTime(entry.updatedAt)}` : 'не написана'}
+        {entry.written
+          ? `${formatChars(entry.chars)} · ${formatTime(entry.updatedAt)}`
+          : basisSentence === null
+            ? 'не написана'
+            : null}
       </span>
     </header>
   );
 
-  if (!entry.written) {
+  if (!showsText) {
     return (
       <article className="page ch ch-empty" id={`ch-${entry.n}`} data-n={entry.n} data-rev={0} aria-label={`глава ${entry.n}`}>
         {header}
@@ -227,6 +239,7 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
       id={`ch-${entry.n}`}
       data-n={entry.n}
       data-rev={entry.rev}
+      data-basis={entry.basis ? 'true' : undefined}
       ref={article}
       aria-label={`глава ${entry.n}`}
       aria-busy={chapter === null && !failed}
@@ -281,7 +294,14 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
           })
         : null}
 
-      {chapter === null && !failed ? (
+      {chapter === null && basisSentence !== null ? (
+        // A basis slot is complete before the request: the frozen frame is one shared
+        // constant, and the request only adds the paragraph's id and revision (§BOOK-6).
+        // The article, not this paragraph, carries `data-basis`: it survives the load.
+        <p className="p">{basisSentence}</p>
+      ) : null}
+
+      {chapter === null && basisSentence === null && !failed ? (
         <div
           className="ch-placeholder"
           style={{ minHeight: estimateChapterHeight(entry.chars, window.innerWidth || 390) }}

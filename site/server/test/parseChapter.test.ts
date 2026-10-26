@@ -1,3 +1,4 @@
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { blockId, normalizeChapterText, normalizeForHash, parseChapter, splitChapterBlocks } from '../src/ingest/parseChapter.ts';
@@ -94,6 +95,63 @@ describe('parseChapter', () => {
     const parsed = parseChapter(1, `Заголовок.\n\n${paragraphs.join('\n\n')}`);
     expect(parsed.blocks).toHaveLength(141);
     expect(new Set(parsed.blocks.map((block) => block.id)).size).toBe(141);
+  });
+});
+
+describe('parseChapter — a slot that is exactly its basis sentence (BOOK-6)', () => {
+  it('reads the frozen frame as one paragraph, not as a title line', () => {
+    const parsed = parseChapter(1, FRAME_FIRST_SENTENCE);
+    expect(parsed.basis).toBe(true);
+    expect(parsed.title).toBeNull();
+    expect(parsed.titleProblems).toEqual([]);
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]).toMatchObject({ i: 0, text: FRAME_FIRST_SENTENCE });
+    expect(parsed.blocks[0]?.id).toMatch(/^ch01#[0-9a-f]{8}$/u);
+    // The basis sentence is not written prose: the book counts no characters for it.
+    expect(parsed.chars).toBe(0);
+  });
+
+  it('takes the closing sentence of the last chapter, with or without a trailing newline', () => {
+    for (const raw of [FRAME_LAST_SENTENCE, `${FRAME_LAST_SENTENCE}\n`, `${FRAME_LAST_SENTENCE}\r\n`]) {
+      const parsed = parseChapter(TOTAL_CHAPTERS, raw);
+      expect(parsed.basis).toBe(true);
+      expect(parsed.title).toBeNull();
+      expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+      expect(parsed.chars).toBe(0);
+    }
+  });
+
+  it('keeps a changed word a normal file: the title line rule still applies (F029 catches it)', () => {
+    const changed = `${FRAME_FIRST_SENTENCE.slice(0, -1)} ночь.`;
+    const parsed = parseChapter(1, changed);
+    expect(parsed.basis).toBe(false);
+    // Line 1 is still a title candidate, and no paragraph is invented for it.
+    expect(parsed.title).toBe(changed);
+    expect(parsed.blocks).toEqual([]);
+  });
+
+  it('is only for the two frame chapters: the same sentence in chapter 8 is a title line', () => {
+    const parsed = parseChapter(8, FRAME_FIRST_SENTENCE);
+    expect(parsed.basis).toBe(false);
+    expect(parsed.title).toBe(FRAME_FIRST_SENTENCE);
+    expect(parsed.blocks).toEqual([]);
+  });
+
+  it('does not turn a written chapter that opens with the frame into a basis slot', () => {
+    const parsed = parseChapter(1, `${FRAME_FIRST_SENTENCE}\n\n${'Первый абзац. '.repeat(20)}`);
+    expect(parsed.basis).toBe(false);
+    expect(parsed.blocks.length).toBe(1);
+    expect(parsed.chars).toBeGreaterThan(0);
+  });
+
+  it('treats a whitespace-only re-save as the same projection: no new sha, no new block', () => {
+    const bare = parseChapter(1, FRAME_FIRST_SENTENCE);
+    for (const raw of [`${FRAME_FIRST_SENTENCE}\n`, `${FRAME_FIRST_SENTENCE}\r\n`, `  ${FRAME_FIRST_SENTENCE}  \n\n`]) {
+      const saved = parseChapter(1, raw);
+      // Whitespace is not identity: the projection must not be re-written for a trailing newline.
+      expect(saved.sha256).toBe(bare.sha256);
+      expect(saved.blocks).toEqual(bare.blocks);
+    }
   });
 });
 

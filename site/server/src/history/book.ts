@@ -15,7 +15,7 @@ import { allChapterNumbers } from '@book/shared';
 import type { BookAtChapterDto, BookAtDto, HistoryChapterDto } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { listChapterRows, type ChapterRow } from '../db/repo/chapters.ts';
+import { getChapterRow, listBlocks, listChapterRows, type ChapterRow } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import { toIso } from '../util/time.ts';
@@ -111,7 +111,7 @@ export function bookAt(db: Db, moment?: number | string | null): BookAtDto {
   const chapters: BookAtChapterDto[] = allChapterNumbers().map((n) => {
     const live: ChapterRow | undefined = liveChapters?.get(n);
     if (live !== undefined) {
-      const written = live.block_count > 0;
+      const written = live.block_count > 0 && live.basis === 0;
       return { n, rev: live.rev, written, title: written ? live.title : null, chars: written ? live.chars : 0 };
     }
     const revision = revisionAt(db, n, hseq);
@@ -137,6 +137,35 @@ export function chapterAt(
   moment?: number | string | null,
 ): HistoryChapterDto | null {
   const hseq = resolveMoment(db, moment);
+  // The right edge is the served projection, not the last revision (§6F.1 rule 4). For a
+  // written chapter the two agree — the cause still comes from its last revision — but a slot
+  // emptied down to its basis sentence has no revision at all (BOOK-6), and the prose of the
+  // last one is not "now". Same rule as `bookAt`.
+  if (hseq >= lastHseq(db)) {
+    const live = getChapterRow(db, n);
+    if (live !== undefined && live.block_count > 0) {
+      const last = live.basis === 0 ? revisionAt(db, n, hseq) : undefined;
+      return {
+        n,
+        hseq,
+        at: last?.at ?? live.updated_at,
+        rev: live.rev,
+        title: live.title,
+        chars: live.chars,
+        blocks: listBlocks(db, n).map((block) => ({ id: block.id, i: block.idx, text: block.text, hash: block.hash })),
+        cause:
+          last === undefined
+            ? null
+            : {
+                kind: last.cause_kind,
+                changeId: last.change_id,
+                cascadeId: last.cascade_id,
+                stepId: last.step_id,
+              },
+      };
+    }
+  }
+
   const revision = revisionAt(db, n, hseq);
   if (revision === undefined) return null;
   const text = readSnapshot(dataDir, revision.snapshot);

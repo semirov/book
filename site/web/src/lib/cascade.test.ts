@@ -19,7 +19,7 @@ function state(cascade: StateSnapshot['cascade']): StateSnapshot {
     engine: { status: 'running', heartbeatAt: null, laneId: null },
     phase: 'draft',
     front: { title: null, about: null, rev: 0, updatedAt: null },
-    chapters: { total: 67, written: [7, 8, 9], empty: [], count: 3, totalChars: 0 },
+    chapters: { total: 67, written: [7, 8, 9], empty: [], count: 3, totalChars: 0, basis: [] },
     cursors: {} as StateSnapshot['cursors'],
     toc: [],
     meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },

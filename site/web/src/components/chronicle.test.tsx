@@ -55,6 +55,7 @@ const CATALOG: CatalogEntry[] = [
     chars: 9_000,
     blocks: 120,
     written: true,
+    basis: false,
     writtenAt: '2026-10-25T11:00:00Z',
     updatedAt: '2026-10-25T11:20:00Z',
     direction: 'forward',

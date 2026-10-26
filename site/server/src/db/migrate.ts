@@ -1,4 +1,4 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, chaptersTableSql } from './schema.ts';
 import type { Db } from './db.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
@@ -54,6 +54,29 @@ const MIGRATIONS: Migration[] = [
     to: 6,
     up(db) {
       if (!tableExists(db, 'reconciles')) db.exec(RECONCILES_TABLE_SQL);
+    },
+  },
+  {
+    // BOOK-6: a slot may hold only its basis sentence — one paragraph of the frozen frame
+    // that the reader must see and that is not written prose. `basis` keeps that apart from
+    // `written`. SQLite cannot add a CHECK to an existing column, so the projection table is
+    // rebuilt: a migrated install must have the same shape as a fresh one (v7).
+    to: 7,
+    up(db) {
+      const columns = new Set(
+        (db.pragma('table_info(chapters)') as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (columns.has('basis')) return;
+      // Foreign keys are already off for the whole migration run. The new table is built
+      // under a temporary name and copied, then takes the real name: `blocks`/`revisions`
+      // reference `chapters` by name and are never rewritten.
+      db.exec(chaptersTableSql('chapters_v7'));
+      const shared = CHAPTERS_COLUMNS.filter((column) => columns.has(column));
+      db.exec(
+        `INSERT INTO chapters_v7 (${shared.join(', ')}) SELECT ${shared.join(', ')} FROM chapters`,
+      );
+      db.exec('DROP TABLE chapters');
+      db.exec('ALTER TABLE chapters_v7 RENAME TO chapters');
     },
   },
 ];

@@ -15,7 +15,7 @@ import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { releaseLease } from './leases.ts';
 import * as store from './store.ts';
-import { readChapter, readFront } from './text.ts';
+import { isWrittenChapter, readChapter, readFront } from './text.ts';
 import type { EngineDeps } from './types.ts';
 
 export type ReapReport = {
@@ -63,10 +63,12 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     if (step.landed_at === null) {
       const target = step.pass === 'front' ? readFront(deps.bookRoot) : null;
       const chapter = step.chapter === null ? null : readChapter(deps.bookRoot, step.chapter);
+      // A basis-only slot is not a write: recovering the frame as "landed" would credit a
+      // chapter nobody wrote (§BOOK-6).
       const written =
         step.pass === 'front'
           ? target !== null && target.sha256 !== step.start_sha
-          : chapter !== null && chapter.blocks.length > 0 && chapter.sha256 !== step.start_sha;
+          : isWrittenChapter(chapter) && chapter.sha256 !== step.start_sha;
       if (step.start_sha !== null && written) {
         // The session wrote and died before `land`: the text is taken as landed and scored
         // from the file (§6A.11). No revision is duplicated — the file was written once.

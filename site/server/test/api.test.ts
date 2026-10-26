@@ -87,7 +87,7 @@ describe('GET /api/state', () => {
     expect(body.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
   });
 
-  it('serves the empty book with the two basis sentences as 67 empty slots (BOOK-6)', async () => {
+  it('serves the empty book with the two basis sentences as 67 unwritten slots (BOOK-6)', async () => {
     // The owner's state: ch01 and ch67 carry one sentence each, no titles, no prose.
     await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE } });
     const state = (await app!.inject({ method: 'GET', url: '/api/state' })).json();
@@ -97,11 +97,63 @@ describe('GET /api/state', () => {
     expect(state.chapters.empty).toHaveLength(67);
     expect(state.toc[0]).toMatchObject({ n: 1, title: null, written: false });
     expect(state.toc[66]).toMatchObject({ n: 67, title: null, written: false });
+    // The two sentences are named explicitly: they are readable and still not chapters.
+    expect(state.chapters.basis).toEqual([1, 67]);
+  });
 
-    // The reader's default for a basis-only slot is the same as for an absent one.
-    const chapter = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
-    expect(chapter.statusCode).toBe(404);
-    expect(chapter.json()).toMatchObject({ code: 'NOT_WRITTEN' });
+  it('projects a basis-only slot as one paragraph while keeping it unwritten (BOOK-6)', async () => {
+    await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE } });
+
+    // The reader sees the opening and the closing sentence: one block each, no title.
+    for (const [n, sentence] of [
+      [1, FRAME_FIRST_SENTENCE],
+      [67, FRAME_LAST_SENTENCE],
+    ] as const) {
+      const response = await app!.inject({ method: 'GET', url: `/api/chapters/${n}` });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body).toMatchObject({ n, title: null, chars: 0, basis: true });
+      expect(body.blocks).toHaveLength(1);
+      expect(body.blocks[0]).toMatchObject({ i: 0, text: sentence });
+    }
+
+    // The catalog names the slot as basis, and the state counts no chapter and no character.
+    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
+      Record<string, unknown>
+    >;
+    expect(catalog).toHaveLength(67);
+    expect(catalog[0]).toMatchObject({ n: 1, title: null, chars: 0, blocks: 1, written: false, basis: true });
+    expect(catalog[66]).toMatchObject({ n: 67, chars: 0, blocks: 1, written: false, basis: true });
+    expect(catalog[1]).toMatchObject({ n: 2, chars: 0, blocks: 0, written: false, basis: false });
+
+    const state = (await app!.inject({ method: 'GET', url: '/api/state' })).json();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.chapters.basis).toEqual([1, 67]);
+  });
+
+  it('keeps one block across a rescan: a basis slot is idempotent (BOOK-6)', async () => {
+    const fixture = await boot({
+      chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE },
+    });
+    const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(again.emptied).toEqual([]);
+    expect(again.created).toEqual([]);
+    expect(again.revised).toEqual([]);
+    expect(again.unchanged).toEqual([1, 67]);
+
+    const rows = fixture.db
+      .prepare('SELECT n, rev, block_count, chars, basis FROM chapters ORDER BY n')
+      .all() as Array<Record<string, number>>;
+    expect(rows).toEqual([
+      { n: 1, rev: 0, block_count: 1, chars: 0, basis: 1 },
+      { n: 67, rev: 0, block_count: 1, chars: 0, basis: 1 },
+    ]);
+
+    const chapter = (await app!.inject({ method: 'GET', url: '/api/chapters/1' })).json();
+    expect(chapter.blocks).toHaveLength(1);
+    expect(chapter.blocks[0].text).toBe(FRAME_FIRST_SENTENCE);
   });
 
   it('serves the first sheet and the live TOC in the same snapshot', async () => {
@@ -129,6 +181,40 @@ describe('GET /api/state', () => {
   });
 });
 
+describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () => {
+  it('changes when a written chapter is emptied to its basis sentence', async () => {
+    const fixture = await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
+    const before = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    expect(before.statusCode).toBe(200);
+    expect(before.headers.etag).toBe('"ch01-r1-b0"');
+    expect(before.json().basis).toBe(false);
+
+    // Emptying down to the frame is a projection change without a revision: `rev` stays.
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    const stale = await app!.inject({
+      method: 'GET',
+      url: '/api/chapters/1',
+      headers: { 'if-none-match': before.headers.etag as string },
+    });
+    // A browser holding the old prose must be given the frame, never a 304.
+    expect(stale.statusCode).toBe(200);
+    expect(stale.headers.etag).toBe('"ch01-r1-b1"');
+    const body = stale.json();
+    expect(body).toMatchObject({ rev: 1, basis: true, chars: 0, title: null });
+    expect(body.blocks.map((block: { text: string }) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+
+    // And the new tag is honoured afterwards.
+    const fresh = await app!.inject({
+      method: 'GET',
+      url: '/api/chapters/1',
+      headers: { 'if-none-match': stale.headers.etag as string },
+    });
+    expect(fresh.statusCode).toBe(304);
+  });
+});
+
 describe('GET /api/chapters', () => {
   it('lists all 67 slots with rev 0 for the unwritten ones', async () => {
     await boot();
@@ -147,7 +233,7 @@ describe('GET /api/chapters/:n', () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     expect(response.statusCode).toBe(200);
-    expect(response.headers.etag).toBe('"ch01-r1"');
+    expect(response.headers.etag).toBe('"ch01-r1-b0"');
     const body = response.json();
     expect(body.n).toBe(1);
     expect(body.title).toBe('Заголовок главы');
