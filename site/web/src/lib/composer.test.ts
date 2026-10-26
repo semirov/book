@@ -3,13 +3,21 @@ import { describe, expect, it } from 'vitest';
 import {
   budgetLine,
   composerView,
+  counterLabel,
+  draftLimits,
+  EMPTY_COMPOSER,
   errorCopy,
   isComposerClosed,
   retryCopy,
   validateDraft,
 } from './composer.ts';
 
-const composer = { captcha: { provider: 'turnstile' as const, siteKey: 'key' }, minChars: 3, maxChars: 1_200 };
+const composer = {
+  captcha: { provider: 'turnstile' as const, siteKey: 'key' },
+  minChars: 3,
+  maxChars: 1_200,
+  editMaxChars: 10_000,
+};
 const viewer = { signedIn: true, displayName: 'Аня' };
 const budget = { perHour: 10, remaining: 7, resetAt: null, editsPerDay: 1, editsRemaining: 0, editsResetAt: null };
 
@@ -96,5 +104,37 @@ describe('composer state (§11.6, §12.8)', () => {
       ok: false,
       line: 'подтвердите, что вы не робот',
     });
+  });
+
+  it('mirrors the server edit bound: a 10 000-character intervention passes, 10 001 is refused', () => {
+    const proposed = 'я'.repeat(composer.editMaxChars);
+    expect(draftLimits(composer)).toEqual({ body: 1_200, edit: 10_000 });
+    expect(counterLabel(proposed.length, composer.editMaxChars)).toBe('10000 / 10000');
+    // The pre-`hello` default is the same pair the server confirms, from the shared constants.
+    expect(EMPTY_COMPOSER).toMatchObject({ minChars: 3, maxChars: 1_200, editMaxChars: 10_000 });
+
+    expect(validateDraft({ body: 'Хорошая сцена.', proposed, composer, captchaToken: 't' })).toMatchObject({
+      ok: true,
+      proposed,
+    });
+
+    const tooLong = validateDraft({
+      body: 'Хорошая сцена.',
+      proposed: 'я'.repeat(composer.editMaxChars + 1),
+      composer,
+      captchaToken: 't',
+    });
+    expect(tooLong).toMatchObject({ ok: false });
+    if (tooLong.ok) return;
+    // The composer never promises what the server refuses, and says the same number.
+    expect(tooLong.line).toContain('10000');
+  });
+
+  it('does not apply the note bound to a proposed wording', () => {
+    const long = 'я'.repeat(composer.maxChars + 1);
+    expect(validateDraft({ body: 'Хорошая сцена.', proposed: long, composer, captchaToken: 't' })).toMatchObject({
+      ok: true,
+    });
+    expect(validateDraft({ body: long, proposed: '', composer, captchaToken: 't' })).toMatchObject({ ok: false });
   });
 });

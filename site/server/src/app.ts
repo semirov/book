@@ -6,6 +6,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { LogController, type FastifyError, type FastifyInstance } from 'fastify';
 
 import type { AuthorsCountDto, Imprint, ServerEventType } from '@book/shared';
+import { REQUEST_BODY_MAX_BYTES } from '@book/shared';
 import { createAuthorsCount } from './authors/count.ts';
 import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts';
 import type { Config } from './config.ts';
@@ -82,7 +83,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     // logs the path only: no query, no headers, no cookies.
     logController: new LogController({ disableRequestLogging: true }),
     trustProxy: false,
-    bodyLimit: 64 * 1024,
+    bodyLimit: REQUEST_BODY_MAX_BYTES,
   });
 
   const now = options.now ?? (() => new Date());
@@ -216,6 +217,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const status = typeof error.statusCode === 'number' && error.statusCode >= 400 ? error.statusCode : 500;
+    // A body past the transport bound is a too-long text, not a transport detail: the reader
+    // gets the same public code the sanitizer uses, never a Fastify identifier (§9, §12.4).
+    if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      return reply.code(413).send({ code: 'TOO_LONG', message: 'замечание или правка слишком длинные — сократите текст' });
+    }
     if (status >= 500) {
       request.log.error({ err: error }, 'request failed');
       // Internals stay in the log: the reader gets a code, never a stack trace.

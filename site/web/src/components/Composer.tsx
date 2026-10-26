@@ -2,7 +2,7 @@ import type { CatalogEntry, CommentBudget, ComposerInfo, ViewerDto } from '@book
 import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, logoutSession, postComment } from '../api.ts';
-import { composerView, validateDraft, type ComposerError } from '../lib/composer.ts';
+import { composerView, counterLabel, draftLimits, validateDraft, type ComposerError } from '../lib/composer.ts';
 
 /**
  * The composer (§12.1, §12.8, §11.6).
@@ -59,6 +59,7 @@ export function Composer({
   onPosted: () => void;
 }) {
   const written = chapters.filter((entry) => entry.written);
+  const limits = draftLimits(composer);
   const [chapter, setChapter] = useState<number>(written[written.length - 1]?.n ?? 1);
   const [body, setBody] = useState('');
   const [proposed, setProposed] = useState('');
@@ -224,7 +225,7 @@ export function Composer({
       <textarea
         id="composer-body"
         value={body}
-        maxLength={composer.maxChars}
+        maxLength={limits.body}
         rows={4}
         placeholder="что в абзаце не читается: повтор, сбой, деталь, которой не веришь"
         onChange={(event) => {
@@ -233,9 +234,7 @@ export function Composer({
         }}
         disabled={sending}
       />
-      <div className="composer-count">
-        {body.length} / {composer.maxChars}
-      </div>
+      <div className="composer-count">{counterLabel(body.length, limits.body)}</div>
 
       <label className="composer-check">
         <input
@@ -244,21 +243,22 @@ export function Composer({
           onChange={(event) => setShowProposed(event.target.checked)}
           disabled={sending}
         />
-        предложить свой вариант — одна правка в сутки
+        предложить свой вариант — до {limits.edit} знаков, одна правка в сутки
       </label>
       {showProposed ? (
         <>
           <label className="composer-label" htmlFor="composer-proposed">
-            свой вариант абзаца
+            свой вариант абзаца · до {limits.edit} знаков
           </label>
           <textarea
             id="composer-proposed"
             value={proposed}
-            maxLength={composer.maxChars}
+            maxLength={limits.edit}
             rows={3}
             onChange={(event) => setProposed(event.target.value)}
             disabled={sending}
           />
+          <div className="composer-count">{counterLabel(proposed.length, limits.edit)}</div>
         </>
       ) : null}
 

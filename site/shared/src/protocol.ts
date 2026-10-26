@@ -63,7 +63,10 @@ export type Envelope<T extends ServerEventType = ServerEventType, P = unknown> =
 
 export type HelloLimits = {
   commentsPerHour: number;
+  /** The note body cap (`COMMENT_MAX_CHARS`), not the intervention cap. */
   maxCommentChars: number;
+  /** BOOK-DOC-4 rule 1: the cap for a reader's proposed wording (`EDIT_MAX_CHARS`). */
+  maxEditChars: number;
   queueSoftCap: number;
   maxConnections: number;
   perIp: number;

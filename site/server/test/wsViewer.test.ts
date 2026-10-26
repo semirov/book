@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { COMMENT_MAX_CHARS, COMMENT_MIN_CHARS, EDIT_MAX_CHARS } from '@book/shared';
+
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { StateService } from '../src/ingest/stateService.ts';
@@ -74,10 +76,18 @@ describe('hello — viewer and composer', () => {
     expect(frame.data.viewer).toEqual({ signedIn: false, displayName: null });
     expect(frame.data.composer).toEqual({
       captcha: { provider: 'hcaptcha', siteKey: 'site-key' },
-      minChars: 3,
-      maxChars: 1_200,
+      minChars: COMMENT_MIN_CHARS,
+      maxChars: COMMENT_MAX_CHARS,
+      editMaxChars: EDIT_MAX_CHARS,
     });
-    expect((frame.data.limits as { editSubmissionsPerDay: number }).editSubmissionsPerDay).toBe(1);
+    // The frame carries the true numbers, so the SPA never hardcodes a cap of its own.
+    expect(frame.data.limits).toMatchObject({
+      maxCommentChars: COMMENT_MAX_CHARS,
+      maxEditChars: EDIT_MAX_CHARS,
+      editSubmissionsPerDay: 1,
+    });
+    expect(COMMENT_MAX_CHARS).toBe(1_200);
+    expect(EDIT_MAX_CHARS).toBe(10_000);
   });
 
   it('resolves a signed-in reader from the session cookie', async () => {

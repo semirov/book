@@ -8,6 +8,7 @@ const composer: ComposerInfo = {
   captcha: { provider: 'turnstile', siteKey: '0x4AAAA-test-key' },
   minChars: 3,
   maxChars: 1_200,
+  editMaxChars: 10_000,
 };
 
 const viewer: ViewerDto = { signedIn: true, displayName: 'читатель' };
@@ -45,5 +46,12 @@ describe('the composer (BOOK-DOC-5 §4 — no invented chapter names)', () => {
 
   it('never invents «Глава N»', () => {
     expect(html).not.toContain('Глава');
+  });
+
+  it('takes both caps from the frame: maxlength, the counter, and the edit hint', () => {
+    expect(html).toMatch(/maxlength="1200"/iu);
+    expect(html).toContain('0 / 1200');
+    // The visible hint states the intervention bound before the field is even shown.
+    expect(html).toContain('до 10000 знаков');
   });
 });

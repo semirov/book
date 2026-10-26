@@ -45,7 +45,19 @@ export type BatchItem = {
   flags: string[];
 };
 
-export type BatchResult = { batchId: string; path: string; ids: string[] } | { error: string };
+export type BatchResult = { batchId: string; path: string; ids: string[] } | BatchFailure;
+
+/**
+ * A refused batch is always coded: `EMPTY` (nothing undecided) or `ITEM_TOO_LARGE` (a stored
+ * row is bigger than the item cap). An oversized row is **never** skipped in silence — the
+ * old `continue` dropped a reader's edit from triage with no trace anywhere.
+ */
+export type BatchFailure = {
+  error: string;
+  code: 'EMPTY' | 'ITEM_TOO_LARGE';
+  /** The rows that blocked the batch, so an operator can look at exactly them. */
+  ids?: string[];
+};
 
 export type BatchDeps = {
   db: Db;
@@ -76,17 +88,28 @@ export function createBatch(
   const rows = db
     .prepare(`SELECT * FROM comments WHERE ${filters.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT ?`)
     .all(...args) as CommentRow[];
-  if (rows.length === 0) return { error: 'нет новых замечаний' };
+  if (rows.length === 0) return { error: 'нет новых замечаний', code: 'EMPTY' };
 
   const batchId = (deps.idFactory ?? newBatchId)(now.getTime());
   const createdAt = now.toISOString();
   const items: BatchItem[] = [];
+  const oversized: string[] = [];
   for (const row of rows) {
     const item = toBatchItem(db, row);
-    if (Buffer.byteLength(JSON.stringify(item), 'utf8') > COMMENT_BATCH_ITEM_MAX_BYTES) continue;
+    if (Buffer.byteLength(JSON.stringify(item), 'utf8') > COMMENT_BATCH_ITEM_MAX_BYTES) {
+      // No silent `continue`: an edit that cannot be delivered must be visible to triage.
+      oversized.push(row.id);
+      continue;
+    }
     items.push(item);
   }
-  if (items.length === 0) return { error: 'нет замечаний, помещающихся в батч' };
+  if (oversized.length > 0) {
+    return {
+      error: `замечание не помещается в батч (лимит ${COMMENT_BATCH_ITEM_MAX_BYTES} B): ${oversized.join(', ')} — батч не создан`,
+      code: 'ITEM_TOO_LARGE',
+      ids: oversized,
+    };
+  }
 
   const relative = join('batches', `${batchId}.jsonl`);
   const absolute = join(deps.dir, relative);

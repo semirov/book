@@ -16,6 +16,9 @@ import type { FastifyRequest } from 'fastify';
 import { WebSocket, type RawData } from 'ws';
 
 import {
+  COMMENT_MAX_CHARS,
+  COMMENT_MIN_CHARS,
+  EDIT_MAX_CHARS,
   ENVELOPE_VERSION,
   PROTOCOL_VERSION,
   type AuthorsCountDto,
@@ -252,8 +255,9 @@ export class WsHub {
         provider: this.config.captchaProvider,
         siteKey: this.config.captchaSiteKey.length > 0 ? this.config.captchaSiteKey : null,
       },
-      minChars: 3,
-      maxChars: 1_200,
+      minChars: COMMENT_MIN_CHARS,
+      maxChars: COMMENT_MAX_CHARS,
+      editMaxChars: EDIT_MAX_CHARS,
     };
 
     return {
@@ -262,7 +266,8 @@ export class WsHub {
       serverTime: toIso(this.now()),
       limits: {
         commentsPerHour: this.config.commentsPerHour,
-        maxCommentChars: 1_200,
+        maxCommentChars: COMMENT_MAX_CHARS,
+        maxEditChars: EDIT_MAX_CHARS,
         queueSoftCap: this.config.queueSoftCap,
         maxConnections: this.maxConnections,
         perIp: this.perIp,

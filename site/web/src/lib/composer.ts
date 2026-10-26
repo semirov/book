@@ -1,4 +1,16 @@
 import type { CommentBudget, ComposerInfo, ViewerDto } from '@book/shared';
+import { COMMENT_MAX_CHARS, COMMENT_MIN_CHARS, EDIT_MAX_CHARS } from '@book/shared';
+
+/**
+ * BOOK-DOC-4 rule 1 — before `hello` arrives the composer shows the same caps the server
+ * will confirm, taken from the shared constants rather than from a local copy.
+ */
+export const EMPTY_COMPOSER: ComposerInfo = {
+  captcha: { provider: 'none', siteKey: null },
+  minChars: COMMENT_MIN_CHARS,
+  maxChars: COMMENT_MAX_CHARS,
+  editMaxChars: EDIT_MAX_CHARS,
+};
 
 /**
  * The composer's decisions, separated from its markup (§11.6, §12.8).
@@ -105,6 +117,20 @@ function formatReset(iso: string): string {
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * BOOK-DOC-4 rule 1 — the composer mirrors the server: both caps arrive in `hello`, which
+ * is built from the shared constants. No number is typed into the markup, so the counter
+ * and `maxLength` can never drift from the guard that will judge the draft.
+ */
+export function draftLimits(composer: ComposerInfo): { body: number; edit: number } {
+  return { body: composer.maxChars, edit: composer.editMaxChars };
+}
+
+/** «137 / 10 000» — one shape for both fields, so the bound is visible while writing. */
+export function counterLabel(length: number, max: number): string {
+  return `${length} / ${max}`;
+}
+
 /** Client-side check before a request: cheap, honest, and never the last word. */
 export function validateDraft(input: {
   body: string;
@@ -119,5 +145,11 @@ export function validateDraft(input: {
     return { ok: false, line: 'подтвердите, что вы не робот' };
   }
   const proposed = input.proposed.trim();
+  if (proposed.length > input.composer.editMaxChars) {
+    return { ok: false, line: `правка длиннее ${input.composer.editMaxChars} символов` };
+  }
+  if (proposed.length > 0 && proposed.length < input.composer.minChars) {
+    return { ok: false, line: `правка короче ${input.composer.minChars} символов` };
+  }
   return { ok: true, body, proposed: proposed.length === 0 ? null : proposed };
 }

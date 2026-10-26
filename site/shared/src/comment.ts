@@ -18,12 +18,57 @@ export const COMMENT_QUOTE_MAX_CHARS = 280;
 export const COMMENT_AFFIX_MAX_CHARS = 40;
 export const COMMENT_REASON_MAX_CHARS = 200;
 
+/**
+ * BOOK-DOC-4 rule 1 — a reader's intervention (the proposed wording of a passage) is a
+ * different kind of text from a note about it: 10 000 characters, not 1 200. The two caps
+ * are deliberately separate constants and are never substituted for one another: widening
+ * the note bound would silently widen every comment.
+ *
+ * Cyrillic costs 2 bytes per character in UTF-8 and a BMP character costs at most 3, so
+ * the raw bound covers a full 10 000-character intervention in any script (30 000 B) with
+ * headroom — the composer may never promise what the byte guard refuses.
+ */
+export const EDIT_MIN_CHARS = 3;
+export const EDIT_MAX_CHARS = 10_000;
+export const EDIT_RAW_MAX_BYTES = 32 * 1024;
+
+/** A typed pair of bounds: text limits travel as one value, never as a bare number. */
+export type TextBound = {
+  readonly minChars: number;
+  readonly maxChars: number;
+  readonly maxBytes: number;
+};
+
+export const COMMENT_BOUND: TextBound = {
+  minChars: COMMENT_MIN_CHARS,
+  maxChars: COMMENT_MAX_CHARS,
+  maxBytes: COMMENT_RAW_MAX_BYTES,
+};
+
+export const EDIT_BOUND: TextBound = {
+  minChars: EDIT_MIN_CHARS,
+  maxChars: EDIT_MAX_CHARS,
+  maxBytes: EDIT_RAW_MAX_BYTES,
+};
+
+/**
+ * The transport bound for one JSON mutation body, app-wide: a note body plus a full
+ * intervention, with JSON and header overhead. It must stay above `EDIT_RAW_MAX_BYTES`, or
+ * the transport would refuse what the composer promises; a body past it is still answered
+ * with a public `TOO_LONG` rather than a Fastify identifier.
+ */
+export const REQUEST_BODY_MAX_BYTES = 64 * 1024;
+
 /** §12.3 — the intent is a one-sentence goal, not a copy of the comment. */
 export const INTENT_MIN_CHARS = 3;
 
-/** §12.6 — a batch is small on purpose: ≤20 items, ≤8 KB per item. */
+/**
+ * §12.6 — a batch is small on purpose: ≤20 items. One item now carries a note body and a
+ * full intervention (up to 30 000 B) plus the anchor, author and flags, so the cap follows
+ * the edit bound instead of the old 8 KB note bound.
+ */
 export const COMMENT_BATCH_MAX_ITEMS = 20;
-export const COMMENT_BATCH_ITEM_MAX_BYTES = 8 * 1024;
+export const COMMENT_BATCH_ITEM_MAX_BYTES = 40 * 1024;
 
 /** §14 — same identity + body_sha within this window is a duplicate. */
 export const COMMENT_DEDUPE_WINDOW_MS = 10 * 60_000;
@@ -165,7 +210,10 @@ export type FeedbackBatchPayload = {
 export type ComposerInfo = {
   captcha: { provider: CaptchaProvider; siteKey: string | null };
   minChars: number;
+  /** The note body cap (`COMMENT_MAX_CHARS`): a remark about the prose. */
   maxChars: number;
+  /** The intervention cap (`EDIT_MAX_CHARS`): a reader's proposed wording. */
+  editMaxChars: number;
 };
 
 const AUTHOR_COLORS = ['#6f9bb5', '#a98b6f', '#7d9b6f', '#9b7f9e', '#b58f6f', '#6f8fb5'] as const;

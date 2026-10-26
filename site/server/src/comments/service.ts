@@ -16,6 +16,8 @@ import {
   COMMENT_DEDUPE_WINDOW_MS,
   COMMENT_MAX_CHARS,
   COMMENT_RAW_MAX_BYTES,
+  EDIT_MAX_CHARS,
+  EDIT_RAW_MAX_BYTES,
   type CommentAnchor,
   type CommentBudget,
   type PostCommentInput,
@@ -169,6 +171,11 @@ export class CommentService {
 
     let proposedText: string | null = null;
     if (isPresent(input.proposedText)) {
+      // Bytes first: a 10 000-character intervention in Cyrillic is 20 000 B, and the raw
+      // bound is sized so the promise the composer shows is the one the server keeps.
+      if (Buffer.byteLength(input.proposedText, 'utf8') > EDIT_RAW_MAX_BYTES) {
+        return fail(422, 'TOO_LONG', `правка длиннее ${EDIT_MAX_CHARS} символов`);
+      }
       const proposed = sanitizeProposed(input.proposedText);
       if (proposed === null || !proposed.ok) {
         return fail(422, proposed === null ? 'INVALID' : proposed.code, proposed?.message ?? 'предложенная правка пустая');

@@ -9,7 +9,6 @@ import type {
   ChapterCreatedPayload,
   ChapterRevisionPayload,
   CommentDto,
-  ComposerInfo,
   Envelope,
   FrontUpdatedPayload,
   HelloPayload,
@@ -41,6 +40,7 @@ import { Discussion } from './components/Discussion.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
+import { EMPTY_COMPOSER } from './lib/composer.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -83,11 +83,7 @@ export function App() {
   const [changes, setChanges] = useState<ChangeSummaryDto[]>([]);
   const [comments, setComments] = useState<CommentDto[]>([]);
   const [viewer, setViewer] = useState<ViewerDto>({ signedIn: false, displayName: null });
-  const [composer, setComposer] = useState<ComposerInfo>({
-    captcha: { provider: 'none', siteKey: null },
-    minChars: 3,
-    maxChars: 1_200,
-  });
+  const [composer, setComposer] = useState(EMPTY_COMPOSER);
   const [titleMotion, setTitleMotion] = useState<TitleMotion>(IDLE_TITLE);
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');

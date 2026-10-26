@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+
+import { COMMENT_BATCH_ITEM_MAX_BYTES, EDIT_MAX_CHARS } from '@book/shared';
 
 import { createBatch, readBatchLines } from '../src/feedback/batches.ts';
 import { insertComment } from '../src/comments/repo.ts';
@@ -25,7 +27,7 @@ function withFixture(run: (fixture: Fixture, dir: string) => void): void {
   }
 }
 
-function seedComment(fixture: Fixture, author: string): string {
+function seedComment(fixture: Fixture, author: string, proposedText: string | null = null): string {
   const identity = upsertIdentity(fixture.db, {
     yandexSub: 'yandex-1',
     displayName: 'Аня',
@@ -44,7 +46,7 @@ function seedComment(fixture: Fixture, author: string): string {
     suffix: null,
     author,
     body: 'Абзац читается медленно: три длинных предложения подряд.',
-    proposedText: null,
+    proposedText,
     bodySha: 'a'.repeat(64),
     flags: [],
     ipHash: 'f'.repeat(64),
@@ -92,6 +94,41 @@ describe('createBatch — the author field is sanitized (audit M3)', () => {
       if (!('batchId' in batch)) throw new Error('the batch was not created');
       const [item] = readBatchLines(dir, batch.batchId);
       expect(item?.author).toBe('Аня К.');
+    });
+  });
+});
+
+describe('createBatch — the edit bound reaches triage, an oversized row is refused, not dropped', () => {
+  it('writes a 10 000-character Cyrillic intervention whole', () => {
+    withFixture((fixture, dir) => {
+      const proposed = 'я'.repeat(EDIT_MAX_CHARS);
+      const id = seedComment(fixture, 'Аня', proposed);
+
+      const batch = createBatch({ db: fixture.db, dir, now: () => new Date('2026-10-25T12:05:00Z') });
+      if ('error' in batch) throw new Error(`the batch was refused: ${batch.error}`);
+
+      const [item] = readBatchLines(dir, batch.batchId);
+      expect(item?.id).toBe(id);
+      // The old 8 KB item cap silently skipped this line; the whole text is here now.
+      expect(item?.proposed).toBe(proposed);
+      expect(Buffer.byteLength(item?.proposed ?? '', 'utf8')).toBe(EDIT_MAX_CHARS * 2);
+    });
+  });
+
+  it('refuses the batch with a code and the offending id instead of skipping the row', () => {
+    withFixture((fixture, dir) => {
+      const id = seedComment(fixture, 'Аня', 'я'.repeat(COMMENT_BATCH_ITEM_MAX_BYTES));
+      const batch = createBatch({ db: fixture.db, dir, now: () => new Date('2026-10-25T12:05:00Z') });
+
+      expect(batch).toMatchObject({ code: 'ITEM_TOO_LARGE' });
+      if (!('code' in batch)) return;
+      expect(batch.ids).toEqual([id]);
+      expect(batch.error).toContain(id);
+      // Nothing was written and nothing was marked as batched: the row stays visible.
+      expect(readdirSync(join(dir, 'batches'))).toHaveLength(0);
+      expect(
+        (fixture.db.prepare('SELECT status FROM comments WHERE id = ?').get(id) as { status: string }).status,
+      ).toBe('new');
     });
   });
 });

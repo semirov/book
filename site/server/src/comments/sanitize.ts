@@ -11,9 +11,10 @@
 import {
   COMMENT_AFFIX_MAX_CHARS,
   COMMENT_AUTHOR_MAX_CHARS,
-  COMMENT_MAX_CHARS,
-  COMMENT_MIN_CHARS,
+  COMMENT_BOUND,
   COMMENT_QUOTE_MAX_CHARS,
+  EDIT_BOUND,
+  type TextBound,
 } from '@book/shared';
 
 import { sha256Hex } from '../util/hash.ts';
@@ -50,28 +51,33 @@ export function normalizeText(raw: string): string {
 
 /** A comment body: 3–1200 characters after normalization, plus its dedupe hash. */
 export function sanitizeBody(raw: string): SanitizedText {
-  if (typeof raw !== 'string') return tooShort();
+  return sanitizeWithin(raw, COMMENT_BOUND, 'замечание');
+}
+
+function sanitizeWithin(raw: unknown, bound: TextBound, noun: string): SanitizedText {
+  if (typeof raw !== 'string') return tooShort(bound, noun);
   const text = normalizeText(raw);
-  if (text.length < COMMENT_MIN_CHARS) return tooShort();
-  if (text.length > COMMENT_MAX_CHARS) {
-    return { ok: false, code: 'TOO_LONG', message: `замечание длиннее ${COMMENT_MAX_CHARS} символов` };
+  if (text.length < bound.minChars) return tooShort(bound, noun);
+  if (text.length > bound.maxChars) {
+    return { ok: false, code: 'TOO_LONG', message: `${noun} длиннее ${bound.maxChars} символов` };
   }
   return { ok: true, text, hash: sha256Hex(text) };
 }
 
-function tooShort(): SanitizedText {
-  return { ok: false, code: 'TOO_SHORT', message: `замечание короче ${COMMENT_MIN_CHARS} символов` };
+function tooShort(bound: TextBound, noun: string): SanitizedText {
+  return { ok: false, code: 'TOO_SHORT', message: `${noun} короче ${bound.minChars} символов` };
 }
 
 /**
- * A reader's suggested wording: the same normalization and the same cap as a comment. It is
- * never applied verbatim — the writer adopts the idea, not the bytes (§6A.2).
+ * A reader's suggested wording: the same normalization, but the **edit** bound (BOOK-DOC-4
+ * rule 1), not the note bound. It is never applied verbatim — the writer adopts the idea,
+ * not the bytes (§6A.2).
  */
 export function sanitizeProposed(raw: string | null | undefined): SanitizedText | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw !== 'string') return null;
   if (raw.trim().length === 0) return null;
-  return sanitizeBody(raw);
+  return sanitizeWithin(raw, EDIT_BOUND, 'правка');
 }
 
 /** An anchor quote: normalized and capped, but angle brackets are left alone so it matches. */
