@@ -15,7 +15,7 @@ import type { Finding } from './text.ts';
 
 /** `manuscript/chNN.md` for 01..67, or the first sheet; nothing else is a book file. */
 const BOOK_FILE = /^manuscript\/(?:ch(?:0[1-9]|[1-5][0-9]|6[0-7])\.md|00-front\.md)$/u;
-/** The record a step may append without becoming a second write (§6C.5, F019). */
+/** The record a step may append without becoming a second write (§6C.5). */
 export const DOSSIERS_FILE = 'bible/dossiers.md';
 export const SWEEP_PREFIX = 'sweep:';
 

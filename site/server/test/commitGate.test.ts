@@ -67,7 +67,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
       const result = await validate([`--root=${fixture.root}`]);
       expect(result.code).toBe(1);
       expect(result.out).toMatch(/F005 error ch09\.md/u);
-      expect(result.out).toMatch(/denylisted person: «Владимир»/u);
+      expect(result.out).toMatch(/denylisted person: «Владимир Путин»/u);
     } finally {
       fixture.close();
     }
@@ -79,7 +79,7 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
       fixture.write('ch09.md', prose('Во дворе стоял Гарри Поттер и смотрел на доску.'));
       const character = await validate([`--root=${fixture.root}`]);
       expect(character.code).toBe(1);
-      expect(character.out).toMatch(/protected character: «Гарри»/u);
+      expect(character.out).toMatch(/protected character: «Гарри Поттер»/u);
 
       fixture.write(
         'ch09.md',
@@ -93,13 +93,13 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
     }
   });
 
-  it('lets an invented name through, with only the F019 provenance warning', async () => {
+  it('lets an invented name through — no rule polices a name', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
       fixture.write('ch09.md', prose('Половик поднял Ерофей Ильич, сторож с ночной смены.'));
       const result = await validate([`--root=${fixture.root}`]);
       expect(result.code).toBe(0);
-      expect(result.out).toMatch(/F019 warn +ch09\.md/u);
+      expect(result.out).not.toMatch(/F019/u);
       expect(result.out).toMatch(/0 errors/u);
     } finally {
       fixture.close();

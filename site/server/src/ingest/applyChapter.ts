@@ -9,7 +9,7 @@
  * It never touches the manuscript: the file is already read by the caller.
  */
 
-import { directionOf, partOf, type Lane, type PatchOp, type Part } from '@book/shared';
+import { directionOf, isBasisOnly, partOf, type Lane, type PatchOp, type Part } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import {
@@ -81,6 +81,11 @@ export type ApplyChapterResult =
   | { status: 'unchanged'; n: number }
   /** Zero blocks: an empty slot in progress, or a truncate-then-write the caller must guard. */
   | { status: 'empty'; n: number }
+  /**
+   * The file now holds only its basis sentence (ch01/ch67): a legitimately emptied slot, not
+   * an empty write between two saves (§6.2, BOOK-6). The projection is blank; the history is not.
+   */
+  | { status: 'emptied'; n: number }
   | ({ status: 'created' } & AppliedChapter)
   | ({ status: 'revised'; kind: 'edit' | 'rewrite' | 'restore' } & AppliedChapter);
 
@@ -93,7 +98,10 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
   const observedAt = toIso(Math.min(input.mtimeMs, input.nowMs));
 
   if (existing !== undefined && existing.sha256 === parsed.sha256) return { status: 'unchanged', n };
-  if (parsed.blocks.length === 0) return { status: 'empty', n };
+  if (parsed.blocks.length === 0) {
+    if (existing !== undefined && isBasisOnly(n, input.raw)) return blankChapter(db, n, parsed.sha256, observedAt);
+    return { status: 'empty', n };
+  }
 
   const observed = input.cause ?? chapterWriteCause(db, n, input.nowMs);
   // §13.3: with no lease, a text that is byte-identical to an earlier stored revision is a
@@ -317,6 +325,24 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
 
 function isConstraintError(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed|PRIMARY KEY/u.test(error.message);
+}
+
+/**
+ * Blank a chapter that was reduced to its basis sentence (§BOOK-6). The row stays — the
+ * append-only history keeps its revisions — and `block_count = 0` is what makes every
+ * projection (catalog, `/api/state`, `/api/chapters/:n`, `written`) treat the slot as empty.
+ */
+function blankChapter(db: Db, n: number, sha256: string, observedAt: string): ApplyChapterResult {
+  const run = db.transaction(() => {
+    replaceBlocks(db, n, 0, []);
+    db.prepare(
+      `UPDATE chapters
+          SET title = NULL, sha256 = ?, chars = 0, block_count = 0, updated_at = ?, parse_error = NULL
+        WHERE n = ?`,
+    ).run(sha256, observedAt, n);
+  });
+  run();
+  return { status: 'emptied', n };
 }
 
 /** Remove a chapter whose file disappeared. Files win, always (§18). */

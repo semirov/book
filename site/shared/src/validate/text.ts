@@ -33,6 +33,8 @@ export type Severity = 'error' | 'warn';
  *
  * F003 (forbidden vocabulary) and F008 (process vocabulary) are tombstones: the author's
  * directive is that the only taboos are copyright and RF law, so only F005 polices words.
+ * F019 (the dossiers warning) is retired outright — the record is optional and no rule reads
+ * it — so it has no id here; F029 is the frozen frame of ch01/ch67.
  */
 export type RuleId =
   | 'F001'
@@ -53,7 +55,6 @@ export type RuleId =
   | 'F016'
   | 'F017'
   | 'F018'
-  | 'F019'
   | 'F020'
   | 'F021'
   | 'F022'
@@ -62,7 +63,8 @@ export type RuleId =
   | 'F025'
   | 'F026'
   | 'F027'
-  | 'F028';
+  | 'F028'
+  | 'F029';
 
 export type Finding = {
   rule: RuleId;
@@ -86,6 +88,8 @@ export type ChapterFile = {
   titleProblems: string[];
   blocks: string[];
   chars: number;
+  /** An empty slot: no prose (absent file body, or only the chapter's basis sentence). */
+  empty: boolean;
 };
 
 export type ValidateOptions = {
@@ -97,8 +101,6 @@ export type ValidateOptions = {
   denylist?: LegalDenylist | null;
   /** `config/imprint.json`; F020 fails without it (§6C.6). */
   imprint?: Imprint | null;
-  /** `bible/dossiers.md` — the record of people already on the page (F019). */
-  dossiers?: ManuscriptFile | null;
   totalChapters?: number;
 };
 
@@ -168,14 +170,6 @@ export function excerptAt(text: string, offset: number, length: number): string 
   const start = Math.max(0, offset - 24);
   const end = Math.min(text.length, offset + length + 24);
   return text.slice(start, end).replace(/\n/gu, ' ').trim();
-}
-
-/** Does the character before this offset end a sentence (or start the block)? */
-export function isSentenceStart(text: string, offset: number): boolean {
-  let i = offset - 1;
-  while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1;
-  if (i < 0 || text[i] === '\n') return true;
-  return '.!?…:;"«»()\[\]—–'.includes(text[i] ?? '');
 }
 
 export const CAPITALIZED_WORD = /[А-ЯЁ][а-яё]+|[А-ЯЁ]{2,}/gu;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Imprint, LegalDenylist } from '../../src/book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
 import type { ManuscriptFile, ValidateOptions } from '../../src/validate/index.ts';
 import { runValidation } from '../../src/validate/index.ts';
 
@@ -31,7 +32,6 @@ function run(overrides: Partial<ValidateOptions> = {}) {
     files: [FRONT, chapter()],
     imprint: IMPRINT,
     denylist: DENYLIST,
-    dossiers: { name: 'bible/dossiers.md', text: '(пока пусто)' },
     ...overrides,
   });
 }
@@ -126,14 +126,43 @@ describe('F005 — the legal denylist', () => {
 
   it('rejects a denylisted real person and a protected character', () => {
     const result = run({
-      files: [FRONT, chapter('Вечер', 'Потом вошёл Толстой и заговорил о Поттере.')],
+      files: [FRONT, chapter('Вечер', 'Потом вошёл Лев Толстой и заговорил о Гарри Поттере.')],
       denylist,
     });
     const found = withRule(result, 'F005');
     expect(found.map((item) => item.severity)).toEqual(['error', 'error']);
     expect(found.map((item) => item.message)).toEqual([
-      expect.stringContaining('denylisted person'),
-      expect.stringContaining('protected character'),
+      expect.stringContaining('denylisted person: «Лев Толстой»'),
+      expect.stringContaining('protected character: «Гарри Поттере»'),
+    ]);
+  });
+
+  it('does not trip a full name on a first name that only starts another name', () => {
+    const result = run({
+      files: [
+        FRONT,
+        chapter('Уборка', 'В двадцать минут пятого пришла Александра Фёдоровна, уборщица, и стала мыть пол.'),
+      ],
+      denylist: { ...DENYLIST, persons: ['Александр Лукашенко'] },
+    });
+    expect(rules(result)).not.toContain('F005');
+  });
+
+  it('does not trip a multi-word person on one token of it', () => {
+    const result = run({
+      files: [FRONT, chapter('Вечер', 'Потом вошёл Александр и сел у окна.')],
+      denylist: { ...DENYLIST, persons: ['Александр Лукашенко'] },
+    });
+    expect(rules(result)).not.toContain('F005');
+  });
+
+  it('rejects the exact denylisted full name', () => {
+    const result = run({
+      files: [FRONT, chapter('Приезд', 'Вчера Александр Лукашенко приехал в район на две минуты.')],
+      denylist: { ...DENYLIST, persons: ['Александр Лукашенко'] },
+    });
+    expect(withRule(result, 'F005')).toEqual([
+      expect.objectContaining({ severity: 'error', message: 'denylisted person: «Александр Лукашенко»' }),
     ]);
   });
 
@@ -223,29 +252,6 @@ describe('F009 — markdown in prose', () => {
   });
 });
 
-describe('F019 — the dossiers record is a warning, never a gate', () => {
-  it('warns about an invented name that is not recorded', () => {
-    const result = run({ files: [FRONT, chapter('Вечер', 'Потом вошёл Матвей и сел у окна.')] });
-    expect(rules(result)).not.toContain('F005');
-    expect(withRule(result, 'F019')).toEqual([
-      expect.objectContaining({ severity: 'warn', message: expect.stringContaining('Матвей') }),
-    ]);
-  });
-
-  it('accepts a name recorded in bible/dossiers.md', () => {
-    const result = run({
-      files: [FRONT, chapter('Вечер', 'Потом вошёл Матвей и сел у окна.')],
-      dossiers: { name: 'bible/dossiers.md', text: 'Имя: Матвей Кораблёв. Глава 5.' },
-    });
-    expect(rules(result)).not.toContain('F019');
-  });
-
-  it('stays quiet on an ordinary sentence-initial capital', () => {
-    const result = run({ files: [FRONT, chapter('Снег', 'Снег лежал до утра. Потом стало тихо.')] });
-    expect(rules(result)).not.toContain('F019');
-  });
-});
-
 describe('F020 — the imprint is exact', () => {
   it('accepts the exact imprint', () => {
     expect(rules(run())).not.toContain('F020');
@@ -326,13 +332,148 @@ describe('F022 — the chapter title line', () => {
   });
 });
 
+describe('F029 — the frozen frame', () => {
+  /** A chapter file with a valid title line and the given prose. */
+  const framed = (n: number, body: string): ManuscriptFile => ({
+    name: `ch${String(n).padStart(2, '0')}.md`,
+    text: `Глава\n\n${body}`,
+  });
+  const found = (result: ReturnType<typeof run>) => withRule(result, 'F029');
+
+  it('accepts the frame at both ends', () => {
+    const result = run({
+      files: [
+        FRONT,
+        framed(1, `${FRAME_FIRST_SENTENCE} Потом он сел и стал ждать.`),
+        framed(67, `Всё стихло к утру. ${FRAME_LAST_SENTENCE}`),
+      ],
+    });
+    expect(found(result)).toEqual([]);
+  });
+
+  it('accepts a frame rewrapped across lines', () => {
+    const opening = run({
+      files: [FRONT, framed(1, 'Рано утром я проснулся по будильнику,\nбыл обычный будний день. Потом он сел.')],
+    });
+    expect(found(opening)).toEqual([]);
+
+    const closing = run({ files: [FRONT, framed(67, 'Всё стихло.\nИ никого\nне стало.')] });
+    expect(found(closing)).toEqual([]);
+  });
+
+  it('rejects a changed word in the opening sentence', () => {
+    const result = run({
+      files: [FRONT, framed(1, 'Рано утром я проснулся по будильнику, был обычный рабочий день. Потом он сел.')],
+    });
+    expect(found(result)).toEqual([
+      expect.objectContaining({
+        severity: 'error',
+        file: 'ch01.md',
+        message: expect.stringContaining('must begin with'),
+      }),
+    ]);
+    expect(found(result)[0]?.message).toContain('found «Рано утром я проснулся по будильнику, был обычный рабочий день.»');
+  });
+
+  it('rejects ch01 without the frozen sentence', () => {
+    const result = run({ files: [FRONT, framed(1, 'Виктор Ильич пришёл на работу раньше всех.')] });
+    expect(found(result)).toHaveLength(1);
+    expect(found(result)[0]?.message).toContain('found «Виктор Ильич пришёл на работу раньше всех.»');
+  });
+
+  it('rejects ch67 without the last sentence', () => {
+    const result = run({ files: [FRONT, framed(67, 'Всё стихло, но кто-то остался.')] });
+    expect(found(result)).toEqual([
+      expect.objectContaining({ severity: 'error', file: 'ch67.md', message: expect.stringContaining('must end with') }),
+    ]);
+    expect(found(result)[0]?.message).toContain('found «Всё стихло, но кто-то остался.»');
+  });
+
+  it('reports the tail of a long closing paragraph', () => {
+    const result = run({ files: [FRONT, framed(67, `${'Слово '.repeat(40)}и всё стихло.`)] });
+    const message = found(result)[0]?.message ?? '';
+    expect(message).toContain('…');
+    expect(message).toContain('и всё стихло.»');
+  });
+
+  it('accepts the sentence as the whole file — a basis-only slot', () => {
+    const result = run({
+      files: [
+        FRONT,
+        { name: 'ch01.md', text: FRAME_FIRST_SENTENCE },
+        { name: 'ch67.md', text: FRAME_LAST_SENTENCE },
+      ],
+    });
+    expect(found(result)).toEqual([]);
+  });
+
+  it('accepts the sentence as a title-less first line', () => {
+    const result = run({ files: [FRONT, { name: 'ch01.md', text: `${FRAME_FIRST_SENTENCE}\nПотом он сел.` }] });
+    expect(found(result)).toEqual([]);
+  });
+
+  it('accepts a manuscript without ch67', () => {
+    const result = run({ files: [FRONT, framed(1, `${FRAME_FIRST_SENTENCE} Потом он сел.`)] });
+    expect(found(result)).toEqual([]);
+  });
+
+  it('keeps the reported sentence to 80 characters', () => {
+    const result = run({ files: [FRONT, framed(1, `${'Слово '.repeat(40)}и всё.`)] });
+    const message = found(result)[0]?.message ?? '';
+    expect(message).toContain('…');
+    expect(message.length).toBeLessThan(300);
+  });
+});
+
+describe('an empty slot is a valid state (§BOOK-6)', () => {
+  it('accepts an absent chapter', () => {
+    expect(rules(run({ files: [FRONT] }))).toEqual([]);
+  });
+
+  it('accepts a zero-byte chapter file without thin or title findings', () => {
+    const result = run({ files: [FRONT, { name: 'ch05.md', text: '' }] });
+    expect(result.findings).toEqual([]);
+    expect(result.chapters[0]).toMatchObject({ n: 5, title: null, chars: 0, blocks: 0 });
+  });
+
+  it('accepts a basis-only ch01 and ch67 without thin or title findings', () => {
+    const result = run({
+      files: [
+        FRONT,
+        { name: 'ch01.md', text: FRAME_FIRST_SENTENCE },
+        { name: 'ch67.md', text: FRAME_LAST_SENTENCE },
+      ],
+    });
+    expect(result.findings).toEqual([]);
+    expect(result.chapters.map((item) => item.chars)).toEqual([0, 0]);
+  });
+
+  it('keeps F007 and F022 for a written chapter', () => {
+    const thin = run({ files: [FRONT, chapter('Короткая', 'Один абзац.')] });
+    expect(withRule(thin, 'F007')[0]).toMatchObject({ severity: 'warn', message: expect.stringContaining('thin chapter') });
+
+    const untitled = run({ files: [FRONT, { name: 'ch06.md', text: 'Первый абзац без заголовка.\nВторой.' }] });
+    expect(withRule(untitled, 'F022')).toHaveLength(1);
+  });
+});
+
+describe('names are the writer’s to invent — no rule polices them', () => {
+  it('accepts an unrecorded invented name without a finding', () => {
+    const result = run({
+      files: [FRONT, chapter('Вечер', `Потом вошёл Матвей и сел у окна. ${'а'.repeat(20_000)}`)],
+    });
+    expect(result.findings).toEqual([]);
+  });
+});
+
 describe('report shape', () => {
   it('sorts findings by file and line, counts severities and keeps titles', () => {
     const result = run({
       files: [
         FRONT,
         { name: 'ch05.md', text: `Глава пять\n\n${'а'.repeat(30_001)}` },
-        { name: 'ch01.md', text: '' },
+        // A written chapter without a title line: F022 is an error for the commit (§6C.3).
+        { name: 'ch01.md', text: 'Первый абзац без заголовка.\nВторой абзац без пустой строки.' },
       ],
     });
     expect(result.errors).toBeGreaterThanOrEqual(2);

@@ -2,7 +2,7 @@
 /**
  * bin/validate.mjs — the integrity gate (ARCHITECTURE.md §13.4).
  *
- * Runs the structure and law rules (F001, F002, F005–F007, F009, F019–F022) over the
+ * Runs the structure and law rules (F001, F002, F005–F007, F009, F020–F022, F029) over the
  * manuscript. Reads only: nothing here writes a chapter file. Node 22.18+ executes the
  * TypeScript rules in shared/src/validate directly (type stripping), so the gate works
  * before any build.
@@ -16,8 +16,8 @@
  *   node bin/validate.mjs --imprint=path.json      # test fixture for F020
  *   node bin/validate.mjs --strict                 # exit 1 on warnings too (CI)
  *
- * F003, F004, F008, F013, F016 and F018 are retired in v3; F011–F018 and F023–F028 live
- * in the engine, git hooks and build tests (§23.5). `--staged` is the pre-commit hook's
+ * F003, F004, F008, F013, F016, F018 and F019 are retired in v3; F011–F018 and F024–F028
+ * live in the engine, git hooks and build tests (§23.5). `--staged` is the pre-commit hook's
  * mode: it reads the index, not the working tree, and adds F010 (one book file per commit).
  */
 
@@ -111,12 +111,6 @@ function readPlanningFiles(root) {
   }));
 }
 
-function readDossiers(root) {
-  const relative = 'bible/dossiers.md';
-  if (!existsSync(join(root, relative))) return null;
-  return { name: relative, text: readFileSync(join(root, relative), 'utf8') };
-}
-
 function readDenylist(document) {
   return {
     version: typeof document.version === 'number' ? document.version : 1,
@@ -160,8 +154,8 @@ function main() {
   if (options.help) {
     console.log('usage: node bin/validate.mjs [--root=DIR] [--json] [--rule=F001,..] [--strict] [--staged]');
     console.log('       [--denylist=path] [--imprint=path]');
-    console.log('runs F001, F002, F005–F007, F009 and F019–F022 (+ F010 with --staged)');
-    console.log('F003/F004/F008/F013/F016/F018 are retired in v3');
+    console.log('runs F001, F002, F005–F007, F009, F020–F022 and F029 (+ F010 with --staged)');
+    console.log('F003/F004/F008/F013/F016/F018/F019 are retired in v3');
     return 0;
   }
   if (options.error) {
@@ -199,7 +193,6 @@ function main() {
     planning: readPlanningFiles(options.root),
     denylist,
     imprint,
-    dossiers: readDossiers(options.root),
   });
 
   const scope = staged === null ? [] : checkCommitScope(staged.staged, staged.message);

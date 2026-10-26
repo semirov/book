@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getChapterRow, listBlocks, listCatalog } from '../src/db/repo/chapters.ts';
@@ -150,6 +151,69 @@ describe('reconcile — a revision', () => {
   });
 });
 
+describe('reconcile — a chapter reduced to its basis sentence (BOOK-6)', () => {
+  it('empties the projection instead of keeping the old text', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
+
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.emptied).toEqual([1]);
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ block_count: 0, chars: 0, title: null });
+    expect(listBlocks(fixture.db, 1)).toEqual([]);
+    // The slot is empty in every projection: the catalog, the state and the reader default.
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ n: 1, written: false, chars: 0 });
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.chapters.empty).toHaveLength(67);
+
+    // The history is not blanked: the old revisions are still there.
+    expect(listRevisions(fixture.db, 1).length).toBeGreaterThan(0);
+  });
+
+  it('is idempotent: a second scan finds the slot already empty', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(again.emptied).toEqual([]);
+    expect(again.unchanged).toEqual([1]);
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBe(0);
+  });
+
+  it('takes the empty book end to end: ch01 and ch67 hold one sentence each', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch67.md': CHAPTER_TWO, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([1, 67]);
+
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.front.title).toBe('Земля, которая больше не кормит');
+  });
+
+  it('still guards a zero-byte write: an empty file keeps the old text (§6.2)', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    fixture.write('ch01.md', '');
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
+  });
+});
+
 describe('reconcile — removal', () => {
   it('drops a chapter whose file disappeared, but keeps its snapshot', () => {
     fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch02.md': CHAPTER_TWO });
@@ -176,6 +240,7 @@ describe('state version', () => {
       revised: [],
       unchanged: [],
       removed: [],
+      emptied: [],
       ignored: [],
       readErrors: [],
       front: 'missing',

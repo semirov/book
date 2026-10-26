@@ -2,12 +2,13 @@
  * The integrity panel's one query (ARCHITECTURE.md §13.4 point 5, §17).
  *
  * The site never blocks publication: it runs the cheap rule subset over the files it can
- * see (F001, F002, F005–F007, F009, F019–F022), reads the legal denylist, and reports what
+ * see (F001, F002, F005–F007, F009, F020–F022, F029), reads the legal denylist, and reports
  * it found. The panel is an operator tool, and every field here answers a question an
  * operator would otherwise ask the database by hand:
  *
  * - is the text legal and well-formed right now (`validator`, `legal`)?
- * - is the cast recorded (`cast`, F019) and does the denylist have teeth (`legal`)?
+ * - is there an optional record of people on the page (`cast`) and does the denylist have
+ *   teeth (`legal`)? Nothing enforces the record; the panel only counts it.
  * - is anything on the page uncredited (`attribution`, F015)?
  * - is any chapter sitting on a restore that never ran the gates (`ungated`, §13.3)?
  *
@@ -61,7 +62,7 @@ export type IntegrityReport = {
   };
   cast: {
     dossiers: boolean;
-    /** Capitalised names recorded in `bible/dossiers.md`; F019 measures against this. */
+    /** Capitalised names recorded in `bible/dossiers.md`, an optional record. */
     recorded: number;
   };
   legal: {
@@ -116,20 +117,13 @@ function readDossiers(bookRoot: string): { present: boolean; text: string } {
   }
 }
 
-type Dossiers = { present: boolean; text: string };
-
-function validate(options: IntegrityOptions, denylist: LegalDenylist | null, dossiers: Dossiers): ValidateResult {
+function validate(options: IntegrityOptions, denylist: LegalDenylist | null): ValidateResult {
   const scan = scanManuscript(options.bookRoot);
   const files = [
     ...scan.chapters.map((chapter) => ({ name: chapter.fileName, text: chapter.raw })),
     ...(scan.front === null ? [] : [{ name: scan.front.fileName, text: scan.front.raw }]),
   ];
-  return runValidation({
-    files,
-    denylist,
-    imprint: options.imprint,
-    dossiers: dossiers.present ? { name: 'bible/dossiers.md', text: dossiers.text } : null,
-  });
+  return runValidation({ files, denylist, imprint: options.imprint });
 }
 
 export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityReport {
@@ -139,9 +133,10 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
   const loaded =
     options.denylist === undefined ? loadDenylist(options.denylistPath) : { denylist: options.denylist, problems: [] };
   const denylist = loaded.denylist;
-  const result = validate(options, denylist, dossiers);
+  const result = validate(options, denylist);
 
-  const written = db.prepare('SELECT COUNT(*) AS n FROM chapters').get() as CountRow;
+  // A slot is written when it has prose: a basis-only or zero-block row is an empty slot (BOOK-6).
+  const written = db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE block_count > 0').get() as CountRow;
   const totalChars = db.prepare('SELECT COALESCE(SUM(chars), 0) AS n FROM chapters').get() as CountRow;
   const thin = result.chapters.filter((chapter) => chapter.chars < THIN_LIMIT).map((chapter) => chapter.n);
 
@@ -173,7 +168,7 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
       totalChars: totalChars.n,
       thin,
     },
-    // The same definition F019 uses, so the panel and the warning cannot disagree.
+    // An optional record, not a rule: the panel reports whether it exists and how it grew.
     cast: { dossiers: dossiers.present, recorded: recordedNames(dossiers).size },
     legal: {
       denylistVersion: denylist?.version ?? null,

@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { CatalogEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, type CatalogEntry } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { listCatalog } from '../src/db/repo/chapters.ts';
@@ -175,6 +175,32 @@ describe('watcher: a chapter is edited', () => {
       parse_error: string | null;
     };
     expect(row.parse_error).toContain('empty write');
+  }, 10_000);
+
+  it('publishes a chapter emptied to its basis sentence as an empty slot (BOOK-6)', async () => {
+    await start({ emptyGraceMs: 200 });
+    harness!.fixture.write('ch01.md', 'Заголовок\n\nАбзац, который потом уберут.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+    const before = catalog()[0];
+    expect(before).toMatchObject({ written: true });
+
+    harness!.fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    await waitFor(() =>
+      harness!.events
+        .slice(1)
+        .find((event) => event.type === 'state:updated' && event.data.chapters.written.length === 0),
+    );
+
+    const after = catalog()[0];
+    expect(after).toMatchObject({ written: false, chars: 0, blocks: 0, title: null });
+    // The §6.2 grace must not resurrect the text: this emptiness is the basis, not a save in two steps.
+    const row = harness!.fixture.db.prepare('SELECT parse_error FROM chapters WHERE n = 1').get() as {
+      parse_error: string | null;
+    };
+    expect(row.parse_error).toBeNull();
+    const state = harness!.state.snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.totalChars).toBe(0);
   }, 10_000);
 
   it('does not publish a first write with zero blocks as a chapter', async () => {

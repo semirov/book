@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildDenylistIndex,
+  buildNameIndex,
   compilePatterns,
   findDenylisted,
+  findDenylistedNames,
   findPatternHits,
   matchesDenylist,
 } from '../../src/validate/index.ts';
@@ -45,8 +47,48 @@ describe('findDenylisted', () => {
   });
 });
 
-describe('compilePatterns', () => {
-  it('compiles valid sources case-insensitively and reports broken ones', () => {
+describe('findDenylistedNames — a person matches only as a complete name', () => {
+  const names = buildNameIndex(['Александр Лукашенко', 'Гарри Поттер']);
+
+  it('catches the exact full name', () => {
+    const hits = findDenylistedNames('Вчера Александр Лукашенко приехал в район на две минуты.', names);
+    expect(hits.map((hit) => hit.word)).toEqual(['Александр Лукашенко']);
+    expect(hits[0]?.offset).toBe(6);
+  });
+
+  it('does not catch a first name that starts a longer, different name', () => {
+    expect(findDenylistedNames('Пришла Александра Фёдоровна и вымыла пол.', names)).toEqual([]);
+  });
+
+  it('does not catch one token of a multi-word entry', () => {
+    expect(findDenylistedNames('Потом вошёл Александр и сел.', names)).toEqual([]);
+    expect(findDenylistedNames('Он заговорил о Поттере и замолчал.', names)).toEqual([]);
+  });
+
+  it('does not catch a longer word that only starts with an entry', () => {
+    expect(findDenylistedNames('Деревня Александровка стоит у реки.', buildNameIndex(['Александр']))).toEqual([]);
+  });
+
+  it('catches the name when a patronymic follows it', () => {
+    const hits = findDenylistedNames('Александр Лукашенко Викторович вошёл в кабинет.', buildNameIndex(['Александр Лукашенко']));
+    expect(hits.map((hit) => hit.word)).toEqual(['Александр Лукашенко']);
+  });
+
+  it('covers the case forms of every token', () => {
+    const hits = findDenylistedNames('Он говорил об Александре Лукашенко.', names);
+    expect(hits.map((hit) => hit.word)).toEqual(['Александре Лукашенко']);
+  });
+
+  it('keeps two names in one sentence apart', () => {
+    expect(findDenylistedNames('Гарри Поттер, Александр Лукашенко и другие.', names)).toHaveLength(2);
+  });
+
+  it('drops an entry that has no tokens at all', () => {
+    expect(buildNameIndex([' — ', '']).entries).toEqual([]);
+  });
+});
+
+describe('compilePatterns', () => {  it('compiles valid sources case-insensitively and reports broken ones', () => {
     const compiled = compilePatterns(['экстремизм', '[broken']);
     expect(compiled.regexes).toHaveLength(1);
     expect(compiled.regexes[0]?.flags).toContain('i');

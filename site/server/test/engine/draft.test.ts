@@ -1,4 +1,4 @@
-import type { WriterAssignment } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { dailyTokens, nextDraftChapter } from '../../src/engine/draft.ts';
@@ -33,6 +33,36 @@ describe('nextDraftChapter — two fronts, one meeting point (§6A.9, §6A.10)',
     // The backward lane has run to 35: the forward lane may not take 34 or below 35.
     expect(nextDraftChapter(new Set(range(35, 67)), 'bwd')).toBeNull();
     expect(nextDraftChapter(new Set([...range(1, 30), ...range(35, 67)]), 'fwd')).toBe(31);
+  });
+});
+
+describe('the owner’s writing switch (§6A.9, BOOK-6)', () => {
+  it('hands out no step for an empty book while drafting is off', () => {
+    const fixture = createEngineFixture({ env: { DRAFTING: 'off' } });
+    try {
+      // The owner's state: ch01 and ch67 hold only their basis sentence, 65 slots are absent.
+      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
+
+      expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toBeNull();
+      expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toBeNull();
+      const steps = fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get() as { n: number };
+      const leases = fixture.db.prepare('SELECT COUNT(*) AS n FROM leases').get() as { n: number };
+      expect(steps.n).toBe(0);
+      expect(leases.n).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('drafts from the two fixed points once the owner turns it on', () => {
+    const fixture = createEngineFixture({ env: { DRAFTING: 'on' } });
+    try {
+      expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toMatchObject({ pass: 'draft', chapter: 1 });
+      expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toMatchObject({ pass: 'draft', chapter: 67 });
+    } finally {
+      fixture.close();
+    }
   });
 });
 

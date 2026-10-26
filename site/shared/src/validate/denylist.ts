@@ -4,10 +4,21 @@
  * The rule is mechanical on purpose: a denylisted real person, protected character or
  * mechanically detectable illegal-content pattern is an error. There is **no allowlist**:
  * names are legitimate output of the writer (§6E.5), so an unknown invented name is not a
- * finding here — it is an F019 provenance *warning*.
+ * finding here.
  *
- * Matching is stem-based (see `stemRu`) so one entry covers its case forms, and a
- * multi-word entry is indexed word by word: «Лев Толстой» catches either part.
+ * Two matchers, because a name and an organisation are not the same claim:
+ *
+ * - **A person or a protected character matches only as a complete name.** The text is cut
+ *   into written names — runs of capitalised words joined by spaces or a hyphen — and an
+ *   entry matches when one whole run is that entry: every token, in order, under the same
+ *   stem policy (`stemRu`), so «Лев Толстой» covers its case forms. A word that merely
+ *   starts with an entry, one token of a multi-word entry («Толстой» alone) and a name that
+ *   is only the start of a longer written name («Александра» against «Александр Лукашенко»)
+ *   are **not** hits: a part of a name is not the name.
+ * - **An organisation matches token by token** (unchanged): «Запрещённая организация»
+ *   catches either part, because an organisation is rarely written the same way twice.
+ *
+ * Patterns keep their regex behaviour and are reported by `compilePatterns`/`findPatternHits`.
  */
 
 import { CAPITALIZED_WORD, foldRu, stemRu } from './text.ts';
@@ -17,9 +28,16 @@ export type DenylistIndex = {
   entries: Array<{ entry: string; stem: string }>;
 };
 
+/** Persons and characters: one record per entry, as the tokens a complete name supplies. */
+export type NameIndex = {
+  entries: Array<{ entry: string; stems: string[] }>;
+};
+
 export type DenylistHit = {
   word: string;
   offset: number;
+  /** Length of the matched span in the text, so an excerpt can be cut exactly. */
+  length: number;
 };
 
 export function buildDenylistIndex(names: Iterable<string>): DenylistIndex {
@@ -35,6 +53,20 @@ export function buildDenylistIndex(names: Iterable<string>): DenylistIndex {
     }
   }
   return { stems, entries };
+}
+
+/** Complete names: an entry keeps its token list, an empty entry is dropped. */
+export function buildNameIndex(names: Iterable<string>): NameIndex {
+  const entries: Array<{ entry: string; stems: string[] }> = [];
+  for (const value of names) {
+    const tokens = value
+      .split(/[^\p{L}\p{N}-]+/u)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+    if (tokens.length === 0) continue;
+    entries.push({ entry: tokens.join(' '), stems: tokens.map((token) => stemRu(token)) });
+  }
+  return { entries };
 }
 
 /**
@@ -55,7 +87,7 @@ export function matchesDenylist(token: string, index: DenylistIndex): boolean {
 
 /**
  * Every capitalised token that belongs to the index — anywhere, including the start of a
- * sentence: a denylisted real person is a name in every position.
+ * sentence. Used for organisations, where one written part is the organisation.
  */
 export function findDenylisted(text: string, index: DenylistIndex): DenylistHit[] {
   const hits: DenylistHit[] = [];
@@ -63,7 +95,73 @@ export function findDenylisted(text: string, index: DenylistIndex): DenylistHit[
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     const word = match[0];
-    if (matchesDenylist(word, index)) hits.push({ word, offset: match.index });
+    if (matchesDenylist(word, index)) hits.push({ word, offset: match.index, length: word.length });
+  }
+  return hits;
+}
+
+type NameWord = { text: string; start: number; end: number };
+type WrittenName = { words: NameWord[] };
+
+/**
+ * Cut the text into written names: a run of capitalised words separated only by spaces or
+ * hyphens («Александр Лукашенко», «Ростов-на-Дону»). Punctuation, a lowercase word or a
+ * line boundary ends the run, so two names in one sentence stay two names.
+ */
+function writtenNames(text: string): WrittenName[] {
+  const runs: WrittenName[] = [];
+  const pattern = new RegExp(CAPITALIZED_WORD.source, 'gu');
+  let current: WrittenName | null = null;
+  let lastEnd = 0;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    const word: NameWord = { text: match[0], start: match.index, end: match.index + match[0].length };
+    if (current !== null && /^[-\s]+$/u.test(text.slice(lastEnd, word.start))) {
+      current.words.push(word);
+    } else {
+      if (current !== null) runs.push(current);
+      current = { words: [word] };
+    }
+    lastEnd = word.end;
+  }
+  if (current !== null) runs.push(current);
+  return runs;
+}
+
+/** The window is the entry: every word, in order, under the same stem policy. */
+function sameTokens(words: readonly NameWord[], stems: readonly string[]): boolean {
+  return words.every((word, index) => stemRu(word.text) === stems[index]);
+}
+
+/** The hit covers the written window, so an excerpt can be cut from the text as written. */
+function windowHit(window: readonly NameWord[]): DenylistHit {
+  const first = window[0] as NameWord;
+  const last = window[window.length - 1] as NameWord;
+  return { word: window.map((word) => word.text).join(' '), offset: first.start, length: last.end - first.start };
+}
+
+/**
+ * Every complete denylisted person/character name in the text.
+ *
+ * A run of capitalised words may open with something that is not part of the name
+ * («Вчера Александр Лукашенко приехал») and may continue with a patronymic
+ * («Александр Лукашенко Викторович»), so an entry matches a **window** of the run: the same
+ * number of words, in order, and the run may go on after them. What stays quiet is a window
+ * that cannot be filled: a first name alone against a multi-word entry, and a word that only
+ * starts with the entry («Александровка»).
+ */
+export function findDenylistedNames(text: string, index: NameIndex): DenylistHit[] {
+  const hits: DenylistHit[] = [];
+  for (const run of writtenNames(text)) {
+    for (const entry of index.entries) {
+      const size = entry.stems.length;
+      for (let start = 0; start + size <= run.words.length; start += 1) {
+        const window = run.words.slice(start, start + size);
+        if (!sameTokens(window, entry.stems)) continue;
+        hits.push(windowHit(window));
+        break;
+      }
+    }
   }
   return hits;
 }

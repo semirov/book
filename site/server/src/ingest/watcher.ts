@@ -16,6 +16,7 @@ import {
   FRONT_FILE,
   chapterLabel,
   directionOf,
+  isBasisOnly,
   isChapterNumber,
   partOf,
   type ChapterCreatedPayload,
@@ -235,6 +236,26 @@ export class ManuscriptWatcher {
     const existing = getChapterRow(this.db, n);
 
     if (parsed.blocks.length === 0) {
+      if (isBasisOnly(n, observed.raw)) {
+        // §BOOK-6: reduced to its basis sentence is a legitimately emptied slot, not a
+        // truncate-then-write. It must not be resurrected by the §6.2 empty-write guard.
+        this.emptyWaited.delete(path);
+        this.emptyFinal.delete(path);
+        const emptied = applyChapterFile({
+          db: this.db,
+          dataDir: this.dataDir,
+          n,
+          raw: observed.raw,
+          mtimeMs: observed.mtimeMs,
+          nowMs: this.now().getTime(),
+        });
+        if (emptied.status === 'emptied') {
+          this.status.lastEventAt = toIso(this.now());
+          this.log('chapter emptied to its basis sentence', { n });
+          this.emitState('file');
+        }
+        return;
+      }
       if (existing !== undefined && existing.block_count > 0) {
         // §6.2 empty-write guard: an editor writing the file in two steps must never
         // blank the chapter. Wait once for a follow-up write, then keep the old text.

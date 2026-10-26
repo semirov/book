@@ -24,6 +24,8 @@ export type ReconcileReport = {
   revised: number[];
   unchanged: number[];
   removed: number[];
+  /** Chapters reduced to their basis sentence: legitimately empty slots (BOOK-6). */
+  emptied: number[];
   front: FrontReconcileState;
   /** The manuscript directory itself is absent (a bad mount): nothing is removed. */
   missing: boolean;
@@ -50,6 +52,7 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
     revised: [],
     unchanged: [],
     removed: [],
+    emptied: [],
     front: 'missing',
     missing: scan.missing,
     frontProblems: [],
@@ -71,8 +74,10 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
       if (result.status === 'created') report.created.push(result.n);
       else if (result.status === 'revised') report.revised.push(result.n);
       else if (result.status === 'unchanged') report.unchanged.push(result.n);
+      else if (result.status === 'emptied') report.emptied.push(result.n);
       // `empty`: a zero-byte first sight is a slot in progress; a previous revision is
-      // kept rather than blanked (§6.2). The watcher adds the 5 s follow-up rule.
+      // kept rather than blanked (§6.2). The watcher adds the 5 s follow-up rule. A chapter
+      // reduced to its basis sentence is not that case: it is `emptied` (BOOK-6).
     }
 
     // A missing directory is an infrastructure fault, not an empty book (§6.2): the last

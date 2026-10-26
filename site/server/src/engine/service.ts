@@ -131,6 +131,11 @@ export function createEngine(deps: EngineDeps) {
     }
     const lane: DraftLane = input.for;
 
+    // §6A.9 / BOOK-6: writing is the owner's switch. While `DRAFTING` is off no writer
+    // assignment is handed out — not a draft, not an open step, not a queued change — so an
+    // empty book cannot start a pass by itself. Gates may still answer a landed step.
+    if (config.drafting !== 'on') return null;
+
     for (const lease of store.liveLeaseForSession(db, input.session)) {
       const step = store.getStep(db, lease.step_id);
       if (step && step.outcome === null) return assign(step, lease.id);

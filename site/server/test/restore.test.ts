@@ -6,6 +6,8 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
+
 import { SITE_ROOT, loadConfig } from '../src/config.ts';
 import type { EngineDeps } from '../src/engine/types.ts';
 import { reconcileRestore } from '../src/engine/reconcile.ts';
@@ -22,8 +24,8 @@ const FRONT =
   'без человека. Конец у этой книги один, и он не спрятан: шестьдесят семь глав пишутся в открытую.\n';
 
 const A =
-  'Половик в тамбуре намок ещё в четверг, и никто его не поднимал: смена кончилась, лампа в коридоре ' +
-  'щёлкала и гасла.';
+  `${FRAME_FIRST_SENTENCE} Половик в тамбуре намок ещё в четверг, и никто его не поднимал: смена кончилась, ` +
+  'лампа в коридоре щёлкала и гасла.';
 
 const V1 = `Половик в тамбуре\n\n${A}\n\nСлед от колеса остался с ночи.`;
 

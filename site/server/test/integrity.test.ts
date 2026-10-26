@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { AuthorsDto } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, type AuthorsDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 
@@ -86,7 +86,10 @@ describe('the integrity panel (§13.4 point 5, §17)', () => {
   it('reports chapters, the legal gate, the validator and the ungated list', async () => {
     const { fixture, app } = await boot({
       token: 'right-token',
-      chapters: { 'ch01.md': longProse(['Первый абзац главы.']), 'ch02.md': longProse(['Второй абзац.']) },
+      chapters: {
+        'ch01.md': longProse([`${FRAME_FIRST_SENTENCE} Первый абзац главы.`]),
+        'ch02.md': longProse(['Второй абзац.']),
+      },
     });
     try {
       const response = await app.inject({

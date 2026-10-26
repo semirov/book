@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -84,6 +85,23 @@ describe('GET /api/state', () => {
     expect(body.front).toEqual({ title: null, about: null, rev: 0, updatedAt: null });
     expect(body.toc).toHaveLength(67);
     expect(body.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
+  });
+
+  it('serves the empty book with the two basis sentences as 67 empty slots (BOOK-6)', async () => {
+    // The owner's state: ch01 and ch67 carry one sentence each, no titles, no prose.
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE } });
+    const state = (await app!.inject({ method: 'GET', url: '/api/state' })).json();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.toc[0]).toMatchObject({ n: 1, title: null, written: false });
+    expect(state.toc[66]).toMatchObject({ n: 67, title: null, written: false });
+
+    // The reader's default for a basis-only slot is the same as for an absent one.
+    const chapter = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
+    expect(chapter.statusCode).toBe(404);
+    expect(chapter.json()).toMatchObject({ code: 'NOT_WRITTEN' });
   });
 
   it('serves the first sheet and the live TOC in the same snapshot', async () => {

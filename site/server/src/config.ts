@@ -116,6 +116,12 @@ const schema = z.object({
   watchCoalesceMs: z.coerce.number().int().min(0).default(1_500),
   /** How long an empty write waits for its follow-up before the old revision is kept (§6.2). */
   emptyWriteGraceMs: z.coerce.number().int().min(0).default(5_000),
+  /**
+   * The owner's writing switch (§6A.9, BOOK-6): while it is `off` the engine hands out no
+   * writer assignment at all, so an empty book cannot start a pass by itself. `on` is the
+   * owner saying «пиши».
+   */
+  drafting: z.enum(['on', 'off']).default('off'),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -215,6 +221,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     watchPollMs: env.WATCH_POLL_MS,
     watchCoalesceMs: env.WATCH_COALESCE_MS,
     emptyWriteGraceMs: env.EMPTY_WRITE_GRACE_MS,
+    drafting: env.DRAFTING,
   });
   if (!parsed.success) {
     const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');

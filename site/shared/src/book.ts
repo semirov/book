@@ -55,6 +55,42 @@ export const FRONT_FILE = '00-front.md';
 export const IMPRINT_AUTHOR = 'Филипп Семиров';
 export const IMPRINT_COPYRIGHT = '© Филипп Семиров';
 
+/**
+ * The frozen frame (F029) — the one piece of text the owner fixed himself: chapter 1 opens
+ * with it and chapter 67 closes with it. Nobody edits these sentences: not the writer, not
+ * a ripple, not a reader's change. One copy, so the validator and the engine cannot disagree
+ * about what "the frame" is.
+ */
+export const FRAME_FIRST_SENTENCE = 'Рано утром я проснулся по будильнику, был обычный будний день.';
+export const FRAME_LAST_SENTENCE = 'И никого не стало.';
+
+/** The basis sentence a chapter carries, or null when the chapter has none. */
+export function frameSentenceOf(n: number): string | null {
+  if (n === 1) return FRAME_FIRST_SENTENCE;
+  if (n === TOTAL_CHAPTERS) return FRAME_LAST_SENTENCE;
+  return null;
+}
+
+/**
+ * A slot with no prose at all: the file is absent/empty, or it holds only its basis sentence
+ * (ch01/ch67 — issue BOOK-6). Such a slot is a **valid state**, not a finding: it has no
+ * title line, no `chars` and no length band. A chapter with any other text is written.
+ */
+export function isEmptySlot(n: number, raw: string): boolean {
+  const text = normalizeBookText(raw).trim();
+  if (text.length === 0) return true;
+  return text === frameSentenceOf(n);
+}
+
+/**
+ * The file is exactly its basis sentence — an emptied slot, not an empty write between two
+ * saves. The ingest may blank such a chapter instead of keeping the old revision (§6.2).
+ */
+export function isBasisOnly(n: number, raw: string): boolean {
+  const frame = frameSentenceOf(n);
+  return frame !== null && normalizeBookText(raw).trim() === frame;
+}
+
 export type Imprint = {
   author: string;
   copyright: string;

@@ -18,7 +18,7 @@ Read those, not this file, for the *why*.
 site/
   server/   Fastify 5 + better-sqlite3: REST, projection, state derivation
     engine/ book-engine: lane, leases, gates, cascade, budgets, internal API :8081
-  shared/   the book model (book.ts, change.ts) and the validator (F001–F009, F019–F022)
+  shared/   the book model (book.ts, change.ts) and the validator (F001–F009, F020–F022, F029)
   web/      React + Vite SPA: one page, mobile-first, self-hosted PT fonts
   bin/      validate.mjs — the integrity gate; engine.mjs — the session protocol;
             restore.mjs — the operator's rollback; git-hooks/pre-commit — the commit gate
@@ -45,7 +45,7 @@ npm test             # unit and integration tests (Vitest)
 npm run test:coverage
 npm run typecheck
 npm run arch         # file-size limit, layer boundaries, invariants
-npm run validate     # F001–F009 + F019–F022; exit 1 on errors
+npm run validate     # F001–F009 + F020–F022 + F029; exit 1 on errors
 ```
 
 `npm run build && npm start` is the production shape: one process, one port, static SPA
@@ -251,7 +251,7 @@ the ring moving 7 → 9, the dropped change without typing, no gate word in the 
 Four things make the site safe to leave running, and none of them is a UI feature.
 
 - **The commit gate** (`bin/git-hooks/pre-commit` → `bin/validate.mjs --staged`): reads the
-  **index**, runs F001–F009 + F019–F022 over exactly what is being committed and adds
+  **index**, runs F001–F009 + F020–F022 + F029 over exactly what is being committed and adds
   **F010** — one book file per commit, unless the subject starts with `sweep:`. Install once
   per clone:
 
@@ -351,11 +351,14 @@ lease exists.
   matter, the engine tables (changes, cascades, steps, gate verdicts, leases, lane), identity
   and sessions, and the history tables (events with append-only triggers, front revisions,
   block lineage, overwrites, change impact, contribution history). `obligations` is gone.
-- `bin/validate.mjs` — F001, F002, F005–F007, F009 and F019–F022: file naming, stray files,
-  the legal denylist (F005), 67 chapters, chapter length (F007: >30 000
-  is an error, <20 000 a `thin chapter` warning), markdown, the dossiers record (F019,
-  warning), the exact imprint (F020), the front matter (F021) and the chapter title line
-  (F022). `--json`, `--rule=`, `--strict`, `--denylist=`, `--imprint=`.
+- `bin/validate.mjs` — F001, F002, F005–F007, F009, F020–F022 and F029: file naming, stray files,
+  the legal denylist (F005: a person or a character only as a complete name, an organisation
+  by any written part), 67 chapters, chapter length (F007: >30 000 is an error, <20 000 a
+  `thin chapter` warning), markdown, the exact imprint (F020), the front matter (F021), the
+  chapter title line (F022) and the frozen frame (F029: chapter 1 opens, chapter 67 closes).
+  An **empty slot** is a valid state: an absent or zero-byte file, or one holding only the
+  basis sentence of ch01/ch67, has no chars, no thin warning and no title line — F007/F022
+  police a written chapter only. `--json`, `--rule=`, `--strict`, `--denylist=`, `--imprint=`.
 
 ## Configuration
 

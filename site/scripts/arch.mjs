@@ -19,6 +19,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
+import { isEmptySlot } from '../shared/src/book.ts';
 import { checkPromptNames, promptGuardNames } from '../shared/src/validate/prompts.ts';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -156,7 +157,7 @@ if (/CREATE TABLE obligations \(/u.test(schema)) {
 const validateRules = readFileSync(join(ROOT, 'shared/src/validate/text.ts'), 'utf8');
 for (const id of [
   'F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
-  'F015', 'F019', 'F020', 'F021', 'F022', 'F023', 'F024', 'F025',
+  'F015', 'F020', 'F021', 'F022', 'F023', 'F024', 'F025',
 ]) {
   if (!validateRules.includes(`'${id}'`)) report(join(ROOT, 'shared/src/validate/text.ts'), `rule ${id} is missing`);
 }
@@ -242,7 +243,11 @@ const manuscriptDir = join(BOOK_ROOT, 'manuscript');
 if (existsSync(manuscriptDir)) {
   for (const name of readdirSync(manuscriptDir)) {
     if (!/^ch\d{2}\.md$/u.test(name)) continue;
-    titles.push(readFileSync(join(manuscriptDir, name), 'utf8').split('\n')[0] ?? '');
+    const text = readFileSync(join(manuscriptDir, name), 'utf8');
+    // An empty slot has no title line (BOOK-6): a basis-only ch01/ch67 holds the frozen
+    // sentence as its text, not as a chapter name a template must not carry.
+    if (isEmptySlot(Number(name.slice(2, 4)), text)) continue;
+    titles.push(text.split('\n')[0] ?? '');
   }
 }
 const guardNames = promptGuardNames(dossiers, titles);

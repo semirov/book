@@ -88,6 +88,9 @@ export function createEngineFixture(options: {
     BOOK_ROOT: root,
     DATA_DIR: dataDir,
     LOG_LEVEL: 'error',
+    // The owner's writing switch: the engine drafts only when it is on (BOOK-6); the tests
+    // that exercise a pass say so once, here, and the refusal test turns it off.
+    DRAFTING: 'on',
     ...options.env,
   });
   const clock = new FakeClock();
