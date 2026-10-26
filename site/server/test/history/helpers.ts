@@ -1,6 +1,9 @@
 import type { Db } from '../../src/db/db.ts';
 import { reconcile, type ReconcileReport } from '../../src/ingest/reconcile.ts';
+import { toIso } from '../../src/util/time.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
+
+const HOUR_MS = 3_600_000;
 
 export const ABOUT =
   'Книга о том, как вещи научились обходиться без тех, кто их завёл. В ней нет героев — есть смены, ' +
@@ -10,7 +13,19 @@ export const ABOUT =
 
 export const FRONT = `Земля, которая больше не кормит\n\n${ABOUT}\n`;
 
-export function ingest(fixture: Fixture, name: string, text: string, now?: Date): ReconcileReport {
+/**
+ * The one clock the history fixtures write at — absolute, never the wall clock.
+ *
+ * A test that seeded a reader's lease and then ingested at `new Date()` passed only while
+ * the fixture's lease window was still in the future: once it lapsed, the write had no live
+ * lease, so the log said «правка вне процесса», the revision carried no `change_id`, and
+ * `change_impact` counted zero blocks. Both sides now come from this instant (`seedChange`
+ * opens its lease an hour before it and expires it fourteen hours after), so attribution,
+ * the paragraph chain and the impact projection are deterministic.
+ */
+export const FIXTURE_NOW = new Date('2026-10-25T09:30:00Z');
+
+export function ingest(fixture: Fixture, name: string, text: string, now: Date = FIXTURE_NOW): ReconcileReport {
   fixture.write(name, text);
   return reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir, now });
 }
@@ -57,8 +72,8 @@ export function seedChange(
   const leaseId = `lea_${index}`;
   const commentId = `cmt_${index}`;
   const identityId = `idt_${index}`;
-  const acquiredAt = options.acquiredAt ?? '2026-10-25T09:00:00Z';
-  const expiresAt = options.expiresAt ?? '2026-10-25T23:59:00Z';
+  const acquiredAt = options.acquiredAt ?? toIso(FIXTURE_NOW.getTime() - HOUR_MS);
+  const expiresAt = options.expiresAt ?? toIso(FIXTURE_NOW.getTime() + 14 * HOUR_MS);
   const withIdentity = options.identity !== false;
 
   if (withIdentity) {

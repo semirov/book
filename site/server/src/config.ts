@@ -237,10 +237,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // B1 (audit): a vendor's published test credential makes the challenge decorative — it
   // accepts any token, so the form would accept any bot. The message names the variable and
   // never the value; the check runs on any non-empty key, whatever the provider.
-  // TEMPORARY (MVP): the deployed .env carries the vendor's published test keys and there is
-  // no real key yet; fail-closed on a test key would boot nothing. Re-enable before comments go live.
-  if (isPublishedCaptchaTestKey(config.captchaSiteKey) || isPublishedCaptchaTestKey(config.captchaSecret)) {
-    console.warn('CAPTCHA uses a published test key — the challenge is open until a real key is set');
+  // Production fails closed (§12.8, README «Secrets»); a local/test boot only warns, so a
+  // developer can still run the composer against the vendor's sandbox keys.
+  const publishedCaptchaVars = [
+    isPublishedCaptchaTestKey(config.captchaSiteKey) ? 'CAPTCHA_SITE_KEY' : null,
+    isPublishedCaptchaTestKey(config.captchaSecret) ? 'CAPTCHA_SECRET' : null,
+  ].filter((name): name is string => name !== null);
+  if (publishedCaptchaVars.length > 0) {
+    const names = publishedCaptchaVars.join(' and ');
+    const plural = publishedCaptchaVars.length > 1 ? 'are published test keys' : 'is a published test key';
+    const message = `${names} ${plural} (the challenge is open)`;
+    if (env.NODE_ENV === 'production') throw new Error(`invalid configuration: ${message}`);
+    console.warn(`${message} — accepted outside production only`);
   }
   if (env.NODE_ENV === 'production') {
     // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart

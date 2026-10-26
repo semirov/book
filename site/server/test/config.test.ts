@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
 import { migrate } from '../src/db/migrate.ts';
@@ -86,9 +86,9 @@ describe('loadConfig', () => {
     );
   });
 
-  it('refuses the vendors’ published CAPTCHA test keys (audit B1)', () => {
+  it('refuses the vendors’ published CAPTCHA test keys in production (audit B1)', () => {
     // A test sitekey accepts every challenge, and the matching secret answers `success:true`
-    // for any token: the form would be open to any bot.
+    // for any token: the form would be open to any bot. A production boot must fail closed.
     for (const key of [
       '1x00000000000000000000AA',
       '1x00000000000000000000aa',
@@ -98,7 +98,7 @@ describe('loadConfig', () => {
     ]) {
       let message = '';
       try {
-        loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: 'real-looking-secret', CAPTCHA_SITE_KEY: key });
+        loadConfig({ ...production, CAPTCHA_SITE_KEY: key });
       } catch (error) {
         message = error instanceof Error ? error.message : String(error);
       }
@@ -113,18 +113,54 @@ describe('loadConfig', () => {
       '3x0000000000000000000000000000000AA',
       '0x0000000000000000000000000000000000000000',
     ]) {
-      expect(() =>
-        loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: secret, CAPTCHA_SITE_KEY: 'real-looking-sitekey' }),
-      ).toThrow(/CAPTCHA_SECRET is a published test key/u);
+      expect(() => loadConfig({ ...production, CAPTCHA_SECRET: secret })).toThrow(
+        /CAPTCHA_SECRET is a published test key/u,
+      );
     }
+
+    // Both halves published: one message, both variables named, neither value.
+    const publishedPair = {
+      ...production,
+      CAPTCHA_SITE_KEY: '1x00000000000000000000AA',
+      CAPTCHA_SECRET: '1x0000000000000000000000000000000AA',
+    };
+    let both = '';
+    try {
+      loadConfig(publishedPair);
+    } catch (error) {
+      both = error instanceof Error ? error.message : String(error);
+    }
+    expect(both).toMatch(/CAPTCHA_SITE_KEY and CAPTCHA_SECRET are published test keys/u);
+    expect(both).not.toContain(publishedPair.CAPTCHA_SITE_KEY);
+    expect(both).not.toContain(publishedPair.CAPTCHA_SECRET);
 
     // A normal key pair boots; the published test pair is the only thing refused.
     const config = loadConfig({
-      CAPTCHA_PROVIDER: 'turnstile',
+      ...production,
       CAPTCHA_SECRET: '0x4f3a-real-secret',
       CAPTCHA_SITE_KEY: '0x4AAA-site-key',
     });
     expect(config.captchaSiteKey).toBe('0x4AAA-site-key');
+  });
+
+  it('only warns about a published CAPTCHA test key outside production', () => {
+    // A sandbox key boots a local composer; the deploy gate above is what keeps it out of prod.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const config = loadConfig({
+        CAPTCHA_PROVIDER: 'turnstile',
+        CAPTCHA_SECRET: '1x0000000000000000000000000000000AA',
+        CAPTCHA_SITE_KEY: '1x00000000000000000000AA',
+      });
+      expect(config.captchaSiteKey).toBe('1x00000000000000000000AA');
+      expect(warn).toHaveBeenCalledTimes(1);
+      const said = String(warn.mock.calls[0]?.[0] ?? '');
+      expect(said).toMatch(/CAPTCHA_SITE_KEY and CAPTCHA_SECRET are published test keys/u);
+      expect(said).not.toContain('1x00000000000000000000AA');
+      expect(said).not.toContain('1x0000000000000000000000000000000AA');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('derives the OAuth redirect from the public origin when it is not configured', () => {

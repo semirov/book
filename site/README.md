@@ -412,7 +412,8 @@ docker run --rm -v book_book-data:/data alpine chown 1000:1000 /data
 A CAPTCHA sitekey or secret that is one of the vendor's **published test keys**
 (`1x00000000000000000000AA`, `1x0000000000000000000000000000000AA`, hCaptcha's
 `10000000-ffff-ffff-ffff-000000000001`, …) is refused at boot: it accepts any token, so the
-challenge would be decorative.
+challenge would be decorative. Outside production such a boot only logs a warning, so a
+local sandbox can still run the composer.
 
 `/privacy` and `/rules` are static documents (a client route in `web/src/lib/route.ts`, the
 shell served by an explicit server route): they name the CAPTCHA and the Metrika counter,
