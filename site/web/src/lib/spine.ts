@@ -114,7 +114,7 @@ export function writtenRanges(state: StateSnapshot): string {
 export function spineAriaLabel(state: StateSnapshot): string {
   const markers = spineMarkers(state);
   const head = `написано ${state.chapters.count} из ${TOTAL_CHAPTERS} глав`;
-  if (markers.empty) return `${head}; книга начинается с двух концов`;
+  if (markers.empty) return `${head}; книга начинается с чистого листа`;
   const ranges = writtenRanges(state);
   return ranges.length > 0 ? `${head}: ${ranges}` : head;
 }

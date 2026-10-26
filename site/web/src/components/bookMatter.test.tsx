@@ -118,7 +118,7 @@ describe('the 0/67 screen', () => {
   it('reads as a beginning, not as a broken page', () => {
     const html = renderToStaticMarkup(<EmptyState state={state} />);
     expect(html).toContain('книга начинается');
-    expect(html).toContain('её пишут с двух концов');
+    expect(html).toContain('её пишут в открытую');
     expect(html).toContain('67 глав');
     expect(html).toContain('четыре части');
     expect(html).toContain('конец фиксирован');

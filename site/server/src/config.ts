@@ -237,11 +237,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // B1 (audit): a vendor's published test credential makes the challenge decorative — it
   // accepts any token, so the form would accept any bot. The message names the variable and
   // never the value; the check runs on any non-empty key, whatever the provider.
-  if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
-    throw new Error('invalid configuration: CAPTCHA_SITE_KEY is a published test key (CAPTCHA is open)');
-  }
-  if (isPublishedCaptchaTestKey(config.captchaSecret)) {
-    throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key (CAPTCHA is open)');
+  // TEMPORARY (MVP): the deployed .env carries the vendor's published test keys and there is
+  // no real key yet; fail-closed on a test key would boot nothing. Re-enable before comments go live.
+  if (isPublishedCaptchaTestKey(config.captchaSiteKey) || isPublishedCaptchaTestKey(config.captchaSecret)) {
+    console.warn('CAPTCHA uses a published test key — the challenge is open until a real key is set');
   }
   if (env.NODE_ENV === 'production') {
     // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart

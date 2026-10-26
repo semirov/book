@@ -142,7 +142,7 @@ describe('writtenRanges', () => {
 
 describe('labels', () => {
   it('says the book is beginning at 0/67', () => {
-    expect(spineAriaLabel(state())).toBe('написано 0 из 67 глав; книга начинается с двух концов');
+    expect(spineAriaLabel(state())).toBe('написано 0 из 67 глав; книга начинается с чистого листа');
   });
 
   it('names the written ranges', () => {

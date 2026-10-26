@@ -29,7 +29,7 @@ export function TitleSheet({
       <div className="double-rule" aria-hidden="true" />
       <p className="author">{front.imprint.author}</p>
       <p className="premise">
-        Пишется здесь, с двух концов — навстречу. Замечания идут в очередь, правки — по одной.
+        Четыре линии вперёд, четыре назад. Замечания идут в очередь, правки — по одной.
       </p>
       <dl className="ledger">
         <div>

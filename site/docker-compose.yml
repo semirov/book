@@ -17,7 +17,7 @@ services:
       EXCHANGE_DIR: /data/exchange
       PORT: "8080"
       HOST: 0.0.0.0
-      WEB_DIST: ./web/dist
+      WEB_DIST: /app/web/dist
       IMPRINT_PATH: ./config/imprint.json
       WATCH_POLL_MS: "700"
       # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
@@ -34,11 +34,9 @@ services:
       - ip_salt
       - captcha_secret
       - yandex_client_secret
-    # Hardening (audit m7): the image runs as `node`, the root filesystem is read-only, the
-    # only writable places are the data volume and /tmp, and no capability can be gained.
-    read_only: true
-    tmpfs:
-      - /tmp
+    # Hardening (audit m7): drop capabilities and forbid privilege gain. The data volume is
+    # writable, the manuscript mount is read-only. (read_only on the root FS broke SQLite WAL —
+    # re-enable once the DB runs from a tmpfs or the WAL mmap is sorted.)
     cap_drop:
       - ALL
     security_opt:

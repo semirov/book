@@ -18,7 +18,7 @@ export function EmptyState({ state }: { state: StateSnapshot }) {
       </header>
       <div className="start-frame">
         <p className="start-line">книга начинается</p>
-        <p className="start-sub">её пишут с двух концов, навстречу</p>
+        <p className="start-sub">её пишут в открытую</p>
         <div className="start-spine" aria-hidden="true">
           <i className="caret" />
           <i className="caret right" />
@@ -27,7 +27,7 @@ export function EmptyState({ state }: { state: StateSnapshot }) {
           <li>{TOTAL_CHAPTERS} глав</li>
           <li>четыре части</li>
           <li>конец фиксирован</li>
-          <li>пишется в открытую</li>
+          <li>люди появляются по ходу</li>
         </ul>
       </div>
       <p className="fine">
