@@ -11,6 +11,8 @@ import type { Config } from './config.ts';
 import type { Db } from './db/db.ts';
 import type { RouteDeps } from './http/deps.ts';
 import { buildCsp } from './http/csp.ts';
+import { isAllowedUpgradeOrigin } from './http/origin.ts';
+import { registerReadLimit } from './http/readLimit.ts';
 import { registerAdminRoutes } from './http/routes/admin.ts';
 import { registerAuthRoutes } from './http/routes/auth.ts';
 import { registerAuthorsRoutes } from './http/routes/authors.ts';
@@ -121,6 +123,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     options: { maxPayload: 4_096, perMessageDeflate: false },
   });
   app.get('/ws', { websocket: true }, (socket, request) => {
+    // The upgrade carries an `Origin`; a page on another site may not hold a socket here.
+    if (!isAllowedUpgradeOrigin(request.headers.origin, options.config.publicOrigin)) {
+      try {
+        socket.close(1008, 'ORIGIN');
+      } catch {
+        /* the socket never opened */
+      }
+      return;
+    }
     options.wsHub?.attach(socket, request);
   });
 
@@ -147,6 +158,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     );
   });
 
+  // Before the routes: the read budget is a property of the surface, not of a handler.
+  registerReadLimit(app, deps);
+
   registerStateRoutes(app, deps);
   registerFrontRoutes(app, deps);
   registerChapterRoutes(app, deps);
@@ -165,6 +179,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const indexFile = join(options.config.webDist, 'index.html');
   if (existsSync(indexFile)) {
     await app.register(fastifyStatic, { root: options.config.webDist, wildcard: true });
+    // The two static documents are routed explicitly (audit M5): an operator reading a log
+    // sees them as pages, not as "an unknown path that happened to get the shell".
+    for (const page of ['/privacy', '/rules']) {
+      app.get(page, (_request, reply) => reply.sendFile('index.html'));
+    }
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith('/api/') || request.url === '/healthz') {
         return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such route' });
@@ -174,7 +193,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
   } else {
     app.setNotFoundHandler((request, reply) => {
-      if (request.url === '/' || request.url.startsWith('/api/') || request.url === '/healthz') {
+      if (
+        request.url === '/' ||
+        request.url === '/privacy' ||
+        request.url === '/rules' ||
+        request.url.startsWith('/api/') ||
+        request.url === '/healthz'
+      ) {
         return reply.code(503).send({
           code: 'UI_NOT_BUILT',
           message: 'web/dist is missing — run `npm run build` (or use the Vite dev server on :5173)',

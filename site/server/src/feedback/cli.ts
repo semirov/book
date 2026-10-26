@@ -41,6 +41,7 @@ import {
   readBatch,
   readBatchLines,
 } from './batches.ts';
+import { chapterVocabulary } from './vocabulary.ts';
 
 export type FeedbackIo = {
   db: Db;
@@ -225,7 +226,9 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     return 0;
   }
 
-  const intent = validateIntent(parsed.flags.get('intent') ?? '', comment.chapter);
+  const intent = validateIntent(parsed.flags.get('intent') ?? '', comment.chapter, {
+    vocabulary: chapterVocabulary(io.db, comment.chapter),
+  });
   if (!intent.ok) {
     io.print(`refused (${intent.code}): ${intent.reason}`);
     return 1;

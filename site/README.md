@@ -150,8 +150,15 @@ and a session whose cookie value is random — only its SHA-256 is kept.
   theme bootstrap is a same-origin file (`web/public/theme.js`) because of that rule.
 - **Rate limits** (`server/src/rate/`): exact sliding windows in SQLite, keyed by IP (`/64`)
   **and** identity for comments (10/h each) and by identity for reader edits (1/24 h), plus
-  a 60/min and 400/h site cap. A proposed edit and a comment accepted by triage share one
-  edit budget.
+  a 60/min and 400/h site cap. The read API (`/api/history/*`, `/api/state`, `/api/changes`)
+  takes its own per-network `READ_PER_MINUTE` budget in one `onRequest` hook
+  (`server/src/http/readLimit.ts`). A proposed edit and a comment accepted by triage share
+  one edit budget.
+- **What a comment publishes**: `status` and the public `reason`, never the guard's category
+  or its flags — a rendered taxonomy lets a stranger map the detector. `/healthz` is
+  liveness only; the counts and the lane's holder are behind the admin token
+  (`/api/admin/health`). The authors list and `/api/history/contributors` publish
+  `sha256(identityId)` truncated, never the identity key.
 - **Triage is a file exchange** (`bin/feedback.mjs`, `server/src/feedback/`):
   `inbox` writes an immutable batch (`data/feedback/batches/<id>.jsonl`, JSON values only),
   `read` marks it delivered, `decide … accepted --intent "…" --rev chNN@R` validates the
@@ -344,8 +351,8 @@ lease exists.
   matter, the engine tables (changes, cascades, steps, gate verdicts, leases, lane), identity
   and sessions, and the history tables (events with append-only triggers, front revisions,
   block lineage, overwrites, change impact, contribution history). `obligations` is gone.
-- `bin/validate.mjs` — F001–F009 and F019–F022: file naming, stray files, forbidden and
-  process vocabulary, the legal denylist (F005), 67 chapters, chapter length (F007: >30 000
+- `bin/validate.mjs` — F001, F002, F005–F007, F009 and F019–F022: file naming, stray files,
+  the legal denylist (F005), 67 chapters, chapter length (F007: >30 000
   is an error, <20 000 a `thin chapter` warning), markdown, the dossiers record (F019,
   warning), the exact imprint (F020), the front matter (F021) and the chapter title line
   (F022). `--json`, `--rule=`, `--strict`, `--denylist=`, `--imprint=`.
@@ -371,12 +378,48 @@ The ones that matter in M2:
 | `EMPTY_WRITE_GRACE_MS` | `5000` | how long an empty write waits for its follow-up |
 | `MAX_WS` / `WS_PER_IP` | `100` / `4` | socket capacity (§10.1) |
 | `WS_HEARTBEAT_MS` | `30000` | protocol ping; two missed pongs close the socket |
-| `TRUSTED_PROXIES` | `127.0.0.1,::1,192.168.1.0/24` | where `X-Forwarded-For` is believed (§14) |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1,192.168.1.44/32` | where `X-Forwarded-For` is believed (§14) |
+| `READ_PER_MINUTE` | `60` | per-network budget for `/api/history`, `/api/state`, `/api/changes` |
 
 `COMMENTS_PER_HOUR`, `QUEUE_SOFT_CAP` and `BUDGET_*` are parsed and reserved for M3–M5.
 
+### Secrets
+
+Every secret is read from `<NAME>_FILE` first (`SESSION_SECRET_FILE`, `IP_SALT_FILE`,
+`CAPTCHA_SECRET_FILE`, `YANDEX_CLIENT_SECRET_FILE`); a named file wins over the plain
+variable in every environment, and a file that is missing, unreadable or empty is a boot
+failure. In docker-compose the files arrive as `secrets:` mounts under `/run/secrets/`
+(see `docker-compose.yml`), never as environment values: a value in the environment is
+readable with `docker inspect` and from `/proc/1/environ`.
+
+```sh
+mkdir -p secrets && chmod 700 secrets
+openssl rand -hex 32 > secrets/session_secret
+openssl rand -hex 32 > secrets/ip_salt
+printf '%s' "$CAPTCHA_SECRET" > secrets/captcha_secret        # from the provider dashboard
+printf '%s' "$YANDEX_CLIENT_SECRET" > secrets/yandex_client_secret
+chmod 600 secrets/*
+```
+
+The container runs as `node` (uid 1000) with a read-only root filesystem, so a **fresh**
+`book-data` volume inherits that ownership from the image. An existing root-owned volume
+needs one fix-up:
+
+```sh
+docker run --rm -v book_book-data:/data alpine chown 1000:1000 /data
+```
+
+A CAPTCHA sitekey or secret that is one of the vendor's **published test keys**
+(`1x00000000000000000000AA`, `1x0000000000000000000000000000000AA`, hCaptcha's
+`10000000-ffff-ffff-ffff-000000000001`, …) is refused at boot: it accepts any token, so the
+challenge would be decorative.
+
+`/privacy` and `/rules` are static documents (a client route in `web/src/lib/route.ts`, the
+shell served by an explicit server route): they name the CAPTCHA and the Metrika counter,
+what each can see, and how to read the book without either.
+
 Deferred to M8–M9: the paragraph footnote «правка N» as a fourth entry point and the
 before/after chronicle links of a finished change, the closure length gate F026, the load
-test and the restore drill, the privacy page, deployment hardening (M1 remains open) and the
-owner's review of the denylist (M9). Until then the page says only what the
-files prove: no invented progress, no "online", no writing lease it does not have.
+test and the restore drill, and the owner's review of the denylist (M9). Until then the page
+says only what the files prove: no invented progress, no "online", no writing lease it does
+not have.

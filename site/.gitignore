@@ -11,3 +11,6 @@ coverage/
 
 # the triage file exchange is runtime data, not source
 data/
+
+# docker secrets (audit M2): 0600 files, mounted into the container, never committed
+secrets/

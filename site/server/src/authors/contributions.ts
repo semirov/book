@@ -17,6 +17,7 @@ import { floorShare, type AuthorsDto, type AuthorContributorDto } from '@book/sh
 
 import type { Db } from '../db/db.ts';
 import { computeShares, readSeries } from '../history/erosion.ts';
+import { publicAlias } from '../util/alias.ts';
 
 type IdentityRow = { id: string; display_name: string; hide_from_authors: number };
 
@@ -91,9 +92,13 @@ export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
 
   contributors.sort(compareContributors);
 
-  const listed = contributors.reduce((sum, item) => sum + item.share, 0);
+  // Audit m3: the list publishes an alias, never the identity key — the same handle the
+  // contributors list uses, so a reader is one reader to the UI and nobody to the log.
+  const published = contributors.map((item) => ({ ...item, identityId: publicAlias(item.identityId) }));
+
+  const listed = published.reduce((sum, item) => sum + item.share, 0);
   const authorShare = Math.max(0, floorShare(1 - listed));
-  const authorChars = Math.max(0, totalChars - contributors.reduce((sum, item) => sum + item.chars, 0));
+  const authorChars = Math.max(0, totalChars - published.reduce((sum, item) => sum + item.chars, 0));
 
   const measured = db.prepare('SELECT MAX(measured_at) AS at FROM contribution_history').get() as {
     at: string | null;
@@ -104,7 +109,7 @@ export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
     measuredAt: measured.at,
     measured: items.length,
     author: { label: authorLabel, share: authorShare, chars: authorChars },
-    contributors,
+    contributors: published,
     sum: floorShare(listed + authorShare),
   };
 }

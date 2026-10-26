@@ -13,6 +13,7 @@
 
 /** One reader's current trace in the final text, with its measured erosion series. */
 export type AuthorContributorDto = {
+  /** A public alias — `sha256(identityId)` truncated, never the identity key (audit m3). */
   identityId: string;
   /** The chosen display name, or «читатель» after an opt-out (§6C.5 rule 5). */
   label: string;

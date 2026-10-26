@@ -86,6 +86,20 @@ const CYRILLIC_INSTRUCTION: RegExp[] = [
   /(ты|вы)\s+(должен|должна|обязан|обязана|будешь)/u,
   /обраща(йся|йтесь)\s+к\s+(модел|систем|процесс)/u,
   /(владелец|автор|система)\s+(говорит|сказал|просит|приказал|разрешил)/u,
+  // §12.3/§12.5 (audit M4): the imperative register a reader uses to drive a model — a new
+  // rule «с этого момента», a pastiche «в стиле», a person «от первого лица», or a plain
+  // «не обращай внимания». Each is a possible instruction, so it is quarantined, not lost.
+  /не\s+обраща(й|йте)\s+внимани[яе]/u,
+  /с\s+этого\s+момента/u,
+  // No `\b` in these patterns: JS word boundaries are ASCII, so `стиле\b` never matches
+  // after a Cyrillic letter. The Russian text is matched by prefix + suffix instead.
+  /в\s+стиле/u,
+  /пиши(те)?\s+(как|в|от|так,?\s+будто)/u,
+  /от\s+первого\s+лица/u,
+  // A wording asks for something to *appear*, or names the writer directly: both are a
+  // request to the machine, not an opinion about the prose.
+  /появится/u,
+  /пусть\s+(ты|вы|автор|пиши|пишите|теперь|появится|будет|здесь)/u,
 ];
 
 const LATIN_SHAPE: RegExp[] = [

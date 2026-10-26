@@ -10,6 +10,9 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { validateIntent } from '@book/shared';
+
+import { tokenMatches } from '../util/secret.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -18,6 +21,12 @@ export type ControlOptions = {
   token: string;
   logger?: boolean;
   version?: string;
+  /**
+   * The chapter's own words, injected by the process that owns the manuscript (§12.3). The
+   * enqueue path validates the reader's intent before it can become a change; without the
+   * projection (a cold database) the vocabulary is empty and the new-entity rule is skipped.
+   */
+  vocabulary?: (chapter: number) => readonly string[];
 };
 
 const session = z.string().min(1).max(64);
@@ -109,8 +118,9 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
 
   app.addHook('onRequest', async (request, reply) => {
     const header = request.headers.authorization ?? '';
-    const expected = `Bearer ${options.token}`;
-    if (options.token.length === 0 || header.length !== expected.length || header !== expected) {
+    // Constant-time, length-hiding (audit m6): `===` would leak the token's prefix.
+    const presented = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+    if (options.token.length === 0 || !tokenMatches(options.token, presented)) {
       return reply.code(401).send({ code: 'UNAUTHORIZED', message: 'internal API: bearer token required' });
     }
     return undefined;
@@ -201,14 +211,25 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       }),
     };
   });
-  app.post('/internal/changes', async (request) => {
+  app.post('/internal/changes', async (request, reply) => {
     const body = enqueueBody.parse(request.body ?? {});
+    // §12.3: the intent is the second injection surface — it reaches a writer prompt. The
+    // same schema the CLI and the decisions tailer use runs here, before the row exists, and
+    // it refuses the frozen ending for a reader-driven change (ADR-024).
+    const verdict = validateIntent(body.intent, body.chapter, {
+      ...(options.vocabulary === undefined ? {} : { vocabulary: options.vocabulary(body.chapter) }),
+    });
+    if (!verdict.ok) {
+      // 422 for every schema refusal, and the code is the verdict's — the session loop
+      // branches on `code`, not on the status.
+      return reply.code(422).send({ code: verdict.code, message: verdict.reason });
+    }
     return {
       ok: true,
       data: options.engine.enqueue({
         kind: body.kind,
         chapter: body.chapter,
-        intent: body.intent,
+        intent: verdict.intent,
         anchor: body.anchor ?? null,
         proposedText: body.proposedText ?? null,
         scopeHint: body.scopeHint,

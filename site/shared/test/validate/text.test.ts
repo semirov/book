@@ -5,7 +5,6 @@ import {
   ABOUT_MIN_CHARS,
   TITLE_MAX_CHARS,
   countChars,
-  findWords,
   foldRu,
   hasMarkdown,
   lineAt,
@@ -15,8 +14,6 @@ import {
   parseTitleLine,
   splitBlocks,
   stemRu,
-  FORBIDDEN_PROSE,
-  PROCESS_PROSE,
 } from '../../src/validate/index.ts';
 
 describe('normalizeText', () => {
@@ -63,29 +60,6 @@ describe('stemRu', () => {
 
   it('folds ё and case', () => {
     expect(foldRu('Пётр')).toBe('петр');
-  });
-});
-
-describe('findWords', () => {
-  const find = (text: string, rule: (typeof FORBIDDEN_PROSE)[number]) => findWords(text, rule);
-
-  it('matches a Cyrillic stem at a word start only', () => {
-    const rule = FORBIDDEN_PROSE.find((item) => item.stem === 'цикл');
-    expect(rule).toBeDefined();
-    expect(find('начался цикл и циклы', rule!)).toHaveLength(2);
-    expect(find('кислородный цикл', rule!)).toHaveLength(1);
-  });
-
-  it('does not over-match a short exact word', () => {
-    const rule = FORBIDDEN_PROSE.find((item) => item.forms?.includes('бог'));
-    expect(find('богатый двор', rule!)).toHaveLength(0);
-    expect(find('бог и боги', rule!)).toHaveLength(2);
-  });
-
-  it('matches Latin process vocabulary case-insensitively', () => {
-    const rule = PROCESS_PROSE.find((item) => item.latin === 'pass');
-    expect(find('PASS и pass', rule!)).toHaveLength(2);
-    expect(find('пассажир', rule!)).toHaveLength(0);
   });
 });
 

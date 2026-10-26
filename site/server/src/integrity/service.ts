@@ -2,9 +2,9 @@
  * The integrity panel's one query (ARCHITECTURE.md §13.4 point 5, §17).
  *
  * The site never blocks publication: it runs the cheap rule subset over the files it can
- * see (F001–F008, F019–F022), reads the legal denylist, and reports what it found. The
- * panel is an operator tool, and every field here answers a question an operator would
- * otherwise ask the database by hand:
+ * see (F001, F002, F005–F007, F009, F019–F022), reads the legal denylist, and reports what
+ * it found. The panel is an operator tool, and every field here answers a question an
+ * operator would otherwise ask the database by hand:
  *
  * - is the text legal and well-formed right now (`validator`, `legal`)?
  * - is the cast recorded (`cast`, F019) and does the denylist have teeth (`legal`)?

@@ -184,9 +184,10 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     body: redacted ? '‹текст скрыт до проверки›' : row.body,
     proposedText: redacted ? null : row.proposed_text,
     status: row.status as CommentStatus,
-    guard: (row.guard as CommentGuard | null) ?? null,
+    // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
+    // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
+    // taxonomy is a map of the detector.
     reason: row.reason,
-    flags,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     changeId: row.change_id,

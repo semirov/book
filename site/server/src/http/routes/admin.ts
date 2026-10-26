@@ -15,27 +15,16 @@
  * pause through the engine, never edit a paragraph.
  */
 
-import { timingSafeEqual } from 'node:crypto';
-
+import type { AdminHealthDto } from '@book/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+import { readEngineHealth } from '../../engineState/reader.ts';
 import { readIntegrity } from '../../integrity/service.ts';
+import { tokenMatches } from '../../util/secret.ts';
 import type { RouteDeps } from '../deps.ts';
 
-/** Constant-time compare that also hides the length (a length oracle is a prefix oracle). */
-export function tokenMatches(expected: string, presented: string): boolean {
-  if (expected.length === 0) return false;
-  const left = Buffer.from(expected, 'utf8');
-  const right = Buffer.from(presented, 'utf8');
-  if (left.length !== right.length) {
-    // Still compare something of the same length, so the work does not depend on the guess.
-    const padded = Buffer.alloc(left.length);
-    right.copy(padded, 0, 0, Math.min(right.length, left.length));
-    timingSafeEqual(left, padded);
-    return false;
-  }
-  return timingSafeEqual(left, right);
-}
+/** The constant-time compare now lives in `util/secret.ts`; re-exported for its old callers. */
+export { tokenMatches };
 
 function presented(request: FastifyRequest): string {
   const header = request.headers['x-admin-token'];
@@ -57,6 +46,28 @@ function guard(deps: RouteDeps, request: FastifyRequest, reply: FastifyReply): b
 }
 
 export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void {
+  /**
+   * The operator's health (audit m4): the counts, the version, the cover and the lane
+   * holder are not for the public probe. Same guard as the integrity panel, same absence
+   * rule — no configured token means the route does not exist.
+   */
+  app.get('/api/admin/health', async (request, reply) => {
+    if (!guard(deps, request, reply)) return reply;
+    const chapters = deps.db.prepare('SELECT COUNT(*) AS n FROM chapters').get() as { n: number };
+    const comments = deps.db.prepare('SELECT COUNT(*) AS n FROM comments').get() as { n: number };
+    const front = deps.db.prepare('SELECT COUNT(*) AS n FROM front_matter').get() as { n: number };
+    const engine = readEngineHealth(deps.db, deps.now().getTime());
+    const body: AdminHealthDto = {
+      uptimeMs: deps.now().getTime() - deps.startedAt,
+      version: deps.version,
+      lane: { holder: engine.laneId },
+      front: { present: front.n > 0 },
+      db: { chapters: chapters.n, comments: comments.n },
+      engine: { status: engine.status, heartbeatAt: engine.heartbeatAt },
+    };
+    return reply.header('cache-control', 'no-store').send(body);
+  });
+
   app.get('/api/admin/integrity', async (request, reply) => {
     if (!guard(deps, request, reply)) return reply;
     const report = readIntegrity(deps.db, {

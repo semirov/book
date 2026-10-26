@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuthorContributorDto } from '@book/shared';
 
 import { compareContributors, readAuthors } from '../src/authors/contributions.ts';
+import { publicAlias } from '../src/util/alias.ts';
 import { releaseLease, seedChange } from './history/helpers.ts';
 import { createFixture, type Fixture } from './helpers.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
@@ -39,6 +40,10 @@ describe('the authors list (§6C.5)', () => {
       expect(authors.contributors).toHaveLength(1);
       const [anya] = authors.contributors;
       expect(anya?.label).toBe('Аня');
+      // Audit m3: a reader is published as `sha256(identityId)` truncated, not as the key.
+      expect(anya?.identityId).toBe(publicAlias(seeded.identityId));
+      expect(anya?.identityId).not.toBe(seeded.identityId);
+      expect(JSON.stringify(authors)).not.toContain(seeded.identityId);
       expect(anya?.edits).toBe(1);
       expect(anya?.chars).toBeGreaterThan(0);
       expect(authors.totalChars).toBe((anya?.chars ?? 0) + authors.author.chars);

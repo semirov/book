@@ -350,3 +350,75 @@
 .authors-copyright {
   margin-top: 22px;
 }
+
+/* The static documents (audit M5): «приватность» and «правила». Same measure and voice as
+   the book, no card, no third-party byte — they must read when the API is down. */
+.legal {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 72px var(--gut) 96px;
+}
+.legal .title {
+  font-size: clamp(28px, 6vw, 40px);
+  line-height: 1.12;
+}
+.legal section {
+  margin-top: 34px;
+}
+.legal h2 {
+  margin: 0 0 10px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.legal p,
+.legal li {
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.legal p + p {
+  margin-top: 12px;
+}
+.legal ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.legal li + li {
+  margin-top: 8px;
+}
+.legal code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--ink-2);
+}
+.legal-how {
+  color: var(--ink-2);
+  border-left: 2px solid var(--rule-2);
+  padding-left: 12px;
+}
+.legal-tail {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-note) !important;
+  color: var(--ink-2) !important;
+}
+.legal-nav {
+  display: flex;
+  gap: 18px;
+  margin-top: 26px;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.legal-nav a,
+.colophon a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

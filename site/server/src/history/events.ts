@@ -9,6 +9,7 @@
 import type { HistoryAuthorKind, HistoryEventDto, HistoryKind } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { publicAlias } from '../util/alias.ts';
 import type { AuthorKind } from './log.ts';
 import { safeJson } from './payload.ts';
 import { summarize } from './summary.ts';
@@ -87,7 +88,8 @@ export function toHistoryEvent(row: EventRow): HistoryEventDto {
   const payload = safeJson<Record<string, unknown>>(row.payload) ?? {};
   const author = {
     kind: row.author_kind as HistoryAuthorKind,
-    identityId: row.identity_id,
+    // Audit m3: the public handle, not the identity key — the same alias as the authors list.
+    identityId: row.identity_id === null ? null : publicAlias(row.identity_id),
     label: row.author_label,
   };
   return {

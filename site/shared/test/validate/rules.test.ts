@@ -96,20 +96,14 @@ describe('F002 — stray files, range, duplicates', () => {
   });
 });
 
-describe('F003 — forbidden vocabulary', () => {
-  it('flags VOICE taboos with a line number', () => {
-    const result = run({ files: [FRONT, chapter('Половик', 'Начался цикл, потом прогон.')] });
-    const found = withRule(result, 'F003');
-    expect(found.map((item) => item.message)).toEqual([
-      'forbidden word: «цикл»',
-      'forbidden word: «прогон»',
-    ]);
-    expect(found[0]?.line).toBe(3);
-  });
-
-  it('does not flag a word that merely starts with a taboo word', () => {
-    const result = run({ files: [FRONT, chapter('Двор', 'Двор был богатый, крыша — худая.')] });
+describe('retired vocabulary rules — the only taboos are copyright and RF law', () => {
+  it('reports no F003 or F008 finding for words the old style list banned', () => {
+    const result = run({
+      files: [FRONT, chapter('Цикл', `Начался цикл, потом прогон и снова цикл. ${'а'.repeat(20_000)}`)],
+    });
+    expect(result.findings).toEqual([]);
     expect(rules(result)).not.toContain('F003');
+    expect(rules(result)).not.toContain('F008');
   });
 });
 
@@ -215,17 +209,6 @@ describe('F007 — chapter length at both moments', () => {
     const result = run({ files: [FRONT, chapter('я'.repeat(80), 'а'.repeat(20_000))] });
     expect(result.chapters[0]?.chars).toBe(20_000);
     expect(rules(result)).not.toContain('F007');
-  });
-});
-
-describe('F008 — process vocabulary', () => {
-  it('reports PASS and reweiter without repeating F003 words', () => {
-    const result = run({ files: [FRONT, chapter('Смена', 'Пошёл PASS, потом reweiter и цикл.')] });
-    const found = withRule(result, 'F008');
-    expect(found.map((item) => item.message)).toEqual([
-      'process vocabulary in prose: «PASS»',
-      'process vocabulary in prose: «reweiter»',
-    ]);
   });
 });
 
@@ -348,7 +331,7 @@ describe('report shape', () => {
     const result = run({
       files: [
         FRONT,
-        { name: 'ch05.md', text: 'Глава пять\n\nЦикл.' },
+        { name: 'ch05.md', text: `Глава пять\n\n${'а'.repeat(30_001)}` },
         { name: 'ch01.md', text: '' },
       ],
     });

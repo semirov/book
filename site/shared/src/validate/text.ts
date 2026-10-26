@@ -27,9 +27,12 @@ import type { Imprint, LegalDenylist } from '../book.ts';
 export type Severity = 'error' | 'warn';
 
 /**
- * Every rule id of §13.4, including the retired tombstones (F004, F013, F016, F018) and
- * the ones whose home is the engine or a build test: a rule that exists only in prose
- * still gets an id here, so a reference can never silently name a rule nobody owns.
+ * Every rule id of §13.4, including the retired tombstones (F003, F004, F008, F013, F016,
+ * F018) and the ones whose home is the engine or a build test: a rule that exists only in
+ * prose still gets an id here, so a reference can never silently name a rule nobody owns.
+ *
+ * F003 (forbidden vocabulary) and F008 (process vocabulary) are tombstones: the author's
+ * directive is that the only taboos are copyright and RF law, so only F005 polices words.
  */
 export type RuleId =
   | 'F001'
@@ -165,74 +168,6 @@ export function excerptAt(text: string, offset: number, length: number): string 
   const start = Math.max(0, offset - 24);
   const end = Math.min(text.length, offset + length + 24);
   return text.slice(start, end).replace(/\n/gu, ' ').trim();
-}
-
-export type WordRule = {
-  /** Lowercase stem; matched at a word start with a non-letter boundary. */
-  stem?: string;
-  /** Exact inflected forms (used where a stem would over-match, e.g. «бог» → «богатый»). */
-  forms?: string[];
-  /** Latin token, matched case-insensitively as a whole word. */
-  latin?: string;
-};
-
-/** VOICE §Табу, plus the process vocabulary of F008. */
-export const FORBIDDEN_PROSE: WordRule[] = [
-  { stem: 'цикл' },
-  { stem: 'прогон' },
-  { stem: 'перезапуск' },
-  { stem: 'симуляц' },
-  { stem: 'матриц' },
-  { forms: ['бог', 'бога', 'богу', 'богом', 'боге', 'боги', 'богов', 'богам', 'богами', 'богах'] },
-  { stem: 'избранн' },
-  { stem: 'надежд' },
-  { forms: ['чудо', 'чуда', 'чуду', 'чудом', 'чуде', 'чудеса', 'чудес', 'чудесам', 'чудесами'] },
-  { stem: 'вселенн' },
-  { stem: 'пилюл' },
-  { stem: 'имплант' },
-  { stem: 'препарат' },
-];
-
-export const PROCESS_PROSE: WordRule[] = [
-  { stem: 'цикл' },
-  { stem: 'прогон' },
-  { stem: 'перезапуск' },
-  { latin: 'pass' },
-  { latin: 'reweiter' },
-];
-
-const LETTER = '\\p{L}';
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-}
-
-/** Build a matcher for one rule. Cyrillic is not `\w`, so the boundary is spelled out. */
-function rulePattern(rule: WordRule): RegExp {
-  if (rule.latin) {
-    return new RegExp(`(^|[^${LETTER}])(${escapeRegExp(rule.latin)})(?![${LETTER}])`, 'giu');
-  }
-  if (rule.forms) {
-    const alternatives = [...rule.forms].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
-    return new RegExp(`(^|[^${LETTER}])(${alternatives})(?![${LETTER}])`, 'giu');
-  }
-  return new RegExp(`(^|[^${LETTER}])(${escapeRegExp(rule.stem ?? '')})`, 'giu');
-}
-
-export type WordMatch = { offset: number; length: number; word: string };
-
-/** Every match of a rule, with the offset of the word itself (not of the boundary). */
-export function findWords(text: string, rule: WordRule): WordMatch[] {
-  const pattern = rulePattern(rule);
-  const matches: WordMatch[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(text)) !== null) {
-    const boundary = match[1] ?? '';
-    const word = match[2] ?? '';
-    matches.push({ offset: match.index + boundary.length, length: word.length, word });
-    if (match[0].length === 0) pattern.lastIndex += 1;
-  }
-  return matches;
 }
 
 /** Does the character before this offset end a sentence (or start the block)? */

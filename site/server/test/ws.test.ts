@@ -112,6 +112,27 @@ afterEach(async () => {
   harness = null;
 });
 
+describe('the upgrade origin (audit m9)', () => {
+  it('closes a socket opened from another site', async () => {
+    await boot();
+    const foreign = await harness!.connect({ origin: 'https://evil.test' });
+    const closed = await waitFor(() => foreign.closes[0]);
+    expect(closed.code).toBe(1008);
+    expect(closed.reason).toBe('ORIGIN');
+    // Rejected before `hello`: a foreign page learns nothing, not even the catalogue.
+    expect(foreign.frames).toHaveLength(0);
+  });
+
+  it('accepts the public origin and a loopback origin outside production', async () => {
+    await boot();
+    const own = await harness!.connect({ origin: harness!.config.publicOrigin });
+    await waitFor(() => own.frames.find((frame) => frame.type === 'hello'));
+    // The Vite dev server on 127.0.0.1 is the documented dev shape (NODE_ENV is not production).
+    const dev = await harness!.connect({ origin: 'http://127.0.0.1:5173' });
+    await waitFor(() => dev.frames.find((frame) => frame.type === 'hello'));
+  });
+});
+
 describe('hello', () => {
   it('is the first frame and carries all 67 slots, the first sheet and the state', async () => {
     await boot();

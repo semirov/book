@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
+import { loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
 import { migrate } from '../src/db/migrate.ts';
 import { SCHEMA_VERSION } from '../src/db/schema.ts';
 import { createFixture } from './helpers.ts';
@@ -28,8 +28,18 @@ describe('loadConfig', () => {
     expect(config.tz).toBe('Europe/Moscow');
     expect(config.maxWs).toBe(100);
     expect(config.leaseTtlMs).toBe(120_000);
+    // audit m1: the proxy is one host, not a /24 that lets the LAN forge its address.
+    expect(config.trustedProxies).toBe('127.0.0.1,::1,192.168.1.44/32');
+    expect(config.readPerMinute).toBe(60);
     expect(config.bookRoot.endsWith('book')).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
+  });
+
+  it('resolves a relative WEB_DIST against site/ (compose passes ./web/dist)', () => {
+    // `@fastify/static` refuses a relative root: the boot is the last place to catch it.
+    expect(loadConfig({ WEB_DIST: './web/dist' }).webDist).toBe(`${SITE_ROOT}/web/dist`);
+    expect(loadConfig({ WEB_DIST: '/app/web/dist' }).webDist).toBe('/app/web/dist');
+    expect(loadConfig({}).webDist).toBe(`${SITE_ROOT}/web/dist`);
   });
 
   it('reads the environment', () => {
@@ -74,6 +84,47 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
       /CAPTCHA_PROVIDER=none is refused in production/u,
     );
+  });
+
+  it('refuses the vendors’ published CAPTCHA test keys (audit B1)', () => {
+    // A test sitekey accepts every challenge, and the matching secret answers `success:true`
+    // for any token: the form would be open to any bot.
+    for (const key of [
+      '1x00000000000000000000AA',
+      '1x00000000000000000000aa',
+      '2x00000000000000000000AB',
+      '3x00000000000000000000FF',
+      '10000000-ffff-ffff-ffff-000000000001',
+    ]) {
+      let message = '';
+      try {
+        loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: 'real-looking-secret', CAPTCHA_SITE_KEY: key });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/CAPTCHA_SITE_KEY is a published test key/u);
+      // The message names the variable, never the value.
+      expect(message).not.toContain(key);
+    }
+
+    for (const secret of [
+      '1x0000000000000000000000000000000AA',
+      '2x0000000000000000000000000000000AA',
+      '3x0000000000000000000000000000000AA',
+      '0x0000000000000000000000000000000000000000',
+    ]) {
+      expect(() =>
+        loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: secret, CAPTCHA_SITE_KEY: 'real-looking-sitekey' }),
+      ).toThrow(/CAPTCHA_SECRET is a published test key/u);
+    }
+
+    // A normal key pair boots; the published test pair is the only thing refused.
+    const config = loadConfig({
+      CAPTCHA_PROVIDER: 'turnstile',
+      CAPTCHA_SECRET: '0x4f3a-real-secret',
+      CAPTCHA_SITE_KEY: '0x4AAA-site-key',
+    });
+    expect(config.captchaSiteKey).toBe('0x4AAA-site-key');
   });
 
   it('derives the OAuth redirect from the public origin when it is not configured', () => {

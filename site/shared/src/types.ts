@@ -189,14 +189,24 @@ export type ApiErrorBody = {
   retryAfterMs?: number;
 };
 
+/**
+ * `GET /healthz` — liveness only, and the watcher/engine state a reader's page can show.
+ * Counts, the version and the lane's holder are operator facts: they leak how busy the book
+ * is and who holds the pen, so they live behind the admin token (audit m4).
+ */
 export type HealthDto = {
   ok: boolean;
+  watcher: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
+  engine: { status: EngineStatus };
+};
+
+/** `GET /api/admin/health` — the operator's half of the health, token-guarded (§17). */
+export type AdminHealthDto = {
   uptimeMs: number;
   version: string;
-  watcher: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
-  engine: { status: EngineStatus; heartbeatAt: string | null };
   lane: { holder: string | null };
-  /** F021 is an error, but the site must say whether there is a cover at all (§9). */
   front: { present: boolean };
   db: { chapters: number; comments: number };
+  engine: { status: EngineStatus; heartbeatAt: string | null };
 };
+

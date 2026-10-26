@@ -40,7 +40,10 @@ export function Colophon({ state }: { state: StateSnapshot }) {
         <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
       </div>
       <div className="row">
-        <span>издание · {formatDate(now.toISOString())}</span>
+        <span>
+          издание · {formatDate(now.toISOString())} ·{' '}
+          <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
+        </span>
         <button
           className="theme"
           type="button"

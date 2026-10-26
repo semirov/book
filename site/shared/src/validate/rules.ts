@@ -1,12 +1,13 @@
 /**
- * F001–F009 and F019–F022 of ARCHITECTURE.md §13.4, over an in-memory snapshot of the
- * repository.
+ * F001–F002, F005–F007 and F009, plus F019–F022 of ARCHITECTURE.md §13.4, over an
+ * in-memory snapshot of the repository.
  *
- * F001 naming · F002 stray files / range · F003 forbidden vocabulary · F004 retired (v3)
- * · F005 the legal denylist · F006 67 chapters · F007 chapter length · F008 process
- * vocabulary · F009 markdown in prose (warn) · F019 unrecorded name (warn) · F020 imprint
- * · F021 front matter · F022 chapter title line.
+ * F001 naming · F002 stray files / range · F004 retired (v3) · F005 the legal denylist
+ * · F006 67 chapters · F007 chapter length · F009 markdown in prose (warn) · F019
+ * unrecorded name (warn) · F020 imprint · F021 front matter · F022 chapter title line.
  *
+ * Vocabulary is not policed here: F003 (forbidden words) and F008 (process words) are
+ * retired — the only taboos are copyright and RF law, and that is F005's denylist.
  * Everything about meaning is a gate's job (§6B); this file polices structure and law.
  */
 
@@ -30,18 +31,14 @@ import {
 } from './denylist.ts';
 import {
   CAPITALIZED_WORD,
-  FORBIDDEN_PROSE,
-  PROCESS_PROSE,
   type ChapterFile,
   type Finding,
   type RuleId,
   type Severity,
   type ValidateOptions,
   type ValidateResult,
-  type WordRule,
   countParagraphChars,
   excerptAt,
-  findWords,
   foldRu,
   hasMarkdown,
   isSentenceStart,
@@ -154,35 +151,6 @@ export function collectManuscript(options: ValidateOptions): {
 
   chapters.sort((a, b) => a.n - b.n);
   return { chapters, front, findings };
-}
-
-function scanVocabulary(
-  chapter: ChapterFile,
-  rules: WordRule[],
-  rule: RuleId,
-  label: string,
-  skip?: Set<string>,
-): { findings: Finding[]; seen: Set<string> } {
-  const findings: Finding[] = [];
-  const seen = new Set<string>();
-  for (const wordRule of rules) {
-    for (const match of findWords(chapter.text, wordRule)) {
-      const key = `${match.offset}:${match.word.toLowerCase()}`;
-      if (skip?.has(key) || seen.has(key)) continue;
-      seen.add(key);
-      findings.push(
-        finding(
-          rule,
-          'error',
-          chapter.file,
-          lineAt(chapter.text, match.offset),
-          `${label}: «${match.word}»`,
-          excerptAt(chapter.text, match.offset, match.length),
-        ),
-      );
-    }
-  }
-  return { findings, seen };
 }
 
 function checkLength(chapter: ChapterFile): Finding[] {
@@ -450,13 +418,6 @@ export function runValidation(options: ValidateOptions): ValidateResult {
   for (const chapter of chapters) {
     findings.push(...checkTitleLine(chapter));
     findings.push(...checkLength(chapter));
-    const forbidden = scanVocabulary(chapter, FORBIDDEN_PROSE, 'F003', 'forbidden word');
-    findings.push(...forbidden.findings);
-    // F008 covers «цикл / прогон / перезапуск» too; they are already errors above, so a
-    // duplicate line is suppressed instead of reporting the same word twice.
-    findings.push(
-      ...scanVocabulary(chapter, PROCESS_PROSE, 'F008', 'process vocabulary in prose', forbidden.seen).findings,
-    );
 
     const legalHits = checkLegal(chapter, legal);
     findings.push(...legalHits.findings);

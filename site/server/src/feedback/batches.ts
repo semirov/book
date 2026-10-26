@@ -13,10 +13,11 @@ import { join } from 'node:path';
 
 import { COMMENT_BATCH_ITEM_MAX_BYTES, COMMENT_BATCH_MAX_ITEMS, type CommentStatus } from '@book/shared';
 
+import { sanitizeAuthor } from '../comments/sanitize.ts';
+import type { CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
 import { newBatchId } from '../util/ulid.ts';
-import type { CommentRow } from '../comments/repo.ts';
 
 export const README_TEXT = `# feedback exchange
 
@@ -122,7 +123,10 @@ function toBatchItem(db: Db, row: CommentRow): BatchItem {
     quote: row.quote,
     text: row.body,
     proposed: row.proposed_text,
-    author: row.author,
+    // Audit M3: the author is a display name from the IdP — the one field the guard never
+    // looked at. It is normalized again at the batch boundary (controls, invisibles, one
+    // line, 32 chars), so a name cannot carry a line break or a fence into the file.
+    author: sanitizeAuthor(typeof row.author === 'string' ? row.author : ''),
     at: row.created_at,
     flags: safeJson<string[]>(row.flags) ?? [],
   };

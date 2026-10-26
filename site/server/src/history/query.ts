@@ -19,6 +19,7 @@ import { allChapterNumbers } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { OUT_OF_PROCESS_LABEL } from '../ingest/attribution.ts';
+import { publicAlias } from '../util/alias.ts';
 import { computeShares, readSeries } from './erosion.ts';
 
 const CLOCK = new Intl.DateTimeFormat('ru-RU', {
@@ -82,7 +83,8 @@ function versionDto(row: VersionRow): ParagraphVersionDto {
     stepId: row.step_id,
     actor: {
       kind: row.actor_kind as HistoryAuthorKind,
-      identityId: row.identity_id,
+      // Audit m3: the same public alias the chronicle publishes.
+      identityId: row.identity_id === null ? null : publicAlias(row.identity_id),
       label: row.actor_label,
     },
     replacedBy: row.replaced_by,
@@ -275,7 +277,9 @@ export function readContributors(db: Db): ContributorsDto {
     // §6C.5: an opt-out keeps the contribution out of the list, not out of the measurement.
     if (identity?.hide_from_authors === 1) continue;
     out.push({
-      identityId: item.identityId,
+      // Audit m3: the identity key joins a session and a rate bucket, so the public list
+      // publishes its truncated hash instead (the same alias the end matter uses).
+      identityId: publicAlias(item.identityId),
       label: identity?.display_name ?? 'читатель',
       edits: item.edits,
       chars: item.chars,

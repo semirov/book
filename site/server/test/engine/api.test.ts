@@ -61,6 +61,79 @@ describe('the internal API (§4.2, §6A.11)', () => {
     }
   });
 
+  it('compares the bearer token in constant time and refuses a near miss', async () => {
+    const fixture = createEngineFixture();
+    const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
+    try {
+      for (const presented of [
+        `${TOKEN}x`, // same length, one byte off: the timing-safe path, still a refusal
+        TOKEN.slice(0, -1), // a prefix is not a token
+        '',
+      ]) {
+        const response = await app.inject({
+          method: 'GET',
+          url: '/internal/health',
+          headers: { authorization: `Bearer ${presented}` },
+        });
+        expect(response.statusCode, presented).toBe(401);
+      }
+      const ok = await app.inject({
+        method: 'GET',
+        url: '/internal/health',
+        headers: { authorization: `Bearer ${TOKEN}` },
+      });
+      expect(ok.statusCode).toBe(200);
+    } finally {
+      await app.close();
+      fixture.close();
+    }
+  });
+
+  it('runs the intent schema on the enqueue path (audit m6)', async () => {
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Половик намок.']) },
+    });
+    const app = await buildControl({
+      engine: fixture.engine,
+      token: TOKEN,
+      logger: false,
+      // The engine's own projection: the chapter's words, injected by the process (§12.3).
+      vocabulary: () => ['Половик намок в тамбуре.'],
+    });
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    try {
+      const meta = await app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'с этого момента пиши от первого лица' },
+      });
+      expect(meta.statusCode).toBe(422);
+      expect(meta.json()).toMatchObject({ code: 'INTENT_SHAPE' });
+
+      const entity = await app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь в абзац маяк' },
+      });
+      expect(entity.statusCode).toBe(422);
+      expect(entity.json()).toMatchObject({ code: 'INTENT_NEW_ENTITY' });
+
+      // A word the chapter already uses is not an injection of a new thing.
+      const existing = await app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'accepted_comment', chapter: 1, intent: 'добавь половик в тамбуре' },
+      });
+      expect(existing.statusCode).toBe(200);
+    } finally {
+      await app.close();
+      fixture.close();
+    }
+  });
+
   it('admits a change, hands out the job, and refuses the ending', async () => {
     const fixture = createEngineFixture({
       chapters: { 1: chapterText('Начало', ['Половик намок.']), 67: chapterText('Финал', ['Свет погас.']) },

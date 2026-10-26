@@ -10,13 +10,23 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
+import { isPublishedCaptchaTestKey } from '@book/shared';
+
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),
   dataDir: z.string().default(resolve(SITE_ROOT, '.data')),
-  webDist: z.string().default(resolve(SITE_ROOT, 'web', 'dist')),
+  /**
+   * The built SPA. `@fastify/static` requires an absolute root, so a relative value (the
+   * compose file's `./web/dist`) is resolved against `site/` — an absolute value is kept
+   * as it is. The default is already absolute.
+   */
+  webDist: z
+    .string()
+    .default(resolve(SITE_ROOT, 'web', 'dist'))
+    .transform((value) => resolve(SITE_ROOT, value)),
   /** The read-only imprint config (§6C.6); F020 and the boot both validate it. */
   imprintPath: z.string().default(resolve(SITE_ROOT, 'config', 'imprint.json')),
   /** The hand-curated legal denylist (§13.4, F005); read, never refreshed from the book. */
@@ -39,8 +49,14 @@ const schema = z.object({
   wsPerIp: z.coerce.number().int().min(1).default(4),
   /** Protocol ping interval; two missed pongs terminate a socket (§10.1). */
   wsHeartbeatMs: z.coerce.number().int().min(1_000).default(30_000),
-  /** `X-Forwarded-For` is believed only from these peers (§14). */
-  trustedProxies: z.string().default('127.0.0.1,::1,192.168.1.0/24'),
+  /**
+   * `X-Forwarded-For` is believed only from these peers (§14). Caddy is one host, so the
+   * proxy is a single address, never a whole subnet: a /24 would let every machine on the
+   * LAN name its own address to the per-IP limits (audit m1).
+   */
+  trustedProxies: z.string().default('127.0.0.1,::1,192.168.1.44/32'),
+  /** Per-IP budget for the read API (`/api/history`, `/api/state`, `/api/changes`). */
+  readPerMinute: z.coerce.number().int().min(1).default(60),
   commentsPerHour: z.coerce.number().int().min(1).default(10),
   /** Anti-farming limit on the identity, the same number as the SPEC's per-IP limit (§14). */
   commentsPerHourIdentity: z.coerce.number().int().min(1).default(10),
@@ -156,6 +172,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     wsPerIp: env.WS_PER_IP,
     wsHeartbeatMs: env.WS_HEARTBEAT_MS,
     trustedProxies: env.TRUSTED_PROXIES,
+    readPerMinute: env.READ_PER_MINUTE,
     commentsPerHour: env.COMMENTS_PER_HOUR_IP ?? env.COMMENTS_PER_HOUR,
     commentsPerHourIdentity: env.COMMENTS_PER_HOUR_IDENTITY,
     editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
@@ -216,6 +233,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // visible, the challenge unrenderable, and every post would fail with CAPTCHA_FAILED.
   if (config.captchaProvider !== 'none' && config.captchaSiteKey.trim().length === 0) {
     throw new Error(`invalid configuration: CAPTCHA_SITE_KEY is required for provider ${config.captchaProvider}`);
+  }
+  // B1 (audit): a vendor's published test credential makes the challenge decorative — it
+  // accepts any token, so the form would accept any bot. The message names the variable and
+  // never the value; the check runs on any non-empty key, whatever the provider.
+  if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
+    throw new Error('invalid configuration: CAPTCHA_SITE_KEY is a published test key (CAPTCHA is open)');
+  }
+  if (isPublishedCaptchaTestKey(config.captchaSecret)) {
+    throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key (CAPTCHA is open)');
   }
   if (env.NODE_ENV === 'production') {
     // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart

@@ -426,8 +426,10 @@ describe('state overlay and /healthz', () => {
   it('reports absent, running and down from the heartbeat', async () => {
     const local = await boot();
     const absent = (await app!.inject({ method: 'GET', url: '/healthz' })).json();
-    expect(absent.engine).toEqual({ status: 'absent', heartbeatAt: null });
-    expect(absent.lane).toEqual({ holder: null });
+    // The public probe carries the status only; the heartbeat and the lane holder are
+    // operator facts (audit m4) and are asserted on `readEngineHealth` below.
+    expect(absent.engine).toEqual({ status: 'absent' });
+    expect(absent).not.toHaveProperty('lane');
 
     const now = Date.now();
     local.db.prepare(`INSERT INTO meta (k, v) VALUES ('engine.heartbeat', ?), ('engine.status', 'running')`).run(

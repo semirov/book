@@ -34,6 +34,21 @@ export function isAllowedOrigin(
   }
 }
 
+/**
+ * A WebSocket upgrade (audit m9). A browser always sends `Origin` on a WS handshake, so a
+ * foreign origin is a cross-site socket: the page opened it from another site and would
+ * read the book's live deltas with the reader's network position. A non-browser client may
+ * omit the header entirely — and it can forge it anyway — so absence is not a signal.
+ */
+export function isAllowedUpgradeOrigin(
+  origin: string | undefined,
+  publicOrigin: string,
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): boolean {
+  if (origin === undefined || origin.trim().length === 0) return true;
+  return isAllowedOrigin(origin, publicOrigin, nodeEnv);
+}
+
 export function hasJsonContentType(request: FastifyRequest): boolean {
   const value = request.headers['content-type'];
   if (typeof value !== 'string') return false;

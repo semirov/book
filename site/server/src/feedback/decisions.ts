@@ -22,6 +22,7 @@ import { readQueue } from '../engineState/reader.ts';
 import { readAuthor, publicIntent } from '../engineState/changes.ts';
 import type { ChangeRow } from '../engineState/rows.ts';
 import { acceptComment } from './accept.ts';
+import { chapterVocabulary } from './vocabulary.ts';
 
 export type DecisionEmit = (type: 'comment:decision' | 'change:queued' | 'feedback:batch', data: unknown) => void;
 
@@ -130,7 +131,9 @@ export class DecisionsTailer {
       return 1;
     }
 
-    const verdict = validateIntent(decision.intent ?? '', comment.chapter);
+    const verdict = validateIntent(decision.intent ?? '', comment.chapter, {
+      vocabulary: chapterVocabulary(this.db, comment.chapter),
+    });
     if (!verdict.ok) {
       this.reject(comment, verdict.reason, at, decision.batch ?? null);
       return 1;

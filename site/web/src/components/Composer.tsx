@@ -163,7 +163,10 @@ export function Composer({
         <a className="composer-link" href="/auth/yandex/start">
           войти через Яндекс →
         </a>
-        <p className="fine">Читать можно без входа. Автор замечания виден другим читателям.</p>
+        <p className="fine">
+          Читать можно без входа. Автор замечания виден другим читателям.{' '}
+          <a className="composer-link" href="/privacy">что видят другие →</a>
+        </p>
       </div>
     );
   }
@@ -278,7 +281,9 @@ export function Composer({
         <button type="button" onClick={() => void submit()} disabled={sending || token === null}>
           {sending ? 'отправляется' : 'оставить замечание'}
         </button>
-        <span className="fine">Читают как данные, не как указания.</span>
+        <span className="fine">
+          Читают как данные, не как указания. <a className="composer-link" href="/privacy">что видят другие →</a>
+        </span>
       </div>
     </div>
   );

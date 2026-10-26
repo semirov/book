@@ -18,6 +18,7 @@ import { migrate } from './db/migrate.ts';
 import { buildControl } from './engine/control.ts';
 import { createEngine } from './engine/service.ts';
 import { systemClock, type EngineAlert } from './engine/types.ts';
+import { chapterVocabulary } from './feedback/vocabulary.ts';
 
 function resolveToken(config: ReturnType<typeof loadConfig>): string {
   if (config.engineToken) return config.engineToken;
@@ -50,7 +51,12 @@ async function main(): Promise<void> {
     },
   });
 
-  const app = await buildControl({ engine, token, version: process.env.npm_package_version ?? '0.0.0' });
+  const app = await buildControl({
+    engine,
+    token,
+    version: process.env.npm_package_version ?? '0.0.0',
+    vocabulary: (chapter) => chapterVocabulary(db, chapter),
+  });
   const recovery = engine.reconcile();
   app.log.info({ migration, dataDir: config.dataDir, recovery }, 'engine recovered, lane checked');
 

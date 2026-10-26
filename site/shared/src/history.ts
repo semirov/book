@@ -164,6 +164,7 @@ export type ContributorPointDto = {
 };
 
 export type ContributorDto = {
+  /** A public alias — `sha256(identityId)` truncated, never the identity key (audit m3). */
   identityId: string;
   label: string;
   edits: number;

@@ -20,7 +20,29 @@ services:
       WEB_DIST: ./web/dist
       IMPRINT_PATH: ./config/imprint.json
       WATCH_POLL_MS: "700"
-      TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.0/24"
+      # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
+      # its own address inside X-Forwarded-For and dodge the per-IP limits.
+      TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.44/32"
+      # Secrets as files (audit M2). A plain variable is visible in `docker inspect` and in
+      # /proc/1/environ; a mounted secret is not. `*_FILE` wins over the value (config.ts).
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      IP_SALT_FILE: /run/secrets/ip_salt
+      CAPTCHA_SECRET_FILE: /run/secrets/captcha_secret
+      YANDEX_CLIENT_SECRET_FILE: /run/secrets/yandex_client_secret
+    secrets:
+      - session_secret
+      - ip_salt
+      - captcha_secret
+      - yandex_client_secret
+    # Hardening (audit m7): the image runs as `node`, the root filesystem is read-only, the
+    # only writable places are the data volume and /tmp, and no capability can be gained.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "192.168.1.76:8090:8080"
     volumes:
@@ -44,6 +66,19 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
+
+# Each file is 0600, owned by the operator, and lives outside the repository (`secrets/` is
+# gitignored). `docker compose up` fails on a missing file instead of booting without a
+# secret — the same fail-closed rule the config already enforces.
+secrets:
+  session_secret:
+    file: ./secrets/session_secret
+  ip_salt:
+    file: ./secrets/ip_salt
+  captcha_secret:
+    file: ./secrets/captcha_secret
+  yandex_client_secret:
+    file: ./secrets/yandex_client_secret
 
 volumes:
   book-data:

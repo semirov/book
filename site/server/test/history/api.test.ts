@@ -5,6 +5,7 @@ import { buildApp } from '../../src/app.ts';
 import { loadConfig } from '../../src/config.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
 import { lastHseq } from '../../src/history/events.ts';
+import { publicAlias } from '../../src/util/alias.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
 import { ingest, releaseLease, seedChange } from './helpers.ts';
 
@@ -136,6 +137,31 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(invalid.statusCode).toBe(400);
   });
 
+  it('publishes a reader as an alias in the timeline, never the identity key (audit m3)', async () => {
+    const local = await boot();
+    ingest(local, 'ch01.md', CHAPTER);
+    const seeded = seedChange(local.db, { index: 3, chapter: 1, label: 'Аня' });
+    ingest(
+      local,
+      'ch01.md',
+      longProse(
+        ['Половик в тамбуре намок насквозь ещё в четверг.', 'След от колеса остался с ночи.'],
+        'Половик в тамбуре',
+      ),
+    );
+    releaseLease(local.db, seeded.leaseId);
+
+    const timeline = await app!.inject({ method: 'GET', url: '/api/history/timeline' });
+    const body = timeline.json() as {
+      items: Array<{ author: { kind: string; identityId: string | null; label: string } }>;
+    };
+    const reader = body.items.find((item) => item.author.kind === 'reader');
+    expect(reader).toBeDefined();
+    expect(reader?.author.identityId).toBe(publicAlias(seeded.identityId));
+    // The same handle the contributors list uses, and no raw key anywhere in the payload.
+    expect(timeline.body).not.toContain(seeded.identityId);
+  });
+
   it('serves the change log of a span', async () => {
     const local = await boot();
     ingest(local, 'ch01.md', longProse(['Первый абзац.', 'Второй абзац.'], 'Первая'));
@@ -213,10 +239,17 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
     const contributors = await app!.inject({ method: 'GET', url: '/api/history/contributors' });
     expect(contributors.statusCode).toBe(200);
-    const authors = contributors.json() as { totalChars: number; items: Array<{ label: string; share: number }> };
+    const authors = contributors.json() as {
+      totalChars: number;
+      items: Array<{ identityId: string; label: string; share: number }>;
+    };
     expect(authors.totalChars).toBeGreaterThan(0);
     expect(authors.items[0]).toMatchObject({ label: 'Аня' });
     expect(authors.items[0]?.share).toBe(1);
+    // Audit m3: the public list publishes the alias, never the identity key.
+    expect(authors.items[0]?.identityId).toBe(publicAlias(seeded.identityId));
+    expect(authors.items[0]?.identityId).not.toBe(seeded.identityId);
+    expect(JSON.stringify(authors)).not.toContain(seeded.identityId);
 
     const status = await app!.inject({ method: 'GET', url: '/api/history/status' });
     expect((status.json() as { hseq: number }).hseq).toBe(lastHseq(local.db));

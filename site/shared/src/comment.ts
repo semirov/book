@@ -67,10 +67,12 @@ export type CommentDto = {
   /** A reader's suggested wording; data, never applied verbatim (§6A.2). */
   proposedText: string | null;
   status: CommentStatus;
-  guard: CommentGuard | null;
-  /** Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian). */
+  /**
+   * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
+   * The guard's own category and flags stay internal (audit m5): a public `flags` array
+   * would let a stranger bisect the detector one probe at a time.
+   */
   reason: string | null;
-  flags: string[];
   createdAt: string;
   decidedAt: string | null;
   changeId: string | null;

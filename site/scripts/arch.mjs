@@ -8,7 +8,7 @@
  *      never imports the server or Node built-ins;
  *   3. the site never writes to the book repository (text is read-only for the site);
  *   4. the book's invariants are where the UI expects them (67 chapters, engine tables,
- *      the F001–F008 rules covered by tests);
+ *      the rule ids covered by tests);
  *   5. the engine calls no model and no network: it is a deterministic state machine;
  *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) stay
  *      internal: no line of them appears in the built bundle;

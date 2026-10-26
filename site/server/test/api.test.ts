@@ -27,7 +27,15 @@ let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
 let webDist: string | null = null;
 
-async function boot(options: { chapters?: Record<string, string>; ui?: boolean } = {}): Promise<Fixture> {
+async function boot(
+  options: {
+    chapters?: Record<string, string>;
+    ui?: boolean;
+    adminToken?: string;
+    env?: Record<string, string>;
+    watcherStatus?: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
+  } = {},
+): Promise<Fixture> {
   fixture = createFixture(options.chapters ?? {});
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
@@ -42,11 +50,14 @@ async function boot(options: { chapters?: Record<string, string>; ui?: boolean }
       DATA_DIR: fixture.dataDir,
       WEB_DIST: webDist,
       PORT: '8080',
+      ...options.env,
     }),
     db: fixture.db,
     state: new StateService(fixture.db),
     version: 'test',
     logger: false,
+    ...(options.watcherStatus === undefined ? {} : { watcherStatus: options.watcherStatus }),
+    ...(options.adminToken === undefined ? {} : { adminToken: options.adminToken }),
   });
   return fixture;
 }
@@ -167,26 +178,83 @@ describe('GET /api/chapters/:n', () => {
   });
 });
 
-describe('GET /healthz', () => {
-  it('reports the database and an absent engine honestly', async () => {
+describe('the read API budget (audit M6)', () => {
+  it('bounds /api/history and /api/state per network, and leaves the catalogue alone', async () => {
+    await boot({ env: { READ_PER_MINUTE: '3' } });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect((await app!.inject({ method: 'GET', url: '/api/history/status' })).statusCode).toBe(200);
+    }
+    const blocked = await app!.inject({ method: 'GET', url: '/api/history/status' });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers['cache-control']).toBe('no-store');
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(blocked.json()).toMatchObject({ code: 'RATE_LIMITED' });
+    expect(blocked.json().retryAfterMs).toBeGreaterThan(0);
+
+    // One budget for every expensive read: the state poll shares it.
+    expect((await app!.inject({ method: 'GET', url: '/api/state' })).statusCode).toBe(429);
+    // The catalogue is cheap and cached: it is not part of the budget.
+    expect((await app!.inject({ method: 'GET', url: '/api/chapters' })).statusCode).toBe(200);
+  });
+});
+
+describe('GET /healthz (audit m4: liveness only)', () => {
+  it('reports the watcher and an absent engine, and nothing an operator knows', async () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/healthz' });
     expect(response.statusCode).toBe(200);
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.json()).toMatchObject({
-      ok: true,
-      version: 'test',
-      engine: { status: 'absent', heartbeatAt: null },
-      lane: { holder: null },
-      front: { present: false },
-      db: { chapters: 1, comments: 0 },
+    const body = response.json() as Record<string, unknown>;
+    expect(body).toMatchObject({ ok: true, engine: { status: 'absent' } });
+    expect(body.watcher).toMatchObject({ missing: false });
+    // The counts, the version, the cover and the lane holder are operator facts.
+    for (const key of ['lane', 'db', 'front', 'version', 'uptimeMs']) {
+      expect(body).not.toHaveProperty(key);
+    }
+    expect(body.engine).not.toHaveProperty('heartbeatAt');
+    // Nothing on the public probe names who holds the pen.
+    expect(JSON.stringify(body)).not.toContain('holder');
+  });
+
+  it('reports a live watcher, including a missing manuscript mount', async () => {
+    await boot({
+      watcherStatus: { lastTickAt: '2026-10-25T12:00:00Z', lastEventAt: null, missing: true },
+    });
+    expect((await app!.inject({ method: 'GET', url: '/healthz' })).json()).toMatchObject({
+      watcher: { lastTickAt: '2026-10-25T12:00:00Z', lastEventAt: null, missing: true },
     });
   });
 
-  it('reports the first sheet as present', async () => {
-    await boot({ chapters: { '00-front.md': FRONT } });
-    const response = await app!.inject({ method: 'GET', url: '/healthz' });
-    expect(response.json()).toMatchObject({ front: { present: true } });
+  it('keeps the counts and the cover behind the admin token', async () => {
+    await boot({ chapters: { '00-front.md': FRONT }, adminToken: 'panel-token' });
+    // No token: the panel does not exist, and the public probe never carries the facts.
+    expect((await app!.inject({ method: 'GET', url: '/api/admin/health' })).statusCode).toBe(401);
+    expect((await app!.inject({ method: 'GET', url: '/healthz' })).json()).not.toHaveProperty('front');
+
+    const admin = await app!.inject({
+      method: 'GET',
+      url: '/api/admin/health',
+      headers: { 'x-admin-token': 'panel-token' },
+    });
+    expect(admin.statusCode).toBe(200);
+    expect(admin.headers['cache-control']).toBe('no-store');
+    expect(admin.json()).toMatchObject({
+      version: 'test',
+      lane: { holder: null },
+      front: { present: true },
+      db: { chapters: 0, comments: 0 },
+      engine: { status: 'absent', heartbeatAt: null },
+    });
+  });
+
+  it('closes the admin health surface when no token is configured, and refuses a wrong one', async () => {
+    await boot();
+    // A forgotten token closes the surface (404), never opens it.
+    expect((await app!.inject({ method: 'GET', url: '/api/admin/health' })).statusCode).toBe(404);
+    expect(
+      (await app!.inject({ method: 'GET', url: '/api/admin/health', headers: { 'x-admin-token': 'anything' } }))
+        .statusCode,
+    ).toBe(404);
   });
 
   it('does not bump the state version', async () => {
@@ -204,6 +272,16 @@ describe('the shell', () => {
     const response = await app!.inject({ method: 'GET', url: '/ch-8' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('книга');
+  });
+
+  it('routes /privacy and /rules explicitly (audit M5)', async () => {
+    await boot();
+    for (const url of ['/privacy', '/rules']) {
+      const response = await app!.inject({ method: 'GET', url });
+      expect(response.statusCode, url).toBe(200);
+      expect(response.headers['content-type'], url).toContain('text/html');
+      expect(response.body, url).toContain('книга');
+    }
   });
 
   it('keeps API 404s as JSON', async () => {
