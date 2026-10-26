@@ -38,6 +38,8 @@ describe('/rules', () => {
 
   it('says what is accepted and what is refused, with the limits', () => {
     expect(html).toContain('одна правка в сутки');
+    // BOOK-DOC-4 rule 5: the page names both counters, like the refusal copy does.
+    expect(html).toContain('на читателя и на адрес');
     expect(html).toContain('10 замечаний в час');
     expect(html).toContain('реальные люди');
     expect(html).toContain('указания модели');

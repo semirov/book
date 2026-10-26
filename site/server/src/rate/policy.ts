@@ -36,6 +36,23 @@ export function editIdentityKey(identityId: string): string {
 }
 
 /**
+ * BOOK-DOC-4 rule 5 counts the edit budget twice: per person **and** per network. The second
+ * key is the same hashed network identity the comment budget uses (`HMAC-SHA256(salt, ipKey)`,
+ * /64 for IPv6), and it carries the same 24 h window and the same limit as the identity key.
+ */
+export function editIpKey(ipHash: IpHasher, ipKey: string): string {
+  return editIpKeyFromHash(ipHash(ipKey));
+}
+
+/**
+ * The triage CLI holds `comments.ip_hash` (already the salted hash) and no salt, so it builds
+ * the same key from the stored digest: no address, no hasher, one row shape.
+ */
+export function editIpKeyFromHash(ipHash: string): string {
+  return `edit:ip:${ipHash}`;
+}
+
+/**
  * Hiding or restoring the public name is a state mutation like any other: one reader may
  * not churn the list for everyone. It has its own namespace so a toggle never spends a
  * comment or an edit budget.
@@ -69,10 +86,21 @@ export function commentSpecs(
   ];
 }
 
-/** One budget for both paths: a proposed edit and an accepted comment share `edit:id:`. */
-export function editSpecs(config: Config, identityId: string): LimitSpec[] {
+/**
+ * One budget for both paths: a proposed edit and an accepted comment share `edit:id:`, and
+ * neither may be spent without the network key. The identity key is first so a reader whose
+ * own day is spent is refused by their own budget; the network key then stops a second
+ * account behind the same address.
+ */
+export function editSpecs(
+  config: Config,
+  ipHash: IpHasher,
+  ipKey: string,
+  identityId: string,
+): LimitSpec[] {
   return [
     { key: editIdentityKey(identityId), limit: config.editSubmissionsPerDay, windowMs: EDIT_DAY_MS },
+    { key: editIpKey(ipHash, ipKey), limit: config.editSubmissionsPerDay, windowMs: EDIT_DAY_MS },
   ];
 }
 

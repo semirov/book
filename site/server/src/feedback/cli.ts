@@ -36,8 +36,8 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { readCommentRow } from '../comments/repo.ts';
-import { editIdentityKey } from '../rate/policy.ts';
-import { RateLimiter } from '../rate/limiter.ts';
+import { editIdentityKey, editIpKeyFromHash } from '../rate/policy.ts';
+import { RateLimiter, type LimitSpec } from '../rate/limiter.ts';
 import { acceptComment } from './accept.ts';
 import { recordAudit } from './audit.ts';
 import {
@@ -56,7 +56,7 @@ export type FeedbackIo = {
   dir: string;
   now?: () => Date;
   print: (line: string) => void;
-  /** SPEC «Load & network»: one reader edit per day, per identity. */
+  /** SPEC «Load & network»: one reader edit per day, per identity and per network. */
   editsPerDay?: number;
 };
 
@@ -342,18 +342,31 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   const baseRev = rev?.rev ?? comment.base_rev ?? 0;
 
-  // One edit budget for both paths: a proposed edit already took its slot at POST (§14).
+  // One edit budget for both paths: a proposed edit already took its identity and network
+  // slots at POST (§14, BOOK-DOC-4 rule 5). A plain comment spends both here, once, and only
+  // after the change exists — a refusal leaves each budget intact.
   const limiter = new RateLimiter(io.db, () => now().getTime());
+  const editLimit = io.editsPerDay ?? 1;
+  const editBudgets: Array<{ spec: LimitSpec; budget: 'identity' | 'ip' }> = [];
   if (comment.proposed_text === null) {
-    const editLimit = io.editsPerDay ?? 1;
-    const check = limiter.check({
-      key: editIdentityKey(comment.identity_id),
-      limit: editLimit,
-      windowMs: EDIT_DAY_MS,
+    editBudgets.push({
+      spec: { key: editIdentityKey(comment.identity_id), limit: editLimit, windowMs: EDIT_DAY_MS },
+      budget: 'identity',
     });
+    // The stored digest is the same `HMAC-SHA256(IP_SALT, ipKey)` the POST path used, so the
+    // operator needs neither the address nor the salt to see the network budget.
+    editBudgets.push({
+      spec: { key: editIpKeyFromHash(comment.ip_hash), limit: editLimit, windowMs: EDIT_DAY_MS },
+      budget: 'ip',
+    });
+  }
+  for (const { spec, budget } of editBudgets) {
+    const check = limiter.check(spec);
     if (!check.allowed) {
       io.print(
-        `refused (EDIT_DAILY_LIMIT): у автора уже ${check.used} правок за сутки — замечание остаётся нерассмотренным`,
+        budget === 'identity'
+          ? `refused (EDIT_DAILY_LIMIT): у автора уже ${check.used} правок за сутки — замечание остаётся нерассмотренным`
+          : `refused (EDIT_DAILY_LIMIT): с этого адреса уже была правка за сутки — замечание остаётся нерассмотренным`,
       );
       return 1;
     }
@@ -373,7 +386,13 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     return 1;
   }
   // The slot is taken only once the change exists: a refusal must leave the budget intact.
-  if (comment.proposed_text === null) limiter.record(editIdentityKey(comment.identity_id), now().getTime());
+  // Both keys are recorded in one transaction, so a fault cannot spend one and not the other.
+  if (comment.proposed_text === null) {
+    const atMs = now().getTime();
+    io.db.transaction(() => {
+      for (const { spec } of editBudgets) limiter.record(spec.key, atMs);
+    })();
+  }
   const chapter = io.db.prepare('SELECT rev, sha256 FROM chapters WHERE n = ?').get(comment.chapter) as
     | { rev: number; sha256: string }
     | undefined;

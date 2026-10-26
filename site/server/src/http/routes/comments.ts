@@ -116,6 +116,11 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
       ipKey: ipKey(ip),
     });
     if (result.ok === false) {
+      if (result.budget !== undefined) {
+        // BOOK-DOC-4 rule 5: an operator can tell the two edit budgets apart, the reader
+        // cannot. The line carries the counter's name — never an address, never a hash.
+        request.log.info({ code: result.code, budget: result.budget }, 'edit budget refused');
+      }
       if (result.retryAfterMs !== undefined) {
         reply.header('retry-after', String(Math.max(1, Math.ceil(result.retryAfterMs / 1000))));
       }

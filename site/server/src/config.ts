@@ -60,7 +60,11 @@ const schema = z.object({
   commentsPerHour: z.coerce.number().int().min(1).default(10),
   /** Anti-farming limit on the identity, the same number as the SPEC's per-IP limit (§14). */
   commentsPerHourIdentity: z.coerce.number().int().min(1).default(10),
-  /** §14 + SPEC «Load & network»: one reader edit per day, per identity. */
+  /**
+   * §14 + SPEC «Load & network»: one reader edit per day, per identity **and** per network.
+   * The same number feeds both keys (`edit:id:` and `edit:ip:`), so a household behind one
+   * address spends one edit a day in total (BOOK-DOC-4 rule 5, accepted trade-off).
+   */
   editSubmissionsPerDay: z.coerce.number().int().min(1).default(1),
   queueSoftCap: z.coerce.number().int().min(1).default(15),
   /** The file exchange with triage (§12.2, §12.6): batches and `decisions.jsonl`. */

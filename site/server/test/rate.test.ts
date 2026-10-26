@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { RateLimiter } from '../src/rate/limiter.ts';
-import { commentIpKey, commentSpecs, editIdentityKey } from '../src/rate/policy.ts';
+import { commentIpKey, commentSpecs, editIdentityKey, editIpKey } from '../src/rate/policy.ts';
 import { loadConfig } from '../src/config.ts';
 import { createFixture, type Fixture } from './helpers.ts';
 import { createIpHasher } from '../src/util/ipHash.ts';
@@ -103,8 +103,11 @@ describe('RateLimiter', () => {
       const limiter = new RateLimiter(fixture.db, () => clock.ms);
       const hourly = commentIpKey(ipHash, '203.0.113.0/24');
       const daily = editIdentityKey('idt_1');
+      // BOOK-DOC-4 rule 5: the network key shares the `edit:` prefix, so it is kept a day too.
+      const dailyIp = editIpKey(ipHash, '203.0.113.0/24');
       limiter.record(hourly, clock.ms - 2 * 60 * 60_000);
       limiter.record(daily, clock.ms - 2 * 60 * 60_000);
+      limiter.record(dailyIp, clock.ms - 2 * 60 * 60_000);
 
       // Any consume of a new key runs the due prune (it is due once an hour).
       limiter.consume([{ key: 'test:trigger', limit: 5, windowMs: 60_000 }]);
@@ -112,10 +115,12 @@ describe('RateLimiter', () => {
       expect(limiter.check({ key: hourly, limit: 5, windowMs: 60 * 60_000 }).used).toBe(0);
       // The reader edit is still counted: pruning it early would hand the slot back.
       expect(limiter.check({ key: daily, limit: 1, windowMs: 24 * 60 * 60_000 }).used).toBe(1);
+      expect(limiter.check({ key: dailyIp, limit: 1, windowMs: 24 * 60 * 60_000 }).used).toBe(1);
 
       clock.ms += 25 * 60 * 60_000;
       limiter.consume([{ key: 'test:trigger', limit: 5, windowMs: 60_000 }]);
       expect(limiter.check({ key: daily, limit: 1, windowMs: 24 * 60 * 60_000 }).used).toBe(0);
+      expect(limiter.check({ key: dailyIp, limit: 1, windowMs: 24 * 60 * 60_000 }).used).toBe(0);
     } finally {
       fixture.close();
     }

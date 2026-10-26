@@ -44,7 +44,7 @@ import {
 } from './repo.ts';
 import { sanitizeAffix, sanitizeAuthor, sanitizeBody, sanitizeProposed, sanitizeQuote } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
-import { commentIdentityKey, commentSpecs, editIdentityKey, editSpecs } from '../rate/policy.ts';
+import { commentIdentityKey, commentSpecs, editIdentityKey, editIpKey, editSpecs } from '../rate/policy.ts';
 
 export type CommentServiceDeps = {
   db: Db;
@@ -67,6 +67,11 @@ export type ServiceFailure = {
   retryAfterMs?: number;
   resetAt?: string;
   currentText?: string;
+  /**
+   * Which budget refused an edit. Internal only — the route logs it (identity and network
+   * refusals are distinguishable to an operator) and never sends it to the reader.
+   */
+  budget?: 'identity' | 'ip';
 };
 
 export type ServiceResult = { ok: true; status: number; body: PostCommentResponse } | ServiceFailure;
@@ -94,8 +99,12 @@ export class CommentService {
     this.idFactory = deps.idFactory ?? newCommentId;
   }
 
-  /** §14: the composer shows what is left, so the limit is never a surprise. */
-  budget(identityId: string): CommentBudget {
+  /**
+   * §14: the composer shows what is left, so the limit is never a surprise. The edit budget is
+   * two counters (BOOK-DOC-4 rule 5), so the reader is shown the tighter one: the network may
+   * already be spent while their own day is not (`min`), and the reset is the later of the two.
+   */
+  budget(identityId: string, ipKey: string): CommentBudget {
     const comments = this.limiter.check({
       key: commentIdentityKey(identityId),
       limit: this.config.commentsPerHourIdentity,
@@ -106,13 +115,19 @@ export class CommentService {
       limit: this.config.editSubmissionsPerDay,
       windowMs: 24 * 60 * 60_000,
     });
+    const editsByNetwork = this.limiter.check({
+      key: editIpKey(this.ipHash, ipKey),
+      limit: this.config.editSubmissionsPerDay,
+      windowMs: 24 * 60 * 60_000,
+    });
+    const editResetAtMs = laterReset(edits.resetAtMs, editsByNetwork.resetAtMs);
     return {
       perHour: comments.limit,
       remaining: comments.remaining,
       resetAt: comments.resetAtMs === null ? null : new Date(comments.resetAtMs).toISOString(),
       editsPerDay: edits.limit,
-      editsRemaining: edits.remaining,
-      editsResetAt: edits.resetAtMs === null ? null : new Date(edits.resetAtMs).toISOString(),
+      editsRemaining: Math.min(edits.remaining, editsByNetwork.remaining),
+      editsResetAt: editResetAtMs === null ? null : new Date(editResetAtMs).toISOString(),
     };
   }
 
@@ -129,7 +144,7 @@ export class CommentService {
     }
 
     // Idempotent replay: the same key returns the first result, never a second comment.
-    const replay = this.replay(input, context.identity.id);
+    const replay = this.replay(input, context.identity.id, context.ipKey);
     if (replay !== null) return replay;
 
     const queue = this.queueState();
@@ -193,7 +208,7 @@ export class CommentService {
       // The same key means the same submission: a replay that overlapped us at the CAPTCHA
       // await is answered with the first result, not with a duplicate verdict.
       if (isPresent(input.idempotencyKey) && duplicate.idem_key === input.idempotencyKey) {
-        const replayed = this.replay(input, context.identity.id);
+        const replayed = this.replay(input, context.identity.id, context.ipKey);
         if (replayed !== null) return replayed;
       }
       return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
@@ -205,20 +220,25 @@ export class CommentService {
     const guard = classifyComment(body.text, proposedText);
     const specs = [
       ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
-      ...(proposedText === null ? [] : editSpecs(this.config, context.identity.id)),
+      ...(proposedText === null
+        ? []
+        : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
     ];
     const consumed = this.limiter.consume(specs);
     if (!consumed.allowed) {
       const blocked = consumed.blocked;
       const resetAt = blocked.resetAtMs === null ? undefined : new Date(blocked.resetAtMs).toISOString();
-      if (blocked.key.startsWith('edit:id:')) {
+      if (blocked.key.startsWith('edit:id:') || blocked.key.startsWith('edit:ip:')) {
+        // One public line for both budgets (BOOK-DOC-4 rule 5): the reader is told the day
+        // window and when it resets, never which counter refused them.
         return {
           ok: false,
           status: 429,
           code: 'EDIT_DAILY_LIMIT',
-          message: 'правка уже была сегодня — одна правка в сутки на читателя',
+          message: editDailyMessage(blocked.resetAtMs, this.config.tz, now.getTime()),
           retryAfterMs: blocked.retryAfterMs,
           ...(resetAt === undefined ? {} : { resetAt }),
+          budget: blocked.key.startsWith('edit:id:') ? 'identity' : 'ip',
         };
       }
       return {
@@ -258,7 +278,7 @@ export class CommentService {
     } catch (error) {
       // Backstop for a replay that still raced us: the UNIQUE index on `idem_key` is the
       // real serialisation point, so the loser reads the winner's row instead of a 500.
-      const raced = isUniqueViolation(error) ? this.replay(input, context.identity.id) : null;
+      const raced = isUniqueViolation(error) ? this.replay(input, context.identity.id, context.ipKey) : null;
       if (raced === null) throw error;
       return raced;
     }
@@ -281,7 +301,7 @@ export class CommentService {
       reason: dto.reason,
       createdAt: dto.createdAt,
     });
-    return { ok: true, status: 201, body: { comment: dto, remaining: this.budget(context.identity.id), queue: { depth: this.queueState().depth } } };
+    return { ok: true, status: 201, body: { comment: dto, remaining: this.budget(context.identity.id, context.ipKey), queue: { depth: this.queueState().depth } } };
   }
 
   /** The soft cap is global, not per identity: it protects the lane, not a person (§14). */
@@ -312,10 +332,10 @@ export class CommentService {
     return durations[Math.floor(durations.length / 2)] ?? null;
   }
 
-  private response(row: CommentRow): PostCommentResponse {
+  private response(row: CommentRow, ipKey: string): PostCommentResponse {
     return {
       comment: toCommentDto(this.db, row),
-      remaining: this.budget(row.identity_id),
+      remaining: this.budget(row.identity_id, ipKey),
       queue: { depth: this.queueState().depth },
     };
   }
@@ -324,12 +344,12 @@ export class CommentService {
    * An idempotent replay returns the first result, never a second comment. `null` means
    * there is no row for this key yet, i.e. the caller may proceed with the submission.
    */
-  private replay(input: PostCommentInput, identityId: string): ServiceResult | null {
+  private replay(input: PostCommentInput, identityId: string, ipKey: string): ServiceResult | null {
     if (!isPresent(input.idempotencyKey)) return null;
     const existing = readCommentRowByIdemKey(this.db, input.idempotencyKey);
     if (existing === undefined) return null;
     if (existing.identity_id === identityId) {
-      return { ok: true, status: 201, body: this.response(existing) };
+      return { ok: true, status: 201, body: this.response(existing, ipKey) };
     }
     // A key is scoped to one reader; a foreign key is a collision, not a replay.
     return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
@@ -426,4 +446,50 @@ export function isUniqueViolation(error: unknown): boolean {
 
 function fail(status: number, code: string, message: string): ServiceFailure {
   return { ok: false, status, code, message };
+}
+
+/**
+ * BOOK-DOC-4 rule 5, the public refusal: the day window and the moment it resets, in the
+ * reader's timezone. It deliberately says neither "identity" nor "address" — the same line
+ * answers both counters, so a refusal invites no probing of which one ran out.
+ */
+export function editDailyMessage(resetAtMs: number | null, tz: string, nowMs: number): string {
+  if (resetAtMs === null) return 'правка уже была сегодня — одна правка в сутки';
+  const clock = resetClock(resetAtMs, tz, nowMs);
+  return clock === null
+    ? 'правка уже была сегодня — одна правка в сутки'
+    : `правка уже была сегодня — одна правка в сутки; следующая возможна ${clock}`;
+}
+
+/**
+ * `после 18:00` when the reset is still today, `завтра после 18:00` when it falls on another
+ * day in the display zone — the reader is told the truth about the wait, not a bare clock.
+ * `null` for an unusable zone (the copy then omits the moment).
+ */
+function resetClock(atMs: number, tz: string, nowMs: number): string | null {
+  try {
+    const time = new Intl.DateTimeFormat('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: tz,
+    }).format(new Date(atMs));
+    const day = (ms: number): string =>
+      new Intl.DateTimeFormat('en-CA', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: tz,
+      }).format(new Date(ms));
+    return day(atMs) === day(nowMs) ? `после ${time}` : `завтра после ${time}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The later of the two edit resets: the next edit needs both counters to have a slot. */
+function laterReset(left: number | null, right: number | null): number | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.max(left, right);
 }
