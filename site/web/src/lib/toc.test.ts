@@ -1,12 +1,13 @@
-import type { CatalogEntry, StateSnapshot, TocEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry, type StateSnapshot, type TocEntry } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   currentChapterOf,
   fromStateToc,
   slotLabel,
+  slotText,
   tocAriaLabel,
-  tocHeading,
+  tocEntry,
   tocParts,
   writtenCount,
 } from './toc.ts';
@@ -38,11 +39,56 @@ const catalog = [
   return item;
 });
 
+/** The live empty book: 67 slots, the two frame chapters carrying only their base sentence. */
+const basisCatalog = catalog.map((item) => {
+  if (item.n === 1) return entry(1, { basis: true });
+  if (item.n === 2) return entry(2);
+  if (item.n === 67) return entry(67, { basis: true });
+  return item;
+});
+
 describe('slotLabel', () => {
-  it('uses the title line, or the slot label when empty or untitled', () => {
-    expect(slotLabel(1, 'Половик в тамбуре')).toBe('Половик в тамбуре');
-    expect(slotLabel(9, null)).toBe('Глава 9');
-    expect(slotLabel(9, '   ')).toBe('Глава 9');
+  it('returns the title line verbatim and nothing when there is no title', () => {
+    expect(slotLabel('Половик в тамбуре')).toBe('Половик в тамбуре');
+    expect(slotLabel(null)).toBe('');
+    expect(slotLabel('   ')).toBe('');
+  });
+});
+
+describe('slotText', () => {
+  it('uses the title line of a written chapter', () => {
+    expect(slotText(entry(9, { title: 'Ночная смена', written: true }))).toBe('Ночная смена');
+  });
+
+  it('prints the frozen frame of a basis slot (BOOK-6)', () => {
+    expect(slotText(entry(1, { basis: true }))).toBe(FRAME_FIRST_SENTENCE);
+    expect(slotText(entry(67, { basis: true }))).toBe(FRAME_LAST_SENTENCE);
+  });
+
+  it('says nothing for an empty slot, a basis flag outside the frame, or a broken title line', () => {
+    expect(slotText(entry(3))).toBeNull();
+    expect(slotText(entry(8, { basis: true }))).toBeNull();
+    expect(slotText(entry(9, { written: true, title: null }))).toBeNull();
+  });
+});
+
+describe('tocEntry', () => {
+  it('makes a link of a row that opens prose and leaves the rest inert', () => {
+    expect(tocEntry(entry(1, { basis: true }), null)).toMatchObject({
+      n: 1,
+      text: FRAME_FIRST_SENTENCE,
+      link: true,
+      href: '#ch-1',
+    });
+    // A written chapter with a broken title line keeps its prose reachable.
+    expect(tocEntry(entry(2, { written: true, title: null }), null)).toMatchObject({ text: null, link: true });
+    expect(tocEntry(entry(3), null)).toMatchObject({ text: null, link: false });
+  });
+
+  it('never invents a label', () => {
+    const row = tocEntry(entry(3), null);
+    expect(row.text).toBeNull();
+    expect(JSON.stringify(row)).not.toContain('Глава');
   });
 });
 
@@ -56,16 +102,24 @@ describe('tocParts', () => {
     expect(parts[3]?.entries[0]?.n).toBe(67);
   });
 
-  it('carries the live title and marks the chapter being written', () => {
+  it('carries the live title line and marks the chapter being written', () => {
     expect(parts[0]?.entries[0]).toMatchObject({
       n: 1,
-      label: 'Половик в тамбуре',
+      text: 'Половик в тамбуре',
       written: true,
       current: false,
       href: '#ch-1',
     });
-    expect(parts[0]?.entries[1]).toMatchObject({ n: 2, label: 'Глава 2', written: true, current: true });
-    expect(parts[0]?.entries[2]).toMatchObject({ n: 3, label: 'Глава 3', written: false, current: false });
+    expect(parts[0]?.entries[1]).toMatchObject({ n: 2, text: null, written: true, current: true });
+    expect(parts[0]?.entries[2]).toMatchObject({ n: 3, text: null, written: false, link: false, current: false });
+  });
+
+  it('carries the frame sentences at the head and the tail of the empty book', () => {
+    const rows = tocParts(basisCatalog, null).flatMap((part) => part.entries);
+    expect(rows).toHaveLength(67);
+    expect(rows[0]).toMatchObject({ n: 1, text: FRAME_FIRST_SENTENCE, link: true });
+    expect(rows[66]).toMatchObject({ n: 67, text: FRAME_LAST_SENTENCE, link: true });
+    expect(rows.filter((row) => row.text !== null)).toHaveLength(2);
   });
 
   it('counts the written rows per part', () => {
@@ -99,18 +153,12 @@ describe('state-derived helpers', () => {
     expect(currentChapterOf({ current: null } as unknown as StateSnapshot)).toBeNull();
   });
 
-  it('uses the live title as the TOC heading', () => {
-    expect(
-      tocHeading({ front: { title: 'Земля, которая больше не кормит' } } as unknown as StateSnapshot),
-    ).toBe('Земля, которая больше не кормит');
-  });
-
   it('maps the server TOC without dropping entries', () => {
     const toc: TocEntry[] = [
       { part: 1, n: 1, title: 'Начало', written: true, rev: 1 },
       { part: 1, n: 2, title: null, written: false, rev: 0 },
     ];
-    expect(fromStateToc(toc, 1).map((item) => item.label)).toEqual(['Начало', 'Глава 2']);
+    expect(fromStateToc(toc, 1).map((item) => item.text)).toEqual(['Начало', null]);
     expect(fromStateToc(toc, 1)[0]?.current).toBe(true);
   });
 

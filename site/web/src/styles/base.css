@@ -87,7 +87,6 @@ h3 {
 .kicker,
 .ch-meta,
 .sec-meta,
-.slot .s,
 .qline,
 .stamp,
 .counter,
@@ -95,7 +94,6 @@ h3 {
 .ctext,
 .fine,
 .top-row,
-.inv-foot,
 .colophon,
 .pf-top,
 .pf-pair b,
@@ -147,12 +145,6 @@ h3 {
   .top-in {
     padding-top: 14px;
     padding-bottom: 10px;
-  }
-  .titul {
-    padding-top: 64px;
-  }
-  .title {
-    font-size: 38px;
   }
 }
 @media (max-width: 360px) {

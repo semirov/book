@@ -1,4 +1,4 @@
-import { TOTAL_CHAPTERS, type StateSnapshot } from '@book/shared';
+import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot } from '@book/shared';
 import { useEffect, useState } from 'react';
 
 import { formatDate, formatNumber } from '../lib/format.ts';
@@ -12,7 +12,11 @@ const clock = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow',
 });
 
-export function Colophon({ state }: { state: StateSnapshot }) {
+/**
+ * The imprint line (`imprint.copyright`) lives here: the cover no longer carries «©»
+ * (BOOK-DOC-5 §2), and «Авторы» keeps its own copy of it.
+ */
+export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: FrontDto['imprint'] }) {
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const [now, setNow] = useState<Date>(() => new Date());
 
@@ -41,7 +45,7 @@ export function Colophon({ state }: { state: StateSnapshot }) {
       </div>
       <div className="row">
         <span>
-          издание · {formatDate(now.toISOString())} ·{' '}
+          {imprint.copyright} · издание · {formatDate(now.toISOString())} ·{' '}
           <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
         </span>
         <button

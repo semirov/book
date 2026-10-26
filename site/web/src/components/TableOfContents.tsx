@@ -2,83 +2,67 @@ import { chapterLabel, type CatalogEntry, type StateSnapshot } from '@book/share
 
 import { scrollToChapter } from '../dom.ts';
 import { tocAriaLabel, tocParts, writtenCount } from '../lib/toc.ts';
-import { IDLE_TITLE, titleMotionClass, type TitleMotion } from '../lib/titleChange.ts';
 
 /**
- * Живое оглавление (ARCHITECTURE §6C.7, §11.8): the live title, four numbered parts,
- * 67 entries. A written chapter shows its title line; an empty or untitled slot shows
- * «Глава N» in muted italics. The heading is keyed by the first sheet's revision so a
- * ripple that reaches the beginning cross-fades it instead of re-laying out the list.
+ * Живое оглавление (ARCHITECTURE §6C.7, §11.8; BOOK-DOC-5 §4): four numbered parts, 67
+ * rows, and no invented titles. A row shows its chapter's title line, or the frozen frame
+ * sentence of a basis slot (ch01/ch67); an empty row is its numeral and nothing else — no
+ * link, no focus ring, no scroll on tap. No leader dots, no row rules, no part ranges, no
+ * repeated book title: the column of numbers is the structural mark.
+ *
+ * The caret dot is a live fact, so it is drawn on an inert row too (a chapter the writer is
+ * in before its first line lands) and that row is not hidden from assistive tech.
  */
 export function TableOfContents({
   catalog,
   state,
   currentChapter,
-  motion = IDLE_TITLE,
 }: {
   catalog: readonly CatalogEntry[];
   state: StateSnapshot;
   currentChapter: number | null;
-  motion?: TitleMotion;
 }) {
   const parts = tocParts(catalog, currentChapter);
   const written = writtenCount(catalog);
 
   return (
     <section className="page toc" id="toc" aria-label={tocAriaLabel(written, state.chapters.total)}>
-      <header className="sec-h">
-        <span className="lbl">оглавление</span>
-        <span className="sec-meta">
-          {written} / {state.chapters.total}
-        </span>
-      </header>
-
-      {state.front.title !== null ? (
-        <p
-          className={`toc-heading ${titleMotionClass(motion) || 'fade-in'}`}
-          key={`heading-${motion.token}-${state.front.rev}`}
-        >
-          {state.front.title}
-        </p>
-      ) : null}
+      <p className="toc-label">оглавление</p>
 
       {parts.map((part) => (
         <div className="toc-part" key={part.part}>
-          <div className="toc-part-h">
-            <span className="toc-part-name">часть {part.numeral}</span>
-            <span className="toc-part-range">
-              {chapterLabel(part.from)}—{chapterLabel(part.to)}
-            </span>
-          </div>
+          <p className="toc-part-h">часть {part.numeral}</p>
           <ul className="slots">
             {part.entries.map((entry) => (
               <li
-                className={`slot toc-slot${entry.written ? ' written' : ' empty'}${entry.current ? ' current' : ''}`}
+                className={`toc-row${entry.link ? '' : ' toc-row-empty'}${entry.current ? ' current' : ''}`}
                 key={entry.n}
+                aria-hidden={entry.link || entry.current ? undefined : true}
               >
-                <a
-                  className="slot-inner"
-                  href={entry.href}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    scrollToChapter(entry.n);
-                  }}
-                >
-                  <span className="n">{chapterLabel(entry.n)}</span>
-                  <span className="leader" aria-hidden="true" />
-                  <span className={`t${entry.written ? '' : ' muted'}`}>{entry.label}</span>
-                  {entry.current ? <i className="toc-dot" aria-label="пишется сейчас" /> : null}
-                </a>
+                {entry.link ? (
+                  <a
+                    className="toc-link"
+                    href={entry.href}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      scrollToChapter(entry.n);
+                    }}
+                  >
+                    <span className="toc-num">{chapterLabel(entry.n)}</span>
+                    {entry.text === null ? null : <span className="toc-text">{entry.text}</span>}
+                    {entry.current ? <i className="toc-dot" aria-label="пишется сейчас" /> : null}
+                  </a>
+                ) : (
+                  <span className="toc-line">
+                    <span className="toc-num">{chapterLabel(entry.n)}</span>
+                    {entry.current ? <i className="toc-dot" aria-label="пишется сейчас" /> : null}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
         </div>
       ))}
-
-      <div className="inv-foot">
-        <span>названия берутся из первой строки главы</span>
-        <span>{written === 0 ? 'не начата' : `написано ${written}`}</span>
-      </div>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 /* ============================================================================
-   LIVE — M2: the table of contents, the 0/67 screen, printing, carets,
-   revisions, the ribbon and the ticket. Additive to book.css.
+   LIVE — M2: the table of contents, printing, carets, revisions, the ribbon
+   and the ticket. Additive to book.css.
    ============================================================================ */
 
 /* ---------- the first sheet changes in place, it does not reflow ---------- */
@@ -16,66 +16,85 @@
   }
 }
 
-/* ---------- оглавление: four parts, 67 live rows ---------- */
+/* ---------- оглавление: four parts, 67 rows, no invented labels ---------- */
 .toc {
-  padding-top: 44px;
+  padding: 26px var(--gut) 72px;
+  /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
+  scroll-margin-top: 78px;
 }
-.toc-heading {
-  margin: 16px 0 4px;
-  font-family: var(--serif);
-  font-size: 15px;
-  line-height: 1.35;
-  letter-spacing: 0.06em;
-  text-align: center;
+.toc-label {
+  margin: 0 0 26px;
+  font-family: var(--label);
+  font-size: 10.5px;
+  line-height: 1.3;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--ink-2);
-  text-wrap: balance;
-}
-.toc-part {
-  margin-top: 12px;
 }
 .toc-part-h {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 9px 0 6px;
-  border-bottom: 1px solid var(--rule-2);
+  margin: 0;
+  padding: 26px 0 10px;
   font-family: var(--label);
-  font-size: 9px;
+  font-weight: 400;
+  font-size: 10px;
+  line-height: 1.2;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.toc-part-range {
+.toc-part:first-of-type .toc-part-h {
+  padding-top: 0;
+}
+
+/* An empty row is its numeral: 34px, no link, no rule, nothing to tap. */
+.toc-row-empty {
+  height: 34px;
+}
+.toc-num {
   font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
   letter-spacing: 0.04em;
-  font-size: 9.5px;
-}
-.toc-slot .slot-inner {
-  text-decoration: none;
-  gap: 9px;
-}
-.toc-slot .leader {
-  flex: 0 0 16px;
-  opacity: 0.7;
-}
-.toc-slot .t {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--serif);
-  font-size: 14px;
-  line-height: 1.35;
-  letter-spacing: 0;
-  text-transform: none;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
-  overflow-wrap: break-word;
 }
-.toc-slot .t.muted {
-  font-style: italic;
+.toc-row-empty .toc-num {
+  display: block;
+  line-height: 34px;
   color: var(--ink-3);
 }
-.toc-slot.current .t {
+
+/* The same three columns for a row that opens nothing: the caret dot still has its place. */
+.toc-line {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  column-gap: 12px;
+  align-items: center;
+  height: 34px;
+}
+
+/* A row with text opens its chapter: numeral, title line (or frozen sentence), caret dot. */
+.toc-link {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  column-gap: 12px;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 10px 0;
+  text-decoration: none;
+}
+.toc-link:hover .toc-num,
+.toc-link:focus-visible .toc-num {
   color: var(--live);
+}
+.toc-text {
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 .toc-dot {
   width: 5px;
@@ -86,70 +105,16 @@
   align-self: center;
 }
 
-/* ---------- 0/67: a beginning, not a broken page ---------- */
-.start {
-  padding-top: 40px;
-}
-.start-frame {
-  margin-top: 14px;
-  border: 1px solid var(--rule-2);
-  background: var(--paper-2);
-  padding: 22px 16px 16px;
-}
-.start-line {
-  text-align: center;
-  font-family: var(--serif);
-  font-size: 19px;
-  letter-spacing: 0.02em;
-  color: var(--ink);
-}
-.start-sub {
-  text-align: center;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--ink-2);
-  margin-top: 5px;
-}
-.start-spine {
-  position: relative;
-  height: 4px;
-  margin: 22px 0 18px;
-  background: var(--paper-3);
-}
-.start-spine::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(45deg, var(--rule) 0 0.5px, transparent 0.5px 4px);
-  opacity: 0.6;
-}
-.start-spine .caret {
-  position: absolute;
-  top: -3px;
-  left: 0;
-  width: 2px;
-  height: 10px;
-  background: var(--live);
-  animation: blink 1.06s steps(1, end) infinite;
-}
-.start-spine .caret.right {
-  left: auto;
-  right: 0;
-}
-.facts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px 14px;
-  list-style: none;
-  margin: 0;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--rule);
-  font-family: var(--label);
-  font-size: 9px;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+/* ---------- the chapter caret blinks only while its lane writes (§11.3–11.4) ---------- */
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ---------- empty chapter slots: slim, quiet, always present ---------- */

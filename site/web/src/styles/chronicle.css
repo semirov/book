@@ -11,6 +11,9 @@
   padding-bottom: 10px;
 }
 .views-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font-family: var(--label);
   font-size: var(--fs-label);
   letter-spacing: 0.08em;

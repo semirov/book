@@ -1,23 +1,30 @@
 /**
  * The live table of contents (ARCHITECTURE.md §6C.7, §11.8): four numbered parts, 67
- * entries, each entry `number · title` when the chapter has a title line and
- * `number · Глава N` in muted italics when the slot is empty or untitled.
+ * entries. A row's text is derived, never generated (BOOK-DOC-5 §4): a written chapter
+ * shows its title line verbatim, a basis slot shows its frozen frame sentence verbatim, and
+ * an empty slot shows nothing at all — the numeral is the entire row. There is no
+ * «Глава N» fallback: an invented title is an invented chapter.
  *
  * Derived on every change from the catalog; nothing here is stored, and the TOC can never
  * disagree with the chapter list because both read the same rows.
  */
 
-import { PART_RANGES, type CatalogEntry, type StateSnapshot, type TocEntry } from '@book/shared';
+import { frameSentenceOf, PART_RANGES, type CatalogEntry, type StateSnapshot, type TocEntry } from '@book/shared';
 
-export type TocSource = Pick<CatalogEntry, 'n' | 'part' | 'title' | 'written' | 'rev'>;
+export type TocSource = Pick<CatalogEntry, 'n' | 'part' | 'title' | 'written' | 'rev'> & {
+  /** A slot that holds only its basis sentence (ch01/ch67, BOOK-6). */
+  basis?: boolean;
+};
 
 export type TocEntryView = {
   n: number;
   title: string | null;
   written: boolean;
   rev: number;
-  /** The visible label: the live title line, or «Глава N» for an empty/untitled slot. */
-  label: string;
+  /** The row's text: a title line, a frozen sentence, or nothing. */
+  text: string | null;
+  /** A row is a link when it opens prose — a written chapter or a basis sentence. */
+  link: boolean;
   /** The chapter the writer's caret is in — a dot in the TOC, not a caret in the prose. */
   current: boolean;
   href: string;
@@ -36,18 +43,28 @@ export type TocPart = {
 
 const NUMERALS: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
-/** A chapter without a title line still publishes; its slot is labelled, never blank. */
-export function slotLabel(n: number, title: string | null): string {
-  return title !== null && title.trim().length > 0 ? title : `Глава ${n}`;
+/** The title line of a chapter, or nothing — a slot never gets a label it did not write. */
+export function slotLabel(title: string | null): string {
+  return title !== null && title.trim().length > 0 ? title : '';
+}
+
+/** The text a row carries: title line, frozen frame of a basis slot, or nothing (§4). */
+export function slotText(entry: TocSource): string | null {
+  if (entry.written) return slotLabel(entry.title) || null;
+  if (entry.basis === true) return frameSentenceOf(entry.n);
+  return null;
 }
 
 export function tocEntry(entry: TocSource, currentChapter: number | null): TocEntryView {
+  const text = slotText(entry);
   return {
     n: entry.n,
     title: entry.title,
     written: entry.written,
     rev: entry.rev,
-    label: slotLabel(entry.n, entry.title),
+    text,
+    // A written chapter with a broken title line still opens: the row keeps its prose.
+    link: entry.written || text !== null,
     current: currentChapter === entry.n,
     href: `#ch-${entry.n}`,
   };
@@ -84,11 +101,6 @@ export function writtenCount(catalog: readonly TocSource[]): number {
 export function currentChapterOf(state: StateSnapshot | null): number | null {
   const current = state?.current ?? null;
   return current !== null && current.chapter !== 'front' ? current.chapter : null;
-}
-
-/** The TOC's own heading is the live title, smaller than on the cover. */
-export function tocHeading(state: StateSnapshot): string | null {
-  return state.front.title;
 }
 
 /** A `state.toc` entry is already a view; this keeps the component and the server in step. */

@@ -6,9 +6,7 @@ import {
   chapterPercent,
   liveChapter,
   revisingChapter,
-  spineAriaLabel,
   spineMarkers,
-  writtenRanges,
 } from './spine.ts';
 
 function state(overrides: Record<string, unknown> = {}): StateSnapshot {
@@ -121,36 +119,7 @@ describe('book geometry', () => {
   });
 });
 
-describe('writtenRanges', () => {
-  it('summarises the two fronts', () => {
-    expect(
-      writtenRanges(
-        state({
-          chapters: { total: 67, written: [1, 2, 3, 66, 67], empty: [], count: 5, totalChars: 0 },
-        }),
-      ),
-    ).toBe('1—3, 66—67');
-  });
-
-  it('handles a single chapter and a full middle', () => {
-    expect(writtenRanges(state({ chapters: { total: 67, written: [34], empty: [], count: 1, totalChars: 0 } }))).toBe('34');
-    expect(
-      writtenRanges(state({ chapters: { total: 67, written: [1, 2, 3], empty: [], count: 3, totalChars: 0 } })),
-    ).toBe('1—3');
-  });
-});
-
-describe('labels', () => {
-  it('says the book is beginning at 0/67', () => {
-    expect(spineAriaLabel(state())).toBe('написано 0 из 67 глав; книга начинается с чистого листа');
-  });
-
-  it('names the written ranges', () => {
-    expect(
-      spineAriaLabel(state({ chapters: { total: 67, written: [1, 2], empty: [], count: 2, totalChars: 0 } })),
-    ).toBe('написано 2 из 67 глав: 1—2');
-  });
-
+describe('chrome copy', () => {
   it('does not call a cascade a drafting position', () => {
     const cascading = state({
       current: { lane: 'forward', chapter: 9, kind: 'cascade', blockId: null, blockIndex: null, since: '' },

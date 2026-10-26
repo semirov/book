@@ -30,7 +30,6 @@ import {
   getState,
 } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
-import { Annotation } from './components/Annotation.tsx';
 import { EndMatter } from './components/EndMatter.tsx';
 import { ChangeCard } from './components/ChangeCard.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
@@ -40,11 +39,9 @@ import { ChapterArticle } from './components/ChapterArticle.tsx';
 import { FocusView } from './components/FocusView.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
-import { EmptyState } from './components/EmptyState.tsx';
-import { Header } from './components/Header.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
+import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
-import { TitleSheet } from './components/TitleSheet.tsx';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -59,12 +56,14 @@ import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { useChangeCard } from './useChangeCard.ts';
+import { usePageTitle } from './usePageTitle.ts';
 import { useFocusMode } from './useFocus.ts';
 
 /**
- * One page, the book in order (ARCHITECTURE §11.2): cover → page 2 → live TOC → 67 chapter
- * slots (empty ones are slim, designed slots) → discussion → colophon. Every catalog slot
- * exists from the first paint; prose is fetched when a chapter comes within 1.5 viewports.
+ * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
+ * instrument strip → live TOC → 67 chapter slots (empty ones are slim, designed slots) →
+ * discussion → colophon. Every catalog slot exists from the first paint; prose is fetched
+ * when a chapter comes within 1.5 viewports.
  *
  * Live updates arrive on `/ws` and are merged by `rev`, never by arrival order. A reconnect
  * is healed by `hello`, which carries the catalog, the first sheet and the snapshot in one
@@ -99,6 +98,7 @@ export function App() {
    */
   const card = useChangeCard();
   const focus = useFocusMode(card.close);
+  usePageTitle(data?.front.title ?? null);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
   const timers = useRef<number[]>([]);
@@ -438,17 +438,17 @@ export function App() {
 
   return (
     <>
-      {views}
-      <Header
+      <Opening
+        front={front}
         state={state}
         ribbon={ribbon}
-        markers={escalationMarkers(state.unresolved)}
+        escalation={escalationMarkers(state.unresolved)}
         onOpenChange={card.open}
+        view={view}
+        onViewChange={setView}
+        motion={titleMotion}
       />
-      <TitleSheet state={state} front={front} motion={titleMotion} />
-      <Annotation front={front} />
-      <EmptyState state={state} />
-      <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} motion={titleMotion} />
+      <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
       <main>
         {catalog.map((entry) => {
           const forwardCaret = markers.carets.forward === entry.n;
@@ -484,7 +484,7 @@ export function App() {
         chapters={catalog}
         onPosted={() => void refreshComments()}
       />
-      <Colophon state={state} />
+      <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}
       {chainLoading || chain !== null ? (
         <ParagraphChain chain={chain} loading={chainLoading} onClose={() => setChain(null)} />

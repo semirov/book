@@ -202,7 +202,7 @@ export function Composer({
         >
           {written.map((entry) => (
             <option key={entry.n} value={entry.n}>
-              {entry.n}. {entry.title ?? `Глава ${entry.n}`}
+              {entry.title === null ? `${entry.n}.` : `${entry.n}. ${entry.title}`}
             </option>
           ))}
         </select>

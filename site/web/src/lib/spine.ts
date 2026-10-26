@@ -1,13 +1,15 @@
 /**
- * The spine bar (ARCHITECTURE.md §11.2, §11.3, §11.7; DESIGN §5.3, §7.2).
+ * The spine geometry (ARCHITECTURE.md §11.2, §11.3, §11.7; DESIGN §5.3, §7.2).
  *
- * The spine is the two-front shape of the book: a fill from each end, a hollow middle,
- * a hairline at 34|35 where the halves will meet, two carets (one per drafting lane, never
- * one "book cursor"), and — only while a cascade runs — a faint band over the chapters it
- * touches. It is not a percentage of progress; the middle is the unfinished book.
+ * The two-front shape of the book: a fill from each end, a hollow middle, a hairline at
+ * 34|35 where the halves meet, and — only while a cascade runs — a faint band over the
+ * chapters it touches. It is not a percentage of progress; the middle is the unfinished book.
+ *
+ * The ribbon itself was withdrawn from the front (BOOK-DOC-5 §5): no bar, no seam, no carets
+ * at 0/67. What remains here is the geometry the chapter carets and the cascade band read.
  */
 
-import { FORWARD_LAST, TOTAL_CHAPTERS, allChapterNumbers, type Lane, type StateSnapshot } from '@book/shared';
+import { FORWARD_LAST, TOTAL_CHAPTERS, type Lane, type StateSnapshot } from '@book/shared';
 
 export type SpineCascade = {
   from: number;
@@ -90,33 +92,6 @@ export function bandStyle(cascade: SpineCascade): { left: string; width: string 
   const left = chapterPercent(cascade.from);
   const right = chapterPercent(cascade.to);
   return { left: `${left}%`, width: `${Math.max(0.4, right - left)}%` };
-}
-
-/** The written runs, e.g. `1—8, 66—67`; used by `aria-label` and the operator view. */
-export function writtenRanges(state: StateSnapshot): string {
-  const written = new Set(state.chapters.written);
-  const ranges: string[] = [];
-  let start: number | null = null;
-  for (const n of allChapterNumbers()) {
-    if (written.has(n)) {
-      if (start === null) start = n;
-      continue;
-    }
-    if (start !== null) {
-      ranges.push(start === n - 1 ? String(start) : `${start}—${n - 1}`);
-      start = null;
-    }
-  }
-  if (start !== null) ranges.push(start === TOTAL_CHAPTERS ? String(start) : `${start}—${TOTAL_CHAPTERS}`);
-  return ranges.join(', ');
-}
-
-export function spineAriaLabel(state: StateSnapshot): string {
-  const markers = spineMarkers(state);
-  const head = `написано ${state.chapters.count} из ${TOTAL_CHAPTERS} глав`;
-  if (markers.empty) return `${head}; книга начинается с чистого листа`;
-  const ranges = writtenRanges(state);
-  return ranges.length > 0 ? `${head}: ${ranges}` : head;
 }
 
 /** The draft cursor's chapter for the header chip and the «пишется глава N» copy. */
