@@ -41,7 +41,8 @@ only**: a slot holding nothing but the frozen frame of ch01/ch67 has no length a
 The editor checks causality against a light **derived index** — entities, mentions, promises, time
 markers, contradictions — computed from the text, never a canonical graph. It may err; it is a tool for
 the editor and a source for the public chronicle («вмешательство изменило статус документа X в главах
-12, 19, 44»), never a plot plan.
+12, 19, 44»), never a plot plan. Its narrative role: it finds not just contradictions, but **material for
+дела** — the retroactive documents that give a changed past its cause.
 
 ## The frozen frame and the empty book (owner, 2026-10-26)
 

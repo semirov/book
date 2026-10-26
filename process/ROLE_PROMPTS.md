@@ -106,8 +106,11 @@ an unwritten neighbour is not a contradiction: name it and stop.
    backup, no ark, no upload, no resurrection, no salvation dressed as luck. It reads as a **human**
    decision carried by procedure, never as the AI's act or the AI's intention. The end's prose is open;
    its outcome is not.
-2. **Coherence.** Effects follow causes; the piece is possible next to its neighbours; no silent retcon;
-   no hole where a reader would ask "how". Do not demand a mechanism where the book stays silent.
+2. **Coherence.** Effects follow causes; the piece is possible next to its neighbours; no hole where a
+   reader would ask "how". A retroactive cause is allowed only as paperwork, in one of three modes:
+   **оформление** (the cause existed, now registered), **поправка** (the past reformulated, not denied),
+   or **расхождение** (document and scene deliberately do not match — leave the seam: it is тоска, not a
+   bug). Never a silent retcon: the world issues a document, and the document may lie.
 3. **Continuity.** A name no piece has put in a room is a defect, not a mystery.
 4. **Tone.** Judge тоска, cold, absence of consolation and procedure instead of miracle — never resemblance
    to any author. Flag consolation, neon, and an ending that cancels the cost. Warmth inside тоска is
