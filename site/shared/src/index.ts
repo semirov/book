@@ -17,7 +17,6 @@ export * from './intent.ts';
  */
 export { runValidation, recordedNames } from './validate/rules.ts';
 export { compilePatterns } from './validate/denylist.ts';
-export { checkPromptNames, promptGuardNames } from './validate/prompts.ts';
 export { checkCommitScope, commitSubject, isBookFile, isSweep, stagedBookFiles, DOSSIERS_FILE, SWEEP_PREFIX } from './validate/commit.ts';
 export type {
   // `Finding` is already `change.ts`'s (a gate's finding); the validator's own record of a

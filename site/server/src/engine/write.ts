@@ -12,6 +12,7 @@
 
 import {
   CHAPTER_CHARS,
+  FRONT_ANNOTATION_FROZEN,
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
   type Relevance,
@@ -19,7 +20,9 @@ import {
 
 import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
 import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
+import { getFrontRow } from '../db/repo/front.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
+import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { changeForStep, measureDelta, safeJson } from './helpers.ts';
@@ -251,6 +254,19 @@ export function createWriteOps(deps: EngineDeps) {
     }
 
     if (step.pass === 'front') {
+      // Page 2 is the owner's basis (BOOK-DOC-6): a wave may retitle the book, never rewrite
+      // the annotation. The published annotation is the reference — a file whose annotation
+      // hash differs is refused here by name, before any shape check can pass it through.
+      const published = getFrontRow(db);
+      const basis = published !== undefined && published.about.length > 0 ? published.about : null;
+      if (basis !== null && front !== null && front.aboutSha256 !== sha256Hex(basis)) {
+        refuse(
+          FRONT_ANNOTATION_FROZEN,
+          409,
+          'страница 2 — основа: волна может изменить только название',
+          { annotationSha256: sha256Hex(basis) },
+        );
+      }
       if (front === null || !front.exists || front.title === null || front.about === null) {
         refuse('INVALID_FRONT', 422, 'the first sheet needs a title ≤80 chars and an annotation of 300–900 chars', {
           problems: front?.problems ?? [],

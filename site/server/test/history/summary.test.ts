@@ -29,20 +29,21 @@ describe('one line per fact (§11.10)', () => {
     );
   });
 
-  it('describes the first sheet without pretending it is a chapter', () => {
-    expect(summarize(subject({ isFront: true, chapter: null, kind: 'front.revised', payload: { changed: { title: true } } }))).toBe(
-      'название изменилось правкой 7 (Аня)',
-    );
+  it('describes the first sheet as a title revision, never a page-2 edit', () => {
+    expect(
+      summarize(subject({ isFront: true, chapter: null, kind: 'front.revised', payload: { title: 'Новое', titleChanged: true } })),
+    ).toBe('название изменилось правкой 7 (Аня)');
+    // A file that only tried to rewrite page 2 is a refused attempt, not a title revision.
     expect(
       summarize(
         subject({
           isFront: true,
           chapter: null,
           kind: 'front.revised',
-          payload: { changed: { title: true, about: true } },
+          payload: { title: 'То же', titleChanged: false, annotationRejected: 'FRONT_ANNOTATION_FROZEN' },
         }),
       ),
-    ).toBe('название и «о чём эта книга» изменены правкой 7 (Аня)');
+    ).toBe('страница 2 — основа: переписать не дали правкой 7 (Аня)');
   });
 
   it('never repeats a gate finding: a verdict is only «замечание сохранено»', () => {

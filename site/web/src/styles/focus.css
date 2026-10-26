@@ -16,7 +16,7 @@ body.is-focus {
   display: flex;
   justify-content: center;
   background: rgba(10, 12, 14, 0.78);
-  color: #e9e8e2;
+  color: #cfd3d2;
   overflow: hidden;
 }
 .focus-panel {
@@ -25,8 +25,8 @@ body.is-focus {
   width: min(640px, 100%);
   height: 100dvh;
   background: #14171a;
-  border-left: 1px solid rgba(233, 232, 226, 0.1);
-  border-right: 1px solid rgba(233, 232, 226, 0.1);
+  border-left: 1px solid rgba(207, 211, 210, 0.1);
+  border-right: 1px solid rgba(207, 211, 210, 0.1);
 }
 
 /* ---------- top bar ---------- */
@@ -36,7 +36,7 @@ body.is-focus {
   gap: 12px;
   flex: 0 0 auto;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-  border-bottom: 1px solid rgba(233, 232, 226, 0.17);
+  border-bottom: 1px solid rgba(207, 211, 210, 0.17);
 }
 .focus-tag,
 .focus-n {
@@ -50,7 +50,7 @@ body.is-focus {
 }
 .focus-n {
   flex: 1;
-  color: #e9e8e2;
+  color: #cfd3d2;
 }
 .focus-exit {
   min-width: 44px;
@@ -85,13 +85,15 @@ body.is-focus {
   padding: 5px;
 }
 .focus-paper {
-  --paper: #f4f2ec;
-  --ink: #16181a;
-  --ink-2: #4e5357;
-  --ink-3: #64686a;
-  --rule: #c7c6be;
-  --rule-2: #a6a79e;
-  --live: #2e6274;
+  /* The lit sheet is the day sheet (BOOK-DOC-6): concrete, not paper — the same palette the
+     reader left, so the focus panel never reintroduces the beige the owner removed. */
+  --paper: #cfd3d2;
+  --ink: #14171a;
+  --ink-2: #4e5455;
+  --ink-3: #565b5c;
+  --rule: #a6adac;
+  --rule-2: #8b9291;
+  --live: #2a5c6d;
   min-height: 150px;
   padding: 18px 20px;
   background: var(--paper);
@@ -109,7 +111,7 @@ body.is-focus {
 .focus-removed {
   margin: 0.9em 0 0;
   padding-top: 0.5em;
-  border-top: 1px dashed var(--rule-2, #a6a79e);
+  border-top: 1px dashed var(--rule-2, #8b9291);
   font-family: var(--label);
   font-size: 9px;
   letter-spacing: 0.14em;
@@ -130,7 +132,7 @@ body.is-focus {
   height: 1.05em;
   margin-left: 2px;
   vertical-align: -0.15em;
-  background: #2e6274;
+  background: #2a5c6d;
   animation: focus-caret 1s steps(1) infinite;
 }
 @keyframes focus-caret {
@@ -208,7 +210,7 @@ body.is-focus {
   left: 0;
   right: 0;
   height: 1px;
-  background: rgba(233, 232, 226, 0.22);
+  background: rgba(207, 211, 210, 0.22);
 }
 .focus-link {
   position: absolute;
@@ -223,7 +225,7 @@ body.is-focus {
   width: 1px;
   height: 7px;
   margin-left: -0.5px;
-  background: rgba(233, 232, 226, 0.34);
+  background: rgba(207, 211, 210, 0.34);
 }
 .focus-tick-label {
   position: absolute;
@@ -239,7 +241,7 @@ body.is-focus {
   width: 1px;
   height: 13px;
   margin-left: -0.5px;
-  background: #e9e8e2;
+  background: #cfd3d2;
 }
 .focus-ring {
   position: absolute;
@@ -267,14 +269,14 @@ body.is-focus {
   margin-top: 12px;
   padding: 10px 12px 12px;
   background: #191c1f;
-  border-top: 1px solid rgba(233, 232, 226, 0.17);
+  border-top: 1px solid rgba(207, 211, 210, 0.17);
 }
 .focus-note-h {
   display: flex;
   align-items: baseline;
   gap: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(233, 232, 226, 0.17);
+  border-bottom: 1px solid rgba(207, 211, 210, 0.17);
   font-family: var(--label);
   font-size: 9px;
   letter-spacing: 0.16em;
@@ -295,7 +297,7 @@ body.is-focus {
   grid-template-columns: 92px 1fr;
   gap: 10px;
   padding: 6px 0;
-  border-top: 1px solid rgba(233, 232, 226, 0.08);
+  border-top: 1px solid rgba(207, 211, 210, 0.08);
 }
 .focus-rows > div:first-child {
   border-top: 0;
@@ -312,7 +314,7 @@ body.is-focus {
   font-family: var(--serif);
   font-size: 13.5px;
   line-height: 1.45;
-  color: #e9e8e2;
+  color: #cfd3d2;
 }
 .focus-intent {
   font-style: italic;
@@ -346,13 +348,13 @@ body.is-focus {
   min-height: 26px;
 }
 .focus-steps button.is-on {
-  color: #e9e8e2;
+  color: #cfd3d2;
   border-bottom-color: #6f9bb5;
 }
 .focus-reason {
   margin: 8px 0 0;
   padding-top: 8px;
-  border-top: 1px solid rgba(233, 232, 226, 0.08);
+  border-top: 1px solid rgba(207, 211, 210, 0.08);
   font-family: var(--serif);
   font-style: italic;
   font-size: 12.5px;
@@ -367,17 +369,17 @@ body.is-focus {
   gap: 8px;
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   background: #14171a;
-  border-top: 1px solid rgba(233, 232, 226, 0.17);
+  border-top: 1px solid rgba(207, 211, 210, 0.17);
 }
 .focus-action {
   flex: 1;
   min-height: 44px;
-  border: 1px solid rgba(233, 232, 226, 0.35);
+  border: 1px solid rgba(207, 211, 210, 0.35);
   font-family: var(--label);
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #e9e8e2;
+  color: #cfd3d2;
 }
 .focus-action.is-on {
   border-color: #6f9bb5;
@@ -391,7 +393,7 @@ body.is-focus {
   }
   .focus-panel {
     height: min(92dvh, 920px);
-    border: 1px solid rgba(233, 232, 226, 0.17);
+    border: 1px solid rgba(207, 211, 210, 0.17);
   }
 }
 @media (prefers-reduced-motion: reduce) {

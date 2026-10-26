@@ -2,10 +2,18 @@
  * One observed `00-front.md` → the live title and page 2 (§6C.2, F021) and one front
  * revision in the log (§6F.2).
  *
+ * The title line is a slot; the annotation is basis (BOOK-DOC-6). Once page 2 has been
+ * published, a file whose annotation differs is published as a **title-only** revision: the
+ * stored annotation wins, page 2 never changes, and the event names the rejected rewrite
+ * (`FRONT_ANNOTATION_FROZEN`) so the pass that wrote it can be refused at the engine gate.
+ *
  * A malformed first sheet is stored as empty strings, never as a fabricated title or
- * blurb: the cover falls back to the site's own word «Книга» and page 2 renders nothing.
- * The problems are returned so `/healthz`/the admin view can report F021.
+ * blurb: the cover falls back to the site's own word «Книга» — and a malformed rewrite never
+ * blanks an annotation that already stands. The problems are returned so `/healthz`/the
+ * admin view can report F021.
  */
+
+import { FRONT_ANNOTATION_FROZEN } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { getFrontRow, upsertFrontRow } from '../db/repo/front.ts';
@@ -33,23 +41,29 @@ export type ApplyFrontResult =
       about: string | null;
       rev: number;
       previousRev: number;
-      changed: { title: boolean; about: boolean };
       problems: string[];
       updatedAt: string;
       /** The log entry this revision produced, and who caused it (§6F.1). */
       hseq: number;
       cause: WriteCause;
       actor: WriteActor;
+      /** Set when the file tried to rewrite page 2: the stored annotation wins. */
+      annotationRejected: typeof FRONT_ANNOTATION_FROZEN | null;
     };
 
 export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
   const { db } = input;
   const parsed = parseFront(input.raw);
   const existing = getFrontRow(db);
-  // Any F021 fault hides page 2 — the site never shows a blurb from a malformed sheet
-  // (§11.8) — while a valid title still carries the cover.
+  // Any F021 fault hides a *new* annotation — the site never shows a blurb from a malformed
+  // sheet (§11.8) — while a valid title still carries the cover.
   const title = parsed.title ?? '';
-  const about = parsed.problems.length > 0 ? '' : (parsed.about ?? '');
+  const written = parsed.problems.length > 0 ? '' : (parsed.about ?? '');
+  // Page 2 is basis: the annotation published once is the one page 2 keeps, whatever a later
+  // file says. A first valid landing establishes it; after that it is frozen for good.
+  const basis = existing !== undefined && existing.about.length > 0 ? existing.about : null;
+  const about = basis ?? written;
+  const annotationRejected = basis !== null && written !== basis ? FRONT_ANNOTATION_FROZEN : null;
   const updatedAt = toIso(Math.min(input.mtimeMs, input.nowMs));
 
   if (existing !== undefined && existing.sha256 === parsed.sha256) {
@@ -64,10 +78,7 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
 
   const previousRev = existing?.rev ?? 0;
   const rev = previousRev + 1;
-  const changed = {
-    title: (existing?.title ?? '') !== title,
-    about: (existing?.about ?? '') !== about,
-  };
+  const titleChanged = (existing?.title ?? '') !== title;
   const cause = input.cause ?? frontWriteCause(db, input.nowMs);
   const actor = actorForCause(db, cause);
 
@@ -86,7 +97,13 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
         authorKind: actor.kind,
         identityId: actor.identityId,
         authorLabel: actor.label,
-        payload: { title, changed, sha256: parsed.sha256, aboutChars: about.length },
+        payload: {
+          title,
+          titleChanged,
+          sha256: parsed.sha256,
+          aboutChars: about.length,
+          ...(annotationRejected === null ? {} : { annotationRejected }),
+        },
       },
       input.nowMs,
     );
@@ -110,12 +127,12 @@ export function applyFrontFile(input: ApplyFrontInput): ApplyFrontResult {
       about: about.length > 0 ? about : null,
       rev,
       previousRev,
-      changed,
       problems: parsed.problems,
       updatedAt,
       hseq,
       cause,
       actor,
+      annotationRejected,
     };
   });
 

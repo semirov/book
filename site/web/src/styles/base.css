@@ -24,19 +24,7 @@ body {
     background var(--dur-fade) var(--ease-inout),
     color var(--dur-fade) var(--ease-inout);
 }
-/* paper grain — 4% of nothing, and it changes everything */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.86' numOctaves='2' stitchTiles='stitch'/></filter><rect width='150' height='150' filter='url(%23n)' opacity='.6'/></svg>");
-}
-[data-theme='night'] body::after {
-  opacity: 0.055;
-}
+/* the sheet is concrete: no grain, no paper texture, no beige */
 ::selection {
   background: var(--live);
   color: var(--paper);

@@ -22,8 +22,7 @@ export const IDLE_TITLE: TitleMotion = { token: 0, mode: 'none' };
 
 export function nextTitleMotion(previous: TitleMotion, event: FrontUpdatedPayload | null): TitleMotion {
   if (event === null) return previous;
-  // Only a title change animates the title; an annotation-only rewrite fades page 2.
-  if (!event.changed.title) return previous;
+  // A front revision is a title revision (BOOK-DOC-6): page 2 never moves, so any event animates.
   return {
     token: previous.token + 1,
     mode: event.cause.kind === 'cascade' ? 'ripple' : 'fade',

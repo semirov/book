@@ -1,10 +1,12 @@
 /**
- * `manuscript/00-front.md` → the live title and the live annotation (§6C.2).
+ * `manuscript/00-front.md` → the live title and page 2 (§6C.2).
  *
- * One file, one lease, one `front` step: page 1 and page 2 are rewritten together so a
- * cover can never promise a book the annotation no longer describes. The parser is the
- * validator's parser (`parseFrontMatter`), because a second reader of the first sheet
- * would eventually disagree with F021 about what a valid first sheet is.
+ * One file, one lease, one `front` step — but only the title line is a target: page 2 is
+ * the owner's annotation, basis like the frozen frame (BOOK-DOC-6). The title may change on
+ * every wave; the annotation may not change at all, so `aboutSha256` is what a pass is
+ * measured against (`FRONT_ANNOTATION_FROZEN`, `engine/write.ts`). The parser is the
+ * validator's parser (`parseFrontMatter`), because a second reader of the first sheet would
+ * eventually disagree with F021 about what a valid first sheet is.
  */
 
 import { normalizeBookText, parseFrontMatter } from '@book/shared';
@@ -23,6 +25,11 @@ export type ParsedFront = {
   /** Normalized full text — what the snapshot and the hash are taken over. */
   text: string;
   sha256: string;
+  /**
+   * The annotation region exactly as parsed (blocks joined), hashed. This is the basis hash:
+   * it survives every title rewrite and a pass that changes it is refused.
+   */
+  aboutSha256: string;
 };
 
 export function parseFront(raw: string): ParsedFront {
@@ -36,5 +43,7 @@ export function parseFront(raw: string): ParsedFront {
     problems: parsed.problems,
     text,
     sha256: sha256Hex(text),
+    // Hashed even when F021 rejects the annotation: a malformed rewrite is still a rewrite.
+    aboutSha256: sha256Hex(parsed.blocks.join('\n\n')),
   };
 }

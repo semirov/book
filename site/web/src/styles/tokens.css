@@ -125,25 +125,28 @@
 }
 
 :root {
-  /* paper / ink — day ("бланк") */  --paper: #e9e8e2;
-  --paper-2: #f1f0ea;
-  --paper-3: #deddd4;
-  --ink: #16181a;
-  --ink-2: #4e5357;
-  --ink-3: #64686a;
-  --rule: #c7c6be;
-  --rule-2: #a6a79e;
+  /* concrete / ink — day («бланк»): a cool grey sheet, no paper tint, no grain.
+     Contrast on `--paper` (WCAG 2.2, normal text ≥4.5): ink 11.9, ink-2 5.1, ink-3 4.6,
+     live 4.9, revise 4.8 — the palette is measured, not eyeballed. */
+  --paper: #cfd3d2;
+  --paper-2: #dde1e0; /* raised: a panel, a hover, a field */
+  --paper-3: #c2c7c6; /* recessed */
+  --ink: #14171a;
+  --ink-2: #4e5455;
+  --ink-3: #565b5c; /* labels only: numerals of an empty slot take --ink (BOOK-DOC-6) */
+  --rule: #a6adac; /* the hairline */
+  --rule-2: #8b9291;
 
   /* live accent — cold steel, the caret, anything happening now */
-  --live: #2e6274;
-  --live-bg: rgba(46, 98, 116, 0.07);
+  --live: #2a5c6d;
+  --live-bg: rgba(42, 92, 109, 0.07);
 
   /* revision — muted ochre, nothing to do with "warning" */
-  --revise: #8a5a1c;
-  --revise-bg: rgba(138, 90, 28, 0.075);
+  --revise: #7a4e14;
+  --revise-bg: rgba(122, 78, 20, 0.075);
 
-  --scrim: rgba(22, 24, 26, 0.46);
-  --shadow: 0 30px 60px -44px rgba(22, 24, 26, 0.55);
+  --scrim: rgba(20, 23, 26, 0.46);
+  --shadow: 0 30px 60px -44px rgba(20, 23, 26, 0.55);
 
   /* type */
   --serif: 'PT Serif', Literata, Georgia, 'Times New Roman', serif;
@@ -171,8 +174,9 @@
 }
 
 [data-theme='night'] {
-  --paper: #0f1113;
-  --paper-2: #15181b;
+  /* «Трасса»: the same instrument after dark, asphalt not beige. */
+  --paper: #0b0c0d;
+  --paper-2: #14171a;
   --paper-3: #1b1f22;
   --ink: #e8e6e1;
   --ink-2: #b0b2ae;

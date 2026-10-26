@@ -189,7 +189,7 @@ export type FrontUpdatedPayload = {
   about: string | null;
   rev: number;
   previousRev: number;
-  changed: { title: boolean; about: boolean };
+  /** The title is the only field a front revision may carry (BOOK-DOC-6); `about` never moves. */
   cause: { kind: string; changeId: string | null; cascadeId: string | null; stepId: string | null };
 };
 

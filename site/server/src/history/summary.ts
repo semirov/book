@@ -81,13 +81,13 @@ export function summarize(subject: SummarySubject): string {
     }
     case 'chapter.restored':
       return `${where} восстановлена из прежней ревизии`;
-    case 'front.revised': {
-      const changed = subject.payload.changed as { title?: boolean; about?: boolean } | undefined;
-      if (changed?.title === true && changed.about === true) return `название и «о чём эта книга» изменены${by}`;
-      if (changed?.title === true) return `название изменилось${by}`;
-      if (changed?.about === true) return `«о чём эта книга» изменилось${by}`;
-      return `первая страница переписана${by}`;
-    }
+    case 'front.revised':
+      // Page 2 is basis (BOOK-DOC-6): a front revision is a title revision. The only other
+      // fact the log can carry is a refused attempt to rewrite the annotation.
+      if (subject.payload.titleChanged === false && subject.payload.annotationRejected !== undefined) {
+        return `страница 2 — основа: переписать не дали${by}`;
+      }
+      return `название изменилось${by}`;
     case 'change.queued':
       return `правка ${subject.changeSeq ?? '?'} встала в очередь`;
     case 'change.processing':

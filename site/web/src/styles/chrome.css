@@ -63,13 +63,15 @@
 
 /* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
 .titul {
-  /* `64vh` first: a browser without `svh` keeps the field; §2 sizes it on the small viewport. */
-  min-height: 64vh;
-  min-height: 64svh;
+  /* `67.5vh` first: a browser without `svh` keeps the field; §2 sizes it on the small viewport.
+     The field is 67.5% of the screen so the title's baseline lands at ≈465 of 844 (the lower
+     third), the caption sits 8 px above the field, and page 2 still peeks below the fold. */
+  min-height: 67.5vh;
+  min-height: 67.5svh;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: calc(env(safe-area-inset-top) + 24px) var(--gut) 56px;
+  padding: calc(env(safe-area-inset-top) + 24px) var(--gut) 8px;
   text-align: left;
 }
 .title {

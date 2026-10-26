@@ -343,7 +343,6 @@ export class ManuscriptWatcher {
         about: result.about,
         rev: result.rev,
         previousRev: result.previousRev,
-        changed: result.changed,
         cause: frontCausePayload(frontWriteCause(this.db, this.now().getTime())),
       },
     });
@@ -366,7 +365,6 @@ export class ManuscriptWatcher {
         about: null,
         rev: 0,
         previousRev: result.rev,
-        changed: { title: true, about: true },
         cause: { kind: 'operator', changeId: null, cascadeId: null, stepId: null },
       },
     });

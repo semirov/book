@@ -9,7 +9,6 @@ function event(overrides: Partial<FrontUpdatedPayload> = {}): FrontUpdatedPayloa
     about: 'Аннотация',
     rev: 2,
     previousRev: 1,
-    changed: { title: true, about: false },
     cause: { kind: 'cascade', changeId: 'chg_1', cascadeId: 'csc_1', stepId: 'stp_1' },
     ...overrides,
   };
@@ -32,11 +31,6 @@ describe('nextTitleMotion', () => {
     const motion = nextTitleMotion(IDLE_TITLE, event({ cause: { kind: 'edit', changeId: null, cascadeId: null, stepId: null } }));
     expect(motion).toEqual({ token: 1, mode: 'fade' });
     expect(titleMotionClass(motion)).toBe('title-fade');
-  });
-
-  it('does not animate when only the annotation changed', () => {
-    const motion = nextTitleMotion({ token: 4, mode: 'ripple' }, event({ changed: { title: false, about: true } }));
-    expect(motion).toEqual({ token: 4, mode: 'ripple' });
   });
 
   it('stays idle without an event', () => {

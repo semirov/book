@@ -71,12 +71,12 @@ describe('applyTheme', () => {
     const environment = stubThemeEnvironment({});
     applyTheme('night');
     expect(environment.attributes['data-theme']).toBe('night');
-    expect(environment.themeMeta.setAttribute).toHaveBeenCalledWith('content', '#0F1113');
+    expect(environment.themeMeta.setAttribute).toHaveBeenCalledWith('content', '#0B0C0D');
     expect(environment.store.set).toEqual(['night']);
 
     applyTheme('day');
     expect(environment.attributes['data-theme']).toBe('day');
-    expect(environment.themeMeta.setAttribute).toHaveBeenLastCalledWith('content', '#E9E8E2');
+    expect(environment.themeMeta.setAttribute).toHaveBeenLastCalledWith('content', '#CFD3D2');
   });
 });
 

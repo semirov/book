@@ -17,5 +17,5 @@
   }
   document.documentElement.setAttribute('data-theme', theme);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'night' ? '#0F1113' : '#E9E8E2');
+  if (meta) meta.setAttribute('content', theme === 'night' ? '#0B0C0D' : '#CFD3D2');
 })();

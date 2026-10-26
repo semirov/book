@@ -353,7 +353,8 @@ function seedFrontLease(db: Fixture['db']): void {
   ).run(now, now, new Date(Date.now() + 120_000).toISOString());
 }
 
-describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and the TOC heading live', async () => {
+describe('watcher: the first sheet', () => {
+  it('updates the title live and keeps page 2 frozen (BOOK-DOC-6)', async () => {
     await start();
     harness!.fixture.write('00-front.md', FRONT_TWO);
 
@@ -363,9 +364,13 @@ describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and 
       title: 'Тестовая глава',
       rev: 2,
       previousRev: 1,
-      changed: { title: true, about: true },
     });
-    expect(front.data.about).toContain('Дополнительное служебное предложение');
+    // The file tried to add a sentence to the annotation: the owner's basis wins, verbatim.
+    expect(front.data.about).toBe(ABOUT);
+    const logged = harness!.fixture.db
+      .prepare(`SELECT payload FROM events WHERE kind = 'front.revised' ORDER BY hseq DESC LIMIT 1`)
+      .get() as { payload: string };
+    expect(JSON.parse(logged.payload)).toMatchObject({ annotationRejected: 'FRONT_ANNOTATION_FROZEN' });
     // A hand edit matches no lease: the site says "draft", never a change it cannot prove.
     expect(front.data.cause).toEqual({ kind: 'draft', changeId: null, cascadeId: null, stepId: null });
 
@@ -374,6 +379,7 @@ describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and 
     );
     expect(stateEvent.type).toBe('state:updated');
     expect(harness!.state.snapshot().front.title).toBe('Тестовая глава');
+    expect(harness!.state.snapshot().front.about).toBe(ABOUT);
   }, 10_000);
 
   it('attributes a cascade front rewrite so the title takes the ring gesture', async () => {
@@ -400,7 +406,6 @@ describe('watcher: the first sheet', () => {  it('updates the cover, page 2 and 
       ),
     );
     if (front.type !== 'front:updated') throw new Error('narrowing');
-    expect(front.data.changed).toEqual({ title: true, about: true });
     expect(harness!.state.snapshot().front.title).toBeNull();
   }, 10_000);
 });

@@ -43,4 +43,18 @@ describe('parseFront', () => {
     expect(parsed.title).toBeNull();
     expect(parsed.about).toBe(ABOUT);
   });
+
+  it('hashes page 2 alone, so a new title cannot move the annotation hash (BOOK-DOC-6)', () => {
+    const first = parseFront(`Без названия\n\n${ABOUT}\n`);
+    const retitled = parseFront(`Другое название\n\n${ABOUT}\n`);
+    expect(retitled.sha256).not.toBe(first.sha256);
+    expect(retitled.aboutSha256).toBe(first.aboutSha256);
+    expect(retitled.aboutSha256).toMatch(/^[0-9a-f]{64}$/u);
+
+    const rewritten = parseFront(`Другое название\n\n${ABOUT.replace('Тестовая', 'Чужая')}\n`);
+    expect(rewritten.aboutSha256).not.toBe(first.aboutSha256);
+    // A malformed rewrite still has a hash: the gate must see the attempt, not a null.
+    const broken = parseFront('Другое название\n\nСлишком коротко.');
+    expect(broken.aboutSha256).not.toBe(first.aboutSha256);
+  });
 });

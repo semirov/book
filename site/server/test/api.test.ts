@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
+import { applyFrontFile } from '../src/ingest/applyFront.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
@@ -161,6 +162,37 @@ describe('GET /api/state', () => {
     expect(body.front.about).toContain('Тестовая аннотация');
     expect(body.toc).toHaveLength(67);
     expect(body.toc[0]).toMatchObject({ n: 1, part: 1, title: 'Заголовок главы', written: true, rev: 1 });
+  });
+
+  it('keeps page 2 verbatim while a front revision changes only the title', async () => {
+    const fixture = await boot({ chapters: { '00-front.md': FRONT } });
+    const before = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    expect(before.title).toBe('Без названия');
+    expect(before.about).toBe(ABOUT);
+
+    applyFrontFile({
+      db: fixture.db,
+      dataDir: fixture.dataDir,
+      raw: `Другое название\n\n${ABOUT}\n`,
+      mtimeMs: Date.now(),
+      nowMs: Date.now(),
+    });
+    const retitled = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    expect(retitled.title).toBe('Другое название');
+    expect(retitled.about).toBe(ABOUT);
+    expect(retitled.rev).toBe(before.rev + 1);
+
+    // A file that also rewrote the annotation still answers with the basis: page 2 is frozen.
+    applyFrontFile({
+      db: fixture.db,
+      dataDir: fixture.dataDir,
+      raw: `Третье название\n\n${ABOUT.replace('Тестовая аннотация', 'Чужая аннотация')}\n`,
+      mtimeMs: Date.now(),
+      nowMs: Date.now(),
+    });
+    const frozen = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    expect(frozen.title).toBe('Третье название');
+    expect(frozen.about).toBe(ABOUT);
   });
 
   it('returns an ETag and honours If-None-Match', async () => {

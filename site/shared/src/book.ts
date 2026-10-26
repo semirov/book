@@ -48,6 +48,12 @@ export const ABOUT_MIN_CHARS = 300;
 export const ABOUT_MAX_CHARS = 900;
 export const ABOUT_MAX_BLOCKS = 4;
 
+/**
+ * The named refusal of a pass that would rewrite page 2 (BOOK-DOC-6): the title is a slot, the
+ * annotation is basis. One copy, so the gate, the ingest and the tests say the same word.
+ */
+export const FRONT_ANNOTATION_FROZEN = 'FRONT_ANNOTATION_FROZEN';
+
 /** The front-matter file; it sorts before `ch01.md` and can never collide with a chapter. */
 export const FRONT_FILE = '00-front.md';
 

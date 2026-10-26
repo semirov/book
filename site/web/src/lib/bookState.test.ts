@@ -128,7 +128,6 @@ describe('state merges', () => {
       about: 'Новая аннотация.',
       rev: 4,
       previousRev: 3,
-      changed: { title: true, about: true },
       cause: { kind: 'draft', changeId: null, cascadeId: null, stepId: null },
     });
     expect(next.front.title).toBe('Тишина');
@@ -144,7 +143,6 @@ describe('state merges', () => {
         about: 'Старое.',
         rev: 0,
         previousRev: 0,
-        changed: { title: true, about: true },
         cause: { kind: 'draft', changeId: null, cascadeId: null, stepId: null },
       }),
     ).toBe(current);
