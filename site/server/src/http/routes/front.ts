@@ -15,7 +15,12 @@ import type { RouteDeps } from '../deps.ts';
 export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/front', async (request, reply) => {
     const front = getFrontRow(deps.db);
-    const etag = `"front-${front?.rev ?? 0}"`;
+    // N is part of the representation, so it is part of the validator: a cached 200 may not
+    // pin a byline that has since changed. `measuredAt` may drift between two readings of
+    // the same count; that token is older, so the client's monotonic guard only becomes
+    // more permissive — it can never make page 1 wrong.
+    const authors = deps.authorsCount();
+    const etag = `"front-${front?.rev ?? 0}-a${authors.count}"`;
     reply
       .header('etag', etag)
       .header('cache-control', 'public, max-age=5, stale-while-revalidate=30');
@@ -35,6 +40,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
         rev: entry.rev,
       })),
       imprint: { author: deps.imprint.author, copyright: deps.imprint.copyright },
+      authors,
     };
     return reply.send(body);
   });

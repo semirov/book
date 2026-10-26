@@ -16,7 +16,7 @@
 import { floorShare, type AuthorsDto, type AuthorContributorDto } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { computeShares, readSeries } from '../history/erosion.ts';
+import { computeShares } from '../history/erosion.ts';
 import { publicAlias } from '../util/alias.ts';
 
 type IdentityRow = { id: string; display_name: string; hide_from_authors: number };
@@ -75,6 +75,10 @@ export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
 
   const contributors: AuthorContributorDto[] = [];
   for (const item of items) {
+    // The list is the surviving-text list: a reader whose every paragraph was rewritten has
+    // history and edits, but owns no characters and is therefore not a row. The byline
+    // counts the same way, so «+ N» and the rows can never contradict each other.
+    if (item.chars <= 0) continue;
     const identity = byId.get(item.identityId);
     // §6C.5 rule 5: an opt-out is neither listed nor named. The edits stay attributed to an
     // anonymous id in the log; the list simply does not publish the reader.
@@ -86,7 +90,6 @@ export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
       chars: item.chars,
       share: totalChars === 0 ? 0 : floorShare(item.chars / totalChars),
       firstAt: firstAt(db, item.identityId, projected),
-      series: readSeries(db, item.identityId),
     });
   }
 

@@ -19,7 +19,6 @@ const measured: AuthorsDto = {
       chars: 8_000,
       share: 0.08,
       firstAt: '2026-10-01T09:00:00Z',
-      series: [],
     },
     {
       identityId: 'idt_2',
@@ -28,7 +27,6 @@ const measured: AuthorsDto = {
       chars: 4_500,
       share: 0.045,
       firstAt: '2026-10-02T09:00:00Z',
-      series: [],
     },
   ],
   sum: 1,
@@ -91,6 +89,36 @@ describe('the end matter (§6C.5)', () => {
     expect(html).toContain('—');
     expect(html).toContain('пока весь текст написан автором');
     expect(html).not.toContain('%');
+  });
+
+  it('renders the signed-in reader’s own trace in the end matter, and nothing for a guest', () => {
+    const ownTrace = {
+      label: 'Аня',
+      edits: 2,
+      chars: 400,
+      share: 0.004,
+      series: [],
+      hidden: false,
+      survivedRevisions: 4,
+    };
+    const signedIn = renderToStaticMarkup(
+      <Authors
+        authors={measured}
+        imprint={imprint}
+        lastRevisionAt={null}
+        onOpenChronicle={() => undefined}
+        ownTrace={ownTrace}
+        onToggleHidden={() => undefined}
+      />,
+    );
+    expect(signedIn).toContain('ваш след');
+    expect(signedIn).toContain('пережила 4 ревизии, сейчас 0,4 %');
+    expect(signedIn).toContain('скрыть из списка авторов');
+
+    const guest = renderToStaticMarkup(
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} />,
+    );
+    expect(guest).not.toContain('ваш след');
   });
 
   it('says plainly when no reader’s text survives', () => {

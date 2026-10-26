@@ -35,6 +35,21 @@ export function editIdentityKey(identityId: string): string {
   return `edit:id:${identityId}`;
 }
 
+/**
+ * Hiding or restoring the public name is a state mutation like any other: one reader may
+ * not churn the list for everyone. It has its own namespace so a toggle never spends a
+ * comment or an edit budget.
+ */
+export const HIDE_TOGGLE_PER_HOUR = 30;
+
+export function hideIdentityKey(identityId: string): string {
+  return `authors:hide:id:${identityId}`;
+}
+
+export function hideSpecs(identityId: string): LimitSpec[] {
+  return [{ key: hideIdentityKey(identityId), limit: HIDE_TOGGLE_PER_HOUR, windowMs: COMMENT_HOUR_MS }];
+}
+
 export function oauthIpKey(ipHash: IpHasher, ipKey: string): string {
   return `oauth:ip:${ipHash(ipKey)}`;
 }

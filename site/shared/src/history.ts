@@ -170,8 +170,6 @@ export type ContributorDto = {
   edits: number;
   chars: number;
   share: number;
-  /** The erosion series, oldest first, one point per measured day (§6F.4). */
-  series: ContributorPointDto[];
 };
 
 export type ContributorsDto = {

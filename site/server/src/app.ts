@@ -5,7 +5,8 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { LogController, type FastifyError, type FastifyInstance } from 'fastify';
 
-import type { Imprint, ServerEventType } from '@book/shared';
+import type { AuthorsCountDto, Imprint, ServerEventType } from '@book/shared';
+import { createAuthorsCount } from './authors/count.ts';
 import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/db.ts';
@@ -62,6 +63,8 @@ export type AppOptions = {
   oauthFetch?: OAuthFetch;
   /** Overrides `ADMIN_TOKEN`/`ADMIN_TOKEN_FILE`; tests pass a literal token. */
   adminToken?: string;
+  /** Shared with the WS hub in production so the byline markers are comparable. */
+  authorsCount?: () => AuthorsCountDto;
 };
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
@@ -97,6 +100,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       ipHash,
     });
   const emit = options.emit ?? (options.wsHub === undefined ? undefined : (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => options.wsHub?.publish(type, data));
+  const authorsCount = options.authorsCount ?? createAuthorsCount(options.db, now);
 
   const deps: RouteDeps = {
     db: options.db,
@@ -114,6 +118,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ipHash,
     now,
     adminToken: options.adminToken ?? readAdminToken(options.config.adminToken, options.config.adminTokenFile),
+    authorsCount,
     ...(emit === undefined ? {} : { emit }),
     ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
   };

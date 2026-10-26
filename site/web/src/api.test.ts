@@ -2,14 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   ApiError,
+  getAuthors,
   getChange,
   getChanges,
   getChapter,
   getChapters,
   getComments,
   getFront,
+  getMyTrace,
   getQueue,
   getState,
+  postAuthorsHide,
   postComment,
 } from './api.ts';
 
@@ -113,6 +116,49 @@ describe('getChapter', () => {
     const error = await getChapter(1).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 502, code: 'HTTP_502' });
+  });
+});
+
+describe('the reader’s own surfaces (BOOK-DOC-4)', () => {
+  it('reads the authors list through the cache, and past it after a mutation', async () => {
+    const spy = vi.fn(async () => new Response('{"contributors":[]}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+
+    await getAuthors();
+    await getAuthors({ fresh: true });
+
+    expect(spy.mock.calls[0]).toEqual(['/api/authors', { credentials: 'same-origin', headers: { accept: 'application/json' } }]);
+    // The route is `public, max-age=30`; the post-hide read must not come from the cache.
+    expect(spy.mock.calls[1]).toEqual([
+      '/api/authors',
+      { credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store' },
+    ]);
+  });
+
+  it('reads the own trace from a session-only path and posts the hide flag as JSON', async () => {
+    const spy = vi.fn(async (url: string) =>
+      url === '/api/authors/me'
+        ? new Response('{"label":"Аня","hidden":false}', { status: 200 })
+        : new Response('{"hidden":true,"authors":{"count":0,"measuredAt":"2026-10-25T12:00:00Z"}}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', spy);
+
+    await expect(getMyTrace()).resolves.toMatchObject({ label: 'Аня', hidden: false });
+    const result = await postAuthorsHide(true);
+    expect(result).toEqual({ hidden: true, authors: { count: 0, measuredAt: '2026-10-25T12:00:00Z' } });
+
+    const [url, init] = spy.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/authors/hide');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
+    expect(JSON.parse(String(init.body))).toEqual({ hidden: true });
+  });
+
+  it('keeps the 401 code so the end matter can fall silent', async () => {
+    respond({ code: 'UNAUTHENTICATED', message: 'войдите' }, 401);
+    const error = await getMyTrace().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
   });
 });
 

@@ -18,6 +18,7 @@ import { WebSocket, type RawData } from 'ws';
 import {
   ENVELOPE_VERSION,
   PROTOCOL_VERSION,
+  type AuthorsCountDto,
   type ComposerInfo,
   type Envelope,
   type HelloPayload,
@@ -27,6 +28,7 @@ import {
   type ViewerDto,
 } from '@book/shared';
 
+import { createAuthorsCount } from '../authors/count.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/db.ts';
 import { listCatalog } from '../db/repo/chapters.ts';
@@ -51,6 +53,8 @@ export type WsHubOptions = {
   trustedProxies?: string[];
   /** §9: the session cookie resolved at upgrade; anonymous readers stay `false`. */
   resolveViewer?: (request: FastifyRequest) => ViewerDto;
+  /** The byline count, shared with the HTTP app in production (BOOK-DOC-4). */
+  authorsCount?: () => AuthorsCountDto;
 };
 
 type Connection = {
@@ -89,6 +93,7 @@ export class WsHub {
   private readonly stateThrottleMs: number;
   private readonly trustedProxies: string[];
   private readonly resolveViewer: ((request: FastifyRequest) => ViewerDto) | null;
+  private readonly authorsCount: () => AuthorsCountDto;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(options: WsHubOptions) {
@@ -105,6 +110,7 @@ export class WsHub {
     this.stateThrottleMs = options.stateThrottleMs ?? 1_000;
     this.trustedProxies = options.trustedProxies ?? options.config.trustedProxies.split(',').map((part) => part.trim());
     this.resolveViewer = options.resolveViewer ?? null;
+    this.authorsCount = options.authorsCount ?? createAuthorsCount(options.db, this.now);
   }
 
   connectionCount(): number {
@@ -269,6 +275,7 @@ export class WsHub {
         about: state.front.about,
         rev: state.front.rev,
         imprint: { author: this.imprint.author, copyright: this.imprint.copyright },
+        authors: this.authorsCount(),
       },
       catalog,
       state,

@@ -32,7 +32,7 @@ type Harness = {
 
 let harness: Harness | null = null;
 
-async function start(options: { emptyGraceMs?: number } = {}): Promise<Harness> {
+async function start(options: { emptyGraceMs?: number; authorsCount?: () => { count: number; measuredAt: string } } = {}): Promise<Harness> {
   const fixture = createFixture({ '00-front.md': FRONT });
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
   const state = new StateService(fixture.db);
@@ -47,6 +47,7 @@ async function start(options: { emptyGraceMs?: number } = {}): Promise<Harness> 
     coalesceMs: 40,
     emptyGraceMs: options.emptyGraceMs ?? 120,
     emit: (event) => events.push(event),
+    ...(options.authorsCount === undefined ? {} : { authorsCount: options.authorsCount }),
     log: () => undefined,
   });
   await watcher.start();
@@ -156,6 +157,35 @@ describe('watcher: a chapter is edited', () => {
     expect(revision.data.patch).toHaveLength(1);
     expect(revision.data.patch[0]).toMatchObject({ op: 'insert', i: 2, text: 'Третий абзац.' });
     expect(catalog()[0]).toMatchObject({ title: 'Новое название', rev: 2 });
+    // Page 1 hears about the count once, not once per write: the number did not move.
+    const byline = harness!.events.filter((event) => event.type === 'authors:update');
+    expect(byline).toHaveLength(1);
+    expect(byline[0]?.data).toMatchObject({ count: 0 });
+    expect(typeof (byline[0]?.data as { measuredAt?: unknown }).measuredAt).toBe('string');
+  }, 10_000);
+
+  it('emits authors:update only when the count actually changed', async () => {
+    let count = 0;
+    await start({ authorsCount: () => ({ count, measuredAt: new Date().toISOString() }) });
+    harness!.fixture.write('ch02.md', 'Вторая\n\nПервый абзац.\n');
+    await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
+    expect(harness!.events.filter((event) => event.type === 'authors:update')).toHaveLength(1);
+
+    count = 2;
+    harness!.fixture.write('ch02.md', 'Вторая\n\nПервый абзац.\n\nВторой абзац.\n');
+    await waitFor(() =>
+      harness!.events.find((event) => event.type === 'chapter:revision' && event.data.rev === 2),
+    );
+    const frames = harness!.events.filter((event) => event.type === 'authors:update');
+    expect(frames).toHaveLength(2);
+    expect(frames[1]?.data).toMatchObject({ count: 2 });
+
+    // The same count again: the text changed, the byline did not, so no third frame.
+    harness!.fixture.write('ch02.md', 'Вторая\n\nПервый абзац.\n\nВторой абзац.\n\nТретий абзац.\n');
+    await waitFor(() =>
+      harness!.events.find((event) => event.type === 'chapter:revision' && event.data.rev === 3),
+    );
+    expect(harness!.events.filter((event) => event.type === 'authors:update')).toHaveLength(2);
   }, 10_000);
 
   it('never blanks a chapter when the file is temporarily empty (§6.2)', async () => {

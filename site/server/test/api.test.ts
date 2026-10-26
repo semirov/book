@@ -444,13 +444,14 @@ describe('GET /api/front', () => {
     await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/api/front' });
     expect(response.statusCode).toBe(200);
-    expect(response.headers.etag).toBe('"front-1"');
+    expect(response.headers.etag).toBe('"front-1-a0"');
     const body = response.json();
     expect(body).toMatchObject({
       title: 'Без названия',
       about: ABOUT,
       rev: 1,
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
+      authors: { count: 0, measuredAt: expect.any(String) },
     });
     expect(body.toc).toHaveLength(67);
     expect(body.toc[0]).toMatchObject({ part: 1, n: 1, title: 'Заголовок главы', written: true, rev: 1 });

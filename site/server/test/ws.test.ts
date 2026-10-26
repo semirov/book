@@ -143,6 +143,8 @@ describe('hello', () => {
     expect(hello.data.front).toMatchObject({
       title: 'Без названия',
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
+      // The byline count is in the first frame, so a reconnect heals page 1 (BOOK-DOC-4).
+      authors: { count: 0, measuredAt: expect.any(String) },
     });
     expect((hello.data.catalog as unknown[]).length).toBe(67);
     expect((hello.data.state as Record<string, unknown>).chapters).toMatchObject({ total: 67, count: 0 });

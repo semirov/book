@@ -17,12 +17,14 @@ import {
   directionOf,
   isChapterNumber,
   partOf,
+  type AuthorsCountDto,
   type ChapterCreatedPayload,
   type ChapterRevisionPayload,
   type FrontUpdatedPayload,
   type StateUpdatedPayload,
 } from '@book/shared';
 
+import { createAuthorsCount } from '../authors/count.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
 import { chapterEtag } from '../util/etag.ts';
@@ -37,6 +39,8 @@ export type IngestEvent =
   | { type: 'chapter:created'; data: ChapterCreatedPayload }
   | { type: 'chapter:revision'; data: ChapterRevisionPayload }
   | { type: 'front:updated'; data: FrontUpdatedPayload }
+  /** The title page's byline count moved because the text changed (BOOK-DOC-4). */
+  | { type: 'authors:update'; data: AuthorsCountDto }
   | { type: 'state:updated'; data: StateUpdatedPayload };
 
 export type WatcherStatus = {
@@ -61,6 +65,8 @@ export type WatcherOptions = {
   emptyGraceMs?: number;
   now?: () => Date;
   emit: (event: IngestEvent) => void;
+  /** The byline count; defaults to its own reader over the same database. */
+  authorsCount?: () => AuthorsCountDto;
   log?: (message: string, meta?: Record<string, unknown>) => void;
 };
 
@@ -107,6 +113,7 @@ export class ManuscriptWatcher {
   private readonly emptyGraceMs: number;
   private readonly now: () => Date;
   private readonly emit: (event: IngestEvent) => void;
+  private readonly authorsCount: () => AuthorsCountDto;
   private readonly log: (message: string, meta?: Record<string, unknown>) => void;
 
   private watcher: FSWatcher | null = null;
@@ -117,6 +124,8 @@ export class ManuscriptWatcher {
   private readonly emptyFinal = new Set<string>();
   private chain: Promise<void> = Promise.resolve();
   private lastVersion: number | null = null;
+  /** The last count page 1 was told, so an unchanged N is not re-broadcast. */
+  private lastAuthorsCount: number | null = null;
   private stopped = false;
 
   constructor(options: WatcherOptions) {
@@ -130,6 +139,7 @@ export class ManuscriptWatcher {
     this.emptyGraceMs = options.emptyGraceMs ?? DEFAULT_EMPTY_GRACE_MS;
     this.now = options.now ?? (() => new Date());
     this.emit = options.emit;
+    this.authorsCount = options.authorsCount ?? createAuthorsCount(options.db, this.now);
     this.log = options.log ?? (() => undefined);
   }
 
@@ -251,6 +261,7 @@ export class ManuscriptWatcher {
       if (emptied.status === 'emptied') {
         this.status.lastEventAt = toIso(this.now());
         this.log('chapter reduced to its basis sentence', { n });
+        this.emitAuthors();
         this.emitState('file');
       }
       return;
@@ -298,10 +309,12 @@ export class ManuscriptWatcher {
     if (result.status === 'created') {
       this.status.lastEventAt = toIso(this.now());
       this.emit({ type: 'chapter:created', data: createdPayload(result) });
+      this.emitAuthors();
       this.emitState('file');
     } else if (result.status === 'revised') {
       this.status.lastEventAt = toIso(this.now());
       this.emit({ type: 'chapter:revision', data: revisionPayload(result) });
+      this.emitAuthors();
       this.emitState('file');
     }
   }
@@ -317,6 +330,7 @@ export class ManuscriptWatcher {
     if (result.status !== 'removed') return;
     this.status.lastEventAt = toIso(this.now());
     this.log('chapter removed from the projection', { n });
+    this.emitAuthors();
     this.emitState('file');
   }
 
@@ -369,6 +383,14 @@ export class ManuscriptWatcher {
       },
     });
     this.emitState('file');
+  }
+
+  /** The byline moves with the text: erased characters shrink N, surviving ones keep it. */
+  private emitAuthors(): void {
+    const authors = this.authorsCount();
+    if (authors.count === this.lastAuthorsCount) return;
+    this.lastAuthorsCount = authors.count;
+    this.emit({ type: 'authors:update', data: authors });
   }
 
   private emitState(reason: StateUpdatedPayload['reason']): void {

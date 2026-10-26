@@ -13,6 +13,7 @@
  * the site-facing projection that carries no gate fact (§6B.6).
  */
 
+import type { AuthorsCountDto } from './authors.ts';
 import type { CatalogEntry, Lane, StateSnapshot } from './types.ts';
 import type { ComposerInfo } from './comment.ts';
 import type { Direction, Part } from './book.ts';
@@ -32,6 +33,8 @@ export type ServerEventType =
   | 'block:revising'
   | 'cursor:moved'
   | 'front:updated'
+  /** The live byline count: a reader's text survived a revision or was erased (BOOK-DOC-4). */
+  | 'authors:update'
   | 'change:queued'
   | 'change:processing'
   | 'change:stale'
@@ -82,6 +85,8 @@ export type HelloPayload = {
     about: string | null;
     rev: number;
     imprint: { author: string; copyright: string };
+    /** The title page's byline count, so a reconnect heals it without a second request. */
+    authors: AuthorsCountDto;
   };
   /** All 67 slots, written or not: an empty slot is the normal state, not a 404. */
   catalog: CatalogEntry[];

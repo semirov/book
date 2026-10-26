@@ -1,6 +1,7 @@
-import { formatShare, type AuthorsDto } from '@book/shared';
+import { formatShare, type AuthorsDto, type MyTraceDto } from '@book/shared';
 
 import { formatDate } from '../lib/format.ts';
+import { OwnTrace } from './OwnTrace.tsx';
 
 /**
  * «Авторы» — the end matter, after chapter 67 (§6C.5, §11.8).
@@ -19,11 +20,18 @@ export function Authors({
   imprint,
   lastRevisionAt,
   onOpenChronicle,
+  ownTrace = null,
+  onToggleHidden,
+  hidePending = false,
 }: {
   authors: AuthorsDto | null;
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
   onOpenChronicle: () => void;
+  /** The signed-in reader's own trace; `null` for an anonymous visitor. */
+  ownTrace?: MyTraceDto | null;
+  onToggleHidden?: (hidden: boolean) => void;
+  hidePending?: boolean;
 }) {
   const contributors = authors?.contributors ?? [];
   return (
@@ -51,6 +59,13 @@ export function Authors({
       {contributors.length === 0 ? (
         <p className="authors-empty">пока весь текст написан автором: читательских правок в книге нет</p>
       ) : null}
+      {ownTrace === null ? null : (
+        <OwnTrace
+          trace={ownTrace}
+          pending={hidePending}
+          {...(onToggleHidden === undefined ? {} : { onToggleHidden })}
+        />
+      )}
       <button className="authors-link" type="button" onClick={onOpenChronicle}>
         как менялись доли
       </button>

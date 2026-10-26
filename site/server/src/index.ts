@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import type { ViewerDto } from '@book/shared';
 
 import { buildApp } from './app.ts';
+import { createAuthorsCount } from './authors/count.ts';
 import { loadConfig, SITE_ROOT } from './config.ts';
 import { databaseFile, openDatabase } from './db/db.ts';
 import { migrate } from './db/migrate.ts';
@@ -63,11 +64,15 @@ async function main(): Promise<void> {
 
   const state = new StateService(db);
   const imprint = loadImprint(config.imprintPath);
+  // One byline reader for the socket, the watcher and the HTTP app, so page 1, a live
+  // `authors:update` and a reconnect all carry comparable markers (BOOK-DOC-4).
+  const authorsCount = createAuthorsCount(db, now);
   const hub = new WsHub({
     db,
     state,
     config,
     imprint,
+    authorsCount,
     resolveViewer: (request): ViewerDto => {
       const session = sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
       return session === null
@@ -85,6 +90,7 @@ async function main(): Promise<void> {
     coalesceMs: config.watchCoalesceMs,
     emptyGraceMs: config.emptyWriteGraceMs,
     emit: (event) => hub.publish(event.type, event.data),
+    authorsCount,
   });
 
   // The engine writes facts into the same database; the bridge narrates them to readers.
@@ -126,6 +132,7 @@ async function main(): Promise<void> {
     sessionSecret,
     ipHash,
     now,
+    authorsCount,
   });
 
   await watcher.start();

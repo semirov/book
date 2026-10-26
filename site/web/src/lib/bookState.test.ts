@@ -12,9 +12,11 @@ import {
   catalogOutOfSync,
   loadedRevision,
   revisionFits,
+  withAuthorsCount,
   withCatalogEntry,
   withChapterCreated,
   withChapterRevision,
+  withFreshFront,
   withFront,
   withState,
   type BookData,
@@ -71,7 +73,7 @@ function data(overrides: Partial<BookData> = {}): BookData {
   return {
     state: current,
     catalog,
-    front: { title: 'Название', about: 'О чём.', rev: 1, toc: current.toc, imprint: { author: 'А', copyright: '© А' } },
+    front: { title: 'Название', about: 'О чём.', rev: 1, toc: current.toc, imprint: { author: 'А', copyright: '© А' }, authors: { count: 2, measuredAt: '2026-10-25T12:00:00Z' } },
     ...overrides,
   };
 }
@@ -90,7 +92,7 @@ const hello: HelloPayload = {
   },
   composer: { captcha: { provider: 'none', siteKey: null }, minChars: 3, maxChars: 1200 },
   viewer: { signedIn: false, displayName: null },
-  front: { title: 'Название', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' } },
+  front: { title: 'Название', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' }, authors: { count: 3, measuredAt: '2026-10-25T12:00:01Z' } },
   catalog: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', rev: 1, written: true } : row)),
   state: state({
     chapters: { total: 67, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
@@ -105,8 +107,51 @@ describe('bookFromHello', () => {
     const book = bookFromHello(hello);
     expect(book.front).toMatchObject({ title: 'Название', about: 'О чём.', rev: 2 });
     expect(book.front.imprint.copyright).toBe('© А');
+    // The byline count arrives with the first sheet, so page 1 never flashes «+ 0».
+    expect(book.front.authors).toEqual({ count: 3, measuredAt: '2026-10-25T12:00:01Z' });
     expect(book.catalog).toHaveLength(67);
     expect(book.state.toc[0]).toMatchObject({ n: 1, title: 'Начало' });
+  });
+
+  it('heals the byline from hello but never lowers a newer live count', () => {
+    const current = bookFromHello(hello);
+    const newer = { ...current, front: { ...current.front, authors: { count: 5, measuredAt: '2026-10-25T12:05:00Z' } } };
+    // A reconnect whose hello is older than the live page must not regress the number.
+    expect(bookFromHello(hello, newer).front.authors).toEqual(newer.front.authors);
+    // A hello measured later is the authority.
+    const later = {
+      ...hello,
+      front: { ...hello.front, authors: { count: 7, measuredAt: '2026-10-25T12:06:00Z' } } as HelloPayload['front'],
+    };
+    expect(bookFromHello(later, newer).front.authors.count).toBe(7);
+  });
+});
+
+describe('the live byline count', () => {
+  it('applies a newer frame and ignores an older one, leaving the rest of the page alone', () => {
+    const current = data();
+    const next = withAuthorsCount(current, { count: 4, measuredAt: '2026-10-25T13:00:00Z' });
+    expect(next.front.authors).toEqual({ count: 4, measuredAt: '2026-10-25T13:00:00Z' });
+    expect(next.state).toBe(current.state);
+    expect(next.catalog).toBe(current.catalog);
+
+    const stale = withAuthorsCount(next, { count: 1, measuredAt: '2026-10-25T12:00:00Z' });
+    expect(stale.front.authors).toEqual(next.front.authors);
+    // A malformed frame is not a measurement.
+    expect(withAuthorsCount(next, null).front.authors).toEqual(next.front.authors);
+  });
+
+  it('a REST resync keeps the newest byline reading instead of replacing it wholesale', () => {
+    const held = withAuthorsCount(data(), { count: 5, measuredAt: '2026-10-25T12:05:00Z' });
+    const stale = data();
+    const merged = withFreshFront(stale, held);
+    expect(merged.front.authors).toEqual(held.front.authors);
+    expect(merged.state).toBe(stale.state);
+
+    // A resync measured later is the authority, and a first paint has nothing to keep.
+    const fresher = { ...stale, front: { ...stale.front, authors: { count: 7, measuredAt: '2026-10-25T12:06:00Z' } } };
+    expect(withFreshFront(fresher, held).front.authors.count).toBe(7);
+    expect(withFreshFront(fresher, null)).toBe(fresher);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { Imprint, QueueDto, ServerEventType } from '@book/shared';
+import type { AuthorsCountDto, Imprint, QueueDto, ServerEventType } from '@book/shared';
 
 import type { CaptchaVerifier } from '../captcha/verify.ts';
 import type { Config } from '../config.ts';
@@ -39,4 +39,6 @@ export type RouteDeps = {
   oauthFetch?: OAuthFetch;
   /** Empty means the admin surface does not exist (404), never an open panel (§17). */
   adminToken: string;
+  /** The title page's byline count, with a monotonic marker shared by every surface. */
+  authorsCount: () => AuthorsCountDto;
 };

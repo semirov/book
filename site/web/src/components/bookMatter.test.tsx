@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Annotation } from './Annotation.tsx';
 import { Opening } from './Opening.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
-import { COVER_CAPTION, TitleSheet } from './TitleSheet.tsx';
+import { COVER_CAPTION, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
 
 const front: FrontDto = {
   title: 'Без названия',
@@ -13,6 +13,7 @@ const front: FrontDto = {
   rev: 1,
   toc: [],
   imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
+  authors: { count: 0, measuredAt: '2026-10-25T12:00:00Z' },
 };
 
 function slot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
@@ -79,10 +80,46 @@ function textOf(html: string): string {
 }
 
 describe('cover', () => {
-  it('is the title, the signature and the caption — and nothing else', () => {
+  it('is the title, the live byline, the promise and the caption — and nothing else', () => {
     expect(textOf(coverHtml())).toBe(
-      `Без названия${'Филипп Семиров'}${COVER_CAPTION}`,
+      `Без названия${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
     );
+  });
+
+  it('carries the promise verbatim, in plain words, on its own line', () => {
+    const html = coverHtml();
+    expect(TITLE_PROMISE).toBe(
+      'Один читатель — одно вмешательство в день. Твоя фраза может пережить книгу. Или исчезнуть.',
+    );
+    expect(html.match(/Один читатель — одно вмешательство в день\. Твоя фраза может пережить книгу\. Или исчезнуть\./gu)).toHaveLength(1);
+    expect(html).toContain('class="title-promise"');
+    // Book matter, not marketing: no button, no arrow, no exclamation, no category label.
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('→');
+    expect(html).not.toContain('!');
+    expect(html).not.toContain('multiplayer');
+  });
+
+  it('counts the readers in the byline: «+ 0» on the empty book, «+ 3» when three survive', () => {
+    expect(coverHtml()).toContain('Филипп Семиров + 0');
+    const three = renderToStaticMarkup(
+      <TitleSheet front={{ ...front, authors: { count: 3, measuredAt: '2026-10-25T12:00:05Z' } }} />,
+    );
+    expect(three).toContain('Филипп Семиров + 3');
+    expect(textOf(three)).toContain('Филипп Семиров + 3');
+    // The surname is the imprint's, never hardcoded in the component.
+    const other = renderToStaticMarkup(
+      <TitleSheet front={{ ...front, imprint: { ...front.imprint, author: 'Другой Автор' } }} />,
+    );
+    expect(other).toContain('Другой Автор + 0');
+  });
+
+  it('tolerates a first sheet without a count: the line still reads «+ 0», never «undefined»', () => {
+    const html = renderToStaticMarkup(
+      <TitleSheet front={{ ...front, authors: undefined } as unknown as FrontDto} />,
+    );
+    expect(html).toContain('Филипп Семиров + 0');
+    expect(html).not.toContain('undefined');
   });
 
   it('carries the approved caption exactly once, with no period added', () => {
@@ -119,7 +156,7 @@ describe('cover', () => {
 
   it('falls back to the site label when the title line is missing', () => {
     const html = renderToStaticMarkup(<TitleSheet front={{ ...front, title: null }} />);
-    expect(textOf(html)).toBe(`КнигаФилипп Семиров${COVER_CAPTION}`);
+    expect(textOf(html)).toBe(`КнигаФилипп Семиров + 0${TITLE_PROMISE}${COVER_CAPTION}`);
   });
 
   it('is still on first paint and fades only on a real title change', () => {

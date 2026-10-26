@@ -1,4 +1,5 @@
 import type {
+  AuthorsCountDto,
   BlockRevisingPayload,
   CascadeProgressPayload,
   ChangeDecidedPayload,
@@ -45,7 +46,9 @@ import {
   catalogOutOfSync,
   withChapterCreated,
   withChapterRevision,
+  withAuthorsCount,
   withFront,
+  withFreshFront,
   withState,
   type BookData,
 } from './lib/bookState.ts';
@@ -115,7 +118,7 @@ export function App() {
   const refreshAll = useCallback(async (force = false) => {
     try {
       const [state, catalog, front] = await Promise.all([getState(), getChapters(), getFront()]);
-      setData((current) => (helloSeen.current && current !== null && !force ? current : { state, catalog, front }));
+      setData((current) => (helloSeen.current && current !== null && !force ? current : withFreshFront({ state, catalog, front }, current)));
       setFailed(false);
     } catch {
       setFailed(true);
@@ -134,6 +137,10 @@ export function App() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
+    setData((current) => (current === null ? current : withAuthorsCount(current, count)));
+  }, []);
 
   const refreshChanges = useCallback(async () => {
     try {
@@ -183,7 +190,7 @@ export function App() {
           case 'hello': {
             const hello = frame.data as HelloPayload;
             helloSeen.current = true;
-            setData(bookFromHello(hello));
+            setData((current) => bookFromHello(hello, current));
             setViewer(hello.viewer);
             setComposer(hello.composer);
             setRibbon(ribbonFromState(hello.state));
@@ -242,6 +249,7 @@ export function App() {
             if (!elementInViewport('toc')) setNotice({ kind: 'front' });
             break;
           }
+          case 'authors:update': applyAuthorsCount(frame.data as AuthorsCountDto); break;
           case 'cursor:moved': {
             const cursor = frame.data as {
               lane: 'forward' | 'backward';
@@ -351,7 +359,7 @@ export function App() {
       for (const timer of timers.current) window.clearTimeout(timer);
       timers.current = [];
     };
-  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, card.refresh, focus.bump]);
+  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, card.refresh, focus.bump, applyAuthorsCount]);
 
   if (connection === 'capacity') {
     return (
@@ -464,6 +472,8 @@ export function App() {
       <EndMatter
         imprint={front.imprint}
         lastRevisionAt={state.activity.lastFileChangeAt}
+        signedIn={viewer.signedIn}
+        onAuthorsCount={applyAuthorsCount}
         onOpenChronicle={() => setView('chronicle')}
       />
       <Discussion

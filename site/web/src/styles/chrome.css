@@ -122,6 +122,22 @@
   color: var(--ink-2);
   text-wrap: pretty;
 }
+/* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent. */
+.title-promise {
+  max-width: 32ch;
+  margin: 16px 0 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+@media (min-width: 600px) {
+  .title-promise {
+    font-size: 15px;
+  }
+}
 /* `.kicker`, `.premise` and `.copyright` stay: LegalPage, «Авторы» and the colophon use them. */
 .kicker {
   letter-spacing: 0.3em;
@@ -263,6 +279,50 @@
 }
 .authors-copyright {
   margin-top: 22px;
+}
+
+/* «Ваш след» (BOOK-DOC-4): the reader's own erosion, one plain line, no meter, no score. */
+.own-trace {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.own-trace-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.own-trace-line {
+  margin: 8px 0 0;
+  font-size: 15px;
+  color: var(--ink);
+}
+.own-trace-edits,
+.own-trace-note {
+  margin: 6px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.own-trace-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.own-trace-toggle[disabled] {
+  color: var(--ink-3);
+  cursor: default;
 }
 
 /* The static documents (audit M5): «приватность» and «правила». Same measure and voice as

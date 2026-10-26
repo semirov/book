@@ -20,7 +20,7 @@ import { allChapterNumbers } from '@book/shared';
 import type { Db } from '../db/db.ts';
 import { OUT_OF_PROCESS_LABEL } from '../ingest/attribution.ts';
 import { publicAlias } from '../util/alias.ts';
-import { computeShares, readSeries } from './erosion.ts';
+import { computeShares } from './erosion.ts';
 
 const CLOCK = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
@@ -266,7 +266,11 @@ export function readDiff(db: Db, from: number, to: number, chapter?: number): Hi
   return { from, to, ops: ops.slice(0, limit), truncated };
 }
 
-/** The authors' list source (§6C.5, §6F.4): the current share and the erosion series. */
+/**
+ * The chronicle's contributor aggregate (§6C.5, §6F.4): the current share only. A day-by-day
+ * curve is one reader's own behaviour, so it is served only to them (`MyTraceDto`), never in
+ * a public list.
+ */
 export function readContributors(db: Db): ContributorsDto {
   const { totalChars, items } = computeShares(db);
   const out: ContributorDto[] = [];
@@ -284,7 +288,6 @@ export function readContributors(db: Db): ContributorsDto {
       edits: item.edits,
       chars: item.chars,
       share: item.share,
-      series: readSeries(db, item.identityId),
     });
   }
   const measured = db.prepare('SELECT MAX(measured_at) AS at FROM contribution_history').get() as {

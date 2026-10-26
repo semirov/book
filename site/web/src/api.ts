@@ -1,4 +1,5 @@
 import type {
+  AuthorsCountDto,
   AuthorsDto,
   BookAtDto,
   CatalogEntry,
@@ -12,6 +13,7 @@ import type {
   HistoryChapterDto,
   HistoryDiffDto,
   HistoryTimelineDto,
+  MyTraceDto,
   ParagraphChainDto,
   PostCommentInput,
   PostCommentResponse,
@@ -67,8 +69,8 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message, retryAfterMs, resetAt, currentText);
 }
 
-async function readJson<T>(path: string): Promise<T> {
-  const response = await requestJson(path);
+async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await requestJson(path, init);
   if (!response.ok) throw await toApiError(response);
   return (await response.json()) as T;
 }
@@ -184,9 +186,32 @@ export function getHistoryContributors(): Promise<ContributorsDto> {
   return readJson<ContributorsDto>('/api/history/contributors');
 }
 
-/** The end matter's list (§6C.5): the author as the remainder plus the measured shares. */
-export function getAuthors(): Promise<AuthorsDto> {
-  return readJson<AuthorsDto>('/api/authors');
+/**
+ * The end matter's list (§6C.5): the author as the remainder plus the measured shares.
+ * `fresh` is for the post-mutation path: the route is `public, max-age=30`, and a browser
+ * cache must not show the list as it was before the reader hid or reappeared.
+ */
+export function getAuthors(options: { fresh?: boolean } = {}): Promise<AuthorsDto> {
+  return readJson<AuthorsDto>('/api/authors', options.fresh === true ? { cache: 'no-store' } : undefined);
+}
+
+/** The reader's own trace (BOOK-DOC-4): own only, and 401 for an anonymous visitor. */
+export function getMyTrace(): Promise<MyTraceDto> {
+  return readJson<MyTraceDto>('/api/authors/me');
+}
+
+/**
+ * «Скрыть из списка авторов» / «вернуть в список» (§6C.5 rule 5): idempotent, and the
+ * answer carries the fresh byline count so page 1 moves before the socket frame arrives.
+ */
+export async function postAuthorsHide(hidden: boolean): Promise<{ hidden: boolean; authors: AuthorsCountDto }> {
+  const response = await requestJson('/api/authors/hide', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ hidden }),
+  });
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as { hidden: boolean; authors: AuthorsCountDto };
 }
 
 /** Logout is a POST (§17: no state-changing GET). */

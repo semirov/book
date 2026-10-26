@@ -68,7 +68,9 @@ describe('provenance erosion (§6F.4)', () => {
       expect(contributors.totalChars).toBe(REWRITTEN.length);
       expect(contributors.measuredAt).toBe('2026-10-25T23:00:00Z');
       expect(contributors.items.map((item) => item.label)).toEqual(expect.arrayContaining(['Марк', 'Аня']));
-      expect(contributors.items.find((item) => item.label === 'Марк')?.series).toHaveLength(1);
+      // The public aggregate carries no curve: that is the reader's own view.
+      expect(contributors.items.find((item) => item.label === 'Марк')).not.toHaveProperty('series');
+      expect(readSeries(fixture.db, 'idt_2')).toHaveLength(1);
 
       fixture.db.prepare('UPDATE identities SET hide_from_authors = 1 WHERE id = ?').run('idt_2');
       expect(readContributors(fixture.db).items.some((item) => item.label === 'Марк')).toBe(false);

@@ -11,7 +11,14 @@
  * the tool by which the author and the readers write (§6C.5 rule 3).
  */
 
-/** One reader's current trace in the final text, with its measured erosion series. */
+import type { ContributorPointDto } from './history.ts';
+
+/**
+ * One reader's surviving trace in the final text. The public list carries no erosion
+ * series: a day-by-day curve is the reader's own behaviour, and it is served only to them
+ * (`MyTraceDto`). The list is the surviving-text list, so a reader with zero surviving
+ * characters is not a row — the byline and the list then state the same thing.
+ */
 export type AuthorContributorDto = {
   /** A public alias — `sha256(identityId)` truncated, never the identity key (audit m3). */
   identityId: string;
@@ -22,14 +29,13 @@ export type AuthorContributorDto = {
   /** The share of the final text, floored to 6 decimals (§6C.5 rule 6). */
   share: number;
   firstAt: string;
-  series: Array<{ day: string; edits: number; chars: number; share: number }>;
 };
 
 export type AuthorsDto = {
   /** The book's volume the shares are measured against. */
   totalChars: number;
   measuredAt: string | null;
-  /** How many measured readers this list holds (before the opt-out filter). */
+  /** How many readers the measurement holds, before the opt-out and surviving-text filters. */
   measured: number;
   author: {
     label: string;
@@ -42,6 +48,42 @@ export type AuthorsDto = {
   contributors: AuthorContributorDto[];
   /** Σ of the listed shares plus the author's: exactly 1 for a non-empty book. */
   sum: number;
+};
+
+/**
+ * The title page's live byline count — «Филипп Семиров + N» (BOOK-DOC-4).
+ *
+ * N is the number of readers with **at least one surviving character** in the current text:
+ * the same measurement the authors list uses, minus the hidden readers, so the byline and
+ * the list cannot disagree. The writer, the editor and the consultant never count.
+ *
+ * `measuredAt` is the monotonic marker: the client keeps the newest count and ignores an
+ * older frame, so a reordered reconnect cannot make the byline regress.
+ */
+export type AuthorsCountDto = {
+  count: number;
+  measuredAt: string;
+};
+
+/**
+ * One signed-in reader's own trace (`GET /api/authors/me`) — own only, never another
+ * reader's, and it carries no identity key: the display name is the only public handle.
+ *
+ * `survivedRevisions` is the honest «пережила N ревизий»: how many chapter revisions the
+ * reader's currently surviving characters have lived through — every revision of their
+ * chapter after the one that wrote a surviving paragraph, over distinct chapter revisions.
+ * It is `0` when nothing of theirs survives; it is never modelled.
+ */
+export type MyTraceDto = {
+  label: string;
+  edits: number;
+  chars: number;
+  /** The same floored share the authors list prints, so the two cannot disagree. */
+  share: number;
+  /** The measured days, not a curve drawn between two numbers. */
+  series: ContributorPointDto[];
+  hidden: boolean;
+  survivedRevisions: number;
 };
 
 /** Shares are printed to six decimals; floor keeps Σ from drifting above 1. */

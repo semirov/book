@@ -18,13 +18,15 @@ import type {
   StateSnapshot,
 } from '@book/shared';
 
+import { newestAuthorsCount } from './authorsCount.ts';
+
 export type BookData = {
   state: StateSnapshot;
   catalog: CatalogEntry[];
   front: FrontDto;
 };
 
-export function bookFromHello(hello: HelloPayload): BookData {
+export function bookFromHello(hello: HelloPayload, held: BookData | null = null): BookData {
   return {
     state: hello.state,
     catalog: hello.catalog,
@@ -34,7 +36,34 @@ export function bookFromHello(hello: HelloPayload): BookData {
       rev: hello.front.rev,
       toc: hello.state.toc,
       imprint: hello.front.imprint,
+      // A reconnect heals the byline from `hello`, but never lowers a newer live count.
+      authors: newestAuthorsCount(held?.front.authors, hello.front.authors),
     },
+  };
+}
+
+/**
+ * The byline count is live and monotonic (BOOK-DOC-4): `measuredAt` orders two readings, so
+ * an out-of-order frame never lowers N. Page 1, the socket and the hide response all pass
+ * through here, and a reconnect's `hello` already carries the count in `front`.
+ */
+export function withAuthorsCount(data: BookData, count: unknown): BookData {
+  return {
+    ...data,
+    front: { ...data.front, authors: newestAuthorsCount(data.front.authors, count) },
+  };
+}
+
+/**
+ * A REST resync replaces the cover, page 2 and the catalog, but it must not undo a live
+ * byline reading that arrived first: the two go through the same monotonic guard, so a
+ * resync can raise N and never lower it.
+ */
+export function withFreshFront(next: BookData, held: BookData | null): BookData {
+  if (held === null) return next;
+  return {
+    ...next,
+    front: { ...next.front, authors: newestAuthorsCount(held.front.authors, next.front.authors) },
   };
 }
 

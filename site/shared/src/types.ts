@@ -3,6 +3,7 @@
  * Sources: ARCHITECTURE.md §7.1 (StateSnapshot), §9 (HTTP API), §8 (data model).
  */
 
+import type { AuthorsCountDto } from './authors.ts';
 import type { Direction, Part } from './book.ts';
 
 /** `absent` — no engine process has ever written a heartbeat (§9, §18). */
@@ -175,6 +176,8 @@ export type FrontDto = {
   rev: number;
   toc: TocEntry[];
   imprint: { author: string; copyright: string };
+  /** The title page's byline count, measured server-side (BOOK-DOC-4); always present. */
+  authors: AuthorsCountDto;
 };
 
 export type BlockDto = {
