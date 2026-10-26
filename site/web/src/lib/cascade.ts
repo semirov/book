@@ -8,6 +8,7 @@
  */
 
 import {
+  CASCADE_MAX_WAVE,
   TOTAL_CHAPTERS,
   type CascadeProgressPayload,
   type ChangeDecidedPayload,
@@ -18,8 +19,20 @@ import {
 
 import { chapterPercent } from './spine.ts';
 
-/** The ripple bound; the readout says «волна 2 / 3» (§6D.2). */
-export const RIBBON_MAX_WAVE = 3;
+/**
+ * The ripple bound only for the frames painted *before* `hello` says what the server's own
+ * bound is (§6D.2, BOOK-DOC-4 rule 3): the shipped default, never a second number to keep
+ * in step by hand.
+ */
+export const RIBBON_MAX_WAVE = CASCADE_MAX_WAVE;
+
+/** The server's wave bound (`hello.limits.maxWave`), with the fallback for a missing value. */
+export function ribbonMaxWave(announced: unknown): number {
+  // The boot pins the server to `CASCADE_MAX_WAVE`, so the fallback cannot hide a divergence.
+  return typeof announced === 'number' && Number.isInteger(announced) && announced > 0
+    ? announced
+    : RIBBON_MAX_WAVE;
+}
 
 export type RibbonSeam = { boundary: SeamBoundary; reason: string; resolved: boolean };
 

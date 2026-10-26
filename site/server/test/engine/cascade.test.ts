@@ -1,12 +1,12 @@
 import type { CascadeBudget, SeamRef, StepOutcome, StepPass } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { planCascade, type CascadeFacts, type CascadeStepFact } from '../../src/engine/cascade.ts';
+import { planCascade, type CascadeFacts, type CascadePlan, type CascadeStepFact } from '../../src/engine/cascade.ts';
 
 const BUDGET: CascadeBudget = {
-  maxWave: 3,
-  maxChapters: 5,
-  maxSteps: 8,
+  maxWave: 5,
+  maxChapters: 12,
+  maxSteps: 13,
   maxRewritesPerChapter: 1,
   upwardLagWaves: 1,
   maxWallMs: 1_800_000,
@@ -219,6 +219,120 @@ describe('planCascade — the ripple geometry', () => {
       forceReason: 'глава позади волны',
     });
     expect(plan).toMatchObject({ kind: 'close', outcome: 'escalated:origin', alert: true });
+  });
+});
+
+/**
+ * A ripple that always finds a seam on its outer boundary: the real geometry (§6A.6) drives
+ * it, no scripted wave counter. Used to prove that five waves are reachable and that the
+ * sixth is refused by the wave bound rather than by the chapter or step bound.
+ */
+function walkRipple(options: { origin?: number; budget?: Partial<CascadeBudget> } = {}): {
+  steps: CascadeStepFact[];
+  plan: CascadePlan;
+} {
+  const originChapter = options.origin ?? 40;
+  const steps: CascadeStepFact[] = [origin(originChapter, [seam(originChapter + 1)])];
+  for (let guard = 0; guard < 40; guard += 1) {
+    const plan = planCascade(facts(steps, { origin: originChapter, budget: options.budget }), ctx());
+    if (plan.kind === 'close') return { steps, plan };
+    if (plan.kind === 'wait') throw new Error('the planner waited with no open step');
+    for (const planned of plan.steps) {
+      steps.push({
+        seq: steps.length + 1,
+        pass: planned.pass,
+        chapter: planned.chapter,
+        lane: planned.lane,
+        wave: planned.wave,
+        outcome: 'rewritten',
+        seamsIn: planned.seamsIn,
+        // The ending is evaluated, never rewritten (ADR-024), so it reports no outward seam.
+        seamsOut: planned.pass === 'ending' ? [] : [seam(planned.chapter ?? 'front')],
+      });
+    }
+  }
+  throw new Error('the ripple never terminated');
+}
+
+/** The prefix of a walk up to and including the steps of `wave`. */
+function upToWave(steps: CascadeStepFact[], wave: number): CascadeStepFact[] {
+  let end = steps.length;
+  while (end > 0 && (steps[end - 1]?.wave ?? 0) > wave) end -= 1;
+  return steps.slice(0, end);
+}
+
+describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
+  it('reaches wave 5 with both wings and stops there on the public reason', () => {
+    const walk = walkRipple();
+    const cascade = walk.steps.filter((step) => step.pass === 'cascade');
+    // One wave is one step per wing: the upward wing starts one wave behind the downward one.
+    expect(cascade.filter((step) => step.wave === 5).map((step) => step.lane)).toEqual([
+      'backward',
+      'forward',
+    ]);
+    expect(Math.max(...cascade.map((step) => step.wave))).toBe(5);
+    expect(walk.steps).toHaveLength(1 + 5 + 4);
+    expect(walk.plan).toEqual({
+      kind: 'close',
+      outcome: 'escalated:budget',
+      reason: 'правка ушла глубже 5 волн — нужно решение',
+      alert: true,
+    });
+  });
+
+  it('refuses the sixth wave with the wave reason, not the chapter or step bound', () => {
+    const walk = walkRipple();
+    const atFive = upToWave(walk.steps, 5);
+    expect(planCascade(facts(atFive), ctx())).toEqual({
+      kind: 'close',
+      outcome: 'escalated:budget',
+      reason: 'правка ушла глубже 5 волн — нужно решение',
+      alert: true,
+    });
+  });
+
+  it('labels a boundary proof with the wave the ripple rests in, never the next one', () => {
+    // Down to chapter 1 through five waves, the far wing held at its first step: the front
+    // proof belongs to wave 5 — a `+1` here recorded wave 6 and read «волна 6 / 5».
+    const atBeginning = planCascade(
+      facts([
+        origin(6, [seam(7)]),
+        repair(5, 'backward', 1, [seam(5)]),
+        repair(7, 'forward', 2, []),
+        repair(4, 'backward', 2, [seam(4)]),
+        repair(3, 'backward', 3, [seam(3)]),
+        repair(2, 'backward', 4, [seam(2)]),
+        repair(1, 'backward', 5, []),
+      ]),
+      ctx(),
+    );
+    expect(atBeginning.kind).toBe('open');
+    if (atBeginning.kind !== 'open') return;
+    expect(atBeginning.steps[0]).toMatchObject({ pass: 'front', wave: 5 });
+
+    // The same at the end of the book: down through five waves, chapter 67 only evaluated.
+    const steps = [
+      origin(66, [seam(67)]),
+      ...[65, 64, 63, 62, 61].map((chapter, index) =>
+        repair(chapter, 'backward', index + 1, index === 4 ? [] : [seam(chapter)]),
+      ),
+    ];
+    const atEnding = planCascade(facts(steps, { origin: 66 }), ctx());
+    expect(atEnding.kind).toBe('open');
+    if (atEnding.kind !== 'open') return;
+    expect(atEnding.steps[0]).toMatchObject({ pass: 'ending', wave: 5 });
+    for (const step of atEnding.steps) expect(step.wave).toBeLessThanOrEqual(BUDGET.maxWave);
+  });
+
+  it('the old bounds (wave 3, 5 chapters, 8 steps) stopped a ripple before its fifth wave', () => {
+    // This is the audit's R3 finding: the chapter bound bound first, so the wave bound was
+    // dead config. The numbers are kept here as a guard against a retune sliding back.
+    const old = walkRipple({ budget: { maxWave: 3, maxChapters: 5, maxSteps: 8 } });
+    expect(old.plan.kind).toBe('close');
+    if (old.plan.kind !== 'close') return;
+    expect(old.plan.outcome).toBe('escalated:budget');
+    expect(old.plan.reason).not.toContain('волн');
+    expect(Math.max(...old.steps.filter((step) => step.pass === 'cascade').map((step) => step.wave))).toBe(3);
   });
 });
 

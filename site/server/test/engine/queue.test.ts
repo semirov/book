@@ -192,44 +192,8 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
     return fixture;
   }
 
-  it('escalates when the wave bound is reached', () => {
-    const fixture = createEngineFixture({ env: { BUDGET_MAX_WAVE: '1' } });
-    book(fixture, 1, 4);
-    try {
-      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 3, intent: 'связать сцены' });
-      runStubStep(fixture, {
-        title: 'Глава 3',
-        blocks: edited(3, 0, 'Правленый первый абзац главы 3.'),
-        seams: [{ boundary: 4, reason: 'соседняя глава продолжает сцену' }],
-      });
-      const down = runStubStep(
-        fixture,
-        {
-          title: 'Глава 2',
-          blocks: edited(2, 0, 'Правленый первый абзац главы 2.'),
-          seams: [{ boundary: 2, reason: 'сцена начинается раньше' }],
-        },
-        'bwd',
-      );
-      expect(down?.assignment.chapter).toBe(2);
-      const row = fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(change.id) as {
-        status: string;
-        outcome: string;
-        reason: string;
-      };
-      expect(row.status).toBe('escalated');
-      expect(row.outcome).toBe('budget');
-      expect(row.reason).toContain('волн');
-      expect(fixture.alerts.map((alert) => alert.kind)).toContain('budget');
-      const cascade = fixture.db
-        .prepare('SELECT status, outcome FROM cascades WHERE change_id = ?')
-        .get(change.id) as { status: string; outcome: string };
-      expect(cascade).toEqual({ status: 'escalated', outcome: 'escalated:budget' });
-    } finally {
-      fixture.close();
-    }
-  });
-
+  // BOOK-DOC-4 rule 3: the wave bound is the public promise now, so the end-to-end stop lives
+  // in `waveBound.test.ts` (on the shipped budget) instead of an env override.
   it('escalates a chapter that would be written twice in one cascade', () => {
     const fixture = seeded();
     try {

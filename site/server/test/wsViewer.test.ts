@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { COMMENT_MAX_CHARS, COMMENT_MIN_CHARS, EDIT_MAX_CHARS } from '@book/shared';
+import { CASCADE_MAX_WAVE, COMMENT_MAX_CHARS, COMMENT_MIN_CHARS, EDIT_MAX_CHARS } from '@book/shared';
 
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
@@ -85,9 +85,12 @@ describe('hello — viewer and composer', () => {
       maxCommentChars: COMMENT_MAX_CHARS,
       maxEditChars: EDIT_MAX_CHARS,
       editSubmissionsPerDay: 1,
+      // BOOK-DOC-4 rule 3: the wave bound travels too, so «волна 2 / N» is the server's N.
+      maxWave: CASCADE_MAX_WAVE,
     });
     expect(COMMENT_MAX_CHARS).toBe(1_200);
     expect(EDIT_MAX_CHARS).toBe(10_000);
+    expect(CASCADE_MAX_WAVE).toBe(5);
   });
 
   it('resolves a signed-in reader from the session cookie', async () => {

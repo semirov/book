@@ -305,8 +305,16 @@ describe('the panel’s lines', () => {
     expect(waveOf(change)).toBe(2);
     expect(waveOf({ ...change, cascade: null })).toBe(1);
     expect(footnoteCopy(change)).toBe('сноска 014');
-    expect(iterationCopy(change)).toBe('итерация 014 · волна 2 из 3');
-    expect(assessmentCopy(change, null)).toBe('волна 2 из 3 · этап: готово');
+    // The bound is the server's: the fallback is the shipped default (BOOK-DOC-4 rule 3).
+    expect(iterationCopy(change)).toBe('итерация 014 · волна 2 из 5');
+    expect(assessmentCopy(change, null)).toBe('волна 2 из 5 · этап: готово');
+  });
+
+  it('takes the wave bound from the caller instead of carrying one of its own', () => {
+    expect(iterationCopy(change, 4)).toBe('итерация 014 · волна 2 из 4');
+    expect(assessmentCopy(change, null, 4)).toBe('волна 2 из 4 · этап: готово');
+    // A change with no wave says nothing about the bound.
+    expect(iterationCopy({ ...change, cascade: { ...change.cascade!, wave: 0 }, steps: [] }, 4)).not.toContain('волн');
   });
 
   it('states the basis and the touched chapters as facts', () => {

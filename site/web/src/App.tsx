@@ -43,7 +43,7 @@ import {
   withState,
   type BookData,
 } from './lib/bookState.ts';
-import { escalationMarkers, reduceRibbon, ribbonAfterSnapshot, ribbonFromState, type Ribbon } from './lib/cascade.ts';
+import { escalationMarkers, reduceRibbon, ribbonAfterSnapshot, ribbonFromState, ribbonMaxWave, type Ribbon } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
@@ -74,6 +74,8 @@ export function App() {
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
   const [viewer, setViewer] = useState<ViewerDto>({ signedIn: false, displayName: null });
   const [composer, setComposer] = useState(EMPTY_COMPOSER);
+  /** BOOK-DOC-4 rule 3: the wave bound arrives in `hello.limits`; null until that frame. */
+  const [maxWave, setMaxWave] = useState<number | null>(null);
   const [titleMotion, setTitleMotion] = useState<TitleMotion>(IDLE_TITLE);
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
@@ -167,6 +169,7 @@ export function App() {
             setData((current) => bookFromHello(hello, current));
             setViewer(hello.viewer);
             setComposer(hello.composer);
+            setMaxWave(ribbonMaxWave(hello.limits.maxWave));
             setRibbon(ribbonFromState(hello.state));
             setNotice(null);
             setRevisions({});
@@ -394,6 +397,7 @@ export function App() {
         impact={focus.impact}
         missing={focus.missing}
         ribbon={ribbon}
+        maxWave={maxWave ?? undefined}
         revisions={revisions}
         onClose={focus.close}
       />

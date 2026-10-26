@@ -21,7 +21,7 @@ import {
   type PatchOp,
 } from '@book/shared';
 
-import type { Ribbon } from './cascade.ts';
+import { RIBBON_MAX_WAVE, type Ribbon } from './cascade.ts';
 import { changeNumber, relevanceCopy, stampCopy } from './changeStatus.ts';
 import { NBSP, formatNumber, formatTime, plural } from './format.ts';
 
@@ -249,20 +249,26 @@ export function footnoteCopy(change: Pick<ChangeDto, 'seq'>): string {
   return `сноска ${changeNumber(change.seq)}`;
 }
 
-/** «итерация 014 · волна 2 из 3». */
-export function iterationCopy(change: Pick<ChangeDto, 'seq' | 'cascade' | 'steps'>): string {
+/** «итерация 014 · волна 2 из 5» — the bound is the server's (`hello.limits.maxWave`). */
+export function iterationCopy(
+  change: Pick<ChangeDto, 'seq' | 'cascade' | 'steps'>,
+  maxWave: number = RIBBON_MAX_WAVE,
+): string {
   const wave = waveOf(change);
-  return wave > 0 ? `итерация ${changeNumber(change.seq)} · волна ${wave} из 3` : `итерация ${changeNumber(change.seq)}`;
+  return wave > 0
+    ? `итерация ${changeNumber(change.seq)} · волна ${wave} из ${maxWave}`
+    : `итерация ${changeNumber(change.seq)}`;
 }
 
-/** «волна 2 из 3 · этап: готово» — the assessed effect, never a gate verdict. */
+/** «волна 2 из 5 · этап: готово» — the assessed effect, never a gate verdict. */
 export function assessmentCopy(
   change: Pick<ChangeDto, 'id' | 'status' | 'outcome' | 'cascade' | 'steps'>,
   ribbon: Ribbon | null,
+  maxWave: number = RIBBON_MAX_WAVE,
 ): string {
   const wave = waveOf(change);
   const stage = stageCopy(focusStage(change, ribbon));
-  return wave > 0 ? `волна ${wave} из 3 · этап: ${stage}` : `этап: ${stage}`;
+  return wave > 0 ? `волна ${wave} из ${maxWave} · этап: ${stage}` : `этап: ${stage}`;
 }
 
 /** «замечание Ани · глава 8 · принято 12:04» — the basis, as the thread knows it. */

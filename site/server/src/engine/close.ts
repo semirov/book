@@ -192,6 +192,8 @@ export function closeCascade(
   store.updateCascade(db, cascadeId, {
     status: (escalated ? 'escalated' : 'closed') satisfies CascadeStatus,
     outcome,
+    // The recorded wave is the deepest step of the ripple; a front/ending proof carries the
+    // wave it rests in, so this never exceeds the frozen `budget.maxWave` (BOOK-DOC-4 rule 3).
     wave: steps.reduce((max, step) => Math.max(max, step.wave), cascade.wave),
     depth_bwd: depth.down,
     depth_fwd: depth.up,

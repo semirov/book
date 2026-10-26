@@ -272,6 +272,7 @@ export class WsHub {
         maxConnections: this.maxConnections,
         perIp: this.perIp,
         editSubmissionsPerDay: this.config.editSubmissionsPerDay,
+        maxWave: this.config.budgetMaxWave,
       },
       viewer: conn.viewer,
       composer,

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-import { isPublishedCaptchaTestKey } from '@book/shared';
+import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -99,10 +99,23 @@ const schema = z.object({
   captchaTimeoutMs: z.coerce.number().int().min(500).max(10_000).default(3_000),
   /** Empty = no script, no third-party origin in the CSP (§15.6). */
   metrikaId: z.string().default(''),
-  /** Cascade bounds (§6A.6, frozen per cascade at open). */
-  budgetMaxWave: z.coerce.number().int().min(1).default(3),
-  budgetMaxChapters: z.coerce.number().int().min(1).default(5),
-  budgetMaxSteps: z.coerce.number().int().min(1).default(8),
+  /**
+   * Cascade bounds (§6A.6, frozen per cascade at open). The wave bound is the *public
+   * promise* of BOOK-DOC-4 rule 3 (`CASCADE_MAX_WAVE`), not a knob: `superRefine` below lets
+   * an env restate it and refuses any other value. One wave is one step per wing, the upward
+   * wing starts a wave behind, so a ripple bounded by W waves is 1 + W down + (W−1) up = 2W
+   * steps over 2W chapters, reaching −W / +(W−1) from the origin; the front and ending proofs
+   * add at most two more steps. The shipped chapter and step bounds sit above that on
+   * purpose: a bound that bound first would make the wave bound dead config (audit R3).
+   */
+  budgetMaxWave: z.coerce.number().int().min(1).default(CASCADE_MAX_WAVE),
+  budgetMaxChapters: z.coerce.number().int().min(1).default(12),
+  budgetMaxSteps: z.coerce.number().int().min(1).default(13),
+  /**
+   * The wall is the operative bound for a full ripple: 11–13 model runs can exceed 30 minutes
+   * on a slow model, and that stop is an honest escalation (`escalated:budget` with the time
+   * reason), not a failed promise — the NFR hard bound stays 30 min (BOOK-DOC-4 rule 3).
+   */
   budgetMaxWallMs: z.coerce.number().int().min(1).default(1_800_000),
   budgetMaxTokens: z.coerce.number().int().min(1).default(1_500_000),
   budgetDailyTokens: z.coerce.number().int().min(1).default(24_000_000),
@@ -134,6 +147,41 @@ const schema = z.object({
    * owner saying «пиши».
    */
   drafting: z.enum(['on', 'off']).default('off'),
+}).superRefine((config, ctx) => {
+  // BOOK-DOC-4 rule 3 is a public promise, so the wave bound is authoritative in code, not in
+  // an env file: an old deployment that still says 3 must fail the boot, never tell the client
+  // 3 while /rules promises 5. The message names the variable and the constant.
+  if (config.budgetMaxWave !== CASCADE_MAX_WAVE) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['budgetMaxWave'],
+      message:
+        `BUDGET_MAX_WAVE must equal CASCADE_MAX_WAVE (${String(CASCADE_MAX_WAVE)}): ` +
+        'the wave bound is the public promise of BOOK-DOC-4 rule 3, not a knob',
+    });
+  }
+  // The chapter and step bounds must not bind before the wave bound, or a five-wave ripple is
+  // unreachable and the wave bound is dead config (audit R3). A ripple bounded by W waves is
+  // 1 + W down + (W−1) up = 2W steps over 2W chapters, and the front and ending proofs add at
+  // most two more steps.
+  if (config.budgetMaxSteps < 2 * config.budgetMaxWave + 2) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['budgetMaxSteps'],
+      message:
+        `BUDGET_MAX_STEPS must be at least 2 × BUDGET_MAX_WAVE + 2 (${String(2 * config.budgetMaxWave + 2)}) ` +
+        'so the chapter/step bound cannot bind before the wave bound',
+    });
+  }
+  if (config.budgetMaxChapters < 2 * config.budgetMaxWave) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['budgetMaxChapters'],
+      message:
+        `BUDGET_MAX_CHAPTERS must be at least 2 × BUDGET_MAX_WAVE (${String(2 * config.budgetMaxWave)}) ` +
+        'so the chapter bound cannot bind before the wave bound',
+    });
+  }
 });
 
 export type Config = z.infer<typeof schema>;

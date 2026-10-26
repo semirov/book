@@ -72,6 +72,11 @@ export type HelloLimits = {
   perIp: number;
   /** §14: the SPEC's edit budget, one per day per identity (SPEC «Load & network»). */
   editSubmissionsPerDay: number;
+  /**
+   * BOOK-DOC-4 rule 3: the wave bound a ripple is bound by, so the ribbon and the focus
+   * view read «волна 2 / N» from here instead of carrying a number of their own.
+   */
+  maxWave: number;
 };
 
 export type HelloPayload = {

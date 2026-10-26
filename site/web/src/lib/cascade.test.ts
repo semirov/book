@@ -1,4 +1,5 @@
 import type { ChangeDecidedPayload, ChangeProcessingPayload, CascadeProgressPayload, StateSnapshot } from '@book/shared';
+import { CASCADE_MAX_WAVE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,7 +9,9 @@ import {
   ribbonAfterSnapshot,
   ribbonBand,
   ribbonFromState,
+  ribbonMaxWave,
   ribbonSummary,
+  RIBBON_MAX_WAVE,
   type Ribbon,
 } from './cascade.ts';
 
@@ -53,6 +56,25 @@ const OPEN_CASCADE: NonNullable<StateSnapshot['cascade']> = {
   startedAt: '2026-10-25T12:00:00Z',
   budget: { steps: 3, maxSteps: 8, deadline: '2026-10-25T12:30:00Z' },
 };
+
+describe('the wave bound the ribbon reads', () => {
+  it('falls back to the shipped default when the frame carries no number', () => {
+    expect(RIBBON_MAX_WAVE).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave(undefined)).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave(null)).toBe(CASCADE_MAX_WAVE);
+    // A frame is not trusted blindly: only a positive integer is a bound.
+    expect(ribbonMaxWave(0)).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave(-2)).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave(2.5)).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave(Number.NaN)).toBe(CASCADE_MAX_WAVE);
+    expect(ribbonMaxWave('4')).toBe(CASCADE_MAX_WAVE);
+  });
+
+  it('uses the number the server announced', () => {
+    expect(ribbonMaxWave(5)).toBe(5);
+    expect(ribbonMaxWave(4)).toBe(4);
+  });
+});
 
 describe('ribbonFromState', () => {
   it('rebuilds the ripple after a reload', () => {

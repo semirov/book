@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { CASCADE_MAX_WAVE } from '@book/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
@@ -31,8 +32,52 @@ describe('loadConfig', () => {
     // audit m1: the proxy is one host, not a /24 that lets the LAN forge its address.
     expect(config.trustedProxies).toBe('127.0.0.1,::1,192.168.1.44/32');
     expect(config.readPerMinute).toBe(60);
+    // BOOK-DOC-4 rule 3: five waves, and the chapter/step bounds above what five waves cost.
+    expect(config.budgetMaxWave).toBe(CASCADE_MAX_WAVE);
+    expect(config.budgetMaxChapters).toBe(12);
+    expect(config.budgetMaxSteps).toBe(13);
     expect(config.bookRoot.endsWith('book')).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
+  });
+
+  it('lets a five-wave ripple finish inside the chapter and step bounds (BOOK-DOC-4 rule 3)', () => {
+    // A ripple bounded by W waves is 1 + W down + (W−1) up = 2W steps over 2W chapters, and
+    // the front and ending proofs add at most two more steps. A chapter or step bound under
+    // that would bind first and leave the wave bound dead config (audit R3).
+    const config = loadConfig({});
+    const waves = config.budgetMaxWave;
+    expect(config.budgetMaxSteps).toBeGreaterThanOrEqual(2 * waves + 2);
+    expect(config.budgetMaxChapters).toBeGreaterThanOrEqual(2 * waves);
+    expect(config.budgetMaxWave).toBe(CASCADE_MAX_WAVE);
+  });
+
+  it('refuses an env whose wave bound disagrees with the public promise (BOOK-DOC-4 rule 3)', () => {
+    // A deployment copied from the old example says 3: booting it would tell the client 3
+    // while /rules promises 5, which is exactly the silent divergence the rule forbids.
+    let message = '';
+    try {
+      loadConfig({ BUDGET_MAX_WAVE: '3', BUDGET_MAX_CHAPTERS: '5', BUDGET_MAX_STEPS: '8' });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toMatch(/BUDGET_MAX_WAVE must equal CASCADE_MAX_WAVE \(5\)/u);
+    expect(message).toMatch(/public promise/u);
+  });
+
+  it('accepts a restated wave bound and the shipped chapter/step bounds', () => {
+    // Restating the constant is a no-op, not a divergence: it still boots.
+    const config = loadConfig({ BUDGET_MAX_WAVE: String(CASCADE_MAX_WAVE) });
+    expect(config.budgetMaxWave).toBe(CASCADE_MAX_WAVE);
+    expect(loadConfig({}).budgetMaxChapters).toBeGreaterThanOrEqual(2 * CASCADE_MAX_WAVE);
+  });
+
+  it('refuses chapter or step bounds that would bind before the wave bound', () => {
+    expect(() => loadConfig({ BUDGET_MAX_CHAPTERS: '5' })).toThrow(
+      /BUDGET_MAX_CHAPTERS must be at least 2 × BUDGET_MAX_WAVE \(10\)/u,
+    );
+    expect(() => loadConfig({ BUDGET_MAX_STEPS: '8' })).toThrow(
+      /BUDGET_MAX_STEPS must be at least 2 × BUDGET_MAX_WAVE \+ 2 \(12\)/u,
+    );
   });
 
   it('resolves a relative WEB_DIST against site/ (compose passes ./web/dist)', () => {

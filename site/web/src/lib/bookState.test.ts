@@ -90,6 +90,7 @@ const hello: HelloPayload = {
     maxConnections: 100,
     perIp: 4,
     editSubmissionsPerDay: 1,
+    maxWave: 5,
   },
   composer: { captcha: { provider: 'none', siteKey: null }, minChars: 3, maxChars: 1200, editMaxChars: 10_000 },
   viewer: { signedIn: false, displayName: null },

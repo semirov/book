@@ -1,3 +1,4 @@
+import { CASCADE_MAX_WAVE } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -43,6 +44,8 @@ describe('/rules', () => {
     expect(html).toContain('10 замечаний в час');
     expect(html).toContain('реальные люди');
     expect(html).toContain('указания модели');
+    // BOOK-DOC-4 rule 3: the public promise is the shared constant, never a stale number.
+    expect(html).toContain(`до ${CASCADE_MAX_WAVE} волн`);
   });
 
   it('keeps the frozen ending and the promise that a refusal has a public reason', () => {

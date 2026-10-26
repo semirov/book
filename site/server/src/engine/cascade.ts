@@ -285,6 +285,9 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
   }
 
   // ── the edges: exactly one front step, exactly one ending evaluation ─────────
+  // A boundary proof is not a wave: it reports the wave the ripple rests in, never `+1`, or a
+  // ripple resting in wave W at the book edge would record wave W+1 and read «волна 6 / 5».
+  // That is why these two steps are not run through `crosses()`: there is no wave to cross.
   const boundary: PlannedStep[] = [];
   if (downNeedsFront) {
     if (steps.length + 1 > budget.maxSteps) {
@@ -295,7 +298,7 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
       chapter: null,
       isFront: true,
       lane: null,
-      wave: currentWave + 1,
+      wave: currentWave,
       boundary: 'front',
       seamsIn: [{ boundary: 'front', reason: originSeams[0]?.reason ?? SEAM_FALLBACK }],
     });
@@ -309,7 +312,7 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
       chapter: 67,
       isFront: false,
       lane: null,
-      wave: currentWave + 1,
+      wave: currentWave,
       boundary: 'ending',
       seamsIn: [{ boundary: 'ending', reason: originSeams[0]?.reason ?? SEAM_FALLBACK }],
     });

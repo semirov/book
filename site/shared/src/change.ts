@@ -161,6 +161,13 @@ export type CascadeOutcome =
   | 'escalated:ending'
   | 'escalated:gate_timeout';
 
+/**
+ * BOOK-DOC-4 rule 3: a reader's edit spreads by waves, and no more than five of them — the
+ * sixth is refused and escalated with a public reason (§6A.6, R3/R3b). One source, because
+ * the config default, the `hello` limit and the public rules page must promise one number.
+ */
+export const CASCADE_MAX_WAVE = 5;
+
 /** The bounds frozen at cascade open (§6A.6, §6D.2). */
 export type CascadeBudget = {
   maxWave: number;

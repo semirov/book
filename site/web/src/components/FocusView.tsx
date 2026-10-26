@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getHistoryChapter, getHistoryDiff } from '../api.ts';
 import { FocusShell } from './FocusShell.tsx';
 import { inertBackground, reducedMotion, scrollToChapter } from '../dom.ts';
-import type { Ribbon } from '../lib/cascade.ts';
+import { ribbonMaxWave, type Ribbon } from '../lib/cascade.ts';
 import { relevanceCopy, stepLabel, wingGlyph } from '../lib/changeStatus.ts';
 import { formatTime } from '../lib/format.ts';
 import {
@@ -57,6 +57,8 @@ export type FocusViewProps = {
   /** The server does not know this change: an old or a mistyped link, never invented. */
   missing: boolean;
   ribbon: Ribbon | null;
+  /** `hello.limits.maxWave`: the wave bound the server runs under (fallback until it lands). */
+  maxWave?: number;
   revisions: Record<number, ChapterRevisionPayload>;
   onClose: () => void;
 };
@@ -72,7 +74,7 @@ export type FocusViewProps = {
  * The panel is built from the public change DTO and the impact projection only. There is no
  * gate section, no finding and no role name to render, because no input carries one (§6B.6).
  */
-export function FocusView({ change, impact, missing, ribbon, revisions, onClose }: FocusViewProps) {
+export function FocusView({ change, impact, missing, ribbon, maxWave, revisions, onClose }: FocusViewProps) {
   const dialog = useRef<HTMLDivElement | null>(null);
   const savedOffset = useRef(0);
   const captured = useRef(false);
@@ -135,6 +137,8 @@ export function FocusView({ change, impact, missing, ribbon, revisions, onClose 
   const stage = change === null ? 'edit' : focusStage(change, ribbon);
   const wings = change === null ? { down: null, up: null } : focusWings(change, ribbon);
   const wave = change === null ? 0 : waveOf(change);
+  /** The server announces its own wave bound; the constant is only the pre-`hello` fallback. */
+  const bound = ribbonMaxWave(maxWave);
   const revision = chapter === null ? null : (revisions[chapter] ?? null);
 
   // The changed blocks: the live patch when the step just landed, the change log otherwise.
@@ -331,7 +335,7 @@ export function FocusView({ change, impact, missing, ribbon, revisions, onClose 
           ) : null}
 
           <div className="focus-readout">
-            <span>волна {wave} / 3</span>
+            <span>волна {wave} / {bound}</span>
             <span>{wingsCopy(wings, stage)}</span>
             <span>{stageCopy(stage)}</span>
           </div>
@@ -406,7 +410,7 @@ export function FocusView({ change, impact, missing, ribbon, revisions, onClose 
               <div>
                 <dt>оценка</dt>
                 <dd>
-                  {assessmentCopy(change, ribbon)}
+                  {assessmentCopy(change, ribbon, bound)}
                   {change.relevance === null || change.relevance.grade === 'fresh' ? null : (
                     <span className="focus-quiet"> · {relevanceCopy(change.relevance.grade)}</span>
                   )}
@@ -420,7 +424,7 @@ export function FocusView({ change, impact, missing, ribbon, revisions, onClose 
               )}
               <div>
                 <dt>итерация</dt>
-                <dd>{iterationCopy(change)}</dd>
+                <dd>{iterationCopy(change, bound)}</dd>
               </div>
             </dl>
             {change.reason === null ? null : <p className="focus-reason">{change.reason}</p>}
