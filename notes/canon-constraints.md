@@ -36,6 +36,13 @@ only**: a slot holding nothing but the frozen frame of ch01/ch67 has no length a
   AI's act and never intent on the AI's side — the AI is a selection process without will: it neither
   kills nor spares.
 
+## The derived index (not canon)
+
+The editor checks causality against a light **derived index** — entities, mentions, promises, time
+markers, contradictions — computed from the text, never a canonical graph. It may err; it is a tool for
+the editor and a source for the public chronicle («вмешательство изменило статус документа X в главах
+12, 19, 44»), never a plot plan.
+
 ## The frozen frame and the empty book (owner, 2026-10-26)
 
 The book begins with nothing: 67 fixed slots, all empty — no titles, no body — except two sentences:
