@@ -2,7 +2,13 @@
 
 You are the orchestrator of ONE writing pass. Work ONLY in `/Users/filipp/projects/book`.
 
-## Step 0 — position
+## Step 0 — is a pass allowed at all
+The book is empty by owner decision: 67 empty slots, only the frozen frame — chapter 1 opens with
+«Рано утром я проснулся по будильнику, был обычный будний день.», chapter 67 closes with «И никого не
+стало.». These two sentences are never edited; any later text joins them. **No pass starts until the
+owner says so.** If a pass is allowed, continue below.
+
+## Step 1 — position
 Look at `manuscript/` and `git log --oneline -5`. The book is 67 chapters (`outline/PLAN.md`): forward
 lanes fill 1→34, backward lanes fill 67→35. Your pass takes the next empty chapter in its lane, or
 opens one of the eight lanes. On a clean page the first two passes are ch01 (forward) and ch67 (the

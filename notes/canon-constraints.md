@@ -22,6 +22,22 @@ For the code/validator follow-up. Everything not listed here is not canon.
 
 One authoritative line, `concept/CONCEPT.md` §Объём. In code, `CHAPTER_CHARS.floor` and `.max` are that
 bound; `.min` (thin warning) and `.target` are code-side, not canon. Nothing else states a length.
+**An empty slot is a valid state**: length applies only to a chapter that has been written.
+
+## The frozen frame and the empty book (owner, 2026-10-26)
+
+The book begins with nothing. 67 fixed slots, all empty — no titles, no body — except two sentences:
+
+- chapter 1: «Рано утром я проснулся по будильнику, был обычный будний день.»
+- chapter 67: «И никого не стало.»
+
+**Nobody edits these two sentences** — not the writer, not a ripple, not a reader's change; the LLM
+never touches them. Any later text must join them organically (`F023`). No writing pass starts until
+the owner says so.
+
+The front page keeps **the first annotation in the owner's own words** — the «Небольшой посёлок, две
+тысячи двадцатый год…» block ending «В графе, где должна стоять подпись, осталось пусто. Больше её
+никто не заполнял.» It is basis, like the frame: not rewritten, not paraphrased, not summarised.
 
 ## Not canon any more — code that still assumes it
 
