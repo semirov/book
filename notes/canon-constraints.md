@@ -10,11 +10,16 @@ For the code/validator follow-up. Everything not listed here is not canon.
    to silicon — a computing substrate, not a life form — by selection, not by a plan. No god, no chosen.
 3. **Cyberpunk** — cold, without neon; the cosmic reaches people only through ordinary procedure:
    queue, registry, signature, sensor, paperwork.
-4. **Death of the human carbon form — as drama.** Fixed content: the human form does not survive
-   anywhere (no colony, backup, upload, ark, resurrection, lucky escape). Played as drama, not a verdict.
+4. **The human carbon form ends — by human decision, not by AI.** Fixed content: the human form does
+   not survive anywhere (no colony, backup, upload, ark, resurrection, lucky escape). The AI never
+   killed anyone and never decided anything; humans themselves chose 'not to be', and the choice arrives
+   through procedure (document, queue, signature, refusal), looking like a quiet cessation. Played as
+   drama, not a verdict.
 5. **Structure** — 67 chapters in fixed slots, four unnamed parts. Four narrative lines forward (1→34)
-   and four backward (67→35): free labels, a plan, not a rule. Which lines, genre, register, length
-   inside the bound, interleaving and rhyming: free (anecdote, tall tale, love allowed). Auto-titles stay.
+   and four backward (67→35): free labels, a plan, not a rule. **The order is not fixed: a line may fall
+   every chapter or every two — the density varies; the only hard rule is four forward + four backward,
+   the rest is harmony, not a schedule.** Which lines, genre, register, length inside the bound,
+   interleaving and rhyming: free (anecdote, tall tale, love allowed). Auto-titles stay.
 6. **Length only.**
 
 ## Length
@@ -27,14 +32,16 @@ only**: a slot holding nothing but the frozen frame of ch01/ch67 has no length a
 
 - «Дешевле» is never a fact without units — W, J per useful operation, °C, m³/s of coolant — or left unsaid.
 - Beyond a light-second the nodes are separate systems: no shared present, no joint action, agreement or reaction in one scene.
-- The end is a rate or a blow with a carrier (demography/energy arithmetic, or a dose and a document chain), never a decision, never intent.
+- The end is a **human** decision carried by procedure (a document, a refusal, a signature), never the
+  AI's act and never intent on the AI's side — the AI is a selection process without will: it neither
+  kills nor spares.
 
 ## The frozen frame and the empty book (owner, 2026-10-26)
 
 The book begins with nothing: 67 fixed slots, all empty — no titles, no body — except two sentences:
 
-- chapter 1: «Рано утром я проснулся по будильнику, был обычный будний день.»
-- chapter 67: «И никого не стало.»
+- chapter 1: «Я вошёл в пустую комнату. Её освещал яркий свет.»
+- chapter 67: «Свет погас, потому что не осталось глаз, которым он был бы нужен.»
 
 **One rule for the finale: it is fixed.** Nobody edits these two sentences — not the writer, not a
 ripple, not a reader's change; a ripple may only evaluate ch67; a reader's change may never target the
