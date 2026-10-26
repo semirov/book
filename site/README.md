@@ -415,8 +415,15 @@ docker run --rm -v book_book-data:/data alpine chown 1000:1000 /data
 A CAPTCHA sitekey or secret that is one of the vendor's **published test keys**
 (`1x00000000000000000000AA`, `1x0000000000000000000000000000000AA`, hCaptcha's
 `10000000-ffff-ffff-ffff-000000000001`, …) is refused at boot: it accepts any token, so the
-challenge would be decorative. Outside production such a boot only logs a warning, so a
-local sandbox can still run the composer.
+challenge would be decorative. Outside production a published **sitekey** only logs a
+warning, so a local sandbox can still run the composer.
+
+A published test **sitekey** is refused in production too, unless
+`CAPTCHA_ALLOW_TEST_SITE_KEY=1` is set explicitly: that opt-in lets the boot warn instead and
+start the deployment, and comments stay closed until a real Turnstile sitekey/secret pair is
+set (siteverify rejects every token against the real secret). A published test **secret** is
+refused in every environment, the opt-in included: it alone would open the comment path. Both
+messages name the variable only, never the value.
 
 `/privacy` and `/rules` are static documents (a client route in `web/src/lib/route.ts`, the
 shell served by an explicit server route): they name the CAPTCHA and the Metrika counter,

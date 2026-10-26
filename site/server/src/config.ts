@@ -84,6 +84,14 @@ const schema = z.object({
   captchaProvider: z.enum(['turnstile', 'hcaptcha', 'none']).default('none'),
   captchaSiteKey: z.string().default(''),
   captchaSecret: z.string().default(''),
+  /**
+   * Prod-only opt-in for a vendor's published test sitekey (audit B1 follow-up). `0` keeps the
+   * boot refusal; `1` lets a live deployment start with such a key, warns once, and leaves the
+   * comment path closed (the real secret fails siteverify). A published test *secret* stays
+   * fatal in every environment. Values are strings like every other enum in this schema, so a
+   * typo (`true`) fails the parse instead of silently enabling the opt-in.
+   */
+  captchaAllowTestSiteKey: z.enum(['0', '1']).default('0'),
   captchaTimeoutMs: z.coerce.number().int().min(500).max(10_000).default(3_000),
   /** Empty = no script, no third-party origin in the CSP (§15.6). */
   metrikaId: z.string().default(''),
@@ -198,6 +206,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     captchaProvider: env.CAPTCHA_PROVIDER,
     captchaSiteKey: env.CAPTCHA_SITE_KEY,
     captchaSecret: readMountedSecret(env, 'CAPTCHA_SECRET'),
+    captchaAllowTestSiteKey: env.CAPTCHA_ALLOW_TEST_SITE_KEY,
     captchaTimeoutMs: env.CAPTCHA_TIMEOUT_MS,
     metrikaId: env.METRIKA_ID,
     budgetMaxWave: env.BUDGET_MAX_WAVE,
@@ -241,21 +250,35 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (config.captchaProvider !== 'none' && config.captchaSiteKey.trim().length === 0) {
     throw new Error(`invalid configuration: CAPTCHA_SITE_KEY is required for provider ${config.captchaProvider}`);
   }
-  // B1 (audit): a vendor's published test credential makes the challenge decorative — it
-  // accepts any token, so the form would accept any bot. The message names the variable and
-  // never the value; the check runs on any non-empty key, whatever the provider.
-  // Production fails closed (§12.8, README «Secrets»); a local/test boot only warns, so a
-  // developer can still run the composer against the vendor's sandbox keys.
-  const publishedCaptchaVars = [
-    isPublishedCaptchaTestKey(config.captchaSiteKey) ? 'CAPTCHA_SITE_KEY' : null,
-    isPublishedCaptchaTestKey(config.captchaSecret) ? 'CAPTCHA_SECRET' : null,
-  ].filter((name): name is string => name !== null);
-  if (publishedCaptchaVars.length > 0) {
-    const names = publishedCaptchaVars.join(' and ');
-    const plural = publishedCaptchaVars.length > 1 ? 'are published test keys' : 'is a published test key';
-    const message = `${names} ${plural} (the challenge is open)`;
-    if (env.NODE_ENV === 'production') throw new Error(`invalid configuration: ${message}`);
-    console.warn(`${message} — accepted outside production only`);
+  // B1 (audit): a vendor's published test credential makes the challenge decorative — with a
+  // published test sitekey the widget accepts any visitor, and with a published test secret
+  // siteverify answers `success: true` for any token. The messages name the variable and never
+  // the value; the check runs on any non-empty key, whatever the provider.
+  //
+  // A published *secret* is fatal in every environment: it alone opens the comment path, so no
+  // opt-in may lift it (§12.8, README «Secrets»). A published *sitekey* only renders a
+  // decorative widget — siteverify still rejects the token against a real secret — so outside
+  // production a local sandbox may use it with a warning, and in production it needs the
+  // explicit, loud opt-in `CAPTCHA_ALLOW_TEST_SITE_KEY=1`; comments stay closed either way
+  // until a real Turnstile pair is set.
+  if (isPublishedCaptchaTestKey(config.captchaSecret)) {
+    throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key');
+  }
+  if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
+    if (env.NODE_ENV !== 'production') {
+      console.warn('CAPTCHA_SITE_KEY is a published test key — accepted outside production only');
+    } else if (config.captchaAllowTestSiteKey !== '1') {
+      throw new Error(
+        'invalid configuration: CAPTCHA_SITE_KEY is a published test key and is refused in production; ' +
+          'set a real key or CAPTCHA_ALLOW_TEST_SITE_KEY=1',
+      );
+    } else {
+      console.warn(
+        'CAPTCHA_SITE_KEY is a published test key — allowed in production only because ' +
+          'CAPTCHA_ALLOW_TEST_SITE_KEY=1; comments stay closed until a real Turnstile sitekey ' +
+          'and secret pair is set',
+      );
+    }
   }
   if (env.NODE_ENV === 'production') {
     // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart

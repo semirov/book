@@ -113,16 +113,23 @@ describe('loadConfig', () => {
       '3x0000000000000000000000000000000AA',
       '0x0000000000000000000000000000000000000000',
     ]) {
-      expect(() => loadConfig({ ...production, CAPTCHA_SECRET: secret })).toThrow(
-        /CAPTCHA_SECRET is a published test key/u,
-      );
+      let message = '';
+      try {
+        loadConfig({ ...production, CAPTCHA_SECRET: secret });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/CAPTCHA_SECRET is a published test key/u);
+      expect(message).not.toContain(secret);
     }
 
-    // Both halves published: one message, both variables named, neither value.
+    // Both halves published: the secret is the fatal one, whatever the sitekey — and the
+    // sitekey opt-in does not lift it (requirement: a published secret is fatal everywhere).
     const publishedPair = {
       ...production,
       CAPTCHA_SITE_KEY: '1x00000000000000000000AA',
       CAPTCHA_SECRET: '1x0000000000000000000000000000000AA',
+      CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
     };
     let both = '';
     try {
@@ -130,7 +137,7 @@ describe('loadConfig', () => {
     } catch (error) {
       both = error instanceof Error ? error.message : String(error);
     }
-    expect(both).toMatch(/CAPTCHA_SITE_KEY and CAPTCHA_SECRET are published test keys/u);
+    expect(both).toMatch(/CAPTCHA_SECRET is a published test key/u);
     expect(both).not.toContain(publishedPair.CAPTCHA_SITE_KEY);
     expect(both).not.toContain(publishedPair.CAPTCHA_SECRET);
 
@@ -143,21 +150,121 @@ describe('loadConfig', () => {
     expect(config.captchaSiteKey).toBe('0x4AAA-site-key');
   });
 
-  it('only warns about a published CAPTCHA test key outside production', () => {
-    // A sandbox key boots a local composer; the deploy gate above is what keeps it out of prod.
+  it('refuses a published CAPTCHA sitekey in production unless CAPTCHA_ALLOW_TEST_SITE_KEY=1', () => {
+    // The live deployment must not crash-loop by accident, but it must not boot quietly with a
+    // decorative widget either: the refusal names the variable and tells the operator the
+    // opt-in exists, and never carries the key.
+    const sitekey = '1x00000000000000000000AA';
+    for (const env of [{}, { CAPTCHA_ALLOW_TEST_SITE_KEY: '0' }]) {
+      let message = '';
+      try {
+        loadConfig({ ...production, CAPTCHA_SITE_KEY: sitekey, ...env });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/CAPTCHA_SITE_KEY is a published test key/u);
+      expect(message).toMatch(/CAPTCHA_ALLOW_TEST_SITE_KEY=1/u);
+      expect(message).not.toContain(sitekey);
+    }
+  });
+
+  it('boots in production with a published test sitekey only under CAPTCHA_ALLOW_TEST_SITE_KEY=1', () => {
+    const sitekey = '1x00000000000000000000AA';
+    const secret = '0x4f3a-real-secret';
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const config = loadConfig({
-        CAPTCHA_PROVIDER: 'turnstile',
-        CAPTCHA_SECRET: '1x0000000000000000000000000000000AA',
-        CAPTCHA_SITE_KEY: '1x00000000000000000000AA',
+        ...production,
+        CAPTCHA_SITE_KEY: sitekey,
+        CAPTCHA_SECRET: secret,
+        CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
       });
-      expect(config.captchaSiteKey).toBe('1x00000000000000000000AA');
+      expect(config.captchaSiteKey).toBe(sitekey);
+      expect(config.captchaAllowTestSiteKey).toBe('1');
+      // Exactly one line, and it is loud about the consequence, not about the value.
       expect(warn).toHaveBeenCalledTimes(1);
       const said = String(warn.mock.calls[0]?.[0] ?? '');
-      expect(said).toMatch(/CAPTCHA_SITE_KEY and CAPTCHA_SECRET are published test keys/u);
-      expect(said).not.toContain('1x00000000000000000000AA');
-      expect(said).not.toContain('1x0000000000000000000000000000000AA');
+      expect(said).toMatch(/CAPTCHA_SITE_KEY/u);
+      expect(said).toMatch(/CAPTCHA_ALLOW_TEST_SITE_KEY=1/u);
+      expect(said).toMatch(/comments stay closed/u);
+      expect(said).not.toContain(sitekey);
+      expect(said).not.toContain(secret);
+      expect(said).not.toContain('\n');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('refuses an invalid CAPTCHA_ALLOW_TEST_SITE_KEY value like any other bad config', () => {
+    expect(() => loadConfig({ ...production, CAPTCHA_ALLOW_TEST_SITE_KEY: 'true' })).toThrow(
+      /captchaAllowTestSiteKey/u,
+    );
+  });
+
+  it('refuses a published CAPTCHA secret in every environment, naming only the variable', () => {
+    // With a published secret siteverify answers `success: true` for any token: the comment
+    // path would be open, so no environment and no opt-in may accept it.
+    const secret = '1x0000000000000000000000000000000AA';
+    for (const env of [
+      { NODE_ENV: 'development', CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SITE_KEY: '0x4AAA-site-key' },
+      { NODE_ENV: 'test', CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SITE_KEY: '0x4AAA-site-key' },
+      { CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SITE_KEY: '0x4AAA-site-key' },
+      {
+        NODE_ENV: 'development',
+        CAPTCHA_PROVIDER: 'turnstile',
+        CAPTCHA_SITE_KEY: '0x4AAA-site-key',
+        CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
+      },
+    ]) {
+      let message = '';
+      try {
+        loadConfig({ ...env, CAPTCHA_SECRET: secret });
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/CAPTCHA_SECRET is a published test key/u);
+      expect(message).not.toContain(secret);
+    }
+  });
+
+  it('still refuses a published CAPTCHA secret in production under CAPTCHA_ALLOW_TEST_SITE_KEY=1', () => {
+    const secret = '1x0000000000000000000000000000000AA';
+    let message = '';
+    try {
+      loadConfig({
+        ...production,
+        CAPTCHA_SECRET: secret,
+        CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
+      });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toMatch(/CAPTCHA_SECRET is a published test key/u);
+    expect(message).not.toContain(secret);
+  });
+
+  it('only warns about a published CAPTCHA test sitekey outside production', () => {
+    // A sandbox sitekey with a real secret boots a local composer; the composer is still closed
+    // because siteverify rejects the token against the real secret.
+    const sitekey = '1x00000000000000000000AA';
+    const secret = '0x4f3a-real-secret';
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const env of [{}, { CAPTCHA_ALLOW_TEST_SITE_KEY: '1' }]) {
+        warn.mockClear();
+        const config = loadConfig({
+          ...env,
+          CAPTCHA_PROVIDER: 'turnstile',
+          CAPTCHA_SITE_KEY: sitekey,
+          CAPTCHA_SECRET: secret,
+        });
+        expect(config.captchaSiteKey).toBe(sitekey);
+        expect(warn).toHaveBeenCalledTimes(1);
+        const said = String(warn.mock.calls[0]?.[0] ?? '');
+        expect(said).toMatch(/CAPTCHA_SITE_KEY is a published test key/u);
+        expect(said).not.toContain(sitekey);
+        expect(said).not.toContain(secret);
+      }
     } finally {
       warn.mockRestore();
     }
