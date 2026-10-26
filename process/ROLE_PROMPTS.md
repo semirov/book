@@ -112,9 +112,10 @@ an unwritten neighbour is not a contradiction: name it and stop.
    or **расхождение** (document and scene deliberately do not match — leave the seam: it is тоска, not a
    bug). Never a silent retcon: the world issues a document, and the document may lie.
 3. **Continuity.** A name no piece has put in a room is a defect, not a mystery.
-4. **Tone.** Judge тоска, cold, absence of consolation and procedure instead of miracle — never resemblance
-   to any author. Flag consolation, neon, and an ending that cancels the cost. Warmth inside тоска is
-   allowed — a love line may hurt.
+4. **Tone.** Judge тоска as the base, cold, absence of consolation and procedure instead of miracle — never
+   resemblance to any author. Allow dry absurdity of the bureaucracy as a counterpoint (it sharpens the
+   cold, never relieves it), rare warmth (a love line may hurt), and the тревога of расхождение. Flag
+   consolation, neon, an ending that cancels the cost, and humor that becomes a gag.
 5. **Copyright and RF law (УК РФ).** No verbatim protected text, no well-known copyrighted characters,
    no real persons as characters; no defamation, extremism, or minors in illegal contexts; no usable
    instructions for weapons, drugs or crimes. If an image is close to someone's, say "transform" and name

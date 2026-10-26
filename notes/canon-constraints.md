@@ -4,7 +4,8 @@ For the code/validator follow-up. Everything not listed here is not canon.
 
 ## The six
 
-1. **Тоска** — the tone: Russian тоска/хтонь, cold, no consolation.
+1. **Тоска** — the tone's base, not its whole: Russian тоска/хтонь, cold, no consolation, pierced by dry
+   absurdity of the bureaucracy, rare warmth, and the тревога of расхождение.
 2. **AI** — matter noticed itself; there is no outside vantage point from which the system sees itself
    whole, so the description never closes — only the trace is visible. Cognition is displaced from carbon
    to silicon — a computing substrate, not a life form — by selection, not by a plan. No god, no chosen.
