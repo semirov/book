@@ -23,6 +23,15 @@ For the code/validator follow-up. Everything not listed here is not canon.
    interleaving and rhyming: free (anecdote, tall tale, love allowed). Auto-titles stay.
 6. **Length only.**
 
+### Tone is a range, not one note (owner, 2026-10-27)
+
+Тоска is the base, not the whole. It is pierced by three things, and none of them relieves it:
+dry absurdity of the bureaucracy (queue, form, «пункт 4 изложен в новой редакции» — the laughter
+sharpens the cold; Kafka, Catch-22), rare warmth (a love line may hurt), and the тревога of
+расхождение (a document exists but the scene does not obey it). Flag consolation, neon, an ending
+that cancels the cost, and humour that becomes a gag. See `style/VOICE.md` (Тон + Юмор) and
+`process/ROLE_PROMPTS.md` EDITOR #4 / AUDITOR.
+
 ## Length
 
 One authoritative line, `concept/CONCEPT.md` §Объём. In code, `CHAPTER_CHARS.floor` and `.max` are that
