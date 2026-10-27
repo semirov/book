@@ -65,6 +65,11 @@ const verdictBody = z.object({
   verdict: z.enum(['HOLDS', 'GAP', 'CLEAR', 'REFUSED']),
   rule: z.string().max(40).nullish(),
   findings: z.unknown().optional(),
+  /**
+   * ADR-038: a **shape** check only. `max(120)` bounds what a session can store; whether the
+   * model is present and whether it is the pipeline's is the engine's rule, so the CLI, this
+   * route and a direct caller refuse with the same code (`MODEL_REQUIRED`).
+   */
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
@@ -79,7 +84,14 @@ const doneBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
 });
 
-const seenBody = z.object({ leaseId: id, note: z.string().max(400).optional() });
+/** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
+const seenBody = z.object({
+  leaseId: id,
+  note: z.string().max(400).optional(),
+  model: z.string().max(120).optional(),
+  tokensIn: z.number().int().min(0).optional(),
+  tokensOut: z.number().int().min(0).optional(),
+});
 const escalateBody = z.object({ leaseId: id, because: z.string().min(1).max(400) });
 const beatBody = z.object({ leaseId: id });
 const traceBody = z.object({ id });
@@ -179,7 +191,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         session: body.session,
         verdict: body.verdict,
         findings: body.findings,
-        model: body.model ?? 'stub',
+        model: body.model ?? '',
         tokensIn: body.tokensIn ?? 0,
         tokensOut: body.tokensOut ?? 0,
       }),
@@ -192,7 +204,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       data: options.engine.done(body.leaseId, {
         seams: body.seams ?? [],
         note: body.note,
-        model: body.model,
+        model: body.model ?? '',
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
       }),
@@ -200,7 +212,14 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   });
   app.post('/internal/seen', async (request) => {
     const body = seenBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.seen(body.leaseId, body.note ?? null) };
+    return {
+      ok: true,
+      data: options.engine.seen(body.leaseId, body.note ?? null, {
+        model: body.model ?? '',
+        tokensIn: body.tokensIn,
+        tokensOut: body.tokensOut,
+      }),
+    };
   });
   app.post('/internal/escalate', async (request) => {
     const body = escalateBody.parse(request.body ?? {});

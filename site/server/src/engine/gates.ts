@@ -19,6 +19,7 @@ import type { Db } from '../db/db.ts';
 import { isRightsRule, rightsRefusalLine, type RightsRuleId } from '../rights/rules.ts';
 import { toIso } from '../util/time.ts';
 import { readRightsScan } from './helpers.ts';
+import { requirePipelineModel } from './model.ts';
 import {
   deleteDispatch,
   getDispatch,
@@ -168,6 +169,9 @@ export function recordVerdict(
   const db = deps.db;
   const now = deps.clock.now();
   const at = toIso(now);
+  // ADR-038: a verdict names the model that answered, and it must be the pipeline's — refused
+  // before the dispatch is consumed, so a refused verdict changes nothing.
+  const model = requirePipelineModel(deps.config, answer.model, 'verdict');
   if (answer.role === 'consultant' && !getVerdict(db, step.step_id, 'editor')) {
     refuse('GATE_ORDER', 422, 'the consultant may not answer before the editor');
   }
@@ -195,7 +199,7 @@ export function recordVerdict(
     verdict,
     findings: JSON.stringify(findings),
     cycles,
-    model: text(answer.model, 120) || 'stub',
+    model,
     tokens_in: Math.max(0, Math.trunc(answer.tokensIn)),
     tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
     at,
@@ -226,7 +230,7 @@ export function recordVerdict(
       verdict,
       findings: JSON.stringify(findings),
       cycles,
-      model: text(answer.model, 120) || 'stub',
+      model,
       tokens_in: Math.max(0, Math.trunc(answer.tokensIn)),
       tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
       at,

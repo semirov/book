@@ -18,7 +18,7 @@ import { acquireLease, releaseLease } from '../../src/engine/leases.ts';
 import * as store from '../../src/engine/store.ts';
 import type { EngineError } from '../../src/engine/types.ts';
 import { toIso } from '../../src/util/time.ts';
-import { chapterText, createEngineFixture, type Fixture } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture, type Fixture } from './helpers.ts';
 
 function refusalOf(run: () => unknown): EngineError | null {
   try {
@@ -49,7 +49,7 @@ function verdict(fixture: Fixture, role: 'editor' | 'consultant'): void {
     session: gate.session,
     verdict: 'HOLDS',
     findings: [],
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 100,
     tokensOut: 10,
   });
@@ -153,7 +153,7 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       expect(leaseRow(fixture, assignment.leaseId).released_at).toBeNull();
       expect(store.getStep(fixture.db, assignment.stepId)?.outcome).toBeNull();
 
-      const done = fixture.engine.done(assignment.leaseId, { seams: [], note: 'auto-beaten' });
+      const done = fixture.engine.done(assignment.leaseId, { seams: [], note: 'auto-beaten', model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
       expect(leaseRow(fixture, assignment.leaseId).release_reason).toBe('done');
     } finally {
@@ -257,7 +257,7 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       fixture.clock.advance(60_000);
       expect(fixture.engine.reap().stepWalls).toEqual(['stp_stop']);
 
-      expect(refusalOf(() => fixture.engine.done(lease.id, { seams: [] }))?.code).toBe('LEASE_RELEASED');
+      expect(refusalOf(() => fixture.engine.done(lease.id, { seams: [], model: PIPELINE_MODEL }))?.code).toBe('LEASE_RELEASED');
       expect(refusalOf(() => fixture.engine.escalate(lease.id, 'не беру'))?.code).toBe('LEASE_RELEASED');
       expect(store.getStep(fixture.db, 'stp_stop')?.outcome).toBe('escalated');
       const closes = fixture.db
@@ -327,7 +327,7 @@ describe('a close after expiry (BOOK-34)', () => {
       expect(report.expiredLeases).toBe(1);
       expect(leaseRow(fixture, assignment.leaseId).release_reason).toBe('expired');
 
-      const done = fixture.engine.done(assignment.leaseId, { seams: [], note: 'late but honest' });
+      const done = fixture.engine.done(assignment.leaseId, { seams: [], note: 'late but honest', model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
       expect(leaseRow(fixture, assignment.leaseId).release_reason).toBe('expired-close');
       // Attribution is the lease that did the work, not whatever lease the step had later.
@@ -347,7 +347,7 @@ describe('a close after expiry (BOOK-34)', () => {
     try {
       const assignment = landedPass(fixture);
       fixture.clock.advance(fixture.config.leaseTtlMs + 1_000);
-      const seen = fixture.engine.seen(assignment.leaseId, 'read, nothing to change');
+      const seen = fixture.engine.seen(assignment.leaseId, 'read, nothing to change', { model: PIPELINE_MODEL });
       expect(seen.stepId).toBe(assignment.stepId);
       expect(leaseRow(fixture, assignment.leaseId).release_reason).toBe('expired-close');
     } finally {
@@ -366,7 +366,7 @@ describe('a close after expiry (BOOK-34)', () => {
       expect(fresh.stepId).toBe(stale.stepId);
       expect(fresh.leaseId).not.toBe(stale.leaseId);
 
-      const refusal = refusalOf(() => fixture.engine.done(stale.leaseId, { seams: [], note: 'stale session' }));
+      const refusal = refusalOf(() => fixture.engine.done(stale.leaseId, { seams: [], note: 'stale session', model: PIPELINE_MODEL }));
       expect(refusal?.code).toBe('LEASE_HELD');
       expect(refusal?.status).toBe(409);
       expect(refusal?.message).toContain('writer-2');
@@ -375,7 +375,7 @@ describe('a close after expiry (BOOK-34)', () => {
       expect(escalation?.code).toBe('LEASE_HELD');
 
       // The step is still the live session's to close.
-      const done = fixture.engine.done(fresh.leaseId, { seams: [], note: 'the real holder' });
+      const done = fixture.engine.done(fresh.leaseId, { seams: [], note: 'the real holder', model: PIPELINE_MODEL });
       expect(done.stepId).toBe(stale.stepId);
       expect(leaseRow(fixture, fresh.leaseId).release_reason).toBe('done');
     } finally {
@@ -437,11 +437,11 @@ describe('a close after expiry (BOOK-34)', () => {
     const fixture = chapterOneFixture();
     try {
       const assignment = landedPass(fixture);
-      fixture.engine.done(assignment.leaseId, { seams: [], note: 'on time' });
-      expect(refusalOf(() => fixture.engine.done(assignment.leaseId, { seams: [], note: 'twice' }))?.code).toBe(
+      fixture.engine.done(assignment.leaseId, { seams: [], note: 'on time', model: PIPELINE_MODEL });
+      expect(refusalOf(() => fixture.engine.done(assignment.leaseId, { seams: [], note: 'twice', model: PIPELINE_MODEL }))?.code).toBe(
         'LEASE_RELEASED',
       );
-      expect(refusalOf(() => fixture.engine.done('lea_missing', { seams: [] }))?.code).toBe('LEASE_NOT_FOUND');
+      expect(refusalOf(() => fixture.engine.done('lea_missing', { seams: [], model: PIPELINE_MODEL }))?.code).toBe('LEASE_NOT_FOUND');
 
       // A close that names a lease nobody ever issued is a caller bug, not an anonymous close.
       const bare = addStep(fixture, { id: 'stp_bare', chapter: 2 });

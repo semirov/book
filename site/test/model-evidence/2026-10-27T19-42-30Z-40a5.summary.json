@@ -1,0 +1,38 @@
+{
+  "run": "pass",
+  "runId": "2026-10-27T19-42-30Z-40a5",
+  "startedAt": "2026-10-27T19:42:30.057Z",
+  "finishedAt": "2026-10-27T19:49:16.036Z",
+  "commit": "bcb9ed6fcb1ff6e9f4d8cc824155c67b0471129c",
+  "dirty": true,
+  "pipeline": {
+    "provider": "deepseek",
+    "model": "deepseek/deepseek-v4-pro",
+    "apiModel": "deepseek-v4-pro"
+  },
+  "stepId": "stp_01M5ZE5E28491RXWC8B47V95E1",
+  "leaseId": "lea_01M5ZE5E2AB5Z80KPAHTDF9AGG",
+  "chapter": 1,
+  "invariantsSha256": "338cbab8ed245c84be6252ff9f27c6eb72cdce38197add42222cac2caea14c60",
+  "invariantsChars": 788,
+  "frameOpening": true,
+  "stepModel": "deepseek/deepseek-v4-pro",
+  "closedLine": "step stp_01M5ZE5E28491RXWC8B47V95E1 · draft · closed · rewritten · chapter 1 · wave 0 · model deepseek/deepseek-v4-pro",
+  "gateLine": "gates: editor:HOLDS [deepseek/deepseek-v4-pro] · consultant:HOLDS [deepseek/deepseek-v4-pro]",
+  "outcome": "rewritten",
+  "changeStatus": null,
+  "trace": {
+    "closed": true
+  },
+  "totals": {
+    "runnable": 3,
+    "blocked": 0,
+    "ok": 3,
+    "mismatch": 0,
+    "error": 0,
+    "costUsd": 0.106365,
+    "tokensIn": 29668,
+    "tokensOut": 45439
+  },
+  "callCount": 3
+}

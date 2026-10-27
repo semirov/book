@@ -11,11 +11,11 @@
  *   engine.mjs next --role rights            → Gate B's assignment, for a flagged step (or null)
  *   engine.mjs start <leaseId> [--decision adapt|drop|void --reason … [--intent …]]
  *   engine.mjs land <leaseId> [--rev N] [--no-write]
- *   engine.mjs verdict <stepId> --role editor|consultant [--session S] --verdict HOLDS|GAP
- *                              [--findings findings.json] [--model M] [--tokens-in N] [--tokens-out N]
+ *   engine.mjs verdict <stepId> --role editor|consultant --session S --verdict HOLDS|GAP --model M
+ *                              [--findings findings.json] [--tokens-in N] [--tokens-out N]
  *   engine.mjs verdict <stepId> --role rights [--session S] --verdict CLEAR|REFUSED [--rule <id>]
- *   engine.mjs done <leaseId> [--seams seams.json] [--note "…"] [--model M]
- *   engine.mjs seen <leaseId> [--note "…"]
+ *   engine.mjs done <leaseId> --model M [--seams seams.json] [--note "…"] [--tokens-in N] [--tokens-out N]
+ *   engine.mjs seen <leaseId> --model M [--note "…"] [--tokens-in N] [--tokens-out N]
  *   engine.mjs escalate <leaseId> --because "…"
  *   engine.mjs beat <leaseId>
  *   engine.mjs trace <changeId|stepId>
@@ -111,30 +111,57 @@ function session(flags, fallback) {
   return flags.get('session') ?? process.env.ENGINE_SESSION ?? fallback;
 }
 
+/**
+ * ADR-038 (BOOK-62): a prose step's model is required, and the CLI refuses locally without it —
+ * the engine refuses the same way (`MODEL_REQUIRED`, 422), but a session that forgot the flag
+ * should learn it from its own terminal, not from a round trip. Exit 1: a local usage error.
+ */
+function modelFlag(flags) {
+  const model = flags.get('model');
+  if (model === undefined || model.trim().length === 0) throw new Error('--model is required');
+  return model;
+}
+
 function renderSeams(seams) {
   if (!Array.isArray(seams) || seams.length === 0) return '—';
   return seams.map((seam) => `${seam.boundary} (${seam.reason})`).join('; ');
 }
 
+/** ` · model deepseek/…`, or nothing when the row has none (an escalation claims no text). */
+function renderModel(model) {
+  return ` · model ${model ?? '—'}`;
+}
+
+function renderGates(gates, withLate) {
+  const rendered = gates.map(
+    (gate) =>
+      `${gate.role}:${gate.verdict}${gate.late && withLate ? ' (late)' : ''} [${gate.model ?? '—'}]`,
+  );
+  return `gates: ${rendered.join(' · ') || 'none'}`;
+}
+
 function renderTrace(trace) {
   if (trace === null) return 'nothing found';
   if (trace.kind === 'step') {
+    // `trace.step` is the `StepTrace`: `{step, gates}` — the row is nested one level down, and
+    // reading `trace.step.stepId` printed `undefined` for every field but `gates` (BOOK-62).
+    const step = trace.step.step;
     return [
-      `step ${trace.step.stepId} · ${trace.step.pass} · ${trace.step.state}${trace.step.outcome ? ` · ${trace.step.outcome}` : ''}` +
-        ` · chapter ${trace.step.chapter ?? 'front'} · wave ${trace.step.wave}`,
-      `  gates: ${trace.step.gates.map((gate) => `${gate.role}:${gate.verdict}${gate.late ? ' (late)' : ''}`).join(' · ') || 'none'}`,
+      `step ${step.stepId} · ${step.pass} · ${step.state}${step.outcome ? ` · ${step.outcome}` : ''}` +
+        ` · chapter ${step.chapter ?? 'front'} · wave ${step.wave}${renderModel(step.model)}`,
+      `  ${renderGates(trace.step.gates, true)}`,
       // BOOK-61: Gate B is conditional and has its own enum — one line, never a third gate.
       ...(trace.step.rights === null
         ? []
         : [`  rights: ${trace.step.rights.verdict}${trace.step.rights.rule === null ? '' : ` ${trace.step.rights.rule}`}`]),
-      `  seams in: ${renderSeams(trace.step.seamsIn)}`,
-      `  seams out: ${renderSeams(trace.step.seamsOut)}`,
-      `  tokens: ${trace.step.tokensIn}/${trace.step.tokensOut} · session ${trace.step.session ?? '—'}`,
+      `  seams in: ${renderSeams(step.seamsIn)}`,
+      `  seams out: ${renderSeams(step.seamsOut)}`,
+      `  tokens: ${step.tokensIn}/${step.tokensOut} · session ${step.session ?? '—'}`,
     ].join('\n');
   }
   const change = trace.change.change;
   const lines = [
-    `change ${change.id} #${change.seq} · chapter ${change.chapter} · ${change.status}${change.outcome ? ` · ${change.outcome}` : ''}${change.premise ? ' · premise' : ''}`,
+    `change ${change.id} #${change.seq} · chapter ${change.chapter} · ${change.status}${change.outcome ? ` · ${change.outcome}` : ''}${change.premise ? ' · premise' : ''}${renderModel(change.model)}`,
     `  intent: ${change.intent}`,
     change.premise && change.status === 'pending'
       ? `  premise: waits for chapter ${change.chapter}'s first draft pass — not in the lane`
@@ -157,7 +184,7 @@ function renderTrace(trace) {
     lines.push(
       `    #${step.step.seq} w${step.step.wave} ${step.step.pass}/${step.step.lane ?? '—'} ch${step.step.chapter ?? 'front'}` +
         ` · ${step.step.outcome ?? 'open'} · rev ${step.step.revBefore ?? '—'}→${step.step.revAfter ?? '—'}` +
-        ` · gates ${step.gates.map((gate) => `${gate.role}:${gate.verdict}`).join(',') || 'none'}` +
+        `${renderModel(step.step.model)} · ${renderGates(step.gates, false)}` +
         `${step.rights === null ? '' : ` · rights ${step.rights.verdict}`}`,
     );
     lines.push(`       seams in ${renderSeams(step.step.seamsIn)} · out ${renderSeams(step.step.seamsOut)}`);
@@ -235,13 +262,14 @@ async function main() {
         return;
       }
       if (verdict !== 'HOLDS' && verdict !== 'GAP') throw new Error('--verdict HOLDS|GAP is required');
+      const model = modelFlag(flags);
       const result = await call('/internal/verdict', {
         stepId,
         role,
         session: session(flags, role),
         verdict,
         findings: readJsonArgument(flags, 'findings', []),
-        model: flags.get('model'),
+        model,
         tokensIn: numberFlag(flags, 'tokens-in'),
         tokensOut: numberFlag(flags, 'tokens-out'),
       });
@@ -250,11 +278,12 @@ async function main() {
     }
     case 'done': {
       const leaseId = need(0, 'leaseId');
+      const model = modelFlag(flags);
       const result = await call('/internal/done', {
         leaseId,
         seams: readJsonArgument(flags, 'seams', []),
         note: flags.get('note'),
-        model: flags.get('model'),
+        model,
         tokensIn: numberFlag(flags, 'tokens-in'),
         tokensOut: numberFlag(flags, 'tokens-out'),
       });
@@ -263,7 +292,14 @@ async function main() {
     }
     case 'seen': {
       const leaseId = need(0, 'leaseId');
-      const result = await call('/internal/seen', { leaseId, note: flags.get('note') });
+      const model = modelFlag(flags);
+      const result = await call('/internal/seen', {
+        leaseId,
+        note: flags.get('note'),
+        model,
+        tokensIn: numberFlag(flags, 'tokens-in'),
+        tokensOut: numberFlag(flags, 'tokens-out'),
+      });
       console.log(JSON.stringify(result, null, 2));
       return;
     }

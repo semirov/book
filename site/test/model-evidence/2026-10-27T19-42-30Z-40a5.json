@@ -1,0 +1,116 @@
+{
+  "run": "pass",
+  "runId": "2026-10-27T19-42-30Z-40a5",
+  "startedAt": "2026-10-27T19:42:30.057Z",
+  "finishedAt": "2026-10-27T19:49:16.036Z",
+  "commit": "bcb9ed6fcb1ff6e9f4d8cc824155c67b0471129c",
+  "dirty": true,
+  "pipeline": {
+    "provider": "deepseek",
+    "model": "deepseek/deepseek-v4-pro",
+    "apiModel": "deepseek-v4-pro"
+  },
+  "stepId": "stp_01M5ZE5E28491RXWC8B47V95E1",
+  "leaseId": "lea_01M5ZE5E2AB5Z80KPAHTDF9AGG",
+  "chapter": 1,
+  "invariantsSha256": "338cbab8ed245c84be6252ff9f27c6eb72cdce38197add42222cac2caea14c60",
+  "invariantsChars": 788,
+  "frameOpening": true,
+  "stepModel": "deepseek/deepseek-v4-pro",
+  "closedLine": "step stp_01M5ZE5E28491RXWC8B47V95E1 · draft · closed · rewritten · chapter 1 · wave 0 · model deepseek/deepseek-v4-pro",
+  "gateLine": "gates: editor:HOLDS [deepseek/deepseek-v4-pro] · consultant:HOLDS [deepseek/deepseek-v4-pro]",
+  "outcome": "rewritten",
+  "changeStatus": null,
+  "trace": {
+    "closed": true
+  },
+  "calls": [
+    {
+      "role": "writer",
+      "status": "ok",
+      "chapter": 1,
+      "stepId": "stp_01M5ZE5E28491RXWC8B47V95E1",
+      "leaseId": "lea_01M5ZE5E2AB5Z80KPAHTDF9AGG",
+      "declaredModel": "deepseek/deepseek-v4-pro",
+      "responseModel": "deepseek-v4-pro",
+      "sectionSha256": "1038e09c2df13a009f9d4d6d81b3b4d7b614cb953401fd49a476a4a22c386793",
+      "promptSha256": "a084b07dd8940134dcd20e99d69f7f406a767e7fd1e05bd58a1b1c3fc38f2322",
+      "invariantsSha256": "338cbab8ed245c84be6252ff9f27c6eb72cdce38197add42222cac2caea14c60",
+      "answerSha256": "4be90b71862557ab70d5ecc1d939ea127fbf83e05d62a62ab87ef6a6543fc399",
+      "finishReason": "stop",
+      "reasoningTokens": 3899,
+      "streamComplete": true,
+      "latencyMs": 110028,
+      "usage": {
+        "in": 3492,
+        "out": 10700,
+        "cachedIn": 3200
+      },
+      "costUsd": 0.021449,
+      "at": "2026-10-27T19:44:20.088Z",
+      "answerUnwrapped": false,
+      "answerTrimmed": true,
+      "chars": 19937,
+      "landedSha": "ad04058a79430152e245dc0cf7942eea66de7b6e048ec5bdef6ce7f1beeac76f",
+      "outcome": "rewritten"
+    },
+    {
+      "role": "editor",
+      "declaredModel": "deepseek/deepseek-v4-pro",
+      "responseModel": "deepseek-v4-pro",
+      "sectionSha256": "413fc3521fa7bc491a402cfbe9d76839654fbc13ef430a54fffd55b63992fc4e",
+      "promptSha256": "21e64baa9f11029dc54bb59c72d7ac2581636654d59e339aa38f2e088a9f5dcc",
+      "invariantsSha256": "338cbab8ed245c84be6252ff9f27c6eb72cdce38197add42222cac2caea14c60",
+      "answerSha256": "5926dfd3a0a17bc12afe05414e278d92556d67ae81e84bc158f2692975449fea",
+      "finishReason": "stop",
+      "reasoningTokens": 15054,
+      "streamComplete": true,
+      "latencyMs": 126124,
+      "usage": {
+        "in": 18377,
+        "out": 15401,
+        "cachedIn": 1024
+      },
+      "costUsd": 0.041969,
+      "at": "2026-10-27T19:46:26.394Z",
+      "status": "ok",
+      "verdict": "GAP",
+      "findings": 0,
+      "engineAction": "close"
+    },
+    {
+      "role": "consultant",
+      "declaredModel": "deepseek/deepseek-v4-pro",
+      "responseModel": "deepseek-v4-pro",
+      "sectionSha256": "a3ea987843a17eb813d57f3ae167470cbd7346e2379d41a9f56fa87cf51a2d19",
+      "promptSha256": "8c19215271b068d0dc2e411dc94ee72f4f3ff473c97c748001be253fec07ee49",
+      "invariantsSha256": "338cbab8ed245c84be6252ff9f27c6eb72cdce38197add42222cac2caea14c60",
+      "answerSha256": "65eebdce60a74bc3dfa11776702142b6a35507a21333d0e127e86ff272670139",
+      "finishReason": "stop",
+      "reasoningTokens": 19114,
+      "streamComplete": true,
+      "latencyMs": 163390,
+      "usage": {
+        "in": 7799,
+        "out": 19338,
+        "cachedIn": 768
+      },
+      "costUsd": 0.042947,
+      "at": "2026-10-27T19:49:15.606Z",
+      "status": "ok",
+      "verdict": "GAP",
+      "findings": 0,
+      "engineAction": "close"
+    }
+  ],
+  "totals": {
+    "runnable": 3,
+    "blocked": 0,
+    "ok": 3,
+    "mismatch": 0,
+    "error": 0,
+    "costUsd": 0.106365,
+    "tokensIn": 29668,
+    "tokensOut": 45439
+  }
+}

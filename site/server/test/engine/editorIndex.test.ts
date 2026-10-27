@@ -10,7 +10,7 @@ import type { GateAssignment } from '../../src/engine/gates.ts';
 import { readIndex } from '../../src/index/store.ts';
 import type { IndexSlice } from '../../src/index/types.ts';
 import { applyFrontFile } from '../../src/ingest/applyFront.ts';
-import { chapterText, createEngineFixture, DEFAULT_ABOUT, type Fixture } from './helpers.ts';
+import { chapterText, createEngineFixture, DEFAULT_ABOUT, PIPELINE_MODEL, type Fixture } from './helpers.ts';
 
 function landOneChapter(fixture: Fixture): { chapter: number; gate: GateAssignment } {
   const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
@@ -82,7 +82,7 @@ describe('the editor assignment carries an index slice (BOOK-18 §2)', () => {
         session: gate.session,
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub',
+        model: PIPELINE_MODEL,
         tokensIn: 1,
         tokensOut: 1,
       });
@@ -132,7 +132,7 @@ describe('the editor assignment carries an index slice (BOOK-18 §2)', () => {
         session: gate.session,
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub',
+        model: PIPELINE_MODEL,
         tokensIn: 1,
         tokensOut: 1,
       });
@@ -142,11 +142,11 @@ describe('the editor assignment carries an index slice (BOOK-18 §2)', () => {
         session: consultant.session,
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub',
+        model: PIPELINE_MODEL,
         tokensIn: 1,
         tokensOut: 1,
       });
-      expect(fixture.engine.done(assignment.leaseId, { seams: [] }).outcome).toBe('rewritten');
+      expect(fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }).outcome).toBe('rewritten');
     } finally {
       fixture.close();
     }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { acquireLease } from '../../src/engine/leases.ts';
 import * as store from '../../src/engine/store.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
-import { chapterText, createEngineFixture, runStubStep } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
 
 const blocker = (defect = 'the chapter contradicts its neighbour'): Finding[] => [
   { severity: 'blocker', location: 'глава 1, абзац 1', defect, fix: 'name the cause earlier' },
@@ -31,7 +31,7 @@ function answer(
     session: gate.session,
     verdict,
     findings,
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 100,
     tokensOut: 10,
   });
@@ -42,14 +42,16 @@ describe('the required-verdict rule (§6B.4)', () => {
     const fixture = createEngineFixture();
     try {
       const assignment = draftOnce(fixture);
-      expect(() => fixture.engine.done(assignment.leaseId, { seams: [] })).toThrow(
+      expect(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL })).toThrow(
         /cannot close without both verdicts; missing: editor, consultant/u,
       );
       answer(fixture, 'editor', 'HOLDS');
-      expect(() => fixture.engine.seen(assignment.leaseId, 'read')).toThrow(/missing: consultant/u);
+      expect(() => fixture.engine.seen(assignment.leaseId, 'read', { model: PIPELINE_MODEL })).toThrow(
+        /missing: consultant/u,
+      );
 
       answer(fixture, 'consultant', 'HOLDS');
-      const done = fixture.engine.done(assignment.leaseId, { seams: [] });
+      const done = fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
     } finally {
       fixture.close();
@@ -69,12 +71,12 @@ describe('the required-verdict rule (§6B.4)', () => {
           session: 'editor-1',
           verdict: 'HOLDS',
           findings: [],
-          model: 'stub',
+          model: PIPELINE_MODEL,
           tokensIn: 1,
           tokensOut: 1,
         }),
       ).toThrow(/NOT_DISPATCHED|no editor was dispatched/u);
-      expect(() => fixture.engine.done(assignment.leaseId, { seams: [] })).toThrow(/land first/u);
+      expect(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL })).toThrow(/land first/u);
     } finally {
       fixture.close();
     }
@@ -93,7 +95,7 @@ describe('the required-verdict rule (§6B.4)', () => {
           session: 'consultant-1',
           verdict: 'HOLDS',
           findings: [],
-          model: 'stub',
+          model: PIPELINE_MODEL,
           tokensIn: 1,
           tokensOut: 1,
         }),
@@ -104,7 +106,7 @@ describe('the required-verdict rule (§6B.4)', () => {
           session: 'someone-else',
           verdict: 'HOLDS',
           findings: [],
-          model: 'stub',
+          model: PIPELINE_MODEL,
           tokensIn: 1,
           tokensOut: 1,
         }),
@@ -348,7 +350,7 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
       const editor = answer(fixture, 'editor', 'GAP', blocker('the ending reads as a symbol, not as a death'));
       expect(editor.action).toBe('close');
       answer(fixture, 'consultant', 'HOLDS');
-      const done = fixture.engine.done(ending.leaseId, { seams: [], note: 'финал проверен' });
+      const done = fixture.engine.done(ending.leaseId, { seams: [], note: 'финал проверен', model: PIPELINE_MODEL });
       expect(done.outcome).toBe('escalated');
       expect(fixture.alerts.some((alert) => alert.kind === 'ending')).toBe(true);
     } finally {

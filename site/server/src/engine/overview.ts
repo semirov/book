@@ -22,6 +22,8 @@ export type EngineState = {
   steps: { open: number; leased: number };
   tokens: { today: number; dailyBudget: number };
   alerts: unknown;
+  /** ADR-038 (BOOK-62): the model this engine's pipeline runs on; `/api/state` is untouched. */
+  pipeline: { provider: string; model: string };
 };
 
 export function createOverview(deps: EngineDeps) {
@@ -42,6 +44,7 @@ export function createOverview(deps: EngineDeps) {
       steps: { open: store.countOpenSteps(db), leased: store.liveLeases(db).length },
       tokens: { today, dailyBudget: config.budgetDailyTokens },
       alerts: safeJson(store.getMeta(db, 'engine.alerts')),
+      pipeline: { provider: config.pipeline.provider, model: config.pipeline.model },
     };
   }
 

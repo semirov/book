@@ -5,7 +5,7 @@ import { databaseFile, openDatabase } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import { createEngine } from '../../src/engine/service.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
-import { FakeClock, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
+import { FakeClock, PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
 
 function gates(trace: StepTrace): GateVerdict[] {
   return trace.gates as GateVerdict[];
@@ -31,7 +31,10 @@ describe('M3 acceptance — the scripted session', () => {
       if (draftTrace?.kind !== 'step') throw new Error('expected a step trace');
       expect(gates(draftTrace.step).map((gate) => gate.role)).toEqual(['editor', 'consultant']);
       expect(gates(draftTrace.step).every((gate) => gate.verdict === 'HOLDS')).toBe(true);
-      expect(gates(draftTrace.step).every((gate) => gate.model === 'stub/deepseek-flash')).toBe(true);
+      expect(gates(draftTrace.step).every((gate) => gate.model === PIPELINE_MODEL)).toBe(true);
+      // BOOK-62: the writer's model is on the step itself, so the trace answers «which model
+      // wrote this chapter» without grepping.
+      expect(draftTrace.step.step.model).toBe(PIPELINE_MODEL);
 
       // 2. draft ch02, so the change has somewhere to ripple to.
       const second = runStubStep(fixture, {
@@ -88,7 +91,7 @@ describe('M3 acceptance — the scripted session', () => {
       expect(trace.change.change.outcome).toBe('applied');
       expect(trace.change.change.relevance?.grade).toBe('fresh');
       // The change's cost facts are frozen at close (§6D.5): model + both token directions.
-      expect(trace.change.change.model).toBe('stub/deepseek-flash');
+      expect(trace.change.change.model).toBe(PIPELINE_MODEL);
       expect(trace.change.change.tokensIn).toBeGreaterThan(0);
       expect(trace.change.change.tokensOut).toBeGreaterThan(0);
       expect(trace.change.cascade?.status).toBe('closed');
@@ -192,7 +195,7 @@ describe('M3 acceptance — a killed engine', () => {
         session: 'editor-1',
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub/deepseek-flash',
+        model: PIPELINE_MODEL,
         tokensIn: 100,
         tokensOut: 10,
       });
@@ -225,11 +228,11 @@ describe('M3 acceptance — a killed engine', () => {
         session: 'consultant-1',
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub/deepseek-flash',
+        model: PIPELINE_MODEL,
         tokensIn: 90,
         tokensOut: 8,
       });
-      const done = second.done(assignment.leaseId, { seams: [], note: 'resumed after a crash' });
+      const done = second.done(assignment.leaseId, { seams: [], note: 'resumed after a crash', model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
 
       const steps = db.prepare('SELECT COUNT(*) AS n FROM steps').get() as { n: number };
@@ -269,13 +272,13 @@ describe('M3 acceptance — a killed engine', () => {
       // A second change whose session dies *before* writing: the job is re-issued, not lost.
       const editor = fixture.engine.next({ role: 'editor', session: 'editor-1' }) as GateAssignment;
       fixture.engine.verdict(editor.stepId, {
-        role: 'editor', session: 'editor-1', verdict: 'HOLDS', findings: [], model: 'stub', tokensIn: 1, tokensOut: 1,
+        role: 'editor', session: 'editor-1', verdict: 'HOLDS', findings: [], model: PIPELINE_MODEL, tokensIn: 1, tokensOut: 1,
       });
       const consultant = fixture.engine.next({ role: 'consultant', session: 'consultant-1' }) as GateAssignment;
       fixture.engine.verdict(consultant.stepId, {
-        role: 'consultant', session: 'consultant-1', verdict: 'HOLDS', findings: [], model: 'stub', tokensIn: 1, tokensOut: 1,
+        role: 'consultant', session: 'consultant-1', verdict: 'HOLDS', findings: [], model: PIPELINE_MODEL, tokensIn: 1, tokensOut: 1,
       });
-      const done = fixture.engine.done(after.leaseId, { seams: [], note: 'recovered' });
+      const done = fixture.engine.done(after.leaseId, { seams: [], note: 'recovered', model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
       expect((fixture.db.prepare('SELECT status FROM changes WHERE id = ?').get(change.id) as { status: string }).status).toBe('done');
     } finally {

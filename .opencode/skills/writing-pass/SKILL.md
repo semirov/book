@@ -41,9 +41,11 @@ nothing. Re-landing the same content is a no-op; landing after an edit drops the
 
 ```sh
 node bin/engine.mjs next --role editor --session gate-editor-12   # → {stepId, chapter, landedSha, indexSlice}
-node bin/engine.mjs verdict <stepId> --role editor --session gate-editor-12 --verdict HOLDS --findings editor.json
+node bin/engine.mjs verdict <stepId> --role editor --session gate-editor-12 --verdict HOLDS \
+  --findings editor.json --model deepseek/deepseek-v4-pro
 node bin/engine.mjs next --role consultant --session gate-consultant-12
-node bin/engine.mjs verdict <stepId> --role consultant --session gate-consultant-12 --verdict GAP --findings consultant.json
+node bin/engine.mjs verdict <stepId> --role consultant --session gate-consultant-12 --verdict GAP \
+  --findings consultant.json --model deepseek/deepseek-v4-pro
 ```
 
 `findings.json` is a list of `{severity: blocker|major|minor, location, defect, fix}`: the defect is
@@ -56,13 +58,16 @@ the cycle cap publishes the step with its finding (editor) or stops it (consulta
 ## 4. Close the step
 
 ```sh
-node bin/engine.mjs done <leaseId> --seams seams.json --note "ch12 · 21.4k in / 3.1k out ≈ $0.007" \
-  --model deepseek/deepseek-flash --tokens-in 21400 --tokens-out 3100
+node bin/engine.mjs done <leaseId> --seams seams.json --note "ch12 · 21.4k in / 3.1k out ≈ $0.020" \
+  --model deepseek/deepseek-v4-pro --tokens-in 21400 --tokens-out 3100
 ```
 
-`seams.json` is `[{boundary, reason}]`: a step claims only its own lower edge or the one above it
+`--model` is **required** on `verdict`, `done` and `seen`, and it must be the pipeline's model
+(`site/config/pipeline.json`): the engine refuses anything else with `MODEL_REQUIRED` or
+`MODEL_NOT_PIPELINE`, so «prod is Pro» is a fact on the row, not a hope. `seams.json` is
+`[{boundary, reason}]`: a step claims only its own lower edge or the one above it
 (`ch` / `ch+1`, `front` at ch01, `ending` at ch67); anything else is `INVALID_SEAM`. The note is ≤200
-chars and carries the **real** tokens of this pass at the memo rate ($0.0000003 per token,
+chars and carries the **real** tokens of this pass at the memo rate ($0.0000020 per output token,
 `process/ROLE_PROMPTS.md` §4) — estimate from the session, never invent. The result
 `{outcome: holds|rewritten|evaluated|published_with_finding|escalated}` closes the step; then the pass
 appends its memo line to `process/write.log.md` (created if absent):
@@ -80,6 +85,9 @@ extended by hand. Operator text: `process/ROLE_PROMPTS.md` §4.
 | `LEASE_RELEASED`, `LEASE_EXPIRED` | the lease died under the step | `next` again; never retry a dead lease id |
 | `STEP_WALL` | the step is past its wall | `next` for a fresh assignment |
 | `VERDICTS_REQUIRED` | `done` before both gates | run the missing gate — no step closes on one verdict |
+| `MODEL_REQUIRED` (engine, 422) | the same call reached the engine with an empty model — an HTTP or direct caller, not the CLI | send `model` in the body; this code is what a non-CLI caller branches on |
+| `--model is required` (CLI, exit 1) | `verdict`/`done`/`seen` without `--model`: the CLI refuses locally, before any round trip, so there is no engine code | add `--model deepseek/deepseek-v4-pro` |
+| `MODEL_NOT_PIPELINE` (engine, 422) | the declared model is not the pinned one | the detail names the expected model; re-read `site/config/pipeline.json` — never retry with another string |
 | `LEASE_HELD`, `GATE_TAKEN` | another live session holds it | drop it, `next` again |
 | `NOT_LANDED` | a gate or `done` before `land` | `land` first |
 | `CHAPTER_TOO_SHORT`, `CHAPTER_TOO_LONG` | outside `CHAPTER_CHARS` | fix the text, not the bound |
@@ -98,8 +106,8 @@ node bin/engine.mjs reconcile                          # at boot or after a rest
 
 ```sh
 node bin/engine.mjs trace <stepId>
-#   step 01J… · draft · closed · rewritten · chapter 12 · wave 1
-#   gates: editor:HOLDS · consultant:HOLDS
+#   step 01J… · draft · closed · rewritten · chapter 12 · wave 1 · model deepseek/deepseek-v4-pro
+#   gates: editor:HOLDS [deepseek/deepseek-v4-pro] · consultant:HOLDS [deepseek/deepseek-v4-pro]
 node bin/validate.mjs ; echo $?        # 0
 git diff --name-only                   # manuscript/ch12.md and process/write.log.md — nothing else
 git diff process/write.log.md          # one appended PASS line, not a rewrite

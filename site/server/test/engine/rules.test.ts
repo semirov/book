@@ -7,7 +7,7 @@ import { acquireLease, releaseLease } from '../../src/engine/leases.ts';
 import * as store from '../../src/engine/store.ts';
 import type { StepRow } from '../../src/engine/store.ts';
 import { sha256Hex } from '../../src/util/hash.ts';
-import { chapterText, createEngineFixture, DEFAULT_ABOUT } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture, DEFAULT_ABOUT } from './helpers.ts';
 
 function addStep(
   fixture: ReturnType<typeof createEngineFixture>,
@@ -153,7 +153,7 @@ describe('gate dispatch bookkeeping (§6B.3)', () => {
         session: 'editor-1',
         verdict: 'HOLDS',
         findings: [],
-        model: 'stub',
+        model: PIPELINE_MODEL,
         tokensIn: 1,
         tokensOut: 1,
       });
@@ -197,13 +197,13 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
       expect(landed.revAfter).toBe(0);
       fixture.engine.next({ role: 'editor', session: 'editor-1' });
       fixture.engine.verdict(assignment.stepId, {
-        role: 'editor', session: 'editor-1', verdict: 'HOLDS', findings: [], model: 'stub', tokensIn: 1, tokensOut: 1,
+        role: 'editor', session: 'editor-1', verdict: 'HOLDS', findings: [], model: PIPELINE_MODEL, tokensIn: 1, tokensOut: 1,
       });
       fixture.engine.next({ role: 'consultant', session: 'consultant-1' });
       fixture.engine.verdict(assignment.stepId, {
-        role: 'consultant', session: 'consultant-1', verdict: 'HOLDS', findings: [], model: 'stub', tokensIn: 1, tokensOut: 1,
+        role: 'consultant', session: 'consultant-1', verdict: 'HOLDS', findings: [], model: PIPELINE_MODEL, tokensIn: 1, tokensOut: 1,
       });
-      expect(fixture.engine.done(assignment.leaseId, { seams: [] }).outcome).toBe('holds');
+      expect(fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }).outcome).toBe('holds');
     } finally {
       fixture.close();
     }
@@ -358,10 +358,14 @@ describe('a malformed report is refused, never read as silence', () => {
       fixture.engine.start(assignment.leaseId);
       fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       fixture.engine.land(assignment.leaseId);
-      expect(() => fixture.engine.done(assignment.leaseId, { seams: [{ boundary: 999, reason: 'x' }] })).toThrow(
+      expect(() =>
+        fixture.engine.done(assignment.leaseId, { seams: [{ boundary: 999, reason: 'x' }], model: PIPELINE_MODEL }),
+      ).toThrow(
         /unknown seam boundary/u,
       );
-      expect(() => fixture.engine.done(assignment.leaseId, { seams: 'nope' })).toThrow(/must be an array/u);
+      expect(() => fixture.engine.done(assignment.leaseId, { seams: 'nope', model: PIPELINE_MODEL })).toThrow(
+        /must be an array/u,
+      );
     } finally {
       fixture.close();
     }

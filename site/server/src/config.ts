@@ -18,6 +18,7 @@ import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
 import { assertDataDirIsolation, productionDataDirs } from './dataDirGuard.ts';
 import { donateUrlOf } from './donate.ts';
+import { loadPipeline, type Pipeline } from './pipeline.ts';
 
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -38,6 +39,8 @@ const schema = z.object({
   imprintPath: z.string().default(resolve(SITE_ROOT, 'config', 'imprint.json')),
   /** The hand-curated legal denylist (§13.4, F005); read, never refreshed from the book. */
   denylistPath: z.string().default(resolve(SITE_ROOT, 'config', 'legal.denylist.json')),
+  /** ADR-038: the one file that names the pipeline's model (BOOK-62); a bad one stops the boot. */
+  pipelinePath: z.string().default(resolve(SITE_ROOT, 'config', 'pipeline.json')),
   /** The admin surface (`/api/admin/*`) is token-guarded; empty means it does not exist. */
   adminTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'admin.token')),
   adminToken: z.string().default(''),
@@ -252,7 +255,9 @@ const schema = z.object({
   }
 });
 
-export type Config = z.infer<typeof schema>;
+export type Config = z.infer<typeof schema> & {
+  pipeline: Pipeline; // ADR-038: the model the pipeline runs on, read from `pipelinePath` at boot.
+};
 
 /**
  * Secrets that accept a file mount (§21.2). `ADMIN_TOKEN`/`ENGINE_TOKEN` are absent on
@@ -313,6 +318,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webDist: env.WEB_DIST,
     imprintPath: env.IMPRINT_PATH,
     denylistPath: env.DENYLIST_PATH,
+    pipelinePath: env.PIPELINE_PATH,
     adminTokenFile: env.ADMIN_TOKEN_FILE,
     adminToken: env.ADMIN_TOKEN,
     host: env.HOST,
@@ -389,6 +395,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
         'the «поддержать книгу» row is off',
     );
   }
+  // ADR-038: read once, so no code path can default it; nothing in this file is a secret.
+  const pipeline = loadPipeline(config.pipelinePath);
   // BOOK-107: the wall around the data dirs, both directions. A boot that is not production
   // must never point at the prod data dir, and a production boot must never keep its data in
   // the checkout. The guard runs on the parsed paths (DATA_DIR is not resolved by the schema,
@@ -464,7 +472,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       throw new Error('invalid configuration: PUBLIC_ORIGIN must be https:// in production');
     }
   }
-  return config;
+  return { ...config, pipeline };
 }
 
 /**

@@ -58,7 +58,10 @@ async function main(): Promise<void> {
     vocabulary: (chapter) => chapterVocabulary(db, chapter),
   });
   const recovery = engine.reconcile();
-  app.log.info({ migration, dataDir: config.dataDir, recovery }, 'engine recovered, lane checked');
+  app.log.info(
+    { migration, dataDir: config.dataDir, pipeline: config.pipeline.model, recovery },
+    'engine recovered, lane checked',
+  );
 
   const timer = setInterval(() => {
     try {
