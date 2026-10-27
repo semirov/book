@@ -35,9 +35,10 @@ void bootAnalytics();
 
 // `/privacy` and `/rules` are static documents (audit M5): chosen before the app boots, so
 // they render with no catalogue request and no socket.
-// BOOK-88 — the one canvas: it states the 1000 px bound, the centring and the gutters, and
-// every register inside it is the text column (base.css `.canvas` / `.page`). The no-JS
-// fallback cannot use it — it lives in `index.html` — so `.noscript` states its own.
+// BOOK-88/BOOK-91 — the one canvas: it is the column plus its two gutters, and states the
+// centring and the gutters; every register inside it is the text column (base.css `.canvas` /
+// `.page`). The no-JS fallback cannot use it — it lives in `index.html` — so `.noscript` states
+// its own.
 const page = staticPage(window.location.pathname);
 
 createRoot(container).render(

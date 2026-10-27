@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { CONSENT_COPY } from '../lib/consent.ts';
 import { blankComments, rulesOf, squash, type Rule, type SheetSet } from './measure.css.ts';
 import { BASE, PROSE, TOKENS, layoutProblems, replaced, seeded, sheets, tokenPx } from './measure.guard.ts';
 
@@ -277,6 +278,16 @@ describe('the consent strip carries two type registers (BOOK-88)', () => {
       ),
     ).toBe(true);
     expect(layoutProblems(sheets)).toEqual([]);
+  });
+
+  it('still reads as two lines at the wider measure, not four', () => {
+    // The strip is prose at 15 px on the column; at 640 a line holds at least 640 / (0.5 × 15)
+    // = 85 characters, so the 126-character notice still takes two lines — the old 600 px
+    // column already did, and a wider one cannot add a line. It is not one line either.
+    const perLine = Math.floor(640 / (0.5 * 15));
+    expect(perLine).toBe(85);
+    expect(Math.ceil(CONSENT_COPY.length / perLine)).toBe(2);
+    expect(CONSENT_COPY.length).toBeGreaterThan(perLine);
   });
 
   it('fires on a third size in the strip', () => {

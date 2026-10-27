@@ -164,27 +164,29 @@
   --fs-body: 18px;
   --fs-lead: 19px;
 
-  /* space — BOOK-DOC-35 §1, BOOK-88 §2: the canvas, the column and the prose block.
-     `--column` is THE CANVAS — up to 1000 px, centred, with the gutters inside it. It is the
-     outer bound, and the only box on the page that may be wider than the text: the sole reader
-     of the token. Nothing inside it may be wider than the measure but a marginal note (the
-     running folio), and those are listed one by one in the layout guard.
-     `--measure` is THE COLUMN — 37.5rem = 600 px = 67 ch at 18 px, and every register (the
+  /* space — BOOK-DOC-35 §1, BOOK-88 §2, BOOK-91: the column and its gutters.
+     `--measure` is THE COLUMN — 40rem = 640 px = 71.1 ch at 18 px — and every register (the
      TOC, the colophon, the header's rows, the cover, page 2, the discussion, the legal
-     documents) is exactly this box, flush left inside the canvas: 252 at 1440, the canvas's
-     220 plus its 32 px gutter. The prose is not narrower than the column any more. */
+     documents) is exactly this box. There is no second, wider frame: the canvas is the column
+     plus its two gutters (`calc(var(--measure) + 2 * var(--gut))`), centred, so the slack
+     falls equally on both sides of the text (400 at 1440, 192 at 1024, 73 at 768). The prose
+     is not narrower than the column; the column is not narrower than the page it names. */
   --gut: 32px;
-  --column: 1000px;
-  --measure: 37.5rem;
+  --measure: 40rem;
   --offset-top: 64px;
 
   /* BOOK-90 — the margin's own geometry. Measured from the prose's right edge, never from the
      frame: 228 px of channel = a 40 px gap (the mark's target) + a 188 px note. Reusing
      `--gut`/`--measure`/`--shell` would make the margin move when the frame changes, which is
-     exactly what the coming one-column frame must not do. */
+     exactly what the one-column frame must not do.
+     `--note-fit` (BOOK-91) is the note's used width: the design's 188 px while the channel
+     holds it, the channel itself (minus the mark's target and 8 px of air) from there down to
+     1024 — a centred 640 px column leaves 144 at 1024, so the note narrows instead of being
+     cut by `body { overflow-x: hidden }`. The same width carries the opened revision object. */
   --mark-hit: 40px;
   --note-gap: var(--mark-hit);
   --note-w: 188px;
+  --note-fit: min(var(--note-w), max(0px, calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));
   --note-step: 12px;
 
   /* motion */
@@ -208,11 +210,13 @@
 
 /* The scale narrows with the measure: the laptop keeps 18px, the tablet 17.5, the phone 17.
    Tokens only — no other sheet may declare a `--fs-*` rung (the arch guard checks it).
-   BOOK-88: the prose block narrows with it — 36.5rem = 584 px = 66.7 ch at 17.5 px. */
+   BOOK-91: the column scales with the type, so the character count does not jump at the step —
+   38.9rem = 622.4 px = 71.1 ch at 17.5 px, the same 71 ch as 640 at 18 (640 × 17.5 / 18 =
+   622.22 px; 38.9rem is the nearest 0.1rem). */
 @media (max-width: 1023px) {
   :root {
     --fs-body: 17.5px;
-    --measure: 36.5rem;
+    --measure: 38.9rem;
   }
 }
 @media (max-width: 599px) {

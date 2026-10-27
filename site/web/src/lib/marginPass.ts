@@ -62,8 +62,8 @@ const MARGIN_AIR = 8;
  *
  * The channel is measured from the paragraph's own right edge: `right + gap + width + air`
  * must stay inside the viewport, or the note would be clipped by `body { overflow-x: hidden }`.
- * The decision is per paragraph, not per viewport: the coming one-column frame widens the page
- * while the prose keeps its measure, and a paragraph that grows past this bound is a strip, not
+ * The decision is per paragraph, not per viewport: the one-column frame widens the page while
+ * the prose keeps its measure, and a paragraph that grows past this bound is a strip, not
  * a margin. Pure, so the three widths can be asserted without a browser.
  */
 export function marginFits(
@@ -76,12 +76,32 @@ export function marginFits(
   return paragraphRight + gap + width + air <= viewport;
 }
 
+/**
+ * BOOK-91 — the note's used width: `--note-w` (188) while the centred column leaves room,
+ * otherwise the channel itself, minus the mark's target and the 8 px of air. `marginalia.css`
+ * states the same expression as `--note-fit`; the pass measures what the browser paints, so
+ * at 1024 (a 640 px column) the note is 144 wide and the paragraph keeps its margin instead of
+ * being demoted to a strip for a note that would no longer be clipped.
+ */
+export function noteWidth(
+  viewport: number,
+  measure: number,
+  gap = 40,
+  noteW = 188,
+  air: number = MARGIN_AIR,
+): number {
+  return Math.max(0, Math.min(noteW, (viewport - measure) / 2 - gap - air));
+}
+
 /** A token's px value from the root, with the design's number as the last resort. */
 function tokenPx(doc: Document, name: string, fallback: number): number {
   if (typeof getComputedStyle === 'undefined') return fallback;
-  const raw = getComputedStyle(doc.documentElement).getPropertyValue(name);
+  const raw = getComputedStyle(doc.documentElement).getPropertyValue(name).trim();
   const value = Number.parseFloat(raw);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  // `--measure` is declared in rem: a custom property computes to its specified token stream,
+  // so the unit is still there (the root size is 16 px — `html` declares no font-size).
+  return raw.endsWith('rem') ? value * 16 : value;
 }
 
 type Item = { element: HTMLElement; anchorTop: number; height: number; originTop: number };
@@ -124,10 +144,11 @@ export function runMarginPass(doc: Document = document): MarginPlacement {
   // The measured guard: a paragraph whose channel does not fit the viewport is a strip. The
   // attribute is written before the heights are measured, so a hidden note takes no room.
   // The guard compares against the viewport the design proved against (innerWidth), not the
-  // layout width minus a classic scrollbar: at 1024 the note ends at 1010 of 1024.
+  // layout width minus a classic scrollbar: at 1024 the narrowed note ends at 1024 of 1024.
   const viewport = doc.defaultView?.innerWidth ?? doc.documentElement.clientWidth;
   const gap = tokenPx(doc, '--note-gap', 40);
-  const width = tokenPx(doc, '--note-w', 188);
+  const noteW = tokenPx(doc, '--note-w', 188);
+  const width = noteWidth(viewport, tokenPx(doc, '--measure', 640), gap, noteW);
   const paragraphs = new Set<HTMLElement>();
   for (const element of all) {
     const paragraph = element.closest<HTMLElement>('.p');

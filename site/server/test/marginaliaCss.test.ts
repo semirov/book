@@ -40,17 +40,23 @@ describe('the four tokens, and where they live', () => {
     expect(tokens).toContain('--note-gap: var(--mark-hit);');
     expect(tokens).toContain('--note-w: 188px;');
     expect(tokens).toContain('--note-step: 12px;');
-    // No new type rung and no new colour: the margin adds four lengths and nothing else.
+    // BOOK-91: the used width is the design's 188 px, or the channel itself where the centred
+    // column leaves less — the note narrows, it is never clipped.
+    expect(tokens).toContain(
+      '--note-fit: min(var(--note-w), max(0px, calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));',
+    );
+    // No new type rung and no new colour: the margin adds lengths and nothing else.
     expect(sheet).not.toMatch(/--fs-[a-z0-9-]+\s*:/u);
     expect(sheet).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
     expect(sheet).not.toMatch(/rgba?\(/u);
   });
 
-  it('keeps the column frame as it was: --shell and --measure are not touched', () => {
-    // BOOK-88/BOOK-92: the one column is `--column` (1000 px) and the prose keeps `--measure`.
-    expect(tokens).toContain('--column: 1000px;');
-    expect(tokens).toContain('--measure: 37.5rem;');
-    expect(base).toContain('max-width: var(--column);');
+  it('keeps the column frame as it is: a centred measure, no second frame', () => {
+    // BOOK-88/BOOK-91: the one column is `--measure` (40rem), and the canvas is the column plus
+    // its two gutters — the 1000 px `--column` frame is retired with it.
+    expect(tokens).toContain('--measure: 40rem;');
+    expect(tokens).not.toContain('--column');
+    expect(base).toContain('max-width: calc(var(--measure) + 2 * var(--gut));');
     for (const forbidden of ['--shell', '--column', '--measure']) expect(sheet).not.toContain(forbidden);
     // `--gut` only pads a sheet (the phone one and the measured-guard sheet), never the
     // channel's geometry.
@@ -72,11 +78,12 @@ describe('the measured guard (BOOK-DOC-47 §7)', () => {
 });
 
 describe('the note is outside the prose and cannot move it', () => {
-  it('is absolutely positioned from the prose’s right edge, at the one width', () => {
+  it('is absolutely positioned from the prose’s right edge, at the channel’s width', () => {
     const note = declarations(marginalia, '.margin-note');
     expect(note).toContain('position: absolute');
     expect(note).toContain('left: calc(100% + var(--note-gap))');
-    expect(note).toContain('width: var(--note-w)');
+    // BOOK-91: `--note-fit` — 188 px while the channel holds it, the channel itself at 1024.
+    expect(note).toContain('width: var(--note-fit)');
     expect(note).toContain('padding: 6px 0 8px');
     expect(note).toContain('border-top: 1px solid var(--rule)');
     // The box is one button; the quote is two clamped lines of the book's serif.
@@ -104,11 +111,11 @@ describe('the note is outside the prose and cannot move it', () => {
 });
 
 describe('the object and the mark share the note’s measure', () => {
-  it('puts the revision object in the same channel, 188 px, with no shadow', () => {
+  it('puts the revision object in the same channel, at the same width, with no shadow', () => {
     const object = declarations(marginalia, '.revision');
     expect(object).toContain('position: absolute');
     expect(object).toContain('left: calc(100% + var(--note-gap))');
-    expect(object).toContain('width: var(--note-w)');
+    expect(object).toContain('width: var(--note-fit)');
     expect(object).toContain('box-shadow: none');
     expect(object).toContain('background: var(--paper-2)');
   });

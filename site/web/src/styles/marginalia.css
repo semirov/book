@@ -3,9 +3,10 @@
  * object, the phone strip.
  *
  * One vocabulary, one geometry. Every horizontal number is measured from the **prose's right
- * edge** (`left: 100% + var(--note-gap)`, `left: 100%`), never from `--shell`, `--measure` or
- * `--gut`: the note's left edge must be the same distance from the same thing in today's
- * frame and in the coming one-column frame. The four tokens are declared in `tokens.css`.
+ * edge** (`left: 100% + var(--note-gap)`, `left: 100%`), never from the frame: the note's left
+ * edge must be the same distance from the same thing at every width. The five tokens are
+ * declared in `tokens.css`; `--note-fit` is the note's used width — the design's 188 px while
+ * the channel holds it, the channel itself from there down to 1024 (BOOK-91).
  *
  * No `position: fixed` above 1023, no shadow on the channel object (a form inserted into the
  * page is not raised above it), no transitions on geometry — opacity only, once.
@@ -98,7 +99,7 @@
 .margin-note {
   position: absolute;
   left: calc(100% + var(--note-gap));
-  width: var(--note-w);
+  width: var(--note-fit);
   margin: 0;
   padding: 6px 0 8px;
   border: 0;
@@ -174,9 +175,10 @@
 }
 
 /* ---------- the measured guard (BOOK-DOC-47 §7) ----------
-   The margin is measured from the prose's right edge; when `right + 40 + 188 + 8` does not fit
-   the viewport, the paragraph is a strip and the note would be clipped. The pass writes
-   `data-margin` per paragraph — this is not a second breakpoint. */
+   The margin is measured from the prose's right edge; when `right + 40 + width + 8` does not fit
+   the viewport, the paragraph is a strip and the note would be clipped. `width` is
+   `--note-fit`, the width CSS paints (BOOK-91), so the pass and the sheet agree. The pass
+   writes `data-margin` per paragraph — this is not a second breakpoint. */
 .p[data-margin='strip'] .margin-note {
   display: none;
 }
@@ -205,7 +207,7 @@
 .revision {
   position: absolute;
   left: calc(100% + var(--note-gap));
-  width: var(--note-w);
+  width: var(--note-fit);
   z-index: 3;
   display: grid;
   gap: 8px;

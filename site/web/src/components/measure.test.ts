@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { blankComments, exactly, rulesOf } from './measure.css.ts';
 import {
   BASE,
-  CANVAS_READERS,
+  CANVAS_BOUND,
   COLUMN_BOXES,
+  FOLIO_INSET,
   OUTSIDE_CANVAS,
   PROSE,
   REGISTER_COMPONENTS,
@@ -27,7 +28,7 @@ function declarationsIn(file: string, selector: string): Map<string, string> {
 }
 
 /**
- * BOOK-88 — one canvas, one column, one right edge.
+ * BOOK-88/BOOK-91 — one column, one canvas, equal margins.
  *
  * The rule and the checks it is built from are documented in `measure.guard.ts`,
  * `measure.tokens.ts` and `measure.rules.ts`; this file is the evidence that they hold on the
@@ -35,7 +36,7 @@ function declarationsIn(file: string, selector: string): Map<string, string> {
  * class of violation is really red. A guard nobody has seen fire is a comment.
  */
 
-describe('the page has one column (BOOK-88)', () => {
+describe('the page has one column (BOOK-88/BOOK-91)', () => {
   it('reads every stylesheet of the cascade main.tsx boots', () => {
     // The guard is only as wide as the set it reads: every sheet of the cascade is here, and
     // every sheet here is in the cascade — an orphan file cannot slip past the check.
@@ -62,59 +63,100 @@ describe('the page has one column (BOOK-88)', () => {
     ).toContain('main.tsx renders <LegalPage page={page} /> outside .canvas — that branch is not the column');
   });
 
-  it('puts the canvas and the column where the design table says, from the tokens alone', () => {
-    const column = tokenPx('--column');
+  it('centres the column with equal margins, from the tokens alone', () => {
     const measure = tokenPx('--measure', { file: TOKENS });
     const measureNarrow = tokenPx('--measure', { query: 'narrow', file: TOKENS });
     const gutter = tokenPx('--gut');
     const phoneGutter = tokenPx('--gut', { query: 'phone', file: BASE });
-    // The numbers the whole table rests on: a 1000 px canvas, a 600 / 584 px column, 32 / 24 px
-    // of gutter. Read from the sheets, so a drifted token fails here and not in a screenshot.
-    expect({ column, measure, measureNarrow, gutter, phoneGutter }).toEqual({
-      column: 1000,
-      measure: 600,
-      measureNarrow: 584,
+    // The numbers the whole table rests on: a 640 / 622.4 px column, 32 / 24 px of gutter.
+    // Read from the sheets, so a drifted token fails here and not in a screenshot.
+    expect({ measure, measureNarrow, gutter, phoneGutter }).toEqual({
+      measure: 640,
+      measureNarrow: 622.4,
       gutter: 32,
       phoneGutter: 24,
     });
 
-    // viewport, gutter, column width, canvas L, canvas R, column L, column R — the owner's
-    // measurement of the deployed build, as the table every register must land on.
-    const table = [
-      [390, phoneGutter, measureNarrow, 0, 390, 24, 366],
-      [768, gutter, measureNarrow, 0, 768, 32, 616],
-      [1024, gutter, measure, 12, 1012, 44, 644],
-      [1440, gutter, measure, 220, 1220, 252, 852],
-    ] as const;
+    // The frame at a viewport: the canvas is the column plus its two gutters, centred, and the
+    // column is that box minus the gutters, capped by the viewport. BOOK-91: the slack is the
+    // same on both sides of the text — all 368 px of it used to sit on the right at 1440.
+    const round = (value: number): number => Math.round(value * 10) / 10;
+    const frame = (viewport: number, gut: number, width: number): [number, number, number, number] => {
+      const canvas = Math.min(viewport, width + 2 * gut);
+      const canvasLeft = (viewport - canvas) / 2;
+      const canvasRight = viewport - canvasLeft;
+      const columnLeft = canvasLeft + gut;
+      const columnWidth = Math.min(width, canvasRight - canvasLeft - 2 * gut);
+      return [round(canvasLeft), round(canvasRight), round(columnLeft), round(columnLeft + columnWidth)];
+    };
 
-    for (const [viewport, gut, columnWidth, canvasLeft, canvasRight, left, right] of table) {
-      // The canvas: the 1000 px bound, centred in the viewport, never wider than it.
-      const canvas = Math.min(column, viewport);
-      expect({ viewport, canvasLeft, canvasRight }).toEqual({
-        viewport,
-        canvasLeft: (viewport - canvas) / 2,
-        canvasRight: viewport - (viewport - canvas) / 2,
-      });
-      // The column: the measure, capped by the canvas's inner width, flush left on the
-      // canvas's own left edge — 252 at 1440, not the canvas's 220 nor the viewport's centre.
-      const inner = canvasRight - canvasLeft - 2 * gut;
-      expect({ viewport, left: canvasLeft + gut, right: canvasLeft + gut + Math.min(columnWidth, inner) }).toEqual({
-        viewport,
-        left,
-        right,
-      });
-      // The canvas is the column plus its two gutters, once: the gutter is inside the bound.
-      expect(right + gut).toBeLessThanOrEqual(canvasRight);
+    // viewport, gutter, measure — the owner's four widths, as canvas L/R and column L/R.
+    const table = [
+      [390, phoneGutter, measureNarrow],
+      [768, gutter, measureNarrow],
+      [1024, gutter, measure],
+      [1440, gutter, measure],
+    ] as const;
+    for (const [viewport, gut, width] of table) {
+      const [canvasLeft, canvasRight, left, right] = frame(viewport, gut, width);
+      // Equal margins, at every width: the column's left margin is its right margin.
+      expect(left, `${viewport}px`).toBeCloseTo(viewport - right, 6);
+      expect(canvasRight - canvasLeft).toBeCloseTo(Math.min(viewport, width + 2 * gut), 6);
+    }
+
+    // The owner's rects, pinned: 24..366 at 390, 73..695 in a 41..727 canvas at 768,
+    // 192..832 in 160..864 at 1024, 400..1040 in 368..1072 at 1440.
+    expect(frame(390, phoneGutter, measureNarrow)).toEqual([0, 390, 24, 366]);
+    expect(frame(768, gutter, measureNarrow)).toEqual([40.8, 727.2, 72.8, 695.2]);
+    expect(frame(1024, gutter, measure)).toEqual([160, 864, 192, 832]);
+    expect(frame(1440, gutter, measure)).toEqual([368, 1072, 400, 1040]);
+
+    // The folio's right edge is the column's right edge + 20 px wherever it is in the margin
+    // (≥768): inset (100% − measure) / 2 − 20 from the viewport's right.
+    for (const [viewport, gut, width] of table.filter(([viewport]) => viewport >= 768)) {
+      const [, , , right] = frame(viewport, gut, width);
+      const folioRight = viewport - ((viewport - width) / 2 - 20);
+      expect(folioRight).toBeCloseTo(right + 20, 6);
     }
   });
 
-  it('names the canvas, its one non-box reader and its one box outside it', () => {
+  it('names the canvas, the folio’s one position and the one box outside it', () => {
     // The exceptions are data, and the seed-free run above proves the tree holds them; this
     // pins the shape, so a future edit widens the list on purpose or not at all.
-    expect(CANVAS_READERS).toHaveLength(1);
-    expect(CANVAS_READERS[0]?.selector).toBe('.folio');
+    const folio = declarationsIn('../styles/live.css', '.folio');
+    expect(folio.get('position')).toBe('fixed');
+    expect(folio.get('pointer-events')).toBe('none');
+    expect(folio.get('font-size')).toBe('var(--fs-micro)');
+    expect(folio.get('inset-inline-end')).toBe(FOLIO_INSET);
+    expect(declarationsIn(BASE, '.canvas').get('max-width')).toBe(CANVAS_BOUND);
     expect(OUTSIDE_CANVAS.map((row) => row.selector)).toEqual(['.noscript']);
     expect(COLUMN_BOXES).toEqual(['.page', '.ribbon']);
+  });
+
+  it('puts the folio on the running head’s first-row baseline, not at 40vh', () => {
+    // The number's top is the head's first-row baseline, taken from the head's own geometry and
+    // the shipped fonts (hhea per 1000 em: PT Sans Narrow 1018/−276, PT Mono 885/−235):
+    // `.top-in` starts row 1 at 14 px; the brand's 1.35 line box at 13 px puts its baseline at
+    // (17.55 − 1.294 × 13) / 2 + 1.018 × 13 = 13.598; this 12 px PT Mono line carries its own
+    // baseline (16.2 − 1.12 × 12) / 2 + 0.885 × 12 = 12 down, so its box starts at 15.598.
+    const folio = declarationsIn('../styles/live.css', '.folio');
+    const head = declarationsIn('../styles/chrome.css', '.top-in');
+    const rowTop = Number.parseFloat(head.get('padding-top') ?? '0');
+    const label = tokenPx('--fs-label', { file: TOKENS });
+    const micro = tokenPx('--fs-micro', { file: TOKENS });
+    const baselineInRow = (1.35 * label - 1.294 * label) / 2 + 1.018 * label;
+    const baselineInFolio = (1.35 * micro - 1.12 * micro) / 2 + 0.885 * micro;
+    expect({ rowTop, label, micro }).toEqual({ rowTop: 14, label: 13, micro: 12 });
+    expect(baselineInRow).toBeCloseTo(13.598, 3);
+    expect(baselineInFolio).toBeCloseTo(12, 6);
+    expect(rowTop + baselineInRow - baselineInFolio).toBeCloseTo(15.598, 3);
+    expect(folio.get('line-height')).toBe('1.35');
+    expect(folio.get('top')).toBe('calc(env(safe-area-inset-top) + 15.6px)');
+    // 768–1023: the narrow head states 11 px, and the number follows it (11.598 → 12.6).
+    const narrowFolio = rulesOf('../styles/live.css', blankComments(sheets['../styles/live.css'] ?? '')).find(
+      (rule) => exactly(rule, '.folio') && rule.at.length === 1,
+    );
+    expect(narrowFolio?.declarations.get('top')).toBe('calc(env(safe-area-inset-top) + 12.6px)');
   });
 });
 
@@ -140,6 +182,11 @@ describe('the TOC row is a register like every other (BOOK-88, BOOK-89)', () => 
     const micro = tokenPx('--fs-micro', { file: TOKENS });
     expect({ gap, micro }).toEqual({ gap: 14, micro: 12 });
     expect(390 - 2 * tokenPx('--gut', { query: 'phone', file: BASE }) - (36 + 2 * gap + 3 * 0.6 * micro)).toBeCloseTo(256.4, 1);
+    // BOOK-91: the wider column only adds room to the title cell — 640 at 1440 leaves 554.4,
+    // 622.4 at 768 leaves 536.8 — so the row still fits with the leader at every width.
+    for (const [width, title] of [[640, 554.4], [622.4, 536.8]] as const) {
+      expect(width - (36 + 2 * gap + 3 * 0.6 * micro)).toBeCloseTo(title, 1);
+    }
   });
 });
 
@@ -161,13 +208,14 @@ describe('the markup keeps every register a .page', () => {
 });
 
 describe('the guard fires on every class of violation it names', () => {
-  it('a second home for either token, or the retired canvas back', () => {
+  it('a second home for the measure, or a retired frame back', () => {
     const measure = layoutProblems(seeded(BASE, ':root { --measure: 33.75rem; }'));
     expect(measure.some((problem) => problem.startsWith('--measure is declared 3 time(s)'))).toBe(true);
     expect(measure.some((problem) => problem.includes('the text column has one home'))).toBe(true);
 
-    const shape = layoutProblems(replaced(TOKENS, '--column: 1000px;', '--column: 1100px;'));
-    expect(shape).toContain('--column: 1100px — the canvas is 1000px');
+    // BOOK-91: both retired frame tokens fail as a declaration, not only as a use.
+    const column = layoutProblems(seeded(TOKENS, ':root { --column: 1000px; }'));
+    expect(column.some((problem) => problem.startsWith('--column is back (1 declaration(s)'))).toBe(true);
 
     const legacy = layoutProblems(seeded(TOKENS, ':root { --shell: 1000px; }'));
     expect(legacy.some((problem) => problem.startsWith('--shell is back (1 declaration(s)'))).toBe(true);
@@ -179,45 +227,53 @@ describe('the guard fires on every class of violation it names', () => {
     expect(alias.some((problem) => problem.includes('.page.sheet { max-width: var(--shell) }'))).toBe(true);
   });
 
-  it('reads the canvas as a position on the folio, and never as a size', () => {
-    // BOOK-89's running folio is the one reader of the canvas that is not a box: its right
-    // margin is the canvas's inner right edge. The real tree holds it (the seed-free run above),
-    // and the token is still a size nowhere else.
+  it('retires the canvas token: no rule may read it, and the folio keeps its one inset', () => {
+    // BOOK-91: `--column` is gone with the 1000 px frame. A rule reading it is the second frame
+    // one step in — whether it asks for a size or for a position.
     const sized = layoutProblems(seeded('../styles/live.css', '.folio { width: var(--column); }'));
-    expect(sized.some((problem) => problem.includes('.folio { width: var(--column) } — var(--column) is the box of .canvas'))).toBe(true);
+    expect(sized.some((problem) => problem.includes('.folio { width: var(--column) } — var(--column) is retired'))).toBe(true);
 
-    // Another selector may not borrow the permission: a position on it is the same second frame.
     const borrowed = layoutProblems(seeded('../styles/live.css', '.seam { inset-inline-end: var(--column); }'));
     expect(borrowed.some((problem) => problem.includes('.seam { inset-inline-end: var(--column) }'))).toBe(true);
 
-    // The exception is held by the tree, not by the comment: drop the read and the guard says so.
-    const stale = layoutProblems(replaced('../styles/live.css', '(100% - var(--column)) / 2', '0px'));
-    expect(stale.some((problem) => problem.includes('a stale canvas-reader exception'))).toBe(true);
+    // The folio's inset is held by the tree, not by the comment: its right edge must stay
+    // 20 px outside the column's (column right + 20, from the viewport's right half).
+    const stale = layoutProblems(replaced('../styles/live.css', '(100% - var(--measure)) / 2 - 20px', '0px'));
+    expect(stale.some((problem) => problem.includes('.folio { inset-inline-end: calc(0px) }'))).toBe(true);
+    expect(stale.some((problem) => problem.includes("the number's right edge is 20px outside the column's"))).toBe(true);
   });
 
   it('the canvas that drops its bound, its gutters or its centring', () => {
-    // The three declarations are what makes the column sit at 252 inside the 1000 px bound; a
-    // canvas missing one of them silently falls back to the viewport.
+    // The three declarations are what makes the column sit at 400 inside the 704 px canvas at
+    // 1440; a canvas missing one of them silently falls back to the viewport.
+    const noBound = layoutProblems(replaced(BASE, 'max-width: calc(var(--measure) + 2 * var(--gut));', 'max-width: var(--measure);'));
+    expect(noBound.some((problem) => problem.includes('.canvas does not state its bound'))).toBe(true);
+
     const noGutters = layoutProblems(replaced(BASE, 'padding-inline: var(--gut);', 'padding-inline: 0;'));
     expect(noGutters.some((problem) => problem.includes('does not state padding-inline: var(--gut)'))).toBe(true);
 
-    const noCentring = layoutProblems(replaced(BASE, 'margin: 0 auto;', 'margin: 0;'));
+    const noCentring = layoutProblems(replaced(BASE, 'margin-inline: auto;', 'margin-inline: 0;'));
     expect(noCentring.some((problem) => problem.includes('.canvas does not centre the column'))).toBe(true);
   });
 
   it('a register that states its own width, from a later sheet or as a literal', () => {
-    // The BOOK-88 regression: a later sheet re-widening a register past the column. The canvas
+    // The BOOK-88 regression: a later sheet re-widening a register past the column. The frame
     // token is not available to a register any more — that is the final frame's whole point.
     const sheet = layoutProblems(seeded('../styles/live.css', '.page.sheet { max-width: var(--column); }'));
-    expect(sheet.some((problem) => problem.includes('— var(--column) is the box of .canvas'))).toBe(true);
+    expect(sheet.some((problem) => problem.includes('— var(--column) is retired'))).toBe(true);
 
     const literal = layoutProblems(seeded('../styles/live.css', '.toc { max-width: 1000px; }'));
     expect(literal.some((problem) => problem.includes('a register is exactly the column (max-width: var(--measure))'))).toBe(true);
 
+    // BOOK-91's measure is 640: a register one pixel wider than the column is still a register
+    // outside it, and the guard does not read a literal as "close enough".
+    const overMeasure = layoutProblems(seeded('../styles/live.css', '.toc { max-width: 641px; }'));
+    expect(overMeasure.some((problem) => problem.includes('.toc { max-width: 641px }'))).toBe(true);
+
     // The measure is the register's box; a register that stops stating it leaves the canvas.
     const unboxed = layoutProblems(replaced(BASE, 'max-width: var(--measure);', 'max-width: var(--column);'));
     expect(unboxed.some((problem) => problem.includes('.page does not state its box'))).toBe(true);
-    expect(unboxed.some((problem) => problem.includes('var(--column) is the box of .canvas'))).toBe(true);
+    expect(unboxed.some((problem) => problem.includes('var(--column) is retired'))).toBe(true);
 
     const ribbon = layoutProblems(seeded('../styles/ribbon.css', '.ribbon { max-width: 660px; }'));
     expect(ribbon.some((problem) => problem.includes('.ribbon { max-width: 660px }'))).toBe(true);
@@ -236,12 +292,13 @@ describe('the guard fires on every class of violation it names', () => {
     expect(measureBox.some((problem) => problem.includes('var(--measure) is the column: .page, .ribbon and the prose rule state it'))).toBe(true);
 
     // `.legal` and `.state-line` used to re-declare this box and centre themselves: the third
-    // edge. Since the final frame it belongs only to the no-JS fallback and the chain overlay.
+    // edge. BOOK-91: the box is the canvas's own, and elsewhere only the no-JS fallback's and
+    // the chain overlay's.
     const oldBox = layoutProblems(seeded('../styles/legal.css', '.legal { max-width: calc(var(--measure) + 2 * var(--gut)); }'));
-    expect(oldBox.some((problem) => problem.includes('is the no-JS box outside the canvas'))).toBe(true);
+    expect(oldBox.some((problem) => problem.includes("is the canvas's own box (and the no-JS fallback's)"))).toBe(true);
 
     // The outside-canvas row is held by the tree, not by the comment.
-    const stale = layoutProblems(replaced(BASE, 'calc(var(--measure) + 2 * var(--gut))', 'var(--column)'));
+    const stale = layoutProblems(replaced(BASE, 'padding: 64px var(--gut);', 'padding: 64px;'));
     expect(stale.some((problem) => problem.includes('.noscript does not state its 3 declarations'))).toBe(true);
   });
 
@@ -274,7 +331,7 @@ describe('the guard fires on every class of violation it names', () => {
 
   it('a register that centres itself with a margin shorthand or a pair of autos', () => {
     // The BOOK-63 bug's mirror: `.consent` is a `.page`, and `margin: 30px auto 6px` centres
-    // the 600 px strip in the 936 px canvas — the column must stay flush left.
+    // the 640 px strip inside the 704 px canvas — the column must stay flush inside it.
     const strip = layoutProblems(seeded('../styles/consent.css', '.consent { margin: 30px auto 6px; }'));
     expect(strip.some((problem) => problem.includes('a register\'s horizontal margin is `0`'))).toBe(true);
     expect(strip.some((problem) => problem.includes('this sets it to `auto`'))).toBe(true);
@@ -313,7 +370,7 @@ describe('the guard fires on every class of violation it names', () => {
   it('the seam strip and its stale line are prose, one element over from the paragraph', () => {
     // a41932b moved the strip out of the `<p>`: `.seam` and `.p-stale` are now block siblings
     // inside `.page ch`, so the one prose rule has to name them too, or the strip's band and
-    // its `.seam-cta` (`margin-left: auto`) run across the whole column above a 600 px
+    // its `.seam-cta` (`margin-left: auto`) run across the whole column above a 640 px
     // paragraph — the same defect, one element over.
     expect(PROSE).toContain('.seam');
     expect(PROSE).toContain('.p-stale');

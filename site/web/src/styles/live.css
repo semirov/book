@@ -25,8 +25,8 @@
   scroll-margin-top: var(--offset-top);
   /* BOOK-73 — one list, one column at every width; BOOK-88 — that column is the page's own:
      the TOC is a register of the `.page` it already is, and since the final frame the column
-     *is* the prose's, so a row runs from the prose's left edge to the prose's right edge (600
-     at 1440, 584 at 768, 342 at 390) and reads as part of the same document.
+     *is* the prose's, so a row runs from the prose's left edge to the prose's right edge (640
+     at 1440, 622.4 at 768, 342 at 390) and reads as part of the same document.
      `display: grid` is the one-column layout itself, and no rule may add a second track, so
      the 67 rows read as a single flow from part I to part IV. */
   display: grid;
@@ -289,20 +289,34 @@
   text-transform: uppercase;
 }
 /* ---------- BOOK-89: the running folio — one number, out of the flow ---------- */
-/* ≥768: the right margin, the ink flush with the frame's inner right edge, its box centre on
-   the reading line (40 % of the viewport, 6px up to sit on the line rather than beside it).
+/* ≥768: the number sits in the margin beside the text, its right edge 20 px outside the
+   column's own right edge (1060 at 1440, 852 at 1024, 715 at 768) — the viewport's right half
+   minus the column's, so it follows the text wherever the frame centres it.
+   Its top is the running head's first-row baseline, not 40vh, and it is taken from the head's
+   own geometry and the shipped fonts (hhea, per 1000 em: PT Sans Narrow 1018/−276, PT Mono
+   885/−235). `.top-in` starts row 1 at 14 px (its padding-top, safe-area aside); the brand's
+   1.35 line box at 13 px puts its baseline at half-leading (17.55 − 16.822) / 2 = 0.364 plus
+   the 13.234 px ascent, i.e. 27.598 from the top. This 12 px PT Mono line carries its own
+   baseline 12 px down its 16.2 box, so the box starts at 27.598 − 12 = 15.598 ≈ 15.6.
    `position: fixed` with no box in the text column: the number may change a hundred times
    without moving a line of prose (D2/D3). */
 .folio {
   position: fixed;
-  inset-inline-end: calc(var(--gut) + max(0px, (100% - var(--column)) / 2));
-  top: calc(clamp(96px, 40vh, calc(100% - 96px)) - 6px);
+  inset-inline-end: calc((100% - var(--measure)) / 2 - 20px);
+  top: calc(env(safe-area-inset-top) + 15.6px);
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  line-height: 12px;
+  line-height: 1.35;
   letter-spacing: 0;
   color: var(--ink-3);
   pointer-events: none;
+}
+/* 768–1023: the head states its own top (11 px, chrome.css) and the number follows it:
+   11 + 13.598 − 12 = 12.598 ≈ 12.6. */
+@media (max-width: 1023px) {
+  .folio {
+    top: calc(env(safe-area-inset-top) + 12.6px);
+  }
 }
 /* <768: the last item of the sticky head's first row — the only slot where the margin is the
    page itself. The box (16.2px) is shorter than the brand's line (17.55px), so row 1 does not
@@ -311,6 +325,5 @@
   .folio {
     position: static;
     padding-inline-start: 12px;
-    line-height: 1.35;
   }
 }

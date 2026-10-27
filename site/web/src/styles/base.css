@@ -54,26 +54,26 @@ h3 {
   font-weight: 400;
 }
 
-/* BOOK-88 §2 — ONE canvas, and inside it ONE column for every text block.
-   `--column` is the canvas: up to 1000 px, centred, and the only box on the page allowed to
-   be wider than the text. It owns the gutters (`padding-inline`) and the centring, and it is
-   the only rule that states either — a register that re-adds a gutter or its own `auto`
-   margin takes the column off the canvas's left edge. `--measure` is THE column: the TOC,
-   the colophon, the header's rows, the cover, page 2, the discussion, the legal documents
-   and the prose are all exactly this box, flush left inside the canvas (252 at 1440 — the
-   owner's number, not the canvas's 220), so the reading measure *is* the column and no two
-   blocks can read as two documents. The 1000 px survives as the outer bound that centres the
-   column; nothing inside it may be wider than the column but a marginal note (the folio), and
-   those are listed, one by one, in the guard. `.sheet` stays in the markup as the name of a
-   register and has no rule of its own. Base rules are the desktop: every query below narrows,
-   never widens. */
+/* BOOK-88 §2, BOOK-91 — ONE column for every text block, and no frame wider than it.
+   `--measure` is THE column: the TOC, the colophon, the header's rows, the cover, page 2, the
+   discussion, the legal documents and the prose are all exactly this box. The canvas is the
+   column plus its two gutters — `max-width: calc(var(--measure) + 2 * var(--gut))` — and it
+   centres itself, so the slack falls equally either side of the text (400 at 1440, 192 at
+   1024, 73 at 768) instead of all on the right. It owns the gutters (`padding-inline`) and the
+   centring, and it is the only rule that states either — a register that re-adds a gutter or
+   its own `auto` margin takes the column off the page's centre. Nothing inside it may be wider
+   than the column but a marginal note, and those are listed in the layout guard. `.sheet` stays
+   in the markup as the name of a register and has no rule of its own. Base rules are the
+   desktop: every query below narrows, never widens. */
 .canvas {
-  max-width: var(--column);
-  margin: 0 auto;
+  max-width: calc(var(--measure) + 2 * var(--gut));
+  margin-inline: auto;
   padding-inline: var(--gut);
 }
-/* Every register is exactly the text column: the canvas supplies the gutters and the
-   centring, so a register states neither. Its own padding is block-only (`26px 0 72px`). */
+/* Every register is exactly the text column: the canvas is the column plus its gutters, so a
+   register states neither the width's frame nor the air around it. Its own padding is
+   block-only (`26px 0 72px`), and it never centres itself inside the canvas — the column is
+   the measure and the canvas is the column plus its gutters. */
 .page {
   max-width: var(--measure);
   margin: 0;
