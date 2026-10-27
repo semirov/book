@@ -120,9 +120,8 @@ export function ProseParagraph({
   if (revised) classes.push('is-revised');
 
   const openRevision = useCallback((comment: CommentDto, origin: HTMLElement): void => {
+    // BOOK-111: one panel at a time — the store closes the filing card (see `useRevision`).
     showRevision({ comment, origin });
-    // One panel at a time: the record replaces the card or the word's panel (BOOK-111).
-    hideFiling();
   }, []);
 
   const closeRevision = useCallback((): void => {

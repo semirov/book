@@ -3,13 +3,15 @@ import type { CommentDto } from '@book/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { currentFiling, hideFiling, showFiling } from './useFiling.ts';
+import { currentRevision, hideRevision, showRevision } from './useRevision.ts';
 
 /**
  * BOOK-111 (owner, 2026-10-27) — the page's one panel slot.
  *
  * A filing card and a word's provenance panel are the same slot: showing one replaces the
  * other, never stacks it. The store carries the surface that opened it (`owner`), so only
- * that surface draws the panel, and closing is idempotent.
+ * that surface draws the panel, and closing is idempotent. The second slot — the revision
+ * object — is closed by these stores too, in both directions, never by a call site.
  */
 
 function comment(id: string): CommentDto {
@@ -36,6 +38,7 @@ const rect = { width: 1, height: 1, top: 0, left: 0, right: 1, bottom: 1, x: 0, 
 
 afterEach(() => {
   hideFiling();
+  hideRevision();
   vi.restoreAllMocks();
 });
 
@@ -58,5 +61,25 @@ describe('the page’s one filing panel', () => {
     expect(currentFiling()).toBeNull();
     hideFiling();
     expect(currentFiling()).toBeNull();
+  });
+
+  it('a card opens over no record: showing a filing hides the open revision object', () => {
+    showRevision({ comment: comment('cmt_r1'), origin: null });
+    expect(currentRevision()).not.toBeNull();
+
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect });
+
+    expect(currentRevision()).toBeNull();
+    expect(currentFiling()?.comment?.id).toBe('cmt_f');
+  });
+
+  it('a record opens over no card: showing a revision hides the open filing', () => {
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect });
+    expect(currentFiling()).not.toBeNull();
+
+    showRevision({ comment: comment('cmt_r2'), origin: null });
+
+    expect(currentFiling()).toBeNull();
+    expect(currentRevision()?.comment.id).toBe('cmt_r2');
   });
 });

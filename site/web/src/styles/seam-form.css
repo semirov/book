@@ -152,17 +152,18 @@
 }
 
 /* ---------- the empty chapter: one row (BOOK-90 A, BOOK-112) ---------- */
-/* `02 ······················` — numeral, dotted field. The row is the column's full width (a
-   full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom) makes its
-   content end on the prose's right edge: `--measure` never sizes a box. The row prints no
-   word: the last cell is the page number's slot (BOOK-89), and a third child takes it while
-   the `1fr` field shrinks — no rule here changes. */
+/* `02 ······················ ждёт` — numeral, dotted field, state word. The row is the column's
+   full width (a full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom)
+   makes its content end on the prose's right edge: `--measure` never sizes a box. Three tracks
+   on one line: the numeral, the `1fr` field that gives way, and the word the row prints while
+   the slot is held (BOOK-111). That third track is also the page number's slot (BOOK-89), so a
+   chapter number taking it is a data change, not a layout change. */
 .premise {
   margin: 0;
 }
 .premise-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   column-gap: 12px;
   align-items: center;
   width: 100%;

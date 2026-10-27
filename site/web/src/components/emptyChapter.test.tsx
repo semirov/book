@@ -102,7 +102,7 @@ describe('the row’s geometry is the prose’s geometry', () => {
     expect(row).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
     // The hit area stays the column's whole width; only its content ends on the prose edge.
     expect(row).toContain('width: 100%');
-    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr)');
+    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
     expect(row).toContain('min-height: 44px');
     // The numeral is the mono micro rung, tabular.
     expect(declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-n')).toContain('font-variant-numeric: tabular-nums');

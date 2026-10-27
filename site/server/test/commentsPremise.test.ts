@@ -55,6 +55,31 @@ describe('a chapter-level filing is the premise of an unwritten chapter (BOOK-11
     const row = h.db.prepare('SELECT base_rev FROM comments').get() as { base_rev: number };
     expect(row.base_rev).toBeGreaterThan(0);
   });
+
+  it('ignores a crafted baseRev 0 on a written chapter and stores the chapter’s revision', async () => {
+    // The hole: `baseRev ?? base.rev` stored a client's `0`, and `toCommentDto` then read the
+    // chapter-wide note on written text as the chapter's premise.
+    const h = await boot();
+    const response = await post(
+      h,
+      commentBody({ chapter: 8, baseRev: 0, body: 'К написанной главе целиком, но с нулём.' }),
+    );
+    expect(response.statusCode).toBe(201);
+    expect((response.json().comment as { premise: boolean }).premise).toBe(false);
+    const row = h.db.prepare('SELECT base_rev FROM comments').get() as { base_rev: number };
+    expect(row.base_rev).toBeGreaterThan(0);
+  });
+
+  it('keeps the unwritten chapter’s premise at base_rev 0 whatever the client sends', async () => {
+    const h = await boot();
+    const response = await post(
+      h,
+      commentBody({ chapter: 9, baseRev: 4, body: 'К ненаписанной главе, с чужой ревизией.' }),
+    );
+    expect(response.statusCode).toBe(201);
+    expect((response.json().comment as { premise: boolean }).premise).toBe(true);
+    expect(h.db.prepare('SELECT base_rev FROM comments').get()).toEqual({ base_rev: 0 });
+  });
 });
 
 describe('a duplicate refusal names the filing that already exists (BOOK-111)', () => {

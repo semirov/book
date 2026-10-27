@@ -225,8 +225,9 @@ export class CommentService {
       ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
       // BOOK-113: an exempt identity spends no edit slot — both the identity and the network
       // key are skipped, otherwise the network cap would still refuse the owner's second edit
-      // in a day. The comment budget above still applies to them.
-      ...(proposedText === null || context.identity.edit_exempt !== 0
+      // in a day. The comment budget above still applies to them. Fail closed: only an
+      // explicit `1` exempts, so a missing or unknown value is never a hole.
+      ...(proposedText === null || context.identity.edit_exempt === 1
         ? []
         : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
     ];
@@ -265,7 +266,9 @@ export class CommentService {
         chapter: input.chapter,
         blockId: anchor.anchor.blockId,
         blockIndex: anchor.anchor.blockIndex,
-        baseRev: input.baseRev ?? anchor.baseRev,
+        // The anchor decides the revision (`resolveAnchor`): a written chapter never stores
+        // `base_rev 0`, an unwritten one always does (BOOK-111).
+        baseRev: anchor.baseRev,
         quote: anchor.anchor.quote,
         prefix: anchor.anchor.prefix,
         suffix: anchor.anchor.suffix,
@@ -359,9 +362,10 @@ export class CommentService {
     if (existing.identity_id === identityId) {
       return { ok: true, status: 201, body: this.response(existing, ipKey) };
     }
-    // A key is scoped to one reader; a foreign key is a collision, not a replay. The id names
-    // a public row (`GET /api/comments/:id` answers it for anyone), so carrying it leaks nothing.
-    return fail(409, 'DUPLICATE', 'такое замечание уже отправлено', existing.id);
+    // A key is scoped to one reader; a foreign key is a collision, not a replay. The row is
+    // another reader's, and may be hidden from this one (quarantined, or never theirs to see),
+    // so the refusal names no comment id: 409 and nothing more.
+    return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
   }
 
   /**
@@ -410,7 +414,11 @@ export class CommentService {
     if (blockId === null) {
       return {
         ok: true,
-        baseRev: baseRev ?? base.rev,
+        // BOOK-111: a chapter-wide note on a **written** chapter is not a premise, and the
+        // schema defines a premise as `base_rev 0`. A crafted or leftover `0` (or a negative)
+        // must never be stored here, or `toCommentDto` would report the reader's note on
+        // written text as the chapter's premise: the chapter's own revision is the floor.
+        baseRev: baseRev !== null && baseRev > 0 ? baseRev : base.rev,
         anchor: {
           blockId: null,
           blockIndex: null,

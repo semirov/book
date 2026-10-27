@@ -77,5 +77,7 @@ export function readBudget(deps: BudgetDeps, identityId: string, ipKey: string):
  */
 function isExempt(db: Db, identityId: string): boolean {
   const identity = readIdentity(db, identityId);
-  return identity !== undefined && identity.edit_exempt !== 0;
+  // Fail closed: only an explicit `1` is an exemption. `!== 0` read a missing or unknown
+  // value as the owner's exemption — the one direction a flag like this must never take.
+  return identity !== undefined && identity.edit_exempt === 1;
 }

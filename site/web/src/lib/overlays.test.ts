@@ -53,15 +53,23 @@ describe('entering the прицел closes every overlay', () => {
   it('drops the seam, the panel and the revision object together', () => {
     openSeam({ chapter: 8, blockId: 'ch08#aa11bb22', key: 'ch8:text', anchor, origin: null });
     showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment(), origin: null, rect });
-    showRevision({ comment: comment(), origin: null });
     expect(currentSeam()).not.toBeNull();
     expect(currentFiling()).not.toBeNull();
-    expect(currentRevision()).not.toBeNull();
 
     closeOverlays();
 
     expect(currentSeam()).toBeNull();
     expect(currentFiling()).toBeNull();
+    expect(currentRevision()).toBeNull();
+  });
+
+  it('a revision object is the page’s one slot: it replaces the open card (BOOK-111)', () => {
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment(), origin: null, rect });
+    showRevision({ comment: comment(), origin: null });
+    expect(currentFiling()).toBeNull();
+    expect(currentRevision()).not.toBeNull();
+
+    closeOverlays();
     expect(currentRevision()).toBeNull();
   });
 });

@@ -318,6 +318,41 @@ describe('the premise strip in an empty chapter', () => {
     expect(container.querySelector('#ch-7 .seam')).toBeNull();
   });
 
+  it('keeps the state word on the row’s own line: three siblings, three tracks', async () => {
+    // The regression this pins: with a two-track template the word auto-placed into row 2 and
+    // the 44 px row printed two lines. The word is the row's third child in the third track.
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={ENTRY}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          firstEmpty
+          history={false}
+          comments={[PENDING]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
+    expect(row).not.toBeNull();
+    const cells = [...(row?.children ?? [])].map((child) => child.getAttribute('class'));
+    expect(cells).toEqual(['premise-n', 'premise-field premise-quote', 'premise-label']);
+    // A nested word could still wrap under the numeral: every cell is a direct child.
+    for (const cell of [...(row?.children ?? [])]) expect(cell.parentElement).toBe(row);
+
+    const rule = /(?:^|\n)\s*\.premise-row\s*\{([^}]*)\}/u.exec(sheets['../styles/seam-form.css'] ?? '')?.[1] ?? '';
+    const template = /grid-template-columns:\s*([^;]*)/u.exec(rule)?.[1]?.trim() ?? '';
+    // Three tracks: one per cell. `minmax(0, 1fr)` is one track, not three.
+    expect(template.replace(/minmax\([^)]*\)/gu, 'M').split(/\s+/u)).toHaveLength(3);
+    // No template row count: the row stays one line whatever the word's width.
+    expect(rule).not.toContain('grid-template-rows');
+  });
+
   it('opens the premise card from a duplicate refusal on an empty chapter (BOOK-111)', async () => {
     // The prod 409 on an unwritten chapter: the form says the filing exists, and its door reads
     // the row by id and opens it — the same card the premise row opens, not a second form.

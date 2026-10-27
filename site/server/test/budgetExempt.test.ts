@@ -82,6 +82,27 @@ describe('the daily edit budget and the operator exemption (BOOK-113)', () => {
     expect(commentCount(h)).toBe(1);
   });
 
+  it('an unknown exemption value is never an exemption: only an explicit 1 passes', async () => {
+    // `edit_exempt !== 0` read a missing or unknown value as the owner's exemption — the one
+    // direction a fail-open flag must never take.
+    const h = await boot();
+    h.db.prepare('UPDATE identities SET edit_exempt = 2 WHERE id = ?').run(h.identity.id);
+
+    const first = await post(
+      h,
+      commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
+    );
+    expect(first.statusCode).toBe(201);
+    expect(first.json().remaining.editsExempt).toBeUndefined();
+
+    const second = await post(
+      h,
+      commentBody({ body: 'Второй абзац тоже стоит сократить.', proposedText: 'Тестовый абзац номер два.' }),
+    );
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toMatchObject({ code: 'EDIT_DAILY_LIMIT' });
+  });
+
   it('budget() reports an exempt identity with the full day and no reset', async () => {
     const h = await boot();
     const service = new CommentService({
