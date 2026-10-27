@@ -222,10 +222,13 @@ export function InterventionForm({
           ) : null}
           {duplicateId === null || onOpenDuplicate === undefined ? null : (
             // BOOK-111: the 409 names the filing that already exists; the reader gets a way to
-            // it instead of a second identical form. The button is the origin, so focus returns.
+            // it instead of a second identical form. The button is the origin, so focus returns
+            // (`data-door` lets the strip hand it back after the panel's collapse, since the
+            // form is rebuilt when the strip's rows come back).
             <button
               type="button"
               className="seam-inline-action"
+              data-door="duplicate"
               onClick={(event) => onOpenDuplicate(duplicateId, event.currentTarget)}
             >
               открыть отправленное

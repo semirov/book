@@ -416,8 +416,15 @@ describe('the premise strip in an empty chapter', () => {
     const panel = container.querySelector('.filing-panel');
     expect(panel, 'the refusal opens the filing that already exists').not.toBeNull();
     expect(panel?.textContent).toContain('а как это работает');
-    // The strip keeps the draft behind the panel (BOOK-63: a refusal spends nothing), so the
-    // panel's close still has the button to return to — the form is not rebuilt or reopened.
+    // BOOK-111 (owner, 2026-10-27) — «Два поповера»: the refusal's door is inside the strip, so
+    // the panel is the only full frame and the strip collapses to its one line. BOOK-63 still
+    // holds: the draft was not spent — closing the panel gives the form back with its text.
+    expect(container.querySelector('#ch-7 .seam')?.getAttribute('data-state')).toBe('prov');
+    expect(container.querySelector('#ch-7 .seam-form')).toBeNull();
+    expect(container.querySelector('#ch-7 .seam-close')).toBeNull();
+    await act(async () => container.querySelector<HTMLElement>('.filing-close')?.click());
+    expect(container.querySelector('.filing-panel')).toBeNull();
     expect(container.querySelector('#ch-7 .seam-form')).not.toBeNull();
+    expect(container.querySelector<HTMLTextAreaElement>('#ch-7 textarea.seam-text')?.value).toBe('А как?');
   });
 });

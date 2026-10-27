@@ -46,18 +46,20 @@ afterEach(() => {
 describe('the page’s one filing panel', () => {
   it('shows one panel at a time: the second replaces the first', () => {
     expect(currentFiling()).toBeNull();
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_a'), origin: null, rect });
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_a'), origin: null, rect, fromSeam: false });
     expect(currentFiling()?.comment?.id).toBe('cmt_a');
     expect(currentFiling()?.owner).toBe('ch08#aa11bb22');
 
-    showFiling({ kind: 'provenance', owner: 'ch08#cc33dd44', comment: null, origin: null, rect, word: 'слово' });
+    showFiling({
+      kind: 'provenance', owner: 'ch08#cc33dd44', comment: null, origin: null, rect, word: 'слово', fromSeam: false,
+    });
     expect(currentFiling()?.kind).toBe('provenance');
     expect(currentFiling()?.word).toBe('слово');
     expect(currentFiling()?.comment).toBeNull();
   });
 
   it('hides to an empty page, and hiding twice is not an error', () => {
-    showFiling({ kind: 'filing', owner: 'one', comment: comment('cmt_b'), origin: null, rect });
+    showFiling({ kind: 'filing', owner: 'one', comment: comment('cmt_b'), origin: null, rect, fromSeam: false });
     hideFiling();
     expect(currentFiling()).toBeNull();
     hideFiling();
@@ -68,14 +70,14 @@ describe('the page’s one filing panel', () => {
     showRevision({ comment: comment('cmt_r1'), origin: null });
     expect(currentRevision()).not.toBeNull();
 
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect });
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect, fromSeam: false });
 
     expect(currentRevision()).toBeNull();
     expect(currentFiling()?.comment?.id).toBe('cmt_f');
   });
 
   it('a record opens over no card: showing a revision hides the open filing', () => {
-    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect });
+    showFiling({ kind: 'filing', owner: 'ch08#aa11bb22', comment: comment('cmt_f'), origin: null, rect, fromSeam: false });
     expect(currentFiling()).not.toBeNull();
 
     showRevision({ comment: comment('cmt_r2'), origin: null });

@@ -1,9 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 import { track, type SeamSurface } from './analytics.ts';
+import { closeOtherOverlays, registerOverlay } from './overlayRegistry.ts';
 import type { SeamAnchor } from './seam.ts';
-import { hideFiling } from './useFiling.ts';
-import { hideRevision } from './useRevision.ts';
 
 /**
  * BOOK-DOC-34 §2.1 — one seam per page.
@@ -47,9 +46,10 @@ export function openSeam(next: OpenSeam): void {
   current = next;
   // BOOK-111 (owner, 2026-10-27): one overlay at a time. A seam is the reader's own act, so
   // opening it closes the page's panel and the revision object — two half-written surfaces
-  // never coexist, and the strip is never opened behind a figure the reader cannot see.
-  hideFiling();
-  hideRevision();
+  // never coexist, and the strip is never opened behind a figure the reader cannot see. The
+  // closers are registered by their own stores (`overlayRegistry.ts`), so this module names
+  // neither of them.
+  closeOtherOverlays('seam');
   // The event belongs to the act, so the store emits it: no caller can open a seam silently.
   // A seam with no block is an empty chapter's premise; everything else opens in the text.
   track('seam_open', { surface: next.surface ?? (next.blockId === null ? 'premise' : 'text') });
@@ -70,3 +70,6 @@ export function currentSeam(): OpenSeam | null {
 export function useOpenSeam(): OpenSeam | null {
   return useSyncExternalStore(subscribe, currentSeam, () => null);
 }
+
+// BOOK-111: the other stores close the seam by asking this one — never by naming it.
+registerOverlay('seam', closeSeam);

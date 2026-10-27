@@ -1,7 +1,7 @@
 import type { CommentDto } from '@book/shared';
 import { useSyncExternalStore } from 'react';
 
-import { hideRevision, onOpenRevision } from './useRevision.ts';
+import { closeOverlay, registerOverlay } from './overlayRegistry.ts';
 
 /**
  * BOOK-111 (owner, 2026-10-27) — one panel at a time, page-wide.
@@ -15,6 +15,12 @@ import { hideRevision, onOpenRevision } from './useRevision.ts';
  *
  * `owner` names the surface that opened the panel: every subscriber sees the store, and only
  * its owner draws it. Two paragraphs of one chapter cannot each hold a panel of their own.
+ *
+ * `fromSeam` says the panel was opened **from** the open strip. Then the strip is not a second
+ * surface to close: it is the same place as the panel, collapses to one line while the panel
+ * speaks for it, and gets its rows back when the panel closes. Any other origin (a mark, a
+ * margin note, a phone row, the premise row) is a second place on screen, so the seam goes —
+ * one floating frame, no inline duplicate.
  */
 
 export type FilingKind = 'filing' | 'provenance';
@@ -31,6 +37,11 @@ export type OpenFiling = {
   rect: DOMRect;
   /** A provenance panel's word; the rest of its view is computed by the paragraph. */
   word?: string;
+  /**
+   * The opener was inside `.seam` — computed by the caller from the element the tap landed in,
+   * never guessed here: the store has no way to know what the DOM looks like.
+   */
+  fromSeam: boolean;
 };
 
 let current: OpenFiling | null = null;
@@ -47,10 +58,10 @@ function emit(): void {
 
 /** Opening a panel replaces the open one; it never stacks a second — of either slot. */
 export function showFiling(next: OpenFiling): void {
-  // BOOK-111: the filing card and the revision object are one slot, and this store decides
-  // it. The other direction — a record opened over a card — is this store's own closer, which
-  // `showRevision` holds (registered below): no call site carries either rule.
-  hideRevision();
+  // BOOK-111: the revision object is the other slot, always. The seam is only closed when the
+  // panel came from somewhere else — a panel opened from the strip is that strip, collapsed.
+  closeOverlay('revision');
+  if (!next.fromSeam) closeOverlay('seam');
   current = next;
   emit();
 }
@@ -61,9 +72,6 @@ export function hideFiling(): void {
   emit();
 }
 
-// The revision store closes whatever this store opened, from the one direction imports run.
-onOpenRevision(hideFiling);
-
 export function currentFiling(): OpenFiling | null {
   return current;
 }
@@ -71,3 +79,6 @@ export function currentFiling(): OpenFiling | null {
 export function useOpenFiling(): OpenFiling | null {
   return useSyncExternalStore(subscribe, currentFiling, () => null);
 }
+
+// BOOK-111: the seam and the record close this slot by asking it — never by importing it.
+registerOverlay('filing', hideFiling);
