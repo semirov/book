@@ -40,7 +40,10 @@ describe('the reader’s own trace (BOOK-DOC-4)', () => {
       <OwnTrace trace={trace({ edits: 0, chars: 0, share: 0, survivedRevisions: 0, series: [] })} />,
     );
     expect(html).toContain('пережила 0 ревизий, сейчас 0,0 %');
-    expect(html).toContain('правок пока нет');
+    // BOOK-70: a zero edit count prints no suffix at all — «правок пока нет» counted nothing.
+    expect(html).toContain('<p class="own-trace-edits">Аня</p>');
+    expect(html).not.toContain('правок пока нет');
+    expect(html).not.toContain('правок: 0');
     expect(html).not.toContain('svg');
     expect(html).not.toContain('polyline');
   });

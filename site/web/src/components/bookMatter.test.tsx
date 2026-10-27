@@ -111,9 +111,7 @@ function textOf(html: string): string {
 
 describe('cover', () => {
   it('is the title, the live byline, the category line and the promise — and nothing else', () => {
-    expect(textOf(coverHtml())).toBe(
-      `Бланк${'Филипп Семиров + 0'}${TITLE_GENRE}${TITLE_PROMISE}`,
-    );
+    expect(textOf(coverHtml())).toBe(`Бланк${'Филипп Семиров'}${TITLE_GENRE}${TITLE_PROMISE}`);
   });
 
   it('carries the promise verbatim, in plain words, on its own line', () => {
@@ -130,26 +128,35 @@ describe('cover', () => {
     expect(html).not.toContain('multiplayer');
   });
 
-  it('counts the readers in the byline: «+ 0» on the empty book, «+ 3» when three survive', () => {
-    expect(coverHtml()).toContain('Филипп Семиров + 0');
+  it('counts the readers in the byline only when there are survivors (BOOK-70)', () => {
+    // A count of nothing is not a count: on the empty book the author stands alone, and «+ 0»
+    // — a chip that counts nothing — is gone.
+    expect(coverHtml()).not.toContain('+ 0');
+    expect(coverHtml()).toContain('<p class="author">Филипп Семиров</p>');
+    expect(textOf(coverHtml())).not.toContain('+');
+
     const three = renderToStaticMarkup(
       <TitleSheet front={{ ...front, authors: { count: 3, measuredAt: '2026-10-25T12:00:05Z' } }} />,
     );
-    expect(three).toContain('Филипп Семиров + 3');
+    // The chip's own text is exactly «+ 3»: the space belongs to the byline, not the chip.
+    expect(three).toContain('Филипп Семиров <span class="author-plus">+ 3</span>');
+    expect(three).not.toContain('<span class="author-plus"> +');
     expect(textOf(three)).toContain('Филипп Семиров + 3');
     // The surname is the imprint's, never hardcoded in the component.
     const other = renderToStaticMarkup(
       <TitleSheet front={{ ...front, imprint: { ...front.imprint, author: 'Другой Автор' } }} />,
     );
-    expect(other).toContain('Другой Автор + 0');
+    expect(other).toContain('<p class="author">Другой Автор</p>');
+    expect(other).not.toContain('author-plus');
   });
 
-  it('tolerates a first sheet without a count: the line still reads «+ 0», never «undefined»', () => {
+  it('tolerates a first sheet without a count: the author alone, never «undefined» or «+ 0»', () => {
     const html = renderToStaticMarkup(
       <TitleSheet front={{ ...front, authors: undefined } as unknown as FrontDto} />,
     );
-    expect(html).toContain('Филипп Семиров + 0');
+    expect(html).toContain('Филипп Семиров');
     expect(html).not.toContain('undefined');
+    expect(html).not.toContain('author-plus');
   });
 
   it('carries the owner\'s category line verbatim, once, between the byline and the promise', () => {
@@ -234,7 +241,7 @@ describe('cover', () => {
 
   it('falls back to the site label when the title line is missing', () => {
     const html = renderToStaticMarkup(<TitleSheet front={{ ...front, title: null }} />);
-    expect(textOf(html)).toBe(`КнигаФилипп Семиров + 0${TITLE_GENRE}${TITLE_PROMISE}`);
+    expect(textOf(html)).toBe(`КнигаФилипп Семиров${TITLE_GENRE}${TITLE_PROMISE}`);
   });
 
   it('is still on first paint and fades only on a real title change', () => {

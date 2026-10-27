@@ -28,12 +28,36 @@
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
+/* The header's meta line is a container, not a chip (BOOK-70): it holds two spans whose voices
+   differ and reserves no space of its own — the row's height is the 26 px numeral beside it, so
+   a chip that appears or disappears moves nothing. */
 .ch-meta {
   font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-align: right;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+/* S chip: «печатается» — a state, in the label's voice, live while the text is arriving. */
+.ch-print {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--live);
+}
+/* D line: `9 003 знака · 14:20` — data, mono and tabular, never the label's voice. */
+.ch-data {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--ink-3);
 }
 
 /* The one rule that sets the reading measure (chapters and page 2 alike). Below 600px a
@@ -183,11 +207,13 @@
   letter-spacing: 0.14em;
   font-size: var(--fs-label);
 }
+/* A count chip: the number carries its noun, sits on one line, and prints no zero (BOOK-70). */
 .sec-meta {
   font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .slots {
   list-style: none;
@@ -207,10 +233,6 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.1em;
   color: var(--ink-3);
-}
-.qline b {
-  font-weight: 400;
-  color: var(--ink-2);
 }
 .qline span:last-child {
   text-transform: none;

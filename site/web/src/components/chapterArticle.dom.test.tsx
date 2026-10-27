@@ -29,6 +29,19 @@ class IdleObserver {
   }
 }
 
+/** Comes into view at once: the prose is fetched and the printing reveal starts. */
+class EagerObserver {
+  constructor(private readonly callback: (records: Array<{ isIntersecting: boolean }>) => void) {}
+  observe(): void {
+    this.callback([{ isIntersecting: true }]);
+  }
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): [] {
+    return [];
+  }
+}
+
 const ENTRY: CatalogEntry = {
   n: 1,
   part: 1,
@@ -279,6 +292,52 @@ describe('the chapter skeleton under a browser', () => {
     expect(form).toBeLessThanOrEqual(CHAPTER_BOX_PX);
     const placeholder = container.querySelector<HTMLElement>('.ch-placeholder');
     expect(placeholder?.style.minHeight).toBe(`${CHAPTER_BOX_PX}px`);
+  });
+
+  it('prints «печатается» as a separate chip while the text arrives, and never «не написана»', async () => {
+    // BOOK-70: the header's state chip is its own span, apart from the data line. The reveal
+    // starts only in a browser, so this is where the printing state can be observed.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          n: 1,
+          title: 'Тестовая глава',
+          rev: 1,
+          chars: 40,
+          basis: false,
+          blocks: [
+            { id: 'ch01#aaaa1111', i: 0, text: 'Первое предложение главы, которое печатается.', hash: 'a' },
+            { id: 'ch01#bbbb2222', i: 1, text: 'Второе предложение главы.', hash: 'b' },
+          ],
+          writtenAt: '2026-10-25T09:20:00Z',
+          updatedAt: '2026-10-25T09:20:00Z',
+        }),
+      })),
+    );
+    vi.stubGlobal('IntersectionObserver', EagerObserver);
+    // The reveal asks the media query; jsdom does not implement it, and a throw there would
+    // land in the load's `catch` and read as a failed chapter.
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    vi.stubGlobal('requestAnimationFrame', () => 0);
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<ChapterArticle entry={{ ...ENTRY, chars: 40 }} revision={null} revising={null} caret={null} fresh composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+    });
+    // The load is a promise: let it settle, then read the header.
+    await flush();
+
+    const print = container.querySelector('.ch-print');
+    expect(print?.textContent).toBe('■ печатается');
+    expect(print?.closest('.ch-data')).toBeNull();
+    expect(container.querySelector('.ch-data')?.textContent).toContain('12:20');
+    expect(container.textContent).not.toContain('не написана');
   });
 
   it('renders an empty slot with no placeholder at all', async () => {

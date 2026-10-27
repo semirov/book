@@ -82,8 +82,9 @@ describe('the author ink on the thread', () => {
 });
 
 /**
- * BOOK-59 — the two counters of the register. A bare «обсуждение 4» is a number without its
- * noun, and «в очереди 3» could be read as three chapters; both now carry the word they count.
+ * BOOK-59 / BOOK-70 — the two counters of the register. A bare «обсуждение 4» is a number
+ * without its noun, «в очереди 3» could be read as three chapters, and a chip never counts
+ * nothing: the zero states are sentences («замечаний нет», «в очереди пусто»).
  */
 describe('the register’s counters', () => {
   /** Read as a reader reads it: tags stripped, so a `<b>` between number and noun is no alibi. */
@@ -93,9 +94,9 @@ describe('the register’s counters', () => {
 
   it('names what each number counts, in the form the number asks for', () => {
     const html = renderToStaticMarkup(
-      <Discussion depth={3} comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' })]} />,
+      <Discussion depth={3} comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' }), comment({ id: 'cmt_3' })]} />,
     );
-    expect(text(html)).toContain('2 замечания');
+    expect(text(html)).toContain('3 замечания');
     expect(text(html)).toContain('в очереди 3 правки');
   });
 
@@ -105,6 +106,19 @@ describe('the register’s counters', () => {
     );
     expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} />))).toContain('в очереди 1 правка');
     expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} />))).toContain('в очереди 5 правок');
+  });
+
+  it('splits the stamp: a comment’s moment is a stamp-time, never the old shared `.stamp`', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment({ id: 'cmt_1' })]} />);
+    expect(html).toContain('class="stamp-time"');
+    expect(html).not.toContain('class="stamp"');
+  });
+
+  it('states the zeros as sentences, never as counts of nothing', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} />);
+    expect(text(html)).toContain('замечаний нет');
+    expect(text(html)).toContain('в очереди пусто');
+    for (const wrong of ['0 замечаний', 'в очереди 0', '0 правок']) expect(text(html), wrong).not.toContain(wrong);
   });
 
   it('keeps the empty register quiet without naming a «замечание» as a premise', () => {
@@ -139,8 +153,9 @@ describe('the register while its feed is landing', () => {
     // Exactly one status, and it sits in the meta slot the surface already has.
     expect(html.match(/role="status"/gu)).toHaveLength(1);
     expect(html).toMatch(/<span class="sec-meta"><span role="status"/u);
-    // The queue line has its own, already-settled source: it is not a second waiting claim.
-    expect(html).toContain('в очереди <b>0</b> правок');
+    // The queue line has its own, already-settled source: it is not a second waiting claim,
+    // and at zero it is a sentence, not a count of nothing (BOOK-70).
+    expect(html).toContain('в очереди пусто');
   });
 
   it('carries the slow sentence in the same slot, still without the count', () => {

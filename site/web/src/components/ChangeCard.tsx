@@ -61,7 +61,7 @@ export function ChangeCard({
     <section className="change-card ym-hide-content" role="dialog" aria-modal="false" aria-label={changeHeading(change)}>
       <header className="change-card-h">
         <span className="change-card-n">{changeHeading(change)}</span>
-        <span className={`stamp stamp-${change.status}`}>{stampCopy(change)}</span>
+        <span className={`stamp-state stamp-${change.status}`}>{stampCopy(change)}</span>
         <button className="change-card-x" type="button" onClick={onClose} aria-label="закрыть карточку правки">
           ×
         </button>
@@ -111,9 +111,8 @@ export function ChangeCard({
 
       <div className="change-steps">
         <span className="change-sub">шаги правки</span>
-        {change.steps.length === 0 ? (
-          <p className="change-empty">шагов пока нет</p>
-        ) : (
+        {/* BOOK-70: no steps is not a fact about the change — a chip would count nothing. */}
+        {change.steps.length === 0 ? null : (
           <ol>
             {change.steps.map((step) => (
               <li key={`${step.seq}-${step.at}`} className={step.outcome === null ? 'is-live' : ''}>

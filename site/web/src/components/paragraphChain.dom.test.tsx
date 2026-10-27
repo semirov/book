@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { ParagraphChainDto } from '@book/shared';
+import type { ReactElement } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,9 @@ import { ParagraphChain } from './ParagraphChain.tsx';
  * only its head while the wait is quiet, the form of three rows after 150 ms, and a failure
  * is a sentence with a retry — never «у этой строки нет истории», which is a fact about a
  * read that came back empty.
+ *
+ * BOOK-70 — that failure sentence is «история не прочиталась»: the same state line the
+ * chronicle uses, so the two surfaces say the same thing about the same kind of event.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -41,6 +45,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 async function flush(): Promise<void> {
@@ -54,6 +59,35 @@ async function flush(): Promise<void> {
 /** A 404 is the API's normal «no history» answer, not a rejection. */
 function notFound(): Response {
   return { ok: false, status: 404, statusText: 'Not Found', json: async () => ({}) } as unknown as Response;
+}
+
+/**
+ * The hook, mounted the way the page mounts it: a button opens the chain for a block, and the
+ * panel is rendered only while there is something to say — the same condition App uses.
+ */
+function Probe(): ReactElement {
+  const mode = useParagraphChain();
+  return (
+    <div>
+      <button
+        type="button"
+        data-open="true"
+        onClick={(event) => mode.open('ch08#0b7e9c31', event.currentTarget.getBoundingClientRect())}
+      >
+        ⋯
+      </button>
+      {mode.anchor !== null ? (
+        <ParagraphChain
+          chain={mode.chain}
+          loading={mode.loading}
+          failed={mode.failed}
+          onRetry={mode.retry}
+          onClose={mode.close}
+          anchor={mode.anchor}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 describe('the paragraph chain panel under a browser', () => {
@@ -159,7 +193,7 @@ describe('the chain’s wait and failure (BOOK-DOC-43)', () => {
       ),
     );
 
-    expect(container.textContent).toContain('цепочка не прочиталась');
+    expect(container.textContent).toContain('история не прочиталась');
     expect(container.textContent).toContain('повторить');
     expect(container.textContent).not.toContain('у этой строки нет истории');
     expect(container.querySelector('.skel')).toBeNull();
@@ -188,6 +222,43 @@ describe('the chain’s wait and failure (BOOK-DOC-43)', () => {
     );
     expect(container.textContent).toContain('у этой строки нет истории');
     expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+});
+
+/**
+ * BOOK-70 — a failed read is its own state. «У этой строки нет истории» is a fact about the
+ * paragraph; a request that never answered is a fact about the request, and it may not borrow
+ * the other's words. The retry is the same block, and a 404 after it is a real absence.
+ */
+describe('a chain that failed to load (BOOK-70)', () => {
+  it('says «история не прочиталась» with a retry, and the retry re-asks the same block', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(notFound());
+    vi.stubGlobal('fetch', fetchMock);
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(<Probe />));
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[data-open]')?.click());
+    await flush();
+
+    const panel = () => container.querySelector<HTMLElement>('aside.chain');
+    expect(panel()?.textContent).toContain('история не прочиталась');
+    expect(panel()?.textContent).not.toContain('нет истории');
+    expect(panel()?.querySelector('.state-line button')?.textContent).toBe('повторить');
+
+    // The retry asks the same block again; this time the answer is a real absence.
+    await act(async () => panel()?.querySelector<HTMLButtonElement>('.state-line button')?.click());
+    await flush();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/history/paragraphs/ch08%230b7e9c31');
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(String(fetchMock.mock.calls[0]?.[0]));
+    expect(panel()?.textContent).toContain('у этой строки нет истории');
+    expect(panel()?.textContent).not.toContain('история не прочиталась');
   });
 });
 
@@ -229,7 +300,7 @@ describe('the chain’s hook (BOOK-DOC-43 §10)', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/api/history/paragraphs/ch08%230b7e9c31');
-    expect(container.textContent).toContain('цепочка не прочиталась');
+    expect(container.textContent).toContain('история не прочиталась');
 
     const retry = container.querySelector<HTMLButtonElement>('aside.chain .state-line button');
     await act(async () => retry?.click());
@@ -238,7 +309,7 @@ describe('the chain’s hook (BOOK-DOC-43 §10)', () => {
     // The retry is a fresh attempt for the same paragraph, and its answer lands.
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1]?.[0])).toBe(String(fetchMock.mock.calls[0]?.[0]));
-    expect(container.textContent).not.toContain('цепочка не прочиталась');
+    expect(container.textContent).not.toContain('история не прочиталась');
     expect(container.textContent).toContain('у этой строки нет истории');
   });
 

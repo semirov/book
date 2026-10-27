@@ -37,7 +37,7 @@ export function ParagraphChain({
 }: {
   chain: ParagraphChainDto | null;
   loading: boolean;
-  /** The read failed: the panel prints a failure and a retry, never an absence (§10). */
+  /** The read failed: the panel prints a failure and a retry, never an absence (§10, BOOK-70). */
   failed: boolean;
   onClose: () => void;
   onRetry: () => void;
@@ -92,9 +92,11 @@ export function ParagraphChain({
         </p>
       )}
       {stage === 'quiet' ? null : <Skeleton variant="chain" />}
+      {/* A failed read is not an absence: the same state line the chronicle uses, same markup
+          and same class, so the two surfaces read as one system (BOOK-70). */}
       {!loading && failed ? (
         <div className="state-line">
-          <span>цепочка не прочиталась</span>
+          <span>история не прочиталась</span>
           <button type="button" onClick={onRetry}>
             повторить
           </button>

@@ -78,37 +78,26 @@ export function formatShortDate(iso: string | null | undefined): string {
 export type Chip = { text: string; live: boolean };
 
 /**
- * The header chip says only what the files can prove (DESIGN §8.2, §9): no invented
- * progress, no "online", no fake liveness. Engine-driven states (writing, paused,
- * throttled) arrive with the journal in M3.
+ * The header's chip states one fact the files prove, in the present tense, with its noun
+ * (BOOK-70): how many chapters carry text, or the day of the last entry.
+ *
+ * Three things it may not say. It never describes a mood or a silence («тишина с …»): a quiet
+ * book is not a claim the site can back. It never counts nothing, and it never stands in for
+ * a missing answer — a chapter with no timestamp falls to the count it does have, because
+ * «записи нет» would be a statement about the book where the site only knows about one field.
+ * And it never prints a clock beside a word: `дд.мм, чч:мм` is a word plus a clock and does
+ * not fit the 24-character cap, so the date alone carries the fact.
+ *
+ * `live` stays false: only the engine's own state may claim «now» (`engineChipCopy`).
  */
-export function chipCopy(
-  input: { count: number; lastChangeAt: string | null },
-  now: Date,
-): Chip {
-  if (input.count === 0) return { text: 'книга начинается', live: false };
-  if (!input.lastChangeAt) return { text: 'записи нет', live: false };
+export function chipCopy(input: { count: number; lastChangeAt: string | null }): Chip {
+  if (input.count === 0) return { text: 'глав ещё нет', live: false };
 
-  const changed = new Date(input.lastChangeAt);
-  if (Number.isNaN(changed.getTime())) return { text: 'записи нет', live: false };
+  const withText = `${input.count} ${plural(input.count, 'глава', 'главы', 'глав')} с текстом`;
+  if (input.lastChangeAt === null) return { text: withText, live: false };
+  if (Number.isNaN(new Date(input.lastChangeAt).getTime())) return { text: withText, live: false };
 
-  const minutes = Math.max(0, Math.floor((now.getTime() - changed.getTime()) / 60_000));
-  if (minutes < 1) return { text: 'последняя запись · только что', live: false };
-  if (minutes < 60) {
-    return {
-      text: `последняя запись · ${minutes} ${plural(minutes, 'минуту', 'минуты', 'минут')} назад`,
-      live: false,
-    };
-  }
-
-  const sameDay = dateFormatter.format(changed) === dateFormatter.format(now);
-  if (minutes >= 360) {
-    return {
-      text: sameDay ? `тишина с ${formatTime(input.lastChangeAt)}` : `тишина с ${formatShortDate(input.lastChangeAt)}`,
-      live: false,
-    };
-  }
-  return { text: `последняя запись · ${formatTime(input.lastChangeAt)}`, live: false };
+  return { text: `последняя запись · ${formatShortDate(input.lastChangeAt)}`, live: false };
 }
 
 /**
@@ -122,8 +111,8 @@ export function engineChipCopy(status: string): Chip | null {
   return null;
 }
 
-/** `0` → `замечаний нет`; the queue line of the header and the thread. */
+/** `0` → `в очереди пусто`; otherwise the depth with the noun it counts — правки. */
 export function queueLabel(depth: number): string {
-  if (depth === 0) return 'замечаний нет';
-  return `${depth} ${plural(depth, 'замечание', 'замечания', 'замечаний')}`;
+  if (depth === 0) return 'в очереди пусто';
+  return `в очереди ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
 }

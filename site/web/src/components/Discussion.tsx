@@ -3,7 +3,7 @@ import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/s
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
 import { focusHash } from '../lib/focus.ts';
-import { plural } from '../lib/format.ts';
+import { plural, queueLabel } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { Skeleton } from './Skeleton.tsx';
@@ -56,23 +56,22 @@ export function Discussion({
       <header className="sec-h">
         <span className="lbl">обсуждение</span>
         {/* A bare counter is a number without its noun (BOOK-59) — and a count of zero is a
-            claim, so while the feed lands the slot says what is happening instead. */}
+            claim, so while the feed lands the slot says what is happening instead. When the
+            thread is settled and empty there is nothing to count, so it says so (BOOK-70). */}
         <span className="sec-meta">
-          {status === null ? (
-            <>
-              {comments.length} {plural(comments.length, 'замечание', 'замечания', 'замечаний')}
-            </>
-          ) : (
+          {status !== null ? (
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
+          ) : comments.length === 0 ? (
+            'замечаний нет'
+          ) : (
+            `${comments.length} ${plural(comments.length, 'замечание', 'замечания', 'замечаний')}`
           )}
         </span>
       </header>
       <div className="qline">
-        <span>
-          в очереди <b>{depth}</b> {plural(depth, 'правка', 'правки', 'правок')}
-        </span>
+        <span>{queueLabel(depth)}</span>
         <span>правки идут по одной, в порядке записи</span>
       </div>
 
@@ -97,7 +96,7 @@ export function Discussion({
                     {comment.author}
                   </span>
                   <span>глава {comment.chapter}</span>
-                  <span className="stamp">{commentStamp(comment.createdAt)}</span>
+                  <span className="stamp-time">{commentStamp(comment.createdAt)}</span>
                 </div>
                 {quote === null ? null : <p className="comment-quote">«{quote}»</p>}
                 <p className="comment-body">{comment.body}</p>
@@ -130,7 +129,7 @@ export function Discussion({
                 <div className="talk-meta">
                   <span className="talk-n">{changeNumber(change.seq)}</span>
                   <span>глава {change.chapter}</span>
-                  <span className="stamp">{stampCopy(change)}</span>
+                  <span className="stamp-state">{stampCopy(change)}</span>
                 </div>
                 <p className="talk-intent">«{change.intent}»</p>
                 <p className="talk-line">

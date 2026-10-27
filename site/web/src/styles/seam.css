@@ -170,10 +170,23 @@
   font-size: var(--fs-micro);
   color: var(--ink-2);
 }
+/* A reference chip: the record's own suffix (`№A7K`), mono and tabular, one line (BOOK-70). */
 .seam-filing-n {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: var(--live);
 }
+/* The moment of the filing: mono, tabular, 12 px — a stamp-time, declared here so the row's
+   inherited voice cannot drift (BOOK-70). */
 .seam-filing-stamp {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: var(--ink-3);
 }
 .seam-filing-quote {

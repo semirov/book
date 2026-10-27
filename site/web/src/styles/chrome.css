@@ -12,8 +12,9 @@
   transition: background var(--dur-fade) var(--ease-inout);
 }
 /* BOOK-DOC-35 §5 — the running head: one row at the frame's width. `display: contents` on
-   the two label rows makes brand · live · «замечания» one line of three flex items; the
-   two-row head is the narrow case, restored at ≤1023. */
+   the two label rows makes the brand and the one chip one line of two flex items (BOOK-70
+   removed the queue chip, so there is no third); the two-row head is the narrow case, restored
+   at ≤1023. */
 .top-in {
   display: flex;
   align-items: baseline;
@@ -38,20 +39,24 @@
   letter-spacing: 0.16em;
   color: var(--ink-2);
 }
+/* The header chip (BOOK-70): one size for every chip (12 px), one of two inks — `--live`
+   while something is happening now, `--ink-3` when the fact is settled. Weight 400 and one
+   line that never wraps: an ellipsized or a shimmying state is a lie. */
 .live {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  line-height: 1.35;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 400;
+  white-space: nowrap;
   color: var(--live);
 }
 .live.idle {
-  color: var(--ink-2);
-  font-weight: 400;
+  color: var(--ink-3);
 }
 .dot {
   width: 5px;
@@ -63,12 +68,6 @@
 .live.idle .dot {
   background: transparent;
   border: 1px solid var(--ink-3);
-}
-.queue {
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  text-align: right;
 }
 
 /* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
@@ -109,6 +108,15 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-2);
+}
+/* «+ 3» — a reference chip beside the signature: 12 px mono, tabular, one line. Zero readers
+   print nothing at all (BOOK-70). */
+.author-plus {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 /* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent.
    One measure for the genre line and the promise (`book.css` owns the genre's copy of it):
@@ -192,25 +200,6 @@ p.premise {
   display: inline-flex;
   align-items: center;
   letter-spacing: 0.14em;
-}
-
-/* BOOK-DOC-43 §3 — the boot field is the cover's frame (BOOK-66); the sentence is absolute. */
-.boot-wait {
-  min-height: min(67.5vh, 720px);
-  min-height: min(67.5svh, 720px);
-  position: relative;
-}
-.boot-status {
-  position: absolute;
-  inset-inline: var(--gut);
-  top: calc(env(safe-area-inset-top) + 24px);
-  margin: 0;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  line-height: 1.5;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-3);
 }
 
 /* ---------- page 2: the annotation as the book's first prose (BOOK-DOC-5 §3) ---------- */

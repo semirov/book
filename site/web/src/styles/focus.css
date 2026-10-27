@@ -344,7 +344,13 @@ body.is-focus {
 .focus-note-h > span:first-child {
   flex: 1;
 }
+/* The focus sheet is always the dark instrument (§7.14), whatever the theme, so the two chip
+   inks here are that surface's own: its quiet grey for a settled state, the lit bar's steel
+   while the change is being applied. Size and voice come from `.stamp-state` (BOOK-70). */
 .focus-stamp {
+  color: #b0b2ae;
+}
+.focus-stamp.stamp-processing {
   color: #8fb8d0;
 }
 .focus-rows {

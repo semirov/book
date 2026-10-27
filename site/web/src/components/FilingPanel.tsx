@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { placePanel } from '../lib/cssom.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
-import { filingNumber, filingWord } from '../lib/filings.ts';
+import { filingNumber } from '../lib/filings.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { receiptLine } from '../lib/terms.ts';
 
@@ -15,6 +15,13 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
  * Two lines that must never merge: the decision in the reader's words and the application as
  * a fact. The body is shown whole (this is where a long comment lives; the strip clamps, the
  * panel does not). Same placement and keyboard contract as the provenance panel.
+ *
+ * BOOK-70: the state is printed once, in the form its own text asks for. A state that fits a
+ * chip (≤ 24 characters, no clause in it) is a `.filing-state` — one line, 12 px, one of the
+ * two inks. A clause or a receipt — an applied filing names the chapter and the right that
+ * moved with it — is a `.filing-sentence`: 14 px, the book's voice, and it may wrap, because
+ * a clause cut to one line at 320 px either overflows the panel or lies about its length. The
+ * old «состояние: …» line said the same thing a third time in a third voice, and it is gone.
  */
 export function FilingPanel({
   comment,
@@ -29,6 +36,8 @@ export function FilingPanel({
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
   const line = commentStatusLine(comment);
   const quote = anchorCopy(comment);
+  /** A chip has two inks: `--live` for work in flight, `--ink-3` for everything settled. */
+  const ink = line.tone === 'live' ? 'ink-live' : 'ink-quiet';
 
   useMeasuredLayout(() => {
     if (anchor === null) return;
@@ -78,14 +87,17 @@ export function FilingPanel({
       </p>
       {quote === null ? null : <p className="filing-quote">«{quote}»</p>}
       <p className="filing-body">{comment.body}</p>
-      <p className={`filing-state ink-${line.tone}`}>{line.state}</p>
+      {line.form === 'sentence' ? (
+        <p className="filing-sentence">{line.state}</p>
+      ) : (
+        <p className={`filing-state ${ink}`}>{line.state}</p>
+      )}
       <p className="filing-fact">
         {comment.applied === null
           ? 'применения пока нет'
           : `${receiptLine(String(comment.applied.chapter).padStart(2, '0'))} · ревизия ${comment.applied.rev}`}
         {line.detail === null ? '' : ` · ${line.detail}`}
       </p>
-      <p className="filing-word">состояние: {filingWord(comment)}</p>
     </aside>
   );
 }

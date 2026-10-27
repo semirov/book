@@ -109,11 +109,14 @@ describe('the strip at the seam', () => {
     expect(html).not.toContain('откуда это слово');
   });
 
-  it('lists a filing in the strip as a row with its state word', () => {
+  it('lists a filing in the strip as a row whose state word is the button label (BOOK-70)', () => {
     const html = strip({ withFilings: true });
     expect(html).toContain('№4Q7');
     expect(html).toContain('Аня');
-    expect(html).toContain('ждёт рассмотрения');
+    // One voice per line: the row prints the numeral, the reader and the moment; the state word
+    // travels in the button's label, where it names the whole row for a screen reader.
+    expect(html).toContain('aria-label="замечание №4Q7 · ждёт рассмотрения · «Её освещал яркий свет.»"');
+    expect(html).not.toContain('>ждёт рассмотрения<');
     expect(html).toContain('Её освещал яркий свет.');
   });
 

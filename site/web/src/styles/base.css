@@ -83,7 +83,6 @@ h3 {
 .ch-meta,
 .sec-meta,
 .qline,
-.stamp,
 .counter,
 .chint,
 .ctext,
@@ -101,6 +100,35 @@ h3 {
   font-size: var(--fs-label);
   line-height: 1.35;
   color: var(--ink-3);
+}
+
+/* A stamp is one of two things, and they are no longer one class (BOOK-70): a **moment** is
+   data — mono, tabular, sentence case — and a **state** is a one-word chip in the label's
+   voice. `.stamp` used to be both, so a clock and a status shared a face. */
+.stamp-time,
+.stamp-state {
+  white-space: nowrap;
+}
+.stamp-time {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.stamp-state {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* The one state that is happening now — the change is being applied. Finality is the verb's
+   tense, not a second colour: every settled state keeps `--ink-3`. */
+.stamp-state.stamp-processing {
+  color: var(--live);
 }
 
 .sr-only {
@@ -134,10 +162,10 @@ h3 {
 @media (max-width: 599px) {
   :root {
     --gut: 24px;
-    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because «последняя
-       запись · N минут назад» wraps at 342px; 59.1px is the same head with a one-line chip
-       (measured at 768). The offset follows the wrapped case — if the chip ever stops
-       wrapping, 72 would do again and 80 leaves 3.4px of extra air. */
+    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because the old recency
+       chip («последняя запись · N минут назад») wrapped at 342px; 59.1px is the same head with
+       a one-line chip (measured at 768). BOOK-70 makes every chip one line that never wraps,
+       so the wrapped case is gone; 72 would do again and 80 leaves 3.4px of extra air. */
     --offset-top: 80px;
   }
 }

@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { LADDER, MIN_FONT_PX, styleProblems } from '../../scripts/styles.mjs';
+import { CHIP_SELECTORS, LADDER, MIN_FONT_PX, styleProblems } from '../../scripts/styles.mjs';
 
 /**
  * BOOK-DOC-35 AC6 — the build guard for the type floor and the adaptive regime.
@@ -29,7 +29,10 @@ function seeded(files: Record<string, string>): Array<{ file: string; line: numb
 }
 
 describe('BOOK-DOC-35 — the styles guard', () => {
-  it('reports nothing on this repository: the floor holds and the regime is adaptive', () => {
+  it('reports nothing on this repository: the floor holds, the regime is adaptive, the chips resolve', () => {
+    // `requireChips` is the mode `arch.mjs` runs: every chip of BOOK-70 must have a rule here,
+    // including the three reference lines (`.stamp-time`, `.ch-data`, `.seam-filing-stamp`).
+    expect(styleProblems(STYLES, { requireChips: true })).toEqual([]);
     expect(styleProblems(STYLES)).toEqual([]);
   });
 
@@ -219,5 +222,183 @@ describe('BOOK-DOC-35 — the styles guard', () => {
     ).toEqual([]);
     // A skeleton class that is only a name prefix is not the skeleton: `.skeleton` is no rule.
     expect(seeded({ 'x.css': ['.skeleton { animation: pulse 1s infinite; }', ''].join('\n') })).toEqual([]);
+  });
+});
+
+/**
+ * BOOK-70 — the chips. Two audits agreed on one form: one size for every chip (12 px), one of
+ * two inks, one line, never an ellipsis, never a motion; a reference chip is mono and tabular;
+ * a receipt is a sentence at 14 px. The registry is the contract, so a chip that loses its rule
+ * or drifts by a pixel fails here as well as in `arch.mjs`.
+ */
+describe('BOOK-70 — the chips', () => {
+  /** The eleven chips, complete and legal: a sheet set the registry can check. */
+  const CHIPS: Record<string, string> = {
+    '.live': 'font-size: 12px; color: var(--live); white-space: nowrap',
+    '.ch-print': 'font-size: 12px; color: var(--live); white-space: nowrap',
+    '.sec-meta': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
+    '.seam-filing-n': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.author-plus': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.seam-filing-stamp': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.stamp-time': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.ch-data': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.stamp-state': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
+    '.filing-state': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
+    '.filing-sentence': 'font-size: 14px; color: var(--ink-2)',
+  };
+
+  function sheet(overrides: Record<string, string> = {}, omit: string[] = []): string {
+    return Object.entries({ ...CHIPS, ...overrides })
+      .filter(([selector]) => !omit.includes(selector))
+      .map(([selector, body]) => `${selector} { ${body}; }`)
+      .join('\n');
+  }
+
+  const messages = (problems: Array<{ message: string }>): string[] => problems.map((problem) => problem.message);
+
+  it('pins the registry: eleven chips, each with a tier and a fact', () => {
+    expect(CHIP_SELECTORS.map((chip) => chip.selector)).toEqual([
+      '.live',
+      '.ch-print',
+      '.sec-meta',
+      '.seam-filing-n',
+      '.author-plus',
+      '.seam-filing-stamp',
+      '.stamp-time',
+      '.ch-data',
+      '.stamp-state',
+      '.filing-state',
+      '.filing-sentence',
+    ]);
+    for (const chip of CHIP_SELECTORS) {
+      expect(['state', 'count', 'ref', 'sentence']).toContain(chip.tier);
+      expect(chip.fact.length, chip.selector).toBeGreaterThan(10);
+    }
+    // Every moment and numeral the guard can prove is registered as a reference line.
+    expect(CHIP_SELECTORS.filter((chip) => chip.tier === 'ref').map((chip) => chip.selector)).toEqual([
+      '.seam-filing-n',
+      '.author-plus',
+      '.seam-filing-stamp',
+      '.stamp-time',
+      '.ch-data',
+    ]);
+    expect(CHIP_SELECTORS.filter((chip) => chip.tier === 'sentence').map((chip) => chip.selector)).toEqual(['.filing-sentence']);
+    // `.qline` is a data line, not a chip: a chip never carries a second voice beside it.
+    expect(CHIP_SELECTORS.map((chip) => chip.selector)).not.toContain('.qline');
+  });
+
+  it('passes a complete chip set, and reads a chip declared inside a grouped selector list', () => {
+    expect(seeded({ 'chips.css': sheet() })).toEqual([]);
+    // The same chip, reachable only through a group: `.live` and `.brand` share the rule.
+    const grouped = seeded({
+      'chips.css': `.live, .brand { font-size: 12px; color: var(--live); white-space: nowrap; }\n${sheet({}, ['.live'])}`,
+    });
+    expect(grouped).toEqual([]);
+  });
+
+  it('fails a chip that is 11 px or 13 px: the size is one', () => {
+    const under = seeded({ 'chips.css': sheet({ '.live': 'font-size: 11px; color: var(--live); white-space: nowrap' }) });
+    expect(messages(under)).toContain('.live: font-size: 11px resolves to 11px, but a state chip is 12px');
+    const over = seeded({ 'chips.css': sheet({ '.sec-meta': 'font-size: 13px; color: var(--ink-3); white-space: nowrap' }) });
+    expect(messages(over)).toContain('.sec-meta: font-size: 13px resolves to 13px, but a count chip is 12px');
+    // A size that cannot be proven is a failure too, not a pass.
+    const unknown = seeded({ 'chips.css': sheet({ '.ch-print': 'font-size: var(--nope); color: var(--live); white-space: nowrap' }) });
+    expect(messages(unknown)).toContain('.ch-print: font-size: var(--nope) cannot be proven to be 12px');
+  });
+
+  it('fails a chip that animates, shimmers, transitions or clips itself', () => {
+    const base = CHIPS['.live'] as string;
+    for (const [property, message] of [
+      ['animation: pulse 1s infinite', '.live: a chip never animates — no animation'],
+      ['transition: color 120ms', '.live: a chip never animates — no transition'],
+      ['text-overflow: ellipsis', '.live: a chip is never ellipsized — an ellipsized state is a lie'],
+      ['overflow: hidden', '.live: a chip may not clip its own line — overflow would hide the fact it states'],
+    ] as const) {
+      const problems = seeded({ 'chips.css': sheet({ '.live': `${base}; ${property}` }) });
+      expect(messages(problems), property).toContain(message);
+    }
+  });
+
+  it('fails a chip that would wrap or ellipsize: one line, nowrap', () => {
+    const problems = seeded({ 'chips.css': sheet({ '.stamp-state': 'font-size: 12px; color: var(--ink-3)' }) });
+    expect(messages(problems)).toContain('.stamp-state: a chip takes one line — white-space: nowrap');
+    // A sentence may wrap, so its missing nowrap is not a problem.
+    expect(seeded({ 'chips.css': sheet({ '.filing-sentence': 'font-size: 14px; color: var(--ink-2); white-space: normal' }) })).toEqual([]);
+  });
+
+  it('fails a third ink on a state or count chip, and a reference chip that is not mono/tabular', () => {
+    const ink = seeded({ 'chips.css': sheet({ '.filing-state': 'font-size: 12px; color: var(--revise); white-space: nowrap' }) });
+    expect(messages(ink)).toContain(".filing-state: a chip's ink is var(--live) or var(--ink-3), not var(--revise)");
+    const inherited = seeded({ 'chips.css': sheet({ '.ch-print': 'font-size: 12px; white-space: nowrap' }) });
+    expect(messages(inherited)).toContain(".ch-print: a chip's ink is var(--live) or var(--ink-3), not inherited");
+
+    const voice = seeded({ 'chips.css': sheet({ '.author-plus': 'font-size: 12px; letter-spacing: .12em; white-space: nowrap' }) });
+    expect(messages(voice)).toContain('.author-plus: a reference chip is mono — font-family: var(--mono)');
+    expect(messages(voice)).toContain('.author-plus: a reference chip is set at .02em, not .12em');
+    expect(messages(voice)).toContain('.author-plus: a reference chip is tabular');
+  });
+
+  it('fails a sentence set at chip size, and a registered chip with no rule at all', () => {
+    const sentence = seeded({ 'chips.css': sheet({ '.filing-sentence': 'font-size: 12px; color: var(--ink-2)' }) });
+    expect(messages(sentence)).toContain('.filing-sentence: font-size: 12px resolves to 12px, but a sentence is 14px');
+
+    const missing = seeded({ 'chips.css': sheet({}, ['.filing-sentence']) });
+    expect(messages(missing)).toContain(
+      '.filing-sentence: a registered chip has no rule in the sheets — the BOOK-70 registry cannot outlive the rule',
+    );
+  });
+
+  it('reports the chip’s own rule, not the sheet it happens to be grouped in', () => {
+    const problems = seeded({
+      'a.css': '.live { font-size: 12px; color: var(--live); white-space: nowrap; }',
+      'b.css': '.live { animation: blink 2s infinite; }',
+    });
+    const hit = problems.find((problem) => problem.message.includes('never animates'));
+    expect(hit?.file.split('/').pop()).toBe('b.css');
+    expect(hit?.line).toBe(1);
+  });
+
+  it('fails on the real sheets when a chip loses its rule — the registry cannot rot', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'book-chips-'));
+    try {
+      for (const name of readdirSync(STYLES)) {
+        const css = readFileSync(join(STYLES, name), 'utf8');
+        writeFileSync(join(dir, name), css.replace(/\.filing-sentence \{[^}]*\}/u, ''), 'utf8');
+      }
+      expect(messages(styleProblems(dir))).toContain(
+        '.filing-sentence: a registered chip has no rule in the sheets — the BOOK-70 registry cannot outlive the rule',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports every absent chip in the real-tree mode, and stays quiet for a fixture', () => {
+    // The hatch that made deleting the whole registry pass: a set with no chip at all used to be
+    // read as a fixture. `arch.mjs` asks for `requireChips`, so all eleven absences are findings.
+    const empty = seeded({ 'base.css': 'body { margin: 0; }\n' });
+    expect(empty).toEqual([]);
+    const dir = mkdtempSync(join(tmpdir(), 'book-chips-empty-'));
+    try {
+      writeFileSync(join(dir, 'base.css'), 'body { margin: 0; }\n', 'utf8');
+      const strict = styleProblems(dir, { requireChips: true });
+      expect(strict.map((problem) => problem.message.split(':')[0])).toEqual(CHIP_SELECTORS.map((chip) => chip.selector));
+      expect(strict.every((problem) => problem.message.includes('no rule in the sheets'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('merges a compound or a functional-pseudo selector, and not a longer class name', () => {
+    // `.live.is-huge` and `:is(.brand, .live)` used to slip past the exact-match merge.
+    for (const bypass of ['.live.is-huge', ':is(.brand, .live)', '.live[data-huge]', '.live:hover']) {
+      const problems = seeded({ 'chips.css': `${sheet()}\n${bypass} { font-size: 20px; }\n` });
+      expect(messages(problems), bypass).toContain('.live: font-size: 20px resolves to 20px, but a state chip is 12px');
+    }
+    // True negatives: a different class that starts with the same letters, and a part whose
+    // subject is a child (`.live .dot`, `.live.idle .dot`) are not the chip's own declaration.
+    expect(seeded({ 'chips.css': `${sheet()}\n.livewire { font-size: 20px; }\n` })).toEqual([]);
+    expect(seeded({ 'chips.css': `${sheet()}\n.live .dot { font-size: 20px; }\n` })).toEqual([]);
+    expect(seeded({ 'chips.css': `${sheet()}\n.live.idle .dot { font-size: 20px; }\n` })).toEqual([]);
   });
 });

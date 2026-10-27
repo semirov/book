@@ -189,6 +189,19 @@ describe('the chronicle’s surface (§11.10)', () => {
     expect(loading).not.toContain('role="status"');
     expect(loading).toContain('aria-busy="true"');
   });
+
+  it('separates a failed read from an absence (BOOK-70)', () => {
+    // A request that never answered is not a paragraph without history: the panel says which
+    // fact it has, and offers the chronicle's own retry — same class, same shape.
+    const failed = renderToStaticMarkup(
+      <ParagraphChain chain={null} loading={false} failed onRetry={() => undefined} onClose={() => undefined} />,
+    );
+    expect(failed).toContain('история не прочиталась');
+    expect(failed).toContain('class="state-line"');
+    expect(failed).toContain('повторить');
+    expect(failed).not.toContain('нет истории');
+    expect(failed).not.toContain('цепочка читается');
+  });
 });
 
 /**
