@@ -2,12 +2,14 @@
  * The **public** projection of a change (ARCHITECTURE.md §6A.7, §6A.8, §6B.6, §9, §11.7).
  *
  * Built only from `changes`, `cascades`, `steps` and the public label of the comment. The
- * gate table is never selected: an editor verdict, a consultant verdict and their findings
- * have no representation in these types at all, so the change card cannot render one.
+ * gate table is read for one thing only — the **mode** of a retroactive cause (`modes.ts`),
+ * as a plain list of the three fixed words. An editor verdict, a consultant verdict and a
+ * finding's text have no representation in these types at all, so the change card cannot
+ * render one.
  *
- * Two aggregates are public on purpose — the iteration number («правка 3») and whether a
- * finding survived («замечание сохранено»); both are facts about the ripple, not the hidden
- * roles' words (§6B.6).
+ * Three aggregates are public on purpose — the iteration number («правка 3»), whether a
+ * finding survived («замечание сохранено») and the modes a cause was filed under; all are
+ * facts about the ripple, not the hidden roles' words (§6B.6).
  */
 
 import {
@@ -21,10 +23,13 @@ import {
   type ChangeSummaryDto,
   type PublicRelevance,
   type PublicSeam,
+  type RetroMode,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { modesOfSteps } from './modes.ts';
 import { stepsOfCascade } from './reader.ts';
+import { wingsOf, wingSteps } from './wings.ts';
 import {
   boundaryOf,
   chapterOfStep,
@@ -121,6 +126,8 @@ function publicCascadeOf(
   cascade: CascadeRow | undefined,
   steps: StepRow[],
   nowMs: number,
+  origin: number,
+  modes: RetroMode[],
 ): ChangeDto['cascade'] {
   if (cascade === undefined) return null;
   const rewritten = new Set<number>();
@@ -150,6 +157,8 @@ function publicCascadeOf(
     chaptersChecked: [...checked].sort((left, right) => left - right),
     chaptersRewritten: [...rewritten].sort((left, right) => left - right),
     seams,
+    wings: wingsOf(wingSteps(steps), origin, cascade.status),
+    modes,
     gates: {
       cycles: steps.reduce((sum, step) => sum + step.cycle, 0),
       findingSurvived: steps.some((step) => step.outcome === 'published_with_finding'),
@@ -170,6 +179,8 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
   if (change === undefined) return null;
   const steps = stepsOfChange(db, change);
   const cascade = change.cascade_id === null ? undefined : readCascadeRow(db, change.cascade_id);
+  const modes = modesOfSteps(db, steps.map((step) => step.step_id));
+  const cascadeSteps = cascade === undefined ? [] : stepsOfCascade(db, cascade.id);
   const applied = new Map<number, number>();
   for (const step of steps) {
     if (step.chapter !== null && step.rev_after !== null) applied.set(step.chapter, step.rev_after);
@@ -190,7 +201,11 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
     reason: change.reason === null ? null : seamReason(change.reason),
     position: positionOf(db, change),
     relevance: publicRelevance(change.relevance),
-    cascade: publicCascadeOf(cascade, cascade === undefined ? [] : stepsOfCascade(db, cascade.id), nowMs),
+    cascade:
+      cascade === undefined
+        ? null
+        : publicCascadeOf(cascade, cascadeSteps, nowMs, change.chapter, modes),
+    modes,
     steps: steps.map(publicStep),
     appliedRevs: [...applied]
       .map(([chapter, rev]) => ({ chapter, rev }))
@@ -219,8 +234,16 @@ export type ChangeFilter = {
 function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
   const steps = stepsOfChange(db, change);
   const chapters: number[] = [change.chapter];
+  const rewritten: number[] = [];
   for (const step of steps) {
-    if (step.chapter !== null && !chapters.includes(step.chapter)) chapters.push(step.chapter);
+    if (step.chapter === null) continue;
+    if (!chapters.includes(step.chapter)) chapters.push(step.chapter);
+    if (
+      (step.outcome === 'rewritten' || step.outcome === 'published_with_finding') &&
+      !rewritten.includes(step.chapter)
+    ) {
+      rewritten.push(step.chapter);
+    }
   }
   const cascade = change.cascade_id === null ? undefined : readCascadeRow(db, change.cascade_id);
   return {
@@ -235,6 +258,9 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
     enqueuedAt: change.enqueued_at,
     decidedAt: change.finished_at,
     chapters,
+    rewritten: rewritten.sort((left, right) => left - right),
+    steps: steps.length,
+    modes: modesOfSteps(db, steps.map((step) => step.step_id)),
     cascade: cascade === undefined ? null : { id: cascade.id, status: cascade.status, outcome: cascade.outcome },
   };
 }

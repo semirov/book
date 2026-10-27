@@ -185,29 +185,6 @@
   }
 }
 
-/* ---------- the cascade ribbon (§11.7): only while a ripple runs ---------- */
-.ribbon {
-  position: relative;
-  height: 4px;
-  max-width: var(--measure);
-  margin: 0 auto;
-  background: transparent;
-}
-.ribbon-band {
-  position: absolute;
-  top: 1px;
-  height: 2px;
-  background: var(--live);
-  opacity: 0.55;
-}
-.ribbon-step {
-  position: absolute;
-  top: -2px;
-  width: 2px;
-  height: 8px;
-  background: var(--live);
-}
-
 /* ---------- талон: one quiet notice, never a count ---------- */
 .ticket {
   position: fixed;

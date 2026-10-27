@@ -29,6 +29,7 @@ import {
 import { toHistoryFrame, type EventRow } from '../history/events.ts';
 import { readEngineHealth, readQueue, stepsOfCascade } from './reader.ts';
 import { boundaryOf, chapterOfStep, countRows, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
+import { wingsOf, wingSteps } from './wings.ts';
 
 export type BridgeEmit = (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => void;
 
@@ -242,6 +243,7 @@ export class EngineBridge {
                 (left, right) => left - right,
               ),
               rewritten: cascade.chaptersRewritten,
+              wings: cascade.wings,
               seams: cascade.seams.map((seam) => ({ boundary: seam.boundary, resolved: seam.resolved })),
               finding: cascade.gates.findingSurvived,
             },
@@ -349,6 +351,7 @@ export class EngineBridge {
         forward: forwardFrontier(steps, change.chapter),
         backward: backwardFrontier(steps, change.chapter),
       },
+      wings: wingsOf(wingSteps(steps), change.chapter, cascade.status),
       touched: [...touched].sort((left, right) => left - right),
       rewritten: [...rewritten].sort((left, right) => left - right),
       seamsIn: step === undefined ? [] : parseSeams(safeJson(step.seams_in)),

@@ -13,11 +13,11 @@ import {
   focusHash,
   focusScale,
   focusStage,
+  focusWingPair,
   focusWings,
   footnoteCopy,
   iterationCopy,
   parseFocusHash,
-  scalePercent,
   scaleTicks,
   sheetChapter,
   sheetCopy,
@@ -25,7 +25,6 @@ import {
   stageCopy,
   touchedChaptersCopy,
   waveOf,
-  wingsCopy,
   type FocusStage,
 } from './focus.ts';
 
@@ -52,6 +51,11 @@ const change: ChangeDto = {
     chaptersChecked: [9],
     chaptersRewritten: [8, 7],
     seams: [],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'settled', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'settled', reached: [9] },
+    },
+    modes: [],
     gates: { cycles: 2, findingSurvived: false },
     tokens: { total: 150_572 },
     ms: 41_000,
@@ -117,6 +121,7 @@ const change: ChangeDto = {
     { chapter: 8, rev: 4 },
   ],
   cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0.04 },
+  modes: [],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',
   startedAt: '2026-10-25T12:00:00Z',
@@ -133,6 +138,10 @@ function ribbon(step: number | null, overrides: Partial<Ribbon> = {}): Ribbon {
     outcome: null,
     touched: [8, 7, 9],
     rewritten: [8],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'moving', reached: [9] },
+    },
     step,
     frontier: { down: 7, up: 9 },
     seams: [],
@@ -214,20 +223,20 @@ describe('the stage', () => {
 describe('wings', () => {
   it('reads both wings from the steps of a finished change', () => {
     expect(focusWings(change, null)).toEqual({ down: 7, up: 9 });
-    expect(wingsCopy({ down: 7, up: 9 }, 'done')).toBe('вниз: глава 7 · вверх: глава 9 · дальше держится');
   });
 
   it('lets the live ribbon win while the ripple moves', () => {
     const processing: ChangeDto = { ...change, status: 'processing', steps: [change.steps[0]!] };
     expect(focusWings(processing, ribbon(7))).toEqual({ down: 7, up: 9 });
-    expect(wingsCopy({ down: 7, up: null }, 'down')).toBe('вниз: глава 7');
   });
 
-  it('says what a change that never moved did', () => {
-    expect(wingsCopy({ down: null, up: null }, 'queue')).toBe('ещё не началось');
-    expect(wingsCopy({ down: null, up: null }, 'void')).toBe('волна не прошла');
-    expect(wingsCopy({ down: null, up: null }, 'edit')).toBe('один лист');
+  it('says nothing of a change that never moved, and takes the pair from the cascade record', () => {
     expect(focusWings({ ...change, steps: [] }, null)).toEqual({ down: null, up: null });
+    expect(focusWingPair(change, null)).toEqual(change.cascade?.wings);
+    expect(focusWingPair({ ...change, cascade: null }, null)).toEqual({
+      down: { frontier: 8, wave: 0, state: 'waiting', reached: [] },
+      up: { frontier: 8, wave: 0, state: 'waiting', reached: [] },
+    });
   });
 });
 
@@ -363,7 +372,6 @@ describe('the panel’s lines', () => {
     const lines = [
       stageCopy('down'),
       stageCopy('done'),
-      wingsCopy({ down: 7, up: 9 }, 'done'),
       footnoteCopy(change),
       iterationCopy(change),
       assessmentCopy(change, null),
@@ -387,14 +395,6 @@ describe('the ring field and the exit', () => {
     expect(focusScale([])).toEqual({ from: 1, to: 5 });
     expect(scaleTicks(5, 11)).toEqual([5, 6, 7, 8, 9, 10, 11]);
     expect(scaleTicks(1, 30)).toEqual([]);
-  });
-
-  it('moves the ring from 7 to 9 while the origin stays at 8', () => {
-    expect(scalePercent(7, 5, 11)).toBeCloseTo(33.33, 1);
-    expect(scalePercent(9, 5, 11)).toBeCloseTo(66.67, 1);
-    expect(scalePercent(1, 5, 11)).toBe(0);
-    expect(scalePercent(20, 5, 11)).toBe(100);
-    expect(scalePercent(8, 8, 8)).toBe(50);
   });
 
   it('returns to the saved offset, or to the chapter the reader asked for', () => {

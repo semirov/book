@@ -199,61 +199,110 @@ body.is-focus {
   margin-right: 14px;
   color: #64686a;
 }
-.focus-rings {
+/* the two wings, printed at once (§11.9, BOOK-DOC-4): direction, wave, state, chapters */
+.focus-wings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 6px 4px 0;
+}
+.focus-wing {
   position: relative;
-  height: 48px;
-  margin: 4px 4px 0;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(207, 211, 210, 0.22);
 }
-.focus-axis {
-  position: absolute;
-  top: 20px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: rgba(207, 211, 210, 0.22);
+.focus-wing[data-state='moving'] {
+  border-top-color: #8fb8d0;
 }
-.focus-link {
-  position: absolute;
-  top: 19px;
+.focus-wing[data-state='stopped'] {
+  border-top-color: #c8a06a;
+}
+.focus-wing-h {
+  font-family: var(--label);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-wing-r {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: #cfd3d2;
+}
+/* the local window as a grid of chapters: a class per width, never an inline style */
+.focus-track {
+  display: grid;
+  align-items: end;
+  height: 44px;
+  margin: 8px 4px 0;
+}
+.focus-track.w-1 { grid-template-columns: repeat(1, 1fr); }
+.focus-track.w-2 { grid-template-columns: repeat(2, 1fr); }
+.focus-track.w-3 { grid-template-columns: repeat(3, 1fr); }
+.focus-track.w-4 { grid-template-columns: repeat(4, 1fr); }
+.focus-track.w-5 { grid-template-columns: repeat(5, 1fr); }
+.focus-track.w-6 { grid-template-columns: repeat(6, 1fr); }
+.focus-track.w-7 { grid-template-columns: repeat(7, 1fr); }
+.focus-track.w-8 { grid-template-columns: repeat(8, 1fr); }
+.focus-track.w-9 { grid-template-columns: repeat(9, 1fr); }
+.focus-track.w-10 { grid-template-columns: repeat(10, 1fr); }
+.focus-track.w-11 { grid-template-columns: repeat(11, 1fr); }
+.focus-track.w-12 { grid-template-columns: repeat(12, 1fr); }
+.focus-track.w-13 { grid-template-columns: repeat(13, 1fr); }
+.focus-track.w-14 { grid-template-columns: repeat(14, 1fr); }
+.focus-track.w-15 { grid-template-columns: repeat(15, 1fr); }
+.focus-cell {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  border-left: 1px solid rgba(207, 211, 210, 0.12);
+}
+.focus-tick {
+  width: 1px;
+  height: 7px;
+  background: rgba(207, 211, 210, 0.34);
+}
+.focus-cell.is-between .focus-tick {
+  width: 100%;
   height: 2px;
+  margin-bottom: 2px;
   background: #6f9bb5;
   opacity: 0.55;
 }
-.focus-tick {
-  position: absolute;
-  top: 17px;
-  width: 1px;
-  height: 7px;
-  margin-left: -0.5px;
-  background: rgba(207, 211, 210, 0.34);
-}
-.focus-tick-label {
-  position: absolute;
-  top: 29px;
-  transform: translateX(-50%);
-  font-family: var(--mono);
-  font-size: 7.5px;
-  color: #64686a;
-}
-.focus-origin {
-  position: absolute;
-  top: 14px;
+.focus-cell.is-origin .focus-tick {
   width: 1px;
   height: 13px;
-  margin-left: -0.5px;
   background: #cfd3d2;
 }
-.focus-ring {
+.focus-cell.is-current .focus-tick {
+  height: 13px;
+  background: #8fb8d0;
+}
+.focus-cell.is-current::before {
+  content: '';
   position: absolute;
-  top: 12px;
+  top: 4px;
+  left: 50%;
   width: 17px;
   height: 17px;
   margin-left: -8.5px;
   border: 1px solid #8fb8d0;
   border-radius: 50%;
-  box-shadow: 0 0 0 4px rgba(143, 184, 208, 0.1);
-  transition: left 400ms var(--ease-out);
   animation: focus-ring 2.6s linear infinite;
+}
+.focus-tick-label {
+  margin: 3px 0 0;
+  font-family: var(--mono);
+  font-size: 7.5px;
+  color: #64686a;
 }
 @keyframes focus-ring {
   0% {
@@ -351,6 +400,13 @@ body.is-focus {
   color: #cfd3d2;
   border-bottom-color: #6f9bb5;
 }
+.focus-deed {
+  font-family: var(--label);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: #b0b2ae;
+}
 .focus-reason {
   margin: 8px 0 0;
   padding-top: 8px;
@@ -397,11 +453,8 @@ body.is-focus {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .focus-ring,
+  .focus-cell.is-current::before,
   .focus-caret {
     animation: none;
-  }
-  .focus-ring {
-    transition: none;
   }
 }

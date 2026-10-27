@@ -94,6 +94,25 @@ export type GateRole = 'editor' | 'consultant';
 
 export type FindingSeverity = 'blocker' | 'major' | 'minor';
 
+/**
+ * The three ways a retroactive cause may be given (BOOK-DOC-4; `style/VOICE.md`
+ * §Ретроспектива; `process/ROLE_PROMPTS.md` EDITOR #2). The world issues a document and the
+ * document may lie, so a cause that appeared after the event is *paperwork*, never a silent
+ * rewrite: **оформление** (the cause existed, now registered), **поправка** (the past
+ * reformulated, not denied), **расхождение** (document and scene deliberately do not match —
+ * the seam is тоска, not a bug).
+ */
+export const RETRO_MODES = ['оформление', 'поправка', 'расхождение'] as const;
+
+export type RetroMode = (typeof RETRO_MODES)[number];
+
+/** Untrusted input → one of the three modes, or `null`. An unknown word is dropped, not kept. */
+export function normalizeRetroMode(raw: unknown): RetroMode | null {
+  return typeof raw === 'string' && (RETRO_MODES as readonly string[]).includes(raw)
+    ? (raw as RetroMode)
+    : null;
+}
+
 export type Finding = {
   severity: FindingSeverity;
   /** 'глава 9, абзац 14' + a quote of ≤10 words. */
@@ -101,6 +120,11 @@ export type Finding = {
   defect: string;
   /** The minimal fix, described — never written. */
   fix: string;
+  /**
+   * How a retroactive cause is filed, when one is involved; `null` when the finding names
+   * none. Optional on input, always normalised by the engine (`engine/gates.ts`).
+   */
+  mode?: RetroMode | null;
 };
 
 export type GateVerdict = {

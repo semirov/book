@@ -93,6 +93,56 @@ describe('planCascade — the ripple geometry', () => {
     expect(plan.steps.map((step) => step.chapter)).toEqual([3]);
   });
 
+  it('honours the frozen upward lag instead of starting the up wing after one step', () => {
+    const one = facts([origin(10), repair(9, 'backward', 1, [seam(9)])], { budget: { upwardLagWaves: 1 } });
+    const atOne = planCascade(one, ctx());
+    expect(atOne.kind).toBe('open');
+    if (atOne.kind !== 'open') return;
+    expect(atOne.steps.map((step) => step.lane)).toEqual(['backward', 'forward']);
+
+    // A lag of two is a real wait: the up wing has not started while the down frontier is
+    // one wave ahead, and it starts only once the down wing is two steps ahead.
+    const two = facts([origin(10), repair(9, 'backward', 1, [seam(9)])], { budget: { upwardLagWaves: 2 } });
+    const first = planCascade(two, ctx());
+    expect(first.kind).toBe('open');
+    if (first.kind !== 'open') return;
+    expect(first.steps.map((step) => step.lane)).toEqual(['backward']);
+    const second = planCascade(
+      facts([origin(10), repair(9, 'backward', 1, [seam(9)]), repair(8, 'backward', 2, [seam(8)])], {
+        budget: { upwardLagWaves: 2 },
+      }),
+      ctx(),
+    );
+    expect(second.kind).toBe('open');
+    if (second.kind !== 'open') return;
+    expect(second.steps.map((step) => step.lane)).toEqual(['backward', 'forward']);
+
+    // A lag of zero is legal: both wings open in the very first plan.
+    const zero = planCascade(facts([origin(10)]), ctx(ALL));
+    expect(zero.kind).toBe('open');
+    if (zero.kind !== 'open') return;
+    expect(zero.steps.map((step) => step.lane)).toEqual(['backward']);
+    const both = planCascade(facts([origin(10)], { budget: { upwardLagWaves: 0 } }), ctx(ALL));
+    expect(both.kind).toBe('open');
+    if (both.kind !== 'open') return;
+    expect(both.steps.map((step) => step.lane)).toEqual(['backward', 'forward']);
+  });
+
+  it('lets the up wing start at once when the down wing has nowhere to go', () => {
+    const held = planCascade(facts([origin(10), repair(9, 'backward', 1, [])], { budget: { upwardLagWaves: 5 } }), ctx());
+    expect(held.kind).toBe('open');
+    if (held.kind !== 'open') return;
+    expect(held.steps.map((step) => step.lane)).toEqual(['forward']);
+
+    const frontier = planCascade(
+      facts([origin(10), repair(9, 'backward', 1, [seam(9)])], { budget: { upwardLagWaves: 5 } }),
+      ctx(new Set([9, 10, 11])),
+    );
+    expect(frontier.kind).toBe('open');
+    if (frontier.kind !== 'open') return;
+    expect(frontier.steps.map((step) => step.lane)).toEqual(['forward']);
+  });
+
   it('reaches the beginning: exactly one front step, once', () => {
     const plan = planCascade(facts([origin(2), repair(1, 'backward', 1, [])]), ctx());
     if (plan.kind !== 'open') throw new Error('expected an open plan');

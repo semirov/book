@@ -10,6 +10,7 @@ import './styles/chrome.css';
 import './styles/book.css';
 import './styles/live.css';
 import './styles/cascade.css';
+import './styles/ribbon.css';
 import './styles/chronicle.css';
 import './styles/focus.css';
 

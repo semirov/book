@@ -10,9 +10,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryChapter, getHistoryDiff } from '../api.ts';
 import { FocusShell } from './FocusShell.tsx';
+import { FocusTrack, FocusWings } from './FocusWings.tsx';
 import { inertBackground, reducedMotion, scrollToChapter } from '../dom.ts';
 import { ribbonMaxWave, type Ribbon } from '../lib/cascade.ts';
 import { relevanceCopy, stepLabel, wingGlyph } from '../lib/changeStatus.ts';
+import { changeDeedLine } from '../lib/deed.ts';
 import { formatTime } from '../lib/format.ts';
 import {
   assessmentCopy,
@@ -24,19 +26,17 @@ import {
   exitTarget,
   focusScale,
   focusStage,
+  focusWingPair,
   focusWings,
   footnoteCopy,
   iterationCopy,
   panelStamp,
-  scalePercent,
-  scaleTicks,
   sheetChapter,
   sheetNotice,
   sheetCopy,
   stageCopy,
   touchedChaptersCopy,
   waveOf,
-  wingsCopy,
   type FocusBlock,
 } from '../lib/focus.ts';
 import {
@@ -258,6 +258,8 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
   }
 
   const notice = sheetNotice(change);
+  const wingPair = focusWingPair(change, ribbon);
+  const deed = changeDeedLine(change) ?? '';
   const scale = focusScale([
     change.chapter,
     chapter ?? change.chapter,
@@ -266,8 +268,6 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
     ...(ribbon !== null && ribbon.changeId === change.id ? ribbon.touched : []),
   ]);
   const current = liveChapter ?? chapter ?? change.chapter;
-  const originPercent = scalePercent(change.chapter, scale.from, scale.to);
-  const currentPercent = scalePercent(current, scale.from, scale.to);
   const cost = costLine(change, impact);
   const step = change.steps.find((entry) => entry.chapter === chapter) ?? null;
   const typed = reveal !== null && revealComplete(reveal) && printable.length > 0;
@@ -336,30 +336,11 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
 
           <div className="focus-readout">
             <span>волна {wave} / {bound}</span>
-            <span>{wingsCopy(wings, stage)}</span>
             <span>{stageCopy(stage)}</span>
           </div>
 
-          <div className="focus-rings" aria-hidden="true">
-            <span className="focus-axis" />
-            <span
-              className="focus-link"
-              style={{
-                left: `${Math.min(originPercent, currentPercent)}%`,
-                width: `${Math.abs(currentPercent - originPercent)}%`,
-              }}
-            />
-            {scaleTicks(scale.from, scale.to).map((n) => (
-              <span key={`tick-${n}`}>
-                <span className="focus-tick" style={{ left: `${scalePercent(n, scale.from, scale.to)}%` }} />
-                <span className="focus-tick-label" style={{ left: `${scalePercent(n, scale.from, scale.to)}%` }}>
-                  {chapterLabel(n)}
-                </span>
-              </span>
-            ))}
-            <span className="focus-origin" style={{ left: `${originPercent}%` }} />
-            <span className="focus-ring" style={{ left: `${currentPercent}%` }} data-chapter={current} />
-          </div>
+          <FocusWings wings={wingPair} />
+          <FocusTrack from={scale.from} to={scale.to} origin={change.chapter} current={current} />
 
           <section className="focus-note" aria-label={footnoteCopy(change)}>
             <header className="focus-note-h">
@@ -367,6 +348,10 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
               <span className="focus-stamp">{panelStamp(change)}</span>
             </header>
             <dl className="focus-rows">
+              <div>
+                <dt>дело</dt>
+                <dd className="focus-deed">{deed}</dd>
+              </div>
               <div>
                 <dt>основание</dt>
                 <dd>{basisCopy(change)}</dd>

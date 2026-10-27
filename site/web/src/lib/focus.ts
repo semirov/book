@@ -15,6 +15,8 @@ import {
   TOTAL_CHAPTERS,
   chapterLabel,
   type BlockDto,
+  type CascadeWingDto,
+  type CascadeWingsDto,
   type ChangeDto,
   type ChangeImpactDto,
   type HistoryDiffOpDto,
@@ -132,18 +134,21 @@ export function focusWings(
   return { down, up };
 }
 
-export function wingsCopy(wings: FocusWings, stage: FocusStage): string {
-  const parts: string[] = [];
-  if (wings.down !== null) parts.push(`вниз: глава ${wings.down}`);
-  if (wings.up !== null) parts.push(`вверх: глава ${wings.up}`);
-  if (parts.length === 0) {
-    if (stage === 'done') return 'дальше держится';
-    if (stage === 'queue') return 'ещё не началось';
-    if (stage === 'void') return 'волна не прошла';
-    return 'один лист';
-  }
-  if (stage === 'done') parts.push('дальше держится');
-  return parts.join(' · ');
+/**
+ * The two wings the panel prints. A live ripple wins while the change is processing (the
+ * frames are fresher than the fetched DTO); otherwise the cascade's own record is the truth.
+ * A change that raised no ripple has two wings that never opened — and says exactly that.
+ */
+export function focusWingPair(
+  change: Pick<ChangeDto, 'id' | 'chapter' | 'status' | 'cascade' | 'steps'>,
+  ribbon: Ribbon | null,
+): CascadeWingsDto {
+  const live = ribbon !== null && ribbon.changeId === change.id ? ribbon.wings : null;
+  if (change.status === 'processing' && live !== null) return live;
+  if (change.cascade !== null) return change.cascade.wings;
+  if (live !== null) return live;
+  const waiting = (): CascadeWingDto => ({ frontier: change.chapter, wave: 0, state: 'waiting', reached: [] });
+  return { down: waiting(), up: waiting() };
 }
 
 /**
@@ -359,12 +364,6 @@ export function focusScale(chapters: readonly number[], pad = 2): { from: number
     from: Math.max(1, Math.min(...valid) - pad),
     to: Math.min(TOTAL_CHAPTERS, Math.max(...valid) + pad),
   };
-}
-
-export function scalePercent(chapter: number, from: number, to: number): number {
-  if (to <= from) return 50;
-  const clamped = Math.min(to, Math.max(from, chapter));
-  return ((clamped - from) / (to - from)) * 100;
 }
 
 /** Every chapter of a local window as a tick; a very wide window has no labels to draw. */

@@ -1,8 +1,8 @@
-import type { CatalogEntry, ParagraphChainDto } from '@book/shared';
+import type { CatalogEntry, HistoryEventDto, ParagraphChainDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { Chronicle } from './Chronicle.tsx';
+import { Chronicle, TimelineRow } from './Chronicle.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { ViewSwitch } from './ViewSwitch.tsx';
 
@@ -62,6 +62,43 @@ const CATALOG: CatalogEntry[] = [
   },
 ];
 
+describe('the chronicle’s deed line', () => {
+  const decided: HistoryEventDto = {
+    hseq: 42,
+    at: '2026-10-25T12:05:00Z',
+    kind: 'change.decided',
+    chapter: 8,
+    isFront: false,
+    rev: null,
+    changeId: 'chg_1',
+    cascadeId: 'csc_1',
+    stepId: null,
+    author: { kind: 'writer', identityId: null, label: 'автор' },
+    summary: 'правка 7 внесена',
+  };
+
+  it('prints the same five words as the card on a decided row', () => {
+    const html = renderToStaticMarkup(
+      <TimelineRow
+        event={decided}
+        deed="зарегистрировано · заведено дело · внесены изменения · причина установлена · оформление"
+        onPick={() => undefined}
+        onOpenChange={() => undefined}
+      />,
+    );
+    expect(html).toContain('зарегистрировано · заведено дело · внесены изменения');
+    expect(html).toContain('причина установлена · оформление');
+    expect(html).not.toContain('чужой');
+  });
+
+  it('shows no deed line when the change is outside the feed — no data, no claim', () => {
+    const html = renderToStaticMarkup(
+      <TimelineRow event={decided} deed={null} onPick={() => undefined} onOpenChange={() => undefined} />,
+    );
+    expect(html).not.toContain('зарегистрировано');
+  });
+});
+
 describe('the chronicle’s surface (§11.10)', () => {
   it('renders the toggle with the active view marked', () => {
     const book = renderToStaticMarkup(<ViewSwitch view="book" onChange={() => undefined} />);
@@ -74,7 +111,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 
   it('renders the filters, the scrubber and the read-only empty state', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={() => undefined} />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} />,
     );
     for (const label of ['всё', 'правки', 'черновики', 'первая страница', 'перезаписи']) {
       expect(html).toContain(label);

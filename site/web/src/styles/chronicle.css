@@ -256,6 +256,14 @@
 .chr-summary {
   color: var(--ink);
 }
+/* the change's case, in the same five words the card uses (`lib/deed.ts`) */
+.chr-deed {
+  flex: 1 1 100%;
+  font-family: var(--label);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
 .chr-change {
   font-family: var(--label);
   font-size: var(--fs-label);

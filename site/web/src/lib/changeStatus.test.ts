@@ -27,6 +27,9 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
     enqueuedAt: '2026-10-25T12:00:00Z',
     decidedAt: '2026-10-25T12:05:00Z',
     chapters: [8, 7, 9],
+    rewritten: [8, 7],
+    steps: 3,
+    modes: [],
     cascade: { id: 'csc_1', status: 'closed', outcome: 'consistent' },
     ...overrides,
   };

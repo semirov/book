@@ -12,6 +12,26 @@ export type Phase = 'draft' | 'reweiter' | 'polish' | 'complete';
 export type Lane = 'forward' | 'backward';
 export type SeamState = 'not_reached' | 'open' | 'verified' | 'failed';
 
+export type CascadeWingState = 'waiting' | 'moving' | 'settled' | 'stopped';
+
+/**
+ * One wing of a ripple, as the ribbon and the focus view draw it. A wing is **data**: it is
+ * computed from the cascade's recorded steps, so a wing that never opened reports `waiting`
+ * and no reached chapters — there is never a ring for a ripple that did not run.
+ */
+export type CascadeWingDto = {
+  /** The furthest chapter this wing reached; the origin while it has not moved. */
+  frontier: number;
+  /** The wing's own last wave; 0 while it has not opened a step. */
+  wave: number;
+  state: CascadeWingState;
+  /** Chapters this wing reached, origin excluded, nearest first. */
+  reached: number[];
+};
+
+/** `down` runs toward chapter 1, `up` toward chapter 67. */
+export type CascadeWingsDto = { down: CascadeWingDto; up: CascadeWingDto };
+
 export type DraftCursor = {
   lane: Lane;
   from: number;
@@ -81,6 +101,8 @@ export type StateSnapshot = {
     origin?: number;
     wave: number;
     frontier: { forward: number | null; backward: number | null };
+    /** Both wings as recorded so far: each frontier, its wave, its state and what it reached. */
+    wings: CascadeWingsDto;
     touched: number[];
     /** The subset of `touched` actually written. Empty until the engine exists (M3). */
     rewritten?: number[];

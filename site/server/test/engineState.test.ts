@@ -318,6 +318,9 @@ describe('GET /api/changes', () => {
     expect(body[2]?.intent).toBe('в абзаце дважды «слово» — оставить одно упоминание');
     expect(body[1]).toMatchObject({ status: 'processing', position: null });
     expect(body[1]?.chapters).toEqual([9, 10]);
+    expect(body[1]?.rewritten).toEqual([9, 10]);
+    expect(body[1]?.steps).toBe(2);
+    expect(body[1]?.modes).toEqual([]);
     expect(body[0]).toMatchObject({ reason: 'правка остановлена бюджетом — нужно решение' });
   });
 
@@ -361,8 +364,16 @@ describe('GET /api/changes/:id', () => {
       id: 'csc_open',
       status: 'open',
       chaptersRewritten: [9, 10],
+      // Both wings are public data: the down one reached nothing yet, the up one is moving.
+      wings: {
+        down: { frontier: 9, wave: 0, state: 'waiting', reached: [] },
+        up: { frontier: 10, wave: 1, state: 'settled', reached: [10] },
+      },
+      // The seeded gate finding carries no mode, so the public aggregate is empty — not a word.
+      modes: [],
       gates: { cycles: 2, findingSurvived: false },
     });
+    expect(body.modes).toEqual([]);
     expect(body.appliedRevs).toEqual([
       { chapter: 9, rev: 4 },
       { chapter: 10, rev: 2 },

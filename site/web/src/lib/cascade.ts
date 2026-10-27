@@ -1,23 +1,27 @@
 /**
- * The cascade ribbon and its escalation markers (ARCHITECTURE.md §11.7, DESIGN §7.2, §8.4).
+ * The cascade ribbon and its escalation markers (ARCHITECTURE.md §11.7, BOOK-DOC-4).
  *
- * Pure geometry and a small reducer, so "a change walks two chapters in both directions"
- * can be asserted without a DOM. `state.cascade` is the authority after a reconnect; while
- * a socket is live, `change:processing` / `cascade:progress` / `change:decided` move the
- * ribbon. A queued change is never drawn here — it has no place yet (§11.7).
+ * Pure geometry and a small reducer, so "the consequence runs in both directions at once"
+ * can be asserted without a DOM. A ripple has **two wings** — down toward chapter 1 and up
+ * toward chapter 67 — and each wing carries its own wave, state and reached chapters, taken
+ * from the real cascade DTO (`state.cascade`, `cascade:progress`, `change:decided`) and never
+ * from a timer. A wing that never opened is `waiting` with nothing reached: no rings.
+ *
+ * `state.cascade` is the authority after a reconnect; while a socket is live,
+ * `change:processing` / `cascade:progress` / `change:decided` move the ribbon. A queued
+ * change is never drawn here — it has no place yet (§11.7).
  */
 
 import {
   CASCADE_MAX_WAVE,
-  TOTAL_CHAPTERS,
+  type CascadeWingDto,
+  type CascadeWingsDto,
   type CascadeProgressPayload,
   type ChangeDecidedPayload,
   type ChangeProcessingPayload,
   type SeamBoundary,
   type StateSnapshot,
 } from '@book/shared';
-
-import { chapterPercent } from './spine.ts';
 
 /**
  * The ripple bound only for the frames painted *before* `hello` says what the server's own
@@ -36,6 +40,9 @@ export function ribbonMaxWave(announced: unknown): number {
 
 export type RibbonSeam = { boundary: SeamBoundary; reason: string; resolved: boolean };
 
+/** A wing's public facts — the same struct the DTOs carry, so nothing is re-derived by guess. */
+export type RibbonWing = CascadeWingDto;
+
 export type Ribbon = {
   changeId: string;
   cascadeId: string | null;
@@ -46,6 +53,8 @@ export type Ribbon = {
   outcome: string | null;
   touched: number[];
   rewritten: number[];
+  /** Both wings at once: the downward frontier toward 1, the upward one toward 67. */
+  wings: CascadeWingsDto;
   /** The chapter of the step in flight; null when the ripple is between steps. */
   step: number | null;
   frontier: { down: number; up: number };
@@ -53,6 +62,46 @@ export type Ribbon = {
 };
 
 export type RibbonEvent = { type: string; data: unknown };
+
+function waitingWings(origin: number): CascadeWingsDto {
+  const wing = (): CascadeWingDto => ({ frontier: origin, wave: 0, state: 'waiting', reached: [] });
+  return { down: wing(), up: wing() };
+}
+
+/** `down` runs toward chapter 1, `up` toward 67 — the two directions of one consequence. */
+export type Wing = 'down' | 'up';
+
+export const WING_WORDS: Record<Wing, string> = { down: 'вниз', up: 'вверх' };
+
+/** Which wing a chapter is reached by, relative to the chapter the change landed in. */
+export function wingOfChapter(chapter: number, origin: number): Wing | 'origin' {
+  if (chapter === origin) return 'origin';
+  return chapter < origin ? 'down' : 'up';
+}
+
+/** The wing's one-word state; never a percentage and never a verdict. */
+export function wingStateCopy(state: CascadeWingDto['state']): string {
+  if (state === 'waiting') return 'не открылось';
+  if (state === 'moving') return 'идёт';
+  if (state === 'stopped') return 'остановлено';
+  return 'держится';
+}
+
+/** «вниз · волна 2 · идёт» — the wing's own line, for the ribbon and the focus view. */
+export function wingLine(side: Wing, wing: RibbonWing): string {
+  return `${WING_WORDS[side]} · волна ${wing.wave} · ${wingStateCopy(wing.state)}`;
+}
+
+/** «07 · 06» — reached chapters, nearest first; an unopened wing says so without a number. */
+export function wingReachedCopy(wing: RibbonWing): string {
+  if (wing.reached.length === 0) return wing.state === 'waiting' ? 'не открылось' : 'дальше держится';
+  return wing.reached.map((chapter) => String(chapter).padStart(2, '0')).join(' · ');
+}
+
+/** True while a ripple is actually moving: the only case that may draw a ring. */
+export function rippleIsLive(ribbon: Ribbon | null): boolean {
+  return ribbon !== null && ribbon.status === 'open' && ribbon.step !== null;
+}
 
 export function ribbonFromState(state: StateSnapshot): Ribbon | null {
   const cascade = state.cascade;
@@ -68,6 +117,7 @@ export function ribbonFromState(state: StateSnapshot): Ribbon | null {
     outcome: null,
     touched: [...cascade.touched].sort((left, right) => left - right),
     rewritten: [...(cascade.rewritten ?? [])].sort((left, right) => left - right),
+    wings: cascade.wings,
     step,
     frontier: {
       down: cascade.frontier.backward ?? cascade.frontier.forward ?? 1,
@@ -120,6 +170,7 @@ export function reduceRibbon(current: Ribbon | null, event: RibbonEvent): Ribbon
       outcome: null,
       touched: [payload.chapter],
       rewritten: [],
+      wings: waitingWings(payload.chapter),
       step: null,
       frontier: { down: payload.chapter, up: payload.chapter },
       seams: [],
@@ -140,6 +191,7 @@ export function reduceRibbon(current: Ribbon | null, event: RibbonEvent): Ribbon
       outcome: payload.phase === 'absorbed' ? 'absorbed' : null,
       touched,
       rewritten: mergeNumbers(base?.rewritten ?? [], payload.rewritten),
+      wings: payload.wings,
       step,
       frontier: {
         down: payload.frontier.backward ?? step ?? payload.origin,
@@ -159,6 +211,7 @@ export function reduceRibbon(current: Ribbon | null, event: RibbonEvent): Ribbon
       outcome: payload.outcome,
       touched: cascade === null ? current.touched : mergeNumbers(current.touched, cascade.touched),
       rewritten: cascade === null ? current.rewritten : mergeNumbers(current.rewritten, cascade.rewritten),
+      wings: cascade === null ? current.wings : cascade.wings,
       seams:
         cascade === null
           ? current.seams.map((seam) => ({ ...seam, resolved: payload.outcome !== 'escalated' }))
@@ -185,19 +238,12 @@ function resolveSeams(
 export type EscalationMarker = {
   key: string;
   boundary: SeamBoundary;
-  percent: number;
   reason: string;
   note: string | null;
   changeId: string | null;
 };
 
-/** `n` is the boundary (n−1 | n); `front` is 0 % and `ending` 100 % of the spine. */
-export function boundaryPercent(boundary: SeamBoundary): number {
-  if (boundary === 'front') return 0;
-  if (boundary === 'ending') return 100;
-  return ((boundary - 1) / TOTAL_CHAPTERS) * 100;
-}
-
+/** One marker per unresolved seam; the seam is named by its two chapters, never by a percent. */
 export function escalationMarkers(unresolved: StateSnapshot['unresolved']): EscalationMarker[] {
   const markers = new Map<string, EscalationMarker>();
   for (const entry of unresolved) {
@@ -206,7 +252,6 @@ export function escalationMarkers(unresolved: StateSnapshot['unresolved']): Esca
     markers.set(key, {
       key,
       boundary: entry.boundary,
-      percent: boundaryPercent(entry.boundary),
       reason: entry.reason,
       note: entry.note ?? null,
       changeId: entry.changeId,
@@ -215,27 +260,14 @@ export function escalationMarkers(unresolved: StateSnapshot['unresolved']): Esca
   return [...markers.values()];
 }
 
-// ── copy and geometry for the header ─────────────────────────────────────────
+// ── copy for the header ──────────────────────────────────────────────────────
 
-export function ribbonBand(ribbon: Ribbon): { left: string; width: string } {
-  const touched = ribbon.touched.length > 0 ? ribbon.touched : [ribbon.chapter];
-  const left = chapterPercent(Math.min(...touched));
-  const right = chapterPercent(Math.max(...touched));
-  return { left: `${left}%`, width: `${Math.max(0.4, right - left)}%` };
-}
-
-export function ribbonDotPercent(chapter: number): number {
-  return chapterPercent(chapter);
-}
-
-/** «глава 8 → 7 и 9, дальше держится» — the ribbon's own words (§11.7, §21.6). */
+/** «правка: глава 8 · вниз до главы 7 · вверх до главы 9» — both wings, never a percentage. */
 export function ribbonSummary(ribbon: Ribbon): string {
-  const wings = ribbon.touched.filter((chapter) => chapter !== ribbon.chapter);
-  const route =
-    wings.length === 0
-      ? `глава ${ribbon.chapter}`
-      : `глава ${ribbon.chapter} → ${wings.length === 1 ? String(wings[0]) : `${wings.slice(0, -1).join(', ')} и ${String(wings.at(-1))}`}`;
-  if (ribbon.status === 'escalated') return `правка: ${route} · стык пересматривается`;
-  if (ribbon.status === 'closed') return `правка: ${route} · завершена`;
-  return `правка: ${route}`;
+  const parts = [`правка: глава ${ribbon.chapter}`];
+  if (ribbon.wings.down.reached.length > 0) parts.push(`вниз до главы ${ribbon.wings.down.frontier}`);
+  if (ribbon.wings.up.reached.length > 0) parts.push(`вверх до главы ${ribbon.wings.up.frontier}`);
+  if (ribbon.status === 'escalated') return `${parts.join(' · ')} · стык пересматривается`;
+  if (ribbon.status === 'closed') return `${parts.join(' · ')} · завершена`;
+  return parts.join(' · ');
 }

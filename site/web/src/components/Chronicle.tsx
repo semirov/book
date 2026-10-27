@@ -1,6 +1,7 @@
 import type {
   BookAtDto,
   CatalogEntry,
+  ChangeSummaryDto,
   HistoryChapterDto,
   HistoryEventDto,
   HistoryTimelineDto,
@@ -18,6 +19,7 @@ import {
   targetLabel,
   type HistoryFilter,
 } from '../lib/history.ts';
+import { deedLine, summaryDeed } from '../lib/deed.ts';
 import { focusHash } from '../lib/focus.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
 import { ParagraphChain } from './ParagraphChain.tsx';
@@ -40,10 +42,15 @@ export type ChronicleProps = {
   frontRev: number;
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
+  /**
+   * The public change feed (`GET /api/changes`): the deed line of a decided row is the same
+   * five words the card prints. A change outside the feed simply has no line — no data, no claim.
+   */
+  changes: ChangeSummaryDto[];
   onOpenChange: (changeId: string) => void;
 };
 
-export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>('all');
@@ -95,6 +102,12 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
   const lastHseq = timeline?.lastHseq ?? 0;
   const ticks = useMemo(() => scrubTicks(items, lastHseq), [items, lastHseq]);
   const difference = useMemo(() => (past === null ? null : compareToNow(past, catalog, frontRev)), [past, catalog, frontRev]);
+  /** The deed line per change, derived once from the public feed (one copy source: `lib/deed.ts`). */
+  const deeds = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of changes) map.set(entry.id, deedLine(summaryDeed(entry)));
+    return map;
+  }, [changes]);
 
   return (
     <section className="chronicle page" aria-label="хроника книги">
@@ -200,6 +213,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
                 <TimelineRow
                   key={event.hseq}
                   event={event}
+                  deed={event.changeId === null ? null : (deeds.get(event.changeId) ?? null)}
                   onPick={() => setMoment(event.hseq)}
                   onOpenChange={onOpenChange}
                 />
@@ -226,21 +240,26 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange }: ChroniclePr
   );
 }
 
-function TimelineRow({
+/** One log row. Exported so its markup can be asserted without a browser or a socket. */
+export function TimelineRow({
   event,
+  deed,
   onPick,
   onOpenChange,
 }: {
   event: HistoryEventDto;
+  deed: string | null;
   onPick: () => void;
   onOpenChange: (changeId: string) => void;
 }) {
+  const decided = event.kind === 'change.decided' || event.kind === 'cascade.closed';
   return (
     <li className="chr-row">
       <button type="button" className="chr-row-main" onClick={onPick} aria-label={`${event.summary} — книга на этот момент`}>
         <span className="chr-time">{formatTime(event.at)}</span>
         <span className="chr-target">{targetLabel(event)}</span>
         <span className="chr-summary">{event.summary}</span>
+        {deed !== null && decided ? <span className="chr-deed">{deed}</span> : null}
       </button>
       {event.changeId === null ? null : (
         <>

@@ -28,6 +28,7 @@ import {
   type LeaseRow,
   type StepRow,
 } from './rows.ts';
+import { wingsOf, wingSteps } from './wings.ts';
 
 /** A heartbeat older than this means the process is gone, not slow (§18). */
 export const HEARTBEAT_TTL_MS = 90_000;
@@ -163,6 +164,7 @@ export function readOpenCascade(db: Db): StateSnapshot['cascade'] {
       forward: forward.length > 0 ? Math.max(...forward) : change.chapter,
       backward: backward.length > 0 ? Math.min(...backward) : change.chapter,
     },
+    wings: wingsOf(wingSteps(steps), change.chapter, cascade.status),
     touched: [...touched].sort((left, right) => left - right),
     rewritten: [...rewritten].sort((left, right) => left - right),
     seams: [...seams].map(([boundary, reason]) => ({ boundary, reason })),

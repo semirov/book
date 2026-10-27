@@ -59,12 +59,13 @@ describe('one line per fact (§11.10)', () => {
     ).toBe('первая страница изменилась — правка вне процесса');
   });
 
-  it('never repeats a gate finding: a verdict is only «замечание сохранено»', () => {
+  it('never repeats a gate finding or a role: a verdict is only «замечание сохранено»', () => {
     const line = summarize(
       subject({ kind: 'gate.recorded', payload: { role: 'consultant', findings: 'секрет редактора' } }),
     );
-    expect(line).toBe('глава 9: замечание сохранено (научный консультант)');
+    expect(line).toBe('глава 9: замечание сохранено');
     expect(line).not.toContain('секрет');
+    expect(line).not.toContain('консультант');
   });
 
   it('shows a dropped change with its public reason', () => {

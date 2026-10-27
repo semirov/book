@@ -121,10 +121,10 @@ export function summarize(subject: SummarySubject): string {
               : 'держится';
       return `${where}: ${verb}${by}`;
     }
-    case 'gate.recorded': {
-      const role = subject.payload.role === 'consultant' ? 'научный консультант' : 'редактор';
-      return `${where}: замечание сохранено (${role})`;
-    }
+    case 'gate.recorded':
+      // Invariant 18: the gates are invisible to readers. A recorded verdict is one public
+      // fact — a remark survived the pass — and the role that said it is never printed.
+      return `${where}: замечание сохранено`;
     case 'overwrite': {
       const replaced = typeof subject.payload.replacedBy === 'string';
       const place = subject.chapter === null ? where : `в главе ${subject.chapter}`;

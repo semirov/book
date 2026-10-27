@@ -3,107 +3,6 @@
    change. Additive to live.css; imported after it.
    ============================================================================ */
 
-/* ---------- the cascade ribbon (§11.7): only what is happening now ---------- */
-.ribbon {
-  position: relative;
-  height: 6px;
-  max-width: var(--measure);
-  margin: 0 auto;
-  background: transparent;
-}
-.ribbon-hit {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  background: transparent;
-}
-.ribbon-band {
-  position: absolute;
-  top: 2px;
-  height: 2px;
-  background: var(--live);
-  opacity: 0.5;
-}
-.ribbon-ring {
-  position: absolute;
-  top: -5px;
-  width: 16px;
-  height: 16px;
-  margin-left: -8px;
-  border: 1px solid var(--live);
-  border-radius: 50%;
-  opacity: 0;
-  animation: ribbon-ring 2.6s linear infinite;
-  pointer-events: none;
-}
-@keyframes ribbon-ring {
-  0% {
-    transform: scale(0.2);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-}
-.ribbon-origin {
-  position: absolute;
-  top: 0;
-  width: 1px;
-  height: 6px;
-  margin-left: -0.5px;
-  background: var(--live);
-}
-.ribbon-dot {
-  position: absolute;
-  top: 2.5px;
-  width: 2px;
-  height: 2px;
-  margin-left: -1px;
-  background: var(--live);
-  opacity: 0.7;
-}
-.ribbon-dot.is-written {
-  width: 3px;
-  height: 3px;
-  top: 2px;
-  margin-left: -1.5px;
-  opacity: 1;
-}
-.ribbon-step {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  height: 8px;
-  margin-left: -1px;
-  background: var(--live);
-}
-.ribbon-seam {
-  position: absolute;
-  top: -1px;
-  width: 12px;
-  height: 10px;
-  margin-left: -6px;
-  padding: 0;
-  background: transparent;
-  border-left: 1px dashed var(--ink-2);
-  border-right: 1px dashed var(--ink-2);
-}
-.ribbon-seam-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-.ribbon-seam:focus-visible {
-  outline: 1px solid var(--live);
-  outline-offset: 2px;
-}
-
 /* ---------- the change card (§11.7, DESIGN 7.11–7.13) ---------- */
 .change-card {
   position: fixed;
@@ -196,6 +95,18 @@
   font-size: 13.5px;
   color: var(--ink);
 }
+/* the case, in the five public words (§11.7; `lib/deed.ts`) */
+.change-deed {
+  margin: 0 0 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--label);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
 .change-evidence {
   margin: 9px 0 0;
   padding: 0 0 0 16px;
@@ -222,8 +133,9 @@
 .change-steps li,
 .change-seams li {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 2px 8px;
   padding: 5px 0;
   border-top: 1px solid var(--rule);
   font-family: var(--serif);
@@ -240,7 +152,33 @@
   color: var(--ink-3);
 }
 .step-label {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.step-wing {
+  flex: 0 0 auto;
+  font-family: var(--label);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.step-why {
+  flex: 1 1 100%;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.step-open {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 6px;
+  font-family: var(--label);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--live);
 }
 .step-delta {
   font-family: var(--mono);

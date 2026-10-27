@@ -43,6 +43,11 @@ const change: ChangeDto = {
       { boundary: 8, reason: 'в главе 8 ключ теперь у другого', resolved: true },
       { boundary: 7, reason: 'в главе 7 сказано иначе', resolved: false },
     ],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'settled', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'settled', reached: [9] },
+    },
+    modes: ['оформление'],
     gates: { cycles: 2, findingSurvived: true },
     tokens: { total: 150_572 },
     ms: 41_000,
@@ -108,6 +113,7 @@ const change: ChangeDto = {
     { chapter: 8, rev: 4 },
   ],
   cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0.04 },
+  modes: ['оформление'],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',
   startedAt: '2026-10-25T12:00:00Z',
@@ -156,6 +162,82 @@ describe('ChangeCard', () => {
     expect(html).toContain('в главе уже одно упоминание — второе убрано');
     expect(html).toContain('шагов пока нет');
   });
+
+  it('renders the outcome as делопроизводство, with the cause and its mode', () => {
+    const html = renderToStaticMarkup(<ChangeCard change={change} onClose={() => undefined} />);
+    expect(html).toContain('class="change-deed"');
+    expect(html).toContain(
+      'зарегистрировано · заведено дело · внесены изменения · причина установлена · оформление',
+    );
+    expect(html).not.toContain('исправлен');
+  });
+
+  it('says which wing reached a chapter and why, and opens that chapter', () => {
+    const html = renderToStaticMarkup(
+      <ChangeCard change={change} onClose={() => undefined} onOpenChapter={() => undefined} />,
+    );
+    expect(html).toContain('class="step-wing">вниз');
+    expect(html).toContain('class="step-wing">вверх');
+    expect(html).toContain('class="step-wing">здесь');
+    expect(html).toContain('в главе 8 ключ теперь у другого');
+    expect(html.match(/class="step-open"/g) ?? []).toHaveLength(3);
+  });
+
+  it('names the finale a финал, not the wing that never walks into it', () => {
+    const ended: ChangeDto = {
+      ...change,
+      chapter: 66,
+      cascade: {
+        ...change.cascade!,
+        chaptersRewritten: [66],
+        wings: {
+          down: { frontier: 65, wave: 1, state: 'settled', reached: [65] },
+          up: { frontier: 66, wave: 0, state: 'settled', reached: [] },
+        },
+      },
+      steps: [
+        {
+          ...change.steps[0]!,
+          chapter: 66,
+          boundary: 67,
+          seamsOut: [{ boundary: 'ending', reason: 'финал держится' }],
+        },
+        {
+          ...change.steps[1]!,
+          seq: 4,
+          chapter: 67,
+          wing: null,
+          pass: 'ending',
+          boundary: 'ending',
+          outcome: 'evaluated',
+          seamsIn: [{ boundary: 'ending', reason: 'финал держится' }],
+          seamsOut: [],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<ChangeCard change={ended} onClose={() => undefined} />);
+    expect(html).toContain('class="step-wing">финал');
+    expect(html).not.toContain('step-wing">вверх');
+  });
+
+  it('files a change with no step and no mode as registered only', () => {
+    const pending: ChangeDto = {
+      ...change,
+      status: 'pending',
+      position: 1,
+      cascade: null,
+      steps: [],
+      modes: [],
+      appliedRevs: [],
+      cost: null,
+      decidedAt: null,
+    };
+    const html = renderToStaticMarkup(<ChangeCard change={pending} onClose={() => undefined} />);
+    expect(html).toContain('зарегистрировано');
+    expect(html).not.toContain('заведено дело');
+    expect(html).not.toContain('внесены изменения');
+    expect(html).not.toContain('причина установлена');
+  });
 });
 
 describe('the thread’s two-line status', () => {
@@ -171,6 +253,9 @@ describe('the thread’s two-line status', () => {
     enqueuedAt: '2026-10-25T11:59:00Z',
     decidedAt: '2026-10-25T12:05:00Z',
     chapters: [8, 7, 9],
+    rewritten: [8, 7],
+    steps: 3,
+    modes: ['оформление'],
     cascade: { id: 'csc_1', status: 'closed', outcome: 'consistent' },
   };
 
@@ -222,6 +307,10 @@ describe('CascadeRibbon', () => {
     outcome: null,
     touched: [7, 8, 9],
     rewritten: [8],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'moving', reached: [9] },
+    },
     step: 9,
     frontier: { down: 7, up: 9 },
     seams: [{ boundary: 9, reason: 'в главе 9 ключ теперь у другого', resolved: false }],
@@ -232,30 +321,58 @@ describe('CascadeRibbon', () => {
       <CascadeRibbon
         ribbon={ribbon}
         markers={[
-          { key: 'chg_1:9', boundary: 9, percent: 11.94, reason: 'budget', note: 'ключ теперь у другого', changeId: 'chg_1' },
+          { key: 'chg_1:9', boundary: 9, reason: 'budget', note: 'ключ теперь у другого', changeId: 'chg_1' },
         ]}
         onOpenChange={() => undefined}
       />,
     );
-    expect(html).toContain('aria-label="правка: глава 8 → 7 и 9 · открыть карточку правки"');
+    expect(html).toContain('aria-label="правка: глава 8 · вниз до главы 7 · вверх до главы 9"');
     expect(html).toContain('ribbon-origin');
-    expect(html.match(/ribbon-dot/g) ?? []).toHaveLength(3);
-    expect(html).toContain('ribbon-step');
-    expect(html.match(/ribbon-ring/g) ?? []).toHaveLength(3);
+    // Both wings at once: each with its own wave and state, each chapter a link to itself.
+    expect(html).toContain('вниз · волна 1 · идёт');
+    expect(html).toContain('вверх · волна 1 · идёт');
+    expect(html).toContain('href="#ch-7"');
+    expect(html).toContain('href="#ch-8"');
+    expect(html).toContain('href="#ch-9"');
+    expect(html.match(/class="ribbon-ring"/g) ?? []).toHaveLength(3);
     expect(html).toContain('стык пересматривается');
     expect(html).toContain('ключ теперь у другого');
+    expect(html).not.toContain('style=');
+  });
+
+  it('draws no rings without a live cascade, and no wing that never opened', () => {
+    const quiet = renderToStaticMarkup(
+      <CascadeRibbon
+        ribbon={{
+          ...ribbon,
+          status: 'closed',
+          step: null,
+          wings: {
+            down: { frontier: 8, wave: 0, state: 'waiting', reached: [] },
+            up: { frontier: 8, wave: 0, state: 'waiting', reached: [] },
+          },
+        }}
+        markers={[]}
+        onOpenChange={() => undefined}
+      />,
+    );
+    expect(quiet).not.toContain('ribbon-ring');
+    expect(quiet.match(/class="ribbon-none"/g) ?? []).toHaveLength(2);
+    expect(quiet.match(/не открылось/g) ?? []).toHaveLength(2);
   });
 
   it('still draws an escalated seam when no ripple is running', () => {
     const html = renderToStaticMarkup(
       <CascadeRibbon
         ribbon={null}
-        markers={[{ key: 'chg_1:7', boundary: 7, percent: 8.9, reason: 'budget', note: null, changeId: null }]}
+        markers={[{ key: 'chg_1:7', boundary: 7, reason: 'budget', note: null, changeId: null }]}
         onOpenChange={() => undefined}
       />,
     );
     expect(html).toContain('ribbon-seam');
-    expect(html).not.toContain('ribbon-hit');
+    expect(html).toContain('6 | 7');
+    expect(html).not.toContain('ribbon-wings');
+    expect(html).not.toContain('ribbon-ring');
   });
 
   it('draws nothing when there is neither a ripple nor a seam', () => {

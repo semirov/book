@@ -9,6 +9,7 @@
  */
 
 import type { Finding, FindingSeverity, GateRole } from '@book/shared';
+import { normalizeRetroMode } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
@@ -64,6 +65,9 @@ export function normalizeFindings(raw: unknown): Finding[] {
       location: text(record.location, 300),
       defect,
       fix: text(record.fix, 1_000),
+      // One of the three retroactive modes, or nothing: an unknown word is dropped like any
+      // other untrusted field, never stored as a fourth mode (§6B.3, `style/VOICE.md`).
+      mode: normalizeRetroMode(record.mode),
     });
   }
   return findings;

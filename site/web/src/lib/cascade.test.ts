@@ -3,14 +3,16 @@ import { CASCADE_MAX_WAVE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
-  boundaryPercent,
   escalationMarkers,
   reduceRibbon,
   ribbonAfterSnapshot,
-  ribbonBand,
   ribbonFromState,
   ribbonMaxWave,
   ribbonSummary,
+  rippleIsLive,
+  wingLine,
+  wingOfChapter,
+  wingReachedCopy,
   RIBBON_MAX_WAVE,
   type Ribbon,
 } from './cascade.ts';
@@ -49,6 +51,10 @@ const OPEN_CASCADE: NonNullable<StateSnapshot['cascade']> = {
   frontier: { forward: 9, backward: 7 },
   touched: [7, 8, 9],
   rewritten: [8],
+  wings: {
+    down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+    up: { frontier: 9, wave: 1, state: 'moving', reached: [9] },
+  },
   seams: [{ boundary: 9, reason: 'в главе 9 ключ теперь у другого' }],
   wing: 'upward',
   lane: 'forward',
@@ -120,6 +126,10 @@ describe('reduceRibbon', () => {
     frontier: { forward: 8, backward: 7 },
     touched: [7, 8],
     rewritten: [7],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+      up: { frontier: 8, wave: 0, state: 'waiting', reached: [] },
+    },
     seamsIn: [{ boundary: 8, reason: 'ключ сдвинулся' }],
     seamsOut: [{ boundary: 6, reason: 'в главе 6 сказано иначе' }],
     budget: { steps: 2, maxSteps: 8, msLeft: 1_000 }
@@ -132,6 +142,10 @@ describe('reduceRibbon', () => {
     frontier: { forward: 9, backward: 7 },
     touched: [7, 8, 9],
     rewritten: [7, 9],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'moving', reached: [8, 9] },
+    },
     seamsOut: [{ boundary: 10, reason: 'в главе 10 сказано, что ключ у него' }],
   };
   const decided: ChangeDecidedPayload = {
@@ -146,6 +160,10 @@ describe('reduceRibbon', () => {
       waves: 2,
       touched: [7, 8, 9],
       rewritten: [8, 7, 9],
+      wings: {
+        down: { frontier: 7, wave: 2, state: 'settled', reached: [7] },
+        up: { frontier: 9, wave: 2, state: 'settled', reached: [9] },
+      },
       seams: [
         { boundary: 6, resolved: true },
         { boundary: 10, resolved: true },
@@ -241,31 +259,51 @@ describe('escalation markers', () => {
     ]);
     expect(markers).toHaveLength(3);
     expect(markers[0]).toMatchObject({ boundary: 8, reason: 'budget', note: 'ключ теперь у другого' });
-    expect(markers[0]?.percent).toBeCloseTo((7 / 67) * 100, 5);
-    expect(markers[1]?.percent).toBe(0);
-    expect(markers[2]?.percent).toBe(100);
+    expect(markers[1]?.boundary).toBe('front');
+    expect(markers[2]?.boundary).toBe('ending');
     expect(markers[2]?.changeId).toBeNull();
-  });
-
-  it('places a boundary between its two chapters', () => {
-    expect(boundaryPercent('front')).toBe(0);
-    expect(boundaryPercent('ending')).toBe(100);
-    expect(boundaryPercent(2)).toBeCloseTo((1 / 67) * 100, 5);
   });
 });
 
-describe('ribbon geometry and copy', () => {
+describe('both wings, as data', () => {
   const ribbon = ribbonFromState(state(OPEN_CASCADE))!;
 
-  it('spans exactly the touched chapters and never the book', () => {
-    const band = ribbonBand(ribbon);
-    expect(Number.parseFloat(band.left)).toBeCloseTo((6.5 / 67) * 100, 3);
-    expect(Number.parseFloat(band.width)).toBeLessThan(10);
-  });
-
-  it('says the route and never a percentage', () => {
-    expect(ribbonSummary(ribbon)).toBe('правка: глава 8 → 7 и 9');
+  it('names each wing and never a percentage', () => {
+    expect(ribbonSummary(ribbon)).toBe('правка: глава 8 · вниз до главы 7 · вверх до главы 9');
     expect(ribbonSummary({ ...ribbon, status: 'escalated' })).toContain('стык пересматривается');
     expect(ribbonSummary(ribbon)).not.toContain('%');
+  });
+
+  it('prints a wing’s own wave, state and reached chapters', () => {
+    expect(wingLine('down', ribbon.wings.down)).toBe('вниз · волна 1 · идёт');
+    expect(wingLine('up', { ...ribbon.wings.up, state: 'waiting', wave: 0, reached: [] })).toBe(
+      'вверх · волна 0 · не открылось',
+    );
+    expect(wingReachedCopy(ribbon.wings.down)).toBe('07');
+    expect(wingReachedCopy({ ...ribbon.wings.up, state: 'waiting', reached: [] })).toBe('не открылось');
+    expect(wingReachedCopy({ ...ribbon.wings.up, state: 'settled', reached: [] })).toBe('дальше держится');
+  });
+
+  it('places a chapter on the wing that reached it', () => {
+    expect(wingOfChapter(7, 8)).toBe('down');
+    expect(wingOfChapter(9, 8)).toBe('up');
+    expect(wingOfChapter(8, 8)).toBe('origin');
+  });
+
+  it('draws rings only while a step is in flight', () => {
+    expect(rippleIsLive(ribbon)).toBe(true);
+    expect(rippleIsLive({ ...ribbon, step: null })).toBe(false);
+    expect(rippleIsLive({ ...ribbon, status: 'closed' })).toBe(false);
+    expect(rippleIsLive(null)).toBe(false);
+  });
+
+  it('keeps a wing that never opened — and its waiting state — through a decision', () => {
+    const processing = reduceRibbon(null, {
+      type: 'change:processing',
+      data: { id: 'chg_1', chapter: 8, startedAt: '', attempt: 1, relevance: null },
+    });
+    expect(processing?.wings.down).toEqual({ frontier: 8, wave: 0, state: 'waiting', reached: [] });
+    expect(processing?.wings.up).toEqual({ frontier: 8, wave: 0, state: 'waiting', reached: [] });
+    expect(rippleIsLive(processing)).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { FocusView } from './FocusView.tsx';
+import { FocusTrack } from './FocusWings.tsx';
 
 const change: ChangeDto = {
   id: 'chg_1',
@@ -28,6 +29,11 @@ const change: ChangeDto = {
     chaptersChecked: [9],
     chaptersRewritten: [8, 7],
     seams: [],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'settled', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'settled', reached: [9] },
+    },
+    modes: [],
     gates: { cycles: 2, findingSurvived: false },
     tokens: { total: 150_572 },
     ms: 41_000,
@@ -93,6 +99,7 @@ const change: ChangeDto = {
     { chapter: 8, rev: 4 },
   ],
   cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0.04 },
+  modes: [],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',
   startedAt: '2026-10-25T12:00:00Z',
@@ -126,6 +133,10 @@ function ribbon(step: number | null): Ribbon {
     outcome: null,
     touched: [8, 7, 9],
     rewritten: [8],
+    wings: {
+      down: { frontier: 7, wave: 1, state: 'moving', reached: [7] },
+      up: { frontier: 9, wave: 1, state: 'moving', reached: [9] },
+    },
     step,
     frontier: { down: 7, up: 9 },
     seams: [],
@@ -134,10 +145,10 @@ function ribbon(step: number | null): Ribbon {
 
 const GATE_WORDS = ['вердикт', 'findings', 'редактор', 'консультант', 'HOLDS', 'GAP', 'gate'];
 
-function ringLeft(html: string): number {
-  const match = /class="focus-ring"[^>]*style="left:([\d.]+)%"/u.exec(html);
-  expect(match).not.toBeNull();
-  return Number(match?.[1] ?? Number.NaN);
+/** The chapter the lit sheet is on: exactly one track cell carries `is-current`. */
+function currentChapter(html: string): number | null {
+  const cells = html.match(/class="focus-cell[^"]*is-current[^"]*"[^>]*data-chapter="(\d+)"/u);
+  return cells === null ? null : Number(cells[1]);
 }
 
 describe('the focus view', () => {
@@ -191,6 +202,21 @@ describe('the focus view', () => {
     for (const word of GATE_WORDS) expect(html).not.toContain(word.toLowerCase());
   });
 
+  it('carries no inline style: the panel is classes and data attributes only (CSP)', () => {
+    const html = renderToStaticMarkup(
+      <FocusView change={change} impact={impact} missing={false} ribbon={ribbon(9)} revisions={{}} onClose={() => undefined} />,
+    );
+    expect(html).not.toContain('style=');
+  });
+
+  it('keeps the chapter in flight on the track even if a window is wider than fifteen', () => {
+    const html = renderToStaticMarkup(<FocusTrack from={1} to={40} origin={2} current={38} />);
+    const cells = html.match(/class="focus-cell[^"]*"/g) ?? [];
+    expect(cells).toHaveLength(15);
+    expect(html).toContain('data-chapter="38"');
+    expect(html).toContain('w-15');
+  });
+
   it('moves the ring and the lit sheet from 7 to 9 as the ripple moves', () => {
     const live: ChangeDto = { ...change, status: 'processing', decidedAt: null, steps: [change.steps[0]!] };
     const at7 = renderToStaticMarkup(
@@ -203,9 +229,14 @@ describe('the focus view', () => {
     expect(at7).toContain('глава 07');
     expect(at9).toContain('data-chapter="9"');
     expect(at9).toContain('глава 09');
-    expect(ringLeft(at9)).toBeGreaterThan(ringLeft(at7));
-    expect(at7).toContain('вниз: глава 7 · вверх: глава 9');
-    expect(at7).toContain('вниз');
+    expect(currentChapter(at7)).toBe(7);
+    expect(currentChapter(at9)).toBe(9);
+    // Both wings are printed at once, each with its own wave and state — one presentation,
+    // so the old sentence line beside the panel is gone.
+    expect(at7).toContain('вниз · волна 1 · идёт');
+    expect(at7).toContain('вверх · волна 1 · идёт');
+    expect(at7).not.toContain('вниз: глава');
+    expect(at9).toContain('data-chapter="9"');
   });
 
   it('shows a dropped change’s reason and does not type', () => {

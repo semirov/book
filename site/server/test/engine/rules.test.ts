@@ -166,8 +166,20 @@ describe('gate dispatch bookkeeping (§6B.3)', () => {
     expect(normalizeFindings([null, 42, { severity: 'blocker' }])).toEqual([]);
     expect(
       normalizeFindings([{ severity: 'urgent', defect: 'x'.repeat(2_000), location: 7, fix: null }]),
-    ).toEqual([{ severity: 'major', location: '', defect: expect.stringMatching(/…$/u), fix: '' }]);
+    ).toEqual([{ severity: 'major', location: '', defect: expect.stringMatching(/…$/u), fix: '', mode: null }]);
     expect(normalizeFindings([{ severity: 'blocker', defect: 'bad' }])[0]?.severity).toBe('blocker');
+  });
+
+  it('keeps only one of the three retroactive modes, and drops any other word', () => {
+    const [mode] = normalizeFindings([{ defect: 'причина появилась позже', mode: 'оформление' }]);
+    expect(mode?.mode).toBe('оформление');
+    const [amended] = normalizeFindings([{ defect: 'пункт 4', mode: 'поправка' }]);
+    expect(amended?.mode).toBe('поправка');
+    const [diverged] = normalizeFindings([{ defect: 'сцена не подчиняется', mode: 'расхождение' }]);
+    expect(diverged?.mode).toBe('расхождение');
+    for (const hostile of ['исправление', 'retcon', '', 42, null, { mode: 'оформление' }, ['оформление']]) {
+      expect(normalizeFindings([{ defect: 'x', mode: hostile }])[0]?.mode).toBeNull();
+    }
   });
 });
 

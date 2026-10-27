@@ -388,6 +388,8 @@ export function App() {
     }
     scrollToChapter(target.n);
   };
+  /** Reaching a chapter from a card: the card closes, the chapter is opened. */
+  const toChapter = (n: number): void => (card.close(), scrollToChapter(n));
 
   const views = <ViewSwitch view={view} onChange={setView} />;
   const focusView =
@@ -411,9 +413,12 @@ export function App() {
           catalog={catalog}
           frontRev={front.rev}
           tick={historyTick}
+          changes={changes}
           onOpenChange={card.open}
         />
-        {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}
+        {card.change === null ? null : (
+          <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
+        )}
         {chainLoading || chain !== null ? (
           <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
         ) : null}
@@ -479,7 +484,9 @@ export function App() {
         }}
       />
       <Colophon state={state} imprint={front.imprint} />
-      {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} />}
+      {card.change === null ? null : (
+        <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
+      )}
       {chainLoading || chain !== null ? (
         <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
       ) : null}

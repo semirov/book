@@ -18,12 +18,13 @@ import type {
   ChangeOutcome,
   ChangeStatus,
   RelevanceGrade,
+  RetroMode,
   SeamBoundary,
   SeamRef,
   StepOutcome,
   StepPass,
 } from './change.ts';
-import type { EngineStatus } from './types.ts';
+import type { CascadeWingsDto, EngineStatus } from './types.ts';
 
 /** §10.3a caps the quoted intent at 280 characters on every public surface. */
 export const PUBLIC_INTENT_MAX_CHARS = 280;
@@ -84,13 +85,22 @@ export type ChangeCascadeDto = {
   chaptersChecked: number[];
   chaptersRewritten: number[];
   seams: PublicSeam[];
+  /** Both wings of the ripple: each frontier, its own wave, its state and what it reached. */
+  wings: CascadeWingsDto;
+  /**
+   * The retroactive causes the change was filed with, in the fixed mode order — a plain list
+   * per change. Never the finding text, never a role (§6B.6).
+   */
+  modes: RetroMode[];
   /** Aggregate only (§6A.8) — never findings. */
   gates: { cycles: number; findingSurvived: boolean };
   tokens: { total: number };
   ms: number;
 };
 
-/** `GET /api/changes/:id` and the payload behind the change card (§9, §11.7). */
+/**
+ * `GET /api/changes/:id` and the payload behind the change card (§9, §11.7).
+ */
 export type ChangeDto = {
   id: string;
   seq: number;
@@ -109,6 +119,8 @@ export type ChangeDto = {
   position: number | null;
   relevance: PublicRelevance | null;
   cascade: ChangeCascadeDto | null;
+  /** The same list as `cascade.modes`, present even for a change that raised no ripple. */
+  modes: RetroMode[];
   steps: ChangeStepDto[];
   appliedRevs: Array<{ chapter: number; rev: number }>;
   cost: null | { model: string | null; tokensIn: number; tokensOut: number; rub: number };
@@ -132,6 +144,12 @@ export type ChangeSummaryDto = {
   decidedAt: string | null;
   /** Chapters the ripple reached, origin first; empty while nothing has run. */
   chapters: number[];
+  /** The subset of `chapters` actually rewritten; empty until a step landed. */
+  rewritten: number[];
+  /** Steps recorded for the change — the same number the card derives from `steps.length`. */
+  steps: number;
+  /** The retroactive causes filed with this change, in the fixed mode order. */
+  modes: RetroMode[];
   cascade: null | { id: string; status: CascadeStatus; outcome: string | null };
 };
 
@@ -199,6 +217,7 @@ export type ChangeDecidedPayload = {
     waves: number;
     touched: number[];
     rewritten: number[];
+    wings: CascadeWingsDto;
     seams: Array<{ boundary: SeamBoundary; resolved: boolean }>;
     finding: boolean;
   };
@@ -221,6 +240,8 @@ export type CascadeProgressPayload = {
   outcome: StepOutcome | null;
   rev: { before: number | null; after: number | null };
   frontier: { forward: number | null; backward: number | null };
+  /** Both wings as recorded so far; the ribbon draws them from this, never from a timer. */
+  wings: CascadeWingsDto;
   touched: number[];
   rewritten: number[];
   seamsIn: SeamRef[];

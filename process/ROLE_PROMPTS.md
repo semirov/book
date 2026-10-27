@@ -103,7 +103,9 @@ never edit files, and return a verdict the engine can act on. Judge the text, no
 
 **Verdict.** `HOLDS` or `GAP`, then findings: severity (blocker / major / minor) · location (chapter, quote
 ≤10 words) · what is wrong · the minimal fix, described, not written. Blocker = must not reach the reader;
-an unwritten neighbour is not a contradiction: name it and stop.
+an unwritten neighbour is not a contradiction: name it and stop. When a retroactive cause is involved, every
+finding names its **mode** — `оформление`, `поправка` or `расхождение` — in the verdict; any other word is
+dropped by the engine.
 
 ## Check
 1. **The end.** Nothing makes the end of the human carbon form avoidable: no survival elsewhere, no

@@ -140,9 +140,16 @@ function seamsFor(steps: CascadeStepFact[], boundary: number, originSeams: SeamR
 function startsUp(facts: CascadeFacts): boolean {
   const steps = facts.steps;
   const down = steps.filter((step) => step.pass === 'cascade' && step.lane === 'backward');
+  const up = steps.filter((step) => step.pass === 'cascade' && step.lane === 'forward');
   const downHeld = down.some((step) => step.seamsOut.length === 0);
-  const noDownPossible = facts.origin === 1 || down.length > 0;
-  return noDownPossible || downHeld;
+  // Nothing below the origin: there is no downward wing to wait for.
+  if (facts.origin === 1 || downHeld) return true;
+  // `upwardLagWaves` is a fact the budget freezes and the planner obeys: the upward wing
+  // starts once the downward frontier is that many steps ahead. One step is one wave, so the
+  // difference of the two wings' step counts is the lag in the book. A lag of 0 is legal and
+  // means "both wings at once" — the field is never decoration.
+  const lag = Math.max(0, Math.trunc(facts.budget.upwardLagWaves));
+  return down.length - up.length >= lag;
 }
 
 /**
