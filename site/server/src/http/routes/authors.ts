@@ -2,7 +2,9 @@
  * The end matter's authors list (§6C.5) and the reader's own trace (BOOK-DOC-4).
  *
  * `/api/authors` is public and cacheable: the list is measured, not live, so a reader
- * reloading the page must see the same numbers (rule 6). `/api/authors/me` and
+ * reloading the page must see the same numbers (rule 6). The measurement is the whole book
+ * (`history/erosion.ts`), so the list takes the read budget with the other book reads
+ * (`http/readLimit.ts`) instead of relying on its 30-second `max-age`. `/api/authors/me` and
  * `/api/authors/hide` are session-only: the identity comes from the cookie, never from a
  * parameter, and the answer carries no identity key — the display name is the only handle.
  */

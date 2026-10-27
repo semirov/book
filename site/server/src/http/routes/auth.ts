@@ -6,6 +6,12 @@
  * server-side, reads only the subject and a display name, mints our own opaque session
  * cookie and redirects to the book. No token is ever rendered or placed in a URL the
  * browser can read; failures are sanitized (`OAUTH_FAILED`), with the detail only in the log.
+ *
+ * The callback is the one state-changing `GET` on this surface (ARCHITECTURE.md §13): the
+ * IdP redirects the browser with a GET, so the protocol leaves no choice. It is safe because
+ * nothing happens without a valid pair — the signed `state` must equal the `HttpOnly` cookie
+ * byte for byte inside its TTL, and only then is a one-time `code` exchanged server-side; a
+ * forged or replayed request fails before any write and only clears the state cookie.
  */
 
 import { randomBytes } from 'node:crypto';

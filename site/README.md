@@ -65,7 +65,7 @@ mounted as Docker secrets (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `CAPTCHA_SECRE
 ```sh
 docker compose build
 docker compose up -d book engine
-curl -fsS http://127.0.0.1:8080/healthz | jq '{watcher,engine,front,pricing}'
+curl -fsS http://192.168.1.76:8090/healthz | jq '{watcher,engine,front,pricing}'   # the published LAN port
 ```
 
 Rollback: `bin/restore.mjs` for text, the previous image tag for code, then `engine.mjs reconcile`.

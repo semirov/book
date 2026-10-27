@@ -55,7 +55,7 @@ const schema = z.object({
    * LAN name its own address to the per-IP limits (audit m1).
    */
   trustedProxies: z.string().default('127.0.0.1,::1,192.168.1.44/32'),
-  /** Per-IP budget for the read API (`/api/history`, `/api/state`, `/api/changes`). */
+  /** Per-IP budget for the read API; which prefixes take it lives in `http/readLimit.ts`. */
   readPerMinute: z.coerce.number().int().min(1).default(60),
   commentsPerHour: z.coerce.number().int().min(1).default(10),
   /** Anti-farming limit on the identity, the same number as the SPEC's per-IP limit (§14). */

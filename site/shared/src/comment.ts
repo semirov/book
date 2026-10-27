@@ -53,10 +53,13 @@ export const EDIT_BOUND: TextBound = {
 };
 
 /**
- * The transport bound for one JSON mutation body, app-wide: a note body plus a full
- * intervention, with JSON and header overhead. It must stay above `EDIT_RAW_MAX_BYTES`, or
- * the transport would refuse what the composer promises; a body past it is still answered
- * with a public `TOO_LONG` rather than a Fastify identifier.
+ * The transport bound for one JSON mutation body, app-wide: 64 KB — the **envelope** of a
+ * request, not a per-field limit. The fields inside it keep their own raw bounds: a note body
+ * ≤8 KB (`COMMENT_RAW_MAX_BYTES`), an intervention ≤32 KB (`EDIT_RAW_MAX_BYTES`). The envelope
+ * must stay above `EDIT_RAW_MAX_BYTES`, or the transport would refuse what the composer
+ * promises; a body past it is still answered with a public `TOO_LONG` rather than a Fastify
+ * identifier. A batch item's 40 KB (`COMMENT_BATCH_ITEM_MAX_BYTES`) is a different bound: one
+ * line of the exchange file, never one request body.
  */
 export const REQUEST_BODY_MAX_BYTES = 64 * 1024;
 

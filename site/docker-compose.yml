@@ -1,6 +1,8 @@
-# book.semirov.dev on the Mac mini (192.168.1.76); Caddy on the home-server proxies to it
-# (ARCHITECTURE.md §15.2–§15.4). The port is published on the LAN address only: the site is
-# never reachable directly from the internet, and Caddy passes X-Forwarded-For.
+# book.semirov.dev on the Mac mini (192.168.1.76); Caddy on the home-server (192.168.1.44)
+# proxies to it (ARCHITECTURE.md §14 Deployment shape). The port is published on the Mac's LAN
+# address as 192.168.1.76:8090 — explicitly not loopback (Caddy runs on another host, which
+# cannot reach this host's 127.0.0.1) and never 0.0.0.0 (the site is not reachable directly
+# from the internet) — and Caddy passes X-Forwarded-For.
 services:
   book:
     build:
@@ -49,7 +51,8 @@ services:
       - /Users/filipp/projects/book:/book:ro
       # SQLite lives on a Docker volume, NOT on a host bind mount: SQLite's WAL needs a
       # shared-memory mmap, and virtiofs (OrbStack bind mounts) makes the WAL pragma hang.
-      # Backups: `docker run --rm -v book_book-data:/data -v $PWD:/out alpine tar czf /out/book-data.tgz -C /data .`
+      # Backups are manual today (a scheduled job is BOOK-28):
+      # `docker run --rm -v book_book-data:/data -v $PWD:/out alpine tar czf /out/book-data.tgz -C /data .`
       - book-data:/data
     healthcheck:
       test:

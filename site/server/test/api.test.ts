@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -339,6 +339,30 @@ describe('the read API budget (audit M6)', () => {
     // The catalogue is cheap and cached: it is not part of the budget.
     expect((await app!.inject({ method: 'GET', url: '/api/chapters' })).statusCode).toBe(200);
   });
+
+  it('spends the window on the end matter, and a normal reader still gets the list', async () => {
+    await boot({ env: { READ_PER_MINUTE: '2' } });
+
+    // A reader opening the end matter twice sees the measured list, not a refusal.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const list = await app!.inject({ method: 'GET', url: '/api/authors' });
+      expect(list.statusCode).toBe(200);
+      expect(list.json()).toMatchObject({
+        totalChars: 0,
+        author: { label: 'Филипп Семиров', share: 1 },
+        contributors: [],
+      });
+    }
+
+    const blocked = await app!.inject({ method: 'GET', url: '/api/authors' });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers['cache-control']).toBe('no-store');
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    expect(blocked.json()).toMatchObject({ code: 'RATE_LIMITED' });
+
+    // The same measurement under another name shares the spent window (BOOK-27).
+    expect((await app!.inject({ method: 'GET', url: '/api/authors/me' })).statusCode).toBe(429);
+  });
 });
 
 describe('GET /healthz (audit m4: liveness only)', () => {
@@ -432,6 +456,32 @@ describe('the shell', () => {
     const response = await app!.inject({ method: 'GET', url: '/api/nope' });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('serves a built asset with the static cache policy, and no path escapes the root', async () => {
+    await boot();
+    // A file of the built SPA, written after the app registered the root: the static layer
+    // reads from disk per request, so this is the real serving path, not a fixture.
+    mkdirSync(join(webDist!, 'assets'), { recursive: true });
+    writeFileSync(join(webDist!, 'assets', 'app-b7c1.js'), 'console.log("книга");', 'utf8');
+
+    const asset = await app!.inject({ method: 'GET', url: '/assets/app-b7c1.js' });
+    expect(asset.statusCode).toBe(200);
+    expect(String(asset.headers['content-type'])).toContain('javascript');
+    // The release's policy, pinned against a dependency bump: revalidate on every load, never
+    // a long immutable pin under a name the static layer did not hash.
+    expect(asset.headers['cache-control']).toBe('public, max-age=0');
+    expect(asset.headers.etag).toBeTruthy();
+    expect(asset.body).toContain('книга');
+
+    // Encoded separators are the classic escape: the answer is the SPA shell, never a file
+    // from outside `web/dist` (BOOK-27, the @fastify/static patch). The type and the body are
+    // both asserted, so a `200` carrying a leaked file cannot pass as a shell.
+    const escape = await app!.inject({ method: 'GET', url: '/assets/..%2f..%2fserver%2fpackage.json' });
+    expect(escape.statusCode).toBe(200);
+    expect(String(escape.headers['content-type'])).toContain('text/html');
+    expect(escape.body).toContain('книга');
+    expect(escape.body).not.toContain('@book/server');
   });
 
   it('explains a missing build instead of pretending', async () => {
