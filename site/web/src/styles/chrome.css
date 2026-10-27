@@ -195,13 +195,10 @@
   letter-spacing: 0;
   color: var(--ink);
   /* The manuscript is hard-wrapped, and that wrap is not the author's: the component joins
-     the lines with one space, so `book.css`'s `pre-line` must not put the breaks back. */
+     the lines with one space, so `book.css`'s `pre-line` must not put the breaks back.
+     The alignment is not set here: `.p` in `book.css` owns the reading measure at every
+     width (ragged-right below 600px, justified above), and page 2 follows it. */
   white-space: normal;
-  /* Explicit: base.css switches `.p` to `manual` above 600px, and the annotation keeps the
-     chapter's rhythm at every width. */
-  text-align: justify;
-  hyphens: auto;
-  -webkit-hyphens: auto;
 }
 .annotation .p:last-child {
   margin-bottom: 0;

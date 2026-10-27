@@ -120,10 +120,6 @@ h3 {
     --gut: 32px;
     --fs-body: 17.5px;
   }
-  .p {
-    hyphens: manual;
-    -webkit-hyphens: manual;
-  }
 }
 @media (min-width: 1024px) {
   :root {
@@ -133,12 +129,6 @@ h3 {
   .top-in {
     padding-top: 14px;
     padding-bottom: 10px;
-  }
-}
-@media (max-width: 360px) {
-  /* below 360 the justified column breaks into rivers: go ragged */
-  .p {
-    text-align: left;
   }
 }
 @media (prefers-reduced-motion: reduce) {

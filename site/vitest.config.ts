@@ -10,6 +10,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Stylesheets are read as text (`styles/*.css?raw`): the prose measure is an invariant
+    // the page-2 test checks, and Vitest stubs CSS imports to '' without this.
+    css: true,
     include: ['shared/test/**/*.test.ts', 'server/test/**/*.test.ts', 'web/src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ABOUT_MAX_CHARS, ABOUT_MIN_CHARS } from '@book/shared';
+import { ABOUT_MAX_CHARS, ABOUT_MIN_CHARS, normalizeBookText } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { parseFront } from '../src/ingest/parseFront.ts';
@@ -48,7 +48,10 @@ describe('parseFront', () => {
     const raw = readFileSync(join(import.meta.dirname, '..', '..', '..', 'manuscript', '00-front.md'), 'utf8');
     const parsed = parseFront(raw);
     expect(parsed.problems).toEqual([]);
-    expect(parsed.title).toBe('Без названия');
+    // The title line is the file's own first line, normalised the way the parser reads it
+    // (CRLF collapsed, trailing spaces dropped): the sheet is the source of truth.
+    const titleLine = (normalizeBookText(raw).split('\n')[0] ?? '').trim();
+    expect(parsed.title).toBe(titleLine);
     expect(parsed.blocks).toHaveLength(8);
     expect(parsed.chars).toBeGreaterThanOrEqual(ABOUT_MIN_CHARS);
     expect(parsed.chars).toBeLessThanOrEqual(ABOUT_MAX_CHARS);

@@ -7,8 +7,38 @@ import { Opening } from './Opening.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
 import { COVER_CAPTION, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
 
+/** Every stylesheet as text, keyed by path: the prose measure is a rule across the set. */
+const sheets = import.meta.glob<string>('../styles/*.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+/** The declarations of the first rule whose selector is exactly `selector`. */
+function declarations(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u'));
+  return match?.[1] ?? '';
+}
+
+/** The body of `@media (min-width: <condition>) { … }`, with nested braces balanced. */
+function mediaBody(css: string, condition: string): string {
+  const start = css.search(new RegExp(`@media \\(min-width:\\s*${condition}\\)\\s*\\{`, 'u'));
+  if (start < 0) return '';
+  const open = css.indexOf('{', start);
+  let depth = 0;
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === '{') depth += 1;
+    if (css[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return css.slice(open + 1, index);
+    }
+  }
+  return '';
+}
+
 const front: FrontDto = {
-  title: 'Без названия',
+  title: 'Тоска',
   about: 'Первый абзац аннотации.\n\nВторой абзац аннотации.',
   rev: 1,
   toc: [],
@@ -82,7 +112,7 @@ function textOf(html: string): string {
 describe('cover', () => {
   it('is the title, the live byline, the promise and the caption — and nothing else', () => {
     expect(textOf(coverHtml())).toBe(
-      `Без названия${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
+      `Тоска${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
     );
   });
 
@@ -198,6 +228,29 @@ describe('page 2', () => {
 
   it('renders nothing when the annotation is malformed: no fabricated blurb', () => {
     expect(renderToStaticMarkup(<Annotation front={{ ...front, about: null }} />)).toBe('');
+  });
+
+  it('reads ragged-right below 600px and justified above, from the one prose rule', () => {
+    // The phone defect: `.p` was justified at every width, and `.annotation .p` re-justified
+    // page 2 on top of the shared rule, so page 2 kept rivers at 342px.
+    const book = sheets['../styles/book.css'] ?? '';
+    expect(declarations(book, '.p')).toContain('text-align: left');
+    // The threshold is pinned: 600px, the same breakpoint as the type and the gutters.
+    expect(book).toMatch(/@media \(min-width:\s*600px\)/u);
+    expect(declarations(mediaBody(book, '600px'), '.p')).toContain('text-align: justify');
+    // Exactly one justification in the whole sheet set, and it is that block.
+    const justified = Object.keys(sheets).filter((file) => (sheets[file] ?? '').includes('text-align: justify'));
+    expect(justified).toEqual(['../styles/book.css']);
+    expect(book.match(/text-align: justify/gu)).toHaveLength(1);
+    // No other stylesheet re-aligns the prose — page 2 follows the same rule.
+    for (const [file, css] of Object.entries(sheets)) {
+      if (file === '../styles/book.css') continue;
+      expect(css, file).not.toMatch(/\.p\s*\{[^}]*text-align/u);
+    }
+    // The annotation still keeps its own type: the measure is not all it says.
+    expect(declarations(sheets['../styles/chrome.css'] ?? '', '.annotation .p')).toContain(
+      'white-space: normal',
+    );
   });
 });
 

@@ -93,7 +93,7 @@ export function App() {
    */
   const card = useChangeCard();
   const focus = useFocusMode(card.close);
-  usePageTitle(data?.front.title ?? null);
+  usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
   const timers = useRef<number[]>([]);

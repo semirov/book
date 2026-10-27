@@ -36,9 +36,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The one rule that sets the reading measure (chapters and page 2 alike). Below 600px a
+   justified 342px column with auto hyphenation opens rivers («Доста- / точно,   чтобы
+   система»), so the phone reads ragged-right; the design's justified measure returns on
+   the wider screens. Size, leading, colour and measure never change with it. */
 .p {
   margin-bottom: 1.02em;
-  text-align: justify;
+  text-align: left;
   hyphens: auto;
   -webkit-hyphens: auto;
   text-wrap: pretty;
@@ -47,6 +51,11 @@
 }
 .p:last-child {
   margin-bottom: 0;
+}
+@media (min-width: 600px) {
+  .p {
+    text-align: justify;
+  }
 }
 
 .ch-fail {
