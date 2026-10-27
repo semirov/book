@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest';
 import type { Ribbon } from '../lib/cascade.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { ChangeCard } from './ChangeCard.tsx';
-import { TimelineRow } from './Chronicle.tsx';
+import { Chronicle, TimelineRow } from './Chronicle.tsx';
 import { FocusView } from './FocusView.tsx';
+import { ParagraphChain } from './ParagraphChain.tsx';
 
 /**
  * The copy guard (BOOK-15, BOOK-19): reader-facing words the book may not say.
@@ -18,9 +19,24 @@ import { FocusView } from './FocusView.tsx';
  * those surfaces render from are scanned beside this test (`server/test/copy.test.ts`,
  * where reading source files is allowed). «Стык пересматривается» is the book's own word
  * for the seam and stays.
+ *
+ * BOOK-DOC-43 §6 (BOOK-66): a placeholder may not promise progress it does not measure, so
+ * the skeleton's own vocabulary is banned too. The surfaces this pass touched (the chronicle
+ * and the paragraph chain) are printed here as well, so the guard is not vacuous for them.
  */
 
-const BANNED = ['шов', 'противоречие исправлено', 'битый', 'retcon', 'редактор', 'консультант', 'аудитор'];
+const BANNED = [
+  'шов',
+  'противоречие исправлено',
+  'битый',
+  'retcon',
+  'редактор',
+  'консультант',
+  'аудитор',
+  'почти готово',
+  'осталось',
+  'подождите немного',
+];
 
 const change: ChangeDto = {
   id: 'chg_1',
@@ -154,6 +170,16 @@ function surfaces(): string {
         deed="зарегистрировано · заведено дело · внесены изменения · причина установлена · поправка: пункт изложен в новой редакции · расхождение зафиксировано"
         onPick={() => undefined}
         onOpenChange={() => undefined}
+      />,
+    ),
+    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} />),
+    renderToStaticMarkup(
+      <ParagraphChain
+        chain={null}
+        loading={false}
+        failed
+        onClose={() => undefined}
+        onRetry={() => undefined}
       />,
     ),
   ].join('\n');

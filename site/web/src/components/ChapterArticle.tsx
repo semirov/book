@@ -1,5 +1,4 @@
 import {
-  chapterLabel,
   type BlockRevisingPayload,
   type CatalogEntry,
   type ChapterDto,
@@ -14,18 +13,21 @@ import { getChapter } from '../api.ts';
 import { nearViewport, reducedMotion } from '../dom.ts';
 import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
 import { reserveHeight } from '../lib/cssom.ts';
-import { formatChars, formatTime } from '../lib/format.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
+import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
+import { usePending } from '../usePending.ts';
+import { ChapterHeader } from './ChapterHeader.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { Seam } from './Seam.tsx';
+import { Skeleton } from './Skeleton.tsx';
 import {
   REVEAL,
   activeBlockId,
@@ -106,6 +108,14 @@ export function ChapterArticle({
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
   const showsText = entry.written || entry.basis;
   const basisSentence = basisSentenceOf(entry);
+  /**
+   * BOOK-DOC-43 §4 — the wait is real from the fetch until it settles, data or failure.
+   * Derived from state, not from the `loading` ref: a settle has to re-render this slot.
+   * A basis slot is complete before the request (its frame is one shared constant), so it
+   * waits silently: no status line and no busy claim for text that is already on screen.
+   */
+  const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
+  const stage = usePending(busy);
 
   const startReveal = useCallback((loaded: ChapterDto) => {
     const reduce = reducedMotion();
@@ -296,24 +306,10 @@ export function ChapterArticle({
   const showCaret = caret?.show === true && chapter !== null && entry.written;
   const caretBlockId = reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter?.blocks.at(-1)?.id ?? null : null)) : null;
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
+  /** §6: `null` while the wait is quiet — the header then prints what it prints today. */
+  const status = statusLine('chapter', stage, entry.n);
 
-  const header = (
-    <header className="ch-h">
-      <span className="ch-id">
-        <h2 className="ch-n" aria-hidden="true">
-          {chapterLabel(entry.n)}
-        </h2>
-      </span>
-      <span className="ch-meta">
-        {printing ? '■ печатается · ' : ''}
-        {entry.written
-          ? `${formatChars(entry.chars)} · ${formatTime(entry.updatedAt)}`
-          : basisSentence === null
-            ? 'не написана'
-            : null}
-      </span>
-    </header>
-  );
+  const header = <ChapterHeader entry={entry} printing={printing} status={status} basisSentence={basisSentence} />;
 
   if (!showsText) {
     // BOOK-DOC-34 §2.4: an empty chapter is a 44 px field, and its one premise opens in it.
@@ -382,7 +378,7 @@ export function ChapterArticle({
       data-basis={entry.basis ? 'true' : undefined}
       ref={article}
       aria-label={`глава ${entry.n}`}
-      aria-busy={chapter === null && !failed}
+      aria-busy={busy ? 'true' : undefined}
     >
       {header}
       {entry.title !== null ? (
@@ -447,13 +443,17 @@ export function ChapterArticle({
       {chapter === null && basisSentence === null && !failed ? (
         // BOOK-30: the reserved height goes through CSSOM (`reserveHeight`) so the markup
         // carries no style attribute; the ref runs in the same commit, before paint.
+        // BOOK-DOC-43 §3: the form lives INSIDE this reserved box and sets no height of its
+        // own, so the placeholder adds 0 px to the page.
         <div
           className="ch-placeholder"
           ref={(node) => {
-            reserveHeight(node, estimateChapterHeight(entry.chars, window.innerWidth || 390));
+            reserveHeight(node, Math.max(estimateChapterHeight(entry.chars, window.innerWidth || 390), CHAPTER_BOX_PX));
           }}
           aria-hidden="true"
-        />
+        >
+          {stage === 'quiet' ? null : <Skeleton variant="chapter" />}
+        </div>
       ) : null}
 
       {reanchor?.blockGone === true ? (

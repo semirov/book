@@ -87,7 +87,8 @@ describe('the end matter (§6C.5)', () => {
     );
     expect(html).toContain('Филипп Семиров');
     expect(html).toContain('—');
-    expect(html).toContain('пока весь текст написан автором');
+    // A wait is not an empty roster (§10): the sentence about the text is a fact, not a form.
+    expect(html).not.toContain('пока весь текст написан автором');
     expect(html).not.toContain('%');
   });
 
@@ -133,5 +134,107 @@ describe('the end matter (§6C.5)', () => {
     );
     expect(html).toContain('100,0 %');
     expect(html).toContain('пока весь текст написан автором');
+  });
+});
+
+/**
+ * BOOK-DOC-43 §3, §6, §7 — the shares are a measurement, and it has a wait (BOOK-66).
+ *
+ * The roster's slot keeps its shape: the status goes where the empty-state sentence already
+ * lives, the three rows are a form with blank fields, and the author row is one of them — a
+ * real row beside the form would be a fact and a blank for the same three cells.
+ */
+describe('«Авторы» while the shares are counted', () => {
+  function markup(props: {
+    authors: AuthorsDto | null;
+    stage: 'quiet' | 'skeleton' | 'slow';
+    authorsFailed?: boolean;
+  }): string {
+    return renderToStaticMarkup(
+      <Authors
+        authors={props.authors}
+        stage={props.stage}
+        {...(props.authorsFailed === true ? { authorsFailed: true } : {})}
+        imprint={imprint}
+        lastRevisionAt={null}
+        onOpenChronicle={() => undefined}
+      />,
+    );
+  }
+
+  it('says what is loading instead of the false fact, and draws the form of three rows', () => {
+    const html = markup({ authors: null, stage: 'skeleton' });
+    expect(html).toContain('доли считаются');
+    expect(html).toContain('class="skel skel-authors"');
+    expect(html).toContain('aria-busy="true"');
+    // The form keeps the list's box (18 px top margin), so the content below does not move
+    // when the rows arrive: one `li` holds the hidden form inside the same `ol.authors-list`.
+    expect(html).toContain('<ol class="authors-list"><li><div class="skel skel-authors"');
+    expect(html).not.toContain('пока весь текст написан автором');
+    // No pseudo-row: the author's name is a blank cell in the form, not a fact beside it.
+    expect(html).not.toContain('authors-row');
+    expect(html).not.toContain('>автор<');
+    // Exactly one status, in the slot `.authors-empty` already owns.
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
+    expect(html).toMatch(/<p class="authors-empty"><span role="status"/u);
+  });
+
+  it('carries the slow sentence in the same slot', () => {
+    const html = markup({ authors: null, stage: 'slow' });
+    expect(html).toContain('доли считаются дольше обычного · цифры появятся здесь же');
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
+    expect(html).not.toContain('пока весь текст написан автором');
+  });
+
+  it('is busy for the whole request, not from the 150 ms sentence (§7 alignment)', () => {
+    const html = renderToStaticMarkup(
+      <Authors
+        authors={null}
+        stage="quiet"
+        busy
+        imprint={imprint}
+        lastRevisionAt={null}
+        onOpenChronicle={() => undefined}
+      />,
+    );
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('class="skel');
+    const settled = renderToStaticMarkup(
+      <Authors
+        authors={measured}
+        stage="quiet"
+        busy={false}
+        imprint={imprint}
+        lastRevisionAt={null}
+        onOpenChronicle={() => undefined}
+      />,
+    );
+    expect(settled).not.toContain('aria-busy');
+  });
+
+  it('returns the real rows when the measurement lands: no form, no status, no busy claim', () => {
+    const html = markup({ authors: measured, stage: 'quiet' });
+    expect(html).toContain('class="authors-list"');
+    expect(html).toContain('87,5 %');
+    expect(html).not.toContain('class="skel');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('aria-busy');
+  });
+
+  it('is silent after a failure: no form, no status, no false fact, «—» stays', () => {
+    const html = markup({ authors: null, stage: 'quiet', authorsFailed: true });
+    expect(html).not.toContain('class="skel');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('aria-busy');
+    expect(html).not.toContain('пока весь текст написан автором');
+    expect(html).toContain('—');
+    expect(html).toContain('Филипп Семиров');
+  });
+
+  it('does not claim an empty roster off a failed re-measure either', () => {
+    // A measurement that failed after an earlier one may be stale: no sentence, but the rows stay.
+    const html = markup({ authors: { ...measured, contributors: [] }, stage: 'quiet', authorsFailed: true });
+    expect(html).not.toContain('пока весь текст написан автором');
   });
 });

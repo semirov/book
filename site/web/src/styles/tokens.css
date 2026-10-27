@@ -177,6 +177,17 @@
   --dur-fade: 400ms;
   --ease-out: cubic-bezier(0.22, 0.68, 0.24, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* skeleton widths — BOOK-DOC-43 §3. Geometry, not ink, so there is no day/night pair:
+     eight ragged line endings, never 100 %, selected by `data-w` on a `.skel-line`. */
+  --skel-w1: 94%;
+  --skel-w2: 88%;
+  --skel-w3: 62%;
+  --skel-w4: 97%;
+  --skel-w5: 91%;
+  --skel-w6: 55%;
+  --skel-w7: 90%;
+  --skel-w8: 68%;
 }
 
 /* The scale narrows with the measure: the laptop keeps 18px, the tablet 17.5, the phone 17.

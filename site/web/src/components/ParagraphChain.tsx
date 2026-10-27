@@ -5,6 +5,9 @@ import { placePanel } from '../lib/cssom.ts';
 import { chainHead } from '../lib/history.ts';
 import { formatTime } from '../lib/format.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
+import { statusLine } from '../lib/skeleton.ts';
+import { usePending } from '../usePending.ts';
+import { Skeleton } from './Skeleton.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -27,16 +30,24 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
 export function ParagraphChain({
   chain,
   loading,
+  failed,
   onClose,
+  onRetry,
   anchor = null,
 }: {
   chain: ParagraphChainDto | null;
   loading: boolean;
+  /** The read failed: the panel prints a failure and a retry, never an absence (§10). */
+  failed: boolean;
   onClose: () => void;
+  onRetry: () => void;
   anchor?: AnchorRect | null;
 }) {
   const panel = useRef<HTMLElement>(null);
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
+  /** §4: the status and the form appear only once the wait is real; the head alone before. */
+  const stage = usePending(loading);
+  const status = statusLine('chain', stage);
 
   useMeasuredLayout(() => {
     if (anchor === null) {
@@ -50,7 +61,7 @@ export function ParagraphChain({
     // Equality guard: a measurement that agrees with the current box changes no state, so
     // one measurement is one render and the panel cannot oscillate.
     setPlacement((current) => (samePlacement(current, next) ? current : next));
-  }, [anchor, chain, loading]);
+  }, [anchor, chain, loading, failed, stage]);
 
   // BOOK-30: the measured box goes through CSSOM (`placePanel`), not a `style` attribute,
   // so no inline style reaches the markup; it runs before paint, after the same measurement.
@@ -65,6 +76,7 @@ export function ParagraphChain({
       className={`chain ym-hide-content${placement === null ? '' : ' chain-anchored'}`}
       role="dialog"
       aria-label="откуда эта фраза"
+      aria-busy={loading ? 'true' : undefined}
       ref={panel}
     >
       <div className="chain-head">
@@ -73,8 +85,23 @@ export function ParagraphChain({
           ✕
         </button>
       </div>
-      {loading ? <p className="chr-empty">цепочка читается…</p> : null}
-      {!loading && chain === null ? <p className="chr-empty">у этой строки нет истории</p> : null}
+      {/* The status keeps the `.chr-empty` slot the panel already has, so it adds no height. */}
+      {status === null ? null : (
+        <p className="chr-empty" role="status" aria-live="polite" aria-atomic="true">
+          {status}
+        </p>
+      )}
+      {stage === 'quiet' ? null : <Skeleton variant="chain" />}
+      {!loading && failed ? (
+        <div className="state-line">
+          <span>цепочка не прочиталась</span>
+          <button type="button" onClick={onRetry}>
+            повторить
+          </button>
+        </div>
+      ) : null}
+      {/* The absence is a fact about a read that came back: never printed for a failure. */}
+      {!loading && !failed && chain === null ? <p className="chr-empty">у этой строки нет истории</p> : null}
       {chain === null ? null : (
         <>
           <p className="chain-line">{chain.line}</p>

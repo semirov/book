@@ -17,6 +17,15 @@
  *      `font-size` declaration and used to slip through.
  *   4. no `@media (min-width: …)`. The regime is adaptive: the base rules are the desktop
  *      layout and every query narrows. `min-width: 0` as a property is not a query.
+ *   5. no spinner and no shimmer anywhere in the sheet set (BOOK-DOC-43 §5, chrome.css:173):
+ *      a wait is a sentence and a form with blank fields, never a moving gradient — so
+ *      `shimmer`, `spinner` and `background-position` are all problems, comments excluded.
+ *   6. a skeleton rule declares no motion of its own but the one 120 ms fade in, and only as
+ *      the whole shorthand (`animation: skel-in var(--dur-tick) var(--ease-out) both`). A
+ *      rule is a skeleton rule when any selector's **last compound** carries the `.skel`
+ *      class — `.focus-stage .skel-sheet`, `.page > .skel`, `.skel-line::before` all count.
+ *      Every other `animation*` declaration is a problem, named longhand or a future one:
+ *      a longhand overrides the shorthand, and that is how a loop or a longer pulse gets in.
  *
  * `styleProblems(dir)` is pure; `arch.mjs` prints it and the test seeds one violation of each
  * kind to prove the failure path.
@@ -50,6 +59,44 @@ const SIZE_KEYWORD = /\b(?:xx-small|x-small|small|medium|large|x-large|xx-large|
  * the `min-width: 0` property are not queries and pass.
  */
 const MIN_WIDTH_QUERY = /@media[^{]*?\(\s*(?:min-width\s*[:)]|width\s*>=\s*\d|\d[\d.]*\w*\s*<=\s*width)/u;
+/** BOOK-DOC-43 §5: the motion vocabulary a wait may not use. `background-position` is the
+ * moving gradient a hand-built shimmer needs. */
+const BANNED_MOTION = [
+  ['shimmer', 'shimmer — a placeholder never animates time passing; it is a static form with blank fields (BOOK-DOC-43 §5)'],
+  ['spinner', 'spinner — a failing fetch is a sentence and a retry, never a spinner (chrome.css:173, BOOK-DOC-43 §5)'],
+  ['background-position', 'background-position — a moving gradient is a shimmer built by hand (BOOK-DOC-43 §5)'],
+];
+/** A `.skel` class in a compound: `.skel`, `.skel-line`, `.skel-chapter`. */
+const SKEL_CLASS = /\.skel(?:-[\w-]+)?(?![-\w])/u;
+
+/** The one legal motion in a skeleton rule, whitespace-normalised. */
+const SKEL_FADE = 'skel-in var(--dur-tick) var(--ease-out) both';
+
+/**
+ * The last compound of a selector — `.page > .skel-line::before` → `.skel-line`.
+ *
+ * A skeleton selector is recognised by the compound it styles, not by where it starts: a
+ * descendant (`.focus-stage .skel-sheet`), a child (`.page > .skel`) and a pseudo-element
+ * (`.skel-line::before`) are all the skeleton's rule, and the guard used to miss the first
+ * two. Combinators and whitespace split the compounds; a trailing `::part` / `:state` (with
+ * its own parentheses) is dropped, because it is the element the compound names.
+ */
+function lastCompound(selector) {
+  const parts = selector.split(/[\s>+~]+/u).filter((part) => part.length > 0);
+  const last = parts.at(-1) ?? '';
+  return last.replace(/(?:::?[a-z-]+(?:\([^()]*\))?)+$/iu, '');
+}
+
+/** Every selector in a rule's list whose last compound carries the skeleton's class. */
+function isSkeletonRule(selector) {
+  return selector
+    .split(',')
+    .map((part) => part.trim())
+    .some((part) => part.length > 0 && SKEL_CLASS.test(lastCompound(part)));
+}
+
+const CSS_RULE = /([^{}]+)\{([^{}]*)\}/gu;
+const ANIMATION_DECLARATION = /([a-z-]*animation[a-z-]*)\s*:\s*([^;}]+)/gu;
 const TOKEN = /(--[a-z0-9-]+)\s*:\s*([^;}]+)/gu;
 const FS_TOKEN = /--fs-[a-z0-9-]+/u;
 const FONT_SIZE = /font-size\s*:\s*([^;}]+)/gu;
@@ -222,6 +269,37 @@ export function styleProblems(stylesDir) {
     const query = MIN_WIDTH_QUERY.exec(css);
     if (query !== null) {
       report(path, css, query.index, '@media min-width query — the base is the desktop; narrow with max-width (BOOK-DOC-35 §3)');
+    }
+
+    // 5 — no spinner, no shimmer: a wait is a sentence and a form with blank fields.
+    for (const [token, message] of BANNED_MOTION) {
+      for (const match of css.matchAll(new RegExp(token, 'giu'))) {
+        report(path, css, match.index ?? 0, message);
+      }
+    }
+
+    // 6 — a skeleton rule owns one fade in and nothing else. The selector is the text before
+    // its `{`, so `@keyframes skel-in` itself is not a skeleton rule; and the rule is a
+    // skeleton's when the *last compound* of any selector is, which is what `isSkeletonRule`
+    // reads (a descendant or a pseudo-element is no alibi).
+    for (const rule of css.matchAll(CSS_RULE)) {
+      const [, selector, body] = rule;
+      if (!isSkeletonRule(selector)) continue;
+      const bodyAt = (rule.index ?? 0) + selector.length + 1;
+      for (const declaration of body.matchAll(ANIMATION_DECLARATION)) {
+        const property = declaration[1];
+        const value = declaration[2].replace(/\s+/gu, ' ').trim();
+        const at = bodyAt + (declaration.index ?? 0);
+        if (property === 'animation') {
+          if (value !== SKEL_FADE) {
+            report(path, css, at, `animation: ${value} — a .skel rule admits only «${SKEL_FADE}», the one 120 ms fade in (BOOK-DOC-43 §5)`);
+          }
+        } else {
+          // Every longhand, the ones CSS has today and any future one: a longhand overrides
+          // the shorthand, and that is how a loop or a longer pulse gets in.
+          report(path, css, at, `${property}: ${value} — the shorthand «${SKEL_FADE}» is the only motion a placeholder owns; a longhand such as ${property} overrides it (BOOK-DOC-43 §5)`);
+        }
+      }
     }
   }
 
