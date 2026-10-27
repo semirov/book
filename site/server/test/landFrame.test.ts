@@ -109,6 +109,54 @@ describe('land — the frozen frame is character-exact (F029, BOOK-137)', () => 
     }
   });
 
+  it('lands the real ch01 shape — no title line, the file opens on the sentence (manuscript/ch01.md)', () => {
+    // The book's own file has no heading above the frame: line 1 *is* the sentence (BOOK-32),
+    // and the chapter is read as untitled prose. This is the shape the engine writes in prod.
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const assignment = draftOf(fixture, 'fwd');
+      fixture.writeChapter(1, `${FRAME_FIRST_SENTENCE}\n\nЯ постоял и вышел.\n\n${FILLER}\n`);
+
+      expect(fixture.engine.land(assignment.leaseId)).toMatchObject({ landed: true, changed: true, revAfter: 1 });
+      expect(revisionsOf(fixture, 1)).toEqual([{ rev: 1 }]);
+      const first = fixture.db.prepare('SELECT text FROM blocks WHERE chapter = 1 ORDER BY idx LIMIT 1').get() as {
+        text: string;
+      };
+      expect(first.text).toBe(FRAME_FIRST_SENTENCE);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('refuses a landing on the real ch01 shape when the sentence itself moved', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const assignment = draftOf(fixture, 'fwd');
+      fixture.writeChapter(1, `${WEAKENED_FIRST}\n\nЯ постоял и вышел.\n\n${FILLER}\n`);
+
+      expect(refusal(() => fixture.engine.land(assignment.leaseId))).toMatchObject({
+        code: 'FRAME_CHANGED',
+        status: 409,
+      });
+      expect(revisionsOf(fixture, 1)).toEqual([]);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('lands a ch01 draft whose title line sits above the frame', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const assignment = draftOf(fixture, 'fwd');
+      fixture.writeChapter(1, `Начало\n\n${FRAME_FIRST_SENTENCE}\n\n${FILLER}\n`);
+
+      expect(fixture.engine.land(assignment.leaseId)).toMatchObject({ landed: true, changed: true, revAfter: 1 });
+      expect(revisionsOf(fixture, 1)).toEqual([{ rev: 1 }]);
+    } finally {
+      fixture.close();
+    }
+  });
+
   it('leaves a chapter with no frame alone: a landing below the frame chapters is unchanged', () => {
     const fixture = createEngineFixture({ front: null });
     try {

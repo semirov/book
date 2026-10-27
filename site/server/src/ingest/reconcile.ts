@@ -26,6 +26,11 @@ export type ReconcileReport = {
   removed: number[];
   /** Slots that hold only their basis sentence: projected as one paragraph, still unwritten (BOOK-6). */
   emptied: number[];
+  /**
+   * Files whose frame is not the book's frame (ch01/ch67, BOOK-137): nothing was published from
+   * them, the projection keeps the sentence it serves, and the boot goes on.
+   */
+  frameRejected: number[];
   front: FrontReconcileState;
   /** The manuscript directory itself is absent (a bad mount): nothing is removed. */
   missing: boolean;
@@ -53,6 +58,7 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
     unchanged: [],
     removed: [],
     emptied: [],
+    frameRejected: [],
     front: 'missing',
     missing: scan.missing,
     frontProblems: [],
@@ -75,6 +81,7 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
       else if (result.status === 'revised') report.revised.push(result.n);
       else if (result.status === 'unchanged') report.unchanged.push(result.n);
       else if (result.status === 'emptied') report.emptied.push(result.n);
+      else if (result.status === 'frame-rejected') report.frameRejected.push(result.n);
       // `empty`: a zero-byte first sight is a slot in progress; a previous revision is
       // kept rather than blanked (§6.2). The watcher adds the 5 s follow-up rule. A slot
       // reduced to its basis sentence is not that case: it is `emptied` (BOOK-6) and keeps

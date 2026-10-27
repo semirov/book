@@ -302,7 +302,7 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     expect(file(h, 'ch01.md')).toContain(FRAME_FIRST_SENTENCE);
   });
 
-  it('marks a filing on the paragraph after the frame as untouched', async () => {
+  it('marks a filing on the paragraph after the frame as adjacent', async () => {
     const h = await boot();
     const after = blockOf(h, 1, 1);
     const posted = await post(
@@ -310,7 +310,7 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
       commentBody({ chapter: 1, blockId: after.id, quote: 'Свет был включён до меня', body: 'Свет включили до него.' }),
     );
     expect(posted.statusCode).toBe(201);
-    expect(posted.json().comment.frame).toBe('untouched');
+    expect(posted.json().comment.frame).toBe('adjacent');
   });
 });
 

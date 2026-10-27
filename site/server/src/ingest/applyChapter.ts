@@ -33,6 +33,7 @@ import {
   type WriteActor,
   type WriteCause,
 } from './attribution.ts';
+import { frameIntact } from './frameGuard.ts';
 import { parseChapter, type ParsedChapter } from './parseChapter.ts';
 import { PATCH_MAX_BYTES, patchBlocks, patchSize } from './patchBlocks.ts';
 import { restoreCause, restoredFrom } from './restore.ts';
@@ -83,6 +84,12 @@ export type ApplyChapterResult =
   /** Zero blocks: an empty slot in progress, or a truncate-then-write the caller must guard. */
   | { status: 'empty'; n: number }
   /**
+   * The file's frame is not the book's frame (ch01/ch67, BOOK-137): **nothing was published** —
+   * no revision, no `rev` bump, no block replace, no log entry, no snapshot. The projection
+   * keeps serving the canon sentence; the caller reports the refusal and moves on.
+   */
+  | { status: 'frame-rejected'; n: number }
+  /**
    * The file now holds only its basis sentence (ch01/ch67): the slot is projected as that
    * one paragraph and stays unwritten — a legitimately empty slot, not an empty write
    * between two saves (§6.2, BOOK-6). The history is not touched.
@@ -113,6 +120,12 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
   // snapshot, because nobody wrote it and it is not a chapter.
   if (parsed.basis) return projectBasis(db, n, existing, parsed, observedAt);
   if (parsed.blocks.length === 0) return { status: 'empty', n };
+  // BOOK-137 — the frame is the one text a file may not move, and this is the choke point every
+  // publisher goes through: the watcher, the boot scan and the engine's own ingest of a landing.
+  // A file whose frame moved publishes nothing at all, because the reader would already be
+  // reading the weakened sentence by the time a late `land` refused it. The projection keeps
+  // the text and the `rev` it serves; putting the sentence back publishes normally.
+  if (!frameIntact(n, input.raw)) return { status: 'frame-rejected', n };
 
   const observed = input.cause ?? chapterWriteCause(db, n, input.nowMs);
   // §13.3: with no lease, a text that is byte-identical to an earlier stored revision is a

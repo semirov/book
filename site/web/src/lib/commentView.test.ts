@@ -77,6 +77,29 @@ describe('comment thread copy (§11.6)', () => {
     });
   });
 
+  it('prints the paperwork’s own line for a registered filing, and nothing else', () => {
+    // BOOK-137 — a filing on the canon sentence was decided as paperwork: the thread says
+    // «рассмотрено · оформление · фраза не изменилась». The stored reason is the same fact in
+    // the server's words, so it is not appended twice; a named mode replaces the default one.
+    const line = commentStatusLine(
+      comment({ status: 'registered', reason: 'принято как оформление: рамка книги — фраза не меняется' }),
+    );
+    expect(line).toEqual({
+      state: 'рассмотрено',
+      detail: 'оформление · фраза не изменилась',
+      tone: 'done',
+      form: 'chip',
+    });
+    expect(commentStatusLine(comment({ status: 'registered', reason: null }))).toMatchObject({
+      state: 'рассмотрено',
+      detail: 'оформление · фраза не изменилась',
+    });
+    expect(
+      commentStatusLine(comment({ status: 'registered', reason: 'принято как поправка: рамка книги — фраза не меняется' }))
+        .detail,
+    ).toBe('поправка · фраза не изменилась');
+  });
+
   it('keeps every state a chip: the clause and the receipt are the detail (BOOK-90)', () => {
     // BOOK-90's words are 4 / 4 / 7 characters: a state is never a sentence. The receipt of a
     // landed change and a clause («снято: …») live on the detail line, whole.

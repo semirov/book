@@ -72,6 +72,11 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       return lineOf(word, failedAttempt(comment) ? filingConsequence(comment) : null, 'live');
     case 'accepted':
       return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
+    case 'registered':
+      // BOOK-137 — the paperwork's own line: «рассмотрено · оформление · фраза не изменилась»,
+      // and nothing else. The reason is that same sentence on the row, so printing it too would
+      // say «фраза не меняется» twice.
+      return lineOf(word, filingConsequence(comment), 'done');
     case 'applied': {
       // BOOK-58: the receipt of an entered variant names the chapter and the right that moved
       // with it — the state is the word «внесено», the receipt is its detail. A note moved no

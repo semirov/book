@@ -17,9 +17,9 @@ import type { RetroMode } from './change.ts';
  * How a filing sits against the frame of its chapter.
  *
  * `touched` — the filing intersects the sentence itself (an acceptance of it is paperwork);
- * `adjacent` — the filing is in the sentence's own paragraph but not on it (an ordinary edit,
- * told apart from a far one in the record); `untouched` — anywhere else, and every chapter
- * without a frame.
+ * `adjacent` — the filing is in the sentence's own paragraph, or in the one beside it inside
+ * the chapter, but not on the sentence (an ordinary edit, told apart from a far one in the
+ * record); `untouched` — anywhere else, and every chapter without a frame.
  */
 export type FrameMark = 'touched' | 'adjacent' | 'untouched';
 
@@ -77,19 +77,22 @@ export function classifyFrame(input: FrameInput): FrameMark {
   if (quote.length > 0 && (quote.includes(expected) || expected.includes(quote))) return 'touched';
 
   // `adjacent` is about where the filing sat, not what it proposed: the frame's own paragraph,
-  // or the block beside the frame's inside the chapter.
+  // or the block beside the frame's inside the chapter — the paragraph after ch01's sentence,
+  // the paragraph before ch67's. A filing 50 blocks away is `untouched`, and the record can
+  // tell the two apart.
   if (flat(input.blockText).includes(expected)) return 'adjacent';
   if (input.blockIndex === null) return 'untouched';
   return frameBlocksOf(input.chapter, input.blockCount).includes(input.blockIndex) ? 'adjacent' : 'untouched';
 }
 
 /**
- * The frame's paragraph and the one beside it. A written chapter opens (ch01) or closes (ch67)
- * on the frame, so its block is the first or the last one, and the block on the far side of it
- * — before the opener, after the closer — lies outside the chapter. The rule is written as
- * stated anyway, so a chapter that ever holds the frame elsewhere needs no second rule.
+ * The frame's paragraph and the one beside it, inside the chapter. A written chapter opens
+ * (ch01) or closes (ch67) on the frame, so its own block is the first or the last one and the
+ * neighbour is the block after it or before it — index 1 and `last - 1`. The frame's own block
+ * is already recognised by `blockText` above; naming it here costs nothing and keeps the rule
+ * readable as stated, so a chapter that ever holds the frame elsewhere needs no second rule.
  */
 function frameBlocksOf(chapter: number, blockCount: number): readonly number[] {
   const last = Math.max(0, blockCount - 1);
-  return chapter === 1 ? [0, -1] : [last, last + 1];
+  return chapter === 1 ? [0, 1] : [last - 1, last];
 }

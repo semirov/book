@@ -15,13 +15,12 @@ import {
   FRONT_ANNOTATION_FROZEN,
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
-  frameSentenceOf,
-  parseChapterTitle,
   type Relevance,
 } from '@book/shared';
 
 import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
 import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
+import { frameIntact } from '../ingest/frameGuard.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
@@ -91,27 +90,9 @@ function ingestLanding(
     nowMs: at,
   });
   if (result.status === 'created' || result.status === 'revised') return { rev: result.rev, changed: true };
+  // `frame-rejected` lands here too: the ingest published nothing, and `land` answers the
+  // driver `FRAME_CHANGED` before it ever gets this far (BOOK-137).
   return { rev: null, changed: false };
-}
-
-/**
- * F029 / BOOK-137 — the frame is the one thing a landing may not change.
- *
- * The check is placed where the file becomes a fact: a landing on ch01 must open with the canon
- * sentence and a landing on ch67 must close with it, character for character. It compares with
- * `startsWith`/`endsWith` and **no** whitespace collapsing: a reader's filing may be examined,
- * the sentence's letters may not move by a hair. The blank line that separates a title line from
- * the prose is a line break, not text, so it is skipped — inner whitespace never is.
- * The boot scan and the watcher keep applying files as they do (§18: files win) — this guard
- * governs a landing, not an observation.
- */
-function frameIntact(n: number, raw: string): boolean {
-  const expected = frameSentenceOf(n);
-  if (expected === null) return true;
-  const body = parseChapterTitle(n, raw).body;
-  return n === 1
-    ? body.replace(/^\n+/u, '').startsWith(expected)
-    : body.replace(/\n+$/u, '').endsWith(expected);
 }
 
 export function createWriteOps(deps: EngineDeps) {

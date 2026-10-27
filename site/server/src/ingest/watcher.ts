@@ -126,6 +126,11 @@ export class ManuscriptWatcher {
   private lastVersion: number | null = null;
   /** The last count page 1 was told, so an unchanged N is not re-broadcast. */
   private lastAuthorsCount: number | null = null;
+  /**
+   * BOOK-137 — the sha of a file already reported as having moved its frame, so a poll that
+   * re-reads the same bytes logs one line, not one per tick.
+   */
+  private readonly frameRejected = new Map<string, string>();
   private stopped = false;
 
   constructor(options: WatcherOptions) {
@@ -259,6 +264,7 @@ export class ManuscriptWatcher {
         nowMs: this.now().getTime(),
       });
       if (emptied.status === 'emptied') {
+        this.frameRejected.delete(path);
         this.status.lastEventAt = toIso(this.now());
         this.log('chapter reduced to its basis sentence', { n });
         this.emitAuthors();
@@ -306,6 +312,11 @@ export class ManuscriptWatcher {
       mtimeMs: observed.mtimeMs,
       nowMs: this.now().getTime(),
     });
+    if (result.status === 'frame-rejected') {
+      this.frameRefused(path, n, parsed.sha256);
+      return;
+    }
+    this.frameRejected.delete(path);
     if (result.status === 'created') {
       this.status.lastEventAt = toIso(this.now());
       this.emit({ type: 'chapter:created', data: createdPayload(result) });
@@ -317,6 +328,21 @@ export class ManuscriptWatcher {
       this.emitAuthors();
       this.emitState('file');
     }
+  }
+
+  /**
+   * BOOK-137 — a file whose frame moved was not published. One line per distinct version of
+   * that file: the projection still serves the canon sentence, so there is no event and no state
+   * change, and a poll that reads the same bytes again says nothing new.
+   */
+  private frameRefused(path: string, n: number, sha256: string): void {
+    if (this.frameRejected.get(path) === sha256) return;
+    this.frameRejected.set(path, sha256);
+    this.log('frame moved in the file: nothing published, the serving text keeps its frame', {
+      n,
+      path,
+      sha256,
+    });
   }
 
   private chapterRemoved(n: number): void {

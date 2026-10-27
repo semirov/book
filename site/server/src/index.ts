@@ -165,6 +165,7 @@ async function main(): Promise<void> {
       written: catalog.filter((entry) => entry.written).map((entry) => entry.n),
       front: report.front,
       frontProblems: report.frontProblems,
+      frameRejected: report.frameRejected,
       ignored: report.ignored,
       readErrors: report.readErrors,
       watcher: watcher.status,

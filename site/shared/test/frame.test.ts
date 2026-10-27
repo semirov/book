@@ -55,12 +55,27 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
     expect(mark({ chapter: 1, blockIndex: 0, blockText: FRAME.replace('Её', 'Её\n') })).toBe('adjacent');
   });
 
-  it('is `untouched` for the next paragraph and for every chapter without a frame', () => {
-    expect(mark({ chapter: 1, quote: 'Свет был включён до меня.', blockIndex: 1, blockText: 'Свет был включён до меня.', blockCount: 3 })).toBe(
-      'untouched',
+  it('is `adjacent` for the paragraph beside the frame — the one inside the chapter', () => {
+    // ch01 opens on the frame, so the paragraph after it is the neighbour; ch67 closes on it,
+    // so the paragraph before it is. The tap there is an ordinary edit, and the record says it
+    // sat beside the sentence rather than 50 paragraphs away.
+    expect(mark({ chapter: 1, blockIndex: 1, blockText: 'Свет был включён до меня.', blockCount: 3 })).toBe(
+      'adjacent',
     );
-    expect(mark({ chapter: 1, blockIndex: 1, blockCount: 3 })).toBe('untouched');
-    // ch01's frame is its first block, ch67's its last: nothing sits beyond that edge.
+    expect(mark({ chapter: 1, blockIndex: 1, blockText: 'Свет был включён до меня.', blockCount: 4 })).toBe(
+      'adjacent',
+    );
+    expect(mark({ chapter: 67, blockIndex: 1, blockText: 'Часы на стене шли.', blockCount: 3 })).toBe('adjacent');
+    expect(mark({ chapter: 67, blockIndex: 2, blockText: 'Часы на стене шли.', blockCount: 4 })).toBe('adjacent');
+  });
+
+  it('is `untouched` from the third block on, and for every chapter without a frame', () => {
+    // One block further is an ordinary paragraph: the mark tells the neighbour from the far
+    // filing, not every filing in a chapter that carries a frame.
+    expect(mark({ chapter: 1, blockIndex: 2, blockText: 'Часы на стене шли.', blockCount: 4 })).toBe('untouched');
+    expect(
+      mark({ chapter: 1, quote: 'Свет был включён до меня.', blockIndex: 3, blockText: 'Свет был включён до меня.', blockCount: 4 }),
+    ).toBe('untouched');
     expect(mark({ chapter: 67, blockIndex: 0, blockText: 'Первый абзац финала.', blockCount: 3 })).toBe('untouched');
     // A chapter with no frame sentence is never touched, even by prose that looks like it.
     expect(mark({ chapter: 2, quote: FRAME, blockIndex: 0, blockText: FRAME })).toBe('untouched');

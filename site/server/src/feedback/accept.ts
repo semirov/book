@@ -289,46 +289,47 @@ function register(
   const { comment, chapter } = input;
   const reason = framePaperworkReason(input.mode);
   const atMs = Number.isFinite(Date.parse(input.at)) ? Date.parse(input.at) : Date.now();
-  if (!input.existing) {
-    // A basis slot has no prose to record as a base: the projection's block list is empty, and
-    // the revision is the comment's own or the chapter's (0 for a slot that only holds its
-    // sentence).
-    const blocks =
-      chapter === undefined || chapter.basis !== 0
-        ? []
-        : (db.prepare('SELECT hash FROM blocks WHERE chapter = ? ORDER BY idx').all(comment.chapter) as Array<{
-            hash: string;
-          }>);
-    insertChange(db, {
-      id: input.changeId,
-      kind: 'accepted_comment',
-      interventionKind: normalizeInterventionKind(comment.intervention_kind),
-      chapter: comment.chapter,
-      anchor: JSON.stringify({
-        blockIds: comment.block_id === null ? [] : [comment.block_id],
-        quote: comment.quote,
-        prefix: comment.prefix,
-        suffix: comment.suffix,
-      }),
-      intent: input.intent,
-      proposedText: comment.proposed_text,
-      sourceComment: comment.id,
-      sourceSession: null,
-      baseRev: input.baseRev ?? positiveRev(comment.base_rev) ?? chapter?.rev ?? 0,
-      baseSha: chapter?.sha256 ?? '',
-      baseBlocks: JSON.stringify(blocks.map((block) => block.hash)),
-      scopeHint: 'phrase',
-      premise: 0,
-      frame: 'touched',
-      frameMode: input.mode,
-      status: 'done',
-      outcome: 'registered',
-      reason,
-      finishedAt: input.at,
-      enqueuedAt: input.at,
-    });
-    appendChangeEvent(db, input.changeId, 'registered', { frame: 'touched', mode: input.mode }, atMs);
-  }
+  // A replay: the change is already there, so the row, its `registered` event and the comment
+  // event all exist. Writing any of them again would tell the reader something happened twice.
+  if (input.existing) return { changeId: input.changeId, created: false };
+  // A basis slot has no prose to record as a base: the projection's block list is empty, and
+  // the revision is the comment's own or the chapter's (0 for a slot that only holds its
+  // sentence).
+  const blocks =
+    chapter === undefined || chapter.basis !== 0
+      ? []
+      : (db.prepare('SELECT hash FROM blocks WHERE chapter = ? ORDER BY idx').all(comment.chapter) as Array<{
+          hash: string;
+        }>);
+  insertChange(db, {
+    id: input.changeId,
+    kind: 'accepted_comment',
+    interventionKind: normalizeInterventionKind(comment.intervention_kind),
+    chapter: comment.chapter,
+    anchor: JSON.stringify({
+      blockIds: comment.block_id === null ? [] : [comment.block_id],
+      quote: comment.quote,
+      prefix: comment.prefix,
+      suffix: comment.suffix,
+    }),
+    intent: input.intent,
+    proposedText: comment.proposed_text,
+    sourceComment: comment.id,
+    sourceSession: null,
+    baseRev: input.baseRev ?? positiveRev(comment.base_rev) ?? chapter?.rev ?? 0,
+    baseSha: chapter?.sha256 ?? '',
+    baseBlocks: JSON.stringify(blocks.map((block) => block.hash)),
+    scopeHint: 'phrase',
+    premise: 0,
+    frame: 'touched',
+    frameMode: input.mode,
+    status: 'done',
+    outcome: 'registered',
+    reason,
+    finishedAt: input.at,
+    enqueuedAt: input.at,
+  });
+  appendChangeEvent(db, input.changeId, 'registered', { frame: 'touched', mode: input.mode }, atMs);
 
   db.prepare(
     `UPDATE comments
@@ -341,5 +342,5 @@ function register(
     frame: 'touched',
     mode: input.mode,
   });
-  return { changeId: input.changeId, created: !input.existing };
+  return { changeId: input.changeId, created: true };
 }

@@ -1,10 +1,13 @@
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { reconcile } from '../../src/ingest/reconcile.ts';
 import { chapterText, createEngineFixture, type Fixture } from '../engine/helpers.ts';
 
 // Fixture paragraphs: distinct synthetic placeholders, never book text.
-const A = 'Первый тестовый абзац: альфа, бета и гамма.';
+// BOOK-137: ch01's file opens on the canon frame, so the first paragraph carries it; the
+// chain, the rewrites and the char counts below are still the test's own three paragraphs.
+const A = `${FRAME_FIRST_SENTENCE} Первый тестовый абзац: альфа, бета и гамма.`;
 const B = 'Второй тестовый абзац: дельта, эпсилон и дзета.';
 const C = 'Третий тестовый абзац: эта, тета и йота.';
 const B_REWRITTEN = 'Второй тестовый абзац: дельта, эпсилон, дзета и ещё одна буква.';
