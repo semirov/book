@@ -3,6 +3,7 @@ import { formatShare, type AuthorsDto, type MyDecisionsDto, type MyTraceDto } fr
 import { formatDate } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { statusLine } from '../lib/skeleton.ts';
+import { ExportLink } from './ExportLink.tsx';
 import { OwnDecisions } from './OwnDecisions.tsx';
 import { OwnTrace } from './OwnTrace.tsx';
 import { Skeleton } from './Skeleton.tsx';
@@ -37,6 +38,7 @@ export function Authors({
   hidePending = false,
   decisions = null,
   live,
+  revision = null,
 }: {
   authors: AuthorsDto | null;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
@@ -68,14 +70,23 @@ export function Authors({
    * no second door.
    */
   live: boolean;
+  /**
+   * BOOK-60: the edition number `/api/front` reports, printed under the download link. It is
+   * the same number the FB2 file writes as `document-info/version`; absent on an older
+   * payload, and then the link prints no line.
+   */
+  revision?: number | null;
 }) {
   // BOOK-56: the list is the book's past; the reader's own decisions are their present state,
   // so they render on their own rather than with the list they used to sit under.
   if (!live) {
-    if (decisions === null || decisions.items.length === 0) return null;
+    // BOOK-60: reading is never gated, so the download is not either. A begun book has no
+    // authors list, but it does have a file — the link stays with or without own decisions.
+    const hasDecisions = decisions !== null && decisions.items.length > 0;
     return (
-      <section className="page authors" aria-label="ваши правки">
-        <OwnDecisions decisions={decisions} />
+      <section className="page authors" aria-label={hasDecisions ? 'ваши правки и выгрузка книги' : 'выгрузка книги'}>
+        {hasDecisions ? <OwnDecisions decisions={decisions} /> : null}
+        <ExportLink revision={revision} />
       </section>
     );
   }
@@ -148,6 +159,7 @@ export function Authors({
         />
       )}
       <OwnDecisions decisions={decisions} />
+      <ExportLink revision={revision} />
       <p className="copyright authors-copyright">{imprint.copyright}</p>
       {lastRevisionAt === null ? null : (
         <p className="authors-updated">последняя правка — {formatDate(lastRevisionAt)}</p>

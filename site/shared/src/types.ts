@@ -209,6 +209,13 @@ export type FrontDto = {
   /** The title page's byline count, measured server-side (BOOK-DOC-4); always present. */
   authors: AuthorsCountDto;
   /**
+   * BOOK-60: the edition number — the same value `/book.fb2` writes as
+   * `document-info/version` (BOOK-DOC-41 §1), so the download line and the file can never
+   * disagree. Optional like `donateUrl`: fixtures written before the export stay valid, and
+   * the link then prints no line rather than inventing a number.
+   */
+  revision?: number;
+  /**
    * BOOK-126: the gift link the footer row prints, already validated at boot (`donateUrlOf`) —
    * `https://t.tb.ru/…` and nothing else. `null` or absent means the row does not render; the
    * field is optional so every fixture written before the row stays valid. It is not book

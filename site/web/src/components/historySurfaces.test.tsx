@@ -30,6 +30,11 @@ import { ProvenancePanel } from './ProvenancePanel.tsx';
  *
  * The starting record is answered by the server, so the state that prints it is mounted
  * rather than stringified: a static render never runs the request the chronicle opens.
+ *
+ * BOOK-60 narrowed what "history off" hides: the authors list, its note and its shares are
+ * history and stay off, while the FB2 download is book matter and stays on the page — reading
+ * is never gated. The absence lists below name those surfaces, not the section that now also
+ * carries the link.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -226,7 +231,8 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
       '<dt>след</dt>',
       'переписан',
       'class="chain',
-      'class="page authors',
+      'authors-list',
+      'authors-note',
       'Авторы',
       'class="page talks"',
       'обсуждение',
@@ -235,6 +241,8 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
     ]) {
       expect(html, `with an empty log the page must not render «${gone}»`).not.toContain(gone);
     }
+    // BOOK-60: the download is book matter, not history — it stays when the list does not.
+    expect(html).toContain('href="/book.fb2"');
   });
 
   it('keeps the cover, page 2, the byline, the seam door and the filing’s own mark', () => {
@@ -279,11 +287,15 @@ describe('a pending filing is visible at its anchor while history stays off (BOO
       'волна',
       'class="prov-rows"',
       'class="chain',
-      'class="page authors',
+      'authors-list',
+      'authors-note',
+      'Авторы',
       'class="page talks',
     ]) {
       expect(html, `with readerChanges = 0 the page must not render «${gone}»`).not.toContain(gone);
     }
+    // BOOK-60: the FB2 download stays — it is not gated by the history flag.
+    expect(html).toContain('href="/book.fb2"');
   });
 });
 
@@ -294,9 +306,11 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
   it('renders the chronicle and its way in, and keeps every other history surface off', () => {
     expect(html).toContain('class="chronicle');
     expect(html).toContain('class="views');
-    for (const gone of ['class="ribbon', 'волна', 'class="prov-rows"', '<dt>след</dt>', 'class="chain', 'class="page authors', 'class="page talks', 'focus-wings']) {
+    for (const gone of ['class="ribbon', 'волна', 'class="prov-rows"', '<dt>след</dt>', 'class="chain', 'authors-list', 'authors-note', 'Авторы', 'class="page talks', 'focus-wings']) {
       expect(html, `before the first reader change the page must not render «${gone}»`).not.toContain(gone);
     }
+    // BOOK-60: the download is book matter and survives the history gate.
+    expect(html).toContain('href="/book.fb2"');
   });
 
   it('answers with one «начало книги» row and one quiet line, and nothing to scrub', async () => {

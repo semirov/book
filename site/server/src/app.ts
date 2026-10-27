@@ -13,6 +13,7 @@ import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts
 import type { Config } from './config.ts';
 import { readBookCost } from './cost/book.ts';
 import type { Db } from './db/db.ts';
+import type { Fb2Renderer } from './fb2/serialize.ts';
 import type { RouteDeps } from './http/deps.ts';
 import { registerCachePolicy } from './http/cache.ts';
 import { buildCsp, createShellHashes } from './http/csp.ts';
@@ -27,6 +28,7 @@ import { registerChangeRoutes } from './http/routes/changes.ts';
 import { registerChapterRoutes } from './http/routes/chapters.ts';
 import { registerCommentRoutes } from './http/routes/comments.ts';
 import { registerCostRoutes } from './http/routes/cost.ts';
+import { registerExportRoutes } from './http/routes/export.ts';
 import { registerFrontRoutes } from './http/routes/front.ts';
 import { registerHealthRoutes } from './http/routes/health.ts';
 import { registerHistoryRoutes } from './http/routes/history.ts';
@@ -77,6 +79,8 @@ export type AppOptions = {
   authorsCount?: () => AuthorsCountDto;
   /** Test seam for the book's outlay: counts the scans a `/api/cost` page pays for. */
   bookCost?: () => BookCostDto;
+  /** BOOK-60: serializer seam for `/book.fb2`; counts the builds a request pays for. */
+  fb2?: { render: Fb2Renderer };
 };
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
@@ -136,6 +140,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     bookCost,
     ...(emit === undefined ? {} : { emit }),
     ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
+    ...(options.fb2 === undefined ? {} : { fb2: options.fb2 }),
   };
 
   // The WS plugin must be registered before the routes it intercepts (§README).
@@ -193,6 +198,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerStateRoutes(app, deps);
   registerAnalyticsRoutes(app, deps);
   registerFrontRoutes(app, deps);
+  registerExportRoutes(app, deps);
   registerCostRoutes(app, deps);
   registerChapterRoutes(app, deps);
   registerChangeRoutes(app, deps);

@@ -83,7 +83,8 @@ describe('the front payload (BOOK-DOC-4)', () => {
     });
     expect(stale.statusCode).toBe(200);
     expect(stale.json().authors.count).toBe(1);
-    expect(stale.headers.etag).toBe('"front-0-a1"');
+    // BOOK-60: the edition number rides the tag beside the front revision and N.
+    expect(stale.headers.etag).toBe(`"front-0-a1-e${stale.json().revision}"`);
 
     // The same count again keeps the same tag, and the page arrives with it: a cached page
     // may not pin a byline, and no client is told its copy is still right (BOOK-109).
@@ -93,7 +94,7 @@ describe('the front payload (BOOK-DOC-4)', () => {
       headers: { 'if-none-match': stale.headers.etag as string },
     });
     expect(same.statusCode).toBe(200);
-    expect(same.headers.etag).toBe('"front-0-a1"');
+    expect(same.headers.etag).toBe(stale.headers.etag);
     expect(same.json().authors.count).toBe(1);
     expect(same.headers['cache-control']).toBe('no-store');
   });
