@@ -1,19 +1,19 @@
 /* ---------- BOOK-63: the consent strip ---------- */
 /* Book matter, not a modal: in the reading column, no scrim, no animation, no fixed layer.
-   BOOK-88: the strip is a `.page`, so it keeps the column's one gutter — `padding: 16px 0`
-   used to override it and start the strip 32 px outside the column's text edge. Its vertical
-   margin is a shorthand, so the inline sides must restate `auto`: `.page`'s `margin: 0 auto`
-   is what centres the strip, and `30px 0 6px` reset the inline sides to 0, pinning the strip
-   to the viewport edge above 1000 px. The actions wrap, so 390 px keeps the two buttons and
+   BOOK-88: the strip is a `.page`, so it is the column itself and states no padding of its
+   own — it used to re-add the canvas's gutter. Its vertical margin is a shorthand, so the
+   inline sides must be stated `0`: the column is flush left in the canvas, and an `auto` here
+   would centre the 600 px strip in the 936 px canvas (the mirror of the BOOK-63 bug, where
+   `0` pinned it to the viewport edge). The actions wrap, so 390 px keeps the two buttons and
    the link on their own lines.
    BOOK-88, type: the sentence is prose at `--fs-note`; the actions are ONE action register —
    `--fs-micro` in `--mono`, uppercase, 0.1em — the book's label voice. There is no third size
    in the strip. `.consent-body` is the notice's prose block: `base.css` caps it at
-   `var(--measure)` with the one prose rule, so the text and both hairlines stand on the prose
-   measure, flush left — never across the 1000 px column. */
+   `var(--measure)` with the one prose rule (a no-op now, kept as the pin), so the text and
+   both hairlines stand on the column, flush left. */
 .consent {
-  margin: 30px auto 6px;
-  padding: 0 var(--gut);
+  margin: 30px 0 6px;
+  padding: 0;
 }
 .consent-body {
   padding-block: 14px 16px;

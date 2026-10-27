@@ -1,15 +1,17 @@
 /**
- * BOOK-88 — the guard behind `measure.test.ts`: one column, one prose block, one left edge.
+ * BOOK-88 — the guard behind `measure.test.ts`: one canvas, one column, one right edge.
  *
- * The rule (owner, 2026-10-27): the page is a single column, up to 1000 px on the desktop and
- * adaptive on the mobile by its gutters alone. Every register — header, cover, page 2, the TOC,
- * the chronicle, the colophon, the discussion, the legal documents — lives in that column and
- * shares one left edge, and the prose keeps its measure inside it, flush left.
+ * The rule (owner, 2026-10-27, final): the canvas is 1000 px at most and centred; the column is
+ * the reading measure, and *every* text block is exactly that box — the header's rows, the
+ * ribbon, the cover, page 2, the TOC, the chronicle, the colophon, the discussion, the legal
+ * documents, the consent strip and the prose. The prose is no longer narrower than the column:
+ * it *is* the column, flush left inside the canvas (252 at 1440, not 220).
  *
  * This module is the file side: it globs the cascade and the register components as text and
- * exposes the two entry points the test needs. The six sheet checks are in `measure.rules.ts`
- * and the CSS parser in `measure.css.ts`; the markup check lives here because it needs the
- * component glob. The four-viewport arithmetic, on `tokenPx`, is check 7, in the test.
+ * exposes the entry points the test needs. The six sheet checks are in `measure.rules.ts` and
+ * `measure.tokens.ts`, the CSS parser in `measure.css.ts`; the markup checks live here because
+ * they need the component glob. The four-viewport arithmetic, on `tokenPx`, is check 7, in the
+ * test.
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row, 26ch the
  * legal page's pull quote) bound a sentence, not the page — and the overlays, which are laid
@@ -26,8 +28,8 @@ import {
 import { layoutProblemsOf, tokenPxOf } from './measure.rules.ts';
 
 export { BASE, TOKENS } from './measure.css.ts';
-export { COLUMN_SELECTORS } from './measure.tokens.ts';
-export { OVERLAYS, PROSE, REGISTERS } from './measure.rules.ts';
+export { CANVAS, CANVAS_READERS } from './measure.tokens.ts';
+export { COLUMN_BOXES, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS } from './measure.rules.ts';
 
 /** The sheets as text, and the entry point they are derived from. */
 const OUTER = import.meta.glob<string>(['../main.tsx', '../styles/*.css'], {
@@ -40,7 +42,9 @@ const OUTER = import.meta.glob<string>(['../main.tsx', '../styles/*.css'], {
 export const sheets: SheetSet = Object.fromEntries(
   Object.entries(OUTER).filter(([file]) => file.endsWith('.css')),
 );
-const mainSource = OUTER['../main.tsx'] ?? '';
+
+/** `main.tsx` as text: the cascade it boots, and the one canvas it renders into. */
+export const entry = OUTER['../main.tsx'] ?? '';
 
 /** The sheets `main.tsx` puts in the cascade, as keys of `sheets`. */
 export function cascadeSheets(source: string): string[] {
@@ -49,7 +53,26 @@ export function cascadeSheets(source: string): string[] {
 }
 
 /** The cascade `main.tsx` boots, for the "the guard reads the whole cascade" test. */
-export const cascade: string[] = cascadeSheets(mainSource);
+export const cascade: string[] = cascadeSheets(entry);
+
+/**
+ * The markup half of the canvas: every register renders inside one `.canvas`, because that is
+ * the only element that states the bound, the centring and the gutters (BOOK-88 final). Both
+ * branches — the book and the two static documents — go inside it; the no-JS fallback is the
+ * one box that cannot, and `OUTSIDE_CANVAS` states its geometry instead.
+ */
+export function canvasWrapperProblems(source: string = entry): string[] {
+  const problems: string[] = [];
+  const open = source.indexOf('<div className="canvas">');
+  if (open < 0) return ['main.tsx does not render a <div className="canvas"> — nothing states the column’s bound, centring and gutters'];
+  const close = source.indexOf('</div>', open);
+  if (close < 0) return ['main.tsx opens .canvas and never closes it'];
+  const inside = source.slice(open, close);
+  for (const branch of ['<App />', '<LegalPage page={page} />']) {
+    if (!inside.includes(branch)) problems.push(`main.tsx renders ${branch} outside .canvas — that branch is not the column`);
+  }
+  return problems;
+}
 
 /** The register components as text, keyed as `./<Name>.tsx`. */
 export const components: Record<string, string> = Object.fromEntries(
@@ -65,8 +88,8 @@ export const components: Record<string, string> = Object.fromEntries(
  * class string carries `page`, and that string also names the register. A dropped
  * `className="page"` leaves the register outside the column, and no sheet can tell — the
  * element simply stops being a `.page`. `.ribbon` and `.noscript` are the two column boxes
- * that are not `.page`: the ribbon states its own frame, and the no-JS fallback is in
- * `index.html`, not in a component.
+ * that are not `.page`: the ribbon is the head's second row (a text block, not a register
+ * component), and the no-JS fallback is in `index.html`, outside the canvas.
  */
 export const REGISTER_COMPONENTS = [
   { file: './TitleSheet.tsx', register: 'titul' },

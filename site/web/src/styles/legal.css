@@ -9,14 +9,16 @@
 
 /* The static documents (audit M5): «приватность» and «правила». Same column and voice as the
    book, no card, no third-party byte — they must read when the API is down. BOOK-88: the
-   document is a `.page`, so it takes the column from `.page` and states no box of its own —
-   its old `calc(measure + 2 gutters)` was a 664 px box centred in the 1000 px column, which
-   put its text 168 px inside the column's text edge; its lines are capped by the one prose
-   rule (`.legal > *`) instead. BOOK-92 states rhythm (8 / 12 / 24 / 32) and the label voice —
-   kicker, nav — and the two intents do not fight, because the width is the prose rule's. The
-   one width BOOK-92 did state, the lead's `none`, is dropped for the reason below. */
+   document is a `.page`, so it takes the column from `.page` and states no box of its own.
+   The final frame made that column the prose's own measure (600 at 1440, flush left in the
+   canvas at 252), so every child of the document — kicker, title, sections, lead — shares
+   both edges, and the one prose rule (`.legal > *`) is the cap that pins them. BOOK-92 states
+   rhythm (8 / 12 / 24 / 32) and the label voice — kicker, nav — and the two intents do not
+   fight, because the width is `.page`'s. The one width BOOK-92 did state, the lead's `none`,
+   is dropped for the reason below. */
 .legal {
-  padding: 72px var(--gut) 96px;
+  /* Block-only padding: the canvas owns the gutters. */
+  padding: 72px 0 96px;
 }
 .legal .kicker {
   margin: 0 0 8px;

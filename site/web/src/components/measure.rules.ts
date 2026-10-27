@@ -1,22 +1,22 @@
 /**
- * BOOK-88 — the six checks behind `measure.test.ts`: one column, one prose block, one left edge.
+ * BOOK-88 — the six checks behind `measure.test.ts`: one canvas, one column, one right edge.
  *
- * The rule (owner, 2026-10-27): the page is a single column, up to 1000 px on the desktop and
- * adaptive on the mobile by its gutters alone. Every register — header, cover, page 2, the TOC,
- * the chronicle, the colophon, the discussion, the legal documents — lives in that column and
- * shares one left edge, and the prose keeps its measure inside it, flush left.
+ * The rule (owner, 2026-10-27, final): the canvas is 1000 px at most and centred; the column
+ * is the reading measure — 600 px at ≥1024, 584 px below, 342 px at 390 — and *every* text
+ * block is exactly that box: the TOC, the colophon, the header's rows, the cover, page 2, the
+ * discussion, the legal documents and the prose. The prose is no longer narrower than the
+ * column: it *is* the column, so no two blocks can read as two documents. The 1000 px
+ * survives as the outer bound that centres the column (220..1220 at 1440), and the column is
+ * flush left inside it (252..852) — not centred in the viewport.
  *
- * The defect this is built for is a class, not a number: a later sheet stating a width of its
- * own (`.page.sheet { max-width: … }`, `.legal { max-width: calc(measure + gutters);
- * margin: 0 auto }`). Rules are read as text and checked for: the two tokens and their homes
- * (1, and `--shell` gone for good); `var(--column)` as the box of the column only, plus the
- * folio's one position in the margin (2); every
- * other `max-width` being the prose measure, a copy cap or a listed overlay, and no register
- * stating a `width` of its own (3); the measure never sizing a non-prose box and the old text
- * box `calc(measure + 2 gutters)` surviving only in `.chain` (4); no self-centring, one
- * horizontal margin per register (and it is `auto`), exactly one gutter per register (5);
- * every prose selector actually capped by the one prose rule (6). The four-viewport
- * arithmetic, on `tokenPx`, is check 7, in the test.
+ * The defect this is built for is a class, not a number: a text block stating a width of its
+ * own. Rules are read as text and checked for: the two tokens and their homes (1, and
+ * `--shell` gone for good); `var(--column)` as the box of `.canvas` only, plus the folio's one
+ * position (2, in `measure.tokens.ts`); every register box exactly the measure, and no other
+ * `max-width` but a copy cap, a listed overlay or the one box outside the canvas (3, 4); no
+ * register stating an inline padding or a horizontal margin — the canvas owns both (5); every
+ * prose selector still named by the one prose rule, which is what pins a future child (6).
+ * The four-viewport arithmetic, on `tokenPx`, is check 7, in the test.
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row) bound a
  * sentence, not the page — and the overlays, which are laid over the page and keep their own
@@ -24,6 +24,7 @@
  */
 
 import {
+  exactly,
   squash,
   subjectClasses,
   ancestorClasses,
@@ -33,15 +34,15 @@ import {
   GAUGE,
   type Rule,
 } from './measure.css.ts';
-import { columnProblems, tokenProblems } from './measure.tokens.ts';
+import { canvasProblems, tokenProblems, CANVAS } from './measure.tokens.ts';
 
-/** The prose block of the design memo §2 — the only selectors capped at the measure. */
+/** The prose block of the design memo §2 — the selectors the one prose rule names. */
 export const PROSE = [
   '.p', '.ch-title', '.ch-h', '.sec-h', '.qline', '.front-rule', '.state-line',
   '.annotation .p', '.how-made > p', '.legal > *', '.authors > *',
   '.talks .comments', '.talks .talks-list',
-  // The consent strip's content block: the notice stands on the prose measure, so its copy
-  // and the two hairlines on its edges share the page's one left edge (BOOK-88).
+  // The consent strip's content block: the notice stands on the column, so its copy and the
+  // two hairlines on its edges share the page's one left edge (BOOK-88).
   '.consent-body',
   // BOOK-68/BOOK-88: the seam strip and its stale line are block siblings of the `<p>`
   // (a41932b), so the prose rule has to name them too — otherwise the strip's band and its
@@ -59,9 +60,37 @@ export const REGISTERS = [
   'authors', 'colophon', 'legal', 'consent', 'chronicle', 'ribbon', 'noscript',
 ] as const;
 
-/** The closed list of box widths that are neither the column nor a `ch` copy cap. Each row is
- *  a design decision with the one reason it may leave the one-column rule; adding a row is a
- *  new decision, not a fix. Both are overlays laid *over* the page, not registers in it. */
+/** The boxes that are exactly the text column: `.page`, and the head's second row, which is a
+ *  text block inside the header rather than a `.page`. Both state `var(--measure)` as their
+ *  `max-width` — the inverted rule of the final frame (the old guard forbade the measure on a
+ *  box; it is now the only box a register may be). */
+export const COLUMN_BOXES = ['.page', '.ribbon'] as const;
+
+/** One box lives outside the canvas: the no-JS fallback, rendered by `index.html` before
+ *  `main.tsx` ever runs, so nothing centres it and nothing supplies its gutters. It may state
+ *  the measure plus its own two gutters, centre itself, and pad itself — exactly these three
+ *  declarations, each one pinned, and a stale row fails like any other exception. A second row
+ *  is a new decision, not a fix. */
+export const OUTSIDE_CANVAS: ReadonlyArray<{
+  selector: string;
+  declarations: ReadonlyArray<readonly [string, string]>;
+  why: string;
+}> = [
+  {
+    selector: '.noscript',
+    declarations: [
+      ['max-width', 'calc(var(--measure) + 2 * var(--gut))'],
+      ['margin', '0 auto'],
+      ['padding', '64px var(--gut)'],
+    ],
+    why: 'the fallback is not inside .canvas: nothing centres it and nothing supplies its gutters, so it states the measure plus its own two and centres the result',
+  },
+];
+
+/** The closed list of box widths that are neither the canvas nor the column nor a `ch` copy
+ *  cap. Each row is a design decision with the one reason it may leave the one-column rule;
+ *  adding a row is a new decision, not a fix. Both are overlays laid *over* the page, not
+ *  registers in it. */
 export const OVERLAYS = [
   {
     selector: '.focus-stage',
@@ -77,27 +106,30 @@ export const OVERLAYS = [
   },
 ] as const;
 
-/** The only rules allowed to centre themselves with a horizontal `auto` margin — the column and
- *  the overlays. `.consent` is a `.page` (a column) that states its vertical margins as a
- *  shorthand, so it also has to restate `auto` on the inline sides. `.title-ripple::after` is a
- *  46 px decoration under the cover title, not a text box. */
-const CENTRED = ['.page', '.ribbon', '.noscript', '.consent', '.focus-stage', '.title-ripple::after'] as const;
+/** The only rules allowed to centre themselves with a horizontal `auto` margin: the canvas
+ *  (once), the one box outside it, and the overlays. `.title-ripple::after` is a 46 px
+ *  decoration under the cover title, not a text box. */
+const CENTRED = [
+  CANVAS,
+  '.focus-stage',
+  '.title-ripple::after',
+  ...OUTSIDE_CANVAS.map((row) => row.selector),
+] as const;
 
 /** What may legitimately narrow a `ch` line: one cap, or one against the parent's width. A
  *  `percentage`/`none` cap is a media cap too (`img { max-width: 100% }`), never a page width. */
 const COPY_CAP = /^(?:none|100%|min\(\s*100%\s*,\s*[1-9]\d*ch\s*\)|[1-9]\d*ch)$/u;
-/** The old text box (measure + two gutters), which is what `.legal` and `.state-line` used to
- *  state for themselves: inside the column it lands their text two gutters too far right. */
-const OLD_TEXT_BOX = 'calc(var(--measure)+2*var(--gut))';
-const COLUMN_VALUE = 'var(--column)';
+/** The measure plus two gutters: the no-JS fallback's box, and the chain overlay's. Inside the
+ *  canvas it is the old text box — the one that lands the text two gutters past the column. */
+const OUTSIDE_TEXT_BOX = 'calc(var(--measure)+2*var(--gut))';
 const MEASURE_VALUE = 'var(--measure)';
-const CENTRING = 'only the column and the overlays may centre themselves; prose stays flush left';
+const CENTRING = 'only the canvas, the no-JS box and the overlays may centre themselves; the registers stay flush left inside the canvas';
 
 const SIZING = new Set(['width', 'max-width', 'min-width', 'inline-size', 'max-inline-size', 'min-inline-size']);
 const MARGINS = new Set(['margin', 'margin-inline', 'margin-inline-start', 'margin-inline-end', 'margin-left', 'margin-right']);
 const PADDINGS = new Set(['padding', 'padding-inline', 'padding-inline-start', 'padding-inline-end', 'padding-left', 'padding-right']);
-/** A register's own `width` may only be the column, or the size it already has. */
-const REGISTER_WIDTH = new Set(['auto', '100%', COLUMN_VALUE]);
+/** A register's own `width` may only be the size it already has; the column is a `max-width`. */
+const REGISTER_WIDTH = new Set(['auto', '100%']);
 
 /** Does a shorthand `margin` (or `margin-inline`) centre its box horizontally? Only both sides. */
 function centresHorizontally(property: string, value: string): boolean {
@@ -137,11 +169,25 @@ const isNamed = (rule: Rule, selector: string): boolean =>
 const isRegister = (rule: Rule): boolean =>
   rule.parts.flatMap(subjectClasses).some((name) => (REGISTERS as readonly string[]).includes(name));
 
+/** A rule that is the column: exactly `.page` or `.ribbon`. */
+const isColumnBox = (rule: Rule): boolean => COLUMN_BOXES.some((selector) => exactly(rule, selector));
+
+/** A rule that is entirely prose selectors (a list of them is fine, anything mixed is not). */
+const isProse = (rule: Rule): boolean => rule.parts.every((part) => (PROSE as readonly string[]).includes(part));
+
+/** The `OUTSIDE_CANVAS` row a rule is, when its three declarations are exactly the row's. */
+const outsideRow = (rule: Rule) =>
+  OUTSIDE_CANVAS.find(
+    (row) =>
+      exactly(rule, row.selector) &&
+      row.declarations.every(([property, value]) => squash(rule.declarations.get(property) ?? '') === squash(value)),
+  );
+
 const isAuto = (rule: Rule, property: string): boolean =>
   squash(rule.declarations.get(property) ?? '') === 'auto';
 
-/** 3 — every `max-width` is the column, the prose measure, a copy cap or a listed overlay; no
- *  register states a `width` of its own (a wider register by `width: 700px` is the same bug). */
+/** 3 — every register is exactly the measure; any other `max-width` is a copy cap, a listed
+ *  overlay or the one box outside the canvas, and no register states a `width` of its own. */
 function boxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
@@ -152,23 +198,31 @@ function boxProblems(rules: Rule[]): string[] {
     const raw = rule.declarations.get('max-width');
     if (raw === undefined) continue;
     const value = squash(raw);
-    if (value === COLUMN_VALUE) continue; // columnProblems owns this one
-    if (value === MEASURE_VALUE) {
-      const outside = rule.parts.filter((part) => !(PROSE as readonly string[]).includes(part));
-      if (outside.length > 0) {
-        problems.push(`${where(rule, 'max-width', raw)} — the measure is the prose block, never a box: ${outside.join(', ')} may not shrink to it`);
-      }
+    // The canvas's own bound is `measure.tokens.ts`'s check 2; it is the one wider box.
+    if (exactly(rule, CANVAS) && value === 'var(--column)') continue;
+    if (value === MEASURE_VALUE && (isColumnBox(rule) || isProse(rule))) continue;
+    // `none` is a copy cap only for a block that is not a register: on a register it removes
+    // the column and leaves the canvas's 936 px — the exact defect this file is for.
+    if (value === 'none' && isRegister(rule)) {
+      problems.push(`${where(rule, 'max-width', raw)} — a register may not drop its column: max-width: none is the canvas's width, not the measure`);
       continue;
     }
     if (COPY_CAP.test(value)) continue;
+    if (outsideRow(rule) !== undefined) continue;
     const overlay = OVERLAYS.find(
       (entry) => entry.property === 'max-width' && squash(entry.value) === value && isNamed(rule, entry.selector),
     );
     if (overlay === undefined) {
       problems.push(
-        `${where(rule, 'max-width', raw)} — a box is the column (var(--column)), the prose measure (var(--measure)) or a ch copy cap; anything else is a box of its own`,
+        `${where(rule, 'max-width', raw)} — a register is exactly the column (max-width: var(--measure)); the canvas (var(--column)) is the only wider box, and a ch cap is copy, not a page`,
       );
     }
+  }
+  for (const selector of COLUMN_BOXES) {
+    const found = rules.some(
+      (rule) => exactly(rule, selector) && squash(rule.declarations.get('max-width') ?? '') === MEASURE_VALUE,
+    );
+    if (!found) problems.push(`${selector} does not state its box — every register is exactly max-width: var(--measure)`);
   }
   // An exception nobody holds is a rule nobody holds: a stale row must fail too.
   for (const overlay of OVERLAYS) {
@@ -179,25 +233,38 @@ function boxProblems(rules: Rule[]): string[] {
       problems.push(`${overlay.selector} { ${overlay.property}: ${overlay.value} } is not in the sheets — a stale overlay exception (${overlay.why})`);
     }
   }
+  for (const row of OUTSIDE_CANVAS) {
+    const held = row.declarations.every(([property, value]) =>
+      rules.some((rule) => exactly(rule, row.selector) && squash(rule.declarations.get(property) ?? '') === squash(value)),
+    );
+    if (!held) {
+      problems.push(`${row.selector} does not state its ${row.declarations.length} declarations — a stale outside-canvas exception (${row.why})`);
+    }
+  }
   return problems;
 }
 
-/** 4 — the measure never sizes a box that is not prose, and the old text box is overlay-only. */
+/** 4 — the measure is the column: only `.page`, `.ribbon` and the prose rule state it, only as
+ *  a `max-width`; the measure-plus-two-gutters box belongs to the two overlays and the box
+ *  outside the canvas, never to a register. */
 function measureBoxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
-      if (SIZING.has(property) && property !== 'max-width' && value.includes(MEASURE_VALUE)) {
+      if (SIZING.has(property) && value.includes(MEASURE_VALUE)) {
+        if (property === 'max-width' && (isColumnBox(rule) || isProse(rule))) continue;
         const overlay = OVERLAYS.find((entry) => entry.property === property && isNamed(rule, entry.selector));
-        if (overlay === undefined) {
-          problems.push(`${where(rule, property, value)} — var(--measure) is text width, never the width of a box`);
+        if (overlay === undefined && outsideRow(rule) === undefined) {
+          problems.push(
+            `${where(rule, property, value)} — var(--measure) is the column: .page, .ribbon and the prose rule state it, and only as a max-width`,
+          );
         }
       }
-      if (!squash(value).includes(OLD_TEXT_BOX)) continue;
-      const overlay = OVERLAYS.find((entry) => squash(entry.value).includes(OLD_TEXT_BOX) && isNamed(rule, entry.selector));
-      if (overlay === undefined) {
+      if (!squash(value).includes(OUTSIDE_TEXT_BOX)) continue;
+      const overlay = OVERLAYS.find((entry) => squash(entry.value).includes(OUTSIDE_TEXT_BOX) && isNamed(rule, entry.selector));
+      if (overlay === undefined && outsideRow(rule) === undefined) {
         problems.push(
-          `${where(rule, property, value)} — calc(var(--measure) + 2 * var(--gut)) is the old text box: inside the column it lands the text two gutters past the column's left edge (BOOK-88)`,
+          `${where(rule, property, value)} — calc(var(--measure) + 2 * var(--gut)) is the no-JS box outside the canvas: inside it the canvas supplies the gutters, so a register states no such box (BOOK-88)`,
         );
       }
     }
@@ -205,22 +272,23 @@ function measureBoxProblems(rules: Rule[]): string[] {
   return problems;
 }
 
-/** 5 — nothing centres itself but the column and the overlays; a register's horizontal margin is
- *  `auto`; one gutter, not two. */
+/** 5 — the canvas owns the centring and the gutters: a register's horizontal margin is `0`, its
+ *  inline padding is `0`, and no descendant of a register re-adds `var(--gut)`. */
 function frameProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
     const allowed = rule.parts.some((part) => (CENTRED as readonly string[]).includes(part));
+    const outside = outsideRow(rule) !== undefined;
     for (const [property, value] of rule.declarations) {
       if (MARGINS.has(property) && centresHorizontally(property, value) && !allowed) {
         problems.push(`${where(rule, property, value)} — ${CENTRING}`);
       }
       // `margin-left: auto` alone is a push to one edge, not a centring; the pair is.
-      if (isRegister(rule) && MARGINS.has(property)) {
-        const offCentre = horizontalSides(property, value).find((side) => squash(side) !== 'auto');
+      if (isRegister(rule) && !outside && MARGINS.has(property)) {
+        const offCentre = horizontalSides(property, value).find((side) => squash(side) !== '0');
         if (offCentre !== undefined) {
           problems.push(
-            `${where(rule, property, value)} — a register's horizontal margin is \`auto\` (the column centres once, in .page); this sets it to \`${offCentre}\``,
+            `${where(rule, property, value)} — a register's horizontal margin is \`0\` (the column is flush left inside the canvas; the canvas centres once); this sets it to \`${offCentre}\``,
           );
         }
       }
@@ -231,12 +299,12 @@ function frameProblems(rules: Rule[]): string[] {
       const insideRegister = rule.parts.some((part) =>
         ancestorClasses(part).some((name) => (REGISTERS as readonly string[]).includes(name)),
       );
-      if (register) {
-        if (squash(gutter) !== 'var(--gut)') {
-          problems.push(`${where(rule, property, value)} — a register keeps exactly the column's one gutter (var(--gut)); it may not drop it or state another`);
+      if (register && !outside) {
+        if (squash(gutter) !== '0') {
+          problems.push(`${where(rule, property, value)} — a register states no inline padding (the canvas's gutters are the only ones); its own padding is block-only`);
         }
       } else if (insideRegister && value.includes('var(--gut)')) {
-        problems.push(`${where(rule, property, value)} — a descendant of the column re-adds its gutter; the gutters are .page's, once`);
+        problems.push(`${where(rule, property, value)} — a descendant of the column re-adds its gutter; the gutters are .canvas's, once`);
       }
     }
     if (!allowed && isAuto(rule, 'margin-left') && isAuto(rule, 'margin-right')) {
@@ -246,7 +314,7 @@ function frameProblems(rules: Rule[]): string[] {
   return problems;
 }
 
-/** 6 — every prose selector is capped by the one prose rule in `base.css`. */
+/** 6 — every prose selector is still named by the one prose rule in `base.css`. */
 function proseProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const selector of PROSE) {
@@ -267,7 +335,7 @@ function proseProblems(rules: Rule[]): string[] {
 export function layoutProblemsOf(rules: Rule[]): string[] {
   return [
     ...tokenProblems(rules),
-    ...columnProblems(rules),
+    ...canvasProblems(rules),
     ...boxProblems(rules),
     ...measureBoxProblems(rules),
     ...frameProblems(rules),

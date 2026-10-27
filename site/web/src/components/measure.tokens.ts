@@ -1,38 +1,44 @@
 /**
- * BOOK-88 — checks 1 and 2 of the one-column guard: the tokens and the column's box.
+ * BOOK-88 — checks 1 and 2 of the one-column guard: the tokens and the canvas.
  *
  * 1. `--column` and `--measure` have one home each (`tokens.css`), at the values the design
  *    memo fixes, and the retired `--shell` is gone for good.
- * 2. `var(--column)` is the box of `.page` (and of `.ribbon` / `.noscript`, the two boxes that
- *    are the column without being a `.page` inside it), only as a `max-width` — plus one
- *    position, the running folio's right margin, which places a box against the frame and sizes
- *    nothing with it (`FRAME_READERS`).
+ * 2. `var(--column)` is the box of `.canvas` — the one box on the page allowed to be wider
+ *    than the text column — and of nothing else, and only as a `max-width`; plus one position,
+ *    the running folio's right margin, which places a box against the canvas and sizes
+ *    nothing with it (`CANVAS_READERS`). The canvas states the whole frame: the bound, the
+ *    centring and the gutters, so no register has to state any of them again.
  */
 
-import { squash, stating, where, TOKENS, type Rule } from './measure.css.ts';
+import { exactly, squash, stating, where, TOKENS, type Rule } from './measure.css.ts';
 
-/** The three boxes that are the column, and the only readers of `var(--column)` as a box. */
-export const COLUMN_SELECTORS = ['.page', '.ribbon', '.noscript'] as const;
+/** The canvas: the only box on the page that may be wider than the measure (BOOK-88 §2). */
+export const CANVAS = '.canvas';
 
-/** A frame reader may place its box against the column; it may never size a box with it. */
 type FramePosition = 'inset' | 'inset-inline' | 'inset-inline-start' | 'inset-inline-end';
 
 /**
- * The one reader of the frame that is not a box (BOOK-89): the running folio stands in the right
- * margin, flush with the frame's inner right edge, and states no width of its own — it is
- * `position: fixed` with nothing in the text column. Its offset is the frame's outer arithmetic,
- * so it names `var(--column)`; a `width`/`max-width` from the same token is still the bug check 2
- * is for. A second row is a new decision, like one in `OVERLAYS`.
+ * The one reader of the canvas that is not a box (BOOK-89): the running folio stands in the
+ * outer margin, flush with the canvas's inner right edge (1188 at 1440, 366 at 390), and
+ * states no width of its own — it is `position: fixed`, with nothing in the text column, so it
+ * may change a hundred times without moving a line of prose. Its offset is the canvas's own
+ * arithmetic, so it names `var(--column)`; a `width`/`max-width` from the same token is still
+ * the bug check 2 is for. A second row is a new decision, like one in `OVERLAYS`.
  */
-export const FRAME_READERS: ReadonlyArray<{ selector: string; property: FramePosition; why: string }> = [
+export const CANVAS_READERS: ReadonlyArray<{ selector: string; property: FramePosition; why: string }> = [
   {
     selector: '.folio',
     property: 'inset-inline-end',
-    why: 'the number sits in the margin between the text and the frame’s edge; a size here would be a box',
+    why: 'the number sits in the margin between the text and the canvas’s edge; a size here would be a box',
   },
 ];
 
 const COLUMN_VALUE = 'var(--column)';
+const GUT_VALUE = 'var(--gut)';
+
+/** Every value a rule states for one property, with the rule it came from, filtered by name. */
+const states = (rules: Rule[], selector: string, property: string, value: string): boolean =>
+  rules.some((rule) => exactly(rule, selector) && squash(rule.declarations.get(property) ?? '') === squash(value));
 
 /** 1 — the two tokens have one home each, and the retired one is not aliased back. */
 export function tokenProblems(rules: Rule[]): string[] {
@@ -43,11 +49,11 @@ export function tokenProblems(rules: Rule[]): string[] {
   const column = stating(rules, '--column');
   const [onlyColumn] = column;
   if (column.length !== 1 || onlyColumn === undefined) {
-    problems.push(`--column is declared ${column.length} time(s) (${list(column)}) — the column has one home, ${TOKENS}`);
+    problems.push(`--column is declared ${column.length} time(s) (${list(column)}) — the canvas has one home, ${TOKENS}`);
   } else if (onlyColumn.rule.file !== TOKENS || onlyColumn.rule.at.length > 0) {
-    problems.push(`${where(onlyColumn.rule, '--column', onlyColumn.value)} — ${TOKENS} declares the column at the root: it does not narrow`);
+    problems.push(`${where(onlyColumn.rule, '--column', onlyColumn.value)} — ${TOKENS} declares the canvas at the root: it does not narrow`);
   } else if (squash(onlyColumn.value) !== '1000px') {
-    problems.push(`--column: ${onlyColumn.value} — the column is 1000px`);
+    problems.push(`--column: ${onlyColumn.value} — the canvas is 1000px`);
   }
 
   const measure = stating(rules, '--measure');
@@ -59,7 +65,7 @@ export function tokenProblems(rules: Rule[]): string[] {
     );
   }
   for (const entry of measure.filter((item) => item.rule.file !== TOKENS)) {
-    problems.push(`${where(entry.rule, '--measure', entry.value)} — the prose block has one home, ${TOKENS}`);
+    problems.push(`${where(entry.rule, '--measure', entry.value)} — the text column has one home, ${TOKENS}`);
   }
   const [baseMeasure] = base;
   if (baseMeasure !== undefined && squash(baseMeasure.value) !== '37.5rem') {
@@ -83,43 +89,49 @@ export function tokenProblems(rules: Rule[]): string[] {
   );
   if (legacy.length > 0 || legacyUse.length > 0) {
     problems.push(
-      `--shell is back (${legacy.length} declaration(s), ${legacyUse.length} use(s)) — BOOK-88 renamed the frame to --column; two canvas tokens is two frames`,
+      `--shell is back (${legacy.length} declaration(s), ${legacyUse.length} use(s)) — BOOK-88 renamed the canvas to --column; two canvas tokens is two frames`,
     );
   }
   return problems;
 }
 
-/** 2 — `var(--column)` is the box of the column, only as a `max-width`; one position may read it. */
-export function columnProblems(rules: Rule[]): string[] {
+/** 2 — `var(--column)` is the box of `.canvas`, only as a `max-width`; one position may read it. */
+export function canvasProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
-  const exactly = (rule: Rule, selector: string): boolean =>
-    rule.parts.length === 1 && squash(rule.parts[0] ?? '') === squash(selector);
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
       if (!value.includes(COLUMN_VALUE)) continue;
-      const box = property === 'max-width' && COLUMN_SELECTORS.some((selector) => exactly(rule, selector));
-      const reader = FRAME_READERS.find((entry) => entry.property === property && exactly(rule, entry.selector));
+      const box = property === 'max-width' && exactly(rule, CANVAS);
+      const reader = CANVAS_READERS.find((entry) => entry.property === property && exactly(rule, entry.selector));
       if (!box && reader === undefined) {
         problems.push(
-          `${where(rule, property, value)} — var(--column) is the box of .page (and of .ribbon / .noscript, the two boxes that are the column without being a .page inside it), and only as a max-width`,
+          `${where(rule, property, value)} — var(--column) is the box of ${CANVAS} (the one box allowed to be wider than the text), and only as a max-width`,
         );
       }
     }
   }
-  for (const selector of COLUMN_SELECTORS) {
-    const found = rules.some(
-      (rule) => exactly(rule, selector) && squash(rule.declarations.get('max-width') ?? '') === COLUMN_VALUE,
-    );
-    if (!found) problems.push(`${selector} does not state its box — the column is var(--column)`);
+  if (!states(rules, CANVAS, 'max-width', COLUMN_VALUE)) {
+    problems.push(`${CANVAS} does not state its bound — the canvas is max-width: var(--column)`);
+  }
+  if (!states(rules, CANVAS, 'padding-inline', GUT_VALUE)) {
+    problems.push(`${CANVAS} does not state padding-inline: var(--gut) — the gutters are the canvas's, once; a register may not keep its own`);
+  }
+  const centred = rules.some(
+    (rule) =>
+      exactly(rule, CANVAS) &&
+      ['margin', 'margin-inline'].some((property) => squash(rule.declarations.get(property) ?? '').includes('auto')),
+  );
+  if (!centred) {
+    problems.push(`${CANVAS} does not centre the column — margin: 0 auto is the canvas's, and the registers stay flush left inside it`);
   }
   // An exception nobody holds is a rule nobody holds: a stale row must fail too.
-  for (const reader of FRAME_READERS) {
+  for (const reader of CANVAS_READERS) {
     const held = rules.some(
       (rule) => exactly(rule, reader.selector) && (rule.declarations.get(reader.property) ?? '').includes(COLUMN_VALUE),
     );
     if (!held) {
       problems.push(
-        `${reader.selector} { ${reader.property} } does not read var(--column) — a stale frame-reader exception (${reader.why})`,
+        `${reader.selector} { ${reader.property} } does not read var(--column) — a stale canvas-reader exception (${reader.why})`,
       );
     }
   }

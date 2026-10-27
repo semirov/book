@@ -82,7 +82,9 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: calc(env(safe-area-inset-top) + 24px) var(--gut) 8px;
+  /* BOOK-88 final: the cover is a register, so it is exactly the column — the canvas owns the
+     gutters now, and its own padding is block-only. */
+  padding: calc(env(safe-area-inset-top) + 24px) 0 8px;
   text-align: left;
 }
 .title {
