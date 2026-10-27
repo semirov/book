@@ -1,7 +1,7 @@
 /**
- * BOOK-DOC-34 §2.3 — the form inside the seam: the five kind rows, the two fields, the
- * verification field, the submit and the errors. Every target is 44 px; a form is not the
- * book, so its text is 16 px — one step under the prose.
+ * BOOK-DOC-34 §2.3 — the form inside the seam: the four kind rows, the two fields, the note
+ * action under the submit, the errors. Every target is 44 px; a form is not the book, so its
+ * text is 16 px — one step under the prose.
  */
 
 /* ---------- kinds ---------- */
@@ -29,10 +29,6 @@
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-}
-.kind-note {
-  grid-column: 1 / -1;
-  color: var(--ink-2);
 }
 .kind input {
   position: absolute;
@@ -65,6 +61,37 @@
   font-family: var(--mono);
   font-size: var(--fs-micro);
   color: var(--ink-3);
+}
+
+/* ---------- the note: a quiet action under the submit (BOOK-57) ---------- */
+/* A note is not a kind and not a second send: it sits under the form's one primary action in
+   the label style of the seam's inline action and in the quiet ink. Its open state is the
+   pressed colour, never a filled button. */
+.note-action {
+  justify-self: start;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+.note-action[aria-pressed='true'] {
+  color: var(--live);
+}
+.note-action:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.note-action:disabled {
+  color: var(--rule-2);
+  cursor: default;
 }
 
 /* ---------- marks and the cited rule (§2.5) ---------- */

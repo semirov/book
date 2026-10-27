@@ -255,7 +255,7 @@ describe('the form and its outcomes', () => {
     click('.seam-cta');
     expect(lastCall('form_open')).toEqual(['form_open', {}]);
 
-    click('.kind-note input');
+    click('.note-action');
     expect(lastCall('kind_pick')).toEqual(['kind_pick', { kind: 'note' }]);
 
     type('.seam-text', 'в этом абзаце повтор, это замечание без типа');
@@ -266,6 +266,20 @@ describe('the form and its outcomes', () => {
     expect(lastCall('submit_note')).toEqual(['submit_note', {}]);
     expect(lastCall('receipt_seen')).toEqual(['receipt_seen', {}]);
     expect(document.querySelector('.seam-receipt')?.textContent).toContain('зарегистрировано');
+  });
+
+  it('counts the note once per open, and closing it is not an act', async () => {
+    await render(seam());
+    click('.seam-cta');
+
+    click('.note-action');
+    expect(lastCall('kind_pick')).toEqual(['kind_pick', { kind: 'note' }]);
+    expect(vi.mocked(track).mock.calls.filter(([name]) => name === 'kind_pick')).toHaveLength(1);
+
+    // The same action is the way back: closing the note is not a kind pick.
+    click('.note-action');
+    expect(vi.mocked(track).mock.calls.filter(([name]) => name === 'kind_pick')).toHaveLength(1);
+    expect(document.querySelector('.note-action')?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('fires submit_intervention when a kind was picked', async () => {
@@ -291,7 +305,7 @@ describe('the form and its outcomes', () => {
 
     await render(seam());
     click('.seam-cta');
-    click('.kind-note input');
+    click('.note-action');
     type('.seam-text', 'замечание, которое сервер отклонит по коду');
     await act(async () => {
       document.querySelector<HTMLButtonElement>('.seam-submit')?.click();

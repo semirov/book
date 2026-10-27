@@ -11,7 +11,6 @@ import {
   rekeyDraft,
   submissionBody,
   submitLabel,
-  wordingLabel,
 } from './draft.ts';
 
 describe('the derived body', () => {
@@ -44,9 +43,13 @@ describe('what is submitted (BOOK-33)', () => {
     expect(submissionBody({ ...premise, body: 'перевод смены', proposed: '' })).toBe('перевод смены');
   });
 
-  it('sends a note whole', () => {
+  it('sends a note whole, and never resurrects the hidden intervention line', () => {
     const note = 'Тут повтор. И ещё один повтор.';
     expect(submissionBody({ blockId: 'ch08#aa11bb22', noteOnly: true, body: '', proposed: note })).toBe(note);
+    // BOOK-57: «что это меняет» is not rendered on the note path, so a stale line in it is
+    // not a fallback — a note with an empty field has nothing to send.
+    expect(submissionBody({ blockId: 'ch08#aa11bb22', noteOnly: true, body: 'свет не от лампы', proposed: '' })).toBe('');
+    expect(submissionBody({ blockId: 'ch08#aa11bb22', noteOnly: true, body: 'свет', proposed: '  повтор  ' })).toBe('повтор');
   });
 
   it('derives only an intervention’s body', () => {
@@ -133,11 +136,8 @@ describe('the draft store', () => {
   });
 });
 
-describe('field and submit labels', () => {
-  it('names the wording field and the action by what they are, not by a mode', () => {
-    expect(wordingLabel({ noteOnly: true, blockId: 'ch08#aa11bb22' })).toBe('замечание к тексту');
-    expect(wordingLabel({ noteOnly: false, blockId: null })).toBe('замысел главы');
-    expect(wordingLabel({ noteOnly: false, blockId: 'ch08#aa11bb22' })).toBe('как это звучит в книге');
+describe('the submit word', () => {
+  it('names the action by what it is, not by a mode', () => {
     expect(submitLabel({ noteOnly: true, blockId: 'ch08#aa11bb22' })).toBe('оставить замечание');
     expect(submitLabel({ noteOnly: false, blockId: null })).toBe('заложить замысел');
     expect(submitLabel({ noteOnly: false, blockId: 'ch08#aa11bb22' })).toBe('передать');

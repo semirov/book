@@ -13,8 +13,6 @@
  * `validateInterventionKind` says at each boundary that accepts reader input.
  */
 
-import { EDIT_MAX_CHARS } from './comment.ts';
-
 export const INTERVENTION_KINDS = ['document', 'decision', 'testimony', 'erasure'] as const;
 
 export type InterventionKind = (typeof INTERVENTION_KINDS)[number];
@@ -34,21 +32,6 @@ export const INTERVENTION_KIND_LIST = INTERVENTION_KINDS.map(
 
 /** The composer's one line before the four choices. */
 export const INTERVENTION_KIND_HINT = `что вы вносите: ${INTERVENTION_KIND_LIST}`;
-
-/**
- * «10 000» with the non-breaking space the site groups every number with (`lib/format.ts`):
- * a bound in copy has to read like the bound in the counter beside it.
- */
-const EDIT_MAX_GROUPED = String(EDIT_MAX_CHARS).replace(/\B(?=(\d{3})+(?!\d))/gu, '\u00a0');
-
-/**
- * The rule in one sentence, for `/rules` and the composer: an intervention is the reader's
- * own wording *and* its kind — a world-fact, not a prose correction — with the length and day
- * bounds. Numbers come from `comment.ts`, so copy cannot drift from the guard.
- */
-export const INTERVENTION_RULE_COPY =
-  `вмешательство — своя правка одного из четырёх типов (${INTERVENTION_KIND_LIST}), факт мира, ` +
-  `а не правка прозы: до ${EDIT_MAX_GROUPED} знаков, одна правка в сутки`;
 
 export type InterventionKindFailureCode = 'INTERVENTION_KIND_REQUIRED' | 'INTERVENTION_KIND_UNKNOWN';
 
