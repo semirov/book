@@ -6,9 +6,13 @@ import type {
   HistoryEventDto,
   HistoryTimelineDto,
 } from '@book/shared';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
+import { placeTicks } from '../lib/cssom.ts';
+import { deedLine, summaryDeed } from '../lib/deed.ts';
+import { focusHash } from '../lib/focus.ts';
+import { formatChars, formatTime } from '../lib/format.ts';
 import {
   HISTORY_FILTERS,
   compareToNow,
@@ -19,9 +23,6 @@ import {
   targetLabel,
   type HistoryFilter,
 } from '../lib/history.ts';
-import { deedLine, summaryDeed } from '../lib/deed.ts';
-import { focusHash } from '../lib/focus.ts';
-import { formatChars, formatTime } from '../lib/format.ts';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { useParagraphChain } from '../useParagraphChain.ts';
 
@@ -101,6 +102,15 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
   const groups = useMemo(() => groupByDay(visible), [visible]);
   const lastHseq = timeline?.lastHseq ?? 0;
   const ticks = useMemo(() => scrubTicks(items, lastHseq), [items, lastHseq]);
+  const tickBox = useRef<HTMLDivElement | null>(null);
+
+  // BOOK-30: the tick offsets are CSSOM writes (`placeTicks`), not style attributes. The
+  // layout effect runs before paint, so a tick never shows at `left:auto` for a frame.
+  useLayoutEffect(() => {
+    const box = tickBox.current;
+    if (box === null) return;
+    placeTicks(box.querySelectorAll('i'), ticks);
+  }, [ticks]);
   const difference = useMemo(() => (past === null ? null : compareToNow(past, catalog, frontRev)), [past, catalog, frontRev]);
   /** The deed line per change, derived once from the public feed (one copy source: `lib/deed.ts`). */
   const deeds = useMemo(() => {
@@ -146,9 +156,9 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
             setMoment(value >= lastHseq ? null : value);
           }}
         />
-        <div className="scrub-ticks" aria-hidden="true">
+        <div className="scrub-ticks" aria-hidden="true" ref={tickBox}>
           {ticks.map((position, index) => (
-            <i key={`${position}-${index}`} style={{ left: `${position}%` }} />
+            <i key={`${position}-${index}`} />
           ))}
         </div>
         <div className="scrub-row">

@@ -7,6 +7,12 @@
  * `unsafe-inline` is never emitted — an inline `<script>` cannot run, which is why the
  * theme bootstrap lives in `/theme.js` rather than in `index.html`.
  *
+ * The same holds for styles (BOOK-30): `style-src 'self'` stands alone, with no
+ * `style-src-attr` and no `'unsafe-inline'`. That is hardening, not a workaround: React's
+ * `style` prop already goes through CSSOM, and only a literal `style="…"` attribute (for
+ * example from `dangerouslySetInnerHTML`) would be dropped. The SPA therefore keeps every
+ * colour in a class and every DOM-known value in a CSSOM write (`web/src/lib/cssom.ts`).
+ *
  * The reading path needs no third-party byte: the provider origins appear only so the
  * composer's lazily-mounted widget can load when a reader opens it.
  */

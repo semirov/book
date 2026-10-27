@@ -409,6 +409,26 @@
   letter-spacing: 0;
   font-size: var(--fs-label);
 }
+/* BOOK-30 — a reader's ink is a class, not a style attribute: no colour value in the
+   markup, one themeable rule per palette slot (shared/src/comment.ts). */
+.comment-author.author-ink-0 {
+  color: #6f9bb5;
+}
+.comment-author.author-ink-1 {
+  color: #a98b6f;
+}
+.comment-author.author-ink-2 {
+  color: #7d9b6f;
+}
+.comment-author.author-ink-3 {
+  color: #9b7f9e;
+}
+.comment-author.author-ink-4 {
+  color: #b58f6f;
+}
+.comment-author.author-ink-5 {
+  color: #6f8fb5;
+}
 .comment-quote {
   margin: 4px 0 2px;
   padding-left: 10px;

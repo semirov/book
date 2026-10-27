@@ -1,6 +1,7 @@
 import type { ParagraphChainDto } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { placePanel } from '../lib/cssom.ts';
 import { chainHead } from '../lib/history.ts';
 import { formatTime } from '../lib/format.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
@@ -51,15 +52,11 @@ export function ParagraphChain({
     setPlacement((current) => (samePlacement(current, next) ? current : next));
   }, [anchor, chain, loading]);
 
-  const style =
-    placement === null
-      ? undefined
-      : {
-          top: `${placement.top}px`,
-          left: `${placement.left}px`,
-          width: `${placement.width}px`,
-          maxHeight: `${placement.maxHeight}px`,
-        };
+  // BOOK-30: the measured box goes through CSSOM (`placePanel`), not a `style` attribute,
+  // so no inline style reaches the markup; it runs before paint, after the same measurement.
+  useMeasuredLayout(() => {
+    placePanel(panel.current, placement);
+  }, [placement]);
 
   return (
     <aside
@@ -67,7 +64,6 @@ export function ParagraphChain({
       role="dialog"
       aria-label="откуда эта фраза"
       ref={panel}
-      style={style}
     >
       <div className="chain-head">
         <span className="chain-title">откуда эта фраза</span>

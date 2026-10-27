@@ -49,6 +49,19 @@ describe('the generated CSP', () => {
     expect(csp).toContain("object-src 'none'");
   });
 
+  it('keeps inline styles out of the header: no `unsafe-inline`, no `style-src-attr` (BOOK-30)', () => {
+    for (const provider of ['none', 'turnstile', 'hcaptcha'] as const) {
+      const csp = buildCsp({ ...base, captchaProvider: provider, metrikaId: '12345678' });
+      // Every directive is checked: `unsafe-inline` in any of them would re-open styles.
+      for (const directive of csp.split(';')) expect(directive).not.toContain('unsafe-inline');
+      expect(csp).not.toContain('style-src-attr');
+      expect(csp).not.toContain('style-src-elem');
+      // The author ink is a class and the DOM-known geometry is a CSSOM write, so the
+      // style directive never needs widening beyond the site's own sheet.
+      expect(csp).toContain("style-src 'self'");
+    }
+  });
+
   it('derives the socket origin from the public origin', () => {
     expect(socketOrigin('https://book.semirov.dev')).toBe('wss://book.semirov.dev');
     expect(socketOrigin('http://127.0.0.1:8080')).toBe('ws://127.0.0.1:8080');

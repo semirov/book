@@ -144,6 +144,10 @@ describe('the chronicle’s surface (§11.10)', () => {
       expect(html).toContain(label);
     }
     expect(html).toContain('type="range"');
+    // BOOK-30: the tick track ships free of inline styles; positions are CSSOM writes
+    // (`lib/cssom.ts`), and `chronicle.dom.test.tsx` proves they land in a browser.
+    expect(html).toContain('class="scrub-ticks"');
+    expect(html).not.toMatch(/style=/u);
     expect(html).toContain('сейчас');
     expect(html).toContain('пока ничего не записано');
     // The past is not offered before a moment is chosen.

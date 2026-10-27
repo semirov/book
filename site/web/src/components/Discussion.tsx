@@ -1,4 +1,12 @@
-import type { CatalogEntry, CommentBudget, CommentDto, ComposerInfo, ChangeSummaryDto, ViewerDto } from '@book/shared';
+import {
+  commentInkClass,
+  type CatalogEntry,
+  type CommentBudget,
+  type CommentDto,
+  type ComposerInfo,
+  type ChangeSummaryDto,
+  type ViewerDto,
+} from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
@@ -81,7 +89,7 @@ export function Discussion({
             return (
               <li className={`comment tone-${line.tone}`} key={comment.id} data-status={comment.status}>
                 <div className="comment-meta">
-                  <span className="comment-author" style={{ color: comment.authorColor }}>
+                  <span className={`comment-author ${commentInkClass(comment.author, comment.authorColor)}`}>
                     {comment.author}
                   </span>
                   <span>глава {comment.chapter}</span>

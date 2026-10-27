@@ -1,12 +1,8 @@
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { ChapterArticle } from './ChapterArticle.tsx';
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
 
 function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
@@ -57,13 +53,15 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     expect(html).not.toContain('data-basis');
   });
 
-  it('does not print the frame for a written chapter, and carries the catalog characters', () => {
-    // A written slot renders a placeholder sized from the viewport before its prose arrives.
-    vi.stubGlobal('window', { innerWidth: 390 });
+  it('does not print the frame for a written chapter, and reserves its place without a style attribute', () => {
+    // BOOK-30: the slot's height is a CSSOM write on mount, so the markup carries no style
+    // attribute; `chapterArticle.dom.test.tsx` proves the write lands in a browser.
     const html = render(entry(1, { written: true, basis: false, chars: 22_628, blocks: 180, title: 'Тестовая глава' }));
     expect(html).not.toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('не написана');
     expect(html).not.toContain('ch-empty');
     expect(html).toContain('Тестовая глава');
+    expect(html).toContain('class="ch-placeholder"');
+    expect(html).not.toMatch(/style=/u);
   });
 });

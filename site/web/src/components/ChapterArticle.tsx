@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChapter } from '../api.ts';
 import { nearViewport, reducedMotion } from '../dom.ts';
 import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
+import { reserveHeight } from '../lib/cssom.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
@@ -297,9 +298,13 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
       ) : null}
 
       {chapter === null && basisSentence === null && !failed ? (
+        // BOOK-30: the reserved height goes through CSSOM (`reserveHeight`) so the markup
+        // carries no style attribute; the ref runs in the same commit, before paint.
         <div
           className="ch-placeholder"
-          style={{ minHeight: estimateChapterHeight(entry.chars, window.innerWidth || 390) }}
+          ref={(node) => {
+            reserveHeight(node, estimateChapterHeight(entry.chars, window.innerWidth || 390));
+          }}
           aria-hidden="true"
         />
       ) : null}
