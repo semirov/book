@@ -7,19 +7,16 @@ import { getFrontRow } from '../../db/repo/front.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import type { RouteDeps } from '../deps.ts';
 
-/** The response's own freshness bound — the same five seconds page 1 is allowed to be old. */
-const FRONT_CACHE_CONTROL = 'public, max-age=5, stale-while-revalidate=30';
-
 /**
  * What the byline count depends on, cheaply: the front revision, every chapter `rev`, the
  * last paragraph version written, and **which** readers are hidden (`POST /api/authors/hide`
  * moves the count without touching the text).
  *
  * The count itself is a whole-book aggregate (`authors/count.ts`): the last version of every
- * paragraph joined to `identities`. A conditional request must not pay for it, so the ETag is
- * compared against a remembered count that this key invalidates. Every part is a small
- * indexed read — a 67-row `chapters` sum, the `block_versions_hseq` index and the reader list
- * — never a scan of the block history.
+ * paragraph joined to `identities`. A repeated request must not pay for it, so the answer is
+ * remembered under this key and invalidated by it. Every part is a small indexed read — a
+ * 67-row `chapters` sum, the `block_versions_hseq` index and the reader list — never a scan
+ * of the block history.
  */
 function bylineKey(db: Db, frontRev: number): string {
   const chapters = db.prepare('SELECT COALESCE(SUM(rev), 0) AS revs FROM chapters').get() as { revs: number };
@@ -46,35 +43,28 @@ function frontEtag(frontRev: number, count: number): string {
  * annotation is malformed, and page 2 then renders nothing (§11.8). `aboutSha256` is the
  * hash of the published page 2 — the basis an owner edit replaces and a pass may not (BOOK-7).
  *
- * The byline (`authors`) is measured **after** the conditional request has been answered
- * from the remembered count, so a `304` costs four cheap indexed reads and no aggregate (BOOK-24).
- * A `200` still carries the count, and its ETag still carries the count: a cached page may
- * not pin a byline that has since changed. `measuredAt` may be older than the response by
- * up to one book state — the count cannot be different, so the client's monotonic guard sees
- * the same number, never a correction.
+ * The byline (`authors`) is measured **once per book state**: the remembered count is reused
+ * for every later request with the same key, so a poll costs four cheap indexed reads and no
+ * aggregate (BOOK-24). Every answer is a `200` with the full body — a `304` would let a client
+ * keep a byline (and a title page) that has since moved, which is the defect BOOK-109 removed
+ * from the whole surface. The ETag stays and still carries the count: it is the validator a
+ * proxy log or a client compares, not a licence to reuse. `measuredAt` may be older than the
+ * response by up to one book state — the count cannot be different, so the client's monotonic
+ * guard sees the same number, never a correction.
  */
 export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void {
   let memo: { key: string; authors: AuthorsCountDto } | null = null;
 
-  app.get('/api/front', async (request, reply) => {
+  app.get('/api/front', async (_request, reply) => {
     const front = getFrontRow(deps.db);
     const rev = front?.rev ?? 0;
     const key = bylineKey(deps.db, rev);
 
-    // 1) The conditional request, answered without measuring anything.
+    // A representation is being built: measure once per book state, and keep it.
     const remembered = memo !== null && memo.key === key ? memo.authors : null;
-    if (remembered !== null) {
-      const etag = frontEtag(rev, remembered.count);
-      reply.header('etag', etag).header('cache-control', FRONT_CACHE_CONTROL);
-      if (request.headers['if-none-match'] === etag) return reply.code(304).send();
-    }
-
-    // 2) A representation is being built: measure once per book state, and keep it.
     const authors = remembered ?? deps.authorsCount();
     if (remembered === null) memo = { key, authors };
-    const etag = frontEtag(rev, authors.count);
-    reply.header('etag', etag).header('cache-control', FRONT_CACHE_CONTROL);
-    if (request.headers['if-none-match'] === etag) return reply.code(304).send();
+    reply.header('etag', frontEtag(rev, authors.count));
 
     const about = front !== undefined && front.about.length > 0 ? front.about : null;
     const body: FrontDto = {

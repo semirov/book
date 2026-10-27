@@ -331,3 +331,49 @@ describe('the source link in the end matter (BOOK-78)', () => {
     }
   });
 });
+
+/**
+ * BOOK-109 — the build the page is: the one fact that tells two hosts (and a stale cache)
+ * apart. It is a row of its own after the imprint line, printed once, in the micro rung.
+ */
+describe('the build stamp in the end matter (BOOK-109)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function renderWithBuild(): string {
+    stubDocument();
+    return renderToStaticMarkup(
+      <Colophon
+        state={state}
+        imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }}
+        build={{ commit: '5558449', stamp: '27.10 20:52' }}
+      />,
+    );
+  }
+
+  it('prints «сборка <commit> · <stamp>» once, after the imprint line and before the margin tail', () => {
+    const html = renderWithBuild();
+    expect(html).toContain('<span class="build-stamp">сборка 5558449 · 27.10 20:52</span>');
+    // One print: a second copy would be a second claim about the same build.
+    expect(html.split('сборка ').length - 1).toBe(1);
+
+    // The row is after the row that carries the imprint sentence — and after the theme toggle
+    // in it — and before the margin's tail, which stays the page's last element.
+    const stamp = html.indexOf('class="build-stamp"');
+    expect(stamp).toBeGreaterThan(html.indexOf('class="imprint-line"'));
+    expect(stamp).toBeGreaterThan(html.lastIndexOf('class="theme"'));
+    expect(stamp).toBeLessThan(html.indexOf('class="margin-tail"'));
+    // Outside the pinned BOOK-94 sentence, whose text is still the six words it pins.
+    expect(imprintLine(html)).not.toContain('сборка');
+  });
+
+  it('dresses the stamp as a data mark: the micro rung and the quiet ink', () => {
+    const book = sheets['../styles/book.css'] ?? '';
+    const rule = declarations(book, '.colophon .build-stamp');
+    expect(rule).toContain('font-size: var(--fs-micro)');
+    expect(rule).toContain('color: var(--ink-3)');
+    // The label register's uppercase is inherited from `.colophon`; the stamp reads as it is.
+    expect(rule).toContain('text-transform: none');
+  });
+});

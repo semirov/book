@@ -2,6 +2,7 @@ import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot } from '@book/shared'
 import { useState } from 'react';
 
 import { useCounterConfigured } from '../lib/analytics.ts';
+import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
@@ -23,7 +24,19 @@ export const COLOPHON_MOTTO = 'С любовью к научной фантас�
  * and dates nothing, and «издание · сегодня» claims an edition date the imprint does not have
  * (it is author and copyright only). What stays dates itself — «печатается по ходу письма».
  */
-export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: FrontDto['imprint'] }) {
+export function Colophon({
+  state,
+  imprint,
+  build = BUILD,
+}: {
+  state: StateSnapshot;
+  imprint: FrontDto['imprint'];
+  /**
+   * BOOK-109: the build this page is. The default is what `vite.config.ts` baked in; a test
+   * passes its own, so the text can be pinned without a build.
+   */
+  build?: BuildId;
+}) {
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const consent = useConsent();
   const analyticsConfigured = useCounterConfigured();
@@ -84,6 +97,12 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
             <span className="switch" aria-hidden="true" />
             {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
           </button>
+        </div>
+        {/* BOOK-109: which build the reader is holding. A row of its own after the imprint
+            line, in the micro rung — the one fact that tells two hosts (and a stale cache)
+            apart, printed quietly and never as a claim about the text. */}
+        <div className="row">
+          <span className="build-stamp">{composeBuildStamp(build)}</span>
         </div>
       </footer>
       {/* BOOK-90 §1.10: the margin's tail lives after the colophon — below everything. */}

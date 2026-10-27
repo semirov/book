@@ -16,9 +16,11 @@ import { createFixture, longProse, type Fixture } from './helpers.ts';
  * `GET /api/front` — page 1's one call (§9, BOOK-24).
  *
  * Two properties are load-bearing here and are asserted, not described: the ETag names the
- * byline count (a cached page cannot pin a stale N), and a conditional request is answered
- * **without** the whole-book aggregate — the byline is measured once per book state, after
- * the comparison. The route also takes the read budget with the other book reads.
+ * byline count (a cached page cannot pin a stale N), and a repeated request is answered
+ * **without** the whole-book aggregate — the byline is measured once per book state and
+ * remembered. BOOK-109 removed the `304`: every answer carries the full body, so the memo is
+ * what a poll saves, not a conditional-request short cut. The route also takes the read
+ * budget with the other book reads.
  */
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
@@ -70,7 +72,7 @@ afterEach(async () => {
   webDist = null;
 });
 
-/** A byline reader that counts its own calls: the spy that proves a 304 costs nothing. */
+/** A byline reader that counts its own calls: the spy that proves a repeat costs no measurement. */
 function countingByline(): { measure: () => AuthorsCountDto; calls: () => number } {
   let count = 0;
   const measure = vi.fn((): AuthorsCountDto => {
@@ -99,18 +101,23 @@ describe('GET /api/front', () => {
     expect(body.toc[66]).toMatchObject({ part: 4, n: 67, title: null, written: false, rev: 0 });
   });
 
-  it('answers 304 for a matching ETag', async () => {
+  // BOOK-109: the tag is a name, not a licence to reuse — the answer is always a 200 with the
+  // page, because the TOC, the title and the byline may have moved under the same ETag.
+  it('answers a matching If-None-Match with the page, never a 304', async () => {
     await boot({ chapters: { '00-front.md': FRONT } });
     const first = await app!.inject({ method: 'GET', url: '/api/front' });
+    expect(first.headers['cache-control']).toBe('no-store');
     const second = await app!.inject({
       method: 'GET',
       url: '/api/front',
       headers: { 'if-none-match': first.headers.etag as string },
     });
-    expect(second.statusCode).toBe(304);
+    expect(second.statusCode).toBe(200);
+    expect(second.headers.etag).toBe(first.headers.etag);
+    expect(second.json()).toMatchObject({ title: 'Без названия', rev: 1 });
   });
 
-  it('measures the byline once and answers every conditional request without measuring again', async () => {
+  it('measures the byline once and answers every repeat from the memo, not the aggregate', async () => {
     const byline = countingByline();
     await boot({ chapters: { '00-front.md': FRONT }, authorsCount: byline.measure });
 
@@ -121,14 +128,17 @@ describe('GET /api/front', () => {
     expect(first.headers.etag).toBe('"front-1-a1"');
     expect(byline.calls()).toBe(1);
 
-    // A 304 costs nothing: ten conditional polls, still one measurement.
+    // Ten polls of a book state that did not move: ten full bodies, one measurement. The memo
+    // is what makes a poll cheap now that no 304 short-cuts it (BOOK-109).
     for (let poll = 0; poll < 10; poll += 1) {
       const again = await app!.inject({
         method: 'GET',
         url: '/api/front',
         headers: { 'if-none-match': first.headers.etag as string },
       });
-      expect(again.statusCode).toBe(304);
+      expect(again.statusCode).toBe(200);
+      expect(again.headers.etag).toBe('"front-1-a1"');
+      expect(again.json()).toMatchObject({ authors: { count: 1 }, title: 'Без названия' });
     }
     expect(byline.calls()).toBe(1);
   });

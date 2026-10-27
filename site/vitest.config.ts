@@ -3,6 +3,11 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // BOOK-109: the values a build bakes in, fixed here so a unit test can pin the printed text.
+  define: {
+    __BUILD_COMMIT__: JSON.stringify('test'),
+    __BUILD_STAMP__: JSON.stringify('01.01 00:00'),
+  },
   resolve: {
     alias: {
       '@book/shared': resolve(import.meta.dirname, 'shared/src/index.ts'),

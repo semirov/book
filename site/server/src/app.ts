@@ -8,10 +8,12 @@ import Fastify, { LogController, type FastifyError, type FastifyInstance } from 
 import type { AuthorsCountDto, Imprint, ServerEventType } from '@book/shared';
 import { REQUEST_BODY_MAX_BYTES } from '@book/shared';
 import { createAuthorsCount } from './authors/count.ts';
+import { readBuildCommit } from './build.ts';
 import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/db.ts';
 import type { RouteDeps } from './http/deps.ts';
+import { registerCachePolicy } from './http/cache.ts';
 import { buildCsp } from './http/csp.ts';
 import { isAllowedUpgradeOrigin } from './http/origin.ts';
 import { registerReadLimit } from './http/readLimit.ts';
@@ -49,6 +51,8 @@ export type AppOptions = {
   watcherStatus?: WatcherStatus;
   startedAt?: number;
   version?: string;
+  /** BOOK-109: the build this process is; the default reads `build-info.json` at boot. */
+  commit?: string;
   logger?: boolean;
   /** Test seam: receives the JSON log lines, so a test can assert what is *not* logged. */
   logStream?: { write(line: string): void };
@@ -111,6 +115,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     config: options.config,
     startedAt: options.startedAt ?? Date.now(),
     version: options.version ?? '0.0.0',
+    commit: options.commit ?? readBuildCommit(),
     webDist: options.config.webDist,
     imprint: options.imprint ?? loadImprint(options.config.imprintPath),
     watcher: options.watcherStatus,
@@ -166,6 +171,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     );
   });
 
+  // Before the routes, and before the read budget: freshness is a property of the surface
+  // (BOOK-109). The policy drops conditional headers and marks `/api/`, `/healthz` and HTML
+  // `no-store`, so no handler below can hand a client a licence to reuse what it already holds.
+  registerCachePolicy(app);
+
   // Before the routes: the read budget is a property of the surface, not of a handler.
   registerReadLimit(app, deps);
 
@@ -198,8 +208,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       if (request.url.startsWith('/api/') || request.url === '/healthz') {
         return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such route' });
       }
-      // One page: every unknown path is the shell, the SPA scrolls to its own anchor.
-      return reply.header('cache-control', 'no-cache').sendFile('index.html');
+      // One page: every unknown path is the shell, the SPA scrolls to its own anchor. Its
+      // freshness is the app's policy (`http/cache.ts`), not this handler's.
+      return reply.sendFile('index.html');
     });
   } else {
     app.setNotFoundHandler((request, reply) => {
@@ -210,7 +221,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         request.url.startsWith('/api/') ||
         request.url === '/healthz'
       ) {
-        return reply.code(503).send({
+        // A missing build is a fact about *this* host just now: never a stored answer, or a
+        // proxy would keep telling readers the site is down after the deploy fixed it.
+        return reply.code(503).header('cache-control', 'no-store').send({
           code: 'UI_NOT_BUILT',
           message: 'web/dist is missing — run `npm run build` (or use the Vite dev server on :5173)',
         });

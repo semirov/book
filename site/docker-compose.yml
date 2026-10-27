@@ -8,6 +8,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # BOOK-109: the sha the image reports in `build-info.json` and on `/healthz`. The build
+        # context has no `.git`, so this is the only way an image names a commit; unset is
+        # honest — the image then says `dev` and is identified by its build stamp.
+        BOOK_BUILD_COMMIT: ${BOOK_BUILD_COMMIT:-}
     image: book-site:local
     container_name: book-site
     restart: unless-stopped

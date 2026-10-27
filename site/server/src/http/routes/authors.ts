@@ -1,10 +1,11 @@
 /**
  * The end matter's authors list (§6C.5) and the reader's own trace (BOOK-DOC-4).
  *
- * `/api/authors` is public and cacheable: the list is measured, not live, so a reader
- * reloading the page must see the same numbers (rule 6). The measurement is the whole book
- * (`history/erosion.ts`), so the list takes the read budget with the other book reads
- * (`http/readLimit.ts`) instead of relying on its 30-second `max-age`. `/api/authors/me` and
+ * `/api/authors` is public and measured, not live: a reader reloading the page sees the same
+ * numbers (rule 6). The measurement is the whole book (`history/erosion.ts`), so the list takes
+ * the read budget with the other book reads (`http/readLimit.ts`) instead of relying on a
+ * freshness window — and the app's one policy (`http/cache.ts`) marks the answer `no-store`,
+ * so a stale list cannot be reused from any cache (BOOK-109). `/api/authors/me` and
  * `/api/authors/hide` are session-only: the identity comes from the cookie, never from a
  * parameter, and the answer carries no identity key — the display name is the only handle.
  */
@@ -20,9 +21,7 @@ import { sessionOf, unauthenticated } from '../session.ts';
 
 export function registerAuthorsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/authors', async (_request, reply) => {
-    return reply
-      .header('cache-control', 'public, max-age=30')
-      .send(readAuthors(deps.db, deps.imprint.author));
+    return reply.send(readAuthors(deps.db, deps.imprint.author));
   });
 
   /** Own only: no id in the path or query, so there is no way to ask for another reader. */

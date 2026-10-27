@@ -245,7 +245,18 @@ export type ApiErrorBody = {
  * is and who holds the pen, so they live behind the admin token (audit m4).
  */
 export type HealthDto = {
+  /** First key on purpose: `deploy.sh` greps `"ok":true` and nothing else about the body. */
   ok: boolean;
+  /**
+   * The build the answering process runs (BOOK-109). It is the one fact that tells two hosts
+   * apart — a phone showing old prose can be answered with "which commit served it".
+   */
+  commit: string;
+  /** The two roots this process reads: the manuscript and the data dir (absolute paths). */
+  bookRoot: string;
+  dataDir: string;
+  /** ISO, the moment the process started — not uptime, so two hosts compare directly. */
+  startedAt: string;
   watcher: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
   engine: { status: EngineStatus };
 };

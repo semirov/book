@@ -202,18 +202,18 @@ describe('GET /api/state', () => {
     expect(edited.aboutSha256).not.toBe(before.aboutSha256);
   });
 
-  it('returns an ETag and honours If-None-Match', async () => {
+  it('returns an ETag and answers If-None-Match with the body, never a 304 (BOOK-109)', async () => {
     await boot();
     const first = await app!.inject({ method: 'GET', url: '/api/state' });
     expect(first.headers.etag).toBe('"state-1"');
-    expect(first.headers['cache-control']).toContain('max-age=2');
+    expect(first.headers['cache-control']).toBe('no-store');
     const second = await app!.inject({
       method: 'GET',
       url: '/api/state',
       headers: { 'if-none-match': first.headers.etag as string },
     });
-    expect(second.statusCode).toBe(304);
-    expect(second.body).toBe('');
+    // The body arrives, not an empty 304: the poll must be able to correct a stale client.
+    expect([second.statusCode, second.json().version]).toEqual([200, first.json().version]);
   });
 });
 
@@ -241,13 +241,12 @@ describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () =
     expect(body).toMatchObject({ rev: 1, basis: true, chars: 0, title: null });
     expect(body.blocks.map((block: { text: string }) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
 
-    // And the new tag is honoured afterwards.
     const fresh = await app!.inject({
       method: 'GET',
       url: '/api/chapters/1',
       headers: { 'if-none-match': stale.headers.etag as string },
     });
-    expect(fresh.statusCode).toBe(304);
+    expect(fresh.statusCode).toBe(200);
   });
 });
 
@@ -278,7 +277,7 @@ describe('GET /api/chapters/:n', () => {
     expect(body.blocks[0].id).toMatch(/^ch01#[0-9a-f]{8}$/u);
   });
 
-  it('answers 304 for a matching ETag', async () => {
+  it('answers a matching If-None-Match with the prose, never a 304 (BOOK-109)', async () => {
     await boot({ chapters: { 'ch01.md': CHAPTER_ONE } });
     const first = await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     const second = await app!.inject({
@@ -286,7 +285,8 @@ describe('GET /api/chapters/:n', () => {
       url: '/api/chapters/1',
       headers: { 'if-none-match': first.headers.etag as string },
     });
-    expect(second.statusCode).toBe(304);
+    expect(second.statusCode).toBe(200);
+    expect(second.headers.etag).toBe(first.headers.etag);
   });
 
   it('still publishes a chapter without a title line: F022 is a commit gate, not a reader gate', async () => {

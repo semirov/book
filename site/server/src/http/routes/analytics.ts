@@ -9,13 +9,12 @@ import type { RouteDeps } from '../deps.ts';
  * header would block.
  *
  * The id is not a secret — it is printed in every script URL — but it is not hardcoded: an
- * empty setting answers `null`, and the page then loads nothing at all.
+ * empty setting answers `null`, and the page then loads nothing at all. Freshness belongs to
+ * the app's one policy (`http/cache.ts`, `no-store` for `/api/`), not to this route (BOOK-109).
  */
 export function registerAnalyticsRoutes(app: FastifyInstance, deps: RouteDeps): void {
   app.get('/api/analytics', (_request, reply) => {
     const counter = deps.config.metrikaId.trim();
-    return reply
-      .header('cache-control', 'public, max-age=60')
-      .send({ counter: counter.length > 0 ? counter : null });
+    return reply.send({ counter: counter.length > 0 ? counter : null });
   });
 }

@@ -5,12 +5,12 @@
  * and the title page's byline: `/api/history/at/:hseq` alone is 67 indexed lookups, `/diff`
  * recomputes a span on every call, `/api/me/decisions` and `/api/authors` measure the whole
  * book for every request (`/api/authors` also reads every identity, the projection and each
- * contributor's first change; `/api/authors/me` adds the survival join and is `no-store`, so
- * nothing absorbs a repeat), and `/api/front` carries the contributor count — a whole-book
- * aggregate page 1 asks for on every load. They are cacheable or own-only, but a script can
- * still ask for them thousands of times, so they take a per-network window in the same
- * `rate_events` store as everything else — one limiter, one salt, one hash, no second store
- * to drift.
+ * contributor's first change; `/api/authors/me` adds the survival join), and `/api/front`
+ * carries the contributor count — a whole-book aggregate page 1 asks for on every load.
+ * Nothing here is cacheable (BOOK-109: the app answers `no-store`), so every repeat is a real
+ * read and a script can ask for them thousands of times; they take a per-network window in the
+ * same `rate_events` store as everything else — one limiter, one salt, one hash, no second
+ * store to drift.
  *
  * The key is the hashed network, never the address: `rate_events` only ever holds a hash.
  */

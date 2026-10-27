@@ -183,12 +183,13 @@ describe('the integrity panel (§13.4 point 5, §17)', () => {
     }
   });
 
-  it('serves the end matter over HTTP: one author, deterministic and cacheable', async () => {
+  it('serves the end matter over HTTP: one author, deterministic and measured once', async () => {
     const { fixture, app } = await boot({ token: 'right-token', chapters: { 'ch01.md': longProse(['Абзац.']) } });
     try {
       const first = await app.inject({ method: 'GET', url: '/api/authors' });
       expect(first.statusCode).toBe(200);
-      expect(first.headers['cache-control']).toBe('public, max-age=30');
+      // BOOK-109: the app's one policy owns freshness; the end matter answers `no-store`.
+      expect(first.headers['cache-control']).toBe('no-store');
       const firstBody = first.json() as AuthorsDto;
 
       const second = await app.inject({ method: 'GET', url: '/api/authors' });

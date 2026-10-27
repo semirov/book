@@ -69,7 +69,7 @@ describe('GET /api/authors/me', () => {
 });
 
 describe('the front payload (BOOK-DOC-4)', () => {
-  it('puts the byline count in the ETag, so a 304 cannot pin a stale N', async () => {
+  it('puts the byline count in the ETag, and never answers 304 (BOOK-109)', async () => {
     harness = await bootComments();
     const first = await harness.app.inject({ method: 'GET', url: '/api/front' });
     expect(first.json().authors.count).toBe(0);
@@ -85,13 +85,17 @@ describe('the front payload (BOOK-DOC-4)', () => {
     expect(stale.json().authors.count).toBe(1);
     expect(stale.headers.etag).toBe('"front-0-a1"');
 
-    // The same count again is still a valid 304: the representation did not change.
+    // The same count again keeps the same tag, and the page arrives with it: a cached page
+    // may not pin a byline, and no client is told its copy is still right (BOOK-109).
     const same = await harness.app.inject({
       method: 'GET',
       url: '/api/front',
       headers: { 'if-none-match': stale.headers.etag as string },
     });
-    expect(same.statusCode).toBe(304);
+    expect(same.statusCode).toBe(200);
+    expect(same.headers.etag).toBe('"front-0-a1"');
+    expect(same.json().authors.count).toBe(1);
+    expect(same.headers['cache-control']).toBe('no-store');
   });
 });
 
