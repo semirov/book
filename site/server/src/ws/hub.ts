@@ -1,7 +1,9 @@
 /**
  * The WebSocket hub (ARCHITECTURE.md §10): a read-only fan-out for readers.
  *
- * - 100 connections hard, 4 per IP soft (the oldest of the IP is closed, §10.1);
+ * - 100 connections hard, 20 per network (§10.1): over **either** cap the newcomer is
+ *   refused with `1013 CAPACITY` and shown the plate; an open seat is never taken from a
+ *   reader — a CGNAT household shares one address (BOOK-DOC-33 M-major, BOOK-75);
  * - one envelope, a per-connection `seq`;
  * - a chapter body is never framed (ADR-004), so the hub only forwards metadata/deltas;
  * - a slow client is skipped for `state:updated` and healed with `state:snapshot`.
@@ -81,6 +83,7 @@ const INBOUND_MAX_BYTES = 4_096;
 const INBOUND_MAX_PER_MINUTE = 5;
 const DEFAULT_BACKPRESSURE_BYTES = 256 * 1024;
 
+/** 100 seats hard, 20 per network: over either cap the newcomer is refused (§10.1, BOOK-75). */
 export class WsHub {
   private readonly conns = new Map<string, Connection>();
   private readonly db: Db;
@@ -132,15 +135,15 @@ export class WsHub {
     const ip = clientIp(request.headers as HeaderBag, peer, this.trustedProxies);
     const key = connectionKey(ip);
 
+    // Over either cap the newcomer is refused before any connection record exists. The
+    // refusal path builds nothing, so a waiting reader's retry is cheap (§10.1, BOOK-75).
     if (this.conns.size >= this.maxConnections) {
       this.reject(socket, 'CAPACITY');
       return;
     }
-    while (this.connectionsFor(key) >= this.perIp) {
-      const oldest = [...this.conns.values()].find((conn) => conn.ipKey === key);
-      if (oldest === undefined) break;
-      this.drop(oldest);
-      this.reject(oldest.socket, 'CAPACITY');
+    if (this.connectionsFor(key) >= this.perIp) {
+      this.reject(socket, 'CAPACITY');
+      return;
     }
 
     const conn: Connection = {

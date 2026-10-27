@@ -22,6 +22,7 @@ import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts'
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
 import { ChangeCard } from './components/ChangeCard.tsx';
+import { CapacityPlate } from './components/CapacityPlate.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
 import { ParagraphChain } from './components/ParagraphChain.tsx';
@@ -344,17 +345,6 @@ export function App() {
     };
   }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, card.refresh, focus.bump, applyAuthorsCount]);
 
-  if (connection === 'capacity') {
-    return (
-      <main className="page waiting" role="alert">
-        <p className="waiting-copy">здесь слишком много людей — подождите, кто-нибудь выйдет, и вы войдёте</p>
-        <button className="waiting-retry" type="button" onClick={() => socketRef.current?.retry()}>
-          попробовать снова
-        </button>
-      </main>
-    );
-  }
-
   if (failed && data === null) {
     return (
       <main className="page">
@@ -426,6 +416,7 @@ export function App() {
         {chainActive ? (
           <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
         ) : null}
+        <CapacityPlate active={connection === 'capacity'} />
         {focusView}
       </>
     );
@@ -480,6 +471,7 @@ export function App() {
         <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
       ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
+      <CapacityPlate active={connection === 'capacity'} />
       {focusView}
     </>
   );

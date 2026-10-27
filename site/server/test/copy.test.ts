@@ -37,6 +37,8 @@ const COPY_MODULES = [
   'web/src/lib/focus.ts',
   'web/src/lib/history.ts',
   'web/src/lib/format.ts',
+  // BOOK-75: the full hall's plate and its state line.
+  'web/src/lib/capacity.ts',
   'server/src/history/summary.ts',
 ];
 
