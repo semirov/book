@@ -62,6 +62,7 @@ import { closeOverlays } from './lib/overlays.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
+import { useBookCost } from './useBookCost.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
@@ -158,6 +159,8 @@ export function App() {
 
   // `/api/queue` is polled only while the engine is alive (§9); the socket carries the rest.
   useQueuePoll(dataRef, setData);
+  /** BOOK-114: the footer's outlay, re-read when the book state version moves. */
+  const cost = useBookCost(data?.state.version ?? null);
 
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
@@ -478,7 +481,7 @@ export function App() {
         live={history}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
-      <Colophon state={state} imprint={front.imprint} />
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
       )}

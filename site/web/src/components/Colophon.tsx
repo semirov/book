@@ -1,11 +1,13 @@
-import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot } from '@book/shared';
+import { TOTAL_CHAPTERS, type BookCostDto, type FrontDto, type StateSnapshot, type ViewerDto } from '@book/shared';
 import { useState } from 'react';
 
 import { useCounterConfigured } from '../lib/analytics.ts';
+import { costMoney, costTokens } from '../lib/bookCost.ts';
 import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
+import { LogoutRow } from './LogoutRow.tsx';
 import { MarginTail } from './MarginTail.tsx';
 
 /**
@@ -23,11 +25,20 @@ export const COLOPHON_MOTTO = 'С любовью к научной фантас�
  * BOOK-59 removed the ticking clock and today's date: a clock changes while the reader reads
  * and dates nothing, and «издание · сегодня» claims an edition date the imprint does not have
  * (it is author and copyright only). What stays dates itself — «печатается по ходу письма».
+ *
+ * The footer is read in this order by a reader: the counts, the way out (BOOK-115), the
+ * imprint, the build the page is (BOOK-109), and the book's outlay last (BOOK-114) — the page
+ * states what it cost after it has said what it is and which copy of it the reader holds.
+ * `cost === null` prints no row at all: before the first successful read the total is unknown,
+ * and an unknown total is not a zero.
  */
 export function Colophon({
   state,
   imprint,
   build = BUILD,
+  viewer = { signedIn: false, displayName: null },
+  cost = null,
+  reload,
 }: {
   state: StateSnapshot;
   imprint: FrontDto['imprint'];
@@ -36,6 +47,10 @@ export function Colophon({
    * passes its own, so the text can be pinned without a build.
    */
   build?: BuildId;
+  viewer?: ViewerDto;
+  cost?: BookCostDto | null;
+  /** Test seam only — jsdom cannot navigate; the page reloads into a guest session. */
+  reload?: (url: string) => void;
 }) {
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const consent = useConsent();
@@ -75,6 +90,7 @@ export function Colophon({
             </span>
           </div>
         ) : null}
+        <LogoutRow viewer={viewer} reload={reload} />
         <div className="row">
           <span className="imprint-line">
             {imprint.copyright} — {COLOPHON_MOTTO} · <a href="/privacy">приватность</a> ·{' '}
@@ -104,6 +120,17 @@ export function Colophon({
         <div className="row">
           <span className="build-stamp">{composeBuildStamp(build)}</span>
         </div>
+        {cost === null ? null : (
+          <div className="row">
+            {/* BOOK-114: two fragments, one sentence — the line breaks between the count and
+                the money at 390, never inside either half. Last row of the page: the build
+                stamp above it says which copy this is, this says what the copy cost. */}
+            <span className="cost-line">
+              <span>{costTokens(cost)}</span>{' '}
+              <span>{costMoney(cost)}</span>
+            </span>
+          </div>
+        )}
       </footer>
       {/* BOOK-90 §1.10: the margin's tail lives after the colophon — below everything. */}
       <MarginTail />

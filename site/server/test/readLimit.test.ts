@@ -8,7 +8,7 @@ import { isReadLimited, READ_WINDOW_MS, readLimitKey } from '../src/http/readLim
  * own budget, in `frontRoute.test.ts`.
  */
 describe('the read API budget', () => {
-  it('limits the history projections, the state poll, the title page, the change list, the end matter and the reader’s own record', () => {
+  it('limits the history projections, the state poll, the title page, the cost line, the change list, the end matter and the reader’s own record', () => {
     for (const url of [
       '/api/history',
       '/api/history/timeline?limit=5',
@@ -17,6 +17,9 @@ describe('the read API budget', () => {
       '/api/state',
       '/api/front',
       '/api/front?poll=1',
+      // BOOK-114: the footer's whole-book aggregate is budgeted like the title page's.
+      '/api/cost',
+      '/api/cost?x=1',
       '/api/changes?limit=6',
       '/api/me/decisions',
       '/api/authors',
@@ -35,6 +38,7 @@ describe('the read API budget', () => {
       '/api/historyz',
       '/api/states',
       '/api/fronts',
+      '/api/costs',
       '/api/memory',
     ]) {
       expect(isReadLimited(url), url).toBe(false);
