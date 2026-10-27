@@ -153,6 +153,12 @@ export type ChangeDto = {
   intent: string;
   /** BOOK-7 — a reader's premise for a chapter with no text: it never enters the lane. */
   premise: boolean;
+  /**
+   * The premise's own landing, derived from the book: `premise` is true and its
+   * chapter has text. It is the fact a surface says «внесено» from — the change row may still
+   * be `void` behind a failed attempt, and a failed attempt is not a verdict on the premise.
+   */
+  premiseLanded: boolean;
   source: { commentId: string | null; author: string | null };
   base: { rev: number };
   scopeHint: 'phrase' | 'chapter';
@@ -191,6 +197,15 @@ export type ChangeSummaryDto = {
   intent: string;
   /** BOOK-7 — a chapter-level premise: it waits for the chapter's first pass, not the lane. */
   premise: boolean;
+  /** A premise whose chapter has text: it entered the first edition. */
+  premiseLanded: boolean;
+  /**
+   * The filing this change was made from (`changes.source_comment`), or `null` for a change
+   * the author raised on their own. It is how a reader's thread attaches an attempt to the
+   * entry it belongs to: a change is never a row of its own, and a change with no filing is
+   * the chronicle's, not the thread's.
+   */
+  sourceCommentId: string | null;
   status: ChangeStatus;
   outcome: ChangeOutcome | null;
   reason: string | null;

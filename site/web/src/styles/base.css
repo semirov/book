@@ -108,8 +108,7 @@ h3 {
 .state-line,
 .ch-placeholder,
 .ch-fail,
-.talks .comments,
-.talks .talks-list {
+.talks .comments {
   max-width: var(--measure);
 }
 .ch,

@@ -1,8 +1,9 @@
-import type { AuthorsDto, MyDecisionsDto } from '@book/shared';
+import type { AuthorsDto, MyDecisionsDto, StateSnapshot } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { Authors } from './Authors.tsx';
+import { Colophon } from './Colophon.tsx';
 
 const imprint = { author: 'Филипп Семиров', copyright: '© Филипп Семиров' };
 
@@ -55,7 +56,7 @@ describe('the end matter (§6C.5)', () => {
     expect(html.indexOf('Аня')).toBeLessThan(html.indexOf('Борис'));
   });
 
-  it('prints the copyright and the last revision date, and no publisher', () => {
+  it('prints the last revision date and no publisher, and leaves the one © to the colophon', () => {
     const html = renderToStaticMarkup(
       <Authors
         authors={measured}
@@ -63,13 +64,14 @@ describe('the end matter (§6C.5)', () => {
         lastRevisionAt="2026-10-25T09:20:00Z"
         live />,
     );
-    expect(html).toContain('© Филипп Семиров');
     expect(html).toContain('последняя правка');
     expect(html).toContain('25.10.2026');
     expect(html).not.toContain('издательство');
     expect(html).not.toContain('ISBN');
-    // No year on the cover; the end matter carries the date instead (§6C.6).
-    expect(html).not.toContain('© Филипп Семиров, 20');
+    // BOOK-137: the rights statement is printed once, in the colophon — the end matter gave up
+    // its copy, so the page no longer carries two «©».
+    expect(html).not.toContain('©');
+    expect(html).not.toContain('authors-copyright');
   });
 
   it('keeps no second door to the chronicle: the view switch at the top is the only one', () => {
@@ -308,5 +310,37 @@ describe('«Авторы» while the shares are counted', () => {
     // A measurement that failed after an earlier one may be stale: no sentence, but the rows stay.
     const html = markup({ authors: { ...measured, contributors: [] }, stage: 'quiet', authorsFailed: true });
     expect(html).not.toContain('пока весь текст написан автором');
+  });
+});
+
+/**
+ * BOOK-137 — the owner read the footer as «странно»: «©» stood twice on one page, once in the
+ * end matter and once in the colophon. The page prints the rights statement exactly once, and
+ * the end matter keeps the author names and the date instead.
+ */
+describe('one «©» on the page (BOOK-137)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('prints the imprint once across the end matter and the footer', () => {
+    // The theme is read from the document at first paint, as `colophon.test.tsx` does.
+    vi.stubGlobal('document', {
+      documentElement: { getAttribute: () => 'day', setAttribute: () => undefined },
+      querySelector: () => null,
+    });
+    const state = {
+      chapters: { total: 67, written: [], empty: [], count: 3, totalChars: 12_000 },
+    } as unknown as StateSnapshot;
+    const html = renderToStaticMarkup(
+      <>
+        <Authors authors={measured} imprint={imprint} lastRevisionAt="2026-10-25T09:20:00Z" live />
+        <Colophon state={state} imprint={imprint} />
+      </>,
+    );
+    expect(html.split('©').length - 1).toBe(1);
+    // The end matter still names the author and the day the text last changed.
+    expect(html).toContain('Филипп Семиров');
+    expect(html).toContain('последняя правка — 25.10.2026');
   });
 });

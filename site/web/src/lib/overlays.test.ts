@@ -16,6 +16,7 @@ import { closeOverlays } from './overlays.ts';
 
 function comment(): CommentDto {
   return {
+    attempt: null,
     id: 'cmt_0123',
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },

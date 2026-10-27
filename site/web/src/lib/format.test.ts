@@ -1,3 +1,4 @@
+import type { CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,6 +9,7 @@ import {
   formatTime,
   plural,
   queueLabel,
+  queueView,
 } from './format.ts';
 
 describe('formatNumber', () => {
@@ -96,5 +98,63 @@ describe('formatFileSize', () => {
     expect(formatFileSize(0)).toBe('0 КБ');
     expect(formatFileSize(Number.NaN)).toBe('0 КБ');
     expect(formatFileSize(-1)).toBe('0 КБ');
+  });
+});
+
+/**
+ * The queue line and the list come from one fact. The prod register said «в
+ * очереди пусто» above two rows it presented as waiting, because the line printed a lane depth
+ * the rows had already left (or never entered). BOOK-137: the entries are filings only — a
+ * change is an attempt inside its filing's entry, so counting it beside the filing would count
+ * one thing twice — and a premise never holds a queue place.
+ */
+describe('queueView', () => {
+  const filing = (id: string, status: CommentDto['status'], premise = false): Pick<CommentDto, 'id' | 'status' | 'premise'> => ({
+    id,
+    status,
+    premise,
+  });
+
+  it('counts the entries the page presents as queued, never zero over a waiting one', () => {
+    const view = queueView(0, [filing('cmt_9', 'new'), filing('cmt_8', 'applied')]);
+    expect(view.count).toBe(1);
+    expect(view.rows).toEqual([{ kind: 'filing', id: 'cmt_9' }]);
+  });
+
+  it('never counts a premise filing, a landed row or a stopped one', () => {
+    const view = queueView(0, [
+      filing('cmt_p', 'new', true),
+      filing('cmt_a', 'applied'),
+      filing('cmt_b', 'rejected'),
+    ]);
+    expect(view.rows).toEqual([]);
+    expect(view.count).toBe(0);
+  });
+
+  it('counts one filing with an attempt once: the attempt is not a second row', () => {
+    // The filing is accepted and its change is pending: before BOOK-137 that pair printed
+    // «в очереди 2 правки» over one entry.
+    const view = queueView(0, [filing('cmt_a', 'accepted')]);
+    expect(view.rows).toHaveLength(1);
+    expect(view.count).toBe(1);
+  });
+
+  it('counts a filing in triage: the word «в очереди» covers it', () => {
+    // The rule `QUEUED_FILING` states: the line counts what the page presents as waiting or
+    // working. A `batched`/`delivered` filing is being read by triage — on its way into the
+    // lane, not out of the book — so it counts, and the line never reads «пусто» above it.
+    const view = queueView(0, [filing('cmt_t', 'batched'), filing('cmt_d', 'delivered')]);
+    expect(view.count).toBe(2);
+    expect(view.rows).toEqual([
+      { kind: 'filing', id: 'cmt_t' },
+      { kind: 'filing', id: 'cmt_d' },
+    ]);
+  });
+
+  it('keeps the server’s own depth when the page shows fewer rows than the lane holds', () => {
+    // The API pages the thread; the line is about the lane, so a bigger depth still prints.
+    expect(queueView(5, []).count).toBe(5);
+    expect(queueView(1, [filing('cmt_a', 'new')]).count).toBe(1);
+    expect(queueView(3, [filing('cmt_a', 'new'), filing('cmt_b', 'new')]).count).toBe(3);
   });
 });

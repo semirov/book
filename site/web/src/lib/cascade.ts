@@ -82,9 +82,13 @@ export function wingOfChapter(chapter: number, origin: number): Wing | 'origin' 
 /**
  * The wing's one-word state; never a percentage and never a verdict. A wing that has finished
  * its work has «остановилось» — the verb's tense is the finality, not a colour (BOOK-70).
+ *
+ * BOOK-137 — a wing that **never opened** says nothing at all: «не открылось» is the
+ * machinery reporting its own condition, and no reading surface prints a failure. The origin
+ * («65 правка») stays; an empty wing is simply absent.
  */
 export function wingStateCopy(state: CascadeWingDto['state']): string {
-  if (state === 'waiting') return 'не открылось';
+  if (state === 'waiting') return '';
   if (state === 'moving') return 'идёт';
   if (state === 'stopped') return 'остановлено';
   return 'остановилось';
@@ -93,17 +97,20 @@ export function wingStateCopy(state: CascadeWingDto['state']): string {
 /**
  * «вниз · идёт» / «вниз · волна 2 · решением · идёт» — the wing's own line, for the ribbon and
  * the focus view. BOOK-59: a wave below two is the only wave a ripple has, so it is noise; a
- * second one got there by the owner's decision and says so.
+ * second one got there by the owner's decision and says so. BOOK-137: a wing that never
+ * opened prints nothing — the callers skip the empty slot instead of drawing a blank or a
+ * diagnostic.
  */
 export function wingLine(side: Wing, wing: RibbonWing): string {
+  if (wing.state === 'waiting') return '';
   const wave = wing.wave >= 2 ? ` · волна ${wing.wave} · решением` : '';
   return `${WING_WORDS[side]}${wave} · ${wingStateCopy(wing.state)}`;
 }
 
 /**
  * «07 · 06» — reached chapters, nearest first. An empty wing prints nothing at all: the state
- * word already stands in `wingLine`, and a second «не открылось» is the same fact twice, while
- * «дальше держится» is a claim the data does not make (BOOK-70).
+ * line carries the state, and a second word is the same fact twice, while «дальше держится»
+ * is a claim the data does not make (BOOK-70).
  */
 export function wingReachedCopy(wing: RibbonWing): string {
   if (wing.reached.length === 0) return '';

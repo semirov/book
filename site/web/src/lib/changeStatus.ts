@@ -29,7 +29,9 @@ export type ChangeLines = {
 };
 
 /** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
-export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean }): string {
+export function stampCopy(
+  change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean; premiseLanded?: boolean },
+): string {
   // BOOK-90: the stamp is a **state word** — «ждёт» · «идёт» · «внесено» — not a phrase.
   // A premise's own story (in basis, first edition, refused) is its second line.
   return changeWord(change);
@@ -70,6 +72,12 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
   // BOOK-7: a premise is the chapter's starting point; it never claims a queue place or a
   // ripple. Its whole story is «ждёт → внесено» with the edition on the second line.
   if (change.premise) {
+    // The book's own fact decides the landing. A premise whose chapter has text
+    // is «внесено» with the edition it entered — and a failed attempt behind it is stale
+    // news, not the premise's line.
+    if (change.premiseLanded === true) {
+      return { first, second: `вошло в первую редакцию главы ${change.chapter}`, tone: 'done' };
+    }
     if (change.status === 'done') {
       return {
         first,
@@ -130,7 +138,9 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
 export function progressLine(change: ChangeSummaryDto): string {
   const state = changeWord(change);
   if (change.premise) {
-    if (change.status === 'done') return `принято в основу → ${state} → вошло в первую редакцию`;
+    if (change.premiseLanded === true || change.status === 'done') {
+      return `принято в основу → ${state} → вошло в первую редакцию`;
+    }
     return `принято в основу → ${state}`;
   }
   if (change.status === 'done') return `принято → ${state} → ${reachCopy(change)}`;
@@ -148,8 +158,9 @@ export function relevanceCopy(grade: PublicRelevance['grade']): string {
 }
 
 /** BOOK-7 — the card's own outcome word for a premise, never «внесено» for a first edition. */
-export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'>): string {
-  if (change.status === 'done') return 'замысел учтён';
+export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'> & { premiseLanded?: boolean }): string {
+  // The chapter's text is the landing, not the change row's status.
+  if (change.premiseLanded === true || change.status === 'done') return 'замысел учтён';
   if (change.status === 'void') return change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят';
   return 'в основе главы';
 }
@@ -199,15 +210,20 @@ export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outc
  * `changeState`, so the list and the card can never say two different states one click apart.
  * A refusal keeps its word — «снято» · «перекрыто» — from `outcomeCopy`, and a stopped change
  * says «остановлено». A premise speaks of «замысел», so its word agrees with that noun instead
- * («учтён» · «снят» · «ждёт»).
+ * («учтён» · «снят» · «ждёт»); «учтён» follows the chapter's own text (`premiseLanded`), so a
+ * premise the writer landed and a failed attempt left behind cannot read «снят».
  *
  * Nothing here invents a register: every word already exists in `STATE_WORDS`,
  * `outcomeCopy` or the premise's own card copy. The final wording belongs to BOOK-59's copy
  * pass; this function is where that pass changes it.
  */
-export function recordWord(record: Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise'>): string {
+export function recordWord(
+  record: Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded'>,
+): string {
   if (record.premise) {
-    if (record.status === 'done') return 'учтён';
+    // The chapter's text is the landing — the same fact the card's stamp reads. A premise whose
+    // chapter has an edition is «учтён» whatever the attempt behind it went on to say.
+    if (record.premiseLanded || record.status === 'done') return 'учтён';
     if (record.status === 'void') return 'снят';
     return STATE_WORDS.waiting;
   }
@@ -223,9 +239,14 @@ export function recordWord(record: Pick<HistoryRecordDto, 'status' | 'outcome' |
  *
  * The server already bounds and normalises it (`record.ts`), so the row appends nothing of its
  * own: the reason is the only tail a record entry may carry, and only where there is one.
+ * A premise that landed carries none, whatever its change row still says: the failed attempt
+ * behind a written chapter is stale news, not the premise's line.
  */
-export function recordReason(record: Pick<HistoryRecordDto, 'status' | 'reason'>): string | null {
+export function recordReason(
+  record: Pick<HistoryRecordDto, 'status' | 'reason' | 'premiseLanded'>,
+): string | null {
   if (record.reason === null || record.reason.length === 0) return null;
+  if (record.premiseLanded) return null;
   if (record.status === 'void' || record.status === 'escalated' || record.status === 'failed') return record.reason;
   return null;
 }

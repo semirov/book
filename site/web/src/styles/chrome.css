@@ -130,7 +130,7 @@
   color: var(--ink-2);
   text-wrap: pretty;
 }
-/* `.kicker` and `.copyright` stay: LegalPage, «Авторы» and the colophon use them. */
+/* `.kicker` and `.copyright` stay: LegalPage and the colophon use them. */
 .kicker {
   letter-spacing: 0.18em;
   color: var(--ink-3);
@@ -300,9 +300,6 @@
   }
 }
 .authors-export {
-  margin-top: 22px;
-}
-.authors-copyright {
   margin-top: 22px;
 }
 

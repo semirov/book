@@ -21,6 +21,8 @@ import {
 
 function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   return {
+    premiseLanded: false,
+    sourceCommentId: null,
     id: 'chg_1',
     seq: 4,
     chapter: 8,
@@ -252,11 +254,17 @@ describe('ranges and labels', () => {
 });
 
 describe('BOOK-65 — one outcome word for one public record entry', () => {
-  function record(overrides: Partial<Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'reason'>> = {}) {
-    return { status: 'done', outcome: 'applied', premise: false, reason: null, ...overrides } as Pick<
-      HistoryRecordDto,
-      'status' | 'outcome' | 'premise' | 'reason'
-    >;
+  function record(
+    overrides: Partial<Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded' | 'reason'>> = {},
+  ) {
+    return {
+      status: 'done',
+      outcome: 'applied',
+      premise: false,
+      premiseLanded: false,
+      reason: null,
+      ...overrides,
+    } as Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded' | 'reason'>;
   }
 
   it('uses exactly the three public state words, agreeing with the card', () => {
@@ -298,5 +306,60 @@ describe('BOOK-65 — one outcome word for one public record entry', () => {
     // …and an absent or empty reason prints nothing at all.
     expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: null }))).toBeNull();
     expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: '' }))).toBeNull();
+  });
+
+  it('reads the prod shape as «учтён»: a landed premise is not its failed attempt', () => {
+    // The prod shape: chapter 65 was written, the premise’s change ended `void`/`dropped` with
+    // the sanitized failure line, and the row said «замысел … снят». The chapter’s text is the
+    // landing (`premiseLanded`), so the word is the premise’s own and the attempt is stale news.
+    const prod = record({
+      premise: true,
+      premiseLanded: true,
+      status: 'void',
+      outcome: 'dropped',
+      reason: 'модель ответила не по форме — заявка остаётся в очереди',
+    });
+    expect(recordWord(prod)).toBe('учтён');
+    expect(recordReason(prod)).toBeNull();
+    expect(JSON.stringify([recordWord(prod), recordReason(prod)])).not.toMatch(/не по форме|снят/u);
+  });
+});
+
+/**
+ * The chapter's text is the landing. A premise whose chapter 65 exists reads
+ * «внесено» with the edition it entered, and a failed attempt left behind on its change row
+ * (a `void` with the sanitized failure line) is not the premise's story.
+ */
+describe('a landed premise on the change surfaces', () => {
+  const failedAttemptLine = 'модель ответила не по форме — заявка остаётся в очереди';
+  const landed = summary({
+    premise: true,
+    premiseLanded: true,
+    chapter: 65,
+    status: 'void',
+    outcome: 'dropped',
+    reason: failedAttemptLine,
+    chapters: [65],
+  });
+
+  it('reads as entered with the edition, not as a stale failure', () => {
+    expect(stampCopy(landed)).toBe('внесено');
+    expect(changeLines(landed)).toEqual({
+      first: 'внесено',
+      second: 'вошло в первую редакцию главы 65',
+      tone: 'done',
+    });
+    expect(progressLine(landed)).toBe('принято в основу → внесено → вошло в первую редакцию');
+    expect(premiseOutcomeCopy(landed)).toBe('замысел учтён');
+    // The failure line of the old attempt is nowhere in the copy the reader sees.
+    expect(JSON.stringify(changeLines(landed))).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT|не по форме/u);
+    expect(changeLines(landed).second).not.toBe(failedAttemptLine);
+  });
+
+  it('never invents a landing for a premise whose chapter has no text', () => {
+    const waiting = summary({ premise: true, premiseLanded: false, chapter: 65, status: 'pending', outcome: null });
+    expect(changeLines(waiting)).toMatchObject({ first: 'ждёт', second: 'принято в основу, до первой редакции' });
+    expect(progressLine(waiting)).toBe('принято в основу → ждёт');
+    expect(premiseOutcomeCopy(waiting)).toBe('в основе главы');
   });
 });

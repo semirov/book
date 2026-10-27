@@ -8,8 +8,9 @@ import { boundaryLabel } from '../lib/changeStatus.ts';
  * The ripple is visible in both directions at once — rings spreading down toward chapter 1
  * and up toward chapter 67 — and the reader may follow either wing. Each wing prints its own
  * wave, its state and the chapters it reached, from the cascade DTO; a wing that never opened
- * prints «не открылось» and reaches nothing. Rings appear only while a step is in flight, so
- * no animation exists without a live cascade.
+ * prints nothing and is skipped (BOOK-137): the reading surface never prints the machinery's
+ * own condition. Rings appear only while a step is in flight, so no animation exists without
+ * a live cascade.
  *
  * Every chapter is a link to its own place in the book; a wing's state opens the change card.
  * No inline style: the layout is classes and data attributes (CSP forbids inline styles).
@@ -93,9 +94,13 @@ export function CascadeRibbon({
 
 /** One wing: its wave and state in words, then every chapter it reached as a link. */
 function WingColumn({ side, wing }: { side: Wing; wing: RibbonWing }) {
+  const line = wingLine(side, wing);
+  // BOOK-137: a wing that never opened has nothing to say — no state word, no diagnostic, no
+  // empty column. The origin in the middle stays, so the ribbon still names the change's home.
+  if (line === '' && wing.reached.length === 0) return null;
   return (
     <div className={`ribbon-wing is-${side}`} data-state={wing.state}>
-      <span className="ribbon-wing-h">{wingLine(side, wing)}</span>
+      {line === '' ? null : <span className="ribbon-wing-h">{line}</span>}
       {wing.reached.length === 0 ? null : (
         <span className="ribbon-reached">
           {wing.reached.map((chapter) => (

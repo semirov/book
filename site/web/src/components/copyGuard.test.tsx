@@ -42,6 +42,7 @@ const BANNED = [
 ];
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',
@@ -147,6 +148,7 @@ const record: HistoryRecordDto = {
   seq: 7,
   chapter: 8,
   premise: false,
+  premiseLanded: false,
   alias: 'Аня',
   status: 'done',
   outcome: 'adapted',

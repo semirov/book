@@ -84,6 +84,7 @@ const OWN_TRACE: MyTraceDto = {
 };
 
 const COMMENT: CommentDto = {
+  attempt: null,
   id: 'cmt_1',
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 3, quote: SENTINEL.quote, prefix: null, suffix: null, resolved: true },
@@ -103,6 +104,7 @@ const COMMENT: CommentDto = {
 };
 
 const CHANGE: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 7,
   kind: 'accepted_comment',
@@ -146,6 +148,7 @@ const RECORD: HistoryRecordDto = {
   seq: 7,
   chapter: 8,
   premise: false,
+  premiseLanded: false,
   alias: SENTINEL.name,
   status: 'done',
   outcome: 'applied',
@@ -258,7 +261,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
   it('masks a filled premise slot, which shows the premise’s own first line', () => {
     const html = renderToStaticMarkup(
       <PremiseRow
-        row={{ n: 2, quote: SENTINEL.body, word: 'ждёт', actionable: true }}
+        row={{ n: 2, commentId: 'cmt_1', quote: SENTINEL.body, word: 'ждёт', note: null, attempt: null, actionable: true }}
         onOpen={() => undefined}
       />,
     );

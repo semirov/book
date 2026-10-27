@@ -1,4 +1,4 @@
-import { AUTHOR_COLORS, type CommentDto } from '@book/shared';
+import { AUTHOR_COLORS, FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -29,6 +29,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -215,5 +216,104 @@ describe('the register while its feed is landing', () => {
     expect(html).toContain('class="page talks');
     expect(html).toContain('Их читают как данные');
     expect(html).not.toBe(waiting);
+  });
+});
+
+/** A change summary, only the fields the register reads. */
+function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
+  return {
+    premiseLanded: false,
+    sourceCommentId: 'cmt_1',
+    id: 'chg_1',
+    seq: 1,
+    chapter: 65,
+    intent: 'ответ на вопрос дать процедурой, а не объяснением',
+    premise: false,
+    status: 'pending',
+    outcome: null,
+    reason: null,
+    position: 1,
+    enqueuedAt: '2026-10-25T11:00:00Z',
+    decidedAt: null,
+    chapters: [65],
+    rewritten: [],
+    steps: 0,
+    modes: [],
+    cascade: null,
+    ...overrides,
+  };
+}
+
+/** Tags stripped, so a `<b>` between a number and its noun is no alibi. */
+function text(html: string): string {
+  return html.replace(/<[^>]*>/gu, '');
+}
+
+/**
+ * One filing is one entry: a premise is the chapter's row (never a block here), and a change
+ * is the attempt of the filing it came from (never a second row). The prod page said «в
+ * очереди пусто» over two rows it presented as waiting, and showed the same premise twice: as
+ * a filing and as the chapter's row.
+ */
+describe('one state per filing on the register', () => {
+  it('lists the thread’s filings only, and counts the queue from the same rows', () => {
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={0}
+        comments={[
+          // A premise whose chapter 65 has text: it entered the first edition, and its home is
+          // the chapter's own row — the thread prints no block for it.
+          comment({
+            id: 'cmt_65',
+            chapter: 65,
+            premise: true,
+            status: 'applied',
+            applied: { chapter: 65, rev: 7 },
+          }),
+          // A filing still in triage: one queued entry, and the line must count it.
+          comment({ id: 'cmt_9', chapter: 9, status: 'new' }),
+        ]}
+        changes={[
+          // The premise as its own change: an attempt inside the entry, never a row.
+          change({ id: 'chg_65', premise: true, premiseLanded: true, status: 'done', outcome: 'applied', sourceCommentId: 'cmt_65' }),
+        ]}
+        live
+      />,
+    );
+    const plain = text(html);
+    expect(plain).toContain('ждёт');
+    expect(plain).toContain('в очереди 1 правка');
+    expect(plain).not.toContain('в очереди пусто');
+    // The premise's word is its row's, not the thread's: one entry, one state, no duplicate.
+    expect(plain).not.toContain('внесено');
+    expect(plain).toContain('1 замечание');
+    expect(html).not.toContain('data-comment-id="cmt_65"');
+    expect(html).toContain('data-comment-id="cmt_9"');
+    // One queued entry = one filing; the premise change is not a row of its own.
+    expect(html).not.toContain('data-change="chg_65"');
+    expect(html.match(/class="talk tone-/gu) ?? []).toHaveLength(0);
+  });
+
+  it('shows a failed attempt as the deck’s sentence, never as the engine’s code', () => {
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={0}
+        comments={[comment({ id: 'cmt_9', chapter: 9, status: 'new', attempt: 'failed' })]}
+        live
+      />,
+    );
+    expect(text(html)).toContain(FAILED_ATTEMPT_LINE);
+    expect(text(html)).toContain('в очереди 1 правка');
+    expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('an empty queue is one sentence and no list', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} changes={[]} live />);
+    const plain = text(html);
+    expect(plain).toContain('в очереди пусто');
+    expect(plain).toContain('замечаний нет');
+    expect(html).not.toContain('class="talks-list"');
+    expect(html).not.toContain('class="comment"');
+    expect(html).not.toContain('class="talk ');
   });
 });

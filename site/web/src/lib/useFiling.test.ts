@@ -16,6 +16,7 @@ import { currentRevision, hideRevision, showRevision } from './useRevision.ts';
 
 function comment(id: string): CommentDto {
   return {
+    attempt: null,
     id,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },

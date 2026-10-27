@@ -70,6 +70,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: null,
     status: 'new',
     refusal: null,
+    attempt: null,
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -82,6 +83,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 /** A dropped change: the settled прицел prints its sheet and fetches nothing. */
 const CHANGE: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',

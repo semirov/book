@@ -1,6 +1,7 @@
-import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
+import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
 
-import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
+import { attemptsOf, earlierAttempts } from '../lib/filings.ts';
+import { premiseAction, premiseFiling, premiseRow } from '../lib/premise.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { FilingPanel } from './FilingPanel.tsx';
@@ -8,7 +9,12 @@ import { PremiseRow } from './PremiseRow.tsx';
 import { Seam } from './Seam.tsx';
 
 /**
- * BOOK-90 A — an empty chapter's contents: the one row, and the premise strip when opened.
+ * BOOK-90 A + BOOK-137 — the premise filing's one entry: the row, its strip, its card.
+ *
+ * **The chapter's row is the home of a premise filing.** The reader's thread never renders a
+ * premise (`threadFilings`), so this is the only surface it appears on — while the chapter is
+ * empty and after it is written. The row carries the filing's quote, one state word and one
+ * number; the card carries the body, the derived premise reading and the earlier attempts.
  *
  * **Children only.** The `<article>` is `ChapterArticle`'s and stays the same DOM node across
  * the empty → written swap, so the chapter's lazy-load observer keeps watching the live slot
@@ -17,22 +23,28 @@ import { Seam } from './Seam.tsx';
  * The one explanation sentence is the page's: the row no longer prints it — the row is a
  * chapter number and a field, and the reading surface prints the book, not the interface
  * (BOOK-112). The strip carries it only when it is the first empty chapter's own strip, and
- * only while it is open.
+ * only while it is open. A written chapter has no strip: there is nothing left to file.
  */
-export function EmptyChapter({
+export function PremiseEntry({
   entry,
   comments,
+  changes = [],
   composer,
   viewer,
   firstEmpty,
+  form = false,
   onPosted,
 }: {
   entry: CatalogEntry;
   comments: readonly CommentDto[];
+  /** The thread's changes: the attempts folded into this filing, never rows of their own. */
+  changes?: readonly ChangeSummaryDto[];
   composer: ComposerInfo;
   viewer: ViewerDto;
   /** The first empty chapter in the flow: it owns the page's one explanation sentence. */
   firstEmpty: boolean;
+  /** The chapter can still take a premise, so a tap on an empty row opens the form. */
+  form?: boolean;
   /** BOOK-111: the posted DTO reaches the page, which shows the row without a reload. */
   onPosted?: (comment: CommentDto) => void;
 }) {
@@ -44,9 +56,12 @@ export function EmptyChapter({
     filing !== null && filing.kind === 'filing' && filing.owner === owner && filing.comment !== null
       ? { comment: filing.comment, rect: filing.rect }
       : null;
-  const premise = existingPremise(comments, entry.n);
-  const row = premiseRow(entry, premise);
+  const premise = premiseFiling(comments, entry.n);
+  const row = premiseRow(entry, premise, changes);
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
+  /** BOOK-137: the attempts before the latest one live inside the card, not beside it. */
+  const earlier = premise === null ? [] : earlierAttempts(premise, changes);
+  const intent = premise === null ? null : (attemptsOf(changes, premise.id).at(-1)?.intent ?? null);
 
   /**
    * BOOK-111: one way into a filing that already exists. The premise row, and the strip's
@@ -73,11 +88,13 @@ export function EmptyChapter({
           row={row}
           onOpen={(origin) => {
             // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
-            // second form would be refused by the server («у главы уже есть замысел»).
+            // second form would be refused by the server («у главы уже есть замысел»). A
+            // written chapter holds no form at all: its premise is history.
             if (premiseAction(premise).kind === 'card') {
               if (premise !== null) openFiling(premise, origin);
               return;
             }
+            if (!form) return;
             openSeam({
               chapter: entry.n,
               blockId: null,
@@ -88,7 +105,7 @@ export function EmptyChapter({
           }}
         />
       )}
-      {open ? (
+      {form && open ? (
         <Seam
           entry={entry}
           draftKey={`ch${entry.n}:premise`}
@@ -107,7 +124,13 @@ export function EmptyChapter({
         />
       ) : null}
       {panel === null ? null : (
-        <FilingPanel comment={panel.comment} anchor={panel.rect} onClose={hideFiling} />
+        <FilingPanel
+          comment={panel.comment}
+          anchor={panel.rect}
+          earlierAttempts={earlier}
+          premiseIntent={intent}
+          onClose={hideFiling}
+        />
       )}
     </>
   );

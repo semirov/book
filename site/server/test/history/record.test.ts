@@ -94,6 +94,7 @@ describe('one entry per reader change (AC1)', () => {
       seq: 1,
       chapter: 8,
       premise: false,
+      premiseLanded: false,
       alias: 'Аня',
       status: 'processing',
       outcome: null,
@@ -352,5 +353,96 @@ describe('the public reason a row may print', () => {
     expect(newest?.changeId).toBe(second.changeId);
     expect(newest?.reason).toBeNull();
     expect(oldest?.reason).toBe('текст успел измениться');
+  });
+
+  it('never prints an engine code: the attempt becomes the reader’s sentence', () => {
+    // A failed attempt is not a verdict on the filing, and its handle is not copy.
+    fixture = createFixture();
+    const db = fixture.db;
+    const row = seedChange(db, { index: 1, chapter: 65, label: 'Аня' });
+    db.prepare("UPDATE changes SET status = 'void', outcome = 'dropped', reason = ? WHERE id = ?").run(
+      'модель не ответила: PROVIDER_SHAPE',
+      row.changeId,
+    );
+    appendEvent(db, { kind: 'change.decided', changeId: row.changeId, chapter: 65 }, BASE_MS);
+
+    const [item] = readRecord(db).items;
+    expect(item?.reason).toBe('модель ответила не по форме — заявка остаётся в очереди');
+    expect(item?.reason ?? '').not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+});
+
+/**
+ * The prod shape of the chronicle: chapter 65 was written, its premise's linked change ended
+ * `void`/`dropped` with «модель не ответила: PROVIDER_SHAPE», and the record row said
+ * «замысел … снят» with the attempt's line over a chapter that exists. The chapter's own text
+ * is the landing (`comments/repo.ts`), so the row carries that fact and no failure copy; the
+ * word and the reason are `changeStatus.ts`'s and are pinned in `changeStatus.test.ts`.
+ */
+describe('a premise the book landed (BOOK-7)', () => {
+  it('marks the landed premise and leaves no code or failure line on the entry', () => {
+    fixture = createFixture();
+    const local = fixture;
+    ingest(
+      local,
+      'ch65.md',
+      longProse(['Абзац главы шестьдесят пять. Это служебный текст, он не является текстом книги.'], 'Глава 65'),
+    );
+    const seeded = seedChange(local.db, { index: 1, chapter: 65, label: 'Аня' });
+    local.db
+      .prepare("UPDATE changes SET premise = 1, status = 'void', outcome = 'dropped', reason = ? WHERE id = ?")
+      .run('модель не ответила: PROVIDER_SHAPE', seeded.changeId);
+    appendEvent(local.db, { kind: 'change.decided', changeId: seeded.changeId, chapter: 65 }, BASE_MS);
+
+    const [entry] = readRecord(local.db).items;
+    expect(entry?.premise).toBe(true);
+    // The book says the premise entered the first edition, whatever the attempt behind it said.
+    expect(entry?.premiseLanded).toBe(true);
+    // No engine handle ever leaves the server, and the failure line the DTO still holds is
+    // suppressed by the client's `recordReason` (`changeStatus.test.ts`): the server's job here
+    // is the fact, the word is the page's.
+    expect(JSON.stringify(entry)).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('claims no landing for a premise whose chapter has no text', () => {
+    fixture = createFixture();
+    const db = fixture.db;
+    const seeded = seedChange(db, { index: 1, chapter: 9, label: 'Аня' });
+    db.prepare("UPDATE changes SET premise = 1, status = 'void', outcome = 'dropped', reason = ? WHERE id = ?").run(
+      'модель не ответила: PROVIDER_SHAPE',
+      seeded.changeId,
+    );
+    appendEvent(db, { kind: 'change.decided', changeId: seeded.changeId, chapter: 9 }, BASE_MS);
+
+    expect(readRecord(db).items[0]?.premiseLanded).toBe(false);
+  });
+
+  it('gives both premises on one chapter the same landing', () => {
+    // The page reads a chapter's text once and reuses it: two premise entries on chapter 65
+    // both carry the landing, and the second answer comes from the page's own map.
+    fixture = createFixture();
+    const local = fixture;
+    ingest(
+      local,
+      'ch65.md',
+      longProse(['Абзац главы шестьдесят пять. Это служебный текст, он не является текстом книги.'], 'Глава 65'),
+    );
+    const seeded = [
+      seedChange(local.db, { index: 1, chapter: 65, label: 'Аня' }),
+      // A second live lease on one chapter is impossible by schema; the row is moved after the
+      // fact, which is all the record reads.
+      seedChange(local.db, { index: 2, chapter: 9, label: 'Марк' }),
+    ];
+    local.db.prepare('UPDATE changes SET chapter = 65 WHERE id = ?').run(seeded[1]?.changeId);
+    seeded.forEach((change, position) => {
+      local.db
+        .prepare("UPDATE changes SET premise = 1, status = 'void', outcome = 'dropped', reason = ? WHERE id = ?")
+        .run('модель не ответила: PROVIDER_SHAPE', change.changeId);
+      appendEvent(local.db, { kind: 'change.decided', changeId: change.changeId, chapter: 65 }, BASE_MS + position * 1_000);
+    });
+
+    const items = readRecord(local.db).items;
+    expect(items).toHaveLength(2);
+    expect(items.every((item) => item.premiseLanded)).toBe(true);
   });
 });

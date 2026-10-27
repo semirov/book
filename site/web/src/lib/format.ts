@@ -6,6 +6,8 @@
  * ledger reads the same for every reader.
  */
 
+import type { CommentDto, CommentStatus } from '@book/shared';
+
 export const SITE_TIMEZONE = 'Europe/Moscow';
 export const NBSP = '\u00a0';
 /** The separator of a date and a time (`25.10.2026 · 12:00`), unbreakable on both sides. */
@@ -91,4 +93,48 @@ export function formatDate(iso: string | null | undefined): string {
 export function queueLabel(depth: number): string {
   if (depth === 0) return 'в очереди пусто';
   return `в очереди ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
+}
+
+/** A row the register presents as still on its way: a filing, by its public id. */
+export type QueueRow = { kind: 'filing'; id: string };
+
+/**
+ * The one set the register calls «in the queue».
+ *
+ * BOOK-137 — a **change is not a row**: it is the attempt of the filing that caused it, shown
+ * inside that filing's entry, so counting it beside the filing would count one thing twice.
+ * A premise never takes a queue place at all: it waits for the chapter's first pass (BOOK-7),
+ * and its row says so in its own word.
+ *
+ * The rule the line states: it counts what the page presents as **waiting or working** — the
+ * filing's own word is «ждёт» or «идёт», never «внесено» and never a refusal. A `new` filing
+ * waits its turn; a `batched`/`delivered` one is being read by triage; both are on their way
+ * into the lane, not out of the book, so the word «в очереди» covers triage too. Dropping the
+ * two would print «в очереди пусто» above a row the page shows as going, and a count is not
+ * worth that contradiction.
+ */
+const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
+
+/** The entry the register may present as queued: a filing, by public id, with its own state. */
+type QueueComment = Pick<CommentDto, 'id' | 'status'> & { premise?: boolean };
+
+/**
+ * The queue line and the entries behind it, from one fact.
+ *
+ * `depth` is the server's own count of the lane and may include rows beyond this page, so the
+ * line prints the larger of the two: it can never say «в очереди пусто» while an entry is
+ * presented as waiting, and it never shrinks the depth the engine measured. With BOOK-137 the
+ * entries are filings only — a change attaches to its filing — so the count of queued rows is
+ * the count of queued filings, and one filing with an attempt is still one row.
+ */
+export function queueView(
+  depth: number,
+  entries: readonly QueueComment[] = [],
+): { count: number; rows: QueueRow[] } {
+  const rows: QueueRow[] = [];
+  for (const entry of entries) {
+    if (entry.premise === true) continue;
+    if (QUEUED_FILING.has(entry.status)) rows.push({ kind: 'filing', id: entry.id });
+  }
+  return { count: Math.max(Math.max(0, Math.trunc(depth)), rows.length), rows };
 }

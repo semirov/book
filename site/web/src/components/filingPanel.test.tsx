@@ -1,4 +1,4 @@
-import { AUTHOR_COLORS, type CommentDto } from '@book/shared';
+import { AUTHOR_COLORS, FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -33,6 +33,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -99,5 +100,25 @@ describe('the filing panel’s state line (BOOK-90)', () => {
     const html = render(comment({ premise: true, status: 'applied', chapter: 12, applied: { chapter: 12, rev: 1 } }));
     expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
     expect(html).toContain('<p class="filing-fact">вошло в первую редакцию главы 12</p>');
+  });
+
+  it('prints the human sentence of a failed attempt on a premise that still waits (BOOK-136)', () => {
+    // The measured card: «ждёт» and the derived reading, but the deck's one sentence about the
+    // attempt was swallowed by that reading. Both are facts; the sentence goes first.
+    const row = comment({ premise: true, status: 'new', chapter: 65, attempt: 'failed', interventionKind: 'document' });
+    const html = renderToStaticMarkup(
+      <FilingPanel
+        comment={row}
+        anchor={null}
+        onClose={() => undefined}
+        premiseIntent="смена переходит на ночь, а не на утро"
+      />,
+    );
+    expect(html).toContain('<p class="filing-state ink-live">ждёт</p>');
+    expect(html).toContain(FAILED_ATTEMPT_LINE);
+    expect(html).toContain('принято в основу: смена переходит на ночь, а не на утро');
+    expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+    // The same card without the loaded change still says it: the line is the deck's.
+    expect(render(row)).toContain(FAILED_ATTEMPT_LINE);
   });
 });

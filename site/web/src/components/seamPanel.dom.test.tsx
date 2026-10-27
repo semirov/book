@@ -59,6 +59,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: null,
     status: 'new',
     refusal: null,
+    attempt: null,
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -346,6 +347,28 @@ describe('the box is measured again when its body grows (BOOK-111)', () => {
     expect(document.querySelector('.prov-panel')).toBe(panel);
     const cap = Math.floor(window.innerHeight * 0.62);
     expect(panel?.style.maxHeight).toBe(`${cap}px`);
+  });
+});
+
+describe('the card is placed inside the visual viewport (BOOK-137)', () => {
+  it('applies the visual viewport’s offsets, not the layout window’s zeros', async () => {
+    // A phone with the URL bar showing: the visible box starts 120 px down and is 640 tall,
+    // while `window.innerHeight` still reports the whole layout viewport. A panel clamped to
+    // the layout box opened where the reader could not see it.
+    vi.stubGlobal('visualViewport', { width: 390, height: 640, offsetLeft: 0, offsetTop: 120 });
+
+    await mount({ comments: [comment()] });
+    await click('.seam-filing');
+
+    const panel = document.querySelector<HTMLElement>('.filing-panel');
+    expect(panel).not.toBeNull();
+    // jsdom's ink has no layout: the anchor is at 0 and the panel is empty, so its own height
+    // is 0 — the placement is the box's margin, counted from the visible viewport's top.
+    expect(panel?.style.top).toBe('132px');
+    expect(panel?.style.left).toBe('12px');
+    expect(panel?.style.width).toBe('366px');
+    // And it never claims a box taller than the visible viewport allows.
+    expect(Number.parseFloat(panel?.style.maxHeight ?? '0')).toBeLessThanOrEqual(640 - 2 * 12);
   });
 });
 

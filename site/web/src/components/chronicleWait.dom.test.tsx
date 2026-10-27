@@ -23,6 +23,7 @@ function record(hseq: number, chapter: number): HistoryRecordDto {
     seq: chapter,
     chapter,
     premise: false,
+    premiseLanded: false,
     alias: 'Филипп',
     status: 'done',
     outcome: 'applied',

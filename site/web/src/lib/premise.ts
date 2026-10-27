@@ -1,16 +1,21 @@
-import { TOTAL_CHAPTERS, type CatalogEntry, type CommentDto } from '@book/shared';
+import { TOTAL_CHAPTERS, type CatalogEntry, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
-import { filingNumber } from './filings.ts';
-import { filingMarginalia } from './marginalia.ts';
+import { filingAttempt, filingNumber, type FilingAttempt } from './filings.ts';
+import { failedAttempt, filingMarginalia } from './marginalia.ts';
 
 /**
- * BOOK-7 / BOOK-DOC-34 §2.4 — the empty chapter's premise.
+ * BOOK-7 / BOOK-DOC-34 §2.4 — the chapter's premise, and the one place it is entered.
  *
  * A written chapter takes an intervention on its text. A slot with no text takes **one**
  * premise: the server's partial unique index admits the earliest and marks a later one
  * `superseded`, and the row must say so *before* the reader writes a second one. The frozen
  * frame of ch01/ch67 takes neither — it is not an empty chapter, it is a chapter that cannot
  * be written.
+ *
+ * BOOK-137 — **the premise row is the filing's home**, and on every chapter, written or not.
+ * The reader's thread never lists a premise (`threadFilings` in `filings.ts`): a premise that
+ * entered the first edition still has exactly one entry, the chapter's row, with one state
+ * word and one number.
  */
 
 export const PREMISE_EXISTS = 'у главы уже есть замысел';
@@ -22,7 +27,7 @@ export function canTakePremise(entry: Pick<CatalogEntry, 'n' | 'written' | 'basi
 }
 
 /** The premise a chapter already holds: the earliest one that is not superseded. */
-export function existingPremise(comments: readonly CommentDto[], chapter: number): CommentDto | null {
+export function premiseFiling(comments: readonly CommentDto[], chapter: number): CommentDto | null {
   const rows = comments
     .filter((comment) => comment.premise && comment.chapter === chapter && comment.status !== 'superseded')
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -44,8 +49,8 @@ export function premiseRefusal(first: CommentDto): { line: string; detail: strin
 }
 
 /**
- * The empty slot's row (BOOK-90 A) — one numeral, one field, and — while the slot holds a
- * premise — that premise's state word:
+ * The row (BOOK-90 A, BOOK-137) — one numeral, one field, and — while the chapter holds a
+ * premise — that premise's own quote and its state word:
  *
  *   `02 ················································`
  *   `02 «смена переходит на ночь» ················ ждёт`
@@ -55,25 +60,42 @@ export function premiseRefusal(first: CommentDto): { line: string; detail: strin
  * must not read the same — the reader who already filed something saw «nothing at all» and
  * tapped again (BOOK-111, owner 2026-10-27). The word is `null` on an empty slot, and that is
  * the only shape the reading surface may print as a blank (BOOK-112, amended for this case).
+ *
+ * A **written** chapter keeps the row when it holds a premise: the filing must not leave the
+ * page the moment the text arrives (BOOK-137). With no premise a written chapter has no row.
  */
 export type PremiseRow = {
   n: number;
+  /** The premise's id — the one `data-comment-id` this entry carries; null for an empty slot. */
+  commentId: string | null;
   /** The existing premise's first line, or null for a slot that is still empty. */
   quote: string | null;
   /** The premise's state word («ждёт»), or null for a slot that still holds nothing. */
   word: string | null;
+  /**
+   * BOOK-136 — the one sentence a failed attempt owes the reader, under the row; null while a
+   * premise waits normally (its word is the whole fact) and for one that has landed.
+   */
+  note: string | null;
+  /** The latest attempt: the entry's one number and its one `прицел`; null with no change. */
+  attempt: FilingAttempt | null;
   actionable: boolean;
 };
 
 export function premiseRow(
   entry: Pick<CatalogEntry, 'n' | 'written' | 'basis'>,
   premise: CommentDto | null,
+  changes: readonly ChangeSummaryDto[] = [],
 ): PremiseRow | null {
-  if (entry.written || entry.basis || entry.n < 2 || entry.n > TOTAL_CHAPTERS - 1) return null;
+  if (entry.basis || entry.n < 2 || entry.n > TOTAL_CHAPTERS - 1) return null;
+  if (entry.written && premise === null) return null;
   return {
     n: entry.n,
+    commentId: premise === null ? null : premise.id,
     quote: premise === null ? null : firstLine(premise.body),
     word: premise === null ? null : filingMarginalia(premise).word,
+    note: premise === null ? null : rowNote(premise),
+    attempt: premise === null ? null : filingAttempt(premise, changes),
     actionable: true,
   };
 }
@@ -81,4 +103,13 @@ export function premiseRow(
 function firstLine(body: string): string {
   const flat = body.replace(/\s+/gu, ' ').trim();
   return flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat;
+}
+
+/**
+ * BOOK-136 — a filing whose auxiliary attempt came back empty says so under its own row: the
+ * word «ждёт» alone would read as an ordinary wait. The sentence is the deck's
+ * (`filingMarginalia`), never assembled here, and a premise that landed owes no note at all.
+ */
+function rowNote(premise: CommentDto): string | null {
+  return failedAttempt(premise) ? filingMarginalia(premise).consequence : null;
 }

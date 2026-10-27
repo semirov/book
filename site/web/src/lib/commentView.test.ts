@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 
 import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
 import { GATE_WORDS, HELD_LINE, STATE_WORDS } from './marginalia.ts';
@@ -23,6 +23,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -170,5 +171,92 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
       comment({ status: 'rejected', refusal: null, reason: 'не принято: чужая цитата без источника' }),
     );
     expect(line.detail).toBe('отклонено · не принято: чужая цитата без источника');
+  });
+});
+
+/**
+ * A failed attempt is not a state. The filing keeps its own word, and the deck's
+ * one sentence says what became of the attempt; the engine's code never reaches the page.
+ */
+describe('a failed attempt on a filing', () => {
+  it('waits with the human sentence, never with the engine’s code', () => {
+    const line = commentStatusLine(comment({ status: 'new', attempt: 'failed' }));
+    expect(line).toMatchObject({ state: STATE_WORDS.waiting, detail: FAILED_ATTEMPT_LINE, tone: 'quiet' });
+    expect(JSON.stringify(line)).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('leaves an accepted filing in the queue, with the same sentence under the word', () => {
+    const line = commentStatusLine(comment({ status: 'accepted', attempt: 'failed' }));
+    expect(line.state).toBe(STATE_WORDS.working);
+    expect(line.detail).toBe(FAILED_ATTEMPT_LINE);
+  });
+
+  it('says it on a filing already in the machinery, and on nothing else there', () => {
+    // BOOK-136 — the word «идёт» carries no fact about the attempt behind it; the deck's one
+    // sentence does. A filing without one keeps the word alone.
+    for (const status of ['batched', 'delivered'] as const) {
+      expect(commentStatusLine(comment({ status, attempt: 'failed' }))).toMatchObject({
+        state: STATE_WORDS.working,
+        detail: FAILED_ATTEMPT_LINE,
+      });
+      expect(commentStatusLine(comment({ status })).detail).toBeNull();
+    }
+  });
+
+  it('keeps the row’s own sentence beside the attempt line on a waiting filing', () => {
+    // The attempt is the consequence, the reason is what the row itself said: `new` keeps both,
+    // as `accepted` already did, instead of dropping the human sentence.
+    const line = commentStatusLine(
+      comment({ status: 'new', attempt: 'failed', reason: 'вне рамок: форма книги' }),
+    );
+    expect(line).toMatchObject({ state: STATE_WORDS.waiting });
+    expect(line.detail).toBe(`${FAILED_ATTEMPT_LINE} · вне рамок: форма книги`);
+  });
+
+  it('never puts the attempt line under a refusal: the row keeps its own sentence', () => {
+    // A refused filing is not a failed attempt (BOOK-136): even if the flag reached the page,
+    // the gate’s word and the row’s own reason are the whole line — never «модель … не по форме».
+    const refused = commentStatusLine(
+      comment({ status: 'rejected', reason: 'вне рамок: канон', attempt: 'failed' }),
+    );
+    expect(refused.detail).toBe('отклонено · вне рамок: канон');
+    expect(refused.detail).not.toContain(FAILED_ATTEMPT_LINE);
+    // A row that decided itself has no attempt line for the same reason, held and hidden too.
+    for (const status of ['quarantined', 'superseded', 'hidden'] as const) {
+      const line = commentStatusLine(comment({ status, attempt: 'failed' }));
+      expect(line.detail ?? '', status).not.toContain(FAILED_ATTEMPT_LINE);
+    }
+  });
+
+  it('says the sentence on a premise too, while it still waits for its first edition', () => {
+    // BOOK-136 — a premise's own deck («принято в основу…») must not swallow the attempt's
+    // fact: the row is «ждёт», and the line under it is the deck's one human sentence.
+    const waiting = comment({ premise: true, status: 'new', chapter: 65, attempt: 'failed' });
+    expect(commentStatusLine(waiting)).toMatchObject({
+      state: STATE_WORDS.waiting,
+      detail: FAILED_ATTEMPT_LINE,
+    });
+    const accepted = comment({ premise: true, status: 'accepted', attempt: 'failed' });
+    expect(commentStatusLine(accepted)).toMatchObject({
+      state: STATE_WORDS.waiting,
+      detail: FAILED_ATTEMPT_LINE,
+    });
+    // A landed premise keeps its receipt instead: the attempt behind it is not the answer.
+    const landed = comment({
+      premise: true,
+      status: 'applied',
+      chapter: 65,
+      applied: { chapter: 65, rev: 7 },
+      attempt: 'failed',
+    });
+    expect(commentStatusLine(landed)).toMatchObject({ state: STATE_WORDS.landed, tone: 'done' });
+    expect(commentStatusLine(landed).detail).not.toContain(FAILED_ATTEMPT_LINE);
+  });
+
+  it('never overrides a landing: an applied premise keeps its receipt', () => {
+    const landed = comment({ premise: true, status: 'applied', applied: { chapter: 65, rev: 7 }, attempt: null });
+    const line = commentStatusLine(landed);
+    expect(line).toMatchObject({ state: STATE_WORDS.landed, tone: 'done' });
+    expect(line.detail).toBe('вошло в первую редакцию главы 65');
   });
 });

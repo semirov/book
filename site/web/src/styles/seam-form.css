@@ -215,6 +215,40 @@
   white-space: nowrap;
   color: var(--ink-3);
 }
+/* BOOK-136: the attempt behind the row came back empty — one quiet sentence under the row,
+   in the label register's ink like the record line below it, never inside the button. */
+.premise-note {
+  margin: 2px 0 0;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+/* BOOK-137: the entry's one number and its one `прицел`, quiet, beside the row — never a
+   second cell inside it (the row is the book, this line is the record's own reference). */
+.premise-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding-inline-start: max(0px, calc(100% - var(--measure)));
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.premise-open {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-decoration: underline;
+}
 
 /* ---------- desktop (§2.8) ---------- */
 @media (hover: hover) {

@@ -408,10 +408,10 @@ describe('the live table of contents', () => {
     expect(written).not.toContain('toc-dot');
     expect(written).not.toContain('пишется сейчас');
     expect(written).not.toContain('←');
-    // Row 2 is written but has no title line: it still opens its chapter, with no text.
+    // Row 2 is written but has no title line: it still opens its chapter, and states the truth word (BOOK-137).
     expect(tocRows(written).filter((row) => row.includes('<a '))).toHaveLength(3);
     expect(tocRows(written)[1]).toContain('class="toc-link"');
-    expect(tocRows(written)[1]).not.toContain('toc-text');
+    expect(tocRows(written)[1]).toContain('<span class="toc-text">написана</span>');
   });
 
   it('prints the start page of every row from one chapterStartPages count — the folio’s digits (AC3)', () => {

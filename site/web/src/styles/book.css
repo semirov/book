@@ -206,6 +206,21 @@
 .comment-kind {
   color: var(--ink-2);
 }
+/* BOOK-137 — the entry's one attempt number and its one `прицел`, quiet, under the state
+   line: the record's own reference, never a second row. */
+.comment-attempt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.comment-attempt .talk-open {
+  margin-top: 0;
+}
 
 /* ---------- опись: a form with blank fields, not an error page ---------- */
 .inv {
@@ -293,6 +308,14 @@
    uppercase transform and the tracking. */
 .colophon .imprint-line {
   text-wrap: pretty;
+}
+/* BOOK-137: the two static pages and the source link share one row, and it is the row's own
+   sentence — the imprint above it carries no links at all now. */
+.colophon .legal-line {
+  text-wrap: pretty;
+}
+.colophon .legal-line a {
+  color: var(--ink-3);
 }
 /* BOOK-109: the build the page is — a data mark, so the micro rung and the quiet ink. The
    label register's uppercase is not its voice: «сборка 5558449 · 27.10 20:52» is read as it is. */

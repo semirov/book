@@ -12,7 +12,7 @@
  * yesterday's queue as if it were happening now; a reconnect rebuilds from `state`.
  */
 
-import { parseSeams, seamReason, type ServerEventType, type StateSnapshot } from '@book/shared';
+import { parseSeams, readerReason, type ServerEventType, type StateSnapshot } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import {
@@ -235,7 +235,8 @@ export class EngineBridge {
       id: change.id,
       commentId: change.source_comment,
       outcome: decisionOutcome(change),
-      reason: change.reason === null ? null : seamReason(change.reason),
+      // The frame is a public surface — a reason is a sentence, never a code.
+      reason: readerReason(change.reason),
       chapters: chaptersOfChange(this.db, change),
       cascade:
         cascade === null

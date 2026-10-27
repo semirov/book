@@ -40,7 +40,7 @@ import { canvasProblems, tokenProblems, CANVAS, CANVAS_BOUND } from './measure.t
 export const PROSE = [
   '.p', '.ch-title', '.ch-h', '.sec-h', '.qline', '.front-rule', '.state-line',
   '.annotation .p', '.how-made > p', '.legal > *', '.authors > *',
-  '.talks .comments', '.talks .talks-list',
+  '.talks .comments',
   // The consent strip's content block: the notice stands on the column, so its copy and the
   // two hairlines on its edges share the page's one left edge (BOOK-88).
   '.consent-body',

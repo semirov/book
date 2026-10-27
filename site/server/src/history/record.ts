@@ -15,9 +15,9 @@
  * listed — `record.test.ts` proves the interface path satisfies the invariant.
  */
 
-import type { ChangeOutcome, ChangeStatus, HistoryRecordDto } from '@book/shared';
-import { seamReason } from '@book/shared';
+import { readerReason, type ChangeOutcome, type ChangeStatus, type HistoryRecordDto } from '@book/shared';
 
+import { chapterWritten, premiseLanded } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 import { lastHseq, pageLimit } from './events.ts';
 import { firstEventAt } from './live.ts';
@@ -53,20 +53,22 @@ const SELECT_RECORD = `SELECT c.id AS change_id, c.seq, c.chapter, c.premise, c.
   JOIN events e ON e.hseq = (SELECT MAX(inner_e.hseq) FROM events inner_e WHERE inner_e.change_id = c.id)
   WHERE c.source_comment IS NOT NULL`;
 
-/** The public reason, bounded and normalised once; an empty string is no reason at all. */
+/**
+ * The public reason, bounded and normalised once; an empty string is no reason at all.
+ * An internal code is not a reason — `readerReason` answers the sentence instead.
+ */
 function publicReason(raw: string | null): string | null {
-  if (raw === null) return null;
-  const reason = seamReason(raw);
-  return reason.length === 0 ? null : reason;
+  return readerReason(raw);
 }
 
-function toHistoryRecord(row: RecordRow): HistoryRecordDto {
+function toHistoryRecord(row: RecordRow, landed: boolean): HistoryRecordDto {
   return {
     hseq: row.hseq,
     at: row.at,
     seq: row.seq,
     chapter: row.chapter,
     premise: row.premise === 1,
+    premiseLanded: landed,
     alias: row.alias,
     status: row.status,
     outcome: row.outcome,
@@ -108,7 +110,29 @@ export function readRecord(
   }
   const sql = `${SELECT_RECORD}${clause} ORDER BY e.hseq DESC LIMIT ?`;
   const rows = db.prepare(sql).all(...params, pageLimit(filter.limit)) as RecordRow[];
-  const items = rows.map((row) => toHistoryRecord(row));
+  // A premise's landing is the chapter's text, read the way the thread and the card read it
+  // (`comments/repo.ts`): the change row alone cannot tell a refusal from an attempt, so the
+  // record asks the book. One read per chapter on the page, and only a premise asks.
+  const chapterText = new Map<number, boolean>();
+  const writtenAt = (chapter: number): boolean => {
+    const known = chapterText.get(chapter);
+    if (known !== undefined) return known;
+    const fact = chapterWritten(db, chapter);
+    chapterText.set(chapter, fact);
+    return fact;
+  };
+  const items = rows.map((row) =>
+    toHistoryRecord(
+      row,
+      row.premise === 1 &&
+        premiseLanded({
+          premise: row.premise,
+          status: row.status,
+          reason: row.reason,
+          written: writtenAt(row.chapter),
+        }),
+    ),
+  );
   const nextBefore = rows.length === pageLimit(filter.limit) ? (rows.at(-1)?.hseq ?? null) : null;
   const bookClock = lastHseq(db);
   // The other end of the same clock: the starting record a begun book always has. It is not a

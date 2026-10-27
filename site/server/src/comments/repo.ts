@@ -9,7 +9,9 @@
 import {
   PUBLIC_COMMENT_STATUSES,
   authorColor,
+  holdsInternalCode,
   normalizeInterventionKind,
+  readerReason,
   type CommentAnchor,
   type CommentDto,
   type CommentGuard,
@@ -173,6 +175,24 @@ export function readChapterBase(
     : { rev: row.rev, sha256: row.sha256, basis: row.basis, blockCount: row.block_count };
 }
 
+/**
+ * Does this chapter row hold text? One fact, read the way `accept.ts` decides premise vs
+ * ordinary change: a basis row is a row, not prose, and a chapter with no blocks is
+ * empty. It is the one fact a reader-facing state may take from the book rather than from the
+ * change rows: a premise whose chapter has an edition has been applied, whatever became of the
+ * attempt behind it.
+ */
+export function baseWritten(
+  base: { basis: number; blockCount: number } | undefined,
+): boolean {
+  return base !== undefined && base.basis === 0 && base.blockCount > 0;
+}
+
+/** The same fact by chapter number, for the readers that do not need the revision. */
+export function chapterWritten(db: Db, chapter: number): boolean {
+  return baseWritten(readChapterBase(db, chapter));
+}
+
 /** §9: a comment whose quote no longer exists is `resolved:false`; it is never re-anchored. */
 export function resolveAnchor(db: Db, row: CommentRow): CommentAnchor {
   const quote = row.quote;
@@ -211,8 +231,28 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
   // as an empty slot and refused the reader's next tap as a duplicate.
   const premise =
     change?.premise === 1 || (change === undefined && row.block_id === null && row.base_rev === 0);
-  const status =
-    premise && change !== undefined ? premiseStatus(change, row.status as CommentStatus) : (row.status as CommentStatus);
+  // The one fact a state may take from the book — the chapter's own text. Read
+  // once, here, so the status, the receipt and the failed-attempt flag cannot disagree.
+  const base = readChapterBase(db, row.chapter);
+  const written = baseWritten(base);
+  const rowStatus = row.status as CommentStatus;
+  const status = premise ? premiseStatus(change, rowStatus, written) : rowStatus;
+  const attempt: CommentDto['attempt'] = failedAttempt(change, status);
+  // The reason is a sentence, and which sentence depends on who spoke last:
+  //  - a change that carries an internal code did not speak — it tried. Its code never reaches
+  //    the reader, and the row's own line (the acceptance sentence) is the answer;
+  //  - otherwise a premise speaks with its change: the writer's refusal, the landing line, the
+  //    supersede — the row's acceptance sentence is the fallback, not the record.
+  const rowLine = readerReason(row.reason);
+  const changeLine = change === undefined ? null : readerReason(change.reason);
+  const codeInChange = change !== undefined && holdsInternalCode(change.reason);
+  const reason = premise && !codeInChange ? (changeLine ?? rowLine) : rowLine;
+  // The receipt of a premise is the **derived** landing, never `written` alone: a rejected or
+  // superseded premise on a written chapter decided against that text and carries no receipt.
+  // A landing has no receipt columns of its own — the chapter it entered and that chapter's
+  // revision are the receipt. Never invented: no chapter row, no `applied`.
+  const landedReceipt =
+    premise && status === 'applied' && base !== undefined ? { chapter: row.chapter, rev: base.rev } : null;
   return {
     id: row.id,
     chapter: row.chapter,
@@ -233,14 +273,19 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
     // taxonomy is a map of the detector. BOOK-9: `audit_*` never leaves the row either;
     // an `OFF` reaches the reader only as this `reason`.
-    reason: premise && change !== undefined ? (change.reason ?? row.reason) : row.reason,
+    reason,
+    attempt,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     changeId: row.change_id,
+    // A premise that landed has no receipt columns of its own — the chapter it
+    // entered and that chapter's revision are the receipt. Never invented: no chapter row,
+    // no `applied`.
     applied:
-      row.applied_chapter !== null && row.applied_rev !== null
+      landedReceipt ??
+      (row.applied_chapter !== null && row.applied_rev !== null
         ? { chapter: row.applied_chapter, rev: row.applied_rev }
-        : null,
+        : null),
   };
 }
 
@@ -273,11 +318,92 @@ function linkedChange(db: Db, changeId: string | null): LinkedChange | undefined
     | undefined;
 }
 
-/** A premise's four public states, mapped from the change vocabulary, not stored twice. */
-function premiseStatus(change: LinkedChange, fallback: CommentStatus): CommentStatus {
-  if (change.status === 'done') return 'applied';
-  if (change.status === 'void') return change.outcome === 'superseded' ? 'superseded' : 'rejected';
-  return change.status === 'pending' ? 'accepted' : fallback;
+/** Filing states the linked change may never upgrade: the row's own word is the last one. */
+const OWN_STATES = new Set<CommentStatus>(['rejected', 'quarantined', 'superseded', 'hidden']);
+
+/** Change states that are an attempt, not a landing — a `void` here is a failed try. */
+const ATTEMPT_STATES = new Set<string>(['void', 'failed', 'escalated']);
+
+/**
+ * Did this change decide in **human words**? A `void` whose reason is a sentence is the
+ * writer's refusal or a supersede; a `void` whose reason is an internal code is an attempt
+ * that came back empty, and one with **no** reason at all decides nothing — the chapter's
+ * text is the answer in both of those cases.
+ */
+function decided(reason: string | null): boolean {
+  return !holdsInternalCode(reason) && readerReason(reason) !== null;
+}
+
+/**
+ * Did this premise land? The one derived fact every surface reads: the change's own answer plus
+ * the book's, never a second vocabulary
+ * (`ChangeDto.premiseLanded`, a filing's `applied`, a reader's own outcome).
+ *
+ *   1. `done` is the engine's own settlement: the first edition took it;
+ *   2. a `void` whose reason is a **human sentence** is a decision — the writer refused it, it
+ *      was superseded, or the chapter was written without it. A refusal always beats a landing;
+ *   3. a `void`/`failed`/`escalated` whose reason is an **internal code** is a failed attempt:
+ *      it decides nothing, and the chapter's text is the answer;
+ *   4. otherwise the chapter's text is the answer — a premise whose chapter has an edition has
+ *      entered it.
+ */
+export function premiseLanded(facts: {
+  premise: number | boolean;
+  status: string;
+  reason: string | null;
+  written: boolean;
+}): boolean {
+  if (facts.premise !== 1 && facts.premise !== true) return false;
+  if (facts.status === 'done') return true;
+  if (facts.status === 'void' && decided(facts.reason)) return false;
+  return facts.written;
+}
+
+/**
+ * A premise's public states, derived from the two facts that are actually stored: its own row
+ * and whether its chapter has text.
+ *
+ * Order matters, and each step is one fact:
+ *   1. a row that decided itself (`rejected`, `quarantined`, `superseded`, `hidden`) keeps its
+ *      own word — a linked change may only leave it alone, never upgrade it;
+ *   2. a premise that landed is `applied` (`premiseLanded` — a refusal beats a landing);
+ *   3. a change that decided in human words is the premise's answer, even over a written
+ *      chapter: the writer refused it, or it was superseded;
+ *   4. what is left waits: a queued change reads as `accepted`, anything else keeps its row.
+ */
+function premiseStatus(
+  change: LinkedChange | undefined,
+  fallback: CommentStatus,
+  written: boolean,
+): CommentStatus {
+  if (OWN_STATES.has(fallback)) return fallback;
+  if (
+    change !== undefined &&
+    premiseLanded({ premise: change.premise, status: change.status, reason: change.reason, written })
+  ) {
+    return 'applied';
+  }
+  if (change !== undefined && change.status === 'void' && decided(change.reason)) {
+    return change.outcome === 'superseded' ? 'superseded' : 'rejected';
+  }
+  if (change !== undefined && change.status === 'pending') return 'accepted';
+  return fallback;
+}
+
+/**
+ * Is the linked change a failed attempt? The engine's `void`/`failed`/`escalated` with an
+ * internal-code reason is one: the filing keeps its state and the page says the attempt
+ * came back empty. A filing that landed never carries one, a human refusal is not an attempt —
+ * it reaches the reader as its own sentence — and neither is a **silent** change, whose reason
+ * is `null` and whose answer is the chapter's text. A filing that decided itself (`rejected`,
+ * `quarantined`, `superseded`, `hidden`) said the last word: its own refusal is not an echo of
+ * an attempt behind it.
+ */
+function failedAttempt(change: LinkedChange | undefined, status: CommentStatus): CommentDto['attempt'] {
+  if (change === undefined || status === 'applied') return null;
+  if (OWN_STATES.has(status)) return null;
+  if (!ATTEMPT_STATES.has(change.status)) return null;
+  return holdsInternalCode(change.reason) ? 'failed' : null;
 }
 
 export function appendCommentEvent(

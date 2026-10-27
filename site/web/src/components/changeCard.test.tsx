@@ -8,6 +8,7 @@ import { Discussion } from './Discussion.tsx';
 import type { Ribbon } from '../lib/cascade.ts';
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',
@@ -278,6 +279,8 @@ describe('ChangeCard', () => {
 
 describe('the thread’s two-line status', () => {
   const summary: ChangeSummaryDto = {
+    premiseLanded: false,
+    sourceCommentId: 'cmt_1',
     id: 'chg_1',
     seq: 14,
     chapter: 8,
@@ -296,19 +299,42 @@ describe('the thread’s two-line status', () => {
     cascade: { id: 'csc_1', status: 'closed', outcome: 'consistent' },
   };
 
-  it('renders both lines and the trace, and reaches the прицел in one tap', () => {
-    const html = renderToStaticMarkup(<Discussion depth={3} changes={[summary]} live />);
-    expect(html).toContain('принято');
+  it('folds the change into its filing: one entry, one number, one прицел (BOOK-137)', () => {
+    const comment: CommentDto = {
+      attempt: null,
+      id: 'cmt_1',
+      chapter: 8,
+      anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },
+      author: 'Аня',
+      authorColor: '#2e6274',
+      body: 'тут дважды «слово»',
+      interventionKind: null,
+      proposedText: null,
+      premise: false,
+      status: 'applied',
+      reason: null,
+      createdAt: '2026-10-25T12:04:00Z',
+      decidedAt: '2026-10-25T12:05:00Z',
+      changeId: 'chg_1',
+      applied: { chapter: 8, rev: 4 },
+      refusal: null,
+    };
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} changes={[summary]} live />);
+    // The state line is the filing's (BOOK-136), and the attempt is one quiet line under it.
     expect(html).toContain('внесено');
-    expect(html).toContain('дошло до глав 7 и 9');
-    expect(html).toContain('принято → внесено → дошло до глав 7 и 9');
-    expect(html).toContain('прицел 014');
+    expect(html).toContain('<span class="attempt-n">014</span>');
     expect(html).toContain('href="#правка-chg_1"');
-    expect(html).not.toContain('черновик');
+    expect(html).toContain('прицел →');
+    // One entry: the change is never a row of its own beside the filing it came from.
+    expect(html.match(/data-comment-id="cmt_1"/gu) ?? []).toHaveLength(1);
+    expect(html.match(/прицел/gu) ?? []).toHaveLength(1);
+    expect(html).not.toContain('data-change="chg_1"');
+    expect(html).not.toContain('class="talks-list"');
   });
 
   it('links a comment with a change straight into the прицел', () => {
     const comment: CommentDto = {
+      attempt: null,
       id: 'cmt_1',
       chapter: 8,
       anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },
@@ -407,7 +433,13 @@ describe('CascadeRibbon', () => {
     // BOOK-70: an empty wing renders no reached element at all — no placeholder span, no «—».
     expect(quiet).not.toContain('ribbon-none');
     expect(quiet).not.toContain('ribbon-reached');
-    expect(quiet.match(/не открылось/g) ?? []).toHaveLength(2);
+    // BOOK-137: a wing that never opened prints nothing — no state word and no diagnostic on
+    // the reading surface, and the origin still names the change's chapter.
+    expect(quiet).not.toContain('не открылось');
+    expect(quiet).not.toContain('class="ribbon-wing ');
+    expect(quiet).not.toContain('ribbon-wing-h');
+    expect(quiet).toContain('ribbon-origin');
+    expect(quiet).toContain('class="ribbon-ch-g">8<');
   });
 
   it('still draws an escalated seam when no ripple is running', () => {

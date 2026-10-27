@@ -1,4 +1,4 @@
-import type { ChangeSummaryDto, CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,6 +13,7 @@ import {
   sentenceAt,
   STATE_WORDS,
 } from './marginalia.ts';
+import { changeLines as changeLinesFor } from './changeStatus.ts';
 import { clampQuote } from './seam.ts';
 
 /**
@@ -42,6 +43,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -49,6 +51,8 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 /** A change summary, only the fields the vocabulary reads. */
 function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   return {
+    premiseLanded: false,
+    sourceCommentId: null,
     id: 'chg_1',
     seq: 4,
     chapter: 8,
@@ -303,5 +307,29 @@ describe('the gate’s word beside the state’s word (BOOK-61)', () => {
         'ждёт',
       );
     }
+  });
+});
+
+/**
+ * A filing is one state: its own row plus one fact about its chapter. A failed
+ * attempt behind it is not a state, and a premise whose chapter has text has landed.
+ */
+describe('a failed attempt and a landed premise', () => {
+  it('keeps the filing’s word and says the attempt came back empty', () => {
+    const failed = filingMarginalia(comment({ status: 'new', attempt: 'failed' }));
+    expect(failed).toEqual({ state: 'waiting', word: STATE_WORDS.waiting, consequence: FAILED_ATTEMPT_LINE });
+    // A premise still waiting for its first edition says the same: the lane's attempt did not
+    // decide anything about the filing.
+    expect(filingMarginalia(comment({ premise: true, status: 'accepted', attempt: 'failed' })).consequence).toBe(
+      FAILED_ATTEMPT_LINE,
+    );
+  });
+
+  it('reads a landed premise as entered, with the edition, whatever the row went on to say', () => {
+    const landed = change({ premise: true, premiseLanded: true, status: 'void', outcome: 'dropped', reason: FAILED_ATTEMPT_LINE });
+    expect(changeState(landed)).toBe('landed');
+    expect(changeWord(landed)).toBe(STATE_WORDS.landed);
+    // The failed attempt behind a landed premise is stale news, not the premise's line.
+    expect(changeLinesFor(landed).second).toBe('вошло в первую редакцию главы 8');
   });
 });

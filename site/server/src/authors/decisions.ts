@@ -27,7 +27,8 @@ import {
   MY_OPEN_LIMIT,
   TOTAL_CHAPTERS,
   floorShare,
-  seamReason,
+  holdsInternalCode,
+  readerReason,
   type ChangeOutcome,
   type ChangeStatus,
   type MeasuredShareDto,
@@ -37,6 +38,7 @@ import {
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { premiseLanded } from '../comments/repo.ts';
 import { decisionOutcome, publicIntent } from '../engineState/changes.ts';
 import { safeJson } from '../engineState/rows.ts';
 import { computeShares } from '../history/erosion.ts';
@@ -60,6 +62,9 @@ type DecisionRow = {
   waves: number | null;
   chapters_touched: string | null;
   blocks_changed: number | null;
+  /** The chapter of the intervention as the book has it now. */
+  chapter_basis: number | null;
+  chapter_blocks: number | null;
 };
 
 /**
@@ -84,11 +89,14 @@ const DECISIONS_SQL = `
          ch.finished_at  AS change_finished_at,
          cas.wave        AS waves,
          imp.chapters_touched,
-         imp.blocks_changed
+         imp.blocks_changed,
+         chp.basis       AS chapter_basis,
+         chp.block_count AS chapter_blocks
     FROM comments c
     LEFT JOIN changes ch       ON ch.id = c.change_id
     LEFT JOIN cascades cas     ON cas.id = ch.cascade_id
     LEFT JOIN change_impact imp ON imp.change_id = ch.id
+    LEFT JOIN chapters chp      ON chp.n = c.chapter
    WHERE c.identity_id = ?
      AND (c.decided_at IS NOT NULL OR c.status = 'rejected')
    ORDER BY COALESCE(ch.finished_at, c.decided_at, c.created_at) DESC, c.id DESC
@@ -161,6 +169,22 @@ function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto
 }
 
 function outcomeOf(row: DecisionRow): MyDecisionOutcome {
+  // A failed attempt on a premise decides nothing — the attempt's code is not a
+  // verdict, so its chapter's text answers for it: written means applied, unwritten means the
+  // filing is still waiting. A change that decided in human words (a refusal, a supersede)
+  // keeps its own mapping below, and a refusal always beats a landing.
+  if (row.change_premise === 1) {
+    const landed = premiseLanded({
+      premise: 1,
+      status: row.change_status ?? '',
+      reason: row.change_reason,
+      written: row.chapter_basis === 0 && (row.chapter_blocks ?? 0) > 0,
+    });
+    // An attempt is not a decision: a landed premise is applied, an unsettled one still waits —
+    // it never reads as «замысел не взят» on the strength of an engine code.
+    if (landed) return 'applied';
+    if (holdsInternalCode(row.change_reason)) return 'queued';
+  }
   if (row.change_id === null || row.change_status === null) {
     return row.comment_status === 'rejected' ? 'refused' : 'dropped';
   }
@@ -174,10 +198,16 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
 
 /** A refusal's reason is the comment's public line; a stop's is the change's own. */
 function reasonOf(row: DecisionRow, outcome: MyDecisionOutcome): string | null {
-  if (outcome === 'refused' || row.change_id === null) {
-    return row.comment_reason === null ? null : seamReason(row.comment_reason);
+  // A reason is a sentence a reader may read — never an internal code, on either
+  // the comment's line or the change's.
+  if (outcome === 'refused' || row.change_id === null) return readerReason(row.comment_reason);
+  const changeReason = readerReason(row.change_reason);
+  // A premise that landed answers with its own acceptance line when the change row carries an
+  // engine code instead of a landing: the failed attempt is not what happened to the premise.
+  if (outcome === 'applied' && row.change_premise === 1 && holdsInternalCode(row.change_reason)) {
+    return readerReason(row.comment_reason) ?? changeReason;
   }
-  return row.change_reason === null ? null : seamReason(row.change_reason);
+  return changeReason;
 }
 
 /** Chapters as the projection knows them: the stored row, else the freshly computed one. */

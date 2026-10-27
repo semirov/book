@@ -18,6 +18,7 @@ import { useReaderFeed } from './useReaderFeed.ts';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const POSTED: CommentDto = {
+  attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
   chapter: 65,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },

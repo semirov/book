@@ -1,6 +1,6 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
-import { filingConsequence, filingMarginalia, landingReceipt, PREMISE_PENDING } from './marginalia.ts';
+import { failedAttempt, filingConsequence, filingMarginalia, landingReceipt } from './marginalia.ts';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
@@ -55,10 +55,21 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
   const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'new':
-      return lineOf(word, null, 'quiet');
+      // A filing whose attempt came back empty still waits, and the human line under the word
+      // is the deck's — the state word alone would hide the attempt. The row's own sentence is
+      // a separate fact and keeps its place beside it, exactly as on an accepted row: the
+      // attempt is the consequence, the reason is what the row itself said.
+      return lineOf(
+        word,
+        comment.attempt === 'failed' ? joinDetail(filingConsequence(comment), comment.reason) : comment.reason,
+        'quiet',
+      );
     case 'batched':
     case 'delivered':
-      return lineOf(word, null, 'live');
+      // BOOK-136 — a filing already in the machinery can carry an attempt that came back empty:
+      // the word says where the row stands, and the deck's sentence says what became of the
+      // attempt. Nothing else is owed here — a batch is not a receipt.
+      return lineOf(word, failedAttempt(comment) ? filingConsequence(comment) : null, 'live');
     case 'accepted':
       return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
     case 'applied': {
@@ -113,7 +124,9 @@ function premiseLine(comment: CommentDto): CommentLine {
     case 'rejected':
       return lineOf(word, joinDetail('замысел не взят', comment.reason), 'stopped');
     default:
-      return lineOf(word, joinDetail(PREMISE_PENDING, comment.reason), 'live');
+      // The default is the deck's own line — «принято в основу, до первой
+      // редакции», or the failed-attempt sentence when the linked change came back empty.
+      return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
   }
 }
 

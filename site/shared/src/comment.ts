@@ -157,8 +157,17 @@ export type CommentDto = {
    * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
    * The guard's own category and flags stay internal (audit m5): a public `flags` array
    * would let a stranger bisect the detector one probe at a time.
+   *
+   * It is a **sentence or null**, never an internal code (`readerReason` in `change.ts`).
    */
   reason: string | null;
+  /**
+   * A failed attempt on the linked change, derived once: the change is
+   * `void`/`failed`/`escalated` and its reason is an internal code, while the filing itself is
+   * not applied. It is **not** a state: the filing keeps its own status and its own word, and
+   * the page prints `FAILED_ATTEMPT_LINE` beside it. A landed filing never carries one.
+   */
+  attempt: 'failed' | null;
   createdAt: string;
   decidedAt: string | null;
   changeId: string | null;

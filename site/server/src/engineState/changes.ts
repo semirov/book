@@ -19,6 +19,7 @@ import {
   measuredRub,
   normalizeInterventionKind,
   parseSeams,
+  readerReason,
   seamReason,
   type ChangeCostDto,
   type ChangeDto,
@@ -32,6 +33,7 @@ import {
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { chapterWritten, premiseLanded } from '../comments/repo.ts';
 import { modesOfSteps } from './modes.ts';
 import { stepsOfCascade } from './reader.ts';
 import { wingsOf, wingSteps } from './wings.ts';
@@ -241,12 +243,21 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
     chapter: change.chapter,
     intent: publicIntent(change.intent),
     premise: change.premise === 1,
+    // The one derived landing fact — the change's own answer plus the book's, from
+    // `premiseLanded` (a refusal beats a landing; a failed attempt decides nothing).
+    premiseLanded: premiseLanded({
+      premise: change.premise,
+      status: change.status,
+      reason: change.reason,
+      written: chapterWritten(db, change.chapter),
+    }),
     source: { commentId: change.source_comment, author: readAuthor(db, change.source_comment) },
     base: { rev: change.base_rev },
     scopeHint: change.scope_hint,
     status: change.status,
     outcome: (change.outcome as ChangeOutcome | null) ?? null,
-    reason: change.reason === null ? null : seamReason(change.reason),
+    // A reason is a sentence for a reader: an internal code never leaves the server.
+    reason: readerReason(change.reason),
     position: positionOf(db, change),
     relevance: publicRelevance(change.relevance),
     cascade:
@@ -299,9 +310,19 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
     chapter: change.chapter,
     intent: publicIntent(change.intent),
     premise: change.premise === 1,
+    // The same derived fact the card carries — a landed premise says «внесено».
+    premiseLanded: premiseLanded({
+      premise: change.premise,
+      status: change.status,
+      reason: change.reason,
+      written: chapterWritten(db, change.chapter),
+    }),
+    // The filing this attempt was made from: the thread folds a change into its entry by
+    // this key, and a change the author raised alone (no comment) has none.
+    sourceCommentId: change.source_comment,
     status: change.status,
     outcome: (change.outcome as ChangeOutcome | null) ?? null,
-    reason: change.reason === null ? null : seamReason(change.reason),
+    reason: readerReason(change.reason),
     position: positionOf(db, change),
     enqueuedAt: change.enqueued_at,
     decidedAt: change.finished_at,

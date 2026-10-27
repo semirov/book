@@ -139,23 +139,23 @@ describe('the colophon', () => {
     expect(html).toContain('печатается по ходу письма');
   });
 
-  // BOOK-94 AC1 — the imprint line is one sentence, verbatim, and the two static pages stay
-  // links inside it: «© Филипп Семиров — <motto> · приватность · правила».
+  // BOOK-94 AC1 — the imprint line is one sentence, verbatim, with the motto after an em dash.
+  // BOOK-137 — the two static pages are a row of their own now, so the sentence is not crammed
+  // with them; its words are unchanged.
   it('renders the imprint line verbatim, with the motto after an em dash (BOOK-94 AC1)', () => {
     stubDocument();
     const html = renderToStaticMarkup(
       <Colophon state={state} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />,
     );
-    expect(imprintText(html)).toBe(
-      '© Филипп Семиров — С любовью к научной фантастике и современным технологиям · приватность · правила',
-    );
-    // The same sentence, read through the constants the page actually prints.
-    expect(imprintText(html)).toBe(
-      `© ${IMPRINT_AUTHOR} — ${COLOPHON_MOTTO} · приватность · правила`,
-    );
-    // Both links stay in that one line, not somewhere else in the colophon.
-    expect(imprintLine(html)).toContain('href="/privacy"');
-    expect(imprintLine(html)).toContain('href="/rules"');
+    expect(imprintText(html)).toBe(`© ${IMPRINT_AUTHOR} — ${COLOPHON_MOTTO}`);
+    // The legal row is its own line, and it is the one that carries the two links.
+    const legal = html.slice(html.indexOf('class="legal-line"'), html.indexOf('class="legal-line"') + 400);
+    expect(legal).toContain('href="/privacy"');
+    expect(legal).toContain('href="/rules"');
+    expect(legal).toContain('приватность');
+    expect(legal).toContain('правила');
+    // The imprint row itself carries no link at all: one row, one fact.
+    expect(imprintLine(html)).not.toContain('<a ');
     // The separator is the em dash, not a hyphen or an en dash.
     expect(imprintText(html)).toContain(' — ');
     expect(imprintText(html)).not.toContain(' - ');
@@ -405,18 +405,39 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () 
     const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
     const logout = footer.indexOf('class="logout-row"');
     const imprint = footer.indexOf('class="imprint-line"');
+    const download = footer.indexOf('class="export-link"');
+    const legal = footer.indexOf('class="legal-line"');
+    const theme = footer.indexOf('class="theme"');
     const donate = footer.indexOf('class="donate"');
     const build = footer.indexOf('class="build-stamp"');
     const cost = footer.indexOf('class="cost-line"');
     expect(logout).toBeGreaterThan(-1);
     expect(imprint).toBeGreaterThan(-1);
+    expect(download).toBeGreaterThan(-1);
+    expect(legal).toBeGreaterThan(-1);
+    expect(theme).toBeGreaterThan(-1);
     expect(donate).toBeGreaterThan(-1);
     expect(build).toBeGreaterThan(-1);
     expect(cost).toBeGreaterThan(-1);
     expect(logout).toBeLessThan(imprint);
-    expect(imprint).toBeLessThan(donate);
-    expect(donate).toBeLessThan(build);
+    // BOOK-138 keeps the download straight after the imprint and the gift straight after the
+    // download: those two rows are the reader's way out, and the facts below them — the legal
+    // pages, the source, the theme — are what the page says once the reader has them.
+    expect(imprint).toBeLessThan(download);
+    expect(download).toBeLessThan(donate);
+    expect(donate).toBeLessThan(legal);
+    expect(legal).toBeLessThan(theme);
+    expect(theme).toBeLessThan(build);
     expect(build).toBeLessThan(cost);
+    // BOOK-137 — one row per fact: the imprint, the legal pages with the source link, and the
+    // theme are three rows, not one crammed line, and each fact is printed once.
+    expect(footer.match(/class="imprint-line"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="legal-line"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="theme"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="donate"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="cost-line"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="build-stamp"/gu) ?? []).toHaveLength(1);
+    expect(footer.match(/class="logout-row"/gu) ?? []).toHaveLength(1);
     // Nothing follows the cost line: it is the last row of the page, after both legal links.
     expect(cost).toBeGreaterThan(footer.indexOf('href="/privacy"'));
     expect(cost).toBeGreaterThan(footer.indexOf('href="/rules"'));

@@ -18,6 +18,7 @@ function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecordDto {
     seq: 7,
     chapter: 9,
     premise: false,
+    premiseLanded: false,
     alias: 'Аня',
     status: 'done',
     outcome: 'applied',

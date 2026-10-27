@@ -77,6 +77,7 @@ const ITEMS: HistoryRecordDto[] = [
     seq: 9,
     chapter: 9,
     premise: false,
+    premiseLanded: false,
     alias: 'Аня',
     status: 'done',
     outcome: 'applied',
@@ -89,6 +90,7 @@ const ITEMS: HistoryRecordDto[] = [
     seq: 7,
     chapter: 9,
     premise: false,
+    premiseLanded: false,
     alias: 'Марк',
     status: 'processing',
     outcome: null,
@@ -101,6 +103,7 @@ const ITEMS: HistoryRecordDto[] = [
     seq: 4,
     chapter: 8,
     premise: false,
+    premiseLanded: false,
     alias: 'Аня',
     status: 'pending',
     outcome: null,
@@ -112,11 +115,7 @@ const ITEMS: HistoryRecordDto[] = [
 const MID = `${NBSP}·${NBSP}`;
 
 /** Every stylesheet as text: the readout row's wrap is a layout rule jsdom cannot compute. */
-const sheets = import.meta.glob<string>('../styles/*.css', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-});
+const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', import: 'default', eager: true });
 
 /** The declarations of the first rule whose selector is exactly `selector`. */
 function declarations(css: string, selector: string): string {

@@ -1,4 +1,4 @@
-import type { ChangeSummaryDto, CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { RECEIPT_RIGHTS, receiptLine } from './terms.ts';
 import { clampQuote, splitSentences } from './seam.ts';
@@ -69,9 +69,15 @@ type FilingFacts = Pick<CommentDto, 'status'> & {
   refusal?: CommentDto['refusal'];
   /** The stored public line, joined under the gate's word where the gate owes one. */
   reason?: string | null;
+  /** The linked change's attempt failed; the filing itself keeps its state. */
+  attempt?: 'failed' | null;
 };
 
-type ChangeFacts = Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean };
+type ChangeFacts = Pick<ChangeSummaryDto, 'status' | 'outcome'> & {
+  premise?: boolean;
+  /** A premise whose chapter has text: it entered the first edition. */
+  premiseLanded?: boolean;
+};
 
 /** A note (no kind, no proposed text) never lands text: its terminal is «сохранено». */
 function isNote(comment: FilingFacts): boolean {
@@ -99,8 +105,39 @@ export function filingState(comment: FilingFacts): State {
   }
 }
 
+/**
+ * Filing states that decided themselves: the row's own word is the last one, and a refusal is
+ * never retold as an attempt that came back empty. The same set the server keeps
+ * (`comments/repo.ts`), so no surface invents one the other does not have.
+ */
+const OWN_DECISION: ReadonlySet<CommentDto['status']> = new Set<CommentDto['status']>([
+  'rejected',
+  'quarantined',
+  'superseded',
+  'hidden',
+]);
+
+/**
+ * BOOK-136 — an attempt that came back empty, on a filing that did **not** decide itself.
+ *
+ * The one condition behind the deck's sentence, read by every surface that has to say it
+ * (the line, the row's note, the card's fact): a failed attempt is not a state and not a
+ * refusal, so a refusal and a landing keep their own line — the attempt behind them is not
+ * the reader's answer.
+ */
+export function failedAttempt(comment: FilingFacts): boolean {
+  return (
+    comment.attempt === 'failed' &&
+    comment.status !== 'applied' &&
+    !OWN_DECISION.has(comment.status)
+  );
+}
+
 /** The deck's second line for a filing: the fact the single word cannot carry. */
 export function filingConsequence(comment: FilingFacts): string {
+  // A failed attempt is not a state and not a refusal — the filing keeps its word
+  // and waits, and only a landed one has a receipt that says more.
+  if (failedAttempt(comment)) return FAILED_ATTEMPT_LINE;
   if (comment.premise === true) {
     switch (comment.status) {
       case 'applied':
@@ -152,6 +189,9 @@ export function filingMarginalia(comment: FilingFacts): Marginalia {
 
 /** The state family of a change. `pending` is a queue place, i.e. in the machinery: `идёт`. */
 export function changeState(change: ChangeFacts): State {
+  // A premise whose chapter has text is landed, whatever the row went on to say —
+  // a failed attempt after the first edition does not un-enter a premise.
+  if (change.premiseLanded === true) return 'landed';
   if (change.premise === true) return change.status === 'done' ? 'landed' : 'waiting';
   switch (change.status) {
     case 'done':

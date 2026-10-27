@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { existingPremise, PREMISE_HINT, premiseAction } from '../lib/premise.ts';
+import { PREMISE_HINT, premiseAction, premiseFiling } from '../lib/premise.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -48,6 +48,7 @@ class IdleObserver {
 }
 /** BOOK-111 — the prod row of ch65: a chapter-level filing, no change, `status 'new'`. */
 const PENDING: CommentDto = {
+  attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
   chapter: 7,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
@@ -309,7 +310,7 @@ describe('the premise strip in an empty chapter', () => {
     expect(row?.getAttribute('data-state')).toBe('held');
     expect(row?.querySelector('.premise-quote')?.textContent).toBe('«а как это работает»');
     expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
-    expect(premiseAction(existingPremise([PENDING], 7)).kind).toBe('card');
+    expect(premiseAction(premiseFiling([PENDING], 7)).kind).toBe('card');
 
     await act(async () => row?.click());
 

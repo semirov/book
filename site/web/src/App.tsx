@@ -466,6 +466,7 @@ export function App() {
         markers={markers}
         fresh={fresh}
         chapterFeed={chapterFeed}
+        changes={changes}
         onRead={loadChapter}
         onPosted={onPosted}
         onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
@@ -485,9 +486,7 @@ export function App() {
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
-      {card.change === null ? null : (
-        <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
-      )}
+      {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
       {chainActive ? (
         <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
       ) : null}

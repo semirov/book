@@ -21,11 +21,16 @@ export const COLOPHON_MOTTO = 'С любовью к научной фантас�
 
 /**
  * The imprint line (`imprint.copyright`) lives here: the cover no longer carries «©»
- * (BOOK-DOC-5 §2), and «Авторы» keeps its own copy of it.
+ * (BOOK-DOC-5 §2), and the end matter stopped carrying it too (BOOK-137) — the page prints the
+ * rights statement exactly once, in this footer.
  *
  * BOOK-59 removed the ticking clock and today's date: a clock changes while the reader reads
  * and dates nothing, and «издание · сегодня» claims an edition date the imprint does not have
  * (it is author and copyright only). What stays dates itself — «печатается по ходу письма».
+ *
+ * BOOK-137 — **one row per fact**: the imprint sentence and the motto; the two static pages
+ * with the source link; the theme switch. Before this the three sat in one row and crammed at
+ * 390 px (the owner: «странно»), six facts on one line.
  *
  * The footer is read in this order by a reader: the counts, the way out (BOOK-115), the
  * imprint, how to support the book (BOOK-126), the build the page is (BOOK-109), and the book's
@@ -107,26 +112,8 @@ export function Colophon({
         <LogoutRow viewer={viewer} reload={reload} />
         <div className="row">
           <span className="imprint-line">
-            {imprint.copyright} — {COLOPHON_MOTTO} · <a href="/privacy">приватность</a> ·{' '}
-            <a href="/rules">правила</a>
+            {imprint.copyright} — {COLOPHON_MOTTO}
           </span>
-          {/* BOOK-78: the one link to the source, quiet, beside the licence line. It says what
-              is true — the site's code is open, not the novel — and it is a sibling of the
-              sentence, not a part of it: BOOK-94 pins that sentence character for character.
-              No badge, no count, no tracking. */}
-          <a href="https://github.com/semirov/book" target="_blank" rel="noopener noreferrer">
-            исходный код сайта открыт
-          </a>
-          <button
-            className="theme"
-            type="button"
-            onClick={toggle}
-            aria-pressed={theme === 'night'}
-            aria-label={theme === 'night' ? 'включить дневной бланк' : 'включить ночную смену'}
-          >
-            <span className="switch" aria-hidden="true" />
-            {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
-          </button>
         </div>
         {/* BOOK-138: the file, in the footer's own register, straight after the imprint and
             before the gift: a reader who came to take the book away finds it without
@@ -146,6 +133,33 @@ export function Colophon({
             </a>
           </div>
         )}
+        {/* BOOK-137 — one row per fact: the two static pages and the source link are their own
+            row, so the imprint sentence stays one sentence and nothing is crammed beside it. */}
+        <div className="row">
+          <span className="legal-line">
+            <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
+          </span>
+          {/* BOOK-78: the one link to the source, quiet, beside the licence line. It says what
+              is true — the site's code is open, not the novel — and it is a sibling of the
+              sentence, not a part of it: BOOK-94 pins that sentence character for character.
+              No badge, no count, no tracking. */}
+          <a href="https://github.com/semirov/book" target="_blank" rel="noopener noreferrer">
+            исходный код сайта открыт
+          </a>
+        </div>
+        {/* BOOK-137 — the theme is a fact of its own row: the switch is not a footnote. */}
+        <div className="row">
+          <button
+            className="theme"
+            type="button"
+            onClick={toggle}
+            aria-pressed={theme === 'night'}
+            aria-label={theme === 'night' ? 'включить дневной бланк' : 'включить ночную смену'}
+          >
+            <span className="switch" aria-hidden="true" />
+            {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
+          </button>
+        </div>
         {/* BOOK-109: which build the reader is holding. A row of its own after the imprint
             line, in the micro rung — the one fact that tells two hosts (and a stale cache)
             apart, printed quietly and never as a claim about the text. */}

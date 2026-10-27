@@ -12,6 +12,7 @@
  *   - «дальше держится» — a claim the cascade data does not make (the state word says it once);
  *   - «состояние:» — a second print of a state, in a third voice;
  *   - «волна 0» / «волна 1» — one wave is the whole ripple; a bounded wave is noise;
+ *   - «не открылось» — a diagnostic: a wing that never opened prints nothing (BOOK-137);
  *   - «'не написана'» — a placeholder for a chapter that has no text yet. Two entries guard it:
  *     the quoted literal (the copy branch) and the bare text (a JSX text node, «<span>не
  *     написана</span>»). The bare pattern carries a negative lookbehind for «ещё », so the legit
@@ -38,6 +39,10 @@ export const FORBIDDEN = Object.freeze([
   { phrase: 'состояние:', why: 'a state is printed once, in the chip’s own voice' },
   { phrase: 'волна 0', why: 'a wave below two is not news — a bounded wave is noise' },
   { phrase: 'волна 1', why: 'one wave is the whole ripple — «волна 1» says nothing' },
+  {
+    phrase: 'не открылось',
+    why: 'a diagnostic, not reading — a wing that never opened prints nothing (BOOK-137)',
+  },
   { phrase: "'не написана'", why: 'a placeholder for a chapter with no text — absence renders nothing' },
   {
     phrase: 'не написана',
