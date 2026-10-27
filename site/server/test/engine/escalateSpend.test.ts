@@ -11,10 +11,25 @@ import type { WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_BUDGET_CAPS, budgetSnapshot } from '../../src/budget.ts';
+import type { GateAssignment } from '../../src/engine/gates.ts';
+import { appendStage } from '../../src/stages/repo.ts';
 import { createEngineFixture, type Fixture } from './helpers.ts';
 
 const CAPS = DEFAULT_BUDGET_CAPS;
 const PINNED = 'deepseek/deepseek-v4-pro';
+
+/** One model call as the writer records it: the stage row is the database's own knowledge. */
+function drafting(fixture: Fixture, passId: string, tokensIn: number, tokensOut: number, at: number): void {
+  appendStage(fixture.db, {
+    chapter: 5,
+    passId,
+    stage: 'drafting',
+    at,
+    actor: { process: 'writer', model: PINNED },
+    summary: `черновик: ${String(tokensIn)} / ${String(tokensOut)}`,
+    tokens: { in: tokensIn, out: tokensOut },
+  });
+}
 
 /** One pass of chapter 5, parked with whatever the caller knows about its model calls. */
 function parkedPass(fixture: Fixture, spend?: { model: string; tokensIn: number; tokensOut: number }): string {
@@ -82,6 +97,95 @@ describe('escalate — an escalation carries what it spent', () => {
       const dto = budgetSnapshot(fixture.db, CAPS, fixture.clock.now());
       expect(dto.day.spentUsd).toBe(0);
       expect(dto.tokens.today).toBe(0);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('a step closed by the reaper says what its stages spent, priced at their model', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = fixture.engine.openChapterPass(5, 'writer-reaped') as WriterAssignment | null;
+      if (!assignment) throw new Error('expected a pass');
+      fixture.engine.start(assignment.leaseId);
+      // The writer made two calls and never came back: only the stage rows know what they cost.
+      drafting(fixture, assignment.stepId, 3_000, 500, fixture.clock.now());
+      drafting(fixture, assignment.stepId, 1_000, 200, fixture.clock.now() + 1_000);
+
+      fixture.clock.advance(fixture.config.stepWallMs + 60_000);
+      expect(fixture.engine.reap().stepWalls).toEqual([assignment.stepId]);
+
+      // The reaper reports no model and no tokens; the database's best knowledge is the step's.
+      expect(fixture.db.prepare('SELECT * FROM steps WHERE step_id = ?').get(assignment.stepId)).toMatchObject({
+        outcome: 'escalated',
+        model: PINNED,
+        tokens_in: 4_000,
+        tokens_out: 700,
+      });
+      const row = fixture.db.prepare('SELECT * FROM pass_spend').get() as Record<string, unknown>;
+      expect(row).toMatchObject({ pass_id: assignment.stepId, model: PINNED, tokens_in: 4_000, tokens_out: 700, priced: 1 });
+      // (4 000 × 0.66 + 700 × 1.98) / 1 000 000 — a chapter that was written does not read as free.
+      expect(row.usd).toBe(0.004026);
+      expect(budgetSnapshot(fixture.db, CAPS, fixture.clock.now()).day.spentUsd).toBe(0.004026);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('keeps the larger number when the close reports more than the stages recorded', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = fixture.engine.openChapterPass(5, 'writer-late') as WriterAssignment | null;
+      if (!assignment) throw new Error('expected a pass');
+      fixture.engine.start(assignment.leaseId);
+      drafting(fixture, assignment.stepId, 1_000, 100, fixture.clock.now());
+
+      fixture.engine.escalate(assignment.leaseId, 'не беру', { model: PINNED, tokensIn: 5_000, tokensOut: 900 });
+      expect(fixture.db.prepare('SELECT * FROM steps WHERE step_id = ?').get(assignment.stepId)).toMatchObject({
+        model: PINNED,
+        tokens_in: 5_000,
+        tokens_out: 900,
+      });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('adds both gate verdicts to the writer’s own report, once', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = fixture.engine.openChapterPass(5, 'writer-gates') as WriterAssignment | null;
+      if (!assignment) throw new Error('expected a pass');
+      fixture.engine.start(assignment.leaseId);
+      fixture.writeChapterBlocks(5, 'Глава пять', ['Первый абзац.', 'Второй абзац.']);
+      fixture.engine.land(assignment.leaseId);
+      drafting(fixture, assignment.stepId, 1_000, 200, fixture.clock.now());
+      for (const role of ['editor', 'consultant'] as const) {
+        const gate = fixture.engine.next({ role, session: `${role}-spend` }) as GateAssignment | null;
+        if (!gate) throw new Error(`no ${role} assignment`);
+        fixture.engine.verdict(gate.stepId, {
+          role,
+          session: gate.session,
+          verdict: 'HOLDS',
+          findings: [],
+          model: 'deepseek/deepseek-v4-pro',
+          tokensIn: 100,
+          tokensOut: 10,
+        });
+      }
+
+      // The protocol: a close reports the writer's own 1 000 (the stage row agrees), and both gate
+      // rows — 200 together — are added once by the close.
+      fixture.engine.escalate(assignment.leaseId, 'гейт не ответил', {
+        model: PINNED,
+        tokensIn: 1_000,
+        tokensOut: 200,
+      });
+      expect(fixture.db.prepare('SELECT * FROM steps WHERE step_id = ?').get(assignment.stepId)).toMatchObject({
+        model: PINNED,
+        tokens_in: 1_200,
+        tokens_out: 220,
+      });
     } finally {
       fixture.close();
     }

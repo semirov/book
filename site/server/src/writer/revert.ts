@@ -117,6 +117,29 @@ function restoreText(path: string, text: string): void {
   renameSync(staging, path);
 }
 
+/**
+ * Put the pre-pass snapshot back on disk, without the history fallback: the one caller is a pass
+ * whose `land` answered `STEP_CLOSED`, where the bytes now on disk were never hashed by a gate and
+ * must not stay. `absent` removes the file, exactly as `--revert` does; the sha of what was written
+ * is returned, so the caller can say it, not claim it. `restored: false` means this lane left no
+ * snapshot for the chapter (an older pass) — nothing is put back, nothing is claimed.
+ */
+export function restorePreSnapshot(
+  dataDir: string,
+  bookRoot: string,
+  chapter: number,
+): { restored: boolean; sha: string | null } {
+  const pre = readPreSnapshot(dataDir, chapter);
+  if (pre === null) return { restored: false, sha: null };
+  const target = chapterPath(bookRoot, chapter);
+  if (pre.text === null) {
+    rmSync(target, { force: true });
+    return { restored: true, sha: null };
+  }
+  restoreText(target, pre.text);
+  return { restored: true, sha: fileSha(target) };
+}
+
 export async function revertChapter(input: RevertInput): Promise<RevertOutcome> {
   const log = input.log ?? (() => undefined);
   const { chapter } = input;

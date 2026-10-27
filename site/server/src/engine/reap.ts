@@ -179,6 +179,9 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   }
 
   // ── gates that never answered ─────────────────────────────────────────────
+  // The window is the reading budget (`GATE_TTL_MS`), and the sentence says how long it was: an
+  // operator reads a minute count, never a config name, and the code stays in the event payload.
+  const gateTimeoutNote = `гейт не ответил за ${String(Math.round(deps.config.gateTtlMs / 60_000))} мин — проход остановлен`;
   const staleDispatches = db
     .prepare('SELECT * FROM gate_dispatches WHERE expires_at <= ?')
     .all(at) as Array<{ step_id: string; role: 'editor' | 'consultant' | 'rights' }>;
@@ -190,11 +193,12 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     closeStep(deps, step.step_id, {
       outcome: 'escalated',
       seamsOut: parseSeams(null),
-      note: 'gate timeout',
+      note: gateTimeoutNote,
       model: null,
       tokensIn: 0,
       tokensOut: 0,
       escalation: 'escalated:gate_timeout',
+      changeReason: gateTimeoutNote,
     }, now);
     report.gateTimeouts.push(step.step_id);
   }

@@ -372,7 +372,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return await lane.park({ detail: 'не удалось записать главу' });
       }
       try {
-        await engine.land(job.leaseId);
+        await lane.land();
       } catch (error) {
         return await lane.park(failureOf(error));
       }
@@ -380,12 +380,13 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       answered.editor = false;
       answered.consultant = false;
     } else {
-      // A resumed step whose file vanished has nothing to gate: say so instead of closing blind.
+      // A resumed step: this file is the pre-image of a revision the gates may ask for below.
       if (!readChapter(bookRoot, chapter).exists) {
         return await lane.park({ detail: 'текста главы нет на диске — проход не возобновить' });
       }
       text = readFileSync(chapterPath(bookRoot, chapter), 'utf8');
       beforeText = text;
+      lane.preSnapshot(now());
     }
 
     // 9. The gates: editor, then consultant; at most one revision cycle for the whole pass.

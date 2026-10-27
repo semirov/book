@@ -46,7 +46,7 @@ export type PassStageEvent = {
   summary: string;
   /** On `landed`; null elsewhere. */
   span: StageSpan[] | null;
-  /** On `landed`; null elsewhere. */
+  /** On `drafting` (one model call's own usage) and `landed` (the whole pass); null elsewhere. */
   tokens: { in: number; out: number } | null;
   /** On `landed`: this pass, from pipeline.json rates. */
   costUsd: number | null;

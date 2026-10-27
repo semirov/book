@@ -3,8 +3,7 @@
  * pre-image, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
  *
  * `pass.ts` decides *what happens and in which order*; this file does the talking. Everything is
- * injected and nothing is global, so a test drives a real pass through a fixture engine and a
- * scripted provider with no network and no clock of its own.
+ * injected, so a test drives a real pass through a fixture engine and a scripted provider.
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -22,6 +21,7 @@ import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
+import { restorePreSnapshot } from './revert.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import type { WriterConfig } from './config.ts';
@@ -45,7 +45,6 @@ export type PassResult = {
 
 export type ProviderCall = (request: ProviderRequest) => Promise<ProviderResult>;
 
-/** One validated answer: the text that would land. */
 export type Answer = ReturnType<typeof validateAnswer>;
 
 export type CallKind = 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant';
@@ -133,6 +132,7 @@ export type Lane = {
   /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
   remember(failure: Failure | null): void;
   writeText(value: string): void;
+  land(): Promise<void>;
   preSnapshot(at: number): void;
   transcript(result: PassResult): void;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
@@ -144,11 +144,9 @@ export type Lane = {
   /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
   model(): string | null;
   setPrompt(sections: number, sha256: string | null): void;
-  /** The money answer that let this pass run: what the transcript records as the estimate. */
   setEstimate(value: PassEstimate): void;
 };
 
-/** The lane for one pass: `answered` is shared with the caller, `chapter` is a real chapter. */
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
   const { config, engine, bookRoot, now } = input;
   const sink: StageSink = { stage: (event) => engine.stage(event) };
@@ -166,8 +164,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let note: string | null = null;
 
   /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
-   *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28).
-   *  The line it prints is the stage's own summary — never the prompt, never the key. */
+   *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
   async function emit(stage: StageEmitInput): Promise<void> {
     try {
       input.log(stageLogLine(stage.at, stage.stage, stage.summary));
@@ -223,8 +220,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     } catch (error) {
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
-    // The writer's own tokens: what `done` reports. Each gate's are stored with its verdict row
-    // and the engine adds them at close, so they are never counted twice.
+    // The writer's own tokens: what `done` reports — each gate's verdict row is added by the close.
     if (kind === 'draft' || kind === 'repair' || kind === 'continue') {
       written.in += result.usage.in;
       written.out += result.usage.out;
@@ -257,14 +253,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
           tokensIn: result.usage.in,
           tokensOut: result.usage.out,
         }),
-        model: config.model,
+        // The call's own numbers, which the engine's close reads: a reaped pass must not read free.
+        model: config.model, tokens: { in: result.usage.in, out: result.usage.out },
         at: now(),
       });
     }
     return result;
   }
 
-  /** The pin once a call happened — what the engine is told; `null` before one. */
   function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
 
   /** Park the pass: the note is a sentence, the log line and the transcript carry the code. */
@@ -275,16 +271,15 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     failure = { code, detail: why.detail };
     note = sentence;
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
-    // BOOK-117: a parked pass spent money too, so the usage travels with the escalate and the
-    // ledger prices it. A park before the first call claims no model and no tokens.
+    // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
+    // each gate's verdict row is added by the close. A park before the first call claims neither.
     const spent = calls.length === 0
       ? { tokensIn: 0, tokensOut: 0 }
-      : { model: config.model, tokensIn: all.in, tokensOut: all.out };
+      : { model: config.model, tokensIn: written.in, tokensOut: written.out };
     try {
       await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
-      // The lease may already be gone (an expired pass): the stage still records the truth, and
-      // the engine's refusal stays in the log — never inside the reader's sentence.
+      // The lease may already be gone (an expired pass): the refusal stays in the log, not the note.
       input.log(`[writer] escalate refused: ${reasonOf(error)}`);
     }
     await emit({
@@ -293,8 +288,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       passId: job.stepId,
       changeId: job.changeId,
       summary: stageSummary.refused({ reason: sentence }),
-      // No call, no pin: a park before the model ran claims no model (and no money).
-      model: laneModel(),
+      model: laneModel(), // no call, no pin: a park before the model ran claims no model, no money
       at: now(),
     });
     return {
@@ -306,6 +300,17 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       tokens: { ...written },
       costUsd: costUsd(config.pipeline.pricing, all),
     };
+  }
+
+  /** `land`: a `STEP_CLOSED` answer takes the text back — bytes no gate hashed must not stay. */
+  async function land(): Promise<void> {
+    try {
+      await engine.land(job.leaseId);
+    } catch (error) {
+      const back = codeOf(error) === 'STEP_CLOSED' ? restorePreSnapshot(input.dataDir, bookRoot, chapter) : null;
+      if (back) input.log(`[writer] land STEP_CLOSED: снимок до прохода ${back.restored ? 'возвращён' : 'не найден'}`);
+      throw new PassRefusal(reasonOf(error), codeOf(error));
+    }
   }
 
   /** Atomic: a reader never sees half a chapter, and `land` reads a whole file. */
@@ -461,12 +466,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       if (!validated.ok) return null;
     }
     const revised = finalize(validated.text);
-    try {
-      writeText(revised);
-      await engine.land(job.leaseId);
-    } catch (error) {
-      throw new PassRefusal(reasonOf(error), codeOf(error));
-    }
+    writeText(revised);
+    await land();
     return revised;
   }
 
@@ -474,11 +475,11 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     emit,
     ask,
     park,
-    /** A failure the pass survived: the transcript is where a survived failure is proved. */
     remember: (value) => {
       if (value !== null) failure = value;
     },
     writeText,
+    land,
     preSnapshot,
     transcript,
     check,

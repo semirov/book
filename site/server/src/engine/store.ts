@@ -1,10 +1,5 @@
-/**
- * The engine's tables, one place (ARCHITECTURE.md §8).
- *
- * Hand-written SQL over `better-sqlite3` — the same choice as the site (ADR-001): there is
- * no ORM to fight, and every statement here is one fact the engine owns. Only `book-engine`
- * writes these tables; the site reads them.
- */
+/** The engine's tables, one place (ARCHITECTURE.md §8): hand-written SQL over `better-sqlite3`
+ *  (ADR-001), one statement per fact; only `book-engine` writes them, the site reads. */
 
 import type { InterventionKind } from '@book/shared';
 
@@ -467,6 +462,11 @@ export function deleteDispatches(db: Db, stepId: string): void {
 
 export function listDispatches(db: Db, stepId: string): DispatchRow[] {
   return db.prepare('SELECT * FROM gate_dispatches WHERE step_id = ?').all(stepId) as DispatchRow[];
+}
+
+/** The beat's rule for a reading gate: a live dispatch moves out, an expired one belongs to the reaper. */
+export function extendDispatches(db: Db, stepId: string, atIso: string, expiresAt: string): void {
+  db.prepare('UPDATE gate_dispatches SET expires_at = ? WHERE step_id = ? AND expires_at > ?').run(expiresAt, stepId, atIso);
 }
 
 // ── lane ─────────────────────────────────────────────────────────────────────

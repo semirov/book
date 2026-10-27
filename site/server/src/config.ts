@@ -170,7 +170,9 @@ const schema = z.object({
   maxDeltaRatio: z.coerce.number().min(0).max(1).default(0.35),
   /** Writer revisions per step before the text is published with its finding (§6B.4). */
   gateCycles: z.coerce.number().int().min(1).default(3),
-  gateTtlMs: z.coerce.number().int().min(1).default(300_000),
+  /** How long a gate may read before its dispatch is dead: a real editor read took 4–7 min, and
+   *  the old five minutes killed a normal pass. The beat extends a live one; the wall still bounds. */
+  gateTtlMs: z.coerce.number().int().min(1).default(1_200_000),
   leaseTtlMs: z.coerce.number().int().min(1).default(120_000),
   /**
    * BOOK-34 — the step wall: how long one step may stay open, measured from `steps.at`,

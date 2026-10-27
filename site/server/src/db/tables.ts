@@ -118,7 +118,7 @@ export const PASS_STAGES_TABLE_SQL = `CREATE TABLE pass_stages (                
   change_id     TEXT,                                -- the change this pass carries, when any
   summary       TEXT NOT NULL,                       -- one factual line, ≤200 chars
   span          TEXT,                                -- JSON StageSpan[], null off 'landed'
-  tokens_in     INTEGER,                             -- null off 'landed'
+  tokens_in     INTEGER,                             -- one call's on 'drafting', the pass's on 'landed'
   tokens_out    INTEGER,
   cost_usd      REAL,                                -- null off 'landed'
   UNIQUE (pass_id, stage_seq)

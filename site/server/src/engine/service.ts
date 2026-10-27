@@ -296,8 +296,6 @@ export function createEngine(deps: EngineDeps) {
     if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'consultant')) {
       refuse('BLOCKER_UNRESOLVED', 409, 'the physics pass named a blocker on this text: revise it and land again, or escalate');
     }
-    const tokensIn = (options.tokensIn ?? 0) + gates.reduce((sum, row) => sum + row.tokens_in, 0);
-    const tokensOut = (options.tokensOut ?? 0) + gates.reduce((sum, row) => sum + row.tokens_out, 0);
     // BOOK-76: an editor blocker publishes with its finding; a consultant blocker stops the step.
     const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
     const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');
@@ -354,9 +352,10 @@ export function createEngine(deps: EngineDeps) {
         outcome,
         seamsOut: seams,
         note: note ? note.slice(0, NOTE_MAX_CHARS) : null,
-        model,
-        tokensIn,
-        tokensOut,
+        model: options.model ?? null,
+        // The writer's own tokens: each gate's verdict row is added once, by `closeStep`.
+        tokensIn: options.tokensIn ?? 0,
+        tokensOut: options.tokensOut ?? 0,
         changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
         // BOOK-76: a science stop carries its own public sentence (`escalated:science`).
         changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? 'починка вышла за границы правки — нужно решение' : null,

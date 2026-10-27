@@ -14,6 +14,7 @@ import type { StepRow } from './store.ts';
 import {
   getLease,
   getStep,
+  extendDispatches,
   heartbeatLaneRow,
   insertLease,
   liveLeaseForStep,
@@ -110,6 +111,12 @@ function leaseRowOf(db: Db, leaseId: string): LeaseRow {
 
 export function liveLease(deps: EngineDeps, leaseId: string): LeaseRow {
   const lease = leaseRowOf(deps.db, leaseId);
+  // A step the engine has already closed answers `STEP_CLOSED` whatever its lease says. The choice
+  // is **refused**, not "re-open for one gate read": the reaper closes the step and releases its
+  // lease together, so "released" would hide the fact that nothing can land here any more — and
+  // the writer takes the bytes it wrote back on this code (no gate hashed them).
+  const step = getStep(deps.db, lease.step_id);
+  if (step && step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is already closed`);
   if (lease.released_at !== null) refuse('LEASE_RELEASED', 409, `lease ${leaseId} is released (${lease.release_reason})`);
   if (lease.expires_at <= toIso(deps.clock.now())) {
     refuse('LEASE_EXPIRED', 409, `lease ${leaseId} expired; poll next for a fresh assignment`);
@@ -281,10 +288,14 @@ export function beatOpenSteps(deps: EngineDeps, at: number): void {
     if (!step || step.outcome !== null) continue;
     const wall = stepWallOf(deps, step);
     if (wall <= at) continue; // the reaper owns this step now: it escalates past the wall
+    const expiresAt = Math.min(at + deps.config.leaseTtlMs, wall);
     updateLease(deps.db, lease.id, {
       heartbeat_at: atIso,
-      expires_at: toIso(Math.min(at + deps.config.leaseTtlMs, wall)),
+      expires_at: toIso(expiresAt),
     });
+    // The gate window is a reading budget, not a five-minute guess: an editor reading the real
+    // chapter for minutes must not lose its dispatch while the step it serves is still open.
+    extendDispatches(deps.db, step.step_id, atIso, toIso(Math.min(at + deps.config.gateTtlMs, wall)));
     if (lease.change_id) heartbeatLaneRow(deps.db, lease.change_id, atIso);
   }
 }

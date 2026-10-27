@@ -204,6 +204,48 @@ export function usdOfModel(
 }
 
 /**
+ * What a closing step actually spent (the owner's rule, 2026-10-28: «a step that wrote a chapter
+ * cannot read as free»). The close reports what its own session believes; the database answers
+ * what it knows — every model call the pass made left a `drafting` stage row with its tokens and
+ * its model, and each gate left its verdict row. So a reaper close that names no model still
+ * books the calls, and a caller that under-reports can never shrink them.
+ *
+ * The protocol keeps the two parts apart: a close reports the writer's own calls, each gate's are
+ * its verdict row. So the report and the stage sum describe the same calls — the larger wins, a
+ * missing stage cannot erase a report — and the gate rows are added on top, once.
+ * The model is the reported one, else the pass's first drafting model.
+ *
+ * Only `drafting` rows are summed: one per model call, its own usage. A `landed` row is the pass's
+ * whole money line (writer and gates together), so counting it here would charge the gates twice.
+ */
+export function spendOfClose(
+  db: Db,
+  stepId: string,
+  reported: { model: string | null; tokensIn: number; tokensOut: number },
+): { model: string | null; tokensIn: number; tokensOut: number } {
+  const stages = db
+    .prepare(
+      `SELECT COALESCE(SUM(tokens_in), 0) AS tokensIn, COALESCE(SUM(tokens_out), 0) AS tokensOut,
+              (SELECT actor_model FROM pass_stages
+                WHERE pass_id = ? AND stage = 'drafting' AND actor_model IS NOT NULL
+                ORDER BY seq LIMIT 1) AS model
+         FROM pass_stages WHERE pass_id = ? AND stage = 'drafting'`,
+    )
+    .get(stepId, stepId) as { tokensIn: number; tokensOut: number; model: string | null };
+  const gates = db
+    .prepare(
+      `SELECT COALESCE(SUM(tokens_in), 0) AS tokensIn, COALESCE(SUM(tokens_out), 0) AS tokensOut
+         FROM gate_verdicts WHERE step_id = ?`,
+    )
+    .get(stepId) as { tokensIn: number; tokensOut: number };
+  return {
+    model: reported.model ?? stages.model ?? null,
+    tokensIn: Math.max(reported.tokensIn, stages.tokensIn) + gates.tokensIn,
+    tokensOut: Math.max(reported.tokensOut, stages.tokensOut) + gates.tokensOut,
+  };
+}
+
+/**
  * Write the pass's one ledger row, inside the close's own transaction.
  *
  * `INSERT OR IGNORE` on `pass_id`: a re-close is not a second charge. The provider's cache
