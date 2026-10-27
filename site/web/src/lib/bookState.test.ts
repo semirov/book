@@ -138,6 +138,55 @@ describe('the edition number (BOOK-60)', () => {
     // An old payload is not a zero: the held number (or its absence) stands.
     expect(withRevision(book, undefined)).toBe(book);
     expect(withRevision(book, undefined).front.revision).toBeUndefined();
+    // The two-argument call writes no size of its own — it invents none.
+    expect(withRevision(book, 42).front.exportBytes).toBeUndefined();
+  });
+
+  // BOOK-138: one answer carries both numbers, so the label can never name the new edition
+  // with the previous file's size.
+  it('writes the export’s size with the revision it came with, and only the front changes', () => {
+    const book = bookFromHello(hello);
+    const first = withRevision(book, 42, 1_500_000);
+    expect(first.front).toMatchObject({ revision: 42, exportBytes: 1_500_000 });
+    expect(first.state).toBe(book.state);
+    expect(first.catalog).toBe(book.catalog);
+
+    // The size is not monotonic — a shorter edition is a smaller file — so it is not guarded
+    // on its own: it moves exactly when the revision does.
+    const second = withRevision(first, 43, 1_200_000);
+    expect(second.front).toMatchObject({ revision: 43, exportBytes: 1_200_000 });
+  });
+
+  it('drops the held size when the revision moves without one, and keeps it when the revision stands', () => {
+    const held = withRevision(bookFromHello(hello), 42, 1_500_000);
+
+    // BOOK-138: a newer number with no size — an older server after a rollback, a payload from
+    // a build that predates the field. The held size describes the *previous* file, so it is
+    // dropped and the label prints the verb alone.
+    const moved = withRevision(held, 43);
+    expect(moved.front.revision).toBe(43);
+    expect(moved.front.exportBytes).toBeUndefined();
+    expect('exportBytes' in moved.front).toBe(false);
+
+    // The same edition's answer: nothing moved, so a payload without a size leaves it alone.
+    const same = withRevision(held, 42);
+    expect(same.front).toMatchObject({ revision: 42, exportBytes: 1_500_000 });
+
+    // A value that is not a measurement is treated as absent, not as a size — and the new
+    // number still drops the old one.
+    expect(withRevision(held, 43, Number.NaN).front.exportBytes).toBeUndefined();
+    expect(withRevision(held, 42, Number.NaN).front.exportBytes).toBe(1_500_000);
+    // A measured size always wins, whether or not the number moved.
+    expect(withRevision(held, 42, 1_200_000).front.exportBytes).toBe(1_200_000);
+  });
+
+  it('keeps the size a reconnect’s hello does not carry, together with the edition it belongs to', () => {
+    const held = withRevision(bookFromHello(hello), 42, 1_500_000);
+    const reconnected = bookFromHello(hello, held);
+    // `hello` names neither number; the page keeps the pair it already had, never one of them.
+    expect(reconnected.front).toMatchObject({ revision: 42, exportBytes: 1_500_000 });
+    // And a first load invents no size at all.
+    expect(bookFromHello(hello).front.exportBytes).toBeUndefined();
   });
 });
 

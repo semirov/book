@@ -274,22 +274,33 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
-/* BOOK-60: the download — an <a> under the shares, and the file's name beneath it. */
-.authors-export {
-  margin-top: 22px;
-}
-.authors-export-link {
-  font-size: var(--fs-note);
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.authors-export-line {
-  margin: 6px 0 0;
+/* BOOK-60 / BOOK-138: the download — an `<a>` under the shares and, in the footer, a row of
+   its own. The rule is the site's register for it on both surfaces: mono at the 12 px floor,
+   the quiet ink, the house underline, and no box of its own — the row owns the space, the link
+   owns the words. `.page` scopes it above the footer's shared `.colophon a` target, so the
+   44 px one below is the one that paints. The footer's `.colophon` inherits the label register
+   (`base.css`: uppercase, 0.12em tracking), so the two lines that follow keep this one control
+   in its own voice: a lowercase verb, near-normal tracking, in the end matter and in the
+   footer alike — one component, one register. */
+.page .export-link {
+  display: inline-flex;
+  align-items: center;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+/* The one control a thumb aims at deliberately: 44 px on the phone, like the gift row's link. */
+@media (max-width: 599px) {
+  .page .export-link {
+    min-height: 44px;
+  }
+}
+.authors-export {
+  margin-top: 22px;
 }
 .authors-copyright {
   margin-top: 22px;

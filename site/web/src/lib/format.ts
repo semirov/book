@@ -50,6 +50,29 @@ export function formatCharsShort(chars: number): string {
   return formatNumber(chars);
 }
 
+/**
+ * BOOK-138 — the download's size, as the link prints it: `1,5 МБ` at a megabyte and above,
+ * `512 КБ` below it. A comma is the Russian decimal mark, one decimal place is as much as a
+ * reader needs beside a link, and a whole megabyte prints as `1 МБ`, never `1,0 МБ`.
+ *
+ * The units are decimal (1 КБ = 1 000 bytes, 1 МБ = 1 000 000): КБ/МБ are SI names, and a
+ * reader comparing the number with their own file manager, the `content-length` in a log or a
+ * release note is comparing it with the same convention. The space before the unit is the plain
+ * one, not the site's non-breaking space: this is a measure beside a verb, not a number in a
+ * sentence, and the label is allowed to break there.
+ *
+ * Bytes that are not a positive number print `0 КБ`: the server never reports one, so the value
+ * only appears if a payload is broken, and a broken payload must not read as «1,5 МБ».
+ */
+export function formatFileSize(bytes: number): string {
+  const safe = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+  const kb = Math.round(safe / 1_000);
+  // Below a megabyte the whole number is the unit; rounding up to 1000 КБ would be «1 МБ» and
+  // is printed as such by the branch below.
+  if (kb < 1_000) return `${kb} КБ`;
+  return `${String(Math.round(safe / 100_000) / 10).replace('.', ',')} МБ`;
+}
+
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   const date = new Date(iso);

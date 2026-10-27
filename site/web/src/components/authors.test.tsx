@@ -184,12 +184,13 @@ describe('the reader’s own decisions outlive the history gate (BOOK-56)', () =
 
   it('keeps the download when history is off and the reader has no decisions (BOOK-60)', () => {
     // Reading is never gated, so the export is not: a begun book has a file before it has
-    // an authors list. The section exists for the link alone.
+    // an authors list. The section exists for the link alone, and the link says how big the
+    // file is (BOOK-138) — the edition number lives in the file, not on the page.
     const html = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} revision={42} />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} exportBytes={1_500_000} />,
     );
-    expect(html).toContain('href="/book.fb2"');
-    expect(html).toContain('blank-42.fb2');
+    expect(html).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2 · 1,5 МБ</a>');
+    expect(html).not.toContain('blank-');
     expect(html).not.toContain('authors-list');
   });
 

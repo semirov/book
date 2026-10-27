@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { isReadLimited, READ_WINDOW_MS, readLimitKey } from '../src/http/readLimit.ts';
+import {
+  EXPORT_LIMITED_PATHS,
+  exportLimitKey,
+  isExportLimited,
+  isReadLimited,
+  READ_WINDOW_MS,
+  readLimitKey,
+} from '../src/http/readLimit.ts';
 
 /**
  * The read budget (audit M6): which URLs take a slot, and what a slot is keyed by. The
  * integration path (a 429 with `retry-after`) is in `api.test.ts` — and for the title page's
  * own budget, in `frontRoute.test.ts`.
+ *
+ * BOOK-138 split the export out of this budget: a download is a read the reader asks for
+ * deliberately, and the page's own polling must not be able to spend its window.
  */
 describe('the read API budget', () => {
-  it('limits the history projections, the state poll, the title page, the cost line, the change list, the end matter, the reader’s own record and the book’s export', () => {
+  it('limits the history projections, the state poll, the title page, the cost line, the change list, the end matter and the reader’s own record', () => {
     for (const url of [
       '/api/history',
       '/api/history/timeline?limit=5',
@@ -26,9 +36,6 @@ describe('the read API budget', () => {
       '/api/authors?fresh=1',
       // The reader's own trace pays the same whole-book measurement: it is budgeted too.
       '/api/authors/me',
-      // BOOK-60: the whole-book export is a read like any other, and a 304 is a read too.
-      '/book.fb2',
-      '/book.fb2?download=1',
     ]) {
       expect(isReadLimited(url), url).toBe(true);
     }
@@ -43,7 +50,9 @@ describe('the read API budget', () => {
       '/api/fronts',
       '/api/costs',
       '/api/memory',
-      // A longer or similar path is another route, and it is not the export.
+      // BOOK-138: the export is not a read — it has a budget of its own.
+      '/book.fb2',
+      '/book.fb2?download=1',
       '/book.fb2x',
       '/book',
     ]) {
@@ -56,5 +65,24 @@ describe('the read API budget', () => {
     expect(key).toBe('read:ip:hash(203.0.113.0/24)');
     expect(key.startsWith('read:ip:')).toBe(true);
     expect(READ_WINDOW_MS).toBe(60_000);
+  });
+});
+
+describe('the export budget (BOOK-138)', () => {
+  it('takes the export and only the export, query string or not', () => {
+    expect(EXPORT_LIMITED_PATHS).toEqual(['/book.fb2']);
+    for (const url of ['/book.fb2', '/book.fb2?download=1']) {
+      expect(isExportLimited(url), url).toBe(true);
+    }
+    // Nothing else takes it — not a look-alike path and not a read surface.
+    for (const url of ['/book.fb2x', '/book', '/book.fb2/', '/api/state', '/api/front']) {
+      expect(isExportLimited(url), url).toBe(false);
+    }
+  });
+
+  it('keys the slot by the hashed network under its own prefix, so the two budgets never collide', () => {
+    const ipHash = (value: string): string => `hash(${value})`;
+    expect(exportLimitKey(ipHash, '203.0.113.0/24')).toBe('export:ip:hash(203.0.113.0/24)');
+    expect(exportLimitKey(ipHash, '203.0.113.0/24')).not.toBe(readLimitKey(ipHash, '203.0.113.0/24'));
   });
 });

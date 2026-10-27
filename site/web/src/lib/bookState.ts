@@ -43,8 +43,11 @@ export function bookFromHello(hello: HelloPayload, held: BookData | null = null)
       // switching the row off and back on.
       donateUrl: hello.front.donateUrl ?? held?.front.donateUrl ?? null,
       // BOOK-60: `hello` carries no edition number; a reconnect keeps the page's, and the
-      // next text frame re-reads it from `/api/front`.
+      // next text frame re-reads it from `/api/front`. BOOK-138: the size belongs to that
+      // edition, so the two are kept together — a number without its file size would print the
+      // verb alone on a page that already knows how big the file is.
       revision: held?.front.revision,
+      ...(held?.front.exportBytes === undefined ? {} : { exportBytes: held.front.exportBytes }),
     },
   };
 }
@@ -62,13 +65,34 @@ export function withAuthorsCount(data: BookData, count: unknown): BookData {
 }
 
 /**
- * BOOK-60: the edition number from a fresh `/api/front` reading. A REST resync that must not
- * overwrite a newer `hello` still contributes this one fact; an old payload without the field
- * leaves the number the page already has.
+ * BOOK-60 / BOOK-138: the edition number and the export's size from a fresh `/api/front`
+ * reading. A REST resync that must not overwrite a newer `hello` still contributes these two
+ * facts; an old payload without the fields leaves what the page already has.
+ *
+ * The two are written together because one answer produced both: a reader who is told the new
+ * edition must not be told the old file's size, and the size is not monotonic — a shorter
+ * edition is a smaller file — so it cannot carry a guard of its own. It moves exactly when the
+ * revision moves.
+ *
+ * When the number moves and the payload carries no size, the held size is **dropped**: it
+ * describes the previous edition's file. An asset kept for a year can talk to an older server
+ * after a rollback, and that server sends the number without the size — printing the size the
+ * page already had would state a length the new file does not have. The verb alone is the
+ * honest label. The held size is kept only when the revision is unchanged (the same edition's
+ * answer, or one that does not mention a size), and an unusable value (NaN) is treated as
+ * absent.
  */
-export function withRevision(data: BookData, revision: number | undefined): BookData {
+export function withRevision(data: BookData, revision: number | undefined, exportBytes?: number): BookData {
   if (typeof revision !== 'number') return data;
-  return { ...data, front: { ...data.front, revision } };
+  const size = typeof exportBytes === 'number' && Number.isFinite(exportBytes) ? exportBytes : undefined;
+  const front: FrontDto = { ...data.front, revision };
+  if (size !== undefined) {
+    front.exportBytes = size;
+  } else if (front.revision !== data.front.revision) {
+    // No size for a new edition: the held one belongs to the file this page no longer names.
+    delete front.exportBytes;
+  }
+  return { ...data, front };
 }
 
 /**

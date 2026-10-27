@@ -15,6 +15,10 @@ const WINDOW_MS = 1_000;
  * collapses into one read — trailing debounce of a second — and only one request is ever in
  * flight. A failure is silent: the line keeps the last number it had, and the next frame asks
  * again. An old payload without `revision` is left alone.
+ *
+ * BOOK-138: the download's label prints the file's size, so the same answer's `exportBytes`
+ * travels with the revision — one payload, one edition, one size. Without it the label would
+ * keep the previous file's size while `/book.fb2` already sends the new file.
  */
 export function useFrontRevision(
   setData: Dispatch<SetStateAction<BookData | null>>,
@@ -36,7 +40,8 @@ export function useFrontRevision(
         .then((front) => {
           if (typeof front.revision !== 'number') return;
           const revision = front.revision;
-          setData((current) => (current === null ? current : withRevision(current, revision)));
+          const exportBytes = front.exportBytes;
+          setData((current) => (current === null ? current : withRevision(current, revision, exportBytes)));
         })
         .catch(() => undefined)
         .finally(() => {

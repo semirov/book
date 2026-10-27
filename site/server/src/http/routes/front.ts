@@ -5,6 +5,8 @@ import { bookStateKey } from '../../db/bookKey.ts';
 import { listCatalog } from '../../db/repo/chapters.ts';
 import { getFrontRow } from '../../db/repo/front.ts';
 import { readEdition } from '../../fb2/edition.ts';
+import { createExportCache, exportSourceOf, type ExportCache } from '../../fb2/exportCache.ts';
+import { dateElement, exportMoment } from '../../fb2/serialize.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -31,16 +33,46 @@ function frontEtag(frontRev: number, count: number, revision: number): string {
  * proxy log or a client compares, not a licence to reuse. `measuredAt` may be older than the
  * response by up to one book state — the count cannot be different, so the client's monotonic
  * guard sees the same number, never a correction.
+ *
+ * BOOK-138: `exportBytes` is the size of the file `/book.fb2` answers with for this edition. It
+ * is measured from the **same parts** the export sends — the shared cache holds them, so the
+ * page and the download never build two different books — and the date element is inserted the
+ * way the export inserts it, with the same clock and zone. The test pins the invariant: the
+ * number here equals that answer's `content-length` for one edition and one `now`.
+ *
+ * BOOK-133: a cover that cannot be embedded is not page 1's failure. The export answers `503`
+ * and names the code; this route sends the payload without `exportBytes`, and the link prints
+ * the verb alone — a page is a statement about the manuscript, not about an image.
  */
-export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void {
+export function registerFrontRoutes(
+  app: FastifyInstance,
+  deps: RouteDeps,
+  /** BOOK-138: the export's own memo, shared with `registerExportRoutes`; a fresh one by default. */
+  cache: ExportCache = createExportCache(exportSourceOf(deps), deps.config.coverPath),
+): void {
   let memo: { key: string; authors: AuthorsCountDto } | null = null;
 
   app.get('/api/front', async (_request, reply) => {
     const front = getFrontRow(deps.db);
     const rev = front?.rev ?? 0;
     const key = bookStateKey(deps.db, rev);
-    // BOOK-60: the same edition function the export route uses (BOOK-DOC-41 §1).
-    const revision = readEdition(deps.db, deps.imprint.author).revision;
+    // BOOK-60/BOOK-138: the edition and the export's bytes come from one snapshot, and the
+    // byte length is the whole answer — the parts' measured length, this moment's date element,
+    // UTF-8. The parts are already measured, so a poll never concatenates the file.
+    const { revision, exportBytes } = deps.db.transaction(() => {
+      const edition = readEdition(deps.db, deps.imprint.author);
+      const moment = exportMoment(deps.now(), deps.config.tz);
+      const resolved = cache.resolve(edition);
+      if (resolved.kind === 'cover-error') {
+        // BOOK-133: never a 500/503 here — the link prints the verb alone and `/book.fb2`
+        // names the fault with its code.
+        return { revision: edition.revision, exportBytes: null };
+      }
+      return {
+        revision: edition.revision,
+        exportBytes: resolved.entry().bytes + Buffer.byteLength(dateElement(moment), 'utf8'),
+      };
+    })();
 
     // A representation is being built: measure once per book state, and keep it.
     const remembered = memo !== null && memo.key === key ? memo.authors : null;
@@ -64,6 +96,9 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
       imprint: { author: deps.imprint.author, copyright: deps.imprint.copyright },
       authors,
       revision,
+      // BOOK-133: absent when the cover cannot be embedded — a size the page cannot measure is
+      // not invented, and the link then prints the verb alone.
+      ...(exportBytes === null ? {} : { exportBytes }),
       // BOOK-126: already validated at boot (`donateUrlOf`), so the page prints it or nothing.
       donateUrl: deps.config.donateUrl,
     };

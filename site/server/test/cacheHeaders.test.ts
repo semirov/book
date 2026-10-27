@@ -272,13 +272,14 @@ describe('the API statuses are never stored (BOOK-109 review)', () => {
   });
 });
 
-describe('the FB2 export revalidates, and only because its tag is its content (BOOK-60)', () => {
+describe('the FB2 export revalidates, and only because its tag is its content (BOOK-60, BOOK-138)', () => {
   it('answers a matching If-None-Match with a 304, no build and no export date', async () => {
     await boot();
     const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
     expect(first.statusCode).toBe(200);
-    // The export's own policy, not `no-store`: a stored copy would carry an older export date.
-    expect(first.headers['cache-control']).toBe('no-cache');
+    // BOOK-138: the export states its own policy — `no-store`, like the rest of the book, so
+    // the browser keeps nothing. The tag stays, so this explicit revalidation is still truthful.
+    expect(first.headers['cache-control']).toBe('no-store');
     expect(first.headers['x-export-date']).toBeTruthy();
 
     const conditional = await app!.inject({
@@ -288,7 +289,7 @@ describe('the FB2 export revalidates, and only because its tag is its content (B
     });
     expect(conditional.statusCode).toBe(304);
     expect(conditional.headers.etag).toBe(first.headers.etag);
-    expect(conditional.headers['cache-control']).toBe('no-cache');
+    expect(conditional.headers['cache-control']).toBe('no-store');
     // The moment is a property of a body; this answer produced none.
     expect(conditional.headers['x-export-date']).toBeUndefined();
     expect(conditional.body).toBe('');
