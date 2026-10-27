@@ -3,6 +3,8 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { sheetNames, sheets } from './sheets.ts';
+
 /**
  * The shell and the palette as shipped (BOOK-DOC-3 §3, BOOK-DOC-6 Job B).
  *
@@ -12,24 +14,13 @@ import { describe, expect, it } from 'vitest';
  * dimmed to `--ink-3`. They live on the server side because a `web/` source file may not
  * touch `node:` (arch rule 2), and this is a build guard, not a component test.
  *
- * The sheets and their order are read from `main.tsx`, the module the browser boots: a guard
- * over a hand-kept list can pass while a sheet that loads later re-grids the page (BOOK-73).
+ * The sheets and their order are read from `main.tsx`, the module the browser boots, in
+ * `sheets.ts`: a guard over a hand-kept list can pass while a sheet that loads later re-grids
+ * the page (BOOK-73), and BOOK-92's legal guard reads the same cascade from there.
  */
 
 const WEB = join(import.meta.dirname, '..', '..', 'web');
 const html = readFileSync(join(WEB, 'index.html'), 'utf8');
-const main = readFileSync(join(WEB, 'src', 'main.tsx'), 'utf8');
-
-/** Every `import './styles/<name>.css';` of the boot module, in cascade order. */
-const sheetNames = [...main.matchAll(/import\s+['"]\.\/styles\/([a-z0-9-]+)\.css['"];/gu)].map(
-  (match) => match[1] ?? '',
-);
-// Loudly, not silently: an empty list would make every assertion below vacuous.
-if (sheetNames.length === 0) throw new Error('no stylesheet imports found in web/src/main.tsx');
-
-const sheets: Record<string, string> = Object.fromEntries(
-  sheetNames.map((name) => [name, readFileSync(join(WEB, 'src', 'styles', `${name}.css`), 'utf8')]),
-);
 const css = sheetNames.map((name) => sheets[name] ?? '').join('\n');
 
 function metaContent(name: string): string {
@@ -191,3 +182,4 @@ describe('the shipped stylesheets', () => {
     expect(Object.keys(sheets)).toEqual(sheetNames);
   });
 });
+

@@ -1,0 +1,297 @@
+import { describe, expect, it } from 'vitest';
+
+import { cascadeRules, definitions, sides, sheets, winning } from './sheets.ts';
+import type { ParsedRule } from './sheets.ts';
+
+/**
+ * BOOK-92 — the two static documents: one spacing style.
+ *
+ * The owner's `/rules` screenshot showed the lead indented and narrow while the title and the
+ * sections shared one left edge. The cause was a cascade collision, so these guards read the
+ * cascade the way the browser does — the declaration that **wins** a selector (the last one in
+ * boot order) and how many rules declare it at all — not the first text that matches a name.
+ * That was the hole in the first version: `panels.css` loads after `chrome.css`, so one appended
+ * `26ch` rule re-opened the defect and every test stayed green.
+ *
+ * Pinned here: the lead is its own class (`.legal .legal-lead`), the kicker and the nav keep the
+ * book's label voice, every step is the book's (8 / 12 / 24 / 32), and the lead is the body size
+ * — `--fs-lead` belongs to the annotation and the «прицел» sheet (BOOK-DOC-35 §4.1); the legal
+ * lead's stature is the standfirst, not one more pixel.
+ *
+ * Declarations are compared as property → value, so `margin: 0 0 8px 0`, a reordered block or a
+ * step split over two rules pass when the geometry is the same; comments are blanked first, so a
+ * commented-out rule is not a rule.
+ */
+describe('BOOK-92 — the legal pages, one spacing style', () => {
+  /** Declarations that put the cover's quote back: a `ch` cap narrows, an `auto` side centres. */
+  function centring(rule: ParsedRule): string[] {
+    const found: string[] = [];
+    const maxWidth = rule.declarations['max-width'];
+    if (maxWidth !== undefined && (maxWidth === 'auto' || maxWidth.endsWith('ch'))) {
+      found.push(`max-width: ${maxWidth}`);
+    }
+    for (const property of ['margin', 'margin-inline', 'margin-left', 'margin-right']) {
+      const value = rule.declarations[property];
+      if (value !== undefined && value.split(' ').includes('auto')) found.push(`${property}: ${value}`);
+    }
+    return found;
+  }
+
+  /** The label declarations a rule is missing, or has lost to another face (BOOK-70, BOOK-92). */
+  const LABEL_VOICE: Record<string, string> = {
+    'font-family': 'var(--label)',
+    'font-size': 'var(--fs-label)',
+    color: 'var(--ink-3)',
+  };
+
+  function missingVoice(rule: ParsedRule): string[] {
+    return Object.entries(LABEL_VOICE)
+      .filter(([property, value]) => rule.declarations[property] !== value)
+      .map(([property, value]) => `${property}: ${value}`);
+  }
+
+  /** The `.legal` rules that shout — a specificity fix must not need `!important`. */
+  function shouting(rules: ParsedRule[]): string[] {
+    return rules
+      .filter((rule) => rule.body.includes('!important'))
+      .map((rule) => rule.parts.join(', '));
+  }
+
+  /** Every `.legal …` rule: the static pages, not `.legal-nav`, `.legal-how` or `.legal-tail`. */
+  function legalRules(source: Record<string, string> = sheets): ParsedRule[] {
+    return cascadeRules(source).filter((rule) =>
+      rule.parts.some((part) => /^\.legal(?![\w-])/u.test(part)),
+    );
+  }
+
+  /** The rules this task owns: one declaration each, in the whole cascade. */
+  const GUARDED = [
+    '.legal .legal-lead',
+    '.legal .kicker',
+    '.legal .title',
+    '.legal section',
+    '.legal h2',
+    '.legal ul',
+    '.legal p + p',
+    '.legal ul + p',
+    '.legal .legal-tail',
+    '.legal .legal-nav',
+  ];
+
+  it('declares every guarded rule once, so no later sheet can re-open it', () => {
+    // Count, sheet and order in one assertion: a second definition in `panels.css` (loaded after
+    // `chrome.css`) is a failure here, not a silent win — this is the review's major.
+    for (const selector of GUARDED) {
+      expect(definitions(selector).map((rule) => rule.sheet), selector).toEqual(['chrome']);
+    }
+    // `winning` is the last rule in boot order; with one definition each it is that same rule.
+    for (const selector of GUARDED) expect(winning(selector).sheet).toBe('chrome');
+    // The seeded shape of the re-opened block, and what the guard reports instead of passing:
+    // the first match would have been the right one, the winner is the defect.
+    const hijacked = {
+      chrome: '.legal .legal-lead { margin: 0; }',
+      panels: '.legal .legal-lead { margin: 0 auto; }',
+    };
+    expect(definitions('.legal .legal-lead', hijacked).map((rule) => rule.sheet)).toEqual([
+      'chrome',
+      'panels',
+    ]);
+    expect(winning('.legal .legal-lead', hijacked).sheet).toBe('panels');
+  });
+
+  it('sets the lead as the book’s prose, at the body size, never centred', () => {
+    const lead = winning('.legal .legal-lead');
+    // The body rung, not one step above it: `--fs-lead` is the annotation's (BOOK-DOC-35 §4.1),
+    // and the legal lead's stature is the standfirst — italic, `--ink-2`.
+    expect(lead.declarations['font-size']).toBe('var(--fs-body)');
+    expect(lead.declarations['max-width']).toBe('none');
+    expect(sides(lead)).toEqual(['0', '0', '0', '0']);
+    expect(lead.declarations['font-family']).toBe('var(--serif)');
+    expect(lead.declarations['line-height']).toBe('1.55');
+    expect(lead.declarations['font-style']).toBe('italic');
+    expect(lead.declarations['color']).toBe('var(--ink-2)');
+    expect(lead.declarations['text-wrap']).toBe('pretty');
+    expect(centring(lead)).toEqual([]);
+  });
+
+  it('rejects a lead narrowed to 26ch or centred by a later sheet, a comment or a longhand', () => {
+    // The reviewer's exact case: `chrome.css` is right and `panels.css` — loaded after it —
+    // re-centres the quote. The count assertion above fails first; the winner is guilty too.
+    const hijacked = {
+      chrome: '.legal .legal-lead { max-width: none; margin: 0; }',
+      panels: '.legal .legal-lead { max-width: 26ch; margin: 0 auto; }',
+    };
+    expect(definitions('.legal .legal-lead', hijacked)).toHaveLength(2);
+    expect(centring(winning('.legal .legal-lead', hijacked))).toEqual([
+      'max-width: 26ch',
+      'margin: 0 auto',
+    ]);
+    // A commented-out good rule before a live broken one passes a grep, not this scan.
+    const commented = {
+      chrome: [
+        '/* .legal .legal-lead { max-width: none; margin: 0; } */',
+        '.legal .legal-lead { max-width: 26ch; margin: 0 auto; }',
+        '',
+      ].join('\n'),
+    };
+    expect(definitions('.legal .legal-lead', commented).map((rule) => rule.sheet)).toEqual(['chrome']);
+    expect(centring(winning('.legal .legal-lead', commented))).toEqual([
+      'max-width: 26ch',
+      'margin: 0 auto',
+    ]);
+    // A centred longhand and an `auto` cap are the same defect in another spelling.
+    expect(
+      centring(
+        winning('.legal .legal-lead', {
+          chrome:
+            '.legal .legal-lead { max-width: 34ch; margin-top: 0; margin-right: auto; margin-bottom: 0; margin-left: auto; }',
+        }),
+      ),
+    ).toEqual(['max-width: 34ch', 'margin-left: auto', 'margin-right: auto']);
+    // And the same geometry, spelled differently, passes: four sides, reordered declarations.
+    expect(
+      centring(
+        winning('.legal .legal-lead', {
+          chrome: '.legal .legal-lead { color: var(--ink-2); margin: 0 0 0 0; max-width: none; }',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('retires `p.premise` from every sheet and keeps the empty chapter’s `.premise`', () => {
+    const parts = cascadeRules(sheets).flatMap((rule) => rule.parts);
+    expect(parts.filter((part) => part === 'p.premise')).toEqual([]);
+    // The other component of the same name is a 44px field row and owns its own class.
+    expect(definitions('.premise').map((rule) => rule.sheet)).toEqual(['seam-form']);
+    // The collision does not move: `chrome.css`, where the lead's quote lived, keeps no claim on
+    // the empty chapter's field — a commented-out rule does not count either.
+    expect(
+      cascadeRules({ chrome: sheets.chrome ?? '' })
+        .flatMap((rule) => rule.parts)
+        .filter((part) => part === '.premise'),
+    ).toEqual([]);
+    expect(
+      cascadeRules({ chrome: '/* .premise { margin: 4px 0 0; } */' }).flatMap((rule) => rule.parts),
+    ).toEqual([]);
+  });
+
+  it('sets the title block, the sections and the lists on the book’s steps', () => {
+    const kicker = winning('.legal .kicker');
+    expect(sides(kicker)).toEqual(['0', '0', '8px', '0']);
+    // The kicker is the book's label, not `.legal p`'s serif body: face, size and ink are the
+    // label's, and only the declarations `.legal p` would steal are restated here.
+    expect(missingVoice(kicker)).toEqual([]);
+    expect(kicker.declarations['line-height']).toBe('1.35');
+
+    const title = winning('.legal .title');
+    expect(sides(title)).toEqual(['0', '0', '24px', '0']);
+    // The measured face of the page title stays: the fix is the rhythm, not the size.
+    expect(title.declarations['font-size']).toBe('clamp(28px, 6vw, 40px)');
+    expect(title.declarations['line-height']).toBe('1.12');
+
+    expect(winning('.legal section').declarations['margin-top']).toBe('32px');
+    expect(sides(winning('.legal h2'))).toEqual(['0', '0', '12px', '0']);
+
+    // A list is a paragraph too: P→UL and UL→P are the same 12px step, so a list is not a card
+    // of its own and the paragraph after it does not read as part of it.
+    expect(sides(winning('.legal ul'))).toEqual(['12px', '0', '0', '0']);
+    // `ul + p` is found by its own name, not by riding along with `p + p`.
+    expect(winning('.legal p + p').declarations['margin-top']).toBe('12px');
+    expect(winning('.legal ul + p').declarations['margin-top']).toBe('12px');
+
+    const tail = winning('.legal .legal-tail');
+    expect(tail.declarations['margin-top']).toBe('32px');
+    expect(tail.declarations['padding-top']).toBe('16px');
+    expect(tail.declarations['font-size']).toBe('var(--fs-note)');
+    expect(tail.declarations['color']).toBe('var(--ink-2)');
+  });
+
+  it('reads a step split over two rules, and refuses a half-declared step', () => {
+    // One grouped rule or two: the geometry is the same, so both pass.
+    const split = {
+      chrome: '.legal p + p { margin-top: 12px; } .legal ul + p { margin-top: 12px; }',
+    };
+    expect(winning('.legal p + p', split).declarations['margin-top']).toBe('12px');
+    expect(winning('.legal ul + p', split).declarations['margin-top']).toBe('12px');
+    // A half-declared step has no rule for the missing half, so the lookup throws instead of
+    // passing quietly — the shape the first version of this guard could not see.
+    expect(() => winning('.legal ul + p', { chrome: '.legal p + p { margin-top: 12px; }' })).toThrow(
+      /no rule declares/u,
+    );
+  });
+
+  it('rejects a kicker that loses the label voice to `.legal p`', () => {
+    const kicker = (body: string): ParsedRule =>
+      winning('.legal .kicker', { chrome: `.legal .kicker { ${body} }` });
+    // The shape the defect had: a margin only, so `.legal p` owns the face, the size and the ink.
+    expect(missingVoice(kicker('margin: 0 0 8px'))).toEqual([
+      'font-family: var(--label)',
+      'font-size: var(--fs-label)',
+      'color: var(--ink-3)',
+    ]);
+    // One stolen declaration at a time is still a finding, and it names the one that is gone.
+    expect(
+      missingVoice(
+        kicker(
+          'margin: 0 0 8px; font-family: var(--label); font-size: var(--fs-label); color: var(--ink-2)',
+        ),
+      ),
+    ).toEqual(['color: var(--ink-3)']);
+    expect(
+      missingVoice(
+        kicker(
+          'margin: 0 0 8px; font-family: var(--sans); font-size: var(--fs-label); color: var(--ink-3)',
+        ),
+      ),
+    ).toEqual(['font-family: var(--label)']);
+    // Reordered declarations and a four-value margin are the same kicker.
+    expect(
+      missingVoice(
+        kicker(
+          'color: var(--ink-3); font-size: var(--fs-label); margin: 0 0 8px 0; font-family: var(--label)',
+        ),
+      ),
+    ).toEqual([]);
+    expect(sides(kicker('margin: 0 0 8px 0'))).toEqual(['0', '0', '8px', '0']);
+  });
+
+  it('sets the footer nav as a label, so `.legal p` cannot reset it to a serif body', () => {
+    const nav = winning('.legal .legal-nav');
+    expect(nav.declarations['margin-top']).toBe('24px');
+    expect(nav.declarations['font-family']).toBe('var(--label)');
+    expect(nav.declarations['font-size']).toBe('var(--fs-micro)');
+    expect(nav.declarations['letter-spacing']).toBe('0.08em');
+    expect(nav.declarations['text-transform']).toBe('uppercase');
+    expect(nav.declarations.display).toBe('flex');
+    expect(nav.declarations.gap).toBe('18px');
+    // The bare selectors are gone: a `.legal-nav` rule at (0,1,0) loses to `.legal p`.
+    expect(
+      cascadeRules(sheets)
+        .flatMap((rule) => rule.parts)
+        .filter((part) => part === '.legal-nav' || part === '.legal-tail'),
+    ).toEqual([]);
+  });
+
+  it('needs no `!important` anywhere in the legal block', () => {
+    const rules = legalRules();
+    // The block is there to be read: an empty scan would make the assertion vacuous.
+    expect(rules.length).toBeGreaterThan(5);
+    expect(shouting(rules)).toEqual([]);
+    // The rejection path, on a seeded cascade: a shout is reported by its selector.
+    expect(
+      shouting(legalRules({ chrome: '.legal .legal-tail { color: var(--ink-2) !important; }' })),
+    ).toEqual(['.legal .legal-tail']);
+    // A comment is not a rule, and a neighbouring class is not the subject.
+    expect(
+      shouting(
+        legalRules({
+          chrome: [
+            '/* .legal .legal-tail { color: var(--ink-2) !important; } */',
+            '.legal-how { color: var(--ink-2) !important; }',
+            '',
+          ].join('\n'),
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
