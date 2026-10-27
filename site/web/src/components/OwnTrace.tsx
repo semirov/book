@@ -43,7 +43,7 @@ export function OwnTrace({
       <p className="own-trace-line">{traceLine(trace)}</p>
       <p className="own-trace-edits">
         {trace.label}
-        {trace.edits > 0 ? ` · правок: ${trace.edits}` : ' · правок пока нет'}
+        {trace.edits > 0 ? ` · правок: ${trace.edits}` : ''}
       </p>
       {trace.hidden ? <p className="own-trace-note">вас нет в списке авторов — история и доля сохранены</p> : null}
       {onToggleHidden === undefined ? null : (

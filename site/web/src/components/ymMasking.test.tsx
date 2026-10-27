@@ -239,7 +239,9 @@ describe('the reader’s name and words are masked from Webvisor', () => {
   });
 
   it('masks the paragraph chain, which names the reader who wrote each version', () => {
-    const html = renderToStaticMarkup(<ParagraphChain chain={CHAIN} loading={false} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(
+      <ParagraphChain chain={CHAIN} loading={false} failed={false} onClose={() => undefined} onRetry={() => undefined} />,
+    );
     expectMasked(html, SENTINEL.name, '.chain');
     expectMasked(html, `правкой 7 (${SENTINEL.name})`, '.chain');
   });

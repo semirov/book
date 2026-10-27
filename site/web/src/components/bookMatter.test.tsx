@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry, type FrontDto, type StateSnapshot } from '@book/shared';
+import { chapterStartPages, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, pageAt, type CatalogEntry, type FrontDto, type StateSnapshot } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -111,9 +111,7 @@ function textOf(html: string): string {
 
 describe('cover', () => {
   it('is the title, the live byline, the category line and the promise — and nothing else', () => {
-    expect(textOf(coverHtml())).toBe(
-      `Бланк${'Филипп Семиров + 0'}${TITLE_GENRE}${TITLE_PROMISE}`,
-    );
+    expect(textOf(coverHtml())).toBe(`Бланк${'Филипп Семиров'}${TITLE_GENRE}${TITLE_PROMISE}`);
   });
 
   it('carries the promise verbatim, in plain words, on its own line', () => {
@@ -130,26 +128,35 @@ describe('cover', () => {
     expect(html).not.toContain('multiplayer');
   });
 
-  it('counts the readers in the byline: «+ 0» on the empty book, «+ 3» when three survive', () => {
-    expect(coverHtml()).toContain('Филипп Семиров + 0');
+  it('counts the readers in the byline only when there are survivors (BOOK-70)', () => {
+    // A count of nothing is not a count: on the empty book the author stands alone, and «+ 0»
+    // — a chip that counts nothing — is gone.
+    expect(coverHtml()).not.toContain('+ 0');
+    expect(coverHtml()).toContain('<p class="author">Филипп Семиров</p>');
+    expect(textOf(coverHtml())).not.toContain('+');
+
     const three = renderToStaticMarkup(
       <TitleSheet front={{ ...front, authors: { count: 3, measuredAt: '2026-10-25T12:00:05Z' } }} />,
     );
-    expect(three).toContain('Филипп Семиров + 3');
+    // The chip's own text is exactly «+ 3»: the space belongs to the byline, not the chip.
+    expect(three).toContain('Филипп Семиров <span class="author-plus">+ 3</span>');
+    expect(three).not.toContain('<span class="author-plus"> +');
     expect(textOf(three)).toContain('Филипп Семиров + 3');
     // The surname is the imprint's, never hardcoded in the component.
     const other = renderToStaticMarkup(
       <TitleSheet front={{ ...front, imprint: { ...front.imprint, author: 'Другой Автор' } }} />,
     );
-    expect(other).toContain('Другой Автор + 0');
+    expect(other).toContain('<p class="author">Другой Автор</p>');
+    expect(other).not.toContain('author-plus');
   });
 
-  it('tolerates a first sheet without a count: the line still reads «+ 0», never «undefined»', () => {
+  it('tolerates a first sheet without a count: the author alone, never «undefined» or «+ 0»', () => {
     const html = renderToStaticMarkup(
       <TitleSheet front={{ ...front, authors: undefined } as unknown as FrontDto} />,
     );
-    expect(html).toContain('Филипп Семиров + 0');
+    expect(html).toContain('Филипп Семиров');
     expect(html).not.toContain('undefined');
+    expect(html).not.toContain('author-plus');
   });
 
   it('carries the owner\'s category line verbatim, once, between the byline and the promise', () => {
@@ -234,7 +241,7 @@ describe('cover', () => {
 
   it('falls back to the site label when the title line is missing', () => {
     const html = renderToStaticMarkup(<TitleSheet front={{ ...front, title: null }} />);
-    expect(textOf(html)).toBe(`КнигаФилипп Семиров + 0${TITLE_GENRE}${TITLE_PROMISE}`);
+    expect(textOf(html)).toBe(`КнигаФилипп Семиров${TITLE_GENRE}${TITLE_PROMISE}`);
   });
 
   it('is still on first paint and fades only on a real title change', () => {
@@ -308,43 +315,47 @@ function tocRows(html: string): string[] {
   return html.match(/<li class="toc-row[^"]*"[^>]*>[\s\S]*?<\/li>/gu) ?? [];
 }
 
+/** The digits of a row's page cell (BOOK-89): the one number on the row's right. */
+function rowPage(row: string): number | null {
+  const digits = /class="toc-page"><span aria-hidden="true">(\d+)</u.exec(row)?.[1];
+  return digits === undefined ? null : Number(digits);
+}
+/** A row's visible reading: its mark-up without the page's `.sr-only` word (BOOK-89). */
+const visibleText = (row: string): string => textOf(row.replace(/<span class="sr-only">[\s\S]*?<\/span>/gu, ''));
+
 describe('the live table of contents', () => {
   const html = renderToStaticMarkup(<TableOfContents catalog={catalog} state={state} currentChapter={null} />);
 
-  it('has one row per slot: 65 bare numerals, 2 frame sentences, 0 invented labels', () => {
+  it('has one row per slot: 2 frame sentences, 65 state words, 0 invented labels', () => {
     const rows = tocRows(html);
     expect(rows).toHaveLength(67);
-
-    const withText = rows.filter((row) => row.includes('toc-text'));
-    expect(withText).toHaveLength(2);
-    expect(withText[0]).toContain(FRAME_FIRST_SENTENCE);
-    expect(withText[1]).toContain(FRAME_LAST_SENTENCE);
-
-    const bare = rows.filter((row) => !row.includes('toc-text'));
-    expect(bare).toHaveLength(65);
-    for (const row of bare) {
-      expect(textOf(row).trim()).toMatch(/^\d{2}$/u);
-    }
+    expect(rows.filter((row) => row.includes('toc-text'))).toHaveLength(67);
+    const state = rows.filter((row) => row.includes('toc-state'));
+    expect(state).toHaveLength(65);
+    // BOOK-89: an empty slot reads numeral, «замысел», page — in that order, nothing else.
+    for (const row of state) expect(visibleText(row).trim()).toMatch(/^\d{2}замысел\d+$/u);
   });
 
-  it('opens only the rows that carry prose; the other 65 are inert', () => {
+  it('opens only the rows that carry prose; the other 65 stay inert but are exposed', () => {
     const rows = tocRows(html);
     const links = rows.filter((row) => row.includes('<a '));
     expect(links).toHaveLength(2);
     expect(links[0]).toContain('href="#ch-1"');
     expect(links[1]).toContain('href="#ch-67"');
-    // A basis row is its numeral and the frozen sentence, nothing else (no arrow, no dot).
-    expect(textOf(links[0] ?? '')).toBe(`01${FRAME_FIRST_SENTENCE}`);
-    expect(textOf(links[1] ?? '')).toBe(`67${FRAME_LAST_SENTENCE}`);
+    // A basis row is its numeral, the frozen sentence and its page (no arrow, no dot).
+    expect(visibleText(links[0] ?? '')).toBe(`01${FRAME_FIRST_SENTENCE}1`);
+    expect(visibleText(links[1] ?? '')).toBe(`67${FRAME_LAST_SENTENCE}67`);
+    expect(rowPage(links[0] ?? '')).toBe(1);
+    expect(rowPage(links[1] ?? '')).toBe(67);
 
+    // BOOK-89: a state-word row says something, so it is exposed — and still no link.
     for (const row of rows.filter((item) => !item.includes('<a '))) {
-      expect(row).not.toContain('href');
-      expect(row).not.toContain('tabindex');
-      expect(row).toContain('aria-hidden="true"');
+      expect(row).not.toMatch(/href|tabindex|^<li[^>]*aria-hidden/u);
+      expect(row).toContain('sr-only');
     }
   });
 
-  it('names no chapter, draws no leader, no range, no rule and does not repeat the title', () => {
+  it('names no chapter, no leader glyph, no dash or ellipsis in the markup, and repeats no title', () => {
     for (const gone of [
       'Глава',
       'leader',
@@ -380,10 +391,11 @@ describe('the live table of contents', () => {
     expect(row).not.toContain('пишется сейчас');
     expect(row).not.toContain('←');
     expect(row).not.toContain('→');
-    expect(row).not.toContain('aria-hidden');
+    expect(row).not.toMatch(/^<li[^>]*aria-hidden/u);
     expect(row).not.toContain('<a ');
-    // The row still carries its numeral and no invented text.
-    expect(textOf(row).trim()).toBe('05');
+    // The row still carries its numeral, its state word, its own page — and no invented title.
+    expect(visibleText(row).trim()).toBe('05замысел5');
+    expect(rowPage(row)).toBe(5);
   });
 
   it('keeps the written title line, the untitled written row and no marker', () => {
@@ -399,6 +411,48 @@ describe('the live table of contents', () => {
     expect(tocRows(written)[1]).toContain('class="toc-link"');
     expect(tocRows(written)[1]).not.toContain('toc-text');
   });
+
+  it('prints the start page of every row from one chapterStartPages count — the folio’s digits (AC3)', () => {
+    const starts = chapterStartPages(catalog);
+    tocRows(html).forEach((row, index) => {
+      // The folio derives with `pageAt`; at a chapter's first character that is its start page.
+      expect([rowPage(row), rowPage(row)]).toEqual([starts.get(index + 1), pageAt(catalog, index + 1, 0)]);
+    });
+  });
+
+  it('sets the row as numeral, text, page — and an empty slot reads «07 замысел ······ 12»', () => {
+    const titled = catalog.map((item) =>
+      item.n === 7 ? { ...item, written: true, title: 'Начало смены', rev: 1, chars: 50 } : item,
+    );
+    const markup = renderToStaticMarkup(<TableOfContents catalog={titled} state={state} currentChapter={null} />);
+    const row = tocRows(markup)[6] ?? '';
+    expect(visibleText(row).trim()).toBe('07Начало смены7');
+    expect(rowPage(row)).toBe(chapterStartPages(titled).get(7));
+    expect(row).not.toContain('·');
+    const empty = tocRows(markup)[7] ?? '';
+    expect(empty).toContain('toc-row-empty');
+    expect(visibleText(empty).trim()).toBe('08замысел8');
+    expect(rowPage(empty)).toBe(8);
+
+    // BOOK-89 (owner): the page cell ends on the prose axis — the whole row-minus-measure inset, not half (BOOK-88).
+    const inset = 'padding-inline-end: max(0px, calc(100% - var(--measure)))';
+    const live = sheets['../styles/live.css'] ?? '';
+    expect(declarations(live, '.toc-link')).toContain(inset);
+    expect(declarations(live, '.toc-line')).toContain(inset);
+    expect(declarations(live, '.toc-page')).toContain('inline-size: 3ch');
+    expect(declarations(live, '.toc-page')).toContain('white-space: nowrap');
+  });
+
+  it('speaks the page once per row: the drawn digit is aria-hidden, «страница N» is not', () => {
+    const rows = tocRows(html);
+    rows.forEach((row, index) => {
+      const page = index + 1;
+      // The cell is exactly the drawn (and hidden) digit plus the spoken word: one page text.
+      expect(row).toContain(`<span class="toc-page"><span aria-hidden="true">${page}</span><span class="sr-only">страница ${page}</span></span>`);
+      const spoken = textOf(row.replace(/<span aria-hidden="true">[\s\S]*?<\/span>/gu, ''));
+      expect(spoken.match(new RegExp(`страница ${page}`, 'gu'))).toHaveLength(1);
+    });
+  });
 });
 
 describe('the opening screen', () => {
@@ -407,6 +461,7 @@ describe('the opening screen', () => {
       front={front}
       state={state}
       ribbon={null}
+      catalog={catalog}
       escalation={[]}
       onOpenChange={() => undefined}
       view="book"
@@ -432,5 +487,13 @@ describe('the opening screen', () => {
     expect(html).not.toContain('её пишут в открытую');
     expect(html).not.toContain('facts');
     expect(html.indexOf('class="top"')).toBeGreaterThan(html.indexOf(front.title ?? ''));
+  });
+
+  it('carries no page number in the server render: the folio is a projection of the scroll', () => {
+    // The header's folio slot is mounted, but a page with no scroll is no page: the server
+    // render must not guess one. The leaf appends itself on the client after the first frame.
+    expect(html).toContain('class="top-row"');
+    expect(html).not.toContain('class="folio"');
+    expect(html).not.toContain('data-page');
   });
 });

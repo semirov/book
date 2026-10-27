@@ -1,41 +1,50 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
-import { getAuthors, getHistoryParagraph, getMyTrace } from '../api.ts';
+import { getAuthors, getMyTrace } from '../api.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
-import { MarginNote } from './MarginNote.tsx';
-import { PhoneStrip } from './PhoneStrip.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
-import { RevisionObject } from './RevisionObject.tsx';
 import { Seam } from './Seam.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
 import { filingsForBlock, isAlive, staleLine } from '../lib/filings.ts';
-import { scheduleMarginPass } from '../lib/marginPass.ts';
-import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
+import type { ChainHistory } from '../lib/history.ts';
+import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
 import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
 import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
+import { scheduleMarginPass } from '../lib/marginPass.ts';
+import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
+import { MarginNote } from './MarginNote.tsx';
+import { PhoneStrip } from './PhoneStrip.tsx';
+import { RevisionObject } from './RevisionObject.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /**
- * BOOK-DOC-34 §2.1, §2.5 — one paragraph, parted where the reader tapped.
+ * BOOK-DOC-34 §2.1, §2.5 — one paragraph, marked where the reader tapped.
  *
- * Closed, the block is one `<p>` with its sentences marked (a cited rule on the sentence, the
- * numeral at its last character). Open, the block becomes two fragments with the strip laid
- * between them: the text is never altered, only parted, and the second fragment keeps the
- * paragraph's own hyphenation and `text-wrap`. A tap resolves the sentence from the span it
- * landed in and the word from the caret, so the mark and the provenance are exact.
+ * Closed and open, the block is the same single `<p>` with the same sentences marked (a cited
+ * rule on the sentence, the numeral at its last character). The seam marks its sentence
+ * inline — the same underline as a cited one, text decoration only — and lays its strip as a
+ * block **after** the paragraph: no fragment boundary, so opening the seam moves no line box
+ * and the paragraph keeps the line breaking it had closed (BOOK-68). A tap resolves the
+ * sentence from the span it landed in and the word from the caret, so the mark and the
+ * provenance are exact.
  */
 export type ProseParagraphProps = {
   entry: CatalogEntry;
   blockId: string;
   blockIndex: number;
   baseRev: number;
+  /**
+   * The prose as the reader has it — during the printing reveal, the prefix printed so far.
+   * Its length is the block's `data-chars` (BOOK-89): the folio counts text that is there,
+   * and never reads `textContent`, which also carries filing numerals and «вмешаться».
+   */
   text: string;
   frozen: boolean;
   comments: readonly CommentDto[];
@@ -81,8 +90,13 @@ export function ProseParagraph({
   const [panel, setPanel] = useState<PanelState>(null);
   /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
   const revision = useOpenRevision();
-  const host = useRef<HTMLElement | null>(null);
-  const [chain, setChain] = useState<ParagraphChainDto | null>(null);
+  const hostRef = useRef<HTMLElement | null>(null);
+  // BOOK-68: the paragraph's own history, as the word panel may speak of it. No chain yet is
+  // «still reading», never «no history» — and a 404 is an answer, not a failure.
+  const [history, setHistory] = useState<{ state: ChainHistory; chain: ParagraphChainDto | null }>({
+    state: 'loading',
+    chain: null,
+  });
   const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
   const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
   const blockFilings = filingsForBlock(comments, blockId);
@@ -103,7 +117,7 @@ export function ProseParagraph({
     // The trigger comes back when the object leaves; a note that was replaced has left the
     // page, and the paragraph is the next honest target (BOOK-90 §3.3).
     if (origin !== null && origin.isConnected) origin.focus();
-    else host.current?.focus();
+    else hostRef.current?.focus();
   }, [revision]);
 
   const openAt = useCallback(
@@ -158,11 +172,18 @@ export function ProseParagraph({
   // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel.
   const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
     setPanel({ kind: 'provenance', word, rect: at.getBoundingClientRect(), origin: at });
-    if (chain === null) {
+    // BOOK-68: a chain the client already holds (a 404, or a DTO with no versions) is not
+    // asked for again; a failure is not an answer, so the row says the read failed.
+    const memo = knownParagraphChain(blockId);
+    if (memo.known) {
+      setHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
+    } else {
+      setHistory({ state: 'loading', chain: null });
       try {
-        setChain(await getHistoryParagraph(blockId));
+        const loaded = await loadParagraphChain(blockId);
+        setHistory({ state: loaded === null ? 'none' : 'ready', chain: loaded });
       } catch {
-        /* the panel says what it can without the chain */
+        setHistory({ state: 'failed', chain: null });
       }
     }
     // BOOK-33: the viewer's own curve is the one the panel may print for their own word, and
@@ -188,6 +209,7 @@ export function ProseParagraph({
   // Who wrote this version, from the log's own vocabulary: a reader, the author, or a
   // version the log cannot assign. A chain that has not arrived yet is not a claim — it is
   // the machine default, and the panel re-renders when the chain answers.
+  const chain = history.chain;
   const actorKind = chain?.versions.at(-1)?.actor?.kind;
   const variant: ProvenanceVariant = frozen
     ? 'frozen'
@@ -214,6 +236,7 @@ export function ProseParagraph({
           variant,
           share,
           chain,
+          history: history.state,
           at: chain?.versions.at(-1)?.at ?? null,
           frozenOf: 'frame',
         })
@@ -221,7 +244,8 @@ export function ProseParagraph({
 
   const sentences = splitSentences(text);
   const anchor = here ? (seam?.anchor ?? null) : null;
-  const cut = anchor === null ? -1 : anchor.sentence.end;
+  /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
+  const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
   /** Alive filings per sentence, in reading order: the phone strip lists them as they stand. */
   const alive = sentences.flatMap((sentence) => {
     const group = blockFilings.find((item) => item.quote !== null && item.quote === clampQuote(sentence.text));
@@ -235,22 +259,41 @@ export function ProseParagraph({
     scheduleMarginPass();
   }, [filingKey, seam?.key ?? null, text, revision?.comment.id ?? null]);
 
-  const renderSentences = (from: number, to: number): ReactNode => {
-    return sentences.map((sentence, index) => {
-      if (sentence.start < from || sentence.end > to) return null;
+  /**
+   * BOOK-68 — the paragraph is rendered as slices of its own text, never re-assembled.
+   *
+   * `splitSentences` covers the prose, not every character: the whitespace between two
+   * sentences, a closing quote that follows a space, the leading indent and the tail after
+   * the last recognised sentence all used to be dropped. Here every character between `from`
+   * and `to` reaches the page: a raw gap is a text node, a sentence is one span holding
+   * exactly `text.slice(start, end)`, and the tail after the last sentence is raw text.
+   * Nothing is invented, so the paragraph reads the same closed, open and closed again.
+   */
+  const renderRange = (from: number, to: number): ReactNode => {
+    const nodes: ReactNode[] = [];
+    let cursor = from;
+    sentences.forEach((sentence, index) => {
+      if (sentence.start < from || sentence.end > to) return;
+      // The gap the splitter did not claim — double spaces, a stray quote, an indent.
+      if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
       // The anchor quote is clamped to the server's bound, so a long sentence is matched by
       // the same clamp the filing was made with — not by its raw text (BOOK-33).
       const quote = clampQuote(sentence.text);
       const filings = blockFilings.find((item) => item.quote !== null && item.quote === quote);
       const cited = citedClass(filings);
-      return (
+      // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the
+      // cited rule's underline — text decoration sets no box, so no line moves.
+      const marked = [cited, sentence.start === anchoredStart ? 'is-anchored' : null]
+        .filter((name): name is string => name !== null && name !== undefined)
+        .join(' ');
+      nodes.push(
         <span
           key={`${sentence.start}-${index}`}
-          className={cited === null ? undefined : cited}
+          className={marked === '' ? undefined : marked}
           data-s={sentence.start}
           data-quote={sentence.text}
         >
-          {sentence.text}
+          {text.slice(sentence.start, sentence.end)}
           {filings === undefined || filings.stale ? null : (
             <>
               <FilingMark
@@ -271,13 +314,16 @@ export function ProseParagraph({
               ) : null}
             </>
           )}
-          {index === sentences.length - 1 ? null : ' '}
-        </span>
+        </span>,
       );
+      cursor = sentence.end;
     });
+    // The tail after the last sentence — a paragraph need not end with a full stop.
+    if (cursor < to) nodes.push(text.slice(cursor, to));
+    return nodes;
   };
 
-  const seamStrip = here ? (
+  const strip = here ? (
     <Seam
       // The seam's key is its identity: a re-keyed draft must remount, or the strip keeps the
       // stale revision it opened with (BOOK-33).
@@ -306,17 +352,6 @@ export function ProseParagraph({
     />
   ) : null;
 
-  const body =
-    anchor === null ? (
-      renderSentences(0, Number.POSITIVE_INFINITY)
-    ) : (
-      <>
-        {renderSentences(0, cut)}
-        {seamStrip}
-        {renderSentences(cut, Number.POSITIVE_INFINITY)}
-      </>
-    );
-
   // BOOK-90 §4: the phone strip is the paragraph's last child, after every sentence. A row
   // whose sentence has its seam open is skipped — the seam's own rows already show it.
   const phone =
@@ -326,70 +361,59 @@ export function ProseParagraph({
 
   return (
     <>
-      {anchor === null ? (
-        <p
-          ref={(node) => {
-            host.current = node;
-          }}
-          className={classes.join(' ')}
-          data-block-id={blockId}
-          tabIndex={-1}
-          data-revising={revising ?? undefined}
-          onPointerUp={pick}
-          onClick={pick}
-          onPointerEnter={hint}
-        >
-          {revising === null ? null : <span className="revising-label">{revising}</span>}
-          {frozenChapter ? null : (
-            <button
-              type="button"
-              className="seam-rail"
-              aria-label="вмешаться"
-              onClick={(event) => {
-                const first = sentences[0];
-                if (first === undefined) return;
-                openAt(event.currentTarget, first.start, event.currentTarget);
-              }}
-            >
-              вмешаться
-            </button>
-          )}
-          {body}
-          {caret === null ? null : (
-            <span
-              className={`caret-inline${caret.live && !caret.printing ? ' blink' : ''}${caret.printing ? '' : ' resting'}`}
-              aria-hidden="true"
-            />
-          )}
-          {onBlockProvenance === undefined ? null : (
-            <button
-              type="button"
-              className="prov"
-              aria-label="откуда эта фраза"
-              onClick={(event) => onBlockProvenance(blockId, event.currentTarget)}
-            >
-              ⋯
-            </button>
-          )}
-          {phone}
-        </p>
-      ) : (
-        <div
-          ref={(node) => {
-            host.current = node;
-          }}
-          className={`${classes.join(' ')} p-parted`}
-          data-block-id={blockId}
-          tabIndex={-1}
-          data-revising={revising ?? undefined}
-          onPointerUp={pick}
-          onClick={pick}
-          onPointerEnter={hint}
-        >
-          {body}
-          {phone}
-        </div>
-      )}
+      {/*
+        BOOK-68 — one `<p>` in both states, the very same element: closing the seam returns
+        the paragraph it opened from, with the line breaking it had. The strip is a block
+        sibling below it, never a fragment between two halves of the text.
+      */}
+      <p
+        ref={(node) => {
+          hostRef.current = node;
+        }}
+        className={classes.join(' ')}
+        data-block-id={blockId}
+        data-chars={text.length}
+        tabIndex={-1}
+        data-revising={revising ?? undefined}
+        onPointerUp={pick}
+        onClick={pick}
+        onPointerEnter={hint}
+      >
+        {revising === null ? null : <span className="revising-label">{revising}</span>}
+        {frozenChapter ? null : (
+          <button
+            type="button"
+            className="seam-rail"
+            aria-label="вмешаться"
+            onClick={(event) => {
+              const first = sentences[0];
+              if (first === undefined) return;
+              openAt(event.currentTarget, first.start, event.currentTarget);
+            }}
+          >
+            вмешаться
+          </button>
+        )}
+        {renderRange(0, Number.POSITIVE_INFINITY)}
+        {caret === null ? null : (
+          <span
+            className={`caret-inline${caret.live && !caret.printing ? ' blink' : ''}${caret.printing ? '' : ' resting'}`}
+            aria-hidden="true"
+          />
+        )}
+        {onBlockProvenance === undefined ? null : (
+          <button
+            type="button"
+            className="prov"
+            aria-label="откуда эта фраза"
+            onClick={(event) => onBlockProvenance(blockId, event.currentTarget)}
+          >
+            ⋯
+          </button>
+        )}
+        {phone}
+      </p>
+      {strip}
       {stale === null ? null : (
         <button
           type="button"

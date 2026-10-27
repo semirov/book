@@ -1,7 +1,7 @@
 /**
- * BOOK-DOC-34 §2.3 — the form inside the seam: the five kind rows, the two fields, the
- * verification field, the submit and the errors. Every target is 44 px; a form is not the
- * book, so its text is 16 px — one step under the prose.
+ * BOOK-DOC-34 §2.3 — the form inside the seam: the four kind rows, the two fields, the note
+ * action under the submit, the errors. Every target is 44 px; a form is not the book, so its
+ * text is 16 px — one step under the prose.
  */
 
 /* ---------- kinds ---------- */
@@ -29,10 +29,6 @@
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-}
-.kind-note {
-  grid-column: 1 / -1;
-  color: var(--ink-2);
 }
 .kind input {
   position: absolute;
@@ -67,14 +63,47 @@
   color: var(--ink-3);
 }
 
+/* ---------- the note: a quiet action under the submit (BOOK-57) ---------- */
+/* A note is not a kind and not a second send: it sits under the form's one primary action in
+   the label style of the seam's inline action and in the quiet ink. Its open state is the
+   pressed colour, never a filled button. */
+.note-action {
+  justify-self: start;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+.note-action[aria-pressed='true'] {
+  color: var(--live);
+}
+.note-action:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.note-action:disabled {
+  color: var(--rule-2);
+  cursor: default;
+}
+
 /* ---------- the cited rule (§2.5) ---------- */
 /* BOOK-90: the mark itself (numeral, tick, target) lives in `marginalia.css`; the sentence's
    underline stays here — a cited sentence is the seam's own instrument. */
-.cited {
+.cited,
+.p .is-anchored {
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
 }
-.cited.rule-solid {
+.cited.rule-solid,
+.p .is-anchored {
   text-decoration-line: underline;
   text-decoration-style: solid;
 }
@@ -82,7 +111,8 @@
   text-decoration-line: underline;
   text-decoration-style: dotted;
 }
-.cited.ink-live {
+.cited.ink-live,
+.p .is-anchored {
   text-decoration-color: var(--live);
 }
 .cited.ink-quiet {
@@ -189,7 +219,9 @@
 
 /* ---------- desktop (§2.8) ---------- */
 @media (hover: hover) {
-  .p [data-s]:hover {
+  /* BOOK-68: the anchored sentence already wears the anchor's own rule; hovering it does not
+     repaint the mark, so the open state never looks like it lost its place. */
+  .p [data-s]:not(.is-anchored):hover {
     text-decoration: underline dotted var(--rule-2);
     text-underline-offset: 4px;
   }

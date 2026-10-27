@@ -63,8 +63,11 @@ export function useFocusMode(onOpen: () => void): FocusMode {
     void getChange(id)
       .then((loaded) => {
         if (cancelled) return;
-        setChange(loaded);
-        setMissing(loaded === null);
+        // An answer for another id is not this change (BOOK-DOC-43 §10): the route is keyed
+        // by id, so a mismatch means the requested change cannot be shown, not that we wait.
+        const found = loaded !== null && loaded.id === id ? loaded : null;
+        setChange(found);
+        setMissing(found === null);
       })
       .catch(() => {
         if (cancelled) return;

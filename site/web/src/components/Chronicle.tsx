@@ -23,8 +23,11 @@ import {
   targetLabel,
   type HistoryFilter,
 } from '../lib/history.ts';
-import { ParagraphChain } from './ParagraphChain.tsx';
+import { statusLine } from '../lib/skeleton.ts';
 import { useParagraphChain } from '../useParagraphChain.ts';
+import { usePending } from '../usePending.ts';
+import { ParagraphChain } from './ParagraphChain.tsx';
+import { Skeleton } from './Skeleton.tsx';
 
 /**
  * The chronicle and the time-travel scrubber (ARCHITECTURE §11.10, §6F.2, §6F.3).
@@ -57,19 +60,27 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
   const [filter, setFilter] = useState<HistoryFilter>('all');
   const [moment, setMoment] = useState<number | null>(null);
   const [past, setPast] = useState<BookAtDto | null>(null);
+  /** §10 — a failed `getHistoryAt` used to leave «момент читается…» for ever (BOOK-66). */
+  const [momentFailed, setMomentFailed] = useState(false);
+  const [momentAttempt, setMomentAttempt] = useState(0);
   const {
     chain,
     loading: chainLoading,
+    failed: chainFailed,
+    active: chainActive,
     anchor: chainAnchor,
     open: openChain,
+    retry: retryChain,
     close: closeChain,
   } = useParagraphChain();
 
   const refresh = useCallback(async () => {
+    // A retry is a wait again (§4, §10): the failure block goes when the request starts, not
+    // when it answers, so `повторить` shows the busy claim and the form while it re-reads.
+    setFailed(false);
     try {
       const page = await getHistoryTimeline({ limit: 50 });
       setTimeline(page);
-      setFailed(false);
     } catch {
       setFailed(true);
     }
@@ -79,23 +90,37 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
     void refresh();
   }, [refresh, tick]);
 
+  /**
+   * BOOK-DOC-43 §4, §6, §10 (BOOK-66) — the timeline's wait: true from the request until it
+   * settles, data or failure, so nothing below the scrubber is printed while nobody knows.
+   */
+  const waiting = timeline === null && !failed;
+  const stage = usePending(waiting);
+  const status = statusLine('chronicle', stage);
+
   useEffect(() => {
     if (moment === null) {
       setPast(null);
+      setMomentFailed(false);
       return;
     }
     let cancelled = false;
+    // A new moment (or a retry) starts from nothing: the previous moment's past is not
+    // this moment, and a stale picture must not answer for a failed read.
+    setPast(null);
+    setMomentFailed(false);
     void getHistoryAt(moment)
       .then((at) => {
         if (!cancelled) setPast(at);
       })
       .catch(() => {
-        if (!cancelled) setPast(null);
+        // The wait is over: the line below says it failed, and `повторить` re-requests it.
+        if (!cancelled) setMomentFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [moment]);
+  }, [moment, momentAttempt]);
 
   const items = timeline?.items ?? [];
   const visible = useMemo(() => filterEvents(items, filter), [items, filter]);
@@ -122,7 +147,11 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
   return (
     // BOOK-77 (audit F1): event summaries carry intent text, and a chapter's past pages carry
     // reader-attributed revision lines — not for the recorder.
-    <section className="chronicle page sheet ym-hide-content" aria-label="хроника книги">
+    <section
+      className="chronicle page sheet ym-hide-content"
+      aria-label="хроника книги"
+      aria-busy={waiting ? 'true' : undefined}
+    >
       <div className="chr-head">
         <h2 className="chr-title">хроника</h2>
         <p className="chr-sub">
@@ -174,13 +203,23 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
       {moment === null ? null : (
         <div className="past">
           <p className="past-note">
-            {difference?.notice ?? 'момент читается'}
+            {/* §10: the loading line goes with the failure — nothing claims to still be reading. */}
+            {momentFailed ? null : (difference?.notice ?? 'момент читается')}
             <button type="button" className="past-now" onClick={() => setMoment(null)}>
               вернуться к «сейчас»
             </button>
           </p>
           {past === null ? (
-            <p className="chr-empty">момент читается…</p>
+            momentFailed ? (
+              <div className="state-line">
+                <span>момент не прочитался</span>
+                <button type="button" onClick={() => setMomentAttempt((attempt) => attempt + 1)}>
+                  повторить
+                </button>
+              </div>
+            ) : (
+              <p className="chr-empty">момент читается…</p>
+            )
           ) : (
             <>
               <div className="past-cover">
@@ -216,26 +255,41 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
         </div>
       )}
 
-      <ol className="chr-timeline">
-        {groups.map((group) => (
-          <li key={group.day} className="chr-day">
-            <h3 className="chr-day-label">{group.label}</h3>
-            <ol>
-              {group.items.map((event) => (
-                <TimelineRow
-                  key={event.hseq}
-                  event={event}
-                  deed={event.changeId === null ? null : (deeds.get(event.changeId) ?? null)}
-                  onPick={() => setMoment(event.hseq)}
-                  onOpenChange={onOpenChange}
-                />
-              ))}
-            </ol>
-          </li>
-        ))}
-      </ol>
-
-      {visible.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
+      {/* §10: an empty list and «пока ничего не записано» are facts about an answer, not a
+          wait. Until the timeline lands the slot holds the status and the form, and nothing
+          else — the list is not rendered empty and the absence is not printed. */}
+      {timeline === null ? (
+        status === null ? null : (
+          <>
+            <p className="chr-empty" role="status" aria-live="polite" aria-atomic="true">
+              {status}
+            </p>
+            <Skeleton variant="chronicle" />
+          </>
+        )
+      ) : (
+        <>
+          <ol className="chr-timeline">
+            {groups.map((group) => (
+              <li key={group.day} className="chr-day">
+                <h3 className="chr-day-label">{group.label}</h3>
+                <ol>
+                  {group.items.map((event) => (
+                    <TimelineRow
+                      key={event.hseq}
+                      event={event}
+                      deed={event.changeId === null ? null : (deeds.get(event.changeId) ?? null)}
+                      onPick={() => setMoment(event.hseq)}
+                      onOpenChange={onOpenChange}
+                    />
+                  ))}
+                </ol>
+              </li>
+            ))}
+          </ol>
+          {visible.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
+        </>
+      )}
       {failed ? (
         <div className="state-line">
           <span>хроника не прочиталась</span>
@@ -245,8 +299,16 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
         </div>
       ) : null}
 
-      {chainLoading || chain !== null ? (
-        <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
+      {/* The panel stays mounted for the whole open cycle: a failure must keep its retry. */}
+      {chainActive ? (
+        <ParagraphChain
+          chain={chain}
+          loading={chainLoading}
+          failed={chainFailed}
+          onClose={closeChain}
+          onRetry={retryChain}
+          anchor={chainAnchor}
+        />
       ) : null}
     </section>
   );

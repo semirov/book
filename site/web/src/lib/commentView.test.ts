@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CommentDto } from '@book/shared';
 
-import { anchorCopy, commentStamp, commentStatusLine } from './commentView.ts';
+import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
@@ -33,6 +33,7 @@ describe('comment thread copy (§11.6)', () => {
       state: 'идёт',
       detail: 'замечание в очереди · принято',
       tone: 'live',
+      form: 'chip',
     });
     expect(
       commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })),
@@ -54,20 +55,44 @@ describe('comment thread copy (§11.6)', () => {
       state: 'ждёт',
       detail: 'принято в основу, до первой редакции · входит в книгу',
       tone: 'live',
+      form: 'chip',
     });
     expect(
       commentStatusLine(
         comment({ premise: true, status: 'applied', chapter: 5, changeId: 'chg_1', reason: 'вошло в первую редакцию главы 5' }),
       ),
-    ).toEqual({ state: 'внесено', detail: 'вошло в первую редакцию главы 5', tone: 'done' });
+    ).toEqual({ state: 'внесено', detail: 'вошло в первую редакцию главы 5', tone: 'done', form: 'chip' });
     expect(
       commentStatusLine(comment({ premise: true, status: 'superseded', reason: 'у главы уже есть замысел' })),
-    ).toEqual({ state: 'ждёт', detail: 'замысел снят · у главы уже есть замысел', tone: 'stopped' });
+    ).toEqual({ state: 'ждёт', detail: 'замысел снят · у главы уже есть замысел', tone: 'stopped', form: 'chip' });
     expect(commentStatusLine(comment({ premise: true, status: 'rejected', reason: 'не беру: не из этой сцены' }))).toEqual({
       state: 'ждёт',
       detail: 'замысел не взят · не беру: не из этой сцены',
       tone: 'stopped',
+      form: 'chip',
     });
+  });
+
+  it('keeps every state a chip: the clause and the receipt are the detail (BOOK-90)', () => {
+    // BOOK-90's words are 4 / 4 / 7 characters: a state is never a sentence. The receipt of a
+    // landed change and a clause («снято: …») live on the detail line, whole.
+    const applied = commentStatusLine(
+      comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 7, rev: 2 }, reason: null }),
+    );
+    expect(applied).toMatchObject({ state: 'внесено', form: 'chip' });
+    expect(applied.detail).toContain('внесено в главу 07 · право на ваш текст перешло автору книги');
+    expect(commentStatusLine(comment({ status: 'accepted', interventionKind: 'testimony' })).detail).toContain(
+      'правка в очереди на запись',
+    );
+    expect(commentStatusLine(comment({ status: 'superseded' })).detail).toContain('снято: текст успел измениться');
+    expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('проход не состоялся');
+    // Every state — the whole matrix — is a chip, and the form is computed here, nowhere else.
+    for (const status of ['new', 'batched', 'delivered', 'accepted', 'applied', 'superseded', 'rejected', 'quarantined', 'expired', 'hidden'] as const) {
+      const line = commentStatusLine(comment({ status }));
+      expect(line.form, status).toBe('chip');
+      expect(line.state.length, status).toBeLessThanOrEqual(CHIP_MAX_CHARS);
+      expect(line.state, status).not.toMatch(/ · |: /u);
+    }
   });
 
   it('says "not considered" instead of pretending', () => {
@@ -79,6 +104,7 @@ describe('comment thread copy (§11.6)', () => {
       state: 'ждёт',
       detail: 'отклонено · вне рамок: форма книги',
       tone: 'stopped',
+      form: 'chip',
     });
     expect(commentStatusLine(comment({ status: 'quarantined' }))).toMatchObject({
       state: 'ждёт',

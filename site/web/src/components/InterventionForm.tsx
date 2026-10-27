@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError, postAnchoredComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
-import { anchoredPayload, submissionBody, submitLabel, wordingLabel, type SeamDraft } from '../lib/draft.ts';
+import { anchoredPayload, submissionBody, submitLabel, type SeamDraft } from '../lib/draft.ts';
+import {
+  NOTE_ACTION_LABEL,
+  NOTE_BUDGET_LINE,
+  NOTE_FATE_LINE,
+  wordingLabel,
+  wordingPlaceholder,
+} from '../lib/kindChoices.ts';
 import { SUBMIT_LINE } from '../lib/terms.ts';
 import { InterventionKinds } from './InterventionKinds.tsx';
 
@@ -17,6 +24,10 @@ import { InterventionKinds } from './InterventionKinds.tsx';
  * (identity plus the comment and edit rate limits). Errors are printed in place — never a
  * toast — and the receipt is the caller's: a refused draft keeps every character, and a
  * stale anchor offers the re-anchoring path instead of silently moving the filing.
+ *
+ * BOOK-57: the note is not a fifth kind. It is a quiet action under the submit, and while it
+ * is open the four-kind grid, «что это меняет» and the kind's wording field are gone: a note
+ * is one field, it sends no kind and no wording, and it spends no edit of the day.
  */
 export type FormProps = {
   entry: CatalogEntry;
@@ -50,6 +61,23 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
   // BOOK-33: a premise and a note are one text, not a «что это меняет» + a first sentence.
   const body = submissionBody(draft);
   const ready = body.length >= composer.minChars;
+  // BOOK-57: the field's question follows the kind; a note asks its own.
+  const field = { noteOnly, blockId: draft.blockId, kind: draft.kind };
+
+  /**
+   * The note path opens with an event and closes without one: opening is the act. Only
+   * `noteOnly` changes: the draft is the reader's, so the intervention line they typed and
+   * the kind they picked both survive the switch (the note payload ignores `body` and sends
+   * no kind, and the field is hidden while the note is open, so nothing leaks).
+   */
+  const toggleNote = (): void => {
+    if (noteOnly) {
+      onChange({ ...draft, noteOnly: false });
+      return;
+    }
+    onChange({ ...draft, noteOnly: true });
+    track('kind_pick', { kind: 'note' });
+  };
 
   const submit = async (): Promise<void> => {
     if (!viewer.signedIn) return;
@@ -113,16 +141,17 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         void submit();
       }}
     >
-      <InterventionKinds
-        kind={draft.kind}
-        noteOnly={noteOnly}
-        disabled={sending}
-        onPick={(choice) => {
-          // BOOK-63: which row was picked — one of five words, never what the reader writes.
-          track('kind_pick', { kind: choice.noteOnly || choice.kind === null ? 'note' : choice.kind });
-          onChange({ ...draft, kind: choice.kind, noteOnly: choice.noteOnly, body: choice.noteOnly ? draft.body : draft.body });
-        }}
-      />
+      {noteOnly ? null : (
+        <InterventionKinds
+          kind={draft.kind}
+          disabled={sending}
+          onPick={(kind) => {
+            // BOOK-63: which row was picked — one of four words, never what the reader writes.
+            track('kind_pick', { kind });
+            onChange({ ...draft, kind, noteOnly: false });
+          }}
+        />
+      )}
 
       {noteOnly || draft.blockId === null ? null : (
         <>
@@ -145,8 +174,10 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         </>
       )}
 
+      {noteOnly ? <p className="seam-hint">{NOTE_FATE_LINE}</p> : null}
+
       <label className="field-label" htmlFor={`seam-text-${entry.n}`}>
-        {wordingLabel(draft)}
+        {wordingLabel(field)}
       </label>
       <textarea
         id={`seam-text-${entry.n}`}
@@ -154,17 +185,12 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         value={draft.proposed}
         maxLength={limits.edit}
         rows={noteOnly ? 4 : 6}
-        placeholder={
-          draft.blockId === null
-            ? 'что здесь происходит: событие, документ, поворот'
-            : noteOnly
-              ? 'что в тексте не читается: повтор, сбой, деталь, которой не веришь'
-              : 'как это звучит в книге'
-        }
+        placeholder={wordingPlaceholder(field)}
         onChange={(event) => onChange({ ...draft, proposed: event.target.value })}
         disabled={sending}
       />
       <p className="seam-hint">{counterLabel(draft.proposed.length, limits.edit)}</p>
+      {noteOnly ? <p className="seam-hint">{NOTE_BUDGET_LINE}</p> : null}
 
       {error === null ? null : (
         <p className="seam-error" role="alert">
@@ -181,12 +207,13 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
               className="seam-inline-action"
               onClick={() => {
                 // The day's edit is spent, not the reader's thought: the same text goes as a
-                // note — no kind, no wording — instead of being lost.
-                onChange({ ...draft, noteOnly: true, kind: null });
+                // note — no kind, no wording — instead of being lost. The label is the note
+                // submit's own, so the recovery and the action cannot drift apart.
+                onChange({ ...draft, noteOnly: true });
                 setError(null);
               }}
             >
-              оставить только замечание
+              {submitLabel({ noteOnly: true, blockId: draft.blockId })}
             </button>
           ) : null}
         </p>
@@ -194,6 +221,15 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
 
       <button className="seam-submit" type="submit" disabled={sending || !ready}>
         {sending ? 'передаётся' : submitLabel(draft)}
+      </button>
+      <button
+        type="button"
+        className="note-action"
+        aria-pressed={noteOnly}
+        disabled={sending}
+        onClick={toggleNote}
+      >
+        {NOTE_ACTION_LABEL}
       </button>
       <p className="fine seam-licence">
         {SUBMIT_LINE} <a className="seam-link" href="/rules">правила →</a>

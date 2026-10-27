@@ -116,9 +116,18 @@ export type RevealState = {
 
 export function createReveal(
   queued: readonly RevealBlockLike[],
-  options: { reducedMotion?: boolean; speed?: number } = {},
+  options: { reducedMotion?: boolean; speed?: number; capBlockMs?: number } = {},
 ): RevealState {
   const reducedMotion = options.reducedMotion === true;
+  /**
+   * A block may carry a ceiling of its own on top of the engine's: the cover's typed title
+   * lands whole at 400 ms whatever it says (BOOK-DOC-49 §3), because the sequence's budget is
+   * a constant of the sheet and not a per-word measurement.
+   */
+  const durationOf = (text: string): number => {
+    const natural = blockDurationMs(text, options.speed ?? 1);
+    return options.capBlockMs === undefined ? natural : Math.min(natural, options.capBlockMs);
+  };
   const blocks = queued.map((block) => {
     const clusters = graphemes(block.text);
     return {
@@ -127,7 +136,7 @@ export function createReveal(
       clusters,
       revealed: reducedMotion ? clusters.length : 0,
       done: reducedMotion,
-      durationMs: blockDurationMs(block.text, options.speed ?? 1),
+      durationMs: durationOf(block.text),
     };
   });
   const active = reducedMotion || blocks.length === 0 ? -1 : 0;

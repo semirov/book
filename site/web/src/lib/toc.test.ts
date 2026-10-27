@@ -1,9 +1,9 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry, type StateSnapshot, type TocEntry } from '@book/shared';
+import { chapterStartPages, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry, type StateSnapshot } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   currentChapterOf,
-  fromStateToc,
+  SLOT_STATE_WORD,
   slotLabel,
   slotText,
   tocAriaLabel,
@@ -65,8 +65,11 @@ describe('slotText', () => {
     expect(slotText(entry(67, { basis: true }))).toBe(FRAME_LAST_SENTENCE);
   });
 
-  it('says nothing for an empty slot, a basis flag outside the frame, or a broken title line', () => {
-    expect(slotText(entry(3))).toBeNull();
+  it('says «замысел» for a slot with no prose: the flow’s state word, never a title (BOOK-89)', () => {
+    expect(slotText(entry(3))).toBe(SLOT_STATE_WORD);
+    expect(slotText(entry(3))).toBe('замысел');
+    // A basis flag outside the frame is not a sentence, and a written row with a broken title
+    // line keeps its prose and says nothing — neither becomes a state word.
     expect(slotText(entry(8, { basis: true }))).toBeNull();
     expect(slotText(entry(9, { written: true, title: null }))).toBeNull();
   });
@@ -74,20 +77,23 @@ describe('slotText', () => {
 
 describe('tocEntry', () => {
   it('makes a link of a row that opens prose and leaves the rest inert', () => {
-    expect(tocEntry(entry(1, { basis: true }), null)).toMatchObject({
+    expect(tocEntry(entry(1, { basis: true }), null, 1)).toMatchObject({
       n: 1,
       text: FRAME_FIRST_SENTENCE,
       link: true,
       href: '#ch-1',
     });
     // A written chapter with a broken title line keeps its prose reachable.
-    expect(tocEntry(entry(2, { written: true, title: null }), null)).toMatchObject({ text: null, link: true });
-    expect(tocEntry(entry(3), null)).toMatchObject({ text: null, link: false });
+    expect(tocEntry(entry(2, { written: true, title: null }), null, 2)).toMatchObject({ text: null, link: true });
+    // An empty slot carries the state word and its page, and stays inert.
+    expect(tocEntry(entry(3), null, 3)).toMatchObject({ text: 'замысел', state: true, link: false, page: 3 });
   });
 
-  it('never invents a label', () => {
-    const row = tocEntry(entry(3), null);
-    expect(row.text).toBeNull();
+  it('never invents a label: the state word is a state, not a title', () => {
+    const row = tocEntry(entry(3), null, 3);
+    expect(row.title).toBeNull();
+    expect(row.state).toBe(true);
+    expect(row.text).toBe('замысел');
     expect(JSON.stringify(row)).not.toContain('Глава');
   });
 });
@@ -111,7 +117,14 @@ describe('tocParts', () => {
       href: '#ch-1',
     });
     expect(parts[0]?.entries[1]).toMatchObject({ n: 2, text: null, written: true, current: true });
-    expect(parts[0]?.entries[2]).toMatchObject({ n: 3, text: null, written: false, link: false, current: false });
+    expect(parts[0]?.entries[2]).toMatchObject({
+      n: 3,
+      text: 'замысел',
+      state: true,
+      written: false,
+      link: false,
+      current: false,
+    });
   });
 
   it('carries the frame sentences at the head and the tail of the empty book', () => {
@@ -119,7 +132,8 @@ describe('tocParts', () => {
     expect(rows).toHaveLength(67);
     expect(rows[0]).toMatchObject({ n: 1, text: FRAME_FIRST_SENTENCE, link: true });
     expect(rows[66]).toMatchObject({ n: 67, text: FRAME_LAST_SENTENCE, link: true });
-    expect(rows.filter((row) => row.text !== null)).toHaveLength(2);
+    expect(rows.filter((row) => row.state)).toHaveLength(65);
+    expect(rows.filter((row) => row.link)).toHaveLength(2);
   });
 
   it('counts the written rows per part', () => {
@@ -137,6 +151,42 @@ describe('tocParts', () => {
   });
 });
 
+describe('the row’s page (BOOK-89)', () => {
+  it('equals chapterStartPages for all 67 rows — the TOC never counts a second time', () => {
+    const starts = chapterStartPages(catalog);
+    const rows = tocParts(catalog, null).flatMap((part) => part.entries);
+    expect(rows).toHaveLength(67);
+    for (const row of rows) expect(row.page).toBe(starts.get(row.n));
+  });
+
+  it('reads the same numbers for a book with prose: ch01 is page 1, a grown chapter moves the rest', () => {
+    const grown = catalog.map((item) => (item.n === 5 ? { ...item, written: true, chars: 1801 } : item));
+    const rows = tocParts(grown, null).flatMap((part) => part.entries);
+    expect(rows[0]?.page).toBe(1);
+    expect(rows[4]?.page).toBe(5); // ch05 grows to two pages, so ch06 starts at 7
+    expect(rows[5]?.page).toBe(7);
+    expect(rows[66]?.page).toBe(68);
+    expect(rows[5]?.page).toBe(chapterStartPages(grown).get(6));
+  });
+
+  it('moves every following row by exactly one page when a chapter grows past a page', () => {
+    const before = tocParts(catalog, null).flatMap((part) => part.entries).map((row) => row.page);
+    const after = tocParts(catalog.map((item) => (item.n === 10 ? { ...item, chars: 1801 } : item)), null)
+      .flatMap((part) => part.entries)
+      .map((row) => row.page);
+    // ch10 itself still opens on its own page; ch11 and everything after it moves by one.
+    for (let index = 0; index < 10; index += 1) expect(after[index]).toBe(before[index]);
+    for (let index = 10; index < 67; index += 1) expect(after[index]).toBe((before[index] ?? 0) + 1);
+  });
+
+  it('prints an empty chapter as the one page it occupies, with the state word', () => {
+    const rows = tocParts(basisCatalog, null).flatMap((part) => part.entries);
+    expect(rows[0]).toMatchObject({ n: 1, page: 1, link: true, state: false });
+    expect(rows[1]).toMatchObject({ n: 2, page: 2, link: false, state: true, text: 'замысел' });
+    expect(rows[66]).toMatchObject({ n: 67, page: 67, link: true });
+  });
+});
+
 describe('state-derived helpers', () => {
   it('counts written chapters', () => {
     expect(writtenCount(catalog)).toBe(2);
@@ -151,15 +201,6 @@ describe('state-derived helpers', () => {
     ).toBeNull();
     expect(currentChapterOf(null)).toBeNull();
     expect(currentChapterOf({ current: null } as unknown as StateSnapshot)).toBeNull();
-  });
-
-  it('maps the server TOC without dropping entries', () => {
-    const toc: TocEntry[] = [
-      { part: 1, n: 1, title: 'Начало', written: true, rev: 1 },
-      { part: 1, n: 2, title: null, written: false, rev: 0 },
-    ];
-    expect(fromStateToc(toc, 1).map((item) => item.text)).toEqual(['Начало', null]);
-    expect(fromStateToc(toc, 1)[0]?.current).toBe(true);
   });
 
   it('has an accessible summary', () => {

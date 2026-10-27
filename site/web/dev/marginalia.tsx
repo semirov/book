@@ -2,27 +2,27 @@ import type { CatalogEntry, CommentDto, StateSnapshot } from '@book/shared';
 import { StrictMode, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { ChapterArticle } from '../components/ChapterArticle.tsx';
-import { Header } from '../components/Header.tsx';
-import { MarginTail } from '../components/MarginTail.tsx';
-import { ProseParagraph } from '../components/ProseParagraph.tsx';
-import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { PREMISE_HINT } from '../lib/premise.ts';
-import '../styles/tokens.css';
-import '../styles/base.css';
-import '../styles/chrome.css';
-import '../styles/running-head.css';
-import '../styles/consent.css';
-import '../styles/book.css';
-import '../styles/live.css';
-import '../styles/cascade.css';
-import '../styles/ribbon.css';
-import '../styles/chronicle.css';
-import '../styles/focus.css';
-import '../styles/seam.css';
-import '../styles/panels.css';
-import '../styles/seam-form.css';
-import '../styles/marginalia.css';
+import { ChapterArticle } from '../src/components/ChapterArticle.tsx';
+import { Header } from '../src/components/Header.tsx';
+import { MarginTail } from '../src/components/MarginTail.tsx';
+import { ProseParagraph } from '../src/components/ProseParagraph.tsx';
+import { EMPTY_COMPOSER } from '../src/lib/composer.ts';
+import { PREMISE_HINT } from '../src/lib/premise.ts';
+import '../src/styles/tokens.css';
+import '../src/styles/base.css';
+import '../src/styles/chrome.css';
+import '../src/styles/running-head.css';
+import '../src/styles/consent.css';
+import '../src/styles/book.css';
+import '../src/styles/live.css';
+import '../src/styles/cascade.css';
+import '../src/styles/ribbon.css';
+import '../src/styles/chronicle.css';
+import '../src/styles/focus.css';
+import '../src/styles/seam.css';
+import '../src/styles/panels.css';
+import '../src/styles/seam-form.css';
+import '../src/styles/marginalia.css';
 import './fixture.css';
 
 /**
@@ -244,7 +244,13 @@ function EmptySlot({ n, firstEmpty }: { n: number; firstEmpty?: boolean }): Reac
 function App(): ReactElement {
   return (
     <>
-      <Header state={STATE} ribbon={null} markers={[]} onOpenChange={() => undefined} />
+      <Header
+        state={STATE}
+        ribbon={null}
+        catalog={[CH1, CH2, emptyEntry(3), emptyEntry(4), CH5, entry(22), entry(23), entry(24), entry(25), emptyEntry(21)]}
+        markers={[]}
+        onOpenChange={() => undefined}
+      />
       {/* The cover: before the first chapter the head names no chapter (BOOK-90 B.2). */}
       <div className="cover-space" aria-hidden="true" />
       <main>

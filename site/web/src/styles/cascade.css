@@ -213,13 +213,6 @@
   text-transform: uppercase;
   color: var(--revise);
 }
-.change-empty {
-  margin: 4px 0;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: var(--fs-label);
-  color: var(--ink-3);
-}
 .change-foot {
   display: flex;
   flex-wrap: wrap;

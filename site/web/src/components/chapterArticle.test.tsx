@@ -33,8 +33,8 @@ function prose(html: string): string {
   return html.replace(/<[^>]+>/gu, '');
 }
 
-describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
-  it('reads a basis-only chapter as its frozen sentence, with no «не написана» label', () => {
+describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
+  it('reads a basis-only chapter as its frozen sentence, with no state label in the header', () => {
     const html = render(entry(1, { basis: true, blocks: 1 }));
     expect(prose(html)).toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('не написана');
@@ -76,5 +76,19 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     expect(html).toContain('Тестовая глава');
     expect(html).toContain('class="ch-placeholder"');
     expect(html).not.toMatch(/style=/u);
+  });
+
+  it('splits the header meta into a state chip and a data line, and the data is a written fact', () => {
+    const written = render(entry(3, { written: true, chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' }));
+    expect(written).toContain('class="ch-data"');
+    expect(written).toContain('9\u00a0003\u00a0знака · 12:52');
+    // «печатается» belongs to the printing chapter: it is not in the markup on a first paint.
+    expect(written).not.toContain('ch-print');
+
+    const unwritten = render(entry(4, { chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' }));
+    // BOOK-90 A: an empty chapter is one row — no header, no data line to date nothing.
+    expect(unwritten).not.toContain('ch-data');
+    expect(unwritten).not.toContain('ch-meta');
+    expect(unwritten).toContain('class="premise-row"');
   });
 });

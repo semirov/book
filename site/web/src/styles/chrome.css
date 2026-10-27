@@ -1,5 +1,5 @@
 /* ============================================================================
-   CHROME — sticky header, title sheet, the annotation, the static documents.
+   CHROME — sticky header, title sheet, the annotation. The static documents: legal.css.
    ============================================================================ */
 
 .top {
@@ -13,7 +13,8 @@
 }
 /* BOOK-DOC-35 §5 / BOOK-90 B — the running head: two clusters on one line at the frame's
    width. The brand and the chapter chip sit together on the left (one 24 px gap); the live
-   chip and «замечания» sit together on the right. The two-row head is the narrow case. */
+   chip sits on the right. The folio is out of the flow above 767 and keeps the first row's
+   right end below it. The two-row head is the narrow case. */
 .top-in {
   display: flex;
   align-items: baseline;
@@ -38,20 +39,24 @@
   letter-spacing: 0.16em;
   color: var(--ink-2);
 }
+/* The header chip (BOOK-70): one size for every chip (12 px), one of two inks — `--live`
+   while something is happening now, `--ink-3` when the fact is settled. Weight 400 and one
+   line that never wraps: an ellipsized or a shimmying state is a lie. */
 .live {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  line-height: 1.35;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 400;
+  white-space: nowrap;
   color: var(--live);
 }
 .live.idle {
-  color: var(--ink-2);
-  font-weight: 400;
+  color: var(--ink-3);
 }
 .dot {
   width: 5px;
@@ -63,12 +68,6 @@
 .live.idle .dot {
   background: transparent;
   border: 1px solid var(--ink-3);
-}
-.queue {
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-  text-align: right;
 }
 
 /* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
@@ -110,6 +109,15 @@
   text-transform: uppercase;
   color: var(--ink-2);
 }
+/* «+ 3» — a reference chip beside the signature: 12 px mono, tabular, one line. Zero readers
+   print nothing at all (BOOK-70). */
+.author-plus {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 /* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent.
    One measure for the genre line and the promise (`book.css` owns the genre's copy of it):
    `58ch` of PT Serif at 15 px is ≈464 px, so both wrap at the same width whatever they say —
@@ -124,22 +132,12 @@
   color: var(--ink-2);
   text-wrap: pretty;
 }
-/* `.kicker`, `.premise` and `.copyright` stay: LegalPage, «Авторы» and the colophon use them. */
+/* `.kicker` and `.copyright` stay: LegalPage, «Авторы» and the colophon use them. */
 .kicker {
   letter-spacing: 0.18em;
   color: var(--ink-3);
 }
-/* The static documents' pull quote (LegalPage). `p.` only: the empty chapter slot's
-   `.premise` is a different component (a 44px field row) and must keep its own width. */
-p.premise {
-  max-width: 26ch;
-  margin: 0 auto;
-  font-size: var(--fs-note);
-  line-height: 1.62;
-  color: var(--ink-2);
-  font-style: italic;
-  text-wrap: balance;
-}
+/* BOOK-92 retired `p.premise`; BOOK-88's flush-left tweak of that rule went with it. */
 .copyright {
   margin: 7px 0 0;
   font-size: var(--fs-micro);
@@ -154,9 +152,10 @@ p.premise {
     padding-top: 11px;
     padding-bottom: 8px;
   }
-  /* The narrow head keeps its two rows; inside a row the two facts sit at its ends. */
-  .top-row {
-    justify-content: space-between;
+  /* The narrow head keeps its two rows; the first is the brand's cluster (the folio keeps
+     the row's right end through its own auto margin). */
+  .top-in .top-row:first-child {
+    justify-content: flex-start;
   }
   .top-row + .top-row {
     margin-top: 5px;
@@ -171,9 +170,9 @@ p.premise {
   }
 }
 
-/* a failing fetch is a sentence and a retry, never a spinner */
+/* a failing fetch is a sentence and a retry, never a spinner. BOOK-88: the row is prose — the
+   one rule in base.css caps it at the measure, flush left, and the retry sits on that edge. */
 .state-line {
-  max-width: calc(var(--measure) + 2 * var(--gut));
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -400,71 +399,9 @@ p.premise {
   text-underline-offset: 4px;
 }
 
-/* The static documents (audit M5): «приватность» and «правила». Same measure and voice as
-   the book, no card, no third-party byte — they must read when the API is down. */
-.legal {
-  max-width: calc(var(--measure) + 2 * var(--gut));
-  margin: 0 auto;
-  padding: 72px var(--gut) 96px;
-}
-.legal .title {
-  font-size: clamp(28px, 6vw, 40px);
-  line-height: 1.12;
-}
-.legal section {
-  margin-top: 34px;
-}
-.legal h2 {
-  margin: 0 0 10px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.legal p,
-.legal li {
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  line-height: 1.6;
-  color: var(--ink);
-}
-.legal p + p {
-  margin-top: 12px;
-}
-.legal ul {
-  margin: 0;
-  padding-left: 20px;
-}
-.legal li + li {
-  margin-top: 8px;
-}
-.legal code {
-  font-family: var(--mono);
-  font-size: 0.86em;
-  color: var(--ink-2);
-}
-.legal-how {
-  color: var(--ink-2);
-  border-left: 2px solid var(--rule-2);
-  padding-left: 12px;
-}
-.legal-tail {
-  margin-top: 34px;
-  padding-top: 18px;
-  border-top: 1px solid var(--rule);
-  font-size: var(--fs-note) !important;
-  color: var(--ink-2) !important;
-}
-.legal-nav {
-  display: flex;
-  gap: 18px;
-  margin-top: 26px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+/* The two static documents live in legal.css — BOOK-88 (booted right after this sheet). */
+
+/* The legal nav's links take the colophon's treatment: one rule, kept with the frame. */
 .legal-nav a,
 .colophon a {
   color: var(--ink-2);

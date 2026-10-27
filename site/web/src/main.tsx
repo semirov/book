@@ -9,8 +9,10 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
 import './styles/running-head.css';
+import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';
+import './styles/skeleton.css';
 import './styles/live.css';
 import './styles/cascade.css';
 import './styles/ribbon.css';
@@ -20,6 +22,9 @@ import './styles/seam.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
+// BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's
+// height at title scale and owns every `data-seq` delay.
+import './styles/first-load.css';
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('#root is missing from index.html');

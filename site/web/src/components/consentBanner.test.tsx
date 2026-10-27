@@ -82,6 +82,20 @@ describe('the consent strip', () => {
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
   });
 
+  it('keeps the section a .page and puts the copy and the actions on one prose block', () => {
+    // BOOK-88: the hairlines and the sentence stand on the block's edges, not across the column,
+    // so the markup has one wrapper between the `.page` section and the copy.
+    mount();
+    const element = banner();
+    expect(element?.className).toBe('page consent');
+    const block = element?.firstElementChild;
+    expect(block?.className).toBe('consent-body');
+    expect(block?.querySelector('.consent-copy')?.textContent).toBe(CONSENT_COPY);
+    expect(block?.querySelectorAll('button.consent-choice')).toHaveLength(2);
+    expect(block?.querySelector('a.consent-link[href="/privacy"]')).not.toBeNull();
+    expect(block?.querySelector('.consent-actions')).not.toBeNull();
+  });
+
   it('disappears on «Разрешить» and requests the tag once', () => {
     mount();
     act(() => button('Разрешить').click());

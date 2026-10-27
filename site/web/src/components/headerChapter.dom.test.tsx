@@ -106,7 +106,7 @@ async function mount(): Promise<void> {
   await act(async () => {
     root?.render(
       <>
-        <Header state={STATE} ribbon={null} markers={[]} onOpenChange={() => undefined} />
+        <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
         <article className="ch" data-n={1} id="ch-1">
           <h3 className="ch-title">Комната на восьмом</h3>
         </article>
@@ -172,7 +172,7 @@ describe('the running head', () => {
     await act(async () => {
       root?.render(
         <>
-          <Header state={STATE} ribbon={null} markers={[]} onOpenChange={() => undefined} />
+          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
           <Removable />
         </>,
       );
@@ -236,7 +236,6 @@ describe('the running head', () => {
     expect(rows[0]?.querySelector('.brand')).not.toBeNull();
     expect(rows[0]?.querySelector('.top-chapter')).toBe(chip());
     expect(rows[1]?.querySelector('.live')).not.toBeNull();
-    expect(rows[1]?.querySelector('.queue')).not.toBeNull();
     // The old `display: contents` is what spread four items across the line; it is gone, and the
     // left cluster keeps one 24 px gap between the brand and the chip.
     const chrome = sheets['../styles/chrome.css'] ?? '';
@@ -245,12 +244,81 @@ describe('the running head', () => {
     const css = sheets['../styles/running-head.css'] ?? '';
     expect(css).toContain('font-family: var(--label)');
     expect(css).toContain('font-size: var(--fs-micro)');
-    expect(css).toContain('width: 18ch');
     expect(css).toContain('font-variant-numeric: tabular-nums');
+    // BOOK-90: the chip is never clipped and has no fixed measure; only the number reserves
+    // two tabular digits, so 9 → 10 cannot shift the word after it.
+    expect(css).not.toMatch(/text-overflow:\s*ellipsis/u);
+    expect(css).not.toMatch(/\.top-chapter\s*\{[^}]*width:/u);
+    expect(css).toMatch(/\.top-chapter-n\s*\{[^}]*min-width: 2ch/u);
     // The phone keeps the fact: the number alone when the word does not fit.
     expect(css).toMatch(/@media \(max-width: 599px\)[\s\S]*\.top-chapter-w[\s\S]*display: none/u);
     // No new rung: the chip is the floor, not a smaller size.
     expect(css).not.toMatch(/font-size:\s*(1[01](\.\d+)?px|0\.\d+rem)/u);
+  });
+
+  it('prints the chapter’s title in full, never an ellipsis', async () => {
+    await mount();
+    const observer = BandObserver.last!;
+    await act(async () => observer.emit([{ target: container.querySelector('#ch-1')!, isIntersecting: true }]));
+    expect(chip().textContent).toContain('Комната на восьмом');
+    expect(chip().textContent).not.toContain('…');
+    // No clipping in the DOM contract either: the label span carries no truncation style.
+    const css = sheets['../styles/running-head.css'] ?? '';
+    expect(css).not.toMatch(/\.top-chapter-w\s*\{[^}]*(overflow|text-overflow)/u);
+  });
+
+  it('prints the state word when the chapter has no title', async () => {
+    await mount();
+    const observer = BandObserver.last!;
+    await act(async () => observer.emit([{ target: container.querySelector('#ch-21')!, isIntersecting: true }]));
+    expect(chip().textContent).toContain('21');
+    expect(chip().textContent).toContain('замысел');
+    expect(chip().textContent).not.toContain('…');
+  });
+
+  it('drops a title that does not fit the head for the state word, never clips it', async () => {
+    // A titled empty slot: the title is long, and the head is measured as already overflowing.
+    function Titled(): ReactElement {
+      return (
+        <>
+          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
+          <article className="ch" data-n={30} id="ch-30">
+            <h3 className="ch-title">Очень длинное название главы, которое не помещается</h3>
+            <div className="premise">
+              <button type="button" className="premise-row">
+                <span className="premise-label">замысел</span>
+              </button>
+            </div>
+          </article>
+        </>
+      );
+    }
+    await act(async () => {
+      root?.render(<Titled />);
+    });
+    const observer = BandObserver.last!;
+    const head = container.querySelector<HTMLElement>('.top-in')!;
+    Object.defineProperty(head, 'scrollWidth', { configurable: true, get: () => 900 });
+    Object.defineProperty(head, 'clientWidth', { configurable: true, get: () => 300 });
+    await act(async () => observer.emit([{ target: container.querySelector('#ch-30')!, isIntersecting: true }]));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(chip().textContent).toContain('30');
+    expect(chip().textContent).toContain('замысел');
+    expect(chip().textContent).not.toContain('Очень длинное');
+    expect(chip().textContent).not.toContain('…');
+  });
+
+  it('keeps the number alone on the phone (the word is hidden by the sheet)', async () => {
+    const css = sheets['../styles/running-head.css'] ?? '';
+    expect(css).toMatch(/@media \(max-width: 599px\)[\s\S]*\.top-chapter-w[\s\S]*display: none/u);
+    await mount();
+    const observer = BandObserver.last!;
+    await act(async () => observer.emit([{ target: container.querySelector('#ch-21')!, isIntersecting: true }]));
+    // The DOM keeps both; the 599 step hides the word, so the phone prints the number alone.
+    expect(chip().querySelector('.top-chapter-n')?.textContent).toBe('21');
+    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('замысел');
   });
 
   it('is inert without an observer, and does not observe when disabled', async () => {

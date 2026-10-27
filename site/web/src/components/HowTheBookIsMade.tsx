@@ -17,14 +17,18 @@ export const HOW_THE_BOOK_IS_MADE: readonly string[] = [
 
 /**
  * The block itself: three paragraphs in the reading column, no visible label, no box, no
- * animation. The rule that closes it is the opening screen's (see `Opening`), because a
- * `***` is a rule in the layout and never a character in a string.
+ * animation of its own. The rule that closes it is the opening screen's (see `Opening`),
+ * because a `***` is a rule in the layout and never a character in a string.
+ *
+ * `seq` tags the paragraphs for the first load (BOOK-DOC-49 §2): the delays live in
+ * `styles/first-load.css` under the gate, and an untagged render — reduced motion, a deep
+ * link, any other page — is the final state.
  */
-export function HowTheBookIsMade() {
+export function HowTheBookIsMade({ seq = false }: { seq?: boolean }) {
   return (
     <section className="page how-made">
       {HOW_THE_BOOK_IS_MADE.map((paragraph, index) => (
-        <p className="p" key={index}>
+        <p className="p" key={index} data-seq={seq ? `how-${index + 1}` : undefined}>
           {paragraph}
         </p>
       ))}

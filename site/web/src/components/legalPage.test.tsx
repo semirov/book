@@ -40,6 +40,12 @@ describe('/privacy', () => {
     expect(paragraph.split(/\s+/u)).toHaveLength(87);
   });
 
+  it('keeps the lead as the page’s prose, not the cover’s pull quote (BOOK-92)', () => {
+    // The cover's `p.premise` was a centred 26ch quote; the legal lead has a class of its own.
+    expect(html).toContain('class="legal-lead"');
+    expect(html).not.toContain('class="premise"');
+  });
+
   it('keeps the consent line on /privacy, with the place to change the choice', () => {
     expect(html).toContain(CONSENT_COPY);
     expect(html).toContain('Разрешить');
@@ -70,6 +76,11 @@ describe('/rules', () => {
   // Read as a reader reads it: tags stripped, so a class name cannot satisfy a copy assertion.
   const text = html.replace(/<[^>]*>/gu, ' ');
   const heading = /<h1 class="title">([\s\S]*?)<\/h1>/u.exec(html)?.[1] ?? '';
+
+  it('sets the lead as prose in the column, not as the cover’s quote (BOOK-92)', () => {
+    expect(html).toContain('class="legal-lead"');
+    expect(html).not.toContain('class="premise"');
+  });
 
   it('opens on the intervention, not on a note about the text (BOOK-22)', () => {
     expect(heading.toLowerCase()).toContain('вмешательство');

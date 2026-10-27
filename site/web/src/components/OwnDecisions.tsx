@@ -33,7 +33,7 @@ export function OwnDecisions({ decisions }: { decisions: MyDecisionsDto | null }
               {decision.intent === null ? null : <p className="own-decision-intent">«{decision.intent}»</p>}
               <p className="own-decision-meta">
                 <span>глава {decision.chapter}</span>
-                <span className="stamp">{commentStamp(decision.decidedAt)}</span>
+                <span className="stamp-time">{commentStamp(decision.decidedAt)}</span>
                 {decision.changeId === null ? null : (
                   <a className="own-decision-open" href={focusHash(decision.changeId)}>
                     прицел →

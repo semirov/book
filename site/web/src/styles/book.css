@@ -3,8 +3,13 @@
    seam, the colophon.
    ============================================================================ */
 
+/* BOOK-89 (D1/D3) — a chapter opens a page: the break is the book's largest air
+   (72 = 2.38 lines at the ≥1024 leading), over the `.ch-h` hairline. Pages are virtual, so
+   there is no page box and no page mark at the header: the running folio carries the number
+   the moment the chapter's boundary is crossed. The narrow steps are declared below the
+   prose rule, so the first `max-width: 599px` block of this sheet stays the phone's `.p`. */
 .ch {
-  padding-top: 40px;
+  padding-top: 72px;
 }
 .ch-h {
   display: flex;
@@ -28,12 +33,36 @@
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
+/* The header's meta line is a container, not a chip (BOOK-70): it holds two spans whose voices
+   differ and reserves no space of its own — the row's height is the 26 px numeral beside it, so
+   a chip that appears or disappears moves nothing. */
 .ch-meta {
   font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-align: right;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+/* S chip: «печатается» — a state, in the label's voice, live while the text is arriving. */
+.ch-print {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--live);
+}
+/* D line: `9 003 знака · 14:20` — data, mono and tabular, never the label's voice. */
+.ch-data {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--ink-3);
 }
 
 /* The one rule that sets the reading measure (chapters and page 2 alike). Below 600px a
@@ -58,6 +87,18 @@
 @media (max-width: 599px) {
   .p {
     text-align: left;
+  }
+}
+
+/* BOOK-89 — the chapter break at the two narrow steps: 64 above 600, 56 on the phone. */
+@media (max-width: 1023px) {
+  .ch {
+    padding-top: 64px;
+  }
+}
+@media (max-width: 599px) {
+  .ch {
+    padding-top: 56px;
   }
 }
 
@@ -183,11 +224,13 @@
   letter-spacing: 0.14em;
   font-size: var(--fs-label);
 }
+/* A count chip: the number carries its noun, sits on one line, and prints no zero (BOOK-70). */
 .sec-meta {
   font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .slots {
   list-style: none;
@@ -207,10 +250,6 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.1em;
   color: var(--ink-3);
-}
-.qline b {
-  font-weight: 400;
-  color: var(--ink-2);
 }
 .qline span:last-child {
   text-transform: none;
@@ -332,8 +371,9 @@
 .front-rule {
   border: 0;
   border-top: 1px solid var(--rule);
-  /* On the text column: the measure on the wide screens, the gutters on the phone. */
-  width: calc(100% - 2 * var(--gut));
-  max-width: var(--measure);
-  margin: 0 auto;
+  /* BOOK-88: the rule is prose, not a register. The one prose rule in base.css puts it on the
+     measure (`max-width: var(--measure)`), flush left, so its two ends land on the prose's own
+     edges; `Opening.tsx` wraps it in one `.page` so it also starts on the column's left edge.
+     No `width: calc(…)` here: that used to shrink the rule by the gutters a second time. */
+  margin: 0;
 }

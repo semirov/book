@@ -14,13 +14,16 @@
  *      prompt tree (`.opencode/skills/`, BOOK-5) stay internal: no line of them appears in the
  *      built bundle;
  *   7. the type floor and the adaptive regime (BOOK-DOC-35): no `font-size` below 12px and no
- *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again.
+ *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again;
+ *   8. the chip copy (BOOK-70): the words the two audits removed are not printed again, and
+ *      every registered chip keeps its one size, its voice and its two inks.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 import { f023Problems } from './containment.mjs';
+import { copyProblems } from './chips.mjs';
 import { styleProblems } from './styles.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
@@ -221,8 +224,13 @@ for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
  * could only pass vacuously. The rule id stays in `validate/text.ts`.
  */
 
-/** 7 — the type floor and the adaptive regime (BOOK-DOC-35 §7). */
-for (const problem of styleProblems(join(ROOT, 'web', 'src', 'styles'))) {
+/** 7 — the type floor, the adaptive regime and the chips (BOOK-DOC-35 §7, BOOK-70). */
+for (const problem of styleProblems(join(ROOT, 'web', 'src', 'styles'), { requireChips: true })) {
+  report(problem.file, `line ${problem.line}: ${problem.message}`);
+}
+
+/** 8 — the chip copy of BOOK-70: a chip states one provable fact, or it does not exist. */
+for (const problem of copyProblems(join(ROOT, 'web', 'src'))) {
   report(problem.file, `line ${problem.line}: ${problem.message}`);
 }
 

@@ -1,0 +1,237 @@
+/* ============================================================================
+   SKELETONS — a form with blank fields (BOOK-DOC-43, BOOK-66).
+   Hairlines on the book's own paper, at the measure's width, ragged where writing is
+   ragged. A placeholder imitates the *shape* of the arriving thing, never its content:
+   it prints no word and no number it does not hold. Nothing here spins or pulses — the
+   book's one motion is text being typed at 18 cps.
+   ============================================================================ */
+
+/* One fade in, 120 ms, on the wrapper and on nothing inside it. No fade out, ever: the
+   placeholder is removed in the same commit that mounts the text, because a fade out
+   would animate the arrival of a fact. `prefers-reduced-motion` (base.css) kills the
+   animation and leaves a static, fully visible form. */
+.skel {
+  opacity: 1;
+  animation: skel-in var(--dur-tick) var(--ease-out) both;
+}
+
+@keyframes skel-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* A bar is a 2 px hairline in a 1.68 em line box: 0.55 of the box is the optical centre of
+   a lowercase line of PT Serif. The bar fills its cell; the cell's width is a token (the
+   chapter, via `data-w`) or a class (the row surfaces) — never a `style` attribute. */
+.skel-line {
+  position: relative;
+  display: block;
+  height: 1.68em;
+}
+
+.skel-line::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: calc(0.55 * 1.68em - 1px);
+  width: 100%;
+  height: 2px;
+  border-radius: 0;
+  background: var(--rule-2);
+}
+
+/* ---- the chapter's prose field -------------------------------------------------------
+   8 lines as three paragraphs 3 / 3 / 2. It sets no height of its own: it lives inside the
+   `.ch-placeholder` box, whose min-height is `max(estimateChapterHeight, CHAPTER_BOX_PX)` —
+   the form's own worst case, 279 px — so 8 × 1.68em + 2 × 1.02em ≈ 264 px at 390 adds
+   0 to the page. */
+
+.skel-p {
+  margin: 0;
+}
+
+.skel-p + .skel-p {
+  margin-top: 1.02em;
+}
+
+.skel-line[data-w='1']::before {
+  width: var(--skel-w1);
+}
+.skel-line[data-w='2']::before {
+  width: var(--skel-w2);
+}
+.skel-line[data-w='3']::before {
+  width: var(--skel-w3);
+}
+.skel-line[data-w='4']::before {
+  width: var(--skel-w4);
+}
+.skel-line[data-w='5']::before {
+  width: var(--skel-w5);
+}
+.skel-line[data-w='6']::before {
+  width: var(--skel-w6);
+}
+.skel-line[data-w='7']::before {
+  width: var(--skel-w7);
+}
+.skel-line[data-w='8']::before {
+  width: var(--skel-w8);
+}
+
+/* ---- the row surfaces ----------------------------------------------------------------
+   Grids, not prose. The reserve is the surface's own height (§3), so the sentence that
+   replaces it lands where the form was and nothing below moves. */
+
+.skel-register {
+  min-height: 236px;
+}
+.skel-chronicle {
+  min-height: 150px;
+}
+.skel-authors {
+  min-height: 132px;
+}
+.skel-chain {
+  min-height: 220px;
+}
+.skel-sheet {
+  min-height: 176px;
+}
+
+.skel-row {
+  display: grid;
+}
+
+.skel-register .skel-row + .skel-row {
+  margin-top: 12px;
+}
+.skel-chronicle .skel-row + .skel-row,
+.skel-authors .skel-row + .skel-row,
+.skel-chain .skel-row + .skel-row {
+  margin-top: 8px;
+}
+
+/* register — a meta line (numeral 3ch, label 9ch, date 5ch) and two body lines at
+   92 / 71 %. A cell's width is the bar's width: the hairlines fill the box the class sets. */
+.skel-meta {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  column-gap: 10px;
+  align-items: center;
+}
+.skel-num {
+  width: 3ch;
+}
+.skel-label {
+  width: 9ch;
+}
+.skel-date {
+  width: 5ch;
+}
+.skel-body {
+  width: 92%;
+}
+.skel-body-short {
+  width: 71%;
+}
+
+/* chronicle — one day label, then time · target · summary. */
+.skel-day {
+  width: 6ch;
+  margin-bottom: 6px;
+}
+.skel-chronicle .skel-row {
+  grid-template-columns: 3.4rem 7rem 1fr;
+  column-gap: 10px;
+  align-items: center;
+}
+.skel-time {
+  width: 2.5ch;
+}
+.skel-target {
+  width: 4ch;
+}
+.skel-summary {
+  width: 84%;
+}
+
+/* «Авторы» — name · role · share, and the share column keeps the honest «—». */
+.skel-authors .skel-row {
+  grid-template-columns: 1fr auto auto;
+  column-gap: 12px;
+  align-items: center;
+}
+.skel-name {
+  width: 60%;
+}
+.skel-role {
+  width: 4ch;
+}
+.skel-share {
+  font-family: var(--ui);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+/* the paragraph chain — version · copy · actor. */
+.skel-chain .skel-row {
+  grid-template-columns: 1.6rem 1fr auto;
+  column-gap: 12px;
+  align-items: center;
+}
+.skel-version {
+  width: 1.5ch;
+}
+.skel-copy {
+  width: 88%;
+}
+.skel-actor {
+  width: 6ch;
+}
+
+/* ---- the прицел sheet ---------------------------------------------------------------
+   Two paragraphs of two lines inside the lit sheet: 4 × 1.62em + one 0.9em gap + 36 padding
+   is the 176 px reserve. */
+
+.skel-sheet {
+  padding: 18px;
+  font-size: var(--fs-lead);
+}
+
+.skel-sheet .skel-line {
+  height: 1.62em;
+}
+
+.skel-sheet .skel-p + .skel-p {
+  margin-top: 0.9em;
+}
+
+/* ---- the boot field (BOOK-66) -------------------------------------------------------
+   BOOK-DOC-43 §3 — the field is the cover's frame and the sentence is absolute, so the
+   first paint already is the final rectangle: the sentence adds no height and the cover
+   cannot move when the app arrives. It lives here, with the other wait forms, rather than
+   in chrome.css, which is a page-2 sheet. */
+.boot-wait {
+  min-height: min(67.5vh, 720px);
+  min-height: min(67.5svh, 720px);
+  position: relative;
+}
+.boot-status {
+  position: absolute;
+  inset-inline: var(--gut);
+  top: calc(env(safe-area-inset-top) + 24px);
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}

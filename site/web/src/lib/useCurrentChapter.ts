@@ -18,7 +18,13 @@ import { useEffect, useState } from 'react';
  * written chapter, the row's label for an empty one). The head echoes the page.
  */
 
-export type CurrentChapter = { n: number; word: string | null };
+export type CurrentChapter = {
+  n: number;
+  /** The chapter's real title, when it has one (the header prefers it). */
+  title: string | null;
+  /** The slot's own state word: «замысел» for an empty chapter, a filing's word otherwise. */
+  word: string | null;
+};
 
 /** The head's offset when the token cannot be read (tests, SSR). */
 const HEAD_FALLBACK = 64;
@@ -30,12 +36,11 @@ function headOffset(): number {
   return Number.isFinite(value) && value > 0 ? value : HEAD_FALLBACK;
 }
 
-/** The word the slot prints, read from the slot itself (title, else the row's label). */
-export function chapterWordOf(article: Element): string | null {
+/** The two words the slot prints, read from the slot itself. */
+export function chapterCopyOf(article: Element): { title: string | null; word: string | null } {
   const title = article.querySelector('.ch-title')?.textContent?.trim() ?? '';
-  if (title.length > 0) return title;
   const row = article.querySelector('.premise-label')?.textContent?.trim() ?? '';
-  return row.length > 0 ? row : null;
+  return { title: title.length > 0 ? title : null, word: row.length > 0 ? row : null };
 }
 
 export function useCurrentChapter(enabled = true): CurrentChapter | null {
@@ -54,10 +59,12 @@ export function useCurrentChapter(enabled = true): CurrentChapter | null {
     const commit = (): void => {
       const first = articles.find((article) => inBand.has(article));
       const next: CurrentChapter | null =
-        first === undefined ? null : { n: Number(first.dataset.n), word: chapterWordOf(first) };
-      // The same chapter (and the same word) is not an update: the head keeps its slot.
+        first === undefined ? null : { n: Number(first.dataset.n), ...chapterCopyOf(first) };
+      // The same chapter (and the same words) is not an update: the head keeps its slot.
       setCurrent((previous) =>
-        previous?.n === next?.n && previous?.word === next?.word ? previous : next,
+        previous?.n === next?.n && previous?.title === next?.title && previous?.word === next?.word
+          ? previous
+          : next,
       );
     };
 

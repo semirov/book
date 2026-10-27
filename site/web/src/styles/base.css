@@ -54,21 +54,51 @@ h3 {
   font-weight: 400;
 }
 
-/* The reading column (text register). `--measure` is the width of the text itself, so the
-   gutters are added before the box is measured — and a `.sheet` is the same page laid on the
-   frame instead of in the column (BOOK-DOC-35 §2). Base rules are the desktop: every query
-   below narrows, never widens. */
+/* BOOK-88 §2 — the page is ONE column, and inside it one prose block.
+   `--column` is the frame: up to 1000 px, centred, with the gutters inside it, so every
+   register — header, cover, page 2, TOC, chronicle, colophon, discussion, the legal
+   documents — and the prose itself start on the same left edge. `--measure` never sizes a
+   box: it is the text width of the prose, and the one rule below is the only place it caps
+   text (the paragraph-chain popover in chronicle.css reads it for its own overlay geometry,
+   never as prose). `.sheet` stays in the markup as the name of a register and has no rule of
+   its own: the override that gave those registers the frame's full width is what pulled the
+   header's right-hand item off the text it belongs to (BOOK-88). Base rules are the desktop:
+   every query below narrows, never widens. */
 .page {
-  max-width: calc(var(--measure) + 2 * var(--gut));
+  max-width: var(--column);
   margin: 0 auto;
   padding: 0 var(--gut);
 }
-.page.sheet {
-  max-width: var(--shell);
-}
-.bleed {
-  margin-inline: calc(var(--gut) * -1);
-  padding-inline: var(--gut);
+/* THE ONE PROSE RULE (BOOK-88 §2). The prose keeps a comfortable measure inside the column
+   and stays flush left: no `margin-inline: auto` on any of these selectors, in any sheet, or
+   the text drifts to a third left edge. `.toc-row` / `.toc-link` / `.toc-line` are
+   deliberately absent — the TOC is column furniture, not prose. `.ch-placeholder` is the form
+   of the prose (its bars must stand where the text will) and `.ch-fail` is the chapter's own
+   `.state-line`, whose retry belongs on the same right edge as the page's. `.consent-body` is
+   the consent strip's content block: the notice stands on the prose measure, so the copy and
+   its two hairlines share one left edge with the page's text. BOOK-68: the seam strip and its
+   stale line are block **siblings** of the paragraph, not of it — so they are prose too, or
+   the strip's band and its `.seam-cta` (`margin-left: auto`) run to the column's right edge
+   while the paragraph above them stops at the measure. */
+.p,
+.ch-title,
+.ch-h,
+.sec-h,
+.qline,
+.front-rule,
+.annotation .p,
+.how-made > p,
+.legal > *,
+.consent-body,
+.seam,
+.p-stale,
+.authors > *,
+.state-line,
+.ch-placeholder,
+.ch-fail,
+.talks .comments,
+.talks .talks-list {
+  max-width: var(--measure);
 }
 .ch,
 .inv,
@@ -83,7 +113,6 @@ h3 {
 .ch-meta,
 .sec-meta,
 .qline,
-.stamp,
 .counter,
 .chint,
 .ctext,
@@ -103,6 +132,35 @@ h3 {
   color: var(--ink-3);
 }
 
+/* A stamp is one of two things, and they are no longer one class (BOOK-70): a **moment** is
+   data — mono, tabular, sentence case — and a **state** is a one-word chip in the label's
+   voice. `.stamp` used to be both, so a clock and a status shared a face. */
+.stamp-time,
+.stamp-state {
+  white-space: nowrap;
+}
+.stamp-time {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.stamp-state {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* The one state that is happening now — the change is being applied. Finality is the verb's
+   tense, not a second colour: every settled state keeps `--ink-3`. */
+.stamp-state.stamp-processing {
+  color: var(--live);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -115,8 +173,9 @@ h3 {
   border: 0;
 }
 
+/* The no-JS fallback is not a `.page` (it lives in `index.html`), but it is the same column. */
 .noscript {
-  max-width: calc(var(--measure) + 2 * var(--gut));
+  max-width: var(--column);
   margin: 0 auto;
   padding: 64px var(--gut);
   text-align: center;
@@ -134,10 +193,10 @@ h3 {
 @media (max-width: 599px) {
   :root {
     --gut: 24px;
-    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because «последняя
-       запись · N минут назад» wraps at 342px; 59.1px is the same head with a one-line chip
-       (measured at 768). The offset follows the wrapped case — if the chip ever stops
-       wrapping, 72 would do again and 80 leaves 3.4px of extra air. */
+    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because the old recency
+       chip («последняя запись · N минут назад») wrapped at 342px; 59.1px is the same head with
+       a one-line chip (measured at 768). BOOK-70 makes every chip one line that never wraps,
+       so the wrapped case is gone; 72 would do again and 80 leaves 3.4px of extra air. */
     --offset-top: 80px;
   }
 }

@@ -11,7 +11,7 @@ import { splitSentences } from './seam.ts';
  * line. Nothing here ever sends or drops a draft in the background.
  *
  * «что это меняет» is optional, and an empty field is not an empty filing: the first sentence
- * of «как это звучит в книге» becomes the body, and the form says so **before** submit. That
+ * of the wording field becomes the body, and the form says so **before** submit. That
  * derivation is a pure function so the copy can be tested without a browser.
  */
 
@@ -31,7 +31,7 @@ export type SeamDraft = {
   /** The sentence the seam is on; for a premise, the chapter's own label. */
   sentence: string;
   kind: InterventionKind | null;
-  /** The note path: no kind is sent, and «как это звучит» is not asked for. */
+  /** The note path: no kind is sent and no intervention wording is carried. */
   noteOnly: boolean;
   body: string;
   proposed: string;
@@ -155,9 +155,14 @@ export function derivedBody(draft: Pick<SeamDraft, 'body' | 'proposed' | 'noteOn
  * An intervention may derive its body from the wording's first sentence; a **premise** and a
  * note are one text and are sent whole — deriving a premise's body cut a multi-sentence
  * premise after its first full stop, silently.
+ *
+ * BOOK-57: a note is the note field alone. It never falls back to «что это меняет», because
+ * that field is not rendered on the note path and could only hold a line the reader wrote
+ * for an intervention they are no longer sending.
  */
 export function submissionBody(draft: Pick<SeamDraft, 'body' | 'proposed' | 'noteOnly' | 'blockId'>): string {
-  if (draft.noteOnly || draft.blockId === null) {
+  if (draft.noteOnly) return draft.proposed.replace(/\s+/gu, ' ').trim();
+  if (draft.blockId === null) {
     return draft.proposed.replace(/\s+/gu, ' ').trim() || draft.body.replace(/\s+/gu, ' ').trim();
   }
   return derivedBody(draft);
@@ -175,12 +180,6 @@ export function draftSummary(draft: Pick<SeamDraft, 'body' | 'proposed' | 'kind'
 export function draftFilled(draft: Pick<SeamDraft, 'body' | 'proposed' | 'noteOnly'>): boolean {
   const body = derivedBody(draft);
   return body.length > 0 || draft.proposed.trim().length > 0;
-}
-
-/** The label of the field the reader writes the wording in, per §2.3. */
-export function wordingLabel(draft: Pick<SeamDraft, 'noteOnly' | 'blockId'>): string {
-  if (draft.noteOnly) return 'замечание к тексту';
-  return draft.blockId === null ? 'замысел главы' : 'как это звучит в книге';
 }
 
 /** The submit word: an intervention is transferred, a note is left. */

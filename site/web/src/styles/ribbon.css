@@ -9,8 +9,11 @@
    styles: the layout is classes and data attributes (CSP forbids inline styles). */
 .ribbon {
   position: relative;
-  /* The ribbon is the running head's second row: it spans the sheet, not the prose (§5). */
-  max-width: var(--shell);
+  /* The ribbon is the running head's second row and a child of `<header class="top">`, so it
+     states the column itself: the same 1000 px box `.page` measures, gutters inside, centred.
+     It used to span an outer canvas wider than the head's own row, so its wings stuck out on
+     both sides of the row it belongs to (BOOK-88). */
+  max-width: var(--column);
   margin: 0 auto;
   padding: 4px var(--gut) 6px;
   border-top: 1px solid var(--rule);
@@ -57,9 +60,6 @@
 }
 .ribbon-wing.is-up .ribbon-reached {
   justify-content: flex-end;
-}
-.ribbon-none {
-  min-height: 20px;
 }
 /* A 44 px tap target around a 20 px mark, as the rest of the mobile chrome does. */
 .ribbon-ch {

@@ -1,5 +1,5 @@
 import type { ChangeDto, CommentDto } from '@book/shared';
-import { INTERVENTION_KIND_LABELS } from '@book/shared';
+import { INTERVENTION_KINDS, INTERVENTION_KIND_LABELS } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -69,13 +69,22 @@ const change: ChangeDto = {
 describe('the composer’s kinds (BOOK-16)', () => {
   const html = renderToStaticMarkup(<InterventionKinds kind={null} onPick={() => undefined} />);
 
-  it('offers the four kinds with their Russian labels, and the rule in one line', () => {
+  it('offers four radios, the four Russian labels and the bounds line', () => {
     for (const label of Object.values(INTERVENTION_KIND_LABELS)) {
       expect(html).toContain(label);
     }
     expect(html).toContain('что вы вносите: документ · решение героя · свидетельство · стёртая деталь');
+    // BOOK-57: the note left the grid, so exactly four choices remain.
+    expect(html.match(/type="radio"/gu) ?? []).toHaveLength(INTERVENTION_KINDS.length);
     // The bound is grouped with the non-breaking space the rest of the site uses.
-    expect(html).toContain('до 10\u00a0000 знаков, одна правка в сутки');
+    expect(html).toContain('до 10\u00a0000 знаков · одна правка в сутки');
+  });
+
+  it('keeps the note out of the grid: no fifth row and no lecture', () => {
+    expect(html).not.toContain('просто замечание');
+    expect(html).not.toContain('без типа');
+    expect(html).not.toContain('одного из четырёх типов');
+    expect(html).not.toContain('вмешательство');
   });
 
   it('pre-selects nothing: the reader names the kind', () => {

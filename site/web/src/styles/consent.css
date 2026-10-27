@@ -1,9 +1,22 @@
 /* ---------- BOOK-63: the consent strip ---------- */
 /* Book matter, not a modal: in the reading column, no scrim, no animation, no fixed layer.
-   The actions wrap, so 390 px keeps two buttons and the link on their own lines. */
+   BOOK-88: the strip is a `.page`, so it keeps the column's one gutter — `padding: 16px 0`
+   used to override it and start the strip 32 px outside the column's text edge. Its vertical
+   margin is a shorthand, so the inline sides must restate `auto`: `.page`'s `margin: 0 auto`
+   is what centres the strip, and `30px 0 6px` reset the inline sides to 0, pinning the strip
+   to the viewport edge above 1000 px. The actions wrap, so 390 px keeps the two buttons and
+   the link on their own lines.
+   BOOK-88, type: the sentence is prose at `--fs-note`; the actions are ONE action register —
+   `--fs-micro` in `--mono`, uppercase, 0.1em — the book's label voice. There is no third size
+   in the strip. `.consent-body` is the notice's prose block: `base.css` caps it at
+   `var(--measure)` with the one prose rule, so the text and both hairlines stand on the prose
+   measure, flush left — never across the 1000 px column. */
 .consent {
   margin: 30px auto 6px;
-  padding: 16px 0;
+  padding: 0 var(--gut);
+}
+.consent-body {
+  padding-block: 14px 16px;
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
@@ -12,7 +25,6 @@
   font-size: var(--fs-note);
   line-height: 1.55;
   color: var(--ink-2);
-  max-width: 52ch;
 }
 .consent-actions {
   display: flex;
@@ -20,25 +32,41 @@
   align-items: center;
   gap: 10px 22px;
   margin-top: 12px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+/* The register is stated on the controls as well as on the row: Chrome's UA sheet resets
+   `text-transform` and `letter-spacing` on form controls, so an inherited value never reaches
+   the button — that is why the two actions used to read as browser defaults in sentence case.
+   The primary and the secondary differ in ink alone; size, weight and family are shared. */
 .consent-choice,
+.consent-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.consent-choice {
+  color: var(--ink);
+}
+.consent-choice + .consent-choice {
+  color: var(--ink-3);
+}
+.consent-link {
+  color: var(--ink-3);
+}
+/* The colophon's «изменить» keeps the same affordance, in the label column and at 24 px. */
 .analytics-change {
   min-height: 24px;
   padding-block: 6px;
   color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-.consent-choice + .consent-choice {
-  color: var(--ink-2);
-}
-.consent-link {
-  min-height: 24px;
-  color: var(--ink-3);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -48,9 +76,14 @@
   padding-left: 12px;
   border-left: 2px solid var(--rule-2);
 }
+/* BOOK-88: this line is the strip's actions, on another page — the two buttons beside the state
+   are one action register, so the state states the same register itself (family, size, case,
+   tracking) instead of falling back to the legal page's label voice at 0.08em. Ink alone
+   separates it from «Разрешить»: it is a state, not an action. */
 .consent-state {
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-3);
 }

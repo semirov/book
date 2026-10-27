@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getChapters, getFront, getQueue, getState } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
+import { BootWait } from './components/BootWait.tsx';
 import { ChangeCard } from './components/ChangeCard.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
@@ -52,6 +53,7 @@ import { useChangeCard } from './useChangeCard.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { usePageTitle } from './usePageTitle.ts';
+import { usePending } from './usePending.ts';
 import { useFocusMode } from './useFocus.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
@@ -84,11 +86,8 @@ export function App() {
   const [view, setView] = useState<BookView>('book');
   const [historyTick, setHistoryTick] = useState(0);
   const {
-    chain,
-    loading: chainLoading,
-    anchor: chainAnchor,
-    open: openChain,
-    close: closeChain,
+    chain, loading: chainLoading, failed: chainFailed, active: chainActive, anchor: chainAnchor,
+    open: openChain, retry: retryChain, close: closeChain,
   } = useParagraphChain();
   /**
    * The card and the focus view («прицел», §11.9). The focus view is a mode of this page,
@@ -105,8 +104,10 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, chapterFeed, decisions, refreshChanges, refreshComments, loadChapter, refreshLoaded, noteRecord } =
+  const { changes, comments, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, loadChapter, refreshLoaded, noteRecord } =
     useReaderFeed();
+  /** §4 — the thread waits until both feeds settle; a later frame never re-arms it. */
+  const stage = usePending(!threadSettled);
 
   /**
    * REST fallback and resync. The initial call must not overwrite a `hello` that already
@@ -142,9 +143,8 @@ export function App() {
 
   useEffect(() => {
     void refreshAll(false);
-    void refreshChanges();
-    void refreshComments();
-  }, [refreshAll, refreshChanges, refreshComments]);
+    void loadThread();
+  }, [refreshAll, loadThread]);
 
   // `/api/queue` is polled only while the engine is alive (§9); the socket carries the rest.
   useEffect(() => {
@@ -375,11 +375,8 @@ export function App() {
   }
 
   if (data === null) {
-    return (
-      <main className="page" aria-busy="true">
-        <div className="state-line"><span>опись читается</span></div>
-      </main>
-    );
+    // The failing branch returned above, so this is the wait and nothing else — no `failed`.
+    return <main className="page boot-wait" aria-busy="true"><BootWait active /></main>;
   }
 
   const { state, catalog, front } = data;
@@ -431,8 +428,8 @@ export function App() {
         {card.change === null ? null : (
           <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
         )}
-        {chainLoading || chain !== null ? (
-          <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
+        {chainActive ? (
+          <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} />
         ) : null}
         {focusView}
       </>
@@ -445,6 +442,7 @@ export function App() {
         front={front}
         state={state}
         ribbon={ribbon}
+        catalog={catalog}
         escalation={escalationMarkers(state.unresolved)}
         onOpenChange={card.open}
         view={view}
@@ -475,13 +473,13 @@ export function App() {
         onAuthorsCount={applyAuthorsCount}
         onOpenChronicle={() => setView('chronicle')}
       />
-      <Discussion depth={state.queue.depth} changes={changes} comments={comments} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} />
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
       )}
-      {chainLoading || chain !== null ? (
-        <ParagraphChain chain={chain} loading={chainLoading} onClose={closeChain} anchor={chainAnchor} />
+      {chainActive ? (
+        <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} />
       ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       {focusView}

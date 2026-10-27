@@ -7,16 +7,46 @@ import { filingConsequence, filingMarginalia, landingReceipt, PREMISE_PENDING } 
  *
  * BOOK-90 — the **state** is one of the three words («ждёт» · «идёт» · «внесено»), read from
  * `lib/marginalia.ts`; the **detail** carries the fact that word cannot: a refusal, a
- * superseded anchor, a held check, an expired pass, the receipt of a landed change. The
- * thread never collapses "accepted" into "applied": acceptance is a promise, application is
- * a later fact, and a note that was never considered says so. No gate vocabulary.
+ * superseded anchor, a held check, an expired pass, the receipt of a landed change.
+ *
+ * BOOK-70 — the state is printed once, in the form its own text asks for: a chip (12 px,
+ * uppercase, one line) when the text fits one, a sentence (14 px, the book's voice, may wrap)
+ * when it is a receipt or a clause. The three words always fit a chip; a clause lives in the
+ * detail line, so a state never has to overflow to say what happened.
  */
 
-export type CommentLine = { state: string; detail: string | null; tone: 'quiet' | 'live' | 'done' | 'stopped' };
+/** The line a filing panel prints as a one-line chip; past it, the line is a sentence. */
+export const CHIP_MAX_CHARS = 24;
+
+export type CommentLine = {
+  state: string;
+  detail: string | null;
+  tone: 'quiet' | 'live' | 'done' | 'stopped';
+  /**
+   * BOOK-70: a chip states one fact on one line and may not hold a clause, so the form is a
+   * property of the text, decided once here. A `sentence` — a receipt («внесено в главу 07 ·
+   * право на ваш текст перешло автору книги») or a clause («снято: текст успел измениться») —
+   * is printed at 14 px in the book's own voice and may wrap; a `chip` is 12 px, uppercase,
+   * one line. The cap is the line: over 24 characters, or a ` · ` / `: ` in the text, and the
+   * line is a sentence.
+   */
+  form: 'chip' | 'sentence';
+};
 
 /** The deck's fact, and the reader's own reason beside it when the record has one. */
 function joinDetail(fact: string, reason: string | null): string {
   return reason === null || reason.length === 0 ? fact : `${fact} · ${reason}`;
+}
+
+/** The form, decided in one place: the cap, the clause's punctuation, or an explicit receipt. */
+function lineOf(
+  state: string,
+  detail: string | null,
+  tone: CommentLine['tone'],
+  receipt = false,
+): CommentLine {
+  const sentence = receipt || state.length > CHIP_MAX_CHARS || state.includes(' · ') || state.includes(': ');
+  return { state, detail, tone, form: sentence ? 'sentence' : 'chip' };
 }
 
 export function commentStatusLine(comment: CommentDto): CommentLine {
@@ -25,16 +55,12 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
   const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'new':
-      return { state: word, detail: null, tone: 'quiet' };
+      return lineOf(word, null, 'quiet');
     case 'batched':
     case 'delivered':
-      return { state: word, detail: null, tone: 'live' };
+      return lineOf(word, null, 'live');
     case 'accepted':
-      return {
-        state: word,
-        detail: joinDetail(filingConsequence(comment), comment.reason),
-        tone: 'live',
-      };
+      return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
     case 'applied': {
       // BOOK-58: the receipt of an entered variant names the chapter and the right that moved
       // with it — the state is the word «внесено», the receipt is its detail. A note moved no
@@ -43,20 +69,20 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
         comment.applied === null || comment.interventionKind === null
           ? filingConsequence(comment)
           : landingReceipt(comment.applied.chapter, comment.applied.rev);
-      return { state: word, detail: joinDetail(receipt, comment.reason), tone: 'done' };
+      return lineOf(word, joinDetail(receipt, comment.reason), 'done');
     }
     case 'superseded':
-      return { state: word, detail: joinDetail('снято: текст успел измениться', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('снято: текст успел измениться', comment.reason), 'stopped');
     case 'rejected':
-      return { state: word, detail: joinDetail('отклонено', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('отклонено', comment.reason), 'stopped');
     case 'quarantined':
-      return { state: word, detail: joinDetail('проверяется перед триажем', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('проверяется перед триажем', comment.reason), 'stopped');
     case 'expired':
-      return { state: word, detail: joinDetail('проход не состоялся', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('проход не состоялся', comment.reason), 'stopped');
     case 'hidden':
-      return { state: word, detail: joinDetail('скрыто', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('скрыто', comment.reason), 'stopped');
     default:
-      return { state: word, detail: comment.reason, tone: 'quiet' };
+      return lineOf(word, comment.reason, 'quiet');
   }
 }
 
@@ -71,19 +97,18 @@ export function interventionKindWord(comment: Pick<CommentDto, 'interventionKind
 
 /** BOOK-7 — the four states of a premise, in the three words plus the fact (BOOK-90). */
 function premiseLine(comment: CommentDto): CommentLine {
-  const chapter = comment.applied?.chapter ?? comment.chapter;
   const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'applied':
       // The state is the word; the edition it entered is the detail, and the reason would
       // only repeat it.
-      return { state: word, detail: `вошло в первую редакцию главы ${chapter}`, tone: 'done' };
+      return lineOf(word, filingConsequence(comment), 'done');
     case 'superseded':
-      return { state: word, detail: joinDetail('замысел снят', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('замысел снят', comment.reason), 'stopped');
     case 'rejected':
-      return { state: word, detail: joinDetail('замысел не взят', comment.reason), tone: 'stopped' };
+      return lineOf(word, joinDetail('замысел не взят', comment.reason), 'stopped');
     default:
-      return { state: word, detail: joinDetail(PREMISE_PENDING, comment.reason), tone: 'live' };
+      return lineOf(word, joinDetail(PREMISE_PENDING, comment.reason), 'live');
   }
 }
 

@@ -209,6 +209,31 @@ describe('the revision object’s two rows', () => {
     });
   });
 
+  it('refuses a repeated context clause: a clause that repeats is not a place', () => {
+    // The stored prefix's tail appears twice and no suffix tells the two apart. Printing the
+    // neighbour as «стало» would be a lie, so the place is unresolved.
+    const repeated = 'Он вошёл. Он вошёл. Дверь была открыта.';
+    expect(
+      revisionOf(
+        comment({ anchor: anchor({ quote: 'Свет был включён.', prefix: 'Он вошёл. ', suffix: '' }) }),
+        repeated,
+      ),
+    ).toEqual({ before: 'Свет был включён.', after: null, status: 'unresolved' });
+  });
+
+  it('picks the repeated clause whose stored suffix matches', () => {
+    const repeated = 'Он вошёл. Он вошёл. Дверь была открыта.';
+    const revision = revisionOf(
+      comment({
+        anchor: anchor({ quote: 'Свет был включён.', prefix: 'Он вошёл. ', suffix: ' Дверь была открыта.' }),
+      }),
+      repeated,
+    );
+    expect(revision.status).toBe('changed');
+    expect(revision.after).toBe('Дверь была открыта.');
+    expect(revision.after).not.toBe(revision.before);
+  });
+
   it('does not mistake a clamp for a change: a long sentence keeps its place', () => {
     // Distinct words: the clamped quote occurs once, so the place is unambiguous.
     const sentence = `${Array.from({ length: 80 }, (_, index) => `слово${index}`).join(' ')} конец.`;

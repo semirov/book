@@ -164,11 +164,16 @@
   --fs-body: 18px;
   --fs-lead: 19px;
 
-  /* space — BOOK-DOC-35 §1: the frame of reference and the two registers.
-     `--measure` is the TEXT width now, not the box: gutters are added in `calc()` (§2). */
+  /* space — BOOK-DOC-35 §1, BOOK-88 §2: the frame, the column and the prose block.
+     `--column` is THE COLUMN — the page's one frame: up to 1000 px, centred, with the gutters
+     inside it, and every register (header, cover, page 2, TOC, chronicle, colophon, the
+     discussion, the legal documents) is laid out in that same box, on that same left edge.
+     It is the only token that sizes a box.
+     `--measure` is the width of the prose TEXT and never a box: one rule in base.css caps the
+     prose at it, flush left inside the column — 37.5rem = 600 px = 67 ch at 18 px. */
   --gut: 32px;
-  --measure: 33.75rem;
-  --shell: 1000px;
+  --column: 1000px;
+  --measure: 37.5rem;
   --offset-top: 64px;
 
   /* BOOK-90 — the margin's own geometry. Measured from the prose's right edge, never from the
@@ -186,13 +191,26 @@
   --dur-fade: 400ms;
   --ease-out: cubic-bezier(0.22, 0.68, 0.24, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* skeleton widths — BOOK-DOC-43 §3. Geometry, not ink, so there is no day/night pair:
+     eight ragged line endings, never 100 %, selected by `data-w` on a `.skel-line`. */
+  --skel-w1: 94%;
+  --skel-w2: 88%;
+  --skel-w3: 62%;
+  --skel-w4: 97%;
+  --skel-w5: 91%;
+  --skel-w6: 55%;
+  --skel-w7: 90%;
+  --skel-w8: 68%;
 }
 
 /* The scale narrows with the measure: the laptop keeps 18px, the tablet 17.5, the phone 17.
-   Tokens only — no other sheet may declare a `--fs-*` rung (the arch guard checks it). */
+   Tokens only — no other sheet may declare a `--fs-*` rung (the arch guard checks it).
+   BOOK-88: the prose block narrows with it — 36.5rem = 584 px = 66.7 ch at 17.5 px. */
 @media (max-width: 1023px) {
   :root {
     --fs-body: 17.5px;
+    --measure: 36.5rem;
   }
 }
 @media (max-width: 599px) {

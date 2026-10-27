@@ -1,16 +1,19 @@
 /**
- * BOOK-90 B — the running head's chapter slot: the number and the slot's own word.
+ * BOOK-90 B — the running head's chapter slot: the number and the title (or the slot's own
+ * word). It is one label line at 12 px with tabular figures: no new row at any width.
  *
- * It is reserved from the first paint (a fixed 18ch) so naming the chapter never moves the
- * line, and it is one label line at 12 px with tabular figures: no new row at any width.
+ * The chip is never clipped: when a title does not fit the head, the Header drops it for the
+ * state word instead of ellipsizing it. Only the number reserves width (two tabular digits),
+ * so 9 → 10 cannot move the word after it, and the chip grows to the right.
  */
 .top-chapter {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
   flex: none;
-  width: 18ch;
-  overflow: hidden;
+  /* No fixed measure and no clipping: the chip either fits, or the title is dropped for the
+     state word (the Header measures it) — the head never shows an ellipsis. */
   white-space: nowrap;
-  text-overflow: ellipsis;
-  text-align: right;
   font-family: var(--label);
   font-size: var(--fs-micro);
   line-height: 1.35;
@@ -19,12 +22,19 @@
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
-.top-chapter-w {
-  margin-left: 6px;
+/* The number holds two tabular digits, so 9 → 10 cannot move the word after it. */
+.top-chapter-n {
+  min-width: 2ch;
 }
 @media (max-width: 599px) {
   /* One chip, the fact kept: the number alone when the word does not fit. */
   .top-chapter-w {
     display: none;
+  }
+}
+/* BOOK-89's folio is the first row's last item below 768; the chapter cluster keeps the left. */
+@media (max-width: 767px) {
+  .top-row:first-child .folio {
+    margin-inline-start: auto;
   }
 }

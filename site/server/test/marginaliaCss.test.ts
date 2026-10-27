@@ -47,10 +47,11 @@ describe('the four tokens, and where they live', () => {
   });
 
   it('keeps the column frame as it was: --shell and --measure are not touched', () => {
-    expect(tokens).toContain('--shell: 1000px;');
-    expect(tokens).toContain('--measure: 33.75rem;');
-    expect(base).toContain('max-width: calc(var(--measure) + 2 * var(--gut));');
-    for (const forbidden of ['--shell', '--measure']) expect(sheet).not.toContain(forbidden);
+    // BOOK-88/BOOK-92: the one column is `--column` (1000 px) and the prose keeps `--measure`.
+    expect(tokens).toContain('--column: 1000px;');
+    expect(tokens).toContain('--measure: 37.5rem;');
+    expect(base).toContain('max-width: var(--column);');
+    for (const forbidden of ['--shell', '--column', '--measure']) expect(sheet).not.toContain(forbidden);
     // `--gut` only pads a sheet (the phone one and the measured-guard sheet), never the
     // channel's geometry.
     const gutLines = sheet.split('\n').filter((line) => line.includes('var(--gut)'));

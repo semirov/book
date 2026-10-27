@@ -79,12 +79,15 @@ export function wingOfChapter(chapter: number, origin: number): Wing | 'origin' 
   return chapter < origin ? 'down' : 'up';
 }
 
-/** The wing's one-word state; never a percentage and never a verdict. */
+/**
+ * The wing's one-word state; never a percentage and never a verdict. A wing that has finished
+ * its work has «остановилось» — the verb's tense is the finality, not a colour (BOOK-70).
+ */
 export function wingStateCopy(state: CascadeWingDto['state']): string {
   if (state === 'waiting') return 'не открылось';
   if (state === 'moving') return 'идёт';
   if (state === 'stopped') return 'остановлено';
-  return 'держится';
+  return 'остановилось';
 }
 
 /**
@@ -97,9 +100,13 @@ export function wingLine(side: Wing, wing: RibbonWing): string {
   return `${WING_WORDS[side]}${wave} · ${wingStateCopy(wing.state)}`;
 }
 
-/** «07 · 06» — reached chapters, nearest first; an unopened wing says so without a number. */
+/**
+ * «07 · 06» — reached chapters, nearest first. An empty wing prints nothing at all: the state
+ * word already stands in `wingLine`, and a second «не открылось» is the same fact twice, while
+ * «дальше держится» is a claim the data does not make (BOOK-70).
+ */
 export function wingReachedCopy(wing: RibbonWing): string {
-  if (wing.reached.length === 0) return wing.state === 'waiting' ? 'не открылось' : 'дальше держится';
+  if (wing.reached.length === 0) return '';
   return wing.reached.map((chapter) => String(chapter).padStart(2, '0')).join(' · ');
 }
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { FocusView } from './FocusView.tsx';
-import { FocusTrack } from './FocusWings.tsx';
+import { FocusTrack, FocusWings } from './FocusWings.tsx';
 
 const change: ChangeDto = {
   id: 'chg_1',
@@ -246,6 +246,15 @@ describe('the focus view', () => {
     expect(at7).toContain('вверх · идёт');
     expect(at7).not.toContain('вниз: глава');
     expect(at9).toContain('data-chapter="9"');
+  });
+
+  it('prints nothing for a wing that reached nothing — no dash, no empty span (BOOK-70)', () => {
+    const empty = { frontier: 8, wave: 0, state: 'waiting' as const, reached: [] };
+    const html = renderToStaticMarkup(<FocusWings wings={{ down: empty, up: empty }} />);
+    expect(html).not.toContain('focus-wing-r');
+    expect(html).not.toContain('—');
+    // The state word still says it, once, in the wing's own line.
+    expect(html.match(/не открылось/gu)).toHaveLength(2);
   });
 
   it('shows a dropped change’s reason and does not type', () => {

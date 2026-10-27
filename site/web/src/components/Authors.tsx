@@ -1,8 +1,11 @@
 import { formatShare, type AuthorsDto, type MyDecisionsDto, type MyTraceDto } from '@book/shared';
 
 import { formatDate } from '../lib/format.ts';
+import type { PendingStage } from '../lib/pending.ts';
+import { statusLine } from '../lib/skeleton.ts';
 import { OwnDecisions } from './OwnDecisions.tsx';
 import { OwnTrace } from './OwnTrace.tsx';
+import { Skeleton } from './Skeleton.tsx';
 
 /**
  * «Авторы» — the end matter, after chapter 67 (§6C.5, §11.8).
@@ -15,9 +18,18 @@ import { OwnTrace } from './OwnTrace.tsx';
  * listed: they are the process, not persons (§6C.5 rule 3).
  *
  * No publisher, no ISBN, no year: the imprint is config (§6C.6) and F020 keeps it exact.
+ *
+ * BOOK-DOC-43 §4, §6, §7 — the shares are a measurement, and a measurement has a wait
+ * (BOOK-66). While it runs, the roster is the form of three rows and the meta line says
+ * «доли считаются»; the sentence «пока весь текст написан автором» is printed only for a
+ * measurement that came back, because it is a fact about the text, not a placeholder. A
+ * failed read is silent: the author row keeps its honest «—» and there is no retry.
  */
 export function Authors({
   authors,
+  stage = 'quiet',
+  busy,
+  authorsFailed = false,
   imprint,
   lastRevisionAt,
   onOpenChronicle,
@@ -27,6 +39,15 @@ export function Authors({
   decisions = null,
 }: {
   authors: AuthorsDto | null;
+  /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
+  stage?: PendingStage;
+  /**
+   * BOOK-DOC-43 §7 — busy for the **whole** request (data or failure), not from 150 ms.
+   * Absent derives it from `stage`, so an old caller keeps the old markup.
+   */
+  busy?: boolean;
+  /** The measurement failed: «—» stays, and no sentence claims the list is empty. */
+  authorsFailed?: boolean;
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
   onOpenChronicle: () => void;
@@ -38,32 +59,66 @@ export function Authors({
   decisions?: MyDecisionsDto | null;
 }) {
   const contributors = authors?.contributors ?? [];
+  /** `null` while the shares are quiet; the one §6 sentence otherwise. */
+  const status = statusLine('authors', stage);
+  const pending = busy ?? stage !== 'quiet';
+  /**
+   * An empty roster is a claim, and it may only be made about a measurement that came back:
+   * `null` is either a wait or a failure, and both keep the sentence off the page.
+   */
+  const settledEmpty = authors !== null && !authorsFailed && contributors.length === 0;
   return (
     // BOOK-77 (audit F1): a reader's display name is in here, so Webvisor must not record it.
-    <section className="page authors ym-hide-content" id="авторы" aria-label="авторы">
+    <section
+      className="page authors ym-hide-content"
+      id="авторы"
+      aria-label="авторы"
+      aria-busy={pending ? 'true' : undefined}
+    >
       <h2 className="authors-title">Авторы</h2>
       <p className="authors-note">
         доля в окончательном тексте: знаки, чья последняя причина — правка читателя; автор — остальное
       </p>
-      <ol className="authors-list">
-        <li className="authors-row is-author">
-          <span className="authors-name">{imprint.author}</span>
-          <span className="authors-role">автор</span>
-          <span className="authors-share">{authors === null ? '—' : formatShare(authors.author.share)}</span>
-        </li>
-        {contributors.map((contributor) => (
-          <li className="authors-row ym-disable-clickmap" key={contributor.identityId}>
-            <span className="authors-name">{contributor.label}</span>
-            <span className="authors-role">
-              {contributor.edits > 0 ? `правок: ${contributor.edits}` : 'читатель'}
-            </span>
-            <span className="authors-share">{formatShare(contributor.share)}</span>
+      {status === null ? (
+        <ol className="authors-list">
+          <li className="authors-row is-author">
+            <span className="authors-name">{imprint.author}</span>
+            <span className="authors-role">автор</span>
+            <span className="authors-share">{authors === null ? '—' : formatShare(authors.author.share)}</span>
           </li>
-        ))}
-      </ol>
-      {contributors.length === 0 ? (
-        <p className="authors-empty">пока весь текст написан автором: читательских правок в книге нет</p>
-      ) : null}
+          {contributors.map((contributor) => (
+            <li className="authors-row ym-disable-clickmap" key={contributor.identityId}>
+              <span className="authors-name">{contributor.label}</span>
+              <span className="authors-role">
+                {contributor.edits > 0 ? `правок: ${contributor.edits}` : 'читатель'}
+              </span>
+              <span className="authors-share">{formatShare(contributor.share)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        // The form of the roster, 3 rows inside the 132 px the slot reserves (§3). The author
+        // row is one of them: a real row beside the form would be a fact and a blank at once.
+        // The form keeps the list's box — the `ol` carries the 18 px top margin, so the
+        // content below does not move when the rows arrive; one `li` holds the hidden form.
+        <ol className="authors-list">
+          <li>
+            <Skeleton variant="authors" />
+          </li>
+        </ol>
+      )}
+      {status === null ? (
+        settledEmpty ? (
+          <p className="authors-empty">пока весь текст написан автором: читательских правок в книге нет</p>
+        ) : null
+      ) : (
+        // The status lives in the slot the sentence already owns, so it adds no height (§3).
+        <p className="authors-empty">
+          <span role="status" aria-live="polite" aria-atomic="true">
+            {status}
+          </span>
+        </p>
+      )}
       {ownTrace === null ? null : (
         <OwnTrace
           trace={ownTrace}

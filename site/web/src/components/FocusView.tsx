@@ -9,8 +9,11 @@ import { chapterLabel } from '@book/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryChapter, getHistoryDiff } from '../api.ts';
+import { statusLine } from '../lib/skeleton.ts';
+import { usePending } from '../usePending.ts';
 import { FocusShell } from './FocusShell.tsx';
 import { FocusTrack, FocusWings } from './FocusWings.tsx';
+import { Skeleton } from './Skeleton.tsx';
 import { inertBackground, reducedMotion, scrollToChapter } from '../dom.ts';
 import { ribbonMaxWave, type Ribbon } from '../lib/cascade.ts';
 import { relevanceCopy, stepLabel, wingGlyph } from '../lib/changeStatus.ts';
@@ -230,6 +233,16 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
     setReveal(printable.length === 0 ? null : createReveal(printable, { reducedMotion: reducedMotion() }));
   }, [printable]);
 
+  /**
+   * BOOK-DOC-43 §4, §6, §7 (BOOK-66) — the change's read has a wait: `busy` is true from the
+   * request until it settles, data or failure, so `aria-busy` covers the whole request while
+   * the §6 sentence and the form appear only once the wait is real (150 ms). A failure is not
+   * a longer wait: `missing` already replaces this whole state with the not-found block.
+   */
+  const busy = change === null && !missing;
+  const waitStage = usePending(busy);
+  const waitStatus = statusLine('sheet', waitStage);
+
   if (missing) {
     return (
       <FocusShell dialog={dialog} onClose={close}>
@@ -246,14 +259,28 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
   }
 
   if (change === null) {
+    // The wait itself: the bar's number slot says nothing until 150 ms, then the §6
+    // sentence; below it the form of the lit sheet (2 paragraphs of 2 lines, 176 px). No
+    // paper: the sheet is what is being filled, not a blank page printed ahead of the text.
     return (
-      <FocusShell dialog={dialog} onClose={close}>
+      <FocusShell dialog={dialog} onClose={close} busy>
         <div className="focus-bar">
           <span className="focus-tag">прицел</span>
-          <span className="focus-n">правка читается</span>
+          <span className="focus-n">
+            {waitStatus === null ? null : (
+              <span role="status" aria-live="polite" aria-atomic="true">
+                {waitStatus}
+              </span>
+            )}
+          </span>
           <button className="focus-exit" type="button" onClick={close}>
             выйти
           </button>
+        </div>
+        <div className="focus-body">
+          <section className="focus-stage" aria-label="лист правки">
+            {waitStage === 'quiet' ? null : <Skeleton variant="sheet" />}
+          </section>
         </div>
       </FocusShell>
     );
@@ -347,7 +374,7 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
           <section className="focus-note ym-hide-content" aria-label={footnoteCopy(change)}>
             <header className="focus-note-h">
               <span>{footnoteCopy(change)}</span>
-              <span className="focus-stamp">{panelStamp(change)}</span>
+              <span className="focus-stamp stamp-state">{panelStamp(change)}</span>
             </header>
             <dl className="focus-rows">
               <div>
