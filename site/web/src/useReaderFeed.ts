@@ -35,6 +35,13 @@ export function useReaderFeed() {
   const [comments, setComments] = useState<CommentDto[]>([]);
   const [chapterFeed, setChapterFeed] = useState<Record<number, ChapterFeed>>({});
   const [decisions, setDecisions] = useState<MyDecisionsDto | null>(null);
+  /**
+   * BOOK-DOC-43 §4 — the register's wait (BOOK-66). The thread's two feeds are one surface:
+   * `0 замечаний` before the answer is a claim of emptiness, and a failure is not a longer
+   * wait. Set when both initial requests answered *or* failed; a later frame refreshes rows
+   * and must not put the surface back into a waiting state.
+   */
+  const [threadSettled, setThreadSettled] = useState(false);
   /** The viewer's own comment ids: the key that turns a frame into «ваша правка». */
   const ownComments = useRef<Set<string>>(new Set());
   /** Which chapters were already requested once; a second scroll does not re-ask. */
@@ -71,6 +78,17 @@ export function useReaderFeed() {
     }
     if (chapter !== undefined) await refreshChapter(chapter);
   }, [refreshChapter]);
+
+  /**
+   * The thread's first read (BOOK-DOC-43 §4): the register waits until **both** feeds
+   * answered or failed, and a failure settles too — the thread is a view and has no retry.
+   * A later refresh (`refreshChanges`, `refreshComments`, a reconnect) never turns the wait
+   * back on: content moving is not a surface opening.
+   */
+  const loadThread = useCallback(async () => {
+    await Promise.allSettled([refreshChanges(), refreshComments()]);
+    setThreadSettled(true);
+  }, [refreshChanges, refreshComments]);
 
   const loadChapter = useCallback(async (chapter: number) => {
     if (asked.current.has(chapter)) return;
@@ -126,6 +144,8 @@ export function useReaderFeed() {
     comments,
     chapterFeed,
     decisions,
+    threadSettled,
+    loadThread,
     refreshChanges,
     refreshComments,
     loadChapter,

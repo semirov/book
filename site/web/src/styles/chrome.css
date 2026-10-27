@@ -194,6 +194,25 @@ p.premise {
   letter-spacing: 0.14em;
 }
 
+/* BOOK-DOC-43 §3 — the boot field is the cover's frame (BOOK-66); the sentence is absolute. */
+.boot-wait {
+  min-height: min(67.5vh, 720px);
+  min-height: min(67.5svh, 720px);
+  position: relative;
+}
+.boot-status {
+  position: absolute;
+  inset-inline: var(--gut);
+  top: calc(env(safe-area-inset-top) + 24px);
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 /* ---------- page 2: the annotation as the book's first prose (BOOK-DOC-5 §3) ---------- */
 .annotation {
   padding-top: 56px;

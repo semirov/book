@@ -113,3 +113,87 @@ describe('the register’s counters', () => {
     expect(html).not.toContain('станет её замыслом');
   });
 });
+
+/**
+ * BOOK-DOC-43 §10 — a count of zero is a claim, printed before the feed answered (BOOK-66).
+ *
+ * The register's two feeds settle together (`useReaderFeed.threadSettled`), so this surface
+ * receives one stage: while it waits the meta slot says what is happening, the body holds the
+ * form of three rows, and the empty-state fine print stays off the page. A failure settles to
+ * `quiet` — the thread is a view and has no retry of its own.
+ */
+describe('the register while its feed is landing', () => {
+  function markup(comments: readonly CommentDto[], stage: 'quiet' | 'skeleton' | 'slow'): string {
+    return renderToStaticMarkup(<Discussion depth={0} stage={stage} comments={comments} />);
+  }
+
+  it('says what is loading instead of «0 замечаний», and holds the form of three rows', () => {
+    const html = markup([], 'skeleton');
+    expect(html).toContain('замечания читаются');
+    expect(html).toContain('class="skel skel-register"');
+    expect(html).toContain('aria-busy="true"');
+    // The false facts of §10: a count of nothing and a teaching line about rows that are not there.
+    expect(html).not.toContain('0 замечаний');
+    expect(html).not.toContain('Их читают как данные');
+    expect(html).not.toContain('class="comments"');
+    // Exactly one status, and it sits in the meta slot the surface already has.
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
+    expect(html).toMatch(/<span class="sec-meta"><span role="status"/u);
+    // The queue line has its own, already-settled source: it is not a second waiting claim.
+    expect(html).toContain('в очереди <b>0</b> правок');
+  });
+
+  it('carries the slow sentence in the same slot, still without the count', () => {
+    const html = markup([], 'slow');
+    expect(html).toContain('замечания идут дольше обычного · строки появятся здесь же');
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
+    expect(html).not.toContain('0 замечаний');
+  });
+
+  it('goes back to the count when the feed lands: no status, no form, no busy claim', () => {
+    const html = markup([comment()], 'quiet');
+    expect(html).toContain('1 замечание');
+    expect(html).toContain('class="comments"');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('class="skel');
+    expect(html).not.toContain('aria-busy');
+  });
+
+  it('is busy for the whole request, not from the 150 ms sentence (§7 alignment)', () => {
+    // The attribute is the wait's fact; the sentence is what the reader sees of it. Before the
+    // threshold the register is busy and says nothing — the same rule ChapterArticle follows.
+    const html = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy comments={[]} />);
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('class="skel');
+    // Settled: the claim is removed, not set to «false».
+    const settled = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy={false} comments={[]} />);
+    expect(settled).not.toContain('aria-busy');
+  });
+
+  it('is silent after a failure: no status, no form, the settled-empty line stands', async () => {
+    // A failure settles to `quiet`; nothing on this surface may keep waiting after it — and a
+    // wait is the only state that shows the form, so the pair below proves the settle matters.
+    // The app's two feeds settle together (`Promise.allSettled` in `useReaderFeed`), so a
+    // rejection lands as a settled thread: `usePending(!threadSettled)` returns `quiet`.
+    const settled = await Promise.allSettled([Promise.reject(new Error('changes')), Promise.reject(new Error('comments'))]);
+    expect(settled.map((outcome) => outcome.status)).toEqual(['rejected', 'rejected']);
+    const stage = settled.every((outcome) => outcome.status === 'fulfilled') ? 'skeleton' : 'quiet';
+    expect(stage).toBe('quiet');
+
+    // While the feeds are in flight the surface does show the form; the settle is what removes it.
+    const waiting = markup([], 'skeleton');
+    expect(waiting).toContain('замечания читаются');
+    expect(waiting).toContain('class="skel skel-register"');
+    expect(waiting).toContain('role="status"');
+
+    const html = markup([], stage);
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('class="skel');
+    expect(html).not.toContain('aria-busy');
+    // Still the register, not a blank slot: the settled-empty teaching line stands.
+    expect(html).toContain('class="page talks');
+    expect(html).toContain('Их читают как данные');
+    expect(html).not.toBe(waiting);
+  });
+});

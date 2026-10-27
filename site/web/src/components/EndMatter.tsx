@@ -2,6 +2,7 @@ import type { AuthorsCountDto, AuthorsDto, MyDecisionsDto, MyTraceDto } from '@b
 import { useCallback, useEffect, useState } from 'react';
 
 import { getAuthors, getMyTrace, postAuthorsHide } from '../api.ts';
+import { usePending } from '../usePending.ts';
 import { Authors } from './Authors.tsx';
 
 /**
@@ -33,14 +34,27 @@ export function EndMatter({
   decisions?: MyDecisionsDto | null;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
+  /**
+   * BOOK-DOC-43 §4 — the shares have a wait, and «—» must not stand for two different things
+   * (BOOK-66). `authorsSettled` turns true when the request answered **or** failed, so the
+   * surface leaves the waiting state on either outcome; `authorsFailed` keeps the failure
+   * distinguishable from a measurement that came back empty. A later re-measure (opening the
+   * chronicle, hiding from the list) refreshes the numbers without re-arming the wait.
+   */
+  const [authorsSettled, setAuthorsSettled] = useState(false);
+  const [authorsFailed, setAuthorsFailed] = useState(false);
   const [ownTrace, setOwnTrace] = useState<MyTraceDto | null>(null);
   const [hidePending, setHidePending] = useState(false);
 
   const load = useCallback(async (fresh = false) => {
     try {
       setAuthors(await getAuthors({ fresh }));
+      setAuthorsFailed(false);
     } catch {
       /* the end matter keeps the author and the copyright; the shares stay «—» */
+      setAuthorsFailed(true);
+    } finally {
+      setAuthorsSettled(true);
     }
   }, []);
 
@@ -83,9 +97,18 @@ export function EndMatter({
     [load, onAuthorsCount],
   );
 
+  /**
+   * §4: the wait is real from the request until it settles, data or failure. §7: `busy` is
+   * the same flag — true for the whole request, not from the 150 ms threshold.
+   */
+  const stage = usePending(!authorsSettled);
+
   return (
     <Authors
       authors={authors}
+      stage={stage}
+      busy={!authorsSettled}
+      authorsFailed={authorsFailed}
       imprint={imprint}
       lastRevisionAt={lastRevisionAt}
       onOpenChronicle={() => {

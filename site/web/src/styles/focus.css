@@ -473,3 +473,13 @@ body.is-focus {
     animation: none;
   }
 }
+
+/* ---------- the wait's form (BOOK-DOC-43 §3, §5, BOOK-66) ---------- */
+/* The placeholder sits in the sheet's area without the paper: the lit sheet is what is being
+   filled, not a blank page printed ahead of the text. Its bars take the day-sheet's own
+   pencil line (#8b9291 on #cfd3d2, the value `.focus-paper` sets), so on the dark ground of
+   the dialog they read as a form with blank fields. No new geometry: the 176 px reserve and
+   the 120 ms fade live in `skeleton.css`. */
+.focus-stage .skel-sheet {
+  --rule-2: #8b9291;
+}

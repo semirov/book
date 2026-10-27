@@ -151,13 +151,20 @@ describe('the chronicle’s surface (§11.10)', () => {
     expect(html).toContain('class="scrub-ticks"');
     expect(html).not.toMatch(/style=/u);
     expect(html).toContain('сейчас');
-    expect(html).toContain('пока ничего не записано');
+    // BOOK-DOC-43 §10 (BOOK-66): an absence is a fact about an answer, so «пока ничего не
+    // записано» is not printed while the timeline is still in flight, and the list is not
+    // rendered empty. The surface is busy for the whole request, from the first render.
+    expect(html).not.toContain('пока ничего не записано');
+    expect(html).not.toContain('chr-timeline');
+    expect(html).toContain('aria-busy="true"');
     // The past is not offered before a moment is chosen.
     expect(html).not.toContain('вернуться к «сейчас»');
   });
 
   it('renders a paragraph chain with the SPEC’s copy and every version', () => {
-    const html = renderToStaticMarkup(<ParagraphChain chain={CHAIN} loading={false} onClose={() => undefined} />);
+    const html = renderToStaticMarkup(
+      <ParagraphChain chain={CHAIN} loading={false} failed={false} onClose={() => undefined} onRetry={() => undefined} />,
+    );
     expect(html).toContain('откуда эта фраза');
     expect(html).toContain('переписано в 14:20 правкой 7 (Марк) · было: правка 3 (Аня)');
     expect(html).toContain('эта строка сейчас в тексте · глава 8');
@@ -167,10 +174,39 @@ describe('the chronicle’s surface (§11.10)', () => {
     expect(html).not.toContain('Тестовая глава');
   });
 
-  it('says so when a paragraph has no history', () => {
-    const html = renderToStaticMarkup(<ParagraphChain chain={null} loading={false} onClose={() => undefined} />);
-    expect(html).toContain('у этой строки нет истории');
-    const loading = renderToStaticMarkup(<ParagraphChain chain={null} loading onClose={() => undefined} />);
-    expect(loading).toContain('цепочка читается');
+  it('says so when a paragraph has no history — and only then', () => {
+    const empty = renderToStaticMarkup(
+      <ParagraphChain chain={null} loading={false} failed={false} onClose={() => undefined} onRetry={() => undefined} />,
+    );
+    expect(empty).toContain('у этой строки нет истории');
+    // BOOK-DOC-43 §4 (BOOK-66): before 150 ms the panel shows only its head. The threshold
+    // itself is proven in `paragraphChain.dom.test.tsx`; here the first render is quiet.
+    const loading = renderToStaticMarkup(
+      <ParagraphChain chain={null} loading failed={false} onClose={() => undefined} onRetry={() => undefined} />,
+    );
+    expect(loading).not.toContain('у этой строки нет истории');
+    expect(loading).not.toContain('цепочка читается');
+    expect(loading).not.toContain('role="status"');
+    expect(loading).toContain('aria-busy="true"');
+  });
+});
+
+/**
+ * BOOK-DOC-43 §4, §6, §7 — the timeline's wait (BOOK-66).
+ *
+ * The first render is the quiet one: the surface is busy from the request, and nothing below
+ * the scrubber claims a fact it does not hold. The two thresholds (150 ms, 2 000 ms) and the
+ * settle are proven in `chronicle.dom.test.tsx`, where a clock exists.
+ */
+describe('the chronicle while the timeline is in flight', () => {
+  it('is busy from the request and prints no absence before the answer', () => {
+    const html = renderToStaticMarkup(
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} />,
+    );
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('class="skel');
+    expect(html).not.toContain('пока ничего не записано');
+    expect(html).not.toContain('chr-timeline');
   });
 });

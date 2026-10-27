@@ -135,4 +135,89 @@ describe('BOOK-DOC-35 — the styles guard', () => {
     expect(problems).toEqual([]);
     expect(MIN_FONT_PX).toBe(12);
   });
+
+  it('fails a shimmer, a spinner and a hand-built moving gradient, on their own lines', () => {
+    const problems = seeded({
+      'bg.css': ['.x { width: 10px; }', '.y { background-position: 0 0; }', ''].join('\n'),
+      'shimmer.css': ['.a { color: var(--ink); }', '.a::after { animation-name: shimmer; }', ''].join('\n'),
+      'spinner.css': ['.s .spinner { width: 12px; }', ''].join('\n'),
+    });
+    expect(problems.map((problem) => `${problem.file.split('/').pop()}:${problem.line}`)).toEqual([
+      'bg.css:2',
+      'shimmer.css:2',
+      'spinner.css:1',
+    ]);
+    expect(problems.map((problem) => problem.message)).toEqual([
+      'background-position — a moving gradient is a shimmer built by hand (BOOK-DOC-43 §5)',
+      'shimmer — a placeholder never animates time passing; it is a static form with blank fields (BOOK-DOC-43 §5)',
+      'spinner — a failing fetch is a sentence and a retry, never a spinner (chrome.css:173, BOOK-DOC-43 §5)',
+    ]);
+    // The house rule lives in a comment today: a commented word is not a declaration.
+    expect(seeded({ 'chrome.css': ['/* never a spinner, never a shimmer */', '.a { color: var(--ink); }', ''].join('\n') })).toEqual([]);
+  });
+
+  it('admits one fade in a .skel rule, and nothing else that moves', () => {
+    // The one legal motion: the exact shorthand, on the wrapper itself.
+    expect(
+      seeded({
+        'skel.css': [
+          '.skel {',
+          '  opacity: 1;',
+          '  animation: skel-in var(--dur-tick) var(--ease-out) both;',
+          '}',
+          '.skel-line::before { background: var(--rule-2); }',
+          '',
+        ].join('\n'),
+      }),
+    ).toEqual([]);
+
+    const problems = seeded({
+      'loop.css': ['.skel { opacity: 1; }', '.skel-register { animation: pulse 1s infinite; }', ''].join('\n'),
+      'named.css': ['.skel .skel-line { animation-name: blink; }', '.skel-p { animation-iteration-count: infinite; }', ''].join('\n'),
+      // The two false negatives the review found: a descendant selector and a longhand that
+      // overrides the otherwise legal shorthand.
+      'nested.css': ['.focus-stage .skel-sheet { animation: pulse 1s infinite; }', ''].join('\n'),
+      'override.css': ['.skel { animation: skel-in var(--dur-tick) var(--ease-out) both; animation-duration: 4s; }', ''].join('\n'),
+    });
+    expect(problems.map((problem) => `${problem.file.split('/').pop()}:${problem.line}`)).toEqual([
+      'loop.css:2',
+      'named.css:1',
+      'named.css:2',
+      'nested.css:1',
+      'override.css:1',
+    ]);
+    expect(problems[0]?.message).toBe(
+      'animation: pulse 1s infinite — a .skel rule admits only «skel-in var(--dur-tick) var(--ease-out) both», the one 120 ms fade in (BOOK-DOC-43 §5)',
+    );
+    // A longhand is a problem by name — including `animation-name: skel-in`, which overrides
+    // the shorthand instead of restating it.
+    expect(problems[1]?.message).toBe(
+      'animation-name: blink — the shorthand «skel-in var(--dur-tick) var(--ease-out) both» is the only motion a placeholder owns; a longhand such as animation-name overrides it (BOOK-DOC-43 §5)',
+    );
+    expect(problems[2]?.message).toBe(
+      'animation-iteration-count: infinite — the shorthand «skel-in var(--dur-tick) var(--ease-out) both» is the only motion a placeholder owns; a longhand such as animation-iteration-count overrides it (BOOK-DOC-43 §5)',
+    );
+    expect(problems[3]?.message).toBe(
+      'animation: pulse 1s infinite — a .skel rule admits only «skel-in var(--dur-tick) var(--ease-out) both», the one 120 ms fade in (BOOK-DOC-43 §5)',
+    );
+    expect(problems[4]?.message).toBe(
+      'animation-duration: 4s — the shorthand «skel-in var(--dur-tick) var(--ease-out) both» is the only motion a placeholder owns; a longhand such as animation-duration overrides it (BOOK-DOC-43 §5)',
+    );
+  });
+
+  it('reads the last compound of a selector: a child, a descendant and a pseudo-element are silent when still', () => {
+    expect(
+      seeded({
+        'clean.css': [
+          '.page > .skel-chapter { color: var(--ink); }',
+          '@media (max-width: 599px) { .skel-x { color: var(--ink); } }',
+          '.skel-line:hover::before { background: var(--rule); }',
+          '/* .skel { animation: pulse 1s infinite; } — a commented rule is not a rule */',
+          '',
+        ].join('\n'),
+      }),
+    ).toEqual([]);
+    // A skeleton class that is only a name prefix is not the skeleton: `.skeleton` is no rule.
+    expect(seeded({ 'x.css': ['.skeleton { animation: pulse 1s infinite; }', ''].join('\n') })).toEqual([]);
+  });
 });

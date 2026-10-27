@@ -10,6 +10,7 @@ import './styles/base.css';
 import './styles/chrome.css';
 import './styles/consent.css';
 import './styles/book.css';
+import './styles/skeleton.css';
 import './styles/live.css';
 import './styles/cascade.css';
 import './styles/ribbon.css';
