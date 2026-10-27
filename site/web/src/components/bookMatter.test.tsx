@@ -326,14 +326,16 @@ const visibleText = (row: string): string => textOf(row.replace(/<span class="sr
 describe('the live table of contents', () => {
   const html = renderToStaticMarkup(<TableOfContents catalog={catalog} state={state} currentChapter={null} />);
 
-  it('has one row per slot: 2 frame sentences, 65 state words, 0 invented labels', () => {
+  it('has one row per slot: 2 frame sentences, 65 rows with no text at all, 0 invented labels', () => {
     const rows = tocRows(html);
     expect(rows).toHaveLength(67);
-    expect(rows.filter((row) => row.includes('toc-text'))).toHaveLength(67);
-    const state = rows.filter((row) => row.includes('toc-state'));
-    expect(state).toHaveLength(65);
-    // BOOK-89: an empty slot reads numeral, «замысел», page — in that order, nothing else.
-    for (const row of state) expect(visibleText(row).trim()).toMatch(/^\d{2}замысел\d+$/u);
+    expect(rows.filter((row) => row.includes('toc-text'))).toHaveLength(2);
+    const empty = rows.filter((row) => !row.includes('toc-text'));
+    expect(empty).toHaveLength(65);
+    // BOOK-112: an empty slot is its numeral and its page — no state word, nothing else.
+    for (const row of empty) expect(visibleText(row).trim()).toMatch(/^\d{2}\d+$/u);
+    expect(html).not.toContain('toc-state');
+    expect(html).not.toContain('замысел');
   });
 
   it('opens only the rows that carry prose; the other 65 stay inert but are exposed', () => {
@@ -393,8 +395,8 @@ describe('the live table of contents', () => {
     expect(row).not.toContain('→');
     expect(row).not.toMatch(/^<li[^>]*aria-hidden/u);
     expect(row).not.toContain('<a ');
-    // The row still carries its numeral, its state word, its own page — and no invented title.
-    expect(visibleText(row).trim()).toBe('05замысел5');
+    // The row still carries its numeral and its own page — and no invented title or state word.
+    expect(visibleText(row).trim()).toBe('055');
     expect(rowPage(row)).toBe(5);
   });
 
@@ -420,7 +422,7 @@ describe('the live table of contents', () => {
     });
   });
 
-  it('sets the row as numeral, text, page — and an empty slot reads «07 замысел ······ 12»', () => {
+  it('sets the row as numeral, text, page — and an empty slot is its numeral and page alone', () => {
     const titled = catalog.map((item) =>
       item.n === 7 ? { ...item, written: true, title: 'Начало смены', rev: 1, chars: 50 } : item,
     );
@@ -431,7 +433,8 @@ describe('the live table of contents', () => {
     expect(row).not.toContain('·');
     const empty = tocRows(markup)[7] ?? '';
     expect(empty).toContain('toc-row-empty');
-    expect(visibleText(empty).trim()).toBe('08замысел8');
+    expect(empty).not.toContain('toc-text');
+    expect(visibleText(empty).trim()).toBe('088');
     expect(rowPage(empty)).toBe(8);
   });
 

@@ -2,7 +2,7 @@ import { AUTHOR_COLORS, type CommentDto, type FrontDto, type MyTraceDto, type St
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { chipCopy, queueLabel } from './format.ts';
+import { queueLabel } from './format.ts';
 import { wingLine, wingReachedCopy, wingStateCopy } from './cascade.ts';
 import { CHIP_MAX_CHARS, commentStatusLine, type CommentLine } from './commentView.ts';
 import { Colophon } from '../components/Colophon.tsx';
@@ -36,16 +36,6 @@ export type ChipPin = {
 };
 
 export const CHIP_PINS: readonly ChipPin[] = [
-  { surface: 'header · .live', condition: 'no chapter has text', text: 'глав ещё нет', length: 12, tier: 'state' },
-  { surface: 'header · .live', condition: 'no readable timestamp', text: '3 главы с текстом', length: 17, tier: 'state' },
-  { surface: 'header · .live', condition: 'no readable timestamp, eleven', text: '11 глав с текстом', length: 17, tier: 'state' },
-  {
-    surface: 'header · .live',
-    condition: 'a dated last entry (date only — never a clock)',
-    text: 'последняя запись · 25.10',
-    length: 24,
-    tier: 'state',
-  },
   { surface: 'discussion · .qline', condition: 'an empty queue', text: 'в очереди пусто', length: 15, tier: 'count' },
   { surface: 'discussion · .qline', condition: 'three changes waiting', text: 'в очереди 3 правки', length: 18, tier: 'count' },
   { surface: 'discussion · .qline', condition: 'eleven changes waiting', text: 'в очереди 11 правок', length: 19, tier: 'count' },
@@ -214,10 +204,6 @@ describe('the chip table (BOOK-70)', () => {
 
   it('is produced by the code that prints it, so the table cannot drift', () => {
     const text = (surface: string): string[] => CHIP_PINS.filter((pin) => pin.surface === surface).map((pin) => pin.text);
-    expect(chipCopy({ count: 0, lastChangeAt: null }).text).toBe(text('header · .live')[0]);
-    expect(chipCopy({ count: 3, lastChangeAt: null }).text).toBe(text('header · .live')[1]);
-    expect(chipCopy({ count: 11, lastChangeAt: null }).text).toBe(text('header · .live')[2]);
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T09:52:00Z' }).text).toBe(text('header · .live')[3]);
     expect(queueLabel(0)).toBe(text('discussion · .qline')[0]);
     expect(queueLabel(3)).toBe(text('discussion · .qline')[1]);
     expect(queueLabel(11)).toBe(text('discussion · .qline')[2]);
@@ -277,9 +263,12 @@ describe('the removed chips are gone from their surfaces', () => {
     vi.unstubAllGlobals();
   });
 
-  it('prints one chip in the header — the queue counter is gone, not emptied', () => {
+  it('prints no state line in the header — the chip is gone, not emptied', () => {
     const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live />);
-    expect(html).toContain('глав ещё нет');
+    // BOOK-112: the head prints the book's own title and nothing else.
+    expect(textOf(html)).toBe('Книга');
+    expect(html).not.toContain('class="live"');
+    expect(html).not.toContain('глав ещё нет');
     expect(html).not.toContain('class="queue"');
     expect(html).not.toContain('замечаний');
     expect(html).not.toContain('в очереди');

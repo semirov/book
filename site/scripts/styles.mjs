@@ -65,6 +65,11 @@ const DOCUMENTED_RELATIVE = new Set(['0.86em']);
  * line that carries a sentence beside it («правки идут по одной, в порядке записи»), and a chip
  * never carries a second voice.
  *
+ * BOOK-112 removed the header's `.live` chip from the reading surface: the state it stated
+ * (writing, revising, paused, the last entry's day, «глав ещё нет») belongs to panels, the
+ * chronicle and the end matter. The registry no longer lists it — a rule that no surface may
+ * print cannot be kept alive as a chip.
+ *
  * `tier` decides which checks apply:
  *
  *   - `state` — one fact, one word or one short clause: 12 px label, one of two inks, one line;
@@ -73,11 +78,6 @@ const DOCUMENTED_RELATIVE = new Set(['0.86em']);
  *   - `sentence` — a clause or a receipt that no chip can hold: 14 px, sentence case, may wrap.
  */
 export const CHIP_SELECTORS = Object.freeze([
-  {
-    selector: '.live',
-    tier: 'state',
-    fact: 'the chapter being written or revised, a paused/throttled engine, or the day of the last entry',
-  },
   { selector: '.ch-print', tier: 'state', fact: 'this chapter is printing now' },
   { selector: '.sec-meta', tier: 'count', fact: 'how many filings there are — or «замечаний нет»' },
   { selector: '.seam-filing-n', tier: 'ref', fact: 'the filing’s own record suffix («№A7K»)' },

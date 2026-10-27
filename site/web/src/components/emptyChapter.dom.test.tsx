@@ -109,7 +109,7 @@ describe('the premise strip in an empty chapter', () => {
     }
   });
 
-  it('prints the explanation sentence exactly once with the strip open', async () => {
+  it('prints the explanation sentence only in the first empty chapter’s own open strip', async () => {
     const count = (): number => (document.body.textContent ?? '').split(PREMISE_HINT).length - 1;
     await act(async () => {
       root?.render(
@@ -138,16 +138,16 @@ describe('the premise strip in an empty chapter', () => {
         </>,
       );
     });
-    // Closed: the row carries it, the strip does not exist.
-    expect(count()).toBe(1);
+    // BOOK-112: the flow row prints no explanation — a closed strip has no sentence on the page.
+    expect(count()).toBe(0);
     const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
     await act(async () => row?.click());
-    // Open: the strip carries it, the row does not — never both.
+    // Open: the first empty chapter's strip carries it, the row still does not.
     expect(container.querySelector('#ch-7 .seam')).not.toBeNull();
     expect(count()).toBe(1);
   });
 
-  it('keeps one sentence when another chapter’s strip is open and the first row is closed', async () => {
+  it('keeps the sentence out of another chapter’s strip while the first row is closed', async () => {
     const count = (): number => (document.body.textContent ?? '').split(PREMISE_HINT).length - 1;
     await act(async () => {
       root?.render(
@@ -179,8 +179,8 @@ describe('the premise strip in an empty chapter', () => {
     const other = container.querySelector<HTMLElement>('#ch-8 .premise-row');
     await act(async () => other?.click());
     expect(container.querySelector('#ch-8 .seam')).not.toBeNull();
-    // The first row still carries the page's one sentence; the other chapter's strip is silent.
-    expect(count()).toBe(1);
+    // The flow row carries nothing, and the other chapter's strip is silent: count 0.
+    expect(count()).toBe(0);
   });
 
   it('prints nothing in a non-first chapter’s strip: the first row owns the sentence', async () => {
@@ -245,7 +245,7 @@ describe('the premise strip in an empty chapter', () => {
     expect(after?.className).not.toContain('ch-empty');
   });
 
-  it('names the slot’s own word in the row and keeps the leader in an empty field', async () => {
+  it('keeps the row to its number and the leader, with no word lifted from the title', async () => {
     await act(async () => {
       root?.render(
         <ChapterArticle
@@ -261,8 +261,7 @@ describe('the premise strip in an empty chapter', () => {
       );
     });
     const row = container.querySelector('.premise-row');
-    expect(row?.textContent).toContain('07');
-    expect(row?.textContent).toContain('Перевод смены');
+    expect(row?.textContent).toBe('07');
     expect(row?.querySelector('.premise-leader')).not.toBeNull();
   });
 });

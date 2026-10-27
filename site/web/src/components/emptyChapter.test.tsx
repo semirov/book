@@ -8,9 +8,9 @@ import { ChapterArticle } from './ChapterArticle.tsx';
 /**
  * BOOK-90 A — the empty chapter is one row, once.
  *
- * One numeral, one word, one dotted field; no `ch-h`, no big `ch-n`, no meta line. The one
- * explanation sentence is the page's and is printed under the first empty chapter only, from
- * the `firstEmpty` data the renderer passes — never a global flag, never a timer.
+ * One numeral, one dotted field — or the premise's own quote; no `ch-h`, no big `ch-n`, no
+ * meta line, and **no explanation sentence**: BOOK-112 takes the interface's words off the
+ * reading surface, so the flow prints the book's numbers and the reader's words alone.
  */
 
 const sheets = import.meta.glob<string>('../styles/*.css', {
@@ -59,7 +59,7 @@ function article(row: CatalogEntry, firstEmpty = false): string {
 
 const count = (html: string, needle: string): number => html.split(needle).length - 1;
 
-describe('one row, one numeral, one hint', () => {
+describe('one row, one numeral, no interface copy', () => {
   it('renders no heading and exactly one numeral per empty chapter', () => {
     const html = [article(entry(3), true), article(entry(4)), article(entry(5))].join('\n');
     expect(count(html, 'class="premise-n"')).toBe(3);
@@ -69,38 +69,27 @@ describe('one row, one numeral, one hint', () => {
     expect(html).not.toContain('не написана');
   });
 
-  it('prints the explanation sentence exactly once, under the first empty chapter', () => {
+  it('prints no explanation sentence and no state word in the flow, first empty chapter or not', () => {
     const html = [article(entry(3), true), article(entry(4)), article(entry(5))].join('\n');
-    expect(count(html, 'class="premise-hint"')).toBe(1);
-    // It is under chapter 3: the first hint follows the first row and precedes chapter 4.
-    const firstHint = html.indexOf('class="premise-hint"');
-    expect(html.slice(0, firstHint)).toContain('глава 3');
-    expect(html.slice(firstHint)).not.toContain('глава 3');
+    expect(html).not.toContain('class="premise-hint"');
+    expect(html).not.toContain('class="premise-label"');
+    expect(html).not.toContain('замысел');
   });
 
-  it('wires the hint as data: another first empty chapter moves it, nothing else changes', () => {
-    const html = [article(entry(3)), article(entry(4), true), article(entry(5))].join('\n');
-    expect(count(html, 'class="premise-hint"')).toBe(1);
-    const firstHint = html.indexOf('class="premise-hint"');
-    expect(html.slice(0, firstHint)).toContain('глава 4');
-    expect(html.slice(firstHint)).not.toContain('глава 4');
-  });
-
-  it('orders the row numeral → word → leader, and the leader is the field', () => {
+  it('orders the row numeral → leader, and the leader is the field', () => {
     const html = article(entry(7), true);
     const numeral = html.indexOf('class="premise-n"');
-    const word = html.indexOf('class="premise-label"');
     const leader = html.indexOf('class="premise-field premise-leader"');
     expect(numeral).toBeGreaterThan(-1);
-    expect(word).toBeGreaterThan(numeral);
-    expect(leader).toBeGreaterThan(word);
-    expect(html).toContain('aria-label="глава 7 · замысел"');
+    expect(leader).toBeGreaterThan(numeral);
+    expect(html).toContain('aria-label="глава 7"');
   });
 
-  it('gives the word slot to a real title, and keeps the quote for a held premise', () => {
+  it('never lifts the chapter title or a state word into the row', () => {
     const titled = article(entry(7, { title: 'Перевод смены' }));
-    expect(titled).toContain('class="premise-label">Перевод смены<');
+    expect(titled).not.toContain('Перевод смены');
     expect(titled).not.toContain('замысел');
+    expect(article(entry(8))).toContain('class="premise-field premise-leader"');
   });
 });
 
@@ -113,17 +102,13 @@ describe('the row’s geometry is the prose’s geometry', () => {
     expect(row).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
     // The hit area stays the column's whole width; only its content ends on the prose edge.
     expect(row).toContain('width: 100%');
-    expect(row).toContain('grid-template-columns: auto auto minmax(0, 1fr)');
+    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr)');
     expect(row).toContain('min-height: 44px');
-    // The hint is the same inset: it wraps on the prose's right edge and never sizes the box.
-    const hint = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-hint');
-    expect(hint).not.toContain('max-width');
-    expect(hint).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
-    // The numeral is the mono micro rung, tabular, and the word is the label register at 12.
+    // The numeral is the mono micro rung, tabular.
     expect(declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-n')).toContain('font-variant-numeric: tabular-nums');
-    const label = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-label');
-    expect(label).toContain('font-family: var(--label)');
-    expect(label).toContain('font-size: var(--fs-micro)');
+    // BOOK-112: no state slot is left in the sheet.
+    expect(sheets['../styles/seam-form.css'] ?? '').not.toContain('.premise-label');
+    expect(sheets['../styles/seam-form.css'] ?? '').not.toContain('.premise-hint');
     // No second heading rule is left for the empty slot.
     expect(sheets['../styles/live.css'] ?? '').not.toContain('.ch-empty .ch-n');
     expect(sheets['../styles/live.css'] ?? '').not.toContain('.ch-empty .ch-h');

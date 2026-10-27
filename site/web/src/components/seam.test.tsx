@@ -153,22 +153,24 @@ describe('the mark on a sentence', () => {
 });
 
 describe('the empty slot row', () => {
-  it('is a dotted field with the number and the word, not a call to action', () => {
+  it('is a dotted field with the number and no word, not a call to action', () => {
     const row = premiseRow(entry(7, { written: false, title: null }), null);
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
     expect(html).toContain('class="premise-row"');
     expect(html).toContain('07');
-    expect(html).toContain('замысел');
+    // BOOK-112: the row is the number and the field — no state word, no explanation.
+    expect(html).not.toContain('замысел');
+    expect(html).not.toContain('class="premise-label"');
     expect(html).not.toContain('style=');
     expect(html).not.toContain('Глава');
   });
 
-  it('shows the premise a chapter already holds, with its state', () => {
+  it('shows the premise a chapter already holds, with its own words and no state word', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, premise: true, status: 'accepted', anchor: { ...comment().anchor, blockId: null, quote: null } });
     const row = premiseRow(entry(7, { written: false, title: null }), premise);
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
-    expect(html).toContain('в комнате должен быть свет, но не от лампы');
-    // BOOK-90 §5: the state word belongs to the premise and is one of the three.
-    expect(html).toContain('ждёт');
+    expect(html).toContain('«в комнате должен быть свет, но не от лампы»');
+    // BOOK-112: the held premise's state stays in its own card, not in the flow row.
+    expect(html).not.toContain('ждёт');
   });
 });

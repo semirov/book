@@ -63,21 +63,18 @@ describe('premiseRow', () => {
   it('shows a dotted empty field while the slot holds nothing', () => {
     expect(premiseRow({ n: 7, written: false, basis: false }, null)).toEqual({
       n: 7,
-      word: 'замысел',
       quote: null,
       actionable: true,
     });
-    // BOOK-90 A.4: a real title takes the word's slot — the row is the same.
-    expect(premiseRow({ n: 7, written: false, basis: false, title: 'Перевод смены' }, null)?.word).toBe('Перевод смены');
   });
 
-  it('shows the premise instead, with its state word and one line', () => {
+  it('shows the premise instead, with its own first line and no state word', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, createdAt: '2026-10-20T09:00:00Z', status: 'accepted' });
     expect(premiseRow({ n: 7, written: false, basis: false }, premise)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
-      // BOOK-90 §5: a held premise speaks the same three words as every other surface.
-      word: 'ждёт',
     });
+    // BOOK-112: the row carries the reader's words, never the interface's state.
+    expect(JSON.stringify(premiseRow({ n: 7, written: false, basis: false }, premise))).not.toContain('ждёт');
   });
 
   it('has no row for a written or frozen chapter', () => {

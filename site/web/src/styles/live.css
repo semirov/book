@@ -148,15 +148,7 @@
   color: var(--ink-3);
 }
 
-/* BOOK-89 — an empty slot's state word: the flow's own state vocabulary (`.premise-label`
-   in seam-form.css), not a type voice. It sits in the text cell, so the leader still runs. */
-.toc-state {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
+/* ---------- BOOK-112: no state word in the contents — an empty slot is its number and page ---------- */
 
 /* ---------- the chapter caret blinks only while its lane writes (§11.3–11.4) ---------- */
 @keyframes blink {

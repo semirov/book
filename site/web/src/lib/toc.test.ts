@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   currentChapterOf,
-  SLOT_STATE_WORD,
   slotLabel,
   slotText,
   tocAriaLabel,
@@ -65,9 +64,8 @@ describe('slotText', () => {
     expect(slotText(entry(67, { basis: true }))).toBe(FRAME_LAST_SENTENCE);
   });
 
-  it('says «замысел» for a slot with no prose: the flow’s state word, never a title (BOOK-89)', () => {
-    expect(slotText(entry(3))).toBe(SLOT_STATE_WORD);
-    expect(slotText(entry(3))).toBe('замысел');
+  it('says nothing for a slot with no prose: no state word, no invented title (BOOK-112)', () => {
+    expect(slotText(entry(3))).toBeNull();
     // A basis flag outside the frame is not a sentence, and a written row with a broken title
     // line keeps its prose and says nothing — neither becomes a state word.
     expect(slotText(entry(8, { basis: true }))).toBeNull();
@@ -85,16 +83,16 @@ describe('tocEntry', () => {
     });
     // A written chapter with a broken title line keeps its prose reachable.
     expect(tocEntry(entry(2, { written: true, title: null }), null, 2)).toMatchObject({ text: null, link: true });
-    // An empty slot carries the state word and its page, and stays inert.
-    expect(tocEntry(entry(3), null, 3)).toMatchObject({ text: 'замысел', state: true, link: false, page: 3 });
+    // An empty slot prints no text at all — its number and page are the row — and stays inert.
+    expect(tocEntry(entry(3), null, 3)).toMatchObject({ text: null, link: false, page: 3 });
   });
 
-  it('never invents a label: the state word is a state, not a title', () => {
+  it('never invents a label: an empty row carries no state word and no title', () => {
     const row = tocEntry(entry(3), null, 3);
     expect(row.title).toBeNull();
-    expect(row.state).toBe(true);
-    expect(row.text).toBe('замысел');
+    expect(row.text).toBeNull();
     expect(JSON.stringify(row)).not.toContain('Глава');
+    expect(JSON.stringify(row)).not.toContain('замысел');
   });
 });
 
@@ -119,8 +117,7 @@ describe('tocParts', () => {
     expect(parts[0]?.entries[1]).toMatchObject({ n: 2, text: null, written: true, current: true });
     expect(parts[0]?.entries[2]).toMatchObject({
       n: 3,
-      text: 'замысел',
-      state: true,
+      text: null,
       written: false,
       link: false,
       current: false,
@@ -132,7 +129,7 @@ describe('tocParts', () => {
     expect(rows).toHaveLength(67);
     expect(rows[0]).toMatchObject({ n: 1, text: FRAME_FIRST_SENTENCE, link: true });
     expect(rows[66]).toMatchObject({ n: 67, text: FRAME_LAST_SENTENCE, link: true });
-    expect(rows.filter((row) => row.state)).toHaveLength(65);
+    expect(rows.filter((row) => row.text !== null)).toHaveLength(2);
     expect(rows.filter((row) => row.link)).toHaveLength(2);
   });
 
@@ -179,10 +176,10 @@ describe('the row’s page (BOOK-89)', () => {
     for (let index = 10; index < 67; index += 1) expect(after[index]).toBe((before[index] ?? 0) + 1);
   });
 
-  it('prints an empty chapter as the one page it occupies, with the state word', () => {
+  it('prints an empty chapter as the one page it occupies, with no text', () => {
     const rows = tocParts(basisCatalog, null).flatMap((part) => part.entries);
-    expect(rows[0]).toMatchObject({ n: 1, page: 1, link: true, state: false });
-    expect(rows[1]).toMatchObject({ n: 2, page: 2, link: false, state: true, text: 'замысел' });
+    expect(rows[0]).toMatchObject({ n: 1, page: 1, link: true, text: FRAME_FIRST_SENTENCE });
+    expect(rows[1]).toMatchObject({ n: 2, page: 2, link: false, text: null });
     expect(rows[66]).toMatchObject({ n: 67, page: 67, link: true });
   });
 });

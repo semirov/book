@@ -1,13 +1,7 @@
 import type { StateSnapshot } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import {
-  bandStyle,
-  chapterPercent,
-  liveChapter,
-  revisingChapter,
-  spineMarkers,
-} from './spine.ts';
+import { bandStyle, chapterPercent, spineMarkers } from './spine.ts';
 
 function state(overrides: Record<string, unknown> = {}): StateSnapshot {
   return {
@@ -116,33 +110,5 @@ describe('book geometry', () => {
 
   it('never collapses a one-chapter band below a visible width', () => {
     expect(bandStyle({ from: 8, to: 8, step: 8 }).width).toBe('0.4%');
-  });
-});
-
-describe('chrome copy', () => {
-  it('does not call a cascade a drafting position', () => {
-    const cascading = state({
-      current: { lane: 'forward', chapter: 9, kind: 'cascade', blockId: null, blockIndex: null, since: '' },
-    });
-    expect(liveChapter(cascading)).toBeNull();
-    expect(revisingChapter(cascading)).toBe(9);
-
-    const drafting = state({
-      current: { lane: 'forward', chapter: 9, kind: 'draft', blockId: null, blockIndex: null, since: '' },
-    });
-    expect(revisingChapter(drafting)).toBeNull();
-    expect(
-      revisingChapter(state({ current: { lane: 'forward', chapter: 'front', kind: 'front', blockId: null, blockIndex: null, since: '' } })),
-    ).toBeNull();
-  });
-
-  it('does not turn a title caret into a prose cursor', () => {
-    expect(liveChapter(state())).toBeNull();
-    expect(
-      liveChapter(state({ current: { lane: 'backward', chapter: 'front', kind: 'front', blockId: null, blockIndex: null, since: '' } })),
-    ).toBeNull();
-    expect(
-      liveChapter(state({ current: { lane: 'backward', chapter: 66, kind: 'draft', blockId: null, blockIndex: null, since: '' } })),
-    ).toEqual({ n: 66, lane: 'backward' });
   });
 });

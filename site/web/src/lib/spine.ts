@@ -93,21 +93,3 @@ export function bandStyle(cascade: SpineCascade): { left: string; width: string 
   const right = chapterPercent(cascade.to);
   return { left: `${left}%`, width: `${Math.max(0.4, right - left)}%` };
 }
-
-/** The draft cursor's chapter for the header chip and the «пишется глава N» copy. */
-export function liveChapter(state: StateSnapshot): { n: number; lane: Lane } | null {
-  const current = state.current;
-  if (current === null || current.kind !== 'draft' || current.chapter === 'front') return null;
-  return { n: current.chapter, lane: current.lane };
-}
-
-/**
- * The chapter a change is revising. The copy is «правится глава N», never «пишется»:
- * a revision is not a draft (§21.6), and showing one caret for both was revision 1's error.
- */
-export function revisingChapter(state: StateSnapshot): number | null {
-  const current = state.current;
-  if (current === null || current.chapter === 'front') return null;
-  if (current.kind !== 'cascade' && current.kind !== 'change') return null;
-  return current.chapter;
-}

@@ -1,10 +1,11 @@
 /**
- * BOOK-90 B — the running head's chapter slot: the number and the title (or the slot's own
- * word). It is one label line at 12 px with tabular figures: no new row at any width.
+ * BOOK-90 B / BOOK-112 — the running head's chapter slot: the number, and a real title when
+ * the chapter has one. It is one label line at 12 px with tabular figures: no new row at any
+ * width, and no state word.
  *
- * The chip is never clipped: when a title does not fit the head, the Header drops it for the
- * state word instead of ellipsizing it. Only the number reserves width (two tabular digits),
- * so 9 → 10 cannot move the word after it, and the chip grows to the right.
+ * The slot is never clipped: when a title does not fit the head, the Header drops it and the
+ * number stands alone instead of an ellipsis. Only the number reserves width (two tabular
+ * digits), so 9 → 10 cannot move the title after it, and the slot grows to the right.
  */
 .top-chapter {
   display: inline-flex;
@@ -12,7 +13,7 @@
   gap: 6px;
   flex: none;
   /* No fixed measure and no clipping: the chip either fits, or the title is dropped for the
-     state word (the Header measures it) — the head never shows an ellipsis. */
+     number alone (the Header measures it) — the head never shows an ellipsis. */
   white-space: nowrap;
   font-family: var(--label);
   font-size: var(--fs-micro);
@@ -27,7 +28,7 @@
   min-width: 2ch;
 }
 @media (max-width: 599px) {
-  /* One chip, the fact kept: the number alone when the word does not fit. */
+  /* One fact kept: the number alone when the title does not fit. */
   .top-chapter-w {
     display: none;
   }
