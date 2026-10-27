@@ -238,6 +238,23 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
+/* BOOK-60: the download — an <a> under the shares, and the file's name beneath it. */
+.authors-export {
+  margin-top: 22px;
+}
+.authors-export-link {
+  font-size: var(--fs-note);
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.authors-export-line {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
 .authors-copyright {
   margin-top: 22px;
 }

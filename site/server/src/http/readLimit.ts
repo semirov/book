@@ -33,6 +33,10 @@ import type { RouteDeps } from './deps.ts';
  * caller that needs both pays once, while `/api/front` cannot take the list's measurement
  * without paying the full list on page 1's hot path — so the count keeps its grouped `COUNT`
  * and `authors.test.ts` pins the two numbers equal.
+ *
+ * BOOK-60: `/book.fb2` is a whole-book read — the same budget, per ADR-010. A `304` spends a
+ * slot too: it is still a request to this host, and a script that revalidates in a loop is a
+ * script. One edition serves a 100-reader day for 100 slots and one build.
  */
 export const READ_LIMITED_PREFIXES = [
   '/api/history',
@@ -42,6 +46,7 @@ export const READ_LIMITED_PREFIXES = [
   '/api/cost',
   '/api/me',
   '/api/authors',
+  '/book.fb2',
 ] as const;
 
 export const READ_WINDOW_MS = 60_000;

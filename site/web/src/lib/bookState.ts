@@ -42,6 +42,9 @@ export function bookFromHello(hello: HelloPayload, held: BookData | null = null)
       // a resync that predates the field) must keep what the page already has instead of
       // switching the row off and back on.
       donateUrl: hello.front.donateUrl ?? held?.front.donateUrl ?? null,
+      // BOOK-60: `hello` carries no edition number; a reconnect keeps the page's, and the
+      // next text frame re-reads it from `/api/front`.
+      revision: held?.front.revision,
     },
   };
 }
@@ -56,6 +59,16 @@ export function withAuthorsCount(data: BookData, count: unknown): BookData {
     ...data,
     front: { ...data.front, authors: newestAuthorsCount(data.front.authors, count) },
   };
+}
+
+/**
+ * BOOK-60: the edition number from a fresh `/api/front` reading. A REST resync that must not
+ * overwrite a newer `hello` still contributes this one fact; an old payload without the field
+ * leaves the number the page already has.
+ */
+export function withRevision(data: BookData, revision: number | undefined): BookData {
+  if (typeof revision !== 'number') return data;
+  return { ...data, front: { ...data.front, revision } };
 }
 
 /**

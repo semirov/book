@@ -18,6 +18,7 @@ import {
   withChapterRevision,
   withFreshFront,
   withFront,
+  withRevision,
   withState,
   type BookData,
 } from './bookState.ts';
@@ -127,6 +128,16 @@ describe('bookFromHello', () => {
       front: { ...hello.front, authors: { count: 7, measuredAt: '2026-10-25T12:06:00Z' } } as HelloPayload['front'],
     };
     expect(bookFromHello(later, newer).front.authors.count).toBe(7);
+  });
+});
+
+describe('the edition number (BOOK-60)', () => {
+  it('applies a fresh /api/front reading and leaves the book untouched without one', () => {
+    const book = bookFromHello(hello);
+    expect(withRevision(book, 42).front.revision).toBe(42);
+    // An old payload is not a zero: the held number (or its absence) stands.
+    expect(withRevision(book, undefined)).toBe(book);
+    expect(withRevision(book, undefined).front.revision).toBeUndefined();
   });
 });
 

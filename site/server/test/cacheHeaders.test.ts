@@ -271,3 +271,26 @@ describe('the API statuses are never stored (BOOK-109 review)', () => {
     expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
   });
 });
+
+describe('the FB2 export revalidates, and only because its tag is its content (BOOK-60)', () => {
+  it('answers a matching If-None-Match with a 304, no build and no export date', async () => {
+    await boot();
+    const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(first.statusCode).toBe(200);
+    // The export's own policy, not `no-store`: a stored copy would carry an older export date.
+    expect(first.headers['cache-control']).toBe('no-cache');
+    expect(first.headers['x-export-date']).toBeTruthy();
+
+    const conditional = await app!.inject({
+      method: 'GET',
+      url: '/book.fb2',
+      headers: { 'if-none-match': first.headers.etag as string },
+    });
+    expect(conditional.statusCode).toBe(304);
+    expect(conditional.headers.etag).toBe(first.headers.etag);
+    expect(conditional.headers['cache-control']).toBe('no-cache');
+    // The moment is a property of a body; this answer produced none.
+    expect(conditional.headers['x-export-date']).toBeUndefined();
+    expect(conditional.body).toBe('');
+  });
+});

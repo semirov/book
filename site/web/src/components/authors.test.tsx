@@ -182,11 +182,15 @@ describe('the reader’s own decisions outlive the history gate (BOOK-56)', () =
     expect(html).not.toContain('последняя правка');
   });
 
-  it('is not on the page at all when history is off and the reader has no decisions', () => {
+  it('keeps the download when history is off and the reader has no decisions (BOOK-60)', () => {
+    // Reading is never gated, so the export is not: a begun book has a file before it has
+    // an authors list. The section exists for the link alone.
     const html = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} revision={42} />,
     );
-    expect(html).toBe('');
+    expect(html).toContain('href="/book.fb2"');
+    expect(html).toContain('blank-42.fb2');
+    expect(html).not.toContain('authors-list');
   });
 
   it('keeps the list beside them when history is on', () => {

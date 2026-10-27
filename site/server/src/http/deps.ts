@@ -3,6 +3,7 @@ import type { AuthorsCountDto, BookCostDto, Imprint, QueueDto, ServerEventType }
 import type { CaptchaVerifier } from '../captcha/verify.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/db.ts';
+import type { Fb2Renderer } from '../fb2/serialize.ts';
 import type { StateService } from '../ingest/stateService.ts';
 import type { WatcherStatus } from '../ingest/watcher.ts';
 import type { SessionStore } from '../identity/session.ts';
@@ -24,6 +25,11 @@ export type RouteDeps = {
   watcher?: WatcherStatus;
   /** Optional cache seam for `/api/queue`; by default it is read from the shared database. */
   engineQueue?: () => QueueDto;
+  /**
+   * BOOK-60: serializer seam for `/book.fb2`; by default the hand-written FB2 renderer.
+   * A counting wrapper here is how the tests prove a `304` and a repeat build nothing.
+   */
+  fb2?: { render: Fb2Renderer };
   /** §14: one limiter for every surface, so budgets cannot drift apart. */
   limiter: RateLimiter;
   /** §12.8: injected as a stub in tests; the production verifier fails closed. */

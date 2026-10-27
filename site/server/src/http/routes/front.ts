@@ -4,12 +4,17 @@ import type { FastifyInstance } from 'fastify';
 import { bookStateKey } from '../../db/bookKey.ts';
 import { listCatalog } from '../../db/repo/chapters.ts';
 import { getFrontRow } from '../../db/repo/front.ts';
+import { readEdition } from '../../fb2/edition.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import type { RouteDeps } from '../deps.ts';
 
-/** N is part of the representation, so it is part of the validator (§10, BOOK-DOC-4). */
-function frontEtag(frontRev: number, count: number): string {
-  return `"front-${frontRev}-a${count}"`;
+/**
+ * N is part of the representation, so it is part of the validator (§10, BOOK-DOC-4). BOOK-60:
+ * the edition number is too — the tag names the same state `/book.fb2` writes as `version`, so
+ * a page and a downloaded file can never disagree about which edition they are.
+ */
+function frontEtag(frontRev: number, count: number, revision: number): string {
+  return `"front-${frontRev}-a${count}-e${revision}"`;
 }
 
 /**
@@ -34,12 +39,14 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
     const front = getFrontRow(deps.db);
     const rev = front?.rev ?? 0;
     const key = bookStateKey(deps.db, rev);
+    // BOOK-60: the same edition function the export route uses (BOOK-DOC-41 §1).
+    const revision = readEdition(deps.db, deps.imprint.author).revision;
 
     // A representation is being built: measure once per book state, and keep it.
     const remembered = memo !== null && memo.key === key ? memo.authors : null;
     const authors = remembered ?? deps.authorsCount();
     if (remembered === null) memo = { key, authors };
-    reply.header('etag', frontEtag(rev, authors.count));
+    reply.header('etag', frontEtag(rev, authors.count, revision));
 
     const about = front !== undefined && front.about.length > 0 ? front.about : null;
     const body: FrontDto = {
@@ -56,6 +63,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
       })),
       imprint: { author: deps.imprint.author, copyright: deps.imprint.copyright },
       authors,
+      revision,
       // BOOK-126: already validated at boot (`donateUrlOf`), so the page prints it or nothing.
       donateUrl: deps.config.donateUrl,
     };

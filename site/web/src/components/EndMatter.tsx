@@ -27,6 +27,7 @@ export function EndMatter({
   onAuthorsCount,
   decisions = null,
   live,
+  revision = null,
 }: {
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
@@ -40,6 +41,8 @@ export function EndMatter({
    * until a reader has changed the text.
    */
   live: boolean;
+  /** BOOK-60: the edition number, to be printed under the download link. */
+  revision?: number | null;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
   /**
@@ -130,6 +133,7 @@ export function EndMatter({
       hidePending={hidePending}
       onToggleHidden={(hidden) => void toggleHidden(hidden)}
       live={live}
+      revision={revision}
     />
   );
 }

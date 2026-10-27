@@ -87,8 +87,9 @@ describe('GET /api/front', () => {
     await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
     const response = await app!.inject({ method: 'GET', url: '/api/front' });
     expect(response.statusCode).toBe(200);
-    expect(response.headers.etag).toBe('"front-1-a0"');
     const body = response.json();
+    // BOOK-60: the edition number is part of the validator, beside the front revision and N.
+    expect(response.headers.etag).toBe(`"front-1-a0-e${body.revision}"`);
     expect(body).toMatchObject({
       title: 'Без названия',
       about: ABOUT,
@@ -127,7 +128,7 @@ describe('GET /api/front', () => {
     expect(first.statusCode).toBe(200);
     expect(first.json()).toMatchObject({ authors: { count: 1 } });
     // The ETag carries the count, so a cached page cannot pin a byline that changed.
-    expect(first.headers.etag).toBe('"front-1-a1"');
+    expect(first.headers.etag).toBe(`"front-1-a1-e${first.json().revision}"`);
     expect(byline.calls()).toBe(1);
 
     // Ten polls of a book state that did not move: ten full bodies, one measurement. The memo
@@ -139,7 +140,7 @@ describe('GET /api/front', () => {
         headers: { 'if-none-match': first.headers.etag as string },
       });
       expect(again.statusCode).toBe(200);
-      expect(again.headers.etag).toBe('"front-1-a1"');
+      expect(again.headers.etag).toBe(first.headers.etag);
       expect(again.json()).toMatchObject({ authors: { count: 1 }, title: 'Без названия' });
     }
     expect(byline.calls()).toBe(1);
@@ -149,7 +150,7 @@ describe('GET /api/front', () => {
     const byline = countingByline();
     const fresh = await boot({ chapters: { '00-front.md': FRONT }, authorsCount: byline.measure });
     const first = await app!.inject({ method: 'GET', url: '/api/front' });
-    expect(first.headers.etag).toBe('"front-1-a1"');
+    expect(first.headers.etag).toBe(`"front-1-a1-e${first.json().revision}"`);
 
     // A revision is what can move the byline: the next front request measures it afresh.
     fresh.write('ch02.md', CHAPTER_ONE);
@@ -161,7 +162,9 @@ describe('GET /api/front', () => {
       headers: { 'if-none-match': first.headers.etag as string },
     });
     expect(second.statusCode).toBe(200);
-    expect(second.headers.etag).toBe('"front-1-a2"');
+    expect(second.headers.etag).toBe(`"front-1-a2-e${second.json().revision}"`);
+    // The chapter write is an edition change, so the tag moved with the byline.
+    expect(second.headers.etag).not.toBe(first.headers.etag);
     expect(second.json()).toMatchObject({ authors: { count: 2 } });
     expect(byline.calls()).toBe(2);
   });
@@ -187,6 +190,21 @@ describe('GET /api/front', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('carries the edition number the FB2 file writes as document-info/version (BOOK-60)', async () => {
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': CHAPTER_ONE } });
+    const front = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    expect(typeof front.revision).toBe('number');
+    // A 52-bit decimal: a valid FB2 `version` value (the full hash, not this number, is the
+    // name the ETag carries).
+    expect(front.revision).toBeGreaterThanOrEqual(0);
+    expect(front.revision).toBeLessThanOrEqual(4_503_599_627_370_495);
+
+    const file = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(file.statusCode).toBe(200);
+    const version = /<version>(\d+)<\/version>/u.exec(file.body)?.[1];
+    expect(Number(version)).toBe(front.revision);
   });
 
   it('is honest at launch when there is no first sheet: null title and page 2', async () => {

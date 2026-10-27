@@ -14,10 +14,21 @@
  *     files whose ETag follows their own bytes — Vite's content-hashed `/assets/*`, the fonts,
  *     `theme.js` (the pre-paint script) and the favicon. Those carry no prose, so a `304` there
  *     is a real saving (172 KB of woff2 re-downloaded per page load is not); everywhere else a
- *     `304` would tell a client to reuse exactly the copy this pass exists to eliminate;
+ *     `304` would tell a client to reuse exactly the copy this pass exists to eliminate.
+ *
+ *     BOOK-60 adds one exact path to that set: `/book.fb2`. Its ETag is the edition hash —
+ *     computed from the stored file hashes of the front matter and all 67 chapters — so a
+ *     `304` there can only ever name the same paragraphs the client already holds, and the
+ *     export's whole point (BOOK-60 AC4) is that a reader who already has the bytes is not
+ *     sent them again. The exemption is safe *because* the name is the content; a tag that
+ *     named anything else would put the stale-prose defect straight back. The fields the tag
+ *     does not name — `program-used`, `src-url`, `title-info/date` — are boot-time constants
+ *     (BOOK-DOC-41 §1), so they ride along on a `304` without making it stale.
  *   · `onSend` marks every `/api/` answer, `/healthz` and every HTML document `no-store`, and
  *     does it *after* the route wrote its headers — a route cannot loosen the rule,
- *     `@fastify/static` keeps its own policy for the rest.
+ *     `@fastify/static` keeps its own policy for the rest. `/book.fb2` is not HTML and not
+ *     under `/api/`, so the export's own `no-cache` (a fresh copy would carry an older export
+ *     date, the ETag makes revalidation free) stands.
  *
  * ETags stay: they still name the representation (a test, a proxy log and a future client can
  * compare them), and outside prose they still answer `304`.
@@ -33,6 +44,12 @@ import type { FastifyInstance } from 'fastify';
 const REVALIDATABLE = ['/assets/', '/fonts/', '/theme.js', '/favicon.svg'] as const;
 
 /**
+ * BOOK-60: the one non-static surface allowed to revalidate. Its tag is the edition hash, so
+ * it names the paragraphs themselves — see the module comment.
+ */
+const REVALIDATABLE_EXACT = ['/book.fb2'] as const;
+
+/**
  * BOOK-119: an asset name is the hash of its bytes (`index-Bx12_3de.js`), so the same URL can
  * only ever mean the same content — across releases too. A year plus `immutable` is the only
  * honest policy for it, and it is what makes a stale shell's fetch instant instead of a
@@ -46,6 +63,7 @@ function pathOf(url: string): string {
 }
 
 function revalidatable(path: string): boolean {
+  if (REVALIDATABLE_EXACT.some((exact) => path === exact)) return true;
   return REVALIDATABLE.some((prefix) => (prefix.endsWith('/') ? path.startsWith(prefix) : path === prefix));
 }
 

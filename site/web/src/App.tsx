@@ -45,6 +45,7 @@ import {
   withAuthorsCount,
   withFront,
   withFreshFront,
+  withRevision,
   withState,
   type BookData,
 } from './lib/bookState.ts';
@@ -63,6 +64,7 @@ import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
 import { useBookCost } from './useBookCost.ts';
+import { useFrontRevision } from './useFrontRevision.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
@@ -127,7 +129,7 @@ export function App() {
   const refreshAll = useCallback(async (force = false) => {
     try {
       const [state, catalog, front] = await Promise.all([getState(), getChapters(), getFront()]);
-      setData((current) => (helloSeen.current && current !== null && !force ? current : withFreshFront({ state, catalog, front }, current)));
+      setData((current) => (helloSeen.current && current !== null && !force ? withRevision(current, front.revision) : withFreshFront({ state, catalog, front }, current)));
       setFailed(false);
     } catch {
       setFailed(true);
@@ -147,11 +149,10 @@ export function App() {
     dataRef.current = data;
   }, [data]);
   useDeepLink(data !== null);
-
   const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
     setData((current) => (current === null ? current : withAuthorsCount(current, count)));
   }, []);
-
+  const noteRevision = useFrontRevision(setData);
   useEffect(() => {
     void refreshAll(false);
     void loadThread();
@@ -339,6 +340,7 @@ export function App() {
           default:
             break;
         }
+        if (frame.type === 'chapter:created' || frame.type === 'chapter:revision' || frame.type === 'front:updated') noteRevision();
       },
       onStatus: (status) => setConnection(status),
       onGap: () => void refreshAll(true),
@@ -353,7 +355,7 @@ export function App() {
       for (const timer of timers.current) window.clearTimeout(timer);
       timers.current = [];
     };
-  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, card.refresh, focus.bump, applyAuthorsCount]);
+  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, card.refresh, focus.bump, applyAuthorsCount, noteRevision]);
 
   if (failed && data === null) {
     return (
@@ -479,6 +481,7 @@ export function App() {
         decisions={decisions}
         onAuthorsCount={applyAuthorsCount}
         live={history}
+        revision={front.revision ?? null}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} />

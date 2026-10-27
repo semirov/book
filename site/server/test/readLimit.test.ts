@@ -8,7 +8,7 @@ import { isReadLimited, READ_WINDOW_MS, readLimitKey } from '../src/http/readLim
  * own budget, in `frontRoute.test.ts`.
  */
 describe('the read API budget', () => {
-  it('limits the history projections, the state poll, the title page, the cost line, the change list, the end matter and the reader’s own record', () => {
+  it('limits the history projections, the state poll, the title page, the cost line, the change list, the end matter, the reader’s own record and the book’s export', () => {
     for (const url of [
       '/api/history',
       '/api/history/timeline?limit=5',
@@ -26,6 +26,9 @@ describe('the read API budget', () => {
       '/api/authors?fresh=1',
       // The reader's own trace pays the same whole-book measurement: it is budgeted too.
       '/api/authors/me',
+      // BOOK-60: the whole-book export is a read like any other, and a 304 is a read too.
+      '/book.fb2',
+      '/book.fb2?download=1',
     ]) {
       expect(isReadLimited(url), url).toBe(true);
     }
@@ -40,6 +43,9 @@ describe('the read API budget', () => {
       '/api/fronts',
       '/api/costs',
       '/api/memory',
+      // A longer or similar path is another route, and it is not the export.
+      '/book.fb2x',
+      '/book',
     ]) {
       expect(isReadLimited(url), url).toBe(false);
     }
