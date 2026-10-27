@@ -17,13 +17,15 @@ import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 
 /**
- * BOOK-DOC-34 §2.1, §2.5 — one paragraph, parted where the reader tapped.
+ * BOOK-DOC-34 §2.1, §2.5 — one paragraph, marked where the reader tapped.
  *
- * Closed, the block is one `<p>` with its sentences marked (a cited rule on the sentence, the
- * numeral at its last character). Open, the block becomes two fragments with the strip laid
- * between them: the text is never altered, only parted, and the second fragment keeps the
- * paragraph's own hyphenation and `text-wrap`. A tap resolves the sentence from the span it
- * landed in and the word from the caret, so the mark and the provenance are exact.
+ * Closed and open, the block is the same single `<p>` with the same sentences marked (a cited
+ * rule on the sentence, the numeral at its last character). The seam marks its sentence
+ * inline — the same underline as a cited one, text decoration only — and lays its strip as a
+ * block **after** the paragraph: no fragment boundary, so opening the seam moves no line box
+ * and the paragraph keeps the line breaking it had closed (BOOK-68). A tap resolves the
+ * sentence from the span it landed in and the word from the caret, so the mark and the
+ * provenance are exact.
  */
 export type ProseParagraphProps = {
   entry: CatalogEntry;
@@ -210,18 +212,18 @@ export function ProseParagraph({
 
   const sentences = splitSentences(text);
   const anchor = here ? (seam?.anchor ?? null) : null;
-  const cut = anchor === null ? -1 : anchor.sentence.end;
+  /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
+  const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
 
   /**
    * BOOK-68 — the paragraph is rendered as slices of its own text, never re-assembled.
    *
    * `splitSentences` covers the prose, not every character: the whitespace between two
    * sentences, a closing quote that follows a space, the leading indent and the tail after
-   * the last recognised sentence all used to be dropped, and the seam made it worse by
-   * rendering two ranges. Here every character between `from` and `to` reaches the page: a
-   * raw gap is a text node, a sentence is one span holding exactly `text.slice(start, end)`,
-   * and the tail after the last sentence is raw text. Nothing is invented, so the paragraph
-   * reads the same closed, parted and closed again.
+   * the last recognised sentence all used to be dropped. Here every character between `from`
+   * and `to` reaches the page: a raw gap is a text node, a sentence is one span holding
+   * exactly `text.slice(start, end)`, and the tail after the last sentence is raw text.
+   * Nothing is invented, so the paragraph reads the same closed, open and closed again.
    */
   const renderRange = (from: number, to: number): ReactNode => {
     const nodes: ReactNode[] = [];
@@ -235,10 +237,15 @@ export function ProseParagraph({
       const quote = clampQuote(sentence.text);
       const filings = blockFilings.find((item) => item.quote !== null && item.quote === quote);
       const cited = citedClass(filings);
+      // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the
+      // cited rule's underline — text decoration sets no box, so no line moves.
+      const marked = [cited, sentence.start === anchoredStart ? 'is-anchored' : null]
+        .filter((name): name is string => name !== null && name !== undefined)
+        .join(' ');
       nodes.push(
         <span
           key={`${sentence.start}-${index}`}
-          className={cited === null ? undefined : cited}
+          className={marked === '' ? undefined : marked}
           data-s={sentence.start}
           data-quote={sentence.text}
         >
@@ -286,75 +293,56 @@ export function ProseParagraph({
     />
   ) : null;
 
-  const body =
-    anchor === null ? (
-      renderRange(0, Number.POSITIVE_INFINITY)
-    ) : (
-      <>
-        {renderRange(0, cut)}
-        {strip}
-        {renderRange(cut, Number.POSITIVE_INFINITY)}
-      </>
-    );
-
   return (
     <>
-      {anchor === null ? (
-        <p
-          className={classes.join(' ')}
-          data-block-id={blockId}
-          tabIndex={-1}
-          data-revising={revising ?? undefined}
-          onPointerUp={pick}
-          onClick={pick}
-          onPointerEnter={hint}
-        >
-          {revising === null ? null : <span className="revising-label">{revising}</span>}
-          {frozenChapter ? null : (
-            <button
-              type="button"
-              className="seam-rail"
-              aria-label="вмешаться"
-              onClick={(event) => {
-                const first = sentences[0];
-                if (first === undefined) return;
-                openAt(event.currentTarget, first.start, event.currentTarget);
-              }}
-            >
-              вмешаться
-            </button>
-          )}
-          {body}
-          {caret === null ? null : (
-            <span
-              className={`caret-inline${caret.live && !caret.printing ? ' blink' : ''}${caret.printing ? '' : ' resting'}`}
-              aria-hidden="true"
-            />
-          )}
-          {onBlockProvenance === undefined ? null : (
-            <button
-              type="button"
-              className="prov"
-              aria-label="откуда эта фраза"
-              onClick={(event) => onBlockProvenance(blockId, event.currentTarget)}
-            >
-              ⋯
-            </button>
-          )}
-        </p>
-      ) : (
-        <div
-          className={`${classes.join(' ')} p-parted`}
-          data-block-id={blockId}
-          tabIndex={-1}
-          data-revising={revising ?? undefined}
-          onPointerUp={pick}
-          onClick={pick}
-          onPointerEnter={hint}
-        >
-          {body}
-        </div>
-      )}
+      {/*
+        BOOK-68 — one `<p>` in both states, the very same element: closing the seam returns
+        the paragraph it opened from, with the line breaking it had. The strip is a block
+        sibling below it, never a fragment between two halves of the text.
+      */}
+      <p
+        className={classes.join(' ')}
+        data-block-id={blockId}
+        tabIndex={-1}
+        data-revising={revising ?? undefined}
+        onPointerUp={pick}
+        onClick={pick}
+        onPointerEnter={hint}
+      >
+        {revising === null ? null : <span className="revising-label">{revising}</span>}
+        {frozenChapter ? null : (
+          <button
+            type="button"
+            className="seam-rail"
+            aria-label="вмешаться"
+            onClick={(event) => {
+              const first = sentences[0];
+              if (first === undefined) return;
+              openAt(event.currentTarget, first.start, event.currentTarget);
+            }}
+          >
+            вмешаться
+          </button>
+        )}
+        {renderRange(0, Number.POSITIVE_INFINITY)}
+        {caret === null ? null : (
+          <span
+            className={`caret-inline${caret.live && !caret.printing ? ' blink' : ''}${caret.printing ? '' : ' resting'}`}
+            aria-hidden="true"
+          />
+        )}
+        {onBlockProvenance === undefined ? null : (
+          <button
+            type="button"
+            className="prov"
+            aria-label="откуда эта фраза"
+            onClick={(event) => onBlockProvenance(blockId, event.currentTarget)}
+          >
+            ⋯
+          </button>
+        )}
+      </p>
+      {strip}
       {stale === null ? null : (
         <button
           type="button"

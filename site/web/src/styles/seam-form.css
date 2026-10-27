@@ -150,11 +150,13 @@
 .filing-mark-more {
   margin-left: 2px;
 }
-.cited {
+.cited,
+.p .is-anchored {
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
 }
-.cited.rule-solid {
+.cited.rule-solid,
+.p .is-anchored {
   text-decoration-line: underline;
   text-decoration-style: solid;
 }
@@ -162,7 +164,8 @@
   text-decoration-line: underline;
   text-decoration-style: dotted;
 }
-.cited.ink-live {
+.cited.ink-live,
+.p .is-anchored {
   text-decoration-color: var(--live);
 }
 .cited.ink-quiet {
@@ -255,7 +258,9 @@
 
 /* ---------- desktop (§2.8) ---------- */
 @media (hover: hover) {
-  .p [data-s]:hover {
+  /* BOOK-68: the anchored sentence already wears the anchor's own rule; hovering it does not
+     repaint the mark, so the open state never looks like it lost its place. */
+  .p [data-s]:not(.is-anchored):hover {
     text-decoration: underline dotted var(--rule-2);
     text-underline-offset: 4px;
   }

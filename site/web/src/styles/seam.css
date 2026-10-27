@@ -10,16 +10,12 @@
  * `prefers-reduced-motion` turns the 180 ms disclosure into an instant change.
  */
 
-/* ---------- the parted paragraph ---------- */
-.p-parted {
-  margin: 0;
-}
-.p-parted .p-part {
-  display: inline;
-}
-/* The strip is block-level inside the paragraph's two fragments (§2.1). */
-.p .seam,
-.p-parted .seam {
+/* ---------- the paragraph and its strip ---------- */
+/* BOOK-68: the seam never parts the paragraph. The strip is a block sibling laid after the
+   `<p>` — normal flow, a plain top margin, no negative offset and no positioning, so it can
+   neither split a line nor cover one, and the paragraph keeps its line breaking when the
+   seam opens and when it closes. */
+.p + .seam {
   display: block;
   margin: 10px 0;
 }
