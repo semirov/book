@@ -29,7 +29,7 @@ function applied(overrides: Partial<MyDecisionDto> = {}): MyDecisionDto {
     outcome: 'applied',
     reason: null,
     chapters: [7, 8, 9],
-    waves: 3,
+    waves: 2,
     blocks: 12,
     shareAtDecision: { share: 0.004, day: '2026-10-25' },
     decidedAt: '2026-10-25T12:30:00Z',
@@ -42,11 +42,17 @@ function record(overrides: Partial<MyDecisionsDto> = {}): MyDecisionsDto {
 }
 
 describe('the summary of a reader’s own intervention (BOOK-13)', () => {
-  it('reads «правка внесена · главы 7–9 · 3 волны · изменилось 12 абзацев · ваша доля 0,4 %»', () => {
+  it('reads «правка внесена · главы 7–9 · волна 2 · решением · изменилось 12 абзацев · ваша доля 0,4 %»', () => {
     expect(decisionLine(applied(), 0.004).text).toBe(
-      'правка внесена · главы 7–9 · 3 волны · изменилось 12 абзацев · ваша доля 0,4 %',
+      'правка внесена · главы 7–9 · волна 2 · решением · изменилось 12 абзацев · ваша доля 0,4 %',
     );
     expect(decisionLine(applied(), 0.004).tone).toBe('done');
+  });
+
+  it('never prints «1 волна»: one wave is the rule, not news (BOOK-59)', () => {
+    const one = decisionLine(applied({ waves: 1 }), 0.004).text;
+    expect(one).toBe('правка внесена · главы 7–9 · изменилось 12 абзацев · ваша доля 0,4 %');
+    expect(one).not.toContain('волн');
   });
 
   it('says «частично» when the change had to drop something, and omits numbers that never ran', () => {
@@ -79,9 +85,10 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
     expect(chaptersCopy([8])).toBe('глава 8');
     expect(chaptersCopy([6, 9])).toBe('главы 6 и 9');
     expect(chaptersCopy([])).toBeNull();
-    expect(wavesCopy(1)).toBe('1 волна');
-    expect(wavesCopy(3)).toBe('3 волны');
-    expect(wavesCopy(5)).toBe('5 волн');
+    expect(wavesCopy(1)).toBeNull();
+    expect(wavesCopy(0)).toBeNull();
+    expect(wavesCopy(2)).toBe('волна 2 · решением');
+    expect(wavesCopy(3)).toBe('волна 3 · решением');
     expect(wavesCopy(null)).toBeNull();
   });
 

@@ -2,7 +2,8 @@
  * The reader's own decisions (`GET /api/me/decisions`) — BOOK-13, BOOK-DOC-4 rule 4.
  *
  * The end of an intervention is addressed to the reader who made it: «правка внесена ·
- * главы 7–9 · 3 волны · изменилось 12 абзацев · ваша доля 0,4 %». That sentence must
+ * главы 7–9 · волна 2 · решением · изменилось 12 абзацев · ваша доля 0,4 %» (BOOK-59: a
+ * change makes one wave, so only a wave above it is named). That sentence must
  * survive a reload, so it is derived from the rows the engine already wrote — never from a
  * frame, which is a broadcast and forgets itself. Four tables answer it:
  *

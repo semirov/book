@@ -275,10 +275,13 @@ describe('both wings, as data', () => {
   });
 
   it('prints a wing’s own wave, state and reached chapters', () => {
-    expect(wingLine('down', ribbon.wings.down)).toBe('вниз · волна 1 · идёт');
+    // BOOK-59: the one wave a ripple has is not news, and there is never a «волна 0».
+    expect(wingLine('down', ribbon.wings.down)).toBe('вниз · идёт');
     expect(wingLine('up', { ...ribbon.wings.up, state: 'waiting', wave: 0, reached: [] })).toBe(
-      'вверх · волна 0 · не открылось',
+      'вверх · не открылось',
     );
+    // Only a second wave says anything, and it got there by the owner's decision.
+    expect(wingLine('up', { ...ribbon.wings.up, wave: 2, state: 'moving' })).toBe('вверх · волна 2 · решением · идёт');
     expect(wingReachedCopy(ribbon.wings.down)).toBe('07');
     expect(wingReachedCopy({ ...ribbon.wings.up, state: 'waiting', reached: [] })).toBe('не открылось');
     expect(wingReachedCopy({ ...ribbon.wings.up, state: 'settled', reached: [] })).toBe('дальше держится');

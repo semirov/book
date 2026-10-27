@@ -68,7 +68,7 @@ function changeSeqMap(db: Db, changeIds: ReadonlyArray<string | null>): Map<stri
   return new Map(rows.map((row) => [row.id, row.seq]));
 }
 
-function versionDto(row: VersionRow): ParagraphVersionDto {
+function versionDto(row: VersionRow, seqs: ReadonlyMap<string, number>): ParagraphVersionDto {
   return {
     blockUid: row.block_uid,
     ver: row.ver,
@@ -80,6 +80,7 @@ function versionDto(row: VersionRow): ParagraphVersionDto {
     textHash: row.text_hash,
     chars: row.chars,
     changeId: row.change_id,
+    changeSeq: row.change_id === null ? null : (seqs.get(row.change_id) ?? null),
     stepId: row.step_id,
     actor: {
       kind: row.actor_kind as HistoryAuthorKind,
@@ -168,7 +169,7 @@ export function readParagraphChain(db: Db, blockIdOrUid: string): ParagraphChain
     blockId: latest.block_id,
     chapter: latest.chapter,
     alive: latest.op !== 'erased',
-    versions: rows.map(versionDto),
+    versions: rows.map((row) => versionDto(row, seqs)),
     line: chainLine(latest, previous, seqs),
   };
 }

@@ -5,6 +5,7 @@ import { placePanel } from '../lib/cssom.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
 import { filingNumber, filingWord } from '../lib/filings.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
+import { receiptLine } from '../lib/terms.ts';
 
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -79,7 +80,7 @@ export function FilingPanel({
       <p className="filing-fact">
         {comment.applied === null
           ? 'применения пока нет'
-          : `внесено в главу ${String(comment.applied.chapter).padStart(2, '0')} · ревизия ${comment.applied.rev}`}
+          : `${receiptLine(String(comment.applied.chapter).padStart(2, '0'))} · ревизия ${comment.applied.rev}`}
         {line.detail === null ? '' : ` · ${line.detail}`}
       </p>
       <p className="filing-word">состояние: {filingWord(comment)}</p>

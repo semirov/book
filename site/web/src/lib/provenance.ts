@@ -1,5 +1,6 @@
 import { formatShare, type ParagraphChainDto } from '@book/shared';
 
+import { changeNumber } from './changeStatus.ts';
 import { plural } from './format.ts';
 
 /**
@@ -132,7 +133,8 @@ export function provenanceView(input: ProvenanceInput): ProvenanceView {
     chapterLine: `глава ${String(input.chapter).padStart(2, '0')}`,
     chain: [
       { label: 'кто', value: actor },
-      { label: 'правка', value: last?.changeId ?? 'вне правок' },
+      // BOOK-59: the book speaks in numbers — «правка 014», never `chg_01J…`.
+      { label: 'правка', value: last?.changeSeq == null ? 'вне правок' : `правка ${changeNumber(last.changeSeq)}` },
       { label: 'эта страница', value: where },
     ],
     rows,

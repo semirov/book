@@ -81,16 +81,19 @@ describe('hello — viewer and composer', () => {
       editMaxChars: EDIT_MAX_CHARS,
     });
     // The frame carries the true numbers, so the SPA never hardcodes a cap of its own.
-    expect(frame.data.limits).toMatchObject({
+    const limits = frame.data.limits as Record<string, unknown>;
+    expect(limits).toMatchObject({
       maxCommentChars: COMMENT_MAX_CHARS,
       maxEditChars: EDIT_MAX_CHARS,
       editSubmissionsPerDay: 1,
-      // BOOK-DOC-4 rule 3: the wave bound travels too, so «волна 2 / N» is the server's N.
+      // BOOK-59: the wave bound travels too, and it is one — a second wave needs a decision.
       maxWave: CASCADE_MAX_WAVE,
     });
     expect(COMMENT_MAX_CHARS).toBe(1_200);
     expect(EDIT_MAX_CHARS).toBe(10_000);
-    expect(CASCADE_MAX_WAVE).toBe(5);
+    expect(CASCADE_MAX_WAVE).toBe(1);
+    // AC4 of BOOK-59: the frame reports one wave, not the old five.
+    expect(limits.maxWave).toBe(1);
   });
 
   it('resolves a signed-in reader from the session cookie', async () => {

@@ -479,12 +479,7 @@ export function App() {
         onAuthorsCount={applyAuthorsCount}
         onOpenChronicle={() => setView('chronicle')}
       />
-      <Discussion
-        depth={state.queue.depth}
-        chapterCount={state.chapters.count}
-        changes={changes}
-        comments={comments}
-      />
+      <Discussion depth={state.queue.depth} changes={changes} comments={comments} />
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />

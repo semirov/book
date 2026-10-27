@@ -105,6 +105,11 @@ export type ParagraphVersionDto = {
   textHash: string;
   chars: number;
   changeId: string | null;
+  /**
+   * The change's public number — «правка 014» (BOOK-59). The panel speaks in numbers; an id
+   * never reaches a reader. Null when the version came from outside the process.
+   */
+  changeSeq: number | null;
   stepId: string | null;
   actor: HistoryAuthor | null;
   /** The uid that took this paragraph's place, when the version was replaced. */

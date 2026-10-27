@@ -26,18 +26,20 @@ describe('loadConfig', () => {
     // audit m1: the proxy is one host, not a /24 that lets the LAN forge its address.
     expect(config.trustedProxies).toBe('127.0.0.1,::1,192.168.1.44/32');
     expect(config.readPerMinute).toBe(60);
-    // BOOK-DOC-4 rule 3: five waves, and the chapter/step bounds above what five waves cost.
+    // BOOK-59: one wave, and the chapter/step bounds above what one wave costs.
     expect(config.budgetMaxWave).toBe(CASCADE_MAX_WAVE);
     expect(config.budgetMaxChapters).toBe(12);
     expect(config.budgetMaxSteps).toBe(13);
+    // A wave is a round of both wings: the shipped lag keeps the far wing in that round.
+    expect(config.upwardLagWaves).toBe(0);
     expect(config.bookRoot.endsWith('book')).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
   });
 
-  it('lets a five-wave ripple finish inside the chapter and step bounds (BOOK-DOC-4 rule 3)', () => {
-    // A ripple bounded by W waves is 1 + W down + (W−1) up = 2W steps over 2W chapters, and
-    // the front and ending proofs add at most two more steps. A chapter or step bound under
-    // that would bind first and leave the wave bound dead config (audit R3).
+  it('lets a ripple of its full width finish inside the chapter and step bounds (BOOK-DOC-4 rule 3)', () => {
+    // A ripple bounded by W waves is 2W steps over 2W chapters (both wings per wave), and the
+    // front and ending proofs add at most two more steps. A chapter or step bound under that
+    // would bind first and leave the wave bound dead config (audit R3).
     const config = loadConfig({});
     const waves = config.budgetMaxWave;
     expect(config.budgetMaxSteps).toBeGreaterThanOrEqual(2 * waves + 2);
@@ -46,16 +48,25 @@ describe('loadConfig', () => {
   });
 
   it('refuses an env whose wave bound disagrees with the public promise (BOOK-DOC-4 rule 3)', () => {
-    // A deployment copied from the old example says 3: booting it would tell the client 3
-    // while /rules promises 5, which is exactly the silent divergence the rule forbids.
+    // A deployment copied from the old example says 5: booting it would tell the client 5
+    // while /rules promises one wave, which is exactly the silent divergence the rule forbids.
     let message = '';
     try {
       loadConfig({ BUDGET_MAX_WAVE: '3', BUDGET_MAX_CHAPTERS: '5', BUDGET_MAX_STEPS: '8' });
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    expect(message).toMatch(/BUDGET_MAX_WAVE must equal CASCADE_MAX_WAVE \(5\)/u);
+    expect(message).toMatch(/BUDGET_MAX_WAVE must equal CASCADE_MAX_WAVE \(1\)/u);
     expect(message).toMatch(/public promise/u);
+  });
+
+  it('refuses an upward lag that fills the whole wave bound (BOOK-59)', () => {
+    // With one wave, a lag of one would keep the upward wing out of every wave any ripple has,
+    // so the page's «вперёд и назад» would be false. The old shipped lag of one now fails.
+    expect(() => loadConfig({ BUDGET_UPWARD_LAG_WAVES: '1' })).toThrow(
+      /BUDGET_UPWARD_LAG_WAVES must be below BUDGET_MAX_WAVE \(1\)/u,
+    );
+    expect(loadConfig({ BUDGET_UPWARD_LAG_WAVES: '0' }).upwardLagWaves).toBe(0);
   });
 
   it('accepts a restated wave bound and the shipped chapter/step bounds', () => {
@@ -66,11 +77,11 @@ describe('loadConfig', () => {
   });
 
   it('refuses chapter or step bounds that would bind before the wave bound', () => {
-    expect(() => loadConfig({ BUDGET_MAX_CHAPTERS: '5' })).toThrow(
-      /BUDGET_MAX_CHAPTERS must be at least 2 × BUDGET_MAX_WAVE \(10\)/u,
+    expect(() => loadConfig({ BUDGET_MAX_CHAPTERS: '1' })).toThrow(
+      /BUDGET_MAX_CHAPTERS must be at least 2 × BUDGET_MAX_WAVE \(2\)/u,
     );
-    expect(() => loadConfig({ BUDGET_MAX_STEPS: '8' })).toThrow(
-      /BUDGET_MAX_STEPS must be at least 2 × BUDGET_MAX_WAVE \+ 2 \(12\)/u,
+    expect(() => loadConfig({ BUDGET_MAX_STEPS: '3' })).toThrow(
+      /BUDGET_MAX_STEPS must be at least 2 × BUDGET_MAX_WAVE \+ 2 \(4\)/u,
     );
   });
 

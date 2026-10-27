@@ -16,7 +16,7 @@ export const KIND_MEANINGS: Readonly<Record<InterventionKind, string>> = {
 };
 
 export const NOTE_KIND_LABEL = 'просто замечание — без типа';
-export const NOTE_KIND_MEANING = 'сказать о тексте, ничего не внося';
+export const NOTE_KIND_MEANING = 'сказать о тексте, ничего не внося · правку дня не тратит';
 
 export const KIND_PROMPT = INTERVENTION_KIND_HINT;
 

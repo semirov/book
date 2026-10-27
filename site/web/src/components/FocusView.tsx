@@ -29,13 +29,13 @@ import {
   focusWingPair,
   focusWings,
   footnoteCopy,
-  iterationCopy,
   panelStamp,
   sheetChapter,
   sheetNotice,
   sheetCopy,
   stageCopy,
   touchedChaptersCopy,
+  waveCopy,
   waveOf,
   type FocusBlock,
 } from '../lib/focus.ts';
@@ -139,6 +139,8 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
   const wave = change === null ? 0 : waveOf(change);
   /** The server announces its own wave bound; the constant is only the pre-`hello` fallback. */
   const bound = ribbonMaxWave(maxWave);
+  /** «волна 2 · решением» — empty below two, where a wave number only restates the rule. */
+  const waveLine = waveCopy(wave, bound);
   const revision = chapter === null ? null : (revisions[chapter] ?? null);
 
   // The changed blocks: the live patch when the step just landed, the change log otherwise.
@@ -335,7 +337,7 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
           ) : null}
 
           <div className="focus-readout">
-            <span>волна {wave} / {bound}</span>
+            {waveLine === '' ? null : <span>{waveLine}</span>}
             <span>{stageCopy(stage)}</span>
           </div>
 
@@ -407,10 +409,6 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
                   <dd className="focus-cost">{cost}</dd>
                 </div>
               )}
-              <div>
-                <dt>итерация</dt>
-                <dd>{iterationCopy(change, bound)}</dd>
-              </div>
             </dl>
             {change.reason === null ? null : <p className="focus-reason">{change.reason}</p>}
           </section>

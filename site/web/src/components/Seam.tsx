@@ -201,11 +201,10 @@ export function Seam({
       )}
 
       {receipt === null ? null : (
+        // BOOK-59: no «ваши правки →» — that list wakes with the first applied change, and a
+        // note never makes one; the receipt itself is the fact.
         <p className="seam-receipt" role="status">
-          {receipt} ·{' '}
-          <a className="seam-link" href="#авторы">
-            ваши правки →
-          </a>
+          {receipt}
         </p>
       )}
 

@@ -33,7 +33,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 }
 
 function render(comments: readonly CommentDto[]): string {
-  return renderToStaticMarkup(<Discussion depth={0} chapterCount={10} comments={comments} />);
+  return renderToStaticMarkup(<Discussion depth={0} comments={comments} />);
 }
 
 /** The ink rules a stylesheet declares: class slot → colour. */
@@ -78,5 +78,38 @@ describe('the author ink on the thread', () => {
     expect(rules).toHaveLength(AUTHOR_COLORS.length);
     expect(rules.map((rule) => rule.slot)).toEqual(AUTHOR_COLORS.map((_, slot) => String(slot)));
     expect(rules.map((rule) => rule.color)).toEqual([...AUTHOR_COLORS]);
+  });
+});
+
+/**
+ * BOOK-59 — the two counters of the register. A bare «обсуждение 4» is a number without its
+ * noun, and «в очереди 3» could be read as three chapters; both now carry the word they count.
+ */
+describe('the register’s counters', () => {
+  /** Read as a reader reads it: tags stripped, so a `<b>` between number and noun is no alibi. */
+  function text(html: string): string {
+    return html.replace(/<[^>]*>/gu, '');
+  }
+
+  it('names what each number counts, in the form the number asks for', () => {
+    const html = renderToStaticMarkup(
+      <Discussion depth={3} comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' })]} />,
+    );
+    expect(text(html)).toContain('2 замечания');
+    expect(text(html)).toContain('в очереди 3 правки');
+  });
+
+  it('uses the singular and the plural count forms', () => {
+    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[comment({ id: 'cmt_1' })]} />))).toContain(
+      '1 замечание',
+    );
+    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} />))).toContain('в очереди 1 правка');
+    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} />))).toContain('в очереди 5 правок');
+  });
+
+  it('keeps the empty register quiet without naming a «замечание» as a premise', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} />);
+    expect(html).not.toContain('Глав ещё нет');
+    expect(html).not.toContain('станет её замыслом');
   });
 });

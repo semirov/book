@@ -96,14 +96,14 @@ describe('the composer’s kinds (BOOK-16)', () => {
 
 describe('the kind in the thread and on the change card (BOOK-16)', () => {
   it('prints the kind beside the decision, as one plain word', () => {
-    const html = renderToStaticMarkup(<Discussion depth={2} chapterCount={8} comments={[comment()]} />);
+    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} />);
     // The kind sits in front of the decision, one word, inside the same line.
     expect(html).toContain('<span class="comment-kind">свидетельство · </span>принято · правка в очереди');
   });
 
   it('prints nothing for a note or a row stored before BOOK-16', () => {
     const html = renderToStaticMarkup(
-      <Discussion depth={2} chapterCount={8} comments={[comment({ interventionKind: null, proposedText: null })]} />,
+      <Discussion depth={2} comments={[comment({ interventionKind: null, proposedText: null })]} />,
     );
     expect(html).toContain('принято · правка в очереди');
     expect(html).not.toContain(' · принято');
@@ -117,7 +117,7 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
   });
 
   it('keeps the id out of the thread too', () => {
-    const html = renderToStaticMarkup(<Discussion depth={2} chapterCount={8} comments={[comment()]} />);
+    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} />);
     for (const id of IDS) expect(html, id).not.toContain(id);
     for (const word of TAXONOMY) expect(html, word).not.toContain(word);
   });

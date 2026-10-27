@@ -21,6 +21,7 @@ const CHAIN: ParagraphChainDto = {
       textHash: 'aa11bb22',
       chars: 120,
       changeId: 'chg_3',
+      changeSeq: 3,
       stepId: 'stp_3',
       actor: { kind: 'reader', identityId: 'id_1', label: 'Аня' },
       replacedBy: null,
@@ -36,6 +37,7 @@ const CHAIN: ParagraphChainDto = {
       textHash: 'cc33dd44',
       chars: 118,
       changeId: 'chg_7',
+      changeSeq: 7,
       stepId: 'stp_7',
       actor: { kind: 'writer', identityId: null, label: 'автор' },
       replacedBy: null,
@@ -145,6 +147,12 @@ describe('provenanceView', () => {
     expect(text).not.toContain('пережила');
     expect(text).toContain('доля в книге 0,4 % · правок 3');
     expect(publicView.rows.find((row) => row.label === 'кто внёс')?.value).toBe('автор');
+  });
+
+  it('names the change by its number, never by a raw id (BOOK-59)', () => {
+    const view = provenanceView({ word: 'свет', chapter: 8, variant: 'machine', share: own, chain: CHAIN, at: null });
+    expect(view.chain.find((row) => row.label === 'правка')?.value).toBe('правка 007');
+    expect(JSON.stringify(view)).not.toContain('chg_');
   });
 
   it('names the unattributed version the way the log does', () => {

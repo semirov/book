@@ -187,11 +187,13 @@ export type CascadeOutcome =
   | 'escalated:gate_timeout';
 
 /**
- * BOOK-DOC-4 rule 3: a reader's edit spreads by waves, and no more than five of them — the
- * sixth is refused and escalated with a public reason (§6A.6, R3/R3b). One source, because
- * the config default, the `hello` limit and the public rules page must promise one number.
+ * BOOK-59 (BOOK-DOC-4 rule 3): a change makes **one wave** — it reaches the neighbouring
+ * chapters forward and forward-back once, in both wings. A second wave does not happen by
+ * itself: the bound stops the ripple and the public reason asks for the owner's decision
+ * (§6A.6, R3/R3b). One source, because the config default, the `hello` limit and the public
+ * rules page must promise one number.
  */
-export const CASCADE_MAX_WAVE = 5;
+export const CASCADE_MAX_WAVE = 1;
 
 /** The bounds frozen at cascade open (§6A.6, §6D.2). */
 export type CascadeBudget = {

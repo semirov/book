@@ -1,5 +1,7 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
+import { receiptLine } from './terms.ts';
+
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
  *
@@ -27,7 +29,9 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       };
     case 'applied':
       return {
-        state: comment.applied === null ? 'внесено' : `внесено в главу ${comment.applied.chapter}`,
+        // BOOK-58: the receipt of an entered variant names the chapter and the right that moved
+        // with it — the bare «внесено в главу N» said half of what happened.
+        state: comment.applied === null ? 'внесено' : receiptLine(String(comment.applied.chapter).padStart(2, '0')),
         detail: comment.reason,
         tone: 'done',
       };

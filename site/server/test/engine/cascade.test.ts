@@ -325,7 +325,7 @@ describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
     expect(walk.plan).toEqual({
       kind: 'close',
       outcome: 'escalated:budget',
-      reason: 'правка ушла глубже 5 волн — нужно решение',
+      reason: 'правка ушла глубже 5 волн — дальше только по решению владельца',
       alert: true,
     });
   });
@@ -336,7 +336,7 @@ describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
     expect(planCascade(facts(atFive), ctx())).toEqual({
       kind: 'close',
       outcome: 'escalated:budget',
-      reason: 'правка ушла глубже 5 волн — нужно решение',
+      reason: 'правка ушла глубже 5 волн — дальше только по решению владельца',
       alert: true,
     });
   });

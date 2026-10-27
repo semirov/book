@@ -175,6 +175,9 @@ describe('ranges and labels', () => {
     expect(relevanceCopy('unknown')).toBe('основа не проверена');
     expect(outcomeCopy('finding')).toBe('внесено · замечание сохранено');
     expect(outcomeCopy('dropped')).toBe('снято');
+    // BOOK-59: stopping at the wave bound asks for a decision; the word names no money.
+    expect(outcomeCopy('budget')).toBe('остановлено: дальше — решением владельца');
+    expect(outcomeCopy('budget')).not.toContain('бюджет');
   });
 
   it('labels a step and its wing without naming a gate', () => {

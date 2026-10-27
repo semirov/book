@@ -12,6 +12,14 @@ describe('the kind rows of the form', () => {
     for (const kind of INTERVENTION_KINDS) expect(KIND_MEANINGS[kind].length).toBeGreaterThan(20);
   });
 
+  it('says of the note row that it spends nothing: no write, no wave, no day edit (BOOK-59)', () => {
+    // The reader has just spent the day's edit, or is about to: the quiet row must say which.
+    expect(NOTE_KIND_MEANING).toBe('сказать о тексте, ничего не внося · правку дня не тратит');
+    const meaning = NOTE_KIND_MEANING.toLowerCase();
+    expect(meaning).not.toContain('волн');
+    expect(meaning).not.toContain('проверк');
+  });
+
   it('describes what appears in the book, not what is being fixed', () => {
     expect(kindChoices()[0]?.meaning).toContain('в книге появится бумага');
     expect(kindChoices().map((row) => row.label)).toEqual([

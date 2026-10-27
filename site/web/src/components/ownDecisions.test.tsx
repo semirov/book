@@ -22,7 +22,7 @@ function record(overrides: Partial<MyDecisionsDto> = {}): MyDecisionsDto {
         outcome: 'applied',
         reason: null,
         chapters: [7, 8, 9],
-        waves: 3,
+        waves: 2,
         blocks: 12,
         shareAtDecision: { share: 0.004, day: '2026-10-25' },
         decidedAt: '2026-10-25T12:30:00Z',
@@ -37,7 +37,7 @@ function record(overrides: Partial<MyDecisionsDto> = {}): MyDecisionsDto {
 describe('«ваши правки» in the end matter (BOOK-13)', () => {
   it('prints the whole summary line and the change’s own sentence', () => {
     const html = renderToStaticMarkup(<OwnDecisions decisions={record()} />);
-    expect(html).toContain('правка внесена · главы 7–9 · 3 волны · изменилось 12 абзацев · ваша доля 0,4 %');
+    expect(html).toContain('правка внесена · главы 7–9 · волна 2 · решением · изменилось 12 абзацев · ваша доля 0,4 %');
     expect(html).toContain('«внести документ о регистрации сенсора»');
     expect(html).toContain('глава 8');
     expect(html).toContain('прицел');

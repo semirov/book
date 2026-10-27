@@ -35,7 +35,7 @@ describe('comment thread copy (§11.6)', () => {
     });
     expect(
       commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })).state,
-    ).toBe('внесено в главу 8');
+    ).toBe('внесено в главу 08 · право на ваш текст перешло автору книги');
   });
 
   it('tells a premise’s four states without a queue place (BOOK-7)', () => {

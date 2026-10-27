@@ -191,7 +191,9 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
   if (outcome === 'adapted') return 'внесено частично';
   if (outcome === 'dropped') return 'снято';
   if (outcome === 'superseded') return 'перекрыто';
-  if (outcome === 'budget') return 'остановлено бюджетом';
+  // BOOK-59: the wave bound is where a deeper change asks for a decision, not a failure, and
+  // the word must not name money to a reader who never met a budget.
+  if (outcome === 'budget') return 'остановлено: дальше — решением владельца';
   if (outcome === 'oscillation') return 'остановлено: ходит по кругу';
   if (outcome === 'origin') return 'остановлено: нужно решение';
   if (outcome === 'delta') return 'остановлено: слишком много текста';

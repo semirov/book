@@ -47,7 +47,11 @@ export function budgetBreach(budget: CascadeBudget, state: BudgetState, addsChap
 export function budgetReason(breach: Exclude<BudgetBreach, null>, budget: CascadeBudget): string {
   switch (breach) {
     case 'wave':
-      return `правка ушла глубже ${budget.maxWave} волн — нужно решение`;
+      // BOOK-59: with one wave the bound is not a failure — it is where a deeper change asks
+      // for the owner's decision. The line says so, and never names a budget or a number run.
+      return budget.maxWave === 1
+        ? 'правка сделала одну волну — вторая волна только по решению владельца'
+        : `правка ушла глубже ${String(budget.maxWave)} волн — дальше только по решению владельца`;
     case 'steps':
       return `правка потребовала больше ${budget.maxSteps} шагов — нужно решение`;
     case 'chapters':

@@ -254,26 +254,27 @@ export function footnoteCopy(change: Pick<ChangeDto, 'seq'>): string {
   return `сноска ${changeNumber(change.seq)}`;
 }
 
-/** «итерация 014 · волна 2 из 5» — the bound is the server's (`hello.limits.maxWave`). */
-export function iterationCopy(
-  change: Pick<ChangeDto, 'seq' | 'cascade' | 'steps'>,
-  maxWave: number = RIBBON_MAX_WAVE,
-): string {
-  const wave = waveOf(change);
-  return wave > 0
-    ? `итерация ${changeNumber(change.seq)} · волна ${wave} из ${maxWave}`
-    : `итерация ${changeNumber(change.seq)}`;
+/**
+ * BOOK-59 — the wave, only when it is news. A ripple is one wave, so «волна 1» is noise and a
+ * denominator is never printed; a **second** wave exists only because the owner decided to
+ * open one, and that is the only wave number a reader ever needs to see.
+ */
+export function waveCopy(wave: number, maxWave: number = RIBBON_MAX_WAVE): string {
+  if (wave < 2) return '';
+  // A bound above one is not shipped (config refuses it), but if a frame ever announces it,
+  // the number is not a decision and must not claim one.
+  return maxWave <= 1 ? `волна ${wave} · решением` : `волна ${wave}`;
 }
 
-/** «волна 2 из 5 · этап: готово» — the assessed effect, never a gate verdict. */
+/** «этап: готово» / «волна 2 · решением · этап: готово» — the assessed effect, never a verdict. */
 export function assessmentCopy(
   change: Pick<ChangeDto, 'id' | 'status' | 'outcome' | 'cascade' | 'steps'>,
   ribbon: Ribbon | null,
   maxWave: number = RIBBON_MAX_WAVE,
 ): string {
-  const wave = waveOf(change);
+  const wave = waveCopy(waveOf(change), maxWave);
   const stage = stageCopy(focusStage(change, ribbon));
-  return wave > 0 ? `волна ${wave} из ${maxWave} · этап: ${stage}` : `этап: ${stage}`;
+  return wave === '' ? `этап: ${stage}` : `${wave} · этап: ${stage}`;
 }
 
 /** «замечание Ани · глава 8 · принято 12:04» — the basis, as the thread knows it. */

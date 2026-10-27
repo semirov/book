@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -43,6 +43,43 @@ describe('the copy modules a reader sees', () => {
     for (const module of COPY_MODULES) {
       const source = readFileSync(join(ROOT, module), 'utf8').toLowerCase();
       for (const word of BANNED) expect(source, module).not.toContain(word);
+    }
+  });
+});
+
+/**
+ * BOOK-59 — one wave. The bound is a single wave in code, so no reader-facing string may
+ * promise five, count waves against a bound, or print a denominator. This half greps every
+ * non-test source file under `web/src`, because a branch that no render test reaches can
+ * still carry the old promise to the one reader who opens it.
+ */
+const WAVE_PROMISES: ReadonlyArray<{ name: string; pattern: RegExp }> = [
+  { name: '«5 волн»', pattern: /5 волн/u },
+  { name: '«из 5»', pattern: /из 5\b/u },
+  { name: '«волна N / N»', pattern: /волн[аеыу]?\s+\d+\s*\/\s*\d+/u },
+];
+
+function webSources(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (!/\.(ts|tsx)$/u.test(entry.name)) continue;
+    if (/\.test\.(ts|tsx)$/u.test(entry.name)) continue;
+    out.push(join(entry.parentPath ?? dir, entry.name));
+  }
+  return out;
+}
+
+describe('the wave promise of the copy (BOOK-59)', () => {
+  it('is one wave: no file under web/src promises five, or a wave out of a bound', () => {
+    const files = webSources(join(ROOT, 'web/src'));
+    // A guard against an empty walk: 50 files is the floor of this tree, not a count of copy.
+    expect(files.length).toBeGreaterThan(50);
+    for (const file of files) {
+      const source = readFileSync(file, 'utf8');
+      for (const promise of WAVE_PROMISES) {
+        expect(promise.pattern.test(source), `${promise.name} — ${file.replace(`${ROOT}/`, '')}`).toBe(false);
+      }
     }
   });
 });

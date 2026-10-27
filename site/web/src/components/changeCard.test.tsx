@@ -265,7 +265,7 @@ describe('the thread’s two-line status', () => {
   };
 
   it('renders both lines and the trace, and reaches the прицел in one tap', () => {
-    const html = renderToStaticMarkup(<Discussion depth={3} chapterCount={8} changes={[summary]} />);
+    const html = renderToStaticMarkup(<Discussion depth={3} changes={[summary]} />);
     expect(html).toContain('принято');
     expect(html).toContain('внесено');
     expect(html).toContain('дошло до глав 7 и 9');
@@ -293,17 +293,18 @@ describe('the thread’s two-line status', () => {
       changeId: 'chg_1',
       applied: { chapter: 8, rev: 4 },
     };
-    const html = renderToStaticMarkup(<Discussion depth={0} chapterCount={8} comments={[comment]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} />);
     expect(html).toContain('href="#правка-chg_1"');
     expect(html).toContain('прицел →');
   });
 
   it('keeps the empty thread quiet', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} chapterCount={0} />);
-    // BOOK-DOC-34: the register carries no form, so an empty book says where a note goes
-    // instead of promising that «замечания откроются».
-    expect(html).toContain('Глав ещё нет: замечание к пустой главе станет её замыслом.');
+    const html = renderToStaticMarkup(<Discussion depth={0} />);
+    // BOOK-DOC-34: the register carries no form, so it promises nothing about notes opening.
+    // BOOK-59: the «Глав ещё нет» line is gone — it named a «замечание» where the product says
+    // «замысел», and the empty slot already carries that word (premise.ts).
     expect(html).not.toContain('Замечания откроются');
+    expect(html).not.toContain('станет её замыслом');
   });
 });
 
@@ -338,9 +339,12 @@ describe('CascadeRibbon', () => {
     );
     expect(html).toContain('aria-label="правка: глава 8 · вниз до главы 7 · вверх до главы 9"');
     expect(html).toContain('ribbon-origin');
-    // Both wings at once: each with its own wave and state, each chapter a link to itself.
-    expect(html).toContain('вниз · волна 1 · идёт');
-    expect(html).toContain('вверх · волна 1 · идёт');
+    // Both wings at once: each with its own state, each chapter a link to itself. One wave is
+    // the only wave, so no wing prints a wave number (BOOK-59).
+    expect(html).toContain('вниз · идёт');
+    expect(html).toContain('вверх · идёт');
+    expect(html).not.toContain('волна 1');
+    expect(html).not.toContain('волна 0');
     expect(html).toContain('href="#ch-7"');
     expect(html).toContain('href="#ch-8"');
     expect(html).toContain('href="#ch-9"');

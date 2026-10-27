@@ -5,9 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { createEngineFixture, DEFAULT_ABOUT, driveStub, type Fixture } from './helpers.ts';
 
 /**
- * BOOK-DOC-4 rule 3 end to end, on the shipped budget: a ripple may run five waves and the
- * sixth is refused; the front and ending proofs carry the wave the ripple rests in, so the
- * recorded `cascades.wave` never exceeds the promise, and that rest is not an escalation.
+ * BOOK-DOC-4 rule 3 end to end, on the shipped budget: a change makes one wave — both wings
+ * step in it — and the next one is refused until the owner decides; the front and ending
+ * proofs carry the wave the ripple rests in, so the recorded `cascades.wave` never exceeds
+ * the promise, and that rest is not an escalation.
  */
 
 function bookBlocks(n: number): string[] {
@@ -93,8 +94,8 @@ function cascadeOf(fixture: Fixture, changeId: string): { wave: number; status: 
     .get(changeId) as { wave: number; status: string; outcome: string | null };
 }
 
-describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3)', () => {
-  it('refuses the sixth wave with the public reason and records at most five', () => {
+describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3, BOOK-59)', () => {
+  it('makes one wave in both wings, then asks for the decision that opens a second', () => {
     const fixture = createEngineFixture();
     book(fixture, 1, 20);
     try {
@@ -103,13 +104,18 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3)', () => {
       const driven = runRipple(fixture, change.id, () => true);
 
       const waves = wavesOf(fixture, change.id);
-      expect(driven).toHaveLength(1 + CASCADE_MAX_WAVE + (CASCADE_MAX_WAVE - 1));
+      // One wave is one round of both wings: the change itself, then chapters 6 and 8 at once.
+      expect(driven).toHaveLength(1 + 2 * CASCADE_MAX_WAVE);
+      expect(driven.filter((assignment) => assignment.pass === 'cascade').map((assignment) => assignment.chapter)).toEqual([
+        6, 8,
+      ]);
       expect(Math.max(...waves)).toBe(CASCADE_MAX_WAVE);
       expect(waves.every((wave) => wave <= CASCADE_MAX_WAVE)).toBe(true);
 
+      // The stop is the normal way to go deeper: a decision line, not a budget failure.
       const row = changeRow(fixture, change.id);
       expect(row.status).toBe('escalated');
-      expect(row.reason).toContain(`глубже ${String(CASCADE_MAX_WAVE)} волн`);
+      expect(row.reason).toBe('правка сделала одну волну — вторая волна только по решению владельца');
       const cascade = cascadeOf(fixture, change.id);
       expect(cascade.status).toBe('escalated');
       expect(cascade.outcome).toBe('escalated:budget');
@@ -120,17 +126,13 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3)', () => {
     }
   });
 
-  it('a ripple resting in wave 5 at the beginning records wave 5, not 6', () => {
+  it('a ripple resting in wave 1 at the beginning records wave 1, not 2', () => {
     const fixture = createEngineFixture();
     book(fixture, 1, 12);
     try {
-      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 6, intent: 'связать сцены' });
-      // The far (upward) wing holds at its first step; the downward wing walks to chapter 1.
-      const driven = runRipple(
-        fixture,
-        change.id,
-        (assignment) => typeof assignment.chapter === 'number' && assignment.chapter <= 6,
-      );
+      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 2, intent: 'связать сцены' });
+      // Both wings come to rest on their first step; the beginning is proved, not rewritten.
+      const driven = runRipple(fixture, change.id, (assignment) => assignment.pass === 'change');
 
       const front = driven.find((assignment) => assignment.pass === 'front');
       expect(front).toBeDefined();
@@ -144,19 +146,19 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3)', () => {
       expect(row.status).toBe('done');
       expect(row.reason).toBeNull();
       const cascade = cascadeOf(fixture, change.id);
-      expect(cascade).toEqual({ wave: CASCADE_MAX_WAVE, status: 'closed', outcome: 'consistent' });
+      expect(cascade).toEqual({ wave: CASCADE_MAX_WAVE, status: 'closed', outcome: 'absorbed' });
     } finally {
       fixture.close();
     }
   });
 
-  it('a ripple resting in wave 5 at the end records wave 5, not 6', () => {
+  it('a ripple resting in wave 1 at the end records wave 1, not 2', () => {
     const fixture = createEngineFixture();
     book(fixture, 55, 67);
     try {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 66, intent: 'связать сцены' });
-      // Down to chapter 61, whose landing holds; the upward wing only has the ending to evaluate.
-      const driven = runRipple(fixture, change.id, (assignment) => assignment.chapter !== 61);
+      // Both wings rest at their first step; the upward one only has the ending to evaluate.
+      const driven = runRipple(fixture, change.id, (assignment) => assignment.pass === 'change');
 
       const ending = driven.find((assignment) => assignment.pass === 'ending');
       expect(ending).toBeDefined();
@@ -168,7 +170,7 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3)', () => {
       const row = changeRow(fixture, change.id);
       expect(row.status).toBe('done');
       const cascade = cascadeOf(fixture, change.id);
-      expect(cascade).toEqual({ wave: CASCADE_MAX_WAVE, status: 'closed', outcome: 'consistent' });
+      expect(cascade).toEqual({ wave: CASCADE_MAX_WAVE, status: 'closed', outcome: 'absorbed' });
     } finally {
       fixture.close();
     }

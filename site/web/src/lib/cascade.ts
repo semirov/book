@@ -87,9 +87,14 @@ export function wingStateCopy(state: CascadeWingDto['state']): string {
   return 'держится';
 }
 
-/** «вниз · волна 2 · идёт» — the wing's own line, for the ribbon and the focus view. */
+/**
+ * «вниз · идёт» / «вниз · волна 2 · решением · идёт» — the wing's own line, for the ribbon and
+ * the focus view. BOOK-59: a wave below two is the only wave a ripple has, so it is noise; a
+ * second one got there by the owner's decision and says so.
+ */
 export function wingLine(side: Wing, wing: RibbonWing): string {
-  return `${WING_WORDS[side]} · волна ${wing.wave} · ${wingStateCopy(wing.state)}`;
+  const wave = wing.wave >= 2 ? ` · волна ${wing.wave} · решением` : '';
+  return `${WING_WORDS[side]}${wave} · ${wingStateCopy(wing.state)}`;
 }
 
 /** «07 · 06» — reached chapters, nearest first; an unopened wing says so without a number. */

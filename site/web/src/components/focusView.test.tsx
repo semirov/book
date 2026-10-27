@@ -163,9 +163,10 @@ describe('the focus view', () => {
     expect(html).toContain('выйти');
     expect(html).toContain('в абзаце дважды «слово»');
     expect(html).toContain('сноска 014');
-    expect(html).toContain('итерация 014 · волна 2 из 5');
-    expect(html).toContain('волна 2 из 5 · этап: готово');
-    expect(html).toContain('волна 2 / 5');
+    // BOOK-59: no «итерация» row (the footnote already carries the number), no denominator,
+    // and a second wave reads as the decision that opened it.
+    expect(html).not.toContain('итерация');
+    expect(html).toContain('волна 2 · решением · этап: готово');
     expect(html).toContain('deepseek-flash');
     expect(html).toContain('0,04');
     expect(html).toContain('07 · 08 · 09 (проверена)');
@@ -173,8 +174,14 @@ describe('the focus view', () => {
     expect(html).toContain('слежу');
   });
 
-  it('reads the wave bound from the frame and stays sane without one', () => {
-    // The server announces its own bound (BOOK-DOC-4 rule 3): the panel must not carry a 3.
+  it('prints no denominator, and calls a second wave a decision only when the bound is one', () => {
+    // The server announces its own bound (BOOK-DOC-4 rule 3): the shipped one is a single wave.
+    const shipped = renderToStaticMarkup(
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} maxWave={1} revisions={{}} onClose={() => undefined} />,
+    );
+    expect(shipped).toContain('волна 2 · решением · этап: готово');
+    expect(shipped).not.toContain('/ 1');
+    // A bound above one is not shipped; the panel still must not claim a decision it cannot know.
     const fromFrame = renderToStaticMarkup(
       <FocusView
         change={change}
@@ -186,15 +193,15 @@ describe('the focus view', () => {
         onClose={() => undefined}
       />,
     );
-    expect(fromFrame).toContain('волна 2 / 4');
-    expect(fromFrame).toContain('итерация 014 · волна 2 из 4');
-    expect(fromFrame).toContain('волна 2 из 4 · этап: готово');
+    expect(fromFrame).toContain('волна 2 · этап: готово');
+    expect(fromFrame).not.toContain('решением');
+    expect(fromFrame).not.toContain('/ 4');
     expect(fromFrame).not.toContain('из 3');
     // Before `hello` lands the fallback is the shipped default, not a broken readout.
     const noFrame = renderToStaticMarkup(
       <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} />,
     );
-    expect(noFrame).toContain('волна 2 / 5');
+    expect(noFrame).toContain('волна 2 · решением');
   });
 
   it('never renders a gate field, a finding or a hidden role', () => {
@@ -235,8 +242,8 @@ describe('the focus view', () => {
     expect(currentChapter(at9)).toBe(9);
     // Both wings are printed at once, each with its own wave and state — one presentation,
     // so the old sentence line beside the panel is gone.
-    expect(at7).toContain('вниз · волна 1 · идёт');
-    expect(at7).toContain('вверх · волна 1 · идёт');
+    expect(at7).toContain('вниз · идёт');
+    expect(at7).toContain('вверх · идёт');
     expect(at7).not.toContain('вниз: глава');
     expect(at9).toContain('data-chapter="9"');
   });

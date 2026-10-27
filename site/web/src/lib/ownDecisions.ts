@@ -4,9 +4,10 @@
  *
  * Two jobs, both pure so they can be asserted without a browser:
  *
- * 1. **The summary line** — «правка внесена · главы 7–9 · 3 волны · изменилось 12 абзацев ·
- *    ваша доля 0,4 %». Every clause is a real field: a refusal has no waves, no chapters and
- *    no share, so the line for one is its public reason and nothing else.
+ * 1. **The summary line** — «правка внесена · главы 7–9 · волна 2 · решением · изменилось 12
+ *    абзацев · ваша доля 0,4 %». Every clause is a real field: a refusal has no waves, no
+ *    chapters and no share, so the line for one is its public reason and nothing else. A
+ *    change makes one wave, so «1 волна» is not printed at all (BOOK-59).
  * 2. **The match** — a `change:decided`/`comment:decision` frame is a broadcast, and it
  *    renders as «ваша правка» only when its comment is one of the viewer's own. The set
  *    comes from the durable record, never from a name: two readers may be called «Аня».
@@ -45,9 +46,13 @@ export function chaptersCopy(chapters: readonly number[]): string | null {
   return `${chapters.length === 1 ? 'глава' : 'главы'} ${chapterRange(chapters)}`;
 }
 
+/**
+ * BOOK-59 — a change makes one wave, so «1 волна» is a number that is always one and tells a
+ * reader nothing. Only a wave above the bound is news, and it got there by a decision.
+ */
 export function wavesCopy(waves: number | null): string | null {
-  if (waves === null || waves <= 0) return null;
-  return `${waves} ${plural(waves, 'волна', 'волны', 'волн')}`;
+  if (waves === null || waves <= 1) return null;
+  return `волна ${waves} · решением`;
 }
 
 export function blocksCopy(blocks: number | null): string | null {

@@ -3,6 +3,7 @@ import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/s
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
 import { focusHash } from '../lib/focus.ts';
+import { plural } from '../lib/format.ts';
 
 /**
  * The register (BOOK-DOC-34 §8): what a reader wrote and what became of it.
@@ -14,12 +15,10 @@ import { focusHash } from '../lib/focus.ts';
  */
 export function Discussion({
   depth,
-  chapterCount,
   changes = [],
   comments = [],
 }: {
   depth: number;
-  chapterCount: number;
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
 }) {
@@ -27,11 +26,14 @@ export function Discussion({
     <section className="page talks" id="talks">
       <header className="sec-h">
         <span className="lbl">обсуждение</span>
-        <span className="sec-meta">{comments.length}</span>
+        {/* A bare counter is a number without its noun (BOOK-59). */}
+        <span className="sec-meta">
+          {comments.length} {plural(comments.length, 'замечание', 'замечания', 'замечаний')}
+        </span>
       </header>
       <div className="qline">
         <span>
-          в очереди <b>{depth}</b>
+          в очереди <b>{depth}</b> {plural(depth, 'правка', 'правки', 'правок')}
         </span>
         <span>правки идут по одной, в порядке записи</span>
       </div>
@@ -39,8 +41,6 @@ export function Discussion({
       <p className="fine teach">
         коснитесь слова — увидите, откуда оно; коснитесь фразы — оставите своё
       </p>
-
-      {chapterCount === 0 ? <p className="fine">Глав ещё нет: замечание к пустой главе станет её замыслом.</p> : null}
 
       {comments.length > 0 ? (
         <ol className="comments">

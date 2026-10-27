@@ -16,7 +16,6 @@ import {
   focusWingPair,
   focusWings,
   footnoteCopy,
-  iterationCopy,
   parseFocusHash,
   scaleTicks,
   sheetChapter,
@@ -24,6 +23,7 @@ import {
   sheetNotice,
   stageCopy,
   touchedChaptersCopy,
+  waveCopy,
   waveOf,
   type FocusStage,
 } from './focus.ts';
@@ -316,16 +316,23 @@ describe('the panel’s lines', () => {
     expect(waveOf(change)).toBe(2);
     expect(waveOf({ ...change, cascade: null })).toBe(1);
     expect(footnoteCopy(change)).toBe('сноска 014');
-    // The bound is the server's: the fallback is the shipped default (BOOK-DOC-4 rule 3).
-    expect(iterationCopy(change)).toBe('итерация 014 · волна 2 из 5');
-    expect(assessmentCopy(change, null)).toBe('волна 2 из 5 · этап: готово');
+    // BOOK-59: a second wave exists only because the owner decided to open it.
+    expect(waveCopy(2)).toBe('волна 2 · решением');
+    expect(waveCopy(1)).toBe('');
+    expect(assessmentCopy(change, null)).toBe('волна 2 · решением · этап: готово');
   });
 
-  it('takes the wave bound from the caller instead of carrying one of its own', () => {
-    expect(iterationCopy(change, 4)).toBe('итерация 014 · волна 2 из 4');
-    expect(assessmentCopy(change, null, 4)).toBe('волна 2 из 4 · этап: готово');
-    // A change with no wave says nothing about the bound.
-    expect(iterationCopy({ ...change, cascade: { ...change.cascade!, wave: 0 }, steps: [] }, 4)).not.toContain('волн');
+  it('never prints a denominator, and says nothing about a wave that is the only one', () => {
+    expect(waveCopy(1)).not.toContain('/');
+    expect(waveCopy(2)).not.toContain('/');
+    expect(waveCopy(2)).not.toContain('из');
+    expect(waveCopy(0)).toBe('');
+    // A change resting in its one wave reads as a stage, with no wave number in front of it.
+    const firstWave = { ...change, cascade: { ...change.cascade!, wave: 1 }, steps: [] };
+    expect(assessmentCopy(firstWave, null)).toBe('этап: готово');
+    // A bound above one is not shipped; if a frame announced it, the number is not a decision.
+    expect(waveCopy(2, 4)).toBe('волна 2');
+    expect(assessmentCopy(change, null, 4)).toBe('волна 2 · этап: готово');
   });
 
   it('states the basis and the touched chapters as facts', () => {
@@ -403,7 +410,7 @@ describe('the panel’s lines', () => {
       stageCopy('down'),
       stageCopy('done'),
       footnoteCopy(change),
-      iterationCopy(change),
+      waveCopy(2),
       assessmentCopy(change, null),
       basisCopy(change),
       touchedChaptersCopy(change, impact),

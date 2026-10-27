@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { formatNumber } from '../lib/format.ts';
+import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.ts';
 import { LegalPage } from './LegalPage.tsx';
 
 /**
@@ -32,6 +33,17 @@ describe('/privacy', () => {
     expect(html).toContain('10 замечаний в час');
     expect(html).toContain('href="/rules"');
     expect(html).toContain('href="/"');
+  });
+
+  it('names the reader’s shown name, and says history is not open yet (BOOK-56, BOOK-59)', () => {
+    // Contributors print their shown name, not a hash: the page must not promise anonymity.
+    expect(html).toContain('показывается своим показанным именем, а не внутренним номером');
+    expect(html).not.toContain('псевдонимом-хешем');
+    // The chronicle wakes with the first reader edit; today the page says so instead of
+    // promising a surface that is not there.
+    expect(html).toContain('история откроется с первой читательской правкой и проверки не спросит');
+    expect(html).toContain('её история станет частью книги с первой читательской правкой');
+    expect(html).not.toContain('вся история книги работают без CAPTCHA');
   });
 });
 
@@ -73,15 +85,15 @@ describe('/rules', () => {
     expect(noteAt).toBeLessThan(refusedAt);
   });
 
-  it('states the licence grant, once, in the reader’s own words (BOOK-23)', () => {
-    // BOOK-DOC-4 «Authors and attribution»: posting an accepted contribution grants a
-    // non-exclusive licence with public attribution; authorship stays with the reader, and
-    // a later ripple may rewrite or erase the phrase — the surviving share stays visible.
-    expect(text).toContain('неисключительную лицензию');
-    // Public attribution, in the reader's words: the name is seen by everyone, beside the
-    // text and in the list of authors at the end of the book.
-    expect(text).toContain('ваше имя видно всем — рядом с текстом и в списке авторов в конце книги');
-    expect(text).toContain('Авторство остаётся за вами');
+  it('states the assignment, once, in the reader’s own words (BOOK-58)', () => {
+    // BOOK-58: the right in an accepted variant passes in full and free of charge; authorship
+    // and the name cannot pass at all, and a later wave may rewrite or erase the phrase.
+    expect(text).toContain(RIGHTS_ASSIGNMENT);
+    expect(text).toContain(RIGHTS_FALLBACK);
+    // The paragraph says which terms it is; a later acceptance record can name the same version.
+    expect(html).toContain(`data-terms="${TERMS_VERSION}"`);
+    expect(text).not.toContain('вы даёте проекту неисключительную лицензию');
+    expect(text).toContain('Авторство, имя и защита от искажения остаются у вас');
     expect(text).toContain('переписать или стереть');
     expect(text).toContain('Свою долю в окончательном тексте');
   });
@@ -94,20 +106,33 @@ describe('/rules', () => {
     expect(text).toContain('не больше 10 в час с одного адреса и с одного читателя');
   });
 
-  it('keeps the secondary path — a note without one’s own wording is feedback about the text', () => {
-    expect(text).toContain('Замечание без своего варианта — отзыв о тексте: тип у него не спрашивают.');
-    // It is still taken in; only the kind is not asked. The page must not promise otherwise.
+  it('keeps the secondary path — a note without a type is not an intervention (BOOK-57)', () => {
+    // A note is read, but it writes nothing, waves nowhere and does not spend the day's edit.
+    expect(text).toContain(
+      'Замечание без типа — не вмешательство: его читают, но оно ничего не вносит, не расходится волной и не тратит правку дня.',
+    );
     expect(text).not.toContain('в очередь правок оно не встаёт');
   });
 
   it('keeps the frozen ending and the promise that a refusal has a public reason', () => {
     expect(text).toContain('реальные люди');
     expect(text).toContain('указания модели');
-    expect(text).toContain(`до ${CASCADE_MAX_WAVE} волн`);
     expect(text).toContain('глава 67 заморожена');
     expect(text).toContain('публичной причиной');
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/"');
+  });
+
+  it('promises one wave, both directions, and a second one only by decision (BOOK-59)', () => {
+    // The constant the config and the `hello` limit are pinned to is one; the copy follows it
+    // without printing a number, because «волна 1 / 1» says nothing.
+    expect(CASCADE_MAX_WAVE).toBe(1);
+    expect(text).toContain(
+      'правка расходится одной волной по соседним главам — вперёд и назад; вторая волна бывает только решением владельца',
+    );
+    expect(text).not.toContain('5 волн');
+    expect(text).not.toContain('из 5');
+    expect(text).not.toContain('волн, глубже');
   });
 
   it('says none of the internal words to a reader (BOOK-22)', () => {

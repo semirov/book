@@ -5,6 +5,7 @@ import { ApiError, postAnchoredComment } from '../api.ts';
 import { captchaApi, loadCaptchaScript } from '../lib/captcha.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, wordingLabel, type SeamDraft } from '../lib/draft.ts';
+import { SUBMIT_LINE } from '../lib/terms.ts';
 import { InterventionKinds } from './InterventionKinds.tsx';
 
 /**
@@ -231,10 +232,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         {sending ? 'передаётся' : submitLabel(draft)}
       </button>
       <p className="fine seam-licence">
-        передаёте книге неисключительную лицензию на принятый вариант ·{' '}
-        <a className="seam-link" href="/rules">
-          правила →
-        </a>
+        {SUBMIT_LINE} <a className="seam-link" href="/rules">правила →</a>
       </p>
       {budget === null ? null : <p className="seam-hint">{budget.line}</p>}
     </form>

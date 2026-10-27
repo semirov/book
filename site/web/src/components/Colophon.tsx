@@ -1,29 +1,19 @@
 import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot } from '@book/shared';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import { formatDate, formatNumber } from '../lib/format.ts';
+import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
-
-const clock = new Intl.DateTimeFormat('ru-RU', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-  timeZone: 'Europe/Moscow',
-});
 
 /**
  * The imprint line (`imprint.copyright`) lives here: the cover no longer carries «©»
  * (BOOK-DOC-5 §2), and «Авторы» keeps its own copy of it.
+ *
+ * BOOK-59 removed the ticking clock and today's date: a clock changes while the reader reads
+ * and dates nothing, and «издание · сегодня» claims an edition date the imprint does not have
+ * (it is author and copyright only). What stays dates itself — «печатается по ходу письма».
  */
 export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: FrontDto['imprint'] }) {
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
-  const [now, setNow] = useState<Date>(() => new Date());
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const toggle = (): void => {
     const next: Theme = theme === 'night' ? 'day' : 'night';
@@ -35,9 +25,9 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
     <footer className="page sheet colophon" id="colo">
       <div className="row">
         <span>
-          книга · {state.chapters.count} / {TOTAL_CHAPTERS}
+          книга · {state.chapters.count} {plural(state.chapters.count, 'глава', 'главы', 'глав')} из{' '}
+          {TOTAL_CHAPTERS}
         </span>
-        <span className="mono">{clock.format(now)}</span>
       </div>
       <div className="row">
         <span>печатается по ходу письма</span>
@@ -45,8 +35,7 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
       </div>
       <div className="row">
         <span>
-          {imprint.copyright} · издание · {formatDate(now.toISOString())} ·{' '}
-          <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
+          {imprint.copyright} · <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
         </span>
         <button
           className="theme"
