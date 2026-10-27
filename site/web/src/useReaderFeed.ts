@@ -1,7 +1,7 @@
 import type { ChangeSummaryDto, CommentDto, MyDecisionsDto } from '@book/shared';
 import { useCallback, useRef, useState } from 'react';
 
-import { getChanges, getComments, getMyDecisions } from './api.ts';
+import { getChanges, getChapterComments, getComments, getMyDecisions } from './api.ts';
 import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib/ownDecisions.ts';
 
 /**
@@ -19,13 +19,26 @@ import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib
  *
  * The change and comment feeds live here too: three small views of the same page, each
  * refreshed by its own frame, none of them able to take the book down when it fails.
+ *
+ * BOOK-DOC-34 §6 — filings in the text are loaded **per chapter**, lazily, on the same
+ * intersection trigger as the prose: the global list is only for the register, and a chapter
+ * that was never on screen never costs a request. A frame for chapter N refreshes N only.
  */
+export type ChapterFeed = {
+  items: CommentDto[];
+  /** The chapter was asked for and answered (or failed); the marks are settled either way. */
+  loaded: boolean;
+};
+
 export function useReaderFeed() {
   const [changes, setChanges] = useState<ChangeSummaryDto[]>([]);
   const [comments, setComments] = useState<CommentDto[]>([]);
+  const [chapterFeed, setChapterFeed] = useState<Record<number, ChapterFeed>>({});
   const [decisions, setDecisions] = useState<MyDecisionsDto | null>(null);
   /** The viewer's own comment ids: the key that turns a frame into «ваша правка». */
   const ownComments = useRef<Set<string>>(new Set());
+  /** Which chapters were already requested once; a second scroll does not re-ask. */
+  const asked = useRef<Set<number>>(new Set());
 
   const refreshChanges = useCallback(async () => {
     try {
@@ -35,14 +48,50 @@ export function useReaderFeed() {
     }
   }, []);
 
-  /** The public thread (§9); a `comment:added`/`comment:decision` frame refreshes it. */
-  const refreshComments = useCallback(async () => {
+  /** One chapter's filings, after a frame that names it: the sentence may have moved. */
+  const refreshChapter = useCallback(async (chapter: number) => {
+    try {
+      const page = await getChapterComments(chapter, 50);
+      asked.current.add(chapter);
+      setChapterFeed((current) => ({ ...current, [chapter]: { items: page.items, loaded: true } }));
+    } catch {
+      /* the next frame for this chapter retries */
+    }
+  }, []);
+
+  /**
+   * The public thread (§9) — and, when the frame names a chapter, that chapter's filings too:
+   * the register and the marks are two views of the same fact, refreshed together.
+   */
+  const refreshComments = useCallback(async (chapter?: number) => {
     try {
       setComments((await getComments({ limit: 20 })).items);
     } catch {
       /* the next comment event or reconnect retries */
     }
+    if (chapter !== undefined) await refreshChapter(chapter);
+  }, [refreshChapter]);
+
+  const loadChapter = useCallback(async (chapter: number) => {
+    if (asked.current.has(chapter)) return;
+    asked.current.add(chapter);
+    try {
+      const page = await getChapterComments(chapter, 50);
+      setChapterFeed((current) => ({ ...current, [chapter]: { items: page.items, loaded: true } }));
+    } catch {
+      // A failed read is not a permanent one: drop the marker so the next trigger retries.
+      asked.current.delete(chapter);
+    }
   }, []);
+
+  /**
+   * A reconnect can miss a decision frame, so the marks of every chapter already on screen
+   * are re-read once (BOOK-33): the cached feed is a view, the endpoint is the truth.
+   */
+  const refreshLoaded = useCallback(async () => {
+    const chapters = [...asked.current];
+    await Promise.all(chapters.map((chapter) => refreshChapter(chapter)));
+  }, [refreshChapter]);
 
   const refreshDecisions = useCallback(async () => {
     try {
@@ -72,5 +121,16 @@ export function useReaderFeed() {
     [refreshDecisions, forgetDecisions],
   );
 
-  return { changes, comments, decisions, refreshChanges, refreshComments, noteRecord };
+  return {
+    changes,
+    comments,
+    chapterFeed,
+    decisions,
+    refreshChanges,
+    refreshComments,
+    loadChapter,
+    refreshChapter,
+    refreshLoaded,
+    noteRecord,
+  };
 }

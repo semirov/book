@@ -22,6 +22,13 @@ const COPY_MODULES = [
   'shared/src/intervention.ts',
   'web/src/lib/composer.ts',
   'web/src/lib/commentView.ts',
+  // BOOK-DOC-34: the seam's own copy — the strip, the form, the panels, the empty slot.
+  'web/src/lib/seam.ts',
+  'web/src/lib/provenance.ts',
+  'web/src/lib/filings.ts',
+  'web/src/lib/premise.ts',
+  'web/src/lib/draft.ts',
+  'web/src/lib/kindChoices.ts',
   'web/src/lib/changeStatus.ts',
   'web/src/lib/cascade.ts',
   'web/src/lib/deed.ts',

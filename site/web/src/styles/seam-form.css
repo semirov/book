@@ -1,0 +1,273 @@
+/**
+ * BOOK-DOC-34 §2.3 — the form inside the seam: the five kind rows, the two fields, the
+ * verification field, the submit and the errors. Every target is 44 px; a form is not the
+ * book, so its text is 16 px — one step under the prose.
+ */
+
+/* ---------- kinds ---------- */
+.kinds {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.kinds legend {
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+}
+.kinds .fine {
+  grid-column: 1 / -1;
+}
+.kind {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.kind-note {
+  grid-column: 1 / -1;
+  color: var(--ink-2);
+}
+.kind input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.kind-word {
+  font-family: var(--ui);
+  font-size: 13px;
+  color: var(--ink);
+}
+.kind-meaning {
+  font-family: var(--ui);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+.kind[data-picked='true'] {
+  border-color: var(--live);
+}
+.kind[data-picked='true'] .kind-word {
+  color: var(--live);
+}
+.kind:focus-within {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.kind-state {
+  grid-column: 1 / -1;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-3);
+}
+
+/* ---------- marks and the cited rule (§2.5) ---------- */
+/* BOOK-33: the numeral *is* the button. The 24×24 target is laid into the paragraph's
+   right margin on the mark's line (CSSOM writes the line offset), so it covers no prose and
+   no `style` attribute reaches the markup. */
+.filing-mark-slot {
+  position: static;
+  display: inline;
+}
+.filing-mark {
+  position: absolute;
+  right: -24px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.filing-mark-num {
+  padding: 0 1px;
+  border: 1px solid currentColor;
+  background: var(--paper-2);
+  font-family: var(--mono);
+  font-size: 8px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.filing-mark.ink-live,
+.filing-mark-num.ink-live {
+  color: var(--live);
+}
+.filing-mark.ink-quiet,
+.filing-mark-num.ink-quiet {
+  color: var(--ink-3);
+}
+.filing-mark.ink-stopped,
+.filing-mark-num.ink-stopped {
+  color: var(--rule-2);
+}
+.filing-mark.ink-done,
+.filing-mark-num.ink-done {
+  color: var(--ink-2);
+}
+.filing-mark:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: -2px;
+}
+.filing-mark-more {
+  margin-left: 2px;
+}
+.cited {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.cited.rule-solid {
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+}
+.cited.rule-dotted {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+}
+.cited.ink-live {
+  text-decoration-color: var(--live);
+}
+.cited.ink-quiet {
+  text-decoration-color: var(--ink-3);
+}
+.cited.ink-stopped {
+  text-decoration-color: var(--rule-2);
+}
+.ink-live {
+  color: var(--live);
+}
+.ink-quiet {
+  color: var(--ink-3);
+}
+.ink-stopped {
+  color: var(--rule-2);
+}
+.p-stale {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ---------- empty slot (§2.4) ---------- */
+.premise {
+  margin: 4px 0 0;
+}
+.premise-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.premise-n {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.premise-field {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px dotted var(--rule);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.premise-label {
+  font-family: var(--label);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.premise-quote {
+  font-style: italic;
+}
+.premise-state,
+.premise-hint {
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.premise-hint {
+  font-family: var(--ui);
+  font-size: 11px;
+}
+
+/* ---------- desktop (§2.8) ---------- */
+@media (hover: hover) {
+  .p [data-s]:hover {
+    text-decoration: underline dotted var(--rule-2);
+    text-underline-offset: 4px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .seam-rail {
+    position: absolute;
+    left: -104px;
+    top: 0;
+    display: inline-flex;
+    align-items: center;
+    width: 96px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: var(--label);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    opacity: 0;
+    cursor: pointer;
+  }
+  .p:hover .seam-rail,
+  .p:focus-within .seam-rail {
+    opacity: 1;
+    color: var(--live);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seam-grow {
+    transition: none;
+  }
+  .prov-panel,
+  .filing-panel {
+    animation: none;
+  }
+}

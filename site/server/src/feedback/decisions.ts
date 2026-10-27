@@ -114,6 +114,7 @@ export class DecisionsTailer {
       }
       this.emit('comment:decision', {
         id: comment.id,
+        chapter: comment.chapter,
         status: decision.status,
         reason: comment.reason ?? decision.reason,
         decidedAt: comment.decided_at,
@@ -181,6 +182,7 @@ export class DecisionsTailer {
         : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`, change.seq);
     const payload: CommentDecisionPayload = {
       id: comment.id,
+      chapter: comment.chapter,
       status: 'accepted',
       reason: superseded ? (change?.reason ?? decision.reason) : decision.reason,
       decidedAt: at,
@@ -228,6 +230,7 @@ export class DecisionsTailer {
     appendCommentEvent(this.db, comment.id, 'decided', at, { status: 'rejected' });
     this.emit('comment:decision', {
       id: comment.id,
+      chapter: comment.chapter,
       status: 'rejected',
       reason: publicReason,
       decidedAt: at,

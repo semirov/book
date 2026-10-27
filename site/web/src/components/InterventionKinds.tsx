@@ -1,48 +1,48 @@
-import {
-  INTERVENTION_KINDS,
-  INTERVENTION_KIND_HINT,
-  INTERVENTION_KIND_LABELS,
-  INTERVENTION_RULE_COPY,
-  type InterventionKind,
-} from '@book/shared';
+import { INTERVENTION_RULE_COPY, type InterventionKind } from '@book/shared';
 
 import { draftKindLine } from '../lib/composer.ts';
+import { kindChoices, KIND_PROMPT, NOTE_KIND_LABEL } from '../lib/kindChoices.ts';
 
 /**
- * BOOK-16 — the four kinds, as a plain choice.
+ * BOOK-DOC-34 §2.3 — the five rows of the form.
  *
- * A fieldset of four radios, the rule in one line, and the draft's own state: which world-fact
- * is about to be brought in, or that nothing is chosen yet. No icons, no cards, no pre-selected
- * value — the reader names the kind or the composer refuses the send. It is a component of its
- * own so the labels, the hint and the "nothing chosen" state can be asserted without a browser.
+ * Four kinds and the quiet fifth row: a note without a type. Each row says what will appear
+ * in the book, so the choice is a fact, not a category. Nothing is pre-selected — the reader
+ * names what they bring, or the form refuses the send (BOOK-16).
  */
 export function InterventionKinds({
   kind,
+  noteOnly = false,
   disabled = false,
   onPick,
 }: {
   kind: InterventionKind | null;
+  noteOnly?: boolean;
   disabled?: boolean;
-  onPick: (kind: InterventionKind) => void;
+  onPick: (choice: { kind: InterventionKind | null; noteOnly: boolean }) => void;
 }) {
   return (
-    <fieldset className="composer-kinds">
-      <legend className="composer-label">{INTERVENTION_KIND_HINT}</legend>
-      {INTERVENTION_KINDS.map((value) => (
-        <label className="composer-kind" key={value}>
-          <input
-            type="radio"
-            name="intervention-kind"
-            value={value}
-            checked={kind === value}
-            onChange={() => onPick(value)}
-            disabled={disabled}
-          />
-          {INTERVENTION_KIND_LABELS[value]}
-        </label>
-      ))}
-      <p className="composer-kind-state" data-kind={kind ?? 'none'} role="status">
-        {draftKindLine(kind)}
+    <fieldset className="kinds">
+      <legend className="field-label">{KIND_PROMPT}</legend>
+      {kindChoices().map((row) => {
+        const checked = row.id === null ? noteOnly : !noteOnly && kind === row.id;
+        return (
+          <label className={`kind${row.id === null ? ' kind-note' : ''}`} key={row.id ?? 'note'} data-picked={checked ? 'true' : undefined}>
+            <input
+              type="radio"
+              name="intervention-kind"
+              value={row.id ?? 'note'}
+              checked={checked}
+              onChange={() => onPick({ kind: row.id, noteOnly: row.id === null })}
+              disabled={disabled}
+            />
+            <span className="kind-word">{row.label}</span>
+            <span className="kind-meaning">{row.meaning}</span>
+          </label>
+        );
+      })}
+      <p className="kind-state" data-kind={noteOnly ? 'note' : (kind ?? 'none')} role="status">
+        {noteOnly ? `вносится: ${NOTE_KIND_LABEL}` : draftKindLine(kind)}
       </p>
       <p className="fine">{INTERVENTION_RULE_COPY}</p>
     </fieldset>

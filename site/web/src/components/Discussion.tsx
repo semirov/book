@@ -1,57 +1,28 @@
-import {
-  commentInkClass,
-  type CatalogEntry,
-  type CommentBudget,
-  type CommentDto,
-  type ComposerInfo,
-  type ChangeSummaryDto,
-  type ViewerDto,
-} from '@book/shared';
+import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
-import { composerTargets } from '../lib/composer.ts';
 import { focusHash } from '../lib/focus.ts';
-import { Composer } from './Composer.tsx';
 
 /**
- * The thread: what a reader wrote, what happened to it, and the one place a reader may
- * write (§11.6, §12.1).
+ * The register (BOOK-DOC-34 §8): what a reader wrote and what became of it.
  *
- * Two-line status per change («принято · …» then the fact) and per comment (its decision
- * then its application) — acceptance is a promise, application is a fact. Bodies are
- * rendered as text nodes: the page never trusts a comment enough to parse it as markup.
+ * The composer is gone — the form lives in the text, at the point it is about. What stays is
+ * the record: the queue line, every filing with its decision then its application, and the one
+ * teaching line that tells a reader how the text itself works. Bodies are text nodes: the page
+ * never trusts a comment enough to parse it as markup.
  */
 export function Discussion({
   depth,
   chapterCount,
   changes = [],
   comments = [],
-  viewer,
-  composer,
-  chapters = [],
-  budget = null,
-  onPosted,
 }: {
   depth: number;
   chapterCount: number;
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
-  /** The composer appears only where the page knows the viewer and its configuration. */
-  viewer?: ViewerDto;
-  composer?: ComposerInfo;
-  chapters?: readonly CatalogEntry[];
-  budget?: CommentBudget | null;
-  onPosted?: () => void;
 }) {
-  // BOOK-7: an empty book still has something to write — a premise for a chapter with no
-  // text. The composer stays open for every slot that can take one; only a book whose
-  // catalog is unavailable falls back to the «first chapter» line.
-  const targets = composerTargets(chapters);
-  const canCompose = viewer !== undefined && composer !== undefined && targets.length > 0;
-  const opening = chapterCount === 0 ? 'Глав ещё нет: замечание к пустой главе станет её замыслом.' : null;
-  const closed = chapterCount === 0 ? 'Замечания откроются вместе с первой главой.' : 'Замечания ещё не открыты.';
-
   return (
     <section className="page talks" id="talks">
       <header className="sec-h">
@@ -65,26 +36,17 @@ export function Discussion({
         <span>правки идут по одной, в порядке записи</span>
       </div>
 
-      {canCompose ? (
-        <>
-          {opening === null ? null : <p className="fine">{opening}</p>}
-          <Composer
-            viewer={viewer}
-            composer={composer}
-            chapters={chapters}
-            onPosted={() => onPosted?.()}
-          />
-        </>
-      ) : (
-        <p className="fine">{closed}</p>
-      )}
+      <p className="fine teach">
+        коснитесь слова — увидите, откуда оно; коснитесь фразы — оставите своё
+      </p>
+
+      {chapterCount === 0 ? <p className="fine">Глав ещё нет: замечание к пустой главе станет её замыслом.</p> : null}
 
       {comments.length > 0 ? (
         <ol className="comments">
           {comments.map((comment) => {
             const line = commentStatusLine(comment);
             const quote = anchorCopy(comment);
-            // BOOK-16: the kind sits with the decision — one word, never an id or a taxonomy.
             const kindWord = interventionKindWord(comment);
             return (
               <li className={`comment tone-${line.tone}`} key={comment.id} data-status={comment.status}>
@@ -144,10 +106,7 @@ export function Discussion({
       ) : null}
 
       <p className="fine">
-        {changes.length > 0
-          ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.'
-          : ''}
-        {budget === null ? '' : ` Остаток: ${budget.remaining} из ${budget.perHour} за час.`}
+        {changes.length > 0 ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.' : ''}
       </p>
     </section>
   );

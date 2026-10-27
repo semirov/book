@@ -157,10 +157,33 @@ for (const id of [
   if (!validateRules.includes(`'${id}'`)) report(join(ROOT, 'shared/src/validate/text.ts'), `rule ${id} is missing`);
 }
 
-/** The title line and the front matter have one parser with two callers (§23.5). */
+/**
+ * The title line and the front matter have one parser with two callers (§23.5). A chapter's
+ * title decision is `parseChapterTitle` — the title rule plus the line the frame owns (BOOK-32).
+ */
 const parseChapter = readFileSync(join(ROOT, 'server/src/ingest/parseChapter.ts'), 'utf8');
-if (!parseChapter.includes('parseTitleLine')) {
-  report(join(ROOT, 'server/src/ingest/parseChapter.ts'), 'must parse the title line with parseTitleLine');
+if (!parseChapter.includes('parseChapterTitle')) {
+  report(join(ROOT, 'server/src/ingest/parseChapter.ts'), 'must parse the title line with parseChapterTitle');
+}
+const validateFrame = readFileSync(join(ROOT, 'shared/src/validate/frame.ts'), 'utf8');
+if (!validateFrame.includes('parseChapterTitle')) {
+  report(join(ROOT, 'shared/src/validate/frame.ts'), 'must read the prose with parseChapterTitle, not a local title rule');
+}
+// The validator's own collection must read the same title decision; a second rule drifts.
+const validateRulesFile = readFileSync(join(ROOT, 'shared/src/validate/rules.ts'), 'utf8');
+for (const [file, source] of [
+  ['server/src/ingest/parseChapter.ts', parseChapter],
+  ['shared/src/validate/frame.ts', validateFrame],
+  ['shared/src/validate/rules.ts', validateRulesFile],
+]) {
+  if (!source.includes('parseChapterTitle')) report(join(ROOT, file), 'must decide the title line with parseChapterTitle');
+}
+// And no blank-line heuristic may come back: "line 1 followed by a blank line" is not a title
+// rule — it is what dropped the frame of ch01 (BOOK-32).
+for (const file of ['shared/src/validate/frame.ts', 'shared/src/validate/rules.ts', 'server/src/ingest/parseChapter.ts']) {
+  if (/lines\[1\]/u.test(readFileSync(join(ROOT, file), 'utf8'))) {
+    report(join(ROOT, file), 'must not infer a title line from the blank line under it (BOOK-32)');
+  }
 }
 const parseFront = readFileSync(join(ROOT, 'server/src/ingest/parseFront.ts'), 'utf8');
 if (!parseFront.includes('parseFrontMatter')) {

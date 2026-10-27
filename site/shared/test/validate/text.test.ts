@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
 import {
   ABOUT_MAX_CHARS,
   ABOUT_MIN_CHARS,
@@ -10,6 +11,7 @@ import {
   lineAt,
   manuscriptChapterFile,
   normalizeText,
+  parseChapterTitle,
   parseFrontMatter,
   parseTitleLine,
   splitBlocks,
@@ -147,6 +149,47 @@ describe('parseTitleLine', () => {
     const parsed = parseTitleLine('Тестовая глава');
     expect(parsed.title).toBe('Тестовая глава');
     expect(splitBlocks(parsed.body)).toEqual([]);
+  });
+});
+
+describe('parseChapterTitle — the frame line is prose, not a title (BOOK-32)', () => {
+  it('reads a ch01 that opens on the frame followed by a blank line as untitled prose', () => {
+    const parsed = parseChapterTitle(1, `${FRAME_FIRST_SENTENCE}\n\nСвет был включён до меня.`);
+    expect(parsed.title).toBeNull();
+    expect(parsed.problems).toEqual([]);
+    expect(parsed.body).toBe(`${FRAME_FIRST_SENTENCE}\n\nСвет был включён до меня.`);
+    expect(splitBlocks(parsed.body)).toEqual([FRAME_FIRST_SENTENCE, 'Свет был включён до меня.']);
+  });
+
+  it('keeps a real title above the frame', () => {
+    const parsed = parseChapterTitle(1, `Глава\n\n${FRAME_FIRST_SENTENCE} Потом он сел.`);
+    expect(parsed.title).toBe('Глава');
+    expect(splitBlocks(parsed.body)).toEqual([`${FRAME_FIRST_SENTENCE} Потом он сел.`]);
+  });
+
+  it('reads prose that continues on the frame line as prose too', () => {
+    const parsed = parseChapterTitle(1, `${FRAME_FIRST_SENTENCE} Я постоял и вышел.`);
+    expect(parsed.title).toBeNull();
+    expect(parsed.body).toBe(`${FRAME_FIRST_SENTENCE} Я постоял и вышел.`);
+  });
+
+  it('does not extend the exemption to a rewritten or shortened frame', () => {
+    for (const line of ['Я вошёл в тёмную комнату. Её освещал яркий свет.', 'Я вошёл в пустую комнату.']) {
+      const parsed = parseChapterTitle(1, `${line}\n\nСвет был включён до меня.`);
+      expect(parsed.title).toBe(line);
+      expect(parsed.body).toBe('\nСвет был включён до меня.');
+    }
+  });
+
+  it('is per chapter: the same sentence is a title in ch67 and in a chapter without a frame', () => {
+    expect(parseChapterTitle(67, `${FRAME_FIRST_SENTENCE}\n\nТекст.`).title).toBe(FRAME_FIRST_SENTENCE);
+    expect(parseChapterTitle(8, `${FRAME_FIRST_SENTENCE}\n\nТекст.`).title).toBe(FRAME_FIRST_SENTENCE);
+    expect(parseChapterTitle(67, `${FRAME_LAST_SENTENCE}\n\nТекст.`).title).toBeNull();
+  });
+
+  it('leaves every other file to parseTitleLine', () => {
+    expect(parseChapterTitle(5, '')).toEqual(parseTitleLine(''));
+    expect(parseChapterTitle(5, 'Глава:\n\nТекст.')).toEqual(parseTitleLine('Глава:\n\nТекст.'));
   });
 });
 

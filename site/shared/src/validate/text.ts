@@ -16,6 +16,7 @@ export {
   countParagraphChars,
   hasMarkdown,
   normalizeBookText,
+  parseChapterTitle,
   parseFrontMatter,
   parseTitleLine,
   splitParagraphs,

@@ -12,7 +12,7 @@
  * after a title line. Whitespace is not text, so a rewrap passes and a changed word does not.
  */
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '../book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, parseChapterTitle } from '../book.ts';
 import { type ChapterFile, type Finding, lineAt } from './text.ts';
 
 const FRAME_FIRST_CHAPTER = 1;
@@ -45,13 +45,13 @@ function lastSentence(value: string): string {
 }
 
 /**
- * The chapter's text as prose: a title line is not text (§6C.3), but a file without one — a
- * basis-only ch01/ch67 — is prose from its first character.
+ * The chapter's text as prose: a title line is not text (§6C.3), and which line is a title is
+ * the shared title decision — never "line 1 followed by a blank line", because a title-less
+ * chapter that opens with the frozen sentence has exactly that shape, and dropping its first
+ * line made F029 compare the second paragraph (BOOK-32).
  */
 function proseText(chapter: ChapterFile): string {
-  const lines = chapter.text.split('\n');
-  const titled = lines.length > 1 && (lines[1] ?? '').trim() === '';
-  return collapseWhitespace(titled ? lines.slice(1).join('\n') : chapter.text);
+  return collapseWhitespace(parseChapterTitle(chapter.n, chapter.text).body);
 }
 
 /** The line of a block, so a frame finding points at the sentence and not at the file. */

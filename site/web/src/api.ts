@@ -116,6 +116,15 @@ export async function getChapter(n: number): Promise<ChapterDto | null> {
 }
 
 /** The public thread (§9, §12): one page of comments with their decisions. */
+/**
+ * BOOK-DOC-34 §6 — one chapter's filings, for the marks in its text. `GET /api/comments`
+ * already takes `chapter`; the seam loads it lazily, when the chapter comes into view, and
+ * keeps it until a frame for that chapter says otherwise.
+ */
+export function getChapterComments(chapter: number, limit = 50): Promise<CommentPage> {
+  return getComments({ chapter, limit });
+}
+
 export function getComments(options: { chapter?: number; limit?: number; before?: string } = {}): Promise<CommentPage> {
   const params = new URLSearchParams();
   if (options.chapter !== undefined) params.set('chapter', String(options.chapter));
@@ -136,6 +145,40 @@ export async function postComment(input: PostCommentInput): Promise<PostCommentR
   });
   if (!response.ok) throw await toApiError(response);
   return (await response.json()) as PostCommentResponse;
+}
+
+/**
+ * BOOK-DOC-34 §6 — a filing made at a point in the text. `blockId`, the sentence as `quote`
+ * and `baseRev` are **required** here, not optional as on the wire type: a filing with no
+ * anchor is exactly the object the seam replaced. A premise has no block and says so with
+ * `blockId: null`; it still carries the chapter.
+ */
+export type AnchoredCommentInput = {
+  chapter: number;
+  blockId: string | null;
+  quote: string | null;
+  baseRev: number | null;
+  prefix?: string | null;
+  suffix?: string | null;
+  body: string;
+  proposedText?: string | null;
+  interventionKind?: string | null;
+  captchaToken: string;
+};
+
+export async function postAnchoredComment(input: AnchoredCommentInput): Promise<PostCommentResponse> {
+  return postComment({
+    chapter: input.chapter,
+    blockId: input.blockId,
+    quote: input.quote,
+    baseRev: input.baseRev,
+    ...(input.prefix === undefined ? {} : { prefix: input.prefix }),
+    ...(input.suffix === undefined ? {} : { suffix: input.suffix }),
+    body: input.body,
+    ...(input.proposedText === undefined ? {} : { proposedText: input.proposedText }),
+    ...(input.interventionKind === undefined ? {} : { interventionKind: input.interventionKind }),
+    captchaToken: input.captchaToken,
+  });
 }
 
 // ── the history (§6F.2, §11.10) ─────────────────────────────────────────────

@@ -300,7 +300,10 @@ describe('the thread’s two-line status', () => {
 
   it('keeps the empty thread quiet', () => {
     const html = renderToStaticMarkup(<Discussion depth={0} chapterCount={0} />);
-    expect(html).toContain('Замечания откроются вместе с первой главой');
+    // BOOK-DOC-34: the register carries no form, so an empty book says where a note goes
+    // instead of promising that «замечания откроются».
+    expect(html).toContain('Глав ещё нет: замечание к пустой главе станет её замыслом.');
+    expect(html).not.toContain('Замечания откроются');
   });
 });
 

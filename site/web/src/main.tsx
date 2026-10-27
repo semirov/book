@@ -13,6 +13,9 @@ import './styles/cascade.css';
 import './styles/ribbon.css';
 import './styles/chronicle.css';
 import './styles/focus.css';
+import './styles/seam.css';
+import './styles/panels.css';
+import './styles/seam-form.css';
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('#root is missing from index.html');

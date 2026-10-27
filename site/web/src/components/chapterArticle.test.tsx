@@ -1,3 +1,4 @@
+import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -23,14 +24,19 @@ function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
 
 function render(row: CatalogEntry): string {
   return renderToStaticMarkup(
-    <ChapterArticle entry={row} revision={null} revising={null} caret={null} fresh={false} />,
+    <ChapterArticle entry={row} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />,
   );
+}
+
+/** The text a reader sees, without the sentence anchors that make the prose tappable. */
+function prose(html: string): string {
+  return html.replace(/<[^>]+>/gu, '');
 }
 
 describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
   it('reads a basis-only chapter as its frozen sentence, with no «не написана» label', () => {
     const html = render(entry(1, { basis: true, blocks: 1 }));
-    expect(html).toContain(FRAME_FIRST_SENTENCE);
+    expect(prose(html)).toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('не написана');
     expect(html).not.toContain('ch-empty');
     expect(html).toContain('data-basis="true"');
@@ -38,7 +44,7 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
 
   it('closes the book with the last sentence in the same way', () => {
     const html = render(entry(67, { basis: true, blocks: 1 }));
-    expect(html).toContain(FRAME_LAST_SENTENCE);
+    expect(prose(html)).toContain(FRAME_LAST_SENTENCE);
     expect(html).not.toContain('не написана');
     // Chapter 67 is drafted backwards; its slot shows the same header as any other, no arrow.
     expect(html).not.toContain('←');

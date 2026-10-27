@@ -208,6 +208,9 @@ export type TitleLineParse = {
  * Line 1 is the chapter title: plain text, ≤80 chars, no markdown, no trailing colon;
  * line 2 is blank (§6C.3). A malformed line 1 gives `title = null` and a problem; the
  * chapter still publishes, because F022 blocks a commit, never a reader.
+ *
+ * A chapter has one more rule on top of this one — the frame line — so every chapter caller
+ * (ingest, validator) reads `parseChapterTitle`, not this function directly (BOOK-32).
  */
 export function parseTitleLine(raw: string): TitleLineParse {
   const text = normalizeBookText(raw);
@@ -222,6 +225,39 @@ export function parseTitleLine(raw: string): TitleLineParse {
     body: valid ? lines.slice(1).join('\n') : text,
     problems,
   };
+}
+
+/** Whitespace is not text: a rewrapped line and the frozen sentence compare as one string. */
+function flatLine(value: string): string {
+  return value.replace(/\s+/gu, ' ').trim();
+}
+
+/**
+ * Line 1 is the chapter's frame, not its title, when it equals the frozen sentence or extends
+ * it with more prose on the same line (BOOK-32). ch01 may open with the frame and write on;
+ * a ch67 that opens with it is malformed (the frame ends that chapter), and F029 is the rule
+ * that says so — the line is prose in either case. The frame lives once, in this file.
+ */
+function isFrameLine(n: number, line: string): boolean {
+  const frame = frameSentenceOf(n);
+  if (frame === null) return false;
+  const expected = flatLine(frame);
+  const flat = flatLine(line);
+  return flat === expected || flat.startsWith(`${expected} `);
+}
+
+/**
+ * The title decision for a chapter: the shared title rule plus the one line the frame owns.
+ * A chapter that opens on its frozen sentence is untitled — `title = null`, no title problem,
+ * the whole file is prose — the way a basis-only slot is read (BOOK-6), so the reader, `chars`
+ * and the validator cannot disagree about the same bytes (BOOK-32).
+ */
+export function parseChapterTitle(n: number, raw: string): TitleLineParse {
+  const text = normalizeBookText(raw);
+  const first = (text.split('\n')[0] ?? '').trim();
+  // The writer has not invented a title above the frame, and F022 does not ask for one.
+  if (isFrameLine(n, first)) return { title: null, body: text, problems: [] };
+  return parseTitleLine(raw);
 }
 
 export type FrontMatterParse = {

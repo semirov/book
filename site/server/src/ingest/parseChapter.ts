@@ -7,16 +7,19 @@
  * (`ch08#9c1f0a3b`) so a comment keeps pointing at its paragraph when the ones above it
  * are rewritten.
  *
- * One exception, decided before the title line: a file that is exactly its basis sentence
- * (ch01/ch67) is one paragraph with no title and no `chars` — the frozen frame is prose to
- * read, not written prose (§BOOK-6).
+ * Two exceptions, both decided before the title rule:
+ * · a file that is exactly its basis sentence (ch01/ch67) is one paragraph with no title and
+ *   no `chars` — the frozen frame is prose to read, not written prose (§BOOK-6);
+ * · a chapter that opens on its frame (ch01 writing on after it) is untitled, and the frame is
+ *   its first paragraph — `parseChapterTitle`, so the reader never prints the frame as a
+ *   heading (BOOK-32).
  */
 
 import {
   chapterLabel,
   isBasisOnly,
   normalizeBookText,
-  parseTitleLine,
+  parseChapterTitle,
   splitParagraphs,
 } from '@book/shared';
 
@@ -110,7 +113,9 @@ export function parseChapter(n: number, raw: string): ParsedChapter {
   }
 
   const sha256 = sha256Hex(text);
-  const title = parseTitleLine(raw);
+  // The shared title decision: a chapter that opens on its frame is untitled prose, so the
+  // reader prints the frame as a paragraph, not as a heading (BOOK-32).
+  const title = parseChapterTitle(n, raw);
   const texts = splitParagraphs(title.body);
   const seen = new Map<string, number>();
   const blocks: ParsedBlock[] = texts.map((blockText, index) => {

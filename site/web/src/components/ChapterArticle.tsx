@@ -4,8 +4,11 @@ import {
   type CatalogEntry,
   type ChapterDto,
   type ChapterRevisionPayload,
+  type CommentDto,
+  type ComposerInfo,
+  type ViewerDto,
 } from '@book/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { getChapter } from '../api.ts';
 import { nearViewport, reducedMotion } from '../dom.ts';
@@ -14,6 +17,15 @@ import { reserveHeight } from '../lib/cssom.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
+import { isFrozenChapter } from '../lib/freeze.ts';
+import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
+import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
+import { reanchorAnchor, seamKey } from '../lib/seam.ts';
+import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
+import { FilingPanel } from './FilingPanel.tsx';
+import { PremiseRow } from './PremiseRow.tsx';
+import { ProseParagraph } from './ProseParagraph.tsx';
+import { Seam } from './Seam.tsx';
 import {
   REVEAL,
   activeBlockId,
@@ -50,9 +62,36 @@ export type ChapterArticleProps = {
   fresh: boolean;
   /** «⋯ откуда эта фраза» (§11.10): the paragraph's lineage chain, anchored on the button. */
   onProvenance?: (blockId: string, anchor: HTMLElement) => void;
+  /** BOOK-DOC-34: this chapter's filings, loaded lazily on the same trigger as the prose. */
+  comments?: readonly CommentDto[];
+  /** The chapter's filings were asked for when its slot came into view. */
+  onRead?: (chapter: number) => void;
+  /** A filing was posted in this chapter: the marks and the register refresh. */
+  onPosted?: (chapter: number) => void;
+  composer: ComposerInfo;
+  viewer: ViewerDto;
 };
 
-export function ChapterArticle({ entry, revision, revising, caret, fresh, onProvenance }: ChapterArticleProps) {
+export function ChapterArticle({
+  entry,
+  revision,
+  revising,
+  caret,
+  fresh,
+  onProvenance,
+  comments = [],
+  onRead,
+  onPosted,
+  composer,
+  viewer,
+}: ChapterArticleProps) {
+  const seam = useOpenSeam();
+  const [premiseCard, setPremiseCard] = useState<{ comment: CommentDto; rect: DOMRect } | null>(null);
+  /**
+   * BOOK-33 — a stale draft waiting for the fresh revision. The draft keeps what the reader
+   * wrote; its block and base revision are replaced here, after the chapter reloads.
+   */
+  const [reanchor, setReanchor] = useState<{ draft: SeamDraft; blockGone: boolean } | null>(null);
   const [chapter, setChapter] = useState<ChapterDto | null>(null);
   const [reveal, setReveal] = useState<RevealState | null>(null);
   const [revisedIds, setRevisedIds] = useState<ReadonlySet<string>>(new Set());
@@ -103,6 +142,23 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
 
   // Load when the slot comes within 1.5 viewports (mobile-first: a 45 KB chapter is not
   // fetched until it is nearly on screen).
+  // BOOK-DOC-34 §6: the filings arrive with the prose, not before it.
+  useEffect(() => {
+    const node = article.current;
+    if (node === null) return;
+    const observer = new IntersectionObserver(
+      (records) => {
+        if (records.some((record) => record.isIntersecting)) {
+          onRead?.(entry.n);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '150% 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [entry.n, onRead]);
+
   useEffect(() => {
     if (!showsText) return;
     const node = article.current;
@@ -199,6 +255,44 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
     if (skipped.size > 0) setReveal((current) => (current === null ? current : skipBlocks(current, skipped)));
   }, [chapter, reveal]);
 
+  // The reload that a stale send asks for is the moment to re-key the draft: the new block
+  // id, sentence and revision come from the chapter that just arrived (BOOK-33).
+  useEffect(() => {
+    if (reanchor === null || chapter === null || reanchor.blockGone) return;
+    // The reload has not landed yet: re-keying onto the same revision would repeat the failure.
+    if (chapter.rev === reanchor.draft.baseRev) return;
+    // The paragraph may have been rewritten into a new block: find it by id, then by the
+    // position it held when the reader opened the seam (the reviewer's «new block» case).
+    const block =
+      chapter.blocks.find((item) => item.id === reanchor.draft.blockId) ??
+      chapter.blocks[reanchor.draft.blockIndex ?? -1];
+    if (block === undefined) {
+      setReanchor({ draft: reanchor.draft, blockGone: true });
+      return;
+    }
+    const anchor = reanchorAnchor({
+      text: block.text,
+      blockId: block.id,
+      baseRev: chapter.rev,
+      previous: seam?.anchor ?? null,
+    });
+    if (anchor === null) {
+      setReanchor({ draft: reanchor.draft, blockGone: true });
+      return;
+    }
+    const key = seamKey(entry.n, block.id, anchor.sentence, chapter.rev);
+    const moved = rekeyDraft(reanchor.draft, {
+      blockId: block.id,
+      sentence: anchor.quote,
+      baseRev: chapter.rev,
+      blockIndex: chapter.blocks.indexOf(block),
+    });
+    if (seam !== null) seamDrafts.drop(seam.key);
+    seamDrafts.keep(key, moved);
+    openSeam({ chapter: entry.n, blockId: block.id, key, anchor, origin: seam?.origin ?? null });
+    setReanchor(null);
+  }, [chapter, entry.n, reanchor, seam]);
+
   const showCaret = caret?.show === true && chapter !== null && entry.written;
   const caretBlockId = reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter?.blocks.at(-1)?.id ?? null : null)) : null;
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
@@ -222,9 +316,59 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
   );
 
   if (!showsText) {
+    // BOOK-DOC-34 §2.4: an empty chapter is a 44 px field, and its one premise opens in it.
+    const premise = existingPremise(comments, entry.n);
+    const row = premiseRow(entry, premise);
+    const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
     return (
-      <article className="page ch ch-empty" id={`ch-${entry.n}`} data-n={entry.n} data-rev={0} aria-label={`глава ${entry.n}`}>
+      <article
+        className="page ch ch-empty"
+        id={`ch-${entry.n}`}
+        data-n={entry.n}
+        data-rev={0}
+        aria-label={`глава ${entry.n}`}
+        ref={article}
+      >
         {header}
+        {row === null ? null : (
+          <PremiseRow
+            row={row}
+            onOpen={(origin) => {
+              // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
+              // second form would be refused by the server («у главы уже есть замысел»).
+              if (premiseAction(premise).kind === 'card') {
+                if (premise !== null) setPremiseCard({ comment: premise, rect: origin.getBoundingClientRect() });
+                return;
+              }
+              openSeam({
+                chapter: entry.n,
+                blockId: null,
+                key: `ch${entry.n}:premise`,
+                anchor: null,
+                origin,
+              });
+            }}
+          />
+        )}
+        {open ? (
+          <Seam
+            entry={entry}
+            draftKey={`ch${entry.n}:premise`}
+            anchor={null}
+            frozen={false}
+            filings={null}
+            existingPremise={premise}
+            composer={composer}
+            viewer={viewer}
+            onPosted={(n) => onPosted?.(n)}
+            onClose={closeSeam}
+            onProvenance={() => undefined}
+            onOpenFiling={() => undefined}
+          />
+        ) : null}
+        {premiseCard === null ? null : (
+          <FilingPanel comment={premiseCard.comment} anchor={premiseCard.rect} onClose={() => setPremiseCard(null)} />
+        )}
       </article>
     );
   }
@@ -248,44 +392,36 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
       ) : null}
 
       {chapter !== null
-        ? chapter.blocks.map((block) => {
+        ? chapter.blocks.map((block, index) => {
             const text = reveal === null ? block.text : blockText(reveal, block.id, block.text);
             const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
-            const classes = ['p'];
-            if (printing && caretBlockId === block.id) classes.push('is-printing');
-            if (revisingCause !== null) classes.push('is-revising');
-            if (revisedIds.has(block.id)) classes.push('is-revised');
             return (
-              <p
-                className={classes.join(' ')}
-                key={block.id}
-                data-block-id={block.id}
-                data-revising={revisingCause ?? undefined}
-                data-change={revisingCause !== null ? (revising?.changeId ?? undefined) : undefined}
-              >
-                {revisingCause !== null ? (
-                  <span className="revising-label">
-                    {revisingCause === 'cascade' ? 'правится · по замечанию' : 'правится'}
-                  </span>
-                ) : null}
-                {text}
-                {onProvenance === undefined ? null : (
-                  <button
-                    type="button"
-                    className="prov"
-                    aria-label="откуда эта фраза"
-                    onClick={(event) => onProvenance(block.id, event.currentTarget)}
-                  >
-                    ⋯
-                  </button>
-                )}
-                {caretBlockId === block.id ? (
-                  <span
-                    className={`caret-inline${caret?.live === true && !printing ? ' blink' : ''}${printing ? '' : ' resting'}`}
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </p>
+              <Fragment key={block.id}>
+                <ProseParagraph
+                  entry={entry}
+                  blockId={block.id}
+                  blockIndex={index}
+                  baseRev={chapter.rev}
+                  text={text}
+                  frozen={isFrozenChapter(entry)}
+                  comments={comments}
+                  composer={composer}
+                  viewer={viewer}
+                  onPosted={(n) => onPosted?.(n)}
+                  onBlockProvenance={onProvenance}
+                  onReanchor={(draft) => {
+                    setReanchor({ draft, blockGone: false });
+                    void load();
+                  }}
+                  caret={
+                    caretBlockId === block.id
+                      ? { printing, live: caret?.live === true && !printing }
+                      : null
+                  }
+                  revised={revisedIds.has(block.id)}
+                  revising={revisingCause === null ? null : revisingCause === 'cascade' ? 'правится · по замечанию' : 'правится'}
+                />
+              </Fragment>
             );
           })
         : null}
@@ -294,7 +430,18 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
         // A basis slot is complete before the request: the frozen frame is one shared
         // constant, and the request only adds the paragraph's id and revision (§BOOK-6).
         // The article, not this paragraph, carries `data-basis`: it survives the load.
-        <p className="p">{basisSentence}</p>
+        <ProseParagraph
+          entry={entry}
+          blockId={`ch${String(entry.n).padStart(2, '0')}#frame`}
+          blockIndex={0}
+          baseRev={0}
+          text={basisSentence}
+          frozen
+          comments={comments}
+          composer={composer}
+          viewer={viewer}
+          onPosted={(n) => onPosted?.(n)}
+        />
       ) : null}
 
       {chapter === null && basisSentence === null && !failed ? (
@@ -307,6 +454,30 @@ export function ChapterArticle({ entry, revision, revising, caret, fresh, onProv
           }}
           aria-hidden="true"
         />
+      ) : null}
+
+      {reanchor?.blockGone === true ? (
+        <div className="seam seam-missing" role="status">
+          <p className="seam-note">этого абзаца больше нет — черновик сохранён</p>
+          <button
+            type="button"
+            className="seam-cta"
+            onClick={() => {
+              // Attach to the paragraph's current place: the chapter's first block, if any.
+              const block = chapter?.blocks[0];
+              const draft = reanchor.draft;
+              setReanchor(null);
+              if (block === undefined) return;
+              const anchor = reanchorAnchor({ text: block.text, blockId: block.id, baseRev: chapter?.rev ?? 0, previous: null });
+              if (anchor === null) return;
+              const key = seamKey(entry.n, block.id, anchor.sentence, chapter?.rev ?? 0);
+              seamDrafts.keep(key, rekeyDraft(draft, { blockId: block.id, sentence: anchor.quote, baseRev: chapter?.rev ?? 0 }));
+              openSeam({ chapter: entry.n, blockId: block.id, key, anchor, origin: null });
+            }}
+          >
+            прикрепить к этому месту
+          </button>
+        </div>
       ) : null}
 
       {failed ? (

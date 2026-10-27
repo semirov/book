@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -58,7 +59,7 @@ describe('the chapter skeleton under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={ENTRY} revision={null} revising={null} caret={null} fresh={false} />);
+      root?.render(<ChapterArticle entry={ENTRY} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
     });
 
     const placeholder = container.querySelector<HTMLElement>('.ch-placeholder');
@@ -75,7 +76,7 @@ describe('the chapter skeleton under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, written: false }} revision={null} revising={null} caret={null} fresh={false} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, written: false }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
     });
 
     expect(container.querySelector('.ch-placeholder')).toBeNull();

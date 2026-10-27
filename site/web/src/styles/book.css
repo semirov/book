@@ -78,6 +78,91 @@
   align-items: center;
 }
 
+/* ---------- comments: the thread a filing is decided in ---------- */
+
+
+
+/* ---------- comments: the thread a filing is decided in ---------- */
+.comments {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.comment {
+  border-left: 2px solid var(--rule);
+  padding-left: 12px;
+  font-family: var(--ui);
+  font-size: var(--fs-note);
+}
+.comment.tone-live {
+  border-left-color: var(--live);
+}
+.comment.tone-stopped {
+  border-left-color: var(--rule-2);
+  opacity: 0.8;
+}
+.comment-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: var(--fs-nano);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.comment-author {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--fs-label);
+}
+/* BOOK-30 — a reader's ink is a class, not a style attribute: no colour value in the
+   markup, one themeable rule per palette slot (shared/src/comment.ts). */
+.comment-author.author-ink-0 {
+  color: #6f9bb5;
+}
+.comment-author.author-ink-1 {
+  color: #a98b6f;
+}
+.comment-author.author-ink-2 {
+  color: #7d9b6f;
+}
+.comment-author.author-ink-3 {
+  color: #9b7f9e;
+}
+.comment-author.author-ink-4 {
+  color: #b58f6f;
+}
+.comment-author.author-ink-5 {
+  color: #6f8fb5;
+}
+.comment-quote {
+  margin: 4px 0 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--rule);
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--ink-2);
+}
+.comment-body {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comment-line {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--ink-2);
+}
+.comment-reason {
+  color: var(--ink-3);
+}
+/* BOOK-16 — the kind of an intervention, printed as one plain word beside its decision. */
+.comment-kind {
+  color: var(--ink-2);
+}
+
 /* ---------- опись: a form with blank fields, not an error page ---------- */
 .inv {
   padding-top: 44px;
@@ -216,241 +301,4 @@
   line-height: 1.3;
   color: var(--ink);
   text-wrap: balance;
-}
-
-/* ---------- comments and the composer (M5, §11.6, §12.1, §12.8) ---------- */
-.composer {
-  display: grid;
-  gap: 8px;
-  margin: 14px 0 6px;
-  padding: 12px 0 14px;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-}
-.composer-note {
-  font-family: var(--ui);
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: var(--fs-note);
-  color: var(--ink-2);
-  border-bottom: 0;
-}
-.composer-note p {
-  margin: 0;
-}
-.composer-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--ink-3);
-}
-.composer-row select,
-.composer textarea {
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  color: var(--ink);
-  background: var(--paper-2);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  padding: 6px 8px;
-}
-.composer textarea {
-  width: 100%;
-  resize: vertical;
-  line-height: 1.5;
-}
-.composer-who {
-  color: var(--ink-2);
-}
-.composer-label {
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: var(--fs-nano);
-  color: var(--ink-3);
-}
-.composer-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--live);
-  cursor: pointer;
-  text-decoration: none;
-}
-.composer-count {
-  justify-self: end;
-  font-family: var(--mono);
-  font-size: var(--fs-nano);
-  color: var(--ink-3);
-}
-.composer-check {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--ink-2);
-}
-/* BOOK-16 — the four kinds as a plain choice: no icons, no cards, a radio and its word. */
-.composer-kinds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 16px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.composer-kinds legend {
-  padding: 0;
-  margin-bottom: 2px;
-}
-.composer-kind {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--ink-2);
-  /* A 44 px tap target, the same standard as the rest of the reading surfaces. */
-  min-height: 44px;
-}
-.composer-kind input {
-  margin: 0;
-}
-.composer-kind-state {
-  flex-basis: 100%;
-  margin: 0;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--ink-3);
-}
-.composer-kind-state[data-kind='none'] {
-  color: var(--revise);
-}
-.composer-kinds .fine {
-  flex-basis: 100%;
-  margin: 0;
-}
-.composer-captcha {
-  min-height: 2px;
-}
-.composer-error,
-.composer-sent {
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  margin: 0;
-}
-.composer-error {
-  color: var(--revise);
-}
-.composer-sent {
-  color: var(--live);
-}
-.composer-detail {
-  color: var(--ink-3);
-}
-.composer-actions {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-.composer-actions button {
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--paper);
-  background: var(--ink);
-  border: 0;
-  border-radius: 2px;
-  padding: 7px 14px;
-  cursor: pointer;
-}
-.composer-actions button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-.comments {
-  list-style: none;
-  margin: 16px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 12px;
-}
-.comment {
-  border-left: 2px solid var(--rule);
-  padding-left: 12px;
-  font-family: var(--ui);
-  font-size: var(--fs-note);
-}
-.comment.tone-live {
-  border-left-color: var(--live);
-}
-.comment.tone-stopped {
-  border-left-color: var(--rule-2);
-  opacity: 0.8;
-}
-.comment-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: var(--fs-nano);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.comment-author {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: var(--fs-label);
-}
-/* BOOK-30 — a reader's ink is a class, not a style attribute: no colour value in the
-   markup, one themeable rule per palette slot (shared/src/comment.ts). */
-.comment-author.author-ink-0 {
-  color: #6f9bb5;
-}
-.comment-author.author-ink-1 {
-  color: #a98b6f;
-}
-.comment-author.author-ink-2 {
-  color: #7d9b6f;
-}
-.comment-author.author-ink-3 {
-  color: #9b7f9e;
-}
-.comment-author.author-ink-4 {
-  color: #b58f6f;
-}
-.comment-author.author-ink-5 {
-  color: #6f8fb5;
-}
-.comment-quote {
-  margin: 4px 0 2px;
-  padding-left: 10px;
-  border-left: 1px solid var(--rule);
-  font-family: var(--serif);
-  font-style: italic;
-  color: var(--ink-2);
-}
-.comment-body {
-  margin: 4px 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.comment-line {
-  margin: 0;
-  font-size: var(--fs-label);
-  color: var(--ink-2);
-}
-.comment-reason {
-  color: var(--ink-3);
-}
-/* BOOK-16 — the kind of an intervention, printed as one plain word beside its decision. */
-.comment-kind {
-  color: var(--ink-2);
 }

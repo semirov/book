@@ -48,6 +48,7 @@ import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { useChangeCard } from './useChangeCard.ts';
+import { commentFrameChapter } from './lib/commentFrames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { useFocusMode } from './useFocus.ts';
@@ -102,7 +103,8 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, decisions, refreshChanges, refreshComments, noteRecord } = useReaderFeed();
+  const { changes, comments, chapterFeed, decisions, refreshChanges, refreshComments, loadChapter, refreshLoaded, noteRecord } =
+    useReaderFeed();
 
   /**
    * REST fallback and resync. The initial call must not overwrite a `hello` that already
@@ -178,6 +180,7 @@ export function App() {
             setFailed(false);
             noteRecord({ kind: 'hello', signedIn: hello.viewer.signedIn });
             void refreshChanges();
+            void refreshLoaded();
             void refreshComments();
             break;
           }
@@ -286,14 +289,14 @@ export function App() {
           }
           case 'comment:added':
           case 'feedback:batch': {
-            void refreshComments();
+            void refreshComments(commentFrameChapter(frame.data) ?? undefined);
             break;
           }
           case 'comment:decision': {
             // A decision frame is a broadcast; only the viewer's own comment earns a reload
             // of the durable record. Everybody else's is simply the thread's business.
             noteRecord({ kind: 'frame', type: frame.type, data: frame.data });
-            void refreshComments();
+            void refreshComments(commentFrameChapter(frame.data) ?? undefined);
             break;
           }
           case 'change:queued': {
@@ -344,7 +347,7 @@ export function App() {
       for (const timer of timers.current) window.clearTimeout(timer);
       timers.current = [];
     };
-  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, noteRecord, card.refresh, focus.bump, applyAuthorsCount]);
+  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, card.refresh, focus.bump, applyAuthorsCount]);
 
   if (connection === 'capacity') {
     return (
@@ -455,6 +458,14 @@ export function App() {
               caret={show ? { show, live } : null}
               fresh={fresh === entry.n}
               onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
+              comments={chapterFeed[entry.n]?.items ?? []}
+              onRead={loadChapter}
+              onPosted={(n) => {
+                void refreshComments(n);
+                noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
+              }}
+              composer={composer}
+              viewer={viewer}
             />
           );
         })}
@@ -473,15 +484,6 @@ export function App() {
         chapterCount={state.chapters.count}
         changes={changes}
         comments={comments}
-        viewer={viewer}
-        composer={composer}
-        chapters={catalog}
-        onPosted={() => {
-          void refreshComments();
-          // A fresh intervention is the viewer's own: the endpoint now lists its id, so the
-          // live frame that follows can be recognised as theirs.
-          noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
-        }}
       />
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : (

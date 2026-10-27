@@ -17,8 +17,8 @@ import {
   TOTAL_CHAPTERS,
   imprintProblems,
   isEmptySlot,
+  parseChapterTitle,
   parseFrontMatter,
-  parseTitleLine,
   splitParagraphs,
   type Imprint,
   type LegalDenylist,
@@ -142,7 +142,9 @@ export function collectManuscript(options: ValidateOptions): {
       continue;
     }
 
-    const line = parseTitleLine(file.text);
+    // The shared title decision, so a chapter that opens on its frame is untitled prose here,
+    // in the reader and in F029 alike (BOOK-32).
+    const line = parseChapterTitle(parsed.n, file.text);
     const blocks = splitParagraphs(line.body);
     chapters.push({
       n: parsed.n,

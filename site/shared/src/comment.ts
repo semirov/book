@@ -213,6 +213,12 @@ export type CommentAddedPayload = {
 /** §10 `comment:decision` — triage accepted or rejected; acceptance is not application. */
 export type CommentDecisionPayload = {
   id: string;
+  /**
+   * BOOK-33 — the chapter the filing belongs to. A decision frame is the only event that
+   * can change a mark in the text, and without the chapter the client had to reload the
+   * page to stop printing «ждёт рассмотрения» on a decided filing.
+   */
+  chapter: number;
   status: 'accepted' | 'rejected' | 'expired' | 'quarantined';
   reason: string;
   decidedAt: string;

@@ -140,8 +140,37 @@ describe('parseChapter — a slot that is exactly its basis sentence (BOOK-6)', 
   it('does not turn a written chapter that opens with the frame into a basis slot', () => {
     const parsed = parseChapter(1, `${FRAME_FIRST_SENTENCE}\n\n${'Первый абзац. '.repeat(20)}`);
     expect(parsed.basis).toBe(false);
-    expect(parsed.blocks.length).toBe(1);
+    expect(parsed.title).toBeNull();
+    expect(parsed.titleProblems).toEqual([]);
+    expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE, 'Первый абзац. '.repeat(20).trim()]);
     expect(parsed.chars).toBeGreaterThan(0);
+  });
+
+  /**
+   * BOOK-32: the frame on line 1 with a blank line under it is prose, not a title line — the
+   * reader must print it as the chapter's first paragraph, never as `<h3 class="ch-title">`.
+   */
+  it('reads the frame as the first paragraph of the exact BOOK-32 shape', () => {
+    const parsed = parseChapter(1, `${FRAME_FIRST_SENTENCE}\n\nСвет был включён до меня.`);
+    expect(parsed.title).toBeNull();
+    expect(parsed.titleProblems).toEqual([]);
+    expect(parsed.blocks).toHaveLength(2);
+    expect(parsed.blocks[0]).toMatchObject({ i: 0, text: FRAME_FIRST_SENTENCE });
+    expect(parsed.blocks[1]).toMatchObject({ i: 1, text: 'Свет был включён до меня.' });
+    expect(parsed.body.startsWith(FRAME_FIRST_SENTENCE)).toBe(true);
+    expect(parsed.chars).toBe(FRAME_FIRST_SENTENCE.length + 'Свет был включён до меня.'.length);
+  });
+
+  it('reads the frame as the first paragraph when prose continues on its line', () => {
+    const parsed = parseChapter(1, `${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\nСвет был включён до меня.`);
+    expect(parsed.title).toBeNull();
+    expect(parsed.blocks[0]?.text).toBe(`${FRAME_FIRST_SENTENCE} Я постоял и вышел.`);
+  });
+
+  it('reads a ch67 that opens with its frame as prose too: F029 reports the missing ending', () => {
+    const parsed = parseChapter(TOTAL_CHAPTERS, `${FRAME_LAST_SENTENCE}\n\nОн сел у окна.`);
+    expect(parsed.title).toBeNull();
+    expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE, 'Он сел у окна.']);
   });
 
   it('treats a whitespace-only re-save as the same projection: no new sha, no new block', () => {
