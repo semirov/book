@@ -77,6 +77,14 @@ function premiseDecisionCopy(subject: SummarySubject): string {
   return `замысел главы ${chapter} не взят${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;
 }
 
+/** «в главе 12» · «в главах 12, 19, 44» — the list is bounded at eight chapters. */
+function chaptersPhrase(chapters: readonly number[]): string {
+  const head = chapters.slice(0, 8);
+  const rest = chapters.length - head.length;
+  const list = `${head.join(', ')}${rest > 0 ? ` и ещё ${rest}` : ''}`;
+  return chapters.length === 1 ? `в главе ${list}` : `в главах ${list}`;
+}
+
 export function summarize(subject: SummarySubject): string {
   const where = target(subject);
   const by = byChange(subject);
@@ -137,6 +145,24 @@ export function summarize(subject: SummarySubject): string {
       // Invariant 18: the gates are invisible to readers. A recorded verdict is one public
       // fact — a remark survived the pass — and the role that said it is never printed.
       return `${where}: замечание сохранено`;
+    case 'document.status': {
+      // BOOK-18: one fact from the derived index — the paper and the chapters where its
+      // status moved. The surface is what the text calls the paper; the key stays in the
+      // payload for identity. No entity, no role, no finding text: the payload has only these.
+      const raw = typeof subject.payload.surface === 'string' ? subject.payload.surface : subject.payload.document;
+      const document = typeof raw === 'string' ? raw.replace(/\s+/gu, ' ').trim().slice(0, 80) : '';
+      const chapters = Array.isArray(subject.payload.chapters)
+        ? [...new Set(
+            subject.payload.chapters.filter(
+              (value): value is number =>
+                typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 67,
+            ),
+          )].sort((left, right) => left - right)
+        : [];
+      if (document.length === 0) return where;
+      if (chapters.length === 0) return `статус документа ${document} изменён`;
+      return `статус документа ${document} изменён ${chaptersPhrase(chapters)}`;
+    }
     case 'overwrite': {
       const replaced = typeof subject.payload.replacedBy === 'string';
       const place = subject.chapter === null ? where : `в главе ${subject.chapter}`;

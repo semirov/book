@@ -26,8 +26,10 @@ import {
 } from '@book/shared';
 
 import { appendEvent } from '../history/log.ts';
+import { ensureSlice } from '../index/store.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep } from './close.ts';
+import { reportIndexFailure } from './indexNotice.ts';
 import { type DraftLane } from './draft.ts';
 import { assignmentOf, missingVerdicts, openDispatch, recordVerdict, survivedFinding, type GateAssignment, type GateAnswer } from './gates.ts';
 import {
@@ -111,7 +113,14 @@ export function createEngine(deps: EngineDeps) {
       const existing = store.getDispatch(db, step.step_id, role);
       if (existing && existing.session !== session && existing.expires_at > iso()) continue;
       try {
-        return assignmentOf(step, openDispatch(deps, step, role, session));
+        // BOOK-18: an editor gets a slice of the derived index — this chapter and its
+        // neighbours. The consultant judges physics, not continuity, and gets none.
+        const indexSlice =
+          role === 'editor' && step.chapter !== null
+            ? ensureSlice({ bookRoot, dataDir: config.dataDir }, step.chapter, (error) =>
+                reportIndexFailure(deps, step.step_id, error))
+            : null;
+        return assignmentOf(step, openDispatch(deps, step, role, session), indexSlice);
       } catch (error) {
         if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'GATE_ANSWERED') {
           continue;

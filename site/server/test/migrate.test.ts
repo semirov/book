@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { ensureStepLifecycle, migrate } from '../src/db/migrate.ts';
-import { REQUIRED_TABLES, REQUIRED_TRIGGERS, SCHEMA_VERSION, CHAPTERS_COLUMNS } from '../src/db/schema.ts';
+import { REQUIRED_TABLES, REQUIRED_TRIGGERS, SCHEMA_VERSION, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL } from '../src/db/schema.ts';
 import { sha256Hex } from '../src/util/hash.ts';
 
 function tables(db: Db): string[] {
@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v11', () => {
+describe('migrate — schema v12', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(11);
+    expect(SCHEMA_VERSION).toBe(12);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -301,6 +301,56 @@ describe('migrate — schema v11', () => {
     expect(
       db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'changes_premise_pending'`).get(),
     ).toEqual({ name: 'changes_premise_pending' });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('widens the events vocabulary to document.status on a v11 install, keeping rows (BOOK-18)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v11 log: the old inline CHECK, its indexes and both append-only triggers.
+    db.prepare(
+      `INSERT INTO events (at, kind, author_kind, author_label, payload)
+       VALUES ('2026-10-25T09:00:00Z', 'change.decided', 'writer', 'автор', '{}')`,
+    ).run();
+    const oldSql = EVENTS_TABLE_SQL.replace(",\n                 'document.status'", '');
+    expect(oldSql).not.toContain('document.status');
+    db.exec('DROP TRIGGER events_no_update');
+    db.exec('DROP TRIGGER events_no_delete');
+    db.exec('DROP INDEX events_chapter');
+    db.exec('DROP INDEX events_change');
+    db.exec('DROP INDEX events_kind');
+    db.exec('DROP INDEX events_at');
+    db.exec('ALTER TABLE events RENAME TO events_v12');
+    db.exec(oldSql);
+    db.exec(
+      `INSERT INTO events (hseq, at, kind, chapter, is_front, rev, change_id, cascade_id, step_id,
+         author_kind, identity_id, author_label, payload, prev_hseq)
+       SELECT hseq, at, kind, chapter, is_front, rev, change_id, cascade_id, step_id,
+         author_kind, identity_id, author_label, payload, prev_hseq FROM events_v12`,
+    );
+    db.exec('DROP TABLE events_v12');
+    db.pragma('user_version = 11');
+
+    expect(migrate(db)).toEqual({ from: 11, to: SCHEMA_VERSION });
+    // The row survives the rebuild, the triggers and indexes are back, and the new kind lands.
+    expect(db.prepare(`SELECT kind FROM events`).all()).toEqual([{ kind: 'change.decided' }]);
+    expect(triggers(db).sort()).toEqual([...REQUIRED_TRIGGERS].sort());
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO events (at, kind, author_kind, author_label) VALUES ('2026-10-25T10:00:00Z', 'document.status', 'writer', 'автор')`,
+        )
+        .run(),
+    ).not.toThrow();
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO events (at, kind, author_kind, author_label) VALUES ('2026-10-25T10:00:00Z', 'document.moved', 'writer', 'автор')`,
+        )
+        .run(),
+    ).toThrow(/CHECK constraint failed|events/u);
+    expect(tableSql(db, 'events')).toContain("CHECK (kind IN");
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });

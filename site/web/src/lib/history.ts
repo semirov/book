@@ -32,6 +32,7 @@ const KINDS: Record<Exclude<HistoryFilter, 'all'>, HistoryKind[]> = {
     'step.landed',
     'step.closed',
     'gate.recorded',
+    'document.status',
     'operator.release',
     'operator.hide',
   ],

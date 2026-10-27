@@ -68,9 +68,14 @@ describe('the chronicle’s filters and grouping (§11.10)', () => {
       event({ hseq: 3, kind: 'chapter.created' }),
       event({ hseq: 2, kind: 'front.revised', isFront: true, chapter: null }),
       event({ hseq: 1, kind: 'overwrite' }),
+      event({ hseq: 0, kind: 'document.status', chapter: null }),
     ];
-    expect(filterEvents(items, 'all')).toHaveLength(4);
-    expect(filterEvents(items, 'changes').map((item) => item.kind)).toEqual(['change.decided']);
+    expect(filterEvents(items, 'all')).toHaveLength(5);
+    // BOOK-18: a document statement belongs to the changes the reader can follow.
+    expect(filterEvents(items, 'changes').map((item) => item.kind)).toEqual([
+      'change.decided',
+      'document.status',
+    ]);
     expect(filterEvents(items, 'drafts').map((item) => item.kind)).toEqual(['chapter.created']);
     expect(filterEvents(items, 'front').map((item) => item.kind)).toEqual(['front.revised']);
     expect(filterEvents(items, 'overwrites').map((item) => item.kind)).toEqual(['overwrite']);

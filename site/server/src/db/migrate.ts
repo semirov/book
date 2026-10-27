@@ -1,4 +1,4 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, chaptersTableSql } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, chaptersTableSql } from './schema.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 
@@ -159,6 +159,38 @@ const MIGRATIONS: Migration[] = [
         `CREATE UNIQUE INDEX IF NOT EXISTS changes_premise_pending
            ON changes(chapter) WHERE premise = 1 AND status = 'pending'`,
       );
+    },
+  },
+  {
+    // BOOK-18: the derived index may publish one factual statement about a document's
+    // status, so the log's vocabulary gains `document.status`. SQLite cannot widen an inline
+    // CHECK, so the table is rebuilt with every row, its indexes and both append-only
+    // triggers kept; a fresh install is created at v12 already. Idempotent: a v12 table is
+    // returned untouched.
+    to: 12,
+    up(db) {
+      const row = db
+        .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'`)
+        .get() as { sql: string } | undefined;
+      if (row === undefined || row.sql.includes("'document.status'")) return;
+      db.exec('DROP TRIGGER IF EXISTS events_no_update');
+      db.exec('DROP TRIGGER IF EXISTS events_no_delete');
+      db.exec('DROP INDEX IF EXISTS events_chapter');
+      db.exec('DROP INDEX IF EXISTS events_change');
+      db.exec('DROP INDEX IF EXISTS events_kind');
+      db.exec('DROP INDEX IF EXISTS events_at');
+      db.exec('ALTER TABLE events RENAME TO events_v11');
+      db.exec(EVENTS_TABLE_SQL);
+      db.exec(
+        `INSERT INTO events
+           (hseq, at, kind, chapter, is_front, rev, change_id, cascade_id, step_id,
+            author_kind, identity_id, author_label, payload, prev_hseq)
+         SELECT
+           hseq, at, kind, chapter, is_front, rev, change_id, cascade_id, step_id,
+           author_kind, identity_id, author_label, payload, prev_hseq
+         FROM events_v11`,
+      );
+      db.exec('DROP TABLE events_v11');
     },
   },
 ];

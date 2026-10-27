@@ -44,6 +44,7 @@ node bin/engine.mjs verdict <stepId> --role … --session … --verdict HOLDS|GA
 node bin/engine.mjs done <leaseId> --seams seams.json --note "…"   # requires both verdicts
 node bin/engine.mjs trace <changeId|stepId>       # the ripple, step by step
 node bin/engine.mjs reconcile                     # boot check: lane, leases, stranded steps
+node bin/index.mjs show|rebuild                   # the derived index: paths, hash, counts; rebuild
 node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile
 ```
 

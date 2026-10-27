@@ -108,4 +108,40 @@ describe('one line per fact (§11.10)', () => {
     expect(summarize(subject({ kind: 'step.landed' }))).toBe('глава 9 записана правкой 7 (Аня)');
     expect(summarize(subject({ kind: 'step.opened' }))).toBe('шаг главы 9 открыт правкой 7 (Аня)');
   });
+
+  it('states a document’s moved status as one public line, without a role or a finding', () => {
+    expect(
+      summarize(
+        subject({
+          kind: 'document.status',
+          chapter: null,
+          changeSeq: null,
+          authorKind: 'writer',
+          authorLabel: 'автор',
+          payload: { document: 'приказ № 4', surface: 'Приказ № 4', chapters: [12, 19, 44] },
+        }),
+      ),
+    ).toBe('статус документа Приказ № 4 изменён в главах 12, 19, 44');
+    expect(
+      summarize(
+        subject({ kind: 'document.status', chapter: null, payload: { document: 'справка', surface: 'Справка', chapters: [9] } }),
+      ),
+    ).toBe('статус документа Справка изменён в главе 9');
+    // A payload without a surface falls back to the key; junk chapters are dropped.
+    expect(
+      summarize(
+        subject({
+          kind: 'document.status',
+          chapter: null,
+          payload: { document: '  приказ  № 4 ', chapters: [0, 68, 'x'] },
+        }),
+      ),
+    ).toBe('статус документа приказ № 4 изменён');
+    expect(
+      summarize(
+        subject({ kind: 'document.status', chapter: null, payload: { document: 'документ', surface: '  Документ  ', chapters: [9] } }),
+      ),
+    ).toBe('статус документа Документ изменён в главе 9');
+    expect(summarize(subject({ kind: 'document.status', chapter: null, payload: {} }))).toBe('книга');
+  });
 });

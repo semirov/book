@@ -23,6 +23,8 @@ export type HistoryKind =
   | 'step.landed'
   | 'step.closed'
   | 'gate.recorded'
+  /** BOOK-18: one public statement about a document's status, from the derived index. */
+  | 'document.status'
   | 'overwrite'
   | 'operator.restore'
   | 'operator.release'

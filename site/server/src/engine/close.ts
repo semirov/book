@@ -22,6 +22,7 @@ import { parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordImpact } from '../history/impact.ts';
+import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
@@ -144,6 +145,9 @@ export function closeChange(
     },
     now,
   );
+  // BOOK-18: one public statement when a document's status moved, then the artifact is
+  // refreshed. Both live inside the index module's own guard and cannot fail this close.
+  publishIndexNotices(deps, change, now);
   // §6F.5: the impact is materialized once, at close, and is a projection (§T-impact).
   recordImpact(deps.db, change.id, now);
   releaseLane(deps, change.id);

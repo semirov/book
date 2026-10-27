@@ -99,6 +99,33 @@ describe('the chronicle’s deed line', () => {
   });
 });
 
+describe('a document statement in the chronicle (BOOK-18)', () => {
+  const statement: HistoryEventDto = {
+    hseq: 51,
+    at: '2026-10-25T12:10:00Z',
+    kind: 'document.status',
+    chapter: null,
+    isFront: false,
+    rev: null,
+    changeId: 'chg_9',
+    cascadeId: 'csc_9',
+    stepId: null,
+    author: { kind: 'writer', identityId: null, label: 'автор' },
+    summary: 'статус документа приказ № 4 изменён в главах 12, 19, 44',
+  };
+
+  it('prints the one line the server built, with the book as its target', () => {
+    const html = renderToStaticMarkup(
+      <TimelineRow event={statement} deed={null} onPick={() => undefined} onOpenChange={() => undefined} />,
+    );
+    expect(html).toContain('статус документа приказ № 4 изменён в главах 12, 19, 44');
+    expect(html).toContain('книга');
+    expect(html).toContain('правка');
+    // No role and no finding reach the row: only the statement, the target and the change.
+    expect(html).not.toMatch(/editor|consultant|blocker/u);
+  });
+});
+
 describe('the chronicle’s surface (§11.10)', () => {
   it('renders the toggle with the active view marked', () => {
     const book = renderToStaticMarkup(<ViewSwitch view="book" onChange={() => undefined} />);

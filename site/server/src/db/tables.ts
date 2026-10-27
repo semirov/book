@@ -88,6 +88,42 @@ export const RECONCILES_TABLE_SQL = `CREATE TABLE reconciles (
 CREATE INDEX reconciles_chapter ON reconciles(chapter, rev);`;
 
 /**
+ * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the
+ * history's vocabulary. It is a named constant because BOOK-18 adds `document.status` and
+ * SQLite cannot widen a CHECK with ALTER, so migration v12 rebuilds the table with its rows,
+ * indexes and append-only triggers kept. A migrated install must equal a fresh one.
+ */
+export const EVENTS_TABLE_SQL = `CREATE TABLE events (                          -- the book's clock (§6F.1)
+  hseq         INTEGER PRIMARY KEY AUTOINCREMENT,
+  at           TEXT NOT NULL,
+  kind         TEXT NOT NULL CHECK (kind IN (
+                 'chapter.created','chapter.revised','chapter.restored','front.revised',
+                 'change.queued','change.processing','change.stale','change.decided',
+                 'cascade.opened','cascade.closed','step.opened','step.landed','step.closed',
+                 'gate.recorded','overwrite','operator.restore','operator.release','operator.hide',
+                 'document.status')),
+  chapter      INTEGER CHECK (chapter BETWEEN 1 AND 67),
+  is_front     INTEGER NOT NULL DEFAULT 0 CHECK (is_front IN (0,1)),
+  rev          INTEGER,
+  change_id    TEXT, cascade_id TEXT, step_id TEXT,
+  author_kind  TEXT NOT NULL CHECK (author_kind IN
+                 ('reader','author','writer','operator','unattributed')),
+  identity_id  TEXT,                           -- nulled on an erasure request (§17); the label stays
+  author_label TEXT NOT NULL DEFAULT '',
+  payload      TEXT NOT NULL DEFAULT '{}',     -- JSON, ≤32 KB, never a chapter body
+  prev_hseq    INTEGER
+);
+CREATE INDEX events_chapter ON events(chapter, hseq);
+CREATE INDEX events_change  ON events(change_id, hseq);
+CREATE INDEX events_kind    ON events(kind, hseq);
+CREATE INDEX events_at      ON events(at);
+
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
+
+/**
  * The `steps` table is the one table M3 needs more than §8 sketched: a step exists *before*
  * it is closed (it carries the lease and hangs both gate verdicts off its id), so `outcome`
  * is null while the step is open, and the land/close facts are columns rather than a second

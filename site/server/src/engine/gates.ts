@@ -38,6 +38,12 @@ export type GateAssignment = {
   landedSha: string | null;
   /** The writer's own report, ≤200 chars — the only account a gate is given (§6B.1). */
   note: string | null;
+  /**
+   * BOOK-18: the path to a derived index slice for this chapter and its neighbours. It is
+   * `null` for the consultant, for a `front` step (there is no chapter to slice) and when
+   * the index could not be built — the slice is optional, never a precondition of a gate.
+   */
+  indexSlice: string | null;
   expiresAt: string;
 };
 
@@ -229,7 +235,11 @@ export function survivedFinding(db: Db, stepId: string, gateCycles: number, cycl
   });
 }
 
-export function assignmentOf(step: StepRow, dispatch: DispatchRow): GateAssignment {
+export function assignmentOf(
+  step: StepRow,
+  dispatch: DispatchRow,
+  indexSlice: string | null = null,
+): GateAssignment {
   return {
     stepId: step.step_id,
     role: dispatch.role,
@@ -240,6 +250,7 @@ export function assignmentOf(step: StepRow, dispatch: DispatchRow): GateAssignme
     cycle: step.cycle,
     landedSha: step.landed_sha,
     note: step.note,
+    indexSlice,
     expiresAt: dispatch.expires_at,
   };
 }

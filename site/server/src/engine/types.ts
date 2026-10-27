@@ -40,7 +40,16 @@ export type EngineDeps = {
 };
 
 export type EngineAlert = {
-  kind: 'finding' | 'budget' | 'oscillation' | 'origin' | 'delta' | 'ending' | 'gate_timeout';
+  kind:
+    | 'finding'
+    | 'budget'
+    | 'oscillation'
+    | 'origin'
+    | 'delta'
+    | 'ending'
+    | 'gate_timeout'
+    /** BOOK-18: the derived index could not be built or written at a gate dispatch. */
+    | 'index';
   at: string;
   changeId: string | null;
   cascadeId: string | null;

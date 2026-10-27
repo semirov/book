@@ -126,6 +126,9 @@ dropped by the engine.
    or **расхождение** (document and scene deliberately do not match — leave the seam: it is тоска, not a
    bug). Never a silent retcon: the world issues a document, and the document may lie.
 3. **Continuity.** A name no piece has put in a room is a defect, not a mystery.
+   The assignment may carry `indexSlice` — a derived index of this chapter and its neighbours. Check
+   causality against it (checks 2–3), but it is a heuristic and may err: a mismatch is a finding
+   candidate, not a verdict, and never a hard error.
 4. **Tone.** Judge тоска as the base, cold, absence of consolation and procedure instead of miracle — never
    resemblance to any author. Allow dry absurdity of the bureaucracy as a counterpoint (it sharpens the
    cold, never relieves it), rare warmth (a love line may hurt), and the тревога of расхождение. Flag

@@ -1,28 +1,30 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 11** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 12** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
  * `steps.premise_change`); BOOK-9 adds the auditor's verdict to a comment, recorded before
- * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change).
+ * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change;
+ * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
  * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
  * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
   CHAPTERS_COLUMNS,
   CHAPTERS_TABLE_SQL,
+  EVENTS_TABLE_SQL,
   RECONCILES_TABLE_SQL,
   chaptersTableSql,
 } from './tables.ts';
@@ -353,34 +355,7 @@ CREATE TABLE contributions (                   -- projection of §6C.5, refreshe
 -- ── history, provenance, impact (§6F) ───────────────────────────────────────
 -- Append-only. The triggers below refuse UPDATE/DELETE; 'history/log.ts' is the only writer.
 
-CREATE TABLE events (                          -- the book's clock (§6F.1)
-  hseq         INTEGER PRIMARY KEY AUTOINCREMENT,
-  at           TEXT NOT NULL,
-  kind         TEXT NOT NULL CHECK (kind IN (
-                 'chapter.created','chapter.revised','chapter.restored','front.revised',
-                 'change.queued','change.processing','change.stale','change.decided',
-                 'cascade.opened','cascade.closed','step.opened','step.landed','step.closed',
-                 'gate.recorded','overwrite','operator.restore','operator.release','operator.hide')),
-  chapter      INTEGER CHECK (chapter BETWEEN 1 AND 67),
-  is_front     INTEGER NOT NULL DEFAULT 0 CHECK (is_front IN (0,1)),
-  rev          INTEGER,
-  change_id    TEXT, cascade_id TEXT, step_id TEXT,
-  author_kind  TEXT NOT NULL CHECK (author_kind IN
-                 ('reader','author','writer','operator','unattributed')),
-  identity_id  TEXT,                           -- nulled on an erasure request (§17); the label stays
-  author_label TEXT NOT NULL DEFAULT '',
-  payload      TEXT NOT NULL DEFAULT '{}',     -- JSON, ≤32 KB, never a chapter body
-  prev_hseq    INTEGER
-);
-CREATE INDEX events_chapter ON events(chapter, hseq);
-CREATE INDEX events_change  ON events(change_id, hseq);
-CREATE INDEX events_kind    ON events(kind, hseq);
-CREATE INDEX events_at      ON events(at);
-
-CREATE TRIGGER events_no_update BEFORE UPDATE ON events
-  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
-CREATE TRIGGER events_no_delete BEFORE DELETE ON events
-  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
+${EVENTS_TABLE_SQL}
 
 ${RECONCILES_TABLE_SQL}
 
