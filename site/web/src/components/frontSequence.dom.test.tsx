@@ -130,6 +130,7 @@ async function render(overrides: { front?: FrontDto; motion?: TitleMotion } = {}
         front={overrides.front ?? front}
         state={state}
         ribbon={null}
+        catalog={[]}
         escalation={[]}
         onOpenChange={() => undefined}
         view="book"
