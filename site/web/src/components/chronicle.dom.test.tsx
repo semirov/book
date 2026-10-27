@@ -50,7 +50,8 @@ const ITEMS: HistoryRecordDto[] = [
 ];
 
 function page(items: HistoryRecordDto[], lastHseq: number, nextBefore: number | null = null): HistoryTimelineDto {
-  return { lastHseq, at: '2026-10-27T12:40:00Z', items, nextBefore };
+  // The log's own last moment travels with the page; these fixtures put it on the newest row.
+  return { lastHseq, lastAt: items[0]?.at ?? null, at: '2026-10-27T12:40:00Z', items, nextBefore };
 }
 
 function bookAt(hseq: number): BookAtDto {

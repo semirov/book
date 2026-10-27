@@ -19,7 +19,7 @@ import {
 } from '@book/shared';
 
 import { plural } from './format.ts';
-import { changeWord, PREMISE_PENDING, STATE_WORDS } from './marginalia.ts';
+import { changeState, changeWord, PREMISE_PENDING, STATE_WORDS } from './marginalia.ts';
 
 export type ChangeLines = {
   first: string;
@@ -173,9 +173,11 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
 /**
  * BOOK-65 — the one word a public record entry prints for a change, and the only function
  * allowed to choose it. The record is one change, one line, and the line carries one outcome:
- * «ждёт» · «идёт» · «внесено» for a change still on its way, and the refusal's own word —
- * «снято» · «перекрыто» · «остановлено» — for one that was refused or stopped. A premise
- * speaks of «замысел», so its word agrees with that noun instead («учтён» · «снят» · «ждёт»).
+ * for a change still on its way (or already landed) it delegates to the card's own rule,
+ * `changeState`, so the list and the card can never say two different states one click apart.
+ * A refusal keeps its word — «снято» · «перекрыто» — from `outcomeCopy`, and a stopped change
+ * says «остановлено». A premise speaks of «замысел», so its word agrees with that noun instead
+ * («учтён» · «снят» · «ждёт»).
  *
  * Nothing here invents a register: every word already exists in `STATE_WORDS`,
  * `outcomeCopy` or the premise's own card copy. The final wording belongs to BOOK-59's copy
@@ -187,12 +189,11 @@ export function recordWord(record: Pick<HistoryRecordDto, 'status' | 'outcome' |
     if (record.status === 'void') return 'снят';
     return STATE_WORDS.waiting;
   }
-  if (record.status === 'done') return STATE_WORDS.landed;
-  if (record.status === 'processing' || record.status === 'stale') return STATE_WORDS.working;
-  if (record.status === 'pending') return STATE_WORDS.waiting;
   if (record.status === 'void') return outcomeCopy(record.outcome === 'superseded' ? 'superseded' : 'dropped');
-  // escalated | failed: the word stands alone, so the clause `outcomeCopy` adds is dropped.
-  return 'остановлено';
+  if (record.status === 'escalated' || record.status === 'failed') return 'остановлено';
+  // One mapping for all surfaces: «идёт» is a queue place (`pending`/`processing`), «ждёт» is
+  // `stale`, «внесено» is `done` — exactly what `changeState` says on the card.
+  return STATE_WORDS[changeState(record)];
 }
 
 /**

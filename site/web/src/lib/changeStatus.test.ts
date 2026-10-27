@@ -236,10 +236,12 @@ describe('BOOK-65 — one outcome word for one public record entry', () => {
     >;
   }
 
-  it('uses exactly the three public state words for a change on its way', () => {
-    expect(recordWord(record({ status: 'pending', outcome: null }))).toBe('ждёт');
+  it('uses exactly the three public state words, agreeing with the card', () => {
+    // A queue place is «идёт» on the card's stamp (`changeState`), so it is «идёт» here too;
+    // `stale` is a re-decision, which waits. The two surfaces share one mapping (BOOK-65 M1).
+    expect(recordWord(record({ status: 'pending', outcome: null }))).toBe('идёт');
     expect(recordWord(record({ status: 'processing', outcome: null }))).toBe('идёт');
-    expect(recordWord(record({ status: 'stale', outcome: null }))).toBe('идёт');
+    expect(recordWord(record({ status: 'stale', outcome: null }))).toBe('ждёт');
     expect(recordWord(record({ status: 'done' }))).toBe('внесено');
     expect(recordWord(record({ status: 'done', outcome: 'adapted' }))).toBe('внесено');
   });

@@ -18,19 +18,24 @@ export type MomentControlProps = {
   /** The loaded page, newest first: the readout, the count and both ends read from it. */
   items: HistoryRecordDto[];
   lastHseq: number;
+  /**
+   * The logged moment of `lastHseq` (BOOK-65): the rest position's date, never the browser
+   * clock. `null` falls back to the newest record when the log holds no row.
+   */
+  lastAt: string | null;
   /** The log holds an older page behind the oldest loaded record (`nextBefore !== null`). */
   more: boolean;
   /** The thumb's hseq, or `null` at the right edge. */
   thumb: number | null;
   /** One frame of a drag or a key: the readout moves, the network does not. */
   onInput: (value: number) => void;
-  /** A release, a row click or a key release: this moment is asked for now. */
+  /** A release or a key release: this moment is asked for now. Rows open cards, not moments. */
   onCommit: (value: number) => void;
 };
 
-export function MomentControl({ items, lastHseq, more, thumb, onInput, onCommit }: MomentControlProps) {
+export function MomentControl({ items, lastHseq, lastAt, more, thumb, onInput, onCommit }: MomentControlProps) {
   const value = thumb ?? lastHseq;
-  const label = momentLabel(items, value, lastHseq, more);
+  const label = momentLabel(items, value, lastHseq, more, lastAt);
   const fill = useRef<HTMLSpanElement | null>(null);
   const percent = lastHseq > 0 ? (value / lastHseq) * 100 : 100;
 
@@ -118,7 +123,7 @@ export function MomentControl({ items, lastHseq, more, thumb, onInput, onCommit 
         </div>
         <button type="button" className="chr-end chr-end-now" onClick={() => onCommit(lastHseq)}>
           <span className="chr-end-word">сейчас</span>
-          <MomentAt iso={newest?.at} prefix="с" />
+          <MomentAt iso={lastAt ?? newest?.at} prefix="с" />
         </button>
       </div>
     </div>

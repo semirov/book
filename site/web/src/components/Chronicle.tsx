@@ -245,6 +245,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: Chron
         <MomentControl
           items={items}
           lastHseq={lastHseq}
+          lastAt={timeline?.lastAt ?? null}
           more={timeline !== null && timeline.nextBefore !== null}
           thumb={thumb}
           onInput={move}
@@ -317,7 +318,9 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: Chron
         <>
           <ol className="chr-timeline">
             {items.map((record) => (
-              <RecordRow key={record.hseq} record={record} onOpenChange={onOpenChange} />
+              // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
+              // lands for that change, and a remount would drop keyboard focus on a live tick.
+              <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
             ))}
           </ol>
           {items.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}

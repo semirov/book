@@ -64,7 +64,7 @@ export function momentText(iso: string | null | undefined): string {
 export type MomentLabel = {
   /** The readout: `25.10.2026 · 12:00`, `до 21.10.2026 · 09:12`, or '' with no records. */
   text: string;
-  /** The thumb sits at the right edge, so the label is the newest record. */
+  /** The thumb sits at the right edge, so the label is the book's own last logged moment. */
   isNow: boolean;
   /** The record under the thumb, counted chronologically over the loaded rows: oldest = 1. */
   position: number;
@@ -74,20 +74,24 @@ export type MomentLabel = {
  * What the thumb points at, answered from the loaded page alone (BOOK-DOC-50 §2, §6) — the
  * readout is a log fact, never the answer of a request, so it survives a load and a failure.
  *
- * `items` is newest first. Before the oldest loaded record the readout says `до …` **only**
- * when an older page exists (`more`); without one it clamps to the oldest record it has and
- * claims nothing it cannot show.
+ * `items` is newest first. At the right edge the readout prints `lastAt` — the **logged** moment
+ * of `lastHseq`, not the newest record's: a machine pass moves the book's clock without adding
+ * a record, and the old code printed the newest entry's date under «сейчас» (BOOK-65). Before
+ * the oldest loaded record the readout says `до …` **only** when an older page exists (`more`);
+ * without one it clamps to the oldest record it has and claims nothing it cannot show.
  */
 export function momentLabel(
   items: HistoryRecordDto[],
   value: number,
   lastHseq: number,
   more: boolean,
+  lastAt: string | null,
 ): MomentLabel {
   const newest = items[0];
   if (newest === undefined) return { text: '', isNow: false, position: 0 };
   if (lastHseq > 0 && value >= lastHseq) {
-    return { text: momentText(newest.at), isNow: true, position: items.length };
+    // The fallback is for a log that somehow holds no row at `lastHseq`: never the browser clock.
+    return { text: momentText(lastAt ?? newest.at), isNow: true, position: items.length };
   }
   const index = items.findIndex((record) => record.hseq <= value);
   if (index === -1) {

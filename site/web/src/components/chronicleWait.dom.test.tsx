@@ -32,10 +32,12 @@ function record(hseq: number, chapter: number): HistoryRecordDto {
 }
 
 function page(hseqs: readonly number[], lastHseq: number): HistoryTimelineDto {
+  const items = hseqs.map((hseq, index) => record(hseq, index + 1));
   return {
     lastHseq,
+    lastAt: items[0]?.at ?? null,
     at: '2026-10-26T10:00:00Z',
-    items: hseqs.map((hseq, index) => record(hseq, index + 1)),
+    items,
     nextBefore: null,
   };
 }

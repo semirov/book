@@ -227,7 +227,7 @@ describe('the record row is dated (BOOK-DOC-50 §5)', () => {
 describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
   it('prints a dated readout, the record counter and both dated ends', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     // The readout answers "what time" with the record under the thumb.
     expect(html).toContain(`26.10.2026${MID}09:00`);
@@ -249,7 +249,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('prints each dated end as two unbreakable parts and never splits a date or a time', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     // The date and the ` · HH:MM` tail, from the one source (`momentParts`): the string is
     // whole, split only where the box may wrap.
@@ -272,20 +272,42 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('appends «сейчас» at the right edge and reuses the same text as the range value', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={null} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />,
     );
     expect(html).toContain(`27.10.2026${MID}15:40${MID}сейчас`);
     expect(html).toContain(`aria-valuetext="27.10.2026${MID}15:40${MID}сейчас"`);
     expect(html).toContain('запись 3 из 3');
   });
 
+  it('dates the rest position by the log’s own last moment, not by the newest record (BOOK-65 M2)', () => {
+    // A machine pass moved the clock past the newest change: `lastHseq` 12 at 18:05 MSK, while
+    // the newest entry is still 10 at 15:40. «сейчас» must name the logged instant, not the
+    // entry's.
+    const html = renderToStaticMarkup(
+      <MomentControl
+        items={ITEMS}
+        lastHseq={12}
+        lastAt="2026-10-27T15:05:00Z"
+        more={false}
+        thumb={null}
+        onInput={noop}
+        onCommit={noop}
+      />,
+    );
+    expect(html).toContain(`27.10.2026${MID}18:05${MID}сейчас`);
+    expect(html).toContain('<span class="chr-end-date">с 27.10.2026</span>');
+    expect(html).toContain(`<span class="chr-end-clock">${MID}18:05</span>`);
+    // The newest entry keeps its own date below; only the rest position speaks for the clock.
+    expect(html).not.toContain(`27.10.2026${MID}15:40${MID}сейчас`);
+  });
+
   it('says «до …» before the oldest loaded record only when an older page exists', () => {
     const before = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more thumb={0} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more thumb={0} onInput={noop} onCommit={noop} />,
     );
     expect(before).toContain(`до${NBSP}21.10.2026${MID}09:12`);
     const clamped = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={0} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={0} onInput={noop} onCommit={noop} />,
     );
     expect(clamped).not.toContain('до');
     expect(clamped).toContain(`21.10.2026${MID}09:12`);
@@ -293,7 +315,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('offers exactly one «сейчас» control and no way back to it inside the past', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     const buttons = html.match(/<button[\s\S]*?<\/button>/gu) ?? [];
     expect(buttons).toHaveLength(1);
@@ -303,7 +325,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('draws no rail under two records', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} more={false} thumb={null} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />,
     );
     expect(html).not.toContain('type="range"');
     expect(html).toContain('начало книги');
@@ -323,7 +345,7 @@ describe('the readout row on a narrow phone (BOOK-DOC-50 §2)', () => {
     expect(head).not.toMatch(/(?:^|[;\s])height:\s*22px/u);
     // …and nothing in the markup pins a width that would defeat the wrap (BOOK-30).
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     expect(html).toContain('class="scrub-head"');
     expect(html).not.toMatch(/style=/u);
