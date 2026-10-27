@@ -39,6 +39,7 @@ import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
 import { applyStage, type Passes } from './lib/passes.ts';
+import { applyRevisingMark } from './lib/revisingMark.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -266,36 +267,16 @@ export function App() {
             });
             break;
           }
-          case 'block:revising': {
-            const mark = frame.data as BlockRevisingPayload;
-            if (!mark.active) {
-              setRevising((current) => {
-                const next = { ...current };
-                delete next[mark.n];
-                return next;
-              });
-              break;
-            }
-            setRevising((current) => ({ ...current, [mark.n]: mark }));
-            const expiresIn = Math.max(0, Date.parse(mark.expiresAt) - Date.now());
-            const timer = window.setTimeout(() => {
-              setRevising((current) => {
-                if (current[mark.n]?.since !== mark.since) return current;
-                const next = { ...current };
-                delete next[mark.n];
-                return next;
-              });
-            }, Number.isNaN(expiresIn) ? 0 : expiresIn + 250);
-            timers.current.push(timer);
+          case 'block:revising':
+            applyRevisingMark(frame.data as BlockRevisingPayload, setRevising, (run, ms) => {
+              timers.current.push(window.setTimeout(run, ms));
+            });
             break;
-          }
-          case 'pass:stage': {
+          case 'pass:stage':
             // A pass is the only notice a page gets that a chapter's text is being written:
             // `landed` is the engine's, and the site's watcher then publishes no revision.
-            const event = frame.data as PassStageEvent;
-            setPasses((current) => applyStage(current, event));
+            setPasses((current) => applyStage(current, frame.data as PassStageEvent));
             break;
-          }
           case 'history:event': {
             // The chronicle's ticker; the payload is one summary line, never a body.
             const entry = frame.data as HistoryEventFrame;

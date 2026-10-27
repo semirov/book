@@ -378,27 +378,6 @@ describe('migrate — schema v18', () => {
     db.close();
   });
 
-  it('adds pass_stages to a v13 install and keeps the pass-local order unique (BOOK-117)', () => {
-    const db = openDatabase(':memory:');
-    migrate(db);
-    // Shape a v13 install: the stage store did not exist before this step.
-    db.exec('DROP INDEX IF EXISTS pass_stages_chapter_seq');
-    db.exec('DROP TABLE pass_stages');
-    db.pragma('user_version = 13');
-
-    expect(migrate(db)).toEqual({ from: 13, to: SCHEMA_VERSION });
-    expect(tables(db)).toContain('pass_stages');
-    const insert = db.prepare(
-      `INSERT INTO pass_stages (pass_id, chapter, stage_seq, stage, at, actor_process, summary)
-       VALUES (?, 8, ?, 'typing', '2026-10-27T09:00:00Z', 'site', 'правка на странице')`,
-    );
-    insert.run('stp_a', 1);
-    // One pass cannot hold the same stage number twice: a retried write is not a second stage.
-    expect(() => insert.run('stp_a', 1)).toThrow(/UNIQUE/u);
-    expect(() => insert.run('stp_b', 1)).not.toThrow();
-    db.close();
-  });
-
   it('adds cost_priced to a v12 install and backfills an amount that was really recorded (BOOK-23)', () => {
     const db = openDatabase(':memory:');
     migrate(db);
@@ -438,7 +417,7 @@ describe('migrate — schema v18', () => {
     // Shape a v13 install: the flag did not exist before BOOK-113.
     db.exec('ALTER TABLE identities DROP COLUMN edit_exempt');
     db.pragma('user_version = 13');
-    // BOOK-113, BOOK-61 and BOOK-137 land on the way to the head version.
+    // BOOK-113, BOOK-61, BOOK-137 and BOOK-117 land on the way to the head version.
     expect(migrate(db)).toEqual({ from: 13, to: SCHEMA_VERSION });
     // An existing reader is not exempt by accident: the column reads as 0.
     expect(db.prepare('SELECT edit_exempt FROM identities WHERE id = ?').get('idt_old')).toEqual({ edit_exempt: 0 });

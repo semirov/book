@@ -8,25 +8,23 @@
  * replaying the rows replays the cascade.
  */
 
-import type {
-  CascadeOutcome,
-  CascadeStatus,
-  ChangeOutcome,
-  ChangeStatus,
-  SeamRef,
-  StepOutcome,
+import {
+  parseSeams,
+  type CascadeOutcome,
+  type CascadeStatus,
+  type ChangeOutcome,
+  type ChangeStatus,
 } from '@book/shared';
-import { parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordImpact } from '../history/impact.ts';
-import { passSpendOf, recordPassSpend, spendOfClose } from '../budget.ts';
+import { recordCloseSpend, spendOfClose } from '../budget.ts';
+import { budgetFromConfig } from './budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
-import { budgetFromConfig } from './budget.ts';
 import {
   closeReason,
   planCascade,
@@ -39,7 +37,7 @@ import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { isWritten } from './text.ts';
-import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
+import { refuse, type EngineDeps } from './types.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
 
@@ -329,34 +327,8 @@ export function openCascade(deps: EngineDeps, step: store.StepRow, change: store
 
 // ── step close ───────────────────────────────────────────────────────────────
 
-export type CloseStepInput = {
-  outcome: StepOutcome;
-  seamsOut: SeamRef[];
-  note: string | null;
-  model: string | null;
-  tokensIn: number;
-  tokensOut: number;
-  /** The change's outcome, decided from relevance before the write (void/dropped or applied). */
-  changeOutcome?: ChangeOutcome | null;
-  /** Overrides for a step that closes a change without editing it (void/dropped). */
-  changeStatus?: ChangeStatus;
-  changeReason?: string | null;
-  /** Why the step is escalated; also the cascade outcome when it belongs to one. */
-  escalation?: CascadeOutcome | null;
-  /** A broken pass is not a refusal; `failed` settles a written premise and queues an unwritten one. */
-  premiseCause?: PremiseCause;
-  /**
-   * BOOK-34: the id of a lease that had already expired when this close arrived — the release
-   * then reads `expired-close` and `step.closed` says so.
-   */
-  expiredLeaseId?: string | null;
-};
-
-export type CloseStepResult = {
-  cascadeId: string | null;
-  outcome: StepOutcome;
-  changeStatus: ChangeStatus | null;
-};
+export type { CloseStepInput, CloseStepResult } from './closeTypes.ts';
+import type { CloseStepInput, CloseStepResult } from './closeTypes.ts';
 
 export function closeStep(
   deps: EngineDeps,
@@ -376,7 +348,6 @@ export function closeStep(
   // since the session last looked, and the close is refused (`LEASE_HELD`), not mis-booked.
   const { lease, live } = leaseForClose(db, step.step_id, input.expiredLeaseId);
   const gateRows = store.listVerdicts(db, step.step_id);
-  // The close reports what it believes; the database says what the pass spent (owner, 2026-10-28).
   const spend = spendOfClose(db, step.step_id, { model: input.model, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
   const ms = Math.max(0, now - Date.parse(step.at));
 
@@ -427,7 +398,7 @@ export function closeStep(
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
     // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
-    recordPassSpend(db, passSpendOf(step, spend, cascadeRow?.change_id ?? lease?.change_id ?? null, now));
+    recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: input.model ?? null, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
 
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;

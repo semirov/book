@@ -246,6 +246,31 @@ export function spendOfClose(
 }
 
 /**
+ * The close's one money fact: attribute what the pass spent (reported ∪ drafting stages ∪ gate
+ * verdicts) and write the ledger row — in the close's own transaction, for every close path
+ * (`done`, `seen`, `escalate`, the wall, the gate window). `spendOfClose` and `passSpendOf` are
+ * the two halves; this keeps `close.ts` to one call.
+ */
+export function recordCloseSpend(
+  db: Db,
+  input: {
+    step: { step_id: string; chapter: number | null; pass: PassSpendInput['pass'] };
+    changeId: string | null;
+    now: number;
+    model: string | null;
+    tokensIn?: number;
+    tokensOut?: number;
+  },
+): boolean {
+  const spend = spendOfClose(db, input.step.step_id, {
+    model: input.model,
+    tokensIn: input.tokensIn ?? 0,
+    tokensOut: input.tokensOut ?? 0,
+  });
+  return recordPassSpend(db, passSpendOf(input.step, spend, input.changeId, input.now));
+}
+
+/**
  * Write the pass's one ledger row, inside the close's own transaction.
  *
  * `INSERT OR IGNORE` on `pass_id`: a re-close is not a second charge. The provider's cache
