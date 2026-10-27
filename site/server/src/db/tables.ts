@@ -1,0 +1,132 @@
+/**
+ * Table definitions that are needed in two places: the full schema (`schema.ts`) and the
+ * incremental migration that adds them to an existing database (`migrate.ts`).
+ *
+ * They are declared once, here, so a fresh install and an upgraded install cannot drift
+ * apart — the failure mode this file exists to prevent is a column that exists in tests (a
+ * fresh install) and not on the server (an upgrade).
+ */
+
+/**
+ * `chapters` — the prose projection of the manuscript, and the one table BOOK-6 widened.
+ * It is a named constant because migration v7 has to build the *same* table (SQLite cannot
+ * add a CHECK to an existing column), and a migrated install must be indistinguishable from
+ * a fresh one.
+ */
+export const CHAPTERS_TABLE_SQL = `CREATE TABLE chapters (
+  n           INTEGER PRIMARY KEY CHECK (n BETWEEN 1 AND 67),
+  rev         INTEGER NOT NULL DEFAULT 0,      -- increments per observed file change
+  title       TEXT,                            -- line 1 of the file; null = «Глава N» (§6C.3)
+  sha256      TEXT    NOT NULL,
+  chars       INTEGER NOT NULL,                -- prose only; the title line is excluded
+  block_count INTEGER NOT NULL,
+  basis       INTEGER NOT NULL DEFAULT 0 CHECK (basis IN (0,1)),
+                                               -- 1 = the file is exactly its basis sentence (BOOK-6):
+                                               -- one block to read, no title, no chars, not written
+  written_at  TEXT    NOT NULL,                -- first sighting
+  updated_at  TEXT    NOT NULL,
+  parse_error TEXT
+);`;
+
+/** The same table under another name — migration v7 builds it, copies, then swaps the names. */
+export function chaptersTableSql(name: string): string {
+  return CHAPTERS_TABLE_SQL.replace('CREATE TABLE chapters', `CREATE TABLE ${name}`);
+}
+
+/** Every column of `chapters`, in table order — the v7 rebuild copies exactly these. */
+export const CHAPTERS_COLUMNS = [
+  'n',
+  'rev',
+  'title',
+  'sha256',
+  'chars',
+  'block_count',
+  'basis',
+  'written_at',
+  'updated_at',
+  'parse_error',
+] as const;
+
+export const BLOCK_VERSIONS_TABLE_SQL = `CREATE TABLE block_versions (               -- stable paragraph identity across rewrites (§6F.3)
+  block_uid   TEXT NOT NULL,                   -- ULID; survives a rewrite that changes the text
+  ver         INTEGER NOT NULL,                -- 1..n, monotonic inside a uid
+  chapter     INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  rev         INTEGER NOT NULL,                -- the revision that wrote this version
+  hseq        INTEGER NOT NULL,                -- the log entry of that revision
+  block_id    TEXT NOT NULL,                   -- content-derived id at this version ('ch08#aa11bb22')
+  text_hash   TEXT NOT NULL,
+  chars       INTEGER NOT NULL,
+  op          TEXT NOT NULL CHECK (op IN ('introduced','revised','kept','erased')),
+  prev_ver    INTEGER,                         -- the version this one replaced
+  replaced_by TEXT,                            -- the uid that took its place; null = the chain ends
+  change_id   TEXT, step_id TEXT,
+  actor_kind  TEXT NOT NULL, actor_label TEXT NOT NULL, identity_id TEXT,
+  at          TEXT NOT NULL,
+  PRIMARY KEY (block_uid, ver)
+);
+CREATE INDEX block_versions_block   ON block_versions(block_id);
+CREATE INDEX block_versions_chapter ON block_versions(chapter, rev);
+CREATE INDEX block_versions_hseq    ON block_versions(hseq);`;
+
+/**
+ * §13.3: a restore never ran the gates, so the chapter is `ungated` until the next step
+ * touches it or an operator runs `reconcile`. This table is the operator's mark: what was
+ * restored, by whom, why, and what the validator said afterwards. It is a record, not a
+ * permission — the text is already published.
+ */
+export const RECONCILES_TABLE_SQL = `CREATE TABLE reconciles (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  chapter     INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  rev         INTEGER NOT NULL,                -- the restore revision this mark belongs to
+  at          TEXT    NOT NULL,
+  actor       TEXT    NOT NULL,                -- who ran it: 'operator' by default
+  because     TEXT    NOT NULL,                -- ≤200 chars, the operator's own words
+  validation  TEXT    NOT NULL DEFAULT '{}',   -- JSON: {errors, warnings, passed, findings[]}
+  hseq        INTEGER,                         -- the operator.restore log entry (the act)
+  UNIQUE (chapter, rev)
+);
+CREATE INDEX reconciles_chapter ON reconciles(chapter, rev);`;
+
+/**
+ * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the
+ * history's vocabulary. It is a named constant because BOOK-18 adds `document.status` and
+ * SQLite cannot widen a CHECK with ALTER, so migration v12 rebuilds the table with its rows,
+ * indexes and append-only triggers kept. A migrated install must equal a fresh one.
+ */
+export const EVENTS_TABLE_SQL = `CREATE TABLE events (                          -- the book's clock (§6F.1)
+  hseq         INTEGER PRIMARY KEY AUTOINCREMENT,
+  at           TEXT NOT NULL,
+  kind         TEXT NOT NULL CHECK (kind IN (
+                 'chapter.created','chapter.revised','chapter.restored','front.revised',
+                 'change.queued','change.processing','change.stale','change.decided',
+                 'cascade.opened','cascade.closed','step.opened','step.landed','step.closed',
+                 'gate.recorded','overwrite','operator.restore','operator.release','operator.hide',
+                 'document.status')),
+  chapter      INTEGER CHECK (chapter BETWEEN 1 AND 67),
+  is_front     INTEGER NOT NULL DEFAULT 0 CHECK (is_front IN (0,1)),
+  rev          INTEGER,
+  change_id    TEXT, cascade_id TEXT, step_id TEXT,
+  author_kind  TEXT NOT NULL CHECK (author_kind IN
+                 ('reader','author','writer','operator','unattributed')),
+  identity_id  TEXT,                           -- nulled on an erasure request (§17); the label stays
+  author_label TEXT NOT NULL DEFAULT '',
+  payload      TEXT NOT NULL DEFAULT '{}',     -- JSON, ≤32 KB, never a chapter body
+  prev_hseq    INTEGER
+);
+CREATE INDEX events_chapter ON events(chapter, hseq);
+CREATE INDEX events_change  ON events(change_id, hseq);
+CREATE INDEX events_kind    ON events(kind, hseq);
+CREATE INDEX events_at      ON events(at);
+
+CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
+
+/**
+ * The `steps` table is the one table M3 needs more than §8 sketched: a step exists *before*
+ * it is closed (it carries the lease and hangs both gate verdicts off its id), so `outcome`
+ * is null while the step is open, and the land/close facts are columns rather than a second
+ * table. `migrate.ts` rebuilds a pre-M3 `steps` table in place; the shape is declared once,
+ * here, and reused by the repair so the two cannot drift.
+ */

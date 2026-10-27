@@ -2,18 +2,27 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node"],
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "@book/shared": ["./shared/src/index.ts"]
-    }
+      "@book/shared": [
+        "./shared/src/index.ts"
+      ]
+    },
+    "jsx": "react-jsx"
   },
   "include": [
     "shared/test/**/*.ts",
     "server/test/**/*.ts",
-    "web/src/**/*.test.ts",
+    "web/src/**/*.test.{ts,tsx}",
     "vitest.config.ts"
   ]
 }

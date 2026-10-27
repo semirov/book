@@ -1,0 +1,182 @@
+/* ============================================================================
+   RIBBON — the cascade's two wings (§11.7, BOOK-DOC-4). Additive to cascade.css;
+   imported beside it. Adaptive, data-driven, no inline styles (CSP).
+   ============================================================================ */
+
+/* ---------- the cascade ribbon (§11.7, BOOK-DOC-4): both wings at once ----------
+   Adaptive: three blocks in one row — down wing, the origin, up wing — each a fixed
+   min-height so a frame arriving never moves the page. No absolute positions and no inline
+   styles: the layout is classes and data attributes (CSP forbids inline styles). */
+.ribbon {
+  position: relative;
+  /* The ribbon is the running head's second row: it spans the sheet, not the prose (§5). */
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 4px var(--gut) 6px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--label);
+}
+.ribbon.is-quiet {
+  border-top: 0;
+  padding-top: 0;
+}
+.ribbon-wings {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 52px;
+}
+.ribbon-wing {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ribbon-wing.is-up {
+  align-items: flex-end;
+  text-align: right;
+}
+.ribbon-wing-h {
+  min-height: 22px;
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  color: var(--ink-3);
+}
+.ribbon-wing[data-state='moving'] .ribbon-wing-h,
+.ribbon-wing[data-state='stopped'] .ribbon-wing-h {
+  color: var(--live);
+}
+.ribbon-reached {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ribbon-wing.is-up .ribbon-reached {
+  justify-content: flex-end;
+}
+.ribbon-none {
+  min-height: 20px;
+}
+/* A 44 px tap target around a 20 px mark, as the rest of the mobile chrome does. */
+.ribbon-ch {
+  min-width: 28px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.ribbon-ch-g {
+  min-width: 20px;
+  padding-bottom: 2px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  text-align: center;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--rule-2);
+}
+.ribbon-ch:hover .ribbon-ch-g,
+.ribbon-ch:focus-visible .ribbon-ch-g {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.ribbon-origin {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ribbon-ch.is-origin .ribbon-ch-g {
+  min-width: 24px;
+  font-size: var(--fs-label);
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.ribbon-open {
+  min-height: 44px;
+  padding: 0 6px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ribbon-open:hover,
+.ribbon-open:focus-visible {
+  color: var(--live);
+}
+/* Rings exist only while a step is in flight: a quiet ripple draws no animation. */
+.ribbon-rings {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  height: 10px;
+  margin-top: 2px;
+}
+.ribbon-ring {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--live);
+  border-radius: 50%;
+  opacity: 0;
+  animation: ribbon-ring 2.6s linear infinite;
+}
+.ribbon-ring[data-ring='1'] {
+  animation-delay: 870ms;
+}
+.ribbon-ring[data-ring='2'] {
+  animation-delay: 1740ms;
+}
+@keyframes ribbon-ring {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.ribbon-seams {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+/* The seam marker is a button inside the sticky head, so it is a 44px target like the rest
+   of the ribbon's chrome (BOOK-DOC-35 AC5); the band takes the room it needs. */
+.ribbon-seam {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: transparent;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--revise);
+}
+.ribbon-seam-label {
+  border-bottom: 1px dashed currentColor;
+}
+.ribbon-seam-boundary {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
+  color: var(--ink-3);
+  text-transform: none;
+}
+.ribbon-seam:focus-visible {
+  outline: 1px solid var(--live);
+  outline-offset: 2px;
+}
+

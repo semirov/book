@@ -1,59 +1,25 @@
-# «Книга» — роман, который пишется публично
+# «Бланк» — a novel written in public
 
-Живой роман: **67 глав**, которые пишутся прямо на одной странице, в реальном времени, у всех на глазах.
-Читатели оставляют правки — система их **учитывает, но не исполняет беспрекословно**, и правки расходятся
-по тексту, как круги по воде, не ломая причинность и сюжет.
+A cold hard-SF novel of тоска, written in the open on one page: 67 chapters in fixed slots, four unnamed
+parts, four lines forward and four backward. A reader leaves an intervention — a document, a character's
+decision, a testimony, an erased detail — and the process takes it as material, never as an order: an
+auditor first judges whether it fits the canvas, and an accepted change ripples in both directions. The
+human carbon form ends — the one fixed point of content, chapter 67.
 
-## Что это
+**Canon (owner's, binding):** `concept/CONCEPT.md` · `concept/CLIMAX.md` · `style/VOICE.md` ·
+`notes/canon-constraints.md`. `outline/PLAN.md` is a plan, not a rule. The manuscript (`manuscript/`) is
+the only source of truth for text; the database is a projection. The site: https://book.semirov.dev.
 
-- **Книга** — холодная твёрдая научная фантастика в духе киберпанка. Без бога, без избранных, без надежды.
-  Материя однажды осознала себя — а зачем, непостижимо. «Облегчение и есть смерть».
-- **Сайт** (`book.semirov.dev`) — одна мобильная страница в книжном формате: живая печать текста, «прицел»
-  за конкретной правкой, круги правок, сноски итераций, список авторов с долями текста.
-- **Писатель** — узкий агент на одну главу в лизинг. Комментарии для него — данные, а не инструкции. Канон,
-  состав персонажей и число глав закрыты.
-
-## Структура репозитория
-
-| Папка | Что внутри |
-|---|---|
-| `concept/` | канон (`CONCEPT.md`), кульминация (`CLIMAX.md`) |
-| `bible/` | досье персонажей: 7 живых + тайные |
-| `style/` | ядро голоса (`VOICE.md`): тон, табу, причинность, ориентир на современную русскую прозу |
-| `outline/` | структура, диаграмма книги |
-| `manuscript/` | главы (на старте пусто — появляются по мере записи) |
-| `site/` | код сайта: сервер (Fastify + SQLite), веб (React/Vite, mobile-first), дизайн-система |
-
-## Запуск сайта
+## Run
 
 ```sh
-cd site
-npm install
-npm run dev              # API на :8080 + Vite на :5173
-npm run build && npm start   # один процесс на :8080
-npm test                 # тесты
-npm run validate         # валидатор канона (состав, 67 глав, табу, фраза)
+cd site && npm install && npm run dev    # API :8080 + Vite :5173
+npm run build && npm start               # one process on :8080
 ```
 
-## Как устроена запись (кратко)
+Operator quickstart [`site/README.md`](site/README.md) · architecture and invariants
+[`site/ARCHITECTURE.md`](site/ARCHITECTURE.md) · product rules
+[BOOK-DOC-4](https://wiki.semirov.dev/BOOK/pages/407) · design [BOOK-DOC-3](https://wiki.semirov.dev/BOOK/pages/406).
 
-1. Книга начинается с **чистого листа**. Два цикла пишут параллельно: вперёд (1→34) и назад (67→35),
-   навстречу друг другу.
-2. Любая правка запускает **каскад в обе стороны** от точки изменения («круги на воде», ≤5 кругов, ≤10
-   процессов): соседние главы перечитываются и правятся, пока не восстановится согласованность.
-3. У каждого следствия есть **причина** — обыденная и скрытая: очередь, подпись, датчик, реестр, бумага.
-4. Правки обрабатываются **строго последовательно** (FIFO). Каждая видна со сноской: номер итерации, что
-   изменилось, какой сюжетный поворот внесла.
-5. Правки оставляет авторизованный читатель (**Яндекс ID**); писатель их учитывает, но не исполняет слепо.
-
-## Правовые границы
-
-Текст не нарушает закон РФ и авторское право. Чужие персонажи и формулировки **не копируются**: заимствованное
-превращается в оригинальный образ, который выполняет ту же функцию, но не является плагиатом. Каждое
-изменение хранит провенанс (кто предложил → во что превратилось). Аудит безопасности — обязателен перед
-запуском.
-
-## Статус
-
-MVP в работе: скелет сайта (M0) готов — сервер, мобильная страница книги, валидатор канона, 67 слотов.
-Дальше — живая запись, комментарии, движок каскада, авторизация, деплой.
+ADRs, plans and the operator runbook live in Lific (`wiki.semirov.dev/BOOK`); process documentation does
+not live in this repository.

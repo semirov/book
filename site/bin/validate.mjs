@@ -2,57 +2,68 @@
 /**
  * bin/validate.mjs — the integrity gate (ARCHITECTURE.md §13.4).
  *
- * Runs F001–F009 over the manuscript. Reads only: nothing here writes a chapter file.
- * Node 22.18+ executes the TypeScript rules in shared/src/validate directly (type
- * stripping), so the gate works before any build.
+ * Runs the structure and law rules (F001, F002, F005–F007, F009, F020–F022, F029) over the
+ * manuscript. Reads only: nothing here writes a chapter file. Node 22.18+ executes the
+ * TypeScript rules in shared/src/validate directly (type stripping), so the gate works
+ * before any build.
  *
  *   node bin/validate.mjs                          # whole repository
+ *   node bin/validate.mjs --staged                 # what this commit would contain (git hook)
  *   node bin/validate.mjs --root=/book             # explicit root
  *   node bin/validate.mjs --json                   # machine-readable result
- *   node bin/validate.mjs --allow-new-name=Тюрин    # accept a name for this run only
- *   node bin/validate.mjs --refresh-cast            # regenerate `cast` from the dossiers
- *   node bin/validate.mjs --rule=F003,F008          # run a subset
+ *   node bin/validate.mjs --rule=F021,F022         # run a subset
+ *   node bin/validate.mjs --denylist=path.json     # test fixture for F005
+ *   node bin/validate.mjs --imprint=path.json      # test fixture for F020
+ *   node bin/validate.mjs --strict                 # exit 1 on warnings too (CI)
+ *
+ * F003, F004, F008, F013, F016, F018 and F019 are retired in v3; F024 (no names in prompts)
+ * retired with the dossier mandate, since it guarded names in the dossier record;
+ * F011–F018 and F025–F028 live in the engine, git hooks and build tests (§23.5). `--staged` is
+ * the pre-commit hook's mode: it reads the index, not the working tree, and adds F010 (one
+ * book file per commit).
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import {
-  EMPTY_ALLOWLIST,
-  castFromDossiers,
-  runValidation,
-} from '../shared/src/validate/index.ts';
+import { checkCommitScope, commitSubject, runValidation } from '../shared/src/validate/index.ts';
+import { readStagedCommit } from './lib/staged.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_ROOT = resolve(SITE_ROOT, '..');
-const ALLOWLIST_PATH = join(SITE_ROOT, 'config', 'cast.allowlist.json');
-const ALLOWLIST_NOTE =
-  'F005 allowlist. `cast` is generated from bible/dossiers.md (Имя: lines) by ' +
-  '`node bin/validate.mjs --refresh-cast` and must be edited there, not here. `places` follows ' +
-  'ARCHITECTURE.md §13.4; `manual` holds abbreviations and proper names the editor allowed on ' +
-  'purpose. Matching is case-insensitive and stem-based, so one nominative name covers its case forms.';
+const DEFAULT_DENYLIST = join(SITE_ROOT, 'config', 'legal.denylist.json');
+const DEFAULT_IMPRINT = join(SITE_ROOT, 'config', 'imprint.json');
+
 const PLANNING_GLOBS = [
-  'manuscript/PLAN.md',
+  'outline/PLAN.md',
   'outline/structure.md',
   'process/write.log.md',
   'process/write.fwd.log.md',
   'process/write.back.log.md',
   'process/run.log.md',
-  'process/WRITE_TEMPLATE.md',
   'process/WRITE_FWD_TEMPLATE.md',
   'process/WRITE_BACK_TEMPLATE.md',
-  'process/REWRITE_TEMPLATE.md',
 ];
 
 function parseArgs(argv) {
-  const options = { root: DEFAULT_ROOT, json: false, rules: null, allowNewNames: [], refreshCast: false };
+  const options = {
+    root: DEFAULT_ROOT,
+    denylistPath: DEFAULT_DENYLIST,
+    imprintPath: DEFAULT_IMPRINT,
+    json: false,
+    rules: null,
+    strict: false,
+    staged: false,
+  };
   for (const arg of argv) {
     if (arg === '--json') options.json = true;
-    else if (arg === '--refresh-cast') options.refreshCast = true;
+    else if (arg === '--strict') options.strict = true;
+    else if (arg === '--staged') options.staged = true;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else if (arg.startsWith('--root=')) options.root = resolve(arg.slice('--root='.length));
-    else if (arg.startsWith('--allow-new-name=')) options.allowNewNames.push(arg.slice('--allow-new-name='.length));
+    else if (arg.startsWith('--denylist=')) options.denylistPath = resolve(arg.slice('--denylist='.length));
+    else if (arg.startsWith('--imprint=')) options.imprintPath = resolve(arg.slice('--imprint='.length));
     else if (arg.startsWith('--rule=')) {
       options.rules = new Set(
         arg
@@ -70,17 +81,13 @@ function parseArgs(argv) {
 
 const asList = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []);
 
-function readAllowlist() {
-  if (!existsSync(ALLOWLIST_PATH)) return { allowlist: EMPTY_ALLOWLIST, document: null };
-  const document = JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8'));
-  return {
-    allowlist: {
-      cast: asList(document.cast),
-      places: asList(document.places),
-      manual: asList(document.manual),
-    },
-    document,
-  };
+function readJson(path, label) {
+  if (!existsSync(path)) throw new Error(`${label} not found: ${path}`);
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new Error(`${label} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 function readManuscriptFiles(root) {
@@ -106,24 +113,24 @@ function readPlanningFiles(root) {
   }));
 }
 
-function refreshCast(root, document) {
-  const dossiers = join(root, 'bible', 'dossiers.md');
-  if (!existsSync(dossiers)) {
-    console.error(`--refresh-cast: ${dossiers} not found; allowlist left untouched`);
-    return false;
-  }
-  const cast = castFromDossiers(readFileSync(dossiers, 'utf8'));
-  // Only `cast` is generated; places, the curated list and the note survive the refresh.
-  const next = {
-    version: document?.version ?? 1,
-    note: document?.note ?? ALLOWLIST_NOTE,
-    cast,
-    places: asList(document?.places),
-    manual: asList(document?.manual),
+function readDenylist(document) {
+  return {
+    version: typeof document.version === 'number' ? document.version : 1,
+    note: typeof document.note === 'string' ? document.note : undefined,
+    persons: asList(document.persons),
+    characters: asList(document.characters),
+    organisations: asList(document.organisations),
+    patterns: asList(document.patterns),
   };
-  writeFileSync(ALLOWLIST_PATH, JSON.stringify(next, null, 2) + '\n', 'utf8');
-  console.error(`--refresh-cast: ${cast.length} names from bible/dossiers.md → config/cast.allowlist.json`);
-  return true;
+}
+
+function readImprint(document) {
+  return {
+    author: typeof document.author === 'string' ? document.author : '',
+    copyright: typeof document.copyright === 'string' ? document.copyright : '',
+    publisher: typeof document.publisher === 'string' ? document.publisher : null,
+    year: typeof document.year === 'string' ? document.year : 'auto',
+  };
 }
 
 function printReport(result) {
@@ -135,17 +142,22 @@ function printReport(result) {
   if (result.findings.length > 0) console.log('');
   const written = result.chapters.length;
   const chars = result.chapters.reduce((sum, chapter) => sum + chapter.chars, 0);
+  const front = result.front;
+  const frontLine = front === null ? 'front matter: absent' : `front matter: «${front.title ?? '—'}»`;
   console.log(
     `manuscript: ${written} chapter files · ${result.totalChapters - written} empty slots · ${chars} characters`,
   );
+  console.log(frontLine);
   console.log(`${result.errors} errors · ${result.warnings} warnings`);
 }
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
-    console.log('usage: node bin/validate.mjs [--root=DIR] [--json] [--rule=F001,..]');
-    console.log('       [--allow-new-name=NAME] [--refresh-cast]');
+    console.log('usage: node bin/validate.mjs [--root=DIR] [--json] [--rule=F001,..] [--strict] [--staged]');
+    console.log('       [--denylist=path] [--imprint=path]');
+    console.log('runs F001, F002, F005–F007, F009, F020–F022 and F029 (+ F010 with --staged)');
+    console.log('F003/F004/F008/F013/F016/F018/F019 are retired in v3');
     return 0;
   }
   if (options.error) {
@@ -153,29 +165,69 @@ function main() {
     return 2;
   }
 
-  let { allowlist, document } = readAllowlist();
-  if (options.refreshCast && refreshCast(options.root, document)) {
-    ({ allowlist } = readAllowlist());
+  let denylist;
+  let imprint;
+  try {
+    denylist = readDenylist(readJson(options.denylistPath, 'legal denylist'));
+    imprint = readImprint(readJson(options.imprintPath, 'imprint'));
+  } catch (error) {
+    console.error(`validate: ${error instanceof Error ? error.message : String(error)}`);
+    return 2;
+  }
+
+  let staged = null;
+  if (options.staged) {
+    try {
+      staged = readStagedCommit(options.root);
+    } catch (error) {
+      console.error(`validate: cannot read the staged commit: ${error instanceof Error ? error.message : String(error)}`);
+      return 2;
+    }
+    if (staged.files.length === 0) {
+      // Nothing in the manuscript is staged: the gate has nothing to say, and says so.
+      console.log(`commit gate: ${staged.staged.length} staged file(s), no book files`);
+      return 0;
+    }
   }
 
   const result = runValidation({
-    files: readManuscriptFiles(options.root),
+    files: staged === null ? readManuscriptFiles(options.root) : staged.files,
     planning: readPlanningFiles(options.root),
-    allowlist,
-    allowNewNames: options.allowNewNames,
+    denylist,
+    imprint,
   });
 
+  const scope = staged === null ? [] : checkCommitScope(staged.staged, staged.message);
+  const all = [...scope, ...result.findings].sort((left, right) => {
+    if (left.file !== right.file) return left.file.localeCompare(right.file);
+    if (left.line !== right.line) return left.line - right.line;
+    return left.rule.localeCompare(right.rule);
+  });
+  const withScope = {
+    ...result,
+    findings: all,
+    errors: all.filter((finding) => finding.severity === 'error').length,
+    warnings: all.filter((finding) => finding.severity === 'warn').length,
+  };
+
   const filtered = options.rules
-    ? { ...result, findings: result.findings.filter((item) => options.rules.has(item.rule)) }
-    : result;
+    ? { ...withScope, findings: withScope.findings.filter((item) => options.rules.has(item.rule)) }
+    : withScope;
   const errors = filtered.findings.filter((item) => item.severity === 'error').length;
   const warnings = filtered.findings.filter((item) => item.severity === 'warn').length;
   const output = { ...filtered, errors, warnings };
 
   if (options.json) console.log(JSON.stringify(output, null, 2));
-  else printReport(output);
+  else {
+    if (staged !== null) {
+      console.log(`commit gate: «${commitSubject(staged.message) || '—'}» · ${staged.staged.length} file(s) staged`);
+    }
+    printReport(output);
+  }
 
-  return errors === 0 ? 0 : 1;
+  if (errors > 0) return 1;
+  if (options.strict && warnings > 0) return 1;
+  return 0;
 }
 
 process.exitCode = main();

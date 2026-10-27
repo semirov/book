@@ -1,17 +1,25 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getChapterRow, listBlocks, listCatalog } from '../src/db/repo/chapters.ts';
+import { getFrontRow } from '../src/db/repo/front.ts';
 import { listRevisions } from '../src/db/repo/revisions.ts';
 import { parseChapter } from '../src/ingest/parseChapter.ts';
+import { parseFront } from '../src/ingest/parseFront.ts';
 import { reconcile, rememberScan } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const CHAPTER_TWO = longProse(['Начало второй главы.']);
+
+const ABOUT =
+  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
+const FRONT = `Без названия\n\n${ABOUT}\n`;
 
 let fixture: Fixture | null = null;
 afterEach(() => {
@@ -41,7 +49,20 @@ describe('reconcile — empty manuscript', () => {
     rmSync(fixture.manuscript, { recursive: true, force: true });
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.scanned).toBe(0);
+    expect(report.missing).toBe(true);
     expect(listCatalog(fixture.db)).toHaveLength(67);
+  });
+
+  it('keeps the last known text when the directory disappears (a bad mount, §6.2)', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    rmSync(fixture.manuscript, { recursive: true, force: true });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.missing).toBe(true);
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)).toBeDefined();
+    expect(getFrontRow(fixture.db)).toBeDefined();
   });
 });
 
@@ -65,7 +86,7 @@ describe('reconcile — first sighting', () => {
     expect(revisions[0]).toMatchObject({
       kind: 'create',
       attributed: 0,
-      cause_kind: 'local',
+      cause_kind: 'draft',
       added: expected.blocks.length,
     });
     expect(existsSync(join(fixture.dataDir, String(revisions[0]?.snapshot)))).toBe(true);
@@ -128,6 +149,126 @@ describe('reconcile — a revision', () => {
   });
 });
 
+describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () => {
+  it('projects the basis sentence as one paragraph instead of keeping the old text', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
+
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.emptied).toEqual([1]);
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ block_count: 1, chars: 0, title: null, basis: 1 });
+    // The reader sees the frozen frame: one block, the sentence itself.
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    // The slot is unwritten in every projection: the catalog, the state and the reader default.
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ n: 1, written: false, basis: true, chars: 0, blocks: 1 });
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.chapters.empty).toHaveLength(67);
+
+    // The history is not blanked: the old revisions are still there.
+    expect(listRevisions(fixture.db, 1).length).toBeGreaterThan(0);
+  });
+
+  it('projects a basis-only file on its first sight, before any chapter existed', () => {
+    fixture = createFixture({ 'ch67.md': FRAME_LAST_SENTENCE });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.emptied).toEqual([67]);
+    expect(report.created).toEqual([]);
+    expect(getChapterRow(fixture.db, 67)).toMatchObject({ rev: 0, block_count: 1, chars: 0, basis: 1 });
+    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+    expect(listRevisions(fixture.db, 67)).toEqual([]);
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.totalChars).toBe(0);
+  });
+
+  it('is idempotent: a second scan keeps exactly one block', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    const before = getChapterRow(fixture.db, 1);
+
+    const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(again.emptied).toEqual([]);
+    expect(again.unchanged).toEqual([1]);
+    expect(getChapterRow(fixture.db, 1)).toEqual(before);
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBe(1);
+    expect(listBlocks(fixture.db, 1)).toHaveLength(1);
+  });
+
+  it('heals a row left by the pre-BOOK-6 install: same sha, no blocks, no basis flag', () => {
+    // The live install before this change: `blankChapter` stored the file's sha with
+    // block_count = 0, and the new `basis` column defaults to 0 on migration. The fast path
+    // must not call that "unchanged", or the two sentences would never appear.
+    fixture = createFixture({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    const parsed = parseChapter(1, FRAME_FIRST_SENTENCE);
+    fixture.db
+      .prepare(
+        `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at)
+         VALUES (1, 4, NULL, ?, 0, 0, 0, '2026-10-20T09:00:00Z', '2026-10-20T09:00:00Z')`,
+      )
+      .run(parsed.sha256);
+
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([1]);
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ rev: 4, block_count: 1, chars: 0, basis: 1 });
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+
+    // And the second scan is a no-op.
+    const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(again.unchanged).toEqual([1]);
+  });
+
+  it('takes the empty book end to end: ch01 and ch67 hold one sentence each', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch67.md': CHAPTER_TWO, '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+    fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([1, 67]);
+
+    const state = new StateService(fixture.db).snapshot();
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    expect(state.front.title).toBe('Без названия');
+    expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+  });
+
+  it('still guards a zero-byte write: an empty file keeps the old text (§6.2)', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    fixture.write('ch01.md', '');
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.emptied).toEqual([]);
+    expect(getChapterRow(fixture.db, 1)?.block_count).toBeGreaterThan(0);
+    expect(getChapterRow(fixture.db, 1)?.basis).toBe(0);
+  });
+
+  it('returns a basis slot to prose when the writer fills it in', () => {
+    fixture = createFixture({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 1, rev: 0 });
+
+    fixture.write('ch01.md', CHAPTER_ONE);
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 0, rev: 1, chars: parseChapter(1, CHAPTER_ONE).chars });
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ written: true, basis: false });
+    expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([1]);
+  });
+});
+
 describe('reconcile — removal', () => {
   it('drops a chapter whose file disappeared, but keeps its snapshot', () => {
     fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch02.md': CHAPTER_TWO });
@@ -154,8 +295,12 @@ describe('state version', () => {
       revised: [],
       unchanged: [],
       removed: [],
+      emptied: [],
       ignored: [],
       readErrors: [],
+      front: 'missing',
+      frontProblems: [],
+      missing: false,
       at: '2026-10-25T12:00:00Z',
     });
 
@@ -170,5 +315,88 @@ describe('state version', () => {
     const afterWrite = state.snapshot();
     expect(afterWrite.version).toBe(first.version + 1);
     expect(afterWrite.chapters.written).toEqual([1]);
+  });
+});
+
+describe('reconcile — front matter', () => {
+  it('projects the live title and page 2, with a content-addressed snapshot', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.front).toBe('created');
+    expect(report.frontProblems).toEqual([]);
+    expect(report.ignored).not.toContain('00-front.md');
+    const row = getFrontRow(fixture.db);
+    expect(row).toMatchObject({ id: 1, title: 'Без названия', about: ABOUT, rev: 1 });
+    const expected = parseFront(FRONT);
+    expect(row?.sha256).toBe(expected.sha256);
+    expect(existsSync(join(fixture.dataDir, 'versions', 'front', `${expected.sha256}.md`))).toBe(true);
+    expect(listCatalog(fixture.db).every((entry) => !entry.written)).toBe(true);
+  });
+
+  it('is idempotent: a second scan keeps rev 1', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    const second = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(second.front).toBe('unchanged');
+    expect(getFrontRow(fixture.db)?.rev).toBe(1);
+  });
+
+  it('bumps rev when the title or the annotation changes', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    fixture.write('00-front.md', FRONT.replace('Без названия', 'Другое название'));
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('revised');
+    expect(getFrontRow(fixture.db)).toMatchObject({
+      title: 'Другое название',
+      rev: 2,
+    });
+  });
+
+  it('heals a live DB whose stored annotation differs from the file (BOOK-7)', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getFrontRow(fixture.db)?.about).toBe(ABOUT);
+
+    // The owner replaced page 2 by hand while the site was stopped; boot must follow the file.
+    const ownerAbout = ABOUT.replace('Тестовая аннотация', 'Собственная аннотация');
+    fixture.write('00-front.md', `Без названия\n\n${ownerAbout}\n`);
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.front).toBe('revised');
+    expect(report.frontProblems).toEqual([]);
+    expect(getFrontRow(fixture.db)).toMatchObject({
+      title: 'Без названия',
+      about: ownerAbout,
+      about_sha256: sha256Hex(ownerAbout),
+      rev: 2,
+    });
+    // And a second boot is idempotent: the healed projection matches the file.
+    expect(reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir }).front).toBe('unchanged');
+  });
+
+  it('removes the first sheet when the file disappears and reports a missing one otherwise', () => {
+    fixture = createFixture({ '00-front.md': FRONT });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    rmSync(join(fixture.manuscript, '00-front.md'));
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('removed');
+    expect(getFrontRow(fixture.db)).toBeUndefined();
+    expect(reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir }).front).toBe('missing');
+  });
+
+  it('keeps the title and nulls page 2 when the annotation is malformed', () => {
+    fixture = createFixture({ '00-front.md': 'Название\n\nСлишком коротко.' });
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(report.front).toBe('created');
+    expect(report.frontProblems.length).toBeGreaterThan(0);
+    expect(getFrontRow(fixture.db)).toMatchObject({ title: 'Название', about: '' });
+  });
+
+  it('hides page 2 when the title line is malformed, even if the annotation reads well', () => {
+    fixture = createFixture({ '00-front.md': `${'я'.repeat(81)}\n\n${ABOUT}` });
+    reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+    expect(getFrontRow(fixture.db)).toMatchObject({ title: '', about: '' });
   });
 });

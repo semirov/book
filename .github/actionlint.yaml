@@ -1,0 +1,6 @@
+# actionlint: labels of our own self-hosted runner (the Mac mini that serves prod). The runner is
+# registered with `mac-mini` (BOOK-74); declaring it here keeps `actionlint` quiet about the label
+# without widening what a hosted runner may be asked for.
+self-hosted-runner:
+  labels:
+    - mac-mini

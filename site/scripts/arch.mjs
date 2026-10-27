@@ -8,13 +8,24 @@
  *      never imports the server or Node built-ins;
  *   3. the site never writes to the book repository (text is read-only for the site);
  *   4. the book's invariants are where the UI expects them (67 chapters, engine tables,
- *      the F001–F008 rules covered by tests).
+ *      the rule ids covered by tests);
+ *   5. the engine calls no model and no network: it is a deterministic state machine;
+ *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) and the
+ *      prompt tree (`.opencode/skills/`, BOOK-5) stay internal: no line of them appears in the
+ *      built bundle;
+ *   7. the type floor and the adaptive regime (BOOK-DOC-35): no `font-size` below 12px and no
+ *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
+import { f023Problems } from './containment.mjs';
+import { styleProblems } from './styles.mjs';
+
 const ROOT = resolve(import.meta.dirname, '..');
+/** The book repository: `site/` lives inside it (§21.1). */
+const BOOK_ROOT = resolve(ROOT, '..');
 const MAX_LINES = 500;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.data', 'fonts', 'shots', '.git']);
 const SOURCE_EXT = /\.(ts|tsx|mjs|js|css|sql)$/u;
@@ -89,28 +100,130 @@ for (const file of files.filter(isProductionSource)) {
   }
 }
 
+/** 5 — the engine is a deterministic state machine, never a model caller (ADR-012) */
+const ENGINE_DIR = join(ROOT, 'server/src/engine');
+for (const file of files.filter((path) => path.startsWith(ENGINE_DIR) && isTs(path))) {
+  const source = readFileSync(file, 'utf8');
+  if (/\bfetch\s*\(/u.test(source)) {
+    report(file, 'the engine must not call out (no model calls — ADR-012)');
+  }
+}
 /** 4 — invariants the UI and the DB depend on */
-const totalChapters = /export const TOTAL_CHAPTERS = 67;/u.test(
-  readFileSync(join(ROOT, 'shared/src/chapters.ts'), 'utf8'),
-);
-if (!totalChapters) report(join(ROOT, 'shared/src/chapters.ts'), 'TOTAL_CHAPTERS must be 67');
+const bookModel = readFileSync(join(ROOT, 'shared/src/book.ts'), 'utf8');
+if (!/export const TOTAL_CHAPTERS = 67;/u.test(bookModel)) {
+  report(join(ROOT, 'shared/src/book.ts'), 'TOTAL_CHAPTERS must be 67');
+}
+if (!/export const PART_RANGES/u.test(bookModel)) {
+  report(join(ROOT, 'shared/src/book.ts'), 'PART_RANGES must live next to TOTAL_CHAPTERS');
+}
 
-const schema = readFileSync(join(ROOT, 'server/src/db/schema.ts'), 'utf8');
-for (const table of ['chapters', 'blocks', 'revisions', 'changes', 'cascades', 'obligations', 'leases', 'lane', 'comments']) {
+// Two tables live in `schema/tables.ts` (they are also built by an incremental migration);
+// the schema as a whole is the two files together.
+const schema =
+  readFileSync(join(ROOT, 'server/src/db/schema.ts'), 'utf8') +
+  readFileSync(join(ROOT, 'server/src/db/tables.ts'), 'utf8');
+const REQUIRED_SCHEMA_TABLES = [
+  'chapters',
+  'front_matter',
+  'blocks',
+  'revisions',
+  'changes',
+  'cascades',
+  'steps',
+  'gate_verdicts',
+  'gate_dispatches',
+  'leases',
+  'lane',
+  'comments',
+  'identities',
+  'sessions',
+  'events',
+  'front_revisions',
+  'block_lineage',
+  'block_versions',
+  'overwrites',
+  'change_impact',
+  'contribution_history',
+  'reconciles',
+];
+for (const table of REQUIRED_SCHEMA_TABLES) {
   if (!new RegExp(`CREATE TABLE ${table} \\(`, 'u').test(schema)) {
     report(join(ROOT, 'server/src/db/schema.ts'), `missing table ${table}`);
   }
 }
+if (/CREATE TABLE obligations \(/u.test(schema)) {
+  report(join(ROOT, 'server/src/db/schema.ts'), 'obligations are retired in v3 (ADR-023)');
+}
 
-const validateIndex = readFileSync(join(ROOT, 'shared/src/validate/rules.ts'), 'utf8');
-for (let rule = 1; rule <= 9; rule += 1) {
-  const id = `F00${rule}`;
-  if (!validateIndex.includes(`'${id}'`)) report(join(ROOT, 'shared/src/validate/rules.ts'), `rule ${id} is missing`);
+const validateRules = readFileSync(join(ROOT, 'shared/src/validate/text.ts'), 'utf8');
+for (const id of [
+  'F001', 'F002', 'F003', 'F004', 'F005', 'F006', 'F007', 'F008', 'F009', 'F010',
+  'F015', 'F020', 'F021', 'F022', 'F023', 'F024', 'F025',
+]) {
+  if (!validateRules.includes(`'${id}'`)) report(join(ROOT, 'shared/src/validate/text.ts'), `rule ${id} is missing`);
+}
+
+/**
+ * The title line and the front matter have one parser with two callers (§23.5). A chapter's
+ * title decision is `parseChapterTitle` — the title rule plus the line the frame owns (BOOK-32).
+ */
+const parseChapter = readFileSync(join(ROOT, 'server/src/ingest/parseChapter.ts'), 'utf8');
+if (!parseChapter.includes('parseChapterTitle')) {
+  report(join(ROOT, 'server/src/ingest/parseChapter.ts'), 'must parse the title line with parseChapterTitle');
+}
+const validateFrame = readFileSync(join(ROOT, 'shared/src/validate/frame.ts'), 'utf8');
+if (!validateFrame.includes('parseChapterTitle')) {
+  report(join(ROOT, 'shared/src/validate/frame.ts'), 'must read the prose with parseChapterTitle, not a local title rule');
+}
+// The validator's own collection must read the same title decision; a second rule drifts.
+const validateRulesFile = readFileSync(join(ROOT, 'shared/src/validate/rules.ts'), 'utf8');
+for (const [file, source] of [
+  ['server/src/ingest/parseChapter.ts', parseChapter],
+  ['shared/src/validate/frame.ts', validateFrame],
+  ['shared/src/validate/rules.ts', validateRulesFile],
+]) {
+  if (!source.includes('parseChapterTitle')) report(join(ROOT, file), 'must decide the title line with parseChapterTitle');
+}
+// And no blank-line heuristic may come back: "line 1 followed by a blank line" is not a title
+// rule — it is what dropped the frame of ch01 (BOOK-32).
+for (const file of ['shared/src/validate/frame.ts', 'shared/src/validate/rules.ts', 'server/src/ingest/parseChapter.ts']) {
+  if (/lines\[1\]/u.test(readFileSync(join(ROOT, file), 'utf8'))) {
+    report(join(ROOT, file), 'must not infer a title line from the blank line under it (BOOK-32)');
+  }
+}
+const parseFront = readFileSync(join(ROOT, 'server/src/ingest/parseFront.ts'), 'utf8');
+if (!parseFront.includes('parseFrontMatter')) {
+  report(join(ROOT, 'server/src/ingest/parseFront.ts'), 'must parse page 2 with parseFrontMatter');
 }
 
 const vitestConfig = readFileSync(join(ROOT, 'vitest.config.ts'), 'utf8');
 for (const included of ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib/**/*.ts']) {
   if (!vitestConfig.includes(included)) report(join(ROOT, 'vitest.config.ts'), `coverage.include lacks ${included}`);
+}
+
+/**
+ * 6 — F023, support-file containment. The guard is a canary: every long line of every support
+ * file is a string that must not appear in what the site ships. `web/dist` is skipped by
+ * `walk`, so it is read directly; a missing build is not a failure here — the build gate runs
+ * after this one.
+ *
+ * BOOK-5: a skill is a prompt, so `.opencode/skills/**` (`PROMPT_FILES` in `containment.mjs`)
+ * is guarded exactly like `process/` — the procedure an agent follows never ships as text.
+ */
+const distDir = join(ROOT, 'web', 'dist');
+for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
+  report(problem.file, problem.message);
+}
+
+/**
+ * F024, the F024-era prompt-name guard, is gone: it guarded names recorded in the dossier
+ * record, and the dossier mandate is retired — with no record and no title lines, the check
+ * could only pass vacuously. The rule id stays in `validate/text.ts`.
+ */
+
+/** 7 — the type floor and the adaptive regime (BOOK-DOC-35 §7). */
+for (const problem of styleProblems(join(ROOT, 'web', 'src', 'styles'))) {
+  report(problem.file, `line ${problem.line}: ${problem.message}`);
 }
 
 if (problems.length > 0) {

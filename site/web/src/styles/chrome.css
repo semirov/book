@@ -1,5 +1,5 @@
 /* ============================================================================
-   CHROME — sticky header, spine, title sheet, ledger.
+   CHROME — sticky header, title sheet, the annotation, the static documents.
    ============================================================================ */
 
 .top {
@@ -11,9 +11,16 @@
   box-shadow: 0 1px 0 var(--rule);
   transition: background var(--dur-fade) var(--ease-inout);
 }
+/* BOOK-DOC-35 §5 — the running head: one row at the frame's width. `display: contents` on
+   the two label rows makes brand · live · «замечания» one line of three flex items; the
+   two-row head is the narrow case, restored at ≤1023. */
 .top-in {
-  padding-top: 11px;
-  padding-bottom: 8px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 14px;
+  padding-bottom: 10px;
 }
 .top-row {
   display: flex;
@@ -21,27 +28,22 @@
   justify-content: space-between;
   gap: 12px;
 }
+.top-in .top-row {
+  display: contents;
+}
 .top-row + .top-row {
-  margin-top: 5px;
+  margin-top: 0;
 }
 .brand {
-  letter-spacing: 0.19em;
+  letter-spacing: 0.16em;
   color: var(--ink-2);
-}
-.count {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  color: var(--ink-2);
-  text-transform: none;
-  font-variant-numeric: tabular-nums;
 }
 .live {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-family: var(--label);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 700;
@@ -63,152 +65,114 @@
   border: 1px solid var(--ink-3);
 }
 .queue {
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
   color: var(--ink-3);
   text-align: right;
 }
 
-.spine {
-  position: relative;
-  height: 6px;
-  margin: 0 auto;
-  max-width: var(--measure);
-  background: var(--paper-3);
-}
-.spine::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(45deg, var(--rule) 0 0.5px, transparent 0.5px 4px);
-  opacity: 0.55;
-}
-.spine-l,
-.spine-r {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: var(--ink-2);
-  opacity: 0.55;
-}
-.spine-l {
-  left: 0;
-}
-.spine-r {
-  right: 0;
-}
-.spine-seam {
-  position: absolute;
-  left: 51.4%;
-  top: -2px;
-  bottom: -2px;
-  width: 1px;
-  background: var(--rule-2);
-}
-.spine-caret {
-  position: absolute;
-  top: -3px;
-  width: 2px;
-  height: 12px;
-  background: var(--live);
-  animation: blink 1.06s steps(1, end) infinite;
-}
-.spine-caret.l {
-  left: 0;
-}
-.spine-caret.r {
-  right: 0;
-}
-@keyframes blink {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0;
-  }
-}
-
+/* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
 .titul {
-  padding-top: 44px;
-  padding-bottom: 34px;
-  text-align: center;
-}
-.kicker {
-  letter-spacing: 0.3em;
-  color: var(--ink-3);
+  /* The cover's four lines — title, byline, genre, promise — sit at the bottom of the field;
+     the sheet itself is not the size of the screen. `67.5vh` first: a browser without `svh`
+     keeps the field; §2 sizes it on the small viewport, so the title's baseline lands in the
+     lower third and page 2 peeks below the fold at 844. The 720 px cap is what stops a tall
+     window (1200 and up) from opening a void above the title: past it the field stops growing. */
+  min-height: min(67.5vh, 720px);
+  min-height: min(67.5svh, 720px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: calc(env(safe-area-inset-top) + 24px) var(--gut) 8px;
+  text-align: left;
 }
 .title {
-  font-size: 34px;
-  line-height: 1;
-  letter-spacing: 0.26em;
-  text-indent: 0.26em;
-  text-transform: uppercase;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 58px;
   font-weight: 400;
-  margin: 16px 0 10px;
-  color: var(--ink);
-}
-.subtitle {
-  font-style: italic;
-  font-size: 15px;
-  color: var(--ink-2);
+  line-height: 1.04;
   letter-spacing: 0.01em;
+  color: var(--ink);
+  text-indent: 0;
+  text-transform: none;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: manual;
 }
-.double-rule {
-  width: 46px;
-  height: 3px;
-  margin: 26px auto 22px;
-  border-top: 1px solid var(--rule-2);
-  border-bottom: 1px solid var(--rule-2);
+.author {
+  margin: 24px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
 }
-.premise {
+/* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent.
+   One measure for the genre line and the promise (`book.css` owns the genre's copy of it):
+   `58ch` of PT Serif at 15 px is ≈464 px, so both wrap at the same width whatever they say —
+   a `ch` cap tuned to a line count would tie the layout to one sentence. */
+.title-promise {
+  max-width: min(100%, 58ch);
+  margin: 24px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+/* `.kicker`, `.premise` and `.copyright` stay: LegalPage, «Авторы» and the colophon use them. */
+.kicker {
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+}
+/* The static documents' pull quote (LegalPage). `p.` only: the empty chapter slot's
+   `.premise` is a different component (a 44px field row) and must keep its own width. */
+p.premise {
   max-width: 26ch;
   margin: 0 auto;
-  font-size: 14.5px;
+  font-size: var(--fs-note);
   line-height: 1.62;
   color: var(--ink-2);
   font-style: italic;
   text-wrap: balance;
 }
-
-.ledger {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin: 30px 0 0;
-  padding: 11px 0;
-  border-top: 1px solid var(--rule-2);
-  border-bottom: 1px solid var(--rule-2);
-  text-align: left;
-}
-.ledger > div {
-  padding: 0 12px;
-}
-.ledger > div:first-child {
-  padding-left: 0;
-}
-.ledger > div + div {
-  border-left: 1px solid var(--rule);
-}
-.ledger dt {
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.13em;
-  font-size: var(--fs-nano);
+.copyright {
+  margin: 7px 0 0;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
   color: var(--ink-3);
-  margin-bottom: 3px;
 }
-.ledger dd {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 15px;
-  letter-spacing: 0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
+
+/* BOOK-DOC-35 §3 — the narrow steps of the same system: tablet, then phone. */
+@media (max-width: 1023px) {
+  .top-in {
+    display: block;
+    padding-top: 11px;
+    padding-bottom: 8px;
+  }
+  .top-in .top-row {
+    display: flex;
+  }
+  .top-row + .top-row {
+    margin-top: 5px;
+  }
+  .title {
+    font-size: 52px;
+  }
+}
+@media (max-width: 599px) {
+  .title {
+    font-size: 44px;
+  }
 }
 
 /* a failing fetch is a sentence and a retry, never a spinner */
 .state-line {
+  max-width: calc(var(--measure) + 2 * var(--gut));
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -228,4 +192,289 @@
   display: inline-flex;
   align-items: center;
   letter-spacing: 0.14em;
+}
+
+/* ---------- page 2: the annotation as the book's first prose (BOOK-DOC-5 §3) ---------- */
+.annotation {
+  padding-top: 56px;
+  padding-bottom: 56px;
+}
+.annotation .p {
+  margin: 0 0 18px;
+  font-family: var(--serif);
+  font-size: var(--fs-lead);
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: var(--ink);
+  /* The manuscript is hard-wrapped, and that wrap is not the author's: the component joins
+     the lines with one space, so `book.css`'s `pre-line` must not put the breaks back.
+     The alignment is not set here: `.p` in `book.css` owns the reading measure at every
+     width (ragged-right below 600px, justified above), and page 2 follows it. */
+  white-space: normal;
+}
+.annotation .p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- концевая страница: «Авторы» (§6C.5) ---------- */
+.authors {
+  padding-top: 40px;
+  padding-bottom: 40px;
+  border-top: 1px solid var(--rule-2);
+}
+.authors-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.authors-note,
+.authors-empty,
+.authors-updated {
+  margin: 8px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.authors-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.authors-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+.authors-row.is-author .authors-name {
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+}
+.authors-name {
+  font-size: var(--fs-note);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.authors-role {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.authors-share {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.authors-link {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.authors-copyright {
+  margin-top: 22px;
+}
+
+/* «Ваш след» (BOOK-DOC-4): the reader's own erosion, one plain line, no meter, no score. */
+.own-trace {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.own-trace-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.own-trace-line {
+  margin: 8px 0 0;
+  font-size: var(--fs-note);
+  color: var(--ink);
+}
+.own-trace-edits,
+.own-trace-note {
+  margin: 6px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.own-trace-toggle {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.own-trace-toggle[disabled] {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+/* «Ваши правки» (BOOK-13): the durable summary of the reader's own interventions. A list of
+   plain lines, no meter and no animation — the block must not resize while the reader is
+   reading, so nothing here fades, slides or reserves a moving height. */
+.own-decisions {
+  margin-top: 18px;
+}
+.own-decisions-title {
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.own-decisions-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.own-decision {
+  margin: 0;
+  padding: 10px 0 0;
+}
+.own-decision + .own-decision {
+  margin-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.own-decision-line {
+  margin: 0;
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.own-decision.is-live .own-decision-line {
+  color: var(--ink-2);
+}
+.own-decision.is-stopped .own-decision-line {
+  color: var(--ink-2);
+}
+.own-decision-intent {
+  margin: 4px 0 0;
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+.own-decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 6px 0 0;
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.own-decision-open {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* The static documents (audit M5): «приватность» and «правила». Same measure and voice as
+   the book, no card, no third-party byte — they must read when the API is down. */
+.legal {
+  max-width: calc(var(--measure) + 2 * var(--gut));
+  margin: 0 auto;
+  padding: 72px var(--gut) 96px;
+}
+.legal .title {
+  font-size: clamp(28px, 6vw, 40px);
+  line-height: 1.12;
+}
+.legal section {
+  margin-top: 34px;
+}
+.legal h2 {
+  margin: 0 0 10px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.legal p,
+.legal li {
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.legal p + p {
+  margin-top: 12px;
+}
+.legal ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.legal li + li {
+  margin-top: 8px;
+}
+.legal code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  color: var(--ink-2);
+}
+.legal-how {
+  color: var(--ink-2);
+  border-left: 2px solid var(--rule-2);
+  padding-left: 12px;
+}
+.legal-tail {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-note) !important;
+  color: var(--ink-2) !important;
+}
+.legal-nav {
+  display: flex;
+  gap: 18px;
+  margin-top: 26px;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.legal-nav a,
+.colophon a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+/* BOOK-DOC-35 §6 — the colophon's two static-page links are flex items, not inline text in a
+   sentence, so WCAG 2.5.8 applies: they get a 24px target without moving the line. */
+.colophon a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding-block: 6px;
 }

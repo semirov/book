@@ -1,0 +1,475 @@
+/* ============================================================================
+   FOCUS — M6c: the прицел (§11.9, DESIGN §7.14). A mode of the same page: the
+   page goes dark, one sheet stays lit. The housing is the same instrument in
+   both themes; the paper is always the day sheet, so it reads as a document
+   under a lamp even at night.
+   ============================================================================ */
+
+body.is-focus {
+  overflow: hidden;
+}
+
+.focus {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4dvh 0;
+  background: rgba(10, 12, 14, 0.78);
+  color: #cfd3d2;
+  overflow: hidden;
+}
+/* The lit sheet is centred at 92dvh on the desktop (BOOK-DOC-35 §7); the phone is the
+   exception below, where it fills the viewport. */
+.focus-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(720px, 100%);
+  height: min(92dvh, 920px);
+  background: #14171a;
+  border: 1px solid rgba(207, 211, 210, 0.17);
+}
+
+/* ---------- top bar ---------- */
+.focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid rgba(207, 211, 210, 0.17);
+}
+.focus-tag,
+.focus-n {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.focus-tag {
+  color: #8b8f8c;
+}
+.focus-n {
+  flex: 1;
+  color: #cfd3d2;
+}
+.focus-exit {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -10px -6px -10px 0;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+
+/* ---------- the body ---------- */
+.focus-body {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px 20px;
+}
+.focus-where {
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b8f8c;
+}
+
+/* ---------- the lit sheet ---------- */
+.focus-stage {
+  position: relative;
+  /* BOOK-DOC-35 §7: the lit sheet keeps the text register's measure. Panel 720 → body 686 →
+     stage 590 → paper 580 → 540px of text at 19px (≈57 ch measured in PT Serif; page 2 at
+     18px holds ≈60). The stage is centred so the sheet stays on the reading axis. */
+  max-width: 590px;
+  margin-inline: auto;
+  padding: 5px;
+}
+.focus-paper {
+  /* The lit sheet is the day sheet (BOOK-DOC-6): concrete, not paper — the same palette the
+     reader left, so the focus panel never reintroduces the beige the owner removed. Its text
+     block is 540px wide: 580 of paper (stage 590 − 2 × 5) − 2 × 20 of paper padding. */
+  --paper: #cfd3d2;
+  --ink: #14171a;
+  --ink-2: #4e5455;
+  --ink-3: #565b5c;
+  --rule: #a6adac;
+  --rule-2: #8b9291;
+  --live: #2a5c6d;
+  min-height: 150px;
+  padding: 18px 20px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--fs-lead);
+  line-height: 1.62;
+}
+.focus-p {
+  margin: 0 0 0.9em;
+}
+.focus-p:last-of-type {
+  margin-bottom: 0;
+}
+.focus-removed {
+  margin: 0.9em 0 0;
+  padding-top: 0.5em;
+  border-top: 1px dashed var(--rule-2, #8b9291);
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.focus-sheet-note {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.focus-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: #2a5c6d;
+  animation: focus-caret 1s steps(1) infinite;
+}
+@keyframes focus-caret {
+  50% {
+    opacity: 0;
+  }
+}
+.focus-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid #7fa8c0;
+  border-left: 1px solid #7fa8c0;
+  pointer-events: none;
+}
+.focus-corner:not(.is-ne):not(.is-sw):not(.is-se) {
+  top: 0;
+  left: 0;
+}
+.focus-corner.is-ne {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-right: 1px solid #7fa8c0;
+}
+.focus-corner.is-sw {
+  bottom: 0;
+  left: 0;
+  border-top: 0;
+  border-bottom: 1px solid #7fa8c0;
+}
+.focus-corner.is-se {
+  right: 0;
+  bottom: 0;
+  border-top: 0;
+  border-left: 0;
+  border-right: 1px solid #7fa8c0;
+  border-bottom: 1px solid #7fa8c0;
+}
+
+.focus-evidence {
+  margin: 10px 0 0;
+  padding: 0 0 0 16px;
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: #b0b2ae;
+}
+
+/* ---------- readout and ring field ---------- */
+.focus-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-readout span + span::before {
+  content: '·';
+  margin-right: 14px;
+  color: #8b8f8c;
+}
+/* the two wings, printed at once (§11.9, BOOK-DOC-4): direction, wave, state, chapters */
+.focus-wings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 6px 4px 0;
+}
+.focus-wing {
+  position: relative;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(207, 211, 210, 0.22);
+}
+.focus-wing[data-state='moving'] {
+  border-top-color: #8fb8d0;
+}
+.focus-wing[data-state='stopped'] {
+  border-top-color: #c8a06a;
+}
+.focus-wing-h {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-wing-r {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  color: #cfd3d2;
+}
+/* the local window as a grid of chapters: a class per width, never an inline style */
+.focus-track {
+  display: grid;
+  align-items: end;
+  height: 52px;
+  margin: 8px 4px 0;
+}
+.focus-track.w-1 { grid-template-columns: repeat(1, 1fr); }
+.focus-track.w-2 { grid-template-columns: repeat(2, 1fr); }
+.focus-track.w-3 { grid-template-columns: repeat(3, 1fr); }
+.focus-track.w-4 { grid-template-columns: repeat(4, 1fr); }
+.focus-track.w-5 { grid-template-columns: repeat(5, 1fr); }
+.focus-track.w-6 { grid-template-columns: repeat(6, 1fr); }
+.focus-track.w-7 { grid-template-columns: repeat(7, 1fr); }
+.focus-track.w-8 { grid-template-columns: repeat(8, 1fr); }
+.focus-track.w-9 { grid-template-columns: repeat(9, 1fr); }
+.focus-track.w-10 { grid-template-columns: repeat(10, 1fr); }
+.focus-track.w-11 { grid-template-columns: repeat(11, 1fr); }
+.focus-track.w-12 { grid-template-columns: repeat(12, 1fr); }
+.focus-track.w-13 { grid-template-columns: repeat(13, 1fr); }
+.focus-track.w-14 { grid-template-columns: repeat(14, 1fr); }
+.focus-track.w-15 { grid-template-columns: repeat(15, 1fr); }
+.focus-cell {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  border-left: 1px solid rgba(207, 211, 210, 0.12);
+}
+.focus-tick {
+  width: 1px;
+  height: 7px;
+  background: rgba(207, 211, 210, 0.34);
+}
+.focus-cell.is-between .focus-tick {
+  width: 100%;
+  height: 2px;
+  margin-bottom: 2px;
+  background: #6f9bb5;
+  opacity: 0.55;
+}
+.focus-cell.is-origin .focus-tick {
+  width: 1px;
+  height: 13px;
+  background: #cfd3d2;
+}
+.focus-cell.is-current .focus-tick {
+  height: 13px;
+  background: #8fb8d0;
+}
+.focus-cell.is-current::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 17px;
+  height: 17px;
+  margin-left: -8.5px;
+  border: 1px solid #8fb8d0;
+  border-radius: 50%;
+  animation: focus-ring 2.6s linear infinite;
+}
+.focus-tick-label {
+  margin: 3px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: #8b8f8c;
+}
+@keyframes focus-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(143, 184, 208, 0.4);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(143, 184, 208, 0);
+  }
+}
+
+/* ---------- the footnote form ---------- */
+.focus-note {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  background: #191c1f;
+  border-top: 1px solid rgba(207, 211, 210, 0.17);
+}
+.focus-note-h {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(207, 211, 210, 0.17);
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b0b2ae;
+}
+.focus-note-h > span:first-child {
+  flex: 1;
+}
+.focus-stamp {
+  color: #8fb8d0;
+}
+.focus-rows {
+  margin: 0;
+}
+.focus-rows > div {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(207, 211, 210, 0.08);
+}
+.focus-rows > div:first-child {
+  border-top: 0;
+}
+.focus-rows dt {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8b8f8c;
+}
+.focus-rows dd {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: #cfd3d2;
+}
+.focus-intent {
+  font-style: italic;
+}
+.focus-quiet {
+  font-style: italic;
+  color: #8b8f8c;
+}
+.focus-cost {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: #b0b2ae;
+}
+.focus-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.focus-steps li {
+  padding: 2px 0;
+}
+.focus-steps button,
+.focus-steps span {
+  font-family: var(--serif);
+  font-size: var(--fs-label);
+  text-align: left;
+  color: #b0b2ae;
+  border-bottom: 1px solid transparent;
+}
+.focus-steps button {
+  min-height: 26px;
+}
+.focus-steps button.is-on {
+  color: #cfd3d2;
+  border-bottom-color: #6f9bb5;
+}
+.focus-deed {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: #b0b2ae;
+}
+.focus-reason {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(207, 211, 210, 0.08);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: #b0b2ae;
+}
+
+/* ---------- actions ---------- */
+.focus-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: #14171a;
+  border-top: 1px solid rgba(207, 211, 210, 0.17);
+}
+.focus-action {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid rgba(207, 211, 210, 0.35);
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #cfd3d2;
+}
+.focus-action.is-on {
+  border-color: #6f9bb5;
+  color: #8fb8d0;
+}
+
+@media (max-width: 1023px) {
+  .focus-panel {
+    width: min(640px, 100%);
+  }
+}
+@media (max-width: 699px) {
+  .focus {
+    align-items: stretch;
+    padding: 0;
+  }
+  .focus-panel {
+    width: 100%;
+    height: 100dvh;
+    border: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-cell.is-current::before,
+  .focus-caret {
+    animation: none;
+  }
+}

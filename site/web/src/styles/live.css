@@ -1,0 +1,255 @@
+/* ============================================================================
+   LIVE — M2: the table of contents, printing, carets, revisions, the ribbon
+   and the ticket. Additive to book.css.
+   ============================================================================ */
+
+/* ---------- the first sheet changes in place, it does not reflow ---------- */
+.fade-in {
+  animation: fade-in var(--dur-fade) var(--ease-out) both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- оглавление: four parts, 67 rows, no invented labels ---------- */
+.toc {
+  padding: 26px var(--gut) 72px;
+  /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
+  scroll-margin-top: var(--offset-top);
+  /* BOOK-DOC-35 §5 — the contents are a spread on the frame: two 444px columns of the 936px
+     sheet. The 67 rows are the only list that gets better wider; the prose never follows. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 48px;
+  align-items: start;
+}
+.toc-label {
+  grid-column: 1 / -1;
+  margin: 0 0 26px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.35;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.toc-part-h {
+  margin: 0;
+  /* 32px of air above a part: the four headings are the only structure the void has left. */
+  padding: 32px 0 10px;
+  font-family: var(--label);
+  font-weight: 400;
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+/* The label is the grid's first child, so parts I and II are children 2 and 3: both columns
+   start flush with the label, and III/IV keep their air. */
+.toc-part:nth-child(-n + 3) .toc-part-h {
+  padding-top: 0;
+}
+
+/* An empty row is its numeral: 26px — a quiet column, not a disabled control (WCAG 2.5.8). */
+.toc-row-empty {
+  height: 26px;
+}
+.toc-num {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.toc-row-empty .toc-num {
+  display: block;
+  line-height: 26px;
+  /* The numeral of an empty slot is text the reader reads, not a label: full ink. */
+  color: var(--ink);
+}
+
+/* The same columns for a row that opens nothing. */
+.toc-line {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  column-gap: 14px;
+  align-items: center;
+  height: 26px;
+}
+
+/* A row with text opens its chapter: numeral and title line (or frozen sentence), nothing else. */
+.toc-link {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  column-gap: 14px;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 10px 0;
+  text-decoration: none;
+}
+.toc-link:hover .toc-num,
+.toc-link:focus-visible .toc-num {
+  color: var(--live);
+}
+.toc-text {
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+/* ---------- the chapter caret blinks only while its lane writes (§11.3–11.4) ---------- */
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- empty chapter slots: slim, quiet, always present ---------- */
+.ch-empty {
+  padding-top: 0;
+}
+.ch-empty .ch-h {
+  border-top-color: var(--rule);
+  padding: 11px 0 7px;
+  margin-bottom: 0;
+}
+.ch-empty .ch-n {
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+}
+
+/* ---------- printing (§11.5): only the active paragraph is left-aligned ---------- */
+.p.is-printing {
+  text-align: left;
+}
+.caret-inline {
+  display: inline-block;
+  width: 2px;
+  height: 1.02em;
+  margin-left: 1px;
+  vertical-align: -0.12em;
+  background: var(--live);
+}
+.caret-inline.blink {
+  animation: blink 1.06s steps(1, end) infinite;
+}
+.caret-inline.resting {
+  background: var(--ink-3);
+  opacity: 0.5;
+}
+.show-now {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 6px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule-2);
+}
+
+/* ---------- a block the step is revising (§11.4) ---------- */
+.p.is-revising {
+  padding: 7px 10px 7px 10px;
+  margin-left: -10px;
+  margin-right: -10px;
+  background: linear-gradient(90deg, var(--revise) 0 2px, var(--revise-bg) 2px);
+}
+.revising-label {
+  display: block;
+  margin-bottom: 3px;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--revise);
+}
+.p.is-revised {
+  animation: settle var(--dur-fade) var(--ease-out) both;
+}
+@keyframes settle {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- талон: one quiet notice, never a count ---------- */
+.ticket {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 55;
+  display: flex;
+  align-items: stretch;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 3px 3px 0 var(--rule-2);
+}
+.ticket-go,
+.ticket-x {
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+.ticket-x {
+  border-left: 1px solid rgba(207, 211, 210, 0.28);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+/* ---------- 100 readers, then the waiting screen (§14) ---------- */
+.waiting {
+  min-height: 70dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  text-align: center;
+}
+.waiting-copy {
+  max-width: 24ch;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+}
+.waiting-retry {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* BOOK-DOC-35 §3 — the narrow case of the same contents page: one column, same rows. */
+@media (max-width: 1023px) {
+  .toc {
+    grid-template-columns: 1fr;
+  }
+}

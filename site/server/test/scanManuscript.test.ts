@@ -25,6 +25,20 @@ describe('scanManuscript', () => {
     expect(result.chapters).toEqual([]);
   });
 
+  it('separates the first sheet from the chapters', () => {
+    const created = fixture({ '00-front.md': 'Название\n\nАннотация.', 'ch01.md': 'Заголовок.\n\nТекст.' });
+    const result = scanManuscript(created.root);
+    expect(result.front?.fileName).toBe('00-front.md');
+    expect(result.front?.raw).toContain('Название');
+    expect(result.chapters.map((chapter) => chapter.n)).toEqual([1]);
+    expect(result.ignored).not.toContain('00-front.md');
+  });
+
+  it('reports a missing first sheet as null, not as a chapter', () => {
+    const created = fixture({ 'ch01.md': 'Заголовок.\n\nТекст.' });
+    expect(scanManuscript(created.root).front).toBeNull();
+  });
+
   it('returns chapters in order', () => {
     const created = fixture({ 'ch67.md': 'Конец.', 'ch01.md': 'Начало.' });
     const result = scanManuscript(created.root);

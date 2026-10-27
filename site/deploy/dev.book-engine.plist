@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The writing engine's own process on the Mac mini (runbook BOOK-DOC-2 § Engine).
+     Same image as the site, second entrypoint: `server/dist/engine.js`. No public port —
+     the internal API listens on loopback only and is never proxied by Caddy.
+     Install: cp to ~/Library/LaunchAgents/dev.book-engine.plist, then
+     `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.book-engine.plist`.
+     The engine token is a file (`ENGINE_TOKEN_FILE`, 0600); no secret is in this plist or in
+     the environment (invariant 30). `DRAFTING=off` is the owner's writing switch: the engine
+     hands out no writer assignment until it is `on`. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.book-engine</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>--env-file=/Users/filipp/projects/book/site/.env</string>
+    <string>server/dist/engine.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/filipp/projects/book/site</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key><string>production</string>
+    <key>BOOK_ROOT</key><string>/Users/filipp/projects/book</string>
+    <key>DATA_DIR</key><string>/Users/filipp/book-site-data</string>
+    <key>ENGINE_TOKEN_FILE</key><string>/Users/filipp/book-site-data/engine.token</string>
+    <key>HOST</key><string>127.0.0.1</string>
+    <key>PORT</key><string>8081</string>
+    <key>DRAFTING</key><string>off</string>
+    <key>TRUSTED_PROXIES</key><string>127.0.0.1/32,::1/128,192.168.1.44/32</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/filipp/Library/Logs/book-engine.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/filipp/Library/Logs/book-engine.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

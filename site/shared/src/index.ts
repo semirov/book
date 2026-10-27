@@ -1,3 +1,33 @@
-export * from './chapters.ts';
+export * from './book.ts';
 export * from './types.ts';
 export * from './protocol.ts';
+export * from './change.ts';
+export * from './history.ts';
+export * from './authors.ts';
+export * from './publicChange.ts';
+export * from './captcha.ts';
+export * from './comment.ts';
+export * from './intervention.ts';
+export * from './decisions.ts';
+export * from './injection.ts';
+export * from './intent.ts';
+
+/**
+ * The validator is used by the site's integrity panel and by the commit gate, so the parts
+ * they need are exported by name. A bare `export *` would collide with `Imprint` and
+ * `LegalDenylist`, which `book.ts` already owns.
+ */
+export { runValidation } from './validate/rules.ts';
+export { compilePatterns } from './validate/denylist.ts';
+export { checkCommitScope, commitSubject, isBookFile, isSweep, stagedBookFiles, SWEEP_PREFIX } from './validate/commit.ts';
+export type {
+  // `Finding` is already `change.ts`'s (a gate's finding); the validator's own record of a
+  // broken rule is exported under its qualified name so the two cannot be confused.
+  Finding as ValidatorFinding,
+  ManuscriptFile,
+  PlanningFile,
+  RuleId,
+  Severity,
+  ValidateOptions,
+  ValidateResult,
+} from './validate/text.ts';

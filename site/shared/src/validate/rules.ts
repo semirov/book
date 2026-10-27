@@ -1,43 +1,55 @@
 /**
- * F001–F009 of ARCHITECTURE.md §13.4, over an in-memory snapshot of the repository.
+ * F001–F002, F005–F007, F009, F020–F022 and F029 of ARCHITECTURE.md §13.4, over an
+ * in-memory snapshot of the repository.
  *
- * F001 naming · F002 stray files / range · F003 forbidden vocabulary · F004 the phrase
- * · F005 finite cast · F006 67 chapters · F007 chapter length · F008 process vocabulary
- * · F009 markdown in prose (warn).
+ * F001 naming · F002 stray files / range · F004 retired (v3) · F005 the legal denylist
+ * · F006 67 chapters · F007 chapter length · F009 markdown in prose (warn) · F020 imprint
+ * · F021 front matter · F022 chapter title line · F029 the frozen frame.
+ *
+ * Vocabulary is not policed here: F003 (forbidden words) and F008 (process words) are
+ * retired — the only taboos are copyright and RF law, and that is F005's denylist.
+ * Everything about meaning is a gate's job (§6B); this file polices structure and law.
  */
 
-import { ENGINEER_LINE_CHAPTERS, TOTAL_CHAPTERS } from '../chapters.ts';
-import { buildCastIndex, findUnknownNames } from './cast.ts';
 import {
-  FORBIDDEN_PROSE,
-  PROCESS_PROSE,
+  CHAPTER_CHARS,
+  FRONT_FILE,
+  TOTAL_CHAPTERS,
+  imprintProblems,
+  isEmptySlot,
+  parseChapterTitle,
+  parseFrontMatter,
+  splitParagraphs,
+  type Imprint,
+  type LegalDenylist,
+} from '../book.ts';
+import {
+  buildDenylistIndex,
+  buildNameIndex,
+  compilePatterns,
+  findDenylisted,
+  findDenylistedNames,
+  findPatternHits,
+} from './denylist.ts';
+import { checkFrame } from './frame.ts';
+import {
   type ChapterFile,
   type Finding,
   type RuleId,
   type Severity,
   type ValidateOptions,
   type ValidateResult,
-  type WordRule,
-  countChars,
+  countParagraphChars,
   excerptAt,
-  findPhrase,
-  findWords,
+  hasMarkdown,
   lineAt,
   manuscriptChapterFile,
   normalizeText,
-  splitBlocks,
 } from './text.ts';
 
-const PHRASE = 'Рука пошла и не дошла';
-const ENGINEER_NOTE = ENGINEER_LINE_CHAPTERS.join(', ');
-/** `manuscript/PLAN.md` is referenced by ARCHITECTURE.md §9 (the `line` field). */
-const ALLOWED_EXTRA_FILES = new Set(['PLAN.md']);
-
-const HARD_MIN = 3000;
-const HARD_MAX = 15000;
-const SOFT_MIN = 6000;
-const SOFT_MAX = 12000;
-
+const FRONT_PATH = `manuscript/${FRONT_FILE}`;
+const DENYLIST_PATH = 'config/legal.denylist.json';
+const IMPRINT_PATH = 'config/imprint.json';
 function finding(
   rule: RuleId,
   severity: Severity,
@@ -51,21 +63,46 @@ function finding(
     : { rule, severity, file, line, message, excerpt };
 }
 
-/** Chapter files and the stray-file findings, in one pass over the root listing. */
-export function collectChapters(options: ValidateOptions): {
+export type CollectedFront = {
+  file: string;
+  text: string;
+  title: string | null;
+  about: string | null;
+  blocks: string[];
+  chars: number;
+  problems: string[];
+};
+
+/** Chapter files, the front matter and the stray-file findings, in one pass over the listing. */
+export function collectManuscript(options: ValidateOptions): {
   chapters: ChapterFile[];
+  front: CollectedFront | null;
   findings: Finding[];
 } {
   const findings: Finding[] = [];
   const chapters: ChapterFile[] = [];
   const seen = new Map<number, string>();
+  let front: CollectedFront | null = null;
 
   for (const file of options.files) {
+    if (file.name === FRONT_FILE) {
+      const parsed = parseFrontMatter(file.text);
+      front = {
+        file: FRONT_PATH,
+        text: normalizeText(file.text),
+        title: parsed.title,
+        about: parsed.about,
+        blocks: parsed.blocks,
+        chars: parsed.chars,
+        problems: parsed.problems,
+      };
+      continue;
+    }
+
     const parsed = manuscriptChapterFile(file.name);
     if (parsed === null) {
-      if (ALLOWED_EXTRA_FILES.has(file.name)) continue;
       findings.push(
-        finding('F002', 'error', file.name, 1, 'extra .md file in manuscript/ — only chNN.md and PLAN.md are allowed'),
+        finding('F002', 'error', file.name, 1, `extra .md file in manuscript/ — only chNN.md and ${FRONT_FILE} are allowed`),
       );
       continue;
     }
@@ -96,100 +133,74 @@ export function collectChapters(options: ValidateOptions): {
       continue;
     }
     seen.set(parsed.n, file.name);
+
     const text = normalizeText(file.text);
-    const blocks = splitBlocks(text);
-    chapters.push({ n: parsed.n, file: file.name, text, blocks, chars: countChars(blocks) });
+    if (isEmptySlot(parsed.n, text)) {
+      // An empty slot is a valid state (§BOOK-6): no title line, no chars, no length. The
+      // file may be zero-byte or hold only its basis sentence (ch01/ch67).
+      chapters.push({ n: parsed.n, file: file.name, text, title: null, titleProblems: [], blocks: [], chars: 0, empty: true });
+      continue;
+    }
+
+    // The shared title decision, so a chapter that opens on its frame is untitled prose here,
+    // in the reader and in F029 alike (BOOK-32).
+    const line = parseChapterTitle(parsed.n, file.text);
+    const blocks = splitParagraphs(line.body);
+    chapters.push({
+      n: parsed.n,
+      file: file.name,
+      text,
+      title: line.title,
+      titleProblems: line.problems,
+      blocks,
+      chars: countParagraphChars(blocks),
+      empty: false,
+    });
   }
 
   chapters.sort((a, b) => a.n - b.n);
-  return { chapters, findings };
-}
-
-function scanVocabulary(
-  chapter: ChapterFile,
-  rules: WordRule[],
-  rule: RuleId,
-  label: string,
-  skip?: Set<string>,
-): { findings: Finding[]; seen: Set<string> } {
-  const findings: Finding[] = [];
-  const seen = new Set<string>();
-  for (const wordRule of rules) {
-    for (const match of findWords(chapter.text, wordRule)) {
-      const key = `${match.offset}:${match.word.toLowerCase()}`;
-      if (skip?.has(key) || seen.has(key)) continue;
-      seen.add(key);
-      findings.push(
-        finding(
-          rule,
-          'error',
-          chapter.file,
-          lineAt(chapter.text, match.offset),
-          `${label}: «${match.word}»`,
-          excerptAt(chapter.text, match.offset, match.length),
-        ),
-      );
-    }
-  }
-  return { findings, seen };
+  return { chapters, front, findings };
 }
 
 function checkLength(chapter: ChapterFile): Finding[] {
-  if (chapter.chars < HARD_MIN) {
+  // An empty slot has no length: the band applies to a written chapter only (§BOOK-6). A
+  // slot holding nothing but the frozen frame of ch01/ch67 is `empty`, so it never reaches
+  // either end of the band.
+  if (chapter.empty) return [];
+  if (chapter.chars > CHAPTER_CHARS.max) {
     return [
       finding(
         'F007',
         'error',
         chapter.file,
         1,
-        `chapter has ${chapter.chars} characters, hard minimum is ${HARD_MIN}`,
+        `chapter has ${chapter.chars} characters, the maximum is ${CHAPTER_CHARS.max} (F007)`,
       ),
     ];
   }
-  if (chapter.chars > HARD_MAX) {
+  // The floor is a limit, not a hint (canon, BOOK-DOC-4): a written chapter below a page is
+  // an error for the commit and for the engine's `land` alike.
+  if (chapter.chars < CHAPTER_CHARS.floor) {
     return [
       finding(
         'F007',
         'error',
         chapter.file,
         1,
-        `chapter has ${chapter.chars} characters, hard maximum is ${HARD_MAX}`,
+        `chapter has ${chapter.chars} characters, the minimum is ${CHAPTER_CHARS.floor} (F007)`,
       ),
     ];
   }
-  if (chapter.chars < SOFT_MIN || chapter.chars > SOFT_MAX) {
+  if (chapter.chars < CHAPTER_CHARS.min) {
     return [
       finding(
         'F007',
         'warn',
         chapter.file,
         1,
-        `chapter has ${chapter.chars} characters, outside the ${SOFT_MIN}..${SOFT_MAX} band`,
+        `thin chapter: ${chapter.chars} characters, the band is ${CHAPTER_CHARS.min}–${CHAPTER_CHARS.max}`,
       ),
     ];
-  }
-  return [];
-}
-
-function checkMarkdown(chapter: ChapterFile, offsets: number[]): Finding[] {
-  for (let i = 0; i < chapter.blocks.length; i += 1) {
-    const block = chapter.blocks[i] ?? '';
-    const offset = offsets[i] ?? 0;
-    const problems: string[] = [];
-    if (/^\s{0,3}#{1,6}\s/u.test(block)) problems.push('heading');
-    if (/\[[^\]\n]+\]\([^)\n]+\)/u.test(block)) problems.push('link');
-    if (/\[\^[^\]\n]+\]/u.test(block)) problems.push('footnote');
-    if (problems.length > 0) {
-      return [
-        finding(
-          'F009',
-          'warn',
-          chapter.file,
-          lineAt(chapter.text, offset),
-          `markdown in prose: ${problems.join(', ')} — the format is plain paragraphs`,
-        ),
-      ];
-    }
   }
   return [];
 }
@@ -207,39 +218,132 @@ function blockOffsets(chapter: ChapterFile): number[] {
   return offsets;
 }
 
-function checkPhrase(chapters: ChapterFile[]): Finding[] {
-  const occurrences: Array<{ chapter: ChapterFile; offset: number }> = [];
-  for (const chapter of chapters) {
-    for (const offset of findPhrase(chapter.text, PHRASE)) occurrences.push({ chapter, offset });
+function checkMarkdown(chapter: ChapterFile, offsets: number[]): Finding[] {
+  for (let i = 0; i < chapter.blocks.length; i += 1) {
+    const block = chapter.blocks[i] ?? '';
+    const offset = offsets[i] ?? 0;
+    if (hasMarkdown(block)) {
+      return [
+        finding(
+          'F009',
+          'warn',
+          chapter.file,
+          lineAt(chapter.text, offset),
+          'markdown in prose: the format is plain paragraphs',
+        ),
+      ];
+    }
   }
+  return [];
+}
+
+/** F022 — line 1 is the chapter title; a missing one is an error for the commit only. */
+function checkTitleLine(chapter: ChapterFile): Finding[] {
+  // An empty slot needs no title line; a written chapter keeps the rule unchanged.
+  if (chapter.empty) return [];
+  return chapter.titleProblems.map((problem) =>
+    finding('F022', 'error', chapter.file, 1, `chapter title line: ${problem}`),
+  );
+}
+
+/** F021 — the front matter is mandatory: without it there is no cover and no page 2. */
+function checkFrontMatter(front: CollectedFront | null): Finding[] {
+  if (front === null) {
+    return [finding('F021', 'error', FRONT_PATH, 1, `front matter is missing — ${FRONT_PATH} is required`)];
+  }
+  return front.problems.map((problem) => finding('F021', 'error', FRONT_PATH, 1, `front matter: ${problem}`));
+}
+
+/** F020 — the imprint is a legal statement; drift is an error, not a style question. */
+function checkImprint(imprint: Imprint | null | undefined): Finding[] {
+  return imprintProblems(imprint).map((problem) => finding('F020', 'error', IMPRINT_PATH, 1, `imprint: ${problem}`));
+}
+
+/** F005 — the legal denylist itself, reported once. */
+function checkDenylistConfig(denylist: LegalDenylist | null | undefined): {
+  findings: Finding[];
+  persons: ReturnType<typeof buildNameIndex>;
+  characters: ReturnType<typeof buildNameIndex>;
+  organisations: ReturnType<typeof buildDenylistIndex>;
+  patterns: RegExp[];
+} {
+  const emptyNames = buildNameIndex([]);
+  const emptyOrganisations = buildDenylistIndex([]);
+  if (denylist === null || denylist === undefined) {
+    return {
+      findings: [finding('F005', 'error', DENYLIST_PATH, 1, 'legal denylist is missing — the legal gate cannot run')],
+      persons: emptyNames,
+      characters: emptyNames,
+      organisations: emptyOrganisations,
+      patterns: [],
+    };
+  }
+  const compiled = compilePatterns(denylist.patterns ?? []);
+  return {
+    findings: compiled.problems.map((problem) => finding('F005', 'error', DENYLIST_PATH, 1, problem)),
+    persons: buildNameIndex(denylist.persons ?? []),
+    characters: buildNameIndex(denylist.characters ?? []),
+    organisations: buildDenylistIndex(denylist.organisations ?? []),
+    patterns: compiled.regexes,
+  };
+}
+
+/**
+ * F005 — denylisted persons and characters are errors, organisations a warning, patterns
+ * errors. A person or a character is caught only as a complete name (§13.4); an
+ * organisation is caught by any of its written parts.
+ */
+function checkLegal(
+  chapter: ChapterFile,
+  indexes: {
+    persons: ReturnType<typeof buildNameIndex>;
+    characters: ReturnType<typeof buildNameIndex>;
+    organisations: ReturnType<typeof buildDenylistIndex>;
+    patterns: RegExp[];
+  },
+): Finding[] {
   const findings: Finding[] = [];
-  for (const { chapter, offset } of occurrences) {
-    const line = lineAt(chapter.text, offset);
-    if (occurrences.length > 1) {
+  const names: Array<[ReturnType<typeof buildNameIndex>, string]> = [
+    [indexes.persons, 'denylisted person'],
+    [indexes.characters, 'protected character'],
+  ];
+  for (const [index, label] of names) {
+    for (const hit of findDenylistedNames(chapter.text, index)) {
       findings.push(
         finding(
-          'F004',
+          'F005',
           'error',
           chapter.file,
-          line,
-          `«${PHRASE}» occurs ${occurrences.length} times in the book (maximum 1)`,
-          excerptAt(chapter.text, offset, PHRASE.length),
-        ),
-      );
-      continue;
-    }
-    if (!ENGINEER_LINE_CHAPTERS.includes(chapter.n)) {
-      findings.push(
-        finding(
-          'F004',
-          'error',
-          chapter.file,
-          line,
-          `«${PHRASE}» is allowed only in an engineer-line chapter (${ENGINEER_NOTE}), not in chapter ${chapter.n}`,
-          excerptAt(chapter.text, offset, PHRASE.length),
+          lineAt(chapter.text, hit.offset),
+          `${label}: «${hit.word}»`,
+          excerptAt(chapter.text, hit.offset, hit.length),
         ),
       );
     }
+  }
+  for (const hit of findDenylisted(chapter.text, indexes.organisations)) {
+    findings.push(
+      finding(
+        'F005',
+        'warn',
+        chapter.file,
+        lineAt(chapter.text, hit.offset),
+        `denylisted organisation: «${hit.word}»`,
+        excerptAt(chapter.text, hit.offset, hit.length),
+      ),
+    );
+  }
+  for (const hit of findPatternHits(chapter.text, indexes.patterns)) {
+    findings.push(
+      finding(
+        'F005',
+        'error',
+        chapter.file,
+        lineAt(chapter.text, hit.offset),
+        `illegal-content pattern: «${hit.text}»`,
+        excerptAt(chapter.text, hit.offset, hit.text.length),
+      ),
+    );
   }
   return findings;
 }
@@ -280,47 +384,24 @@ function checkTotals(total: number, planning: ValidateOptions['planning']): Find
 
 export function runValidation(options: ValidateOptions): ValidateResult {
   const total = options.totalChapters ?? TOTAL_CHAPTERS;
-  const { chapters, findings } = collectChapters(options);
-  const castIndex = buildCastIndex([
-    ...options.allowlist.cast,
-    ...options.allowlist.places,
-    ...options.allowlist.manual,
-    ...(options.allowNewNames ?? []),
-  ]);
+  const { chapters, front, findings } = collectManuscript(options);
+
+  findings.push(...checkFrontMatter(front));
+  findings.push(...checkImprint(options.imprint));
+
+  const legal = checkDenylistConfig(options.denylist);
+  findings.push(...legal.findings);
 
   for (const chapter of chapters) {
+    findings.push(...checkTitleLine(chapter));
     findings.push(...checkLength(chapter));
-    const forbidden = scanVocabulary(chapter, FORBIDDEN_PROSE, 'F003', 'forbidden word');
-    findings.push(...forbidden.findings);
-    // F008 covers «цикл / прогон / перезапуск» too; they are already errors above, so a
-    // duplicate line is suppressed instead of reporting the same word twice.
-    findings.push(
-      ...scanVocabulary(chapter, PROCESS_PROSE, 'F008', 'process vocabulary in prose', forbidden.seen).findings,
-    );
+    findings.push(...checkFrame(chapter));
+    findings.push(...checkLegal(chapter, legal));
 
     const offsets = blockOffsets(chapter);
-    for (let i = 0; i < chapter.blocks.length; i += 1) {
-      const block = chapter.blocks[i] ?? '';
-      const offset = offsets[i] ?? 0;
-      // A markdown heading is F009's business; its first word is not a character name.
-      if (/^\s{0,3}#{1,6}\s/u.test(block)) continue;
-      for (const hit of findUnknownNames(block, castIndex)) {
-        findings.push(
-          finding(
-            'F005',
-            'error',
-            chapter.file,
-            lineAt(chapter.text, offset + hit.offset),
-            `name «${hit.word}» is not in config/cast.allowlist.json (or --allow-new-name=)`,
-            excerptAt(chapter.text, offset + hit.offset, hit.word.length),
-          ),
-        );
-      }
-    }
     findings.push(...checkMarkdown(chapter, offsets));
   }
 
-  findings.push(...checkPhrase(chapters));
   findings.push(...checkTotals(total, options.planning));
 
   findings.sort((a, b) => {
@@ -333,7 +414,11 @@ export function runValidation(options: ValidateOptions): ValidateResult {
     findings,
     errors: findings.filter((f) => f.severity === 'error').length,
     warnings: findings.filter((f) => f.severity === 'warn').length,
-    chapters: chapters.map((c) => ({ n: c.n, file: c.file, chars: c.chars, blocks: c.blocks.length })),
+    chapters: chapters.map((c) => ({ n: c.n, file: c.file, title: c.title, chars: c.chars, blocks: c.blocks.length })),
+    front:
+      front === null
+        ? null
+        : { file: front.file, title: front.title, about: front.about, chars: front.chars },
     totalChapters: total,
   };
 }

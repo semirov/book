@@ -1,0 +1,380 @@
+/* ============================================================================
+   CHRONICLE — the second way of reading the same page (ARCHITECTURE §11.10).
+   A timeline, a scrubber, a past that is read-only, and the paragraph chain.
+   Adaptive: the chronicle is the sheet register, so it widens; its rows keep a
+   62ch reading bound, and the phone is the narrow step of one system (BOOK-DOC-35).
+   ============================================================================ */
+
+.views {
+  display: flex;
+  gap: 4px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.views-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  color: var(--ink-3);
+  padding: 4px 8px;
+  border-bottom: 1px solid transparent;
+}
+.views-btn.is-on {
+  color: var(--ink);
+  border-bottom-color: var(--live);
+}
+
+.chronicle {
+  padding-bottom: 64px;
+}
+.chr-head {
+  padding: 8px 0 14px;
+  border-bottom: 1px solid var(--rule-2);
+}
+.chr-title {
+  font-family: var(--label);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+  color: var(--ink-2);
+}
+.chr-sub {
+  font-size: var(--fs-note);
+  color: var(--ink-3);
+  max-width: 30rem;
+}
+
+.chr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 14px 0 10px;
+}
+.chr-filter {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+.chr-filter.is-on {
+  color: var(--paper);
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+}
+
+/* ── the scrubber ─────────────────────────────────────────────────────────── */
+.scrub {
+  position: relative;
+  padding: 8px 0 6px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.scrub-range {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--live);
+  height: 28px;
+}
+.scrub-ticks {
+  position: relative;
+  height: 6px;
+  margin: -8px 0 2px;
+  pointer-events: none;
+}
+.scrub-ticks i {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 4px;
+  background: var(--rule-2);
+  transform: translateX(-0.5px);
+}
+.scrub-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+}
+.scrub-now {
+  font-family: var(--label);
+  letter-spacing: 0.06em;
+  color: var(--live);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── the past, read-only ──────────────────────────────────────────────────── */
+.past {
+  padding: 14px 0 20px;
+  border-bottom: 1px solid var(--rule-2);
+}
+.past-note {
+  font-size: var(--fs-note);
+  color: var(--ink-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+.past-now {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  color: var(--live);
+  border-bottom: 1px solid currentColor;
+}
+.past-title {
+  font-size: calc(var(--fs-lead) + 4px);
+  font-weight: 400;
+  margin: 0 0 6px;
+}
+.past-about {
+  font-size: var(--fs-note);
+  color: var(--ink-2);
+  max-width: 30rem;
+}
+.past-toc {
+  list-style: none;
+  margin: 18px 0 10px;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.past-toc-row {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+}
+.past-toc-row.is-empty {
+  color: var(--ink-3);
+}
+.past-toc-n,
+.past-toc-meta,
+.past-ch-n {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+}
+.past-toc-title {
+  font-family: var(--serif);
+}
+.past-chapters {
+  margin-top: 14px;
+}
+.past-ch {
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 0;
+}
+.past-ch > summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  cursor: pointer;
+  list-style: none;
+}
+.past-ch > summary::-webkit-details-marker {
+  display: none;
+}
+.past-ch > summary::after {
+  content: '+';
+  margin-left: auto;
+  font-family: var(--mono);
+  color: var(--ink-3);
+}
+.past-ch[open] > summary::after {
+  content: '−';
+}
+.past-ch-title {
+  font-size: var(--fs-note);
+}
+.past-p {
+  font-size: var(--fs-body);
+  margin-top: 10px;
+}
+
+/* ── the timeline ─────────────────────────────────────────────────────────── */
+.chr-timeline {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+}
+.chr-day + .chr-day {
+  margin-top: 18px;
+}
+.chr-day-label {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+}
+.chr-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.chr-row-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 3.4rem 7rem 1fr;
+  gap: 8px;
+  align-items: baseline;
+  text-align: left;
+  padding: 8px 0;
+  font-size: var(--fs-note);
+  color: var(--ink-2);
+}
+.chr-time {
+  font-family: var(--mono);
+  color: var(--ink-3);
+}
+.chr-target {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+.chr-summary {
+  max-width: 62ch;
+  color: var(--ink);
+}
+/* the change's case, in the same five words the card uses (`lib/deed.ts`) */
+.chr-deed {
+  flex: 1 1 100%;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.chr-change {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  color: var(--live);
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 1px;
+  text-decoration: none;
+}
+.chr-empty {
+  font-size: var(--fs-note);
+  color: var(--ink-3);
+  padding: 12px 0;
+}
+
+/* ── the paragraph chain ──────────────────────────────────────────────────── */
+.prov {
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+  margin-left: 6px;
+  vertical-align: super;
+}
+.prov:hover,
+.prov:focus-visible {
+  color: var(--live);
+}
+.chain {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(calc(var(--measure) + 2 * var(--gut)), 100%);
+  max-height: 62vh;
+  overflow-y: auto;
+  background: var(--paper-2);
+  border-top: 1px solid var(--rule-2);
+  box-shadow: var(--shadow);
+  padding: 14px var(--gut) 22px;
+  z-index: 40;
+}
+/* Anchored over the tapped phrase: geometry is inline (lib/popover.ts), the sheet defaults
+   above must not fight it. Raised over the ticket (55), below the change card (60). */
+.chain.chain-anchored {
+  bottom: auto;
+  left: auto;
+  transform: none;
+  z-index: 58;
+}
+.chain-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.chain-title {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.chain-close {
+  font-family: var(--mono);
+  color: var(--ink-3);
+}
+.chain-line {
+  font-size: var(--fs-lead);
+  margin: 10px 0 4px;
+}
+.chain-state {
+  font-size: var(--fs-meta);
+  color: var(--ink-3);
+  margin-bottom: 10px;
+}
+.chain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chain-row {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  border-top: 1px solid var(--rule);
+  padding: 6px 0;
+  font-size: var(--fs-meta);
+  color: var(--ink-2);
+}
+.chain-row.op-erased {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+.chain-ver {
+  font-family: var(--mono);
+  color: var(--ink-3);
+}
+.chain-id {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+@media (max-width: 379px) {
+  .chr-row-main {
+    grid-template-columns: 3rem 1fr;
+    row-gap: 2px;
+  }
+  .chr-target {
+    display: none;
+  }
+}

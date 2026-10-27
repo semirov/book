@@ -1,0 +1,56 @@
+/* ---------- BOOK-63: the consent strip ---------- */
+/* Book matter, not a modal: in the reading column, no scrim, no animation, no fixed layer.
+   The actions wrap, so 390 px keeps two buttons and the link on their own lines. */
+.consent {
+  margin: 30px auto 6px;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.consent-copy {
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 52ch;
+}
+.consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  margin-top: 12px;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.consent-choice,
+.analytics-change {
+  min-height: 24px;
+  padding-block: 6px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.consent-choice + .consent-choice {
+  color: var(--ink-2);
+}
+.consent-link {
+  min-height: 24px;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+/* The same line on /privacy: the place where a reader can change the choice later. */
+.consent-line {
+  margin: 14px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--rule-2);
+}
+.consent-state {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}

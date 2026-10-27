@@ -1,13 +1,16 @@
-import { allChapterNumbers, directionOf, lineOf, type CatalogEntry } from '@book/shared';
+import { allChapterNumbers, directionOf, partOf, type CatalogEntry } from '@book/shared';
 
 import type { Db } from '../db.ts';
 
 export type ChapterRow = {
   n: number;
   rev: number;
+  title: string | null;
   sha256: string;
   chars: number;
   block_count: number;
+  /** 1 = the file is exactly its basis sentence: one block to read, not a written chapter. */
+  basis: number;
   written_at: string;
   updated_at: string;
   parse_error: string | null;
@@ -36,24 +39,29 @@ export function upsertChapterRow(
   row: {
     n: number;
     rev: number;
+    title: string | null;
     sha256: string;
     chars: number;
     blockCount: number;
+    /** True when the file is exactly its basis sentence (ch01/ch67). */
+    basis: boolean;
     writtenAt: string;
     updatedAt: string;
   },
 ): void {
   db.prepare(
-    `INSERT INTO chapters (n, rev, sha256, chars, block_count, written_at, updated_at, parse_error)
-     VALUES (@n, @rev, @sha256, @chars, @blockCount, @writtenAt, @updatedAt, NULL)
+    `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at, parse_error)
+     VALUES (@n, @rev, @title, @sha256, @chars, @blockCount, @basis, @writtenAt, @updatedAt, NULL)
      ON CONFLICT(n) DO UPDATE SET
        rev = excluded.rev,
+       title = excluded.title,
        sha256 = excluded.sha256,
        chars = excluded.chars,
        block_count = excluded.block_count,
+       basis = excluded.basis,
        updated_at = excluded.updated_at,
        parse_error = NULL`,
-  ).run(row);
+  ).run({ ...row, basis: row.basis ? 1 : 0 });
 }
 
 export function deleteChapterRow(db: Db, n: number): void {
@@ -91,24 +99,32 @@ export function replaceBlocks(
 }
 
 /**
- * The catalog of §9: all 67 slots, unwritten ones with `rev: 0`. The SPA renders the
- * опись from this without a request per slot.
+ * The catalog of §9: all 67 slots, unwritten ones with `rev: 0` and `title: null`. The
+ * SPA renders the опись from this without a request per slot; `part` is the TOC volume,
+ * `direction` only says which lane drafted the chapter.
+ *
+ * A slot that holds only its basis sentence (ch01/ch67) is not written — `chars` stay 0 and
+ * it does not enter `/api/state` — but it carries `basis: true` and `blocks: 1`, because the
+ * reader must see that paragraph (BOOK-6).
  */
 export function listCatalog(db: Db): CatalogEntry[] {
   const rows = new Map(listChapterRows(db).map((row) => [row.n, row]));
   return allChapterNumbers().map((n) => {
     const row = rows.get(n);
-    const written = row !== undefined && row.block_count > 0;
+    const basis = row?.basis === 1;
+    const written = row !== undefined && row.block_count > 0 && !basis;
     return {
       n,
+      part: partOf(n),
+      title: row?.title ?? null,
       rev: row?.rev ?? 0,
       chars: row?.chars ?? 0,
       blocks: row?.block_count ?? 0,
       written,
+      basis,
       writtenAt: written ? (row?.written_at ?? null) : null,
       updatedAt: written ? (row?.updated_at ?? null) : null,
       direction: directionOf(n),
-      line: lineOf(n),
     };
   });
 }

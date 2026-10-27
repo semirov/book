@@ -8,6 +8,7 @@ function fact(n: number, overrides: Partial<ChapterFact> = {}): ChapterFact {
   return {
     n,
     rev: 1,
+    title: `Глава ${n}`,
     chars: 9000,
     blocks: 120,
     writtenAt: '2026-10-25T09:00:00Z',
@@ -57,6 +58,31 @@ describe('empty book', () => {
       source: 'files',
     });
     expect(state.phase).toBe('draft');
+    expect(state.front).toEqual({ title: null, about: null, rev: 0, updatedAt: null });
+  });
+
+  it('serves a 67-entry TOC even when nothing is written', () => {
+    expect(state.toc).toHaveLength(67);
+    expect(state.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
+    expect(state.toc[66]).toEqual({ part: 4, n: 67, title: null, written: false, rev: 0 });
+  });
+});
+
+describe('the first sheet', () => {
+  it('paints the cover and page 2 from the parsed file only', () => {
+    const withFront = deriveState({
+      facts: [],
+      now,
+      version: 1,
+      front: { title: 'Без названия', about: 'О чём эта книга.', rev: 3, updatedAt: '2026-10-25T10:00:00Z' },
+    });
+    expect(withFront.front).toMatchObject({ title: 'Без названия', rev: 3 });
+  });
+
+  it('puts chapter titles into the TOC and keeps an untitled chapter as a slot', () => {
+    const withTitles = derive([fact(1), fact(2, { title: null })]);
+    expect(withTitles.toc[0]).toEqual({ part: 1, n: 1, title: 'Глава 1', written: true, rev: 1 });
+    expect(withTitles.toc[1]).toEqual({ part: 1, n: 2, title: null, written: true, rev: 1 });
   });
 });
 
@@ -147,5 +173,39 @@ describe('stateFingerprint', () => {
 
   it('changes when a revision changes', () => {
     expect(stateFingerprint([fact(1)])).not.toBe(stateFingerprint([fact(1, { rev: 2 })]));
+  });
+
+  it('changes when a title or the first sheet changes', () => {
+    expect(stateFingerprint([fact(1)])).not.toBe(stateFingerprint([fact(1, { title: 'Другое' })]));
+    expect(stateFingerprint([], { title: null, about: null, rev: 0, updatedAt: null })).not.toBe(
+      stateFingerprint([], { title: 'Книга', about: 'О чём.', rev: 1, updatedAt: '2026-10-25T10:00:00Z' }),
+    );
+  });
+
+  it('changes when a slot gains or loses its basis sentence (BOOK-6)', () => {
+    expect(stateFingerprint([], undefined, '', [1, 67])).not.toBe(stateFingerprint([], undefined, '', []));
+    // Order is not identity here either.
+    expect(stateFingerprint([], undefined, '', [67, 1])).toBe(stateFingerprint([], undefined, '', [1, 67]));
+  });
+});
+
+describe('a slot that holds only its basis sentence (BOOK-6)', () => {
+  it('is named explicitly and counted as no chapter and no character', () => {
+    const state = deriveState({ facts: [], basis: [1, 67], now, version: 1 });
+    expect(state.chapters.basis).toEqual([1, 67]);
+    expect(state.chapters.written).toEqual([]);
+    expect(state.chapters.count).toBe(0);
+    expect(state.chapters.totalChars).toBe(0);
+    // The basis slots are part of the explicit complement the page draws its slots from.
+    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.toc.every((entry) => !entry.written)).toBe(true);
+  });
+
+  it('cannot be both written and a basis slot, and never invents a number', () => {
+    const state = deriveState({ facts: [], basis: [1, 1, 99, -3], now, version: 1 });
+    expect(state.chapters.basis).toEqual([1]);
+    const written = deriveState({ facts: [fact(1)], basis: [1, 67], now, version: 1 });
+    expect(written.chapters.basis).toEqual([67]);
+    expect(written.chapters.written).toEqual([1]);
   });
 });

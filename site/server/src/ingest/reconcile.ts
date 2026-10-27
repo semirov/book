@@ -1,18 +1,22 @@
 /**
  * Full rescan of the manuscript into SQLite (ADR-002: files are the only source of truth
- * for text). Boot runs this once; M2 replaces the trigger with a watcher, not the logic.
+ * for text). Boot runs this once; the watcher runs the same per-file logic on every
+ * change, so a rescan and a live write cannot disagree.
  *
  * A chapter that disappeared from the directory is removed from the projection — files
- * win, always (§18) — while its text stays recoverable from `data/versions/`.
+ * win, always (§18) — while its text stays recoverable from `data/versions/`. The same is
+ * true of the first sheet: `00-front.md` is the only source of the cover and page 2.
  */
 
 import type { Db } from '../db/db.ts';
-import { deleteChapterRow, getChapterRow, listChapterRows, replaceBlocks, upsertChapterRow } from '../db/repo/chapters.ts';
-import { insertRevision } from '../db/repo/revisions.ts';
-import { toIso } from '../util/time.ts';import { writeSnapshot } from '../versions/snapshots.ts';
-import { diffBlocks } from './diffBlocks.ts';
-import { parseChapter } from './parseChapter.ts';
+import { deleteChapterRow, listChapterRows } from '../db/repo/chapters.ts';
+import { getFrontRow } from '../db/repo/front.ts';
+import { toIso } from '../util/time.ts';
+import { applyChapterFile } from './applyChapter.ts';
+import { applyFrontFile, removeFront } from './applyFront.ts';
 import { scanManuscript } from './scanManuscript.ts';
+
+export type FrontReconcileState = 'created' | 'revised' | 'unchanged' | 'removed' | 'missing';
 
 export type ReconcileReport = {
   scanned: number;
@@ -20,6 +24,13 @@ export type ReconcileReport = {
   revised: number[];
   unchanged: number[];
   removed: number[];
+  /** Slots that hold only their basis sentence: projected as one paragraph, still unwritten (BOOK-6). */
+  emptied: number[];
+  front: FrontReconcileState;
+  /** The manuscript directory itself is absent (a bad mount): nothing is removed. */
+  missing: boolean;
+  /** F021 problems of the observed first sheet; a malformed sheet is an error, not a crash. */
+  frontProblems: string[];
   ignored: string[];
   readErrors: Array<{ fileName: string; message: string }>;
   at: string;
@@ -41,6 +52,10 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
     revised: [],
     unchanged: [],
     removed: [],
+    emptied: [],
+    front: 'missing',
+    missing: scan.missing,
+    frontProblems: [],
     ignored: scan.ignored,
     readErrors: scan.readErrors,
     at,
@@ -48,89 +63,27 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
 
   const run = db.transaction(() => {
     for (const scanned of scan.chapters) {
-      const parsed = parseChapter(scanned.n, scanned.raw);
-      const existing = getChapterRow(db, scanned.n);
-      // The file's mtime is when the text was written; booting the site is not a writing event.
-      const observedAt = toIso(Math.min(scanned.mtimeMs, nowMs));
-
-      if (existing === undefined) {
-        upsertChapterRow(db, {
-          n: parsed.n,
-          rev: 1,
-          sha256: parsed.sha256,
-          chars: parsed.chars,
-          blockCount: parsed.blocks.length,
-          writtenAt: observedAt,
-          updatedAt: observedAt,
-        });
-        replaceBlocks(db, parsed.n, 1, parsed.blocks);
-        const snapshot = writeSnapshot(options.dataDir, parsed.n, parsed.sha256, parsed.text);
-        insertRevision(db, {
-          chapter: parsed.n,
-          rev: 1,
-          at: observedAt,
-          kind: 'create',
-          // No lease exists in M0: an observed write is reported as local and unattributed (F015).
-          causeKind: 'local',
-          changeId: null,
-          cascadeId: null,
-          stageSeq: null,
-          added: parsed.blocks.length,
-          changed: 0,
-          removed: 0,
-          snapshot,
-          attributed: false,
-          logNote: 'first sighting',
-        });
-        report.created.push(parsed.n);
-        continue;
-      }
-
-      if (existing.sha256 === parsed.sha256) {
-        report.unchanged.push(parsed.n);
-        continue;
-      }
-
-      const rev = existing.rev + 1;
-      const before = db
-        .prepare('SELECT hash FROM blocks WHERE chapter = ? ORDER BY idx')
-        .all(parsed.n)
-        .map((row) => (row as { hash: string }).hash);
-      const diff = diffBlocks(
-        before,
-        parsed.blocks.map((block) => block.hash),
-      );
-      const rewrite = before.length > 0 && diff.changed + diff.removed >= before.length;
-
-      upsertChapterRow(db, {
-        n: parsed.n,
-        rev,
-        sha256: parsed.sha256,
-        chars: parsed.chars,
-        blockCount: parsed.blocks.length,
-        writtenAt: existing.written_at,
-        updatedAt: observedAt,
+      const result = applyChapterFile({
+        db,
+        dataDir: options.dataDir,
+        n: scanned.n,
+        raw: scanned.raw,
+        mtimeMs: scanned.mtimeMs,
+        nowMs,
       });
-      replaceBlocks(db, parsed.n, rev, parsed.blocks);
-      const snapshot = writeSnapshot(options.dataDir, parsed.n, parsed.sha256, parsed.text);
-      insertRevision(db, {
-        chapter: parsed.n,
-        rev,
-        at: observedAt,
-        kind: rewrite ? 'rewrite' : 'edit',
-        causeKind: 'local',
-        changeId: null,
-        cascadeId: null,
-        stageSeq: null,
-        added: diff.added,
-        changed: diff.changed,
-        removed: diff.removed,
-        snapshot,
-        attributed: false,
-        logNote: null,
-      });
-      report.revised.push(parsed.n);
+      if (result.status === 'created') report.created.push(result.n);
+      else if (result.status === 'revised') report.revised.push(result.n);
+      else if (result.status === 'unchanged') report.unchanged.push(result.n);
+      else if (result.status === 'emptied') report.emptied.push(result.n);
+      // `empty`: a zero-byte first sight is a slot in progress; a previous revision is
+      // kept rather than blanked (§6.2). The watcher adds the 5 s follow-up rule. A slot
+      // reduced to its basis sentence is not that case: it is `emptied` (BOOK-6) and keeps
+      // the frame as its one paragraph.
     }
+
+    // A missing directory is an infrastructure fault, not an empty book (§6.2): the last
+    // known text stays served and nothing is deleted until the mount is back.
+    if (scan.missing) return;
 
     const onDisk = new Set(scan.chapters.map((chapter) => chapter.n));
     for (const row of listChapterRows(db)) {
@@ -139,6 +92,24 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
         report.removed.push(row.n);
       }
     }
+
+    if (scan.front === null) {
+      if (getFrontRow(db) !== undefined) {
+        removeFront(db);
+        report.front = 'removed';
+      }
+      return;
+    }
+
+    const front = applyFrontFile({
+      db,
+      dataDir: options.dataDir,
+      raw: scan.front.raw,
+      mtimeMs: scan.front.mtimeMs,
+      nowMs,
+    });
+    report.front = front.status;
+    report.frontProblems = front.problems;
   });
   run();
 
@@ -151,4 +122,9 @@ export function rememberScan(db: Db, report: ReconcileReport): void {
     'last_scan_at',
     report.at,
   );
+}
+
+/** Kept for the boot log: who is in the projection right now. */
+export function knownChapterNumbers(db: Db): number[] {
+  return listChapterRows(db).map((row) => row.n);
 }

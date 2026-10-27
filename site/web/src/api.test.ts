@@ -1,6 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, getChapter, getChapters, getState } from './api.ts';
+import {
+  ApiError,
+  getAuthors,
+  getChange,
+  getChanges,
+  getChapter,
+  getChapters,
+  getComments,
+  getFront,
+  getMyDecisions,
+  getMyTrace,
+  getQueue,
+  getState,
+  postAuthorsHide,
+  postComment,
+} from './api.ts';
 
 const realFetch = globalThis.fetch;
 
@@ -41,7 +56,43 @@ describe('getState / getChapters', () => {
     const spy = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', spy);
     await getState();
-    expect(spy).toHaveBeenCalledWith('/api/state', { headers: { accept: 'application/json' } });
+    expect(spy).toHaveBeenCalledWith('/api/state', {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    });
+  });
+});
+
+describe('the engine’s public reads (M4)', () => {
+  it('reads the queue and the change list', async () => {
+    respond({ depth: 3, byState: {}, head: null, processing: null, lastDecidedAt: null });
+    await expect(getQueue()).resolves.toMatchObject({ depth: 3 });
+
+    respond([{ id: 'chg_1', seq: 1, chapter: 8 }]);
+    await expect(getChanges(3)).resolves.toEqual([{ id: 'chg_1', seq: 1, chapter: 8 }]);
+  });
+
+  it('asks for a bounded list and one change by id', async () => {
+    const spy = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await getChanges(500);
+    expect(spy).toHaveBeenCalledWith('/api/changes?limit=50', {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    });
+
+    respond({ id: 'chg_1', intent: '…' });
+    await expect(getChange('chg_1')).resolves.toMatchObject({ id: 'chg_1' });
+
+    respond({ code: 'NOT_FOUND', message: 'no such change' }, 404);
+    await expect(getChange('chg_nope')).resolves.toBeNull();
+  });
+});
+
+describe('getFront', () => {
+  it('reads the live title and page 2 over REST', async () => {
+    respond({ title: 'Название', about: 'Аннотация', rev: 1, toc: [], imprint: {} });
+    await expect(getFront()).resolves.toMatchObject({ title: 'Название', about: 'Аннотация' });
   });
 });
 
@@ -66,5 +117,106 @@ describe('getChapter', () => {
     const error = await getChapter(1).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 502, code: 'HTTP_502' });
+  });
+});
+
+describe('the reader’s own surfaces (BOOK-DOC-4)', () => {
+  it('reads the authors list through the cache, and past it after a mutation', async () => {
+    const spy = vi.fn(async () => new Response('{"contributors":[]}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+
+    await getAuthors();
+    await getAuthors({ fresh: true });
+
+    expect(spy.mock.calls[0]).toEqual(['/api/authors', { credentials: 'same-origin', headers: { accept: 'application/json' } }]);
+    // The route is `public, max-age=30`; the post-hide read must not come from the cache.
+    expect(spy.mock.calls[1]).toEqual([
+      '/api/authors',
+      { credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store' },
+    ]);
+  });
+
+  it('reads the own trace from a session-only path and posts the hide flag as JSON', async () => {
+    const spy = vi.fn(async (url: string) =>
+      url === '/api/authors/me'
+        ? new Response('{"label":"Аня","hidden":false}', { status: 200 })
+        : new Response('{"hidden":true,"authors":{"count":0,"measuredAt":"2026-10-25T12:00:00Z"}}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', spy);
+
+    await expect(getMyTrace()).resolves.toMatchObject({ label: 'Аня', hidden: false });
+    const result = await postAuthorsHide(true);
+    expect(result).toEqual({ hidden: true, authors: { count: 0, measuredAt: '2026-10-25T12:00:00Z' } });
+
+    const [url, init] = spy.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/authors/hide');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
+    expect(JSON.parse(String(init.body))).toEqual({ hidden: true });
+  });
+
+  it('keeps the 401 code so the end matter can fall silent', async () => {
+    respond({ code: 'UNAUTHENTICATED', message: 'войдите' }, 401);
+    const error = await getMyTrace().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('the reader’s own decisions (BOOK-13)', () => {
+  it('reads them from the own-only path, with no id in it', async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response('{"items":[],"open":["cmt_1"],"share":0}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', spy);
+    await expect(getMyDecisions()).resolves.toEqual({ items: [], open: ['cmt_1'], share: 0 });
+    expect(spy.mock.calls[0]).toEqual([
+      '/api/me/decisions',
+      { credentials: 'same-origin', headers: { accept: 'application/json' } },
+    ]);
+  });
+
+  it('is refused for an anonymous visitor, and the caller keeps the code', async () => {
+    respond({ code: 'UNAUTHENTICATED', message: 'войдите' }, 401);
+    const error = await getMyDecisions().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('the comment thread (M5)', () => {
+  it('reads one bounded page for a chapter', async () => {
+    const spy = vi.fn(async () => new Response('{"items":[],"nextBefore":null}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await getComments({ chapter: 8, limit: 500 });
+    expect(spy).toHaveBeenCalledWith('/api/comments?chapter=8&limit=50', {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    });
+  });
+
+  it('posts JSON with the CAPTCHA token and no author field', async () => {
+    const spy = vi.fn(async () => new Response('{"comment":{"id":"cmt_1"}}', { status: 201 }));
+    vi.stubGlobal('fetch', spy);
+    await postComment({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/comments');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
+    const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(payload).toMatchObject({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
+    expect(payload).not.toHaveProperty('author');
+  });
+
+  it('keeps retryAfterMs and resetAt on a refusal', async () => {
+    respond({ code: 'RATE_LIMITED', message: 'slow down', retryAfterMs: 90_000, resetAt: '2026-10-25T13:00:00Z' }, 429);
+    const error = await postComment({ chapter: 8, body: 'Текст.', captchaToken: 't' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 429, code: 'RATE_LIMITED', retryAfterMs: 90_000 });
+    expect((error as ApiError).resetAt).toBe('2026-10-25T13:00:00Z');
   });
 });

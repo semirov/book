@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  dev.book-backup — daily consistent backup of the book data volume (BOOK-28).
+  Installed at ~/Library/LaunchAgents/dev.book-backup.plist; the script is
+  site/deploy/backup.sh in /Users/filipp/projects/book. See BOOK-DOC-2.
+
+  Rollback: launchctl bootout gui/$(id -u)/dev.book-backup && \
+            rm ~/Library/LaunchAgents/dev.book-backup.plist
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.book-backup</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/filipp/projects/book/site/deploy/backup.sh</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/filipp</string>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+		<key>DATA_DIR</key>
+		<string>/Users/filipp/book-site-data</string>
+		<key>BACKUP_ROOT</key>
+		<string>/Users/filipp/book-site-backups</string>
+		<key>LOG_FILE</key>
+		<string>/Users/filipp/Library/Logs/book-backup.log</string>
+	</dict>
+	<key>WorkingDirectory</key>
+	<string>/Users/filipp</string>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>4</integer>
+		<key>Minute</key>
+		<integer>45</integer>
+	</dict>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>Nice</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/filipp/Library/Logs/book-backup.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/filipp/Library/Logs/book-backup.log</string>
+</dict>
+</plist>

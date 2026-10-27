@@ -1,0 +1,95 @@
+# book.semirov.dev on the Mac mini (192.168.1.76); Caddy on the home-server (192.168.1.44)
+# proxies to it (ARCHITECTURE.md §14 Deployment shape). The port is published on the Mac's LAN
+# address as 192.168.1.76:8090 — explicitly not loopback (Caddy runs on another host, which
+# cannot reach this host's 127.0.0.1) and never 0.0.0.0 (the site is not reachable directly
+# from the internet) — and Caddy passes X-Forwarded-For.
+services:
+  book:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: book-site:local
+    container_name: book-site
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      BOOK_ROOT: /book
+      DATA_DIR: /data
+      EXCHANGE_DIR: /data/exchange
+      PORT: "8080"
+      HOST: 0.0.0.0
+      WEB_DIST: /app/web/dist
+      IMPRINT_PATH: ./config/imprint.json
+      WATCH_POLL_MS: "700"
+      # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
+      # its own address inside X-Forwarded-For and dodge the per-IP limits.
+      TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.44/32"
+      # Secrets: paths in the environment, values in 0600 files (invariant 30, audit M2). A
+      # plain value in `.env` is refused at boot in production — it is visible in
+      # `docker inspect` and /proc/1/environ; the mounted file wins over it. There is no
+      # opt-out, so every secret this deployment uses needs a mount here.
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      IP_SALT_FILE: /run/secrets/ip_salt
+      CAPTCHA_SECRET_FILE: /run/secrets/captcha_secret
+      # Sign-in (ADR-021) is optional, so this template ships without it: empty means "no
+      # file", and the empty overrides also stop the host paths in `.env` from leaking into
+      # the image. To enable it, create both 0600 files, add `yandex_client_id` and
+      # `yandex_client_secret` under `secrets:` below, and point these two lines at
+      # /run/secrets/…; a site without OAuth keeps them empty — no mount, sign-in answers 503.
+      YANDEX_CLIENT_ID_FILE: ""
+      YANDEX_CLIENT_SECRET_FILE: ""
+    secrets:
+      - session_secret
+      - ip_salt
+      - captcha_secret
+    # Hardening (audit m7): drop capabilities and forbid privilege gain. The data volume is
+    # writable, the manuscript mount is read-only. (read_only on the root FS broke SQLite WAL —
+    # re-enable once the DB runs from a tmpfs or the WAL mmap is sorted.)
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "192.168.1.76:8090:8080"
+    volumes:
+      # manuscript: read-only, straight from the repository (outside ~/Documents: macOS TCC
+      # makes every non-approved process hang on that folder, container or launchd alike).
+      - /Users/filipp/projects/book:/book:ro
+      # SQLite lives on a Docker volume, NOT on a host bind mount: SQLite's WAL needs a
+      # shared-memory mmap, and virtiofs (OrbStack bind mounts) makes the WAL pragma hang.
+      # Backups are manual today (a scheduled job is BOOK-28):
+      # `docker run --rm -v book_book-data:/data -v $PWD:/out alpine tar czf /out/book-data.tgz -C /data .`
+      - book-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+# Each file is 0600, owned by the operator, and lives outside the repository (`secrets/` is
+# gitignored). `docker compose up` fails on a missing file instead of booting without a
+# secret — the same fail-closed rule the config already enforces.
+secrets:
+  session_secret:
+    file: ./secrets/session_secret
+  ip_salt:
+    file: ./secrets/ip_salt
+  captcha_secret:
+    file: ./secrets/captcha_secret
+  # Sign-in only (optional): add these two when OAuth is enabled in the container.
+  # yandex_client_id:
+  #   file: ./secrets/yandex_client_id
+  # yandex_client_secret:
+  #   file: ./secrets/yandex_client_secret
+
+volumes:
+  book-data:

@@ -1,7 +1,10 @@
 import { TOTAL_CHAPTERS, type StateSnapshot } from '@book/shared';
 import { useEffect, useState } from 'react';
 
-import { chipCopy, queueLabel } from '../lib/format.ts';
+import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import { engineChipCopy, chipCopy, queueLabel } from '../lib/format.ts';
+import { liveChapter, revisingChapter } from '../lib/spine.ts';
+import { CascadeRibbon } from './CascadeRibbon.tsx';
 
 /** The chip speaks in minutes; refresh it once a minute so «14 минут назад» stays true. */
 function useNow(): Date {
@@ -13,24 +16,41 @@ function useNow(): Date {
   return now;
 }
 
-/** Two label rows, the spine, and only what the files can prove (DESIGN §5.3). */
-export function Header({ state }: { state: StateSnapshot }) {
+/**
+ * Two label rows and the cascade ribbon (DESIGN §5.3, §7.1–7.2; BOOK-DOC-5 §5). The strip
+ * sits below the annotation, so a book's opening has no status bar. The chip says
+ * "пишется глава N" only when a lane lease exists; without the engine it falls back to what
+ * the files prove («последняя запись · …»), never to a fake cursor (§7.3). The spine and the
+ * 0/67 counter are gone: a ribbon with two carets where nobody writes is fake liveness.
+ */
+export function Header({
+  state,
+  ribbon,
+  markers: escalation,
+  onOpenChange,
+}: {
+  state: StateSnapshot;
+  ribbon: Ribbon | null;
+  markers: EscalationMarker[];
+  onOpenChange: (changeId: string) => void;
+}) {
   const now = useNow();
-  const chip = chipCopy({ count: state.chapters.count, lastChangeAt: state.activity.lastFileChangeAt }, now);
-  const forward = state.meeting.forwardFront;
-  const backward = state.meeting.backwardFront;
-  const leftPercent = forward === null ? 0 : (forward / TOTAL_CHAPTERS) * 100;
-  const rightPercent = backward === null ? 0 : ((TOTAL_CHAPTERS - backward + 1) / TOTAL_CHAPTERS) * 100;
-  const empty = state.chapters.count === 0;
+  const current = liveChapter(state);
+  const revising = revisingChapter(state);
+  const engineChip = engineChipCopy(state.engine.status);
+  const chip =
+    engineChip ??
+    (current !== null
+      ? { text: `пишется глава ${current.n}`, live: true }
+      : revising !== null
+        ? { text: `правится глава ${revising}`, live: true }
+        : chipCopy({ count: state.chapters.count, lastChangeAt: state.activity.lastFileChangeAt }, now));
 
   return (
     <header className="top">
-      <div className="page top-in">
+      <div className="page sheet top-in">
         <div className="top-row">
           <span className="brand">Книга · {TOTAL_CHAPTERS} глав</span>
-          <span className="count">
-            {state.chapters.count} / {TOTAL_CHAPTERS}
-          </span>
         </div>
         <div className="top-row">
           <span className={chip.live ? 'live' : 'live idle'}>
@@ -40,21 +60,7 @@ export function Header({ state }: { state: StateSnapshot }) {
           <span className="queue">{queueLabel(state.queue.depth)}</span>
         </div>
       </div>
-      <div
-        className="spine"
-        role="img"
-        aria-label={`написано ${state.chapters.count} из ${TOTAL_CHAPTERS} глав`}
-      >
-        {leftPercent > 0 ? <span className="spine-l" style={{ width: `${leftPercent}%` }} /> : null}
-        {rightPercent > 0 ? <span className="spine-r" style={{ width: `${rightPercent}%` }} /> : null}
-        <span className="spine-seam" />
-        {empty ? (
-          <>
-            <i className="spine-caret l" />
-            <i className="spine-caret r" />
-          </>
-        ) : null}
-      </div>
+      <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} />
     </header>
   );
 }

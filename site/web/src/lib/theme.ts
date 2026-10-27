@@ -20,7 +20,7 @@ export function systemTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   document.documentElement.setAttribute('data-theme', theme);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'night' ? '#0F1113' : '#E9E8E2');
+  if (meta) meta.setAttribute('content', theme === 'night' ? '#0B0C0D' : '#CFD3D2');
   try {
     localStorage.setItem(STORAGE_KEY, theme);
   } catch {

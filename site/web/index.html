@@ -3,45 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#E9E8E2" />
-    <title>Книга — пишется публично</title>
+    <meta name="theme-color" content="#CFD3D2" />
+    <title>Бланк — Филипп Семиров</title>
     <meta
       name="description"
-      content="Роман в шестидесяти семи главах. Пишется здесь, с двух концов — навстречу."
+      content="Материя заметила себя, когда в ней замкнулась петля: состояние, память, предсказание, поправка."
     />
     <meta property="og:type" content="book" />
-    <meta property="og:title" content="Книга — пишется публично" />
+    <meta property="og:title" content="Бланк — Филипп Семиров" />
+    <meta property="og:description" content="Материя заметила себя, когда в ней замкнулась петля: состояние, память, предсказание, поправка." />
     <meta property="og:locale" content="ru_RU" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <script>
-      /* Theme before first paint: a flash of the wrong paper is a layout lie. */
-      (function () {
-        var theme = null;
-        try {
-          theme = localStorage.getItem('book.theme');
-        } catch (error) {
-          theme = null;
-        }
-        if (theme !== 'day' && theme !== 'night') {
-          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-        var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', theme === 'night' ? '#0F1113' : '#E9E8E2');
-      })();
-    </script>
+    <!-- A blocking same-origin file, not an inline script: the CSP has no `unsafe-inline`. -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>
     <noscript>
       <div class="noscript">
-        <p class="kicker">роман</p>
-        <h1 class="title">Книга</h1>
-        <p class="subtitle">в шестидесяти семи главах</p>
-        <p class="premise">
-          Книга пишется здесь, с двух концов — навстречу. Для чтения нужен браузер с включённым
-          JavaScript; сама книга от этого не зависит.
-        </p>
+        <h1 class="title">Бланк</h1>
+        <p class="author">Филипп Семиров</p>
+        <p>для чтения нужен браузер с JavaScript</p>
       </div>
     </noscript>
     <script type="module" src="/src/main.tsx"></script>

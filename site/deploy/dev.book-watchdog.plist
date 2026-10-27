@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Resource guard for the Mac mini (BOOK-74). Runs the installed copy of
+     site/deploy/watchdog.sh every 5 minutes; that script is the documentation.
+     Install:
+       cp site/deploy/watchdog.sh ~/.local/share/book-watchdog/watchdog.sh
+       cp site/deploy/dev.book-watchdog.plist ~/Library/LaunchAgents/
+       launchctl bootout gui/$(id -u)/dev.book-watchdog 2>/dev/null
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.book-watchdog.plist
+     Status: `launchctl list | grep dev.book-watchdog` (last exit code: 0 ok, 1 warn, 2 critical),
+     the one-line report in ~/Library/Logs/book-watchdog.log and ~/.local/state/book-watchdog/status.
+     Thresholds are the script's env defaults; to change one, add it to EnvironmentVariables here
+     (e.g. BOOK_WD_CPU_HARD) and re-bootstrap. No secret is ever put in this file. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.book-watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/filipp/.local/share/book-watchdog/watchdog.sh</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/filipp/Library/Logs/book-watchdog.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/filipp/Library/Logs/book-watchdog.launchd.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>Nice</key>
+  <integer>5</integer>
+</dict>
+</plist>

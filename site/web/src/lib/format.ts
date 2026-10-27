@@ -111,6 +111,17 @@ export function chipCopy(
   return { text: `последняя запись · ${formatTime(input.lastChangeAt)}`, live: false };
 }
 
+/**
+ * The engine's own state when it is not merely running (§11.7, DESIGN §9): paused and
+ * throttled are facts a reader must not mistake for silence. `down`/`absent` fall back to
+ * what the files prove — the site never says «автор отдыхает».
+ */
+export function engineChipCopy(status: string): Chip | null {
+  if (status === 'paused') return { text: 'правки приостановлены', live: false };
+  if (status === 'throttled') return { text: 'дневной лимит правок', live: false };
+  return null;
+}
+
 /** `0` → `замечаний нет`; the queue line of the header and the thread. */
 export function queueLabel(depth: number): string {
   if (depth === 0) return 'замечаний нет';

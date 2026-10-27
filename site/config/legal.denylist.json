@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "note": "F005 legal denylist (ARCHITECTURE.md §13.4, §23.5). Curated by hand, versioned, reviewed at every release, never generated from the book — an automatic refresh would make the gate agree with whatever the writer did. Matching is case-insensitive and stem-based: `persons` and `characters` match only as a complete name (every token, in order — «Александр Лукашенко» catches «Александре Лукашенко», but neither «Александр» alone nor a first name inside another name), `organisations` match by any written part. `persons` and `characters` are errors, `organisations` are warnings, `patterns` are regular expressions matched case-insensitively over prose. The entries are barriers, not vocabulary suggestions and not statements about anyone: a false positive is fixed by editing this file with a recorded reason, never by adding an exception to a prompt. `persons` holds real public figures whose appearance as characters would be a legal problem (реальные лица); `characters` holds protected fictional characters; the list stays short on purpose and is re-reviewed by the owner at M9.",
+  "persons": [
+    "Владимир Путин",
+    "Александр Лукашенко",
+    "Дональд Трамп",
+    "Илон Маск"
+  ],
+  "characters": [
+    "Гарри Поттер",
+    "Гэндальф",
+    "Бэтмен",
+    "Чебурашка"
+  ],
+  "organisations": [
+    "Газпром",
+    "Сбербанк",
+    "Яндекс"
+  ],
+  "patterns": [
+    "(?:синтез|рецепт|изготовлени[ея]|сварить)[^\\n]{0,80}(?:метамфетамин|героин|кокаин|тротил|взрывчат)",
+    "(?:взорвать|поджечь|отравить)[^\\n]{0,40}(?:школ|больниц|детск|водопровод)"
+  ]
+}
