@@ -1,7 +1,11 @@
 /**
- * Config (ARCHITECTURE.md §21.2). Parsed once at boot, fail-fast, never a secret value in
- * an error message: every secret is resolved from `${NAME}_FILE` (a `0600` mount) or from
- * the plain variable, and the checks below refuse a shape that would degrade silently.
+ * Config (ARCHITECTURE.md §21.2, invariant 30). Parsed once at boot, fail-fast, never a secret
+ * value in an error message. Every secret is resolved from `${NAME}_FILE` (a `0600` mount).
+ * The plain variable is a local-development convenience only: in production a secret supplied
+ * as a plain value is a boot failure, because `node --env-file` puts it in the environment and
+ * `docker inspect` / `/proc/1/environ` then show it. There is no opt-out — a deployment keeps
+ * paths in the environment and values in files. Outside production (development, tests) the
+ * plain variable is still accepted, so a local run needs no files.
  */
 
 import { readFileSync } from 'node:fs';
@@ -200,14 +204,31 @@ type MountedSecret =
   | 'CAPTCHA_SECRET';
 
 /**
- * A mounted file wins over the plain variable: deployment keeps `0600` files, tests and
- * local development keep the variable. A declared file that is missing, unreadable or
- * empty is a boot failure — never a silent "no session secret, no CAPTCHA secret". The
- * message carries the variable name only.
+ * Resolves a mounted secret. The file wins over the plain variable in every environment.
+ * In production the file is the only accepted source: a plain value is refused (invariant 30
+ * — `--env-file` and `docker inspect` both expose it), and there is no opt-out. A blank value
+ * is no secret at all, so the required checks below report it with their own message.
+ * Outside production the plain variable is accepted, so tests and local development need no
+ * files. A declared file that is missing, unreadable or empty is a boot failure everywhere —
+ * never a silent "no session secret, no CAPTCHA secret". The messages carry the variable name
+ * only, never a value or a path.
  */
-function readMountedSecret(env: NodeJS.ProcessEnv, name: MountedSecret): string | undefined {
+function readMountedSecret(
+  env: NodeJS.ProcessEnv,
+  name: MountedSecret,
+  production: boolean,
+): string | undefined {
   const file = env[`${name}_FILE`];
-  if (file === undefined || file.trim().length === 0) return env[name];
+  if (file === undefined || file.trim().length === 0) {
+    const plain = env[name];
+    if (!production) return plain;
+    // A blank value is no secret at all: the required checks below report it more plainly.
+    if ((plain ?? '').trim().length === 0) return undefined;
+    throw new Error(
+      `invalid configuration: ${name} must come from ${name}_FILE in production, ` +
+        'never from a plain value (invariant 30)',
+    );
+  }
   let value: string;
   try {
     value = readFileSync(file.trim(), 'utf8').trim();
@@ -219,6 +240,9 @@ function readMountedSecret(env: NodeJS.ProcessEnv, name: MountedSecret): string 
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  // Case- and space-insensitive on purpose: `Production` must not slip past the invariants
+  // below and let a deployed boot run the development shape.
+  const production = (env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
   const parsed = schema.safeParse({
     bookRoot: env.BOOK_ROOT,
     dataDir: env.DATA_DIR,
@@ -244,8 +268,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
     queueSoftCap: env.QUEUE_SOFT_CAP,
     feedbackDir: env.FEEDBACK_DIR ?? (env.EXCHANGE_DIR === undefined ? undefined : resolve(env.EXCHANGE_DIR, 'feedback')),
-    yandexClientId: readMountedSecret(env, 'YANDEX_CLIENT_ID'),
-    yandexClientSecret: readMountedSecret(env, 'YANDEX_CLIENT_SECRET'),
+    yandexClientId: readMountedSecret(env, 'YANDEX_CLIENT_ID', production),
+    yandexClientSecret: readMountedSecret(env, 'YANDEX_CLIENT_SECRET', production),
     yandexRedirectUri: env.YANDEX_REDIRECT_URI ?? env.OAUTH_REDIRECT_URI,
     yandexAuthorizeUrl: env.YANDEX_AUTHORIZE_URL,
     yandexTokenUrl: env.YANDEX_TOKEN_URL,
@@ -253,11 +277,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     oauthStartPerHour: env.OAUTH_START_PER_HOUR,
     oauthStateTtlMs: env.OAUTH_STATE_TTL_MS,
     sessionTtlMs: env.SESSION_TTL_MS,
-    sessionSecret: readMountedSecret(env, 'SESSION_SECRET'),
-    ipSalt: readMountedSecret(env, 'IP_SALT'),
+    sessionSecret: readMountedSecret(env, 'SESSION_SECRET', production),
+    ipSalt: readMountedSecret(env, 'IP_SALT', production),
     captchaProvider: env.CAPTCHA_PROVIDER,
     captchaSiteKey: env.CAPTCHA_SITE_KEY,
-    captchaSecret: readMountedSecret(env, 'CAPTCHA_SECRET'),
+    captchaSecret: readMountedSecret(env, 'CAPTCHA_SECRET', production),
     captchaAllowTestSiteKey: env.CAPTCHA_ALLOW_TEST_SITE_KEY,
     captchaTimeoutMs: env.CAPTCHA_TIMEOUT_MS,
     metrikaId: env.METRIKA_ID,
@@ -291,7 +315,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const config = parsed.data;
   // Fail closed, loudly: an unprotected write path into the model is worse than an hour
   // without comments (§12.8). `none` is a test/local shape only and never a prod default.
-  if (config.captchaProvider === 'none' && env.NODE_ENV === 'production') {
+  if (config.captchaProvider === 'none' && production) {
     throw new Error('invalid configuration: CAPTCHA_PROVIDER=none is refused in production (§12.8)');
   }
   if (config.captchaProvider !== 'none' && config.captchaSecret.length === 0) {
@@ -317,7 +341,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key');
   }
   if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
-    if (env.NODE_ENV !== 'production') {
+    if (!production) {
       console.warn('CAPTCHA_SITE_KEY is a published test key — accepted outside production only');
     } else if (config.captchaAllowTestSiteKey !== '1') {
       throw new Error(
@@ -332,7 +356,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       );
     }
   }
-  if (env.NODE_ENV === 'production') {
+  if (production) {
     // Deployment invariants (§14, §17): a per-boot secret logs every reader out on restart
     // and makes the persisted IP hash useless; an http origin drops the cookie's `Secure`.
     if (config.sessionSecret.length === 0) {

@@ -2,7 +2,8 @@
 <!-- Template for the live launchd service on the Mac mini (drafts/runbook: BOOK-DOC-2).
      Install: cp to ~/Library/LaunchAgents/dev.book-site.plist, adjust paths, then
      `launchctl load ~/Library/LaunchAgents/dev.book-site.plist`.
-     Secrets come from site/.env (mode 0600) via --env-file; none are listed here. -->
+     `.env` carries `*_FILE` paths; values live in 0600 files (invariant 30) — no secret is in
+     this plist or in an environment value. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>

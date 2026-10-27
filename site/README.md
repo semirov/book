@@ -58,9 +58,17 @@ present, pricing loaded. Counts, the lane holder and integrity live behind the a
 ## Deploy shape
 
 One image, two entries (`server/dist/index.js`, `server/dist/engine.js`), one SQLite file in WAL, one
-Caddy in front. The repository is mounted read-only; only the data volume is writable. Secrets are files
-mounted as Docker secrets (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `CAPTCHA_SECRET_FILE`,
-`YANDEX_CLIENT_SECRET_FILE`); a secret in an environment value is refused at boot.
+Caddy in front. The repository is mounted read-only; only the data volume is writable. Secrets are files:
+the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `CAPTCHA_SECRET_FILE`,
+`YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`) and the values live in `0600` files. In
+`NODE_ENV=production` a secret supplied as a plain environment value is refused at boot (invariant 30),
+with no opt-out; development and tests may still pass the plain variable, and a mounted file wins over it.
+
+Sign-in is optional (ADR-021). To enable it, put the client id in `secrets/yandex_client_id` and the
+client secret in `secrets/yandex_client_secret` (both `0600`), and point `YANDEX_CLIENT_ID_FILE` /
+`YANDEX_CLIENT_SECRET_FILE` at them — `./secrets/…` in `.env` for the launchd shape, `/run/secrets/…` in
+the compose service. To run without OAuth, mount neither and leave the variables out: the site stays
+readable and sign-in answers `503 OAUTH_UNCONFIGURED`.
 
 ```sh
 docker compose build

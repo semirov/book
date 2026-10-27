@@ -25,17 +25,24 @@ services:
       # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
       # its own address inside X-Forwarded-For and dodge the per-IP limits.
       TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.44/32"
-      # Secrets as files (audit M2). A plain variable is visible in `docker inspect` and in
-      # /proc/1/environ; a mounted secret is not. `*_FILE` wins over the value (config.ts).
+      # Secrets: paths in the environment, values in 0600 files (invariant 30, audit M2). A
+      # plain value in `.env` is refused at boot in production — it is visible in
+      # `docker inspect` and /proc/1/environ; the mounted file wins over it. There is no
+      # opt-out, so every secret this deployment uses needs a mount here.
       SESSION_SECRET_FILE: /run/secrets/session_secret
       IP_SALT_FILE: /run/secrets/ip_salt
       CAPTCHA_SECRET_FILE: /run/secrets/captcha_secret
-      YANDEX_CLIENT_SECRET_FILE: /run/secrets/yandex_client_secret
+      # Sign-in (ADR-021) is optional, so this template ships without it: empty means "no
+      # file", and the empty overrides also stop the host paths in `.env` from leaking into
+      # the image. To enable it, create both 0600 files, add `yandex_client_id` and
+      # `yandex_client_secret` under `secrets:` below, and point these two lines at
+      # /run/secrets/…; a site without OAuth keeps them empty — no mount, sign-in answers 503.
+      YANDEX_CLIENT_ID_FILE: ""
+      YANDEX_CLIENT_SECRET_FILE: ""
     secrets:
       - session_secret
       - ip_salt
       - captcha_secret
-      - yandex_client_secret
     # Hardening (audit m7): drop capabilities and forbid privilege gain. The data volume is
     # writable, the manuscript mount is read-only. (read_only on the root FS broke SQLite WAL —
     # re-enable once the DB runs from a tmpfs or the WAL mmap is sorted.)
@@ -78,8 +85,11 @@ secrets:
     file: ./secrets/ip_salt
   captcha_secret:
     file: ./secrets/captcha_secret
-  yandex_client_secret:
-    file: ./secrets/yandex_client_secret
+  # Sign-in only (optional): add these two when OAuth is enabled in the container.
+  # yandex_client_id:
+  #   file: ./secrets/yandex_client_id
+  # yandex_client_secret:
+  #   file: ./secrets/yandex_client_secret
 
 volumes:
   book-data:

@@ -3,23 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { CASCADE_MAX_WAVE } from '@book/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
 import { migrate } from '../src/db/migrate.ts';
 import { SCHEMA_VERSION } from '../src/db/schema.ts';
+import { cleanupSecretFiles, production, secretFile } from './configFixture.ts';
 import { createFixture } from './helpers.ts';
 
-/** A valid production shape, so each refusal below fails for exactly one reason. */
-const production = {
-  NODE_ENV: 'production',
-  PUBLIC_ORIGIN: 'https://book.test',
-  SESSION_SECRET: 'session-secret-from-test',
-  IP_SALT: 'ip-salt-from-test',
-  CAPTCHA_PROVIDER: 'turnstile',
-  CAPTCHA_SECRET: 'captcha-secret-from-test',
-  CAPTCHA_SITE_KEY: 'captcha-site-key-from-test',
-} as const;
+afterAll(cleanupSecretFiles);
 
 describe('loadConfig', () => {
   it('fills the defaults', () => {
@@ -160,7 +152,7 @@ describe('loadConfig', () => {
     ]) {
       let message = '';
       try {
-        loadConfig({ ...production, CAPTCHA_SECRET: secret });
+        loadConfig({ ...production, CAPTCHA_SECRET_FILE: secretFile(secret) });
       } catch (error) {
         message = error instanceof Error ? error.message : String(error);
       }
@@ -170,10 +162,12 @@ describe('loadConfig', () => {
 
     // Both halves published: the secret is the fatal one, whatever the sitekey — and the
     // sitekey opt-in does not lift it (requirement: a published secret is fatal everywhere).
+    const publishedSitekey = '1x00000000000000000000AA';
+    const publishedSecret = '1x0000000000000000000000000000000AA';
     const publishedPair = {
       ...production,
-      CAPTCHA_SITE_KEY: '1x00000000000000000000AA',
-      CAPTCHA_SECRET: '1x0000000000000000000000000000000AA',
+      CAPTCHA_SITE_KEY: publishedSitekey,
+      CAPTCHA_SECRET_FILE: secretFile(publishedSecret),
       CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
     };
     let both = '';
@@ -183,13 +177,13 @@ describe('loadConfig', () => {
       both = error instanceof Error ? error.message : String(error);
     }
     expect(both).toMatch(/CAPTCHA_SECRET is a published test key/u);
-    expect(both).not.toContain(publishedPair.CAPTCHA_SITE_KEY);
-    expect(both).not.toContain(publishedPair.CAPTCHA_SECRET);
+    expect(both).not.toContain(publishedSitekey);
+    expect(both).not.toContain(publishedSecret);
 
     // A normal key pair boots; the published test pair is the only thing refused.
     const config = loadConfig({
       ...production,
-      CAPTCHA_SECRET: '0x4f3a-real-secret',
+      CAPTCHA_SECRET_FILE: secretFile('0x4f3a-real-secret'),
       CAPTCHA_SITE_KEY: '0x4AAA-site-key',
     });
     expect(config.captchaSiteKey).toBe('0x4AAA-site-key');
@@ -221,7 +215,7 @@ describe('loadConfig', () => {
       const config = loadConfig({
         ...production,
         CAPTCHA_SITE_KEY: sitekey,
-        CAPTCHA_SECRET: secret,
+        CAPTCHA_SECRET_FILE: secretFile(secret),
         CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
       });
       expect(config.captchaSiteKey).toBe(sitekey);
@@ -278,7 +272,7 @@ describe('loadConfig', () => {
     try {
       loadConfig({
         ...production,
-        CAPTCHA_SECRET: secret,
+        CAPTCHA_SECRET_FILE: secretFile(secret),
         CAPTCHA_ALLOW_TEST_SITE_KEY: '1',
       });
     } catch (error) {
@@ -391,13 +385,19 @@ describe('loadConfig — production invariants (§14, §21.2)', () => {
   });
 
   it('refuses an empty session secret in production', () => {
-    expect(() => loadConfig({ ...production, SESSION_SECRET: '' })).toThrow(
+    // No file and no value: the ephemeral per-boot secret is the production failure.
+    expect(() => loadConfig({ ...production, SESSION_SECRET_FILE: undefined })).toThrow(
+      /SESSION_SECRET is required in production/u,
+    );
+    expect(() => loadConfig({ ...production, SESSION_SECRET_FILE: undefined, SESSION_SECRET: '' })).toThrow(
       /SESSION_SECRET is required in production/u,
     );
   });
 
   it('refuses an empty IP salt in production', () => {
-    expect(() => loadConfig({ ...production, IP_SALT: '' })).toThrow(/IP_SALT is required in production/u);
+    expect(() => loadConfig({ ...production, IP_SALT_FILE: undefined })).toThrow(
+      /IP_SALT is required in production/u,
+    );
   });
 
   it('refuses a non-https public origin in production: the cookie would lose Secure', () => {
