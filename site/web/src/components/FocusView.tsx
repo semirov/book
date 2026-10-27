@@ -344,7 +344,7 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
           <FocusWings wings={wingPair} />
           <FocusTrack from={scale.from} to={scale.to} origin={change.chapter} current={current} />
 
-          <section className="focus-note" aria-label={footnoteCopy(change)}>
+          <section className="focus-note ym-hide-content" aria-label={footnoteCopy(change)}>
             <header className="focus-note-h">
               <span>{footnoteCopy(change)}</span>
               <span className="focus-stamp">{panelStamp(change)}</span>

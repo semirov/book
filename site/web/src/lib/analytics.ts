@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 
 import { getAnalyticsConfig } from '../api.ts';
 import { consentState, subscribeConsent } from './consent.ts';
+import { clearYmCookies } from './ymCookies.ts';
 
 /**
  * BOOK-63 — Yandex Metrika behind the consent gate, and the event taxonomy in one module.
@@ -17,6 +18,10 @@ import { consentState, subscribeConsent } from './consent.ts';
  * outside it drops the whole event, and a `code` is normalised to a `UPPER_SNAKE` token (or
  * `UNKNOWN`). A reader's words, a display name, an alias and an identity id therefore have
  * no path into a request — the guarantee is in code, not in the caller's discipline.
+ *
+ * Withdrawal (BOOK-77, audit F2) is not a flag: `tag.js` is a vendor script, and once it has
+ * run the page cannot unload it. So `revokeAnalytics` takes the `_ym_*` cookies back, closes
+ * this module's switch for good and reloads into a document the counter was never in.
  */
 
 /** The only third-party origin the page may use for analytics; the CSP names the same one. */
@@ -115,6 +120,10 @@ let counter: string | null = null;
 let tag: Promise<void> | null = null;
 let initialised = false;
 let active = false;
+/** The tag reached the document: from here the counter is out of our hands (BOOK-77 F2). */
+let injected = false;
+/** The reader withdrew: nothing this module does may reach `ym` again in this document. */
+let killed = false;
 const configListeners = new Set<() => void>();
 const seen = new Set<string>();
 
@@ -123,7 +132,9 @@ function ymFunction(): YmFunction | null {
   return typeof scope.ym === 'function' ? scope.ym : null;
 }
 
+/** Every call goes through here, so the kill switch cannot be bypassed by a new caller. */
 function callYm(...args: unknown[]): void {
+  if (killed) return;
   ymFunction()?.(...args);
 }
 
@@ -149,18 +160,67 @@ export function counterId(): string | null {
 
 /** Re-evaluate the script against the consent state and the configured counter. */
 export function applyConsent(): void {
-  active = counter !== null && consentState() === 'granted';
-  if (!active) return;
-  void loadTag().catch(() => {
-    // A blocked or unreachable tag is silence, not an error on the page: nothing to show.
+  if (killed) {
+    // BOOK-77 (F2): this document has already revoked; the reload is on its way, and nothing
+    // is loaded again in the meantime, whatever the choice says.
     active = false;
-  });
+    return;
+  }
+  active = counter !== null && consentState() === 'granted';
+  if (active) {
+    void loadTag().catch(() => {
+      // A blocked or unreachable tag is silence, not an error on the page: nothing to show.
+      active = false;
+    });
+    return;
+  }
+  revokeAnalytics();
+}
+
+/**
+ * BOOK-77 (audit F2) — withdrawal, not just a flag.
+ *
+ * A loaded `tag.js` keeps sending pageviews, Webvisor data and its own cookies until the
+ * document goes away; the page has no way to unload a vendor script. So revocation does what
+ * is actually in our hands: the vendor's teardown when the file offers one, the `_ym_*`
+ * cookies for this host and its parent, the kill switch above, and one reload so the counter
+ * cannot keep recording. A page without a live tag (a first visit, a stored `denied`) has
+ * nothing to revoke and does not reload.
+ */
+export function revokeAnalytics(): void {
+  if (!injected || killed) return;
+  killed = true;
+  active = false;
+  const id = counter;
+  // The vendor's own teardown, before the switch closes: it stops its timers first.
+  if (id !== null && initialised) ymFunction()?.(id, 'destroy');
+  if (typeof document !== 'undefined') clearYmCookies(document, pageHost());
+  reloadPage();
+}
+
+/** The two page facts revocation needs; read at call time so a test can hand them over. */
+function pageLocation(): { hostname?: string; reload?: () => void } | null {
+  const scope = globalThis as unknown as { location?: { hostname?: string; reload?: () => void } };
+  return scope.location ?? null;
+}
+
+function pageHost(): string {
+  const host = pageLocation()?.hostname;
+  return typeof host === 'string' ? host : '';
+}
+
+function reloadPage(): void {
+  try {
+    pageLocation()?.reload?.();
+  } catch {
+    // A sandboxed page cannot navigate; the cookies are gone and the switch is closed anyway.
+  }
 }
 
 function loadTag(): Promise<void> {
   if (tag !== null) return tag;
   const id = counter;
-  if (id === null) return Promise.resolve();
+  if (id === null || killed) return Promise.resolve();
   tag = new Promise<void>((resolve, reject) => {
     if (typeof document === 'undefined') {
       reject(new Error('metrika needs a document'));
@@ -176,8 +236,11 @@ function loadTag(): Promise<void> {
     };
     element.onerror = () => {
       tag = null;
+      // The file never ran, so there is nothing recording to revoke later.
+      injected = false;
       reject(new Error('metrika tag failed'));
     };
+    injected = true;
     document.head.appendChild(element);
   });
   return tag;
@@ -217,7 +280,7 @@ function buildPayload(name: EventName, raw: Record<string, unknown>): Record<str
 /** The act itself: a no-op unless a counter is configured, consent is granted and the tag is ready. */
 export function track<K extends EventName>(name: K, params: EventParams[K] = {} as EventParams[K]): void {
   const id = counter;
-  if (id === null || !active || !initialised) return;
+  if (id === null || killed || !active || !initialised) return;
   const payload = buildPayload(name, params as Record<string, unknown>);
   if (payload === null) return;
   callYm(id, 'reachGoal', name, payload);

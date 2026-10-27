@@ -199,22 +199,24 @@ describe('the comment thread (M5)', () => {
     });
   });
 
-  it('posts JSON with the CAPTCHA token and no author field', async () => {
+  it('posts JSON with no captcha field and no author field (BOOK-64)', async () => {
     const spy = vi.fn(async () => new Response('{"comment":{"id":"cmt_1"}}', { status: 201 }));
     vi.stubGlobal('fetch', spy);
-    await postComment({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
+    await postComment({ chapter: 8, body: 'Тут дважды «слово».' });
     const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/comments');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['content-type']).toBe('application/json');
     const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
-    expect(payload).toMatchObject({ chapter: 8, body: 'Тут дважды «слово».', captchaToken: 'token-1' });
+    expect(payload).toMatchObject({ chapter: 8, body: 'Тут дважды «слово».' });
+    // The gate is the session and the rate limits: no empty token, no captcha key at all.
+    expect(payload).not.toHaveProperty('captchaToken');
     expect(payload).not.toHaveProperty('author');
   });
 
   it('keeps retryAfterMs and resetAt on a refusal', async () => {
     respond({ code: 'RATE_LIMITED', message: 'slow down', retryAfterMs: 90_000, resetAt: '2026-10-25T13:00:00Z' }, 429);
-    const error = await postComment({ chapter: 8, body: 'Текст.', captchaToken: 't' }).catch((caught: unknown) => caught);
+    const error = await postComment({ chapter: 8, body: 'Текст.' }).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 429, code: 'RATE_LIMITED', retryAfterMs: 90_000 });
     expect((error as ApiError).resetAt).toBe('2026-10-25T13:00:00Z');

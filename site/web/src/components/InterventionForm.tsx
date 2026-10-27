@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, postAnchoredComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
-import { captchaApi, loadCaptchaScript } from '../lib/captcha.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, wordingLabel, type SeamDraft } from '../lib/draft.ts';
 import { SUBMIT_LINE } from '../lib/terms.ts';
@@ -13,10 +12,11 @@ import { InterventionKinds } from './InterventionKinds.tsx';
  * BOOK-DOC-34 §2.3 — the form, grown inside the seam.
  *
  * Field order is the book's own logic: what the world-fact is → what it changes → how it
- * reads. The CAPTCHA is a field (the script mounts on the first textarea focus, never on page
- * load), errors are printed in place — never a toast — and the receipt is the caller's: a
- * refused draft keeps every character, and a stale anchor offers the re-anchoring path
- * instead of silently moving the filing.
+ * reads. BOOK-64: there is no challenge field, no widget and no token — the form submits
+ * when the reader is signed in and the fields are valid, and the server holds the gate
+ * (identity plus the comment and edit rate limits). Errors are printed in place — never a
+ * toast — and the receipt is the caller's: a refused draft keeps every character, and a
+ * stale anchor offers the re-anchoring path instead of silently moving the filing.
  */
 export type FormProps = {
   entry: CatalogEntry;
@@ -30,17 +30,11 @@ export type FormProps = {
 
 export function InterventionForm({ entry, draft, composer, viewer, onChange, onPosted, onReanchor }: FormProps) {
   const limits = draftLimits(composer);
-  const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<ComposerError | null>(null);
   const [sending, setSending] = useState(false);
   const [budget, setBudget] = useState<{ line: string } | null>(null);
-  const widgetRef = useRef<HTMLDivElement | null>(null);
-  const widgetId = useRef<string | number | null>(null);
-  const mounted = useRef(false);
 
-  const provider = composer.captcha.provider;
   const noteOnly = draft.noteOnly;
-  const needCaptcha = provider !== 'none' && composer.captcha.siteKey !== null;
 
   /**
    * BOOK-63: `form_open` is the form the reader sees, once per mount. It carries nothing —
@@ -53,57 +47,12 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
     track('form_open', {});
   }, [viewer.signedIn]);
 
-  const arm = (): void => {
-    if (mounted.current || !needCaptcha) return;
-    mounted.current = true;
-    void loadCaptchaScript(provider)
-      .then(() => {
-        const api = captchaApi(provider);
-        if (api === null || widgetRef.current === null) {
-          setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
-          track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
-          return;
-        }
-        widgetId.current = api.render(widgetRef.current, {
-          sitekey: composer.captcha.siteKey,
-          theme: 'light',
-          callback: (value: string) => {
-            setToken(value);
-            setError((current) => (current?.code === 'CAPTCHA_FAILED' ? null : current));
-          },
-          'expired-callback': () => setToken(null),
-          'error-callback': () => {
-            setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
-            track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
-          },
-        });
-      })
-      .catch(() => {
-        setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
-        track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
-      });
-  };
-
-  useEffect(
-    () => () => {
-      const api = captchaApi(provider);
-      if (widgetId.current !== null) api?.remove?.(widgetId.current);
-      widgetId.current = null;
-    },
-    [provider],
-  );
-
   // BOOK-33: a premise and a note are one text, not a «что это меняет» + a first sentence.
   const body = submissionBody(draft);
-  const ready = body.length >= composer.minChars && (!needCaptcha || token !== null);
+  const ready = body.length >= composer.minChars;
 
   const submit = async (): Promise<void> => {
     if (!viewer.signedIn) return;
-    if (needCaptcha && token === null) {
-      setError({ code: 'CAPTCHA_FAILED', message: 'проверка не пройдена — попробуйте ещё раз' });
-      track('error_shown', { code: 'CAPTCHA_FAILED' });
-      return;
-    }
     if (body.length < composer.minChars) {
       setError({ code: 'INVALID', message: `замечание короче ${composer.minChars} символов` });
       track('error_shown', { code: 'INVALID' });
@@ -116,7 +65,6 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
       const response = await postAnchoredComment(
         anchoredPayload(draft, {
           body,
-          captchaToken: token ?? '',
           ...(noteOnly || draft.blockId === null ? {} : { proposedText: draft.proposed }),
           ...(noteOnly || draft.blockId === null || draft.kind === null ? {} : { interventionKind: draft.kind }),
         }),
@@ -136,7 +84,6 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         });
         // The refusal is the server's; only its code leaves the page.
         track('submit_refused', { code: caught.code });
-        if (caught.code === 'CAPTCHA_FAILED') setToken(null);
       } else {
         setError({ code: 'INVALID', message: 'сеть не ответила — попробуйте ещё раз' });
         track('error_shown', { code: 'INVALID' });
@@ -214,23 +161,10 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
               ? 'что в тексте не читается: повтор, сбой, деталь, которой не веришь'
               : 'как это звучит в книге'
         }
-        onFocus={arm}
         onChange={(event) => onChange({ ...draft, proposed: event.target.value })}
         disabled={sending}
       />
       <p className="seam-hint">{counterLabel(draft.proposed.length, limits.edit)}</p>
-
-      <div className="seam-captcha" ref={widgetRef} data-armed={needCaptcha ? 'true' : 'false'}>
-        {needCaptcha ? (
-          <>
-            <span className="seam-captcha-box" aria-hidden="true" />
-            <span className="seam-captcha-label">проверка · {provider}</span>
-            <span className="seam-captcha-state">{token === null ? 'без заданий' : 'пройдена'}</span>
-          </>
-        ) : (
-          <span className="seam-captcha-label">проверка недоступна — форма закроется</span>
-        )}
-      </div>
 
       {error === null ? null : (
         <p className="seam-error" role="alert">

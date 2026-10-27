@@ -11,7 +11,7 @@ import { loadImprint } from '../src/imprint.ts';
 import { WsHub } from '../src/ws/hub.ts';
 import { createFixture, type Fixture } from './helpers.ts';
 
-/** `hello` carries the composer's configuration and the signed-in reader (§10, §12.8). */
+/** `hello` carries the composer's configuration and the signed-in reader (§10, BOOK-64). */
 
 type Frame = { type: string; data: Record<string, unknown> };
 
@@ -31,9 +31,6 @@ async function boot(): Promise<void> {
     BOOK_ROOT: fixture.root,
     DATA_DIR: fixture.dataDir,
     WEB_DIST: fixture.dataDir,
-    CAPTCHA_PROVIDER: 'hcaptcha',
-    CAPTCHA_SECRET: 'test-secret',
-    CAPTCHA_SITE_KEY: 'site-key',
     EDIT_SUBMISSIONS_PER_DAY: '1',
   });
   const state = new StateService(fixture.db);
@@ -69,17 +66,18 @@ async function hello(headers: Record<string, string> = {}): Promise<Frame> {
 }
 
 describe('hello — viewer and composer', () => {
-  it('resolves an anonymous reader and the configured CAPTCHA provider', async () => {
+  it('resolves an anonymous reader and the composer caps (no challenge travels)', async () => {
     await boot();
     const frame = await hello();
     expect(frame.type).toBe('hello');
     expect(frame.data.viewer).toEqual({ signedIn: false, displayName: null });
     expect(frame.data.composer).toEqual({
-      captcha: { provider: 'hcaptcha', siteKey: 'site-key' },
       minChars: COMMENT_MIN_CHARS,
       maxChars: COMMENT_MAX_CHARS,
       editMaxChars: EDIT_MAX_CHARS,
     });
+    // BOOK-64: no provider and no sitekey on the wire — the client has no challenge to mount.
+    expect(frame.data.composer).not.toHaveProperty('captcha');
     // The frame carries the true numbers, so the SPA never hardcodes a cap of its own.
     const limits = frame.data.limits as Record<string, unknown>;
     expect(limits).toMatchObject({

@@ -146,13 +146,17 @@ function parsePostBody(
   const chapter = integer(value.chapter, 1, 67);
   if (chapter === null) return { error: 'chapter must be 1..67' };
   if (typeof value.body !== 'string') return { error: 'body must be a string' };
-  if (typeof value.captchaToken !== 'string') return { error: 'captchaToken must be a string' };
+  // BOOK-64: no token is required — the gate is the session above and the rate limits below.
+  // A token is accepted only in the shape it would have if a challenge returns.
+  if (value.captchaToken !== undefined && typeof value.captchaToken !== 'string') {
+    return { error: 'captchaToken must be a string' };
+  }
 
   const input: PostCommentInput = {
     chapter,
     body: value.body,
-    captchaToken: value.captchaToken,
   };
+  if (typeof value.captchaToken === 'string') input.captchaToken = value.captchaToken;
   if (typeof value.blockId === 'string') input.blockId = value.blockId;
   if (typeof value.quote === 'string') input.quote = value.quote;
   if (typeof value.prefix === 'string') input.prefix = value.prefix;

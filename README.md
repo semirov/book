@@ -1,25 +1,62 @@
-# «Бланк» — a novel written in public
+# «Бланк» — роман, написанный на виду
 
-A cold hard-SF novel of тоска, written in the open on one page: 67 chapters in fixed slots, four unnamed
-parts, four lines forward and four backward. A reader leaves an intervention — a document, a character's
-decision, a testimony, an erased detail — and the process takes it as material, never as an order: an
-auditor first judges whether it fits the canvas, and an accepted change ripples in both directions. The
-human carbon form ends — the one fixed point of content, chapter 67.
+«Бланк» — научно-фантастический роман о тоске, который пишется открыто, на одной странице: 67 глав в
+фиксированных слотах, четыре безымянные части, четыре линии вперёд и четыре назад. Читатель оставляет
+вмешательство — документ, решение персонажа, свидетельство, стёртую деталь, — и процесс берёт его как
+материал, а не как приказ: сначала аудитор судит, ложится ли оно на полотно, а принятая правка идёт волной
+в обе стороны. Человеческая углеродная форма кончается — единственная неподвижная точка содержания,
+глава 67. Сайт: https://book.semirov.dev.
 
-**Canon (owner's, binding):** `concept/CONCEPT.md` · `concept/CLIMAX.md` · `style/VOICE.md` ·
-`notes/canon-constraints.md`. `outline/PLAN.md` is a plan, not a rule. The manuscript (`manuscript/`) is
-the only source of truth for text; the database is a projection. The site: https://book.semirov.dev.
+**Канон (авторский, обязательный):** `concept/CONCEPT.md` · `concept/CLIMAX.md` · `style/VOICE.md` ·
+`notes/canon-constraints.md`. `outline/PLAN.md` — план, а не правило. **Рукопись — единственный источник
+правды для текста** (`manuscript/`); база данных — её проекция.
 
-## Run
+## Что где лежит
+
+| Каталог | Что это |
+|---|---|
+| `manuscript/` | Сам роман: фронт-маттер и главы в фиксированных слотах (`ch01` … `ch67`), заполняются по одной. Единственный источник правды для текста. |
+| `concept/` | `CONCEPT.md` и `CLIMAX.md` — авторский канон: что за мир и чем всё кончается. |
+| `outline/` | `PLAN.md` — раскладка частей и слотов. План, а не правило. |
+| `style/` | `VOICE.md` — голос, которому подчиняется проза. |
+| `notes/` | Рабочие заметки, в том числе `canon-constraints.md` — ограничения канона, обязательные для правок. |
+| `process/` | `ROLE_PROMPTS.md` — роли сессий, которые пишут и судят шаг. |
+| `site/` | Движок, сервер и SPA: публикуют книгу, принимают вмешательства, ведут проекцию базы. |
+
+## Лицензии: три разные вещи
+
+Репозиторий — не одно произведение, и одна лицензия честно не покроет его целиком.
+
+| Что | Лицензия |
+|---|---|
+| Код `site/**` — движок, сервер, SPA | [Apache License 2.0](LICENSE) |
+| Текст: `manuscript/`, `concept/`, `outline/`, `style/`, `notes/`, `process/` | © Филипп Семиров, все права защищены |
+| Шрифты `site/web/public/fonts/**` (PT Sans, PT Serif, PT Mono, PT Sans Narrow) | [SIL Open Font License 1.1](site/web/public/fonts/LICENSE.md), апстрим — ParaType |
+
+Почему так: код открыт, имя автора сохраняется в [LICENSE](LICENSE) и [NOTICE](NOTICE) — файл `NOTICE`
+обязан ехать с любой копией. Текст книги открытым не становится: сайт обещает читателю, что право на
+принятую правку переходит к автору, и обещание бессмысленно, если роман можно свободно копировать.
+
+## Как запустить
 
 ```sh
-cd site && npm install && npm run dev    # API :8080 + Vite :5173
-npm run build && npm start               # one process on :8080
+cd site
+npm install
+npm run dev                       # API :8080 + Vite :5173
+npm run build && npm start        # один процесс на :8080
+npm run verify                    # typecheck + arch + тесты
+node bin/validate.mjs             # проверка рукописи: 0 ошибок
 ```
 
-Operator quickstart [`site/README.md`](site/README.md) · architecture and invariants
-[`site/ARCHITECTURE.md`](site/ARCHITECTURE.md) · product rules
-[BOOK-DOC-4](https://wiki.semirov.dev/BOOK/pages/407) · design [BOOK-DOC-3](https://wiki.semirov.dev/BOOK/pages/406).
+Операторская памятка и инварианты — [`site/README.md`](site/README.md).
 
-ADRs, plans and the operator runbook live in Lific (`wiki.semirov.dev/BOOK`); process documentation does
-not live in this repository.
+## Где живёт инженерная запись
+
+В Lific: [wiki.semirov.dev/BOOK](https://wiki.semirov.dev/BOOK) — решения (по одной странице на ADR),
+планы, runbook, продуктовые правила [BOOK-DOC-4](https://wiki.semirov.dev/BOOK/pages/407) и дизайн
+[BOOK-DOC-3](https://wiki.semirov.dev/BOOK/pages/406). **В репозитории ADR и дизайн-документов нет by
+design:** файл в `docs/` дублируется и разъезжается с источником правды.
+
+## Участие и безопасность
+
+Как попасть в репозиторий — [CONTRIBUTING.md](CONTRIBUTING.md); об уязвимости — [SECURITY.md](SECURITY.md).

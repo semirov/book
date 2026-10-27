@@ -251,10 +251,6 @@ export class WsHub {
           }
         : null;
     const composer: ComposerInfo = {
-      captcha: {
-        provider: this.config.captchaProvider,
-        siteKey: this.config.captchaSiteKey.length > 0 ? this.config.captchaSiteKey : null,
-      },
       minChars: COMMENT_MIN_CHARS,
       maxChars: COMMENT_MAX_CHARS,
       editMaxChars: EDIT_MAX_CHARS,

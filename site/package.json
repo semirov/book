@@ -1,6 +1,7 @@
 {
   "name": "book-site",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.1.0",
   "description": "book.semirov.dev — the book, written in public",
   "type": "module",

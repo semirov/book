@@ -11,7 +11,7 @@ import { IDLE_TITLE, titleMotionClass, type TitleMotion } from '../lib/titleChan
  * exclamation. It is not the promise and it never counts the book's lines.
  */
 export const TITLE_GENRE =
-  'Литературно-инженерный перформанс: книга возникает прямо перед тобой, а читатели вмешиваются в её судьбу.';
+  'Литературно-инженерный перформанс: книга пишется публично, а читатели оставляют в ней след.';
 
 /**
  * The book's promise, in plain words (BOOK-DOC-4 «Book front and back matter»). It is book

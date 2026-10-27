@@ -13,7 +13,7 @@ import type { ViewerDto } from '@book/shared';
 
 import { buildApp } from './app.ts';
 import { createAuthorsCount } from './authors/count.ts';
-import { loadConfig, SITE_ROOT } from './config.ts';
+import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
 import { databaseFile, openDatabase } from './db/db.ts';
 import { migrate } from './db/migrate.ts';
 import { listCatalog } from './db/repo/chapters.ts';
@@ -43,6 +43,10 @@ function serverVersion(): string {
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  // BOOK-64: one line, before anything else runs, naming the gate in force. A challenge
+  // deployment stays quiet here and logs its provider with the scan below.
+  const gate = gateAnnouncement(config);
+  if (gate !== null) console.log(gate);
   const db = openDatabase(databaseFile(config.dataDir));
   const migration = migrate(db);
   const report = reconcile(db, { bookRoot: config.bookRoot, dataDir: config.dataDir });

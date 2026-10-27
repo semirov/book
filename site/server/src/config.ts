@@ -88,16 +88,20 @@ const schema = z.object({
   sessionSecret: z.string().default(''),
   /** Salt for the persisted IP hash; empty means an ephemeral per-boot salt. */
   ipSalt: z.string().default(''),
-  // ── CAPTCHA (§12.8) ──
+  /**
+   * §12.8 (BOOK-64): the write gate is an authenticated identity plus the comment and edit
+   * rate limits (rate/policy.ts). `none` is the shipped production shape; a captcha may
+   * return as a separate decision, and then it needs both halves configured.
+   */
   captchaProvider: z.enum(['turnstile', 'hcaptcha', 'none']).default('none'),
   captchaSiteKey: z.string().default(''),
   captchaSecret: z.string().default(''),
   /**
-   * Prod-only opt-in for a vendor's published test sitekey (audit B1 follow-up). `0` keeps the
-   * boot refusal; `1` lets a live deployment start with such a key, warns once, and leaves the
-   * comment path closed (the real secret fails siteverify). A published test *secret* stays
-   * fatal in every environment. Values are strings like every other enum in this schema, so a
-   * typo (`true`) fails the parse instead of silently enabling the opt-in.
+   * Opt-in for a vendor's published test sitekey, kept for the day a challenge returns.
+   * `0` keeps the boot refusal; `1` lets a deployment start with such a key, warns once, and
+   * leaves the comment path closed (the real secret fails siteverify). A published test
+   * *secret* stays fatal in every environment. Values are strings like every other enum in
+   * this schema, so a typo (`true`) fails the parse instead of silently enabling the opt-in.
    */
   captchaAllowTestSiteKey: z.enum(['0', '1']).default('0'),
   captchaTimeoutMs: z.coerce.number().int().min(500).max(10_000).default(3_000),
@@ -351,23 +355,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`invalid configuration: ${details}`);
   }
   const config = parsed.data;
-  // Fail closed, loudly: an unprotected write path into the model is worse than an hour
-  // without comments (§12.8). `none` is a test/local shape only and never a prod default.
-  if (config.captchaProvider === 'none' && production) {
-    throw new Error('invalid configuration: CAPTCHA_PROVIDER=none is refused in production (§12.8)');
+  // §12.8 (BOOK-64): the gate is an authenticated identity plus the comment and edit rate
+  // limits, so a deployment may boot with no challenge at all. What still fails loudly is a
+  // *half-configured* captcha: a sitekey without a secret renders a widget nothing can
+  // verify, and a secret without a sitekey configures a verifier no reader can reach.
+  const hasSiteKey = config.captchaSiteKey.trim().length > 0;
+  const hasSecret = config.captchaSecret.length > 0;
+  if (hasSiteKey !== hasSecret) {
+    throw new Error(
+      'invalid configuration: CAPTCHA_SITE_KEY and CAPTCHA_SECRET must be configured together ' +
+        `(${hasSiteKey ? 'CAPTCHA_SECRET is missing' : 'CAPTCHA_SITE_KEY is missing'})`,
+    );
   }
-  if (config.captchaProvider !== 'none' && config.captchaSecret.length === 0) {
+  if (config.captchaProvider !== 'none' && !hasSecret) {
     throw new Error(`invalid configuration: CAPTCHA_SECRET is required for provider ${config.captchaProvider}`);
-  }
-  // A configured provider with no public key renders a dead widget: the composer would be
-  // visible, the challenge unrenderable, and every post would fail with CAPTCHA_FAILED.
-  if (config.captchaProvider !== 'none' && config.captchaSiteKey.trim().length === 0) {
-    throw new Error(`invalid configuration: CAPTCHA_SITE_KEY is required for provider ${config.captchaProvider}`);
   }
   // B1 (audit): a vendor's published test credential makes the challenge decorative — with a
   // published test sitekey the widget accepts any visitor, and with a published test secret
   // siteverify answers `success: true` for any token. The messages name the variable and never
-  // the value; the check runs on any non-empty key, whatever the provider.
+  // the value; the check runs on any non-empty key, whatever the provider. With no provider
+  // there is no challenge to protect, and the keys above are inert.
   //
   // A published *secret* is fatal in every environment: it alone opens the comment path, so no
   // opt-in may lift it (§12.8, README «Secrets»). A published *sitekey* only renders a
@@ -375,23 +382,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // production a local sandbox may use it with a warning, and in production it needs the
   // explicit, loud opt-in `CAPTCHA_ALLOW_TEST_SITE_KEY=1`; comments stay closed either way
   // until a real Turnstile pair is set.
-  if (isPublishedCaptchaTestKey(config.captchaSecret)) {
-    throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key');
-  }
-  if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
-    if (!production) {
-      console.warn('CAPTCHA_SITE_KEY is a published test key — accepted outside production only');
-    } else if (config.captchaAllowTestSiteKey !== '1') {
-      throw new Error(
-        'invalid configuration: CAPTCHA_SITE_KEY is a published test key and is refused in production; ' +
-          'set a real key or CAPTCHA_ALLOW_TEST_SITE_KEY=1',
-      );
-    } else {
-      console.warn(
-        'CAPTCHA_SITE_KEY is a published test key — allowed in production only because ' +
-          'CAPTCHA_ALLOW_TEST_SITE_KEY=1; comments stay closed until a real Turnstile sitekey ' +
-          'and secret pair is set',
-      );
+  if (config.captchaProvider !== 'none') {
+    if (isPublishedCaptchaTestKey(config.captchaSecret)) {
+      throw new Error('invalid configuration: CAPTCHA_SECRET is a published test key');
+    }
+    if (isPublishedCaptchaTestKey(config.captchaSiteKey)) {
+      if (!production) {
+        console.warn('CAPTCHA_SITE_KEY is a published test key — accepted outside production only');
+      } else if (config.captchaAllowTestSiteKey !== '1') {
+        throw new Error(
+          'invalid configuration: CAPTCHA_SITE_KEY is a published test key and is refused in production; ' +
+            'set a real key or CAPTCHA_ALLOW_TEST_SITE_KEY=1',
+        );
+      } else {
+        console.warn(
+          'CAPTCHA_SITE_KEY is a published test key — allowed in production only because ' +
+            'CAPTCHA_ALLOW_TEST_SITE_KEY=1; comments stay closed until a real Turnstile sitekey ' +
+            'and secret pair is set',
+        );
+      }
     }
   }
   if (production) {
@@ -408,6 +417,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     }
   }
   return config;
+}
+
+/**
+ * The one boot line for the gate in force when no challenge runs (§12.8, BOOK-64): the
+ * authenticated identity plus the comment and edit rate limits. The operator never has to
+ * infer the gate from the absence of a script.
+ */
+export const IDENTITY_GATE_LINE = 'gate: identity + rate limits (no captcha)';
+
+/** `null` when a challenge provider is configured: then its own boot facts apply. */
+export function gateAnnouncement(config: Pick<Config, 'captchaProvider'>): string | null {
+  return config.captchaProvider === 'none' ? IDENTITY_GATE_LINE : null;
 }
 
 /** The OAuth callback URL: configured explicitly, or derived from the public origin. */

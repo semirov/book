@@ -56,9 +56,11 @@ export function FilingPanel({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // BOOK-77 (audit F1): the author, the quote and the whole body are the reader's words, so
+  // the panel carries `ym-hide-content` in both of its placements.
   return (
     <aside
-      className={`filing-panel${placement === null ? '' : ' filing-panel-anchored'}`}
+      className={`filing-panel ym-hide-content${placement === null ? '' : ' filing-panel-anchored'}`}
       role="dialog"
       aria-modal="false"
       aria-label={`замечание ${filingNumber(comment)}`}

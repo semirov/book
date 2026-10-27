@@ -11,22 +11,49 @@ import type * as Consent from './consent.ts';
  * Track, **zero** bytes leave for `mc.yandex.ru` and `ym` is never called. With `granted`
  * the external tag is requested once, `ym(id, 'init', …)` runs once with the counter's own
  * options, and every event carries a fixed shape — no free text can be added silently.
+ *
+ * BOOK-77 (audit F2) adds the other half: withdrawal takes the `_ym_*` cookies back, closes
+ * the kill switch and reloads, so the loaded tag cannot keep recording in this document.
  */
 
 const COUNTER = '113820311';
 const TAG = `https://mc.yandex.ru/metrika/tag.js?id=${COUNTER}`;
 
-type Modules = { analytics: typeof Analytics; consent: typeof Consent; ym: ReturnType<typeof vi.fn> };
+type Modules = {
+  analytics: typeof Analytics;
+  consent: typeof Consent;
+  ym: ReturnType<typeof vi.fn>;
+  /** The page reload `revokeAnalytics` asks for; jsdom must never navigate in a test. */
+  reload: ReturnType<typeof vi.fn>;
+};
 
 async function fresh(): Promise<Modules> {
   vi.resetModules();
   localStorage.clear();
+  clearCookies();
   document.head.querySelectorAll('script').forEach((element) => element.remove());
   const ym = vi.fn();
   (globalThis as { ym?: unknown }).ym = ym;
+  const reload = vi.fn();
+  vi.stubGlobal('location', { hostname: 'book.semirov.dev', reload });
   const consent = await import('./consent.ts');
   const analytics = await import('./analytics.ts');
-  return { analytics, consent, ym };
+  return { analytics, consent, ym, reload };
+}
+
+function clearCookies(): void {
+  for (const name of document.cookie.split(';')) {
+    const cookie = name.split('=')[0]?.trim() ?? '';
+    if (cookie.length > 0) document.cookie = `${cookie}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+  }
+}
+
+/** The `_ym_*` names still in the jar — what withdrawal is measured by. */
+function ymCookies(): string[] {
+  return document.cookie
+    .split(';')
+    .map((part) => part.split('=')[0]?.trim() ?? '')
+    .filter((name) => name.startsWith('_ym_'));
 }
 
 function tagElements(): HTMLScriptElement[] {
@@ -45,6 +72,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete (globalThis as { ym?: unknown }).ym;
   localStorage.clear();
+  clearCookies();
   document.head.querySelectorAll('script').forEach((element) => element.remove());
 });
 
@@ -140,7 +168,7 @@ describe('a granted reader gets the tag once', () => {
     loadTag();
     consent.setConsent('denied');
     analytics.track('form_open', {});
-    expect(ym).toHaveBeenCalledTimes(1); // the init above, and no reachGoal
+    expect(ym).not.toHaveBeenCalledWith(COUNTER, 'reachGoal', 'form_open');
 
     const failing = await fresh();
     failing.analytics.configureCounter(COUNTER);
@@ -149,6 +177,106 @@ describe('a granted reader gets the tag once', () => {
     element?.onerror?.(new Event('error'));
     failing.analytics.track('form_open', {});
     expect(failing.ym).not.toHaveBeenCalled();
+  });
+});
+
+describe('withdrawal is real (BOOK-77, audit F2)', () => {
+  /** A granted reader with a live tag and the cookies the tag writes. */
+  async function live(): Promise<Modules> {
+    const modules = await fresh();
+    modules.analytics.configureCounter(COUNTER);
+    modules.consent.setConsent('granted');
+    loadTag();
+    document.cookie = '_ym_uid=1234567890';
+    document.cookie = '_ym_visorc=w';
+    modules.ym.mockClear();
+    return modules;
+  }
+
+  it('a denial clears the cookies, closes ym and reloads the document', async () => {
+    const { analytics, consent, ym, reload } = await live();
+    expect(ymCookies().sort()).toEqual(['_ym_uid', '_ym_visorc']);
+
+    consent.setConsent('denied');
+
+    // The cookie clearing ran, and it worked: no first-party counter cookie survives.
+    expect(ymCookies()).toEqual([]);
+    // The vendor's teardown runs while it is still reachable, then the switch closes.
+    expect(ym).toHaveBeenCalledWith(COUNTER, 'destroy');
+    // The loaded script cannot be unloaded, so the page is reloaded into a clean document.
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    ym.mockClear();
+    analytics.track('form_open', {});
+    expect(ym).not.toHaveBeenCalled();
+  });
+
+  it('«изменить» is a withdrawal too: no tag outlives the choice', async () => {
+    const { analytics, consent, ym, reload } = await live();
+
+    consent.resetConsent();
+
+    expect(consent.consentState()).toBe('unset');
+    expect(ymCookies()).toEqual([]);
+    expect(reload).toHaveBeenCalledTimes(1);
+    ym.mockClear();
+    analytics.track('cover_seen', {});
+    expect(ym).not.toHaveBeenCalled();
+  });
+
+  it('a later yes cannot resurrect the killed document', async () => {
+    const { analytics, consent, ym, reload } = await live();
+    consent.setConsent('denied');
+    ym.mockClear();
+
+    consent.setConsent('granted');
+    analytics.applyConsent();
+    analytics.track('record_open', {});
+
+    expect(tagElements()).toHaveLength(1); // no second tag.js
+    expect(ym).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledTimes(1); // and the reload is asked for once, not per call
+  });
+
+  it('asks for one reload, not one per notification', async () => {
+    const { analytics, consent, reload } = await live();
+    consent.setConsent('denied');
+    consent.setConsent('denied');
+    analytics.applyConsent();
+    analytics.revokeAnalytics();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reload a page that never had a tag', async () => {
+    const { analytics, consent, ym, reload } = await fresh();
+    analytics.configureCounter(COUNTER);
+    consent.setConsent('denied');
+    expect(reload).not.toHaveBeenCalled();
+    analytics.track('cover_seen', {});
+    expect(ym).not.toHaveBeenCalled();
+  });
+
+  it('does not reload after a tag that failed to load: nothing was recording', async () => {
+    const { analytics, consent, reload } = await fresh();
+    analytics.configureCounter(COUNTER);
+    consent.setConsent('granted');
+    tagElements()[0]?.onerror?.(new Event('error'));
+    consent.setConsent('denied');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('survives a page that cannot reload, with the switch still closed', async () => {
+    const { analytics, consent, ym } = await live();
+    vi.stubGlobal('location', {
+      hostname: 'book.semirov.dev',
+      reload: () => {
+        throw new Error('sandboxed');
+      },
+    });
+    expect(() => consent.setConsent('denied')).not.toThrow();
+    ym.mockClear();
+    analytics.track('form_open', {});
+    expect(ym).not.toHaveBeenCalled();
   });
 });
 

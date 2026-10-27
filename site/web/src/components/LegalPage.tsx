@@ -10,11 +10,11 @@ import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.
 /**
  * The static pages (audit M5): «приватность» and «правила».
  *
- * They exist because the site makes three third-party facts true and never said so in one
- * place: the CAPTCHA script the composer loads, the Metrika counter a deployment may
- * configure, and the fact that a comment is read by a model as *data*. Each page states
- * what runs, what it can see, and what a reader can do about it — in that order, in the
- * same typographic voice as the book, with no counters of our own.
+ * They exist because the site makes two third-party facts true and never said so in one
+ * place: the Metrika counter a deployment may configure, and the fact that a comment is read
+ * by a model as *data*. Each page states what runs, what it can see, and what a reader can do
+ * about it — in that order, in the same typographic voice as the book, with no counters of
+ * our own. BOOK-64: no challenge script runs any more, so the page promises none.
  *
  * The text is static on purpose: a policy that is fetched cannot be read when the API is
  * down, which is exactly when a reader goes looking for it.
@@ -33,28 +33,10 @@ function Privacy() {
       <p className="kicker">приватность</p>
       <h1 className="title">Что здесь видят другие</h1>
       <p className="premise">
-        Читать книгу можно без входа, без cookie и без единого стороннего запроса. Три вещи
-        появляются, только если вы ими пользуетесь: проверка «я не робот», счётчик посещений
-        (если владелец его включил) и ваш комментарий, который уходит на разбор.
+        Читать книгу можно без входа, без cookie и без единого стороннего запроса. Две вещи
+        появляются, только если вы ими пользуетесь: счётчик посещений (если владелец его
+        включил) и ваш комментарий, который уходит на разбор.
       </p>
-
-      <section>
-        <h2>Проверка «я не робот»</h2>
-        <p>
-          Она нужна только для отправки замечания и подключается в момент, когда вы открываете
-          форму. Провайдер — Cloudflare Turnstile или hCaptcha. Скрипт видит ваш IP-адрес,
-          данные браузера и устройства, адрес страницы и pass-токен проверки; он не видит текст
-          вашего замечания — тот уходит на сервер сайта, а провайдеру отправляется только токен.
-        </p>
-        <p>
-          Сайт не хранит ни токен, ни оценку проверки. Если скрипт заблокирован, форма не
-          отправит замечание и честно скажет об этом — она не открывается «на всякий случай».
-        </p>
-        <p className="legal-how">
-          Как обойтись без этого: не отправляйте замечание — чтение и оглавление работают без
-          CAPTCHA; история откроется с первой читательской правкой и проверки не спросит.
-        </p>
-      </section>
 
       <section>
         <h2>Счётчик посещений</h2>

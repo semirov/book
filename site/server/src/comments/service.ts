@@ -2,8 +2,13 @@
  * Posting a comment (ARCHITECTURE.md §12.1, §12.4, §12.5, §12.8, §14, §9).
  *
  * The order is the security design and must not be rearranged:
- *   identity → idempotent replay → queue backpressure → CAPTCHA → sanitize → dedupe →
- *   anchor → guard → rate slots → store → broadcast.
+ *   identity → idempotent replay → queue backpressure → CAPTCHA (only when a provider is
+ *   configured) → sanitize → dedupe → anchor → guard → rate slots → store → broadcast.
+ *
+ * BOOK-64 (2026-10-27): the shipped gate is the authenticated identity plus the comment and
+ * edit rate limits, so with `captchaProvider: 'none'` the verification step is skipped and the
+ * request carries no token. The verifier stays wired for the day a challenge returns; it is
+ * unused, not removed.
  *
  * A failed CAPTCHA consumes **no** rate slot and stores nothing (§12.8); a duplicate is
  * refused before it counts; a guard verdict is stored and shown, never silently dropped.
@@ -164,23 +169,27 @@ export class CommentService {
     }
 
     // CAPTCHA first, before anything is stored and before any slot is consumed (§12.8).
-    const captcha = await this.captcha(input.captchaToken, { ip: context.ip });
-    if (!captcha.ok) {
-      if (captcha.code === 'CAPTCHA_UNAVAILABLE') {
-        return {
-          ok: false,
-          status: 503,
-          code: 'CAPTCHA_UNAVAILABLE',
-          message: captcha.message,
-          retryAfterMs: this.config.captchaTimeoutMs,
-        };
+    // Only when a provider is configured: with `none` the identity above and the rate slots
+    // below are the gate, and there is no token to verify (BOOK-64).
+    if (this.config.captchaProvider !== 'none') {
+      const captcha = await this.captcha(input.captchaToken ?? undefined, { ip: context.ip });
+      if (!captcha.ok) {
+        if (captcha.code === 'CAPTCHA_UNAVAILABLE') {
+          return {
+            ok: false,
+            status: 503,
+            code: 'CAPTCHA_UNAVAILABLE',
+            message: captcha.message,
+            retryAfterMs: this.config.captchaTimeoutMs,
+          };
+        }
+        return { ok: false, status: 403, code: 'CAPTCHA_FAILED', message: captcha.message };
       }
-      return { ok: false, status: 403, code: 'CAPTCHA_FAILED', message: captcha.message };
     }
 
-    // The CAPTCHA call is the one await before the write, so a second request with the same
-    // key can land while this one waits: the checks below re-read the store instead of
-    // trusting the snapshot taken above.
+    // The CAPTCHA call is the one await before the write, so (when a challenge runs) a second
+    // request with the same key can land while this one waits: the checks below re-read the
+    // store instead of trusting the snapshot taken above.
 
     if (typeof input.body !== 'string') return fail(422, 'INVALID', 'нужен текст замечания');
     if (Buffer.byteLength(input.body, 'utf8') > COMMENT_RAW_MAX_BYTES) {

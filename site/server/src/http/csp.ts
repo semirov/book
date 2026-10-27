@@ -1,11 +1,11 @@
 /**
- * The application-owned CSP (ARCHITECTURE.md §12.8, §15.3, §17; F028).
+ * The application-owned CSP (ARCHITECTURE.md invariants 27–28, §15.3, §17; F028).
  *
- * The header is computed once, from the deployment's own configuration: the CAPTCHA
- * provider decides which third-party origins exist, and Metrika adds one only when a
- * counter id is configured. Nothing is pasted, nothing is widened "just in case", and
- * `unsafe-inline` is never emitted — an inline `<script>` cannot run, which is why the
- * theme bootstrap lives in `/theme.js` rather than in `index.html`.
+ * The header is computed once, from the deployment's own configuration: a challenge
+ * provider's browser origins (none ship today — BOOK-64 dropped the widget), and Metrika's
+ * single origin only when a counter id is configured. Nothing is pasted, nothing is widened
+ * "just in case", and `unsafe-inline` is never emitted — an inline `<script>` cannot run,
+ * which is why the theme bootstrap lives in `/theme.js` rather than in `index.html`.
  *
  * The same holds for styles (BOOK-30): `style-src 'self'` stands alone, with no
  * `style-src-attr` and no `'unsafe-inline'`. That is hardening, not a workaround: React's
@@ -13,8 +13,8 @@
  * example from `dangerouslySetInnerHTML`) would be dropped. The SPA therefore keeps every
  * colour in a class and every DOM-known value in a CSSOM write (`web/src/lib/cssom.ts`).
  *
- * The reading path needs no third-party byte: the provider origins appear only so the
- * composer's lazily-mounted widget can load when a reader opens it.
+ * Nothing on the page needs a third-party byte: the reading path is third-party-free, and
+ * the composer no longer loads a challenge script or iframe (BOOK-64).
  */
 
 import { CAPTCHA_SURFACES, METRIKA_ORIGIN } from '@book/shared';

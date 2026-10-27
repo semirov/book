@@ -5,10 +5,11 @@ import type { CaptchaVerifier } from '../src/captcha/verify.ts';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 
 /**
- * M5 acceptance (§20 M5, adjusted to 1 edit/day): anonymous writes are refused, a broken
- * CAPTCHA stores nothing and consumes no slot, the 11th comment is 429 with `resetAt`, the
- * second edit is `EDIT_DAILY_LIMIT`, an injection fixture is quarantined and XSS fixtures
- * are stored as text.
+ * M5 acceptance (§20 M5, adjusted to 1 edit/day): anonymous writes are refused, the shipped
+ * gate (identity + rate limits, BOOK-64) needs no token, a challenge that a deployment chose
+ * to configure still stores nothing when it fails, the 11th comment is 429 with `resetAt`,
+ * the second edit is `EDIT_DAILY_LIMIT` with the budget's own line, an injection fixture is
+ * quarantined and XSS fixtures are stored as text.
  */
 
 let harness: Harness | null = null;
@@ -54,13 +55,28 @@ function gatedCaptcha(): { verifier: CaptchaVerifier; together: Promise<void>; r
   return { verifier, together, release: () => resolveGate() };
 }
 
-describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
+describe('POST /api/comments — identity, the write gate and rate limits', () => {
   it('refuses an anonymous post with 401 and stores nothing', async () => {
     const h = await boot();
     const response = await post(h, commentBody(), { origin: h.config.publicOrigin, 'content-type': 'application/json' });
     expect(response.statusCode).toBe(401);
     expect(response.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 0 });
+  });
+
+  it('accepts a signed-in submission with no token and no captcha field (BOOK-64)', async () => {
+    // The shipped gate: an authenticated identity plus the rate limits. The request carries
+    // no challenge field at all, and the verifier — kept for a future return — is not called.
+    const h = await boot();
+    expect(h.config.captchaProvider).toBe('none');
+    const payload = commentBody();
+    expect('captchaToken' in payload).toBe(false);
+
+    const response = await post(h, payload);
+    expect(response.statusCode).toBe(201);
+    expect(response.json().comment.body).toContain('слово');
+    expect(h.captcha.calls).toHaveLength(0);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 1 });
   });
 
   it('refuses a foreign origin and a non-JSON body before doing any work', async () => {
@@ -113,8 +129,8 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
     ).toBe('ORIGIN');
   });
 
-  it('returns CAPTCHA_FAILED and consumes no rate slot and no row', async () => {
-    const h = await boot({ captchaMode: 'fail' });
+  it('returns CAPTCHA_FAILED and consumes no rate slot and no row when a challenge is configured', async () => {
+    const h = await boot({ captchaProvider: 'turnstile', captchaMode: 'fail' });
     const before = rateCount(h.db);
     const response = await post(h, commentBody());
     expect(response.statusCode).toBe(403);
@@ -124,7 +140,7 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
   });
 
   it('closes the composer with CAPTCHA_UNAVAILABLE when the verifier is unreachable', async () => {
-    const h = await boot({ captchaMode: 'unavailable' });
+    const h = await boot({ captchaProvider: 'turnstile', captchaMode: 'unavailable' });
     const response = await post(h, commentBody());
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ code: 'CAPTCHA_UNAVAILABLE' });
@@ -174,6 +190,8 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
     );
     expect(second.statusCode).toBe(429);
     expect(second.json()).toMatchObject({ code: 'EDIT_DAILY_LIMIT' });
+    // The budget's own copy, not a generic rate line: the day is the product's instrument.
+    expect(second.json().message).toContain('одна правка в сутки');
     expect(typeof second.json().resetAt).toBe('string');
   });
 
@@ -193,7 +211,7 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
   });
 
   it('refuses when the change queue is at its soft cap, before any CAPTCHA work', async () => {
-    const h = await boot();
+    const h = await boot({ captchaProvider: 'turnstile' });
     for (let index = 0; index < h.config.queueSoftCap; index += 1) {
       h.db
         .prepare(
@@ -442,7 +460,7 @@ describe('GET /api/comments', () => {
     // Both requests pass the idempotency check, then meet at the CAPTCHA await: releasing
     // them together is the exact race the UNIQUE index on `idem_key` has to survive.
     const gated = gatedCaptcha();
-    const h = await boot({ captcha: gated.verifier });
+    const h = await boot({ captchaProvider: 'turnstile', captcha: gated.verifier });
 
     const body = commentBody({ idempotencyKey: 'race-key', body: 'Одна отправка, два запроса.' });
     const first = post(h, body);
@@ -460,7 +478,7 @@ describe('GET /api/comments', () => {
     // A retry that rebuilt its body passes the dedupe check and meets the UNIQUE index on
     // `idem_key` — the case that used to surface as an empty 500.
     const gated = gatedCaptcha();
-    const h = await boot({ captcha: gated.verifier });
+    const h = await boot({ captchaProvider: 'turnstile', captcha: gated.verifier });
 
     const key = 'race-key-different-text';
     const first = post(h, commentBody({ idempotencyKey: key, body: 'Первый вариант этой отправки.' }));

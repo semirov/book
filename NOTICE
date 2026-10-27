@@ -1,0 +1,11 @@
+Бланк — book.semirov.dev
+Copyright 2026 Филипп Семиров
+
+This product includes software developed by Филипп Семиров (https://book.semirov.dev).
+
+Redistributions of this software, in source or binary form, must retain this NOTICE file and the
+copyright notice that accompanies the Apache License 2.0 in LICENSE.
+
+The Apache License 2.0 in LICENSE covers the code in site/. The manuscript (manuscript/), the canon
+(concept/), the plan (outline/), the style guide (style/), the notes (notes/) and the process briefs
+(process/) are authored text: © 2026 Филипп Семиров, all rights reserved, not licensed under Apache-2.0.

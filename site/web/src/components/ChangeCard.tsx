@@ -56,7 +56,9 @@ export function ChangeCard({
   const reached = [...new Set(wings.map((step) => step.chapter as number))].sort((left, right) => left - right);
 
   return (
-    <section className="change-card" role="dialog" aria-modal="false" aria-label={changeHeading(change)}>
+    // BOOK-77 (audit F1): the intent is the reader's own sentence and `source.author` a reader's
+    // name — Webvisor records neither.
+    <section className="change-card ym-hide-content" role="dialog" aria-modal="false" aria-label={changeHeading(change)}>
       <header className="change-card-h">
         <span className="change-card-n">{changeHeading(change)}</span>
         <span className={`stamp stamp-${change.status}`}>{stampCopy(change)}</span>

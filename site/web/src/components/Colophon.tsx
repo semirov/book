@@ -39,7 +39,8 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
       </div>
       {analyticsConfigured ? (
         // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader
-        // to the undecided state, and the strip asks again.
+        // to the undecided state, and the strip asks again. BOOK-77 (F2): a live counter stops
+        // on the spot (cookies cleared, one reload), so the click is a real withdrawal.
         <div className="row">
           <span className="analytics-line">
             аналитика: {consent === 'granted' ? 'включена' : 'выключена'} ·{' '}

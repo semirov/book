@@ -68,8 +68,9 @@ present, pricing loaded. Counts, the lane holder and integrity live behind the a
 
 One image, two entries (`server/dist/index.js`, `server/dist/engine.js`), one SQLite file in WAL, one
 Caddy in front. The repository is mounted read-only; only the data volume is writable. Secrets are files:
-the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `CAPTCHA_SECRET_FILE`,
-`YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`) and the values live in `0600` files. In
+the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `YANDEX_CLIENT_ID_FILE`,
+`YANDEX_CLIENT_SECRET_FILE`, and `CAPTCHA_SECRET_FILE` only when a captcha provider is chosen) and
+the values live in `0600` files. In
 `NODE_ENV=production` a secret supplied as a plain environment value is refused at boot (invariant 30),
 with no opt-out; development and tests may still pass the plain variable, and a mounted file wins over it.
 
@@ -94,5 +95,5 @@ rather than the first request. `BOOK_ROOT` (default: the repository root), `DATA
 `WEB_DIST`, `PORT`/`HOST`, `LOG_LEVEL`, `BOOK_TZ`, `WATCH_POLL_MS`, `EMPTY_WRITE_GRACE_MS`,
 `MAX_WS`/`WS_PER_IP`, `TRUSTED_PROXIES`, `READ_PER_MINUTE`, `COMMENTS_PER_HOUR_IP`,
 `COMMENTS_PER_HOUR_IDENTITY`, `EDIT_SUBMISSIONS_PER_DAY`, `QUEUE_SOFT_CAP`, `BUDGET_*`; `.env.example`
-lists them with their defaults. `GET /privacy` and `/rules` name the one CAPTCHA and say how to read
-without it.
+lists them with their defaults. `GET /privacy` and `/rules` state what the site runs, what it stores
+and what the write gate is (BOOK-64: an authenticated identity plus the rate limits).

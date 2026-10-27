@@ -13,7 +13,8 @@ import { PREMISE_HINT } from '../lib/premise.ts';
  */
 export function PremiseRow({ row, onOpen }: { row: PremiseRowData; onOpen: (origin: HTMLElement) => void }) {
   return (
-    <div className="premise">
+    // BOOK-77 (audit F1): a filled slot shows the premise's own first line — a reader's words.
+    <div className="premise ym-hide-content">
       <button
         type="button"
         className="premise-row"

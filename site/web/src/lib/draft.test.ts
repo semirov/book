@@ -87,7 +87,7 @@ describe('a re-anchored draft (major 1)', () => {
   it('moves to the paragraph’s new position when the block was rewritten', () => {
     const moved = rekeyDraft(draft, { blockId: 'ch08#ee55ff66', sentence: 'Новый абзац.', baseRev: 5, blockIndex: 1 });
     expect(moved).toMatchObject({ blockId: 'ch08#ee55ff66', blockIndex: 1, baseRev: 5 });
-    expect(anchoredPayload(moved, { body: 'x', captchaToken: 't' })).toMatchObject({
+    expect(anchoredPayload(moved, { body: 'x' })).toMatchObject({
       blockId: 'ch08#ee55ff66',
       baseRev: 5,
       quote: 'Новый абзац.',
@@ -96,13 +96,13 @@ describe('a re-anchored draft (major 1)', () => {
 
   it('sends the fresh block and revision on the next attempt', () => {
     const moved = rekeyDraft(draft, { blockId: 'ch08#cc33dd44', sentence: 'Её освещал ровный свет.', baseRev: 4 });
-    const payload = anchoredPayload(moved, { body: 'свет не от лампы', captchaToken: 't' });
+    const payload = anchoredPayload(moved, { body: 'свет не от лампы' });
     expect(payload).toMatchObject({ blockId: 'ch08#cc33dd44', baseRev: 4, quote: 'Её освещал ровный свет.', chapter: 8 });
   });
 
   it('never invents an anchor for a premise', () => {
     const premise = { ...draft, blockId: null, baseRev: null, sentence: '' };
-    expect(anchoredPayload(premise, { body: 'замысел', captchaToken: 't' })).toMatchObject({
+    expect(anchoredPayload(premise, { body: 'замысел' })).toMatchObject({
       blockId: null,
       baseRev: null,
       quote: null,

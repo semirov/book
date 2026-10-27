@@ -107,7 +107,13 @@ export function setConsent(choice: ConsentChoice, now: Date = new Date()): void 
   emit();
 }
 
-/** «изменить» — back to the undecided state, so the banner (and the question) returns. */
+/**
+ * «изменить» — back to the undecided state, so the banner (and the question) returns.
+ *
+ * The notification is what stops a live counter: `analytics.ts` revokes on anything that is
+ * not a `granted` state — cookies, `ym` calls and one reload (BOOK-77, audit F2) — so this
+ * function cannot leave a tag recording behind a choice the reader took back.
+ */
 export function resetConsent(): void {
   cached = null;
   try {

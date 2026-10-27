@@ -39,7 +39,8 @@ export function Authors({
 }) {
   const contributors = authors?.contributors ?? [];
   return (
-    <section className="page authors" id="авторы" aria-label="авторы">
+    // BOOK-77 (audit F1): a reader's display name is in here, so Webvisor must not record it.
+    <section className="page authors ym-hide-content" id="авторы" aria-label="авторы">
       <h2 className="authors-title">Авторы</h2>
       <p className="authors-note">
         доля в окончательном тексте: знаки, чья последняя причина — правка читателя; автор — остальное
@@ -51,7 +52,7 @@ export function Authors({
           <span className="authors-share">{authors === null ? '—' : formatShare(authors.author.share)}</span>
         </li>
         {contributors.map((contributor) => (
-          <li className="authors-row" key={contributor.identityId}>
+          <li className="authors-row ym-disable-clickmap" key={contributor.identityId}>
             <span className="authors-name">{contributor.label}</span>
             <span className="authors-role">
               {contributor.edits > 0 ? `правок: ${contributor.edits}` : 'читатель'}
