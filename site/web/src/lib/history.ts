@@ -1,51 +1,14 @@
 /**
- * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2): grouping, filters, the
- * scrubber's scale and the read-only notice a past moment carries.
+ * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2, BOOK-DOC-50): grouping, the
+ * moment's dated readout and the read-only notice a past moment carries.
  *
  * Everything here is a function of the payloads the server sends — no clocks, no fetching —
  * so the chronicle's behaviour is testable without a browser.
  */
 
-import type { BookAtDto, CatalogEntry, HistoryEventDto, HistoryKind } from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryEventDto } from '@book/shared';
 
-import { formatTime } from './format.ts';
-
-export type HistoryFilter = 'all' | 'changes' | 'drafts' | 'front' | 'overwrites';
-
-export const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
-  { id: 'all', label: 'всё' },
-  { id: 'changes', label: 'правки' },
-  { id: 'drafts', label: 'черновики' },
-  { id: 'front', label: 'первая страница' },
-  { id: 'overwrites', label: 'перезаписи' },
-];
-
-const KINDS: Record<Exclude<HistoryFilter, 'all'>, HistoryKind[]> = {
-  changes: [
-    'change.queued',
-    'change.processing',
-    'change.stale',
-    'change.decided',
-    'cascade.opened',
-    'cascade.closed',
-    'step.opened',
-    'step.landed',
-    'step.closed',
-    'gate.recorded',
-    'document.status',
-    'operator.release',
-    'operator.hide',
-  ],
-  drafts: ['chapter.created', 'chapter.restored', 'operator.restore'],
-  front: ['front.revised'],
-  overwrites: ['overwrite'],
-};
-
-export function filterEvents(items: HistoryEventDto[], filter: HistoryFilter): HistoryEventDto[] {
-  if (filter === 'all') return items;
-  const kinds = new Set<HistoryKind>(KINDS[filter]);
-  return items.filter((event) => kinds.has(event.kind));
-}
+import { MIDDOT, NBSP, formatDate, formatTime } from './format.ts';
 
 /** «25 октября» in the site's timezone. */
 const DAY = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
@@ -55,13 +18,35 @@ export function dayLabel(iso: string): string {
   return Number.isNaN(date.getTime()) ? '—' : DAY.format(date);
 }
 
+/**
+ * The calendar day `dayLabel` prints for the same instant, as `YYYY-MM-DD`.
+ *
+ * The group key and the heading must name the same day: keying on the UTC slice split one
+ * Moscow evening (≥ 21:00 UTC) into two headings with identical text — in the list that is
+ * now the axis, two «26 октября» in a row.
+ */
+const DAY_KEY = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  timeZone: 'Europe/Moscow',
+});
+
+function dayKey(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const parts = DAY_KEY.formatToParts(date);
+  const pick = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
+  return `${pick('year')}-${pick('month')}-${pick('day')}`;
+}
+
 export type DayGroup = { day: string; label: string; items: HistoryEventDto[] };
 
 /** Newest first in, newest first out, one group per calendar day. */
 export function groupByDay(items: HistoryEventDto[]): DayGroup[] {
   const groups: DayGroup[] = [];
   for (const event of items) {
-    const day = event.at.slice(0, 10);
+    const day = dayKey(event.at);
     const last = groups.at(-1);
     if (last !== undefined && last.day === day) {
       last.items.push(event);
@@ -108,21 +93,68 @@ export function compareToNow(past: BookAtDto, catalog: CatalogEntry[], frontRev:
 }
 
 /**
- * A tick per event on the scrubber's 0..100 scale. The right edge is the book's clock, so
- * an empty log produces no ticks and a single event sits at the right edge.
+ * A moment printed as a date and a time: `25.10.2026 · 12:00` (BOOK-DOC-50 §1). A bare
+ * `HH:MM` is what made the old scrubber unreadable, so nothing on the control prints one.
  */
-export function scrubTicks(items: HistoryEventDto[], lastHseq: number): number[] {
-  if (lastHseq <= 0) return [];
-  return items.map((event) => Math.min(100, Math.max(0, Math.round((event.hseq / lastHseq) * 100))));
+export type MomentParts = {
+  /** `25.10.2026` — never broken: a date, a year and a time are each whole (§3). */
+  date: string;
+  /** ` · 12:00` — the middot carries its own NBSP, so the two parts need no gap. */
+  clock: string;
+};
+
+/** The one source of the moment's string, split where it may wrap and only there. */
+export function momentParts(iso: string | null | undefined): MomentParts {
+  return { date: formatDate(iso), clock: `${MIDDOT}${formatTime(iso)}` };
 }
 
-/** The scrubber's value is an hseq; the label says a moment, or «сейчас». */
-export function scrubLabel(value: number, lastHseq: number, at: string | null): string {
-  if (lastHseq > 0 && value >= lastHseq) return 'сейчас';
-  return at === null ? 'начало книги' : formatTime(at);
+export function momentText(iso: string | null | undefined): string {
+  const { date, clock } = momentParts(iso);
+  return `${date}${clock}`;
 }
 
-/** The moment one step to the left/right of a tick list (a scrubber that can be stepped). */
+export type MomentLabel = {
+  /** The readout: `25.10.2026 · 12:00`, `до 21.10.2026 · 09:12`, or '' with no records. */
+  text: string;
+  /** The thumb sits at the right edge, so the label is the newest record. */
+  isNow: boolean;
+  /** The record under the thumb, counted chronologically over the loaded rows: oldest = 1. */
+  position: number;
+};
+
+/**
+ * What the thumb points at, answered from the loaded page alone (BOOK-DOC-50 §2, §6) — the
+ * readout is a log fact, never the answer of a request, so it survives a load and a failure.
+ *
+ * `items` is newest first. Before the oldest loaded record the readout says `до …` **only**
+ * when an older page exists (`more`); without one it clamps to the oldest record it has and
+ * claims nothing it cannot show.
+ */
+export function momentLabel(
+  items: HistoryEventDto[],
+  value: number,
+  lastHseq: number,
+  more: boolean,
+): MomentLabel {
+  const newest = items[0];
+  if (newest === undefined) return { text: '', isNow: false, position: 0 };
+  if (lastHseq > 0 && value >= lastHseq) {
+    return { text: momentText(newest.at), isNow: true, position: items.length };
+  }
+  const index = items.findIndex((event) => event.hseq <= value);
+  if (index === -1) {
+    // Past the oldest loaded record: say «до …» only when the log has an older page.
+    const oldest = items[items.length - 1]!;
+    return {
+      text: more ? `до${NBSP}${momentText(oldest.at)}` : momentText(oldest.at),
+      isNow: false,
+      position: 1,
+    };
+  }
+  return { text: momentText(items[index]!.at), isNow: false, position: items.length - index };
+}
+
+/** The record one step to the left/right of the thumb (a control that can be stepped). */
 export function stepMoment(items: HistoryEventDto[], value: number, direction: -1 | 1): number {
   const hseqs = items.map((event) => event.hseq).sort((left, right) => left - right);
   if (hseqs.length === 0) return value;

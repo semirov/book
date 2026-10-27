@@ -270,7 +270,7 @@ describe('the thread’s two-line status', () => {
   };
 
   it('renders both lines and the trace, and reaches the прицел in one tap', () => {
-    const html = renderToStaticMarkup(<Discussion depth={3} changes={[summary]} />);
+    const html = renderToStaticMarkup(<Discussion depth={3} changes={[summary]} live />);
     expect(html).toContain('принято');
     expect(html).toContain('внесено');
     expect(html).toContain('дошло до глав 7 и 9');
@@ -298,13 +298,13 @@ describe('the thread’s two-line status', () => {
       changeId: 'chg_1',
       applied: { chapter: 8, rev: 4 },
     };
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} live />);
     expect(html).toContain('href="#правка-chg_1"');
     expect(html).toContain('прицел →');
   });
 
   it('keeps the empty thread quiet', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} live />);
     // BOOK-DOC-34: the register carries no form, so it promises nothing about notes opening.
     // BOOK-59: the «Глав ещё нет» line is gone — it named a «замечание» where the product says
     // «замысел», and the empty slot already carries that word (premise.ts).
@@ -340,7 +340,7 @@ describe('CascadeRibbon', () => {
           { key: 'chg_1:9', boundary: 9, reason: 'budget', note: 'ключ теперь у другого', changeId: 'chg_1' },
         ]}
         onOpenChange={() => undefined}
-      />,
+      live />,
     );
     expect(html).toContain('aria-label="правка: глава 8 · вниз до главы 7 · вверх до главы 9"');
     expect(html).toContain('ribbon-origin');
@@ -373,7 +373,7 @@ describe('CascadeRibbon', () => {
         }}
         markers={[]}
         onOpenChange={() => undefined}
-      />,
+      live />,
     );
     expect(quiet).not.toContain('ribbon-ring');
     // BOOK-70: an empty wing renders no reached element at all — no placeholder span, no «—».
@@ -388,7 +388,7 @@ describe('CascadeRibbon', () => {
         ribbon={null}
         markers={[{ key: 'chg_1:7', boundary: 7, reason: 'budget', note: null, changeId: null }]}
         onOpenChange={() => undefined}
-      />,
+      live />,
     );
     expect(html).toContain('ribbon-seam');
     expect(html).toContain('6 | 7');
@@ -397,7 +397,7 @@ describe('CascadeRibbon', () => {
   });
 
   it('draws nothing when there is neither a ripple nor a seam', () => {
-    expect(renderToStaticMarkup(<CascadeRibbon ribbon={null} markers={[]} onOpenChange={() => undefined} />)).toBe('');
+    expect(renderToStaticMarkup(<CascadeRibbon ribbon={null} markers={[]} onOpenChange={() => undefined} live />)).toBe('');
   });
 });
 

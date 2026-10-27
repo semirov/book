@@ -158,7 +158,7 @@ describe('the chapter wait under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 7 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 7 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -207,7 +207,7 @@ describe('the chapter wait under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 7 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 7 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
     await act(async () => {
       vi.advanceTimersByTime(150);
@@ -235,7 +235,7 @@ describe('the chapter wait under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 67, written: false, basis: true, chars: 0, blocks: 1 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 67, written: false, basis: true, chars: 0, blocks: 1 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
     await act(async () => {
       vi.advanceTimersByTime(2_500);
@@ -260,7 +260,7 @@ describe('the chapter skeleton under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={ENTRY} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={ENTRY} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
 
     const placeholder = container.querySelector<HTMLElement>('.ch-placeholder');
@@ -282,7 +282,7 @@ describe('the chapter skeleton under a browser', () => {
 
     const viewport = window.innerWidth || 390;
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, chars: 49 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, chars: 49 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
 
     const prose = viewport < 600 ? 17 : viewport < 1024 ? 17.5 : 18;
@@ -328,7 +328,7 @@ describe('the chapter skeleton under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, chars: 40 }} revision={null} revising={null} caret={null} fresh composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, chars: 40 }} revision={null} revising={null} caret={null} fresh composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
     // The load is a promise: let it settle, then read the header.
     await flush();
@@ -347,7 +347,7 @@ describe('the chapter skeleton under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, written: false }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, written: false }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
 
     expect(container.querySelector('.ch-placeholder')).toBeNull();

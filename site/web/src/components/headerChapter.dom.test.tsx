@@ -83,6 +83,7 @@ const STATE: StateSnapshot = {
   current: null,
   unresolved: [],
   activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
+  history: { live: false, readerChanges: 0 },
 };
 
 let root: Root | null = null;
@@ -106,7 +107,7 @@ async function mount(): Promise<void> {
   await act(async () => {
     root?.render(
       <>
-        <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
+        <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live />
         <article className="ch" data-n={1} id="ch-1">
           <h3 className="ch-title">Комната на восьмом</h3>
         </article>
@@ -172,7 +173,7 @@ describe('the running head', () => {
     await act(async () => {
       root?.render(
         <>
-          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
+          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live />
           <Removable />
         </>,
       );
@@ -281,7 +282,7 @@ describe('the running head', () => {
     function Titled(): ReactElement {
       return (
         <>
-          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />
+          <Header state={STATE} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live />
           <article className="ch" data-n={30} id="ch-30">
             <h3 className="ch-title">Очень длинное название главы, которое не помещается</h3>
             <div className="premise">

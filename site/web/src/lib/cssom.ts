@@ -13,7 +13,7 @@
 
 /** A node whose inline style CSSOM exposes; the DOM's `HTMLElement` fits as it is. */
 type StyledNode = { style: { minHeight: string } };
-type PlacedNode = { style: { left: string } };
+type FillNode = { style: { width: string } };
 type PanelNode = { style: { top: string; left: string; width: string; maxHeight: string } };
 
 /** The measured box of the anchored paragraph-chain panel. */
@@ -25,13 +25,14 @@ export function reserveHeight(element: StyledNode | null, pixels: number): void 
   element.style.minHeight = `${pixels}px`;
 }
 
-/** Place the scrubber's ticks on its 0..100 track; one child per position, in order. */
-export function placeTicks(elements: ArrayLike<PlacedNode>, positions: readonly number[]): void {
-  positions.forEach((position, index) => {
-    const element = elements[index];
-    if (element === undefined) return;
-    element.style.left = `${position}%`;
-  });
+/**
+ * Fill the moment rail up to the thumb (BOOK-DOC-50 §4): the traversed part of the track is
+ * `percent` of its width. Clamped to the track, so a stale value can never paint past an end.
+ */
+export function placeFill(element: FillNode | null, percent: number): void {
+  if (element === null) return;
+  const bounded = Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
+  element.style.width = `${bounded}%`;
 }
 
 /** Place (or, with `null`, unplace) the anchored panel from its measured box. */

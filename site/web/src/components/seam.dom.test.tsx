@@ -83,6 +83,7 @@ type ParagraphProps = {
   text?: string;
   frozen?: boolean;
   comments?: readonly CommentDto[];
+  history?: boolean;
 };
 
 /** The paragraph is the unit that renders the strip, so a fixed entry drives the freeze. */
@@ -108,6 +109,7 @@ async function mountParagraph(props: ParagraphProps = {}): Promise<void> {
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
         onPosted={() => undefined}
+        history={props.history ?? true}
       />,
     );
   });
@@ -155,7 +157,7 @@ describe('a written ch01 is frozen by identity (blocker 1)', () => {
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: true, displayName: 'Филипп' }}
             onPosted={() => undefined}
-          />,
+          history />,
         );
       });
     };
@@ -229,5 +231,48 @@ describe('a sentence longer than the anchor bound keeps its mark (major 9)', () 
     });
     expect(document.querySelector('.filing-panel')).not.toBeNull();
     expect(document.querySelector('.filing-panel')?.textContent).toContain('замечание');
+  });
+});
+
+/**
+ * BOOK-56 — the provenance panel with history off.
+ *
+ * The panel keeps the word, its place and «вмешаться»; the chain rows and the DNA rows are
+ * the log's answers, so the component must not ask the log for them at all. A fetch that is
+ * not made is proven by the stub, not by the markup.
+ */
+describe('the provenance door asks nothing while history is off (BOOK-56)', () => {
+  function stubFetch(): ReturnType<typeof vi.fn> {
+    const fetchStub = vi.fn(async () => new Response('{}', { status: 404 }));
+    vi.stubGlobal('fetch', fetchStub);
+    return fetchStub;
+  }
+
+  it('opens the record without a history fetch', async () => {
+    const fetchStub = stubFetch();
+    await mountParagraph({ entry: { ...ENTRY, n: 8, basis: false }, blockId: 'ch08#aa11bb22', history: false });
+    const button = document.querySelector<HTMLElement>('.seam-prov');
+    expect(button).not.toBeNull();
+    await act(async () => {
+      button?.click();
+      // The handler is async: flush it inside act, so its state update is not a warning.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(document.querySelector('.prov-panel')).not.toBeNull();
+    expect(document.querySelector('.prov-panel')?.textContent).toContain('откуда это слово');
+    expect(document.querySelector('.prov-panel')?.textContent).toContain('вмешаться здесь');
+    expect(document.querySelector('.prov-chain')).toBeNull();
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it('asks the log once when history is on', async () => {
+    const fetchStub = stubFetch();
+    await mountParagraph({ entry: { ...ENTRY, n: 8, basis: false }, blockId: 'ch08#aa11bb22', history: true });
+    await act(async () => {
+      document.querySelector<HTMLElement>('.seam-prov')?.click();
+      // The handler is async: flush the fetch inside act too.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(fetchStub.mock.calls.map(([url]) => String(url))).toContain('/api/history/paragraphs/ch08%23aa11bb22');
   });
 });

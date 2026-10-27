@@ -333,6 +333,9 @@ describe('the panel’s lines', () => {
     // A bound above one is not shipped; if a frame announced it, the number is not a decision.
     expect(waveCopy(2, 4)).toBe('волна 2');
     expect(assessmentCopy(change, null, 4)).toBe('волна 2 · этап: готово');
+    // BOOK-56: with history off the stage is still a fact, the wave is not.
+    expect(assessmentCopy(change, null, 1, false)).toBe('этап: готово');
+    expect(assessmentCopy(change, null, 1, false)).not.toContain('волна');
   });
 
   it('states the basis and the touched chapters as facts', () => {

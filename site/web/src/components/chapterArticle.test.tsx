@@ -24,7 +24,7 @@ function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
 
 function render(row: CatalogEntry): string {
   return renderToStaticMarkup(
-    <ChapterArticle entry={row} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} />,
+    <ChapterArticle entry={row} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />,
   );
 }
 

@@ -8,6 +8,21 @@
 
 import type { BlockDto } from './types.ts';
 
+/**
+ * BOOK-56 — the one fact that decides whether the book has a past to show.
+ *
+ * It is derived on the server from `changes.source_comment IS NOT NULL`: a change exists
+ * because a reader filed it. A machine revision (`source_comment IS NULL`) is not a
+ * reader's history, and the first reader change turns every history surface on with no
+ * code change and no deploy. The DTO is additive; `PROTOCOL_VERSION` stays valid.
+ */
+export type HistoryStateDto = {
+  /** True once the log holds at least one change caused by a reader's filing. */
+  live: boolean;
+  /** The count it was derived from; public, and never a per-reader number. */
+  readerChanges: number;
+};
+
 export type HistoryKind =
   | 'chapter.created'
   | 'chapter.revised'

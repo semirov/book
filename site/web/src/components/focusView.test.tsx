@@ -156,7 +156,7 @@ function currentChapter(html: string): number | null {
 describe('the focus view', () => {
   it('shows the intent, the footnote, the cost and the actions', () => {
     const html = renderToStaticMarkup(
-      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />,
     );
     expect(html).toContain('прицел');
     expect(html).toContain('правка 014');
@@ -177,7 +177,7 @@ describe('the focus view', () => {
   it('prints no denominator, and calls a second wave a decision only when the bound is one', () => {
     // The server announces its own bound (BOOK-DOC-4 rule 3): the shipped one is a single wave.
     const shipped = renderToStaticMarkup(
-      <FocusView change={change} impact={impact} missing={false} ribbon={null} maxWave={1} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} maxWave={1} revisions={{}} onClose={() => undefined} live />,
     );
     expect(shipped).toContain('волна 2 · решением · этап: готово');
     expect(shipped).not.toContain('/ 1');
@@ -191,7 +191,7 @@ describe('the focus view', () => {
         maxWave={4}
         revisions={{}}
         onClose={() => undefined}
-      />,
+      live />,
     );
     expect(fromFrame).toContain('волна 2 · этап: готово');
     expect(fromFrame).not.toContain('решением');
@@ -199,21 +199,21 @@ describe('the focus view', () => {
     expect(fromFrame).not.toContain('из 3');
     // Before `hello` lands the fallback is the shipped default, not a broken readout.
     const noFrame = renderToStaticMarkup(
-      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />,
     );
     expect(noFrame).toContain('волна 2 · решением');
   });
 
   it('never renders a gate field, a finding or a hidden role', () => {
     const html = renderToStaticMarkup(
-      <FocusView change={change} impact={impact} missing={false} ribbon={ribbon(7)} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={impact} missing={false} ribbon={ribbon(7)} revisions={{}} onClose={() => undefined} live />,
     ).toLowerCase();
     for (const word of GATE_WORDS) expect(html).not.toContain(word.toLowerCase());
   });
 
   it('carries no inline style: the panel is classes and data attributes only (CSP)', () => {
     const html = renderToStaticMarkup(
-      <FocusView change={change} impact={impact} missing={false} ribbon={ribbon(9)} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={impact} missing={false} ribbon={ribbon(9)} revisions={{}} onClose={() => undefined} live />,
     );
     expect(html).not.toContain('style=');
   });
@@ -229,10 +229,10 @@ describe('the focus view', () => {
   it('moves the ring and the lit sheet from 7 to 9 as the ripple moves', () => {
     const live: ChangeDto = { ...change, status: 'processing', decidedAt: null, steps: [change.steps[0]!] };
     const at7 = renderToStaticMarkup(
-      <FocusView change={live} impact={impact} missing={false} ribbon={ribbon(7)} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={live} impact={impact} missing={false} ribbon={ribbon(7)} revisions={{}} onClose={() => undefined} live />,
     );
     const at9 = renderToStaticMarkup(
-      <FocusView change={live} impact={impact} missing={false} ribbon={ribbon(9)} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={live} impact={impact} missing={false} ribbon={ribbon(9)} revisions={{}} onClose={() => undefined} live />,
     );
     expect(at7).toContain('data-chapter="7"');
     expect(at7).toContain('глава 07');
@@ -250,7 +250,7 @@ describe('the focus view', () => {
 
   it('prints nothing for a wing that reached nothing — no dash, no empty span (BOOK-70)', () => {
     const empty = { frontier: 8, wave: 0, state: 'waiting' as const, reached: [] };
-    const html = renderToStaticMarkup(<FocusWings wings={{ down: empty, up: empty }} />);
+    const html = renderToStaticMarkup(<FocusWings wings={{ down: empty, up: empty }} live />);
     expect(html).not.toContain('focus-wing-r');
     expect(html).not.toContain('—');
     // The state word still says it, once, in the wing's own line.
@@ -269,7 +269,7 @@ describe('the focus view', () => {
       cost: null,
     };
     const html = renderToStaticMarkup(
-      <FocusView change={dropped} impact={null} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={dropped} impact={null} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />,
     );
     expect(html).toContain('снято');
     expect(html).toContain('в главе уже одно упоминание — второе убрано');
@@ -294,7 +294,7 @@ describe('the focus view', () => {
       },
     };
     const html = renderToStaticMarkup(
-      <FocusView change={stale} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={stale} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />,
     );
     expect(html).toContain('основа изменилась');
     expect(html).toContain('основа изменилась частично');
@@ -304,9 +304,32 @@ describe('the focus view', () => {
 
   it('keeps an old link honest instead of inventing a change', () => {
     const html = renderToStaticMarkup(
-      <FocusView change={null} impact={null} missing ribbon={null} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={null} impact={null} missing ribbon={null} revisions={{}} onClose={() => undefined} live />,
     );
     expect(html).toContain('правка не найдена');
     expect(html).toContain('выйти');
+  });
+
+  it('drops the footnote and the step clock while history is off (BOOK-56)', () => {
+    const off = renderToStaticMarkup(
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live={false} />,
+    );
+    // The sheet still shows the change and where it lands …
+    expect(off).toContain('правка 014');
+    expect(off).toContain('изменённые абзацы');
+    // … and nothing of the book's past: no «сноска N», no stamp, no deed rows, no step clock.
+    expect(off).not.toContain('сноска');
+    expect(off).not.toContain('class="focus-note"');
+    expect(off).not.toContain('class="focus-stamp"');
+    expect(off).not.toContain('<dt>дело</dt>');
+    expect(off).not.toMatch(/изменённые абзацы · \d/u);
+    expect(off).not.toContain('class="focus-wings"');
+    expect(off).not.toContain('class="focus-track');
+
+    const on = renderToStaticMarkup(
+      <FocusView change={change} impact={impact} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />,
+    );
+    expect(on).toContain('сноска 014');
+    expect(on).toMatch(/изменённые абзацы · \d\d:\d\d/u);
   });
 });

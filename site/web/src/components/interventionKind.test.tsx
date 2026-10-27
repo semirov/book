@@ -105,7 +105,7 @@ describe('the composer’s kinds (BOOK-16)', () => {
 
 describe('the kind in the thread and on the change card (BOOK-16)', () => {
   it('prints the kind beside the decision, as one plain word', () => {
-    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} />);
+    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} live />);
     // The kind sits in front of the decision, one word, inside the same line.
     // BOOK-90: the state is the word «идёт»; the queue fact is the detail.
     expect(html).toContain('<span class="comment-kind">свидетельство · </span>идёт');
@@ -114,7 +114,7 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
 
   it('prints nothing for a note or a row stored before BOOK-16', () => {
     const html = renderToStaticMarkup(
-      <Discussion depth={2} comments={[comment({ interventionKind: null, proposedText: null })]} />,
+      <Discussion depth={2} comments={[comment({ interventionKind: null, proposedText: null })]} live />,
     );
     expect(html).toContain('замечание в очереди · входит в книгу');
     expect(html).not.toContain('свидетельство');
@@ -128,7 +128,7 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
   });
 
   it('keeps the id out of the thread too', () => {
-    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} />);
+    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} live />);
     for (const id of IDS) expect(html, id).not.toContain(id);
     for (const word of TAXONOMY) expect(html, word).not.toContain(word);
   });

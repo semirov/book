@@ -30,6 +30,7 @@ export function Discussion({
   busy,
   changes = [],
   comments = [],
+  live,
 }: {
   depth: number;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the two feeds' settle. */
@@ -43,7 +44,10 @@ export function Discussion({
   busy?: boolean;
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
+  /** BOOK-56: `state.history.live`; with no reader change the register is not on the page. */
+  live: boolean;
 }) {
+  if (!live) return null;
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
   const status = statusLine('register', stage);
   const pending = busy ?? stage !== 'quiet';

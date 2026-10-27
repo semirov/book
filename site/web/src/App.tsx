@@ -17,7 +17,7 @@ import type {
 } from '@book/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getChapters, getFront, getQueue, getState } from './api.ts';
+import { getChapters, getFront, getState } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
@@ -34,6 +34,7 @@ import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
+import { historyLive } from './lib/historyState.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -57,6 +58,7 @@ import { usePending } from './usePending.ts';
 import { useFocusMode } from './useFocus.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
+import { useQueuePoll } from './useQueuePoll.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
@@ -147,21 +149,7 @@ export function App() {
   }, [refreshAll, loadThread]);
 
   // `/api/queue` is polled only while the engine is alive (§9); the socket carries the rest.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      const status = dataRef.current?.state.engine.status;
-      if (status === 'down' || status === 'absent' || status === 'unknown') return;
-      void getQueue()
-        .then((queue) =>
-          setData((current) =>
-            current === null ? current : { ...current, state: { ...current.state, queue } },
-          ),
-        )
-        .catch(() => undefined);
-    }, 10_000);
-    return () => window.clearInterval(timer);
-  }, []);
+  useQueuePoll(dataRef, setData);
 
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
@@ -380,6 +368,8 @@ export function App() {
   }
 
   const { state, catalog, front } = data;
+  /** BOOK-56: the one fact every history surface reads. */
+  const history = historyLive(state);
   const markers = spineMarkers(state);
   const currentChapter = state.current !== null && state.current.chapter !== 'front' ? state.current.chapter : null;
 
@@ -399,7 +389,7 @@ export function App() {
     noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
   };
 
-  const views = <ViewSwitch view={view} onChange={setView} />;
+  const views = <ViewSwitch view={view} onChange={setView} live={history} />;
   const focusView =
     focus.id === null ? null : (
       <FocusView
@@ -410,10 +400,11 @@ export function App() {
         maxWave={maxWave ?? undefined}
         revisions={revisions}
         onClose={focus.close}
+        live={history}
       />
     );
 
-  if (view === 'chronicle') {
+  if (view === 'chronicle' && history) {
     return (
       <>
         {views}
@@ -424,12 +415,13 @@ export function App() {
           tick={historyTick}
           changes={changes}
           onOpenChange={card.open}
+          live={history}
         />
         {card.change === null ? null : (
           <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
         )}
         {chainActive ? (
-          <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} />
+          <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
         ) : null}
         {focusView}
       </>
@@ -448,6 +440,7 @@ export function App() {
         view={view}
         onViewChange={setView}
         motion={titleMotion}
+        live={history}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
@@ -463,6 +456,7 @@ export function App() {
         onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
         composer={composer}
         viewer={viewer}
+        history={history}
       />
       {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
       <EndMatter
@@ -472,14 +466,15 @@ export function App() {
         decisions={decisions}
         onAuthorsCount={applyAuthorsCount}
         onOpenChronicle={() => setView('chronicle')}
+        live={history}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
       <Colophon state={state} imprint={front.imprint} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
       )}
       {chainActive ? (
-        <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} />
+        <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
       ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       {focusView}

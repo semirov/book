@@ -93,6 +93,7 @@ async function render(): Promise<void> {
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
         onPosted={() => undefined}
+        history
       />,
     );
   });

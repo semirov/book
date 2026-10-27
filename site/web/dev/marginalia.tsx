@@ -234,6 +234,7 @@ function EmptySlot({ n, firstEmpty }: { n: number; firstEmpty?: boolean }): Reac
       caret={null}
       fresh={false}
       firstEmpty={firstEmpty === true}
+      history
       composer={EMPTY_COMPOSER}
       viewer={VIEWER}
       onPosted={() => undefined}
@@ -250,6 +251,7 @@ function App(): ReactElement {
         catalog={[CH1, CH2, emptyEntry(3), emptyEntry(4), CH5, entry(22), entry(23), entry(24), entry(25), emptyEntry(21)]}
         markers={[]}
         onOpenChange={() => undefined}
+        live
       />
       {/* The cover: before the first chapter the head names no chapter (BOOK-90 B.2). */}
       <div className="cover-space" aria-hidden="true" />

@@ -18,6 +18,7 @@ import { MarginNote } from './MarginNote.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { MIDDOT } from '../lib/format.ts';
 import { RevisionObject } from './RevisionObject.tsx';
 import type { ProvenanceView } from '../lib/provenance.ts';
 
@@ -179,7 +180,7 @@ const CHAIN: ParagraphChainDto = {
 describe('the reader’s name and words are masked from Webvisor', () => {
   it('masks the authors list, including the reader’s own trace in it', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} onOpenChronicle={() => undefined} ownTrace={OWN_TRACE} />,
+      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} onOpenChronicle={() => undefined} ownTrace={OWN_TRACE} live />,
     );
     expectMasked(html, SENTINEL.name, '.authors');
     // Two rows carry the same name (the list and «ваш след»): both are under the mask.
@@ -225,7 +226,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
 
   it('masks the chronicle and every timeline row, aria-label included', () => {
     const section = renderToStaticMarkup(
-      <Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} />,
+      <Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />,
     );
     expect(section).toContain('chronicle');
     expect(section).toContain('ym-hide-content');
@@ -233,14 +234,22 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     const row = renderToStaticMarkup(
       <TimelineRow event={EVENT} deed={null} onPick={() => undefined} onOpenChange={() => undefined} />,
     );
-    // The visible summary and the button's aria-label carry the same reader-derived line.
+    // The visible summary and the button's aria-label carry the same reader-derived line;
+    // BOOK-DOC-50 dates the label, so the sentence opens with the record's own moment.
     expectMasked(row, SENTINEL.summary, '.chr-row');
-    expect(row).toContain(`aria-label="${SENTINEL.summary} — книга на этот момент"`);
+    expect(row).toContain(`aria-label="25.10.2026${MIDDOT}15:05, ${SENTINEL.summary} — книга на этот момент"`);
   });
 
   it('masks the paragraph chain, which names the reader who wrote each version', () => {
     const html = renderToStaticMarkup(
-      <ParagraphChain chain={CHAIN} loading={false} failed={false} onClose={() => undefined} onRetry={() => undefined} />,
+      <ParagraphChain
+        chain={CHAIN}
+        loading={false}
+        failed={false}
+        onClose={() => undefined}
+        onRetry={() => undefined}
+        live
+      />,
     );
     expectMasked(html, SENTINEL.name, '.chain');
     expectMasked(html, `правкой 7 (${SENTINEL.name})`, '.chain');

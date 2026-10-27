@@ -28,12 +28,15 @@ export function Header({
   catalog,
   markers: escalation,
   onOpenChange,
+  live,
 }: {
   state: StateSnapshot;
   ribbon: Ribbon | null;
   catalog: readonly CatalogEntry[];
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
+  /** BOOK-56: the ribbon is history; off means it is not on the page at all. */
+  live: boolean;
 }) {
   // BOOK-90 B: the chapter the reader is in — number, then the title or the slot's own word.
   const chapter = useCurrentChapter();
@@ -93,7 +96,7 @@ export function Header({
           </span>
         </div>
       </div>
-      <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} />
+      <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} live={live} />
     </header>
   );
 }

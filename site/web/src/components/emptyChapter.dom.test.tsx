@@ -75,6 +75,7 @@ describe('the premise strip in an empty chapter', () => {
           caret={null}
           fresh={false}
           firstEmpty
+          history
           composer={EMPTY_COMPOSER}
           viewer={{ signedIn: false, displayName: null }}
         />,
@@ -120,6 +121,7 @@ describe('the premise strip in an empty chapter', () => {
             caret={null}
             fresh={false}
             firstEmpty
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: false, displayName: null }}
           />
@@ -129,6 +131,7 @@ describe('the premise strip in an empty chapter', () => {
             revising={null}
             caret={null}
             fresh={false}
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: false, displayName: null }}
           />
@@ -156,6 +159,7 @@ describe('the premise strip in an empty chapter', () => {
             caret={null}
             fresh={false}
             firstEmpty
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: false, displayName: null }}
           />
@@ -165,6 +169,7 @@ describe('the premise strip in an empty chapter', () => {
             revising={null}
             caret={null}
             fresh={false}
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: false, displayName: null }}
           />
@@ -188,6 +193,7 @@ describe('the premise strip in an empty chapter', () => {
           revising={null}
           caret={null}
           fresh={false}
+          history
           composer={EMPTY_COMPOSER}
           viewer={{ signedIn: false, displayName: null }}
         />,
@@ -210,6 +216,7 @@ describe('the premise strip in an empty chapter', () => {
           revising={null}
           caret={null}
           fresh={false}
+          history
           composer={EMPTY_COMPOSER}
           viewer={{ signedIn: false, displayName: null }}
         />,
@@ -226,6 +233,7 @@ describe('the premise strip in an empty chapter', () => {
           revising={null}
           caret={null}
           fresh={false}
+          history
           composer={EMPTY_COMPOSER}
           viewer={{ signedIn: false, displayName: null }}
         />,
@@ -246,6 +254,7 @@ describe('the premise strip in an empty chapter', () => {
           revising={null}
           caret={null}
           fresh={false}
+          history
           composer={EMPTY_COMPOSER}
           viewer={{ signedIn: false, displayName: null }}
         />,

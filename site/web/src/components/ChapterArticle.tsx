@@ -69,6 +69,8 @@ export type ChapterArticleProps = {
   onPosted?: (chapter: number) => void;
   composer: ComposerInfo;
   viewer: ViewerDto;
+  /** BOOK-56: `state.history.live` — off drops the chain door and the DNA rows, not the text. */
+  history: boolean;
   /** The first empty chapter in the flow carries the page's one explanation sentence. */
   firstEmpty?: boolean;
 };
@@ -85,6 +87,7 @@ export function ChapterArticle({
   onPosted,
   composer,
   viewer,
+  history,
   firstEmpty = false,
 }: ChapterArticleProps) {
   const seam = useOpenSeam();
@@ -108,14 +111,12 @@ export function ChapterArticle({
   const showsText = entry.written || entry.basis;
   const basisSentence = basisSentenceOf(entry);
   /**
-   * BOOK-DOC-43 §4 — the wait is real from the fetch until it settles, data or failure.
-   * Derived from state, not from the `loading` ref: a settle has to re-render this slot.
-   * A basis slot is complete before the request (its frame is one shared constant), so it
-   * waits silently: no status line and no busy claim for text that is already on screen.
+   * BOOK-DOC-43 §4 — the wait is real from the fetch until it settles, data or failure, and
+   * derived from state (a settle re-renders). A basis slot is complete before the request, so
+   * it waits silently: no status and no busy claim for text already on screen.
    */
   const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
   const stage = usePending(busy);
-
   const startReveal = useCallback((loaded: ChapterDto) => {
     const reduce = reducedMotion();
     const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : Date.now() - Date.parse(loaded.writtenAt);
@@ -372,6 +373,7 @@ export function ChapterArticle({
                   viewer={viewer}
                   onPosted={(n) => onPosted?.(n)}
                   onBlockProvenance={onProvenance}
+                  history={history}
                   onReanchor={(draft) => {
                     setReanchor({ draft, blockGone: false });
                     void load();
@@ -404,6 +406,7 @@ export function ChapterArticle({
           composer={composer}
           viewer={viewer}
           onPosted={(n) => onPosted?.(n)}
+          history={history}
         />
       ) : null}
 

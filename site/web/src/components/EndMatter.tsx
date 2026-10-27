@@ -24,6 +24,7 @@ export function EndMatter({
   onOpenChronicle,
   onAuthorsCount,
   decisions = null,
+  live,
 }: {
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
@@ -32,6 +33,8 @@ export function EndMatter({
   onAuthorsCount?: (count: AuthorsCountDto) => void;
   /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
   decisions?: MyDecisionsDto | null;
+  /** BOOK-56: `state.history.live`; the authors list and the person's trail are history. */
+  live: boolean;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
   /**
@@ -46,20 +49,25 @@ export function EndMatter({
   const [ownTrace, setOwnTrace] = useState<MyTraceDto | null>(null);
   const [hidePending, setHidePending] = useState(false);
 
-  const load = useCallback(async (fresh = false) => {
-    try {
-      setAuthors(await getAuthors({ fresh }));
-      setAuthorsFailed(false);
-    } catch {
-      /* the end matter keeps the author and the copyright; the shares stay «—» */
-      setAuthorsFailed(true);
-    } finally {
-      setAuthorsSettled(true);
-    }
-  }, []);
+  const load = useCallback(
+    async (fresh = false) => {
+      // BOOK-56: with history off the list is not on the page, so nothing is asked for it.
+      if (!live) return;
+      try {
+        setAuthors(await getAuthors({ fresh }));
+        setAuthorsFailed(false);
+      } catch {
+        /* the end matter keeps the author and the copyright; the shares stay «—» */
+        setAuthorsFailed(true);
+      } finally {
+        setAuthorsSettled(true);
+      }
+    },
+    [live],
+  );
 
   const loadOwnTrace = useCallback(async () => {
-    if (!signedIn) {
+    if (!live || !signedIn) {
       setOwnTrace(null);
       return;
     }
@@ -69,7 +77,7 @@ export function EndMatter({
       /* signed out between hello and this request: an anonymous reader sees nothing */
       setOwnTrace(null);
     }
-  }, [signedIn]);
+  }, [live, signedIn]);
 
   useEffect(() => {
     void load();
@@ -119,6 +127,7 @@ export function EndMatter({
       decisions={decisions}
       hidePending={hidePending}
       onToggleHidden={(hidden) => void toggleHidden(hidden)}
+      live={live}
     />
   );
 }

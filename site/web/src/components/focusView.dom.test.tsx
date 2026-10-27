@@ -73,7 +73,9 @@ async function flush(): Promise<void> {
 }
 
 function sheet(change: ChangeDto | null, missing = false) {
-  return <FocusView change={change} impact={null} missing={missing} ribbon={null} revisions={{}} onClose={() => undefined} />;
+  return (
+    <FocusView change={change} impact={null} missing={missing} ribbon={null} revisions={{}} onClose={() => undefined} live />
+  );
 }
 
 describe('the прицел while the change is read (BOOK-DOC-43)', () => {
@@ -160,6 +162,7 @@ function Harness() {
       ribbon={null}
       revisions={{}}
       onClose={focus.close}
+      live
     />
   );
 }

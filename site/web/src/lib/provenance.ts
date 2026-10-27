@@ -46,6 +46,12 @@ export type ProvenanceInput = {
   at: string | null;
   /** The frozen variants say why: the book's frame, or the page 2 basis. */
   frozenOf?: 'frame' | 'basis';
+  /**
+   * BOOK-56: `state.history.live`. With no reader change the DNA block («кто внёс», «след»,
+   * «абзац», «точность») and the chain rows («кто», «правка», «эта страница») are not
+   * rendered; the word, its place and «вмешаться» still are.
+   */
+  live?: boolean;
 };
 
 export type ProvenanceRow = { label: string; value: string; quiet?: boolean };
@@ -140,30 +146,40 @@ function moment(iso: string | null): string {
 const MACHINE_COPY = 'у этого слова нет читательской родословной: его написал автор.';
 
 export function provenanceView(input: ProvenanceInput): ProvenanceView {
+  const live = input.live !== false;
   const last = input.chain?.versions.at(-1) ?? null;
   const actor = last?.actor?.label ?? (input.variant === 'unattributed' ? 'правка вне процесса' : 'автор');
   const where = input.variant === 'frozen' ? 'вне правок' : last === null ? 'в тексте' : `в тексте с ${moment(last.at)}`;
 
-  const rows: ProvenanceRow[] = [
-    { label: 'кто внёс', value: actor },
-    { label: 'когда', value: moment(input.at ?? last?.at ?? null) },
-    { label: 'след', value: input.variant === 'frozen' ? frozenTrace(input.frozenOf) : shareLine(input.share) },
-    { label: 'абзац', value: paragraphLine(input.history, input.chain) },
-  ];
-  if (input.variant !== 'frozen') rows.push({ label: 'точность', value: 'слово в пределах абзаца', quiet: true });
+  // The record (the word, its place, «вмешаться») is not history; the DNA rows are. With
+  // history off they are absent, never an empty panel or a row of «следа нет».
+  const rows: ProvenanceRow[] = live
+    ? [
+        { label: 'кто внёс', value: actor },
+        { label: 'когда', value: moment(input.at ?? last?.at ?? null) },
+        { label: 'след', value: input.variant === 'frozen' ? frozenTrace(input.frozenOf) : shareLine(input.share) },
+        { label: 'абзац', value: paragraphLine(input.history, input.chain) },
+      ]
+    : [];
+  if (live && input.variant !== 'frozen') rows.push({ label: 'точность', value: 'слово в пределах абзаца', quiet: true });
 
   return {
     title: 'откуда это слово',
     word: input.word,
     chapterLine: `глава ${String(input.chapter).padStart(2, '0')}`,
-    chain: [
-      { label: 'кто', value: actor },
-      // BOOK-59: the book speaks in numbers — «правка 014», never `chg_01J…`.
-      { label: 'правка', value: last?.changeSeq == null ? 'вне правок' : `правка ${changeNumber(last.changeSeq)}` },
-      { label: 'эта страница', value: where },
-    ],
+    // BOOK-56: «кто», «правка» and «эта страница» are read off the log — the same past the DNA
+    // rows narrate — so with history off they are absent with them, not printed from a chain
+    // the component no longer fetches.
+    chain: live
+      ? [
+          { label: 'кто', value: actor },
+          // BOOK-59: the book speaks in numbers — «правка 014», never `chg_01J…`.
+          { label: 'правка', value: last?.changeSeq == null ? 'вне правок' : `правка ${changeNumber(last.changeSeq)}` },
+          { label: 'эта страница', value: where },
+        ]
+      : [],
     rows,
-    copy: input.variant === 'machine' ? MACHINE_COPY : null,
+    copy: live && input.variant === 'machine' ? MACHINE_COPY : null,
     action:
       input.variant === 'frozen'
         ? { kind: 'rules', label: 'что это значит →' }

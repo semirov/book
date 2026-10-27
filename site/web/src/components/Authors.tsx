@@ -37,6 +37,7 @@ export function Authors({
   onToggleHidden,
   hidePending = false,
   decisions = null,
+  live,
 }: {
   authors: AuthorsDto | null;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
@@ -57,7 +58,24 @@ export function Authors({
   hidePending?: boolean;
   /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
   decisions?: MyDecisionsDto | null;
+  /**
+   * BOOK-56: `state.history.live`. The authors list is a history surface — with no reader
+   * change there is no one to list, so the list itself is gated. The reader's own decisions
+   * are not the book's past but their own present state, so they outlive the gate; with
+   * neither, the section is not on the page at all.
+   */
+  live: boolean;
 }) {
+  // BOOK-56: the list is the book's past; the reader's own decisions are their present state,
+  // so they render on their own rather than with the list they used to sit under.
+  if (!live) {
+    if (decisions === null || decisions.items.length === 0) return null;
+    return (
+      <section className="page authors" aria-label="ваши правки">
+        <OwnDecisions decisions={decisions} />
+      </section>
+    );
+  }
   const contributors = authors?.contributors ?? [];
   /** `null` while the shares are quiet; the one §6 sentence otherwise. */
   const status = statusLine('authors', stage);

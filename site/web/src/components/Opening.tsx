@@ -40,6 +40,7 @@ export function Opening({
   view,
   onViewChange,
   motion,
+  live,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -50,6 +51,8 @@ export function Opening({
   view: BookView;
   onViewChange: (view: BookView) => void;
   motion?: TitleMotion;
+  /** BOOK-56: `state.history.live`; off removes the chronicle switch and the ribbon. */
+  live: boolean;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -63,8 +66,8 @@ export function Opening({
         <hr className="front-rule" data-seq={seq ? 'rule' : undefined} />
       </div>
       <Annotation front={front} seq={seq} />
-      <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} />
-      <ViewSwitch view={view} onChange={onViewChange} />
+      <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} live={live} />
+      <ViewSwitch view={view} onChange={onViewChange} live={live} />
     </>
   );
 }

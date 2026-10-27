@@ -161,7 +161,7 @@ describe('PageNumber', () => {
     root = createRoot(container);
     act(() =>
       root?.render(
-        <Header state={state} ribbon={null} catalog={catalog} markers={[]} onOpenChange={() => undefined} />,
+        <Header state={state} ribbon={null} catalog={catalog} markers={[]} onOpenChange={() => undefined} live />,
       ),
     );
     scrollTo(200);

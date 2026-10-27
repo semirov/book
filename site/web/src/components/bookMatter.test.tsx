@@ -458,7 +458,7 @@ describe('the opening screen', () => {
       onOpenChange={() => undefined}
       view="book"
       onViewChange={() => undefined}
-    />,
+    live />,
   );
 
   it('starts with the cover and puts the header and the view switch below the annotation', () => {

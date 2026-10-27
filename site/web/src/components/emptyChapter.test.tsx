@@ -50,6 +50,7 @@ function article(row: CatalogEntry, firstEmpty = false): string {
       caret={null}
       fresh={false}
       firstEmpty={firstEmpty}
+      history
       composer={EMPTY_COMPOSER}
       viewer={{ signedIn: false, displayName: null }}
     />,

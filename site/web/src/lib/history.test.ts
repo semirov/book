@@ -1,13 +1,14 @@
 import type { BookAtDto, CatalogEntry, HistoryEventDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { NBSP } from './format.ts';
 import {
   chainHead,
   compareToNow,
-  filterEvents,
   groupByDay,
-  scrubLabel,
-  scrubTicks,
+  momentLabel,
+  momentParts,
+  momentText,
   stepMoment,
   targetLabel,
 } from './history.ts';
@@ -61,26 +62,12 @@ function pastAt(rows: Array<{ n: number; rev: number; chars?: number; title?: st
   };
 }
 
-describe('the chronicle’s filters and grouping (§11.10)', () => {
-  it('filters by the four public kinds', () => {
-    const items = [
-      event({ hseq: 4, kind: 'change.decided', changeId: 'chg_1' }),
-      event({ hseq: 3, kind: 'chapter.created' }),
-      event({ hseq: 2, kind: 'front.revised', isFront: true, chapter: null }),
-      event({ hseq: 1, kind: 'overwrite' }),
-      event({ hseq: 0, kind: 'document.status', chapter: null }),
-    ];
-    expect(filterEvents(items, 'all')).toHaveLength(5);
-    // BOOK-18: a document statement belongs to the changes the reader can follow.
-    expect(filterEvents(items, 'changes').map((item) => item.kind)).toEqual([
-      'change.decided',
-      'document.status',
-    ]);
-    expect(filterEvents(items, 'drafts').map((item) => item.kind)).toEqual(['chapter.created']);
-    expect(filterEvents(items, 'front').map((item) => item.kind)).toEqual(['front.revised']);
-    expect(filterEvents(items, 'overwrites').map((item) => item.kind)).toEqual(['overwrite']);
-  });
+/** A dated moment as the control prints it: `25.10.2026 · 12:00`, Moscow, NBSP around ·. */
+function at(date: string, time: string): string {
+  return `${date}${NBSP}·${NBSP}${time}`;
+}
 
+describe('the chronicle’s grouping (§11.10)', () => {
   it('groups newest-first events by calendar day and keeps the order inside a day', () => {
     const groups = groupByDay([
       event({ hseq: 9, at: '2026-10-25T12:00:00Z' }),
@@ -94,6 +81,21 @@ describe('the chronicle’s filters and grouping (§11.10)', () => {
     expect(groups[0]?.label).toContain('октября');
   });
 
+  it('keys a group on the same Moscow day its heading names', () => {
+    // 21:30 UTC is already 26 October in Moscow: the old UTC slice opened a second
+    // «26 октября» heading right after the first one.
+    const groups = groupByDay([
+      event({ hseq: 9, at: '2026-10-26T08:00:00Z' }),
+      event({ hseq: 8, at: '2026-10-25T21:30:00Z' }),
+      event({ hseq: 7, at: '2026-10-25T20:30:00Z' }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.day)).toEqual(['2026-10-26', '2026-10-25']);
+    expect(groups.map((group) => group.label)).toEqual(['26 октября', '25 октября']);
+    expect(groups[0]?.items.map((item) => item.hseq)).toEqual([9, 8]);
+    expect(groups[1]?.items.map((item) => item.hseq)).toEqual([7]);
+  });
+
   it('labels the target as a chapter, the first sheet or the book', () => {
     expect(targetLabel(event())).toBe('глава 9');
     expect(targetLabel(event({ isFront: true, chapter: null }))).toBe('первая страница');
@@ -101,21 +103,76 @@ describe('the chronicle’s filters and grouping (§11.10)', () => {
   });
 });
 
-describe('the scrubber (§6F.2)', () => {
-  it('places one tick per event on the clock and keeps the right edge for now', () => {
-    const items = [event({ hseq: 1 }), event({ hseq: 5 }), event({ hseq: 10 })];
-    expect(scrubTicks(items, 10)).toEqual([10, 50, 100]);
-    expect(scrubTicks([], 0)).toEqual([]);
-    expect(scrubTicks([event({ hseq: 999 })], 10)).toEqual([100]);
+describe('the moment’s readout (BOOK-DOC-50 §2)', () => {
+  /** Newest first, as the timeline sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12. */
+  const items = [
+    event({ hseq: 10, at: '2026-10-27T12:40:00Z' }),
+    event({ hseq: 7, at: '2026-10-26T06:00:00Z' }),
+    event({ hseq: 4, at: '2026-10-21T06:12:00Z' }),
+  ];
+  const oldest = at('21.10.2026', '09:12');
+
+  it('prints a date and a time, never a bare time', () => {
+    expect(momentText('2026-10-27T12:40:00Z')).toBe(at('27.10.2026', '15:40'));
+    // No `at` (an event the log cannot date) is an honest dash, still in the dated shape.
+    expect(momentText(null)).toBe(`—${NBSP}·${NBSP}—`);
   });
 
-  it('labels the right edge «сейчас» and an older moment by its time', () => {
-    expect(scrubLabel(10, 10, '2026-10-25T09:00:00Z')).toBe('сейчас');
-    expect(scrubLabel(5, 10, '2026-10-25T12:20:00Z')).toMatch(/^\d{2}:\d{2}$/u);
-    expect(scrubLabel(0, 10, null)).toBe('начало книги');
+  it('splits a moment into the two parts it may wrap between', () => {
+    const parts = momentParts('2026-10-27T12:40:00Z');
+    expect(parts).toEqual({ date: '27.10.2026', clock: `${NBSP}·${NBSP}15:40` });
+    // The same string `momentText` prints, only split — never reformatted.
+    expect(`${parts.date}${parts.clock}`).toBe(momentText('2026-10-27T12:40:00Z'));
+    expect(momentParts(null)).toEqual({ date: '—', clock: `${NBSP}·${NBSP}—` });
   });
 
-  it('steps one tick left and right without leaving the list', () => {
+  it('at the right edge prints the newest record’s own moment', () => {
+    const label = momentLabel(items, 10, 10, false);
+    expect(label.text).toBe(at('27.10.2026', '15:40'));
+    expect(label.isNow).toBe(true);
+    // Counted chronologically: the newest of three loaded rows is the third record.
+    expect(label.position).toBe(3);
+  });
+
+  it('for a chosen moment prints that record’s date and time', () => {
+    const label = momentLabel(items, 7, 10, false);
+    expect(label.text).toBe(at('26.10.2026', '09:00'));
+    expect(label.isNow).toBe(false);
+    expect(label.position).toBe(2);
+  });
+
+  it('between two records prints the last record at or before the thumb', () => {
+    const label = momentLabel(items, 5, 10, false);
+    expect(label.text).toBe(oldest);
+    expect(label.position).toBe(1);
+  });
+
+  it('keeps the oldest loaded record at position 1', () => {
+    expect(momentLabel(items, 4, 10, false).position).toBe(1);
+    expect(momentLabel(items, 3, 10, false).position).toBe(1);
+    expect(momentLabel(items, 9, 10, false).position).toBe(2);
+  });
+
+  it('says «до …» before the oldest record only when an older page exists', () => {
+    const more = momentLabel(items, 0, 10, true);
+    expect(more.text).toBe(`до${NBSP}${oldest}`);
+    expect(more.isNow).toBe(false);
+    expect(more.position).toBe(1);
+  });
+
+  it('clamps to the oldest record, without «до», when there is no older page', () => {
+    const label = momentLabel(items, 0, 10, false);
+    expect(label.text).toBe(oldest);
+    expect(label.position).toBe(1);
+  });
+
+  it('has no readout and no counter without records', () => {
+    expect(momentLabel([], 0, 0, false)).toEqual({ text: '', isNow: false, position: 0 });
+  });
+});
+
+describe('stepping a moment (§6F.2)', () => {
+  it('steps one record left and right without leaving the list', () => {
     const items = [event({ hseq: 3 }), event({ hseq: 7 }), event({ hseq: 12 })];
     expect(stepMoment(items, 12, -1)).toBe(7);
     expect(stepMoment(items, 7, -1)).toBe(3);

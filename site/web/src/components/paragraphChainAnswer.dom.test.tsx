@@ -69,6 +69,7 @@ function ChainHarness(): ReactElement {
           onClose={mode.close}
           onRetry={mode.retry}
           anchor={mode.anchor}
+          live
         />
       ) : null}
     </div>

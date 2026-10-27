@@ -90,7 +90,7 @@ function surfaces(cost: ChangeCostDto | null, costRub: number | null): string {
         ribbon={null}
         revisions={{}}
         onClose={() => undefined}
-      />,
+      live />,
     ),
     renderToStaticMarkup(
       <TimelineRow event={decided} deed="внесено" onPick={() => undefined} onOpenChange={() => undefined} />,
