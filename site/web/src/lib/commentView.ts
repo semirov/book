@@ -1,6 +1,6 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
-import { filingConsequence, filingMarginalia, landingReceipt, PREMISE_PENDING } from './marginalia.ts';
+import { filingConsequence, filingMarginalia, landingReceipt } from './marginalia.ts';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
@@ -55,7 +55,9 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
   const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'new':
-      return lineOf(word, null, 'quiet');
+      // A filing whose attempt came back empty still waits, and the human line
+      // under the word is the deck's — the state word alone would hide the attempt.
+      return lineOf(word, comment.attempt === 'failed' ? filingConsequence(comment) : null, 'quiet');
     case 'batched':
     case 'delivered':
       return lineOf(word, null, 'live');
@@ -113,7 +115,9 @@ function premiseLine(comment: CommentDto): CommentLine {
     case 'rejected':
       return lineOf(word, joinDetail('замысел не взят', comment.reason), 'stopped');
     default:
-      return lineOf(word, joinDetail(PREMISE_PENDING, comment.reason), 'live');
+      // The default is the deck's own line — «принято в основу, до первой
+      // редакции», or the failed-attempt sentence when the linked change came back empty.
+      return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
   }
 }
 

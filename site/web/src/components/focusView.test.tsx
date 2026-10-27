@@ -7,6 +7,7 @@ import { FocusView } from './FocusView.tsx';
 import { FocusTrack, FocusWings } from './FocusWings.tsx';
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',

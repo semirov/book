@@ -145,3 +145,32 @@ describe('one line per fact (§11.10)', () => {
     expect(summarize(subject({ kind: 'document.status', chapter: null, payload: {} }))).toBe('книга');
   });
 });
+
+/**
+ * The chronicle is a public surface too: a decision line carries the reader's
+ * sentence, and an engine code in the payload never becomes one.
+ */
+describe('an engine code never reaches the chronicle', () => {
+  it('replaces the attempt code with the reader’s sentence', () => {
+    const html = summarize(
+      subject({
+        kind: 'change.decided',
+        changeSeq: 2,
+        payload: { premise: true, status: 'void', outcome: 'dropped', reason: 'модель не ответила: PROVIDER_SHAPE' },
+      }),
+    );
+    expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+    expect(html).toContain('модель ответила не по форме — заявка остаётся в очереди');
+  });
+
+  it('keeps a human refusal exactly as written', () => {
+    expect(
+      summarize(
+        subject({
+          kind: 'change.decided',
+          payload: { status: 'void', outcome: 'dropped', reason: 'не беру: документ не из этой сцены' },
+        }),
+      ),
+    ).toBe('правка 7 не применена: не беру: документ не из этой сцены');
+  });
+});

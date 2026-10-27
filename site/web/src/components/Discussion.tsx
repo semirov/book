@@ -3,7 +3,7 @@ import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/s
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
 import { focusHash } from '../lib/focus.ts';
-import { plural, queueLabel } from '../lib/format.ts';
+import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { Skeleton } from './Skeleton.tsx';
@@ -51,6 +51,12 @@ export function Discussion({
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
   const status = statusLine('register', stage);
   const pending = busy ?? stage !== 'quiet';
+  // A premise is the filing's own object, not a second row — the register lists
+  // every change that is an edit of the text, and never repeats a premise beside its filing.
+  const register = changes.filter((change) => change.premise !== true);
+  // The queue line and the list come from one fact, so «в очереди пусто» can never stand
+  // above a row the page presents as waiting.
+  const queue = queueView(depth, register, comments);
   return (
     <section
       className="page talks ym-hide-content"
@@ -75,7 +81,7 @@ export function Discussion({
         </span>
       </header>
       <div className="qline">
-        <span>{queueLabel(depth)}</span>
+        <span>{queueLabel(queue.count)}</span>
         <span>правки идут по одной, в порядке записи</span>
       </div>
 
@@ -124,9 +130,9 @@ export function Discussion({
         </p>
       )}
 
-      {changes.length > 0 ? (
+      {register.length > 0 ? (
         <ol className="talks-list">
-          {changes.map((change) => {
+          {register.map((change) => {
             const lines = changeLines(change);
             return (
               <li className={`talk tone-${lines.tone}`} key={change.id} data-status={change.status} data-change={change.id}>
@@ -151,7 +157,7 @@ export function Discussion({
       ) : null}
 
       <p className="fine">
-        {changes.length > 0 ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.' : ''}
+        {register.length > 0 ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.' : ''}
       </p>
     </section>
   );

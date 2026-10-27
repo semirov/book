@@ -96,6 +96,7 @@ const CATALOG: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
 });
 
 const PREMISE: CommentDto = {
+  attempt: null,
   id: 'cmt_premise',
   chapter: 3,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },

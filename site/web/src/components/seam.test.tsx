@@ -49,6 +49,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }

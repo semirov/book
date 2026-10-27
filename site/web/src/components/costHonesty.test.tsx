@@ -17,6 +17,7 @@ const NBSP = '\u00a0';
 
 function change(cost: ChangeCostDto | null): ChangeDto {
   return {
+    premiseLanded: false,
     id: 'chg_1',
     seq: 14,
     kind: 'accepted_comment',

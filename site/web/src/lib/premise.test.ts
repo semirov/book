@@ -19,6 +19,7 @@ function comment(overrides: Partial<CommentDto> & { id: string; chapter: number;
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }

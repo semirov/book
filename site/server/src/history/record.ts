@@ -15,8 +15,7 @@
  * listed — `record.test.ts` proves the interface path satisfies the invariant.
  */
 
-import type { ChangeOutcome, ChangeStatus, HistoryRecordDto } from '@book/shared';
-import { seamReason } from '@book/shared';
+import { readerReason, type ChangeOutcome, type ChangeStatus, type HistoryRecordDto } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { lastHseq, pageLimit } from './events.ts';
@@ -53,11 +52,12 @@ const SELECT_RECORD = `SELECT c.id AS change_id, c.seq, c.chapter, c.premise, c.
   JOIN events e ON e.hseq = (SELECT MAX(inner_e.hseq) FROM events inner_e WHERE inner_e.change_id = c.id)
   WHERE c.source_comment IS NOT NULL`;
 
-/** The public reason, bounded and normalised once; an empty string is no reason at all. */
+/**
+ * The public reason, bounded and normalised once; an empty string is no reason at all.
+ * An internal code is not a reason — `readerReason` answers the sentence instead.
+ */
 function publicReason(raw: string | null): string | null {
-  if (raw === null) return null;
-  const reason = seamReason(raw);
-  return reason.length === 0 ? null : reason;
+  return readerReason(raw);
 }
 
 function toHistoryRecord(row: RecordRow): HistoryRecordDto {

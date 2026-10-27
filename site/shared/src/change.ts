@@ -419,6 +419,47 @@ export function seamReason(raw: unknown, max = 200): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
+// ── the reader's line for a failed attempt ──────────────────────────────────
+
+/**
+ * A failed attempt is **not** a filing's state: the lane tried the filing, the model answered
+ * off-shape, the engine timed out, and the filing is still waiting for its turn. The reader is
+ * told that in one sentence, and the engine's own word for the failure never leaves the server.
+ *
+ * This is the deck's line for the most common failure (a model that answered in the wrong
+ * shape); the other two are the engine's silence and any failure whose code the reader has no
+ * business reading.
+ */
+export const FAILED_ATTEMPT_LINE = 'модель ответила не по форме — заявка остаётся в очереди';
+export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
+export const ATTEMPT_LINE = 'попытка не удалась — заявка остаётся в очереди';
+
+/**
+ * An internal code (`PROVIDER_SHAPE`, `ENGINE_TIMEOUT`, `GATE_TIMEOUT`): two or more
+ * upper-case runs joined by underscores. No public surface may print one — a reader reads the
+ * book's words, and a code is a handle for the operator's log.
+ */
+const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/u;
+
+/** Does this text carry an internal code? One predicate, so the sanitizer and the DTO agree. */
+export function holdsInternalCode(raw: unknown): boolean {
+  return typeof raw === 'string' && INTERNAL_CODE.test(raw);
+}
+
+/**
+ * Any stored reason as the reader may see it: `null` when there is none, the sentence itself
+ * when it is one, and the fixed failure line when the text carries an internal code. Never a
+ * code, never an empty string — the UI branches on `attempt`, not on a missing sentence.
+ */
+export function readerReason(raw: unknown): string | null {
+  const text = seamReason(raw);
+  if (text.length === 0) return null;
+  if (!holdsInternalCode(text)) return text;
+  if (text.includes('PROVIDER_SHAPE')) return FAILED_ATTEMPT_LINE;
+  if (/ENGINE_TIMEOUT|timeout/iu.test(text)) return ENGINE_SILENT_LINE;
+  return ATTEMPT_LINE;
+}
+
 export function parseSeams(raw: unknown): SeamRef[] {
   if (!Array.isArray(raw)) return [];
   const out: SeamRef[] = [];

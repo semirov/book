@@ -133,6 +133,7 @@ const CHAIN: ParagraphChainDto = {
 };
 
 const filing: CommentDto = {
+  attempt: null,
   id: 'cmt_01J9Z8K4Q7',
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },

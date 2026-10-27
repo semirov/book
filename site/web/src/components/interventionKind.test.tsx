@@ -36,11 +36,13 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: 'chg_1',
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',

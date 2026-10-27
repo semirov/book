@@ -1,4 +1,4 @@
-import { AUTHOR_COLORS, type CommentDto } from '@book/shared';
+import { AUTHOR_COLORS, FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -29,6 +29,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -215,5 +216,98 @@ describe('the register while its feed is landing', () => {
     expect(html).toContain('class="page talks');
     expect(html).toContain('Их читают как данные');
     expect(html).not.toBe(waiting);
+  });
+});
+
+/** A change summary, only the fields the register reads. */
+function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
+  return {
+    premiseLanded: false,
+    id: 'chg_1',
+    seq: 1,
+    chapter: 65,
+    intent: 'ответ на вопрос дать процедурой, а не объяснением',
+    premise: false,
+    status: 'pending',
+    outcome: null,
+    reason: null,
+    position: 1,
+    enqueuedAt: '2026-10-25T11:00:00Z',
+    decidedAt: null,
+    chapters: [65],
+    rewritten: [],
+    steps: 0,
+    modes: [],
+    cascade: null,
+    ...overrides,
+  };
+}
+
+/** Tags stripped, so a `<b>` between a number and its noun is no alibi. */
+function text(html: string): string {
+  return html.replace(/<[^>]*>/gu, '');
+}
+
+/**
+ * The queue line and the list behind it agree, and a premise is the filing's own
+ * object rather than a second row. The prod page said «в очереди пусто» over two rows it
+ * presented as waiting, and showed the same premise twice: as a filing and as a change.
+ */
+describe('one state per filing on the register', () => {
+  it('one accepted and one pending filing agree with the queue line', () => {
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={0}
+        comments={[
+          // A premise whose chapter 65 has text: entered the first edition, nothing to wait for.
+          comment({
+            id: 'cmt_65',
+            chapter: 65,
+            premise: true,
+            status: 'applied',
+            applied: { chapter: 65, rev: 7 },
+          }),
+          // A filing still in triage: one queued row, and the line must count it.
+          comment({ id: 'cmt_9', chapter: 9, status: 'new' }),
+        ]}
+        changes={[
+          // The same premise as a change — never a second row on the register.
+          change({ id: 'chg_65', premise: true, premiseLanded: true, status: 'void', outcome: 'dropped', reason: FAILED_ATTEMPT_LINE }),
+        ]}
+        live
+      />,
+    );
+    const plain = text(html);
+    expect(plain).toContain('внесено');
+    expect(plain).toContain('вошло в первую редакцию главы 65');
+    expect(plain).toContain('ждёт');
+    expect(plain).toContain('в очереди 1 правка');
+    expect(plain).not.toContain('в очереди пусто');
+    // One queued row = one filing; the premise change is not a row of its own.
+    expect(html).not.toContain('data-change="chg_65"');
+    expect(html.match(/class="talk tone-/gu) ?? []).toHaveLength(0);
+  });
+
+  it('shows a failed attempt as the deck’s sentence, never as the engine’s code', () => {
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={0}
+        comments={[comment({ id: 'cmt_9', chapter: 9, status: 'new', attempt: 'failed' })]}
+        live
+      />,
+    );
+    expect(text(html)).toContain(FAILED_ATTEMPT_LINE);
+    expect(text(html)).toContain('в очереди 1 правка');
+    expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('an empty queue is one sentence and no list', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} changes={[]} live />);
+    const plain = text(html);
+    expect(plain).toContain('в очереди пусто');
+    expect(plain).toContain('замечаний нет');
+    expect(html).not.toContain('class="talks-list"');
+    expect(html).not.toContain('class="comment"');
+    expect(html).not.toContain('class="talk ');
   });
 });

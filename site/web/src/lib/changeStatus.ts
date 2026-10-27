@@ -29,7 +29,9 @@ export type ChangeLines = {
 };
 
 /** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
-export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean }): string {
+export function stampCopy(
+  change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean; premiseLanded?: boolean },
+): string {
   // BOOK-90: the stamp is a **state word** — «ждёт» · «идёт» · «внесено» — not a phrase.
   // A premise's own story (in basis, first edition, refused) is its second line.
   return changeWord(change);
@@ -70,6 +72,12 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
   // BOOK-7: a premise is the chapter's starting point; it never claims a queue place or a
   // ripple. Its whole story is «ждёт → внесено» with the edition on the second line.
   if (change.premise) {
+    // The book's own fact decides the landing. A premise whose chapter has text
+    // is «внесено» with the edition it entered — and a failed attempt behind it is stale
+    // news, not the premise's line.
+    if (change.premiseLanded === true) {
+      return { first, second: `вошло в первую редакцию главы ${change.chapter}`, tone: 'done' };
+    }
     if (change.status === 'done') {
       return {
         first,
@@ -130,7 +138,9 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
 export function progressLine(change: ChangeSummaryDto): string {
   const state = changeWord(change);
   if (change.premise) {
-    if (change.status === 'done') return `принято в основу → ${state} → вошло в первую редакцию`;
+    if (change.premiseLanded === true || change.status === 'done') {
+      return `принято в основу → ${state} → вошло в первую редакцию`;
+    }
     return `принято в основу → ${state}`;
   }
   if (change.status === 'done') return `принято → ${state} → ${reachCopy(change)}`;
@@ -148,8 +158,9 @@ export function relevanceCopy(grade: PublicRelevance['grade']): string {
 }
 
 /** BOOK-7 — the card's own outcome word for a premise, never «внесено» for a first edition. */
-export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'>): string {
-  if (change.status === 'done') return 'замысел учтён';
+export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'> & { premiseLanded?: boolean }): string {
+  // The chapter's text is the landing, not the change row's status.
+  if (change.premiseLanded === true || change.status === 'done') return 'замысел учтён';
   if (change.status === 'void') return change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят';
   return 'в основе главы';
 }

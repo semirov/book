@@ -29,6 +29,7 @@ import {
 } from './focus.ts';
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',

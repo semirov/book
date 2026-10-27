@@ -6,6 +6,8 @@
  * ledger reads the same for every reader.
  */
 
+import type { ChangeStatus, ChangeSummaryDto, CommentDto, CommentStatus } from '@book/shared';
+
 export const SITE_TIMEZONE = 'Europe/Moscow';
 export const NBSP = '\u00a0';
 /** The separator of a date and a time (`25.10.2026 · 12:00`), unbreakable on both sides. */
@@ -91,4 +93,39 @@ export function formatDate(iso: string | null | undefined): string {
 export function queueLabel(depth: number): string {
   if (depth === 0) return 'в очереди пусто';
   return `в очереди ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
+}
+
+/** A row the register presents as still on its way: its kind and its public id. */
+export type QueueRow = { kind: 'filing' | 'change'; id: string };
+
+/** The two sets the register calls «in the queue» — one place, so the line and the list agree. */
+const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
+const QUEUED_CHANGE = new Set<ChangeStatus>(['pending', 'processing']);
+
+/** The rows the register may present as queued: a filing and a change, by public id. */
+type QueueComment = Pick<CommentDto, 'id' | 'status'>;
+type QueueChange = Pick<ChangeSummaryDto, 'id' | 'status' | 'premise'>;
+
+/**
+ * The queue line and the list behind it, from one fact.
+ *
+ * The register shows a filing and a change as one object: a queued row is a filing still in
+ * triage (or in the lane) and a non-premise change holding a place (`pending`/`processing`).
+ * `depth` is the server's own count of the lane and may include rows beyond this page, so the
+ * line prints the larger of the two: it can never say «в очереди пусто» while a row is
+ * presented as waiting, and it never shrinks the depth the engine measured.
+ */
+export function queueView(
+  depth: number,
+  changes: readonly QueueChange[] = [],
+  comments: readonly QueueComment[] = [],
+): { count: number; rows: QueueRow[] } {
+  const rows: QueueRow[] = [];
+  for (const comment of comments) {
+    if (QUEUED_FILING.has(comment.status)) rows.push({ kind: 'filing', id: comment.id });
+  }
+  for (const change of changes) {
+    if (change.premise !== true && QUEUED_CHANGE.has(change.status)) rows.push({ kind: 'change', id: change.id });
+  }
+  return { count: Math.max(Math.max(0, Math.trunc(depth)), rows.length), rows };
 }

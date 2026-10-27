@@ -84,6 +84,7 @@ const OWN_TRACE: MyTraceDto = {
 };
 
 const COMMENT: CommentDto = {
+  attempt: null,
   id: 'cmt_1',
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 3, quote: SENTINEL.quote, prefix: null, suffix: null, resolved: true },
@@ -103,6 +104,7 @@ const COMMENT: CommentDto = {
 };
 
 const CHANGE: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 7,
   kind: 'accepted_comment',

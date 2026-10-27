@@ -6,7 +6,7 @@
  * verdict is summarised as «замечание сохранено» (§6F.1 rule 5, §6F.7).
  */
 
-import type { HistoryKind } from '@book/shared';
+import { readerReason, type HistoryKind } from '@book/shared';
 
 import { AUTHOR_LABEL, OUT_OF_PROCESS_LABEL, OPERATOR_LABEL } from '../ingest/attribution.ts';
 
@@ -53,10 +53,15 @@ function byChange(subject: SummarySubject): string {
   return ` правкой ${subject.changeSeq}${who}`;
 }
 
+/** The payload's reason as a reader may read it: a sentence, or nothing at all — never a code. */
+function publicReason(payload: Record<string, unknown>): string {
+  return readerReason(payload.reason) ?? '';
+}
+
 function decisionCopy(subject: SummarySubject): string {
   const outcome = typeof subject.payload.outcome === 'string' ? subject.payload.outcome : null;
   const status = typeof subject.payload.status === 'string' ? subject.payload.status : null;
-  const reason = typeof subject.payload.reason === 'string' ? subject.payload.reason.replace(/\s+/gu, ' ').trim() : '';
+  const reason = publicReason(subject.payload);
   if (status === 'void' || outcome === 'dropped' || outcome === 'superseded') {
     const tail = reason.length > 0 ? `: ${reason.slice(0, 120)}` : '';
     return `правка ${subject.changeSeq ?? '?'} не применена${tail}`;
@@ -70,7 +75,7 @@ function decisionCopy(subject: SummarySubject): string {
 
 function premiseDecisionCopy(subject: SummarySubject): string {
   const outcome = typeof subject.payload.outcome === 'string' ? subject.payload.outcome : null;
-  const reason = typeof subject.payload.reason === 'string' ? subject.payload.reason.replace(/\s+/gu, ' ').trim() : '';
+  const reason = publicReason(subject.payload);
   const chapter = subject.chapter ?? '?';
   if (outcome === 'applied') return `замысел главы ${chapter} вошёл в первую редакцию`;
   if (outcome === 'superseded') return `замысел главы ${chapter} снят${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;

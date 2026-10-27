@@ -49,12 +49,14 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: 'chg_1',
     applied: { chapter: 8, rev: 4 },
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
 
 function change(overrides: Partial<ChangeDto> = {}): ChangeDto {
   return {
+    premiseLanded: false,
     id: 'chg_1',
     seq: 14,
     kind: 'accepted_comment',

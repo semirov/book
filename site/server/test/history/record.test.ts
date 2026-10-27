@@ -353,4 +353,20 @@ describe('the public reason a row may print', () => {
     expect(newest?.reason).toBeNull();
     expect(oldest?.reason).toBe('текст успел измениться');
   });
+
+  it('never prints an engine code: the attempt becomes the reader’s sentence', () => {
+    // A failed attempt is not a verdict on the filing, and its handle is not copy.
+    fixture = createFixture();
+    const db = fixture.db;
+    const row = seedChange(db, { index: 1, chapter: 65, label: 'Аня' });
+    db.prepare("UPDATE changes SET status = 'void', outcome = 'dropped', reason = ? WHERE id = ?").run(
+      'модель не ответила: PROVIDER_SHAPE',
+      row.changeId,
+    );
+    appendEvent(db, { kind: 'change.decided', changeId: row.changeId, chapter: 65 }, BASE_MS);
+
+    const [item] = readRecord(db).items;
+    expect(item?.reason).toBe('модель ответила не по форме — заявка остаётся в очереди');
+    expect(item?.reason ?? '').not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
 });

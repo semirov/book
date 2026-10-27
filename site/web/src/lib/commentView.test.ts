@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 
 import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
 import { GATE_WORDS, HELD_LINE, STATE_WORDS } from './marginalia.ts';
@@ -23,6 +23,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     changeId: null,
     applied: null,
     refusal: null,
+    attempt: null,
     ...overrides,
   };
 }
@@ -170,5 +171,30 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
       comment({ status: 'rejected', refusal: null, reason: 'не принято: чужая цитата без источника' }),
     );
     expect(line.detail).toBe('отклонено · не принято: чужая цитата без источника');
+  });
+});
+
+/**
+ * A failed attempt is not a state. The filing keeps its own word, and the deck's
+ * one sentence says what became of the attempt; the engine's code never reaches the page.
+ */
+describe('a failed attempt on a filing', () => {
+  it('waits with the human sentence, never with the engine’s code', () => {
+    const line = commentStatusLine(comment({ status: 'new', attempt: 'failed' }));
+    expect(line).toMatchObject({ state: STATE_WORDS.waiting, detail: FAILED_ATTEMPT_LINE, tone: 'quiet' });
+    expect(JSON.stringify(line)).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('leaves an accepted filing in the queue, with the same sentence under the word', () => {
+    const line = commentStatusLine(comment({ status: 'accepted', attempt: 'failed' }));
+    expect(line.state).toBe(STATE_WORDS.working);
+    expect(line.detail).toBe(FAILED_ATTEMPT_LINE);
+  });
+
+  it('never overrides a landing: an applied premise keeps its receipt', () => {
+    const landed = comment({ premise: true, status: 'applied', applied: { chapter: 65, rev: 7 }, attempt: null });
+    const line = commentStatusLine(landed);
+    expect(line).toMatchObject({ state: STATE_WORDS.landed, tone: 'done' });
+    expect(line.detail).toBe('вошло в первую редакцию главы 65');
   });
 });

@@ -8,6 +8,7 @@ import { Discussion } from './Discussion.tsx';
 import type { Ribbon } from '../lib/cascade.ts';
 
 const change: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',
@@ -278,6 +279,7 @@ describe('ChangeCard', () => {
 
 describe('the thread’s two-line status', () => {
   const summary: ChangeSummaryDto = {
+    premiseLanded: false,
     id: 'chg_1',
     seq: 14,
     chapter: 8,
@@ -309,6 +311,7 @@ describe('the thread’s two-line status', () => {
 
   it('links a comment with a change straight into the прицел', () => {
     const comment: CommentDto = {
+      attempt: null,
       id: 'cmt_1',
       chapter: 8,
       anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },

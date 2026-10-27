@@ -22,6 +22,7 @@ import { FocusView } from './FocusView.tsx';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const CHANGE: ChangeDto = {
+  premiseLanded: false,
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',

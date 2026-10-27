@@ -1,3 +1,4 @@
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,6 +9,7 @@ import {
   formatTime,
   plural,
   queueLabel,
+  queueView,
 } from './format.ts';
 
 describe('formatNumber', () => {
@@ -96,5 +98,41 @@ describe('formatFileSize', () => {
     expect(formatFileSize(0)).toBe('0 КБ');
     expect(formatFileSize(Number.NaN)).toBe('0 КБ');
     expect(formatFileSize(-1)).toBe('0 КБ');
+  });
+});
+
+/**
+ * The queue line and the list come from one fact. The prod register said «в
+ * очереди пусто» above two rows it presented as waiting, because the line printed a lane depth
+ * the rows had already left (or never entered).
+ */
+describe('queueView', () => {
+  const filing = (id: string, status: CommentDto['status']): Pick<CommentDto, 'id' | 'status'> => ({ id, status });
+  const change = (id: string, status: ChangeSummaryDto['status'], premise = false) => ({ id, status, premise });
+
+  it('counts the rows the page presents as queued, never zero over a waiting row', () => {
+    const view = queueView(0, [change('chg_2', 'pending')], [filing('cmt_9', 'new')]);
+    expect(view.count).toBe(2);
+    expect(view.rows).toEqual([
+      { kind: 'filing', id: 'cmt_9' },
+      { kind: 'change', id: 'chg_2' },
+    ]);
+  });
+
+  it('never counts a premise change, a landed row or a stopped one', () => {
+    const view = queueView(
+      0,
+      [change('chg_1', 'pending', true), change('chg_3', 'void'), change('chg_4', 'escalated')],
+      [filing('cmt_a', 'applied'), filing('cmt_b', 'rejected')],
+    );
+    expect(view.rows).toEqual([]);
+    expect(view.count).toBe(0);
+  });
+
+  it('keeps the server’s own depth when the page shows fewer rows than the lane holds', () => {
+    // The API pages the thread; the line is about the lane, so a bigger depth still prints.
+    expect(queueView(5, [], []).count).toBe(5);
+    expect(queueView(1, [], [filing('cmt_a', 'new')]).count).toBe(1);
+    expect(queueView(3, [], [filing('cmt_a', 'new'), filing('cmt_b', 'new')]).count).toBe(3);
   });
 });
