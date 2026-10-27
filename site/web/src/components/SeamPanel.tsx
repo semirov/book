@@ -74,9 +74,15 @@ export function SeamPanel(props: SeamPanelProps) {
   const { anchor, context, onClose, rootClass } = props;
   const panel = useRef<HTMLElement>(null);
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
+  /** The body's own values: the box is measured again whenever what it prints changes. */
+  const view = props.context === 'provenance' ? props.view : null;
+  const comment = props.context === 'filing' ? props.comment : null;
 
   // The placement mechanism is the site's one (§2.6): measured once per open, and again when
-  // the body changes height — the anchor rect is the same, so the box stays over the phrase.
+  // the body changes — the anchor rect is the same, so the box stays over the phrase. The body
+  // is a dependency because it arrives in two steps: the first paint is measured with the
+  // chain still loading, and the rows that answer it must re-measure the box (otherwise the
+  // panel keeps a `maxHeight` taken from an empty body and clips its own grown text).
   useMeasuredLayout(() => {
     if (anchor === null) return;
     const node = panel.current;
@@ -84,7 +90,7 @@ export function SeamPanel(props: SeamPanelProps) {
     const size = { width: Math.min(420, window.innerWidth - 24), height: node.scrollHeight };
     const next = placePopover(anchor, size, { width: window.innerWidth, height: window.innerHeight });
     setPlacement((current) => (samePlacement(current, next) ? current : next));
-  }, [anchor, context]);
+  }, [anchor, context, view, comment]);
 
   useMeasuredLayout(() => {
     placePanel(panel.current, placement);

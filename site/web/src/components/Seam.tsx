@@ -12,6 +12,7 @@ import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
 import { useOpenFiling } from '../lib/useFiling.ts';
 import { useOpenRevision } from '../lib/useRevision.ts';
+import type { ComposerError } from '../lib/composer.ts';
 import { InterventionForm } from './InterventionForm.tsx';
 
 /**
@@ -105,7 +106,13 @@ export function Seam({
    * the caller's answer (the tap landed inside `.seam`), so the store never guesses about DOM.
    */
   const prov = panel !== null && panel.fromSeam ? panel : null;
-  const refusal = premise && existingPremise !== null && !open ? 'у главы уже есть замысел' : null;
+  const premiseNote = premise && existingPremise !== null && !open ? 'у главы уже есть замысел' : null;
+  /**
+   * BOOK-111 (owner, 2026-10-27) — a refusal must not die with the form: a panel opened from
+   * the refusal's own door rebuilds the form when it closes, so the strip keeps the refusal
+   * here and the rebuilt form prints it again (BOOK-63: a refusal spends nothing).
+   */
+  const [refusal, setRefusal] = useState<ComposerError | null>(null);
 
   const update = (next: SeamDraft): void => {
     setDraftState(next);
@@ -149,7 +156,13 @@ export function Seam({
     const key = door.current;
     door.current = null;
     if (key === null) return;
-    node.current?.querySelector<HTMLElement>(`[data-door="${key}"]`)?.focus();
+    const target = node.current?.querySelector<HTMLElement>(`[data-door="${key}"]`);
+    // The door may be gone with the body it lived in (a refusal that was cleared, a form the
+    // reader closed): the strip still has an action, and focus never lands on `<body>`.
+    target?.focus();
+    if (target === null || target === undefined) {
+      node.current?.querySelector<HTMLElement>('.seam-cta, .seam-prov, .seam-filing')?.focus();
+    }
   }, [prov]);
 
   /**
@@ -159,8 +172,9 @@ export function Seam({
    *
    * BOOK-111 (owner, 2026-10-27): a panel opened **from** this strip is not a second surface —
    * the strip collapses to its one line instead, and the form is not discarded by it. The
-   * draft stays exactly as it was left and the form comes back with it when the panel closes
-   * (BOOK-63: a refusal spends nothing — its own duplicate door is this case).
+   * draft stays exactly as it was left and the form comes back with it when the panel closes,
+   * carrying the refusal it was showing (BOOK-63: a refusal spends nothing — its own duplicate
+   * door is this case, and `refusal` above is what the rebuilt form prints again).
    */
   useEffect(() => {
     if (panel === null && revision === null) return;
@@ -287,7 +301,7 @@ export function Seam({
         </button>
       </div>
 
-      {refusal === null ? null : <p className="seam-note">{refusal}</p>}
+      {premiseNote === null ? null : <p className="seam-note">{premiseNote}</p>}
       {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
@@ -345,9 +359,13 @@ export function Seam({
               viewer={viewer}
               onChange={update}
               onReanchor={onReanchor}
+              initialError={refusal}
+              onRefused={setRefusal}
               onOpenDuplicate={(id, origin) => void openDuplicate(id, origin)}
               onPosted={(comment) => {
                 seamDrafts.drop(draftKey);
+                // A landed filing clears the refusal it may have answered (BOOK-63).
+                setRefusal(null);
                 setOpen(false);
                 // BOOK-90: «зарегистрировано» is the deed word; the state is the deck's own
                 // word for the posted row, so the receipt cannot drift from the feed.

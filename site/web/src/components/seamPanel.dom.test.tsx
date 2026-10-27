@@ -95,11 +95,7 @@ afterEach(async () => {
   resetParagraphChainCache();
 });
 
-async function mount({
-  comments = [] as readonly CommentDto[],
-  history = false,
-}: { comments?: readonly CommentDto[]; history?: boolean } = {}): Promise<void> {
-  const anchor = anchorFor({ text: TEXT, blockId: BLOCK_ID, baseRev: ENTRY.rev, offset: 0 });
+async function renderParagraph(comments: readonly CommentDto[], history: boolean): Promise<void> {
   await act(async () => {
     root?.render(
       <ProseParagraph
@@ -117,6 +113,14 @@ async function mount({
       />,
     );
   });
+}
+
+async function mount({
+  comments = [] as readonly CommentDto[],
+  history = false,
+}: { comments?: readonly CommentDto[]; history?: boolean } = {}): Promise<void> {
+  const anchor = anchorFor({ text: TEXT, blockId: BLOCK_ID, baseRev: ENTRY.rev, offset: 0 });
+  await renderParagraph(comments, history);
   await act(async () => {
     openSeam({ chapter: 8, blockId: BLOCK_ID, key: seamKey(8, BLOCK_ID, anchor!.sentence, ENTRY.rev), anchor, origin: container });
   });
@@ -279,6 +283,68 @@ describe('one box, two contexts (BOOK-DOC-34 §2.6–§2.7)', () => {
     expect(document.querySelector('.prov-panel')).toBeNull();
     expect(seam().getAttribute('data-state')).toBe('strip');
     expect(document.activeElement).toBe(seam().querySelector('.seam-prov'));
+  });
+});
+
+describe('the strip gets its rows and its focus back', () => {
+  it('hands focus to its own action when the door is gone', async () => {
+    // The row that opened the panel can leave the feed while the panel is open (a refresh, a
+    // hidden filing). Its door cannot receive focus then — and the reader must not land on
+    // `<body>`, so the strip's own action takes it.
+    await mount({ comments: [comment()] });
+    await click('.seam-filing');
+    expect(document.querySelector('.filing-panel')).not.toBeNull();
+
+    await renderParagraph([], false);
+    await click('.filing-close');
+
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expect(seam().querySelector('.seam-filing')).toBeNull();
+    // The fallback selector's first match in document order: the strip's word door.
+    expect(document.activeElement).toBe(seam().querySelector('.seam-prov'));
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
+describe('the box is measured again when its body grows (BOOK-111)', () => {
+  it('re-places the panel when the chain rows arrive after its first paint', async () => {
+    // jsdom has no layout: the panel's height is whatever `scrollHeight` says. It says 0 on the
+    // first paint (the chain is still loading) and the truthful height once the rows are in —
+    // the effect must run again on that change, or the box keeps a `maxHeight` for an empty body
+    // and scrolls its own text.
+    const gates: Array<() => void> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        await new Promise<void>((resolve) => {
+          gates.push(resolve);
+        });
+        return new Response('{}', { status: 404 });
+      }),
+    );
+
+    await mount({ history: true });
+    await act(async () => {
+      document.querySelector<HTMLElement>('.seam-prov')?.click();
+      for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+    });
+
+    const panel = document.querySelector<HTMLElement>('.prov-panel');
+    expect(panel).not.toBeNull();
+    // The first paint: an empty body, placed at the height it had then.
+    expect(panel?.className).toContain('prov-panel-anchored');
+    expect(panel?.style.maxHeight).toBe('0px');
+
+    Object.defineProperty(panel, 'scrollHeight', { configurable: true, value: 900 });
+    await act(async () => {
+      for (const answer of gates) answer();
+      for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+    });
+
+    // The same `<aside>`, re-measured: the grown body now caps at what the viewport allows.
+    expect(document.querySelector('.prov-panel')).toBe(panel);
+    const cap = Math.floor(window.innerHeight * 0.62);
+    expect(panel?.style.maxHeight).toBe(`${cap}px`);
   });
 });
 

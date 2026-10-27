@@ -173,7 +173,8 @@ export function firstWord(text: string | null): string | null {
 }
 
 /** The sentence holding the offset, or the nearest one. */
-export function sentenceAt(text: string, offset: number): Sentence | null {  const sentences = splitSentences(text);
+export function sentenceAt(text: string, offset: number): Sentence | null {
+  const sentences = splitSentences(text);
   if (sentences.length === 0) return null;
   let best: Sentence = sentences[0] as Sentence;
   let bestDistance = Number.POSITIVE_INFINITY;

@@ -279,6 +279,77 @@ describe('closing the seam (major 4)', () => {
   });
 });
 
+describe('a refusal survives the panel that its own door opens (BOOK-111)', () => {
+  /** A controlled field needs the native setter, or React never sees the change. */
+  function typeInto(selector: string, value: string): void {
+    const element = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(selector);
+    if (element === null) throw new Error(`no ${selector}`);
+    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+    act(() => element.dispatchEvent(new Event('input', { bubbles: true })));
+  }
+
+  /**
+   * The prod 409: the reader's own filing already exists. Its door opens the filing in the one
+   * panel — and the strip under that panel is rebuilt when the panel closes. The refusal is a
+   * fact of the strip, not of the form's mount: it must be there afterwards, with its door.
+   */
+  it('a refusal survives the panel that its own door opens', async () => {
+    const kept = comment({ id: 'cmt_x', chapter: 8, anchor: { ...comment().anchor, blockId: 'ch08#aa11bb22' } });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/api/comments/cmt_x')) {
+          return new Response(JSON.stringify(kept), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response(
+          JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_x' }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }),
+    );
+
+    await mountParagraph({ entry: { ...ENTRY, n: 8 }, blockId: 'ch08#aa11bb22' });
+    await act(async () => (document.querySelector('.seam-cta') as HTMLElement).click());
+    typeInto('textarea.seam-text', 'Свет был включён до меня, и это видно по тени.');
+    await act(async () => {
+      document.querySelector('.seam-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    });
+
+    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    const refused = document.querySelector<HTMLElement>('[data-door="duplicate"]');
+    expect(refused, 'the refusal names the filing already sent').not.toBeNull();
+
+    // The door opens that filing: the form goes and the strip collapses to its one line.
+    await act(async () => {
+      refused?.click();
+      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    });
+    expect(document.querySelector('.filing-panel')).not.toBeNull();
+    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('prov');
+    expect(document.querySelector('.seam-form')).toBeNull();
+
+    // Closing the panel rebuilds the strip — with the refusal and its door, not a clean form.
+    await act(async () => {
+      (document.querySelector('.filing-close') as HTMLElement).click();
+      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    });
+    expect(document.querySelector('.filing-panel')).toBeNull();
+    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('form');
+    expect(document.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe(
+      'Свет был включён до меня, и это видно по тени.',
+    );
+    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    expect(document.querySelector('.seam-error')?.getAttribute('role')).toBe('alert');
+    // The door is back, and the focus that the panel's close hands back lands on it — never
+    // on `<body>` (the form was unmounted and mounted again under the panel).
+    expect(document.querySelector('[data-door="duplicate"]')).not.toBeNull();
+    expect(document.activeElement?.getAttribute('data-door')).toBe('duplicate');
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
 describe('a sentence longer than the anchor bound keeps its mark (major 9)', () => {
   it('matches the filing by the clamped quote the server stored', async () => {
     const long = `${'слово '.repeat(60)}конец.`;
