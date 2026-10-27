@@ -3,8 +3,9 @@ import type { ParagraphChainDto } from '@book/shared';
 import type { ReactElement } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { placePopover, type AnchorRect } from '../lib/popover.ts';
 import { useParagraphChain } from '../useParagraphChain.ts';
 import { ParagraphChain } from './ParagraphChain.tsx';
@@ -39,7 +40,14 @@ const ANCHOR: AnchorRect = { top: 120, left: 10, width: 80, height: 20 };
 
 let root: Root | null = null;
 
+beforeEach(() => {
+  // BOOK-68: the chain memo lives for the module's lifetime, and a fresh case wants a fresh
+  // client — an answer from the previous case must not read as this one's.
+  resetParagraphChainCache();
+});
+
 afterEach(async () => {
+  resetParagraphChainCache();
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
