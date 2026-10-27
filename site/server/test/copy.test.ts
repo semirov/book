@@ -45,6 +45,8 @@ const COPY_MODULES = [
   'server/src/history/summary.ts',
   // BOOK-76: the change record's one line about the physics pass.
   'web/src/lib/science.ts',
+  // BOOK-72/BOOK-69: the versioned terms a reader accepts, and what stays with them.
+  'web/src/lib/terms.ts',
 ];
 
 describe('the copy modules a reader sees', () => {

@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest';
 
 import { CONSENT_COPY } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
-import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.ts';
+import {
+  MACHINE_TOOL_CAVEAT,
+  MACHINE_TOOL_RULES,
+  RIGHTS_ASSIGNMENT,
+  RIGHTS_FALLBACK,
+  RIGHTS_RETAINED,
+  TERMS_VERSION,
+  TOOL_CLAUSE,
+} from '../lib/terms.ts';
 import { LegalPage } from './LegalPage.tsx';
 
 /**
@@ -104,12 +112,14 @@ describe('/rules', () => {
     expect(text).toContain('Писатель берёт идею, а не байты');
     const kindsAt = text.indexOf(INTERVENTION_KIND_LIST);
     const bringsAt = text.indexOf('Что вы вносите');
+    const givenAt = text.indexOf('Что вы отдаёте');
     const boundsAt = text.indexOf('Сколько и как часто');
     const noteAt = text.indexOf('Если своего варианта нет');
     const refusedAt = text.indexOf('Что не принимается');
     expect(kindsAt).toBeGreaterThan(-1);
     expect(kindsAt).toBeLessThan(bringsAt);
-    expect(bringsAt).toBeLessThan(boundsAt);
+    expect(bringsAt).toBeLessThan(givenAt);
+    expect(givenAt).toBeLessThan(boundsAt);
     expect(boundsAt).toBeLessThan(noteAt);
     expect(noteAt).toBeLessThan(refusedAt);
   });
@@ -125,6 +135,58 @@ describe('/rules', () => {
     expect(text).toContain('Авторство, имя и защита от искажения остаются у вас');
     expect(text).toContain('переписать или стереть');
     expect(text).toContain('Свою долю в окончательном тексте');
+  });
+
+  it('prints the grant and what stays as two sections, in that order (BOOK-72)', () => {
+    // One heading used to carry both promises; now a reader reads the grant, then the list.
+    expect(html).not.toContain('Что вы отдаёте и что остаётся вашим');
+    const flat = text.replace(/\s+/gu, ' ');
+    const givenAt = flat.indexOf('Что вы отдаёте');
+    const keptAt = flat.indexOf('Что у вас остаётся');
+    expect(givenAt).toBeGreaterThan(-1);
+    expect(keptAt).toBeGreaterThan(-1);
+    expect(givenAt).toBeLessThan(keptAt);
+  });
+
+  it('keeps the terms block in one order: assignment, fallback, tool clause, wave (BOOK-69)', () => {
+    const flat = text.replace(/\s+/gu, ' ');
+    const assignmentAt = flat.indexOf(RIGHTS_ASSIGNMENT);
+    const fallbackAt = flat.indexOf(RIGHTS_FALLBACK);
+    const toolAt = flat.indexOf(TOOL_CLAUSE);
+    const waveAt = flat.indexOf('Следующая волна правок может эту фразу переписать или стереть');
+    for (const at of [assignmentAt, fallbackAt, toolAt, waveAt]) expect(at).toBeGreaterThan(-1);
+    expect(assignmentAt).toBeLessThan(fallbackAt);
+    expect(fallbackAt).toBeLessThan(toolAt);
+    expect(toolAt).toBeLessThan(waveAt);
+    // No section boundary between the assignment and the tool clause: it is part of the terms,
+    // not a footnote on another screen.
+    const between = html.slice(html.indexOf(RIGHTS_ASSIGNMENT), html.indexOf(TOOL_CLAUSE));
+    expect(between).not.toContain('</section>');
+    expect(between).not.toContain('<h2');
+  });
+
+  it('prints what stays as a list of four items, one per promise (BOOK-72)', () => {
+    expect(text.replace(/\s+/gu, ' ')).toContain('Что у вас остаётся');
+    for (const line of RIGHTS_RETAINED) expect(html).toContain(`<li>${line}</li>`);
+    // A list, not a paragraph: four items, and no fifth claim smuggled into the section.
+    const keptSection = html.slice(html.indexOf('Что у вас остаётся'));
+    const list = /<ul>([\s\S]*?)<\/ul>/u.exec(keptSection)?.[1] ?? '';
+    expect([...list.matchAll(/<li>/gu)]).toHaveLength(4);
+  });
+
+  it('names who writes the book between the refusals and the chain that reads (BOOK-69)', () => {
+    const flat = text.replace(/\s+/gu, ' ');
+    expect(flat).toContain(MACHINE_TOOL_RULES);
+    expect(flat).toContain(MACHINE_TOOL_CAVEAT);
+    const refusedAt = flat.indexOf('Что не принимается');
+    const writesAt = flat.indexOf('Кто пишет книгу');
+    const readersAt = flat.indexOf('Кто читает текст');
+    const worksAt = flat.indexOf('Как это работает');
+    expect(refusedAt).toBeGreaterThan(-1);
+    expect(refusedAt).toBeLessThan(writesAt);
+    expect(writesAt).toBeLessThan(readersAt);
+    // The chain of readers still sits before the mechanics, as it did before BOOK-69.
+    expect(readersAt).toBeLessThan(worksAt);
   });
 
   it('states the bounds in one place: the length, one place, the day, the hour', () => {
