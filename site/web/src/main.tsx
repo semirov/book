@@ -19,6 +19,9 @@ import './styles/focus.css';
 import './styles/seam.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
+// BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's
+// height at title scale and owns every `data-seq` delay.
+import './styles/first-load.css';
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('#root is missing from index.html');

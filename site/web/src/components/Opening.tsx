@@ -2,6 +2,7 @@ import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
+import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
 import { Header } from './Header.tsx';
 import { HowTheBookIsMade } from './HowTheBookIsMade.tsx';
@@ -19,6 +20,13 @@ import { ViewSwitch, type BookView } from './ViewSwitch.tsx';
  * A book's opening has no status bar — the chip and «книга · хроника» arrive when the
  * inventory starts, below the annotation, where the sticky header covers the TOC and the
  * chapters only.
+ *
+ * BOOK-DOC-49 — this component mounts exactly when the front lands, so `t = 0` of the
+ * first-load sequence is its commit: the driver lives here and nowhere in `App`. The typed
+ * title's per-frame state deliberately does **not**: it lives in the `h1` (`TitleSheet.tsx`),
+ * so a typing frame updates the title and never re-renders this component and page 2 under it.
+ * `seq` is false for a page load that owns no sequence (reduced motion, a deep link, a restored
+ * scroll), and then not one `data-seq` attribute is written at all.
  */
 export function Opening({
   front,
@@ -41,12 +49,14 @@ export function Opening({
   onViewChange: (view: BookView) => void;
   motion?: TitleMotion;
 }) {
+  const stage = useFrontSequence(motion?.token ?? 0);
+  const seq = stage !== 'idle';
   return (
     <>
-      <TitleSheet front={front} motion={motion} />
-      <HowTheBookIsMade />
-      <hr className="front-rule" />
-      <Annotation front={front} />
+      <TitleSheet front={front} motion={motion} seq={seq} running={stage === 'run'} />
+      <HowTheBookIsMade seq={seq} />
+      <hr className="front-rule" data-seq={seq ? 'rule' : undefined} />
+      <Annotation front={front} seq={seq} />
       <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} />
       <ViewSwitch view={view} onChange={onViewChange} />
     </>

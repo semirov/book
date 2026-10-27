@@ -32,6 +32,13 @@ describe('blockDurationMs', () => {
     expect(blockDurationMs('а'.repeat(500))).toBe(REVEAL.maxBlockMs);
   });
 
+  it('keeps the cover word at the house rate: «Бланк» is 277.8 ms at 18 cps', () => {
+    // BOOK-DOC-49 §3: 5 graphemes ÷ 18 cps = 277.78 ms — the number the sequence's table prints,
+    // and the reason the caret's rest ends at 498 (277.8 + 220). Linear: a rate is not a curve.
+    expect(blockDurationMs('Бланк')).toBeCloseTo(277.8, 1);
+    expect(graphemeCount('Бланк')).toBe(5);
+  });
+
   it('prints a 180-character block in ten seconds worth of prose at 18 cps (clamped)', () => {
     expect(blockDurationMs('а'.repeat(180))).toBe(REVEAL.maxBlockMs);
     expect(blockDurationMs('а'.repeat(90))).toBe(2_600);
@@ -140,6 +147,24 @@ describe('reveal state', () => {
     const state = createReveal([{ id: 'b1', text: 'абв' }], { reducedMotion: true });
     expect(revealComplete(state)).toBe(true);
     expect(blockText(state, 'b1', 'абв')).toBe('абв');
+  });
+
+  it('lands a long title whole at its own 400 ms cap, never at its 5 000 (BOOK-DOC-49 §3)', () => {
+    // A renamed title: 90 graphemes are 5 000 ms of prose at 18 cps and 2 600 even after the
+    // engine's ceiling. The cover's budget is a constant of the sheet, so the word is whole at
+    // 400 — 399 is not enough, and that is the whole point of the number.
+    const title = 'я'.repeat(90);
+    expect(blockDurationMs(title)).toBe(REVEAL.maxBlockMs);
+
+    const capped = createReveal([{ id: 'title', text: title }], { capBlockMs: 400 });
+    expect(capped.blocks[0]?.durationMs).toBe(400);
+    expect(revealComplete(tickReveal(capped, 399))).toBe(false);
+    expect(blockText(tickReveal(capped, 400), 'title', title)).toBe(title);
+
+    // Without the cap the same run is still printing at 400: the option is what changed.
+    const uncapped = createReveal([{ id: 'title', text: title }]);
+    expect(uncapped.blocks[0]?.durationMs).toBe(REVEAL.maxBlockMs);
+    expect(blockText(tickReveal(uncapped, 400), 'title', title)).not.toBe(title);
   });
 
   it('ignores non-positive ticks', () => {
