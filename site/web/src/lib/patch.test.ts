@@ -1,7 +1,7 @@
 import type { BlockDto, PatchOp } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { applyPatch, revisedBlockIds } from './patch.ts';
+import { applyPatch, changedBlockIds, refetchPrints, revisedBlockIds } from './patch.ts';
 
 function block(id: string, text: string): BlockDto {
   return { id, i: 0, text, hash: id.slice(id.indexOf('#') + 1) };
@@ -65,5 +65,38 @@ describe('revisedBlockIds', () => {
         { op: 'remove', id: 'ch01#dddddddd', i: 2 },
       ]),
     ).toEqual(['ch01#aaaaaaaa', 'ch01#cccccccc']);
+  });
+});
+
+describe('changedBlockIds', () => {
+  it('names a new block and a block whose text moved, and nothing for a block that vanished', () => {
+    const next = block('ch01#eeeeeee5', 'Новый');
+    const moved = block(C.id, 'Третий, иначе');
+    // B is gone; A is untouched; C keeps its id with new text; `next` is new.
+    expect(changedBlockIds([A, B, C], [A, moved, next])).toEqual([C.id, next.id]);
+  });
+
+  it('says nothing when the refetch carries the same text', () => {
+    expect(changedBlockIds([A, B], [A, B])).toEqual([]);
+  });
+});
+
+describe('refetchPrints', () => {
+  const known = new Set([C.id]);
+
+  it('keeps the change that travelled with the request, whatever a pass says', () => {
+    expect(refetchPrints({ change: known, passInFlight: true, before: [A], after: [A] })).toBe(known);
+    expect(refetchPrints({ change: known, passInFlight: false, before: null, after: [A] })).toBe(known);
+  });
+
+  it('prints the difference the refetch revealed while a pass was in flight', () => {
+    const moved = block(C.id, 'Третий, иначе');
+    expect(refetchPrints({ change: null, passInFlight: true, before: [A, C], after: [A, moved] })?.has(C.id)).toBe(true);
+    expect(refetchPrints({ change: null, passInFlight: true, before: [A, C], after: [A, moved] })?.size).toBe(1);
+  });
+
+  it('leaves the chapter to its own rule without a pass, and on a first load', () => {
+    expect(refetchPrints({ change: null, passInFlight: false, before: [A], after: [B] })).toBeNull();
+    expect(refetchPrints({ change: null, passInFlight: true, before: null, after: [A] })).toBeNull();
   });
 });

@@ -7,7 +7,7 @@
  * `planReveal` decides what prints, `tickReveal` advances the queue by grapheme clusters.
  */
 
-import type { BlockDto } from '@book/shared';
+import type { BlockDto, ChapterDto } from '@book/shared';
 
 export const REVEAL = {
   /** Characters per second ≈ 180 wpm of printed prose. */
@@ -123,6 +123,30 @@ export function printsChange(revision: {
 }): boolean {
   if (revision.cause.changeId === null) return false;
   return revision.kind === 'edit' || revision.kind === 'polish' || revision.kind === 'create';
+}
+
+/**
+ * The reveal a chapter's arrival deserves, decided in one place (`startReveal` in the
+ * article): `changed` means a change (`BOOK-117 §1`), otherwise a chapter the reader watched
+ * arrive prints (`live`) and an older one prints only its tail on join. Reduced motion sets
+ * everything at once, and an unreadable `writtenAt` counts as just written (the tail prints).
+ */
+export function chapterReveal(
+  loaded: Pick<ChapterDto, 'blocks' | 'writtenAt'>,
+  options: { fresh: boolean; changed?: ReadonlySet<string> | null; reducedMotion?: boolean; now?: number },
+): RevealState {
+  const reduced = options.reducedMotion === true;
+  const now = options.now ?? Date.now();
+  const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : now - Date.parse(loaded.writtenAt);
+  const plan = planReveal({
+    blocks: loaded.blocks,
+    mode: options.changed == null ? (options.fresh ? 'live' : 'join') : 'change',
+    changedIds: options.changed ?? undefined,
+    chapterAgeMs: Math.max(0, ageMs),
+    reducedMotion: reduced,
+  });
+  const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
+  return createReveal(queued, { reducedMotion: reduced });
 }
 
 export type RevealBlockState = {

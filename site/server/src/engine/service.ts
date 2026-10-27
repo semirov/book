@@ -419,6 +419,7 @@ export function createEngine(deps: EngineDeps) {
         tokensOut: options.tokensOut ?? 0,
         escalation: outcome,
         changeReason: because.slice(0, REASON_MAX_CHARS),
+        premiseCause: options.cause ?? 'refused',
         expiredLeaseId: expired ? lease.id : null,
       },
       at,

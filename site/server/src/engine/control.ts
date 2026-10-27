@@ -114,6 +114,7 @@ const escalateBody = z.object({
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
+  /** `failed` when the pass broke rather than refused the work; a broken pass is not a refusal. */
   cause: z.enum(['refused', 'failed']).optional(),
 });
 const beatBody = z.object({ leaseId: id });

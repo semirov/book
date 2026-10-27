@@ -140,11 +140,14 @@ describe('loadWriterConfig — bounds and defaults', () => {
   it('ships the documented defaults', () => {
     const config = loadWriterConfig(env());
     expect(config.timeoutMs).toBe(420_000);
-    expect(config.maxTokensPerCall).toBe(16_000);
-    // A runaway guard, not the bound: the default fits a real pass (a 20 697-character chapter
-    // cost 18 561 output tokens, plus an editor and one revision), so it never stops an ordinary
-    // one. The bound is money ($10 a day).
-    expect(config.maxTokensPerPass).toBe(120_000);
+    expect(config.maxTokensPerCall).toBe(64_000);
+    // A gate verdict is a thinking call, not a short one: on the first real pass (chapter 65) the
+    // editor spent 24 254 in / 10 161 out on a 1 027-character answer, and its reasoning alone
+    // outgrew the old cap on the revised chapter (22 691 characters, PROVIDER_SHAPE). Both caps
+    // are runaway guards; the bound is money ($10 a day), and the pass guard sums what one pass
+    // may legitimately spend (53 739 in / 60 102 out measured, with a revision and both gates).
+    expect(config.gateTokens).toBe(64_000);
+    expect(config.maxTokensPerPass).toBe(200_000);
     expect(config.continueMax).toBe(2);
     expect(config.dailyTokens).toBe(1_500_000);
     expect(config.maxPassesPerDay).toBe(4);
@@ -169,6 +172,15 @@ describe('loadWriterConfig — bounds and defaults', () => {
   it('lets the environment still set the per-pass guard', () => {
     expect(loadWriterConfig(env({ WRITER_MAX_TOKENS_PER_PASS: '60000' })).maxTokensPerPass).toBe(60_000);
     expect(refusalOf(env({ WRITER_MAX_TOKENS_PER_PASS: '0' })).message).toContain('WRITER_MAX_TOKENS_PER_PASS');
+  });
+
+  it('lets the environment set each of the three token guards, and refuses a zero', () => {
+    const config = loadWriterConfig(env({ WRITER_MAX_TOKENS_PER_CALL: '32000', WRITER_GATE_TOKENS: '48000' }));
+    expect(config.maxTokensPerCall).toBe(32_000);
+    expect(config.gateTokens).toBe(48_000);
+    // The pass guard is its own variable: one override does not move the other two.
+    expect(config.maxTokensPerPass).toBe(200_000);
+    expect(refusalOf(env({ WRITER_GATE_TOKENS: '0' })).message).toContain('WRITER_GATE_TOKENS');
   });
 
   it('refuses an integer below its floor and a number that is not safe', () => {

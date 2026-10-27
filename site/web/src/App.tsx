@@ -12,6 +12,7 @@ import type {
   FrontUpdatedPayload,
   HelloPayload,
   HistoryEventFrame,
+  PassStageEvent,
   ServerEventType,
   StateUpdatedPayload,
   ViewerDto,
@@ -37,6 +38,7 @@ import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
+import { applyStage, type Passes } from './lib/passes.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -82,6 +84,8 @@ export function App() {
   const [connection, setConnection] = useState<SocketStatus>('connecting');
   const [revisions, setRevisions] = useState<Record<number, ChapterRevisionPayload>>({});
   const [revising, setRevising] = useState<Record<number, BlockRevisingPayload>>({});
+  /** The writer lanes' passes in flight, by chapter — the page's only notice a text is coming. */
+  const [passes, setPasses] = useState<Passes>({});
   const [fresh, setFresh] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
@@ -179,6 +183,7 @@ export function App() {
             setNotice(null);
             setRevisions({});
             setRevising({});
+            setPasses({});
             setFresh(null);
             setFailed(false);
             noteRecord({ kind: 'hello', signedIn: hello.viewer.signedIn });
@@ -282,6 +287,13 @@ export function App() {
               });
             }, Number.isNaN(expiresIn) ? 0 : expiresIn + 250);
             timers.current.push(timer);
+            break;
+          }
+          case 'pass:stage': {
+            // A pass is the only notice a page gets that a chapter's text is being written:
+            // `landed` is the engine's, and the site's watcher then publishes no revision.
+            const event = frame.data as PassStageEvent;
+            setPasses((current) => applyStage(current, event));
             break;
           }
           case 'history:event': {
@@ -465,6 +477,7 @@ export function App() {
         revising={revising}
         markers={markers}
         fresh={fresh}
+        passes={passes}
         chapterFeed={chapterFeed}
         changes={changes}
         onRead={loadChapter}

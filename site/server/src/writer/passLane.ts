@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { chapterLabel, type WriterAssignment } from '@book/shared';
 
 import { chapterPath, readChapter } from '../engine/text.ts';
+import type { PremiseCause } from '../engine/types.ts';
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { EngineRefusalError, type EngineClient, type GateAssignmentView } from './client.ts';
@@ -149,8 +150,8 @@ export type GateRun = { revise: boolean; findings: GateFinding[] };
 export type Lane = {
   emit(input: StageEmitInput): Promise<void>;
   ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue'): Promise<ProviderResult>;
-  /** Park the pass: one plain sentence to the operator, one `refused` stage with the same words. */
-  park(reason: string): Promise<PassResult>;
+  /** Park the pass: one sentence, one `refused` stage; `cause` defaults to `failed` (a broken call). */
+  park(reason: string, cause?: PremiseCause): Promise<PassResult>;
   writeText(value: string): void;
   preSnapshot(at: number): void;
   transcript(result: PassResult): void;
@@ -230,7 +231,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiKey: config.apiKey,
         apiModel: config.apiModel,
         messages,
-        maxTokens: Math.min(config.maxTokensPerCall, remaining),
+        maxTokens: Math.min(kind.startsWith('gate:') ? config.gateTokens : config.maxTokensPerCall, remaining),
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
@@ -280,7 +281,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   /** The pin once a call happened — what the engine is told; `null` before one. */
   function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
 
-  async function park(reason: string): Promise<PassResult> {
+  async function park(reason: string, cause: PremiseCause = 'failed'): Promise<PassResult> {
     let note = reason;
     // BOOK-117: a parked pass is still a pass that spent money. The usage the lane has counted so
     // far travels with the escalate, so the ledger prices it and the day's bound sees it. A park
@@ -289,7 +290,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       ? { tokensIn: 0, tokensOut: 0 }
       : { model: config.model, tokensIn: all.in, tokensOut: all.out };
     try {
-      await engine.escalate(job.leaseId, reason.slice(0, 400), spent);
+      await engine.escalate(job.leaseId, reason.slice(0, 400), spent, cause);
     } catch (error) {
       // The lease may already be gone (an expired pass): the stage still records the truth.
       note = `${reason} (${reasonOf(error)})`.slice(0, 400);

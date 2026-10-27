@@ -10,6 +10,7 @@ import type {
 import type { ChapterFeed } from '../useReaderFeed.ts';
 
 import type { SpineMarkers } from '../lib/spine.ts';
+import type { Passes } from '../lib/passes.ts';
 import { canTakePremise } from '../lib/premise.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -26,6 +27,7 @@ export function ChapterList({
   revising,
   markers,
   fresh,
+  passes,
   chapterFeed,
   changes,
   onRead,
@@ -40,6 +42,8 @@ export function ChapterList({
   revising: Record<number, BlockRevisingPayload>;
   markers: SpineMarkers;
   fresh: number | null;
+  /** The writer lanes' passes in flight, by chapter (`lib/passes.ts`). */
+  passes?: Passes;
   chapterFeed: Record<number, ChapterFeed>;
   /** BOOK-137: the thread's changes, folded into their filing's entry — never a row. */
   changes: readonly ChangeSummaryDto[];
@@ -67,6 +71,7 @@ export function ChapterList({
             revising={revising[entry.n] ?? null}
             caret={show ? { show, live } : null}
             fresh={fresh === entry.n}
+            passActive={passes?.[entry.n] !== undefined}
             firstEmpty={firstEmpty === entry.n}
             onProvenance={onProvenance}
             comments={chapterFeed[entry.n]?.items ?? []}

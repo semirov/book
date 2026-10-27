@@ -18,6 +18,8 @@ import { readFileSync } from 'node:fs';
 
 import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
+import type { PremiseCause } from '../engine/types.ts';
+
 export const ENGINE_TIMEOUT_MS = 10_000;
 
 /** `fetch` (or a test double): the only seam this client has to the outside. */
@@ -146,7 +148,8 @@ export type EngineClient = {
   land(leaseId: string): Promise<LandView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
   done(body: DoneInput): Promise<DoneView>;
-  escalate(leaseId: string, because: string, spend?: EscalateSpend): Promise<DoneView>;
+  /** `cause` says whether the pass broke or the model refused the work (`engine/types.ts`). */
+  escalate(leaseId: string, because: string, spend?: EscalateSpend, cause?: PremiseCause): Promise<DoneView>;
   beat(leaseId: string): Promise<{ leaseId: string; expiresAt: string }>;
   reconcile(chapter: number, because: string): Promise<unknown>;
   stage(event: Record<string, unknown>): Promise<unknown>;
@@ -244,10 +247,15 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,
     done: async (body) => (await post('/internal/done', body)) as DoneView,
-    escalate: async (leaseId, because, spend) =>
+    escalate: async (leaseId, because, spend, cause) =>
       (await post(
         '/internal/escalate',
-        spend === undefined ? { leaseId, because } : { leaseId, because, ...spend },
+        {
+          leaseId,
+          because,
+          ...(spend ?? {}),
+          ...(cause === undefined ? {} : { cause }),
+        },
       )) as DoneView,
     beat: async (leaseId) =>
       (await post('/internal/beat', { leaseId })) as { leaseId: string; expiresAt: string },

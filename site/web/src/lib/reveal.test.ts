@@ -5,6 +5,7 @@ import {
   activeBlockId,
   blockDurationMs,
   blockText,
+  chapterReveal,
   createReveal,
   finishReveal,
   graphemeCount,
@@ -226,5 +227,37 @@ describe('reveal state', () => {
     const state = createReveal([{ id: 'b1', text: 'абв' }]);
     expect(tickReveal(state, 0)).toBe(state);
     expect(tickReveal(state, -5)).toBe(state);
+  });
+});
+
+describe('chapterReveal', () => {
+  const chapter = (writtenAt: string) => ({
+    writtenAt,
+    blocks: [
+      { id: 'ch08#b0', i: 0, text: 'Первый абзац главы.', hash: 'b0' },
+      { id: 'ch08#b1', i: 1, text: 'Второй абзац главы.', hash: 'b1' },
+    ],
+  });
+  const now = Date.parse('2026-10-27T09:01:00Z');
+
+  it('prints a chapter the reader watched arrive, and joins an old one silently', () => {
+    const live = chapterReveal(chapter('2026-10-27T09:00:00Z'), { fresh: true, now });
+    expect(live.blocks.map((block) => block.id)).toEqual(['ch08#b0', 'ch08#b1']);
+
+    const joined = chapterReveal(chapter('2026-10-01T09:00:00Z'), { fresh: false, now });
+    expect(joined.blocks).toEqual([]);
+  });
+
+  it('prints only the blocks a change names', () => {
+    const state = chapterReveal(chapter('2026-10-27T09:00:00Z'), { fresh: false, changed: new Set(['ch08#b1']), now });
+    expect(state.blocks.map((block) => block.id)).toEqual(['ch08#b1']);
+  });
+
+  it('sets everything at once under reduced motion, and reads a broken date as just written', () => {
+    const state = chapterReveal(chapter('не дата'), { fresh: true, reducedMotion: true, now });
+    expect(revealComplete(state)).toBe(true);
+    expect(blockText(state, 'ch08#b0', 'Первый абзац главы.')).toBe('Первый абзац главы.');
+    // An unreadable date is not provably old, so a join prints the tail it always printed.
+    expect(chapterReveal(chapter('не дата'), { fresh: false, now }).blocks.map((item) => item.id)).toEqual(['ch08#b0', 'ch08#b1']);
   });
 });

@@ -52,7 +52,10 @@ export type WriterConfigRedacted = {
   pipelinePath: string;
   keySource: 'file' | 'env';
   timeoutMs: number;
+  /** The writing call's cap (`draft`/`repair`/`continue`). */
   maxTokensPerCall: number;
+  /** The gate call's cap: a verdict is a thinking call, not a short one. */
+  gateTokens: number;
   maxTokensPerPass: number;
   continueMax: number;
   dailyTokens: number;
@@ -158,12 +161,20 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     pipelinePath,
     keySource: source,
     timeoutMs: integer(env, 'WRITER_TIMEOUT_MS', 420_000, 1),
-    maxTokensPerCall: integer(env, 'WRITER_MAX_TOKENS_PER_CALL', 16_000, 1),
-    // A runaway guard, not the bound: money is the bound ($10 a day, `budget.ts`). The default is
-    // the measured shape of a real pass, with room — a chapter of 20 697 characters cost 18 561
-    // *output* tokens on a reasoning model, and a pass also runs an editor and one revision. The
-    // old 48 000 stopped an ordinary pass in the middle of its revision.
-    maxTokensPerPass: integer(env, 'WRITER_MAX_TOKENS_PER_PASS', 120_000, 1),
+    // Two written calls, two caps. The writing call's cap bounds the chapter; the gate call's cap
+    // bounds a verdict, and a verdict is a thinking call: measured on the first real pass
+    // (chapter 65), a 1 027-character editor answer cost 24 254 in / 10 161 out and a
+    // 740-character consultant answer 11 350 in / 19 097 out — nearly all of it reasoning before
+    // the first word of the answer. On the revised chapter (22 691 characters) the editor's
+    // reasoning alone ran past the old 16 000 cap, the stream ended with empty content and the
+    // provider reported it, correctly, as PROVIDER_SHAPE. Both caps are runaway guards, not
+    // budgets: money is the bound ($10 a day, `budget.ts`).
+    maxTokensPerCall: integer(env, 'WRITER_MAX_TOKENS_PER_CALL', 64_000, 1),
+    gateTokens: integer(env, 'WRITER_GATE_TOKENS', 64_000, 1),
+    // The per-pass guard is the sum of what one pass can legitimately spend: a real pass with a
+    // revision and both gates measured 53 739 in / 60 102 out, and a second gate round on a
+    // bigger chapter has to fit too. A runaway guard, never the bound.
+    maxTokensPerPass: integer(env, 'WRITER_MAX_TOKENS_PER_PASS', 200_000, 1),
     continueMax: integer(env, 'WRITER_CONTINUE_MAX', 2, 0),
     dailyTokens: integer(env, 'WRITER_DAILY_TOKENS', 1_500_000, 1),
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),

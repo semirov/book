@@ -41,7 +41,7 @@ import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { isWritten } from './text.ts';
-import { refuse, type EngineDeps } from './types.ts';
+import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
 
@@ -346,6 +346,8 @@ export type CloseStepInput = {
   changeReason?: string | null;
   /** Why the step is escalated; also the cascade outcome when it belongs to one. */
   escalation?: CascadeOutcome | null;
+  /** A broken pass is not a refusal; `failed` settles a written premise and queues an unwritten one. */
+  premiseCause?: PremiseCause;
   /**
    * BOOK-34: the id of a lease that had already expired when this close arrived — the release
    * then reads `expired-close` and `step.closed` says so.
@@ -398,11 +400,10 @@ export function closeStep(
       releaseLease(db, live.id, input.outcome === 'escalated' ? 'escalated' : input.outcome === 'holds' ? 'holds' : 'done', now);
     }
     store.deleteDispatches(db, step.step_id);
-    // BOOK-7: a draft's first pass settles its chapter's premise from the text that now
-    // exists — applied when the chapter is written, rejected when the writer refused it with
-    // one reason, and left queued when the pass was interrupted (a vanished session is not a
-    // refusal: the step is re-issued and the premise waits with it).
-    settleDraftPremise(deps, step, input.outcome, input.escalation ?? null, input.note, now);
+    // BOOK-7: a draft's first pass settles its chapter's premise from the text that now exists —
+    // applied when the chapter is written, rejected when the writer refused it with one reason,
+    // and left queued when the pass was interrupted or broke (a broken call is not a refusal).
+    settleDraftPremise(deps, step, input.outcome, input.escalation ?? null, input.note, now, input.premiseCause);
     const span = db.prepare('SELECT MIN(hseq) AS fromHseq FROM events WHERE step_id = ?').get(step.step_id) as {
       fromHseq: number | null;
     };

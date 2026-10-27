@@ -348,7 +348,10 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // 7. The model: one answer, one retry with the reason, then the continuation calls.
       const checked = await draftAnswer(lane, built);
       if (!checked.ok) {
-        return await lane.park(`ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300));
+        // Only the model's own refusal of the work refuses the premise; a failed call, a cut
+        // answer or a broken shape is a pass that broke, never the reader's intervention declined.
+        const reason = `ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300);
+        return await lane.park(reason, checked.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed');
       }
       text = finalize(checked.text);
       text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax });
