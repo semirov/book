@@ -12,7 +12,8 @@ name: Deploy
 #
 # site/deploy/deploy.sh does the rest: gate (typecheck, arch, tests, coverage floor, build,
 # manuscript), refuse if prod is not running this checkout, `launchctl kickstart -k`, wait for
-# /healthz 200, and roll back to the previous commit if the service does not come up.
+# /healthz 200, and roll back to the previous commit if the service does not come up. A running
+# site that answers /healthz but does not serve the frozen frame also fails and rolls back.
 # Runbook: Lific BOOK-74.
 
 on:

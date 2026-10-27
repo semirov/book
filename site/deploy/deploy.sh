@@ -17,8 +17,12 @@
 #   * the prod launchd job must already be pointed at this root, otherwise it refuses: silently
 #     updating a clone that prod does not run would report a green deploy of nothing;
 #   * after `launchctl kickstart -k` it waits for `/healthz` to answer 200 with ok:true;
-#   * a failed health check rolls the clone back to the previously deployed commit, rebuilds,
-#     restarts, and re-checks — then exits 1 either way, so CI stays red.
+#   * it then checks that the running site serves the frozen frame (BOOK-107): a site that
+#     answers /healthz but serves other text is unhealthy, and rolls back the same way;
+#   * a checkout that predates the frame check (BOOK-107) deploys without it — the step says so,
+#     so an old ref can still be deployed and rolled back to;
+#   * a failed health or frame check rolls the clone back to the previously deployed commit,
+#     rebuilds, restarts, and re-checks — then exits 1 either way, so CI stays red.
 #
 # Secrets: this script reads no secret and prints no value. `site/.env` is gitignored and is
 # never touched by a checkout, `npm ci` or a build — only the service reads it.
@@ -36,7 +40,7 @@ REF="main"
 MODE="deploy"
 DRY_RUN=0
 
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,11 +70,15 @@ plist_field() {
 }
 
 health_url() {
+  printf '%s/healthz' "$(site_url)"
+}
+
+site_url() {
   local host port
   host="$(plist_field EnvironmentVariables.HOST || echo 127.0.0.1)"
   port="$(plist_field EnvironmentVariables.PORT || echo 8091)"
   case "$host" in ''|0.0.0.0|'::'|'*') host=127.0.0.1 ;; esac
-  printf 'http://%s:%s/healthz' "$host" "$port"
+  printf 'http://%s:%s' "$host" "$port"
 }
 
 wait_for_health() {
@@ -117,6 +125,18 @@ resolve_ref() {
 kickstart() {
   say "restarting $SERVICE_LABEL"
   launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL"
+}
+
+frame_check() {
+  # BOOK-107: /healthz says the process is alive, not that it serves the canon. The check is
+  # read-only, makes one attempt per chapter inside one 25 s budget, and writes nothing. A
+  # checkout that predates the check has no script — skip it loudly, never fail on absence.
+  [ -f "$ROOT/site/scripts/frame-check.mjs" ] || { say "this checkout predates the frame check (BOOK-107) — skipping"; return 0; }
+  local args=(--repo-root "$ROOT" --server "$(site_url)") data_dir
+  if data_dir="$(plist_field EnvironmentVariables.DATA_DIR)" && [ -n "$data_dir" ]; then
+    args+=(--data-dir "$data_dir")
+  fi
+  node "$ROOT/site/scripts/frame-check.mjs" "${args[@]}"
 }
 
 # --- prepare: get the wanted commit into the clone --------------------------------------------
@@ -183,15 +203,23 @@ service_root_guard
 kickstart
 URL="$(health_url)"
 if wait_for_health "$URL"; then
-  mkdir -p "$STATE_DIR"
-  echo "$GOOD" > "$STATE_DIR/last-good"
-  audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} health=200"
-  say "healthy: $SHORT at $URL"
-  exit 0
+  say "healthz ok at $URL — checking the frozen frame"
+  # Exit 0 is the only success. A mismatch (1) means the running site serves text that is not
+  # the canon; a usage error (2) means this checkout cannot even run its own script. Both are
+  # this deploy being unhealthy, so both take the rollback path below — never `exit 0`.
+  if frame_check; then
+    mkdir -p "$STATE_DIR"
+    echo "$GOOD" > "$STATE_DIR/last-good"
+    audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} health=200 frame=ok"
+    say "healthy: $SHORT at $URL"
+    exit 0
+  fi
+  say "the running site does not serve the frozen frame — rolling back"
+  audit "unhealthy mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} health=200 frame=fail"
+else
+  say "health check failed at $URL after ${HEALTH_TIMEOUT}s — rolling back"
+  audit "unhealthy mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} health=fail frame=n/a"
 fi
-
-say "health check failed at $URL after ${HEALTH_TIMEOUT}s — rolling back"
-audit "unhealthy mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} health=fail"
 [ -n "$PREV" ] || die "no previous commit to roll back to; prod is NOT healthy — a human must look"
 git -C "$ROOT" checkout --quiet --detach "$PREV" || die "rollback checkout failed"
 cd "$ROOT/site"

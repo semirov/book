@@ -28,11 +28,28 @@ npm test                     # vitest: shared, server, web
 npm run test:coverage
 npm run typecheck
 npm run arch                 # file-size limit, layer boundaries, F023, no model in the engine
+npm run frame:check          # F029: ch01 opens and ch67 closes on the canon; deploy.sh checks the live site
+npm run frame:check -- --url=http://127.0.0.1:8091 --data="$HOME/book-site-data"   # «what does the site actually serve»
 npm run validate             # F001–F009 + F020–F022 + F029 over manuscript/; exit 1 on errors
 node bin/validate.mjs --staged   # what the git hook runs on the index
 ```
 
 Install the commit gate once per clone: `git config core.hooksPath site/bin/git-hooks && chmod +x site/bin/git-hooks/pre-commit`.
+
+Environments: dev, test, prod — what may touch what — https://wiki.semirov.dev/BOOK/pages/457
+
+The three data dirs, and the wall between them: **dev** is `site/.data` (API `:8080`, SPA `:5173`,
+`scripts/dev.mjs`); **test** is a fresh `mkdtemp` per test file, forced by `test/setup.ts` (which also
+drops an ambient `NODE_ENV`/`PRODUCTION_DATA_DIR`); **prod** is `$HOME/book-site-data` on `:8091` with
+`NODE_ENV=production`. The boot refuses a non-production run against a production data dir and a
+production run with `DATA_DIR` inside the checkout; `bin/feedback.mjs` and `bin/restore.mjs` use the
+same guard before they open `book.db`.
+
+`npm test` snapshots both dirs (`test/globalSetup.ts`). **Fatal** is a structural change — any entry
+added or removed, a dir that appears or vanishes, a non-database file whose size or mtime moved: a
+token, a feedback batch, a version snapshot, a stray DB. **Reported, not judged**: the live SQLite
+files (`book.db`, `-wal`, `-shm`) and the row counts read from them, printed as before → after pairs,
+because a running service rewrites those pages itself and `stat` cannot attribute a write to a test.
 
 ## Operate
 

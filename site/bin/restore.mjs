@@ -21,6 +21,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { databaseFile, openDatabase } from '../server/src/db/db.ts';
+import { assertDataDirIsolation, isProductionEnv, productionDataDirs } from '../server/src/dataDirGuard.ts';
 import { readRestoreSource } from '../server/src/history/restore.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -119,6 +120,13 @@ function main() {
   const n = chapterNumber(flags);
   const bookRoot = absolute(flags.get('root') ?? process.env.BOOK_ROOT ?? join(SITE_ROOT, '..'));
   const dataDir = absolute(flags.get('data-dir') ?? process.env.DATA_DIR ?? join(SITE_ROOT, '.data'));
+  // BOOK-107: this tool reads `book.db` and can copy a snapshot over a chapter, so it uses the
+  // boot's wall too — a dev shell pointed at the prod data dir is refused before any open.
+  assertDataDirIsolation(
+    { dataDir, adminTokenFile: '', engineTokenFile: '', feedbackDir: '' },
+    isProductionEnv(),
+    { prodDirs: productionDataDirs() },
+  );
   const { revisions, currentRev } = withDatabase(dataDir, (db) => ({
     revisions: rows(db, n),
     currentRev: (db.prepare('SELECT rev FROM chapters WHERE n = ?').get(n) ?? { rev: 0 }).rev,
