@@ -425,7 +425,12 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     rev: { chapter: comment.chapter, rev: baseRev },
     base: { sha256: chapter?.sha256 ?? '' },
   });
-  io.print(`${comment.id}: accepted → ${accepted.changeId}`);
+  // BOOK-7: a second premise for the same chapter is a decision, not a second place in line.
+  io.print(
+    accepted.superseded === true
+      ? `${comment.id}: superseded — у главы уже есть замысел → ${accepted.changeId}`
+      : `${comment.id}: accepted → ${accepted.changeId}`,
+  );
   return 0;
 }
 

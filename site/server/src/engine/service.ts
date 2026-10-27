@@ -40,6 +40,7 @@ import {
 } from './helpers.ts';
 import { beatLease, liveLease, releaseLease } from './leases.ts';
 import { dailyTokens } from './draft.ts';
+import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
@@ -430,11 +431,15 @@ export function createEngine(deps: EngineDeps) {
       )
       .all() as Array<{ id: string }>;
     for (const lease of leaked) releaseLease(db, lease.id, 'expired', deps.clock.now());
+    // BOOK-7: a premise whose chapter was written outside its own first pass can never land
+    // in that edition any more; it is closed with a public reason instead of waiting forever.
+    const premisesSettled = reconcilePremises(deps, deps.clock.now());
     const processing = store.countProcessing(db);
     return {
       ...report,
       lane: { holder: store.readLane(db).holder },
       leakedLeases: leaked.length,
+      premisesSettled,
       processing,
       pending: store.countPending(db),
       openSteps: store.countOpenSteps(db),

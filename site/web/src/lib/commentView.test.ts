@@ -14,6 +14,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     body: 'Тут дважды «слово».',
     proposedText: null,
     interventionKind: null,
+    premise: false,
     status: 'new',
     reason: null,
     createdAt: '2026-10-25T12:04:11Z',
@@ -35,6 +36,27 @@ describe('comment thread copy (§11.6)', () => {
     expect(
       commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })).state,
     ).toBe('внесено в главу 8');
+  });
+
+  it('tells a premise’s four states without a queue place (BOOK-7)', () => {
+    expect(commentStatusLine(comment({ premise: true, status: 'accepted', changeId: 'chg_1', reason: 'входит в книгу' }))).toEqual({
+      state: 'принято в основу',
+      detail: 'входит в книгу',
+      tone: 'live',
+    });
+    expect(
+      commentStatusLine(
+        comment({ premise: true, status: 'applied', chapter: 5, changeId: 'chg_1', reason: 'вошло в первую редакцию главы 5' }),
+      ),
+    ).toEqual({ state: 'вошло в первую редакцию главы 5', detail: null, tone: 'done' });
+    expect(
+      commentStatusLine(comment({ premise: true, status: 'superseded', reason: 'у главы уже есть замысел' })),
+    ).toEqual({ state: 'замысел снят', detail: 'у главы уже есть замысел', tone: 'stopped' });
+    expect(commentStatusLine(comment({ premise: true, status: 'rejected', reason: 'не беру: не из этой сцены' }))).toEqual({
+      state: 'замысел не взят',
+      detail: 'не беру: не из этой сцены',
+      tone: 'stopped',
+    });
   });
 
   it('says "not considered" instead of pretending', () => {

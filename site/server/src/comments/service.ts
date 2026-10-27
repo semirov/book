@@ -18,6 +18,8 @@ import {
   COMMENT_RAW_MAX_BYTES,
   EDIT_MAX_CHARS,
   EDIT_RAW_MAX_BYTES,
+  PREMISE_FROZEN_REASON,
+  TOTAL_CHAPTERS,
   type CommentAnchor,
   type CommentBudget,
   type InterventionKind,
@@ -317,7 +319,7 @@ export class CommentService {
 
   /** The soft cap is global, not per identity: it protects the lane, not a person (§14). */
   queueState(): { depth: number; full: boolean; retryAfterMs: number } {
-    const depth = (this.db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'`).get() as {
+    const depth = (this.db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0`).get() as {
       n: number;
     }).n;
     return {
@@ -370,20 +372,44 @@ export class CommentService {
    * A comment attaches to a paragraph from one revision. If that paragraph has changed,
    * the composer must be told (`STALE_ANCHOR`) rather than attach the note to the wrong
    * place (§9, §12.1).
+   *
+   * BOOK-7: the frozen frame is decided from the slot itself — ch01 and ch67 are never
+   * targets, whether or not the projection already holds their basis sentence. Premise vs
+   * ordinary is decided by whether the slot is *written* (`basis`/`block_count`), not by the
+   * absence of a row: a basis slot has a row, and it is still not prose. A chapter-level
+   * intervention on an unwritten slot is that slot's premise (base revision 0, no block).
    */
   private resolveAnchor(
     input: PostCommentInput,
   ): { ok: true; anchor: CommentAnchor; baseRev: number | null } | { ok: false; failure: ServiceFailure } {
-    const base = readChapterBase(this.db, input.chapter);
-    if (base === undefined) {
-      return {
-        ok: false,
-        failure: fail(409, 'STALE_ANCHOR', 'глава ещё не написана — замечание можно оставить к главе целиком'),
-      };
+    if (input.chapter === 1 || input.chapter === TOTAL_CHAPTERS) {
+      return { ok: false, failure: fail(403, 'FROZEN_FRAME', PREMISE_FROZEN_REASON) };
     }
+    const base = readChapterBase(this.db, input.chapter);
     const quote = sanitizeQuote(input.quote);
     const blockId = isPresent(input.blockId) ? input.blockId : null;
     const baseRev = typeof input.baseRev === 'number' ? input.baseRev : null;
+
+    if (base === undefined || base.basis !== 0 || base.blockCount === 0) {
+      if (blockId !== null) {
+        return {
+          ok: false,
+          failure: fail(409, 'STALE_ANCHOR', 'глава ещё не написана — замечание можно оставить к главе целиком'),
+        };
+      }
+      return {
+        ok: true,
+        baseRev: 0,
+        anchor: {
+          blockId: null,
+          blockIndex: null,
+          quote: null,
+          prefix: sanitizeAffix(input.prefix),
+          suffix: sanitizeAffix(input.suffix),
+          resolved: true,
+        },
+      };
+    }
 
     if (blockId === null) {
       return {

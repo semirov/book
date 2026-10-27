@@ -150,10 +150,16 @@ export function readBlock(db: Db, blockId: string): BlockRow | undefined {
     | undefined;
 }
 
-export function readChapterBase(db: Db, chapter: number): { rev: number; sha256: string } | undefined {
-  return db.prepare('SELECT rev, sha256 FROM chapters WHERE n = ?').get(chapter) as
-    | { rev: number; sha256: string }
-    | undefined;
+export function readChapterBase(
+  db: Db,
+  chapter: number,
+): { rev: number; sha256: string; basis: number; blockCount: number } | undefined {
+  const row = db
+    .prepare('SELECT rev, sha256, basis, block_count FROM chapters WHERE n = ?')
+    .get(chapter) as { rev: number; sha256: string; basis: number; block_count: number } | undefined;
+  return row === undefined
+    ? undefined
+    : { rev: row.rev, sha256: row.sha256, basis: row.basis, blockCount: row.block_count };
 }
 
 /** §9: a comment whose quote no longer exists is `resolved:false`; it is never re-anchored. */
@@ -186,6 +192,12 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
   // Illegal content is stored for the operator and never republished: the thread shows a
   // placeholder and the public reason, because «quarantined» is not a licence to publish it.
   const redacted = flags.includes('illegal-content');
+  // BOOK-7: a premise's state is the change's state — one source, so the thread cannot say
+  // «в очереди» about an intervention that waits for the chapter's first pass instead.
+  const change = linkedChange(db, row.change_id);
+  const premise = change?.premise === 1;
+  const status =
+    premise && change !== undefined ? premiseStatus(change, row.status as CommentStatus) : (row.status as CommentStatus);
   return {
     id: row.id,
     chapter: row.chapter,
@@ -197,12 +209,13 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // BOOK-16: a stored value the build does not know is dropped, never printed; `null`
     // covers a note and every row written before BOOK-16.
     interventionKind: normalizeInterventionKind(row.intervention_kind),
-    status: row.status as CommentStatus,
+    status,
+    premise,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
     // taxonomy is a map of the detector. BOOK-9: `audit_*` never leaves the row either;
     // an `OFF` reaches the reader only as this `reason`.
-    reason: row.reason,
+    reason: premise && change !== undefined ? (change.reason ?? row.reason) : row.reason,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     changeId: row.change_id,
@@ -211,6 +224,23 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
         ? { chapter: row.applied_chapter, rev: row.applied_rev }
         : null,
   };
+}
+
+type LinkedChange = { premise: number; status: string; outcome: string | null; reason: string | null };
+
+/** The change a comment became, for the premise's state (BOOK-7). One indexed read. */
+function linkedChange(db: Db, changeId: string | null): LinkedChange | undefined {
+  if (changeId === null) return undefined;
+  return db.prepare('SELECT premise, status, outcome, reason FROM changes WHERE id = ?').get(changeId) as
+    | LinkedChange
+    | undefined;
+}
+
+/** A premise's four public states, mapped from the change vocabulary, not stored twice. */
+function premiseStatus(change: LinkedChange, fallback: CommentStatus): CommentStatus {
+  if (change.status === 'done') return 'applied';
+  if (change.status === 'void') return change.outcome === 'superseded' ? 'superseded' : 'rejected';
+  return change.status === 'pending' ? 'accepted' : fallback;
 }
 
 export function appendCommentEvent(

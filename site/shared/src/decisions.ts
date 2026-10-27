@@ -58,6 +58,11 @@ export type MyDecisionDto = {
   changeId: string | null;
   /** The chapter the viewer intervened in. */
   chapter: number;
+  /**
+   * BOOK-7 — the intervention is its chapter's premise, not a rewrite. It has no waves and
+   * no blocks of its own, and its line says «в основу», never «в очереди».
+   */
+  premise: boolean;
   /** ≤280 chars, the change's own public intent; only for `applied`/`adapted`. */
   intent: string | null;
   outcome: MyDecisionOutcome;

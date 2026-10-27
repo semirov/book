@@ -1,16 +1,16 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 10** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 11** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
- * adds `front_matter.about_sha256`, the hash of the page-2 text an owner edit publishes;
- * BOOK-9 adds the auditor's verdict to a comment, recorded before triage can accept it;
- * BOOK-16 adds the intervention's kind to the comment and to the change it becomes).
+ * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
+ * `steps.premise_change`); BOOK-9 adds the auditor's verdict to a comment, recorded before
+ * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -36,6 +36,7 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   pass        TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep')),
   chapter     INTEGER CHECK (chapter BETWEEN 1 AND 67),          -- null for 'front'
   boundary    TEXT NOT NULL,                     -- '5' (n = boundary n−1|n), 'front', 'ending'
+  premise_change TEXT REFERENCES changes(id),    -- BOOK-7: the chapter-level premise this draft consumes
   outcome     TEXT CHECK (outcome IN              -- null while the step is open
                 ('rewritten','holds','published_with_finding','evaluated','escalated','interrupted')),
   rev_before  INTEGER, rev_after INTEGER,
@@ -80,6 +81,7 @@ export const STEPS_COLUMNS = [
   'pass',
   'chapter',
   'boundary',
+  'premise_change',
   'outcome',
   'rev_before',
   'rev_after',
@@ -172,6 +174,7 @@ CREATE TABLE changes (
   base_sha256  TEXT NOT NULL,
   base_blocks  TEXT NOT NULL,                      -- JSON array of block hashes
   scope_hint   TEXT NOT NULL CHECK (scope_hint IN ('phrase','chapter')),
+  premise      INTEGER NOT NULL DEFAULT 0,       -- BOOK-7: 1 = a chapter-level premise, not prose (base_rev 0, no anchor)
   status       TEXT NOT NULL CHECK (status IN
                  ('pending','processing','stale','done','void','escalated','failed')),
   relevance    TEXT,                               -- JSON Relevance (§6A.7)
@@ -190,6 +193,7 @@ CREATE TABLE changes (
 );
 CREATE INDEX changes_lane ON changes(status, seq);
 CREATE INDEX changes_chapter ON changes(chapter, seq);
+CREATE UNIQUE INDEX changes_premise_pending ON changes(chapter) WHERE premise = 1 AND status = 'pending'; -- BOOK-7: one queued premise per chapter
 
 CREATE TABLE change_events (               -- append-only audit of status/intent transitions
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,7 +218,6 @@ CREATE TABLE cascades (
 );
 
 ${STEPS_TABLE_SQL}
-
 
 CREATE TABLE gate_verdicts (                     -- provenance of the hidden roles (§6B.3)
   step_id     TEXT NOT NULL REFERENCES steps(step_id) ON DELETE CASCADE,

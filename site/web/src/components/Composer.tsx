@@ -3,7 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, logoutSession, postComment } from '../api.ts';
 import { formatNumber } from '../lib/format.ts';
-import { composerView, counterLabel, draftLimits, validateDraft, type ComposerError } from '../lib/composer.ts';
+import {
+  composerTargets,
+  composerView,
+  counterLabel,
+  draftLimits,
+  isPremiseTarget,
+  validateDraft,
+  type ComposerError,
+} from '../lib/composer.ts';
 import { InterventionKinds } from './InterventionKinds.tsx';
 
 /**
@@ -60,9 +68,15 @@ export function Composer({
   chapters: readonly CatalogEntry[];
   onPosted: () => void;
 }) {
-  const written = chapters.filter((entry) => entry.written);
+  // BOOK-7: written chapters and empty slots ch02..ch66; the frozen frame is never offered.
+  const targets = composerTargets(chapters);
+  const written = targets.filter((entry) => entry.written);
   const limits = draftLimits(composer);
-  const [chapter, setChapter] = useState<number>(written[written.length - 1]?.n ?? 1);
+  const [chapter, setChapter] = useState<number>(written[written.length - 1]?.n ?? targets[0]?.n ?? 1);
+  // The catalog may arrive after mount: the effective target is the one the select can show.
+  const active = targets.find((entry) => entry.n === chapter) ?? targets[0];
+  const activeChapter = active?.n ?? chapter;
+  const premise = isPremiseTarget(active);
   const [body, setBody] = useState('');
   const [proposed, setProposed] = useState('');
   const [showProposed, setShowProposed] = useState(false);
@@ -129,7 +143,7 @@ export function Composer({
     setSending(true);
     try {
       const response = await postComment({
-        chapter,
+        chapter: activeChapter,
         body: draft.body,
         captchaToken: token ?? '',
         ...(draft.proposed === null ? {} : { proposedText: draft.proposed, interventionKind: draft.kind }),
@@ -192,7 +206,7 @@ export function Composer({
     );
   }
 
-  if (written.length === 0) {
+  if (targets.length === 0) {
     return (
       <div className="composer composer-note" data-state="empty">
         <p>Замечания откроются вместе с первой главой.</p>
@@ -201,20 +215,24 @@ export function Composer({
   }
 
   return (
-    <div className="composer" data-state={view.kind}>
+    <div className="composer" data-state={view.kind} data-premise={premise ? 'true' : undefined}>
       <div className="composer-row">
         <label className="composer-label" htmlFor="composer-chapter">
           глава
         </label>
         <select
           id="composer-chapter"
-          value={chapter}
+          value={activeChapter}
           onChange={(event) => setChapter(Number(event.target.value))}
           disabled={sending}
         >
-          {written.map((entry) => (
+          {targets.map((entry) => (
             <option key={entry.n} value={entry.n}>
-              {entry.title === null ? `${entry.n}.` : `${entry.n}. ${entry.title}`}
+              {entry.written
+                ? entry.title === null
+                  ? `${entry.n}.`
+                  : `${entry.n}. ${entry.title}`
+                : `${entry.n}. — замысел`}
             </option>
           ))}
         </select>
@@ -230,15 +248,25 @@ export function Composer({
         </button>
       </div>
 
+      {premise ? (
+        <p className="fine" data-premise="true">
+          главы ещё нет — это замысел главы, а не замечание к тексту.
+        </p>
+      ) : null}
+
       <label className="composer-label" htmlFor="composer-body">
-        замечание к тексту
+        {premise ? `замысел главы ${activeChapter}` : 'замечание к тексту'}
       </label>
       <textarea
         id="composer-body"
         value={body}
         maxLength={limits.body}
         rows={4}
-        placeholder="что в абзаце не читается: повтор, сбой, деталь, которой не веришь"
+        placeholder={
+          premise
+            ? 'что должно быть в этой главе: событие, документ, поворот'
+            : 'что в абзаце не читается: повтор, сбой, деталь, которой не веришь'
+        }
         onChange={(event) => {
           setBody(event.target.value);
           setSent(false);
@@ -303,7 +331,7 @@ export function Composer({
 
       <div className="composer-actions">
         <button type="button" onClick={() => void submit()} disabled={sending || token === null}>
-          {sending ? 'отправляется' : 'оставить замечание'}
+          {sending ? 'отправляется' : premise ? 'оставить замысел' : 'оставить замечание'}
         </button>
         <span className="fine">
           Читают как данные, не как указания. <a className="composer-link" href="/privacy">что видят другие →</a>

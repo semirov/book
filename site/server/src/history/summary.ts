@@ -68,6 +68,15 @@ function decisionCopy(subject: SummarySubject): string {
   return `правка ${subject.changeSeq ?? '?'} внесена`;
 }
 
+function premiseDecisionCopy(subject: SummarySubject): string {
+  const outcome = typeof subject.payload.outcome === 'string' ? subject.payload.outcome : null;
+  const reason = typeof subject.payload.reason === 'string' ? subject.payload.reason.replace(/\s+/gu, ' ').trim() : '';
+  const chapter = subject.chapter ?? '?';
+  if (outcome === 'applied') return `замысел главы ${chapter} вошёл в первую редакцию`;
+  if (outcome === 'superseded') return `замысел главы ${chapter} снят${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;
+  return `замысел главы ${chapter} не взят${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;
+}
+
 export function summarize(subject: SummarySubject): string {
   const where = target(subject);
   const by = byChange(subject);
@@ -91,12 +100,15 @@ export function summarize(subject: SummarySubject): string {
       if (subject.payload.annotationChanged === true) return `${target(subject)} изменилась${by}`;
       return `название изменилось${by}`;
     case 'change.queued':
+      // BOOK-7: a premise is not queued, it waits for its chapter's first pass.
+      if (subject.payload.premise === true) return `замысел главы ${subject.chapter ?? '?'} принят`;
       return `правка ${subject.changeSeq ?? '?'} встала в очередь`;
     case 'change.processing':
       return `правка ${subject.changeSeq ?? '?'} в работе`;
     case 'change.stale':
       return `правка ${subject.changeSeq ?? '?'}: основа изменилась`;
     case 'change.decided':
+      if (subject.payload.premise === true) return premiseDecisionCopy(subject);
       return decisionCopy(subject);
     case 'cascade.opened':
       return `правка ${subject.changeSeq ?? '?'} пошла волной`;

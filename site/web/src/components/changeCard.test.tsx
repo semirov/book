@@ -14,6 +14,7 @@ const change: ChangeDto = {
   interventionKind: null,
   chapter: 8,
   intent: 'в абзаце дважды «слово» — оставить одно упоминание',
+  premise: false,
   source: { commentId: 'cmt_1', author: 'Аня' },
   base: { rev: 3 },
   scopeHint: 'phrase',
@@ -247,6 +248,7 @@ describe('the thread’s two-line status', () => {
     seq: 14,
     chapter: 8,
     intent: 'в абзаце дважды «слово»',
+    premise: false,
     status: 'done',
     outcome: 'applied',
     reason: null,
@@ -281,6 +283,7 @@ describe('the thread’s two-line status', () => {
       body: 'тут дважды «слово»',
       interventionKind: null,
       proposedText: null,
+      premise: false,
       status: 'applied',
       reason: null,
       createdAt: '2026-10-25T12:04:00Z',
@@ -379,5 +382,30 @@ describe('CascadeRibbon', () => {
 
   it('draws nothing when there is neither a ripple nor a seam', () => {
     expect(renderToStaticMarkup(<CascadeRibbon ribbon={null} markers={[]} onOpenChange={() => undefined} />)).toBe('');
+  });
+});
+
+describe('the change card for a premise (BOOK-7)', () => {
+  it('says «замысел», «в основе» and «главы ещё нет», never a queue place or «внесено»', () => {
+    const premise: ChangeDto = {
+      ...change,
+      premise: true,
+      status: 'pending',
+      outcome: null,
+      reason: null,
+      position: null,
+      relevance: null,
+      cascade: null,
+      modes: [],
+      steps: [],
+      appliedRevs: [],
+      decidedAt: null,
+    };
+    const html = renderToStaticMarkup(<ChangeCard change={premise} onClose={() => undefined} />);
+    expect(html).toContain('замысел · глава 8');
+    expect(html).toContain('в основе');
+    expect(html).toContain('главы ещё нет — замысел');
+    expect(html).not.toContain('в очереди');
+    expect(html).not.toContain('внесено');
   });
 });

@@ -16,16 +16,17 @@
  * idempotent answer (pre-BOOK-9 rows are read, never re-decided).
  */
 
-import { normalizeInterventionKind } from '@book/shared';
+import { PREMISE_FROZEN_REASON, normalizeInterventionKind } from '@book/shared';
 
 import { insertChange } from '../engine/store.ts';
+import { PREMISE_SUPERSEDED_REASON, admitPremise } from '../engine/premise.ts';
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { newChangeId } from '../util/ulid.ts';
 
 export type AcceptResult =
-  | { changeId: string; created: boolean }
-  | { error: string; code?: 'AUDIT_REQUIRED' };
+  | { changeId: string; created: boolean; superseded?: boolean }
+  | { error: string; code?: 'AUDIT_REQUIRED' | 'FROZEN_FRAME' };
 
 export type AcceptInput = {
   comment: CommentRow;
@@ -37,6 +38,11 @@ export type AcceptInput = {
   batch?: string | null;
 };
 
+/** A revision is 1..n; 0 is the premise base and never a base for text that exists. */
+function positiveRev(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
   const run = db.transaction((): AcceptResult => {
     const comment = readCommentRow(db, input.comment.id) ?? input.comment;
@@ -44,7 +50,14 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // A row created before BOOK-9 (or any row that already owns a change) keeps the
     // idempotent answer: a replay returns the change it has, and nothing is created here.
     if (comment.change_id !== null) {
-      return { changeId: comment.change_id, created: false };
+      const linked = db.prepare('SELECT outcome FROM changes WHERE id = ?').get(comment.change_id) as
+        | { outcome: string | null }
+        | undefined;
+      return {
+        changeId: comment.change_id,
+        created: false,
+        ...(linked?.outcome === 'superseded' ? { superseded: true } : {}),
+      };
     }
 
     // BOOK-9: a recorded `FITS` is the only permission a new change has. Fail closed — no
@@ -57,17 +70,59 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
       };
     }
 
-    const chapter = db.prepare('SELECT rev, sha256 FROM chapters WHERE n = ?').get(comment.chapter) as
-      | { rev: number; sha256: string }
+    // BOOK-7: the frozen frame is decided from the slot itself, before the projection is
+    // read. A basis slot is projected with a row (rev 0, one block), so "no row" would let
+    // an intervention on ch01/ch67 through as an ordinary change on the frozen chapter.
+    if (comment.chapter === 1 || comment.chapter === 67) {
+      return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
+    }
+
+    const chapter = db
+      .prepare('SELECT rev, sha256, basis, block_count FROM chapters WHERE n = ?')
+      .get(comment.chapter) as
+      | { rev: number; sha256: string; basis: number; block_count: number }
       | undefined;
-    if (chapter === undefined) return { error: 'глава ещё не написана: правку не к чему привязать' };
+    const changeId = input.changeId ?? newChangeId(Date.parse(input.at));
+    const existing = db.prepare('SELECT id FROM changes WHERE id = ?').get(changeId) as { id: string } | undefined;
+
+    // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a basis
+    // row is a row, not prose. Only a written chapter takes an ordinary change.
+    if (chapter === undefined || chapter.basis !== 0 || chapter.block_count === 0) {
+      let superseded = false;
+      if (existing === undefined) {
+        superseded = admitPremise(db, {
+          id: changeId,
+          kind: 'accepted_comment',
+          chapter: comment.chapter,
+          intent: input.intent,
+          interventionKind: normalizeInterventionKind(comment.intervention_kind),
+          sourceComment: comment.id,
+          sourceSession: null,
+          at: input.at,
+        }).superseded;
+      } else {
+        const linked = db.prepare('SELECT outcome FROM changes WHERE id = ?').get(changeId) as
+          | { outcome: string | null }
+          | undefined;
+        superseded = linked?.outcome === 'superseded';
+      }
+      const status = superseded ? 'superseded' : 'accepted';
+      const reason = superseded ? PREMISE_SUPERSEDED_REASON : input.reason.slice(0, 200);
+      db.prepare(
+        `UPDATE comments
+            SET status = ?, decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
+          WHERE id = ?`,
+      ).run(status, input.at, reason, input.batch ?? null, changeId, comment.id);
+      appendCommentEvent(db, comment.id, 'decided', input.at, { status, changeId, premise: true });
+      return { changeId, created: existing === undefined, superseded };
+    }
 
     const blocks = db
       .prepare('SELECT hash FROM blocks WHERE chapter = ? ORDER BY idx')
       .all(comment.chapter) as Array<{ hash: string }>;
-    const baseRev = input.baseRev ?? comment.base_rev ?? chapter.rev;
-    const changeId = input.changeId ?? newChangeId(Date.parse(input.at));
-    const existing = db.prepare('SELECT id FROM changes WHERE id = ?').get(changeId) as { id: string } | undefined;
+    // A stored 0 is the premise base (an empty slot at posting time); once the chapter has
+    // text, the change must be recorded against the revision that stands, not against 0.
+    const baseRev = positiveRev(input.baseRev) ?? positiveRev(comment.base_rev) ?? chapter.rev;
     if (existing === undefined) {
       insertChange(db, {
         id: changeId,
@@ -91,6 +146,7 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         baseSha: chapter.sha256,
         baseBlocks: JSON.stringify(blocks.map((block) => block.hash)),
         scopeHint: 'phrase',
+        premise: 0,
         enqueuedAt: input.at,
       });
     }

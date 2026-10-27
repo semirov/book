@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runFeedback } from '../src/feedback/cli.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
 import { createBatch, readBatchLines } from '../src/feedback/batches.ts';
+import { insertComment } from '../src/comments/repo.ts';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
@@ -188,14 +189,32 @@ describe('feedback.mjs decide — the intent is the gate', () => {
 
   it('refuses an accepted decision on chapter 67', async () => {
     const h = await boot();
-    const response = await h.app.inject({
-      method: 'POST',
-      url: '/api/comments',
-      headers: h.headers(),
-      payload: commentBody({ chapter: 67, body: 'Финал стоит сделать теплее.' }),
+    // BOOK-7: posting to ch67 is refused at the door; the decision path is exercised on a row
+    // that already exists (a row stored before the frozen frame became a hard refusal).
+    const id = 'cmt_01JB7FEEDBACK000000000067';
+    insertComment(h.db, {
+      id,
+      identityId: h.identity.id,
+      chapter: 67,
+      blockId: null,
+      blockIndex: null,
+      baseRev: null,
+      quote: null,
+      prefix: null,
+      suffix: null,
+      author: 'Аня',
+      body: 'Финал стоит сделать теплее.',
+      proposedText: null,
+      interventionKind: null,
+      bodySha: 'b'.repeat(64),
+      flags: [],
+      ipHash: 'f'.repeat(64),
+      status: 'new',
+      guard: null,
+      reason: null,
+      createdAt: '2026-10-25T12:01:00Z',
+      idemKey: null,
     });
-    expect(response.statusCode).toBe(201);
-    const id = response.json().comment.id;
     const refused = cli(
       h,
       'decide',

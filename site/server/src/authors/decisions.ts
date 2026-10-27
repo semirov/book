@@ -49,6 +49,8 @@ type DecisionRow = {
   comment_created_at: string;
   decided_at: string | null;
   change_id: string | null;
+  /** BOOK-7 — 1 = the intervention became its chapter's premise, not a rewrite. */
+  change_premise: number | null;
   change_status: string | null;
   change_outcome: string | null;
   change_reason: string | null;
@@ -73,6 +75,7 @@ const DECISIONS_SQL = `
          c.created_at    AS comment_created_at,
          c.decided_at    AS decided_at,
          ch.id           AS change_id,
+         ch.premise      AS change_premise,
          ch.status       AS change_status,
          ch.outcome      AS change_outcome,
          ch.reason       AS change_reason,
@@ -127,23 +130,29 @@ export function readMyDecisions(db: Db, identityId: string): MyDecisionsDto {
 function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto {
   const outcome = outcomeOf(row);
   const measured = outcome === 'applied' || outcome === 'adapted';
+  // BOOK-7: a premise has no ripple of its own — no waves, no paragraphs to count; it entered
+  // the chapter's first edition, and saying more than that would invent facts.
+  const premise = row.change_premise === 1;
   // The change's own close is when its effect became a fact; a comment without a change is
   // decided by the comment's own decision.
   const decidedAt = row.change_finished_at ?? row.decided_at ?? row.comment_created_at;
   // `recordImpact` lands a moment after the close event the frame announces, so a decision
   // read in that instant may not have its projection yet: compute it, once, for that case.
   const impact =
-    measured && row.blocks_changed === null && row.change_id !== null ? readImpact(db, row.change_id) : null;
+    measured && !premise && row.blocks_changed === null && row.change_id !== null
+      ? readImpact(db, row.change_id)
+      : null;
   return {
     commentId: row.comment_id,
     changeId: row.change_id,
     chapter: row.chapter,
+    premise,
     intent: measured && row.change_intent !== null ? publicIntent(row.change_intent) : null,
     outcome,
     reason: reasonOf(row, outcome),
     chapters: measured ? chaptersOf(touchedChapters(row, impact), row.chapter) : [],
-    waves: measured ? row.waves : null,
-    blocks: measured ? (row.blocks_changed ?? impact?.blocksChanged ?? null) : null,
+    waves: measured && !premise ? row.waves : null,
+    blocks: measured && !premise ? (row.blocks_changed ?? impact?.blocksChanged ?? null) : null,
     // A refusal has no share of its own to show: the number is absent, never zero.
     shareAtDecision: measured ? shareThen(db, identityId, decidedAt) : null,
     decidedAt,

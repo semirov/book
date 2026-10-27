@@ -131,6 +131,12 @@ export type CommentDto = {
   interventionKind: InterventionKind | null;
   status: CommentStatus;
   /**
+   * BOOK-7 — the intervention became its chapter's premise (the slot was empty when it was
+   * accepted). Derived from the linked change, so the thread cannot say «в очереди» about a
+   * premise that waits for the chapter's first pass instead.
+   */
+  premise: boolean;
+  /**
    * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
    * The guard's own category and flags stay internal (audit m5): a public `flags` array
    * would let a stranger bisect the detector one probe at a time.

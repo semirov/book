@@ -75,12 +75,14 @@ function stageOf(db: Db, changeId: string): string {
 
 /** The public headline `«4 замечания в очереди»` and the change card's position (§9). */
 export function readQueue(db: Db, nowMs: number): QueueDto {
-  const pending = countRows(db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'`);
+  // BOOK-7: a premise waits for the chapter's first pass, not for the lane, so it is not a
+  // queued change and never becomes the head.
+  const pending = countRows(db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0`);
   const processingRow = db
     .prepare(`SELECT * FROM changes WHERE status = 'processing' ORDER BY seq LIMIT 1`)
     .get() as ChangeRow | undefined;
   const head = db
-    .prepare(`SELECT * FROM changes WHERE status = 'pending' ORDER BY seq LIMIT 1`)
+    .prepare(`SELECT * FROM changes WHERE status = 'pending' AND premise = 0 ORDER BY seq LIMIT 1`)
     .get() as ChangeRow | undefined;
   const dayAgo = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
   const lastDecided = db

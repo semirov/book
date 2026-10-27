@@ -1,11 +1,30 @@
+import type { CatalogEntry } from '@book/shared';
 import type { CommentBudget, ComposerInfo, InterventionKind, ViewerDto } from '@book/shared';
 import {
   COMMENT_MAX_CHARS,
   COMMENT_MIN_CHARS,
   EDIT_MAX_CHARS,
   INTERVENTION_KIND_LABELS,
+  PREMISE_FROZEN_REASON,
+  TOTAL_CHAPTERS,
   validateInterventionKind,
 } from '@book/shared';
+
+/**
+ * BOOK-7 — the slots a reader may address: written chapters and empty slots ch02..ch66.
+ * A basis slot (ch01's opening, ch67's finale) holds only the frozen frame and is never a
+ * target; an empty slot takes a premise instead of a note on text.
+ */
+export function composerTargets(chapters: readonly CatalogEntry[]): CatalogEntry[] {
+  return chapters.filter(
+    (entry) => entry.n >= 2 && entry.n <= TOTAL_CHAPTERS - 1 && (entry.written || !entry.basis),
+  );
+}
+
+/** Is this target a chapter with no text yet — i.e. is the intervention its premise? */
+export function isPremiseTarget(entry: CatalogEntry | undefined): boolean {
+  return entry !== undefined && !entry.written;
+}
 
 /**
  * BOOK-DOC-4 rule 1 — before `hello` arrives the composer shows the same caps the server
@@ -99,6 +118,8 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
       return { line: 'очередь правок заполнена — попробуйте позже', detail: retryCopy(error.retryAfterMs), canRetry: true };
     case 'ENDING_FROZEN':
       return { line: 'финал заморожен: правка читателя туда не входит', detail: null, canRetry: false };
+    case 'FROZEN_FRAME':
+      return { line: PREMISE_FROZEN_REASON, detail: null, canRetry: false };
     case 'BLOCKED':
       return { line: 'замечания от этого автора не принимаются', detail: null, canRetry: false };
     default:

@@ -12,6 +12,7 @@
 
 import {
   INTENT_MAX_CHARS,
+  PREMISE_FROZEN_REASON,
   normalizeInterventionKind,
   type ChangeStatus,
   type InterventionKind,
@@ -30,6 +31,7 @@ import {
   safeJson,
 } from './helpers.ts';
 import { acquireLease } from './leases.ts';
+import { admitPremise, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
@@ -101,6 +103,31 @@ export function createQueue(deps: EngineDeps) {
     const text = readChapter(bookRoot, chapter);
     // A basis-only slot (ch01/ch67) is unwritten: its frozen sentence is not a base for edits.
     if (!isWrittenChapter(text)) {
+      if (chapter === 1) {
+        // BOOK-7: the opening sentence is never a target; ch01 holds only that sentence.
+        refuse('FROZEN_FRAME', 422, PREMISE_FROZEN_REASON);
+      }
+      if (chapter === 67) {
+        refuse('ENDING_FROZEN', 422, 'финал не переписывается по замечаниям');
+      }
+      // BOOK-7: an intervention on an empty slot (ch02..ch66) is the chapter's premise —
+      // a durable row with base_rev 0, no anchor, and no place in the FIFO lane.
+      if (input.kind === 'reader_edit' || input.kind === 'accepted_comment') {
+        if (store.countPending(db) >= config.queueSoftCap) {
+          refuse('QUEUE_FULL', 503, 'очередь правок заполнена — попробуйте позже');
+        }
+        const admitted = admitPremise(db, {
+          id: newChangeId(deps.clock.now()),
+          kind: input.kind,
+          chapter,
+          intent,
+          interventionKind,
+          sourceComment: input.commentId ?? null,
+          sourceSession: input.sessionId ?? null,
+          at: iso(),
+        });
+        return { id: admitted.id, seq: admitted.seq, status: admitted.superseded ? 'void' : 'pending' };
+      }
       refuse('CHAPTER_EMPTY', 409, `глава ${chapter} ещё не написана`);
     }
     if (store.countPending(db) >= config.queueSoftCap) {
@@ -130,6 +157,7 @@ export function createQueue(deps: EngineDeps) {
       baseSha: text.sha256,
       baseBlocks: JSON.stringify(text.blocks.map((block) => block.hash)),
       scopeHint: input.scopeHint ?? 'phrase',
+      premise: 0,
       enqueuedAt: iso(),
     });
     appendChangeEvent(db, id, 'queued', { chapter, kind: input.kind }, deps.clock.now());
@@ -301,6 +329,9 @@ export function createQueue(deps: EngineDeps) {
     if (chapter === null) return null;
     if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) return null;
 
+    // BOOK-7: the chapter's premise rides on the step that opens its first pass, so a
+    // resumed step carries it again and a close can settle exactly that premise.
+    const premise = queuedPremise(db, chapter);
     const stepId = newStepId(at);
     store.insertStep(db, {
       stepId,
@@ -314,8 +345,18 @@ export function createQueue(deps: EngineDeps) {
       seamsIn: '[]',
       revBefore: currentRev(db, chapter),
       at: iso(at),
+      premiseChange: premise?.id ?? null,
     });
-    appendEvent(db, { kind: 'step.opened', stepId, chapter, payload: { pass: 'draft', lane } }, at);
+    appendEvent(
+      db,
+      {
+        kind: 'step.opened',
+        stepId,
+        chapter,
+        payload: { pass: 'draft', lane, ...(premise === undefined ? {} : { premise: premise.id }) },
+      },
+      at,
+    );
     try {
       const lease = acquireLease(deps, {
         step: store.getStep(db, stepId) as store.StepRow,

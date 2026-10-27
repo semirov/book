@@ -24,6 +24,7 @@ import { normalizeInterventionKind, parseSeams } from '@book/shared';
 
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
+import { premiseOfStep } from './premise.ts';
 import type { EngineDeps } from './types.ts';
 
 export type TraceResult =
@@ -107,6 +108,7 @@ export function changeTraceOf(deps: EngineDeps, changeId: string): ChangeTrace |
       status: change.status as ChangeStatus,
       outcome: change.outcome as ChangeOutcome | null,
       reason: change.reason,
+      premise: change.premise === 1,
       relevance: json<Relevance | null>(change.relevance, null),
       cascadeId: change.cascade_id,
       enqueuedAt: change.enqueued_at,
@@ -185,6 +187,9 @@ export function writerAssignment(
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.
     interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),
+    // BOOK-7: the first pass of a chapter with a premise receives it here — one goal, its
+    // kind, and nothing that could identify the reader.
+    premise: premiseOfStep(deps.db, step),
     seamsIn: parseSeams(json(step.seams_in, [])),
     cycle: step.cycle,
     findings: step.cycle > 0 && gapFindings.length > 0 ? gapFindings : null,

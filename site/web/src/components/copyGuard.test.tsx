@@ -29,6 +29,7 @@ const change: ChangeDto = {
   interventionKind: null,
   chapter: 8,
   intent: 'в абзаце дважды «слово» — оставить одно упоминание',
+  premise: false,
   source: { commentId: null, author: null },
   base: { rev: 3 },
   scopeHint: 'phrase',

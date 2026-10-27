@@ -144,7 +144,32 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // BOOK-7: an intervention on a chapter that has no text is that chapter's premise, not
+    // prose (BOOK-DOC-6). Two additive columns — the change flag and the draft step that
+    // consumed it; a comment's premise state is derived from the change, so the comment
+    // needs no column of its own. An old database keeps every row; a fresh install is
+    // created with both columns already present.
+    to: 11,
+    up(db) {
+      addColumn(db, 'changes', 'premise', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(db, 'steps', 'premise_change', 'TEXT REFERENCES changes(id)');
+      // One queued premise per chapter is a database fact, not only an application check.
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS changes_premise_pending
+           ON changes(chapter) WHERE premise = 1 AND status = 'pending'`,
+      );
+    },
+  },
 ];
+
+/** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */
+function addColumn(db: Db, table: string, column: string, definition: string): void {
+  const columns = new Set(
+    (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name),
+  );
+  if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 function tableExists(db: Db, name: string): boolean {
   const row = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);

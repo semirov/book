@@ -75,6 +75,7 @@ describe('composer state (§11.6, §12.8)', () => {
       ['DUPLICATE', 'уже отправлено', false],
       ['QUEUE_FULL', 'очередь', true],
       ['ENDING_FROZEN', 'финал', false],
+      ['FROZEN_FRAME', 'неподвижна', false],
       ['BLOCKED', 'не принимаются', false],
     ];
     for (const [code, fragment, canRetry] of cases) {

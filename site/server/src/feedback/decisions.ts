@@ -172,14 +172,17 @@ export class DecisionsTailer {
     const change = this.db.prepare('SELECT * FROM changes WHERE id = ?').get(accepted.changeId) as
       | ChangeRow
       | undefined;
+    // BOOK-7: a premise is not a queued change — the reader's own line says «принято в
+    // основу», and a second premise carries its public refusal instead of a place in line.
+    const superseded = change?.premise === 1 && change.status === 'void';
     const ahead =
-      change === undefined
+      change === undefined || change.premise === 1
         ? 0
-        : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq < ?`, change.seq);
+        : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`, change.seq);
     const payload: CommentDecisionPayload = {
       id: comment.id,
       status: 'accepted',
-      reason: decision.reason,
+      reason: superseded ? (change?.reason ?? decision.reason) : decision.reason,
       decidedAt: at,
       batchId: decision.batch ?? null,
       changeId: accepted.changeId,
@@ -194,11 +197,11 @@ export class DecisionsTailer {
   /** The `change:queued` frame for a change that already exists (new or applied by the CLI). */
   private announceQueued(changeId: string): void {
     const change = this.db.prepare('SELECT * FROM changes WHERE id = ?').get(changeId) as ChangeRow | undefined;
-    if (change === undefined) return;
+    if (change === undefined || change.premise === 1) return;
     const depth = readQueue(this.db, this.now().getTime()).depth;
     const ahead = countRows(
       this.db,
-      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq < ?`,
+      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
       change.seq,
     );
     this.emit('change:queued', {

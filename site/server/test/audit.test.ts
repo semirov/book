@@ -65,14 +65,14 @@ function auditRow(h: Harness, id: string): Record<string, unknown> {
   return h.db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as Record<string, unknown>;
 }
 
-function seed(h: Harness, id: string): void {
+function seed(h: Harness, id: string, chapter = 8): void {
   insertComment(h.db, {
     id,
     identityId: h.identity.id,
-    chapter: 8,
+    chapter,
     blockId: null,
     blockIndex: null,
-    baseRev: 1,
+    baseRev: chapter === 67 ? null : 1,
     quote: null,
     prefix: null,
     suffix: null,
@@ -236,7 +236,10 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
 
   it('keeps ENDING_FROZEN ahead of the audit gate on chapter 67', async () => {
     const h = await boot();
-    const id = await comment(h, 'Финал стоит сделать теплее.', 67);
+    // BOOK-7: posting to the frozen frame is refused at the door, so the row is seeded as a
+    // pre-existing one; the CLI must still refuse a decision before it asks for an audit.
+    const id = 'cmt_01JB7FROZEN0000000000067';
+    seed(h, id, 67);
     expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
 
     const refused = cli(h, 'decide', id, 'accepted', '--reason', 'смягчить финал', '--intent', 'смягчить последний абзац');

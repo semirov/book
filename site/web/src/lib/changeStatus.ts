@@ -26,7 +26,15 @@ export type ChangeLines = {
 };
 
 /** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
-export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'>): string {
+export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean }): string {
+  // BOOK-7: a premise is not a change of text — it is the chapter's starting point.
+  if (change.premise === true) {
+    if (change.status === 'pending') return 'в основе';
+    if (change.status === 'done') return 'в первой редакции';
+    if (change.status === 'void') {
+      return change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят';
+    }
+  }
   if (change.status === 'pending') return 'ждёт очереди';
   if (change.status === 'processing') return 'идёт';
   if (change.status === 'stale') return 'основа изменилась';
@@ -67,6 +75,36 @@ function isDropped(change: Pick<ChangeSummaryDto, 'status' | 'outcome'>): boolea
 
 /** The thread's two lines. The first is the promise, the second is the fact. */
 export function changeLines(change: ChangeSummaryDto): ChangeLines {
+  // BOOK-7: a premise is the chapter's starting point; it never claims a queue place or a
+  // ripple. Its whole story is «принято в основу → вошло в первую редакцию».
+  if (change.premise) {
+    if (change.status === 'pending') {
+      return {
+        first: 'принято в основу',
+        second: `замысел для главы ${change.chapter} · ждёт первой редакции`,
+        tone: 'waiting',
+      };
+    }
+    if (change.status === 'done') {
+      return {
+        first: 'замысел учтён',
+        second: change.reason ?? `вошло в первую редакцию главы ${change.chapter}`,
+        tone: 'done',
+      };
+    }
+    if (change.status === 'void') {
+      return {
+        first: change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят',
+        second: change.reason ?? 'у главы уже есть замысел',
+        tone: 'quiet',
+      };
+    }
+    return {
+      first: 'замысел ждёт решения',
+      second: change.reason ?? `глава ${change.chapter}`,
+      tone: 'escalated',
+    };
+  }
   if (change.status === 'pending') {
     return {
       first: `принято · ${change.position ?? 1}-я в очереди`,
@@ -118,6 +156,11 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
 
 /** The one-line trace `принято → внесено → дошло до глав 7–9` (§20 M4). */
 export function progressLine(change: ChangeSummaryDto): string {
+  if (change.premise) {
+    if (change.status === 'pending') return 'принято в основу → ждёт первой редакции';
+    if (change.status === 'done') return 'принято в основу → вошло в первую редакцию';
+    return 'принято в основу → снято';
+  }
   if (change.status === 'pending') return 'принято → ждёт очереди';
   if (change.status === 'escalated') return 'принято → ждёт решения автора';
   if (change.status === 'failed') return 'принято → не удалось внести';
@@ -134,6 +177,13 @@ export function relevanceCopy(grade: PublicRelevance['grade']): string {
   if (grade === 'partial') return 'основа изменилась частично';
   if (grade === 'void') return 'уже не нужно';
   return 'основа не проверена';
+}
+
+/** BOOK-7 — the card's own outcome word for a premise, never «внесено» for a first edition. */
+export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'>): string {
+  if (change.status === 'done') return 'замысел учтён';
+  if (change.status === 'void') return change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят';
+  return 'в основе главы';
 }
 
 export function outcomeCopy(outcome: ChangeOutcome | null): string {
@@ -178,7 +228,9 @@ export function wingGlyph(step: ChangeStepDto): string {
   return '·';
 }
 
-export function changeHeading(change: Pick<ChangeDto, 'seq' | 'chapter'>): string {
+export function changeHeading(change: Pick<ChangeDto, 'seq' | 'chapter'> & { premise?: boolean }): string {
+  // BOOK-7: a premise has no edit number — it is the chapter's starting point, not «правка N».
+  if (change.premise === true) return `замысел · глава ${change.chapter}`;
   return `правка ${changeNumber(change.seq)} · глава ${change.chapter}`;
 }
 

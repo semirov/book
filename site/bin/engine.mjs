@@ -128,8 +128,11 @@ function renderTrace(trace) {
   }
   const change = trace.change.change;
   const lines = [
-    `change ${change.id} #${change.seq} · chapter ${change.chapter} · ${change.status}${change.outcome ? ` · ${change.outcome}` : ''}`,
+    `change ${change.id} #${change.seq} · chapter ${change.chapter} · ${change.status}${change.outcome ? ` · ${change.outcome}` : ''}${change.premise ? ' · premise' : ''}`,
     `  intent: ${change.intent}`,
+    change.premise && change.status === 'pending'
+      ? `  premise: waits for chapter ${change.chapter}'s first draft pass — not in the lane`
+      : null,
     change.reason ? `  reason: ${change.reason}` : null,
     change.relevance
       ? `  relevance: ${change.relevance.grade} (rev ${change.relevance.revAtRecord} → ${change.relevance.revNow}, overlap ${change.relevance.overlap})`

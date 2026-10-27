@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v10', () => {
+describe('migrate — schema v11', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(10);
+    expect(SCHEMA_VERSION).toBe(11);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -53,6 +53,12 @@ describe('migrate — schema v10', () => {
       expect.arrayContaining(['audit_verdict', 'audit_reason', 'audited_at', 'audited_by']),
     );
     expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
+    // BOOK-7: an intervention on an empty chapter is that chapter's premise.
+    expect(columns(db, 'changes')).toContain('premise');
+    expect(columns(db, 'steps')).toContain('premise_change');
+    expect(
+      db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'changes_premise_pending'`).get(),
+    ).toEqual({ name: 'changes_premise_pending' });
     // BOOK-16: the intervention's kind, on the comment and on the change it becomes.
     expect(columns(db, 'comments')).toContain('intervention_kind');
     expect(columns(db, 'changes')).toContain('intervention_kind');
@@ -268,6 +274,51 @@ describe('migrate — schema v10', () => {
       `CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
     );
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('adds the BOOK-7 premise columns to a v10 install, once, keeping rows', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v10 database: neither a change nor a step knew about a chapter premise.
+    db.exec('DROP INDEX IF EXISTS changes_premise_pending');
+    db.exec('ALTER TABLE changes DROP COLUMN premise');
+    db.exec('ALTER TABLE steps DROP COLUMN premise_change');
+    db.exec(
+      `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, status, enqueued_at)
+       VALUES ('chg_old', 'operator', 8, 'старое замечание', 1, 'sha', '[]', 'phrase', 'pending', '2026-10-25T12:00:00Z')`,
+    );
+    db.pragma('user_version = 10');
+
+    expect(migrate(db)).toEqual({ from: 10, to: SCHEMA_VERSION });
+    expect(columns(db, 'changes')).toContain('premise');
+    expect(columns(db, 'steps')).toContain('premise_change');
+    // An old change is an ordinary change, not a premise, and its row survives.
+    expect(db.prepare('SELECT intent, premise FROM changes WHERE id = ?').get('chg_old')).toEqual({
+      intent: 'старое замечание',
+      premise: 0,
+    });
+    expect(
+      db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'changes_premise_pending'`).get(),
+    ).toEqual({ name: 'changes_premise_pending' });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('refuses a second queued premise for one chapter at the database level (BOOK-7)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const insert = db.prepare(
+      `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, premise, status, enqueued_at)
+       VALUES (?, 'accepted_comment', 5, 'замысел', 0, '', '[]', 'chapter', 1, ?, '2026-10-25T12:00:00Z')`,
+    );
+    insert.run('chg_p1', 'pending');
+    // A pending second premise is the database's refusal, not only the application's check.
+    expect(() => insert.run('chg_p2', 'pending')).toThrow(/changes_premise_pending|UNIQUE/u);
+    // Once the first is settled, the chapter may take another; a superseded row never blocks.
+    db.prepare(`UPDATE changes SET status = 'done', outcome = 'applied' WHERE id = 'chg_p1'`).run();
+    expect(() => insert.run('chg_p3', 'pending')).not.toThrow();
+    expect(() => insert.run('chg_p4', 'void')).not.toThrow();
     db.close();
   });
 

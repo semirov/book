@@ -220,6 +220,24 @@ export type Cascade = {
   closedAt: string | null;
 };
 
+/**
+ * BOOK-7 — a chapter's premise: a reader's intervention on a slot that has no text yet.
+ *
+ * It is not prose and not a rewrite of a paragraph: it is one goal for the chapter's first
+ * edition. `intent` is the change's validated public sentence (no author label, no comment
+ * body); `kind` is the world-fact the reader brought, when they declared one.
+ */
+export type PremiseAssignment = {
+  intent: string;
+  kind: InterventionKind | null;
+};
+
+/**
+ * BOOK-7 — the public line for an intervention aimed at a frozen frame slot (ch01's opening
+ * sentence, ch67's finale). The frame is never a target, and the reader is told why.
+ */
+export const PREMISE_FROZEN_REASON = 'фраза этой главы неподвижна — замысел к ней не принимается';
+
 /** What a writer session receives (§6B.2): structure only — no names, no titles, no plot. */
 export type WriterAssignment = {
   stepId: string;
@@ -231,6 +249,11 @@ export type WriterAssignment = {
   intent: string | null;
   /** BOOK-16 — which of the four world-facts the intervention brought; null when unknown. */
   interventionKind: InterventionKind | null;
+  /**
+   * BOOK-7 — set on the first pass of a chapter that carries a reader's premise: the writer
+   * takes it or refuses it with one plain reason, never silently ignores it. Null otherwise.
+   */
+  premise: PremiseAssignment | null;
   seamsIn: SeamRef[];
   cycle: number;
   findings: Finding[] | null;
@@ -319,6 +342,8 @@ export type ChangeTrace = {
     status: ChangeStatus;
     outcome: ChangeOutcome | null;
     reason: string | null;
+    /** BOOK-7 — a chapter-level premise, not a rewrite: no lane claim and no ripple. */
+    premise: boolean;
     relevance: Relevance | null;
     cascadeId: string | null;
     enqueuedAt: string;

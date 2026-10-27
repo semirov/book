@@ -115,6 +115,8 @@ export type ChangeDto = {
   chapter: number;
   /** ≤280 chars; quoted as the author's restatement, never as site copy. */
   intent: string;
+  /** BOOK-7 — a reader's premise for a chapter with no text: it never enters the lane. */
+  premise: boolean;
   source: { commentId: string | null; author: string | null };
   base: { rev: number };
   scopeHint: 'phrase' | 'chapter';
@@ -143,6 +145,8 @@ export type ChangeSummaryDto = {
   seq: number;
   chapter: number;
   intent: string;
+  /** BOOK-7 — a chapter-level premise: it waits for the chapter's first pass, not the lane. */
+  premise: boolean;
   status: ChangeStatus;
   outcome: ChangeOutcome | null;
   reason: string | null;

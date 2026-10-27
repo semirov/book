@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   boundaryLabel,
+  changeHeading,
   changeLines,
   changeNumber,
   chapterRange,
   outcomeCopy,
+  premiseOutcomeCopy,
   progressLine,
   relevanceCopy,
   stampCopy,
@@ -20,6 +22,7 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
     seq: 4,
     chapter: 8,
     intent: 'в абзаце дважды «слово» — оставить одно',
+    premise: false,
     status: 'done',
     outcome: 'applied',
     reason: null,
@@ -98,6 +101,51 @@ describe('the thread’s two lines', () => {
       first: 'не удалось внести',
       second: 'замечание сохранено',
     });
+  });
+});
+
+describe('BOOK-7 — a premise is not an edit', () => {
+  it('says «в основу» instead of a queue place and «замысел учтён» instead of «внесено»', () => {
+    const waiting = summary({ premise: true, status: 'pending', position: 4, outcome: null, chapters: [] });
+    expect(stampCopy(waiting)).toBe('в основе');
+    expect(changeLines(waiting)).toEqual({
+      first: 'принято в основу',
+      second: 'замысел для главы 8 · ждёт первой редакции',
+      tone: 'waiting',
+    });
+    expect(progressLine(waiting)).toBe('принято в основу → ждёт первой редакции');
+
+    const applied = summary({ premise: true, reason: 'вошло в первую редакцию главы 8', chapters: [8] });
+    expect(stampCopy(applied)).toBe('в первой редакции');
+    expect(changeLines(applied)).toEqual({
+      first: 'замысел учтён',
+      second: 'вошло в первую редакцию главы 8',
+      tone: 'done',
+    });
+    expect(progressLine(applied)).toBe('принято в основу → вошло в первую редакцию');
+  });
+
+  it('names a superseded premise as the chapter already having one, with its reason', () => {
+    const superseded = summary({ premise: true, status: 'void', outcome: 'superseded', reason: 'у главы уже есть замысел' });
+    expect(stampCopy(superseded)).toBe('замысел снят');
+    expect(changeLines(superseded)).toEqual({
+      first: 'замысел снят',
+      second: 'у главы уже есть замысел',
+      tone: 'quiet',
+    });
+    expect(progressLine(superseded)).toBe('принято в основу → снято');
+  });
+
+  it('says «замысел не взят» for a writer refusal, one word on the stamp and the line', () => {
+    const refused = summary({ premise: true, status: 'void', outcome: 'dropped', reason: 'не беру: не из этой сцены' });
+    expect(stampCopy(refused)).toBe('замысел не взят');
+    expect(changeLines(refused).first).toBe('замысел не взят');
+    expect(premiseOutcomeCopy(refused)).toBe('замысел не взят');
+  });
+
+  it('heads the card as «замысел · глава N», never as an edit number', () => {
+    expect(changeHeading({ seq: 14, chapter: 5, premise: true })).toBe('замысел · глава 5');
+    expect(changeHeading({ seq: 14, chapter: 5 })).toBe('правка 014 · глава 5');
   });
 });
 

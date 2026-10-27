@@ -21,6 +21,8 @@ export type ChangeRow = {
   source_comment: string | null;
   base_rev: number;
   scope_hint: 'phrase' | 'chapter';
+  /** BOOK-7 — 1 = a chapter-level premise (no lane claim, no ripple of its own). */
+  premise: number;
   status: 'pending' | 'processing' | 'stale' | 'done' | 'void' | 'escalated' | 'failed';
   relevance: string | null;
   outcome: string | null;

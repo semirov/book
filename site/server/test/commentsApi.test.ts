@@ -209,14 +209,17 @@ describe('POST /api/comments — identity, CAPTCHA and rate limits', () => {
     expect(h.captcha.calls).toHaveLength(0);
   });
 
-  it('answers STALE_ANCHOR for a chapter that is not written yet, and stores nothing', async () => {
+  it('stores a chapter-level note on an unwritten chapter as a premise candidate (BOOK-7)', async () => {
+    // BOOK-7: a slot with no text has nothing to anchor a paragraph to, but it still takes a
+    // chapter-level intervention — it becomes the chapter's premise with base revision 0.
     const h = await boot();
-    const before = rateCount(h.db);
     const response = await post(h, commentBody({ chapter: 9, body: 'К девятой главе есть замечание.' }));
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ code: 'STALE_ANCHOR' });
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 0 });
-    expect(rateCount(h.db)).toBe(before);
+    expect(response.statusCode).toBe(201);
+    expect(h.db.prepare('SELECT chapter, block_id, base_rev FROM comments').get()).toEqual({
+      chapter: 9,
+      block_id: null,
+      base_rev: 0,
+    });
   });
 
   it('answers STALE_ANCHOR when the quoted paragraph is gone', async () => {

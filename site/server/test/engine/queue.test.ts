@@ -34,6 +34,8 @@ function changeOfLease(fixture: ReturnType<typeof createEngineFixture>, leaseId:
 }
 
 describe('the FIFO lane (§6A.3)', () => {
+  // 50 sequential polls through the public control route; the default 5 s is tight under a
+  // fully parallel suite (the loop takes ~3.5 s on an idle machine).
   it('keeps the admission order under 50 concurrent enqueues and hands heads out by seq', async () => {
     const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) }, env: { QUEUE_SOFT_CAP: '100' } });
     const app = await buildControl({ engine: fixture.engine, token: 'test-token', logger: false });
@@ -75,7 +77,7 @@ describe('the FIFO lane (§6A.3)', () => {
       await app.close();
       fixture.close();
     }
-  });
+  }, 15_000);
 
   it('refuses admission past the soft cap rather than letting the queue lie about its depth', () => {
     const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) }, env: { QUEUE_SOFT_CAP: '2' } });
@@ -90,13 +92,14 @@ describe('the FIFO lane (§6A.3)', () => {
     }
   });
 
-  it('refuses a change on a slot that holds only its basis sentence (BOOK-6)', () => {
+  it('refuses a change on a slot that holds only its basis sentence (BOOK-6, BOOK-7)', () => {
     // Chapter 1 exists and holds one paragraph — the frozen frame — and is still unwritten:
-    // a change must not be admitted against it, or it would be enqueued over baseRev 0.
+    // a change must not be admitted against it, or it would be enqueued over baseRev 0. The
+    // frozen sentence is never a target: ch01's slot is refused by name, with a public reason.
     const fixture = createEngineFixture({ chapters: { 1: FRAME_FIRST_SENTENCE, 2: chapterText('Начало', ['Тестовый абзац.']) } });
     try {
       expect(() => fixture.engine.enqueue({ kind: 'operator', chapter: 1, intent: 'поправить первую строку' })).toThrow(
-        /ещё не написана/u,
+        /неподвижна/u,
       );
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
       // A written neighbour still admits, so the refusal is about the slot, not the queue.

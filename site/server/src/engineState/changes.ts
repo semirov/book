@@ -170,8 +170,14 @@ function publicCascadeOf(
 }
 
 function positionOf(db: Db, change: ChangeRow): number | null {
-  if (change.status !== 'pending') return null;
-  return countRows(db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq <= ?`, change.seq);
+  // BOOK-7: a premise waits for its chapter's first pass, not for the lane — it has no place
+  // in the queue and must not shift anybody else's.
+  if (change.status !== 'pending' || change.premise === 1) return null;
+  return countRows(
+    db,
+    `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq <= ?`,
+    change.seq,
+  );
 }
 
 /** `GET /api/changes/:id` — the change card's one call (§9, §11.7). */
@@ -197,6 +203,7 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
     interventionKind: normalizeInterventionKind(change.intervention_kind),
     chapter: change.chapter,
     intent: publicIntent(change.intent),
+    premise: change.premise === 1,
     source: { commentId: change.source_comment, author: readAuthor(db, change.source_comment) },
     base: { rev: change.base_rev },
     scopeHint: change.scope_hint,
@@ -255,6 +262,7 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
     seq: change.seq,
     chapter: change.chapter,
     intent: publicIntent(change.intent),
+    premise: change.premise === 1,
     status: change.status,
     outcome: (change.outcome as ChangeOutcome | null) ?? null,
     reason: change.reason === null ? null : seamReason(change.reason),
@@ -286,7 +294,7 @@ export function listChanges(db: Db, filter: ChangeFilter = {}): ChangeSummaryDto
     params.push(filter.before);
   }
   const limit = Math.min(50, Math.max(1, filter.limit ?? 20));
-  const sql = `SELECT seq, id, kind, chapter, intent, source_comment, base_rev, scope_hint, status,
+  const sql = `SELECT seq, id, kind, chapter, intent, premise, source_comment, base_rev, scope_hint, status,
       relevance, outcome, reason, cascade_id, model, tokens_in, tokens_out, cost_rub,
       enqueued_at, started_at, finished_at, attempts
     FROM changes${where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''}

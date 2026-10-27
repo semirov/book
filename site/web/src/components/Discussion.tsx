@@ -2,6 +2,7 @@ import type { CatalogEntry, CommentBudget, CommentDto, ComposerInfo, ChangeSumma
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
+import { composerTargets } from '../lib/composer.ts';
 import { focusHash } from '../lib/focus.ts';
 import { Composer } from './Composer.tsx';
 
@@ -35,10 +36,13 @@ export function Discussion({
   budget?: CommentBudget | null;
   onPosted?: () => void;
 }) {
-  const opening =
-    chapterCount === 0
-      ? 'Замечания откроются вместе с первой главой.'
-      : 'Замечания ещё не открыты.';
+  // BOOK-7: an empty book still has something to write — a premise for a chapter with no
+  // text. The composer stays open for every slot that can take one; only a book whose
+  // catalog is unavailable falls back to the «first chapter» line.
+  const targets = composerTargets(chapters);
+  const canCompose = viewer !== undefined && composer !== undefined && targets.length > 0;
+  const opening = chapterCount === 0 ? 'Глав ещё нет: замечание к пустой главе станет её замыслом.' : null;
+  const closed = chapterCount === 0 ? 'Замечания откроются вместе с первой главой.' : 'Замечания ещё не открыты.';
 
   return (
     <section className="page talks" id="talks">
@@ -53,15 +57,18 @@ export function Discussion({
         <span>правки идут по одной, в порядке записи</span>
       </div>
 
-      {chapterCount === 0 ? (
-        <p className="fine">{opening}</p>
-      ) : viewer === undefined || composer === undefined ? null : (
-        <Composer
-          viewer={viewer}
-          composer={composer}
-          chapters={chapters}
-          onPosted={() => onPosted?.()}
-        />
+      {canCompose ? (
+        <>
+          {opening === null ? null : <p className="fine">{opening}</p>}
+          <Composer
+            viewer={viewer}
+            composer={composer}
+            chapters={chapters}
+            onPosted={() => onPosted?.()}
+          />
+        </>
+      ) : (
+        <p className="fine">{closed}</p>
       )}
 
       {comments.length > 0 ? (

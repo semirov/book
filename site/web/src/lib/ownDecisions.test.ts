@@ -25,6 +25,7 @@ function applied(overrides: Partial<MyDecisionDto> = {}): MyDecisionDto {
     changeId: 'chg_A',
     chapter: 8,
     intent: 'внести документ о регистрации сенсора',
+    premise: false,
     outcome: 'applied',
     reason: null,
     chapters: [7, 8, 9],
@@ -118,6 +119,44 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
     const line = decisionLine(applied({ outcome: 'queued', waves: null, blocks: null, chapters: [], intent: null }), 0.004);
     expect(line.text).toBe('принято · ждёт очереди');
     expect(line.tone).toBe('live');
+  });
+});
+
+describe('BOOK-7 — a premise in the reader’s own record', () => {
+  it('says «принято в основу» while it waits, and never «в очереди»', () => {
+    const waiting = applied({
+      premise: true,
+      outcome: 'queued',
+      intent: null,
+      chapters: [],
+      waves: null,
+      blocks: null,
+    });
+    expect(decisionLine(waiting, 0.004)).toEqual({
+      text: 'принято в основу · ждёт первой редакции главы 8',
+      tone: 'live',
+    });
+  });
+
+  it('marks it taken without inventing waves or paragraphs', () => {
+    const taken = applied({ premise: true, chapters: [8], waves: null, blocks: null });
+    expect(decisionLine(taken, 0.004).text).toBe('замысел учтён · глава 8 · ваша доля 0,4 %');
+    expect(decisionLine(taken, 0.004).text).not.toContain('волн');
+  });
+
+  it('shows a superseded premise with its own reason, not the «перекрыта» line', () => {
+    const superseded = applied({
+      premise: true,
+      outcome: 'superseded',
+      chapters: [],
+      waves: null,
+      blocks: null,
+      reason: 'у главы уже есть замысел',
+    });
+    expect(decisionLine(superseded, 0.004)).toEqual({
+      text: 'замысел снят · у главы уже есть замысел',
+      tone: 'stopped',
+    });
   });
 });
 

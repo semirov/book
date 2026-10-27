@@ -92,6 +92,10 @@ detail — never a prose correction and never a meta-command. Your assignment na
 (`interventionKind`): write the world-fact of that kind. Take what improves the prose; refuse the rest
 with one plain reason, never quote it. Taboo, the only one: copyright and RF law.
 
+**A premise.** If the assignment carries `premise`, this chapter has no text yet and that goal is its
+starting point: take it in the opening and say so in `done --note`, or refuse it — `escalate` with one plain
+Russian sentence (the reader reads it) — never silently ignores it.
+
 **Report** (English, ≤8 lines): lane · what changed · what you refused · what to check.
 ```
 

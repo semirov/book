@@ -18,19 +18,20 @@ type Frame = { type: string; data: Record<string, unknown> };
 
 function insertChange(
   db: Db,
-  change: { id: string; seq: number; chapter: number; status: string; intent: string; outcome?: string | null; relevance?: string | null; cascadeId?: string | null; finishedAt?: string | null; tokensIn?: number },
+  change: { id: string; seq: number; chapter: number; status: string; intent: string; outcome?: string | null; relevance?: string | null; cascadeId?: string | null; finishedAt?: string | null; tokensIn?: number; premise?: number },
 ): void {
   db.prepare(
     `INSERT INTO changes
-       (seq, id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, status,
+       (seq, id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, premise, status,
         relevance, outcome, cascade_id, model, tokens_in, tokens_out, cost_rub, enqueued_at, started_at, finished_at, attempts)
      VALUES (?, ?, 'accepted_comment', ?, ?, 2, 'sha', '[]', 'phrase', ?,
-        ?, ?, ?, 'deepseek-flash', ?, 0, 0, ?, ?, ?, 0)`,
+        ?, ?, ?, ?, 'deepseek-flash', ?, 0, 0, ?, ?, ?, 0)`,
   ).run(
     change.seq,
     change.id,
     change.chapter,
     change.intent,
+    change.premise ?? 0,
     change.status,
     change.relevance ?? null,
     change.outcome ?? null,
@@ -91,6 +92,42 @@ function boot(replay = true, prime = true): { fixture: Fixture; frames: Frame[];
   if (prime) bridge.prime();
   return { fixture, frames, bridge, state };
 }
+
+describe('BOOK-7 — a premise in the narrative', () => {
+  it('narrates its decision but never a queue place, a stage or a ripple', () => {
+    const { fixture, frames, bridge } = boot();
+    try {
+      insertChange(fixture.db, {
+        id: 'chg_premise',
+        seq: 6,
+        chapter: 5,
+        status: 'done',
+        intent: 'документ о допуске',
+        outcome: 'applied',
+        premise: 1,
+        finishedAt: new Date(T0 + 60_000).toISOString(),
+      });
+      appendChangeEvent(fixture.db, 'chg_premise', 'queued', { premise: true }, T0);
+      appendChangeEvent(fixture.db, 'chg_premise', 'processing', { premise: true }, T0 + 1_000);
+      appendChangeEvent(fixture.db, 'chg_premise', 'stale', {}, T0 + 2_000);
+      appendChangeEvent(fixture.db, 'chg_premise', 'decided', { premise: true, outcome: 'applied' }, T0 + 60_000);
+
+      bridge.tick();
+
+      const types = frames.map((frame) => frame.type);
+      expect(types).not.toContain('change:queued');
+      expect(types).not.toContain('change:processing');
+      expect(types).not.toContain('change:stale');
+      const decided = frames.find((frame) => frame.type === 'change:decided');
+      expect(decided).toBeDefined();
+      expect(decided?.data.cascade).toBeNull();
+      expect(decided?.data.outcome).toBe('applied');
+      expect(frames.map((frame) => frame.type)).not.toContain('cascade:progress');
+    } finally {
+      fixture.close();
+    }
+  });
+});
 
 describe('change:* mapping', () => {
   it('maps the audit log to queued → processing → stale → decided, in order', () => {

@@ -30,6 +30,8 @@ export type ChangeRow = {
   base_sha256: string;
   base_blocks: string;
   scope_hint: 'phrase' | 'chapter';
+  /** BOOK-7 — 1 = a chapter-level premise (`base_rev 0`, no anchor), never claimed by the lane. */
+  premise: number;
   status: 'pending' | 'processing' | 'stale' | 'done' | 'void' | 'escalated' | 'failed';
   relevance: string | null;
   outcome: string | null;
@@ -56,6 +58,8 @@ export type StepRow = {
   pass: 'draft' | 'change' | 'cascade' | 'front' | 'ending' | 'sweep';
   chapter: number | null;
   boundary: string;
+  /** BOOK-7 — the premise this draft step consumes; null for every other pass. */
+  premise_change: string | null;
   outcome:
     | 'rewritten'
     | 'holds'
@@ -163,20 +167,34 @@ export type NewChange = {
   baseSha: string;
   baseBlocks: string;
   scopeHint: string;
+  /** BOOK-7 — 1 when the chapter had no text and the intervention is its premise. */
+  premise: 0 | 1;
+  /** Defaults to a queued change; a premise admitted after another one is born superseded. */
+  status?: 'pending' | 'void';
+  outcome?: string | null;
+  reason?: string | null;
+  finishedAt?: string | null;
   enqueuedAt: string;
 };
 
 export function insertChange(db: Db, change: NewChange): number {
+  const row = {
+    status: 'pending',
+    outcome: null,
+    reason: null,
+    finishedAt: null,
+    ...change,
+  };
   const result = db
     .prepare(
       `INSERT INTO changes
          (id, kind, intervention_kind, chapter, anchor, intent, proposed_text, source_comment, source_session,
-          base_rev, base_sha256, base_blocks, scope_hint, status, enqueued_at)
+          base_rev, base_sha256, base_blocks, scope_hint, premise, status, outcome, reason, finished_at, enqueued_at)
        VALUES
          (@id, @kind, @interventionKind, @chapter, @anchor, @intent, @proposedText, @sourceComment, @sourceSession,
-          @baseRev, @baseSha, @baseBlocks, @scopeHint, 'pending', @enqueuedAt)`,
+          @baseRev, @baseSha, @baseBlocks, @scopeHint, @premise, @status, @outcome, @reason, @finishedAt, @enqueuedAt)`,
     )
-    .run(change);
+    .run(row);
   return Number(result.lastInsertRowid);
 }
 
@@ -185,9 +203,11 @@ export function getChange(db: Db, id: string): ChangeRow | undefined {
 }
 
 export function headPending(db: Db): ChangeRow | undefined {
-  return db.prepare(`SELECT * FROM changes WHERE status = 'pending' ORDER BY seq LIMIT 1`).get() as
-    | ChangeRow
-    | undefined;
+  // BOOK-7: a premise waits for its chapter's first pass, not for the lane — it is never the
+  // head of the FIFO queue and can never stall the change behind it.
+  return db
+    .prepare(`SELECT * FROM changes WHERE status = 'pending' AND premise = 0 ORDER BY seq LIMIT 1`)
+    .get() as ChangeRow | undefined;
 }
 
 export function listPending(db: Db): ChangeRow[] {
@@ -195,7 +215,9 @@ export function listPending(db: Db): ChangeRow[] {
 }
 
 export function countPending(db: Db): number {
-  return (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending'`).get() as { n: number }).n;
+  return (
+    db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0`).get() as { n: number }
+  ).n;
 }
 
 export function countProcessing(db: Db): number {
@@ -262,6 +284,8 @@ export type NewStep = {
   seamsIn: string;
   revBefore: number | null;
   at: string;
+  /** BOOK-7 — the premise a draft step consumes; omitted for every other pass. */
+  premiseChange?: string | null;
 };
 
 export function insertStep(db: Db, step: NewStep): void {
@@ -274,6 +298,7 @@ export function insertStep(db: Db, step: NewStep): void {
     pass: step.pass,
     chapter: step.chapter,
     boundary: step.boundary,
+    premise_change: step.premiseChange ?? null,
     seams_in: step.seamsIn,
     rev_before: step.revBefore,
     at: step.at,

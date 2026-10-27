@@ -35,6 +35,7 @@ import {
   type CloseCopyKey,
 } from './cascade.ts';
 import { releaseLease } from './leases.ts';
+import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { isWritten } from './text.ts';
@@ -381,6 +382,11 @@ export function closeStep(
       releaseLease(db, lease.id, input.outcome === 'escalated' ? 'escalated' : input.outcome === 'holds' ? 'holds' : 'done', now);
     }
     store.deleteDispatches(db, step.step_id);
+    // BOOK-7: a draft's first pass settles its chapter's premise from the text that now
+    // exists — applied when the chapter is written, rejected when the writer refused it with
+    // one reason, and left queued when the pass was interrupted (a vanished session is not a
+    // refusal: the step is re-issued and the premise waits with it).
+    settleDraftPremise(deps, step, input.outcome, input.escalation ?? null, input.note, now);
     const span = db.prepare('SELECT MIN(hseq) AS fromHseq FROM events WHERE step_id = ?').get(step.step_id) as {
       fromHseq: number | null;
     };

@@ -11,6 +11,8 @@ import { interventionKindLabel, type CommentDto } from '@book/shared';
 export type CommentLine = { state: string; detail: string | null; tone: 'quiet' | 'live' | 'done' | 'stopped' };
 
 export function commentStatusLine(comment: CommentDto): CommentLine {
+  // BOOK-7: a premise never says «правка в очереди» — it waits for the chapter's first pass.
+  if (comment.premise) return premiseLine(comment);
   switch (comment.status) {
     case 'new':
       return { state: 'ждёт рассмотрения', detail: null, tone: 'quiet' };
@@ -51,6 +53,22 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
  */
 export function interventionKindWord(comment: Pick<CommentDto, 'interventionKind'>): string | null {
   return interventionKindLabel(comment.interventionKind);
+}
+
+/** BOOK-7 — the four states of a premise, in the thread's own words. */
+function premiseLine(comment: CommentDto): CommentLine {
+  const chapter = comment.applied?.chapter ?? comment.chapter;
+  switch (comment.status) {
+    case 'applied':
+      // The state already names the chapter and the edition; the reason would repeat it.
+      return { state: `вошло в первую редакцию главы ${chapter}`, detail: null, tone: 'done' };
+    case 'superseded':
+      return { state: 'замысел снят', detail: comment.reason, tone: 'stopped' };
+    case 'rejected':
+      return { state: 'замысел не взят', detail: comment.reason, tone: 'stopped' };
+    default:
+      return { state: 'принято в основу', detail: comment.reason, tone: 'live' };
+  }
 }
 
 /** `2026-10-25T12:04:11Z` → «25.10, 12:04» — absolute, because readers return days later. */

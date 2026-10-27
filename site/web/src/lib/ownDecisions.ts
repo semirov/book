@@ -31,6 +31,14 @@ const STATE: Record<MyDecisionDto['outcome'], { copy: string; tone: DecisionTone
   refused: { copy: 'правка не принята', tone: 'stopped' },
 };
 
+/** BOOK-7 — a premise's own words: it is the chapter's starting point, not an edit of text. */
+const PREMISE_STATE: Partial<Record<MyDecisionDto['outcome'], { copy: string; tone: DecisionTone }>> = {
+  queued: { copy: 'принято в основу', tone: 'live' },
+  applied: { copy: 'замысел учтён', tone: 'done' },
+  dropped: { copy: 'замысел не взят', tone: 'stopped' },
+  superseded: { copy: 'замысел снят', tone: 'stopped' },
+};
+
 /** `7` → «глава 7», `7,8,9` → «главы 7–9»; nothing when no chapter was reached. */
 export function chaptersCopy(chapters: readonly number[]): string | null {
   if (chapters.length === 0) return null;
@@ -71,6 +79,23 @@ export function shareCopy(decision: MyDecisionDto, shareNow: number): string {
  * much of the text is still the reader's.
  */
 export function decisionLine(decision: MyDecisionDto, shareNow: number): DecisionLine {
+  // BOOK-7: a premise has no waves and no paragraphs of its own, so its line never borrows
+  // the applied-change sentence; it says what really happened — в основу, or снят with why.
+  if (decision.premise) {
+    const state = PREMISE_STATE[decision.outcome] ?? { copy: 'замысел', tone: 'stopped' as DecisionTone };
+    const parts: Array<string | null> = [state.copy];
+    if (decision.outcome === 'queued') {
+      parts.push(`ждёт первой редакции главы ${decision.chapter}`);
+    } else if (decision.outcome === 'applied') {
+      parts.push(chaptersCopy(decision.chapters), shareCopy(decision, shareNow));
+    } else if (decision.reason !== null) {
+      parts.push(decision.reason);
+    }
+    return {
+      text: parts.filter((part): part is string => part !== null && part.length > 0).join(' · '),
+      tone: state.tone,
+    };
+  }
   const state = STATE[decision.outcome];
   const parts: Array<string | null> = [state.copy];
 

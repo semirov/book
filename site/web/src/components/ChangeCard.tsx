@@ -5,6 +5,7 @@ import {
   changeHeading,
   chapterRange,
   outcomeCopy,
+  premiseOutcomeCopy,
   relevanceCopy,
   stampCopy,
   stepLabel,
@@ -67,7 +68,11 @@ export function ChangeCard({
         <div>
           <dt>основа</dt>
           <dd>
-            {change.relevance === null ? `записана на ревизии ${change.base.rev}` : relevanceCopy(change.relevance.grade)}
+            {change.premise
+              ? 'главы ещё нет — замысел'
+              : change.relevance === null
+                ? `записана на ревизии ${change.base.rev}`
+                : relevanceCopy(change.relevance.grade)}
           </dd>
         </div>
         <div>
@@ -134,7 +139,9 @@ export function ChangeCard({
       ) : null}
 
       <footer className="change-foot">
-        <span className="change-outcome">{outcomeCopy(change.outcome)}</span>
+        <span className="change-outcome">
+          {change.premise ? premiseOutcomeCopy(change) : outcomeCopy(change.outcome)}
+        </span>
         {change.reason !== null ? <span className="change-reason">{change.reason}</span> : null}
         {change.cost === null ? null : (
           <span className="change-cost">

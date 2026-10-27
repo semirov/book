@@ -173,6 +173,11 @@ export class EngineBridge {
       this.changeCursor = row.id;
       const change = readChangeRow(this.db, row.change_id);
       if (change === undefined) continue;
+      // BOOK-7: a premise is not in the lane — it must not announce a queue place, a
+      // processing stage or a stale base it never had. Its decision is still a fact.
+      if (change.premise === 1 && (row.type === 'queued' || row.type === 'processing' || row.type === 'stale')) {
+        continue;
+      }
       if (row.type === 'queued') {
         this.emit('change:queued', this.queuedPayload(change, nowMs));
         emitted += 1;
@@ -207,7 +212,7 @@ export class EngineBridge {
   private queuedPayload(change: ChangeRow, nowMs: number) {
     const ahead = countRows(
       this.db,
-      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND seq < ?`,
+      `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
       change.seq,
     );
     return {
