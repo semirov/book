@@ -14,6 +14,13 @@ import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
+/**
+ * The shell the tests drive. `/bin/bash` is 3.2 on macOS and 5.x on Linux; `BOOK_TEST_BASH` points
+ * the same suite at another interpreter, because a contract that only holds on one bash is not a
+ * contract.
+ */
+export const BASH = process.env.BOOK_TEST_BASH ?? '/bin/bash';
+
 export const DEPLOY = resolve(import.meta.dirname, '..', '..', 'deploy', 'deploy.sh');
 export const LIB = resolve(import.meta.dirname, '..', '..', 'deploy', 'lib.sh');
 
@@ -76,7 +83,7 @@ export function deploy(args: string[], env: Record<string, string> = {}): { code
   delete merged.BOOK_LOCK_STALE_S;
   delete merged.BOOK_STATE_DIR;
   Object.assign(merged, env);
-  const result = spawnSync('/bin/bash', [DEPLOY, ...args], { encoding: 'utf8', env: merged, timeout: 30_000 });
+  const result = spawnSync(BASH, [DEPLOY, ...args], { encoding: 'utf8', env: merged, timeout: 60_000 });
   return { code: result.status, out: `${result.stdout}${result.stderr}` };
 }
 
@@ -84,7 +91,7 @@ export function deploy(args: string[], env: Record<string, string> = {}): { code
 export function shell(body: string, env: Record<string, string> = {}, options = 'set -euo pipefail'): Promise<{ code: number | null; out: string }> {
   const script = `${options}\n. "${LIB}"\n${body}\n`;
   return new Promise((done) => {
-    const child = spawn('/bin/bash', ['-c', script], { env: { ...process.env, ...env } });
+    const child = spawn(BASH, ['-c', script], { env: { ...process.env, ...env } });
     let out = '';
     child.stdout.on('data', (chunk: Buffer) => {
       out += String(chunk);

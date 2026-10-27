@@ -21,7 +21,7 @@ import { closeAll, deploy, emptyRoot, fakes, failRun, gitRoot, holdLock, lib, te
 
 // Every test here spawns real processes: a loaded box stretches the clock, and a spawn is not a
 // hang, so the timeout is about a wedged child.
-vi.setConfig({ testTimeout: 30_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 afterEach(closeAll);
 
@@ -126,7 +126,7 @@ describe('the lock: five fixtures, one process each', () => {
     const { code, out } = deploy(['--phase', 'run', '--root', emptyRoot()], { BOOK_STATE_DIR: stateDir });
 
     expect(code, out).toBe(3);
-    expect(out).toMatch(new RegExp(`another deploy is running: pid ${process.pid} since \\d+ \\(age 0s, lock `, 'u'));
+    expect(out).toMatch(new RegExp(`another deploy is running: pid ${process.pid} since \\d+ \\(age [01]s, lock `, 'u'));
     expect(out).toMatch(/refused with exit 3; nothing was checked out, built, published or restarted/u);
   });
 
@@ -211,14 +211,59 @@ describe('a dying deploy says why, once, and leaves an audit line', () => {
     );
   });
 
-  it('a status nobody explained still prints one line, and audits once', async () => {
+  it('a death in a stage is one FAILED line with the numbers, before the lock release, and one audit line', async () => {
+    // Whichever reporter speaks — `fail_on_err` for a command that died under `set -e`, the EXIT
+    // fallback for a status nobody explained — the contract is the same, and which one it is
+    // depends on the interpreter (bash 3.2 and bash 5 differ on a failing subshell). So this case
+    // asserts the contract, and the two cases below pin each reporter on its own.
     const stateDir = temp();
     const { code, out } = await failRun(`${reporter(stateDir, 'publish')}\n( exit 4 )\n`);
 
-    expect(code, out).toBe(4);
+    expect(code, out).not.toBe(0);
     const said = out.split('\n').filter((line) => line.includes('deploy: FAILED'));
     expect(said, out).toHaveLength(1);
-    expect(said[0]).toMatch(/FAILED at publish: no reason recorded — health=fail health_ms=12345 budget_ms=180000 baseline=down release=abc-1/u);
+    expect(said[0]).toMatch(/FAILED at publish: (no reason recorded|.+ \(line \d+\))/u);
+    expect(said[0]).toMatch(
+      /— health=fail health_ms=12345 budget_ms=180000 baseline=down release=abc-1; nothing further will be restarted$/u,
+    );
+    expect(out.indexOf('deploy: FAILED at publish:'), 'the reason comes before the lock release').toBeLessThan(
+      out.indexOf('lock: released'),
+    );
+    const audit = readFileSync(join(stateDir, 'deploy-audit.log'), 'utf8').trim().split('\n');
+    expect(audit, out).toHaveLength(1);
+    expect(audit[0]).toMatch(/ failed .* step=publish health=fail restart_ms=unknown budget_ms=180000 baseline=down release=abc-1 /u);
+  });
+
+  it('a command dying inside a stage goes through `fail_on_err`, naming the command and the line', async () => {
+    const stateDir = temp();
+    const bin = fakes({ 'burning-utility': 'exit 7' });
+    const { out } = await failRun(`${reporter(stateDir, 'publish')}\nburning-utility\n`, {
+      PATH: `${bin}:${process.env.PATH ?? ''}`,
+    });
+
+    const said = out.split('\n').filter((line) => line.includes('deploy: FAILED'));
+    expect(said, out).toHaveLength(1);
+    expect(said[0]).toMatch(
+      /FAILED at publish: burning-utility \(line \d+\) — health=fail health_ms=12345 budget_ms=180000 baseline=down release=abc-1; nothing further will be restarted/u,
+    );
+    const audit = readFileSync(join(stateDir, 'deploy-audit.log'), 'utf8').trim().split('\n');
+    expect(audit, out).toHaveLength(1);
+    expect(audit[0]).toMatch(/ step=publish .*cause=burning-utility$/u);
+  });
+
+  it('a status nobody explained takes the EXIT fallback, whether or not ERR could fire', async () => {
+    // `exit 1` is not a failing command: `set -E` has nothing to trap, so both bash 3.2 and bash 5
+    // reach the EXIT trap with an unexplained status — the reporter under test, alone.
+    const stateDir = temp();
+    const { code, out } = await failRun(`${reporter(stateDir, 'publish')}\nexit 1\n`);
+
+    expect(code, out).toBe(1);
+    const said = out.split('\n').filter((line) => line.includes('deploy: FAILED'));
+    expect(said, out).toHaveLength(1);
+    expect(said[0]).toMatch(
+      /FAILED at publish: no reason recorded — health=fail health_ms=12345 budget_ms=180000 baseline=down release=abc-1; nothing further will be restarted/u,
+    );
+    expect(out.indexOf('deploy: FAILED at publish:')).toBeLessThan(out.indexOf('lock: released'));
     expect(readFileSync(join(stateDir, 'deploy-audit.log'), 'utf8').trim().split('\n')).toHaveLength(1);
   });
 

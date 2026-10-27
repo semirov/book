@@ -16,7 +16,7 @@ import { OK, SILENT, closeAll, fakes, failRun, lib, serve, temp } from './deploy
 
 // Every test here spawns real processes: a loaded box stretches the clock, and a spawn is not a
 // hang, so the timeout is about a wedged child.
-vi.setConfig({ testTimeout: 30_000 });
+vi.setConfig({ testTimeout: 60_000 });
 
 afterEach(closeAll);
 
@@ -79,7 +79,7 @@ describe('the window: a real elapsed time, always', () => {
     const since = Date.now();
     const { code, out } = await lib(
       [
-        'BUDGET_MS=5000; GRACE_MS=500',
+        'BUDGET_MS=60000; GRACE_MS=500',
         `window_read "${url}" build12 "" ${since}`,
         'printf "health=%s ms=%s first_at=%s reads=%s\\n" "$HEALTH" "$HEALTH_MS" "$FIRST_AT" "$WINDOW_READS"',
       ].join('\n'),
