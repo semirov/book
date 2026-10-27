@@ -8,18 +8,21 @@ import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.
 import { LegalPage } from './LegalPage.tsx';
 
 /**
- * The static documents (audit M5) must name the two third-party surfaces, say what each can
- * see, and say what a reader can do about it — in that order, and without a counter of ours.
+ * The static documents (audit M5) must name every third-party surface, say what each can see,
+ * say what a reader can do about it, and (BOOK-64) promise no challenge that does not run.
  */
 describe('/privacy', () => {
   const html = renderToStaticMarkup(<LegalPage page="privacy" />);
 
-  it('names the CAPTCHA, what it sees, and that the comment body never reaches it', () => {
-    expect(html).toContain('Проверка «я не робот»');
-    expect(html).toContain('Turnstile');
-    expect(html).toContain('hCaptcha');
-    expect(html).toContain('IP-адрес');
-    expect(html).toContain('не видит текст');
+  it('promises no challenge: no widget, no provider, no Turnstile (BOOK-64)', () => {
+    expect(html).not.toContain('Проверка «я не робот»');
+    expect(html).not.toContain('Turnstile');
+    expect(html).not.toContain('hCaptcha');
+    expect(html).not.toContain('CAPTCHA');
+    // What is true instead: the counter, the comment, and the limits around writing.
+    expect(html).toContain('счётчик посещений');
+    expect(html).toContain('10 замечаний в час');
+    expect(html).toContain('одна правка в сутки');
   });
 
   it('names the Metrika counter, its cookies and the way to avoid it', () => {
@@ -57,7 +60,6 @@ describe('/privacy', () => {
     expect(html).not.toContain('псевдонимом-хешем');
     // The chronicle wakes with the first reader edit; today the page says so instead of
     // promising a surface that is not there.
-    expect(html).toContain('история откроется с первой читательской правкой и проверки не спросит');
     expect(html).toContain('её история станет частью книги с первой читательской правкой');
     expect(html).not.toContain('вся история книги работают без CAPTCHA');
   });

@@ -260,25 +260,6 @@
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }
-.seam-captcha {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 8px;
-  border: 1px dashed var(--rule);
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--ink-3);
-}
-.seam-captcha-box {
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--rule-2);
-}
-.seam-captcha-state {
-  margin-left: auto;
-}
 .seam-error {
   font-family: var(--ui);
   font-size: var(--fs-meta);

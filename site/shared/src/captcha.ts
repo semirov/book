@@ -1,16 +1,17 @@
 /**
- * CAPTCHA as a fact of the deployment, not a script tag (ARCHITECTURE.md §12.8, ADR-028).
+ * A CAPTCHA as a fact of the deployment, not a script tag (ARCHITECTURE.md invariant 27, ADR-028).
  *
- * The provider decides exactly which origins the application-owned CSP may name and which
- * siteverify endpoint the server calls. One table, two consumers: the CSP builder and the
- * verifier. A deployment that names a provider it did not configure is a build failure
- * (`F028`), not a runtime surprise.
+ * BOOK-64 (2026-10-27): the write gate is an authenticated identity plus the comment and edit
+ * rate limits, so no widget runs and the browser loads no challenge origin. The table keeps
+ * the server-side `verifyUrl` per provider — the verifier stays in the build for the day a
+ * challenge returns as its own decision — and the browser origin lists, which the CSP reads,
+ * are empty for Turnstile because nothing on the page may reach `challenges.cloudflare.com`.
  */
 
 export type CaptchaProvider = 'turnstile' | 'hcaptcha' | 'none';
 
 export type CaptchaSurface = {
-  /** The browser's script origin(s) — `script-src`. */
+  /** The browser's script origin(s) — `script-src`. Empty when no widget ships. */
   scriptOrigins: readonly string[];
   /** The challenge iframe(s) — `frame-src`. */
   frameOrigins: readonly string[];
@@ -20,12 +21,16 @@ export type CaptchaSurface = {
   verifyUrl: string;
 };
 
-/** `none` has no surface at all: commenting is closed, never opened without a challenge. */
+/**
+ * `none` has no surface and no verifier: the gate is the identity plus the rate limits, and
+ * the submit path never consults a challenge. Turnstile keeps its verify URL but no browser
+ * origin (BOOK-64); hCaptcha is untouched by that item.
+ */
 export const CAPTCHA_SURFACES: Record<CaptchaProvider, CaptchaSurface> = {
   turnstile: {
-    scriptOrigins: ['https://challenges.cloudflare.com'],
-    frameOrigins: ['https://challenges.cloudflare.com'],
-    connectOrigins: ['https://challenges.cloudflare.com'],
+    scriptOrigins: [],
+    frameOrigins: [],
+    connectOrigins: [],
     verifyUrl: 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
   },
   hcaptcha: {

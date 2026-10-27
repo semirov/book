@@ -7,23 +7,36 @@ import { SITE_ROOT } from '../src/config.ts';
 import { buildCsp, socketOrigin } from '../src/http/csp.ts';
 
 /**
- * F028 / `T-captcha` (§12.8, §15.3): the header names exactly the configured providers, no
+ * F028 / invariant 27 (§15.3): the header names exactly what the page loads, no
  * `unsafe-inline` ever, and a deployment without a Metrika id has no Yandex origin.
+ * BOOK-64: no challenge origin — `challenges.cloudflare.com` is gone from script-src,
+ * frame-src and connect-src even when a Turnstile provider is named.
  */
 
 const base = { publicOrigin: 'https://book.semirov.dev', metrikaId: '' };
 
 describe('the generated CSP', () => {
-  it('names exactly the Turnstile origins', () => {
+  it('keeps the challenge origin out of every directive, even with Turnstile named (BOOK-64)', () => {
     const csp = buildCsp({ ...base, captchaProvider: 'turnstile' });
-    expect(csp).toContain("script-src 'self' https://challenges.cloudflare.com");
-    expect(csp).toContain('frame-src https://challenges.cloudflare.com');
+    expect(csp).not.toContain('challenges.cloudflare.com');
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("frame-src 'none'");
     expect(csp).toContain('connect-src');
     expect(csp).toContain('wss://book.semirov.dev');
     expect(csp).not.toContain('hcaptcha');
     expect(csp).not.toContain('mc.yandex.ru');
     expect(csp).not.toContain('unsafe-inline');
     expect(csp).not.toContain('unsafe-eval');
+  });
+
+  it('has no challenge origin for any provider (the header the page is served)', () => {
+    for (const provider of ['none', 'turnstile', 'hcaptcha'] as const) {
+      const csp = buildCsp({ ...base, captchaProvider: provider, metrikaId: '113820311' });
+      for (const directive of csp.split('; ')) {
+        expect(directive, `${provider} · ${directive}`).not.toContain('challenges.cloudflare.com');
+        expect(directive, `${provider} · ${directive}`).not.toContain('turnstile');
+      }
+    }
   });
 
   it('names exactly the hCaptcha origins when that provider is configured', () => {

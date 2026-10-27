@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { CASCADE_MAX_WAVE } from '@book/shared';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-import { loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
+import { gateAnnouncement, loadConfig, SITE_ROOT, yandexConfigured, yandexRedirectUri } from '../src/config.ts';
 import { migrate } from '../src/db/migrate.ts';
 import { SCHEMA_VERSION } from '../src/db/schema.ts';
 import { cleanupSecretFiles, production, secretFile } from './configFixture.ts';
@@ -125,24 +125,41 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ LOG_LEVEL: 'loud' })).toThrow(/logLevel/u);
   });
 
-  it('refuses a configured CAPTCHA provider with no public site key (the widget cannot render)', () => {
+  it('refuses a half-configured challenge: a sitekey without a secret, or the reverse', () => {
+    // BOOK-64: a lone sitekey renders a widget nothing can verify; a lone secret configures a
+    // verifier no reader can reach. Both fail loudly, whatever the provider says.
     expect(() => loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SECRET: 'secret' })).toThrow(
-      /CAPTCHA_SITE_KEY is required for provider turnstile/u,
+      /CAPTCHA_SITE_KEY is missing/u,
     );
     expect(() =>
       loadConfig({ CAPTCHA_PROVIDER: 'hcaptcha', CAPTCHA_SECRET: 'secret', CAPTCHA_SITE_KEY: '   ' }),
-    ).toThrow(/CAPTCHA_SITE_KEY is required for provider hcaptcha/u);
-    // `none` needs no key: there is no widget to render.
+    ).toThrow(/CAPTCHA_SITE_KEY is missing/u);
+    // `none` needs no key, and a stray key with it is still half a captcha.
     expect(loadConfig({ CAPTCHA_PROVIDER: 'none' }).captchaSiteKey).toBe('');
+    expect(() => loadConfig({ CAPTCHA_PROVIDER: 'none', CAPTCHA_SITE_KEY: 'key' })).toThrow(
+      /CAPTCHA_SECRET is missing/u,
+    );
   });
 
-  it('refuses a provider with no secret and the `none` default in production', () => {
+  it('refuses a provider with no secret, and boots production with the `none` default (BOOK-64)', () => {
     expect(() => loadConfig({ CAPTCHA_PROVIDER: 'turnstile', CAPTCHA_SITE_KEY: 'key' })).toThrow(
-      /CAPTCHA_SECRET is required for provider turnstile/u,
+      /CAPTCHA_SECRET is missing/u,
     );
-    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
-      /CAPTCHA_PROVIDER=none is refused in production/u,
-    );
+    // The owner's decision (2026-10-27): the gate is identity plus the rate limits, so
+    // production may run without a challenge at all — and says which gate is in force.
+    const config = loadConfig({
+      ...production,
+      CAPTCHA_PROVIDER: 'none',
+      CAPTCHA_SITE_KEY: '',
+      CAPTCHA_SECRET_FILE: '',
+    });
+    expect(config.captchaProvider).toBe('none');
+    expect(gateAnnouncement(config)).toBe('gate: identity + rate limits (no captcha)');
+    expect(gateAnnouncement(config)?.split('\n')).toHaveLength(1);
+    expect(gateAnnouncement(loadConfig(production))).toBeNull();
+    // The boot prints it: index.ts is the only place a real boot can say it.
+    const boot = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+    expect(boot).toContain('gateAnnouncement(config)');
   });
 
   it('refuses the vendors’ published CAPTCHA test keys in production (audit B1)', () => {

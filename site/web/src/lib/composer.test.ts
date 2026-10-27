@@ -10,7 +10,6 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
   it('maps every refusal code to one Russian line, never to a server internal', () => {
     const cases: Array<[string, string, boolean]> = [
       ['UNAUTHENTICATED', 'Яндекс', false],
-      ['CAPTCHA_FAILED', 'проверка', true],
       ['RATE_LIMITED', 'слишком много', true],
       ['EDIT_DAILY_LIMIT', 'одна правка в сутки', false],
       ['DUPLICATE', 'уже отправлено', false],

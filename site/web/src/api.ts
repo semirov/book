@@ -142,8 +142,9 @@ export function getComments(options: { chapter?: number; limit?: number; before?
 }
 
 /**
- * The only write the reader has (§9, §12.1): identity comes from the session cookie, the
- * CAPTCHA token travels in the body, and `author` is never sent.
+ * The only write the reader has (§9, §12.1): identity comes from the session cookie,
+ * `author` is never sent, and BOOK-64: no challenge token travels — the server's gate is
+ * the identity plus the rate limits.
  */
 export async function postComment(input: PostCommentInput): Promise<PostCommentResponse> {
   const response = await requestJson('/api/comments', {
@@ -171,7 +172,6 @@ export type AnchoredCommentInput = {
   body: string;
   proposedText?: string | null;
   interventionKind?: string | null;
-  captchaToken: string;
 };
 
 export async function postAnchoredComment(input: AnchoredCommentInput): Promise<PostCommentResponse> {
@@ -185,7 +185,6 @@ export async function postAnchoredComment(input: AnchoredCommentInput): Promise<
     body: input.body,
     ...(input.proposedText === undefined ? {} : { proposedText: input.proposedText }),
     ...(input.interventionKind === undefined ? {} : { interventionKind: input.interventionKind }),
-    captchaToken: input.captchaToken,
   });
 }
 

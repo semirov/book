@@ -80,6 +80,12 @@ export type Harness = {
 
 export async function bootComments(options: {
   chapters?: Record<string, string>;
+  /**
+   * BOOK-64: the shipped gate is identity plus the rate limits, so the harness boots with no
+   * provider by default. A test that exercises the retained verification path asks for
+   * `turnstile` (and then the stub decides the verdict).
+   */
+  captchaProvider?: 'none' | 'turnstile';
   captchaMode?: CaptchaMode;
   /** A verifier with its own timing (concurrency tests release both calls at once). */
   captcha?: CaptchaVerifier;
@@ -99,15 +105,14 @@ export async function bootComments(options: {
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
   const clock = options.now ?? makeClock();
+  const withCaptcha = options.captchaProvider === 'turnstile';
   const config = loadConfig({
     BOOK_ROOT: fixture.root,
     DATA_DIR: fixture.dataDir,
     WEB_DIST: fixture.dataDir,
     PUBLIC_ORIGIN: options.publicOrigin ?? ORIGIN,
-    // A provider is configured so the verifier is a real decision; it is still stubbed.
-    CAPTCHA_PROVIDER: 'turnstile',
-    CAPTCHA_SECRET: 'test-captcha-secret',
-    CAPTCHA_SITE_KEY: 'test-site-key',
+    CAPTCHA_PROVIDER: withCaptcha ? 'turnstile' : 'none',
+    ...(withCaptcha ? { CAPTCHA_SECRET: 'test-captcha-secret', CAPTCHA_SITE_KEY: 'test-site-key' } : {}),
     YANDEX_CLIENT_ID: options.yandexConfigured === false ? '' : 'test-client',
     YANDEX_CLIENT_SECRET: options.yandexConfigured === false ? '' : 'test-secret',
     YANDEX_REDIRECT_URI: `${options.publicOrigin ?? ORIGIN}/auth/yandex/callback`,
@@ -191,6 +196,7 @@ export async function bootComments(options: {
 export type CommentBody = {
   chapter: number;
   body: string;
+  /** BOOK-64: optional and unused with the shipped `none` provider; a challenge test sets it. */
   captchaToken?: string;
   blockId?: string;
   quote?: string;
@@ -205,7 +211,6 @@ export function commentBody(overrides: Partial<CommentBody> = {}): CommentBody {
   return {
     chapter: 8,
     body: 'Тут «слово» и «словосочетание» рядом — второй раз за главу.',
-    captchaToken: 'valid-token',
     // A body helper that carries an intervention carries its kind too: every new
     // intervention has one, and only an explicit test omits it.
     ...(overrides.proposedText === undefined ? {} : { interventionKind: 'testimony' }),

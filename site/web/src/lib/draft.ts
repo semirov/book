@@ -115,7 +115,7 @@ export function rekeyDraft(
 /** The anchored request body the form sends; one shape, so a re-keyed draft is proven to travel. */
 export function anchoredPayload(
   draft: Pick<SeamDraft, 'chapter' | 'blockId' | 'baseRev' | 'sentence'>,
-  input: { body: string; captchaToken: string; proposedText?: string | null; interventionKind?: string | null },
+  input: { body: string; proposedText?: string | null; interventionKind?: string | null },
 ): {
   chapter: number;
   blockId: string | null;
@@ -124,7 +124,6 @@ export function anchoredPayload(
   body: string;
   proposedText?: string | null;
   interventionKind?: string | null;
-  captchaToken: string;
 } {
   return {
     chapter: draft.chapter,
@@ -134,7 +133,6 @@ export function anchoredPayload(
     body: input.body,
     ...(input.proposedText === undefined ? {} : { proposedText: input.proposedText }),
     ...(input.interventionKind === undefined ? {} : { interventionKind: input.interventionKind }),
-    captchaToken: input.captchaToken,
   };
 }
 

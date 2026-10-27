@@ -7,7 +7,6 @@
  * into a sentence: every reader-authored value is a separate, bounded string.
  */
 
-import type { CaptchaProvider } from './captcha.ts';
 import type { InterventionKind } from './intervention.ts';
 
 /** §12.4 — the bounds that are enforced twice: in the composer and on the server. */
@@ -184,7 +183,12 @@ export type PostCommentInput = {
    * (`validateInterventionKind`), required with `proposedText` and refused without it.
    */
   interventionKind?: string | null;
-  captchaToken: string;
+  /**
+   * BOOK-64 — the gate is an authenticated identity plus the rate limits, so a submission
+   * carries no token and the field is optional. It stays in the shape only so a challenge
+   * can return as its own decision without a second DTO.
+   */
+  captchaToken?: string | null;
   idempotencyKey?: string | null;
 };
 
@@ -235,9 +239,13 @@ export type FeedbackBatchPayload = {
   createdAt: string;
 };
 
-/** The composer's configuration, carried in `hello` so the client fetches nothing extra. */
+/**
+ * The composer's configuration, carried in `hello` so the client fetches nothing extra.
+ *
+ * BOOK-64: no captcha surface travels here any more — the form submits on identity and the
+ * rate limits. A challenge that returns brings its own field with it.
+ */
 export type ComposerInfo = {
-  captcha: { provider: CaptchaProvider; siteKey: string | null };
   minChars: number;
   /** The note body cap (`COMMENT_MAX_CHARS`): a remark about the prose. */
   maxChars: number;

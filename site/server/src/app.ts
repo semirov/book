@@ -52,7 +52,7 @@ export type AppOptions = {
   logger?: boolean;
   /** Test seam: receives the JSON log lines, so a test can assert what is *not* logged. */
   logStream?: { write(line: string): void };
-  /** §12.8 test seam: a stub verifier instead of a network call. */
+  /** §12.8 test seam: a stub verifier instead of a network call (unused when `none`). */
   captcha?: CaptchaVerifier;
   limiter?: RateLimiter;
   sessions?: SessionStore;

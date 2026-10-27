@@ -439,6 +439,12 @@ describe('the shell', () => {
     const response = await app!.inject({ method: 'GET', url: '/ch-8' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('книга');
+    // BOOK-64: the served header names no challenge origin and no iframe for one.
+    const csp = String(response.headers['content-security-policy'] ?? '');
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("frame-src 'none'");
+    expect(csp).not.toContain('challenges.cloudflare.com');
+    expect(csp).not.toContain('turnstile');
   });
 
   it('routes /privacy and /rules explicitly (audit M5)', async () => {

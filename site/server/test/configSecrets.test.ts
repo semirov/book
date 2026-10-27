@@ -96,11 +96,19 @@ describe('loadConfig — production takes a secret only from its file (invariant
     });
     expect(yandexConfigured(on)).toBe(true);
 
-    // The CAPTCHA secret is optional the same way: a configured provider still demands one,
-    // and that demand is the provider check speaking, not the file rule.
+    // The CAPTCHA secret is optional the same way: BOOK-64 ships no challenge, and a
+    // half-configured one (a sitekey alone) is refused by the pairing rule, not the file rule.
     expect(() =>
       loadConfig({ ...production, CAPTCHA_SECRET_FILE: undefined, CAPTCHA_SECRET: undefined }),
-    ).toThrow(/CAPTCHA_SECRET is required for provider turnstile/u);
+    ).toThrow(/CAPTCHA_SECRET is missing/u);
+    expect(
+      loadConfig({
+        ...production,
+        CAPTCHA_PROVIDER: 'none',
+        CAPTCHA_SITE_KEY: undefined,
+        CAPTCHA_SECRET_FILE: undefined,
+      }).captchaProvider,
+    ).toBe('none');
   });
 
   it('reads a blank *_FILE path as no file, never as a value', () => {
@@ -129,9 +137,9 @@ describe('loadConfig — production takes a secret only from its file (invariant
       expect(() =>
         loadConfig({ ...production, NODE_ENV, SESSION_SECRET_FILE: undefined, SESSION_SECRET: 'plain' }),
       ).toThrow(/SESSION_SECRET must come from SESSION_SECRET_FILE in production/u);
-      // The CAPTCHA invariants read NODE_ENV the same way.
-      expect(() => loadConfig({ ...production, NODE_ENV, CAPTCHA_PROVIDER: 'none' })).toThrow(
-        /CAPTCHA_PROVIDER=none is refused in production/u,
+      // The CAPTCHA file rule reads NODE_ENV the same way: a plain secret is refused.
+      expect(() => loadConfig({ ...production, NODE_ENV, CAPTCHA_SECRET_FILE: undefined, CAPTCHA_SECRET: 'plain' })).toThrow(
+        /CAPTCHA_SECRET must come from CAPTCHA_SECRET_FILE in production/u,
       );
     }
     // Anything that is not production keeps the development shape.

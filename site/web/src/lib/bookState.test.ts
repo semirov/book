@@ -92,7 +92,7 @@ const hello: HelloPayload = {
     editSubmissionsPerDay: 1,
     maxWave: 5,
   },
-  composer: { captcha: { provider: 'none', siteKey: null }, minChars: 3, maxChars: 1200, editMaxChars: 10_000 },
+  composer: { minChars: 3, maxChars: 1200, editMaxChars: 10_000 },
   viewer: { signedIn: false, displayName: null },
   front: { title: 'Название', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' }, authors: { count: 3, measuredAt: '2026-10-25T12:00:01Z' } },
   catalog: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', rev: 1, written: true } : row)),

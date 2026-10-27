@@ -20,14 +20,12 @@ import {
  * shared constants rather than from a local copy (BOOK-DOC-4 rule 1).
  */
 export const EMPTY_COMPOSER: ComposerInfo = {
-  captcha: { provider: 'none', siteKey: null },
   minChars: COMMENT_MIN_CHARS,
   maxChars: COMMENT_MAX_CHARS,
   editMaxChars: EDIT_MAX_CHARS,
 };
 
-/** The two lines a closed form says; `errorCopy` and the form share them. */
-const CLOSED_LINE = 'приём замечаний приостановлен · проверка недоступна';
+/** The line a signed-out form shows; `errorCopy` and the form share it. */
 const SIGNIN_LINE = 'войдите через Яндекс, чтобы оставить замечание';
 
 export type ComposerError = {
@@ -43,10 +41,6 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
   switch (error.code) {
     case 'UNAUTHENTICATED':
       return { line: SIGNIN_LINE, detail: null, canRetry: false };
-    case 'CAPTCHA_FAILED':
-      return { line: 'проверка не пройдена — попробуйте ещё раз', detail: null, canRetry: true };
-    case 'CAPTCHA_UNAVAILABLE':
-      return { line: CLOSED_LINE, detail: null, canRetry: false };
     case 'RATE_LIMITED':
       return { line: 'слишком много замечаний — попробуйте позже', detail: reset, canRetry: true };
     case 'EDIT_DAILY_LIMIT':

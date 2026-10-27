@@ -31,7 +31,10 @@ services:
       # opt-out, so every secret this deployment uses needs a mount here.
       SESSION_SECRET_FILE: /run/secrets/session_secret
       IP_SALT_FILE: /run/secrets/ip_salt
-      CAPTCHA_SECRET_FILE: /run/secrets/captcha_secret
+      # BOOK-64: no challenge runs, so no captcha secret is mounted. A captcha that
+      # returns needs both CAPTCHA_SITE_KEY and a mounted CAPTCHA_SECRET_FILE — half of
+      # the pair is refused at boot.
+      CAPTCHA_SECRET_FILE: ""
       # Sign-in (ADR-021) is optional, so this template ships without it: empty means "no
       # file", and the empty overrides also stop the host paths in `.env` from leaking into
       # the image. To enable it, create both 0600 files, add `yandex_client_id` and
@@ -42,7 +45,6 @@ services:
     secrets:
       - session_secret
       - ip_salt
-      - captcha_secret
     # Hardening (audit m7): drop capabilities and forbid privilege gain. The data volume is
     # writable, the manuscript mount is read-only. (read_only on the root FS broke SQLite WAL —
     # re-enable once the DB runs from a tmpfs or the WAL mmap is sorted.)
@@ -83,8 +85,9 @@ secrets:
     file: ./secrets/session_secret
   ip_salt:
     file: ./secrets/ip_salt
-  captcha_secret:
-    file: ./secrets/captcha_secret
+  # Only when a captcha provider is chosen (BOOK-64: none by default):
+  # captcha_secret:
+  #   file: ./secrets/captcha_secret
   # Sign-in only (optional): add these two when OAuth is enabled in the container.
   # yandex_client_id:
   #   file: ./secrets/yandex_client_id
