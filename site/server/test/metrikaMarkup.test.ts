@@ -68,7 +68,8 @@ describe('the reader’s fields are never recorded', () => {
       ['components/RevisionObject.tsx', 'className="revision ym-hide-content"'],
       ['components/ProvenancePanel.tsx', 'prov-panel ym-hide-content'],
       ['components/Chronicle.tsx', 'className="chronicle page sheet ym-hide-content"'],
-      ['components/Chronicle.tsx', 'className="chr-row ym-hide-content"'],
+      // BOOK-65: the record row renders a reader's alias; it is the surface, not the section.
+      ['components/RecordRow.tsx', 'className="chr-row ym-hide-content"'],
       ['components/ParagraphChain.tsx', 'chain ym-hide-content'],
       ['components/PremiseRow.tsx', 'className="premise ym-hide-content"'],
       ['components/FocusView.tsx', 'className="focus-note ym-hide-content"'],
