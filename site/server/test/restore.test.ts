@@ -23,9 +23,15 @@ const FRONT =
 const A =
   `${FRAME_FIRST_SENTENCE} Тестовый абзац номер один. Это служебный текст, он не является текстом книги.`;
 
-const V1 = `Тестовая глава\n\n${A}\n\nТестовый абзац номер два. Это служебный текст, он не является текстом книги.`;
+/** Both versions are a page (§F007 floor), and differ only in the second paragraph. */
+const FILLER =
+  'Служебный абзац для проверки объёма страницы. Это предложение повторяется, чтобы набрать нужную длину, и не является текстом книги. '
+    .repeat(16)
+    .trimEnd();
 
-const V2 = `Тестовая глава\n\n${A}\n\nДругой служебный текст, тоже не из книги.`;
+const V1 = `Тестовая глава\n\n${A}\n\nТестовый абзац номер два. Это служебный текст, он не является текстом книги.\n\n${FILLER}`;
+
+const V2 = `Тестовая глава\n\n${A}\n\nДругой служебный текст, тоже не из книги.\n\n${FILLER}`;
 
 function ingest(fixture: Fixture, text: string, at = '2026-10-25T09:00:00Z') {
   fixture.write('ch01.md', text);
@@ -149,7 +155,7 @@ describe('ungated until reconcile (§13.3, §20 M7)', () => {
       // The gates were re-run, not assumed: the validator answered about the text on disk.
       expect(result.validation.errors).toBe(0);
       expect(result.validation.passed).toBe(true);
-      expect(result.validation.warnings).toBeGreaterThan(0); // a 200-character chapter is thin
+      expect(result.validation.warnings).toBeGreaterThan(0); // a page under 20 000 is thin
 
       // The panel stops asking, and the mark is a row, not a flag.
       expect(listUngated(fixture.db)).toEqual([]);

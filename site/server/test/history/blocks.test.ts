@@ -11,7 +11,9 @@ const B_REWRITTEN = 'Второй тестовый абзац: дельта, э�
 const D = 'Четвёртый тестовый абзац: каппа, лямбда и мю.';
 
 function ingest(fixture: Fixture, title: string, blocks: string[]): void {
-  fixture.writeChapterBlocks(1, title, blocks);
+  // The chain is measured, not landed: no `land` gate runs here, so the text is exactly the
+  // blocks the test wrote — never padded to a page.
+  fixture.writeChapter(1, `${title}\n\n${blocks.join('\n\n')}\n`);
   // The site's ingest is what writes a revision; the engine's `land` calls the same
   // function, and so does the boot scan (a single choke point, §6F.1).
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });

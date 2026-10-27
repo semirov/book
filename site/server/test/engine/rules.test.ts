@@ -1,3 +1,4 @@
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import type { WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -5,6 +6,7 @@ import { openDispatch, normalizeFindings } from '../../src/engine/gates.ts';
 import { acquireLease, releaseLease } from '../../src/engine/leases.ts';
 import * as store from '../../src/engine/store.ts';
 import type { StepRow } from '../../src/engine/store.ts';
+import { sha256Hex } from '../../src/util/hash.ts';
 import { chapterText, createEngineFixture, DEFAULT_ABOUT } from './helpers.ts';
 
 function addStep(
@@ -252,6 +254,95 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
       const landed = fixture.engine.land(lease.id);
       expect(landed.changed).toBe(true);
       expect(landed.revAfter).toBe(1);
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
+describe('land — the length floor is a limit, not a hint (BOOK-24, F007)', () => {
+  /** A chapter file of exactly `chars` characters of prose. */
+  const page = (chars: number): string => `Начало\n\n${'а'.repeat(chars)}\n`;
+
+  /** A draft lease on chapter 1, started, with nothing landed yet. */
+  function draft(fixture: ReturnType<typeof createEngineFixture>): string {
+    const step = addStep(fixture, { id: 'stp_floor', chapter: 1, pass: 'draft' });
+    const lease = acquireLease(fixture.deps, { step, session: 'w1', expectedRev: 0, changeId: null });
+    fixture.engine.start(lease.id);
+    return lease.id;
+  }
+
+  it('refuses a written chapter of 1 599 characters and names the rule and the count', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const lease = draft(fixture);
+      fixture.writeChapter(1, page(1_599));
+      expect(() => fixture.engine.land(lease)).toThrowError(/1599 characters; the minimum is 1600 \(F007\)/u);
+      // Nothing was published: no revision, no landed sha, and the file is still the file.
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = 1').get()).toEqual({ n: 0 });
+      const step = store.getStep(fixture.db, 'stp_floor');
+      expect(step?.landed_at).toBeNull();
+      expect(fixture.readChapter(1)).toBe(page(1_599));
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('accepts exactly 1 600 characters', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const lease = draft(fixture);
+      fixture.writeChapter(1, page(1_600));
+      const landed = fixture.engine.land(lease);
+      expect(landed.changed).toBe(true);
+      expect(landed.revAfter).toBe(1);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('exempts a slot holding only the frozen frame: the refusal is emptiness, not length', () => {
+    const fixture = createEngineFixture({ chapters: { 1: FRAME_FIRST_SENTENCE }, front: null });
+    try {
+      const lease = draft(fixture);
+      // The frame is not prose (§BOOK-6), so a basis-only slot is never a short chapter.
+      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
+      const refusal = ((): string => {
+        try {
+          fixture.engine.land(lease);
+        } catch (error) {
+          return (error as Error).message;
+        }
+        return '';
+      })();
+      expect(refusal).toMatch(/not written|holds no paragraphs/u);
+      // The refusal is about the absence of prose, never about the frozen frame being short.
+      expect(refusal).not.toMatch(/minimum is 1600/u);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('cannot shrink a written chapter below the floor on a re-land', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const lease = draft(fixture);
+      fixture.writeChapter(1, page(1_700));
+      expect(fixture.engine.land(lease).changed).toBe(true);
+
+      // The writer answers a gate by cutting the page down to a slot: refused, not published.
+      fixture.writeChapter(1, page(1_599));
+      expect(() => fixture.engine.land(lease)).toThrowError(/minimum is 1600 \(F007\)/u);
+
+      const revisions = fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = 1').get();
+      expect(revisions).toEqual({ n: 1 });
+      const step = store.getStep(fixture.db, 'stp_floor');
+      expect(step?.landed_sha).toBe(sha256Hex(page(1_700)));
+      // What is published is still the page: the engine never edits the file, so the refused
+      // 1 599-character draft stays the writer's own business, not a revision.
+      const published = fixture.db.prepare('SELECT sha256 FROM chapters WHERE n = 1').get();
+      expect(published).toEqual({ sha256: sha256Hex(page(1_700)) });
+      expect(fixture.readChapter(1)).toBe(page(1_599));
     } finally {
       fixture.close();
     }

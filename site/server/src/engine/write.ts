@@ -274,8 +274,18 @@ export function createWriteOps(deps: EngineDeps) {
       }
     } else if (chapter === null || !isWrittenChapter(chapter)) {
       refuse('NOT_WRITTEN', 409, 'the file was not written (or holds no paragraphs)');
+    } else if (chapter.chars < CHAPTER_CHARS.floor) {
+      // Canon: the floor is a limit, not a hint, and this is the second choke point (the
+      // validator is the first). A basis-only slot never reaches this branch — it is not a
+      // written chapter — so the frozen frame of ch01/ch67 keeps its exemption. The engine
+      // refuses; it never pads the text to pass a limit.
+      refuse(
+        'CHAPTER_TOO_SHORT',
+        409,
+        `chapter is ${chapter.chars} characters; the minimum is ${CHAPTER_CHARS.floor} (F007)`,
+      );
     } else if (chapter.chars > CHAPTER_CHARS.max) {
-      refuse('CHAPTER_TOO_LONG', 409, `chapter is ${chapter.chars} characters; the maximum is ${CHAPTER_CHARS.max}`);
+      refuse('CHAPTER_TOO_LONG', 409, `chapter is ${chapter.chars} characters; the maximum is ${CHAPTER_CHARS.max} (F007)`);
     }
 
     const sha = target.sha256;

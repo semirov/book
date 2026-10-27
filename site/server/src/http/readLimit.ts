@@ -1,13 +1,14 @@
 /**
  * The read API's budget (audit M6, ARCHITECTURE.md §14).
  *
- * The expensive reads are the history projections and the reader's own record:
- * `/api/history/at/:hseq` alone is 67 indexed lookups, `/diff` recomputes a span on every
- * call, and `/api/me/decisions` measures the whole book for every request (and is
- * `no-store`, so nothing absorbs a repeat). They are cacheable or own-only, but a script
- * can still ask for them thousands of times, so they take a per-network window in the same
- * `rate_events` store as everything else — one limiter, one salt, one hash, no second store
- * to drift.
+ * The expensive reads are the history projections, the reader's own record and the title
+ * page's byline: `/api/history/at/:hseq` alone is 67 indexed lookups, `/diff` recomputes a
+ * span on every call, `/api/me/decisions` measures the whole book for every request (and is
+ * `no-store`, so nothing absorbs a repeat), and `/api/front` carries the contributor count —
+ * a whole-book aggregate page 1 asks for on every load. They are cacheable or own-only, but
+ * a script can still ask for them thousands of times, so they take a per-network window in
+ * the same `rate_events` store as everything else — one limiter, one salt, one hash, no
+ * second store to drift.
  *
  * The key is the hashed network, never the address: `rate_events` only ever holds a hash.
  */
@@ -19,9 +20,15 @@ import type { RouteDeps } from './deps.ts';
 
 /**
  * The prefixes that take the read budget. `/api/state` is the SPA's poll and the cheapest;
- * `/api/me` is the reader's own record, whose measurement is a whole-book aggregate.
+ * `/api/front` is page 1 (the byline aggregate); `/api/me` is the reader's own record.
  */
-export const READ_LIMITED_PREFIXES = ['/api/history', '/api/changes', '/api/state', '/api/me'] as const;
+export const READ_LIMITED_PREFIXES = [
+  '/api/history',
+  '/api/changes',
+  '/api/state',
+  '/api/front',
+  '/api/me',
+] as const;
 
 export const READ_WINDOW_MS = 60_000;
 

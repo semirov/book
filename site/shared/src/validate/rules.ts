@@ -161,7 +161,9 @@ export function collectManuscript(options: ValidateOptions): {
 }
 
 function checkLength(chapter: ChapterFile): Finding[] {
-  // An empty slot has no length: the band applies to a written chapter only (§BOOK-6).
+  // An empty slot has no length: the band applies to a written chapter only (§BOOK-6). A
+  // slot holding nothing but the frozen frame of ch01/ch67 is `empty`, so it never reaches
+  // either end of the band.
   if (chapter.empty) return [];
   if (chapter.chars > CHAPTER_CHARS.max) {
     return [
@@ -170,18 +172,20 @@ function checkLength(chapter: ChapterFile): Finding[] {
         'error',
         chapter.file,
         1,
-        `chapter has ${chapter.chars} characters, maximum is ${CHAPTER_CHARS.max}`,
+        `chapter has ${chapter.chars} characters, the maximum is ${CHAPTER_CHARS.max} (F007)`,
       ),
     ];
   }
+  // The floor is a limit, not a hint (canon, BOOK-DOC-4): a written chapter below a page is
+  // an error for the commit and for the engine's `land` alike.
   if (chapter.chars < CHAPTER_CHARS.floor) {
     return [
       finding(
         'F007',
-        'warn',
+        'error',
         chapter.file,
         1,
-        `thin chapter: ${chapter.chars} characters, a page is ${CHAPTER_CHARS.floor}`,
+        `chapter has ${chapter.chars} characters, the minimum is ${CHAPTER_CHARS.floor} (F007)`,
       ),
     ];
   }

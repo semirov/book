@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
@@ -137,6 +138,25 @@ describe('the commit gate, run as the hook runs it (§13.4 point 3, §20 M7)', (
       } finally {
         await app.close();
       }
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('rejects a written chapter under the 1 600 floor (F007) and exempts a basis-only slot', async () => {
+    const fixture = createFixture({ '00-front.md': FRONT });
+    try {
+      // ch01 holds only its frozen frame: no length, no finding (§BOOK-6).
+      fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
+      fixture.write('ch09.md', `Тестовая глава\n\n${'а'.repeat(900)}\n`);
+
+      const result = await validate([`--root=${fixture.root}`]);
+      expect(result.code).toBe(1);
+      expect(result.out).toMatch(/F007 error ch09\.md/u);
+      expect(result.out).toMatch(/900 characters, the minimum is 1600/u);
+      expect(result.out).toMatch(/1 errors/u);
+      // The exemption is real, not a silence: ch01 is read and passes.
+      expect(result.out).not.toMatch(/ch01\.md/u);
     } finally {
       fixture.close();
     }

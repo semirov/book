@@ -12,6 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { CHAPTER_CHARS } from '@book/shared';
 import type {
   Finding,
   SeamRef,
@@ -68,8 +69,25 @@ export const DEFAULT_ABOUT =
  * front carries the live untitled name «Без названия» until a scripted front step changes it.
  */
 
+/**
+ * A scripted session writes **a page**, not a slot: `land` refuses a written chapter below
+ * `CHAPTER_CHARS.floor` (canon, BOOK-DOC-4 — the floor is a limit, not a hint). The filler is
+ * one fixed, inert paragraph (lower case, no digits, no names): it is appended as its own
+ * block, so a test's own paragraphs and their count are exactly what it wrote, a small edit
+ * stays a small delta, and the same paragraph is `kept` across writes. A test that needs a
+ * chapter below the floor writes it with `fixture.writeChapter`, which never pads.
+ */
+const FILLER_SENTENCE = 'служебный абзац для проверки объёма страницы, он не является текстом книги. ';
+const FILLER_BLOCK = FILLER_SENTENCE.repeat(24).trimEnd();
+
+function padToFloor(blocks: string[]): string[] {
+  if (blocks.length === 0) return blocks;
+  const chars = blocks.reduce((sum, block) => sum + block.length, 0);
+  return chars >= CHAPTER_CHARS.floor ? blocks : [...blocks, FILLER_BLOCK];
+}
+
 export function chapterText(title: string, blocks: string[]): string {
-  return `${title}\n\n${blocks.join('\n\n')}\n`;
+  return `${title}\n\n${padToFloor(blocks).join('\n\n')}\n`;
 }
 
 export function createEngineFixture(options: {

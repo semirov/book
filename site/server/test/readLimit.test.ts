@@ -4,16 +4,19 @@ import { isReadLimited, READ_WINDOW_MS, readLimitKey } from '../src/http/readLim
 
 /**
  * The read budget (audit M6): which URLs take a slot, and what a slot is keyed by. The
- * integration path (a 429 with `retry-after`) is in `api.test.ts`.
+ * integration path (a 429 with `retry-after`) is in `api.test.ts` — and for the title page's
+ * own budget, in `frontRoute.test.ts`.
  */
 describe('the read API budget', () => {
-  it('limits the history projections, the state poll, the change list and the reader’s own record', () => {
+  it('limits the history projections, the state poll, the title page, the change list and the reader’s own record', () => {
     for (const url of [
       '/api/history',
       '/api/history/timeline?limit=5',
       '/api/history/at/now',
       '/api/history/contributors',
       '/api/state',
+      '/api/front',
+      '/api/front?poll=1',
       '/api/changes?limit=6',
       '/api/me/decisions',
     ]) {
@@ -23,11 +26,11 @@ describe('the read API budget', () => {
     for (const url of [
       '/api/chapters',
       '/api/comments',
-      '/api/front',
       '/api/authors/me',
       '/healthz',
       '/api/historyz',
       '/api/states',
+      '/api/fronts',
       '/api/memory',
     ]) {
       expect(isReadLimited(url), url).toBe(false);

@@ -221,9 +221,18 @@ describe('F007 — chapter length at both moments', () => {
     expect(withRule(result, 'F007')[0]?.message).toContain('thin chapter');
   });
 
-  it('warns at 1 599 characters', () => {
+  it('rejects 1 599 characters — the floor is a limit, not a hint (BOOK-24)', () => {
     const result = run({ files: [FRONT, chapter('Страница', 'а'.repeat(1_599))] });
-    expect(withRule(result, 'F007')[0]).toMatchObject({ severity: 'warn' });
+    expect(withRule(result, 'F007')).toEqual([
+      expect.objectContaining({ severity: 'error', message: 'chapter has 1599 characters, the minimum is 1600 (F007)' }),
+    ]);
+    expect(result.errors).toBe(1);
+  });
+
+  it('accepts exactly 1 600 characters — only the thin hint remains', () => {
+    const found = withRule(run({ files: [FRONT, chapter('Страница', 'а'.repeat(1_600))] }), 'F007');
+    expect(found.every((item) => item.severity === 'warn')).toBe(true);
+    expect(found.some((item) => item.message.includes('minimum'))).toBe(false);
   });
 
   it('passes at 20 001 characters', () => {
@@ -452,7 +461,7 @@ describe('an empty slot is a valid state (§BOOK-6)', () => {
 
   it('keeps F007 and F022 for a written chapter', () => {
     const thin = run({ files: [FRONT, chapter('Короткая', 'Один абзац.')] });
-    expect(withRule(thin, 'F007')[0]).toMatchObject({ severity: 'warn', message: expect.stringContaining('thin chapter') });
+    expect(withRule(thin, 'F007')[0]).toMatchObject({ severity: 'error', message: expect.stringContaining('the minimum is 1600') });
 
     const untitled = run({ files: [FRONT, { name: 'ch06.md', text: 'Первый абзац без заголовка.\nВторой.' }] });
     expect(withRule(untitled, 'F022')).toHaveLength(1);
