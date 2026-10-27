@@ -152,10 +152,11 @@
 }
 
 /* ---------- the empty chapter: one row (BOOK-90 A) ---------- */
-/* `02  замысел ······················` — numeral, word, dotted field. The row is capped at the
-   prose's measure so the field ends on the prose's right edge even when the page frame grows;
-   the last cell is the page number's slot (BOOK-89): a fourth child takes it, the `1fr` field
-   shrinks, and no rule here changes. */
+/* `02  замысел ······················` — numeral, word, dotted field. The row is the column's
+   full width (a full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom)
+   makes its content end on the prose's right edge: `--measure` never sizes a box. The last
+   cell is the page number's slot (BOOK-89): a fourth child takes it, the `1fr` field shrinks,
+   and no rule here changes. */
 .premise {
   margin: 0;
 }
@@ -165,10 +166,13 @@
   column-gap: 12px;
   align-items: center;
   width: 100%;
-  max-width: var(--measure);
   min-height: 44px;
   margin: 0;
   padding: 0;
+  /* The whole difference between the row (the column's content) and the prose, floored at
+     zero on a row narrower than the measure — the same arithmetic as `.toc-line`. It comes
+     after the `padding` shorthand, which would otherwise reset it. */
+  padding-inline-end: max(0px, calc(100% - var(--measure)));
   border: 0;
   background: none;
   text-align: left;
@@ -210,7 +214,7 @@
 }
 .premise-hint {
   margin: 2px 0 0;
-  max-width: var(--measure);
+  padding-inline-end: max(0px, calc(100% - var(--measure)));
   font-family: var(--ui);
   font-size: var(--fs-label);
   line-height: 1.35;

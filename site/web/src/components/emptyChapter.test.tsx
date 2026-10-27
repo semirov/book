@@ -104,11 +104,20 @@ describe('one row, one numeral, one hint', () => {
 });
 
 describe('the row’s geometry is the prose’s geometry', () => {
-  it('caps the row at the prose measure and leaves the page-number cell to the data', () => {
+  it('ends the row’s content on the prose edge without sizing the box by the measure', () => {
+    // BOOK-88's one rule: `--measure` never sizes a box. The `.toc-line` inset is the
+    // sanctioned way for a full-width row to close on the prose's right edge.
     const row = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-row');
-    expect(row).toContain('max-width: var(--measure)');
+    expect(row).not.toContain('max-width');
+    expect(row).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
+    // The hit area stays the column's whole width; only its content ends on the prose edge.
+    expect(row).toContain('width: 100%');
     expect(row).toContain('grid-template-columns: auto auto minmax(0, 1fr)');
     expect(row).toContain('min-height: 44px');
+    // The hint is the same inset: it wraps on the prose's right edge and never sizes the box.
+    const hint = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-hint');
+    expect(hint).not.toContain('max-width');
+    expect(hint).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
     // The numeral is the mono micro rung, tabular, and the word is the label register at 12.
     expect(declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-n')).toContain('font-variant-numeric: tabular-nums');
     const label = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-label');
