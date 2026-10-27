@@ -67,6 +67,13 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
             {imprint.copyright} — {COLOPHON_MOTTO} · <a href="/privacy">приватность</a> ·{' '}
             <a href="/rules">правила</a>
           </span>
+          {/* BOOK-78: the one link to the source, quiet, beside the licence line. It says what
+              is true — the site's code is open, not the novel — and it is a sibling of the
+              sentence, not a part of it: BOOK-94 pins that sentence character for character.
+              No badge, no count, no tracking. */}
+          <a href="https://github.com/semirov/book" target="_blank" rel="noopener noreferrer">
+            исходный код сайта открыт
+          </a>
           <button
             className="theme"
             type="button"
