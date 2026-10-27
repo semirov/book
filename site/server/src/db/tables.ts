@@ -88,6 +88,17 @@ export const RECONCILES_TABLE_SQL = `CREATE TABLE reconciles (
 CREATE INDEX reconciles_chapter ON reconciles(chapter, rev);`;
 
 /**
+ * The append-only guards of `events` (§6F.1, ADR-027, F027). One constant because the schema,
+ * the v12 rebuild and the operator's launch reset (`reset/book.ts`) must create exactly these
+ * two triggers: a reset drops them to delete the log, then puts this text back, so the promise
+ * is restored rather than remembered.
+ */
+export const EVENTS_TRIGGERS_SQL = `CREATE TRIGGER events_no_update BEFORE UPDATE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
+CREATE TRIGGER events_no_delete BEFORE DELETE ON events
+  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
+
+/**
  * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the
  * history's vocabulary. It is a named constant because BOOK-18 adds `document.status` and
  * SQLite cannot widen a CHECK with ALTER, so migration v12 rebuilds the table with its rows,
@@ -118,10 +129,7 @@ CREATE INDEX events_change  ON events(change_id, hseq);
 CREATE INDEX events_kind    ON events(kind, hseq);
 CREATE INDEX events_at      ON events(at);
 
-CREATE TRIGGER events_no_update BEFORE UPDATE ON events
-  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
-CREATE TRIGGER events_no_delete BEFORE DELETE ON events
-  BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
+${EVENTS_TRIGGERS_SQL}`;
 
 /**
  * The two gate tables (BOOK-61). They live apart from `steps` because `ensureStepLifecycle`

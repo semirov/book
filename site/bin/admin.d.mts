@@ -1,6 +1,6 @@
 /**
- * Types for `bin/admin.mjs` (BOOK-113), so the CLI test can call the exported helpers and a
- * reader of the tool finds its two entry points where the tests do.
+ * Types for `bin/admin.mjs` (BOOK-113, BOOK-137), so the CLI tests can call the exported
+ * helpers and a reader of the tool finds its entry points where the tests do.
  */
 
 export type ParsedBudget =
@@ -8,7 +8,19 @@ export type ParsedBudget =
   | { kind: 'reset'; identity: string; url?: string }
   | { kind: 'exempt'; identity: string; exempt: boolean; url?: string };
 
+/** BOOK-137: `reset book` — `dryRun` is the default and `--yes` is the only way to write. */
+export type ParsedReset = {
+  kind: 'reset-book';
+  dryRun: boolean;
+  backupOk: boolean;
+  url?: string;
+};
+
+export type ParsedCommand = ParsedBudget | ParsedReset;
+
 export function parseBudgetArgs(argv: string[]): ParsedBudget;
+export function parseResetArgs(argv: string[]): ParsedReset | { kind: 'help' };
+export function parseCommand(argv: string[]): ParsedCommand;
 export function assertLocalTarget(raw: string): URL;
 export function localAddresses(): Set<string>;
 export function resolveAdminToken(env?: NodeJS.ProcessEnv): string;

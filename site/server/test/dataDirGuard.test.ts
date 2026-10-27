@@ -16,6 +16,7 @@ import { SITE_ROOT, loadConfig } from '../src/config.ts';
 import {
   DEFAULT_PRODUCTION_DATA_DIR,
   assertDataDirIsolation,
+  assertDataDirOutsideRepo,
   isProductionEnv,
   productionDataDirs,
 } from '../src/dataDirGuard.ts';
@@ -163,5 +164,59 @@ describe('data-dir isolation — production data lives outside the checkout (BOO
       prodDir,
       devDir,
     ]);
+  });
+});
+
+/**
+ * BOOK-137: the launch reset asks the same question a production boot asks — «is this data dir
+ * inside the checkout?» — without booting. The rule is one exported function so the two callers
+ * cannot drift, and the message is the production one, byte for byte.
+ */
+describe('data-dir isolation — the exported checkout rule (BOOK-137)', () => {
+  const insideMessage = (candidate: string): string =>
+    `invalid configuration: refusing to boot production with DATA_DIR inside the repository (${candidate}); ` +
+    'production data lives outside the checkout';
+
+  it('refuses a data dir inside the checkout, with the production message', () => {
+    expect(() => {
+      assertDataDirOutsideRepo(insideRepo);
+    }).toThrow(new Error(insideMessage(insideRepo)));
+    expect(() => {
+      assertDataDirOutsideRepo(join(insideRepo, 'scratch'), realSite);
+    }).toThrow(new Error(insideMessage(join(insideRepo, 'scratch'))));
+  });
+
+  it('passes a data dir outside the checkout, including one that does not exist yet', () => {
+    expect(() => {
+      assertDataDirOutsideRepo(prodDir, realSite);
+    }).not.toThrow();
+    expect(() => {
+      assertDataDirOutsideRepo(join(prodDir, 'not-created-yet'), realSite);
+    }).not.toThrow();
+  });
+
+  it('follows a symlink and a `..` detour to the same verdict', () => {
+    const link = join(scratch, 'repo-link');
+    symlinkSync(realSite, link);
+    expect(() => {
+      assertDataDirOutsideRepo(join(link, '.data'), realSite);
+    }).toThrow(/inside the repository/u);
+    expect(() => {
+      assertDataDirOutsideRepo(join(realSite, 'server', '..', '.data'), realSite);
+    }).toThrow(/inside the repository/u);
+  });
+
+  it('judges the root it is given, not this checkout', () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), 'book-repo-'));
+    try {
+      expect(() => {
+        assertDataDirOutsideRepo(join(repoRoot, 'data'), repoRoot);
+      }).toThrow(/inside the repository/u);
+      expect(() => {
+        assertDataDirOutsideRepo(prodDir, repoRoot);
+      }).not.toThrow();
+    } finally {
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
   });
 });

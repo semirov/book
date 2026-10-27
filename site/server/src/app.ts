@@ -76,6 +76,12 @@ export type AppOptions = {
   oauthFetch?: OAuthFetch;
   /** Overrides `ADMIN_TOKEN`/`ADMIN_TOKEN_FILE`; tests pass a literal token. */
   adminToken?: string;
+  /**
+   * BOOK-137 (M1): runs after a completed launch reset, so the process can drop the cursors it
+   * keeps over ids the wipe restarted (`EngineBridge.prime`). Never called on a dry run or a
+   * refusal.
+   */
+  onBookReset?: () => void;
   /** Shared with the WS hub in production so the byline markers are comparable. */
   authorsCount?: () => AuthorsCountDto;
   /** Test seam for the book's outlay: counts the scans a `/api/cost` page pays for. */
@@ -137,6 +143,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ipHash,
     now,
     adminToken: options.adminToken ?? readAdminToken(options.config.adminToken, options.config.adminTokenFile),
+    ...(options.onBookReset === undefined ? {} : { onBookReset: options.onBookReset }),
     authorsCount,
     bookCost,
     ...(emit === undefined ? {} : { emit }),
