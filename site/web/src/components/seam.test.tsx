@@ -109,14 +109,14 @@ describe('the strip at the seam', () => {
     expect(html).not.toContain('откуда это слово');
   });
 
-  it('lists a filing in the strip as a row whose state word is the button label (BOOK-70)', () => {
+  it('lists a filing in the strip as a row whose state word is printed and kept in the label (BOOK-70, BOOK-111)', () => {
     const html = strip({ withFilings: true });
     expect(html).toContain('№4Q7');
     expect(html).toContain('Аня');
-    // One voice per line: the row prints the numeral, the reader and the moment; the state word
-    // travels in the button's label, where it names the whole row for a screen reader.
+    // BOOK-111 (owner, 2026-10-27): a filing that exists must say it waits — the word is
+    // visible on the row; the button's label still names the whole row for a screen reader.
+    expect(html).toContain('<span class="seam-filing-word">ждёт</span>');
     expect(html).toContain('aria-label="замечание №4Q7 · ждёт · «Её освещал яркий свет.»"');
-    expect(html).not.toContain('>ждёт<');
     expect(html).toContain('Её освещал яркий свет.');
   });
 
@@ -165,12 +165,15 @@ describe('the empty slot row', () => {
     expect(html).not.toContain('Глава');
   });
 
-  it('shows the premise a chapter already holds, with its own words and no state word', () => {
+  it('shows the premise a chapter already holds, with its own words and its state word', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, premise: true, status: 'accepted', anchor: { ...comment().anchor, blockId: null, quote: null } });
     const row = premiseRow(entry(7, { written: false, title: null }), premise);
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
     expect(html).toContain('«в комнате должен быть свет, но не от лампы»');
-    // BOOK-112: the held premise's state stays in its own card, not in the flow row.
-    expect(html).not.toContain('ждёт');
+    // BOOK-111 (owner, 2026-10-27): a held premise says it waits — one word, after the field.
+    expect(html).toContain('<span class="premise-label">ждёт</span>');
+    // And the word is part of what the row names itself: `aria-label` would otherwise hide it.
+    expect(html).toContain('aria-label="глава 7 · ждёт"');
+    expect(html).not.toContain('замысел');
   });
 });

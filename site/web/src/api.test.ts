@@ -7,6 +7,7 @@ import {
   getChanges,
   getChapter,
   getChapters,
+  getComment,
   getComments,
   getFront,
   getMyDecisions,
@@ -220,5 +221,33 @@ describe('the comment thread (M5)', () => {
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 429, code: 'RATE_LIMITED', retryAfterMs: 90_000 });
     expect((error as ApiError).resetAt).toBe('2026-10-25T13:00:00Z');
+  });
+});
+
+describe('one filing by id, and the refusal that names it (BOOK-111)', () => {
+  it('reads a filing by id, and 404 is a normal answer', async () => {
+    const spy = vi.fn(async () => new Response('{"id":"cmt_1","chapter":9,"premise":true}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await expect(getComment('cmt_1')).resolves.toMatchObject({ id: 'cmt_1', premise: true });
+    expect(spy).toHaveBeenCalledWith('/api/comments/cmt_1', {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+    });
+
+    respond({ code: 'NOT_FOUND', message: 'no such comment' }, 404);
+    await expect(getComment('cmt_gone')).resolves.toBeNull();
+  });
+
+  it('keeps the duplicate commentId so the form can open the filing already sent', async () => {
+    respond({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_1' }, 409);
+    const error = await postComment({ chapter: 9, body: 'А как?' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 409, code: 'DUPLICATE', commentId: 'cmt_1' });
+  });
+
+  it('leaves commentId undefined when the refusal does not name a filing', async () => {
+    respond({ code: 'INVALID', message: 'body must be a string' }, 400);
+    const error = (await postComment({ chapter: 9, body: '' }).catch((caught: unknown) => caught)) as ApiError;
+    expect(error.commentId).toBeUndefined();
   });
 });

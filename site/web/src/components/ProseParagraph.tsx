@@ -51,7 +51,8 @@ export type ProseParagraphProps = {
   comments: readonly CommentDto[];
   composer: ComposerInfo;
   viewer: ViewerDto;
-  onPosted: (chapter: number) => void;
+  /** BOOK-111: the posted DTO, so the page shows the reader's own row at once. */
+  onPosted: (comment: CommentDto) => void;
   onBlockProvenance?: (blockId: string, anchor: HTMLElement) => void;
   /** STALE_ANCHOR: the chapter reloads, then the draft is re-keyed onto the new text. */
   onReanchor?: (draft: SeamDraft) => void;

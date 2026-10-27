@@ -65,8 +65,8 @@ export type ChapterArticleProps = {
   comments?: readonly CommentDto[];
   /** The chapter's filings were asked for when its slot came into view. */
   onRead?: (chapter: number) => void;
-  /** A filing was posted in this chapter: the marks and the register refresh. */
-  onPosted?: (chapter: number) => void;
+  /** A filing was posted in this chapter: its DTO reaches the page, then the register. */
+  onPosted?: (comment: CommentDto) => void;
   composer: ComposerInfo;
   viewer: ViewerDto;
   /** BOOK-56: `state.history.live` — off drops the chain door and the DNA rows, not the text. */
@@ -371,7 +371,7 @@ export function ChapterArticle({
                   comments={comments}
                   composer={composer}
                   viewer={viewer}
-                  onPosted={(n) => onPosted?.(n)}
+                  onPosted={(comment) => onPosted?.(comment)}
                   onBlockProvenance={onProvenance}
                   history={history}
                   onReanchor={(draft) => {
@@ -405,7 +405,7 @@ export function ChapterArticle({
           comments={comments}
           composer={composer}
           viewer={viewer}
-          onPosted={(n) => onPosted?.(n)}
+          onPosted={(comment) => onPosted?.(comment)}
           history={history}
         />
       ) : null}

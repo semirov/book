@@ -86,6 +86,24 @@ export function sortFilings(comments: readonly CommentDto[]): CommentDto[] {
   });
 }
 
+/**
+ * BOOK-111 — one posted filing at its place in a feed, and never twice.
+ *
+ * The 201 answer is the row the reader just made; it goes into the chapter's feed at once, so
+ * the mark and the strip appear in the same frame instead of after a reload. The feeds are
+ * ascending (the server's `listCommentRows` reverses its newest-first page), so the insert
+ * keeps that order and a later `refreshComments` — the durable truth — finds the id already
+ * there and changes nothing. Returning `null` says the feed already had it, which lets the
+ * caller keep the same array and skip a pointless render.
+ */
+export function insertFiling(comments: readonly CommentDto[], comment: CommentDto): CommentDto[] | null {
+  if (comments.some((row) => row.id === comment.id)) return null;
+  const at = comments.findIndex((row) => row.createdAt.localeCompare(comment.createdAt) > 0);
+  const next = [...comments];
+  next.splice(at === -1 ? next.length : at, 0, comment);
+  return next;
+}
+
 /** `№A7K` — the record's own suffix, stable across reloads and never an invented ordinal. */
 export function filingNumber(comment: Pick<CommentDto, 'id'>): string {
   const tail = comment.id.replace(/[^A-Za-z0-9]/gu, '').slice(-3).toUpperCase();

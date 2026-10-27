@@ -1,6 +1,7 @@
 import type { CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { filingMarginalia } from './marginalia.ts';
 import { canTakePremise, existingPremise, PREMISE_EXISTS, PREMISE_HINT, premiseAction, premiseRefusal, premiseRow } from './premise.ts';
 
 function comment(overrides: Partial<CommentDto> & { id: string; chapter: number; createdAt: string }): CommentDto {
@@ -60,21 +61,36 @@ describe('premiseAction', () => {
 });
 
 describe('premiseRow', () => {
-  it('shows a dotted empty field while the slot holds nothing', () => {
+  it('shows a dotted empty field, and no word, while the slot holds nothing', () => {
     expect(premiseRow({ n: 7, written: false, basis: false }, null)).toEqual({
       n: 7,
       quote: null,
+      word: null,
       actionable: true,
     });
   });
 
-  it('shows the premise instead, with its own first line and no state word', () => {
+  it('shows the premise instead, with its own first line and its state word (BOOK-111)', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, createdAt: '2026-10-20T09:00:00Z', status: 'accepted' });
     expect(premiseRow({ n: 7, written: false, basis: false }, premise)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
+      word: 'ждёт',
     });
-    // BOOK-112: the row carries the reader's words, never the interface's state.
-    expect(JSON.stringify(premiseRow({ n: 7, written: false, basis: false }, premise))).not.toContain('ждёт');
+    // The word is the deck's, from `filingMarginalia` — never a second copy of the vocabulary.
+    expect(premiseRow({ n: 7, written: false, basis: false }, premise)?.word).toBe(filingMarginalia(premise).word);
+    // An empty slot prints no word at all: the difference is the reader's own filing.
+    expect(premiseRow({ n: 7, written: false, basis: false }, null)?.word).toBeNull();
+  });
+
+  it('gives an unwritten chapter’s pending filing the word it waits under (BOOK-111)', () => {
+    // The prod incident: `premise: true, status: 'new'`, no change yet — the row said nothing,
+    // so the empty slot read as empty and the next tap came back 409 DUPLICATE.
+    const pending = comment({ id: 'cmt_pending', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
+    expect(pending.premise).toBe(true);
+    expect(premiseRow({ n: 65, written: false, basis: false }, pending)).toMatchObject({
+      quote: 'в главе должен быть документ о переводе смены',
+      word: 'ждёт',
+    });
   });
 
   it('has no row for a written or frozen chapter', () => {

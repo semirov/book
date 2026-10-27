@@ -84,6 +84,7 @@ type ParagraphProps = {
   frozen?: boolean;
   comments?: readonly CommentDto[];
   history?: boolean;
+  onPosted?: (comment: CommentDto) => void;
 };
 
 /** The paragraph is the unit that renders the strip, so a fixed entry drives the freeze. */
@@ -108,7 +109,7 @@ async function mountParagraph(props: ParagraphProps = {}): Promise<void> {
         comments={props.comments ?? []}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
-        onPosted={() => undefined}
+        onPosted={props.onPosted ?? (() => undefined)}
         history={props.history ?? true}
       />,
     );
@@ -177,6 +178,73 @@ describe('a written ch01 is frozen by identity (blocker 1)', () => {
       (document.querySelector('.seam-cta') as HTMLElement).click();
     });
     expect(document.querySelector('.seam-announce')?.textContent).toBe('форма открыта');
+  });
+});
+
+describe('the posted filing enters the page at once (BOOK-111)', () => {
+  /** A controlled field needs the native setter, or React never sees the change. */
+  function typeInto(selector: string, value: string): void {
+    const element = document.querySelector<HTMLTextAreaElement | HTMLInputElement>(selector);
+    if (element === null) throw new Error(`no ${selector}`);
+    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+    act(() => element.dispatchEvent(new Event('input', { bubbles: true })));
+  }
+
+  /** A quarantined 201: the DTO the server answers with, in full. */
+  function answer(dto: CommentDto): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            comment: dto,
+            remaining: { perHour: 10, remaining: 9, resetAt: null, editsPerDay: 1, editsRemaining: 1, editsResetAt: null },
+            queue: { depth: 0 },
+          }),
+          { status: 201, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+  }
+
+  async function submitWith(dto: CommentDto): Promise<{ posted: ReturnType<typeof vi.fn>; receipt: string }> {
+    answer(dto);
+    const posted = vi.fn();
+    await mountParagraph({ entry: { ...ENTRY, n: 8 }, blockId: 'ch08#aa11bb22', onPosted: posted });
+    // The strip opens closed: one tap opens the form, then the reader writes and sends.
+    await act(async () => (document.querySelector('.seam-cta') as HTMLElement).click());
+    typeInto('textarea.seam-text', 'Свет был включён до меня.');
+    typeInto('input.seam-input', 'свет не от лампы');
+    await act(async () => {
+      document.querySelector('.seam-form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return { posted, receipt: document.querySelector('.seam-receipt')?.textContent ?? '' };
+  }
+
+  it('hands the DTO to the page and says «ждёт» on the receipt, with no reload', async () => {
+    const dto: CommentDto = {
+      ...comment({ status: 'new' }),
+      id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+    };
+    const { posted, receipt } = await submitWith(dto);
+    // The form is closed and the receipt is the fact: the id is not printed, the word is.
+    expect(document.querySelector('.seam-form')).toBeNull();
+    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('receipt');
+    expect(receipt).toContain('зарегистрировано');
+    expect(receipt).toContain('ждёт');
+    expect(receipt).not.toContain('cmt_');
+    // BOOK-111: the caller gets the whole row, not its id — that is what fills the feed.
+    expect(posted).toHaveBeenCalledWith(dto);
+  });
+
+  it('adds the check line to the receipt when the filing is held', async () => {
+    const { receipt } = await submitWith(comment({ status: 'quarantined' }));
+    // BOOK-111 §5: a held filing is never silent — the receipt says what happens before triage.
+    expect(receipt).toContain('ждёт');
+    expect(receipt).toContain('проверяется перед триажем');
   });
 });
 

@@ -70,7 +70,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-async function mount(comments: readonly CommentDto[], text = TEXT): Promise<void> {
+async function mount(comments: readonly CommentDto[], text = TEXT, history = true): Promise<void> {
   await act(async () => {
     root?.render(
       <ProseParagraph
@@ -81,7 +81,7 @@ async function mount(comments: readonly CommentDto[], text = TEXT): Promise<void
         text={text}
         frozen={false}
         comments={comments}
-        history
+        history={history}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
         onPosted={() => undefined}
@@ -201,6 +201,21 @@ describe('opening the revision object from the paragraph', () => {
     expect(container.querySelector('.revision')).not.toBeNull();
     expect(paragraphs[0]?.querySelector('.margin-note')).not.toBeNull();
     expect(paragraphs[1]?.querySelector('.margin-note')).toBeNull();
+  });
+
+  it('a held comment renders its check line under the waiting word', async () => {
+    // BOOK-111 §5: a quarantined filing waits — and is never silent. With history off (the
+    // prod state: no reader change yet) the note still prints the word and the check line.
+    await mount([comment({ status: 'quarantined' })], TEXT, false);
+    const note = container.querySelector('.margin-note');
+    expect(note).not.toBeNull();
+    expect(note?.textContent ?? '').toContain('ждёт');
+    expect(note?.textContent ?? '').toContain('проверяется перед триажем');
+    // The word and the line sit in that order: what it is, then what happens next.
+    const word = note?.querySelector('.margin-note-word')?.textContent ?? '';
+    const next = note?.querySelector('.margin-note-next')?.textContent ?? '';
+    expect(word).toBe('ждёт');
+    expect(next).toBe('проверяется перед триажем');
   });
 
   it('keeps one object open: opening another closes the first', async () => {

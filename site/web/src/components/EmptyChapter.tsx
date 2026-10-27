@@ -33,13 +33,23 @@ export function EmptyChapter({
   viewer: ViewerDto;
   /** The first empty chapter in the flow: it owns the page's one explanation sentence. */
   firstEmpty: boolean;
-  onPosted?: (chapter: number) => void;
+  /** BOOK-111: the posted DTO reaches the page, which shows the row without a reload. */
+  onPosted?: (comment: CommentDto) => void;
 }) {
   const seam = useOpenSeam();
   const [premiseCard, setPremiseCard] = useState<{ comment: CommentDto; rect: DOMRect } | null>(null);
   const premise = existingPremise(comments, entry.n);
   const row = premiseRow(entry, premise);
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
+
+  /**
+   * BOOK-111: one way into a filing that already exists. The premise row, and the strip's
+   * rows — including the one a duplicate refusal points at — open the same card, anchored on
+   * the element that was tapped, so closing it returns the reader there.
+   */
+  const openFiling = (comment: CommentDto, origin: HTMLElement): void => {
+    setPremiseCard({ comment, rect: origin.getBoundingClientRect() });
+  };
 
   return (
     <>
@@ -50,7 +60,7 @@ export function EmptyChapter({
             // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
             // second form would be refused by the server («у главы уже есть замысел»).
             if (premiseAction(premise).kind === 'card') {
-              if (premise !== null) setPremiseCard({ comment: premise, rect: origin.getBoundingClientRect() });
+              if (premise !== null) openFiling(premise, origin);
               return;
             }
             openSeam({
@@ -73,10 +83,10 @@ export function EmptyChapter({
           existingPremise={premise}
           composer={composer}
           viewer={viewer}
-          onPosted={(n) => onPosted?.(n)}
+          onPosted={(comment) => onPosted?.(comment)}
           onClose={closeSeam}
           onProvenance={() => undefined}
-          onOpenFiling={() => undefined}
+          onOpenFiling={openFiling}
           premiseHint={firstEmpty && open}
         />
       ) : null}

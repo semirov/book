@@ -253,6 +253,39 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
   });
 });
 
+describe('a pending filing is visible at its anchor while history stays off (BOOK-111)', () => {
+  const current = state({ live: false, started: false });
+  const html = page(current);
+
+  it('a pending filing is visible at its anchor with readerChanges = 0 while history stays off', () => {
+    // BOOK-56's gate is `readerChanges > 0`: a pending filing is not history, so it must show
+    // at its anchor even though no reader change exists yet.
+    expect(current.history.readerChanges).toBe(0);
+    expect(historyLive(current)).toBe(false);
+
+    document.body.innerHTML = html;
+    const note = document.querySelector('.margin-note');
+    expect(note, 'the margin note renders with history off').not.toBeNull();
+    expect(note?.textContent ?? '').toContain('ждёт');
+    expect(note?.textContent ?? '').toContain('Её освещал яркий свет.');
+    // The phone strip is the same object at <1024, and it prints the same word.
+    expect(document.querySelector('.phone-strip')?.textContent ?? '').toContain('ждёт');
+
+    // And nothing of the log came with it.
+    for (const gone of [
+      'class="chronicle',
+      'class="ribbon',
+      'волна',
+      'class="prov-rows"',
+      'class="chain',
+      'class="page authors',
+      'class="page talks',
+    ]) {
+      expect(html, `with readerChanges = 0 the page must not render «${gone}»`).not.toContain(gone);
+    }
+  });
+});
+
 describe('a begun book has a chronicle with one starting record (BOOK-56)', () => {
   const current = state({ live: false, started: true });
   const html = page(current);

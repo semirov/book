@@ -203,6 +203,17 @@
   text-overflow: ellipsis;
   color: var(--ink-2);
 }
+/* The state word of a held premise (BOOK-111): the deck's word in the label register, ink
+   like the other micro labels. It sits in the third cell, so the `1fr` field gives way. */
+.premise-label {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
 
 /* ---------- desktop (§2.8) ---------- */
 @media (hover: hover) {

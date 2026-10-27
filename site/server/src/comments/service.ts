@@ -77,6 +77,8 @@ export type ServiceFailure = {
   retryAfterMs?: number;
   resetAt?: string;
   currentText?: string;
+  /** BOOK-111: the filing a refusal names — a duplicate's own row, so the reader can open it. */
+  commentId?: string;
   /**
    * Which budget refused an edit. Internal only — the route logs it (identity and network
    * refusals are distinguishable to an operator) and never sends it to the reader.
@@ -231,7 +233,7 @@ export class CommentService {
         const replayed = this.replay(input, context.identity.id, context.ipKey);
         if (replayed !== null) return replayed;
       }
-      return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
+      return fail(409, 'DUPLICATE', 'такое замечание уже отправлено', duplicate.id);
     }
 
     const anchor = this.resolveAnchor(input);
@@ -373,8 +375,9 @@ export class CommentService {
     if (existing.identity_id === identityId) {
       return { ok: true, status: 201, body: this.response(existing, ipKey) };
     }
-    // A key is scoped to one reader; a foreign key is a collision, not a replay.
-    return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
+    // A key is scoped to one reader; a foreign key is a collision, not a replay. The id names
+    // a public row (`GET /api/comments/:id` answers it for anyone), so carrying it leaks nothing.
+    return fail(409, 'DUPLICATE', 'такое замечание уже отправлено', existing.id);
   }
 
   /**
@@ -490,6 +493,6 @@ export function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-function fail(status: number, code: string, message: string): ServiceFailure {
-  return { ok: false, status, code, message };
+function fail(status: number, code: string, message: string, commentId?: string): ServiceFailure {
+  return { ok: false, status, code, message, ...(commentId === undefined ? {} : { commentId }) };
 }

@@ -33,9 +33,24 @@ export type ComposerError = {
   message: string;
   retryAfterMs?: number;
   resetAt?: string;
+  /** BOOK-111: the filing a duplicate refusal names, for the «открыть отправленное» door. */
+  commentId?: string;
 };
 
-/** One public line per refusal code; the server's message is a fallback, never a secret. */
+/** A server line may be shown as a detail only when it is the reader's language, never a code. */
+function russianDetail(message: string): string | null {
+  return /\p{Script=Cyrillic}/u.test(message) ? message : null;
+}
+
+/**
+ * One public line per refusal code the POST route can answer, plus the transport fallback.
+ * BOOK-111: the table is audited against the route's own codes — `INVALID`, `TOO_LONG`,
+ * `DUPLICATE`, `STALE_ANCHOR`, `RATE_LIMITED`, `EDIT_DAILY_LIMIT`, `QUEUE_FULL`,
+ * `ENDING_FROZEN`, `FROZEN_FRAME`, `BLOCKED`, `UNAUTHENTICATED`, `CAPTCHA_UNAVAILABLE`,
+ * `CAPTCHA_FAILED`, `INTERNAL`, `ORIGIN`, `CONTENT_TYPE` — so no code reaches the reader as
+ * a raw token, and every line is a Russian sentence even when the message is `Internal Server
+ * Error` or the code is a bare `HTTP_500`.
+ */
 export function errorCopy(error: ComposerError): { line: string; detail: string | null; canRetry: boolean } {
   const reset = error.resetAt === undefined ? null : `до ${formatReset(error.resetAt)}`;
   switch (error.code) {
@@ -46,6 +61,7 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
     case 'EDIT_DAILY_LIMIT':
       return { line: 'одна правка в сутки — сегодня уже была', detail: reset, canRetry: false };
     case 'DUPLICATE':
+      // The line the reader needs first: their filing exists. The door to it sits beside it.
       return { line: 'такое замечание уже отправлено', detail: null, canRetry: false };
     case 'STALE_ANCHOR':
       return { line: 'абзац изменился — привяжите замечание заново', detail: null, canRetry: true };
@@ -57,8 +73,32 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
       return { line: PREMISE_FROZEN_REASON, detail: null, canRetry: false };
     case 'BLOCKED':
       return { line: 'замечания от этого автора не принимаются', detail: null, canRetry: false };
+    case 'INVALID':
+      return {
+        line: 'замечание не отправлено — проверьте поля',
+        detail: russianDetail(error.message),
+        canRetry: true,
+      };
+    case 'TOO_LONG':
+      return { line: 'текст длиннее допустимого — сократите его', detail: null, canRetry: true };
+    case 'CAPTCHA_UNAVAILABLE':
+      return { line: 'проверка сейчас недоступна — попробуйте позже', detail: retryCopy(error.retryAfterMs), canRetry: true };
+    case 'CAPTCHA_FAILED':
+      return { line: 'проверка не пройдена — попробуйте ещё раз', detail: null, canRetry: true };
+    case 'ORIGIN':
+      return { line: 'страница устарела — обновите её и попробуйте снова', detail: null, canRetry: true };
+    case 'CONTENT_TYPE':
+      return { line: 'страница устарела — обновите её и попробуйте снова', detail: null, canRetry: true };
+    case 'INTERNAL':
+      return { line: 'сервер не ответил — попробуйте позже', detail: null, canRetry: true };
     default:
-      return { line: error.message.length > 0 ? error.message : 'не удалось отправить замечание', detail: null, canRetry: true };
+      // A bare `HTTP_500` or a code this build does not know: the reader gets the sentence,
+      // and the server's own Russian line only as a detail.
+      return {
+        line: 'не удалось отправить замечание — попробуйте ещё раз',
+        detail: russianDetail(error.message),
+        canRetry: true,
+      };
   }
 }
 

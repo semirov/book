@@ -287,10 +287,14 @@ describe('the reading surface prints the book, not the product', () => {
     expectNoInterfaceCopy('#toc');
   });
 
-  it('keeps no state word in any slot: no label on the row, no word in the head, no state in the contents', async () => {
+  it('keeps no interface state word in any slot, except a held premise’s own waiting word', async () => {
     await mount();
-    // The row is a numeral, a leader and — when it holds one — the premise's own quote.
-    expect(container.querySelectorAll('.premise-label')).toHaveLength(0);
+    // The row is a numeral, a leader and — when it holds one — the premise's own quote. BOOK-111
+    // (owner, 2026-10-27) adds exactly one thing back: a held premise says it waits, or the
+    // reader who already filed reads the slot as empty and is refused as a duplicate.
+    const labels = [...container.querySelectorAll('.premise-label')];
+    expect(labels).toHaveLength(1);
+    expect(labels[0]?.textContent).toBe('ждёт');
     // A row of the flow never prints the state word `замысел`. A premise's quote is the
     // reader's own words, though, and the rule allows them — so quotes are stripped here.
     const flow = (container.querySelector('main')?.cloneNode(true) as Element | null) ?? null;

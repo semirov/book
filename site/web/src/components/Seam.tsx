@@ -1,11 +1,12 @@
 import type { CatalogEntry, ComposerInfo, CommentDto, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
+import { getComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
-import { STATE_WORDS } from '../lib/marginalia.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingMarginalia } from '../lib/marginalia.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
 import { InterventionForm } from './InterventionForm.tsx';
@@ -35,7 +36,8 @@ export type SeamProps = {
   existingPremise?: CommentDto | null;
   composer: ComposerInfo;
   viewer: ViewerDto;
-  onPosted: (chapter: number) => void;
+  /** BOOK-111: the posted DTO itself — the feed shows the row without a reload. */
+  onPosted: (comment: CommentDto) => void;
   onClose: () => void;
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
@@ -111,6 +113,20 @@ export function Seam({
 
   const openFiling = (comment: CommentDto, origin: HTMLElement): void => onOpenFiling(comment, origin);
 
+  /**
+   * BOOK-111: a refusal that names the existing filing opens it. The row is the durable one —
+   * the page holds a stale copy or none at all — so it is read by id, and the tap that opened
+   * the panel returns to the button that asked (the form's own action).
+   */
+  const openDuplicate = async (id: string, origin: HTMLElement): Promise<void> => {
+    try {
+      const comment = await getComment(id);
+      if (comment !== null) openFiling(comment, origin);
+    } catch {
+      /* the refusal line stays: the reader still knows it was sent, even if the read failed */
+    }
+  };
+
   return (
     <div
       className="seam ym-hide-content"
@@ -175,9 +191,9 @@ export function Seam({
       {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
-        // BOOK-70: the row prints the numeral, the reader and the moment; the state word is
-        // the button's label, not a fourth span — one voice per line, and the numeral keeps
-        // its own (mono, tabular) without a second word beside it.
+        // BOOK-70, amended by BOOK-111 (owner, 2026-10-27): the row prints the numeral, the
+        // state word, the reader and the moment. The word is visible — a filing that exists
+        // must say it waits — and still travels in the button's label for a screen reader.
         <button
           type="button"
           className="seam-filing"
@@ -188,6 +204,7 @@ export function Seam({
         >
           <span className={`seam-filing-line ink-${comment.status === 'new' ? 'quiet' : 'live'}`}>
             <span className="seam-filing-n">{filingNumber(comment)}</span>
+            <span className="seam-filing-word">{filingInk(comment).word}</span>
             <span>{comment.author}</span>
             <span className="seam-filing-stamp">{commentStamp(comment.createdAt)}</span>
           </span>
@@ -226,14 +243,19 @@ export function Seam({
               viewer={viewer}
               onChange={update}
               onReanchor={onReanchor}
-              onPosted={(id) => {
+              onOpenDuplicate={(id, origin) => void openDuplicate(id, origin)}
+              onPosted={(comment) => {
                 seamDrafts.drop(draftKey);
                 setOpen(false);
-                // BOOK-90: «зарегистрировано» is the deed word; the state is the one word «ждёт».
-                setReceipt(`${filingNumber({ id })} зарегистрировано · ${STATE_WORDS.waiting}`);
+                // BOOK-90: «зарегистрировано» is the deed word; the state is the deck's own
+                // word for the posted row, so the receipt cannot drift from the feed.
+                const marginalia = filingMarginalia(comment);
+                // A held filing says what holds it (BOOK-111 §5): word, then the check line.
+                const held = comment.status === 'quarantined' ? ` · ${marginalia.consequence}` : '';
+                setReceipt(`${filingNumber(comment)} зарегистрировано · ${marginalia.word}${held}`);
                 // BOOK-63: the receipt is the fact the reader came for; the id stays out.
                 track('receipt_seen', {});
-                onPosted(entry.n);
+                onPosted(comment);
               }}
             />
           ) : null}

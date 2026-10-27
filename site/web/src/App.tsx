@@ -7,6 +7,7 @@ import type {
   ChangeStalePayload,
   ChapterCreatedPayload,
   ChapterRevisionPayload,
+  CommentDto,
   Envelope,
   FrontUpdatedPayload,
   HelloPayload,
@@ -107,7 +108,7 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, loadChapter, refreshLoaded, noteRecord } =
+  const { changes, comments, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord } =
     useReaderFeed();
   /** §4 — the thread waits until both feeds settle; a later frame never re-arms it. */
   const stage = usePending(!threadSettled);
@@ -379,9 +380,14 @@ export function App() {
   };
   /** Reaching a chapter from a card: the card closes, the chapter is opened. */
   const toChapter = (n: number): void => (card.close(), scrollToChapter(n));
-  /** A filing was posted in a chapter: its marks and the register refresh (BOOK-DOC-34). */
-  const onPosted = (n: number): void => {
-    void refreshComments(n);
+  /**
+   * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
+   * so the mark and the strip are there with no reload; the chapter's feed and the register
+   * then re-read the durable truth.
+   */
+  const onPosted = (comment: CommentDto): void => {
+    acceptComment(comment);
+    void refreshComments(comment.chapter);
     noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
   };
 

@@ -1,4 +1,4 @@
-import type { CatalogEntry, ComposerInfo, ViewerDto } from '@book/shared';
+import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, postAnchoredComment } from '../api.ts';
@@ -35,11 +35,26 @@ export type FormProps = {
   composer: ComposerInfo;
   viewer: ViewerDto;
   onChange: (draft: SeamDraft) => void;
-  onPosted: (number: string) => void;
+  /** BOOK-111: the posted DTO — the page shows the row from it, with no reload. */
+  onPosted: (comment: CommentDto) => void;
   onReanchor?: (draft: SeamDraft) => void;
+  /**
+   * BOOK-111: a DUPLICATE refusal names the filing already sent; this opens it. The origin is
+   * the refused form's own action, so closing the panel returns focus there.
+   */
+  onOpenDuplicate?: (id: string, origin: HTMLElement) => void;
 };
 
-export function InterventionForm({ entry, draft, composer, viewer, onChange, onPosted, onReanchor }: FormProps) {
+export function InterventionForm({
+  entry,
+  draft,
+  composer,
+  viewer,
+  onChange,
+  onPosted,
+  onReanchor,
+  onOpenDuplicate,
+}: FormProps) {
   const limits = draftLimits(composer);
   const [error, setError] = useState<ComposerError | null>(null);
   const [sending, setSending] = useState(false);
@@ -101,7 +116,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
       setError(null);
       // BOOK-63: the two paths are distinct acts; the count of the day stays on the server.
       track(noteOnly || draft.blockId === null ? 'submit_note' : 'submit_intervention', {});
-      onPosted(response.comment.id);
+      onPosted(response.comment);
     } catch (caught) {
       if (caught instanceof ApiError) {
         setError({
@@ -109,6 +124,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
           message: caught.message,
           ...(caught.retryAfterMs === undefined ? {} : { retryAfterMs: caught.retryAfterMs }),
           ...(caught.resetAt === undefined ? {} : { resetAt: caught.resetAt }),
+          ...(caught.commentId === undefined ? {} : { commentId: caught.commentId }),
         });
         // The refusal is the server's; only its code leaves the page.
         track('submit_refused', { code: caught.code });
@@ -120,6 +136,9 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
       setSending(false);
     }
   };
+
+  /** BOOK-111: the id a duplicate refusal names, if this refusal is one. */
+  const duplicateId = error !== null && error.code === 'DUPLICATE' ? (error.commentId ?? null) : null;
 
   if (!viewer.signedIn) {
     return (
@@ -201,6 +220,17 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
               привязать заново
             </button>
           ) : null}
+          {duplicateId === null || onOpenDuplicate === undefined ? null : (
+            // BOOK-111: the 409 names the filing that already exists; the reader gets a way to
+            // it instead of a second identical form. The button is the origin, so focus returns.
+            <button
+              type="button"
+              className="seam-inline-action"
+              onClick={(event) => onOpenDuplicate(duplicateId, event.currentTarget)}
+            >
+              открыть отправленное
+            </button>
+          )}
           {error.code === 'EDIT_DAILY_LIMIT' ? (
             <button
               type="button"

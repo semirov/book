@@ -2,6 +2,7 @@ import type {
   BlockRevisingPayload,
   CatalogEntry,
   ChapterRevisionPayload,
+  CommentDto,
   ComposerInfo,
   ViewerDto,
 } from '@book/shared';
@@ -39,7 +40,7 @@ export function ChapterList({
   fresh: number | null;
   chapterFeed: Record<number, ChapterFeed>;
   onRead: (chapter: number) => void;
-  onPosted: (chapter: number) => void;
+  onPosted: (comment: CommentDto) => void;
   onProvenance: (blockId: string, anchor: HTMLElement) => void;
   composer: ComposerInfo;
   viewer: ViewerDto;
