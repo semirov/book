@@ -13,6 +13,8 @@ import { z } from 'zod';
 import { validateIntent, validateInterventionKind } from '@book/shared';
 
 import { tokenMatches } from '../util/secret.ts';
+import type { Db } from '../db/db.ts';
+import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -21,6 +23,12 @@ export type ControlOptions = {
   token: string;
   logger?: boolean;
   version?: string;
+  /**
+   * The stage store (`docs/writer-lane.md §3`). The engine process owns the same database the
+   * site reads, so `/internal/stage` writes there; a control app built without it (a REST-only
+   * test) refuses the route instead of pretending the stage was stored.
+   */
+  db?: Db;
   /**
    * The chapter's own words, injected by the process that owns the manuscript (§12.3). The
    * enqueue path validates the reader's intent before it can become a change; without the
@@ -49,6 +57,9 @@ const startBody = z.object({
   reason: z.string().max(500).optional(),
   intent: z.string().max(600).optional(),
 });
+
+/** BOOK-117 §4: a first pass for one named chapter, because a lane only offers its own next slot. */
+const passBody = z.object({ chapter: z.number().int().min(1).max(67), session });
 
 const landBody = z.object({
   leaseId: id,
@@ -122,6 +133,33 @@ const enqueueBody = z.object({
 });
 
 /**
+ * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the
+ * summary/span bounds and the `truncated` flag are `stage.ts`'s job, so the door and the
+ * store cannot drift. `chapter` and `changeId` are not in the body: they are the step's.
+ */
+const stageBody = z.object({
+  passId: id,
+  stageSeq: z.number().int().min(1).max(1_000_000).nullish(),
+  stage: z.string().min(1).max(32),
+  at: z.number().int().min(0),
+  actor: z.object({ process: z.string().min(1).max(32), model: z.string().max(120).nullish() }),
+  summary: z.string().min(1).max(4_000),
+  span: z
+    .array(
+      z.object({
+        blockId: z.string().max(120).nullish(),
+        before: z.string().max(20_000),
+        after: z.string().max(20_000),
+        truncated: z.boolean().optional(),
+      }),
+    )
+    .max(64)
+    .nullish(),
+  tokens: z.object({ in: z.number().int().min(0), out: z.number().int().min(0) }).nullish(),
+  costUsd: z.number().min(0).max(1_000_000).nullish(),
+});
+
+/**
  * `authorization: Bearer <token>` is required on every route, including health. The health
  * check in the compose file already sends it; a loopback port is not an access control.
  */
@@ -153,6 +191,10 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   app.post('/internal/next', async (request) => {
     const body = nextBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.next(body) };
+  });
+  app.post('/internal/pass', async (request) => {
+    const body = passBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.openChapterPass(body.chapter, body.session) };
   });
   app.post('/internal/start', async (request) => {
     const body = startBody.parse(request.body ?? {});
@@ -301,6 +343,30 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         sessionId: body.sessionId ?? null,
       }),
     };
+  });
+
+  /**
+   * `docs/writer-lane.md §3`: the only write door for a lane stage. The chapter is read from
+   * the step named by `passId`, never from the body; an omitted `stageSeq` is the store's
+   * assignment, and a repeated `(passId, stageSeq)` returns the stored row.
+   */
+  app.post('/internal/stage', async (request, reply) => {
+    const body = stageBody.parse(request.body ?? {});
+    if (options.db === undefined) {
+      return reply.code(503).send({ code: 'STAGES_UNAVAILABLE', message: 'the stage store is not attached' });
+    }
+    const pass = resolvePass(options.db, body.passId);
+    if (pass === null) {
+      return reply.code(422).send({ code: 'UNKNOWN_PASS', message: 'no step carries this pass id' });
+    }
+    try {
+      return { ok: true, data: appendStage(options.db, { ...body, chapter: pass.chapter, changeId: pass.changeId }) };
+    } catch (error) {
+      if (error instanceof StageInputError) {
+        return reply.code(422).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
   });
 
   app.setErrorHandler((error, request, reply) => {

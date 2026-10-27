@@ -12,6 +12,13 @@ export type Clock = { now(): number };
 
 export const systemClock: Clock = { now: () => Date.now() };
 
+/**
+ * Why a pass parked. A broken call (transport, answer shape, a gate that never answered) is not a
+ * refusal of the work, and `premise.ts` settles a chapter's premise by this cause: a reader is
+ * never told their intervention was declined because a gate call failed.
+ */
+export type PremiseCause = 'refused' | 'failed';
+
 export class EngineError extends Error {
   readonly code: string;
   readonly status: number;

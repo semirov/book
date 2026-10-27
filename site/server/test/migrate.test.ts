@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v16', () => {
+describe('migrate — schema v18', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(16);
+    expect(SCHEMA_VERSION).toBe(18);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -375,6 +375,27 @@ describe('migrate — schema v16', () => {
     db.prepare(`UPDATE changes SET status = 'done', outcome = 'applied' WHERE id = 'chg_p1'`).run();
     expect(() => insert.run('chg_p3', 'pending')).not.toThrow();
     expect(() => insert.run('chg_p4', 'void')).not.toThrow();
+    db.close();
+  });
+
+  it('adds pass_stages to a v13 install and keeps the pass-local order unique (BOOK-117)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v13 install: the stage store did not exist before this step.
+    db.exec('DROP INDEX IF EXISTS pass_stages_chapter_seq');
+    db.exec('DROP TABLE pass_stages');
+    db.pragma('user_version = 13');
+
+    expect(migrate(db)).toEqual({ from: 13, to: SCHEMA_VERSION });
+    expect(tables(db)).toContain('pass_stages');
+    const insert = db.prepare(
+      `INSERT INTO pass_stages (pass_id, chapter, stage_seq, stage, at, actor_process, summary)
+       VALUES (?, 8, ?, 'typing', '2026-10-27T09:00:00Z', 'site', 'правка на странице')`,
+    );
+    insert.run('stp_a', 1);
+    // One pass cannot hold the same stage number twice: a retried write is not a second stage.
+    expect(() => insert.run('stp_a', 1)).toThrow(/UNIQUE/u);
+    expect(() => insert.run('stp_b', 1)).not.toThrow();
     db.close();
   });
 

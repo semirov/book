@@ -2,10 +2,16 @@
  * The cached snapshot served at `GET /api/state`. Recomputes from the projection, bumps
  * `version` only when the derived content actually changed (§7.2 rule 10), and persists
  * the counter so a restart cannot hand a client a lower version.
+ *
+ * BOOK-117: the money block is added here, from the same ledger reader the engine's guard
+ * uses (`budgetSnapshot`) — the site never computes money itself. It is part of the
+ * fingerprint, so a pass that spends bumps the version and the ETag rather than being hidden
+ * behind a cached snapshot.
  */
 
 import type { StateSnapshot } from '@book/shared';
 
+import { DEFAULT_BUDGET_CAPS, budgetSnapshot, type BudgetCaps } from '../budget.ts';
 import type { Db } from '../db/db.ts';
 import { listCatalog } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
@@ -21,6 +27,7 @@ export class StateService {
   constructor(
     private readonly db: Db,
     private readonly clock: () => Date = () => new Date(),
+    private readonly caps: BudgetCaps = DEFAULT_BUDGET_CAPS,
   ) {}
 
   facts(): ChapterFact[] {
@@ -76,13 +83,17 @@ export class StateService {
     const front = this.front();
     const readerChanges = this.readerChanges();
     const started = this.started();
-    const overlay = readEngineOverlay(this.db, this.clock().getTime());
-    const fingerprint = stateFingerprint(facts, front, overlay.fingerprint, basis, readerChanges, started);
+    const now = this.clock();
+    const overlay = readEngineOverlay(this.db, now.getTime());
+    // BOOK-117: the one money answer, from the ledger; a spend moves the fingerprint, so the
+    // version and the ETag move with it.
+    const budget = budgetSnapshot(this.db, this.caps, now.getTime());
+    const fingerprint = `${stateFingerprint(facts, front, overlay.fingerprint, basis, readerChanges, started)}|${budget.state}|${budget.line}|${String(budget.book.spentUsd)}|${String(budget.tokens.today)}`;
     if (this.cached !== null && fingerprint === this.fingerprint) return this.cached;
 
     const version = getNumber(this.db, 'state_version', 0) + 1;
     setMeta(this.db, 'state_version', String(version));
-    const snapshot = deriveState({ facts, basis, front, now: this.clock(), version, overlay, readerChanges, started });
+    const snapshot = { ...deriveState({ facts, basis, front, now, version, overlay, readerChanges, started }), budget };
     this.cached = snapshot;
     this.fingerprint = fingerprint;
     return snapshot;

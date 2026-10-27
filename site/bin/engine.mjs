@@ -8,6 +8,7 @@
  *
  *   engine.mjs next --for fwd|bwd            → a writer assignment (or null)
  *   engine.mjs next --role editor|consultant → a gate assignment (or null)
+ *   engine.mjs pass --chapter N [--session S] → a first pass for that chapter (BOOK-117 §4)
  *   engine.mjs next --role rights            → Gate B's assignment, for a flagged step (or null)
  *   engine.mjs start <leaseId> [--decision adapt|drop|void --reason … [--intent …]]
  *   engine.mjs land <leaseId> [--rev N] [--no-write]
@@ -30,7 +31,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const USAGE = 'usage: engine.mjs <next|start|land|verdict|done|seen|escalate|beat|trace|reconcile> [args]';
+const USAGE = 'usage: engine.mjs <next|pass|start|land|verdict|done|seen|escalate|beat|trace|reconcile> [args]';
 
 function parse(argv) {
   const flags = new Map();
@@ -213,6 +214,20 @@ async function main() {
         for: lane,
         role,
         session: session(flags, lane ?? role),
+      });
+      console.log(JSON.stringify(assignment, null, 2));
+      return;
+    }
+    case 'pass': {
+      // BOOK-117 §4: open the first pass of one named chapter instead of the lane's own next
+      // slot — the owner's premise waits in chapter 65, and a lane would reach it in ~60 passes.
+      const chapter = numberFlag(flags, 'chapter');
+      if (chapter === undefined || !Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
+        throw new Error('--chapter 1..67 is required');
+      }
+      const assignment = await call('/internal/pass', {
+        chapter,
+        session: session(flags, `pass-${chapter}`),
       });
       console.log(JSON.stringify(assignment, null, 2));
       return;

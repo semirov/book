@@ -27,6 +27,7 @@ import {
 import { createAuthorsCount } from '../authors/count.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
+import { appendStage } from '../stages/repo.ts';
 import { chapterEtag } from '../util/etag.ts';
 import { toIso } from '../util/time.ts';
 import { type AppliedChapter, applyChapterFile, removeChapter } from './applyChapter.ts';
@@ -319,11 +320,13 @@ export class ManuscriptWatcher {
     this.frameRejected.delete(path);
     if (result.status === 'created') {
       this.status.lastEventAt = toIso(this.now());
+      this.stageTyping(result);
       this.emit({ type: 'chapter:created', data: createdPayload(result) });
       this.emitAuthors();
       this.emitState('file');
     } else if (result.status === 'revised') {
       this.status.lastEventAt = toIso(this.now());
+      this.stageTyping(result);
       this.emit({ type: 'chapter:revision', data: revisionPayload(result) });
       this.emitAuthors();
       this.emitState('file');
@@ -343,6 +346,30 @@ export class ManuscriptWatcher {
       path,
       sha256,
     });
+  }
+
+  /**
+   * docs/writer-lane.md §1–§3: the revision is on the page and the reader's page is printing
+   * it. Only a change-driven write is a lane stage — the site holds no counter, and a hand
+   * edit or a machine-only revision carries no change to attribute it to.
+   */
+  private stageTyping(chapter: AppliedChapter): void {
+    const { changeId, stepId } = chapter.cause;
+    if (changeId === null || stepId === null) return;
+    try {
+      appendStage(this.db, {
+        chapter: chapter.n,
+        passId: stepId,
+        stage: 'typing',
+        at: this.now().getTime(),
+        actor: { process: 'site', model: null },
+        changeId,
+        summary: `правка на странице: ревизия ${chapter.rev}, текст печатается`,
+      });
+    } catch (error) {
+      // A stage is a fact about the page, not a condition of the write: the revision stands.
+      this.log('stage not recorded', { n: chapter.n, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   private chapterRemoved(n: number): void {

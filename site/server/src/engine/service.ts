@@ -59,7 +59,7 @@ import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapter, readFront } from './text.ts';
 import { writerAssignment } from './trace.ts';
-import { refuse, type EngineDeps } from './types.ts';
+import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
 import { createOverview } from './overview.ts';
 import { createRightsGate } from './rightsGate.ts';
 import { ensureRightsScan } from './rightsScan.ts';
@@ -79,6 +79,16 @@ export type DoneOptions = {
 
 /** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
 export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
+
+/** BOOK-117: an escalation may say what the pass spent, and whether it refused or broke. */
+export type EscalateOptions = {
+  /** Null when the pass claims no text; an escalation that spent nothing says so. */
+  model?: string | null;
+  tokensIn?: number;
+  tokensOut?: number;
+  now?: number;
+  cause?: PremiseCause;
+};
 
 export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
 
@@ -284,8 +294,10 @@ export function createEngine(deps: EngineDeps) {
     if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'consultant')) {
       refuse('BLOCKER_UNRESOLVED', 409, 'the physics pass named a blocker on this text: revise it and land again, or escalate');
     }
-    const tokensIn = (options.tokensIn ?? 0) + gates.reduce((sum, row) => sum + row.tokens_in, 0);
-    const tokensOut = (options.tokensOut ?? 0) + gates.reduce((sum, row) => sum + row.tokens_out, 0);
+    // BOOK-117: `closeStep` attributes the step's tokens itself (reported ∪ drafting stages ∪
+    // gate verdicts), so a caller never adds a verdict twice; the sums here are the report only.
+    const tokensIn = options.tokensIn ?? 0;
+    const tokensOut = options.tokensOut ?? 0;
     // BOOK-76: an editor blocker publishes with its finding; a consultant blocker stops the step.
     const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
     const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');
@@ -380,7 +392,7 @@ export function createEngine(deps: EngineDeps) {
 
   // ── escalate / beat ───────────────────────────────────────────────────────
 
-  function escalate(leaseId: string, because: string, options: { now?: number } = {}): DoneResult {
+  function escalate(leaseId: string, because: string, options: EscalateOptions = {}): DoneResult {
     const at = options.now ?? deps.clock.now();
     const { lease, step, expired } = leaseStep(leaseId);
     const reason = because.toLowerCase();
@@ -402,9 +414,9 @@ export function createEngine(deps: EngineDeps) {
         outcome: 'escalated',
         seamsOut: [],
         note: because.slice(0, NOTE_MAX_CHARS),
-        model: null,
-        tokensIn: 0,
-        tokensOut: 0,
+        model: options.model ?? null,
+        tokensIn: options.tokensIn ?? 0,
+        tokensOut: options.tokensOut ?? 0,
         escalation: outcome,
         changeReason: because.slice(0, REASON_MAX_CHARS),
         expiredLeaseId: expired ? lease.id : null,
@@ -456,6 +468,11 @@ export function createEngine(deps: EngineDeps) {
 
   return {
     next,
+    /** BOOK-117 §4: a named chapter's first pass — the same step, premise and lease the lane hands out. */
+    openChapterPass: (chapter: number, session: string): WriterAssignment | null => {
+      if (!session || session.length > 64) refuse('INVALID_SESSION', 422, 'a session name is required');
+      return queue.openPass(session, chapter, deps.clock.now());
+    },
     start: write.start,
     land: write.land,
     verdict,

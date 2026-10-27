@@ -38,6 +38,31 @@ describe('loadConfig', () => {
     expect(config.bookRoot).toBe(resolve(SITE_ROOT, '..'));
     expect(existsSync(join(config.bookRoot, 'manuscript'))).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
+    // ADR-038 §1 and BOOK-117: the pipeline pin and the two money caps, read at boot from one place.
+    expect(config.pipelinePath.endsWith('config/pipeline.json')).toBe(true);
+    expect(config.pipeline.model).toBe('deepseek/deepseek-v4-pro');
+    expect(config.pipeline.pricing.input).toBe(0.66);
+    expect([config.budgetDayUsd, config.budgetBookUsd]).toEqual([10, 1_000]);
+  });
+
+  it('reads the money caps from the environment and refuses a value that is not a price (BOOK-117)', () => {
+    const config = loadConfig({ BOOK_BUDGET_DAY_USD: '2.5', BOOK_BUDGET_BOOK_USD: '400' });
+    expect(config.budgetDayUsd).toBe(2.5);
+    expect(config.budgetBookUsd).toBe(400);
+    // A cap is a bound: zero, a negative, a word, a comma decimal and an exponent all fail the
+    // boot and name the variable — never a silent fallback to the default.
+    for (const bad of ['0', '-1', 'ten', '1,5', '1e3']) {
+      expect(() => loadConfig({ BOOK_BUDGET_DAY_USD: bad }), bad).toThrow(/invalid configuration: BOOK_BUDGET_DAY_USD must be a positive decimal/u);
+    }
+    expect(() => loadConfig({ BOOK_BUDGET_BOOK_USD: 'lots' })).toThrow(
+      /invalid configuration: BOOK_BUDGET_BOOK_USD must be a positive decimal/u,
+    );
+  });
+
+  it('fails the boot with the pipeline’s own message when the pin cannot be loaded (ADR-038)', () => {
+    expect(() => loadConfig({ PIPELINE_PATH: '/nonexistent/pipeline.json' })).toThrow(
+      /^pipeline: cannot read the file at \/nonexistent\/pipeline\.json$/u,
+    );
   });
 
   it('lets a ripple of its full width finish inside the chapter and step bounds (BOOK-DOC-4 rule 3)', () => {

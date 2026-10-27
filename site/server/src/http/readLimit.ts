@@ -62,6 +62,12 @@ export const READ_LIMITED_PREFIXES = [
  */
 export const EXPORT_LIMITED_PATHS = ['/book.fb2'] as const;
 
+/**
+ * The stage replay is a poll surface (`docs/writer-lane.md §3`), while the chapter body beside
+ * it is page load: the chapter read stays outside the budget, its stages do not.
+ */
+const READ_LIMITED_PATTERNS = [/^\/api\/chapters\/\d{1,3}\/stages$/u];
+
 export const READ_WINDOW_MS = 60_000;
 
 export function readLimitKey(ipHash: (ipKey: string) => string, key: string): string {
@@ -76,7 +82,8 @@ export function exportLimitKey(ipHash: (ipKey: string) => string, key: string): 
 /** Does this URL take the read budget? A query string is not part of the decision. */
 export function isReadLimited(url: string): boolean {
   const path = url.split('?')[0] ?? '';
-  return READ_LIMITED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  if (READ_LIMITED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return true;
+  return READ_LIMITED_PATTERNS.some((pattern) => pattern.test(path));
 }
 
 /** Does this URL take the export budget? Exact path only — `/book.fb2x` is another route. */

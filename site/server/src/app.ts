@@ -34,6 +34,7 @@ import { registerFrontRoutes } from './http/routes/front.ts';
 import { registerHealthRoutes } from './http/routes/health.ts';
 import { registerHistoryRoutes } from './http/routes/history.ts';
 import { registerMeRoutes } from './http/routes/me.ts';
+import { registerStageRoutes } from './http/routes/stages.ts';
 import { registerStateRoutes } from './http/routes/state.ts';
 import { SessionStore } from './identity/session.ts';
 import type { OAuthFetch } from './identity/yandex.ts';
@@ -212,6 +213,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerExportRoutes(app, deps, exportCache);
   registerCostRoutes(app, deps);
   registerChapterRoutes(app, deps);
+  registerStageRoutes(app, deps);
   registerChangeRoutes(app, deps);
   registerCommentRoutes(app, deps);
   registerAuthRoutes(app, deps);

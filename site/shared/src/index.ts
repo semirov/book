@@ -14,6 +14,7 @@ export * from './intervention.ts';
 export * from './decisions.ts';
 export * from './injection.ts';
 export * from './intent.ts';
+export * from './stage.ts';
 
 /**
  * The validator is used by the site's integrity panel and by the commit gate, so the parts

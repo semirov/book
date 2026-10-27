@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
+import { budgetCapsFromEnv } from './budget.ts';
 import { assertDataDirIsolation, productionDataDirs } from './dataDirGuard.ts';
 import { donateUrlOf } from './donate.ts';
 import { loadPipeline, type Pipeline } from './pipeline.ts';
@@ -39,6 +40,13 @@ const schema = z.object({
   denylistPath: z.string().default(resolve(SITE_ROOT, 'config', 'legal.denylist.json')),
   /** ADR-038: the one file that names the pipeline's model (BOOK-62); a bad one stops the boot. */
   pipelinePath: z.string().default(resolve(SITE_ROOT, 'config', 'pipeline.json')),
+  /**
+   * BOOK-117: the money caps, in USD. They are environment, not data (`BOOK_BUDGET_DAY_USD`,
+   * `BOOK_BUDGET_BOOK_USD`), parsed by `budgetCapsFromEnv` before this schema so a bad value
+   * names its own variable.
+   */
+  budgetDayUsd: z.number().positive(),
+  budgetBookUsd: z.number().positive(),
   /** The admin surface (`/api/admin/*`) is token-guarded; empty means it does not exist. */
   adminTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'admin.token')),
   adminToken: z.string().default(''),
@@ -310,6 +318,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Case- and space-insensitive on purpose: `Production` must not slip past the invariants
   // below and let a deployed boot run the development shape.
   const production = (env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+  // BOOK-117: the two money caps are environment, read once and validated on their own, so
+  // a bad value names the variable (`BOOK_BUDGET_DAY_USD must be a positive decimal`).
+  const caps = budgetCapsFromEnv(env);
   const parsed = schema.safeParse({
     bookRoot: env.BOOK_ROOT,
     dataDir: env.DATA_DIR,
@@ -318,6 +329,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     coverPath: env.COVER_PATH,
     denylistPath: env.DENYLIST_PATH,
     pipelinePath: env.PIPELINE_PATH,
+    budgetDayUsd: caps.dayUsd,
+    budgetBookUsd: caps.bookUsd,
     adminTokenFile: env.ADMIN_TOKEN_FILE,
     adminToken: env.ADMIN_TOKEN,
     host: env.HOST,

@@ -1,4 +1,4 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, chaptersTableSql } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, chaptersTableSql, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL } from './schema.ts';
 import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
@@ -255,6 +255,23 @@ const MIGRATIONS: Migration[] = [
         'frame_mode',
         "TEXT CHECK (frame_mode IN ('оформление','поправка','расхождение'))",
       );
+    },
+  },
+  {
+    // BOOK-117: every stage a pass passed is a row, not a log line (docs/writer-lane.md §3).
+    // Additive and guarded: a fresh install is created at the newest version already, and an
+    // existing install keeps every row and gains the table the reader's stage stream reads.
+    to: 17,
+    up(db) {
+      if (!tableExists(db, 'pass_stages')) db.exec(PASS_STAGES_TABLE_SQL);
+    },
+  },
+  {
+    // BOOK-117: the money ledger — one row per closed pass, and the only source of a spend
+    // total. Additive and guarded; the budget's sums and the footer's cost line read it.
+    to: 18,
+    up(db) {
+      if (!tableExists(db, 'pass_spend')) db.exec(PASS_SPEND_TABLE_SQL);
     },
   },
 ];

@@ -22,6 +22,7 @@ import { parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordImpact } from '../history/impact.ts';
+import { passSpendOf, recordPassSpend } from '../budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
@@ -425,6 +426,8 @@ export function closeStep(
       now,
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
+    // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
+    recordPassSpend(db, passSpendOf(step, input, cascadeRow?.change_id ?? lease?.change_id ?? null, now));
 
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
@@ -493,7 +496,6 @@ function findOriginChange(db: Db, step: store.StepRow): store.ChangeRow | null {
     if (change) return change;
   }
   const processing = db.prepare(`SELECT * FROM changes WHERE status = 'processing' ORDER BY seq LIMIT 1`).get() as
-    | store.ChangeRow
-    | undefined;
+    store.ChangeRow | undefined;
   return processing ?? null;
 }
