@@ -145,6 +145,12 @@
   --revise: #7a4e14;
   --revise-bg: rgba(122, 78, 20, 0.075);
 
+  /* write accent — the owner's red for the pass's write caret (BOOK-116/BOOK-121): a deep matte
+     ink red, 6.05:1 on `--paper`. The read caret stays `--live` (blue). The designer's «no red»
+     (§3.3) is answered by shape — hollow bar + foot read vs solid bar + hood write — not by
+     dropping the colour; the shape ships with the pass UI. */
+  --write: #8a1f1f;
+
   --scrim: rgba(20, 23, 26, 0.46);
   --shadow: 0 30px 60px -44px rgba(20, 23, 26, 0.55);
 
@@ -239,6 +245,8 @@
   --live-bg: rgba(111, 155, 181, 0.09);
   --revise: #c89a4e;
   --revise-bg: rgba(200, 154, 78, 0.09);
+  /* 5.30:1 on the night paper; a deep red cannot hold 4.5:1 on near-black. */
+  --write: #cb685e;
   --scrim: rgba(5, 7, 9, 0.66);
   --shadow: 0 30px 60px -40px rgba(0, 0, 0, 0.9);
 }
