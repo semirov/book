@@ -260,14 +260,17 @@ describe('closing the seam (major 4)', () => {
     expect(document.activeElement?.getAttribute('data-origin')).toBe('true');
   });
 
-  it('closes on a pointer outside the strip and leaves a tap inside alone', async () => {
+  it('closes on a desktop click outside the strip and leaves a press that began inside alone', async () => {
+    // jsdom's viewport is 1024 px wide with no `matchMedia`: a fine pointer, the desktop rule.
     await mountParagraph();
     await act(async () => {
       document.querySelector('.seam')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     });
     expect(document.querySelector('.seam')).not.toBeNull();
     await act(async () => {
       document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
     });
     expect(document.querySelector('.seam')).toBeNull();
   });

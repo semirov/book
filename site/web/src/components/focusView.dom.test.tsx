@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { ChangeDto } from '@book/shared';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,6 +63,7 @@ afterEach(async () => {
   window.location.hash = '';
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function flush(): Promise<void> {
@@ -208,5 +209,103 @@ describe('the прицел’s session on a failed read (BOOK-DOC-43 §10)', () 
     expect(container.textContent).not.toContain('правка читается');
     expect(container.querySelector('.skel')).toBeNull();
     expect(container.querySelector('.focus')?.hasAttribute('aria-busy')).toBe(false);
+  });
+});
+
+/** jsdom's two devices: a phone's thumb, and a desktop's mouse. */
+function pointerDevice(kind: 'touch' | 'mouse'): void {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: kind === 'touch' ? 390 : 1440 });
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: kind === 'touch' && query === '(pointer: coarse)',
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  }));
+}
+
+function tap(target: EventTarget): void {
+  target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }));
+  target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }));
+}
+
+/** A sheet that its own close removes, so «выйти» is asserted by what is on the page. */
+function SheetHarness() {
+  const [open, setOpen] = useState(true);
+  return open ? (
+    <FocusView change={CHANGE} impact={null} missing={false} ribbon={null} revisions={{}} onClose={() => setOpen(false)} live />
+  ) : (
+    <p className="gone" />
+  );
+}
+
+describe('the прицел’s backdrop (BOOK-111)', () => {
+  it('the focus backdrop keeps the sheet open on touch', async () => {
+    pointerDevice('touch');
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(<SheetHarness />));
+    expect(container.querySelector('.focus')).not.toBeNull();
+
+    // A thumb on the dark page around the sheet: nothing is thrown away.
+    await act(async () => tap(container.querySelector('.focus') as HTMLElement));
+    expect(container.querySelector('.focus')).not.toBeNull();
+    expect(container.querySelector('.gone')).toBeNull();
+
+    // «выйти» is the explicit way out, and it closes the sheet.
+    await act(async () => (container.querySelector('.focus-exit') as HTMLElement).click());
+    expect(container.querySelector('.focus')).toBeNull();
+    expect(container.querySelector('.gone')).not.toBeNull();
+  });
+
+  it('the outside listener is removed on unmount: twenty mounts leave one live listener', async () => {
+    pointerDevice('touch');
+    const added: string[] = [];
+    const removed: string[] = [];
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    add.mockImplementation(((type: string, ...rest: unknown[]) => {
+      added.push(type);
+      return (EventTarget.prototype.addEventListener as (...args: unknown[]) => void).call(document, type, ...rest);
+    }) as typeof document.addEventListener);
+    remove.mockImplementation(((type: string, ...rest: unknown[]) => {
+      removed.push(type);
+      return (EventTarget.prototype.removeEventListener as (...args: unknown[]) => void).call(document, type, ...rest);
+    }) as typeof document.removeEventListener);
+    const live = (type: string): number =>
+      added.filter((entry) => entry === type).length - removed.filter((entry) => entry === type).length;
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      await act(async () => root?.render(<FocusView change={CHANGE} impact={null} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />));
+      await act(async () => root?.render(<p />));
+    }
+    expect(live('pointerup')).toBe(0);
+    expect(added.filter((entry) => entry === 'pointerup')).toHaveLength(20);
+
+    // One sheet on the page: exactly one live listener, and the cleanup takes it away.
+    await act(async () => root?.render(<FocusView change={CHANGE} impact={null} missing={false} ribbon={null} revisions={{}} onClose={() => undefined} live />));
+    expect(live('pointerup')).toBe(1);
+    await act(async () => root?.render(<p />));
+    expect(live('pointerup')).toBe(0);
+
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
+  it('at 1440 with a fine pointer the backdrop still closes the прицел', async () => {
+    pointerDevice('mouse');
+    const container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => root?.render(<SheetHarness />));
+    await act(async () => tap(container.querySelector('.focus') as HTMLElement));
+    expect(container.querySelector('.focus')).toBeNull();
   });
 });

@@ -11,8 +11,10 @@ Architecture, invariants and the check that enforces each: [`ARCHITECTURE.md`](.
 chapters, the empty slots — only the book's own text, chapter numbers, the folio and the running head's
 chapter number/title may appear. No state words («замысел», «правка»), no statuses («пишется глава»,
 «глав ещё нет»), no counts («67 глав»), no explanations of the interface, no waits or failures: those live
-in panels, the chronicle and the end matter. `web/src/components/readingCopy.test.tsx` fails the gate on
-any of them, so the rule is enforced, not remembered.
+in panels, the chronicle and the end matter. One exception is the filing's own state word: a slot that
+already holds a reader's premise prints that premise's quote and its word («ждёт») — an empty slot prints
+neither, and the word is never a label for the vacancy. `web/src/components/readingCopy.test.tsx` fails the
+gate on any of them, so the rule is enforced, not remembered.
 Product rules (owner) and the design live with the project's records, not in this repository: one decision
 per page, and the operator runbook in the same place.
 

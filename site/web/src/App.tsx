@@ -58,6 +58,7 @@ import { useReaderFeed } from './useReaderFeed.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { usePending } from './usePending.ts';
 import { useFocusMode } from './useFocus.ts';
+import { closeOverlays } from './lib/overlays.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
@@ -98,7 +99,12 @@ export function App() {
    * selected by `#правка-<id>`; its session (hash, change, impact) lives in `useFocusMode`.
    */
   const card = useChangeCard();
-  const focus = useFocusMode(card.close);
+  // BOOK-111: entering the прицел closes the seam, the panel and the revision object.
+  const enterFocus = useCallback(() => {
+    card.close();
+    closeOverlays();
+  }, [card.close]);
+  const focus = useFocusMode(enterFocus);
   usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);

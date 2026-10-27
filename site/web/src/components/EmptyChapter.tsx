@@ -1,7 +1,7 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
-import { useState } from 'react';
 
 import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
+import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { FilingPanel } from './FilingPanel.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
@@ -37,7 +37,13 @@ export function EmptyChapter({
   onPosted?: (comment: CommentDto) => void;
 }) {
   const seam = useOpenSeam();
-  const [premiseCard, setPremiseCard] = useState<{ comment: CommentDto; rect: DOMRect } | null>(null);
+  /** BOOK-111: the page's one panel; this chapter's premise owns only its own slot in it. */
+  const filing = useOpenFiling();
+  const owner = `ch${entry.n}:premise`;
+  const panel =
+    filing !== null && filing.kind === 'filing' && filing.owner === owner && filing.comment !== null
+      ? { comment: filing.comment, rect: filing.rect }
+      : null;
   const premise = existingPremise(comments, entry.n);
   const row = premiseRow(entry, premise);
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
@@ -48,7 +54,13 @@ export function EmptyChapter({
    * the element that was tapped, so closing it returns the reader there.
    */
   const openFiling = (comment: CommentDto, origin: HTMLElement): void => {
-    setPremiseCard({ comment, rect: origin.getBoundingClientRect() });
+    showFiling({
+      kind: 'filing',
+      owner,
+      comment,
+      origin,
+      rect: origin.getBoundingClientRect(),
+    });
   };
 
   return (
@@ -90,8 +102,8 @@ export function EmptyChapter({
           premiseHint={firstEmpty && open}
         />
       ) : null}
-      {premiseCard === null ? null : (
-        <FilingPanel comment={premiseCard.comment} anchor={premiseCard.rect} onClose={() => setPremiseCard(null)} />
+      {panel === null ? null : (
+        <FilingPanel comment={panel.comment} anchor={panel.rect} onClose={hideFiling} />
       )}
     </>
   );
