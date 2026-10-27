@@ -191,6 +191,18 @@ describe('a failed attempt on a filing', () => {
     expect(line.detail).toBe(FAILED_ATTEMPT_LINE);
   });
 
+  it('says it on a filing already in the machinery, and on nothing else there', () => {
+    // BOOK-136 — the word «идёт» carries no fact about the attempt behind it; the deck's one
+    // sentence does. A filing without one keeps the word alone.
+    for (const status of ['batched', 'delivered'] as const) {
+      expect(commentStatusLine(comment({ status, attempt: 'failed' }))).toMatchObject({
+        state: STATE_WORDS.working,
+        detail: FAILED_ATTEMPT_LINE,
+      });
+      expect(commentStatusLine(comment({ status })).detail).toBeNull();
+    }
+  });
+
   it('keeps the row’s own sentence beside the attempt line on a waiting filing', () => {
     // The attempt is the consequence, the reason is what the row itself said: `new` keeps both,
     // as `accepted` already did, instead of dropping the human sentence.
@@ -214,6 +226,31 @@ describe('a failed attempt on a filing', () => {
       const line = commentStatusLine(comment({ status, attempt: 'failed' }));
       expect(line.detail ?? '', status).not.toContain(FAILED_ATTEMPT_LINE);
     }
+  });
+
+  it('says the sentence on a premise too, while it still waits for its first edition', () => {
+    // BOOK-136 — a premise's own deck («принято в основу…») must not swallow the attempt's
+    // fact: the row is «ждёт», and the line under it is the deck's one human sentence.
+    const waiting = comment({ premise: true, status: 'new', chapter: 65, attempt: 'failed' });
+    expect(commentStatusLine(waiting)).toMatchObject({
+      state: STATE_WORDS.waiting,
+      detail: FAILED_ATTEMPT_LINE,
+    });
+    const accepted = comment({ premise: true, status: 'accepted', attempt: 'failed' });
+    expect(commentStatusLine(accepted)).toMatchObject({
+      state: STATE_WORDS.waiting,
+      detail: FAILED_ATTEMPT_LINE,
+    });
+    // A landed premise keeps its receipt instead: the attempt behind it is not the answer.
+    const landed = comment({
+      premise: true,
+      status: 'applied',
+      chapter: 65,
+      applied: { chapter: 65, rev: 7 },
+      attempt: 'failed',
+    });
+    expect(commentStatusLine(landed)).toMatchObject({ state: STATE_WORDS.landed, tone: 'done' });
+    expect(commentStatusLine(landed).detail).not.toContain(FAILED_ATTEMPT_LINE);
   });
 
   it('never overrides a landing: an applied premise keeps its receipt', () => {

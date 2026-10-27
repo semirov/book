@@ -1,7 +1,7 @@
 import { TOTAL_CHAPTERS, type CatalogEntry, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { filingAttempt, filingNumber, type FilingAttempt } from './filings.ts';
-import { filingMarginalia } from './marginalia.ts';
+import { failedAttempt, filingMarginalia } from './marginalia.ts';
 
 /**
  * BOOK-7 / BOOK-DOC-34 §2.4 — the chapter's premise, and the one place it is entered.
@@ -72,6 +72,11 @@ export type PremiseRow = {
   quote: string | null;
   /** The premise's state word («ждёт»), or null for a slot that still holds nothing. */
   word: string | null;
+  /**
+   * BOOK-136 — the one sentence a failed attempt owes the reader, under the row; null while a
+   * premise waits normally (its word is the whole fact) and for one that has landed.
+   */
+  note: string | null;
   /** The latest attempt: the entry's one number and its one `прицел`; null with no change. */
   attempt: FilingAttempt | null;
   actionable: boolean;
@@ -89,6 +94,7 @@ export function premiseRow(
     commentId: premise === null ? null : premise.id,
     quote: premise === null ? null : firstLine(premise.body),
     word: premise === null ? null : filingMarginalia(premise).word,
+    note: premise === null ? null : rowNote(premise),
     attempt: premise === null ? null : filingAttempt(premise, changes),
     actionable: true,
   };
@@ -97,4 +103,13 @@ export function premiseRow(
 function firstLine(body: string): string {
   const flat = body.replace(/\s+/gu, ' ').trim();
   return flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat;
+}
+
+/**
+ * BOOK-136 — a filing whose auxiliary attempt came back empty says so under its own row: the
+ * word «ждёт» alone would read as an ordinary wait. The sentence is the deck's
+ * (`filingMarginalia`), never assembled here, and a premise that landed owes no note at all.
+ */
+function rowNote(premise: CommentDto): string | null {
+  return failedAttempt(premise) ? filingMarginalia(premise).consequence : null;
 }

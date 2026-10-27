@@ -1,4 +1,4 @@
-import type { CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { filingMarginalia } from './marginalia.ts';
@@ -69,6 +69,7 @@ describe('premiseRow', () => {
       commentId: null,
       quote: null,
       word: null,
+      note: null,
       attempt: null,
       actionable: true,
     });
@@ -95,6 +96,43 @@ describe('premiseRow', () => {
       quote: 'в главе должен быть документ о переводе смены',
       word: 'ждёт',
     });
+  });
+
+  it('says under the row that the attempt came back empty, and only then (BOOK-136)', () => {
+    const failed = comment({
+      id: 'cmt_failed',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      attempt: 'failed',
+    });
+    // The word is «ждёт»; the line under it is the deck's one sentence, in the deck's words.
+    expect(premiseRow({ n: 65, written: false, basis: false }, failed)).toMatchObject({
+      word: 'ждёт',
+      note: FAILED_ATTEMPT_LINE,
+    });
+    // A plain wait owes no note: the word is the whole fact.
+    const waiting = comment({ id: 'cmt_wait', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
+    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.note).toBeNull();
+    // A landed premise keeps its receipt: the attempt behind it is stale news.
+    const landed = comment({
+      id: 'cmt_landed',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      status: 'applied',
+      applied: { chapter: 65, rev: 7 },
+      attempt: 'failed',
+    });
+    expect(premiseRow({ n: 65, written: true, basis: false }, landed)?.note).toBeNull();
+    // A refusal decided itself: its own sentence is the line, never the attempt's.
+    const refused = comment({
+      id: 'cmt_refused',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      status: 'rejected',
+      reason: 'не беру: не из этой сцены',
+      attempt: 'failed',
+    });
+    expect(premiseRow({ n: 65, written: false, basis: false }, refused)?.note).toBeNull();
   });
 
   it('has no row for a written chapter without a premise, and none for a frozen slot', () => {

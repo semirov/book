@@ -1,6 +1,6 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
-import { filingConsequence, filingMarginalia, landingReceipt } from './marginalia.ts';
+import { failedAttempt, filingConsequence, filingMarginalia, landingReceipt } from './marginalia.ts';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
@@ -66,7 +66,10 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       );
     case 'batched':
     case 'delivered':
-      return lineOf(word, null, 'live');
+      // BOOK-136 — a filing already in the machinery can carry an attempt that came back empty:
+      // the word says where the row stands, and the deck's sentence says what became of the
+      // attempt. Nothing else is owed here — a batch is not a receipt.
+      return lineOf(word, failedAttempt(comment) ? filingConsequence(comment) : null, 'live');
     case 'accepted':
       return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
     case 'applied': {

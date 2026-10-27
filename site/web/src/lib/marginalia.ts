@@ -117,18 +117,27 @@ const OWN_DECISION: ReadonlySet<CommentDto['status']> = new Set<CommentDto['stat
   'hidden',
 ]);
 
-/** The deck's second line for a filing: the fact the single word cannot carry. */
-export function filingConsequence(comment: FilingFacts): string {
-  // A failed attempt is not a state and not a refusal — the filing keeps its word
-  // and waits, and only a landed one has a receipt that says more. A row that decided itself
-  // keeps its own sentence: an attempt behind a refusal is not the reader's answer.
-  if (
+/**
+ * BOOK-136 — an attempt that came back empty, on a filing that did **not** decide itself.
+ *
+ * The one condition behind the deck's sentence, read by every surface that has to say it
+ * (the line, the row's note, the card's fact): a failed attempt is not a state and not a
+ * refusal, so a refusal and a landing keep their own line — the attempt behind them is not
+ * the reader's answer.
+ */
+export function failedAttempt(comment: FilingFacts): boolean {
+  return (
     comment.attempt === 'failed' &&
     comment.status !== 'applied' &&
     !OWN_DECISION.has(comment.status)
-  ) {
-    return FAILED_ATTEMPT_LINE;
-  }
+  );
+}
+
+/** The deck's second line for a filing: the fact the single word cannot carry. */
+export function filingConsequence(comment: FilingFacts): string {
+  // A failed attempt is not a state and not a refusal — the filing keeps its word
+  // and waits, and only a landed one has a receipt that says more.
+  if (failedAttempt(comment)) return FAILED_ATTEMPT_LINE;
   if (comment.premise === true) {
     switch (comment.status) {
       case 'applied':

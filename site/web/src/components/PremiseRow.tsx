@@ -48,6 +48,11 @@ export function PremiseRow({
         )}
         {row.word === null ? null : <span className="premise-label">{row.word}</span>}
       </button>
+      {row.note === null ? null : (
+        // BOOK-136: the attempt came back empty — the deck's one sentence, under the row and
+        // never inside it (the row is the book; this line is the record's own fact).
+        <p className="premise-note">{row.note}</p>
+      )}
       {row.attempt === null ? null : (
         <p className="premise-meta">
           {/* The number is the attempt's, not the chapter's: the row already carries the

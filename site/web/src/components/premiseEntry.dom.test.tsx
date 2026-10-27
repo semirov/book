@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, ChangeSummaryDto, CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type CatalogEntry, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { hideFiling } from '../lib/useFiling.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 import { Discussion } from './Discussion.tsx';
@@ -112,6 +113,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => closeSeam());
+  // The page's one panel is module state: a card left open here would render into the next test.
+  await act(async () => hideFiling());
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
@@ -264,5 +267,62 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(panel?.querySelectorAll('a')).toHaveLength(0);
     expect(panel?.textContent ?? '').not.toContain('002');
     expect(panel?.textContent ?? '').not.toContain('прицел');
+  });
+
+  it('prints the failed attempt’s sentence under the row and in the card (BOOK-136)', async () => {
+    // The measured fixture: a chapter-level filing on ch65 with no text, its one attempt came
+    // back empty. The row said «ждёт» and nothing else, so the wait read as an ordinary one.
+    const failed: CommentDto = {
+      ...PREMISE,
+      status: 'new',
+      applied: null,
+      attempt: 'failed',
+      changeId: 'chg_failed',
+    };
+    const attempt: ChangeSummaryDto = {
+      ...ATTEMPT,
+      id: 'chg_failed',
+      premiseLanded: false,
+      status: 'void',
+      outcome: 'dropped',
+      reason: 'PROVIDER_SHAPE',
+    };
+    const empty: CatalogEntry = { ...ENTRY, written: false, title: null, rev: 0, chars: 0, blocks: 0 };
+
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={empty}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          firstEmpty
+          history={false}
+          comments={[failed]}
+          changes={[attempt]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+
+    const text = container.textContent ?? '';
+    // One state word, one human sentence — and the engine's own code never on the page.
+    expect(count(text, 'ждёт')).toBe(1);
+    expect(count(text, FAILED_ATTEMPT_LINE)).toBe(1);
+    expect(container.querySelector('#ch-65 .premise-note')?.textContent).toBe(FAILED_ATTEMPT_LINE);
+    expect(container.querySelector('.premise-row .premise-note')).toBeNull();
+    expect(text).not.toContain('PROVIDER_SHAPE');
+
+    const row = container.querySelector<HTMLElement>('#ch-65 .premise-row');
+    await act(async () => row?.click());
+    const panel = container.querySelector<HTMLElement>('.filing-panel');
+    // The card says the same sentence, beside the derived reading of what was accepted.
+    expect(panel?.textContent).toContain(FAILED_ATTEMPT_LINE);
+    expect(panel?.querySelector('.filing-fact')?.textContent).toBe(
+      `${FAILED_ATTEMPT_LINE} · принято в основу: смена переходит на ночь, а не на утро`,
+    );
+    expect(panel?.textContent ?? '').not.toContain('PROVIDER_SHAPE');
   });
 });

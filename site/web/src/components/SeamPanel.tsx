@@ -5,6 +5,7 @@ import { placePanel } from '../lib/cssom.ts';
 import { changeLines } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
 import { filingNumber } from '../lib/filings.ts';
+import { failedAttempt } from '../lib/marginalia.ts';
 import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { frozenActionHref, type ProvenanceView } from '../lib/provenance.ts';
 
@@ -136,6 +137,22 @@ export function SeamPanel(props: SeamPanelProps) {
   );
 }
 
+/**
+ * BOOK-136 — the card's fact line, from the two things it can say: the deck's detail (a
+ * receipt, a refusal, an attempt that came back empty) and, for a premise that still waits,
+ * the derived reading of what was accepted into the basis. A failed attempt is never swallowed
+ * by the derived reading: the reader gets the human sentence first, then the reading.
+ */
+function premiseReading(
+  comment: CommentDto,
+  premiseIntent: string | null,
+  detail: string | null,
+): string | null {
+  if (premiseIntent === null || comment.premise !== true || comment.status === 'applied') return detail;
+  const intake = `принято в основу: ${premiseIntent}`;
+  return failedAttempt(comment) && detail !== null ? `${detail} · ${intake}` : intake;
+}
+
 /** §2.6 — «откуда это слово», the DNA panel, and the door to the sentence's filing. */
 function ProvenanceBody({ view, onClose, onForm, onFiling, filingLabel }: ProvenanceContext) {
   return (
@@ -217,10 +234,7 @@ function FilingBody({ comment, onClose, onProvenance, earlierAttempts = [], prem
    * into the basis; a landed premise keeps its receipt («вошло в первую редакцию…»), which is
    * a fact about the book and not a restatement of the reader.
    */
-  const reading =
-    premiseIntent !== null && comment.premise === true && comment.status !== 'applied'
-      ? `принято в основу: ${premiseIntent}`
-      : line.detail;
+  const reading = premiseReading(comment, premiseIntent, line.detail);
 
   return (
     <>
