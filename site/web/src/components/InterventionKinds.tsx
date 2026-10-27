@@ -1,51 +1,48 @@
-import { INTERVENTION_RULE_COPY, type InterventionKind } from '@book/shared';
+import type { InterventionKind } from '@book/shared';
 
 import { draftKindLine } from '../lib/composer.ts';
-import { kindChoices, KIND_PROMPT, NOTE_KIND_LABEL } from '../lib/kindChoices.ts';
+import { FORM_BOUNDS_LINE, KIND_PROMPT, kindChoices } from '../lib/kindChoices.ts';
 
 /**
- * BOOK-DOC-34 §2.3 — the five rows of the form.
+ * BOOK-DOC-34 §2.3 — the four rows of the form.
  *
- * Four kinds and the quiet fifth row: a note without a type. Each row says what will appear
- * in the book, so the choice is a fact, not a category. Nothing is pre-selected — the reader
- * names what they bring, or the form refuses the send (BOOK-16).
+ * Each row says what will appear in the book, so the choice is a fact, not a category.
+ * Nothing is pre-selected — the reader names what they bring, or the form refuses the send
+ * (BOOK-16). BOOK-57: the note left the grid for a quiet action under the form, so this
+ * fieldset holds exactly four rows and no fifth one, and the bounds line replaces the
+ * lecture that used to close it.
  */
 export function InterventionKinds({
   kind,
-  noteOnly = false,
   disabled = false,
   onPick,
 }: {
   kind: InterventionKind | null;
-  noteOnly?: boolean;
   disabled?: boolean;
-  onPick: (choice: { kind: InterventionKind | null; noteOnly: boolean }) => void;
+  onPick: (kind: InterventionKind) => void;
 }) {
   return (
     <fieldset className="kinds">
       <legend className="field-label">{KIND_PROMPT}</legend>
-      {kindChoices().map((row) => {
-        const checked = row.id === null ? noteOnly : !noteOnly && kind === row.id;
-        return (
-          <label className={`kind${row.id === null ? ' kind-note' : ''}`} key={row.id ?? 'note'} data-picked={checked ? 'true' : undefined}>
-            <input
-              type="radio"
-              name="intervention-kind"
-              className="ym-disable-keys"
-              value={row.id ?? 'note'}
-              checked={checked}
-              onChange={() => onPick({ kind: row.id, noteOnly: row.id === null })}
-              disabled={disabled}
-            />
-            <span className="kind-word">{row.label}</span>
-            <span className="kind-meaning">{row.meaning}</span>
-          </label>
-        );
-      })}
-      <p className="kind-state" data-kind={noteOnly ? 'note' : (kind ?? 'none')} role="status">
-        {noteOnly ? `вносится: ${NOTE_KIND_LABEL}` : draftKindLine(kind)}
+      {kindChoices().map((row) => (
+        <label className="kind" key={row.id} data-picked={kind === row.id ? 'true' : undefined}>
+          <input
+            type="radio"
+            name="intervention-kind"
+            className="ym-disable-keys"
+            value={row.id}
+            checked={kind === row.id}
+            onChange={() => onPick(row.id)}
+            disabled={disabled}
+          />
+          <span className="kind-word">{row.label}</span>
+          <span className="kind-meaning">{row.meaning}</span>
+        </label>
+      ))}
+      <p className="kind-state" data-kind={kind ?? 'none'} role="status">
+        {draftKindLine(kind)}
       </p>
-      <p className="fine">{INTERVENTION_RULE_COPY}</p>
+      <p className="fine">{FORM_BOUNDS_LINE}</p>
     </fieldset>
   );
 }
