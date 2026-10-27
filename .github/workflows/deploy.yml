@@ -14,7 +14,9 @@ name: Deploy
 # manuscript), refuse if prod is not running this checkout, `launchctl kickstart -k`, wait for
 # /healthz 200, and roll back to the previous commit if the service does not come up. A running
 # site that answers /healthz but does not serve the frozen frame also fails and rolls back.
-# Runbook: Lific BOOK-74.
+# One deploy per deploy root: the script takes `$STATE_DIR/deploy.lock` before it checks anything
+# out, and an exit 3 (another deploy is running, so nothing was checked out, built, published or
+# restarted) is a notice here — not a red product deploy. Runbook: Lific BOOK-74.
 
 on:
   workflow_dispatch:
@@ -60,10 +62,20 @@ jobs:
           fi
           echo "deploy root: $root at $(git -C "$root" rev-parse --short HEAD)"
 
-          # Materialise the target ref first, so the script that runs is the one that ships with
-          # the code being deployed — a cold clone starts at main, which may not have it yet.
-          if [ "$ACTION" = "deploy" ]; then
-            git -C "$root" fetch --quiet --prune --tags origin
+          # The script that runs is the one that ships with the code being deployed, but it is read
+          # out with `git show` into a temp dir — the checkout of the tree is the deploy's own job,
+          # under its lock (BOOK-119 hotfix). Checking the tree out here raced a second run over the
+          # same clone and half-flipped it.
+          dir="$(mktemp -d)"
+          cleanup() { rm -rf "$dir"; }
+          trap cleanup EXIT
+
+          git -C "$root" fetch --quiet --prune --tags origin
+          if [ "$ACTION" = "rollback" ]; then
+            # A rollback runs the script already in the tree: its target is the tree's own
+            # `last-good`, not a ref an operator typed.
+            sha="$(git -C "$root" rev-parse --verify HEAD)"
+          else
             sha="$(git -C "$root" rev-parse --verify --quiet "origin/${TARGET_REF}^{commit}" || true)"
             if [ -z "$sha" ]; then sha="$(git -C "$root" rev-parse --verify --quiet "refs/tags/${TARGET_REF}^{commit}" || true)"; fi
             if [ -z "$sha" ]; then sha="$(git -C "$root" rev-parse --verify --quiet "${TARGET_REF}^{commit}" || true)"; fi
@@ -71,15 +83,27 @@ jobs:
               echo "::error::cannot resolve '$TARGET_REF' in $root"
               exit 2
             fi
-            git -C "$root" checkout --quiet --detach "$sha"
           fi
-
-          script="$root/site/deploy/deploy.sh"
-          if [ ! -f "$script" ]; then
-            echo "::error::no site/deploy/deploy.sh at $(git -C "$root" rev-parse --short HEAD) — deploy the branch that adds it"
+          if ! git -C "$root" show "${sha}:site/deploy/deploy.sh" > "$dir/deploy.sh" 2>/dev/null; then
+            echo "::error::no site/deploy/deploy.sh at ${sha:0:7} — deploy the branch that adds it"
             exit 2
           fi
+          # The library it sources ships beside it; a ref that predates the split has none.
+          git -C "$root" show "${sha}:site/deploy/lib.sh" > "$dir/lib.sh" 2>/dev/null || rm -f "$dir/lib.sh"
+
+          # No `exec`: exit 3 is a refusal, not a product failure. It means another deploy holds the
+          # lock — nothing was checked out, built, published or restarted — so this run is green
+          # with a notice, and the holder's own result stays the one that speaks about prod.
+          set +e
           if [ "$ACTION" = "rollback" ]; then
-            exec /bin/bash "$script" --rollback
+            /bin/bash "$dir/deploy.sh" --rollback --root "$root"
+          else
+            /bin/bash "$dir/deploy.sh" --ref "$TARGET_REF" --root "$root"
           fi
-          exec /bin/bash "$script" --ref "$TARGET_REF"
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            echo "::notice::another deploy is already running on $root (deploy.sh exit 3): nothing was checked out, built, published or restarted — this workflow run is not a red product deploy"
+            exit 0
+          fi
+          exit "$code"
