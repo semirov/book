@@ -276,3 +276,24 @@ describe('the provenance door asks nothing while history is off (BOOK-56)', () =
     expect(fetchStub.mock.calls.map(([url]) => String(url))).toContain('/api/history/paragraphs/ch08%23aa11bb22');
   });
 });
+
+describe('the strip’s lines at the seam', () => {
+  it('renders one element per line role and hides nothing behind a title', async () => {
+    // Chapter 8 takes a form (ch01/ch67 are frozen by identity): the row has its action.
+    await mountParagraph({ entry: { ...ENTRY, n: 8 }, blockId: 'ch08#aa11bb22' });
+    const seam = document.querySelector('.seam');
+    const row = seam?.querySelector('.seam-row') ?? null;
+    expect(row).not.toBeNull();
+    for (const selector of ['.seam-prov', '.seam-word', '.seam-cta', '.seam-close']) {
+      expect(row?.querySelectorAll(selector), selector).toHaveLength(1);
+    }
+    // The word is printed whole: the phone rule wraps it, it is never shortened.
+    expect(row?.querySelector('.seam-word')?.textContent).toBe('«Я»');
+    expect([...seam!.querySelectorAll('*')].filter((el) => el.hasAttribute('title'))).toHaveLength(0);
+    // An accessible name adds to a control's own words; it never replaces hidden text.
+    for (const control of seam!.querySelectorAll('[aria-label]')) {
+      expect(['BUTTON', 'A'], control.tagName).toContain(control.tagName);
+      expect((control.textContent ?? '').trim().length).toBeGreaterThan(0);
+    }
+  });
+});
