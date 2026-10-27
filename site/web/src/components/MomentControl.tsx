@@ -1,4 +1,4 @@
-import type { HistoryEventDto } from '@book/shared';
+import type { HistoryRecordDto } from '@book/shared';
 import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 
 import { placeFill } from '../lib/cssom.ts';
@@ -8,7 +8,7 @@ import { momentLabel, momentParts, stepMoment } from '../lib/history.ts';
 /**
  * BOOK-DOC-50 — the chronicle's moment as one control: a dated readout, one rail, two dated
  * ends. Zero unlabelled marks: the rail is position, the record list below is the axis, and
- * every number printed here is an event's own `at` or a count of the rows the reader sees.
+ * every number printed here is a record's own `at` or a count of the rows the reader sees.
  *
  * The rail stays a native `<input type="range">` for keyboard and assistive technology; its
  * only DOM-known value — the traversed part — is written through CSSOM (`placeFill`), so no
@@ -16,7 +16,7 @@ import { momentLabel, momentParts, stepMoment } from '../lib/history.ts';
  */
 export type MomentControlProps = {
   /** The loaded page, newest first: the readout, the count and both ends read from it. */
-  items: HistoryEventDto[];
+  items: HistoryRecordDto[];
   lastHseq: number;
   /** The log holds an older page behind the oldest loaded record (`nextBefore !== null`). */
   more: boolean;

@@ -1,31 +1,28 @@
-import type { BookAtDto, CatalogEntry, HistoryEventDto } from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryRecordDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { NBSP } from './format.ts';
 import {
   chainHead,
   compareToNow,
-  groupByDay,
   momentLabel,
   momentParts,
   momentText,
   stepMoment,
-  targetLabel,
 } from './history.ts';
 
-function event(overrides: Partial<HistoryEventDto> = {}): HistoryEventDto {
+function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecordDto {
   return {
     hseq: 1,
     at: '2026-10-25T09:00:00Z',
-    kind: 'chapter.created',
+    seq: 7,
     chapter: 9,
-    isFront: false,
-    rev: 1,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'глава 9 написана',
+    premise: false,
+    alias: 'Аня',
+    status: 'done',
+    outcome: 'applied',
+    reason: null,
+    changeId: 'chg_7',
     ...overrides,
   };
 }
@@ -67,48 +64,12 @@ function at(date: string, time: string): string {
   return `${date}${NBSP}·${NBSP}${time}`;
 }
 
-describe('the chronicle’s grouping (§11.10)', () => {
-  it('groups newest-first events by calendar day and keeps the order inside a day', () => {
-    const groups = groupByDay([
-      event({ hseq: 9, at: '2026-10-25T12:00:00Z' }),
-      event({ hseq: 8, at: '2026-10-25T09:00:00Z' }),
-      event({ hseq: 7, at: '2026-10-24T20:00:00Z' }),
-    ]);
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.day).toBe('2026-10-25');
-    expect(groups[0]?.items.map((item) => item.hseq)).toEqual([9, 8]);
-    expect(groups[1]?.items.map((item) => item.hseq)).toEqual([7]);
-    expect(groups[0]?.label).toContain('октября');
-  });
-
-  it('keys a group on the same Moscow day its heading names', () => {
-    // 21:30 UTC is already 26 October in Moscow: the old UTC slice opened a second
-    // «26 октября» heading right after the first one.
-    const groups = groupByDay([
-      event({ hseq: 9, at: '2026-10-26T08:00:00Z' }),
-      event({ hseq: 8, at: '2026-10-25T21:30:00Z' }),
-      event({ hseq: 7, at: '2026-10-25T20:30:00Z' }),
-    ]);
-    expect(groups).toHaveLength(2);
-    expect(groups.map((group) => group.day)).toEqual(['2026-10-26', '2026-10-25']);
-    expect(groups.map((group) => group.label)).toEqual(['26 октября', '25 октября']);
-    expect(groups[0]?.items.map((item) => item.hseq)).toEqual([9, 8]);
-    expect(groups[1]?.items.map((item) => item.hseq)).toEqual([7]);
-  });
-
-  it('labels the target as a chapter, the first sheet or the book', () => {
-    expect(targetLabel(event())).toBe('глава 9');
-    expect(targetLabel(event({ isFront: true, chapter: null }))).toBe('первая страница');
-    expect(targetLabel(event({ chapter: null }))).toBe('книга');
-  });
-});
-
 describe('the moment’s readout (BOOK-DOC-50 §2)', () => {
   /** Newest first, as the timeline sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12. */
   const items = [
-    event({ hseq: 10, at: '2026-10-27T12:40:00Z' }),
-    event({ hseq: 7, at: '2026-10-26T06:00:00Z' }),
-    event({ hseq: 4, at: '2026-10-21T06:12:00Z' }),
+    record({ hseq: 10, at: '2026-10-27T12:40:00Z' }),
+    record({ hseq: 7, at: '2026-10-26T06:00:00Z' }),
+    record({ hseq: 4, at: '2026-10-21T06:12:00Z' }),
   ];
   const oldest = at('21.10.2026', '09:12');
 
@@ -173,7 +134,7 @@ describe('the moment’s readout (BOOK-DOC-50 §2)', () => {
 
 describe('stepping a moment (§6F.2)', () => {
   it('steps one record left and right without leaving the list', () => {
-    const items = [event({ hseq: 3 }), event({ hseq: 7 }), event({ hseq: 12 })];
+    const items = [record({ hseq: 3 }), record({ hseq: 7 }), record({ hseq: 12 })];
     expect(stepMoment(items, 12, -1)).toBe(7);
     expect(stepMoment(items, 7, -1)).toBe(3);
     expect(stepMoment(items, 3, -1)).toBe(3);

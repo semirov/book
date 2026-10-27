@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { HistoryEventDto, HistoryTimelineDto } from '@book/shared';
+import type { HistoryRecordDto, HistoryTimelineDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,19 +16,18 @@ import { Chronicle } from './Chronicle.tsx';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-function event(hseq: number, chapter: number): HistoryEventDto {
+function record(hseq: number, chapter: number): HistoryRecordDto {
   return {
     hseq,
     at: '2026-10-26T10:00:00Z',
-    kind: 'chapter.created',
+    seq: chapter,
     chapter,
-    isFront: false,
-    rev: 1,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'author', identityId: null, label: 'Филипп' },
-    summary: `глава ${chapter} создана`,
+    premise: false,
+    alias: 'Филипп',
+    status: 'done',
+    outcome: 'applied',
+    reason: null,
+    changeId: `chg_${chapter}`,
   };
 }
 
@@ -36,7 +35,7 @@ function page(hseqs: readonly number[], lastHseq: number): HistoryTimelineDto {
   return {
     lastHseq,
     at: '2026-10-26T10:00:00Z',
-    items: hseqs.map((hseq, index) => event(hseq, index + 1)),
+    items: hseqs.map((hseq, index) => record(hseq, index + 1)),
     nextBefore: null,
   };
 }
@@ -72,7 +71,7 @@ function mount(): HTMLDivElement {
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />);
   });
   return container;
 }

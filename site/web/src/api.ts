@@ -190,15 +190,13 @@ export async function postAnchoredComment(input: AnchoredCommentInput): Promise<
 
 // ── the history (§6F.2, §11.10) ─────────────────────────────────────────────
 
-/** The chronicle's spine: newest first, one summary line each. */
+/** The record's spine: newest first, one change per entry. */
 export function getHistoryTimeline(
-  options: { before?: number; limit?: number; kind?: string; chapter?: number } = {},
+  options: { before?: number; limit?: number } = {},
 ): Promise<HistoryTimelineDto> {
   const params = new URLSearchParams();
   if (options.before !== undefined) params.set('before', String(options.before));
   params.set('limit', String(Math.min(50, Math.max(1, options.limit ?? 50))));
-  if (options.kind !== undefined) params.set('kind', options.kind);
-  if (options.chapter !== undefined) params.set('chapter', String(options.chapter));
   return readJson<HistoryTimelineDto>(`/api/history/timeline?${params.toString()}`);
 }
 

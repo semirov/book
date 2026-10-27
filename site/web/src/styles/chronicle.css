@@ -46,13 +46,9 @@
   margin: 0 0 6px;
   color: var(--ink-2);
 }
-.chr-sub {
-  font-size: var(--fs-note);
-  color: var(--ink-3);
-  /* A copy cap, not a box: 64ch of 15px PT Serif ≈ the 30rem this used to be, and a `rem`
-     bound was the one thing BOOK-88's guard could not tell from a register's width. */
-  max-width: 64ch;
-}
+/* BOOK-65: `.chr-sub` is gone with the event list — the subheading promised «каждая
+   перезапись, каждый замер», and the record prints changes only. The replacement sentence
+   is BOOK-59's copy pass. */
 
 /* ── the moment: readout, rail, ends (BOOK-DOC-50 §2–§5) ──────────────────── */
 /* One control, one state: a dated readout over a 1 px rail, two dated ends under it.
@@ -230,7 +226,7 @@
 .past-about {
   font-size: var(--fs-note);
   color: var(--ink-2);
-  /* The same copy cap as `.chr-sub`: a bound on the sentence, not on the register's box. */
+  /* A copy cap, not a box: the sentence is bounded, the register's box is not. */
   max-width: 64ch;
 }
 .past-toc {
@@ -296,68 +292,68 @@
   margin-top: 10px;
 }
 
-/* ── the timeline ─────────────────────────────────────────────────────────── */
+/* ── the record: one change, one line (BOOK-65) ───────────────────────────── */
+/* A row is the six facts of one change and nothing else: its number, its date and time, the
+   reader's alias, the place, one outcome word and the way into the card. It wraps between
+   facts rather than between the digits of a date, so a phone never cuts a moment in half. */
 .chr-timeline {
   list-style: none;
   margin: 18px 0 0;
   padding: 0;
 }
-.chr-day + .chr-day {
-  margin-top: 18px;
-}
-.chr-day-label {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  font-weight: 400;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin: 0 0 6px;
-}
 .chr-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px 10px;
   border-bottom: 1px solid var(--rule);
-}
-.chr-row-main {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 3.4rem 7rem 1fr;
-  gap: 8px;
-  align-items: baseline;
-  text-align: left;
   padding: 8px 0;
   font-size: var(--fs-note);
   color: var(--ink-2);
 }
-.chr-time {
+.chr-date {
   font-family: var(--mono);
   font-size: var(--fs-micro);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.chr-target {
+.chr-seq,
+.chr-place {
   font-family: var(--label);
   font-size: var(--fs-label);
   letter-spacing: 0.05em;
   color: var(--ink-3);
+  white-space: nowrap;
 }
-.chr-summary {
+.chr-alias {
   max-width: 62ch;
   color: var(--ink);
 }
-/* the change's case, in the same five words the card uses (`lib/deed.ts`) */
-.chr-deed {
-  flex: 1 1 100%;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.04em;
-  color: var(--ink-3);
-}
-.chr-change {
+.chr-outcome {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
   font-family: var(--label);
   font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+.chr-reason {
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
+  letter-spacing: 0;
+  color: var(--ink-3);
+  max-width: 62ch;
+}
+.chr-change {
+  margin-left: auto;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   padding-bottom: 1px;
@@ -459,13 +455,6 @@
 }
 
 @media (max-width: 379px) {
-  .chr-row-main {
-    grid-template-columns: 3rem 1fr;
-    row-gap: 2px;
-  }
-  .chr-target {
-    display: none;
-  }
   /* each end keeps its word and its whole date: a flex basis, not a box of its own, so both
      ends stay on one line and a long date wraps inside its own half (BOOK-88) */
   .chr-end {

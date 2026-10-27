@@ -1,67 +1,15 @@
 /**
- * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2, BOOK-DOC-50): grouping, the
- * moment's dated readout and the read-only notice a past moment carries.
+ * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2, BOOK-DOC-50): the moment's dated
+ * readout and the read-only notice a past moment carries.
  *
  * Everything here is a function of the payloads the server sends — no clocks, no fetching —
- * so the chronicle's behaviour is testable without a browser.
+ * so the chronicle's behaviour is testable without a browser. The list is a list of changes
+ * (BOOK-65), so these helpers read a `HistoryRecordDto`, not a log row.
  */
 
-import type { BookAtDto, CatalogEntry, HistoryEventDto } from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryRecordDto } from '@book/shared';
 
 import { MIDDOT, NBSP, formatDate, formatTime } from './format.ts';
-
-/** «25 октября» in the site's timezone. */
-const DAY = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
-
-export function dayLabel(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : DAY.format(date);
-}
-
-/**
- * The calendar day `dayLabel` prints for the same instant, as `YYYY-MM-DD`.
- *
- * The group key and the heading must name the same day: keying on the UTC slice split one
- * Moscow evening (≥ 21:00 UTC) into two headings with identical text — in the list that is
- * now the axis, two «26 октября» in a row.
- */
-const DAY_KEY = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  timeZone: 'Europe/Moscow',
-});
-
-function dayKey(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const parts = DAY_KEY.formatToParts(date);
-  const pick = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
-  return `${pick('year')}-${pick('month')}-${pick('day')}`;
-}
-
-export type DayGroup = { day: string; label: string; items: HistoryEventDto[] };
-
-/** Newest first in, newest first out, one group per calendar day. */
-export function groupByDay(items: HistoryEventDto[]): DayGroup[] {
-  const groups: DayGroup[] = [];
-  for (const event of items) {
-    const day = dayKey(event.at);
-    const last = groups.at(-1);
-    if (last !== undefined && last.day === day) {
-      last.items.push(event);
-      continue;
-    }
-    groups.push({ day, label: dayLabel(event.at), items: [event] });
-  }
-  return groups;
-}
-
-/** «глава 9» · «первая страница» · «книга». */
-export function targetLabel(event: HistoryEventDto): string {
-  if (event.isFront) return 'первая страница';
-  return event.chapter === null ? 'книга' : `глава ${event.chapter}`;
-}
 
 export type PastDifference = {
   changed: number[];
@@ -131,7 +79,7 @@ export type MomentLabel = {
  * claims nothing it cannot show.
  */
 export function momentLabel(
-  items: HistoryEventDto[],
+  items: HistoryRecordDto[],
   value: number,
   lastHseq: number,
   more: boolean,
@@ -141,7 +89,7 @@ export function momentLabel(
   if (lastHseq > 0 && value >= lastHseq) {
     return { text: momentText(newest.at), isNow: true, position: items.length };
   }
-  const index = items.findIndex((event) => event.hseq <= value);
+  const index = items.findIndex((record) => record.hseq <= value);
   if (index === -1) {
     // Past the oldest loaded record: say «до …» only when the log has an older page.
     const oldest = items[items.length - 1]!;
@@ -155,8 +103,8 @@ export function momentLabel(
 }
 
 /** The record one step to the left/right of the thumb (a control that can be stepped). */
-export function stepMoment(items: HistoryEventDto[], value: number, direction: -1 | 1): number {
-  const hseqs = items.map((event) => event.hseq).sort((left, right) => left - right);
+export function stepMoment(items: HistoryRecordDto[], value: number, direction: -1 | 1): number {
+  const hseqs = items.map((record) => record.hseq).sort((left, right) => left - right);
   if (hseqs.length === 0) return value;
   if (direction === -1) {
     const lower = hseqs.filter((hseq) => hseq < value);

@@ -1,13 +1,14 @@
-import type { ChangeDto, HistoryEventDto } from '@book/shared';
+import type { ChangeDto, HistoryRecordDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { ChangeCard } from './ChangeCard.tsx';
-import { Chronicle, TimelineRow } from './Chronicle.tsx';
+import { Chronicle } from './Chronicle.tsx';
 import { FocusView } from './FocusView.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
+import { RecordRow } from './RecordRow.tsx';
 
 /**
  * The copy guard (BOOK-15, BOOK-19): reader-facing words the book may not say.
@@ -137,18 +138,17 @@ const ribbon: Ribbon = {
   seams: [{ boundary: 9, reason: 'в главе 9 ключ теперь у другого', resolved: false }],
 };
 
-const decided: HistoryEventDto = {
+const record: HistoryRecordDto = {
   hseq: 7,
   at: '2026-10-25T12:05:00Z',
-  kind: 'change.decided',
+  seq: 7,
   chapter: 8,
-  isFront: false,
-  rev: null,
+  premise: false,
+  alias: 'Аня',
+  status: 'done',
+  outcome: 'adapted',
+  reason: null,
   changeId: 'chg_1',
-  cascadeId: 'csc_1',
-  stepId: null,
-  author: { kind: 'writer', identityId: null, label: 'автор' },
-  summary: 'правка 7 внесена',
 };
 
 function surfaces(): string {
@@ -164,15 +164,8 @@ function surfaces(): string {
     renderToStaticMarkup(
       <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} live />,
     ),
-    renderToStaticMarkup(
-      <TimelineRow
-        event={decided}
-        deed="зарегистрировано · заведено дело · внесены изменения · причина установлена · поправка: пункт изложен в новой редакции · расхождение зафиксировано"
-        onPick={() => undefined}
-        onOpenChange={() => undefined}
-      />,
-    ),
-    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />),
+    renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
+    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />),
     renderToStaticMarkup(
       <ParagraphChain
         chain={null}

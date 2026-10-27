@@ -1,10 +1,10 @@
-import type { ChangeCostDto, ChangeDto, ChangeImpactDto, HistoryEventDto } from '@book/shared';
+import type { ChangeCostDto, ChangeDto, ChangeImpactDto, HistoryRecordDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { ChangeCard } from './ChangeCard.tsx';
-import { TimelineRow } from './Chronicle.tsx';
 import { FocusView } from './FocusView.tsx';
+import { RecordRow } from './RecordRow.tsx';
 
 /**
  * «Honesty about cost» (BOOK-DOC-4, BOOK-23): every surface prints the model and the tokens,
@@ -63,18 +63,17 @@ function impact(costRub: number | null): ChangeImpactDto {
   };
 }
 
-const decided: HistoryEventDto = {
+const record: HistoryRecordDto = {
   hseq: 7,
   at: '2026-10-25T12:05:00Z',
-  kind: 'change.decided',
+  seq: 7,
   chapter: 8,
-  isFront: false,
-  rev: null,
+  premise: false,
+  alias: 'Аня',
+  status: 'done',
+  outcome: 'applied',
+  reason: null,
   changeId: 'chg_1',
-  cascadeId: null,
-  stepId: null,
-  author: { kind: 'writer', identityId: null, label: 'автор' },
-  summary: 'правка 7 внесена',
 };
 
 /** The three public surfaces a reader meets a change on: card, focus view, chronicle row. */
@@ -92,9 +91,7 @@ function surfaces(cost: ChangeCostDto | null, costRub: number | null): string {
         onClose={() => undefined}
       live />,
     ),
-    renderToStaticMarkup(
-      <TimelineRow event={decided} deed="внесено" onPick={() => undefined} onOpenChange={() => undefined} />,
-    ),
+    renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
   ].join('\n');
 }
 

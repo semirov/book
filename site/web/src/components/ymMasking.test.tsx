@@ -3,7 +3,7 @@ import type {
   AuthorsDto,
   ChangeDto,
   CommentDto,
-  HistoryEventDto,
+  HistoryRecordDto,
   MyTraceDto,
   ParagraphChainDto,
 } from '@book/shared';
@@ -12,12 +12,13 @@ import { describe, expect, it } from 'vitest';
 
 import { Authors } from './Authors.tsx';
 import { ChangeCard } from './ChangeCard.tsx';
-import { Chronicle, TimelineRow } from './Chronicle.tsx';
+import { Chronicle } from './Chronicle.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { MarginNote } from './MarginNote.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { RecordRow } from './RecordRow.tsx';
 import { MIDDOT } from '../lib/format.ts';
 import { RevisionObject } from './RevisionObject.tsx';
 import type { ProvenanceView } from '../lib/provenance.ts';
@@ -137,18 +138,17 @@ const VIEW: ProvenanceView = {
   action: { kind: 'rules', label: 'правила' },
 };
 
-const EVENT: HistoryEventDto = {
+const RECORD: HistoryRecordDto = {
   hseq: 42,
   at: '2026-10-25T12:05:00Z',
-  kind: 'change.decided',
+  seq: 7,
   chapter: 8,
-  isFront: false,
-  rev: null,
+  premise: false,
+  alias: SENTINEL.name,
+  status: 'done',
+  outcome: 'applied',
+  reason: null,
   changeId: 'chg_1',
-  cascadeId: null,
-  stepId: null,
-  author: { kind: 'reader', identityId: 'idt_1', label: SENTINEL.name },
-  summary: SENTINEL.summary,
 };
 
 const CHAIN: ParagraphChainDto = {
@@ -224,20 +224,18 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expectMasked(html, `доля ${SENTINEL.name}`, '.prov-panel');
   });
 
-  it('masks the chronicle and every timeline row, aria-label included', () => {
+  it('masks the chronicle and every record row, aria-label included', () => {
     const section = renderToStaticMarkup(
-      <Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />,
+      <Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />,
     );
     expect(section).toContain('chronicle');
     expect(section).toContain('ym-hide-content');
 
-    const row = renderToStaticMarkup(
-      <TimelineRow event={EVENT} deed={null} onPick={() => undefined} onOpenChange={() => undefined} />,
-    );
-    // The visible summary and the button's aria-label carry the same reader-derived line;
-    // BOOK-DOC-50 dates the label, so the sentence opens with the record's own moment.
-    expectMasked(row, SENTINEL.summary, '.chr-row');
-    expect(row).toContain(`aria-label="25.10.2026${MIDDOT}15:05, ${SENTINEL.summary} — книга на этот момент"`);
+    const row = renderToStaticMarkup(<RecordRow record={RECORD} onOpenChange={() => undefined} />);
+    // The alias is a reader's display name and the row is reader-facing copy; BOOK-DOC-50 dates
+    // the label, so the accessible name opens with the record's own moment.
+    expectMasked(row, SENTINEL.name, '.chr-row');
+    expect(row).toContain(`aria-label="25.10.2026${MIDDOT}15:05, правка 7, глава 8, ${SENTINEL.name}, внесено — открыть карточку правки"`);
   });
 
   it('masks the paragraph chain, which names the reader who wrote each version', () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { BookAtDto, HistoryEventDto, HistoryTimelineDto } from '@book/shared';
+import type { BookAtDto, HistoryRecordDto, HistoryTimelineDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +14,9 @@ import { Chronicle } from './Chronicle.tsx';
  * at once; an answer that is not for the thumb cannot paint; a failure keeps the date, the
  * thumb and a retry for that same hseq. And there is not one unlabelled mark in the DOM.
  *
+ * BOOK-65 — the list is the record, so a row is one change and the moment moves only through
+ * the control: clicking an entry opens its card, it never scrubs.
+ *
  * BOOK-DOC-43 §4, §6, §7, §10 (BOOK-66) — the same mount proves the timeline's wait: the
  * thresholds need a clock, so they live here; the failure of the timeline leaves its failure
  * block and «повторить» re-reads it, and the failure of `getHistoryAt` leaves its line with the
@@ -24,30 +27,29 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const MID = `${NBSP}·${NBSP}`;
 
-function event(hseq: number, at: string, summary: string): HistoryEventDto {
+function record(hseq: number, at: string, seq: number): HistoryRecordDto {
   return {
     hseq,
     at,
-    kind: 'chapter.created',
+    seq,
     chapter: 1,
-    isFront: false,
-    rev: 1,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'author', identityId: null, label: 'Филипп' },
-    summary,
+    premise: false,
+    alias: 'Филипп',
+    status: 'done',
+    outcome: 'applied',
+    reason: null,
+    changeId: `chg_${seq}`,
   };
 }
 
 /** Newest first, as the API sends them: 10 at 27.10 15:40, 7 at 26.10 09:00, 4 at 21.10 09:12. */
-const ITEMS: HistoryEventDto[] = [
-  event(10, '2026-10-27T12:40:00Z', 'глава 9 написана'),
-  event(7, '2026-10-26T06:00:00Z', 'глава 8 переписана'),
-  event(4, '2026-10-21T06:12:00Z', 'глава 8 написана'),
+const ITEMS: HistoryRecordDto[] = [
+  record(10, '2026-10-27T12:40:00Z', 9),
+  record(7, '2026-10-26T06:00:00Z', 8),
+  record(4, '2026-10-21T06:12:00Z', 3),
 ];
 
-function page(items: HistoryEventDto[], lastHseq: number, nextBefore: number | null = null): HistoryTimelineDto {
+function page(items: HistoryRecordDto[], lastHseq: number, nextBefore: number | null = null): HistoryTimelineDto {
   return { lastHseq, at: '2026-10-27T12:40:00Z', items, nextBefore };
 }
 
@@ -115,12 +117,12 @@ async function advance(ms: number): Promise<void> {
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-function mount(): void {
+function mount(onOpenChange: (changeId: string) => void = () => undefined): void {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={onOpenChange} live />);
   });
 }
 
@@ -411,7 +413,7 @@ describe('the moment rail under a browser (BOOK-DOC-50 §4, §6)', () => {
   });
 });
 
-describe('the moment’s read from a row (BOOK-DOC-43 §10)', () => {
+describe('the moment’s read from the control (BOOK-DOC-43 §10, BOOK-65)', () => {
   it('leaves the loading line on failure, and retries the same hseq', async () => {
     let atCalls = 0;
     const fetchMock = stubFetch((url) => {
@@ -424,11 +426,9 @@ describe('the moment’s read from a row (BOOK-DOC-43 §10)', () => {
     mount();
     await flush();
 
-    const row = container.querySelector<HTMLButtonElement>('.chr-row-main');
-    expect(row).not.toBeNull();
-    // A row picks its own moment: the oldest row asks for 4.
-    const oldest = container.querySelectorAll<HTMLButtonElement>('.chr-row-main')[2];
-    await act(async () => oldest?.click());
+    // The moment moves only through the control: a drag to the oldest record asks for 4.
+    dragTo('4');
+    await advance(120);
     await flush();
 
     // The wait is over: no «момент читается», one failure line, one retry for that hseq.
@@ -444,5 +444,26 @@ describe('the moment’s read from a row (BOOK-DOC-43 §10)', () => {
     expect(askedAt(fetchMock)).toEqual(['4', '4']);
     expect(container.textContent).not.toContain('момент не прочитался');
     expect(container.querySelector('.past-title')?.textContent).toBe('Книга момента');
+  });
+
+  it('opens the card from a record entry and never scrubs from it (BOOK-65)', async () => {
+    const opened: string[] = [];
+    const fetchMock = stubFetch(() => answer(page(ITEMS, 10)));
+    mount((changeId) => opened.push(changeId));
+    await flush();
+
+    const rows = container.querySelectorAll('li.chr-row');
+    expect(rows).toHaveLength(3);
+    // One control per entry, and it names the card, not a moment.
+    expect(container.querySelectorAll('.chr-row .chr-change')).toHaveLength(3);
+
+    const oldest = container.querySelectorAll<HTMLButtonElement>('.chr-row .chr-change')[2];
+    await act(async () => oldest?.click());
+
+    expect(opened).toEqual(['chg_3']);
+    // The tap opened a card; it did not move the moment and it asked the server for nothing.
+    expect(askedAt(fetchMock)).toEqual([]);
+    expect(container.querySelector('.past')).toBeNull();
+    expect(range().value).toBe('10');
   });
 });
