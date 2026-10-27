@@ -5,7 +5,6 @@ import { placePanel } from '../lib/cssom.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
 import { filingNumber } from '../lib/filings.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
-import { receiptLine } from '../lib/terms.ts';
 
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -92,12 +91,12 @@ export function FilingPanel({
       ) : (
         <p className={`filing-state ${ink}`}>{line.state}</p>
       )}
-      <p className="filing-fact">
-        {comment.applied === null
-          ? 'применения пока нет'
-          : `${receiptLine(String(comment.applied.chapter).padStart(2, '0'))} · ревизия ${comment.applied.rev}`}
-        {line.detail === null ? '' : ` · ${line.detail}`}
-      </p>
+      {/*
+        BOOK-90: the receipt of a landed change and the reader's reason are the detail — the
+        fact the three-word state cannot carry. It was printed as the state itself (BOOK-58/
+        BOOK-70); the word now stands alone and this line keeps the fact whole.
+      */}
+      {line.detail === null ? null : <p className="filing-fact">{line.detail}</p>}
     </aside>
   );
 }

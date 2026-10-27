@@ -11,10 +11,10 @@
   box-shadow: 0 1px 0 var(--rule);
   transition: background var(--dur-fade) var(--ease-inout);
 }
-/* BOOK-DOC-35 §5 — the running head: one row at the frame's width. `display: contents` on
-   the two label rows makes the brand and the one chip one line of two flex items (BOOK-70
-   removed the queue chip, so there is no third); the two-row head is the narrow case, restored
-   at ≤1023. */
+/* BOOK-DOC-35 §5 / BOOK-90 B — the running head: two clusters on one line at the frame's
+   width. The brand and the chapter chip sit together on the left (one 24 px gap); the live
+   chip sits on the right. The folio is out of the flow above 767 and keeps the first row's
+   right end below it. The two-row head is the narrow case. */
 .top-in {
   display: flex;
   align-items: baseline;
@@ -26,11 +26,11 @@
 .top-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
-.top-in .top-row {
-  display: contents;
+/* The brand and the chapter chip are one cluster: the chip follows the brand, not the line. */
+.top-in .top-row:first-child {
+  gap: 24px;
 }
 .top-row + .top-row {
   margin-top: 0;
@@ -154,8 +154,10 @@
     padding-top: 11px;
     padding-bottom: 8px;
   }
-  .top-in .top-row {
-    display: flex;
+  /* The narrow head keeps its two rows; the first is the brand's cluster (the folio keeps
+     the row's right end through its own auto margin). */
+  .top-in .top-row:first-child {
+    justify-content: flex-start;
   }
   .top-row + .top-row {
     margin-top: 5px;

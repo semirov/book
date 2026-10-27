@@ -178,6 +178,15 @@
   --measure: 37.5rem;
   --offset-top: 64px;
 
+  /* BOOK-90 — the margin's own geometry. Measured from the prose's right edge, never from the
+     frame: 228 px of channel = a 40 px gap (the mark's target) + a 188 px note. Reusing
+     `--gut`/`--measure`/`--shell` would make the margin move when the frame changes, which is
+     exactly what the coming one-column frame must not do. */
+  --mark-hit: 40px;
+  --note-gap: var(--mark-hit);
+  --note-w: 188px;
+  --note-step: 12px;
+
   /* motion */
   --dur-tick: 120ms;
   --dur-ui: 220ms;

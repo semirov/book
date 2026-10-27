@@ -27,22 +27,33 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 describe('comment thread copy (§11.6)', () => {
   it('never collapses acceptance into application', () => {
-    expect(commentStatusLine(comment({ status: 'new' })).state).toBe('ждёт рассмотрения');
+    // BOOK-90: one of the three words; the fact that word cannot carry is the detail.
+    expect(commentStatusLine(comment({ status: 'new' })).state).toBe('ждёт');
     expect(commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', reason: 'принято' }))).toMatchObject({
-      state: 'принято · правка в очереди',
-      detail: 'принято',
+      state: 'идёт',
+      detail: 'замечание в очереди · принято',
       tone: 'live',
-      form: 'sentence',
+      form: 'chip',
     });
     expect(
-      commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })).state,
-    ).toBe('внесено в главу 08 · право на ваш текст перешло автору книги');
+      commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })),
+    ).toMatchObject({
+      state: 'внесено',
+      detail: 'замечание сохранено · внесено',
+      tone: 'done',
+    });
+    // An intervention moved the right with the text; a note never did.
+    expect(
+      commentStatusLine(
+        comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 8, rev: 3 } }),
+      ).detail,
+    ).toBe('внесено в главу 08 · право на ваш текст перешло автору книги · ревизия 3');
   });
 
   it('tells a premise’s four states without a queue place (BOOK-7)', () => {
     expect(commentStatusLine(comment({ premise: true, status: 'accepted', changeId: 'chg_1', reason: 'входит в книгу' }))).toEqual({
-      state: 'принято в основу',
-      detail: 'входит в книгу',
+      state: 'ждёт',
+      detail: 'принято в основу, до первой редакции · входит в книгу',
       tone: 'live',
       form: 'chip',
     });
@@ -50,49 +61,55 @@ describe('comment thread copy (§11.6)', () => {
       commentStatusLine(
         comment({ premise: true, status: 'applied', chapter: 5, changeId: 'chg_1', reason: 'вошло в первую редакцию главы 5' }),
       ),
-    ).toEqual({ state: 'вошло в первую редакцию главы 5', detail: null, tone: 'done', form: 'sentence' });
+    ).toEqual({ state: 'внесено', detail: 'вошло в первую редакцию главы 5', tone: 'done', form: 'chip' });
     expect(
       commentStatusLine(comment({ premise: true, status: 'superseded', reason: 'у главы уже есть замысел' })),
-    ).toEqual({ state: 'замысел снят', detail: 'у главы уже есть замысел', tone: 'stopped', form: 'chip' });
+    ).toEqual({ state: 'ждёт', detail: 'замысел снят · у главы уже есть замысел', tone: 'stopped', form: 'chip' });
     expect(commentStatusLine(comment({ premise: true, status: 'rejected', reason: 'не беру: не из этой сцены' }))).toEqual({
-      state: 'замысел не взят',
-      detail: 'не беру: не из этой сцены',
+      state: 'ждёт',
+      detail: 'замысел не взят · не беру: не из этой сцены',
       tone: 'stopped',
       form: 'chip',
     });
   });
 
-  it('decides the form of the line from its own text (BOOK-70)', () => {
-    // A receipt names two things (the chapter and the right that moved with it): a sentence the
-    // panel may wrap, not a one-line chip.
-    const applied = commentStatusLine(comment({ status: 'applied', applied: { chapter: 7, rev: 2 }, reason: null }));
-    expect(applied.form).toBe('sentence');
-    expect(applied.state).toContain('внесено в главу 07');
-    // Without the record of where it landed, the state is the one word — a chip.
-    const bare = commentStatusLine(comment({ status: 'applied', applied: null, reason: null }));
-    expect(bare).toMatchObject({ state: 'внесено', form: 'chip' });
-    // A clause is a sentence even when it is short: the ` · ` and the `: ` are the clause's own
-    // punctuation, and only a chip stays on one line without them.
-    expect(commentStatusLine(comment({ status: 'accepted' })).form).toBe('sentence');
-    expect(commentStatusLine(comment({ status: 'superseded' })).form).toBe('sentence');
-    expect(commentStatusLine(comment({ status: 'expired' })).form).toBe('sentence');
-    // Every other state is a chip, and the form is computed here — nowhere else.
-    for (const status of ['new', 'batched', 'delivered', 'applied', 'rejected', 'quarantined', 'hidden'] as const) {
+  it('keeps every state a chip: the clause and the receipt are the detail (BOOK-90)', () => {
+    // BOOK-90's words are 4 / 4 / 7 characters: a state is never a sentence. The receipt of a
+    // landed change and a clause («снято: …») live on the detail line, whole.
+    const applied = commentStatusLine(
+      comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 7, rev: 2 }, reason: null }),
+    );
+    expect(applied).toMatchObject({ state: 'внесено', form: 'chip' });
+    expect(applied.detail).toContain('внесено в главу 07 · право на ваш текст перешло автору книги');
+    expect(commentStatusLine(comment({ status: 'accepted', interventionKind: 'testimony' })).detail).toContain(
+      'правка в очереди на запись',
+    );
+    expect(commentStatusLine(comment({ status: 'superseded' })).detail).toContain('снято: текст успел измениться');
+    expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('проход не состоялся');
+    // Every state — the whole matrix — is a chip, and the form is computed here, nowhere else.
+    for (const status of ['new', 'batched', 'delivered', 'accepted', 'applied', 'superseded', 'rejected', 'quarantined', 'expired', 'hidden'] as const) {
       const line = commentStatusLine(comment({ status }));
       expect(line.form, status).toBe('chip');
       expect(line.state.length, status).toBeLessThanOrEqual(CHIP_MAX_CHARS);
+      expect(line.state, status).not.toMatch(/ · |: /u);
     }
   });
 
   it('says "not considered" instead of pretending', () => {
-    expect(commentStatusLine(comment({ status: 'expired' })).state).toContain('не рассмотрено');
+    expect(commentStatusLine(comment({ status: 'expired' }))).toMatchObject({
+      state: 'ждёт',
+      detail: 'проход не состоялся',
+    });
     expect(commentStatusLine(comment({ status: 'rejected', reason: 'вне рамок: форма книги' }))).toMatchObject({
-      state: 'отклонено',
-      detail: 'вне рамок: форма книги',
+      state: 'ждёт',
+      detail: 'отклонено · вне рамок: форма книги',
       tone: 'stopped',
       form: 'chip',
     });
-    expect(commentStatusLine(comment({ status: 'quarantined' })).state).toBe('проверяется');
+    expect(commentStatusLine(comment({ status: 'quarantined' }))).toMatchObject({
+      state: 'ждёт',
+      detail: 'проверяется перед триажем',
+    });
   });
 
   it('formats a stamp and an anchor quote', () => {

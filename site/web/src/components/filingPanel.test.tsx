@@ -40,19 +40,18 @@ function render(row: CommentDto): string {
   return renderToStaticMarkup(<FilingPanel comment={row} anchor={null} onClose={() => undefined} />);
 }
 
-describe('the filing panel’s state line (BOOK-70)', () => {
+describe('the filing panel’s state line (BOOK-90)', () => {
   it('prints a chip state once, and no «состояние: …» line at all', () => {
     const html = render(comment());
-    expect(html).toContain('<p class="filing-state ink-quiet">ждёт рассмотрения</p>');
+    expect(html).toContain('<p class="filing-state ink-quiet">ждёт</p>');
     expect(html).not.toContain('состояние:');
     expect(html).not.toContain('filing-word');
-    // One state print: the chip, and the application fact beside it.
-    expect(html.match(/ждёт рассмотрения/gu)).toHaveLength(1);
+    expect(html.match(/ждёт/gu)).toHaveLength(1);
   });
 
   it('keeps the two inks: live while a filing is in work, ink-3 when it is settled', () => {
     const live = render(comment({ status: 'batched' }));
-    expect(live).toContain('<p class="filing-state ink-live">в проходе триажа</p>');
+    expect(live).toContain('<p class="filing-state ink-live">идёт</p>');
     for (const status of ['rejected', 'quarantined', 'hidden'] as const) {
       const settled = render(comment({ status }));
       expect(settled, status).toContain('filing-state ink-quiet');
@@ -60,37 +59,44 @@ describe('the filing panel’s state line (BOOK-70)', () => {
     }
   });
 
-  it('prints a clause as a sentence, not as a chip that overflows (BOOK-70)', () => {
-    // Each of these is over the 24-character cap, or carries a clause's punctuation.
-    for (const status of ['accepted', 'superseded', 'expired'] as const) {
-      const row = comment({ status, changeId: 'chg_1' });
-      const line = commentStatusLine(row);
-      expect(line.form, status).toBe('sentence');
-      const html = render(row);
-      expect(html, status).toContain(`<p class="filing-sentence">${line.state}</p>`);
-      expect(html, status).not.toContain('class="filing-state');
-      expect(html, status).not.toContain('состояние:');
+  it('keeps the clause in the detail, where it may wrap, and the state a chip', () => {
+    // BOOK-90: the state is one of the three words; the fact it cannot carry is the detail.
+    const superseded = render(comment({ status: 'superseded' }));
+    expect(superseded).toContain('<p class="filing-state ink-quiet">ждёт</p>');
+    expect(superseded).toContain('<p class="filing-fact">снято: текст успел измениться</p>');
+    const accepted = render(comment({ status: 'accepted', interventionKind: 'testimony' }));
+    expect(accepted).toContain('<p class="filing-state ink-live">идёт</p>');
+    expect(accepted).toContain('<p class="filing-fact">правка в очереди на запись</p>');
+    const expired = render(comment({ status: 'expired' }));
+    expect(expired).toContain('<p class="filing-fact">проход не состоялся</p>');
+    for (const html of [superseded, accepted, expired]) {
+      expect(html).not.toContain('class="filing-sentence');
+      expect(html).not.toContain('состояние:');
     }
   });
 
-  it('prints an applied filing as a receipt, in the sentence’s own voice', () => {
-    const html = render(comment({ status: 'applied', applied: { chapter: 7, rev: 2 }, reason: null }));
-    expect(html).toContain('<p class="filing-sentence">внесено в главу 07 · право на ваш текст перешло автору книги</p>');
-    expect(html).not.toContain('class="filing-state');
-    expect(html).not.toContain('состояние:');
+  it('prints a landed intervention as the word and its receipt as the fact', () => {
+    const html = render(
+      comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 7, rev: 2 }, reason: null }),
+    );
+    expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
+    expect(html).toContain(
+      '<p class="filing-fact">внесено в главу 07 · право на ваш текст перешло автору книги · ревизия 2</p>',
+    );
   });
 
-  it('keeps a bare «внесено» a chip: without the record of the chapter there is no receipt', () => {
+  it('keeps a bare «внесено» a chip: a note’s terminal is «сохранено», never a right transfer', () => {
     const html = render(comment({ status: 'applied', applied: null, reason: null }));
     expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
+    expect(html).toContain('<p class="filing-fact">замечание сохранено</p>');
     expect(html).not.toContain('filing-sentence');
   });
 
-  it('prints a premise that entered the first edition as a sentence: it names two things', () => {
+  it('prints a premise that entered the first edition as the word and the edition as the fact', () => {
     const line = commentStatusLine(comment({ premise: true, status: 'applied', chapter: 12, applied: { chapter: 12, rev: 1 } }));
-    expect(line).toEqual({ state: 'вошло в первую редакцию главы 12', detail: null, tone: 'done', form: 'sentence' });
-    expect(render(comment({ premise: true, status: 'applied', chapter: 12, applied: { chapter: 12, rev: 1 } }))).toContain(
-      '<p class="filing-sentence">вошло в первую редакцию главы 12</p>',
-    );
+    expect(line).toEqual({ state: 'внесено', detail: 'вошло в первую редакцию главы 12', tone: 'done', form: 'chip' });
+    const html = render(comment({ premise: true, status: 'applied', chapter: 12, applied: { chapter: 12, rev: 1 } }));
+    expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
+    expect(html).toContain('<p class="filing-fact">вошло в первую редакцию главы 12</p>');
   });
 });

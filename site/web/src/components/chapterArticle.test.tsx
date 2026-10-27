@@ -51,14 +51,17 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
     expect(html).toContain('data-basis="true"');
   });
 
-  it('renders an untouched slot as today: a slim empty article, no prose, no placeholder word', () => {
+  it('renders an untouched slot as one row: a numeral, the word, the leader — no heading', () => {
+    // BOOK-90 A: the empty chapter is one row in the flow; the big `ch-n`, the meta line and
+    // «не написана» are gone, and the numeral appears exactly once.
     const html = render(entry(2));
     expect(html).toContain('ch-empty');
-    // BOOK-70: an unwritten chapter prints nothing in `.ch-meta` — no «не написана», no dash.
+    expect(html).toContain('class="premise-row"');
+    expect(html).toContain('02');
+    expect(html).toContain('замысел');
+    expect(html).not.toContain('class="ch-h"');
+    expect(html).not.toContain('class="ch-n"');
     expect(html).not.toContain('не написана');
-    expect(html).toContain('<span class="ch-meta"></span>');
-    expect(html).not.toContain('ch-print');
-    expect(html).not.toContain('ch-data');
     expect(html).not.toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('data-basis');
   });
@@ -83,8 +86,9 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
     expect(written).not.toContain('ch-print');
 
     const unwritten = render(entry(4, { chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' }));
-    // The data line names a chapter's text and a moment; with no text there is nothing to date.
+    // BOOK-90 A: an empty chapter is one row — no header, no data line to date nothing.
     expect(unwritten).not.toContain('ch-data');
-    expect(unwritten).toContain('<span class="ch-meta"></span>');
+    expect(unwritten).not.toContain('ch-meta');
+    expect(unwritten).toContain('class="premise-row"');
   });
 });

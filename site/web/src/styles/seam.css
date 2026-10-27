@@ -19,6 +19,15 @@
   display: block;
   margin: 10px 0;
 }
+/* BOOK-90 A.6 — in an empty chapter the strip is an inserted row: 8 px above, 12 below. The
+   next slot's own top air is not added on top of that margin while a strip is inserted. */
+.ch-empty .seam {
+  display: block;
+  margin: 8px 0 12px;
+}
+.ch-empty:has(> .seam) + .ch-empty {
+  padding-top: 0;
+}
 
 /* The desktop rail (§2.8): a 44 px label in the outer margin, at ≥1024 only. */
 .seam-rail {
@@ -265,7 +274,13 @@
 .seam-submit:focus-visible,
 .seam-cta:focus-visible,
 .seam-prov:focus-visible,
-.filing-mark:focus-visible {
+.filing-mark:focus-visible,
+.margin-note:focus-visible,
+.phone-strip-row:focus-visible,
+.revision-close:focus-visible,
+.revision-door:focus-visible,
+.revision:focus-visible {
+  /* BOOK-90: one ring, one offset — the margin's objects included. */
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }

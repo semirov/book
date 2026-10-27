@@ -1,0 +1,437 @@
+/**
+ * BOOK-90 — marginalia: the mark at the sentence, the note in the margin, the revision
+ * object, the phone strip.
+ *
+ * One vocabulary, one geometry. Every horizontal number is measured from the **prose's right
+ * edge** (`left: 100% + var(--note-gap)`, `left: 100%`), never from `--shell`, `--measure` or
+ * `--gut`: the note's left edge must be the same distance from the same thing in today's
+ * frame and in the coming one-column frame. The four tokens are declared in `tokens.css`.
+ *
+ * No `position: fixed` above 1023, no shadow on the channel object (a form inserted into the
+ * page is not raised above it), no transitions on geometry — opacity only, once.
+ */
+
+/* ---------- the mark at the sentence (≥1024: numeral; <1024: tick) ---------- */
+.filing-mark-slot {
+  position: static;
+  display: inline;
+}
+.filing-mark {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  display: flex;
+  align-items: center;
+  width: var(--mark-hit);
+  height: 44px;
+  margin: 0;
+  padding: 0 0 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.filing-mark-num {
+  padding: 1px 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* The accepted mark is a 1 × 16 px hairline: the same instrument as `--rule`, not a shout. */
+.filing-tick-bar {
+  display: block;
+  width: 1px;
+  height: 16px;
+  background: currentColor;
+}
+.filing-mark.ink-quiet {
+  color: var(--ink-3);
+}
+.filing-mark.ink-live {
+  color: var(--live);
+}
+.filing-mark.ink-stopped {
+  color: var(--ink-2);
+}
+.filing-mark.ink-done {
+  color: var(--ink-3);
+}
+/* Non-colour states: three shapes — plain, underlined, struck. */
+.filing-mark.ink-live .filing-mark-num {
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
+}
+.filing-mark.ink-stopped .filing-mark-num {
+  text-decoration: line-through 1px;
+}
+.filing-mark.filing-tick {
+  color: var(--ink-3);
+}
+/* Below 1024 the numeral leaves the text; this is the same tick the accepted mark draws. */
+.filing-mark.filing-alive::before {
+  content: '';
+  display: none;
+  width: 1px;
+  height: 16px;
+  background: var(--live);
+}
+
+/* ---------- the state word's ink (note, strip, object) ---------- */
+.ink-word-quiet {
+  color: var(--ink-3);
+}
+.ink-word-live {
+  color: var(--live);
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
+}
+.ink-word-stopped {
+  color: var(--ink-2);
+  text-decoration: line-through 1px;
+}
+.ink-word-done {
+  color: var(--ink-3);
+}
+
+/* ---------- the margin note (≥1024) ---------- */
+.margin-note {
+  position: absolute;
+  left: calc(100% + var(--note-gap));
+  width: var(--note-w);
+  margin: 0;
+  padding: 6px 0 8px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  white-space: normal;
+  hyphens: manual;
+  opacity: 0;
+  transition: opacity var(--dur-tick) var(--ease-out);
+  cursor: pointer;
+}
+.margin-note[data-placed='true'] {
+  opacity: 1;
+}
+.margin-note-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.margin-note-n {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.margin-note-word {
+  overflow: hidden;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.margin-note-quote {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 4px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.4;
+  color: var(--ink);
+  hyphens: manual;
+}
+.margin-note-who {
+  display: block;
+  overflow: hidden;
+  margin-top: 4px;
+  font-family: var(--ui);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.margin-note-next {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: 4px;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+/* ---------- the measured guard (BOOK-DOC-47 §7) ----------
+   The margin is measured from the prose's right edge; when `right + 40 + 188 + 8` does not fit
+   the viewport, the paragraph is a strip and the note would be clipped. The pass writes
+   `data-margin` per paragraph — this is not a second breakpoint. */
+.p[data-margin='strip'] .margin-note {
+  display: none;
+}
+.p[data-margin='strip'] .phone-strip {
+  display: block;
+}
+/* The same state puts an opened object on the phone sheet: the channel does not exist there. */
+.p[data-margin='strip'] .revision {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  z-index: 60;
+  width: auto;
+  max-height: 62dvh;
+  overflow: auto;
+  padding: 12px var(--gut) calc(14px + env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 1px solid var(--rule-2);
+  box-shadow: var(--shadow);
+  background: var(--paper-2);
+}
+
+/* ---------- the revision object: the channel placement (≥1024) ---------- */
+.revision {
+  position: absolute;
+  left: calc(100% + var(--note-gap));
+  width: var(--note-w);
+  z-index: 3;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 8px;
+  /* Inside `.p`, which is justified and `pre-line`: an inserted record is neither. */
+  text-align: left;
+  white-space: normal;
+  hyphens: manual;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: var(--paper-2);
+  box-shadow: none;
+}
+.revision-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.revision-title {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.revision-word {
+  letter-spacing: 0.14em;
+}
+.revision-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.revision-meta {
+  display: block;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.revision-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.revision-row {
+  display: block;
+}
+/* The label/value pair is `.change-facts`' stacked form; the element is a span because the
+   object opens inside a paragraph, where a `dl` would not be phrasing content. */
+.revision-label {
+  display: block;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.revision-value {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+}
+.revision-before {
+  font-style: italic;
+  color: var(--ink-2);
+}
+.revision-after {
+  color: var(--ink);
+}
+.revision-quote {
+  display: block;
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.revision-changed {
+  display: block;
+  margin: 0;
+  font-family: var(--ui);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+.revision-body {
+  display: block;
+  margin: 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink);
+}
+.revision-door {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--live);
+  text-decoration: none;
+}
+
+/* ---------- the phone strip (<1024) ---------- */
+.phone-strip {
+  display: none;
+  margin: 10px 0 0;
+  text-align: left;
+  white-space: nowrap;
+}
+.phone-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.phone-strip-row:first-child {
+  border-top: 1px solid var(--rule-2);
+}
+.phone-strip-n {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+.phone-strip-dot {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+.phone-strip-kind {
+  flex: none;
+  font-family: var(--ui);
+  font-size: var(--fs-micro);
+  color: var(--ink-2);
+}
+.phone-strip-word {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+}
+.phone-strip-go {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+.phone-strip-more {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+/* ---------- the margin's tail (§1.10): below everything, in flow ---------- */
+.margin-tail {
+  display: block;
+  width: 100%;
+}
+
+/* ---------- one breakpoint, one rule: <1024 is the strip and the sheet ---------- */
+@media (max-width: 1023px) {
+  .filing-mark {
+    width: 24px;
+    /* The design's phone tick sits 2 px inside the 24 px target (368 in [366, 390]). */
+    padding-left: 2px;
+  }
+  .filing-mark-num {
+    display: none;
+  }
+  .filing-mark.filing-alive::before {
+    display: block;
+  }
+  .margin-note {
+    display: none;
+  }
+  .phone-strip {
+    display: block;
+  }
+  .revision {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 60;
+    width: auto;
+    max-height: 62dvh;
+    overflow: auto;
+    padding: 12px var(--gut) calc(14px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--rule-2);
+    box-shadow: var(--shadow);
+    background: var(--paper-2);
+  }
+}

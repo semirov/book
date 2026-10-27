@@ -170,18 +170,10 @@
   }
 }
 
-/* ---------- empty chapter slots: slim, quiet, always present ---------- */
+/* ---------- empty chapter slots: one row, quiet, always present (BOOK-90 A) ---------- */
+/* No `.ch-h`, no big numeral, no meta line: the row in `seam-form.css` is the whole slot. */
 .ch-empty {
-  padding-top: 0;
-}
-.ch-empty .ch-h {
-  border-top-color: var(--rule);
-  padding: 11px 0 7px;
-  margin-bottom: 0;
-}
-.ch-empty .ch-n {
-  font-size: var(--fs-body);
-  color: var(--ink-2);
+  padding-top: 16px;
 }
 
 /* ---------- printing (§11.5): only the active paragraph is left-aligned ---------- */

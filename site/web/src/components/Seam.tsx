@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
+import { STATE_WORDS } from '../lib/marginalia.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
@@ -39,6 +40,8 @@ export type SeamProps = {
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
   onOpenFiling: (comment: CommentDto, origin: HTMLElement) => void;
+  /** The premise explanation line; the first empty row carries it instead while closed. */
+  premiseHint?: boolean;
 };
 
 export function Seam({
@@ -56,6 +59,7 @@ export function Seam({
   onReanchor,
   onProvenance,
   onOpenFiling,
+  premiseHint = true,
 }: SeamProps) {
   const premise = anchor === null;
   const [draft, setDraftState] = useState<SeamDraft>(
@@ -168,7 +172,7 @@ export function Seam({
       </div>
 
       {refusal === null ? null : <p className="seam-note">{refusal}</p>}
-      {premise && !frozen ? <p className="seam-note">{PREMISE_HINT}</p> : null}
+      {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
         // BOOK-70: the row prints the numeral, the reader and the moment; the state word is
@@ -225,7 +229,8 @@ export function Seam({
               onPosted={(id) => {
                 seamDrafts.drop(draftKey);
                 setOpen(false);
-                setReceipt(`${filingNumber({ id })} зарегистрировано · ждёт рассмотрения`);
+                // BOOK-90: «зарегистрировано» is the deed word; the state is the one word «ждёт».
+                setReceipt(`${filingNumber({ id })} зарегистрировано · ${STATE_WORDS.waiting}`);
                 // BOOK-63: the receipt is the fact the reader came for; the id stays out.
                 track('receipt_seen', {});
                 onPosted(entry.n);

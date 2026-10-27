@@ -41,21 +41,21 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 describe('the thread’s two lines', () => {
   it('separates the queue promise from the application', () => {
     const lines = changeLines(summary({ status: 'pending', position: 4, outcome: null, chapters: [8] }));
-    expect(lines).toMatchObject({ first: 'принято · 4-я в очереди', tone: 'waiting' });
-    expect(lines.second).toBe('правки идут по одной, в порядке записи');
+    expect(lines).toMatchObject({ first: 'идёт', tone: 'waiting' });
+    expect(lines.second).toBe('4-я в очереди');
   });
 
   it('says the chapter being written while processing', () => {
     expect(changeLines(summary({ status: 'processing', outcome: null }))).toMatchObject({
-      first: 'принято · правится',
-      second: 'глава 8',
+      first: 'идёт',
+      second: 'пишется глава 8',
     });
   });
 
   it('says the basis moved when stale', () => {
     expect(changeLines(summary({ status: 'stale' }))).toMatchObject({
-      first: 'принято · основа изменилась',
-      second: 'решается, применять ли правку',
+      first: 'ждёт',
+      second: 'основа изменилась, решается заново',
     });
   });
 
@@ -73,73 +73,76 @@ describe('the thread’s two lines', () => {
 
   it('says an adaptation was partial', () => {
     expect(changeLines(summary({ outcome: 'adapted' }))).toMatchObject({
-      first: 'внесено частично',
-      second: 'основа изменилась · дошло до глав 7 и 9',
+      first: 'внесено',
+      second: 'частично · дошло до глав 7 и 9',
     });
   });
 
   it('always states why a change was dropped', () => {
     const dropped = summary({ status: 'void', outcome: 'dropped', reason: 'в главе уже одно упоминание' });
-    expect(changeLines(dropped)).toMatchObject({ first: 'снято', second: 'в главе уже одно упоминание', tone: 'quiet' });
-    expect(progressLine(dropped)).toBe('принято → снято');
+    expect(changeLines(dropped)).toMatchObject({ first: 'ждёт', second: 'в главе уже одно упоминание', tone: 'quiet' });
+    expect(progressLine(dropped)).toBe('принято → ждёт');
   });
 
   it('distinguishes a superseded change from a dropped one', () => {
     const superseded = summary({ status: 'void', outcome: 'superseded', reason: 'правка 9 переписала абзац' });
-    expect(changeLines(superseded).first).toBe('перекрыто более поздней правкой');
+    expect(changeLines(superseded).first).toBe('ждёт');
     expect(changeLines(superseded).second).toBe('правка 9 переписала абзац');
+    // Without a public reason the deck says what happened, never just the word.
+    expect(changeLines({ ...superseded, reason: null }).second).toBe('перекрыто более поздней правкой');
+    expect(changeLines(summary({ status: 'void', outcome: 'dropped', reason: null })).second).toBe('снято');
   });
 
   it('does not hide an escalation or a failure', () => {
     expect(changeLines(summary({ status: 'escalated', outcome: 'budget', reason: 'остановлено бюджетом' }))).toMatchObject({
-      first: 'принято · ждёт решения автора',
+      first: 'ждёт',
       second: 'остановлено бюджетом',
       tone: 'escalated',
     });
-    expect(progressLine(summary({ status: 'escalated', outcome: 'budget' }))).toBe('принято → ждёт решения автора');
+    expect(progressLine(summary({ status: 'escalated', outcome: 'budget' }))).toBe('принято → ждёт');
     expect(changeLines(summary({ status: 'failed', outcome: null }))).toMatchObject({
-      first: 'не удалось внести',
-      second: 'замечание сохранено',
+      first: 'ждёт',
+      second: 'не удалось внести',
     });
   });
 });
 
 describe('BOOK-7 — a premise is not an edit', () => {
-  it('says «в основу» instead of a queue place and «замысел учтён» instead of «внесено»', () => {
+  it('says «ждёт» / «внесено» on the stamp, with the premise’s story on the second line', () => {
     const waiting = summary({ premise: true, status: 'pending', position: 4, outcome: null, chapters: [] });
-    expect(stampCopy(waiting)).toBe('в основе');
+    expect(stampCopy(waiting)).toBe('ждёт');
     expect(changeLines(waiting)).toEqual({
-      first: 'принято в основу',
-      second: 'замысел для главы 8 · ждёт первой редакции',
+      first: 'ждёт',
+      second: 'принято в основу, до первой редакции',
       tone: 'waiting',
     });
-    expect(progressLine(waiting)).toBe('принято в основу → ждёт первой редакции');
+    expect(progressLine(waiting)).toBe('принято в основу → ждёт');
 
     const applied = summary({ premise: true, reason: 'вошло в первую редакцию главы 8', chapters: [8] });
-    expect(stampCopy(applied)).toBe('в первой редакции');
+    expect(stampCopy(applied)).toBe('внесено');
     expect(changeLines(applied)).toEqual({
-      first: 'замысел учтён',
+      first: 'внесено',
       second: 'вошло в первую редакцию главы 8',
       tone: 'done',
     });
-    expect(progressLine(applied)).toBe('принято в основу → вошло в первую редакцию');
+    expect(progressLine(applied)).toBe('принято в основу → внесено → вошло в первую редакцию');
   });
 
   it('names a superseded premise as the chapter already having one, with its reason', () => {
     const superseded = summary({ premise: true, status: 'void', outcome: 'superseded', reason: 'у главы уже есть замысел' });
-    expect(stampCopy(superseded)).toBe('замысел снят');
+    expect(stampCopy(superseded)).toBe('ждёт');
     expect(changeLines(superseded)).toEqual({
-      first: 'замысел снят',
+      first: 'ждёт',
       second: 'у главы уже есть замысел',
       tone: 'quiet',
     });
-    expect(progressLine(superseded)).toBe('принято в основу → снято');
+    expect(progressLine(superseded)).toBe('принято в основу → ждёт');
   });
 
-  it('says «замысел не взят» for a writer refusal, one word on the stamp and the line', () => {
+  it('says «замысел не взят» on the line for a writer refusal, «ждёт» on the stamp', () => {
     const refused = summary({ premise: true, status: 'void', outcome: 'dropped', reason: 'не беру: не из этой сцены' });
-    expect(stampCopy(refused)).toBe('замысел не взят');
-    expect(changeLines(refused).first).toBe('замысел не взят');
+    expect(stampCopy(refused)).toBe('ждёт');
+    expect(changeLines(refused).first).toBe('ждёт');
     expect(premiseOutcomeCopy(refused)).toBe('замысел не взят');
   });
 
@@ -211,12 +214,14 @@ describe('ranges and labels', () => {
     for (const forbidden of ['вердикт', 'редактор', 'консультант', 'findings']) expect(raw).not.toContain(forbidden);
   });
 
-  it('stamps the state, not the promise', () => {
-    expect(stampCopy(summary({ status: 'pending', position: 2 }))).toBe('ждёт очереди');
+  it('stamps one of the three state words, not a phrase', () => {
+    expect(stampCopy(summary({ status: 'pending', position: 2 }))).toBe('идёт');
     expect(stampCopy(summary({ status: 'processing' }))).toBe('идёт');
     expect(stampCopy(summary())).toBe('внесено');
-    expect(stampCopy(summary({ outcome: 'adapted' }))).toBe('внесено частично');
-    expect(stampCopy(summary({ status: 'void', outcome: 'dropped' }))).toBe('снято');
-    expect(stampCopy(summary({ status: 'escalated', outcome: 'budget' }))).toBe('ждёт решения');
+    expect(stampCopy(summary({ outcome: 'adapted' }))).toBe('внесено');
+    expect(stampCopy(summary({ status: 'void', outcome: 'dropped' }))).toBe('ждёт');
+    expect(stampCopy(summary({ status: 'escalated', outcome: 'budget' }))).toBe('ждёт');
+    expect(stampCopy(summary({ status: 'stale' }))).toBe('ждёт');
+    expect(stampCopy(summary({ status: 'failed', outcome: null }))).toBe('ждёт');
   });
 });

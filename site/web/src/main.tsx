@@ -8,6 +8,7 @@ import { staticPage } from './lib/route.ts';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
+import './styles/running-head.css';
 import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';
@@ -20,6 +21,7 @@ import './styles/focus.css';
 import './styles/seam.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
+import './styles/marginalia.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's
 // height at title scale and owns every `data-seq` delay.
 import './styles/first-load.css';

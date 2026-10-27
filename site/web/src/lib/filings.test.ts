@@ -47,16 +47,19 @@ const STALE = comment({
 });
 
 describe('filingInk', () => {
-  it('gives every state a word and a rule shape, never colour alone', () => {
-    expect(filingInk(NEW)).toEqual({ word: 'ждёт рассмотрения', rule: 'dotted', tone: 'quiet' });
-    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'в очереди', rule: 'solid', tone: 'live' });
+  it('gives every state one of the three words and a rule shape, never colour alone', () => {
+    // BOOK-90: the word is the vocabulary's (waiting · working · landed); the shape and the
+    // ink stay this table's. A refusal is «ждёт», struck through — the fact is on line two.
+    expect(filingInk(NEW)).toEqual({ word: 'ждёт', rule: 'dotted', tone: 'quiet' });
+    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'идёт', rule: 'solid', tone: 'live' });
     expect(filingInk({ status: 'applied' })).toEqual({ word: 'внесено', rule: 'none', tone: 'done' });
-    expect(filingInk({ status: 'rejected' })).toEqual({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
+    expect(filingInk({ status: 'rejected' })).toEqual({ word: 'ждёт', rule: 'solid', tone: 'stopped' });
     expect(filingInk({ status: 'superseded' }).rule).toBe('solid');
+    expect(filingInk({ status: 'batched' }).word).toBe('идёт');
   });
 
   it('falls back to the quiet wait for a state a build does not know', () => {
-    expect(filingInk({ status: 'something' as CommentDto['status'] }).word).toBe('ждёт рассмотрения');
+    expect(filingInk({ status: 'something' as CommentDto['status'] }).word).toBe('ждёт');
   });
 });
 

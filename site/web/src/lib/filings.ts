@@ -1,6 +1,6 @@
 import type { CommentDto } from '@book/shared';
 
-import { commentStatusLine } from './commentView.ts';
+import { filingMarginalia } from './marginalia.ts';
 
 /**
  * BOOK-DOC-34 §2.5 — the two persistent marks a filing leaves in the text.
@@ -20,29 +20,35 @@ import { commentStatusLine } from './commentView.ts';
 export type FilingRule = 'solid' | 'dotted' | 'none';
 
 export type FilingInk = {
-  /** The word the surface prints for the state — never colour alone. */
+  /** The word the surface prints for the state — never colour alone (BOOK-90, one source). */
   word: string;
   rule: FilingRule;
   /** `live` (in the queue or in work), `quiet` (waiting), `stopped` (decided against). */
   tone: 'live' | 'quiet' | 'stopped' | 'done';
 };
 
-const RULES: Record<string, FilingInk> = {
-  new: { word: 'ждёт рассмотрения', rule: 'dotted', tone: 'quiet' },
-  batched: { word: 'в проходе триажа', rule: 'solid', tone: 'live' },
-  delivered: { word: 'в проходе триажа', rule: 'solid', tone: 'live' },
-  accepted: { word: 'в очереди', rule: 'solid', tone: 'live' },
-  applied: { word: 'внесено', rule: 'none', tone: 'done' },
-  superseded: { word: 'снято', rule: 'solid', tone: 'stopped' },
-  rejected: { word: 'отклонено', rule: 'solid', tone: 'stopped' },
-  quarantined: { word: 'проверяется', rule: 'solid', tone: 'stopped' },
-  expired: { word: 'не рассмотрено', rule: 'solid', tone: 'stopped' },
-  hidden: { word: 'скрыто', rule: 'none', tone: 'stopped' },
+/**
+ * BOOK-90 — the **shape** of a state, never its word: the word comes from `marginalia.ts`,
+ * the rule and the ink from this table. A refusal keeps its solid rule and its stopped tone
+ * («ждёт», struck through), and the fact that it was refused lives on the second line.
+ */
+const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
+  new: { rule: 'dotted', tone: 'quiet' },
+  batched: { rule: 'solid', tone: 'live' },
+  delivered: { rule: 'solid', tone: 'live' },
+  accepted: { rule: 'solid', tone: 'live' },
+  applied: { rule: 'none', tone: 'done' },
+  superseded: { rule: 'solid', tone: 'stopped' },
+  rejected: { rule: 'solid', tone: 'stopped' },
+  quarantined: { rule: 'solid', tone: 'stopped' },
+  expired: { rule: 'solid', tone: 'stopped' },
+  hidden: { rule: 'none', tone: 'stopped' },
 };
 
 /** State → the ink, the rule shape and the word; unknown states fall to the quiet row. */
-export function filingInk(comment: Pick<CommentDto, 'status'>): FilingInk {
-  return RULES[comment.status] ?? RULES.new!;
+export function filingInk(comment: Pick<CommentDto, 'status'> & { premise?: boolean }): FilingInk {
+  const shape = SHAPES[comment.status] ?? SHAPES.new!;
+  return { word: filingMarginalia(comment).word, ...shape };
 }
 
 /** The paragraph's sentence still exists: a stale anchor shows no rule and no mark. */
@@ -53,6 +59,22 @@ export function isStale(comment: Pick<CommentDto, 'anchor'>): boolean {
 /** Pending filings never collapse; a decided one may (it becomes history on apply). */
 export function isPending(comment: Pick<CommentDto, 'status'>): boolean {
   return comment.status === 'new' || comment.status === 'batched' || comment.status === 'delivered' || comment.status === 'accepted';
+}
+
+/**
+ * BOOK-90 — **alive** is what the margin shows at once: everything that still stands on a
+ * line of prose, waiting or in work. Held, rejected-but-undecided, expired and quarantined
+ * are alive (they wait, they are not history); `applied` is a quiet tick and `hidden` prints
+ * nothing anywhere. A filing whose anchor no longer resolves has no line to stand on.
+ */
+export function isAlive(comment: Pick<CommentDto, 'status' | 'anchor'>): boolean {
+  if (isStale(comment)) return false;
+  return comment.status !== 'applied' && comment.status !== 'hidden';
+}
+
+/** A landed change leaves the 1 px tick: one per sentence, opened on click. */
+export function isLanded(comment: Pick<CommentDto, 'status' | 'anchor'>): boolean {
+  return comment.status === 'applied' && !isStale(comment);
 }
 
 /** Newest first; pending before decided, exactly as the strip lists them. */
@@ -104,7 +126,7 @@ export function filingsForBlock(comments: readonly CommentDto[], blockId: string
 }
 
 /** The strip shows two rows and one quiet door to the rest (§2.5 overflow). */
-export function stripFilings(filings: SentenceFilings): { shown: CommentDto[]; more: number } {
+export function stripFilings(filings: { all: readonly CommentDto[] }): { shown: CommentDto[]; more: number } {
   const shown = filings.all.slice(0, 2);
   return { shown, more: Math.max(0, filings.all.length - shown.length) };
 }
@@ -119,7 +141,7 @@ export function staleLine(comments: readonly CommentDto[]): string | null {
 
 /** The state word a panel header prints; the same table as the mark, one source. */
 export function filingWord(comment: CommentDto): string {
-  return commentStatusLine(comment).state;
+  return filingMarginalia(comment).word;
 }
 
 /** The sentence text a filing cites, shortened for a strip row but never re-flowed. */

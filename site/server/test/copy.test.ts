@@ -30,6 +30,8 @@ const COPY_MODULES = [
   'web/src/lib/draft.ts',
   'web/src/lib/kindChoices.ts',
   'web/src/lib/changeStatus.ts',
+  // BOOK-90: the margin's vocabulary and its second-line deck.
+  'web/src/lib/marginalia.ts',
   'web/src/lib/cascade.ts',
   'web/src/lib/deed.ts',
   'web/src/lib/focus.ts',

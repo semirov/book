@@ -93,11 +93,11 @@ export const CHIP_PINS: readonly ChipPin[] = [
   { surface: 'colophon', condition: 'no chapter has text', text: 'книга · глав ещё нет', length: 20, tier: 'sentence' },
   { surface: 'colophon', condition: 'twelve written chapters', text: 'книга · 12 глав из 67', length: 21, tier: 'sentence' },
   {
-    surface: 'filing panel · .filing-sentence',
-    condition: 'an applied filing names the chapter and the right',
-    text: 'внесено в главу 07 · право на ваш текст перешло автору книги',
-    length: 60,
-    tier: 'sentence',
+    surface: 'filing panel · .filing-state',
+    condition: 'a landed filing (the receipt is the fact line, not the state)',
+    text: 'внесено',
+    length: 7,
+    tier: 'state',
   },
 ];
 
@@ -193,28 +193,12 @@ describe('the chip table (BOOK-70)', () => {
     }
   });
 
-  it('pins the filing states the audits named, with the form each one gets', () => {
-    const forms = new Map(FILING_PINS.map((pin) => [pin.state, pin.form]));
-    const expected: ReadonlyArray<readonly [string, CommentLine['form']]> = [
-      ['внесено', 'chip'],
-      ['ждёт рассмотрения', 'chip'],
-      ['в проходе триажа', 'chip'],
-      ['отклонено', 'chip'],
-      ['проверяется', 'chip'],
-      ['скрыто', 'chip'],
-      ['принято в основу', 'chip'],
-      ['замысел снят', 'chip'],
-      ['замысел не взят', 'chip'],
-      ['вошло в первую редакцию главы 12', 'sentence'],
-      ['принято · правка в очереди', 'sentence'],
-      ['снято: текст успел измениться', 'sentence'],
-      ['не рассмотрено: проход не состоялся', 'sentence'],
-      ['внесено в главу 12 · право на ваш текст перешло автору книги', 'sentence'],
-    ];
-    for (const [state, form] of expected) expect(forms.get(state), state).toBe(form);
-    // And the three clause states are the ones that used to break a 12 px nowrap chip.
-    for (const clause of ['принято · правка в очереди', 'снято: текст успел измениться', 'не рассмотрено: проход не состоялся']) {
-      expect(clause.length, clause).toBeGreaterThan(CHIP_MAX_CHARS);
+  it('pins the filing states the audits named: one of three words, always a chip', () => {
+    const states = [...new Set(FILING_PINS.map((pin) => pin.state))].sort();
+    expect(states).toEqual(['внесено', 'ждёт', 'идёт']);
+    for (const pin of FILING_PINS) {
+      expect(pin.form, pin.state).toBe('chip');
+      expect(pin.state.length, pin.state).toBeLessThanOrEqual(CHIP_MAX_CHARS);
     }
   });
 

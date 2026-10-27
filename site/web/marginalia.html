@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru" data-theme="day">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>marginalia — BOOK-90</title>
+    <!--
+      BOOK-90 — a dev-only fixture page for the marginalia surfaces, the empty chapter and the
+      running head. It is not an input of the production build (the build has one input,
+      `index.html`) and nothing in the app links to it.
+
+      `npm run dev -w @book/web` → http://127.0.0.1:5173/marginalia.html
+      `?before=1` renders the pre-change empty slot, for the comparison screenshot.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/dev/marginalia.tsx"></script>
+  </body>
+</html>

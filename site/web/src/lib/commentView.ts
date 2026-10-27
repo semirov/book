@@ -1,13 +1,18 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
-import { receiptLine } from './terms.ts';
+import { filingConsequence, filingMarginalia, landingReceipt, PREMISE_PENDING } from './marginalia.ts';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
  *
- * The thread never collapses "accepted" into "applied": acceptance is a promise, application
- * is a later fact, and a note that was never considered says so. The line is data-driven and
- * carries no gate vocabulary.
+ * BOOK-90 — the **state** is one of the three words («ждёт» · «идёт» · «внесено»), read from
+ * `lib/marginalia.ts`; the **detail** carries the fact that word cannot: a refusal, a
+ * superseded anchor, a held check, an expired pass, the receipt of a landed change.
+ *
+ * BOOK-70 — the state is printed once, in the form its own text asks for: a chip (12 px,
+ * uppercase, one line) when the text fits one, a sentence (14 px, the book's voice, may wrap)
+ * when it is a receipt or a clause. The three words always fit a chip; a clause lives in the
+ * detail line, so a state never has to overflow to say what happened.
  */
 
 /** The line a filing panel prints as a one-line chip; past it, the line is a sentence. */
@@ -28,6 +33,11 @@ export type CommentLine = {
   form: 'chip' | 'sentence';
 };
 
+/** The deck's fact, and the reader's own reason beside it when the record has one. */
+function joinDetail(fact: string, reason: string | null): string {
+  return reason === null || reason.length === 0 ? fact : `${fact} · ${reason}`;
+}
+
 /** The form, decided in one place: the cap, the clause's punctuation, or an explicit receipt. */
 function lineOf(
   state: string,
@@ -42,63 +52,63 @@ function lineOf(
 export function commentStatusLine(comment: CommentDto): CommentLine {
   // BOOK-7: a premise never says «правка в очереди» — it waits for the chapter's first pass.
   if (comment.premise) return premiseLine(comment);
+  const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'new':
-      return lineOf('ждёт рассмотрения', null, 'quiet');
+      return lineOf(word, null, 'quiet');
     case 'batched':
     case 'delivered':
-      return lineOf('в проходе триажа', null, 'live');
+      return lineOf(word, null, 'live');
     case 'accepted':
-      // BOOK-70: this one names a decision and a place (« · »), so it is a sentence, not a chip.
-      return lineOf('принято · правка в очереди', comment.reason, 'live');
-    case 'applied':
+      return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
+    case 'applied': {
       // BOOK-58: the receipt of an entered variant names the chapter and the right that moved
-      // with it — the bare «внесено в главу N» said half of what happened.
-      return lineOf(
-        comment.applied === null ? 'внесено' : receiptLine(String(comment.applied.chapter).padStart(2, '0')),
-        comment.reason,
-        'done',
-        // A receipt only when it really names the chapter and the right; «внесено» is a chip.
-        comment.applied !== null,
-      );
+      // with it — the state is the word «внесено», the receipt is its detail. A note moved no
+      // right: its own terminal is «замечание сохранено».
+      const receipt =
+        comment.applied === null || comment.interventionKind === null
+          ? filingConsequence(comment)
+          : landingReceipt(comment.applied.chapter, comment.applied.rev);
+      return lineOf(word, joinDetail(receipt, comment.reason), 'done');
+    }
     case 'superseded':
-      return lineOf('снято: текст успел измениться', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('снято: текст успел измениться', comment.reason), 'stopped');
     case 'rejected':
-      return lineOf('отклонено', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('отклонено', comment.reason), 'stopped');
     case 'quarantined':
-      return lineOf('проверяется', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('проверяется перед триажем', comment.reason), 'stopped');
     case 'expired':
-      return lineOf('не рассмотрено: проход не состоялся', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('проход не состоялся', comment.reason), 'stopped');
     case 'hidden':
-      return lineOf('скрыто', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('скрыто', comment.reason), 'stopped');
     default:
-      return lineOf('ждёт рассмотрения', null, 'quiet');
+      return lineOf(word, comment.reason, 'quiet');
   }
 }
 
 /**
  * BOOK-16 — the kind a reader brought, as the one plain word the thread prints beside the
- * decision («документ · принято · правка в очереди»). No id reaches the page and `null`
- * prints nothing at all, which is what a note and a pre-BOOK-16 row look like.
+ * decision («документ · идёт»). No id reaches the page and `null` prints nothing at all,
+ * which is what a note and a pre-BOOK-16 row look like.
  */
 export function interventionKindWord(comment: Pick<CommentDto, 'interventionKind'>): string | null {
   return interventionKindLabel(comment.interventionKind);
 }
 
-/** BOOK-7 — the four states of a premise, in the thread's own words. */
+/** BOOK-7 — the four states of a premise, in the three words plus the fact (BOOK-90). */
 function premiseLine(comment: CommentDto): CommentLine {
-  const chapter = comment.applied?.chapter ?? comment.chapter;
+  const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'applied':
-      // The state already names the chapter and the edition; the reason would repeat it. It
-      // names two things, so it is a sentence by the same cap (BOOK-70).
-      return lineOf(`вошло в первую редакцию главы ${chapter}`, null, 'done', true);
+      // The state is the word; the edition it entered is the detail, and the reason would
+      // only repeat it.
+      return lineOf(word, filingConsequence(comment), 'done');
     case 'superseded':
-      return lineOf('замысел снят', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('замысел снят', comment.reason), 'stopped');
     case 'rejected':
-      return lineOf('замысел не взят', comment.reason, 'stopped');
+      return lineOf(word, joinDetail('замысел не взят', comment.reason), 'stopped');
     default:
-      return lineOf('принято в основу', comment.reason, 'live');
+      return lineOf(word, joinDetail(PREMISE_PENDING, comment.reason), 'live');
   }
 }
 

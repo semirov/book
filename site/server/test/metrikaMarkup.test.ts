@@ -62,6 +62,10 @@ describe('the reader’s fields are never recorded', () => {
       ['components/OwnTrace.tsx', 'className="own-trace ym-disable-clickmap"'],
       ['components/ChangeCard.tsx', 'className="change-card ym-hide-content"'],
       ['components/FilingPanel.tsx', 'filing-panel ym-hide-content'],
+      // BOOK-90: the margin note and the revision object render a reader's name and words.
+      ['components/MarginNote.tsx', 'className="margin-note ym-hide-content"'],
+      ['components/PhoneStrip.tsx', 'className="phone-strip ym-hide-content"'],
+      ['components/RevisionObject.tsx', 'className="revision ym-hide-content"'],
       ['components/ProvenancePanel.tsx', 'prov-panel ym-hide-content'],
       ['components/Chronicle.tsx', 'className="chronicle page sheet ym-hide-content"'],
       ['components/Chronicle.tsx', 'className="chr-row ym-hide-content"'],
