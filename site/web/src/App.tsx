@@ -25,7 +25,7 @@ import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
 import { ParagraphChain } from './components/ParagraphChain.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
-import { ChapterArticle } from './components/ChapterArticle.tsx';
+import { ChapterList } from './components/ChapterList.tsx';
 import { FocusView } from './components/FocusView.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
@@ -396,6 +396,11 @@ export function App() {
   };
   /** Reaching a chapter from a card: the card closes, the chapter is opened. */
   const toChapter = (n: number): void => (card.close(), scrollToChapter(n));
+  /** A filing was posted in a chapter: its marks and the register refresh (BOOK-DOC-34). */
+  const onPosted = (n: number): void => {
+    void refreshComments(n);
+    noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
+  };
 
   const views = <ViewSwitch view={view} onChange={setView} />;
   const focusView =
@@ -448,33 +453,19 @@ export function App() {
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
-      <main>
-        {catalog.map((entry) => {
-          const forwardCaret = markers.carets.forward === entry.n;
-          const backwardCaret = markers.carets.backward === entry.n;
-          const show = forwardCaret || backwardCaret;
-          const live = (forwardCaret && markers.live.forward) || (backwardCaret && markers.live.backward);
-          return (
-            <ChapterArticle
-              key={entry.n}
-              entry={entry}
-              revision={revisions[entry.n] ?? null}
-              revising={revising[entry.n] ?? null}
-              caret={show ? { show, live } : null}
-              fresh={fresh === entry.n}
-              onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
-              comments={chapterFeed[entry.n]?.items ?? []}
-              onRead={loadChapter}
-              onPosted={(n) => {
-                void refreshComments(n);
-                noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
-              }}
-              composer={composer}
-              viewer={viewer}
-            />
-          );
-        })}
-      </main>
+      <ChapterList
+        catalog={catalog}
+        revisions={revisions}
+        revising={revising}
+        markers={markers}
+        fresh={fresh}
+        chapterFeed={chapterFeed}
+        onRead={loadChapter}
+        onPosted={onPosted}
+        onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
+        composer={composer}
+        viewer={viewer}
+      />
       {/* §6C.5: the end matter follows the last chapter, before the discussion. */}
       <EndMatter
         imprint={front.imprint}

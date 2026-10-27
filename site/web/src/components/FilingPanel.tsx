@@ -3,9 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { placePanel } from '../lib/cssom.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
-import { filingNumber, filingWord } from '../lib/filings.ts';
+import { filingNumber } from '../lib/filings.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
-import { receiptLine } from '../lib/terms.ts';
 
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
@@ -79,13 +78,7 @@ export function FilingPanel({
       {quote === null ? null : <p className="filing-quote">«{quote}»</p>}
       <p className="filing-body">{comment.body}</p>
       <p className={`filing-state ink-${line.tone}`}>{line.state}</p>
-      <p className="filing-fact">
-        {comment.applied === null
-          ? 'применения пока нет'
-          : `${receiptLine(String(comment.applied.chapter).padStart(2, '0'))} · ревизия ${comment.applied.rev}`}
-        {line.detail === null ? '' : ` · ${line.detail}`}
-      </p>
-      <p className="filing-word">состояние: {filingWord(comment)}</p>
+      {line.detail === null ? null : <p className="filing-fact">{line.detail}</p>}
     </aside>
   );
 }

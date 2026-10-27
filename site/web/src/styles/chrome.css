@@ -11,9 +11,9 @@
   box-shadow: 0 1px 0 var(--rule);
   transition: background var(--dur-fade) var(--ease-inout);
 }
-/* BOOK-DOC-35 §5 — the running head: one row at the frame's width. `display: contents` on
-   the two label rows makes brand · live · «замечания» one line of three flex items; the
-   two-row head is the narrow case, restored at ≤1023. */
+/* BOOK-DOC-35 §5 / BOOK-90 B — the running head: two clusters on one line at the frame's
+   width. The brand and the chapter chip sit together on the left (one 24 px gap); the live
+   chip and «замечания» sit together on the right. The two-row head is the narrow case. */
 .top-in {
   display: flex;
   align-items: baseline;
@@ -25,11 +25,11 @@
 .top-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
-.top-in .top-row {
-  display: contents;
+/* The brand and the chapter chip are one cluster: the chip follows the brand, not the line. */
+.top-in .top-row:first-child {
+  gap: 24px;
 }
 .top-row + .top-row {
   margin-top: 0;
@@ -154,8 +154,9 @@ p.premise {
     padding-top: 11px;
     padding-bottom: 8px;
   }
-  .top-in .top-row {
-    display: flex;
+  /* The narrow head keeps its two rows; inside a row the two facts sit at its ends. */
+  .top-row {
+    justify-content: space-between;
   }
   .top-row + .top-row {
     margin-top: 5px;

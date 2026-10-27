@@ -67,62 +67,9 @@
   color: var(--ink-3);
 }
 
-/* ---------- marks and the cited rule (§2.5) ---------- */
-/* BOOK-33: the numeral *is* the button. The 24×24 target is laid into the paragraph's
-   right margin on the mark's line (CSSOM writes the line offset), so it covers no prose and
-   no `style` attribute reaches the markup. */
-.filing-mark-slot {
-  position: static;
-  display: inline;
-}
-.filing-mark {
-  position: absolute;
-  right: -26px;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-}
-.filing-mark-num {
-  padding: 0 1px;
-  border: 1px solid currentColor;
-  background: var(--paper-2);
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.1;
-  white-space: nowrap;
-}
-.filing-mark.ink-live,
-.filing-mark-num.ink-live {
-  color: var(--live);
-}
-.filing-mark.ink-quiet,
-.filing-mark-num.ink-quiet {
-  color: var(--ink-3);
-}
-.filing-mark.ink-stopped,
-.filing-mark-num.ink-stopped {
-  color: var(--rule-2);
-}
-.filing-mark.ink-done,
-.filing-mark-num.ink-done {
-  color: var(--ink-2);
-}
-.filing-mark:focus-visible {
-  outline: 2px solid var(--live);
-  outline-offset: -2px;
-}
-.filing-mark-more {
-  margin-left: 2px;
-}
+/* ---------- the cited rule (§2.5) ---------- */
+/* BOOK-90: the mark itself (numeral, tick, target) lives in `marginalia.css`; the sentence's
+   underline stays here — a cited sentence is the seam's own instrument. */
 .cited {
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
@@ -142,7 +89,8 @@
   text-decoration-color: var(--ink-3);
 }
 .cited.ink-stopped {
-  text-decoration-color: var(--rule-2);
+  /* BOOK-90: `--rule-2` is 2.10:1 — never a text ink; the stopped state is struck, not paled. */
+  text-decoration-color: var(--ink-2);
 }
 .ink-live {
   color: var(--live);
@@ -151,7 +99,12 @@
   color: var(--ink-3);
 }
 .ink-stopped {
-  color: var(--rule-2);
+  /* BOOK-90: the shared text ink of a stopped state (2.10:1 was a contrast failure). */
+  color: var(--ink-2);
+}
+.ink-done {
+  /* Every tone has an ink: a landed state's line is quiet, never an unstyled inheritance. */
+  color: var(--ink-2);
 }
 .p-stale {
   display: block;
@@ -168,16 +121,21 @@
   cursor: pointer;
 }
 
-/* ---------- empty slot (§2.4) ---------- */
+/* ---------- the empty chapter: one row (BOOK-90 A) ---------- */
+/* `02  замысел ······················` — numeral, word, dotted field. The row is capped at the
+   prose's measure so the field ends on the prose's right edge even when the page frame grows;
+   the last cell is the page number's slot (BOOK-89): a fourth child takes it, the `1fr` field
+   shrinks, and no rule here changes. */
 .premise {
-  margin: 4px 0 0;
+  margin: 0;
 }
 .premise-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 96px;
-  gap: 10px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  column-gap: 12px;
   align-items: center;
   width: 100%;
+  max-width: var(--measure);
   min-height: 44px;
   margin: 0;
   padding: 0;
@@ -192,38 +150,41 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
+/* The state slot: «замысел», a real chapter title, or a held premise's state word. */
+.premise-label {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
 .premise-field {
   min-width: 0;
+}
+/* An empty field is a leader: it starts after the word and ends on the prose's right edge. */
+.premise-leader {
+  height: 1px;
+  border-top: 1px dotted var(--rule);
+}
+/* A filled blank keeps the premise's words on the same line, then the page number's slot. */
+.premise-quote {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   border-bottom: 1px dotted var(--rule);
   font-family: var(--serif);
   font-style: italic;
   font-size: var(--fs-note);
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--ink-2);
 }
-.premise-label {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.premise-quote {
-  font-style: italic;
-}
-.premise-state,
 .premise-hint {
   margin: 2px 0 0;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
-  color: var(--ink-3);
-}
-.premise-hint {
+  max-width: var(--measure);
   font-family: var(--ui);
   font-size: var(--fs-label);
+  line-height: 1.35;
+  color: var(--ink-3);
 }
 
 /* ---------- desktop (§2.8) ---------- */
@@ -264,13 +225,6 @@
 @media (max-width: 1023px) {
   .seam-rail {
     display: none;
-  }
-}
-/* The phone gutter is 24px, so a mark hung at −26 would clip 2px at the viewport edge: at the
-   narrow step it hangs at −22 and keeps its 24 × 24 target. */
-@media (max-width: 599px) {
-  .filing-mark {
-    right: -22px;
   }
 }
 @media (max-width: 479px) {

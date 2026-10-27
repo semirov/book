@@ -14,9 +14,11 @@ import { Authors } from './Authors.tsx';
 import { ChangeCard } from './ChangeCard.tsx';
 import { Chronicle, TimelineRow } from './Chronicle.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
+import { MarginNote } from './MarginNote.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { RevisionObject } from './RevisionObject.tsx';
 import type { ProvenanceView } from '../lib/provenance.ts';
 
 /**
@@ -200,6 +202,21 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expectMasked(html, SENTINEL.body, '.filing-panel');
   });
 
+  it('masks the margin note: the author and the quoted sentence', () => {
+    const html = renderToStaticMarkup(<MarginNote comment={COMMENT} onOpen={() => undefined} />);
+    expectMasked(html, SENTINEL.name, '.margin-note');
+    expectMasked(html, SENTINEL.quote, '.margin-note');
+  });
+
+  it('masks the revision object: the name, the quote and the body', () => {
+    const html = renderToStaticMarkup(
+      <RevisionObject comment={COMMENT} text={SENTINEL.quote} onClose={() => undefined} />,
+    );
+    expectMasked(html, SENTINEL.name, '.revision');
+    expectMasked(html, SENTINEL.quote, '.revision');
+    expectMasked(html, SENTINEL.body, '.revision');
+  });
+
   it('masks the provenance panel’s chain and rows', () => {
     const html = renderToStaticMarkup(<ProvenancePanel view={VIEW} anchor={null} onClose={() => undefined} />);
     expectMasked(html, `правка 3 · ${SENTINEL.name}`, '.prov-panel');
@@ -230,7 +247,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
   it('masks a filled premise slot, which shows the premise’s own first line', () => {
     const html = renderToStaticMarkup(
       <PremiseRow
-        row={{ n: 2, label: 'замысел', quote: SENTINEL.body, state: 'ждёт рассмотрения', actionable: true }}
+        row={{ n: 2, word: 'замысел', quote: SENTINEL.body, actionable: true }}
         onOpen={() => undefined}
       />,
     );

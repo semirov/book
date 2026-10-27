@@ -98,15 +98,17 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
   it('prints the kind beside the decision, as one plain word', () => {
     const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} />);
     // The kind sits in front of the decision, one word, inside the same line.
-    expect(html).toContain('<span class="comment-kind">свидетельство · </span>принято · правка в очереди');
+    // BOOK-90: the state is the word «идёт»; the queue fact is the detail.
+    expect(html).toContain('<span class="comment-kind">свидетельство · </span>идёт');
+    expect(html).toContain('правка в очереди на запись · входит в книгу');
   });
 
   it('prints nothing for a note or a row stored before BOOK-16', () => {
     const html = renderToStaticMarkup(
       <Discussion depth={2} comments={[comment({ interventionKind: null, proposedText: null })]} />,
     );
-    expect(html).toContain('принято · правка в очереди');
-    expect(html).not.toContain(' · принято');
+    expect(html).toContain('замечание в очереди · входит в книгу');
+    expect(html).not.toContain('свидетельство');
   });
 
   it('names the kind on the change card and leaks no id or gate role', () => {

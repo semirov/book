@@ -8,6 +8,7 @@ import { staticPage } from './lib/route.ts';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
+import './styles/running-head.css';
 import './styles/consent.css';
 import './styles/book.css';
 import './styles/live.css';
@@ -18,6 +19,7 @@ import './styles/focus.css';
 import './styles/seam.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
+import './styles/marginalia.css';
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('#root is missing from index.html');

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { filingNumber, filingQuote, filingWord, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingInk, filingNumber, filingQuote, filingWord, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { STATE_WORDS } from '../lib/marginalia.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
 import { InterventionForm } from './InterventionForm.tsx';
@@ -39,6 +40,8 @@ export type SeamProps = {
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
   onOpenFiling: (comment: CommentDto, origin: HTMLElement) => void;
+  /** The premise explanation line; the row carries it instead while its strip is closed. */
+  premiseHint?: boolean;
 };
 
 export function Seam({
@@ -56,6 +59,7 @@ export function Seam({
   onReanchor,
   onProvenance,
   onOpenFiling,
+  premiseHint = true,
 }: SeamProps) {
   const premise = anchor === null;
   const [draft, setDraftState] = useState<SeamDraft>(
@@ -168,7 +172,7 @@ export function Seam({
       </div>
 
       {refusal === null ? null : <p className="seam-note">{refusal}</p>}
-      {premise && !frozen ? <p className="seam-note">{PREMISE_HINT}</p> : null}
+      {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
         <button
@@ -178,7 +182,7 @@ export function Seam({
           data-status={comment.status}
           onClick={(event) => openFiling(comment, event.currentTarget)}
         >
-          <span className={`seam-filing-line ink-${comment.status === 'new' ? 'quiet' : 'live'}`}>
+          <span className={`seam-filing-line ink-${filingInk(comment).tone}`}>
             <span className="seam-filing-n">{filingNumber(comment)}</span>
             <span>{comment.author}</span>
             <span className="seam-filing-stamp">{commentStamp(comment.createdAt)}</span>
@@ -222,7 +226,8 @@ export function Seam({
               onPosted={(id) => {
                 seamDrafts.drop(draftKey);
                 setOpen(false);
-                setReceipt(`${filingNumber({ id })} зарегистрировано · ждёт рассмотрения`);
+                // BOOK-90: «зарегистрировано» is the deed word; the state is the one word «ждёт».
+                setReceipt(`${filingNumber({ id })} зарегистрировано · ${STATE_WORDS.waiting}`);
                 // BOOK-63: the receipt is the fact the reader came for; the id stays out.
                 track('receipt_seen', {});
                 onPosted(entry.n);

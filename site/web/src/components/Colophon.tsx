@@ -5,6 +5,7 @@ import { useCounterConfigured } from '../lib/analytics.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
+import { MarginTail } from './MarginTail.tsx';
 
 /**
  * The imprint line (`imprint.copyright`) lives here: the cover no longer carries «©»
@@ -26,45 +27,49 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
   };
 
   return (
-    <footer className="page sheet colophon" id="colo">
-      <div className="row">
-        <span>
-          книга · {state.chapters.count} {plural(state.chapters.count, 'глава', 'главы', 'глав')} из{' '}
-          {TOTAL_CHAPTERS}
-        </span>
-      </div>
-      <div className="row">
-        <span>печатается по ходу письма</span>
-        <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
-      </div>
-      {analyticsConfigured ? (
-        // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader
-        // to the undecided state, and the strip asks again. BOOK-77 (F2): a live counter stops
-        // on the spot (cookies cleared, one reload), so the click is a real withdrawal.
+    <>
+      <footer className="page sheet colophon" id="colo">
         <div className="row">
-          <span className="analytics-line">
-            аналитика: {consent === 'granted' ? 'включена' : 'выключена'} ·{' '}
-            <button type="button" className="analytics-change" onClick={resetConsent}>
-              изменить
-            </button>
+          <span>
+            книга · {state.chapters.count} {plural(state.chapters.count, 'глава', 'главы', 'глав')} из{' '}
+            {TOTAL_CHAPTERS}
           </span>
         </div>
-      ) : null}
-      <div className="row">
-        <span>
-          {imprint.copyright} · <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
-        </span>
-        <button
-          className="theme"
-          type="button"
-          onClick={toggle}
-          aria-pressed={theme === 'night'}
-          aria-label={theme === 'night' ? 'включить дневной бланк' : 'включить ночную смену'}
-        >
-          <span className="switch" aria-hidden="true" />
-          {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
-        </button>
-      </div>
-    </footer>
+        <div className="row">
+          <span>печатается по ходу письма</span>
+          <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
+        </div>
+        {analyticsConfigured ? (
+          // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader
+          // to the undecided state, and the strip asks again. BOOK-77 (F2): a live counter stops
+          // on the spot (cookies cleared, one reload), so the click is a real withdrawal.
+          <div className="row">
+            <span className="analytics-line">
+              аналитика: {consent === 'granted' ? 'включена' : 'выключена'} ·{' '}
+              <button type="button" className="analytics-change" onClick={resetConsent}>
+                изменить
+              </button>
+            </span>
+          </div>
+        ) : null}
+        <div className="row">
+          <span>
+            {imprint.copyright} · <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
+          </span>
+          <button
+            className="theme"
+            type="button"
+            onClick={toggle}
+            aria-pressed={theme === 'night'}
+            aria-label={theme === 'night' ? 'включить дневной бланк' : 'включить ночную смену'}
+          >
+            <span className="switch" aria-hidden="true" />
+            {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
+          </button>
+        </div>
+      </footer>
+      {/* BOOK-90 §1.10: the margin's tail lives after the colophon — below everything. */}
+      <MarginTail />
+    </>
   );
 }

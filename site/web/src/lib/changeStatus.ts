@@ -18,6 +18,7 @@ import {
 } from '@book/shared';
 
 import { plural } from './format.ts';
+import { changeWord, PREMISE_PENDING } from './marginalia.ts';
 
 export type ChangeLines = {
   first: string;
@@ -27,21 +28,9 @@ export type ChangeLines = {
 
 /** The stamp on the card and the thread: one fact, never a second line (§DESIGN 7.10). */
 export function stampCopy(change: Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean }): string {
-  // BOOK-7: a premise is not a change of text — it is the chapter's starting point.
-  if (change.premise === true) {
-    if (change.status === 'pending') return 'в основе';
-    if (change.status === 'done') return 'в первой редакции';
-    if (change.status === 'void') {
-      return change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят';
-    }
-  }
-  if (change.status === 'pending') return 'ждёт очереди';
-  if (change.status === 'processing') return 'идёт';
-  if (change.status === 'stale') return 'основа изменилась';
-  if (change.status === 'escalated') return 'ждёт решения';
-  if (change.status === 'failed') return 'не внесено';
-  if (isDropped(change)) return 'снято';
-  return change.outcome === 'adapted' ? 'внесено частично' : 'внесено';
+  // BOOK-90: the stamp is a **state word** — «ждёт» · «идёт» · «внесено» — not a phrase.
+  // A premise's own story (in basis, first edition, refused) is its second line.
+  return changeWord(change);
 }
 
 /** `14` → `014`, the change's public number (§DESIGN 7.12). */
@@ -73,100 +62,77 @@ function isDropped(change: Pick<ChangeSummaryDto, 'status' | 'outcome'>): boolea
   return change.status === 'void' || change.outcome === 'dropped' || change.outcome === 'superseded';
 }
 
-/** The thread's two lines. The first is the promise, the second is the fact. */
+/** The thread's two lines. The first is the state word, the second is the fact (BOOK-90). */
 export function changeLines(change: ChangeSummaryDto): ChangeLines {
+  const first = changeWord(change);
   // BOOK-7: a premise is the chapter's starting point; it never claims a queue place or a
-  // ripple. Its whole story is «принято в основу → вошло в первую редакцию».
+  // ripple. Its whole story is «ждёт → внесено» with the edition on the second line.
   if (change.premise) {
-    if (change.status === 'pending') {
-      return {
-        first: 'принято в основу',
-        second: `замысел для главы ${change.chapter} · ждёт первой редакции`,
-        tone: 'waiting',
-      };
-    }
     if (change.status === 'done') {
       return {
-        first: 'замысел учтён',
+        first,
         second: change.reason ?? `вошло в первую редакцию главы ${change.chapter}`,
         tone: 'done',
       };
     }
     if (change.status === 'void') {
       return {
-        first: change.outcome === 'superseded' ? 'замысел снят' : 'замысел не взят',
-        second: change.reason ?? 'у главы уже есть замысел',
+        first,
+        second: change.reason ?? (change.outcome === 'superseded' ? 'снято: у главы уже есть замысел' : 'замысел не взят'),
         tone: 'quiet',
       };
     }
+    if (change.status === 'pending') {
+      return { first, second: PREMISE_PENDING, tone: 'waiting' };
+    }
     return {
-      first: 'замысел ждёт решения',
-      second: change.reason ?? `глава ${change.chapter}`,
+      first,
+      second: change.reason ?? 'нужно решение автора',
       tone: 'escalated',
     };
   }
   if (change.status === 'pending') {
     return {
-      first: `принято · ${change.position ?? 1}-я в очереди`,
-      second: 'правки идут по одной, в порядке записи',
+      first,
+      second: `${change.position ?? 1}-я в очереди`,
       tone: 'waiting',
     };
   }
   if (change.status === 'stale') {
-    return {
-      first: 'принято · основа изменилась',
-      second: 'решается, применять ли правку',
-      tone: 'live',
-    };
+    return { first, second: 'основа изменилась, решается заново', tone: 'live' };
   }
   if (change.status === 'processing') {
-    return {
-      first: 'принято · правится',
-      second: `глава ${change.chapter}`,
-      tone: 'live',
-    };
+    return { first, second: `пишется глава ${change.chapter}`, tone: 'live' };
   }
   if (change.status === 'escalated') {
-    return {
-      first: 'принято · ждёт решения автора',
-      second: change.reason ?? 'правка остановлена',
-      tone: 'escalated',
-    };
+    return { first, second: change.reason ?? 'нужно решение автора', tone: 'escalated' };
   }
   if (change.status === 'failed') {
-    return {
-      first: 'не удалось внести',
-      second: 'замечание сохранено',
-      tone: 'escalated',
-    };
+    return { first, second: change.reason ?? 'не удалось внести', tone: 'escalated' };
   }
   if (isDropped(change)) {
     return {
-      first: change.outcome === 'superseded' ? 'перекрыто более поздней правкой' : 'снято',
-      second: change.reason ?? 'уже не нужно — текст изменился',
+      first,
+      second: change.reason ?? (change.outcome === 'superseded' ? 'перекрыто более поздней правкой' : 'снято'),
       tone: 'quiet',
     };
   }
   return {
-    first: change.outcome === 'adapted' ? 'внесено частично' : 'внесено',
-    second: change.outcome === 'adapted' ? `основа изменилась · ${reachCopy(change)}` : reachCopy(change),
+    first,
+    second: change.outcome === 'adapted' ? `частично · ${reachCopy(change)}` : reachCopy(change),
     tone: 'done',
   };
 }
 
 /** The one-line trace `принято → внесено → дошло до глав 7–9` (§20 M4). */
 export function progressLine(change: ChangeSummaryDto): string {
+  const state = changeWord(change);
   if (change.premise) {
-    if (change.status === 'pending') return 'принято в основу → ждёт первой редакции';
-    if (change.status === 'done') return 'принято в основу → вошло в первую редакцию';
-    return 'принято в основу → снято';
+    if (change.status === 'done') return `принято в основу → ${state} → вошло в первую редакцию`;
+    return `принято в основу → ${state}`;
   }
-  if (change.status === 'pending') return 'принято → ждёт очереди';
-  if (change.status === 'escalated') return 'принято → ждёт решения автора';
-  if (change.status === 'failed') return 'принято → не удалось внести';
-  if (isDropped(change)) return 'принято → снято';
-  if (change.status === 'done') return `принято → внесено → ${reachCopy(change)}`;
-  return 'принято → правится';
+  if (change.status === 'done') return `принято → ${state} → ${reachCopy(change)}`;
+  return `принято → ${state}`;
 }
 
 // ── the change card's vocabulary (public fields only) ────────────────────────

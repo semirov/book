@@ -1,6 +1,7 @@
 import { TOTAL_CHAPTERS, type CatalogEntry, type CommentDto } from '@book/shared';
 
 import { filingNumber } from './filings.ts';
+import { filingMarginalia } from './marginalia.ts';
 
 /**
  * BOOK-7 / BOOK-DOC-34 §2.4 — the empty chapter's premise.
@@ -44,26 +45,34 @@ export function premiseRefusal(first: CommentDto): { line: string; detail: strin
 }
 
 /**
- * The empty slot's row: a dotted field with the chapter's field number and the word «замысел».
- * A slot that already holds a premise shows that premise instead of the empty field (§2.4).
+ * The empty slot's row (BOOK-90 A) — one line, one numeral, one word:
+ *
+ *   `02  замысел ········································`
+ *
+ * The word is the slot's **state slot**: the chapter's title when it has one, else «замысел»
+ * for an empty field, else the premise's own state word (the same three words every other
+ * surface prints). The quote takes the field after it; a slot with no premise is a dotted
+ * leader. Nothing here knows the layout — the row is data, the sheet is the form.
  */
 export type PremiseRow = {
   n: number;
-  label: string;
+  /** The word in the state slot: title, «замысел», or the held premise's state. */
+  word: string;
   /** The existing premise's first line, or null for a slot that is still empty. */
   quote: string | null;
-  /** Its state word, when there is one. */
-  state: string | null;
   actionable: boolean;
 };
 
-export function premiseRow(entry: Pick<CatalogEntry, 'n' | 'written' | 'basis'>, premise: CommentDto | null): PremiseRow | null {
+export function premiseRow(
+  entry: Pick<CatalogEntry, 'n' | 'written' | 'basis'> & { title?: string | null },
+  premise: CommentDto | null,
+): PremiseRow | null {
   if (entry.written || entry.basis || entry.n < 2 || entry.n > TOTAL_CHAPTERS - 1) return null;
   return {
     n: entry.n,
-    label: PREMISE_ROW_LABEL,
+    // BOOK-90 A.4: a real title takes «замысел»'s slot, at the same x — the row is the same.
+    word: entry.title ?? (premise === null ? PREMISE_ROW_LABEL : premiseState(premise)),
     quote: premise === null ? null : firstLine(premise.body),
-    state: premise === null ? null : premiseState(premise),
     actionable: true,
   };
 }
@@ -73,16 +82,7 @@ function firstLine(body: string): string {
   return flat.length > 90 ? `${flat.slice(0, 89).trimEnd()}…` : flat;
 }
 
-/** The premise's own state words — the thread's vocabulary, not a second table. */
+/** The premise's own state — the same three words as every other surface (BOOK-90 §5). */
 function premiseState(premise: CommentDto): string {
-  switch (premise.status) {
-    case 'applied':
-      return `вошло в главу ${premise.applied?.chapter ?? premise.chapter}`;
-    case 'rejected':
-      return 'замысел не взят';
-    case 'superseded':
-      return 'замысел снят';
-    default:
-      return 'принято в основу';
-  }
+  return filingMarginalia(premise).word;
 }

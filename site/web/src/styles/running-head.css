@@ -1,0 +1,30 @@
+/**
+ * BOOK-90 B — the running head's chapter slot: the number and the slot's own word.
+ *
+ * It is reserved from the first paint (a fixed 18ch) so naming the chapter never moves the
+ * line, and it is one label line at 12 px with tabular figures: no new row at any width.
+ */
+.top-chapter {
+  flex: none;
+  width: 18ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.top-chapter-w {
+  margin-left: 6px;
+}
+@media (max-width: 599px) {
+  /* One chip, the fact kept: the number alone when the word does not fit. */
+  .top-chapter-w {
+    display: none;
+  }
+}

@@ -1,0 +1,82 @@
+/**
+ * BOOK-90 — dev fixture styles (loaded by `web/src/dev/marginalia.tsx` only).
+ *
+ * 1. The cover spacer: a tall blank sheet, so the running head has a «before the first
+ *    chapter» state to measure.
+ * 2. The *before* of the empty-chapter change, for the comparison screenshot. The pre-change
+ *    markup keeps its real class names (`ch-h`, `ch-n`, `ch-meta`, `premise-*`); these rules
+ *    restore the old look under `.before-ch`, because the app's rules were replaced.
+ */
+.cover-space {
+  height: 70vh;
+}
+.before-ch {
+  padding-top: 0;
+}
+.before-ch .ch-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  border-top: 1px solid var(--rule);
+  padding: 11px 0 7px;
+  margin-bottom: 0;
+}
+.before-ch .ch-n {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: var(--fs-body);
+  line-height: 1;
+  color: var(--ink-2);
+}
+.before-ch .ch-meta {
+  font-family: var(--label);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+.before-ch .premise {
+  margin: 4px 0 0;
+}
+.before-ch .premise-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 96px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.before-ch .premise-n {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.before-ch .premise-field {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px dotted var(--rule);
+}
+.before-ch .premise-label {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.before-ch .premise-hint {
+  margin: 2px 0 0;
+  max-width: none;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  line-height: 1.4;
+  color: var(--ink-3);
+}

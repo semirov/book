@@ -113,7 +113,7 @@ describe('the strip at the seam', () => {
     const html = strip({ withFilings: true });
     expect(html).toContain('№4Q7');
     expect(html).toContain('Аня');
-    expect(html).toContain('ждёт рассмотрения');
+    expect(html).toContain('ждёт');
     expect(html).toContain('Её освещал яркий свет.');
   });
 
@@ -127,18 +127,21 @@ describe('the strip at the seam', () => {
 describe('the mark on a sentence', () => {
   it('prints the record numeral and the overflow as a real button', () => {
     const filings = FILINGS[0];
-    const html = renderToStaticMarkup(<FilingMark filings={filings!} onOpen={() => undefined} />);
+    const html = renderToStaticMarkup(
+      <FilingMark filings={filings!} onOpen={() => undefined} onOpenRevision={() => undefined} />,
+    );
     // The numeral is the button: what the reader sees is what the reader taps.
-    expect(html).toMatch(/<button[^>]*class="filing-mark[^"]*"[^>]*>\s*<span class="filing-mark-num">№4Q7/u);
-    expect(html).toContain('aria-label="замечание №4Q7 · ждёт рассмотрения"');
-    expect(html).not.toContain('aria-hidden');
+    expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">№4Q7/u);
+    expect(html).toContain('aria-label="замечание №4Q7 · ждёт"');
     expect(html).not.toContain('style=');
   });
 
   it('keeps the numeral inside the 24 px target and names the overflow in the label', () => {
     const second = comment({ id: 'cmt_01J9Z8K5AA', createdAt: '2026-10-22T09:00:00Z' });
     const [group] = filingsForBlock([comment(), second], 'ch08#aa11bb22');
-    const html = renderToStaticMarkup(<FilingMark filings={group!} onOpen={() => undefined} />);
+    const html = renderToStaticMarkup(
+      <FilingMark filings={group!} onOpen={() => undefined} onOpenRevision={() => undefined} />,
+    );
     // BOOK-33: a «+N» glyph would widen the mark past its box; the count lives in the label
     // (and the strip's «ещё N →») instead of pushing the numeral out of the target.
     expect(html).not.toContain('+1');
@@ -148,7 +151,7 @@ describe('the mark on a sentence', () => {
 
 describe('the empty slot row', () => {
   it('is a dotted field with the number and the word, not a call to action', () => {
-    const row = premiseRow(entry(7, { written: false }), null);
+    const row = premiseRow(entry(7, { written: false, title: null }), null);
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
     expect(html).toContain('class="premise-row"');
     expect(html).toContain('07');
@@ -159,9 +162,10 @@ describe('the empty slot row', () => {
 
   it('shows the premise a chapter already holds, with its state', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, premise: true, status: 'accepted', anchor: { ...comment().anchor, blockId: null, quote: null } });
-    const row = premiseRow(entry(7, { written: false }), premise);
+    const row = premiseRow(entry(7, { written: false, title: null }), premise);
     const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
     expect(html).toContain('в комнате должен быть свет, но не от лампы');
-    expect(html).toContain('принято в основу');
+    // BOOK-90 §5: the state word belongs to the premise and is one of the three.
+    expect(html).toContain('ждёт');
   });
 });

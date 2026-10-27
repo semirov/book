@@ -1,18 +1,26 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
-import { useCallback, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { getAuthors, getHistoryParagraph, getMyTrace } from '../api.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
+import { MarginNote } from './MarginNote.tsx';
+import { PhoneStrip } from './PhoneStrip.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { RevisionObject } from './RevisionObject.tsx';
 import { Seam } from './Seam.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
-import { filingsForBlock, staleLine } from '../lib/filings.ts';
+import { filingsForBlock, isAlive, staleLine } from '../lib/filings.ts';
+import { scheduleMarginPass } from '../lib/marginPass.ts';
+import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
 import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
 import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
+
+/** Measure before paint in the browser; do nothing during a server render (tests). */
+const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /**
  * BOOK-DOC-34 §2.1, §2.5 — one paragraph, parted where the reader tapped.
@@ -71,6 +79,9 @@ export function ProseParagraph({
   const frozenChapter = frozen || isFrozenChapter(entry);
   const here = seam !== null && seam.chapter === entry.n && seam.blockId === blockId;
   const [panel, setPanel] = useState<PanelState>(null);
+  /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
+  const revision = useOpenRevision();
+  const host = useRef<HTMLElement | null>(null);
   const [chain, setChain] = useState<ParagraphChainDto | null>(null);
   const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
   const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
@@ -80,6 +91,20 @@ export function ProseParagraph({
   if (caret?.printing === true) classes.push('is-printing');
   if (revising !== null) classes.push('is-revising');
   if (revised) classes.push('is-revised');
+
+  const openRevision = useCallback((comment: CommentDto, origin: HTMLElement): void => {
+    showRevision({ comment, origin });
+    setPanel(null);
+  }, []);
+
+  const closeRevision = useCallback((): void => {
+    const origin = revision?.origin ?? null;
+    hideRevision();
+    // The trigger comes back when the object leaves; a note that was replaced has left the
+    // page, and the paragraph is the next honest target (BOOK-90 §3.3).
+    if (origin !== null && origin.isConnected) origin.focus();
+    else host.current?.focus();
+  }, [revision]);
 
   const openAt = useCallback(
     (origin: HTMLElement, offset: number, target: HTMLElement): void => {
@@ -116,7 +141,9 @@ export function ProseParagraph({
     if (selection.length > 0) return; // a selection wins: the reader is copying, not filing
     // A tap on the mark, the rail, «⋯» or the strip is that control's own act: the paragraph
     // must not also open a seam (BOOK-33 — the numeral is the button the reader sees).
-    const control = (event.target as HTMLElement | null)?.closest('.filing-mark, .seam-rail, .prov, .seam');
+    const control = (event.target as HTMLElement | null)?.closest(
+      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision',
+    );
     if (control !== null && control !== undefined) return;
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-s]');
     if (target === null || target === undefined) return;
@@ -195,6 +222,18 @@ export function ProseParagraph({
   const sentences = splitSentences(text);
   const anchor = here ? (seam?.anchor ?? null) : null;
   const cut = anchor === null ? -1 : anchor.sentence.end;
+  /** Alive filings per sentence, in reading order: the phone strip lists them as they stand. */
+  const alive = sentences.flatMap((sentence) => {
+    const group = blockFilings.find((item) => item.quote !== null && item.quote === clampQuote(sentence.text));
+    return group === undefined ? [] : group.all.filter(isAlive);
+  });
+  const filingKey = blockFilings.map((group) => group.all.map((comment) => `${comment.id}:${comment.status}`).join(',')).join('|');
+
+  // BOOK-90: the margin is page-wide; this paragraph only tells it that its anchors may have
+  // moved (a seam opened, a revision arrived, the text changed).
+  useMeasuredLayout(() => {
+    scheduleMarginPass();
+  }, [filingKey, seam?.key ?? null, text, revision?.comment.id ?? null]);
 
   const renderSentences = (from: number, to: number): ReactNode => {
     return sentences.map((sentence, index) => {
@@ -213,9 +252,24 @@ export function ProseParagraph({
         >
           {sentence.text}
           {filings === undefined || filings.stale ? null : (
-            <FilingMark filings={filings} onOpen={(comment, origin) =>
-              setPanel({ kind: 'filing', comment, rect: origin.getBoundingClientRect(), origin })
-            } />
+            <>
+              <FilingMark
+                filings={filings}
+                onOpen={(comment, origin) =>
+                  setPanel({ kind: 'filing', comment, rect: origin.getBoundingClientRect(), origin })
+                }
+                onOpenRevision={openRevision}
+              />
+              {filings.all
+                .filter(isAlive)
+                .filter((comment) => revision?.comment.id !== comment.id)
+                .map((comment) => (
+                  <MarginNote key={comment.id} comment={comment} onOpen={openRevision} />
+                ))}
+              {revision !== null && filings.all.some((comment) => comment.id === revision.comment.id) ? (
+                <RevisionObject comment={revision.comment} text={text} onClose={closeRevision} />
+              ) : null}
+            </>
           )}
           {index === sentences.length - 1 ? null : ' '}
         </span>
@@ -223,7 +277,7 @@ export function ProseParagraph({
     });
   };
 
-  const strip = here ? (
+  const seamStrip = here ? (
     <Seam
       // The seam's key is its identity: a re-keyed draft must remount, or the strip keeps the
       // stale revision it opened with (BOOK-33).
@@ -258,15 +312,25 @@ export function ProseParagraph({
     ) : (
       <>
         {renderSentences(0, cut)}
-        {strip}
+        {seamStrip}
         {renderSentences(cut, Number.POSITIVE_INFINITY)}
       </>
+    );
+
+  // BOOK-90 §4: the phone strip is the paragraph's last child, after every sentence. A row
+  // whose sentence has its seam open is skipped — the seam's own rows already show it.
+  const phone =
+    alive.length === 0 ? null : (
+      <PhoneStrip comments={alive} skipQuote={anchor?.quote ?? null} onOpen={openRevision} />
     );
 
   return (
     <>
       {anchor === null ? (
         <p
+          ref={(node) => {
+            host.current = node;
+          }}
           className={classes.join(' ')}
           data-block-id={blockId}
           tabIndex={-1}
@@ -307,9 +371,13 @@ export function ProseParagraph({
               ⋯
             </button>
           )}
+          {phone}
         </p>
       ) : (
         <div
+          ref={(node) => {
+            host.current = node;
+          }}
           className={`${classes.join(' ')} p-parted`}
           data-block-id={blockId}
           tabIndex={-1}
@@ -319,6 +387,7 @@ export function ProseParagraph({
           onPointerEnter={hint}
         >
           {body}
+          {phone}
         </div>
       )}
       {stale === null ? null : (

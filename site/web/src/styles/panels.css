@@ -145,8 +145,7 @@
   color: var(--ink-3);
   text-decoration: none;
 }
-.filing-meta,
-.filing-word {
+.filing-meta {
   margin: 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);

@@ -51,10 +51,17 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     expect(html).toContain('data-basis="true"');
   });
 
-  it('renders an untouched slot as today: a slim empty article, no prose', () => {
+  it('renders an untouched slot as one row: a numeral, the word, the leader — no heading', () => {
+    // BOOK-90 A: the empty chapter is one row in the flow; the big `ch-n`, the meta line and
+    // «не написана» are gone, and the numeral appears exactly once.
     const html = render(entry(2));
     expect(html).toContain('ch-empty');
-    expect(html).toContain('не написана');
+    expect(html).toContain('class="premise-row"');
+    expect(html).toContain('02');
+    expect(html).toContain('замысел');
+    expect(html).not.toContain('class="ch-h"');
+    expect(html).not.toContain('class="ch-n"');
+    expect(html).not.toContain('не написана');
     expect(html).not.toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('data-basis');
   });

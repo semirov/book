@@ -63,18 +63,20 @@ describe('premiseRow', () => {
   it('shows a dotted empty field while the slot holds nothing', () => {
     expect(premiseRow({ n: 7, written: false, basis: false }, null)).toEqual({
       n: 7,
-      label: 'замысел',
+      word: 'замысел',
       quote: null,
-      state: null,
       actionable: true,
     });
+    // BOOK-90 A.4: a real title takes the word's slot — the row is the same.
+    expect(premiseRow({ n: 7, written: false, basis: false, title: 'Перевод смены' }, null)?.word).toBe('Перевод смены');
   });
 
   it('shows the premise instead, with its state word and one line', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, createdAt: '2026-10-20T09:00:00Z', status: 'accepted' });
     expect(premiseRow({ n: 7, written: false, basis: false }, premise)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
-      state: 'принято в основу',
+      // BOOK-90 §5: a held premise speaks the same three words as every other surface.
+      word: 'ждёт',
     });
   });
 

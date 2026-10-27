@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import { engineChipCopy, chipCopy, queueLabel } from '../lib/format.ts';
 import { liveChapter, revisingChapter } from '../lib/spine.ts';
+import { useCurrentChapter } from '../lib/useCurrentChapter.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 
 /** The chip speaks in minutes; refresh it once a minute so «14 минут назад» stays true. */
@@ -35,6 +36,8 @@ export function Header({
   onOpenChange: (changeId: string) => void;
 }) {
   const now = useNow();
+  // BOOK-90 B: the chapter the reader is in — number, then the slot's own word (or its title).
+  const chapter = useCurrentChapter();
   const current = liveChapter(state);
   const revising = revisingChapter(state);
   const engineChip = engineChipCopy(state.engine.status);
@@ -51,6 +54,16 @@ export function Header({
       <div className="page sheet top-in">
         <div className="top-row">
           <span className="brand">Книга · {TOTAL_CHAPTERS} глав</span>
+          {/* The slot is reserved: an empty head at the cover, the chapter inside the book.
+              No placeholder text and no extra row — the chip never grows the head. */}
+          <span className="top-chapter" data-n={chapter?.n ?? undefined}>
+            {chapter === null ? null : (
+              <>
+                <span className="top-chapter-n">{chapter.n}</span>
+                {chapter.word === null ? null : <span className="top-chapter-w">{chapter.word}</span>}
+              </>
+            )}
+          </span>
         </div>
         <div className="top-row">
           <span className={chip.live ? 'live' : 'live idle'}>

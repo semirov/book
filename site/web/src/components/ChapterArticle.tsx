@@ -19,13 +19,10 @@ import { estimateChapterHeight } from '../lib/layout.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
-import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
-import { FilingPanel } from './FilingPanel.tsx';
-import { PremiseRow } from './PremiseRow.tsx';
+import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
+import { EmptyChapter } from './EmptyChapter.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
-import { Seam } from './Seam.tsx';
 import {
   REVEAL,
   activeBlockId,
@@ -70,6 +67,8 @@ export type ChapterArticleProps = {
   onPosted?: (chapter: number) => void;
   composer: ComposerInfo;
   viewer: ViewerDto;
+  /** The first empty chapter in the flow carries the page's one explanation sentence. */
+  firstEmpty?: boolean;
 };
 
 export function ChapterArticle({
@@ -84,9 +83,9 @@ export function ChapterArticle({
   onPosted,
   composer,
   viewer,
+  firstEmpty = false,
 }: ChapterArticleProps) {
   const seam = useOpenSeam();
-  const [premiseCard, setPremiseCard] = useState<{ comment: CommentDto; rect: DOMRect } | null>(null);
   /**
    * BOOK-33 — a stale draft waiting for the fresh revision. The draft keeps what the reader
    * wrote; its block and base revision are replaced here, after the chapter reloads.
@@ -316,10 +315,10 @@ export function ChapterArticle({
   );
 
   if (!showsText) {
-    // BOOK-DOC-34 §2.4: an empty chapter is a 44 px field, and its one premise opens in it.
-    const premise = existingPremise(comments, entry.n);
-    const row = premiseRow(entry, premise);
-    const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
+    // BOOK-90 A/2: an empty chapter is one row in the flow — no `ch-h`, no big numeral, no
+    // meta line; its premise strip is a block after the row, never over a line. The `<article>`
+    // is the *same element* the written branch renders, so the slot survives the empty →
+    // written swap and its observer keeps watching a live node.
     return (
       <article
         className="page ch ch-empty"
@@ -329,46 +328,14 @@ export function ChapterArticle({
         aria-label={`глава ${entry.n}`}
         ref={article}
       >
-        {header}
-        {row === null ? null : (
-          <PremiseRow
-            row={row}
-            onOpen={(origin) => {
-              // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
-              // second form would be refused by the server («у главы уже есть замысел»).
-              if (premiseAction(premise).kind === 'card') {
-                if (premise !== null) setPremiseCard({ comment: premise, rect: origin.getBoundingClientRect() });
-                return;
-              }
-              openSeam({
-                chapter: entry.n,
-                blockId: null,
-                key: `ch${entry.n}:premise`,
-                anchor: null,
-                origin,
-              });
-            }}
-          />
-        )}
-        {open ? (
-          <Seam
-            entry={entry}
-            draftKey={`ch${entry.n}:premise`}
-            anchor={null}
-            frozen={false}
-            filings={null}
-            existingPremise={premise}
-            composer={composer}
-            viewer={viewer}
-            onPosted={(n) => onPosted?.(n)}
-            onClose={closeSeam}
-            onProvenance={() => undefined}
-            onOpenFiling={() => undefined}
-          />
-        ) : null}
-        {premiseCard === null ? null : (
-          <FilingPanel comment={premiseCard.comment} anchor={premiseCard.rect} onClose={() => setPremiseCard(null)} />
-        )}
+        <EmptyChapter
+          entry={entry}
+          comments={comments}
+          composer={composer}
+          viewer={viewer}
+          firstEmpty={firstEmpty}
+          onPosted={onPosted}
+        />
       </article>
     );
   }

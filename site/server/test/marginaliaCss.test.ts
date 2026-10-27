@@ -1,0 +1,175 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+/**
+ * BOOK-90 AC5 — the marginalia's CSS contract, in the style-guard idiom.
+ *
+ * What a jsdom test cannot prove: that the margin is measured from the **prose's right edge**
+ * (not from `--shell`/`--measure`/`--gut`), that the note is `position: absolute` and cannot
+ * move the prose, that the one breakpoint is 1023, and that the strip cannot scroll
+ * sideways. The column frame (≤1000 px, `--shell` in `tokens.css`) is the other branch's and
+ * is left untouched: nothing here may read it.
+ */
+
+const STYLES = join(import.meta.dirname, '../../web/src/styles');
+const marginalia = readFileSync(join(STYLES, 'marginalia.css'), 'utf8');
+const tokens = readFileSync(join(STYLES, 'tokens.css'), 'utf8');
+const base = readFileSync(join(STYLES, 'base.css'), 'utf8');
+const book = readFileSync(join(STYLES, 'book.css'), 'utf8');
+
+/** Comments blanked out: a rule is a declaration, and the sheet's prose is not one. */
+function withoutComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//gu, '');
+}
+const sheet = withoutComments(marginalia);
+
+/** The declarations of the first rule whose selector is exactly `selector`. */
+function declarations(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(css)?.[1] ?? '';
+}
+
+/** The body of the 1023 px step, from its opening to the end of the sheet. */
+const narrow = sheet.slice(sheet.indexOf('@media (max-width: 1023px)'));
+
+describe('the four tokens, and where they live', () => {
+  it('declares the margin geometry in tokens.css, with one gap = the mark’s target', () => {
+    expect(tokens).toContain('--mark-hit: 40px;');
+    expect(tokens).toContain('--note-gap: var(--mark-hit);');
+    expect(tokens).toContain('--note-w: 188px;');
+    expect(tokens).toContain('--note-step: 12px;');
+    // No new type rung and no new colour: the margin adds four lengths and nothing else.
+    expect(sheet).not.toMatch(/--fs-[a-z0-9-]+\s*:/u);
+    expect(sheet).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
+    expect(sheet).not.toMatch(/rgba?\(/u);
+  });
+
+  it('keeps the column frame as it was: --shell and --measure are not touched', () => {
+    expect(tokens).toContain('--shell: 1000px;');
+    expect(tokens).toContain('--measure: 33.75rem;');
+    expect(base).toContain('max-width: calc(var(--measure) + 2 * var(--gut));');
+    for (const forbidden of ['--shell', '--measure']) expect(sheet).not.toContain(forbidden);
+    // `--gut` only pads a sheet (the phone one and the measured-guard sheet), never the
+    // channel's geometry.
+    const gutLines = sheet.split('\n').filter((line) => line.includes('var(--gut)'));
+    expect(gutLines.length).toBeGreaterThan(0);
+    for (const line of gutLines) expect(line).toContain('padding: 12px var(--gut)');
+  });
+});
+
+describe('the measured guard (BOOK-DOC-47 §7)', () => {
+  it('gives the note up to the strip when the channel does not fit — by measurement', () => {
+    // The pass writes `data-margin` per paragraph; this is not a second breakpoint.
+    expect(declarations(sheet, ".p[data-margin='strip'] .margin-note")).toContain('display: none');
+    expect(declarations(sheet, ".p[data-margin='strip'] .phone-strip")).toContain('display: block');
+    // An object opened in such a paragraph takes the phone sheet, never the clipped channel.
+    expect(declarations(sheet, ".p[data-margin='strip'] .revision")).toContain('position: fixed');
+    expect(sheet).not.toMatch(/@media[^{]*(min-width|width\s*>=)/u);
+  });
+});
+
+describe('the note is outside the prose and cannot move it', () => {
+  it('is absolutely positioned from the prose’s right edge, at the one width', () => {
+    const note = declarations(marginalia, '.margin-note');
+    expect(note).toContain('position: absolute');
+    expect(note).toContain('left: calc(100% + var(--note-gap))');
+    expect(note).toContain('width: var(--note-w)');
+    expect(note).toContain('padding: 6px 0 8px');
+    expect(note).toContain('border-top: 1px solid var(--rule)');
+    // The box is one button; the quote is two clamped lines of the book's serif.
+    const quote = declarations(marginalia, '.margin-note-quote');
+    expect(quote).toContain('-webkit-line-clamp: 2');
+    expect(quote).toContain('font-size: var(--fs-note)');
+    // Nothing here is 11 px or a keyword, and no hover information exists.
+    expect(sheet).not.toMatch(/:hover/u);
+  });
+
+  it('reveals itself with opacity only, after the pass has written the top', () => {
+    expect(declarations(marginalia, '.margin-note')).toContain('opacity: 0');
+    expect(declarations(marginalia, ".margin-note[data-placed='true']")).toContain('opacity: 1');
+    expect(declarations(marginalia, '.margin-note')).toContain('transition: opacity var(--dur-tick) var(--ease-out)');
+    // No animated geometry anywhere in the sheet.
+    expect(sheet).not.toMatch(/transition:[^;]*\b(top|height|width)\b/u);
+  });
+
+  it('never clips: the page, the chapter and the note carry no overflow', () => {
+    for (const css of [base, book, marginalia]) expect(css).not.toMatch(/\.page[^{]*\{[^}]*overflow/u);
+    expect(declarations(marginalia, '.margin-note')).not.toContain('overflow: hidden');
+    // The tail exists in flow and starts at 0 height (the pass grows it).
+    expect(declarations(marginalia, '.margin-tail')).toContain('display: block');
+  });
+});
+
+describe('the object and the mark share the note’s measure', () => {
+  it('puts the revision object in the same channel, 188 px, with no shadow', () => {
+    const object = declarations(marginalia, '.revision');
+    expect(object).toContain('position: absolute');
+    expect(object).toContain('left: calc(100% + var(--note-gap))');
+    expect(object).toContain('width: var(--note-w)');
+    expect(object).toContain('box-shadow: none');
+    expect(object).toContain('background: var(--paper-2)');
+  });
+
+  it('keeps the glyph off the prose: the box starts at the edge, the numeral 4 px inside', () => {
+    expect(declarations(marginalia, '.filing-mark')).toContain('padding: 0 0 0 4px');
+    expect(declarations(marginalia, '.filing-mark-num')).toContain('padding: 1px 0');
+    // The phone tick sits 2 px inside the 24 px target (the design's 368 in [366, 390]).
+    expect(declarations(narrow, '.filing-mark')).toContain('padding-left: 2px');
+  });
+
+  it('puts the mark at the prose’s edge with the 40 px target, 24 below 1023', () => {
+    const mark = declarations(marginalia, '.filing-mark');
+    expect(mark).toContain('left: 100%');
+    expect(mark).toContain('width: var(--mark-hit)');
+    expect(mark).toContain('height: 44px');
+    const tick = declarations(marginalia, '.filing-tick-bar');
+    expect(tick).toContain('width: 1px');
+    expect(tick).toContain('height: 16px');
+    expect(declarations(narrow, '.filing-mark')).toContain('width: 24px');
+    expect(declarations(narrow, '.filing-mark-num')).toContain('display: none');
+  });
+});
+
+describe('the phone strip', () => {
+  it('is one 44 px row per filing, left-aligned and never justified', () => {
+    const row = declarations(marginalia, '.phone-strip-row');
+    expect(row).toContain('min-height: 44px');
+    expect(row).toContain('padding: 0 8px');
+    expect(row).toContain('text-align: left');
+    expect(row).toContain('white-space: nowrap');
+    const strip = declarations(marginalia, '.phone-strip');
+    expect(strip).toContain('text-align: left');
+    expect(strip).toContain('white-space: nowrap');
+    expect(declarations(narrow, '.phone-strip')).toContain('display: block');
+    // The desktop hides the strip; the note is the desktop object.
+    expect(strip).toContain('display: none');
+  });
+
+  it('never scrolls sideways and carries no count or badge', () => {
+    expect(sheet).not.toMatch(/overflow-x/u);
+    // The strip itself never scrolls: only the phone sheet may (it is a fixed surface).
+    for (const selector of ['.phone-strip', '.phone-strip-row', '.phone-strip-word']) {
+      expect(declarations(sheet, selector)).not.toMatch(/overflow:\s*(auto|scroll)/u);
+    }
+    // The only flexible cell is the state word, and it ellipsises (a clamp with no door is
+    // forbidden — the whole fact lives in the opened object).
+    expect(declarations(marginalia, '.phone-strip-word')).toContain('text-overflow: ellipsis');
+    expect(marginalia).not.toMatch(/\.phone-[a-z-]*badge/u);
+  });
+});
+
+describe('one breakpoint', () => {
+  it('steps at 1023 and never at min-width', () => {
+    expect(sheet).toContain('@media (max-width: 1023px)');
+    expect(sheet).not.toMatch(/@media[^{]*min-width/u);
+    // The phone sheet is the same box, fixed at the bottom, no scrim.
+    const phoneSheet = declarations(narrow, '.revision');
+    expect(phoneSheet).toContain('position: fixed');
+    expect(phoneSheet).toContain('border-top: 1px solid var(--rule-2)');
+    expect(phoneSheet).toContain('box-shadow: var(--shadow)');
+    expect(phoneSheet).toContain('max-height: 62dvh');
+    expect(phoneSheet).not.toContain('transform');
+  });
+});
