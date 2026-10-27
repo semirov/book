@@ -15,8 +15,9 @@ import { Header } from './Header.tsx';
  * — that is what `anchorTo` reproduces — so the head must name the anchored chapter at once
  * and the folio must print the number the contents prints for it.
  *
- * The head's word still comes from the slot (a premise's state word is not in the catalogue),
- * so the slots here carry the words a real page carries.
+ * BOOK-112: the head prints the chapter's number always and a real catalogue title only —
+ * never a word lifted from the slot. The empty slots here carry a `.premise-label` exactly as
+ * a real page used to, so the tests prove the head ignores it.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -256,9 +257,9 @@ describe('the running head and the folio on one line', () => {
       expect(chip().querySelector('.top-chapter-n')?.textContent).toBe(String(n));
       expect(folio()).toBe(String(starts.get(n)));
     }
-    // The empty slots also carry their own word; the frozen ones print the number alone.
+    // An untitled empty slot prints the number alone; so does the frozen last one.
     await anchorTo(21);
-    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('замысел');
+    expect(chip().querySelector('.top-chapter-w')).toBeNull();
     await anchorTo(67);
     expect(chip().querySelector('.top-chapter-w')).toBeNull();
   });
@@ -356,7 +357,7 @@ describe('the head’s copy', () => {
     expect(css).not.toMatch(/\.top-chapter-w\s*\{[^}]*(overflow|text-overflow)/u);
   });
 
-  it('drops a title that does not fit the head for the state word, never clips it', async () => {
+  it('drops a title that does not fit the head for the number alone, never for a word', async () => {
     const catalog = catalogOf([
       {
         n: 30,
@@ -376,50 +377,51 @@ describe('the head’s copy', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(chip().textContent).toContain('30');
-    expect(chip().textContent).toContain('замысел');
+    expect(chip().textContent).toBe('30');
     expect(chip().textContent).not.toContain('Очень длинное');
     expect(chip().textContent).not.toContain('…');
   });
 
-  it('follows a word that changes under the named slot: a premise arriving renames it', async () => {
+  it('ignores a word that changes under the named slot: state is not the book', async () => {
     const catalog = catalogOf();
     buildBook(catalog);
     await mount(catalog);
     await anchorTo(21);
-    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('замысел');
     const label = articles.get(21)?.querySelector('.premise-label');
     if (label === null || label === undefined) throw new Error('no premise row');
+    // The slot a real page carries still says «замысел»: the head must never print it.
+    expect(chip().querySelector('.top-chapter-w')).toBeNull();
     await act(async () => {
       label.textContent = 'принято';
       await Promise.resolve();
     });
-    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('принято');
+    expect(chip().querySelector('.top-chapter-w')).toBeNull();
+    expect(chip().textContent).toBe('21');
   });
 
-  it('keeps the number alone on the phone (the word is hidden by the sheet)', async () => {
-    const catalog = catalogOf();
+  it('keeps the number alone on the phone (the title is hidden by the sheet)', async () => {
+    const catalog = catalogOf([{ n: 21, title: 'Перевод смены' }]);
     buildBook(catalog);
     await mount(catalog);
     await anchorTo(21);
-    // The DOM keeps both; the 599 step hides the word, so the phone prints the number alone.
+    // The DOM keeps both; the 599 step hides the title, so the phone prints the number alone.
     expect(chip().querySelector('.top-chapter-n')?.textContent).toBe('21');
-    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('замысел');
+    expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('Перевод смены');
     const css = sheets['../styles/running-head.css'] ?? '';
     expect(css).toMatch(/@media \(max-width: 599px\)[\s\S]*\.top-chapter-w[\s\S]*display: none/u);
   });
 });
 
-describe('the head’s layout', () => {  it('keeps one reserved chip inside the existing first row — never a third row', async () => {
+describe('the head’s layout', () => {  it('keeps the brand, the chapter slot and the folio in one row — and no status row', async () => {
     const catalog = catalogOf();
     buildBook(catalog);
     await mount(catalog);
     await anchorTo(1);
-    expect(container.querySelectorAll('.top-row')).toHaveLength(2);
+    expect(container.querySelectorAll('.top-row')).toHaveLength(1);
     const rows = container.querySelectorAll('.top-row');
     expect(rows[0]?.querySelector('.brand')).not.toBeNull();
     expect(rows[0]?.querySelector('.top-chapter')).toBe(chip());
-    expect(rows[1]?.querySelector('.live')).not.toBeNull();
+    expect(container.querySelector('.live')).toBeNull();
     // The folio is the first row's last item: the head and the number are one line.
     expect(rows[0]?.querySelector('.folio')).not.toBeNull();
     // The old `display: contents` is what spread four items across the line; it is gone, and the
@@ -471,9 +473,9 @@ describe('one number in the phone head', () => {
     expect(row.querySelector('.folio')?.textContent).toBe(String(chapterStartPages(catalog).get(21)));
     // The chip is still rendered — its hiding is the sheet's, not the markup's.
     expect(row.querySelector('.top-chapter')?.getAttribute('data-n')).toBe('21');
-    // With the chip hidden, the phone row says the brand and the page, nothing else.
+    // With the slot hidden, the phone row says the book's own title and the page, nothing else.
     const phone = row.cloneNode(true) as HTMLElement;
     phone.querySelector('.top-chapter')?.remove();
-    expect(phone.textContent).toBe(`Книга · 67 глав${chapterStartPages(catalog).get(21)}`);
+    expect(phone.textContent).toBe(`Бланк${chapterStartPages(catalog).get(21)}`);
   });
 });

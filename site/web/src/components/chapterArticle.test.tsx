@@ -51,14 +51,14 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
     expect(html).toContain('data-basis="true"');
   });
 
-  it('renders an untouched slot as one row: a numeral, the word, the leader — no heading', () => {
+  it('renders an untouched slot as one row: a numeral, the leader — no heading, no state word', () => {
     // BOOK-90 A: the empty chapter is one row in the flow; the big `ch-n`, the meta line and
-    // «не написана» are gone, and the numeral appears exactly once.
+    // «не написана» are gone, and the numeral appears exactly once. BOOK-112 takes the word.
     const html = render(entry(2));
     expect(html).toContain('ch-empty');
     expect(html).toContain('class="premise-row"');
     expect(html).toContain('02');
-    expect(html).toContain('замысел');
+    expect(html).not.toContain('замысел');
     expect(html).not.toContain('class="ch-h"');
     expect(html).not.toContain('class="ch-n"');
     expect(html).not.toContain('не написана');

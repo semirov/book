@@ -151,18 +151,18 @@
   cursor: pointer;
 }
 
-/* ---------- the empty chapter: one row (BOOK-90 A) ---------- */
-/* `02  замысел ······················` — numeral, word, dotted field. The row is the column's
-   full width (a full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom)
-   makes its content end on the prose's right edge: `--measure` never sizes a box. The last
-   cell is the page number's slot (BOOK-89): a fourth child takes it, the `1fr` field shrinks,
-   and no rule here changes. */
+/* ---------- the empty chapter: one row (BOOK-90 A, BOOK-112) ---------- */
+/* `02 ······················` — numeral, dotted field. The row is the column's full width (a
+   full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom) makes its
+   content end on the prose's right edge: `--measure` never sizes a box. The row prints no
+   word: the last cell is the page number's slot (BOOK-89), and a third child takes it while
+   the `1fr` field shrinks — no rule here changes. */
 .premise {
   margin: 0;
 }
 .premise-row {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   column-gap: 12px;
   align-items: center;
   width: 100%;
@@ -184,19 +184,10 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
-/* The state slot: «замысел», a real chapter title, or a held premise's state word. */
-.premise-label {
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
 .premise-field {
   min-width: 0;
 }
-/* An empty field is a leader: it starts after the word and ends on the prose's right edge. */
+/* An empty field is a leader: it starts after the number and ends on the prose's right edge. */
 .premise-leader {
   height: 1px;
   border-top: 1px dotted var(--rule);
@@ -211,14 +202,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--ink-2);
-}
-.premise-hint {
-  margin: 2px 0 0;
-  padding-inline-end: max(0px, calc(100% - var(--measure)));
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  line-height: 1.35;
-  color: var(--ink-3);
 }
 
 /* ---------- desktop (§2.8) ---------- */

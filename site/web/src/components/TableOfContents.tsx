@@ -6,12 +6,12 @@ import { tocAriaLabel, tocParts, writtenCount } from '../lib/toc.ts';
 /**
  * Живое оглавление (ARCHITECTURE §6C.7, §11.8; BOOK-DOC-5 §4): four numbered parts, 67
  * rows, and no invented titles. A row shows its chapter's title line, the frozen frame
- * sentence of a basis slot (ch01/ch67), or — for a slot that holds no prose at all — the
- * flow's state word «замысел» (BOOK-89). A state-word row is still no link, no focus ring,
- * no scroll on tap; every row now says something, so every row is exposed, and the page it
- * opens is spoken as `страница N` after that text. No leader glyphs, no row rules, no part
- * ranges, no repeated book title, and no marker beside the numeral: the column of numbers
- * is the structural mark (owner, 2026-10-27: no arrows and no caret dot in the TOC).
+ * sentence of a basis slot (ch01/ch67), or — for a slot that holds no prose at all — nothing:
+ * a number and its page. A row that says no text is still exposed, and the page it opens is
+ * spoken as `страница N`. No state word («замысел» was BOOK-89's and is gone), no leader
+ * glyphs, no row rules, no part ranges, no repeated book title, and no marker beside the
+ * numeral: the column of numbers is the structural mark (owner, 2026-10-27: no arrows and no
+ * caret dot in the TOC).
  */
 export function TableOfContents({
   catalog,
@@ -34,9 +34,8 @@ export function TableOfContents({
           <p className="toc-part-h">часть {part.numeral}</p>
           <ul className="slots">
             {part.entries.map((entry) => {
-              // BOOK-89: an empty row now carries the state word, so every row says something
-              // and every row is exposed. The page is spoken after the row's own text and never
-              // enters its visible reading: the numeral, the text and `страница N` are separate.
+              // BOOK-89: the page is spoken after the row's own text and never enters its
+              // visible reading: the numeral, the text (if any) and `страница N` are separate.
               const page = (
                 <span className="toc-page">
                   {/* The digit is drawn, not spoken: «страница N» below is the only page text,
@@ -46,9 +45,7 @@ export function TableOfContents({
                 </span>
               );
               const text =
-                entry.text === null ? null : (
-                  <span className={entry.state ? 'toc-text toc-state' : 'toc-text'}>{entry.text}</span>
-                );
+                entry.text === null ? null : <span className="toc-text">{entry.text}</span>;
               return (
                 <li
                   className={`toc-row${entry.link ? '' : ' toc-row-empty'}${entry.current ? ' current' : ''}`}

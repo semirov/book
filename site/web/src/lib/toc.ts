@@ -2,9 +2,9 @@
  * The live table of contents (ARCHITECTURE.md §6C.7, §11.8): four numbered parts, 67
  * entries. A row's text is derived, never generated (BOOK-DOC-5 §4): a written chapter
  * shows its title line verbatim, a basis slot shows its frozen frame sentence verbatim, and
- * an empty slot shows the flow's own state word — «замысел», the word the chapter's premise
- * already carries. It is a state, not a title: there is still no «Глава N» fallback, because
- * an invented title would be an invented chapter.
+ * an empty slot shows no text at all — its number and page are the row. There is still no
+ * «Глава N» fallback, because an invented title would be an invented chapter, and no state
+ * word either: the contents is a reading surface (BOOK-112).
  *
  * Derived on every change from the catalog; nothing here is stored, and the TOC can never
  * disagree with the chapter list because both read the same rows.
@@ -22,10 +22,8 @@ export type TocEntryView = {
   title: string | null;
   written: boolean;
   rev: number;
-  /** The row's text: a title line, a frozen sentence, or the state word of an empty slot. */
+  /** The row's text: a title line, or a basis slot's frozen sentence; null for an empty slot. */
   text: string | null;
-  /** The text is the state word («замысел»), not prose: an unwritten, non-basis slot. */
-  state: boolean;
   /** The chapter's opening page, from `chapterStartPages` — never a second count (BOOK-89). */
   page: number;
   /** A row is a link when it opens prose — a written chapter or a basis sentence. */
@@ -49,42 +47,37 @@ export type TocPart = {
 const NUMERALS: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
 /**
- * What an empty slot's row says (BOOK-89, owner): the state word the flow itself prints on a
- * premise row, not a label invented for the contents. Three cases in this order — a written
- * chapter's title line, a basis slot's frozen sentence, otherwise «замысел».
+ * The title line of a chapter, or nothing — a slot never gets a label it did not write.
+ * BOOK-112: an empty slot's row carries no text at all; the number and the page are the row,
+ * and a state word is the interface's, not the book's.
  */
-export const SLOT_STATE_WORD = 'замысел';
-
-/** The title line of a chapter, or nothing — a slot never gets a label it did not write. */
 export function slotLabel(title: string | null): string {
   return title !== null && title.trim().length > 0 ? title : '';
 }
 
 /**
  * The text a row carries: a written chapter's title line (null when the title line is broken —
- * the row still opens its prose), a basis slot's frozen frame, or the state word of a slot
- * that holds no prose at all (§4, BOOK-89).
+ * the row still opens its prose), a basis slot's frozen frame, or nothing at all for a slot
+ * that holds no prose (§4, BOOK-112).
  */
 export function slotText(entry: TocSource): string | null {
   if (entry.written) return slotLabel(entry.title) || null;
   if (entry.basis === true) return frameSentenceOf(entry.n);
-  return SLOT_STATE_WORD;
+  return null;
 }
 
 export function tocEntry(entry: TocSource, currentChapter: number | null, page: number): TocEntryView {
   const text = slotText(entry);
-  const state = !entry.written && entry.basis !== true;
   return {
     n: entry.n,
     title: entry.title,
     written: entry.written,
     rev: entry.rev,
     text,
-    state,
     page,
-    // A written chapter with a broken title line still opens: the row keeps its prose. The
-    // state word is not prose, so a row that carries only the word stays inert.
-    link: entry.written || (text !== null && !state),
+    // A written chapter with a broken title line still opens: the row keeps its prose. A
+    // basis row carries its frame sentence and opens too; an empty slot has no text and is inert.
+    link: entry.written || text !== null,
     current: currentChapter === entry.n,
     href: `#ch-${entry.n}`,
   };

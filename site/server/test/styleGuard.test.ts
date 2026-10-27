@@ -232,9 +232,8 @@ describe('BOOK-DOC-35 — the styles guard', () => {
  * or drifts by a pixel fails here as well as in `arch.mjs`.
  */
 describe('BOOK-70 — the chips', () => {
-  /** The eleven chips, complete and legal: a sheet set the registry can check. */
+  /** The ten chips, complete and legal: a sheet set the registry can check. */
   const CHIPS: Record<string, string> = {
-    '.live': 'font-size: 12px; color: var(--live); white-space: nowrap',
     '.ch-print': 'font-size: 12px; color: var(--live); white-space: nowrap',
     '.sec-meta': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
     '.seam-filing-n': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
@@ -256,9 +255,8 @@ describe('BOOK-70 — the chips', () => {
 
   const messages = (problems: Array<{ message: string }>): string[] => problems.map((problem) => problem.message);
 
-  it('pins the registry: eleven chips, each with a tier and a fact', () => {
+  it('pins the registry: ten chips, each with a tier and a fact', () => {
     expect(CHIP_SELECTORS.map((chip) => chip.selector)).toEqual([
-      '.live',
       '.ch-print',
       '.sec-meta',
       '.seam-filing-n',
@@ -285,20 +283,22 @@ describe('BOOK-70 — the chips', () => {
     expect(CHIP_SELECTORS.filter((chip) => chip.tier === 'sentence').map((chip) => chip.selector)).toEqual(['.filing-sentence']);
     // `.qline` is a data line, not a chip: a chip never carries a second voice beside it.
     expect(CHIP_SELECTORS.map((chip) => chip.selector)).not.toContain('.qline');
+    // BOOK-112 removed the header's `.live` chip: the reading surface prints no state at all.
+    expect(CHIP_SELECTORS.map((chip) => chip.selector)).not.toContain('.live');
   });
 
   it('passes a complete chip set, and reads a chip declared inside a grouped selector list', () => {
     expect(seeded({ 'chips.css': sheet() })).toEqual([]);
-    // The same chip, reachable only through a group: `.live` and `.brand` share the rule.
+    // The same chip, reachable only through a group: `.ch-print` and `.brand` share the rule.
     const grouped = seeded({
-      'chips.css': `.live, .brand { font-size: 12px; color: var(--live); white-space: nowrap; }\n${sheet({}, ['.live'])}`,
+      'chips.css': `.ch-print, .brand { font-size: 12px; color: var(--live); white-space: nowrap; }\n${sheet({}, ['.ch-print'])}`,
     });
     expect(grouped).toEqual([]);
   });
 
   it('fails a chip that is 11 px or 13 px: the size is one', () => {
-    const under = seeded({ 'chips.css': sheet({ '.live': 'font-size: 11px; color: var(--live); white-space: nowrap' }) });
-    expect(messages(under)).toContain('.live: font-size: 11px resolves to 11px, but a state chip is 12px');
+    const under = seeded({ 'chips.css': sheet({ '.ch-print': 'font-size: 11px; color: var(--live); white-space: nowrap' }) });
+    expect(messages(under)).toContain('.ch-print: font-size: 11px resolves to 11px, but a state chip is 12px');
     const over = seeded({ 'chips.css': sheet({ '.sec-meta': 'font-size: 13px; color: var(--ink-3); white-space: nowrap' }) });
     expect(messages(over)).toContain('.sec-meta: font-size: 13px resolves to 13px, but a count chip is 12px');
     // A size that cannot be proven is a failure too, not a pass.
@@ -307,14 +307,14 @@ describe('BOOK-70 — the chips', () => {
   });
 
   it('fails a chip that animates, shimmers, transitions or clips itself', () => {
-    const base = CHIPS['.live'] as string;
+    const base = CHIPS['.ch-print'] as string;
     for (const [property, message] of [
-      ['animation: pulse 1s infinite', '.live: a chip never animates — no animation'],
-      ['transition: color 120ms', '.live: a chip never animates — no transition'],
-      ['text-overflow: ellipsis', '.live: a chip is never ellipsized — an ellipsized state is a lie'],
-      ['overflow: hidden', '.live: a chip may not clip its own line — overflow would hide the fact it states'],
+      ['animation: pulse 1s infinite', '.ch-print: a chip never animates — no animation'],
+      ['transition: color 120ms', '.ch-print: a chip never animates — no transition'],
+      ['text-overflow: ellipsis', '.ch-print: a chip is never ellipsized — an ellipsized state is a lie'],
+      ['overflow: hidden', '.ch-print: a chip may not clip its own line — overflow would hide the fact it states'],
     ] as const) {
-      const problems = seeded({ 'chips.css': sheet({ '.live': `${base}; ${property}` }) });
+      const problems = seeded({ 'chips.css': sheet({ '.ch-print': `${base}; ${property}` }) });
       expect(messages(problems), property).toContain(message);
     }
   });
@@ -350,8 +350,8 @@ describe('BOOK-70 — the chips', () => {
 
   it('reports the chip’s own rule, not the sheet it happens to be grouped in', () => {
     const problems = seeded({
-      'a.css': '.live { font-size: 12px; color: var(--live); white-space: nowrap; }',
-      'b.css': '.live { animation: blink 2s infinite; }',
+      'a.css': '.ch-print { font-size: 12px; color: var(--live); white-space: nowrap; }',
+      'b.css': '.ch-print { animation: blink 2s infinite; }',
     });
     const hit = problems.find((problem) => problem.message.includes('never animates'));
     expect(hit?.file.split('/').pop()).toBe('b.css');
@@ -390,15 +390,15 @@ describe('BOOK-70 — the chips', () => {
   });
 
   it('merges a compound or a functional-pseudo selector, and not a longer class name', () => {
-    // `.live.is-huge` and `:is(.brand, .live)` used to slip past the exact-match merge.
-    for (const bypass of ['.live.is-huge', ':is(.brand, .live)', '.live[data-huge]', '.live:hover']) {
+    // `.sec-meta.is-huge` and `:is(.brand, .sec-meta)` used to slip past the exact-match merge.
+    for (const bypass of ['.sec-meta.is-huge', ':is(.brand, .sec-meta)', '.sec-meta[data-huge]', '.sec-meta:hover']) {
       const problems = seeded({ 'chips.css': `${sheet()}\n${bypass} { font-size: 20px; }\n` });
-      expect(messages(problems), bypass).toContain('.live: font-size: 20px resolves to 20px, but a state chip is 12px');
+      expect(messages(problems), bypass).toContain('.sec-meta: font-size: 20px resolves to 20px, but a count chip is 12px');
     }
     // True negatives: a different class that starts with the same letters, and a part whose
-    // subject is a child (`.live .dot`, `.live.idle .dot`) are not the chip's own declaration.
-    expect(seeded({ 'chips.css': `${sheet()}\n.livewire { font-size: 20px; }\n` })).toEqual([]);
-    expect(seeded({ 'chips.css': `${sheet()}\n.live .dot { font-size: 20px; }\n` })).toEqual([]);
-    expect(seeded({ 'chips.css': `${sheet()}\n.live.idle .dot { font-size: 20px; }\n` })).toEqual([]);
+    // subject is a child (`.sec-meta .dot`, `.sec-meta.idle .dot`) are not the chip's own declaration.
+    expect(seeded({ 'chips.css': `${sheet()}\n.sec-metawire { font-size: 20px; }\n` })).toEqual([]);
+    expect(seeded({ 'chips.css': `${sheet()}\n.sec-meta .dot { font-size: 20px; }\n` })).toEqual([]);
+    expect(seeded({ 'chips.css': `${sheet()}\n.sec-meta.idle .dot { font-size: 20px; }\n` })).toEqual([]);
   });
 });

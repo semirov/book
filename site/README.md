@@ -6,6 +6,13 @@ database follows. If the two ever disagree, the files win and `POST /api/admin/r
 projection.
 
 Architecture, invariants and the check that enforces each: [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+**The reading surface prints the book, not the product.** On the book page — the running head, the flow of
+chapters, the empty slots — only the book's own text, chapter numbers, the folio and the running head's
+chapter number/title may appear. No state words («замысел», «правка»), no statuses («пишется глава»,
+«глав ещё нет»), no counts («67 глав»), no explanations of the interface, no waits or failures: those live
+in panels, the chronicle and the end matter. `web/src/components/readingCopy.test.tsx` fails the gate on
+any of them, so the rule is enforced, not remembered.
 Product rules (owner) and the design live with the project's records, not in this repository: one decision
 per page, and the operator runbook in the same place.
 

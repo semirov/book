@@ -14,9 +14,10 @@ import { Seam } from './Seam.tsx';
  * the empty → written swap, so the chapter's lazy-load observer keeps watching the live slot
  * (a `chapter:created` frame must still fetch the new chapter's filings).
  *
- * The one explanation sentence is the page's: the row carries it while its strip is closed;
- * the strip carries it only when it is the first empty chapter's own strip — never both, and
- * never in another slot.
+ * The one explanation sentence is the page's: the row no longer prints it — the row is a
+ * chapter number and a field, and the reading surface prints the book, not the interface
+ * (BOOK-112). The strip carries it only when it is the first empty chapter's own strip, and
+ * only while it is open.
  */
 export function EmptyChapter({
   entry,
@@ -39,16 +40,12 @@ export function EmptyChapter({
   const premise = existingPremise(comments, entry.n);
   const row = premiseRow(entry, premise);
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
-  // The row carries it while its strip is closed; the strip carries it only when the row
-  // cannot (this is the first empty chapter and its own strip is open).
-  const rowHint = firstEmpty && !open;
 
   return (
     <>
       {row === null ? null : (
         <PremiseRow
           row={row}
-          hint={rowHint}
           onOpen={(origin) => {
             // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
             // second form would be refused by the server («у главы уже есть замысел»).

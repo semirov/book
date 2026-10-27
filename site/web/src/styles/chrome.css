@@ -11,10 +11,10 @@
   box-shadow: 0 1px 0 var(--rule);
   transition: background var(--dur-fade) var(--ease-inout);
 }
-/* BOOK-DOC-35 §5 / BOOK-90 B — the running head: two clusters on one line at the frame's
-   width. The brand and the chapter chip sit together on the left (one 24 px gap); the live
-   chip sits on the right. The folio is out of the flow above 767 and keeps the first row's
-   right end below it. The two-row head is the narrow case. */
+/* BOOK-DOC-35 §5 / BOOK-90 B / BOOK-112 — the running head: one row at the frame's width.
+   The brand (the book's own title) and the chapter slot sit together on the left (one 24 px
+   gap); the folio keeps the row's right end. There is no status row: state belongs to
+   panels, the chronicle and the end matter, never to the reading surface. */
 .top-in {
   display: flex;
   align-items: baseline;
@@ -28,46 +28,13 @@
   align-items: center;
   gap: 12px;
 }
-/* The brand and the chapter chip are one cluster: the chip follows the brand, not the line. */
+/* The brand and the chapter slot are one cluster: the slot follows the brand, not the line. */
 .top-in .top-row:first-child {
   gap: 24px;
-}
-.top-row + .top-row {
-  margin-top: 0;
 }
 .brand {
   letter-spacing: 0.16em;
   color: var(--ink-2);
-}
-/* The header chip (BOOK-70): one size for every chip (12 px), one of two inks — `--live`
-   while something is happening now, `--ink-3` when the fact is settled. Weight 400 and one
-   line that never wraps: an ellipsized or a shimmying state is a lie. */
-.live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  line-height: 1.35;
-  text-transform: uppercase;
-  font-weight: 400;
-  white-space: nowrap;
-  color: var(--live);
-}
-.live.idle {
-  color: var(--ink-3);
-}
-.dot {
-  width: 5px;
-  height: 5px;
-  background: var(--live);
-  display: inline-block;
-  flex: none;
-}
-.live.idle .dot {
-  background: transparent;
-  border: 1px solid var(--ink-3);
 }
 
 /* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
@@ -154,13 +121,10 @@
     padding-top: 11px;
     padding-bottom: 8px;
   }
-  /* The narrow head keeps its two rows; the first is the brand's cluster (the folio keeps
-     the row's right end through its own auto margin). */
+  /* The narrow head keeps one row: the brand's cluster (the folio keeps the row's right end
+     through its own auto margin). */
   .top-in .top-row:first-child {
     justify-content: flex-start;
-  }
-  .top-row + .top-row {
-    margin-top: 5px;
   }
   .title {
     font-size: 52px;
