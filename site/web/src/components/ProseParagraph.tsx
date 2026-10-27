@@ -9,11 +9,12 @@ import { Seam } from './Seam.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
-import { filingsForBlock, isAlive, staleLine } from '../lib/filings.ts';
+import { isAlive, staleLine } from '../lib/filings.ts';
 import type { ChainHistory } from '../lib/history.ts';
 import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
+import { proseMarks } from '../lib/proseMarks.ts';
 import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
-import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
+import { anchorFor, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
@@ -107,7 +108,7 @@ export function ProseParagraph({
   });
   const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
   const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
-  const blockFilings = filingsForBlock(comments, blockId);
+  const { sentences, groups: blockFilings, marks, alive, key: filingKey } = proseMarks(text, comments, blockId);
   const stale = staleLine(comments.filter((comment) => comment.anchor.blockId === blockId));
   const classes = ['p'];
   if (caret?.printing === true) classes.push('is-printing');
@@ -254,16 +255,9 @@ export function ProseParagraph({
         })
       : null;
 
-  const sentences = splitSentences(text);
   const anchor = here ? (seam?.anchor ?? null) : null;
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
-  /** Alive filings per sentence, in reading order: the phone strip lists them as they stand. */
-  const alive = sentences.flatMap((sentence) => {
-    const group = blockFilings.find((item) => item.quote !== null && item.quote === clampQuote(sentence.text));
-    return group === undefined ? [] : group.all.filter(isAlive);
-  });
-  const filingKey = blockFilings.map((group) => group.all.map((comment) => `${comment.id}:${comment.status}`).join(',')).join('|');
 
   // BOOK-90: the margin is page-wide; this paragraph only tells it that its anchors may have
   // moved (a seam opened, a revision arrived, the text changed).
@@ -288,10 +282,7 @@ export function ProseParagraph({
       if (sentence.start < from || sentence.end > to) return;
       // The gap the splitter did not claim — double spaces, a stray quote, an indent.
       if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
-      // The anchor quote is clamped to the server's bound, so a long sentence is matched by
-      // the same clamp the filing was made with — not by its raw text (BOOK-33).
-      const quote = clampQuote(sentence.text);
-      const filings = blockFilings.find((item) => item.quote !== null && item.quote === quote);
+      const filings = marks.get(sentence.start);
       const cited = citedClass(filings);
       // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the
       // cited rule's underline — text decoration sets no box, so no line moves.

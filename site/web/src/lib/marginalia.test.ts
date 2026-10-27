@@ -9,6 +9,7 @@ import {
   filingState,
   landingReceipt,
   revisionOf,
+  sentenceAt,
   STATE_WORDS,
 } from './marginalia.ts';
 import { clampQuote } from './seam.ts';
@@ -245,5 +246,33 @@ describe('the revision object’s two rows', () => {
       after: null,
       status: 'same',
     });
+  });
+});
+
+describe('the sentence a filing stands on', () => {
+  const TEXT = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+  const anchor = (overrides: Partial<CommentDto['anchor']> = {}): CommentDto['anchor'] => ({
+    blockId: 'ch08#aa11bb22',
+    blockIndex: 1,
+    quote: 'Её освещал яркий свет.',
+    prefix: 'Я вошёл в пустую комнату. ',
+    suffix: null,
+    resolved: true,
+    ...overrides,
+  });
+
+  it('names the place even when the wording has been rewritten', () => {
+    expect(sentenceAt(TEXT, anchor())).toBe(26);
+  });
+
+  it('is the same place the object reads «стало» from', () => {
+    const at = sentenceAt(TEXT, anchor());
+    const sentence = TEXT.slice(at ?? 0).split('. ')[0];
+    expect(sentence).toBe('Её освещал тусклый свет.');
+  });
+
+  it('refuses an unresolved anchor and a place it cannot name', () => {
+    expect(sentenceAt(TEXT, anchor({ resolved: false }))).toBeNull();
+    expect(sentenceAt(TEXT, anchor({ prefix: null, suffix: null }))).toBeNull();
   });
 });

@@ -80,3 +80,8 @@
   line-height: 1.4;
   color: var(--ink-3);
 }
+
+/* The AC6 scene: room below the last slot so the phone sheet never cuts a line in half. */
+.after-space {
+  height: 40vh;
+}

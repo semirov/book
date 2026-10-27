@@ -53,14 +53,14 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   };
 }
 
-function render(comments: readonly CommentDto[] = []): string {
+function render(comments: readonly CommentDto[] = [], text = TEXT): string {
   return renderToStaticMarkup(
     <ProseParagraph
       entry={ENTRY}
       blockId={BLOCK_ID}
       blockIndex={1}
       baseRev={3}
-      text={TEXT}
+      text={text}
       frozen={false}
       comments={comments}
       history
@@ -116,6 +116,70 @@ describe('a filing in the paragraph', () => {
     expect(stale).not.toContain('margin-note');
     expect(stale).not.toContain('phone-strip');
     expect(stale).toContain('абзац изменился');
+  });
+
+  it('keeps the landed tick on the sentence the change rewrote', () => {
+    // The change landed and rewrote its sentence: the stored quote matches no sentence now.
+    // The place still does, and the object opened from that tick reads «стало» from the same
+    // resolution — so the record stays reachable from the text it changed.
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const anchor = { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ' };
+    const html = render([comment({ status: 'applied', applied: { chapter: 8, rev: 4 }, changeId: 'chg_1', anchor })], CHANGED);
+    expect(html).toContain('filing-tick');
+    expect(html).toContain('data-quote="Её освещал тусклый свет."');
+  });
+
+  it('keeps an alive note on the sentence its place points at', () => {
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const anchor = { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ' };
+    const html = render([comment({ anchor })], CHANGED);
+    expect(html).toContain('class="margin-note');
+    expect(html).toContain('ждёт');
+    expect(html).toContain('data-quote="Её освещал тусклый свет."');
+  });
+
+  it('gives the one mark on a rewritten sentence to the alive filing', () => {
+    // Both anchors resolve to the same rewritten sentence; the alive filing wins the slot (the
+    // same rule `FilingMark` uses), so a pending note is never displaced by a landed tick.
+    const CHANGED = 'Я вошёл в пустую комнату. Свет был включён до меня и горел всю ночь.';
+    const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
+    const landed = comment({
+      id: 'cmt_01J9Z8K4Q8',
+      status: 'applied',
+      applied: { chapter: 8, rev: 4 },
+      anchor: { ...comment().anchor, quote: 'горел всю ночь' },
+    });
+    const html = render([landed, pending], CHANGED);
+    expect(html).toContain('filing-alive');
+    expect(html).not.toContain('filing-tick');
+    expect(html).toContain('cited rule-dotted ink-quiet');
+  });
+
+  it('invents no place for an unresolved anchor whose wording is gone', () => {
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const html = render(
+      [
+        comment({
+          status: 'applied',
+          applied: { chapter: 8, rev: 4 },
+          anchor: { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ', resolved: false },
+        }),
+      ],
+      CHANGED,
+    );
+    expect(html).not.toContain('filing-tick');
+    expect(html).toContain('абзац изменился');
+  });
+
+  it('leaves a landed-only sentence unruled — a pending sentence keeps its rule', () => {
+    // BOOK-90: `applied` ink has `rule: 'none'`; the tick is the whole mark. A rule on the
+    // sentence would be a live filing's claim, so the class must not be there at all.
+    const landed = render([comment({ status: 'applied', applied: { chapter: 8, rev: 4 } })]);
+    expect(landed).toContain('filing-tick');
+    expect(landed).not.toContain('cited');
+    expect(landed).not.toContain('rule-dotted');
+    const pending = render([comment()]);
+    expect(pending).toContain('class="cited rule-dotted ink-quiet"');
   });
 
   it('draws the accepted mark, not a note, for a landed change', () => {

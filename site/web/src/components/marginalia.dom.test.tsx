@@ -70,7 +70,7 @@ afterEach(async () => {
   document.body.innerHTML = '';
 });
 
-async function mount(comments: readonly CommentDto[]): Promise<void> {
+async function mount(comments: readonly CommentDto[], text = TEXT): Promise<void> {
   await act(async () => {
     root?.render(
       <ProseParagraph
@@ -78,7 +78,7 @@ async function mount(comments: readonly CommentDto[]): Promise<void> {
         blockId="ch08#aa11bb22"
         blockIndex={1}
         baseRev={3}
-        text={TEXT}
+        text={text}
         frozen={false}
         comments={comments}
         history
@@ -109,6 +109,28 @@ describe('opening the revision object from the paragraph', () => {
     });
     expect(container.querySelector('.revision')).toBeNull();
     expect(document.activeElement?.className).toContain('filing-tick');
+  });
+
+  it('opens the landed record from the tick left on the rewritten sentence', async () => {
+    // The sentence the change landed in no longer carries the stored quote: the tick stays at
+    // its place, and the object prints the old wording as «было» and the new one as «стало».
+    await mount(
+      [
+        comment({
+          status: 'applied',
+          applied: { chapter: 8, rev: 4 },
+          anchor: { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ' },
+        }),
+      ],
+      'Я вошёл в пустую комнату. Её освещал тусклый свет.',
+    );
+    await click('.filing-tick');
+    const object = container.querySelector('.revision');
+    expect(object?.textContent).toContain('было');
+    expect(object?.textContent).toContain('«Её освещал яркий свет.»');
+    expect(object?.textContent).toContain('стало');
+    expect(object?.textContent).toContain('«Её освещал тусклый свет.»');
+    expect(container.textContent).not.toContain('текст изменился после правки');
   });
 
   it('opens it from the note, replaces the note, and returns focus to the paragraph', async () => {
