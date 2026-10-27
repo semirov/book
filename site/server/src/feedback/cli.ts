@@ -29,6 +29,8 @@ import { join } from 'node:path';
 import {
   COMMENT_AUDITED_BY_MAX_CHARS,
   EDIT_DAY_MS,
+  interventionKindLabel,
+  validateInterventionKind,
   validateIntent,
   validateReason,
   type CommentStatus,
@@ -159,7 +161,13 @@ function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     return 1;
   }
   io.print(`batch ${result.batchId} → ${result.path}`);
-  for (const id of result.ids) io.print(`  ${id}`);
+  // BOOK-16: each item is named with the kind it declares — the auditor judges the
+  // intervention as that world-fact, and `—` means a row stored before BOOK-16. The labels
+  // come from the batch file that was just written (one read, not a query per item).
+  const items = readBatchLines(io.dir, result.batchId);
+  for (const item of items) {
+    io.print(`  ${item.id}  ${interventionKindLabel(item.kind) ?? '—'}`);
+  }
   io.print('  каждое замечание сначала проходит audit (FITS|OFF): без FITS decide откажет');
   return 0;
 }
@@ -312,8 +320,18 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     return 0;
   }
 
+  // BOOK-16 — the kind stored with the comment is the one triage validates and the one the
+  // change carries. A value this build does not know (a newer writer, a hand-edited row) is
+  // refused with a code rather than dropped; a row stored before BOOK-16 has none and is
+  // decided exactly as before.
+  const kindCheck = comment.intervention_kind === null ? null : validateInterventionKind(comment.intervention_kind);
+  if (kindCheck !== null && !kindCheck.ok) {
+    io.print(`refused (${kindCheck.code}): ${kindCheck.reason}`);
+    return 1;
+  }
   const intent = validateIntent(parsed.flags.get('intent') ?? '', comment.chapter, {
     vocabulary: chapterVocabulary(io.db, comment.chapter),
+    kind: kindCheck === null ? null : kindCheck.kind,
   });
   if (!intent.ok) {
     io.print(`refused (${intent.code}): ${intent.reason}`);
@@ -421,7 +439,8 @@ function list(parsed: ParsedArgs, io: FeedbackIo): number {
   }
   for (const row of rows) {
     io.print(
-      `${row.id}  ch${String(row.chapter).padStart(2, '0')}  ${row.status.padEnd(11)}  ${row.author}  ${row.created_at}`,
+      `${row.id}  ch${String(row.chapter).padStart(2, '0')}  ${row.status.padEnd(11)}  ` +
+        `${(interventionKindLabel(row.intervention_kind) ?? '—').padEnd(14)}  ${row.author}  ${row.created_at}`,
     );
   }
   const batches = listBatches(io.db, 5);

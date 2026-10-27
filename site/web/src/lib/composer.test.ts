@@ -4,6 +4,7 @@ import {
   budgetLine,
   composerView,
   counterLabel,
+  draftKindLine,
   draftLimits,
   EMPTY_COMPOSER,
   errorCopy,
@@ -94,13 +95,14 @@ describe('composer state (§11.6, §12.8)', () => {
 
   it('formats the budget line and validates a draft before the request', () => {
     expect(budgetLine(budget)).toContain('7 из 10');
-    expect(validateDraft({ body: 'ок', proposed: '', composer, captchaToken: 't' })).toMatchObject({ ok: false });
-    expect(validateDraft({ body: 'Хорошая сцена.', proposed: ' ', composer, captchaToken: 't' })).toEqual({
+    expect(validateDraft({ body: 'ок', proposed: '', composer, captchaToken: 't', kind: null })).toMatchObject({ ok: false });
+    expect(validateDraft({ body: 'Хорошая сцена.', proposed: ' ', composer, captchaToken: 't', kind: null })).toEqual({
       ok: true,
       body: 'Хорошая сцена.',
       proposed: null,
+      kind: null,
     });
-    expect(validateDraft({ body: 'Хорошая сцена.', proposed: '', composer, captchaToken: null })).toMatchObject({
+    expect(validateDraft({ body: 'Хорошая сцена.', proposed: '', composer, captchaToken: null, kind: null })).toMatchObject({
       ok: false,
       line: 'подтвердите, что вы не робот',
     });
@@ -113,16 +115,16 @@ describe('composer state (§11.6, §12.8)', () => {
     // The pre-`hello` default is the same pair the server confirms, from the shared constants.
     expect(EMPTY_COMPOSER).toMatchObject({ minChars: 3, maxChars: 1_200, editMaxChars: 10_000 });
 
-    expect(validateDraft({ body: 'Хорошая сцена.', proposed, composer, captchaToken: 't' })).toMatchObject({
-      ok: true,
-      proposed,
-    });
+    expect(
+      validateDraft({ body: 'Хорошая сцена.', proposed, composer, captchaToken: 't', kind: 'document' }),
+    ).toMatchObject({ ok: true, proposed, kind: 'document' });
 
     const tooLong = validateDraft({
       body: 'Хорошая сцена.',
       proposed: 'я'.repeat(composer.editMaxChars + 1),
       composer,
       captchaToken: 't',
+      kind: 'document',
     });
     expect(tooLong).toMatchObject({ ok: false });
     if (tooLong.ok) return;
@@ -132,9 +134,52 @@ describe('composer state (§11.6, §12.8)', () => {
 
   it('does not apply the note bound to a proposed wording', () => {
     const long = 'я'.repeat(composer.maxChars + 1);
-    expect(validateDraft({ body: 'Хорошая сцена.', proposed: long, composer, captchaToken: 't' })).toMatchObject({
-      ok: true,
+    expect(
+      validateDraft({ body: 'Хорошая сцена.', proposed: long, composer, captchaToken: 't', kind: 'erasure' }),
+    ).toMatchObject({ ok: true, kind: 'erasure' });
+    expect(validateDraft({ body: long, proposed: '', composer, captchaToken: 't', kind: null })).toMatchObject({ ok: false });
+  });
+
+  it('refuses an intervention without a kind, and says which four there are (BOOK-16)', () => {
+    const draft = validateDraft({
+      body: 'В главе 8 подписан отказ.',
+      proposed: 'Отказ подписан.',
+      composer,
+      captchaToken: 't',
+      kind: null,
     });
-    expect(validateDraft({ body: long, proposed: '', composer, captchaToken: 't' })).toMatchObject({ ok: false });
+    expect(draft).toMatchObject({ ok: false });
+    if (draft.ok) return;
+    expect(draft.line).toBe(
+      'выберите, что вы вносите: документ · решение героя · свидетельство · стёртая деталь',
+    );
+  });
+
+  it('accepts each of the four kinds on the intervention and keeps it in the draft', () => {
+    for (const kind of ['document', 'decision', 'testimony', 'erasure'] as const) {
+      expect(
+        validateDraft({ body: 'Подписан отказ.', proposed: 'Отказ подписан.', composer, captchaToken: 't', kind }),
+      ).toEqual({ ok: true, body: 'Подписан отказ.', proposed: 'Отказ подписан.', kind });
+    }
+  });
+
+  it('never sends a kind with a note: a note is not an intervention', () => {
+    expect(
+      validateDraft({ body: 'Тут повтор.', proposed: '', composer, captchaToken: 't', kind: null }),
+    ).toEqual({ ok: true, body: 'Тут повтор.', proposed: null, kind: null });
+  });
+
+  it('refuses a chosen kind whose wording trims to nothing, instead of dropping it', () => {
+    // A kind chosen and then emptied is not a note: the reader asked for an intervention and
+    // the composer must say what is missing rather than silently post a note.
+    for (const proposed of ['', '   ', '\n']) {
+      const draft = validateDraft({ body: 'Тут повтор.', proposed, composer, captchaToken: 't', kind: 'document' });
+      expect(draft).toMatchObject({ ok: false, line: `правка короче ${composer.minChars} символов` });
+    }
+  });
+
+  it('says in the draft state what is being brought, and that nothing is chosen yet', () => {
+    expect(draftKindLine(null)).toBe('тип не выбран — без него правка не уйдёт');
+    expect(draftKindLine('decision')).toBe('вносится: решение героя');
   });
 });

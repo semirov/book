@@ -1,4 +1,4 @@
-import type { ChangeDto, ChangeStepDto } from '@book/shared';
+import { interventionKindLabel, type ChangeDto, type ChangeStepDto } from '@book/shared';
 
 import {
   boundaryLabel,
@@ -37,6 +37,8 @@ export function ChangeCard({
   /** Reaching a chapter of either wing leaves the card and opens that chapter. */
   onOpenChapter?: (chapter: number) => void;
 }) {
+  // BOOK-16: the kind, as the plain word a reader already knows from the rules page.
+  const kindWord = interventionKindLabel(change.interventionKind);
   const wings = change.steps.filter((step) => typeof step.chapter === 'number' && step.wing !== null);
   const reached = [...new Set(wings.map((step) => step.chapter as number))].sort((left, right) => left - right);
 
@@ -55,6 +57,7 @@ export function ChangeCard({
         <footer>
           формулировка автора
           {change.source.author === null ? '' : ` · из замечания ${change.source.author}`}
+          {kindWord === null ? '' : ` · вносит ${kindWord}`}
         </footer>
       </blockquote>
 

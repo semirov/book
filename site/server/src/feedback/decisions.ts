@@ -13,7 +13,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { validateIntent, type CommentDecisionPayload } from '@book/shared';
+import { validateIntent, validateInterventionKind, type CommentDecisionPayload } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
@@ -131,8 +131,23 @@ export class DecisionsTailer {
       return 1;
     }
 
+    // BOOK-16: the kind stored with the comment reaches the intent validation and then the
+    // change (through `acceptComment`), so the site's path and the CLI judge one thing.
+    //
+    // A stored kind this build does not know is **refused**, exactly as `feedback.mjs decide`
+    // refuses it: the line is not applied and the comment stays undecided (it keeps its batch
+    // status, so triage sees it again), with an internal `decision-refused` event naming the
+    // code. Normalising it to null would accept a newer kind as "no kind" — silent, and the
+    // writer would be told nothing about the world-fact.
+    const storedKind =
+      comment.intervention_kind === null ? null : validateInterventionKind(comment.intervention_kind);
+    if (storedKind !== null && !storedKind.ok) {
+      appendCommentEvent(this.db, comment.id, 'decision-refused', at, { code: storedKind.code });
+      return 0;
+    }
     const verdict = validateIntent(decision.intent ?? '', comment.chapter, {
       vocabulary: chapterVocabulary(this.db, comment.chapter),
+      kind: storedKind === null ? null : storedKind.kind,
     });
     if (!verdict.ok) {
       this.reject(comment, verdict.reason, at, decision.batch ?? null);

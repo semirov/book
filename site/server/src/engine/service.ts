@@ -441,6 +441,18 @@ export function createEngine(deps: EngineDeps) {
     };
   }
 
+  /**
+   * BOOK-16 — the kind stored with a comment, raw. The control route validates an intent
+   * against the world-fact the change will carry (`queue.ts` copies the same column), and an
+   * unknown value has to stay detectable, so it is returned as stored rather than normalized.
+   */
+  function commentKind(commentId: string): string | null {
+    const row = db.prepare('SELECT intervention_kind FROM comments WHERE id = ?').get(commentId) as
+      | { intervention_kind: string | null }
+      | undefined;
+    return row?.intervention_kind ?? null;
+  }
+
   function heartbeat(): void {
     const at = deps.clock.now();
     store.setMeta(db, 'engine.heartbeat', iso(at));
@@ -460,6 +472,7 @@ export function createEngine(deps: EngineDeps) {
     escalate,
     beat,
     enqueue: queue.enqueue,
+    commentKind,
     state,
     trace,
     reconcile,

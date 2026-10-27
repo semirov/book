@@ -12,7 +12,9 @@
 
 import {
   INTENT_MAX_CHARS,
+  normalizeInterventionKind,
   type ChangeStatus,
+  type InterventionKind,
   type Relevance,
   type WriterAssignment,
 } from '@book/shared';
@@ -74,10 +76,13 @@ export function createQueue(deps: EngineDeps) {
     // BOOK-9: a change that names a comment is the comment's intervention — it exists only
     // if the auditor recorded `FITS` on that row. This is the second creator of `changes`
     // next to `feedback/accept.ts`, and both must ask the same question.
+    // BOOK-16: the comment also carries the intervention's kind, and that is the kind the
+    // change gets — a caller cannot declare a different world-fact than the reader did.
+    let interventionKind: InterventionKind | null = null;
     if (input.commentId !== null && input.commentId !== undefined) {
-      const source = db.prepare('SELECT audit_verdict FROM comments WHERE id = ?').get(input.commentId) as
-        | { audit_verdict: string | null }
-        | undefined;
+      const source = db
+        .prepare('SELECT audit_verdict, intervention_kind FROM comments WHERE id = ?')
+        .get(input.commentId) as { audit_verdict: string | null; intervention_kind: string | null } | undefined;
       if (source === undefined) refuse('UNKNOWN_COMMENT', 422, 'такого замечания нет');
       if (source.audit_verdict !== 'FITS') {
         refuse(
@@ -86,6 +91,7 @@ export function createQueue(deps: EngineDeps) {
           'замечание не прошло проверку на соответствие книге — правку из него не делают',
         );
       }
+      interventionKind = normalizeInterventionKind(source.intervention_kind);
     }
     const intent = input.intent.replace(/\s+/gu, ' ').trim();
     if (intent.length === 0) refuse('INVALID_INTENT', 422, 'an empty intent is not a change');
@@ -113,6 +119,7 @@ export function createQueue(deps: EngineDeps) {
     const seq = store.insertChange(db, {
       id,
       kind: input.kind,
+      interventionKind,
       chapter,
       anchor,
       intent,

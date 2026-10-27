@@ -47,6 +47,7 @@ function seedComment(fixture: Fixture, author: string, proposedText: string | nu
     author,
     body: 'Абзац читается медленно: три длинных предложения подряд.',
     proposedText,
+    interventionKind: null,
     bodySha: 'a'.repeat(64),
     flags: [],
     ipHash: 'f'.repeat(64),

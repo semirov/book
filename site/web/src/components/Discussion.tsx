@@ -1,6 +1,6 @@
 import type { CatalogEntry, CommentBudget, CommentDto, ComposerInfo, ChangeSummaryDto, ViewerDto } from '@book/shared';
 
-import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
+import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
 import { focusHash } from '../lib/focus.ts';
 import { Composer } from './Composer.tsx';
@@ -69,6 +69,8 @@ export function Discussion({
           {comments.map((comment) => {
             const line = commentStatusLine(comment);
             const quote = anchorCopy(comment);
+            // BOOK-16: the kind sits with the decision — one word, never an id or a taxonomy.
+            const kindWord = interventionKindWord(comment);
             return (
               <li className={`comment tone-${line.tone}`} key={comment.id} data-status={comment.status}>
                 <div className="comment-meta">
@@ -81,6 +83,7 @@ export function Discussion({
                 {quote === null ? null : <p className="comment-quote">«{quote}»</p>}
                 <p className="comment-body">{comment.body}</p>
                 <p className="comment-line">
+                  {kindWord === null ? null : <span className="comment-kind">{kindWord} · </span>}
                   {line.state}
                   {line.detail === null ? null : <span className="comment-reason"> · {line.detail}</span>}
                 </p>

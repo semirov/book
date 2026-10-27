@@ -20,7 +20,7 @@ import type {
   StepTrace,
   WriterAssignment,
 } from '@book/shared';
-import { parseSeams } from '@book/shared';
+import { normalizeInterventionKind, parseSeams } from '@book/shared';
 
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
@@ -182,6 +182,9 @@ export function writerAssignment(
           },
     expectation: step.pass === 'draft' ? { chars: { min: 20_000, max: 30_000 } } : null,
     intent: change?.intent ?? null,
+    // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
+    // document is written as a document and not as a prose polish. Null when there is none.
+    interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),
     seamsIn: parseSeams(json(step.seams_in, [])),
     cycle: step.cycle,
     findings: step.cycle > 0 && gapFindings.length > 0 ? gapFindings : null,

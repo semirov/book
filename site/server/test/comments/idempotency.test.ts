@@ -25,6 +25,7 @@ function newRow(id: string, idemKey: string | null, identityId = 'idt_1') {
     author: 'Аня',
     body: 'Замечание с ключом идемпотентности.',
     proposedText: null,
+    interventionKind: null,
     bodySha: 'sha',
     flags: [],
     ipHash: 'hash',

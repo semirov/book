@@ -159,6 +159,9 @@ function parsePostBody(
   if (typeof value.suffix === 'string') input.suffix = value.suffix;
   if (typeof value.baseRev === 'number' && Number.isInteger(value.baseRev)) input.baseRev = value.baseRev;
   if (typeof value.proposedText === 'string') input.proposedText = value.proposedText;
+  // BOOK-16 — the kind stays untrusted text here; the service validates it (required with an
+  // intervention, refused without one) and never trusts this boundary.
+  if (typeof value.interventionKind === 'string') input.interventionKind = value.interventionKind;
   if (typeof value.idempotencyKey === 'string' && value.idempotencyKey.length <= 100) {
     input.idempotencyKey = value.idempotencyKey;
   }

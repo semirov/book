@@ -8,6 +8,7 @@
  */
 
 import type { CaptchaProvider } from './captcha.ts';
+import type { InterventionKind } from './intervention.ts';
 
 /** §12.4 — the bounds that are enforced twice: in the composer and on the server. */
 export const COMMENT_MIN_CHARS = 3;
@@ -122,6 +123,12 @@ export type CommentDto = {
   body: string;
   /** A reader's suggested wording; data, never applied verbatim (§6A.2). */
   proposedText: string | null;
+  /**
+   * BOOK-16 — which of the four world-facts the intervention brings (`document`, `decision`,
+   * `testimony`, `erasure`). `null` for a note and for a row stored before BOOK-16; the
+   * thread prints the Russian label, never the id.
+   */
+  interventionKind: InterventionKind | null;
   status: CommentStatus;
   /**
    * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
@@ -163,6 +170,11 @@ export type PostCommentInput = {
   baseRev?: number | null;
   body: string;
   proposedText?: string | null;
+  /**
+   * BOOK-16 — the untrusted kind id from the client. Validated inside the service
+   * (`validateInterventionKind`), required with `proposedText` and refused without it.
+   */
+  interventionKind?: string | null;
   captchaToken: string;
   idempotencyKey?: string | null;
 };
@@ -181,6 +193,8 @@ export type CommentAddedPayload = {
   author: string;
   authorColor: string;
   body: string;
+  /** BOOK-16 — the kind word the thread shows beside the decision; `null` for a note. */
+  interventionKind: InterventionKind | null;
   /** `new`, `quarantined` or `rejected`: the reader is told the truth immediately. */
   status: CommentStatus;
   reason: string | null;

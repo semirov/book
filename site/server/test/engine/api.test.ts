@@ -331,6 +331,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         author: 'Аня',
         body: 'Тестовое замечание.',
         proposedText: null,
+        interventionKind: null,
         bodySha: 'a'.repeat(64),
         flags: [],
         ipHash: 'f'.repeat(64),
@@ -387,6 +388,70 @@ describe('the internal API (§4.2, §6A.11)', () => {
       });
       expect(reserved.statusCode).toBe(422);
       expect(reserved.json()).toMatchObject({ code: 'ACCEPTED_COMMENT_RESERVED' });
+    } finally {
+      await app.close();
+      fixture.close();
+    }
+  });
+
+  it('judges an intent as the kind the comment carries (BOOK-16)', async () => {
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
+    });
+    const identity = upsertIdentity(fixture.db, {
+      yandexSub: 'yandex-engine-kind',
+      displayName: 'Аня',
+      at: '2026-10-26T10:00:00Z',
+    });
+    const commentId = 'cmt_01JB7ENGINEKIND000000000001';
+    insertComment(fixture.db, {
+      id: commentId,
+      identityId: identity.id,
+      chapter: 1,
+      blockId: null,
+      blockIndex: null,
+      baseRev: 1,
+      quote: null,
+      prefix: null,
+      suffix: null,
+      author: 'Аня',
+      body: 'Подписан отказ на пропуск.',
+      proposedText: 'Отказ подписан.',
+      interventionKind: 'document',
+      bodySha: 'b'.repeat(64),
+      flags: [],
+      ipHash: 'e'.repeat(64),
+      status: 'new',
+      guard: null,
+      reason: null,
+      createdAt: '2026-10-26T10:01:00Z',
+      idemKey: null,
+    });
+    fixture.db.prepare(`UPDATE comments SET audit_verdict = 'FITS' WHERE id = ?`).run(commentId);
+    const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    const enqueue = (intent: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/internal/changes',
+        headers: auth,
+        payload: { kind: 'reader_edit', chapter: 1, intent, commentId },
+      });
+    try {
+      // The route reads the kind from the row, so the prose-correction rule reaches it.
+      const prose = await enqueue('убрать повтор в абзаце');
+      expect(prose.statusCode).toBe(422);
+      expect(prose.json()).toMatchObject({ code: 'INTENT_PROSE_CORRECTION' });
+
+      // A kind this build does not know is refused with a code, never accepted as "no kind".
+      fixture.db.pragma('ignore_check_constraints = ON');
+      fixture.db.prepare('UPDATE comments SET intervention_kind = ? WHERE id = ?').run('signature', commentId);
+      fixture.db.pragma('ignore_check_constraints = OFF');
+      const unknown = await enqueue('подписан отказ на пропуск');
+      expect(unknown.statusCode).toBe(422);
+      expect(unknown.json()).toMatchObject({ code: 'INTERVENTION_KIND_UNKNOWN' });
+
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
     } finally {
       await app.close();
       fixture.close();

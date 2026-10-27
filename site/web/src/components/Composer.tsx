@@ -1,8 +1,10 @@
-import type { CatalogEntry, CommentBudget, ComposerInfo, ViewerDto } from '@book/shared';
+import type { CatalogEntry, CommentBudget, ComposerInfo, InterventionKind, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, logoutSession, postComment } from '../api.ts';
+import { formatNumber } from '../lib/format.ts';
 import { composerView, counterLabel, draftLimits, validateDraft, type ComposerError } from '../lib/composer.ts';
+import { InterventionKinds } from './InterventionKinds.tsx';
 
 /**
  * The composer (§12.1, §12.8, §11.6).
@@ -64,6 +66,8 @@ export function Composer({
   const [body, setBody] = useState('');
   const [proposed, setProposed] = useState('');
   const [showProposed, setShowProposed] = useState(false);
+  // BOOK-16: never pre-selected — the reader names the world-fact they bring, or nothing is sent.
+  const [kind, setKind] = useState<InterventionKind | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<ComposerError | null>(null);
   const [sent, setSent] = useState(false);
@@ -111,7 +115,13 @@ export function Composer({
   }, [interactive, provider, composer.captcha.siteKey]);
 
   const submit = async (): Promise<void> => {
-    const draft = validateDraft({ body, proposed: showProposed ? proposed : '', composer, captchaToken: token });
+    const draft = validateDraft({
+      body,
+      proposed: showProposed ? proposed : '',
+      kind: showProposed ? kind : null,
+      composer,
+      captchaToken: token,
+    });
     if (!draft.ok) {
       setError({ code: 'INVALID', message: draft.line });
       return;
@@ -122,11 +132,12 @@ export function Composer({
         chapter,
         body: draft.body,
         captchaToken: token ?? '',
-        ...(draft.proposed === null ? {} : { proposedText: draft.proposed }),
+        ...(draft.proposed === null ? {} : { proposedText: draft.proposed, interventionKind: draft.kind }),
       });
       setBody('');
       setProposed('');
       setShowProposed(false);
+      setKind(null);
       setToken(null);
       setError(null);
       setSent(true);
@@ -240,15 +251,20 @@ export function Composer({
         <input
           type="checkbox"
           checked={showProposed}
-          onChange={(event) => setShowProposed(event.target.checked)}
+          onChange={(event) => {
+            setShowProposed(event.target.checked);
+            // Closing the intervention closes its kind too: a hidden kind is a kind that
+            // would be dropped in silence when the note is sent.
+            if (!event.target.checked) setKind(null);
+          }}
           disabled={sending}
         />
-        предложить свой вариант — до {limits.edit} знаков, одна правка в сутки
+        предложить свой вариант — до {formatNumber(limits.edit)} знаков, одна правка в сутки
       </label>
       {showProposed ? (
         <>
           <label className="composer-label" htmlFor="composer-proposed">
-            свой вариант абзаца · до {limits.edit} знаков
+            свой вариант абзаца · до {formatNumber(limits.edit)} знаков
           </label>
           <textarea
             id="composer-proposed"
@@ -259,6 +275,14 @@ export function Composer({
             disabled={sending}
           />
           <div className="composer-count">{counterLabel(proposed.length, limits.edit)}</div>
+          <InterventionKinds
+            kind={kind}
+            disabled={sending}
+            onPick={(value) => {
+              setKind(value);
+              setSent(false);
+            }}
+          />
         </>
       ) : null}
 

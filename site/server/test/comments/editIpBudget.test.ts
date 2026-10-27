@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { upsertIdentity } from '../../src/db/repo/identities.ts';
-import { editDailyMessage } from '../../src/comments/service.ts';
+import { editDailyMessage } from '../../src/comments/dailyLimit.ts';
 import { runFeedback } from '../../src/feedback/cli.ts';
 import { SESSION_COOKIE } from '../../src/identity/session.ts';
 import { editIdentityKey, editIpKey } from '../../src/rate/policy.ts';

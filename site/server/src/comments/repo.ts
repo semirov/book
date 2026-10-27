@@ -9,10 +9,12 @@
 import {
   PUBLIC_COMMENT_STATUSES,
   authorColor,
+  normalizeInterventionKind,
   type CommentAnchor,
   type CommentDto,
   type CommentGuard,
   type CommentStatus,
+  type InterventionKind,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
@@ -31,6 +33,8 @@ export type CommentRow = {
   author: string;
   body: string;
   proposed_text: string | null;
+  /** BOOK-16 — the intervention's kind (a column value; null for a note or a pre-BOOK-16 row). */
+  intervention_kind: string | null;
   body_sha: string;
   flags: string;
   ip_hash: string;
@@ -65,6 +69,8 @@ export type NewCommentRow = {
   author: string;
   body: string;
   proposedText: string | null;
+  /** BOOK-16 — the kind of the intervention; required with `proposedText`, null for a note. */
+  interventionKind: InterventionKind | null;
   bodySha: string;
   flags: string[];
   ipHash: string;
@@ -79,10 +85,10 @@ export function insertComment(db: Db, comment: NewCommentRow): void {
   db.prepare(
     `INSERT INTO comments
        (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, author,
-        body, proposed_text, body_sha, flags, ip_hash, status, guard, created_at, reason, idem_key)
+        body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status, guard, created_at, reason, idem_key)
      VALUES
        (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix, @author,
-        @body, @proposedText, @bodySha, @flags, @ipHash, @status, @guard, @createdAt, @reason, @idemKey)`,
+        @body, @proposedText, @interventionKind, @bodySha, @flags, @ipHash, @status, @guard, @createdAt, @reason, @idemKey)`,
   ).run({ ...comment, flags: JSON.stringify(comment.flags) });
 }
 
@@ -188,6 +194,9 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     authorColor: authorColor(row.author),
     body: redacted ? '‹текст скрыт до проверки›' : row.body,
     proposedText: redacted ? null : row.proposed_text,
+    // BOOK-16: a stored value the build does not know is dropped, never printed; `null`
+    // covers a note and every row written before BOOK-16.
+    interventionKind: normalizeInterventionKind(row.intervention_kind),
     status: row.status as CommentStatus,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered

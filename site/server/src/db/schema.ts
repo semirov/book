@@ -1,15 +1,16 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 9** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 10** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256`, the hash of the page-2 text an owner edit publishes;
- * BOOK-9 adds the auditor's verdict to a comment, recorded before triage can accept it).
+ * BOOK-9 adds the auditor's verdict to a comment, recorded before triage can accept it;
+ * BOOK-16 adds the intervention's kind to the comment and to the change it becomes).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -157,6 +158,9 @@ CREATE TABLE changes (
   seq          INTEGER PRIMARY KEY AUTOINCREMENT,  -- THE fifo order, immutable
   id           TEXT NOT NULL UNIQUE,               -- 'chg_01JB7…'
   kind         TEXT NOT NULL CHECK (kind IN ('reader_edit','accepted_comment','continuity','operator')),
+  -- BOOK-16: which world-fact the source intervention brought. Null for a continuity/operator
+  -- change and for a comment stored before BOOK-16; the four ids are in shared/src/intervention.ts.
+  intervention_kind TEXT CHECK (intervention_kind IN ('document','decision','testimony','erasure')),
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   anchor       TEXT,                               -- JSON {blockIds,quote,prefix,suffix}
   intent       TEXT NOT NULL,                      -- ≤600 chars, what must become true
@@ -264,6 +268,9 @@ CREATE TABLE comments (
   author       TEXT NOT NULL,                  -- display name snapshot at posting time, ≤32 chars
   body         TEXT NOT NULL,                  -- ≤1200 chars, normalized
   proposed_text TEXT,                          -- a reader's suggested wording; data, never applied verbatim
+  -- BOOK-16: the intervention's kind — one of four world-facts, required with proposed_text
+  -- for a new row. Null is valid for a note and for every row stored before BOOK-16.
+  intervention_kind TEXT CHECK (intervention_kind IN ('document','decision','testimony','erasure')),
   body_sha     TEXT NOT NULL,                  -- sha256(normalized body), for dedupe
   flags        TEXT NOT NULL DEFAULT '[]',     -- JSON guard flags; advisory, travels in a batch
   ip_hash      TEXT NOT NULL,                  -- HMAC-SHA256(salt, ip or /64)

@@ -16,6 +16,8 @@
  * idempotent answer (pre-BOOK-9 rows are read, never re-decided).
  */
 
+import { normalizeInterventionKind } from '@book/shared';
+
 import { insertChange } from '../engine/store.ts';
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
@@ -70,6 +72,10 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
       insertChange(db, {
         id: changeId,
         kind: 'accepted_comment',
+        // BOOK-16: the kind travels with the comment into the change, so the writer's
+        // assignment names it. A row stored before BOOK-16 has none, and that stays null —
+        // an old intervention is decided exactly as before.
+        interventionKind: normalizeInterventionKind(comment.intervention_kind),
         chapter: comment.chapter,
         anchor: JSON.stringify({
           blockIds: comment.block_id === null ? [] : [comment.block_id],

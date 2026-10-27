@@ -8,13 +8,18 @@
  * an entity the chapter does not already have. An intent that fails is refused at the CLI
  * and the comment is rejected with a public reason instead of being queued.
  *
- * The same function runs in three places — `feedback.mjs decide`, the decisions tailer on
- * the site, and the tests — so there is exactly one definition of a valid intent.
+ * BOOK-16 makes the intervention's kind part of the judgement: a goal that declares a kind
+ * must be a world-fact, not a correction of the writing (`proseCorrectionViolation`).
+ *
+ * The same function runs in four places — `feedback.mjs decide`, the decisions tailer on the
+ * site, the engine's `/internal/changes` route, and the tests — so there is exactly one
+ * definition of a valid intent. Each of them passes the kind it read from the stored comment.
  */
 
 import { INTENT_MAX_CHARS } from './change.ts';
 import { COMMENT_REASON_MAX_CHARS, INTENT_MIN_CHARS } from './comment.ts';
 import { intentMetaViolation } from './injection.ts';
+import type { InterventionKind } from './intervention.ts';
 
 export type IntentFailureCode =
   | 'ENDING_FROZEN'
@@ -23,6 +28,7 @@ export type IntentFailureCode =
   | 'INTENT_OTHER_CHAPTER'
   | 'INTENT_SHAPE'
   | 'INTENT_NEW_ENTITY'
+  | 'INTENT_PROSE_CORRECTION'
   | 'INTENT_UNVERIFIABLE';
 
 export type IntentVerdict =
@@ -33,8 +39,13 @@ export type IntentVerdict =
  * What the caller knows about the chapter an intent is about. `vocabulary` is the chapter's
  * own words (the current blocks); without it the new-entity rule cannot judge and is skipped
  * — an unknown chapter must not turn every noun into a violation.
+ *
+ * `kind` is the intervention's declared kind (BOOK-16). With a kind declared, an intent whose
+ * request object is prose mechanics («повтор», «запятая») is a prose correction dressed as a
+ * world-fact, and is refused; without a kind the older rules apply unchanged, so a pre-BOOK-16
+ * row still decides exactly as it did.
  */
-export type IntentContext = { vocabulary?: readonly string[] };
+export type IntentContext = { vocabulary?: readonly string[]; kind?: InterventionKind | null };
 
 const OTHER_CHAPTER_WORDS =
   /(друг(ой|ая|ую|их)|соседн(ей|яя|юю|их)|предыдущ(ей|ая|ую|их)|следующ(ей|ая|ую|их)|все\s+глав|всех\s+глав|по\s+всем\s+глав|весь\s+текст|всему\s+тексту|вся\s+книга|всю\s+книгу|всей\s+книге|all\s+chapters|every\s+chapter)/u;
@@ -113,6 +124,85 @@ function startsWithAny(word: string, stems: readonly string[]): boolean {
 }
 
 /**
+ * Verbs that ask for the **writing** to be changed rather than the world: «исправь»,
+ * «поправь», «перепиши», «сократи», «убери», «удали», «сотри» — and the additive ones, since
+ * a correction may be additive too («добавь запятую», «вставь пробел»). The verb alone
+ * decides nothing: the object has to be prose mechanics (`PROSE_MECHANICS`), so «добавь
+ * документ» and «добавь повторный допрос» stay world-facts. `newEntityViolation` keeps its
+ * own `ADD_REQUEST` untouched.
+ */
+const CORRECTION_REQUEST =
+  /^(испра|поправ|перепиш|переписа|замен|сокра|почист|выровн|перестав|сдвин|убр|убир|убер|удал|стер|стира|сотр|добав|встав|введ)/u;
+
+/**
+ * BOOK-16 — the vocabulary of a prose correction: punctuation, spelling, repetition, rhythm,
+ * intonation, style, bureaucratic register.
+ *
+ * These are **anchored word forms, not stems**. A prefix would refuse a genuine world-fact:
+ * «повторный допрос», «повторяющийся сон», «ритмичный стук», «падежная форма имени» all begin
+ * with a mechanics stem and are all facts about the world (review BOOK-16). Each pattern
+ * therefore spells out the noun's own inflections and nothing beyond them; the list is
+ * deliberately narrow, because a false hit here refuses a legitimate intervention while a miss
+ * only leaves the judgement to the auditor.
+ */
+const PROSE_MECHANICS: readonly RegExp[] = [
+  /^запят(ая|ой|ую|ые|ых|ым|ыми)$/u,
+  /^пунктуац/u,
+  /^тире$/u,
+  /^дефис(а|у|ом|е|ы|ов|ам|ами|ах)?$/u,
+  /^кавычк(а|и|е|у|ой|ами|ах|ам)?$/u,
+  /^скобк(а|и|е|у|ой|ами|ах|ам)?$/u,
+  /^пробел(а|у|ом|е|ы|ов|ам|ами|ах)?$/u,
+  /^многоточ(ие|ия|ию|ием|ий|иям|иями|иях)?$/u,
+  /^орфограф/u,
+  /^падеж(а|у|ом|е|ей|и|ам|ами|ах)?$/u,
+  /^спряж(ение|ения|ению|ением|ении|ений)?$/u,
+  /^повтор(ы|ов|а|у|ом|е|ам|ами|ах)?$/u,
+  /^ритм(а|у|ом|е|ы|ов|ам|ами|ах)?$/u,
+  /^интонац/u,
+  /^стилист/u,
+  /^тавтолог/u,
+  /^канцеляр/u,
+];
+
+/** Is this word the *writing* (a repeat, a comma, a rhythm) rather than something in the world? */
+function isProseMechanic(word: string): boolean {
+  return PROSE_MECHANICS.some((pattern) => pattern.test(word));
+}
+
+/**
+ * One scan shared by both rules below: a request verb, then the first substantive word it
+ * governs. `judge` says whether that word is exempt (`skip`), ends the search (`stop` — the
+ * request already names something else) or is the violation (`hit`).
+ *
+ * `stopOnQuote` is what separates the two rules: for the new-entity rule a word that names a
+ * quote from the text ends the search («добавь слово…» is not a new entity), while for the
+ * prose-correction rule that very word is the violation («убери повтор»).
+ */
+function scanRequest(
+  intent: string,
+  request: RegExp,
+  judge: (word: string) => 'skip' | 'stop' | 'hit',
+  stopOnQuote = true,
+): string | null {
+  const list = words(intent);
+  for (let index = 0; index < list.length; index += 1) {
+    if (!request.test(list[index] ?? '')) continue;
+    for (let next = index + 1; next < Math.min(list.length, index + 6); next += 1) {
+      const word = list[next] ?? '';
+      if (stopOnQuote && startsWithAny(word, QUOTED_STEMS)) break;
+      if (PREPOSITIONS.has(word)) continue;
+      if (word.length < STEM_LENGTH) continue;
+      const verdict = judge(word);
+      if (verdict === 'skip') continue;
+      if (verdict === 'hit') return word;
+      break;
+    }
+  }
+  return null;
+}
+
+/**
  * Audit M4: an intent may not ask for a *new thing* in the chapter. `«добавь маяк»`,
  * `«введи второго смотрителя»`, `«чтобы появился метроном»` are canon edits disguised as
  * edits of prose — the owner's world is not a reader's to extend. The rule is vocabulary
@@ -125,21 +215,23 @@ function startsWithAny(word: string, stems: readonly string[]): boolean {
 export function newEntityViolation(intent: string, vocabulary: readonly string[]): string | null {
   const known = new Set(vocabulary.flatMap((text) => words(text)).map(stem));
   if (known.size === 0) return null;
-  const list = words(intent);
+  return scanRequest(intent, ADD_REQUEST, (word) => {
+    if (startsWithAny(word, EDITORIAL_STEMS)) return 'skip';
+    return known.has(stem(word)) ? 'stop' : 'hit';
+  });
+}
 
-  for (let index = 0; index < list.length; index += 1) {
-    if (!ADD_REQUEST.test(list[index] ?? '')) continue;
-    for (let next = index + 1; next < Math.min(list.length, index + 6); next += 1) {
-      const word = list[next] ?? '';
-      if (startsWithAny(word, QUOTED_STEMS)) break;
-      if (PREPOSITIONS.has(word)) continue;
-      if (startsWithAny(word, EDITORIAL_STEMS)) continue;
-      if (word.length < STEM_LENGTH) continue;
-      if (known.has(stem(word))) break;
-      return word;
-    }
-  }
-  return null;
+/**
+ * BOOK-16 — a declared kind makes the intent a **world-fact**, and a world-fact is not a
+ * correction of the writing. `«исправь запятую»`, `«убери повтор»`, `«поправь ритм»` are
+ * prose corrections dressed as interventions: the same shape `newEntityViolation` already
+ * reads (a request verb plus its object), judged against the prose-mechanics vocabulary.
+ *
+ * Only called when the intervention declares its kind, so an intent without a kind (a note,
+ * or a row stored before BOOK-16) is judged exactly as it was before.
+ */
+export function proseCorrectionViolation(intent: string): string | null {
+  return scanRequest(intent, CORRECTION_REQUEST, (word) => (isProseMechanic(word) ? 'hit' : 'stop'), false);
 }
 
 export function validateIntent(raw: string, chapter: number, context: IntentContext = {}): IntentVerdict {
@@ -187,6 +279,19 @@ export function validateIntent(raw: string, chapter: number, context: IntentCont
         ok: false,
         code: 'INTENT_NEW_ENTITY',
         reason: `интент вводит новое — «${entity}»: правка не добавляет сущностей в главу`,
+      };
+    }
+  }
+
+  // BOOK-16: with a kind declared, the goal has to be a world-fact. A prose correction
+  // («исправь запятую», «убери повтор») is refused here, before it reaches a writer prompt.
+  if (context.kind !== undefined && context.kind !== null) {
+    const correction = proseCorrectionViolation(intent);
+    if (correction !== null) {
+      return {
+        ok: false,
+        code: 'INTENT_PROSE_CORRECTION',
+        reason: `интент правит написание («${correction}»), а вмешательство — факт мира: назовите, что меняется`,
       };
     }
   }

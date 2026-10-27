@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v9', () => {
+describe('migrate — schema v10', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(9);
+    expect(SCHEMA_VERSION).toBe(10);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -53,6 +53,15 @@ describe('migrate — schema v9', () => {
       expect.arrayContaining(['audit_verdict', 'audit_reason', 'audited_at', 'audited_by']),
     );
     expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
+    // BOOK-16: the intervention's kind, on the comment and on the change it becomes.
+    expect(columns(db, 'comments')).toContain('intervention_kind');
+    expect(columns(db, 'changes')).toContain('intervention_kind');
+    expect(tableSql(db, 'comments')).toContain(
+      `CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
+    );
+    expect(tableSql(db, 'changes')).toContain(
+      `CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
+    );
     db.close();
   });
 
@@ -225,6 +234,39 @@ describe('migrate — schema v9', () => {
     );
     // A migrated install has the fresh table's shape, constraint included.
     expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    db.close();
+  });
+
+  it('adds the BOOK-16 intervention kind to a v9 install, once, keeping an old row', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    // Shape a v9 database: neither a comment nor a change carried a kind before BOOK-16.
+    db.exec('ALTER TABLE comments DROP COLUMN intervention_kind');
+    db.exec('ALTER TABLE changes DROP COLUMN intervention_kind');
+    db.exec(
+      `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+       VALUES ('idn_1', 'yandex-1', 'Аня', '2026-10-25T11:00:00Z', '2026-10-25T11:00:00Z')`,
+    );
+    db.exec(
+      `INSERT INTO comments (id, identity_id, chapter, author, body, proposed_text, body_sha, ip_hash,
+                             status, created_at)
+       VALUES ('cmt_old', 'idn_1', 8, 'Аня', 'Старое замечание.', 'Старая правка.', 'a', 'f', 'new',
+               '2026-10-25T12:00:00Z')`,
+    );
+    db.pragma('user_version = 9');
+
+    expect(migrate(db)).toEqual({ from: 9, to: SCHEMA_VERSION });
+    expect(columns(db, 'comments')).toContain('intervention_kind');
+    expect(columns(db, 'changes')).toContain('intervention_kind');
+    // An old intervention keeps its history and simply has no kind — null is valid for it.
+    expect(db.prepare('SELECT intervention_kind, proposed_text FROM comments WHERE id = ?').get('cmt_old')).toEqual({
+      intervention_kind: null,
+      proposed_text: 'Старая правка.',
+    });
+    expect(tableSql(db, 'comments')).toContain(
+      `CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
+    );
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });

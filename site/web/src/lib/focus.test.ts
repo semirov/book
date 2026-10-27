@@ -32,6 +32,7 @@ const change: ChangeDto = {
   id: 'chg_1',
   seq: 14,
   kind: 'accepted_comment',
+  interventionKind: null,
   chapter: 8,
   intent: 'в абзаце дважды «слово» — оставить одно упоминание',
   source: { commentId: 'cmt_1', author: 'Аня' },

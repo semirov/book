@@ -20,6 +20,7 @@ import {
   EDIT_RAW_MAX_BYTES,
   type CommentAnchor,
   type CommentBudget,
+  type InterventionKind,
   type PostCommentInput,
   type PostCommentResponse,
 } from '@book/shared';
@@ -30,6 +31,8 @@ import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
+import { editDailyMessage, laterReset } from './dailyLimit.ts';
+import { checkInterventionKind } from './intervention.ts';
 import { classifyComment } from './guard.ts';
 import {
   appendCommentEvent,
@@ -198,6 +201,12 @@ export class CommentService {
       proposedText = proposed.text;
     }
 
+    // BOOK-16: a new intervention carries exactly one of the four kinds (BOOK-DOC-4 rule 1).
+    // Checked after the CAPTCHA and before anything is stored, so a refusal costs no slot.
+    const kind = checkInterventionKind(input.interventionKind, proposedText !== null);
+    if (kind.ok === false) return fail(422, kind.code, kind.message);
+    const interventionKind: InterventionKind | null = kind.kind;
+
     const duplicate = findDuplicate(
       this.db,
       context.identity.id,
@@ -266,6 +275,7 @@ export class CommentService {
         author: sanitizeAuthor(context.identity.display_name),
         body: body.text,
         proposedText,
+        interventionKind,
         bodySha: body.hash,
         flags: guard.flags,
         ipHash: this.ipHash(context.ipKey),
@@ -297,6 +307,7 @@ export class CommentService {
       author: dto.author,
       authorColor: dto.authorColor,
       body: dto.body,
+      interventionKind: dto.interventionKind,
       status: dto.status,
       reason: dto.reason,
       createdAt: dto.createdAt,
@@ -446,50 +457,4 @@ export function isUniqueViolation(error: unknown): boolean {
 
 function fail(status: number, code: string, message: string): ServiceFailure {
   return { ok: false, status, code, message };
-}
-
-/**
- * BOOK-DOC-4 rule 5, the public refusal: the day window and the moment it resets, in the
- * reader's timezone. It deliberately says neither "identity" nor "address" — the same line
- * answers both counters, so a refusal invites no probing of which one ran out.
- */
-export function editDailyMessage(resetAtMs: number | null, tz: string, nowMs: number): string {
-  if (resetAtMs === null) return 'правка уже была сегодня — одна правка в сутки';
-  const clock = resetClock(resetAtMs, tz, nowMs);
-  return clock === null
-    ? 'правка уже была сегодня — одна правка в сутки'
-    : `правка уже была сегодня — одна правка в сутки; следующая возможна ${clock}`;
-}
-
-/**
- * `после 18:00` when the reset is still today, `завтра после 18:00` when it falls on another
- * day in the display zone — the reader is told the truth about the wait, not a bare clock.
- * `null` for an unusable zone (the copy then omits the moment).
- */
-function resetClock(atMs: number, tz: string, nowMs: number): string | null {
-  try {
-    const time = new Intl.DateTimeFormat('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: tz,
-    }).format(new Date(atMs));
-    const day = (ms: number): string =>
-      new Intl.DateTimeFormat('en-CA', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: tz,
-      }).format(new Date(ms));
-    return day(atMs) === day(nowMs) ? `после ${time}` : `завтра после ${time}`;
-  } catch {
-    return null;
-  }
-}
-
-/** The later of the two edit resets: the next edit needs both counters to have a slot. */
-function laterReset(left: number | null, right: number | null): number | null {
-  if (left === null) return right;
-  if (right === null) return left;
-  return Math.max(left, right);
 }

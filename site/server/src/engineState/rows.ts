@@ -6,7 +6,7 @@
  * pull a write helper into a request path.
  */
 
-import { normalizeSeamBoundary, type SeamBoundary, type StepPass } from '@book/shared';
+import { normalizeSeamBoundary, type InterventionKind, type SeamBoundary, type StepPass } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 
@@ -14,6 +14,8 @@ export type ChangeRow = {
   seq: number;
   id: string;
   kind: 'reader_edit' | 'accepted_comment' | 'continuity' | 'operator';
+  /** BOOK-16 — the kind of the source intervention (null for other changes and old rows). */
+  intervention_kind: InterventionKind | null;
   chapter: number;
   intent: string;
   source_comment: string | null;

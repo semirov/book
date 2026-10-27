@@ -1,4 +1,4 @@
-import type { CommentDto } from '@book/shared';
+import { interventionKindLabel, type CommentDto } from '@book/shared';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
@@ -42,6 +42,15 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
     default:
       return { state: 'ждёт рассмотрения', detail: null, tone: 'quiet' };
   }
+}
+
+/**
+ * BOOK-16 — the kind a reader brought, as the one plain word the thread prints beside the
+ * decision («документ · принято · правка в очереди»). No id reaches the page and `null`
+ * prints nothing at all, which is what a note and a pre-BOOK-16 row look like.
+ */
+export function interventionKindWord(comment: Pick<CommentDto, 'interventionKind'>): string | null {
+  return interventionKindLabel(comment.interventionKind);
 }
 
 /** `2026-10-25T12:04:11Z` → «25.10, 12:04» — absolute, because readers return days later. */

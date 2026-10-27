@@ -18,6 +18,10 @@ const ROOT = join(import.meta.dirname, '../..');
 const BANNED = ['шов', 'противоречие исправлено', 'битый', 'retcon', 'редактор', 'консультант', 'аудитор'];
 
 const COPY_MODULES = [
+  // BOOK-16: the labels a reader sees for the four kinds, and the draft's own line.
+  'shared/src/intervention.ts',
+  'web/src/lib/composer.ts',
+  'web/src/lib/commentView.ts',
   'web/src/lib/changeStatus.ts',
   'web/src/lib/cascade.ts',
   'web/src/lib/deed.ts',

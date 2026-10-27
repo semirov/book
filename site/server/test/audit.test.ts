@@ -79,6 +79,7 @@ function seed(h: Harness, id: string): void {
     author: 'Аня',
     body: 'Тестовое замечание.',
     proposedText: null,
+    interventionKind: null,
     bodySha: 'a'.repeat(64),
     flags: [],
     ipHash: 'f'.repeat(64),

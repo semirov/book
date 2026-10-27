@@ -13,6 +13,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     authorColor: '#6f9bb5',
     body: 'Тут дважды «слово».',
     proposedText: null,
+    interventionKind: null,
     status: 'new',
     reason: null,
     createdAt: '2026-10-25T12:04:11Z',

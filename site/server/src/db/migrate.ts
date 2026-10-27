@@ -115,6 +115,35 @@ const MIGRATIONS: Migration[] = [
       if (!columns.has('audited_by')) db.exec('ALTER TABLE comments ADD COLUMN audited_by TEXT');
     },
   },
+  {
+    // BOOK-16: an intervention is one of four kinds (BOOK-DOC-4 rule 1). The kind is stored
+    // with the comment and copied to the change it becomes, so triage, the auditor and the
+    // writer read the same fact. A row stored before BOOK-16 has no kind — null stays valid
+    // for that history — while a new intervention must have one (enforced at every boundary,
+    // not by the column). The CHECK travels with the ADD COLUMN, so a migrated install has
+    // the same shape as a fresh one.
+    to: 10,
+    up(db) {
+      const commentColumns = new Set(
+        (db.pragma('table_info(comments)') as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (!commentColumns.has('intervention_kind')) {
+        db.exec(
+          `ALTER TABLE comments ADD COLUMN intervention_kind TEXT
+             CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
+        );
+      }
+      const changeColumns = new Set(
+        (db.pragma('table_info(changes)') as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (!changeColumns.has('intervention_kind')) {
+        db.exec(
+          `ALTER TABLE changes ADD COLUMN intervention_kind TEXT
+             CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
+        );
+      }
+    },
+  },
 ];
 
 function tableExists(db: Db, name: string): boolean {

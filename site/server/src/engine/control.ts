@@ -10,7 +10,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { validateIntent } from '@book/shared';
+import { validateIntent, validateInterventionKind } from '@book/shared';
 
 import { tokenMatches } from '../util/secret.ts';
 import { isEngineError } from './types.ts';
@@ -222,11 +222,23 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         message: 'принятое замечание ставит в очередь триаж, а не этот маршрут',
       });
     }
+    // BOOK-16: an intent that names a comment is judged as the kind that comment carries —
+    // the same column `queue.ts` copies into the change. An unknown stored kind is refused
+    // with a code here, never dropped to "no kind" and accepted.
+    const stored =
+      body.commentId === null || body.commentId === undefined
+        ? null
+        : options.engine.commentKind(body.commentId);
+    const kindCheck = stored === null ? null : validateInterventionKind(stored);
+    if (kindCheck !== null && !kindCheck.ok) {
+      return reply.code(422).send({ code: kindCheck.code, message: kindCheck.reason });
+    }
     // §12.3: the intent is the second injection surface — it reaches a writer prompt. The
     // same schema the CLI and the decisions tailer use runs here, before the row exists, and
     // it refuses the frozen ending for a reader-driven change (ADR-024).
     const verdict = validateIntent(body.intent, body.chapter, {
       ...(options.vocabulary === undefined ? {} : { vocabulary: options.vocabulary(body.chapter) }),
+      kind: kindCheck === null ? null : kindCheck.kind,
     });
     if (!verdict.ok) {
       // 422 for every schema refusal, and the code is the verdict's — the session loop

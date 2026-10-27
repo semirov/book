@@ -6,6 +6,7 @@
  * Platform-neutral: types and pure helpers only, no I/O.
  */
 
+import type { InterventionKind } from './intervention.ts';
 import type { Lane } from './types.ts';
 
 export type ChangeKind = 'reader_edit' | 'accepted_comment' | 'continuity' | 'operator';
@@ -228,6 +229,8 @@ export type WriterAssignment = {
   neighbours: { before: number | null; after: number | null };
   expectation: null | { chars: { min: number; max: number } };
   intent: string | null;
+  /** BOOK-16 — which of the four world-facts the intervention brought; null when unknown. */
+  interventionKind: InterventionKind | null;
   seamsIn: SeamRef[];
   cycle: number;
   findings: Finding[] | null;

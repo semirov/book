@@ -287,6 +287,47 @@
   font-size: var(--fs-label);
   color: var(--ink-2);
 }
+/* BOOK-16 — the four kinds as a plain choice: no icons, no cards, a radio and its word. */
+.composer-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.composer-kinds legend {
+  padding: 0;
+  margin-bottom: 2px;
+}
+.composer-kind {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  color: var(--ink-2);
+  /* A 44 px tap target, the same standard as the rest of the reading surfaces. */
+  min-height: 44px;
+}
+.composer-kind input {
+  margin: 0;
+}
+.composer-kind-state {
+  flex-basis: 100%;
+  margin: 0;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  color: var(--ink-3);
+}
+.composer-kind-state[data-kind='none'] {
+  color: var(--revise);
+}
+.composer-kinds .fine {
+  flex-basis: 100%;
+  margin: 0;
+}
 .composer-captcha {
   min-height: 2px;
 }
@@ -379,4 +420,8 @@
 }
 .comment-reason {
   color: var(--ink-3);
+}
+/* BOOK-16 — the kind of an intervention, printed as one plain word beside its decision. */
+.comment-kind {
+  color: var(--ink-2);
 }

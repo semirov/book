@@ -48,10 +48,19 @@ describe('the composer (BOOK-DOC-5 §4 — no invented chapter names)', () => {
     expect(html).not.toContain('Глава');
   });
 
+  it('offers the four kinds only with an intervention, and pre-selects nothing (BOOK-16)', () => {
+    // The fieldset belongs to the intervention block; before the reader opts in, no kind is
+    // on screen and no radio exists — so nothing can be sent silently.
+    expect(html).not.toContain('name="intervention-kind"');
+    expect(html).not.toContain('checked=""');
+  });
+
   it('takes both caps from the frame: maxlength, the counter, and the edit hint', () => {
     expect(html).toMatch(/maxlength="1200"/iu);
     expect(html).toContain('0 / 1200');
     // The visible hint states the intervention bound before the field is even shown.
-    expect(html).toContain('до 10000 знаков');
+    // BOOK-16: the bound in prose is grouped with the site's non-breaking space; the live
+    // counter («0 / 10000») stays a meter, not prose.
+    expect(html).toContain('до 10\u00a0000 знаков');
   });
 });

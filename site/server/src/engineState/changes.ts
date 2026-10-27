@@ -14,6 +14,7 @@
 
 import {
   PUBLIC_INTENT_MAX_CHARS,
+  normalizeInterventionKind,
   parseSeams,
   seamReason,
   type ChangeDto,
@@ -191,6 +192,9 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
     id: change.id,
     seq: change.seq,
     kind: change.kind,
+    // BOOK-16: the kind the reader declared, as the card prints it — or null when there is
+    // none to print (a continuity change, a comment stored before BOOK-16).
+    interventionKind: normalizeInterventionKind(change.intervention_kind),
     chapter: change.chapter,
     intent: publicIntent(change.intent),
     source: { commentId: change.source_comment, author: readAuthor(db, change.source_comment) },

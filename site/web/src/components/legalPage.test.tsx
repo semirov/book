@@ -1,7 +1,8 @@
-import { CASCADE_MAX_WAVE } from '@book/shared';
+import { CASCADE_MAX_WAVE, EDIT_MAX_CHARS, INTERVENTION_KIND_LIST } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { formatNumber } from '../lib/format.ts';
 import { LegalPage } from './LegalPage.tsx';
 
 /**
@@ -46,6 +47,22 @@ describe('/rules', () => {
     expect(html).toContain('указания модели');
     // BOOK-DOC-4 rule 3: the public promise is the shared constant, never a stale number.
     expect(html).toContain(`до ${CASCADE_MAX_WAVE} волн`);
+  });
+
+  it('names the four intervention kinds with the length bound and the day bound (BOOK-16)', () => {
+    expect(html).toContain(`Четыре типа: ${INTERVENTION_KIND_LIST}`);
+    expect(html).toContain(`до ${formatNumber(EDIT_MAX_CHARS)} знаков`);
+    expect(html).toContain('в одном месте');
+    expect(html).toContain('одна правка в сутки на читателя и на адрес');
+  });
+
+  it('ties a kind to one’s own wording, and promises none on a plain note (BOOK-16 review)', () => {
+    // A kind belongs to an intervention: the page must not read as if every note carries one.
+    expect(html).toContain('Вмешательство — это своя правка и её тип');
+    expect(html).toContain('Замечание без своего варианта — отзыв о тексте: тип у него не спрашивают.');
+    // A note without its own wording is still accepted into the queue — only the kind is not
+    // asked. The page must not promise otherwise.
+    expect(html).not.toContain('в очередь правок оно не встаёт');
   });
 
   it('keeps the frozen ending and the promise that a refusal has a public reason', () => {

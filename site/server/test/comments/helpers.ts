@@ -196,6 +196,8 @@ export type CommentBody = {
   quote?: string;
   baseRev?: number;
   proposedText?: string;
+  /** BOOK-16 — required with `proposedText`; a test may omit it to assert the refusal. */
+  interventionKind?: string;
   idempotencyKey?: string;
 };
 
@@ -204,6 +206,9 @@ export function commentBody(overrides: Partial<CommentBody> = {}): CommentBody {
     chapter: 8,
     body: 'Тут «слово» и «словосочетание» рядом — второй раз за главу.',
     captchaToken: 'valid-token',
+    // A body helper that carries an intervention carries its kind too: every new
+    // intervention has one, and only an explicit test omits it.
+    ...(overrides.proposedText === undefined ? {} : { interventionKind: 'testimony' }),
     ...overrides,
   };
 }

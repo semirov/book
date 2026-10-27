@@ -1,5 +1,11 @@
-import type { CommentBudget, ComposerInfo, ViewerDto } from '@book/shared';
-import { COMMENT_MAX_CHARS, COMMENT_MIN_CHARS, EDIT_MAX_CHARS } from '@book/shared';
+import type { CommentBudget, ComposerInfo, InterventionKind, ViewerDto } from '@book/shared';
+import {
+  COMMENT_MAX_CHARS,
+  COMMENT_MIN_CHARS,
+  EDIT_MAX_CHARS,
+  INTERVENTION_KIND_LABELS,
+  validateInterventionKind,
+} from '@book/shared';
 
 /**
  * BOOK-DOC-4 rule 1 — before `hello` arrives the composer shows the same caps the server
@@ -131,13 +137,22 @@ export function counterLabel(length: number, max: number): string {
   return `${length} / ${max}`;
 }
 
-/** Client-side check before a request: cheap, honest, and never the last word. */
+/**
+ * Client-side check before a request: cheap, honest, and never the last word.
+ *
+ * BOOK-16: an intervention (a proposed wording) needs one of the four kinds before it is
+ * sent. The refusal line is the shared validator's own, so the composer, the API and the
+ * CLI say the same sentence about the same omission.
+ */
 export function validateDraft(input: {
   body: string;
   proposed: string;
+  kind: InterventionKind | null;
   composer: ComposerInfo;
   captchaToken: string | null;
-}): { ok: true; body: string; proposed: string | null } | { ok: false; line: string } {
+}):
+  | { ok: true; body: string; proposed: string | null; kind: InterventionKind | null }
+  | { ok: false; line: string } {
   const body = input.body.trim();
   if (body.length < input.composer.minChars) return { ok: false, line: `замечание короче ${input.composer.minChars} символов` };
   if (body.length > input.composer.maxChars) return { ok: false, line: `замечание длиннее ${input.composer.maxChars} символов` };
@@ -151,5 +166,23 @@ export function validateDraft(input: {
   if (proposed.length > 0 && proposed.length < input.composer.minChars) {
     return { ok: false, line: `правка короче ${input.composer.minChars} символов` };
   }
-  return { ok: true, body, proposed: proposed.length === 0 ? null : proposed };
+  if (proposed.length === 0) {
+    // A chosen kind with nothing to carry it must not be dropped in silence: an intervention
+    // is its wording *and* its kind, so an empty wording is the short-wording refusal.
+    if (input.kind !== null) return { ok: false, line: `правка короче ${input.composer.minChars} символов` };
+    return { ok: true, body, proposed: null, kind: null };
+  }
+  const kind = validateInterventionKind(input.kind);
+  if (!kind.ok) return { ok: false, line: kind.reason };
+  return { ok: true, body, proposed, kind: kind.kind };
+}
+
+/**
+ * The draft's own line: what the reader is about to bring into the book. A kind is never
+ * pre-selected — until the reader picks one, the line says so.
+ */
+export function draftKindLine(kind: InterventionKind | null): string {
+  return kind === null
+    ? 'тип не выбран — без него правка не уйдёт'
+    : `вносится: ${INTERVENTION_KIND_LABELS[kind]}`;
 }

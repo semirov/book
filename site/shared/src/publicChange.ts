@@ -10,6 +10,7 @@
  * `changes`, `cascades`, `steps`, `change_events` and the public part of `events`.
  */
 
+import type { InterventionKind } from './intervention.ts';
 import type {
   AppliesVerdict,
   AnchorState,
@@ -105,6 +106,12 @@ export type ChangeDto = {
   id: string;
   seq: number;
   kind: ChangeKind;
+  /**
+   * BOOK-16 — the kind of the intervention that raised this change, as one of the four
+   * stable ids; the card prints its Russian label and nothing else. Null for a change with
+   * no comment and for a comment stored before BOOK-16.
+   */
+  interventionKind: InterventionKind | null;
   chapter: number;
   /** ≤280 chars; quoted as the author's restatement, never as site copy. */
   intent: string;

@@ -6,6 +6,8 @@
  * writes these tables; the site reads them.
  */
 
+import type { InterventionKind } from '@book/shared';
+
 import type { Db } from '../db/db.ts';
 import { insertRow, updateRow } from './rows.ts';
 
@@ -15,6 +17,8 @@ export type ChangeRow = {
   seq: number;
   id: string;
   kind: 'reader_edit' | 'accepted_comment' | 'continuity' | 'operator';
+  /** BOOK-16 — the kind of the intervention that raised this change; null for the rest. */
+  intervention_kind: InterventionKind | null;
   chapter: number;
   anchor: string | null;
   intent: string;
@@ -147,6 +151,8 @@ export type LaneRow = { id: number; holder: string | null; heartbeat_at: string 
 export type NewChange = {
   id: string;
   kind: string;
+  /** BOOK-16 — the intervention's kind, carried from the comment; null for other changes. */
+  interventionKind: InterventionKind | null;
   chapter: number;
   anchor: string | null;
   intent: string;
@@ -164,10 +170,10 @@ export function insertChange(db: Db, change: NewChange): number {
   const result = db
     .prepare(
       `INSERT INTO changes
-         (id, kind, chapter, anchor, intent, proposed_text, source_comment, source_session,
+         (id, kind, intervention_kind, chapter, anchor, intent, proposed_text, source_comment, source_session,
           base_rev, base_sha256, base_blocks, scope_hint, status, enqueued_at)
        VALUES
-         (@id, @kind, @chapter, @anchor, @intent, @proposedText, @sourceComment, @sourceSession,
+         (@id, @kind, @interventionKind, @chapter, @anchor, @intent, @proposedText, @sourceComment, @sourceSession,
           @baseRev, @baseSha, @baseBlocks, @scopeHint, 'pending', @enqueuedAt)`,
     )
     .run(change);
