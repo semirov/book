@@ -32,6 +32,14 @@ import type { FastifyInstance } from 'fastify';
  */
 const REVALIDATABLE = ['/assets/', '/fonts/', '/theme.js', '/favicon.svg'] as const;
 
+/**
+ * BOOK-119: an asset name is the hash of its bytes (`index-Bx12_3de.js`), so the same URL can
+ * only ever mean the same content — across releases too. A year plus `immutable` is the only
+ * honest policy for it, and it is what makes a stale shell's fetch instant instead of a
+ * revalidation. HTML and the API stay `no-store` below, and that rule wins.
+ */
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+
 /** The path without its query — a query string never decides the policy. */
 function pathOf(url: string): string {
   return url.split('?')[0] ?? '';
@@ -54,6 +62,11 @@ export function registerCachePolicy(app: FastifyInstance): void {
   app.addHook('onSend', async (request, reply, payload) => {
     const path = pathOf(request.url);
     const contentType = String(reply.getHeader('content-type') ?? '');
+    // BOOK-119: a hashed asset may be kept for a year. A miss on `/assets/` is a 404 JSON, not
+    // an asset — never pin that, and never let a browser keep the answer past the next publish.
+    if (path.startsWith('/assets/')) {
+      reply.header('cache-control', reply.statusCode < 400 ? IMMUTABLE : 'no-store');
+    }
     // `/healthz` explicitly: a probe that fails (a 500 from the error handler) must not be
     // stored either — "is this host up" is a fact about now, not a cached document.
     if (path.startsWith('/api/') || path === '/healthz' || contentType.startsWith('text/html')) {

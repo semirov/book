@@ -13,8 +13,41 @@
     <meta property="og:title" content="Бланк — Филипп Семиров" />
     <meta property="og:description" content="Материя заметила себя, когда в ней замкнулась петля: состояние, память, предсказание, поправка." />
     <meta property="og:locale" content="ru_RU" />
+    <!--
+      BOOK-119 — the boot guard. Inline and first in `<head>` on purpose: a shell whose bundle is
+      gone must still say so, and no external file can be relied on at that moment. It runs
+      before `/theme.js` so a theme file's failure stays a theme failure. The bytes between the
+      tags are the contract: `script-src 'self'` has no `unsafe-inline`, the server hashes
+      exactly this text into the header, and `web/src/lib/bootGuard.test.tsx` pins it at ≤1024
+      UTF-8 bytes, one inline script, silent once booted. The build placeholders below are
+      filled from `build-info.json` by `stampBuildTokens` in `web/src/lib/buildTokens.ts` (dev
+      too), so the lines are flush left and every byte is spent once.
+
+      The script runs while `<head>` is still parsing, so `document.body` and `#root` are looked
+      up at trigger time, never at parse time. Styling is CSSOM only (`style.cssText`):
+      `style-src 'self'` drops a literal `style="…"` attribute but not a CSSOM write, and the two
+      inks per `data-theme` plus `'PT Serif', Georgia, serif` keep the sentence readable with no
+      bundle CSS at all. Names: `D` disarms (flag, then three listeners and the timer), `O` is
+      the boot signal (`window.__bootGuard.ok`), `V` paints, `e` watches script errors, `l`
+      starts the five-second wait. `#root` with a child means the app is alive: `V` steps aside
+      and disarms instead of covering a working page.
+    -->
+    <script id="boot-guard">(()=>{var d=document,o,t,f,
+D=()=>{o=1;clearTimeout(t);removeEventListener('error',e,1);removeEventListener('unhandledrejection',V);removeEventListener('load',l)},
+O=()=>{D();f&&f.remove()},
+V=()=>{if(o)return;var b=d.body,q=d.getElementById('root');if(q&&q.firstChild)return O();D();var n=d.documentElement.dataset.theme=='night',a=d.createElement('a');
+f=d.createElement('p');f.textContent='страница не собралась · сборка %BUILD_COMMIT% · %BUILD_STAMP% · ';
+a.href=location.pathname+'?r='+Date.now();a.textContent='перезагрузить';a.style.color='inherit';
+f.append(a);b.textContent='';b.style.cssText="margin:0;padding:2em;font:20px 'PT Serif',Georgia,serif;background:"+(n?'#0b0c0d':'#cfd3d2')+';color:'+(n?'#e8e6e1':'#14171a');b.append(f)},
+e=s=>{var u=s.target;(u.hasAttribute?u.hasAttribute('data-critical'):1)&&V()},
+l=()=>{t=setTimeout(V,5000)};
+addEventListener('error',e,1);addEventListener('unhandledrejection',V);addEventListener('load',l);
+window.__bootGuard={ok:O}})();</script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <!-- A blocking same-origin file, not an inline script: the CSP has no `unsafe-inline`. -->
+    <!--
+      A blocking same-origin file: the theme must be set before the first paint, and it stays a
+      file so the guard above is the shell's only inline script (one hash, one policy).
+    -->
     <script src="/theme.js"></script>
   </head>
   <body>
@@ -26,6 +59,7 @@
         <p>для чтения нужен браузер с JavaScript</p>
       </div>
     </noscript>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- `data-critical`: the entry is the one script whose failure means a blank page (BOOK-119). -->
+    <script type="module" src="/src/main.tsx" data-critical></script>
   </body>
 </html>

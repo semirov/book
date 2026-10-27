@@ -49,6 +49,12 @@ jobs:
         working-directory: site
         run: npm run build
 
+      # BOOK-119: the two proofs are about bytes a browser receives. They run on the build the
+      # step above just made — a red proof is a shell or an asset class that does not ship.
+      - name: Proof (old asset survives a publish; the guard speaks without a bundle)
+        working-directory: site
+        run: npm run proof
+
       # Manuscript and canon must not drift from the site: runs from the repo root, no build needed.
       - name: Validate manuscript (structure and law rules)
         run: node site/bin/validate.mjs --strict

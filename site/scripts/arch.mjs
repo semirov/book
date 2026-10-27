@@ -19,7 +19,7 @@
  *      every registered chip keeps its one size, its voice and its two inks.
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 import { f023Problems } from './containment.mjs';
@@ -213,7 +213,11 @@ for (const included of ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib
  * BOOK-5: a skill is a prompt, so `.opencode/skills/**` (`PROMPT_FILES` in `containment.mjs`)
  * is guarded exactly like `process/` — the procedure an agent follows never ships as text.
  */
-const distDir = join(ROOT, 'web', 'dist');
+// BOOK-119: `web/dist` is a release store — `releases/**` is history, not something the site
+// serves. The canary walks the tree `current` names (the flat `dist` on a tree without a
+// publish yet), so a pruned or older release cannot make the scan either miss or lie.
+const currentDir = join(ROOT, 'web', 'dist', 'current');
+const distDir = existsSync(currentDir) ? currentDir : join(ROOT, 'web', 'dist');
 for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
   report(problem.file, problem.message);
 }

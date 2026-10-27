@@ -15,9 +15,10 @@ import { readBookCost } from './cost/book.ts';
 import type { Db } from './db/db.ts';
 import type { RouteDeps } from './http/deps.ts';
 import { registerCachePolicy } from './http/cache.ts';
-import { buildCsp } from './http/csp.ts';
+import { buildCsp, createShellHashes } from './http/csp.ts';
 import { isAllowedUpgradeOrigin } from './http/origin.ts';
 import { registerReadLimit } from './http/readLimit.ts';
+import { answerAssetMiss, firstNotFoundPass, servedRoot } from './http/releases.ts';
 import { registerAdminRoutes } from './http/routes/admin.ts';
 import { registerAnalyticsRoutes } from './http/routes/analytics.ts';
 import { registerAuthRoutes } from './http/routes/auth.ts';
@@ -154,11 +155,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     options.wsHub?.attach(socket, request);
   });
 
-  // The application owns the CSP (§12.8, §15.3): computed once, sent on every response,
-  // including static assets. Caddy must not add a second header.
-  const csp = buildCsp(options.config);
+  // The application owns the CSP (§12.8, §15.3): computed for the response, sent on every
+  // one, including static assets. BOOK-119: an HTML response carries the hash of the one inline
+  // script of the shell *being sent*; everything else carries the base header, no hash.
+  const served = servedRoot(options.config.webDist);
+  const shellHashes = createShellHashes({ warn: (message) => app.log.warn(message) });
   app.addHook('onSend', async (_request, reply, payload) => {
-    reply.header('content-security-policy', csp);
+    const contentType = String(reply.getHeader('content-type') ?? '');
+    const hashes = contentType.startsWith('text/html') ? shellHashes.hashesFor(served) : [];
+    reply.header('content-security-policy', buildCsp(options.config, hashes));
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'same-origin');
     return payload;
@@ -203,22 +208,43 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     options.wsHub?.close();
   });
 
-  const indexFile = join(options.config.webDist, 'index.html');
+  const indexFile = join(served, 'index.html');
   if (existsSync(indexFile)) {
-    await app.register(fastifyStatic, { root: options.config.webDist, wildcard: true });
+    // The 404 handler is set *before* the static route on purpose: a route snapshots the
+    // not-found context when it registers, so a handler set afterwards would never see the
+    // plugin's `callNotFound` (Fastify's default 404 would answer instead).
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith('/api/') || request.url === '/healthz') {
+        return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such route' });
+      }
+      // BOOK-119: a missing bundle is where the white screen came from. Under `/assets/` the
+      // answer is a retained release's copy or 404 JSON — the shell would parse as JavaScript,
+      // throw, and leave the page blank. Every other unknown path stays the shell.
+      if ((request.url.split('?')[0] ?? '').startsWith('/assets/')) {
+        return answerAssetMiss(request, reply, options.config.webDist);
+      }
+      // One page: every unknown path is the shell, the SPA scrolls to its own anchor. Its
+      // freshness is the app's policy (`http/cache.ts`), not this handler's. Two cases cannot
+      // be answered with a file: a re-entry (the flag) and a root whose shell is gone — the
+      // first BOOK-119 publish moves a flat `dist/index.html` into the legacy release, so for
+      // the seconds before the restart the old process has no shell to send.
+      if (!firstNotFoundPass(request) || !existsSync(indexFile)) {
+        return reply.code(503).header('cache-control', 'no-store').send({
+          code: 'UI_NOT_BUILT',
+          message: 'the served shell is missing — the release is being swapped',
+        });
+      }
+      return reply.sendFile('index.html');
+    });
+    // One registration, one root: `current` when a release exists, the flat `dist` otherwise
+    // (Docker without a publish, fixtures, dev). The plugin keeps the root path as a string and
+    // resolves per request, so the symlink is read at request time, not at boot.
+    await app.register(fastifyStatic, { root: served, wildcard: true });
     // The two static documents are routed explicitly (audit M5): an operator reading a log
     // sees them as pages, not as "an unknown path that happened to get the shell".
     for (const page of ['/privacy', '/rules']) {
       app.get(page, (_request, reply) => reply.sendFile('index.html'));
     }
-    app.setNotFoundHandler((request, reply) => {
-      if (request.url.startsWith('/api/') || request.url === '/healthz') {
-        return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such route' });
-      }
-      // One page: every unknown path is the shell, the SPA scrolls to its own anchor. Its
-      // freshness is the app's policy (`http/cache.ts`), not this handler's.
-      return reply.sendFile('index.html');
-    });
   } else {
     app.setNotFoundHandler((request, reply) => {
       if (

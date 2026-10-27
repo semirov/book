@@ -178,6 +178,13 @@ describe('HTML is never cached (BOOK-109)', () => {
     expect(again.body).toContain('книга');
   });
 
+  it('marks /healthz no-store', async () => {
+    await boot();
+    const response = await app!.inject({ method: 'GET', url: '/healthz' });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
   it('does not let a proxy store the missing-build answer', async () => {
     await boot({ ui: false });
     const response = await app!.inject({ method: 'GET', url: '/' });
@@ -187,12 +194,14 @@ describe('HTML is never cached (BOOK-109)', () => {
   });
 });
 
-describe('the hashed assets keep the static policy (BOOK-109)', () => {
-  it('serves /assets unchanged, and there — and only there — a 304 is the right answer', async () => {
+describe('the hashed assets keep the static policy (BOOK-109, BOOK-119)', () => {
+  it('serves /assets unchanged and immutable — the name is the hash, so the bytes cannot drift', async () => {
     await boot();
     const asset = await app!.inject({ method: 'GET', url: '/assets/app-b7c1.js' });
     expect(asset.statusCode).toBe(200);
-    expect(asset.headers['cache-control']).toBe('public, max-age=0');
+    // BOOK-119: a year plus `immutable`. The same URL can only mean the same bytes, in this
+    // release and in every retained one.
+    expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect(asset.headers.etag).toBeTruthy();
     expect(asset.body).toContain('книга');
 
@@ -215,6 +224,9 @@ describe('the prose-free static files keep revalidation (BOOK-109 review)', () =
       const first = await app!.inject({ method: 'GET', url });
       expect(first.statusCode, url).toBe(200);
       expect(first.headers.etag, url).toBeTruthy();
+      // BOOK-119 leaves these alone: `max-age=0` + ETag, so the pre-paint script and the fonts
+      // revalidate on every load — a 304 here is right and cannot keep stale prose alive.
+      expect(first.headers['cache-control'], url).toBe('public, max-age=0');
       const conditional = await app!.inject({
         method: 'GET',
         url,
