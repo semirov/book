@@ -95,6 +95,21 @@ export type GuardOptions = {
 };
 
 /**
+ * The production direction on its own: a data dir inside the checkout is refused. It is
+ * exported because a second caller needs the same rule without a boot — the operator's launch
+ * reset (`reset/book.ts`, BOOK-137) refuses to wipe a book whose database sits in the tree it
+ * was built from. Both callers print this one message, so an operator learns one sentence.
+ */
+export function assertDataDirOutsideRepo(dataDir: string, repoRoot: string = DEFAULT_REPO_ROOT): void {
+  const candidate = realPath(dataDir);
+  if (!covers(realPath(repoRoot), candidate)) return;
+  throw new Error(
+    `invalid configuration: refusing to boot production with DATA_DIR inside the repository (${candidate}); ` +
+      'production data lives outside the checkout',
+  );
+}
+
+/**
  * One wall, two directions, and one message per direction — a refusal an operator can act on
  * without reading this file. Paths only: no value that could be a secret reaches this function.
  *
@@ -110,13 +125,7 @@ export function assertDataDirIsolation(
   if (production) {
     // An empty `DATA_DIR` resolves to the working directory, which for a deployed boot is the
     // checkout: it is judged like any other path, not skipped.
-    const candidate = realPath(paths.dataDir);
-    if (covers(realPath(options.repoRoot ?? DEFAULT_REPO_ROOT), candidate)) {
-      throw new Error(
-        `invalid configuration: refusing to boot production with DATA_DIR inside the repository (${candidate}); ` +
-          'production data lives outside the checkout',
-      );
-    }
+    assertDataDirOutsideRepo(paths.dataDir, options.repoRoot ?? DEFAULT_REPO_ROOT);
     return;
   }
 

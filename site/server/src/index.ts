@@ -142,6 +142,9 @@ async function main(): Promise<void> {
     ipHash,
     now,
     authorsCount,
+    // BOOK-137: a reset restarts the ids the bridge's cursors point past; re-priming after the
+    // wipe keeps the live chronicle narrating from the book's first new fact.
+    onBookReset: () => bridge.prime(),
   });
 
   await watcher.start();

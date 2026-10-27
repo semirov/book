@@ -47,6 +47,12 @@ export type RouteDeps = {
   oauthFetch?: OAuthFetch;
   /** Empty means the admin surface does not exist (404), never an open panel (§17). */
   adminToken: string;
+  /**
+   * BOOK-137 (M1): called after a completed launch reset. The engine bridge holds in-memory
+   * cursors over ids the wipe restarted, so it has to be re-primed, or the live chronicle goes
+   * silent. Absent in tests and in a boot that has no bridge.
+   */
+  onBookReset?: () => void;
   /** The title page's byline count, with a monotonic marker shared by every surface. */
   authorsCount: () => AuthorsCountDto;
   /** §9/BOOK-114: the book's outlay — one whole-book aggregate, memoised by book state. */

@@ -23,15 +23,33 @@
  * The loopback-only rule is the CLI's (`bin/admin.mjs` refuses a non-local target), because a
  * deployed process binds `192.168.1.76` and a route that trusts `remoteAddress` would have to
  * know the deployment's own address list. Caddy still hides `/api/admin/*` from the public.
+ *
+ * BOOK-137 adds one more write: `POST /api/admin/reset/book` empties the book's content and
+ * progress before a launch. It still edits no paragraph — it deletes what the manuscript no
+ * longer backs and re-reads the two frame slots from `manuscript/`, which is why the one write
+ * this route performs is a *reset* and not an edit. The rule itself lives in `reset/book.ts`;
+ * this file only guards, maps refusals to statuses and answers with counts.
  */
+
+import { resolve } from 'node:path';
 
 import type { AdminHealthDto } from '@book/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+import { SITE_ROOT } from '../../config.ts';
+import { assertDataDirOutsideRepo } from '../../dataDirGuard.ts';
 import { readEngineHealth } from '../../engineState/reader.ts';
 import { resolveIdentity } from '../../identity/resolve.ts';
 import { readIntegrity } from '../../integrity/service.ts';
 import { resetIdentityBudget } from '../../rate/reset.ts';
+import {
+  BackupFailedError,
+  EngineBusyError,
+  FrameMissingError,
+  FrameNotBasisError,
+  ManuscriptWrittenError,
+  resetBook,
+} from '../../reset/book.ts';
 import { tokenMatches } from '../../util/secret.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -63,6 +81,24 @@ function identityOf(body: unknown): string | null {
   const value = (body as { identity?: unknown }).identity;
   if (typeof value !== 'string' || value.trim().length === 0) return null;
   return value;
+}
+
+/**
+ * BOOK-137: the reset body. An absent body is a dry run — the destructive shape is asked for
+ * explicitly. Anything that is not a boolean is refused rather than coerced: `{ dryRun: 'no' }`
+ * must not read as `true` because a string is truthy everywhere else in JavaScript.
+ */
+function resetOptions(body: unknown): { dryRun: boolean; backupOk: boolean } | null {
+  if (body === undefined || body === null) return { dryRun: true, backupOk: false };
+  if (typeof body !== 'object' || Array.isArray(body)) return null;
+  const { dryRun, backupOk } = body as { dryRun?: unknown; backupOk?: unknown };
+  if (dryRun !== undefined && typeof dryRun !== 'boolean') return null;
+  if (backupOk !== undefined && typeof backupOk !== 'boolean') return null;
+  const wipe = dryRun === false;
+  // `backupOk` only means «wipe without a backup»: with a dry run it asks for nothing, and a
+  // contradiction is refused here rather than silently ignored.
+  if (backupOk === true && !wipe) return null;
+  return { dryRun: !wipe, backupOk: backupOk === true };
 }
 
 /**
@@ -165,5 +201,91 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
       previous,
       current,
     });
+  });
+
+  /**
+   * BOOK-137 — the launch reset: empty the book's content and progress, keep its people.
+   *
+   * The body is `{ dryRun?: boolean, backupOk?: boolean }` and an absent body is a dry run:
+   * the destructive shape is the one that has to be asked for explicitly, never the default of
+   * a request that lost its body. Counts are the answer in both shapes; nothing here returns a
+   * row, a text or a token.
+   *
+   * Refusals: `MANUSCRIPT_WRITTEN` (a boot scan would restore the book), `FRAME_MISSING` /
+   * `FRAME_NOT_BASIS` (the canon is not readable or no longer the frozen sentence),
+   * `ENGINE_BUSY` (a step is writing into the rows about to be deleted) and `BACKUP_FAILED`.
+   */
+  app.post('/api/admin/reset/book', async (request, reply) => {
+    if (!guard(deps, request, reply)) return reply;
+    const options = resetOptions(request.body);
+    if (options === null) {
+      return reply.code(400).send({
+        code: 'INVALID',
+        message:
+          'dryRun and backupOk must be booleans, and backupOk requires dryRun: false ' +
+          '(an absent body is a dry run)',
+      });
+    }
+    try {
+      // BOOK-107's rule, applied to a command rather than to a boot: a reset must never wipe a
+      // data dir that sits inside the checkout a developer is working in.
+      assertDataDirOutsideRepo(deps.config.dataDir, resolve(SITE_ROOT, '..'));
+    } catch {
+      return reply.code(409).send({
+        code: 'DATA_DIR_IN_REPO',
+        message: 'DATA_DIR is inside the checkout — the reset refuses to wipe the tree it was built from',
+      });
+    }
+
+    try {
+      let report = resetBook(deps.db, {
+        bookRoot: deps.config.bookRoot,
+        dataDir: deps.config.dataDir,
+        now: deps.now(),
+        dryRun: options.dryRun,
+        backupOk: options.backupOk,
+      });
+      // M1: the engine bridge keeps in-memory cursors over the ids the wipe just restarted at.
+      // Re-priming marks the empty book as known, so the next real fact is narrated. A dry run
+      // never touches it: nothing was written, so nothing is re-read. A failing hook must not
+      // turn a committed wipe into a 500 — the book is already reset — so it degrades to a
+      // warning the operator can act on.
+      if (!options.dryRun) {
+        try {
+          deps.onBookReset?.();
+        } catch (error) {
+          request.log.error({ err: error }, 'reset book: the engine bridge could not be re-primed');
+          report = {
+            ...report,
+            warning: [report.warning, 'the engine bridge could not be re-primed — restart the site']
+              .filter((line) => line !== undefined)
+              .join('; '),
+          };
+        }
+      }
+      return reply.header('cache-control', 'no-store').send({ target: 'book', ...report });
+    } catch (error) {
+      if (error instanceof ManuscriptWrittenError) {
+        return reply.code(409).send({ code: error.code, message: error.message, files: error.files });
+      }
+      if (error instanceof FrameMissingError) {
+        return reply.code(409).send({ code: error.code, message: error.message });
+      }
+      if (error instanceof FrameNotBasisError) {
+        return reply.code(409).send({ code: error.code, message: error.message });
+      }
+      if (error instanceof EngineBusyError) {
+        return reply.code(409).send({
+          code: error.code,
+          message: error.message,
+          openSteps: error.engine.openSteps,
+          liveLeases: error.engine.liveLeases,
+        });
+      }
+      if (error instanceof BackupFailedError) {
+        return reply.code(500).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
   });
 }

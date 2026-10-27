@@ -1,23 +1,42 @@
 #!/usr/bin/env node
 /**
- * bin/admin.mjs — the operator's budget commands (BOOK-113).
+ * bin/admin.mjs — the operator's commands (BOOK-113, BOOK-137).
  *
  *   node bin/admin.mjs budget reset --identity <id|display-name|alias>
  *   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
+ *   node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
  *
  * Why a CLI: the owner has to see the effect of a change *now*, while the product's rule is
- * one edit a day. Both commands change budget state (the `rate_events` rows, the exemption
- * flag), never the book — the site still has no write API for `manuscript/` (§13.1).
+ * one edit a day. The budget commands change budget state (the `rate_events` rows, the
+ * exemption flag), never the book — the site still has no write API for `manuscript/` (§13.1).
  *
- * Token: `ADMIN_TOKEN`, else the file at `ADMIN_TOKEN_FILE`, else `<DATA_DIR>/admin.token`,
- * else `site/.data/admin.token`. Only the path is ever printed, never a value.
+ * `reset book` (BOOK-137) empties the book's content and progress before a launch. It is an
+ * HTTP client like the budget commands: the wipe runs inside the running server, so one
+ * process owns the database. Without a flag it is a dry run — the table of counts is the
+ * answer, and nothing is written; `--yes` performs it. A dry run also names the two things
+ * that would make the wipe refuse: chapter files the manuscript still holds (`MANUSCRIPT_WRITTEN`
+ * — a boot scan would restore them; engine-written chapters are untracked, so the remedy is
+ * `git clean -fd manuscript/`) and a live engine (`ENGINE_BUSY`).
+ *
+ * Token: `ADMIN_TOKEN`, else the file at `ADMIN_TOKEN_FILE` when it is set (a declared file
+ * that is missing, unreadable or empty is an error, never a silent fallback), else
+ * `<DATA_DIR>/admin.token`, else `site/.data/admin.token`. Only the path is printed, never a
+ * value.
  *
  * Target: `--url` or `BOOK_ADMIN_URL`, default `http://127.0.0.1:8091`. A non-local target is
  * refused, because this tool speaks with the admin token: loopback is the rule, plus this
  * machine's own interface addresses — production binds `HOST=192.168.1.76`, so loopback is
  * not the only local address there.
  *
- * Exit codes: 0 done · 2 usage/config/target · 5 the server refused. Node builtins only.
+ * Exit codes: 0 done · 2 usage/config/target · 5 the server refused — that is the budget
+ * contract, and it stays. `reset book` refines it, because an operator has to tell «no token»
+ * from «this target is not mine» from «the backup failed»:
+ *   0 done · 2 usage · 3 no admin token · 4 non-local target
+ *   5 the server refused (`MANUSCRIPT_WRITTEN`, `FRAME_MISSING`, `FRAME_NOT_BASIS`,
+ *     `ENGINE_BUSY`, 401, `INVALID`, …)
+ *   6 DATA_DIR is inside the checkout · 7 the backup failed and `--backup-ok` was not given
+ *
+ * Node builtins only.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,16 +51,24 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 const USAGE = `usage:
   node bin/admin.mjs budget reset --identity <id|display-name|alias>
   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
+  node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
 
 flags:
-  --identity <value>   who (also accepted positionally)
+  --identity <value>   budget: who (also accepted positionally)
+  --yes                reset book: perform the wipe (without it the command is a dry run)
+  --dry-run            reset book: counts only; the default, and refused together with --yes
+  --backup-ok          reset book: wipe even when the backup could not be taken and verified
   --url <url>          target; default BOOK_ADMIN_URL or ${DEFAULT_URL}
                        must be loopback or one of this machine's own addresses
   --help               this text
 
-token: ADMIN_TOKEN, else the file at ADMIN_TOKEN_FILE, else <DATA_DIR>/admin.token,
+token: ADMIN_TOKEN, else the file at ADMIN_TOKEN_FILE (when set), else <DATA_DIR>/admin.token,
        else site/.data/admin.token (the path is named, the value never printed)
-exit: 0 done · 2 usage or config · 5 the server refused the command`;
+exit: 0 done · 2 usage or config · 3 no admin token · 4 non-local target
+      5 the server refused the command (MANUSCRIPT_WRITTEN, FRAME_MISSING, FRAME_NOT_BASIS,
+        ENGINE_BUSY, INVALID, a refused token)
+      6 DATA_DIR inside the checkout · 7 the backup failed and --backup-ok was not given
+      (budget keeps 0/2/5)`;
 
 /** `node:os` addresses, minus the zone suffix (`fe80::1%en0`). */
 export function localAddresses() {
@@ -71,6 +98,16 @@ export function assertLocalTarget(raw) {
   throw new Error(`refusing a non-local target: ${host} is not loopback and not one of this machine's addresses`);
 }
 
+/** `--url <value>` / `--url=<value>`: one reader for both commands. */
+function urlArg(arg, args, index) {
+  const inline = /^--url=(.*)$/u.exec(arg);
+  if (inline !== null) return { url: inline[1], spent: 0 };
+  if (arg !== '--url') return null;
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('-')) throw new Error('flag --url needs a value');
+  return { url: value, spent: 1 };
+}
+
 /**
  * The two documented forms and nothing else. Throws on junk; the caller exits 2 with the
  * message and the usage.
@@ -92,17 +129,21 @@ export function parseBudgetArgs(argv) {
   for (let index = 2; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--help' || arg === '-h') return { kind: 'help' };
-    const flag = /^--(identity|url)=(.*)$/u.exec(arg);
+    const flag = /^--identity=(.*)$/u.exec(arg);
     if (flag !== null) {
-      if (flag[1] === 'identity') identity = flag[2];
-      else url = flag[2];
+      identity = flag[1];
       continue;
     }
-    if (arg === '--identity' || arg === '--url') {
+    const target = urlArg(arg, args, index);
+    if (target !== null) {
+      url = target.url;
+      index += target.spent;
+      continue;
+    }
+    if (arg === '--identity') {
       const value = args[index + 1];
       if (value === undefined || value.startsWith('-')) throw new Error(`flag ${arg} needs a value`);
-      if (arg === '--identity') identity = value;
-      else url = value;
+      identity = value;
       index += 1;
       continue;
     }
@@ -123,13 +164,86 @@ export function parseBudgetArgs(argv) {
   return { kind: 'exempt', identity: who.trim(), exempt: onOff === 'on', ...(url === null ? {} : { url }) };
 }
 
-/** The token, or a message naming where it was looked for — never a value. */
+/**
+ * `reset book`. No flag is a dry run; `--yes` is the only way to write. `--yes --dry-run` and
+ * `--backup-ok` without `--yes` are contradictions, and a contradiction is a usage error, not
+ * the safer half.
+ */
+export function parseResetArgs(argv) {
+  const args = [...argv];
+  if (args[0] !== 'reset') throw new Error(`unknown command: ${String(args[0])}`);
+  if (args[1] === '--help' || args[1] === '-h') return { kind: 'help' };
+  const target = args[1];
+  if (target === undefined) throw new Error('reset what? the only target is book');
+  if (target !== 'book') throw new Error(`unknown reset target: ${target} (the only target is book)`);
+
+  let yes = false;
+  let dryRun = false;
+  let backupOk = false;
+  let url = null;
+  for (let index = 2; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--help' || arg === '-h') return { kind: 'help' };
+    if (arg === '--yes') {
+      yes = true;
+      continue;
+    }
+    if (arg === '--dry-run') {
+      dryRun = true;
+      continue;
+    }
+    if (arg === '--backup-ok') {
+      backupOk = true;
+      continue;
+    }
+    const found = urlArg(arg, args, index);
+    if (found !== null) {
+      url = found.url;
+      index += found.spent;
+      continue;
+    }
+    if (arg.startsWith('-')) throw new Error(`unknown flag: ${arg}`);
+    throw new Error(`unexpected argument: ${arg}`);
+  }
+  if (yes && dryRun) throw new Error('--yes and --dry-run contradict each other');
+  if (backupOk && !yes) throw new Error('--backup-ok only means something together with --yes');
+  return { kind: 'reset-book', dryRun: !yes, backupOk, ...(url === null ? {} : { url }) };
+}
+
+/** The one command parser: `--help`, the two budget forms, and the reset. */
+export function parseCommand(argv) {
+  const first = argv[0];
+  if (first === undefined) throw new Error('no command given');
+  if (first === '--help' || first === '-h' || first === 'help') return { kind: 'help' };
+  if (first === 'budget') return parseBudgetArgs(argv);
+  if (first === 'reset') return parseResetArgs(argv);
+  throw new Error(`unknown command: ${first}`);
+}
+
+/**
+ * The token, or a message naming where it was looked for — never a value.
+ *
+ * `ADMIN_TOKEN_FILE` is a declaration, not a hint: when it is set, that file is the only one
+ * this command reads, and a missing, unreadable or empty file is an error naming the variable
+ * and the path. Silently falling back to `<DATA_DIR>/admin.token` is how a command runs with a
+ * token the operator did not choose.
+ */
 export function resolveAdminToken(env = process.env) {
   const inline = (env.ADMIN_TOKEN ?? '').trim();
   if (inline.length > 0) return inline;
-  const candidates = [];
   const file = (env.ADMIN_TOKEN_FILE ?? '').trim();
-  if (file.length > 0) candidates.push({ label: 'ADMIN_TOKEN_FILE', path: file });
+  if (file.length > 0) {
+    let value;
+    try {
+      value = readFileSync(file, 'utf8').trim();
+    } catch (error) {
+      const code = error.code ?? 'unreadable';
+      throw new Error(`cannot read ADMIN_TOKEN_FILE (${file}): ${code}`);
+    }
+    if (value.length === 0) throw new Error(`ADMIN_TOKEN_FILE (${file}) is empty`);
+    return value;
+  }
+  const candidates = [];
   const dataDir = (env.DATA_DIR ?? '').trim();
   if (dataDir.length > 0) candidates.push({ label: '<DATA_DIR>/admin.token', path: join(dataDir, 'admin.token') });
   candidates.push({ label: 'site/.data/admin.token', path: join(SITE_ROOT, '.data', 'admin.token') });
@@ -143,7 +257,7 @@ export function resolveAdminToken(env = process.env) {
     }
   }
   throw new Error(
-    `no admin token found: set ADMIN_TOKEN, or make ADMIN_TOKEN_FILE (${file || 'unset'}) / ` +
+    'no admin token found: set ADMIN_TOKEN, or make ADMIN_TOKEN_FILE / ' +
       '<DATA_DIR>/admin.token / site/.data/admin.token readable',
   );
 }
@@ -153,7 +267,7 @@ function requestBody(parsed) {
   return { identity: parsed.identity, exempt: parsed.exempt };
 }
 
-function printResult(parsed, body) {
+function printBudgetResult(parsed, body) {
   const identity = body.identity ?? {};
   const name = `«${identity.displayName ?? ''}»`;
   if (parsed.kind === 'reset') {
@@ -165,43 +279,66 @@ function printResult(parsed, body) {
   console.log(`identity ${identity.id ?? '?'} ${name} · edit_exempt ${body.previous ?? 0} → ${body.current ?? 0}`);
 }
 
-async function main(argv) {
-  let parsed;
-  try {
-    parsed = parseBudgetArgs(argv);
-  } catch (error) {
-    console.error(`admin: ${error.message}`);
-    console.error(USAGE);
-    return 2;
+/**
+ * The reset answer as the operator reads it: one line per counter, the total, what survived,
+ * and what happened to the backup. Counts only — the server never sends a row and this printer
+ * never asks for one.
+ */
+function printResetResult(body) {
+  const dryRun = body.dryRun !== false;
+  console.log(dryRun ? 'reset book — dry run, nothing is written' : 'reset book — done');
+  const tables = Array.isArray(body.tables) ? body.tables : [];
+  const suffix = dryRun ? '' : ' rows removed';
+  for (const entry of tables) {
+    console.log(`  ${entry.label ?? entry.key ?? '?'}  ${entry.rows ?? 0}${suffix}`);
   }
-  if (parsed.kind === 'help') {
-    console.log(USAGE);
-    return 0;
+  console.log(`  ${tables.length} entries, ${body.total ?? 0} rows${dryRun ? '' : ' removed'}`);
+  const kept = Array.isArray(body.kept) ? body.kept : [];
+  console.log(`kept: ${kept.map((entry) => `${entry.key} ${entry.rows ?? 0}`).join(' · ')}`);
+  console.log('frame: ch01, ch67 re-read from the manuscript');
+  if (dryRun) {
+    // The two refusals a dry run can see coming. They are the operator's next action, and both
+    // are invisible in the counts — a manuscript file is not a row, and a live engine refuses
+    // the wipe rather than being reset under.
+    const prose = body.manuscript?.proseChapters ?? 0;
+    if (prose > 0) {
+      console.log(
+        `manuscript: ${prose} chapter files hold prose — a boot scan would restore them; clear manuscript/ first`,
+      );
+    }
+    const openSteps = body.engine?.openSteps ?? 0;
+    const liveLeases = body.engine?.liveLeases ?? 0;
+    if (openSteps > 0 || liveLeases > 0) {
+      console.log(`engine: ${openSteps} open step(s) · ${liveLeases} live lease(s) — a wipe would be refused`);
+    }
+    return;
   }
+  const backup = body.backup ?? null;
+  if (backup !== null) {
+    console.log(`backup: ${backup.file} (${backup.mode}, integrity ${backup.integrity}, counts match)`);
+  } else if (typeof body.backupSkipped === 'string') {
+    console.log(`backup: skipped (${body.backupSkipped})`);
+  } else {
+    console.log('backup: none (backupOk was given)');
+  }
+  // BOOK-137: the server's own warning is the operator's business — «no backup» and a bridge
+  // that could not be re-primed are invisible in the counts, and a silent one is a lie.
+  if (typeof body.warning === 'string' && body.warning.length > 0) console.log(`warning: ${body.warning}`);
+}
 
-  let target;
-  let token;
-  try {
-    target = assertLocalTarget(parsed.url ?? process.env.BOOK_ADMIN_URL ?? DEFAULT_URL);
-    token = resolveAdminToken();
-  } catch (error) {
-    console.error(`admin: ${error.message}`);
-    return 2;
-  }
-
-  const url = new URL(`/api/admin/budget/${parsed.kind === 'reset' ? 'reset' : 'exempt'}`, target);
+/** The one request both commands make: JSON in, JSON out, both halves of a refusal visible. */
+async function post(target, path, token, payload) {
+  const url = new URL(path, target);
   let response;
   try {
     response = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify(requestBody(parsed)),
+      body: JSON.stringify(payload),
     });
   } catch (error) {
-    console.error(`admin: cannot reach ${url.origin}: ${error.cause?.code ?? error.message}`);
-    return 5;
+    return { error: `admin: cannot reach ${url.origin}: ${error.cause?.code ?? error.message}` };
   }
-
   const text = await response.text();
   let body = null;
   try {
@@ -209,7 +346,17 @@ async function main(argv) {
   } catch {
     body = null;
   }
+  return { response, body };
+}
 
+async function runBudget(parsed, target, token) {
+  const path = `/api/admin/budget/${parsed.kind === 'reset' ? 'reset' : 'exempt'}`;
+  const result = await post(target, path, token, requestBody(parsed));
+  if ('error' in result) {
+    console.error(result.error);
+    return 5;
+  }
+  const { response, body } = result;
   if (!response.ok) {
     if (response.status === 401) {
       console.error('admin: the token was refused — check ADMIN_TOKEN or the token file (the value is not printed)');
@@ -223,13 +370,82 @@ async function main(argv) {
     console.error(`admin: ${code}: ${message}${candidates}`);
     return 5;
   }
-
   if (body === null) {
     console.error('admin: the server answered with something that is not JSON');
     return 5;
   }
-  printResult(parsed, body);
+  printBudgetResult(parsed, body);
   return 0;
+}
+
+async function runReset(parsed, target, token) {
+  const result = await post(target, '/api/admin/reset/book', token, {
+    dryRun: parsed.dryRun,
+    backupOk: parsed.backupOk,
+  });
+  if ('error' in result) {
+    console.error(result.error);
+    return 5;
+  }
+  const { response, body } = result;
+  if (!response.ok) {
+    if (response.status === 401) {
+      console.error('admin: the token was refused — check ADMIN_TOKEN or the token file (the value is not printed)');
+      return 5;
+    }
+    const code = body?.code ?? `HTTP_${String(response.status)}`;
+    const message = body?.message ?? 'no message';
+    const names = Array.isArray(body?.files) ? ` (${body.files.join(', ')})` : '';
+    const detail =
+      code === 'ENGINE_BUSY'
+        ? ` (open steps ${body?.openSteps ?? '?'} · live leases ${body?.liveLeases ?? '?'})`
+        : names;
+    console.error(`admin: ${code}: ${message}${detail}`);
+    if (code === 'DATA_DIR_IN_REPO') return 6;
+    if (code === 'BACKUP_FAILED') return parsed.backupOk ? 5 : 7;
+    return 5;
+  }
+  if (body === null) {
+    console.error('admin: the server answered with something that is not JSON');
+    return 5;
+  }
+  printResetResult(body);
+  return 0;
+}
+
+async function main(argv) {
+  let parsed;
+  try {
+    parsed = parseCommand(argv);
+  } catch (error) {
+    console.error(`admin: ${error.message}`);
+    console.error(USAGE);
+    return 2;
+  }
+  if (parsed.kind === 'help') {
+    console.log(USAGE);
+    return 0;
+  }
+
+  // BOOK-137: the reset distinguishes «no token» (3) from «not my machine» (4); the budget
+  // contract keeps one code (2) for both, and that stays as it was.
+  const reset = parsed.kind === 'reset-book';
+  let target;
+  try {
+    target = assertLocalTarget(parsed.url ?? process.env.BOOK_ADMIN_URL ?? DEFAULT_URL);
+  } catch (error) {
+    console.error(`admin: ${error.message}`);
+    return reset ? 4 : 2;
+  }
+  let token;
+  try {
+    token = resolveAdminToken();
+  } catch (error) {
+    console.error(`admin: ${error.message}`);
+    return reset ? 3 : 2;
+  }
+
+  return reset ? runReset(parsed, target, token) : runBudget(parsed, target, token);
 }
 
 const entry = process.argv[1];
