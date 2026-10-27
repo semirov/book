@@ -48,7 +48,7 @@ export function Header({
 
   return (
     <header className="top">
-      <div className="page top-in">
+      <div className="page sheet top-in">
         <div className="top-row">
           <span className="brand">Книга · {TOTAL_CHAPTERS} глав</span>
         </div>

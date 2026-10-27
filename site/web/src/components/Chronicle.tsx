@@ -120,7 +120,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
   }, [changes]);
 
   return (
-    <section className="chronicle page" aria-label="хроника книги">
+    <section className="chronicle page sheet" aria-label="хроника книги">
       <div className="chr-head">
         <h2 className="chr-title">хроника</h2>
         <p className="chr-sub">

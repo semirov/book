@@ -54,10 +54,17 @@ h3 {
   font-weight: 400;
 }
 
+/* The reading column (text register). `--measure` is the width of the text itself, so the
+   gutters are added before the box is measured — and a `.sheet` is the same page laid on the
+   frame instead of in the column (BOOK-DOC-35 §2). Base rules are the desktop: every query
+   below narrows, never widens. */
 .page {
-  max-width: var(--measure);
+  max-width: calc(var(--measure) + 2 * var(--gut));
   margin: 0 auto;
   padding: 0 var(--gut);
+}
+.page.sheet {
+  max-width: var(--shell);
 }
 .bleed {
   margin-inline: calc(var(--gut) * -1);
@@ -67,7 +74,7 @@ h3 {
 .inv,
 .talks,
 .plate {
-  scroll-margin-top: 78px;
+  scroll-margin-top: var(--offset-top);
 }
 
 /* labels: the voice of the form, never the voice of the book */
@@ -89,10 +96,10 @@ h3 {
 .mark {
   font-family: var(--label);
   text-transform: uppercase;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.12em;
   font-weight: 400;
   font-size: var(--fs-label);
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--ink-3);
 }
 
@@ -109,26 +116,29 @@ h3 {
 }
 
 .noscript {
-  max-width: var(--measure);
+  max-width: calc(var(--measure) + 2 * var(--gut));
   margin: 0 auto;
   padding: 64px var(--gut);
   text-align: center;
 }
 
-@media (min-width: 600px) {
+/* BOOK-DOC-35 §3 — the adaptive regime: the desktop is the base, the tablet and the phone
+   are down-queries. Nothing here starts at 320 px and grows. */
+/* The type scale's narrow steps live in tokens.css, where the ladder has one home; this file
+   only narrows the space the layout is made of. */
+@media (max-width: 1023px) {
   :root {
-    --gut: 32px;
-    --fs-body: 17.5px;
+    --offset-top: 72px;
   }
 }
-@media (min-width: 1024px) {
+@media (max-width: 599px) {
   :root {
-    --fs-body: 18px;
-    --measure: 35rem;
-  }
-  .top-in {
-    padding-top: 14px;
-    padding-bottom: 10px;
+    --gut: 24px;
+    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because «последняя
+       запись · N минут назад» wraps at 342px; 59.1px is the same head with a one-line chip
+       (measured at 768). The offset follows the wrapped case — if the chip ever stops
+       wrapping, 72 would do again and 80 leaves 3.4px of extra air. */
+    --offset-top: 80px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

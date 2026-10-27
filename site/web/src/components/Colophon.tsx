@@ -32,7 +32,7 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
   };
 
   return (
-    <footer className="page colophon" id="colo">
+    <footer className="page sheet colophon" id="colo">
       <div className="row">
         <span>
           книга · {state.chapters.count} / {TOTAL_CHAPTERS}

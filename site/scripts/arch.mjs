@@ -12,13 +12,16 @@
  *   5. the engine calls no model and no network: it is a deterministic state machine;
  *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) and the
  *      prompt tree (`.opencode/skills/`, BOOK-5) stay internal: no line of them appears in the
- *      built bundle.
+ *      built bundle;
+ *   7. the type floor and the adaptive regime (BOOK-DOC-35): no `font-size` below 12px and no
+ *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 import { f023Problems } from './containment.mjs';
+import { styleProblems } from './styles.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 /** The book repository: `site/` lives inside it (§21.1). */
@@ -217,6 +220,11 @@ for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
  * record, and the dossier mandate is retired — with no record and no title lines, the check
  * could only pass vacuously. The rule id stays in `validate/text.ts`.
  */
+
+/** 7 — the type floor and the adaptive regime (BOOK-DOC-35 §7). */
+for (const problem of styleProblems(join(ROOT, 'web', 'src', 'styles'))) {
+  report(problem.file, `line ${problem.line}: ${problem.message}`);
+}
 
 if (problems.length > 0) {
   console.error(`arch: ${problems.length} problem(s)`);

@@ -23,8 +23,8 @@
 .kind {
   display: grid;
   gap: 2px;
-  min-height: 44px;
-  padding: 8px;
+  min-height: 56px;
+  padding: 10px;
   border: 1px solid var(--rule);
   border-radius: 0;
   background: transparent;
@@ -41,12 +41,12 @@
 }
 .kind-word {
   font-family: var(--ui);
-  font-size: 13px;
+  font-size: var(--fs-meta);
   color: var(--ink);
 }
 .kind-meaning {
   font-family: var(--ui);
-  font-size: 11px;
+  font-size: var(--fs-label);
   line-height: 1.35;
   color: var(--ink-3);
 }
@@ -63,7 +63,7 @@
 .kind-state {
   grid-column: 1 / -1;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 
@@ -77,7 +77,7 @@
 }
 .filing-mark {
   position: absolute;
-  right: -24px;
+  right: -26px;
   top: 0;
   display: flex;
   align-items: center;
@@ -96,7 +96,7 @@
   border: 1px solid currentColor;
   background: var(--paper-2);
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: var(--fs-micro);
   line-height: 1.1;
   white-space: nowrap;
 }
@@ -162,7 +162,7 @@
   border: 0;
   background: none;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--ink-3);
   text-align: left;
   cursor: pointer;
@@ -174,7 +174,7 @@
 }
 .premise-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) 96px;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -188,7 +188,7 @@
 }
 .premise-n {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -200,12 +200,12 @@
   border-bottom: 1px dotted var(--rule);
   font-family: var(--serif);
   font-style: italic;
-  font-size: 15px;
+  font-size: var(--fs-note);
   color: var(--ink-2);
 }
 .premise-label {
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -217,13 +217,13 @@
 .premise-hint {
   margin: 2px 0 0;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   line-height: 1.4;
   color: var(--ink-3);
 }
 .premise-hint {
   font-family: var(--ui);
-  font-size: 11px;
+  font-size: var(--fs-label);
 }
 
 /* ---------- desktop (§2.8) ---------- */
@@ -234,31 +234,48 @@
   }
 }
 
-@media (min-width: 1024px) {
+/* The rail lives in the 198px margin the frame made room for: it is part of the base
+   (desktop) layout, hidden at ≤1023 where there is no margin (BOOK-DOC-35 §2). */
+.seam-rail {
+  position: absolute;
+  left: -104px;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  width: 96px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  opacity: 0;
+  cursor: pointer;
+}
+.p:hover .seam-rail,
+.p:focus-within .seam-rail {
+  opacity: 1;
+  color: var(--live);
+}
+@media (max-width: 1023px) {
   .seam-rail {
-    position: absolute;
-    left: -104px;
-    top: 0;
-    display: inline-flex;
-    align-items: center;
-    width: 96px;
-    height: 44px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    font-family: var(--label);
-    font-size: 9.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-3);
-    opacity: 0;
-    cursor: pointer;
+    display: none;
   }
-  .p:hover .seam-rail,
-  .p:focus-within .seam-rail {
-    opacity: 1;
-    color: var(--live);
+}
+/* The phone gutter is 24px, so a mark hung at −26 would clip 2px at the viewport edge: at the
+   narrow step it hangs at −22 and keeps its 24 × 24 target. */
+@media (max-width: 599px) {
+  .filing-mark {
+    right: -22px;
+  }
+}
+@media (max-width: 479px) {
+  .kinds {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

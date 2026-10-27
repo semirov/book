@@ -68,7 +68,7 @@
   white-space: nowrap;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 14px;
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--ink-2);
 }
@@ -80,7 +80,7 @@
   border: 0;
   background: none;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   line-height: 1.4;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
@@ -90,7 +90,7 @@
 }
 .seam-draft {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -103,7 +103,7 @@
   border: 0;
   background: none;
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--live);
@@ -113,7 +113,7 @@
 .seam-frozen {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   text-decoration: none;
 }
@@ -135,7 +135,7 @@
   margin: 0;
   padding: 0 8px 8px;
   font-family: var(--ui);
-  font-size: 11px;
+  font-size: var(--fs-label);
   line-height: 1.4;
   color: var(--ink-3);
 }
@@ -143,7 +143,7 @@
   margin: 0;
   padding: 10px 8px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-2);
 }
 .seam-link {
@@ -167,7 +167,7 @@
   display: flex;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-2);
 }
 .seam-filing-n {
@@ -182,7 +182,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-family: var(--serif);
-  font-size: 14px;
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--ink);
 }
@@ -194,7 +194,7 @@
   border-top: 1px solid var(--rule);
   background: none;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   text-align: left;
   padding: 0 8px;
@@ -226,7 +226,7 @@
 }
 .field-label {
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -235,6 +235,7 @@
 .seam-text {
   width: 100%;
   box-sizing: border-box;
+  min-height: 44px;
   margin: 0;
   padding: 8px;
   border: 1px solid var(--rule);
@@ -267,7 +268,7 @@
   padding: 0 8px;
   border: 1px dashed var(--rule);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .seam-captcha-box {
@@ -280,7 +281,7 @@
 }
 .seam-error {
   font-family: var(--ui);
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.45;
   color: var(--revise);
 }
@@ -295,7 +296,7 @@
   border: 0;
   background: none;
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--live);
@@ -308,7 +309,7 @@
   background: var(--ink);
   color: var(--paper);
   font-family: var(--ui);
-  font-size: 13px;
+  font-size: var(--fs-label);
   cursor: pointer;
 }
 .seam-submit:disabled {

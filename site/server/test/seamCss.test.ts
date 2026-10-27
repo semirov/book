@@ -22,8 +22,9 @@ describe('the mark’s target is 24×24 and off the prose (major 5)', () => {
     expect(rule).toContain('width: 24px');
     expect(rule).toContain('height: 24px');
     expect(rule).toContain('position: absolute');
-    // The box sits in the right margin on the mark's line, so it covers no character.
-    expect(rule).toContain('right: -24px');
+    // The box sits in the right margin on the mark's line, so it covers no character. BOOK-DOC-35
+    // §5 moves it 2px further out: the 12px numeral needs it, and the frame's margin has room.
+    expect(rule).toContain('right: -26px');
     expect(rule).toContain('display: flex');
     // The button is visible: the numeral inside it is the mark a reader sees.
     expect(rule).not.toContain('opacity: 0');

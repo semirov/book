@@ -12,8 +12,8 @@
   justify-content: space-between;
   gap: 14px;
   border-top: 1px solid var(--ink);
-  padding-top: 9px;
-  margin-bottom: 22px;
+  padding-top: 10px;
+  margin-bottom: 24px;
 }
 .ch-id {
   display: flex;
@@ -29,7 +29,7 @@
   font-variant-numeric: tabular-nums;
 }
 .ch-meta {
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-align: right;
   color: var(--ink-3);
@@ -42,7 +42,7 @@
    the wider screens. Size, leading, colour and measure never change with it. */
 .p {
   margin-bottom: 1.02em;
-  text-align: left;
+  text-align: justify;
   hyphens: auto;
   -webkit-hyphens: auto;
   text-wrap: pretty;
@@ -52,9 +52,12 @@
 .p:last-child {
   margin-bottom: 0;
 }
-@media (min-width: 600px) {
+/* The phone reads ragged-right: a justified 342px column with auto hyphenation opens rivers
+   («Доста- / точно,   чтобы система»). The desktop keeps the justified measure; BOOK-DOC-35 §3
+   writes that as the base and the phone as the exception, not the other way round. */
+@media (max-width: 599px) {
   .p {
-    text-align: justify;
+    text-align: left;
   }
 }
 
@@ -95,19 +98,19 @@
   padding-left: 12px;
   font-family: var(--ui);
   font-size: var(--fs-note);
+  line-height: 1.55;
 }
 .comment.tone-live {
   border-left-color: var(--live);
 }
 .comment.tone-stopped {
   border-left-color: var(--rule-2);
-  opacity: 0.8;
 }
 .comment-meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: var(--fs-nano);
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -177,11 +180,11 @@
 }
 .sec-h .lbl {
   color: var(--ink);
-  letter-spacing: 0.24em;
-  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-size: var(--fs-label);
 }
 .sec-meta {
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
@@ -200,8 +203,8 @@
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 0 0;
-  font-size: 9px;
+  padding: 12px 0 0;
+  font-size: var(--fs-micro);
   letter-spacing: 0.1em;
   color: var(--ink-3);
 }
@@ -213,15 +216,15 @@
   text-transform: none;
   letter-spacing: 0.02em;
   font-family: var(--ui);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: var(--ink-3);
 }
 .fine {
   font-family: var(--ui);
   text-transform: none;
   letter-spacing: 0;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
   color: var(--ink-3);
   margin-top: 10px;
   max-width: 46ch;
@@ -231,10 +234,10 @@
 .colophon {
   margin-top: 52px;
   border-top: 1px solid var(--ink);
-  padding: 12px var(--gut) 40px;
+  padding: 14px var(--gut) 44px;
   display: grid;
-  gap: 6px;
-  font-size: 9px;
+  gap: 8px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   color: var(--ink-3);
 }
@@ -249,7 +252,7 @@
   font-family: var(--mono);
   letter-spacing: 0.03em;
   text-transform: none;
-  font-size: 10px;
+  font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
 }
 .theme {
@@ -258,7 +261,7 @@
   gap: 8px;
   color: var(--ink-2);
   letter-spacing: 0.12em;
-  font-size: 9px;
+  font-size: var(--fs-micro);
   text-transform: uppercase;
   min-height: 44px;
 }
@@ -301,4 +304,32 @@
   line-height: 1.3;
   color: var(--ink);
   text-wrap: balance;
+}
+
+/* ---------- BOOK-39: the category line on page 1; the rule before the book's words ----------
+   Appended as one block, on the owner's instruction; no rule above it was touched. The
+   category line sits on the cover by his decision; the rule is the `***` that separates the
+   site's explanation from the book's own words — a divider in the layout, never a character
+   in a string, and no inline style (the CSP has no `style-src-attr`). */
+.title-genre {
+  max-width: 34ch;
+  margin: 18px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.how-made {
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+.front-rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  /* On the text column: the measure on the wide screens, the gutters on the phone. */
+  width: calc(100% - 2 * var(--gut));
+  max-width: var(--measure);
+  margin: 0 auto;
 }

@@ -83,9 +83,11 @@ describe('the empty table of contents', () => {
     expect(empty).not.toContain('var(--ink-3)');
   });
 
-  it('keeps the void at 24 px rows and 40 px part headers, taps at 44 px', () => {
-    expect(rule('.toc-row-empty')).toContain('height: 24px');
-    expect(rule('.toc-part-h')).toContain('padding: 40px 0 10px');
+  it('keeps the void at 26 px rows and 32 px part headers, taps at 44 px', () => {
+    // BOOK-DOC-35 §5: a 12px numeral needs a 26px row to keep the column quiet, and the four
+    // part heads lose 8px of air each so the two-column spread still fits the sheet.
+    expect(rule('.toc-row-empty')).toContain('height: 26px');
+    expect(rule('.toc-part-h')).toContain('padding: 32px 0 10px');
     expect(rule('.toc-link')).toContain('min-height: 44px');
   });
 });

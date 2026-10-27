@@ -27,7 +27,7 @@ export function TableOfContents({
   const written = writtenCount(catalog);
 
   return (
-    <section className="page toc" id="toc" aria-label={tocAriaLabel(written, state.chapters.total)}>
+    <section className="page sheet toc" id="toc" aria-label={tocAriaLabel(written, state.chapters.total)}>
       <p className="toc-label">оглавление</p>
 
       {parts.map((part) => (

@@ -8,7 +8,7 @@ export type BookView = 'book' | 'chronicle';
 
 export function ViewSwitch({ view, onChange }: { view: BookView; onChange: (view: BookView) => void }) {
   return (
-    <nav className="views page" aria-label="как читать">
+    <nav className="views page sheet" aria-label="как читать">
       <button
         type="button"
         className={`views-btn${view === 'book' ? ' is-on' : ''}`}

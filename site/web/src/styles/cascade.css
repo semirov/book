@@ -4,27 +4,33 @@
    ============================================================================ */
 
 /* ---------- the change card (§11.7, DESIGN 7.11–7.13) ---------- */
+/* The centred card is the base; the phone's full-width sheet is the narrow case — the same
+   inversion as every other step in BOOK-DOC-35 §3. */
 .change-card {
   position: fixed;
-  left: 0;
-  right: 0;
+  left: 50%;
+  right: auto;
   bottom: 0;
   z-index: 60;
+  width: min(560px, 100%);
   max-height: 78dvh;
   overflow-y: auto;
   padding: 14px 20px calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
   background: var(--paper-2);
   border-top: 1px solid var(--ink);
+  border-left: 1px solid var(--rule-2);
+  border-right: 1px solid var(--rule-2);
   box-shadow: 0 -3px 0 var(--rule-2);
 }
-@media (min-width: 600px) {
+@media (max-width: 599px) {
   .change-card {
-    left: 50%;
-    right: auto;
-    width: min(560px, 100%);
-    transform: translateX(-50%);
-    border-left: 1px solid var(--rule-2);
-    border-right: 1px solid var(--rule-2);
+    left: 0;
+    right: 0;
+    width: auto;
+    transform: none;
+    border-left: 0;
+    border-right: 0;
   }
 }
 .change-card-h {
@@ -37,7 +43,7 @@
 .change-card-n {
   flex: 1;
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-2);
@@ -55,7 +61,7 @@
   border-left: 1px solid var(--rule-2);
   font-family: var(--serif);
   font-style: italic;
-  font-size: 14.5px;
+  font-size: var(--fs-note);
   line-height: 1.5;
   color: var(--ink);
 }
@@ -63,7 +69,7 @@
   margin-top: 5px;
   font-family: var(--label);
   font-style: normal;
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -82,9 +88,9 @@
   align-items: baseline;
 }
 .change-facts dt {
-  flex: 0 0 78px;
+  flex: 0 0 88px;
   font-family: var(--label);
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -92,7 +98,7 @@
 .change-facts dd {
   margin: 0;
   font-family: var(--serif);
-  font-size: 13.5px;
+  font-size: var(--fs-note);
   color: var(--ink);
 }
 /* the case, in the five public words (§11.7; `lib/deed.ts`) */
@@ -102,7 +108,7 @@
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
   font-family: var(--label);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   line-height: 1.5;
   letter-spacing: 0.06em;
   color: var(--ink-2);
@@ -111,7 +117,7 @@
   margin: 9px 0 0;
   padding: 0 0 0 16px;
   font-family: var(--serif);
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.5;
   color: var(--ink-2);
 }
@@ -119,7 +125,7 @@
   display: block;
   margin: 12px 0 4px;
   font-family: var(--label);
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -139,7 +145,7 @@
   padding: 5px 0;
   border-top: 1px solid var(--rule);
   font-family: var(--serif);
-  font-size: 13px;
+  font-size: var(--fs-label);
   color: var(--ink);
 }
 .change-steps li.is-live {
@@ -148,7 +154,7 @@
 .step-glyph {
   flex: 0 0 12px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .step-label {
@@ -158,7 +164,7 @@
 .step-wing {
   flex: 0 0 auto;
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -167,22 +173,22 @@
   flex: 1 1 100%;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 12px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .step-open {
   flex: 0 0 auto;
-  min-height: 28px;
+  min-height: 32px;
   padding: 0 6px;
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--live);
 }
 .step-delta {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .change-seams li.is-open {
@@ -190,9 +196,9 @@
   padding-left: 8px;
 }
 .seam-boundary {
-  flex: 0 0 74px;
+  flex: 0 0 84px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .seam-reason {
@@ -202,7 +208,7 @@
 .seam-state {
   flex: 0 0 auto;
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--revise);
@@ -211,7 +217,7 @@
   margin: 4px 0;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 13px;
+  font-size: var(--fs-label);
   color: var(--ink-3);
 }
 .change-foot {
@@ -225,7 +231,7 @@
 }
 .change-outcome {
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink);
@@ -234,13 +240,13 @@
   flex: 1 1 100%;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   color: var(--ink-2);
 }
 .change-cost,
 .change-time {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .change-focus {
@@ -249,7 +255,7 @@
   display: inline-flex;
   align-items: center;
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--live);
@@ -272,7 +278,7 @@
   align-items: baseline;
   gap: 9px;
   font-family: var(--label);
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -284,7 +290,7 @@
 .talk-intent {
   margin: 6px 0 4px;
   font-family: var(--serif);
-  font-size: 14px;
+  font-size: var(--fs-note);
   line-height: 1.5;
   color: var(--ink);
 }
@@ -295,7 +301,7 @@
   gap: 6px 12px;
   margin: 0;
   font-family: var(--serif);
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.45;
   color: var(--ink-2);
 }
@@ -305,7 +311,7 @@
 }
 .talk-trace {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.02em;
   color: var(--ink-3);
 }
@@ -316,7 +322,7 @@
   margin-top: 4px;
   text-decoration: none;
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);

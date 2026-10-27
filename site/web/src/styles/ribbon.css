@@ -1,17 +1,18 @@
 /* ============================================================================
    RIBBON — the cascade's two wings (§11.7, BOOK-DOC-4). Additive to cascade.css;
-   imported beside it. Mobile-first, data-driven, no inline styles (CSP).
+   imported beside it. Adaptive, data-driven, no inline styles (CSP).
    ============================================================================ */
 
 /* ---------- the cascade ribbon (§11.7, BOOK-DOC-4): both wings at once ----------
-   Mobile-first: three blocks in one row — down wing, the origin, up wing — each a fixed
+   Adaptive: three blocks in one row — down wing, the origin, up wing — each a fixed
    min-height so a frame arriving never moves the page. No absolute positions and no inline
    styles: the layout is classes and data attributes (CSP forbids inline styles). */
 .ribbon {
   position: relative;
-  max-width: var(--measure);
+  /* The ribbon is the running head's second row: it spans the sheet, not the prose (§5). */
+  max-width: var(--shell);
   margin: 0 auto;
-  padding: 4px 14px 6px;
+  padding: 4px var(--gut) 6px;
   border-top: 1px solid var(--rule);
   font-family: var(--label);
 }
@@ -23,7 +24,7 @@
   display: flex;
   align-items: stretch;
   gap: 10px;
-  min-height: 40px;
+  min-height: 52px;
 }
 .ribbon-wing {
   flex: 1 1 0;
@@ -38,7 +39,7 @@
 }
 .ribbon-wing-h {
   min-height: 22px;
-  font-size: 8px;
+  font-size: var(--fs-micro);
   line-height: 1.35;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -73,7 +74,7 @@
   min-width: 20px;
   padding-bottom: 2px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-micro);
   text-align: center;
   color: var(--ink-2);
   border-bottom: 1px solid var(--rule-2);
@@ -91,7 +92,7 @@
 }
 .ribbon-ch.is-origin .ribbon-ch-g {
   min-width: 24px;
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--ink);
   border-bottom-color: var(--ink);
 }
@@ -99,7 +100,7 @@
   min-height: 44px;
   padding: 0 6px;
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -143,20 +144,23 @@
 .ribbon-seams {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px 12px;
   margin: 4px 0 0;
   padding: 0;
   list-style: none;
 }
+/* The seam marker is a button inside the sticky head, so it is a 44px target like the rest
+   of the ribbon's chrome (BOOK-DOC-35 AC5); the band takes the room it needs. */
 .ribbon-seam {
-  min-height: 20px;
+  min-height: 44px;
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   padding: 0;
   background: transparent;
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--revise);
@@ -166,7 +170,7 @@
 }
 .ribbon-seam-boundary {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: var(--fs-micro);
   letter-spacing: 0;
   color: var(--ink-3);
   text-transform: none;

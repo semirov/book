@@ -14,19 +14,22 @@ body.is-focus {
   inset: 0;
   z-index: 80;
   display: flex;
+  align-items: center;
   justify-content: center;
+  padding: 4dvh 0;
   background: rgba(10, 12, 14, 0.78);
   color: #cfd3d2;
   overflow: hidden;
 }
+/* The lit sheet is centred at 92dvh on the desktop (BOOK-DOC-35 §7); the phone is the
+   exception below, where it fills the viewport. */
 .focus-panel {
   display: flex;
   flex-direction: column;
-  width: min(640px, 100%);
-  height: 100dvh;
+  width: min(720px, 100%);
+  height: min(92dvh, 920px);
   background: #14171a;
-  border-left: 1px solid rgba(207, 211, 210, 0.1);
-  border-right: 1px solid rgba(207, 211, 210, 0.1);
+  border: 1px solid rgba(207, 211, 210, 0.17);
 }
 
 /* ---------- top bar ---------- */
@@ -41,7 +44,7 @@ body.is-focus {
 .focus-tag,
 .focus-n {
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -57,7 +60,7 @@ body.is-focus {
   min-height: 44px;
   margin: -10px -6px -10px 0;
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #b0b2ae;
@@ -73,7 +76,7 @@ body.is-focus {
 .focus-where {
   margin-bottom: 10px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8b8f8c;
@@ -82,11 +85,17 @@ body.is-focus {
 /* ---------- the lit sheet ---------- */
 .focus-stage {
   position: relative;
+  /* BOOK-DOC-35 §7: the lit sheet keeps the text register's measure. Panel 720 → body 686 →
+     stage 590 → paper 580 → 540px of text at 19px (≈57 ch measured in PT Serif; page 2 at
+     18px holds ≈60). The stage is centred so the sheet stays on the reading axis. */
+  max-width: 590px;
+  margin-inline: auto;
   padding: 5px;
 }
 .focus-paper {
   /* The lit sheet is the day sheet (BOOK-DOC-6): concrete, not paper — the same palette the
-     reader left, so the focus panel never reintroduces the beige the owner removed. */
+     reader left, so the focus panel never reintroduces the beige the owner removed. Its text
+     block is 540px wide: 580 of paper (stage 590 − 2 × 5) − 2 × 20 of paper padding. */
   --paper: #cfd3d2;
   --ink: #14171a;
   --ink-2: #4e5455;
@@ -113,7 +122,7 @@ body.is-focus {
   padding-top: 0.5em;
   border-top: 1px dashed var(--rule-2, #8b9291);
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -122,7 +131,7 @@ body.is-focus {
   margin: 0;
   font-family: var(--serif);
   font-style: italic;
-  font-size: 15px;
+  font-size: var(--fs-note);
   line-height: 1.55;
   color: var(--ink-2);
 }
@@ -177,7 +186,7 @@ body.is-focus {
   margin: 10px 0 0;
   padding: 0 0 0 16px;
   font-family: var(--serif);
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.5;
   color: #b0b2ae;
 }
@@ -189,7 +198,7 @@ body.is-focus {
   gap: 4px 14px;
   margin: 14px 0 0;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #b0b2ae;
@@ -197,7 +206,7 @@ body.is-focus {
 .focus-readout span + span::before {
   content: '·';
   margin-right: 14px;
-  color: #64686a;
+  color: #8b8f8c;
 }
 /* the two wings, printed at once (§11.9, BOOK-DOC-4): direction, wave, state, chapters */
 .focus-wings {
@@ -208,7 +217,7 @@ body.is-focus {
 }
 .focus-wing {
   position: relative;
-  min-height: 52px;
+  min-height: 60px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -223,14 +232,14 @@ body.is-focus {
 }
 .focus-wing-h {
   font-family: var(--label);
-  font-size: 8px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #b0b2ae;
 }
 .focus-wing-r {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.02em;
   color: #cfd3d2;
 }
@@ -238,7 +247,7 @@ body.is-focus {
 .focus-track {
   display: grid;
   align-items: end;
-  height: 44px;
+  height: 52px;
   margin: 8px 4px 0;
 }
 .focus-track.w-1 { grid-template-columns: repeat(1, 1fr); }
@@ -301,8 +310,8 @@ body.is-focus {
 .focus-tick-label {
   margin: 3px 0 0;
   font-family: var(--mono);
-  font-size: 7.5px;
-  color: #64686a;
+  font-size: var(--fs-micro);
+  color: #8b8f8c;
 }
 @keyframes focus-ring {
   0% {
@@ -327,7 +336,7 @@ body.is-focus {
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(207, 211, 210, 0.17);
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #b0b2ae;
@@ -343,7 +352,7 @@ body.is-focus {
 }
 .focus-rows > div {
   display: grid;
-  grid-template-columns: 92px 1fr;
+  grid-template-columns: 104px 1fr;
   gap: 10px;
   padding: 6px 0;
   border-top: 1px solid rgba(207, 211, 210, 0.08);
@@ -353,7 +362,7 @@ body.is-focus {
 }
 .focus-rows dt {
   font-family: var(--label);
-  font-size: 8.5px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #8b8f8c;
@@ -361,7 +370,7 @@ body.is-focus {
 .focus-rows dd {
   margin: 0;
   font-family: var(--serif);
-  font-size: 13.5px;
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: #cfd3d2;
 }
@@ -374,7 +383,7 @@ body.is-focus {
 }
 .focus-cost {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-micro);
   color: #b0b2ae;
 }
 .focus-steps {
@@ -388,7 +397,7 @@ body.is-focus {
 .focus-steps button,
 .focus-steps span {
   font-family: var(--serif);
-  font-size: 13px;
+  font-size: var(--fs-label);
   text-align: left;
   color: #b0b2ae;
   border-bottom: 1px solid transparent;
@@ -402,7 +411,7 @@ body.is-focus {
 }
 .focus-deed {
   font-family: var(--label);
-  font-size: 11px;
+  font-size: var(--fs-label);
   line-height: 1.5;
   letter-spacing: 0.04em;
   color: #b0b2ae;
@@ -413,7 +422,7 @@ body.is-focus {
   border-top: 1px solid rgba(207, 211, 210, 0.08);
   font-family: var(--serif);
   font-style: italic;
-  font-size: 12.5px;
+  font-size: var(--fs-meta);
   line-height: 1.5;
   color: #b0b2ae;
 }
@@ -432,7 +441,7 @@ body.is-focus {
   min-height: 44px;
   border: 1px solid rgba(207, 211, 210, 0.35);
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #cfd3d2;
@@ -442,14 +451,20 @@ body.is-focus {
   color: #8fb8d0;
 }
 
-@media (min-width: 700px) {
+@media (max-width: 1023px) {
+  .focus-panel {
+    width: min(640px, 100%);
+  }
+}
+@media (max-width: 699px) {
   .focus {
-    align-items: center;
-    padding: 4dvh 0;
+    align-items: stretch;
+    padding: 0;
   }
   .focus-panel {
-    height: min(92dvh, 920px);
-    border: 1px solid rgba(207, 211, 210, 0.17);
+    width: 100%;
+    height: 100dvh;
+    border: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

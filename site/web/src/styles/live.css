@@ -20,40 +20,49 @@
 .toc {
   padding: 26px var(--gut) 72px;
   /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
-  scroll-margin-top: 78px;
+  scroll-margin-top: var(--offset-top);
+  /* BOOK-DOC-35 §5 — the contents are a spread on the frame: two 444px columns of the 936px
+     sheet. The 67 rows are the only list that gets better wider; the prose never follows. */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 48px;
+  align-items: start;
 }
 .toc-label {
+  grid-column: 1 / -1;
   margin: 0 0 26px;
   font-family: var(--label);
-  font-size: 10.5px;
-  line-height: 1.3;
+  font-size: var(--fs-label);
+  line-height: 1.35;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-2);
 }
 .toc-part-h {
   margin: 0;
-  /* 40px of air above a part: the four headings are the only structure the void has left. */
-  padding: 40px 0 10px;
+  /* 32px of air above a part: the four headings are the only structure the void has left. */
+  padding: 32px 0 10px;
   font-family: var(--label);
   font-weight: 400;
-  font-size: 10px;
+  font-size: var(--fs-micro);
   line-height: 1.2;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.toc-part:first-of-type .toc-part-h {
+/* The label is the grid's first child, so parts I and II are children 2 and 3: both columns
+   start flush with the label, and III/IV keep their air. */
+.toc-part:nth-child(-n + 3) .toc-part-h {
   padding-top: 0;
 }
 
-/* An empty row is its numeral: 24px — a quiet column, not a disabled control (WCAG 2.5.8). */
+/* An empty row is its numeral: 26px — a quiet column, not a disabled control (WCAG 2.5.8). */
 .toc-row-empty {
-  height: 24px;
+  height: 26px;
 }
 .toc-num {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-micro);
   line-height: 1.45;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
@@ -61,7 +70,7 @@
 }
 .toc-row-empty .toc-num {
   display: block;
-  line-height: 24px;
+  line-height: 26px;
   /* The numeral of an empty slot is text the reader reads, not a label: full ink. */
   color: var(--ink);
 }
@@ -69,17 +78,17 @@
 /* The same columns for a row that opens nothing. */
 .toc-line {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  column-gap: 12px;
+  grid-template-columns: 36px 1fr;
+  column-gap: 14px;
   align-items: center;
-  height: 24px;
+  height: 26px;
 }
 
 /* A row with text opens its chapter: numeral and title line (or frozen sentence), nothing else. */
 .toc-link {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  column-gap: 12px;
+  grid-template-columns: 36px 1fr;
+  column-gap: 14px;
   align-items: baseline;
   min-height: 44px;
   padding: 10px 0;
@@ -92,7 +101,7 @@
 .toc-text {
   min-width: 0;
   font-family: var(--serif);
-  font-size: 15.5px;
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--ink);
   text-wrap: pretty;
@@ -121,7 +130,7 @@
   margin-bottom: 0;
 }
 .ch-empty .ch-n {
-  font-size: 17px;
+  font-size: var(--fs-body);
   color: var(--ink-2);
 }
 
@@ -150,7 +159,7 @@
   min-height: 44px;
   margin-top: 6px;
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -168,7 +177,7 @@
   display: block;
   margin-bottom: 3px;
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--revise);
@@ -202,7 +211,7 @@
   min-height: 44px;
   padding: 0 12px;
   font-family: var(--label);
-  font-size: 9.5px;
+  font-size: var(--fs-label);
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--paper);
@@ -225,7 +234,7 @@
 }
 .waiting-copy {
   max-width: 24ch;
-  font-size: 17px;
+  font-size: var(--fs-body);
   line-height: 1.55;
 }
 .waiting-retry {
@@ -233,7 +242,14 @@
   padding: 0 16px;
   border: 1px solid var(--ink);
   font-family: var(--label);
-  font-size: 10px;
+  font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+/* BOOK-DOC-35 §3 — the narrow case of the same contents page: one column, same rows. */
+@media (max-width: 1023px) {
+  .toc {
+    grid-template-columns: 1fr;
+  }
 }

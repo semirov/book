@@ -1,7 +1,8 @@
 /* ============================================================================
    CHRONICLE — the second way of reading the same page (ARCHITECTURE §11.10).
    A timeline, a scrubber, a past that is read-only, and the paragraph chain.
-   Mobile first: one column, tap targets, no second application.
+   Adaptive: the chronicle is the sheet register, so it widens; its rows keep a
+   62ch reading bound, and the phone is the narrow step of one system (BOOK-DOC-35).
    ============================================================================ */
 
 .views {
@@ -36,7 +37,7 @@
 }
 .chr-title {
   font-family: var(--label);
-  font-size: 15px;
+  font-size: var(--fs-body);
   font-weight: 400;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -156,7 +157,7 @@
   grid-template-columns: 2.2rem 1fr auto;
   gap: 8px;
   align-items: baseline;
-  padding: 3px 0;
+  padding: 4px 0;
   border-bottom: 1px solid var(--rule);
   font-size: var(--fs-meta);
   color: var(--ink-2);
@@ -235,11 +236,11 @@
 .chr-row-main {
   flex: 1;
   display: grid;
-  grid-template-columns: 3.2rem 6.5rem 1fr;
+  grid-template-columns: 3.4rem 7rem 1fr;
   gap: 8px;
   align-items: baseline;
   text-align: left;
-  padding: 7px 0;
+  padding: 8px 0;
   font-size: var(--fs-note);
   color: var(--ink-2);
 }
@@ -254,13 +255,14 @@
   color: var(--ink-3);
 }
 .chr-summary {
+  max-width: 62ch;
   color: var(--ink);
 }
 /* the change's case, in the same five words the card uses (`lib/deed.ts`) */
 .chr-deed {
   flex: 1 1 100%;
   font-family: var(--label);
-  font-size: 9px;
+  font-size: var(--fs-micro);
   letter-spacing: 0.04em;
   color: var(--ink-3);
 }
@@ -284,12 +286,10 @@
   font-size: var(--fs-meta);
   color: var(--ink-3);
   margin-left: 6px;
-  opacity: 0.55;
   vertical-align: super;
 }
 .prov:hover,
 .prov:focus-visible {
-  opacity: 1;
   color: var(--live);
 }
 .chain {
@@ -365,11 +365,11 @@
 }
 .chain-id {
   font-family: var(--mono);
-  font-size: var(--fs-nano);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 
-@media (max-width: 380px) {
+@media (max-width: 379px) {
   .chr-row-main {
     grid-template-columns: 3rem 1fr;
     row-gap: 2px;
