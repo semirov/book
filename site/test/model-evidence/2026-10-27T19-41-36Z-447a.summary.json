@@ -1,0 +1,25 @@
+{
+  "run": "corpus",
+  "runId": "2026-10-27T19-41-36Z-447a",
+  "startedAt": "2026-10-27T19:41:36.894Z",
+  "finishedAt": "2026-10-27T19:42:18.516Z",
+  "commit": "bcb9ed6fcb1ff6e9f4d8cc824155c67b0471129c",
+  "dirty": false,
+  "pipeline": {
+    "provider": "deepseek",
+    "model": "deepseek/deepseek-v4-pro",
+    "apiModel": "deepseek-v4-pro"
+  },
+  "promptsPath": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/book-62/process/ROLE_PROMPTS.md",
+  "totals": {
+    "runnable": 9,
+    "blocked": 40,
+    "ok": 7,
+    "mismatch": 2,
+    "error": 0,
+    "costUsd": 0.008159,
+    "tokensIn": 7607,
+    "tokensOut": 3441
+  },
+  "callCount": 49
+}
