@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -8,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.ts';
 import { loadConfig } from '../../src/config.ts';
+import { COVER_ID, COVER_TYPE } from '../../src/fb2/cover.ts';
 import { esc, exportMoment, renderFb2, type Fb2Input } from '../../src/fb2/serialize.ts';
 import { reconcile } from '../../src/ingest/reconcile.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
@@ -16,9 +18,15 @@ import { createFixture, longProse, type Fixture } from '../helpers.ts';
 
 /**
  * BOOK-60 / BOOK-DOC-41 — the file itself: schema order, the annotation, 67 sections, total
- * escaping, and the empty book. The assertions run on a real `GET /book.fb2` parsed as XML
- * (jsdom), not on serializer internals: the contract is the document a reader opens.
+ * escaping, and the empty book. BOOK-133 adds the cover: the `coverpage` reference and the
+ * one `binary` that closes the document, bound to the real asset in `web/public/cover`.
+ * The assertions run on a real `GET /book.fb2` parsed as XML (jsdom), not on serializer
+ * internals: the contract is the document a reader opens.
  */
+
+/** `site/server/test/export` → `site/`. */
+const COVER_SOURCE = resolve(import.meta.dirname, '..', '..', '..', 'web', 'public', 'cover', 'cover.png');
+const COVER_SHA256 = '9491eb0b5b5832950352899c72b1e4bc5c51ed52731836bbcdab27c02e695c94';
 
 const ABOUT_PARAGRAPHS = [
   'Материя заметила себя, когда в ней замкнулась петля: состояние, память, предсказание.',
@@ -41,7 +49,7 @@ const NASTY = 'Комментарий <b>&]]> — проверка экрани�
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
 
-async function boot(chapters: Record<string, string> = {}): Promise<Fixture> {
+async function boot(chapters: Record<string, string> = {}, now?: () => Date): Promise<Fixture> {
   fixture = createFixture(chapters);
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
   const webDist = join(fixture.dataDir, 'web');
@@ -57,6 +65,7 @@ async function boot(chapters: Record<string, string> = {}): Promise<Fixture> {
     state: new StateService(fixture.db),
     version: 'test',
     logger: false,
+    ...(now === undefined ? {} : { now }),
   });
   return fixture;
 }
@@ -94,6 +103,8 @@ const BASE: Fb2Input = {
   srcUrl: 'https://book.semirov.dev/',
   revision: 42,
   chapters: [],
+  // The renderer is pure: these bytes are a placeholder, and only the serializer tests use them.
+  cover: { id: COVER_ID, contentType: COVER_TYPE, base64: 'ZmFrZQ==' },
 };
 
 describe('the FB2 file (BOOK-60)', () => {
@@ -116,8 +127,9 @@ describe('the FB2 file (BOOK-60)', () => {
     expect(childNames(description)).toEqual(['title-info', 'document-info']);
 
     const titleInfo = description.getElementsByTagName('title-info')[0]!;
-    // imprint.year is "auto", so title-info/date is omitted, not invented (§3).
-    expect(childNames(titleInfo)).toEqual(['genre', 'author', 'book-title', 'annotation', 'lang']);
+    // imprint.year is "auto", so title-info/date is omitted, not invented (§3); the cover
+    // reference sits in the schema's slot — after date, before lang (BOOK-133).
+    expect(childNames(titleInfo)).toEqual(['genre', 'author', 'book-title', 'annotation', 'coverpage', 'lang']);
     expect(textOf(titleInfo.getElementsByTagName('genre')[0])).toBe('sf');
     expect(textOf(titleInfo.getElementsByTagName('nickname')[0])).toBe('Филипп Семиров');
     expect(textOf(titleInfo.getElementsByTagName('book-title')[0])).toBe('Бланк');
@@ -234,10 +246,14 @@ describe('the FB2 file (BOOK-60)', () => {
     expect(textOf(doc.getElementsByTagName('book-title')[0])).toBe('Книга');
   });
 
-  it('renders title-info/date only for a four-digit imprint year (BOOK-DOC-41 §3)', () => {
+  it('renders title-info/date only for a four-digit imprint year, before the cover and lang (BOOK-DOC-41 §3)', () => {
     // `imprint.year` is "auto" today: the date is omitted rather than invented.
     expect(renderFb2(BASE).head).not.toContain('<date>20');
-    expect(renderFb2({ ...BASE, year: '2026' }).head).toContain('<date>2026</date>');
+    const head = renderFb2({ ...BASE, year: '2026' }).head;
+    expect(head).toContain('<date>2026</date>');
+    // The XSD's order: date, then coverpage, then lang (BOOK-133).
+    expect(head.indexOf('<date>2026</date>')).toBeLessThan(head.indexOf('<coverpage>'));
+    expect(head.indexOf('<coverpage>')).toBeLessThan(head.indexOf('<lang>ru</lang>'));
   });
 
   it('treats a blank annotation and an empty chapter title as absent (BOOK-DOC-41 §3)', () => {
@@ -248,6 +264,88 @@ describe('the FB2 file (BOOK-60)', () => {
     });
     expect(head).not.toContain('<annotation>');
     expect(tail).toContain('<section id="ch03"><title><p>Глава 3</p></title><empty-line/></section>');
+  });
+});
+
+describe('the cover inside the file (BOOK-133)', () => {
+  /** The document's one `binary`, decoded: whitespace between the base64 lines is not data. */
+  function binaryBytes(doc: Document): Buffer {
+    const binaries = doc.getElementsByTagName('binary');
+    expect(binaries).toHaveLength(1);
+    return Buffer.from(binaries[0]!.textContent!.replace(/\s+/gu, ''), 'base64');
+  }
+
+  it('cover — `coverpage` sits in `title-info` and references `#cover.png`, the id that exists exactly once', async () => {
+    await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(response.statusCode).toBe(200);
+
+    const doc = parseXml(response.body);
+    const titleInfo = doc.getElementsByTagName('title-info')[0]!;
+    const coverpage = titleInfo.getElementsByTagName('coverpage')[0]!;
+    expect(coverpage.parentElement!.nodeName).toBe('title-info');
+    const image = coverpage.getElementsByTagName('image')[0]!;
+    // The prefix `l` is the XLink namespace: a document that names it without declaring it
+    // is not namespace-well-formed, which is why the root carries the declaration.
+    expect(image.getAttributeNS('http://www.w3.org/1999/xlink', 'href')).toBe('#cover.png');
+
+    const binaries = doc.getElementsByTagName('binary');
+    expect(binaries).toHaveLength(1);
+    expect(binaries[0]!.getAttribute('id')).toBe('cover.png');
+    expect(binaries[0]!.getAttribute('content-type')).toBe('image/png');
+    // One id under the whole document: no second element answers to it.
+    expect(doc.querySelectorAll('[id="cover.png"]')).toHaveLength(1);
+  });
+
+  it('cover — the single `<binary>` is the last element of the document and decodes to the exact source bytes (length + sha256)', async () => {
+    await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const doc = parseXml(response.body);
+    const root = doc.documentElement;
+    expect(root.children[root.children.length - 1]!.nodeName).toBe('binary');
+
+    const embedded = binaryBytes(doc);
+    expect(embedded.length).toBe(1_108_247);
+    expect(createHash('sha256').update(embedded).digest('hex')).toBe(COVER_SHA256);
+    expect(Buffer.compare(embedded, readFileSync(COVER_SOURCE))).toBe(0);
+    // Wrapped at 78 characters, LF only: a CR would move the bytes a reader decodes.
+    const base64Text = doc.getElementsByTagName('binary')[0]!.textContent!;
+    expect(base64Text).not.toContain('\r');
+    const lines = base64Text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines.slice(0, -1)) expect(line.length).toBe(78);
+  });
+
+  it('cover — the reference and the binary carry one id, taken from the input (review M1)', () => {
+    // A non-default id: a literal `#cover.png` in the coverpage would now name no target.
+    const { head, tail } = renderFb2({ ...BASE, cover: { ...BASE.cover, id: 'plate.png' } });
+    const doc = parseXml(`${head}\n   <date value="2026-10-27">2026-10-27T14:03:12+03:00</date>${tail}`);
+    const image = doc.getElementsByTagName('coverpage')[0]!.getElementsByTagName('image')[0]!;
+    const binary = doc.getElementsByTagName('binary')[0]!;
+    const href = image.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    expect(href).toBe('#plate.png');
+    expect(binary.getAttribute('id')).toBe('plate.png');
+    // The agreement itself: the reference is the binary's id, not a second literal.
+    expect(href).toBe(`#${binary.getAttribute('id')}`);
+  });
+
+  it('the produced file is the book plus the cover — its size is ≥ 1.4 MB', async () => {
+    await boot({ 'ch01.md': FRAME_FIRST_SENTENCE });
+    const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(response.statusCode).toBe(200);
+    const size = Buffer.byteLength(response.body);
+    expect(size).toBeGreaterThanOrEqual(1.4 * 1024 * 1024);
+  });
+
+  it('two exports of one edition build identical bytes', async () => {
+    const clock = new Date('2026-10-27T11:03:12Z');
+    await boot({ '00-front.md': FRONT, 'ch07.md': CHAPTER_SEVEN }, () => clock);
+    const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    const second = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(Buffer.compare(Buffer.from(first.body), Buffer.from(second.body))).toBe(0);
+    expect(first.headers.etag).toBe(second.headers.etag);
   });
 });
 

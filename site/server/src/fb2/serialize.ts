@@ -8,9 +8,14 @@
  * The body is all 67 slots, in numeric order, `id="chNN"`. An empty slot is a titled section
  * with `<empty-line/>`; a basis-only slot (ch01/ch67) carries its one paragraph because the
  * site shows it. The front matter does not repeat in the body: page 2 is `title-info`.
+ *
+ * BOOK-133: `title-info/coverpage` names the one `binary` that closes the document. Both are
+ * built from the caller's data, so the renderer stays pure — no fs, no clock, no encoding.
  */
 
 import { allChapterNumbers, chapterLabel, splitParagraphs } from '@book/shared';
+
+import { binaryElement, coverPageElement, type CoverBinary } from './cover.ts';
 
 export type Fb2ChapterInput = {
   n: number;
@@ -34,6 +39,11 @@ export type Fb2Input = {
   /** `config.publicOrigin` + `/`. */
   srcUrl: string;
   revision: number;
+  /**
+   * BOOK-133: the image the file carries. Data, never a path — the renderer does no I/O, so a
+   * caller (the route) owns reading, validating and memoising the cover.
+   */
+  cover: CoverBinary;
   chapters: readonly Fb2ChapterInput[];
 };
 
@@ -169,7 +179,9 @@ export const renderFb2: Fb2Renderer = (input) => {
 
   const head = [
     '<?xml version="1.0" encoding="utf-8"?>',
-    '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0">',
+    // BOOK-133: `l:href` is the XLink namespace; a file that uses the prefix without
+    // declaring it is not namespace-well-formed, and readers refuse it.
+    '<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0" xmlns:l="http://www.w3.org/1999/xlink">',
     ' <description>',
     '  <title-info>',
     '   <genre>sf</genre>',
@@ -177,6 +189,7 @@ export const renderFb2: Fb2Renderer = (input) => {
     `   <book-title>${esc(bookTitle)}</book-title>`,
     ...annotationOf(input.about),
     ...yearLine,
+    coverPageElement(input.cover.id),
     '   <lang>ru</lang>',
     '  </title-info>',
     '  <document-info>',
@@ -196,6 +209,7 @@ export const renderFb2: Fb2Renderer = (input) => {
     ' <body>',
     ...sections,
     ' </body>',
+    binaryElement(input.cover),
     '</FictionBook>',
     '',
   ].join('\n');

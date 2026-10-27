@@ -1,5 +1,6 @@
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
@@ -14,17 +15,29 @@ import { StateService } from '../../src/ingest/stateService.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
 
 /**
- * BOOK-60 — `GET /book.fb2` at the wire (BOOK-DOC-41 §2, §5).
+ * BOOK-60 — `GET /book.fb2` at the wire (BOOK-DOC-41 §2, §5); BOOK-133 adds the cover to the
+ * tag and the build key.
  *
  * The identity facts the owner asked for are asserted here: the version is the edition number,
  * the date is the export moment with the zone's offset, two exports of one state share the
  * version and differ in the date, and a text write moves the number. The build budget is
  * asserted with the serializer seam: a `304` builds nothing, spends one read slot, and sixty
- * reads of one edition build once — inside the route's transaction.
+ * reads of one edition build once — inside the route's transaction. A cover that changes is a
+ * new representation: a new ETag and exactly one rebuild, never a stale `304`.
  */
+
+/** `site/server/test/export` → `site/`. */
+const COVER_SOURCE = resolve(import.meta.dirname, '..', '..', '..', 'web', 'public', 'cover', 'cover.png');
 
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
+const tempDirs: string[] = [];
+
+function tempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'book-cover-'));
+  tempDirs.push(dir);
+  return dir;
+}
 
 async function boot(
   options: {
@@ -61,7 +74,15 @@ afterEach(async () => {
   app = null;
   fixture?.close();
   fixture = null;
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+/** The document's one `binary` payload, whitespace stripped: the base64 the file carries. */
+function binaryOf(xml: string): string {
+  const match = /<binary[^>]*>([\s\S]*)<\/binary>/u.exec(xml);
+  if (match === null) throw new Error('the file carries no binary element');
+  return match[1]!.replace(/\s+/gu, '');
+}
 
 /** `document-info/version` as written; a file without one is a failure, not a default. */
 function versionOf(xml: string): string {
@@ -107,7 +128,7 @@ describe('GET /book.fb2 (BOOK-60)', () => {
     expect(Number(version)).toBeLessThanOrEqual(4_503_599_627_370_495);
     expect(first.headers['content-disposition']).toBe(`attachment; filename="blank-${version}.fb2"`);
     // The tag is the untruncated hash, not the revision.
-    expect(first.headers.etag).toMatch(/^"fb2-[0-9a-f]{64}"$/u);
+    expect(first.headers.etag).toMatch(/^"fb2-[0-9a-f]{64}-[0-9a-f]{64}"$/u);
 
     // Same state, an hour later: the number stands, the moment moves.
     clock = new Date('2026-10-27T12:03:12Z');
@@ -213,7 +234,7 @@ describe('GET /book.fb2 (BOOK-60)', () => {
     expect(head.statusCode).toBe(200);
     expect(head.headers['content-type']).toBe('application/x-fictionbook+xml; charset=utf-8');
     expect(head.headers['content-disposition']).toMatch(/^attachment; filename="blank-\d+\.fb2"$/u);
-    expect(head.headers.etag).toMatch(/^"fb2-[0-9a-f]{64}"$/u);
+    expect(head.headers.etag).toMatch(/^"fb2-[0-9a-f]{64}-[0-9a-f]{64}"$/u);
     expect(head.headers['cache-control']).toBe('no-cache');
     expect(head.headers['x-export-date']).toBeUndefined();
     expect(head.body).toBe('');
@@ -229,5 +250,68 @@ describe('GET /book.fb2 (BOOK-60)', () => {
     expect(conditional.headers.etag).toBe(head.headers.etag);
     expect(conditional.headers['cache-control']).toBe('no-cache');
     expect(builds).toBe(0);
+  });
+
+  it('cover — a cover change moves the cache key and the ETag, and rebuilds once', async () => {
+    // The real cover, copied: the repo copy stays read-only, the temp copy is the operand.
+    const copy = join(tempDir(), 'cover.png');
+    copyFileSync(COVER_SOURCE, copy);
+    let builds = 0;
+    const render = (input: Fb2Input): { head: string; tail: string } => {
+      builds += 1;
+      return renderFb2(input);
+    };
+    await boot({
+      chapters: { 'ch01.md': FRAME_FIRST_SENTENCE },
+      fb2: { render },
+      env: { COVER_PATH: copy },
+    });
+
+    const first = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(first.statusCode).toBe(200);
+    expect(builds).toBe(1);
+    const firstBinary = binaryOf(first.body);
+    expect(firstBinary.length).toBeGreaterThan(1_000_000);
+
+    // One appended byte plus a newer mtime: the same PNG header, a different file.
+    appendFileSync(copy, Buffer.from([0x00]));
+    const later = new Date(Date.now() + 1_000);
+    utimesSync(copy, later, later);
+
+    const second = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(second.statusCode).toBe(200);
+    expect(builds).toBe(2);
+    expect(second.headers.etag).not.toBe(first.headers.etag);
+    expect(second.headers.etag).toMatch(/^"fb2-[0-9a-f]{64}-[0-9a-f]{64}"$/u);
+    expect(binaryOf(second.body)).not.toBe(firstBinary);
+    expect(Buffer.from(binaryOf(second.body), 'base64').length).toBe(1_108_248);
+
+    // The new key is now the memo's: a third read rebuilds nothing.
+    const third = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(third.statusCode).toBe(200);
+    expect(builds).toBe(2);
+    expect(third.headers.etag).toBe(second.headers.etag);
+  });
+
+  it('cover — a missing cover fails the export: 503 with the reason, no attachment, no XML', async () => {
+    const missing = join(tempDir(), 'absent.png');
+    await boot({
+      chapters: { 'ch01.md': FRAME_FIRST_SENTENCE },
+      env: { COVER_PATH: missing },
+    });
+
+    const get = await app!.inject({ method: 'GET', url: '/book.fb2' });
+    expect(get.statusCode).toBe(503);
+    expect(get.headers['cache-control']).toBe('no-store');
+    expect(get.headers['content-disposition']).toBeUndefined();
+    expect(get.body).not.toContain('<FictionBook');
+    expect(get.json()).toEqual({ code: 'COVER_MISSING', message: `cover file is missing at ${missing}` });
+
+    const head = await app!.inject({ method: 'HEAD', url: '/book.fb2' });
+    expect(head.statusCode).toBe(503);
+    expect(head.headers['cache-control']).toBe('no-store');
+    expect(head.headers['content-disposition']).toBeUndefined();
+    // No XML, no attachment: the failure is a JSON reason, not a downloadable half-file.
+    expect(head.body).not.toContain('<FictionBook');
   });
 });
