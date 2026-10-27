@@ -19,7 +19,7 @@ import type { WriterAssignment } from '@book/shared';
 import type { GateAssignment, RightsAssignment } from '../../src/engine/gates.ts';
 import * as store from '../../src/engine/store.ts';
 import { RIGHTS_COPY } from '../../src/rights/rules.ts';
-import { chapterText, createEngineFixture, type Fixture } from './helpers.ts';
+import { chapterText, createEngineFixture, PIPELINE_MODEL, type Fixture } from './helpers.ts';
 
 /** A quoted run of > 240 characters with no source: `RIGHTS-QUOTE`, refused but releasable. */
 const LONG_QUOTE = `«${'чужое слово '.repeat(24).trim()}»`;
@@ -42,7 +42,7 @@ function answerProse(fixture: Fixture, role: 'editor' | 'consultant'): void {
     session: gate.session,
     verdict: 'HOLDS',
     findings: [],
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 10,
     tokensOut: 2,
   });
@@ -60,7 +60,7 @@ function answerRights(
     session: 'rights-1',
     verdict,
     rule,
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 40,
     tokensOut: 4,
   });
@@ -126,15 +126,15 @@ describe('the conditional gate — a flag makes the rights verdict mandatory', (
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
 
-      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [] }))).toBe('RIGHTS_REQUIRED');
+      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }))).toBe('RIGHTS_REQUIRED');
       // The refusal names the gate that has not spoken — not "both verdicts are missing".
-      expect(() => fixture.engine.done(assignment.leaseId, { seams: [] })).toThrow(/rights/u);
+      expect(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL })).toThrow(/rights/u);
 
       const cleared = answerRights(fixture, 'CLEAR');
       expect(cleared.result).toMatchObject({ verdict: 'CLEAR', closed: false });
       expect(store.getVerdict(fixture.db, assignment.stepId, 'rights')).toMatchObject({ verdict: 'CLEAR' });
 
-      const done = fixture.engine.done(assignment.leaseId, { seams: [] });
+      const done = fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
       expect(done.outcome).toBe('rewritten');
       // The trace prints the conditional gate as its own line, with its own enum (m5).
       const trace = fixture.engine.trace(assignment.stepId);
@@ -239,7 +239,7 @@ describe('the conditional gate — a flag makes the rights verdict mandatory', (
       answerRights(fixture, 'CLEAR');
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
-      fixture.engine.done(assignment.leaseId, { seams: [] });
+      fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
       expect(codeOf(() => fixture.engine.verdictRights(assignment.stepId, base))).toBe('STEP_CLOSED');
     } finally {
       fixture.close();
@@ -308,12 +308,12 @@ describe('a step that landed before this deploy still cannot close without B (B3
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
 
-      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [] }))).toBe('RIGHTS_REQUIRED');
+      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }))).toBe('RIGHTS_REQUIRED');
       const scan = store.getStep(fixture.db, assignment.stepId)?.rights_scan ?? '';
       expect(JSON.parse(scan)).toMatchObject({ verdict: 'flag', rule: 'RIGHTS-QUOTE' });
 
       answerRights(fixture, 'CLEAR');
-      expect(fixture.engine.done(assignment.leaseId, { seams: [] }).outcome).toBe('rewritten');
+      expect(fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }).outcome).toBe('rewritten');
     } finally {
       fixture.close();
     }
@@ -328,7 +328,7 @@ describe('a step that landed before this deploy still cannot close without B (B3
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
       // Nothing flagged, so nothing is asked: the stored answer is the scan itself.
-      expect(fixture.engine.done(assignment.leaseId, { seams: [] }).outcome).toBe('rewritten');
+      expect(fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }).outcome).toBe('rewritten');
       expect(JSON.parse(store.getStep(fixture.db, assignment.stepId)?.rights_scan ?? '{}')).toEqual({
         verdict: 'clear',
       });
@@ -347,7 +347,7 @@ describe('a step that landed before this deploy still cannot close without B (B3
       fixture.writeChapter(1, '');
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
-      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [] }))).toBe('RIGHTS_REQUIRED');
+      expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }))).toBe('RIGHTS_REQUIRED');
       expect(JSON.parse(store.getStep(fixture.db, assignment.stepId)?.rights_scan ?? '{}')).toMatchObject({
         verdict: 'flag',
         rule: 'RIGHTS-FLAG',

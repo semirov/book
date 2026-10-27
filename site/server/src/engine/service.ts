@@ -51,6 +51,7 @@ import {
   sameSequence,
 } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
+import { requirePipelineModel } from './model.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
@@ -69,11 +70,15 @@ export type { EnqueueInput } from './queue.ts';
 export type DoneOptions = {
   seams: unknown;
   note?: string;
-  model?: string;
+  /** ADR-038: required in the type, so `tsc` lists every caller of a close. */
+  model: string;
   tokensIn?: number;
   tokensOut?: number;
   now?: number;
 };
+
+/** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
+export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
 
 export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
 
@@ -178,8 +183,7 @@ export function createEngine(deps: EngineDeps) {
     const at = deps.clock.now();
     const step = freshStep(stepId);
     if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${stepId} is closed`);
-    const session = answer.session;
-    const result = recordVerdict(deps, step, answer, session);
+    const result = recordVerdict(deps, step, answer, answer.session);
     if (result.action === 'revise') {
       store.updateStep(db, step.step_id, {
         cycle: step.cycle + 1,
@@ -219,11 +223,10 @@ export function createEngine(deps: EngineDeps) {
   // ── done / seen ───────────────────────────────────────────────────────────
 
   function closeWithGates(
-    leaseId: string,
-    seams: SeamRef[],
-    note: string | null,
-    options: { model?: string; tokensIn?: number; tokensOut?: number; now?: number },
+    leaseId: string, seams: SeamRef[], note: string | null, options: SeenOptions & { where: 'done' | 'seen' },
   ): DoneResult {
+    // ADR-038: the model is refused **first** — before the lease opens — so nothing is consumed.
+    const model = requirePipelineModel(config, options.model, options.where);
     const at = options.now ?? deps.clock.now();
     const { lease, step, expired } = leaseStep(leaseId);
     if (step.landed_at === null) {
@@ -261,7 +264,7 @@ export function createEngine(deps: EngineDeps) {
             outcome: 'escalated',
             seamsOut: seams,
             note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
-            model: options.model ?? null,
+            model,
             tokensIn: options.tokensIn ?? 0,
             tokensOut: options.tokensOut ?? 0,
             escalation: 'escalated:origin',
@@ -339,7 +342,7 @@ export function createEngine(deps: EngineDeps) {
         outcome,
         seamsOut: seams,
         note: note ? note.slice(0, NOTE_MAX_CHARS) : null,
-        model: options.model ?? null,
+        model,
         tokensIn,
         tokensOut,
         changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
@@ -351,10 +354,7 @@ export function createEngine(deps: EngineDeps) {
       at,
     );
     return {
-      stepId: step.step_id,
-      outcome: result.outcome,
-      cascadeId: result.cascadeId,
-      changeStatus: result.changeStatus,
+      stepId: step.step_id, outcome: result.outcome, cascadeId: result.cascadeId, changeStatus: result.changeStatus,
     };
   }
 
@@ -371,18 +371,12 @@ export function createEngine(deps: EngineDeps) {
     return parseSeams(raw);
   }
 
-  function done(leaseId: string, options: DoneOptions): DoneResult {
-    return closeWithGates(leaseId, seamReport(options.seams), options.note ?? null, {
-      model: options.model,
-      tokensIn: options.tokensIn,
-      tokensOut: options.tokensOut,
-      now: options.now ?? deps.clock.now(),
-    });
-  }
+  const done = (leaseId: string, options: DoneOptions): DoneResult =>
+    closeWithGates(leaseId, seamReport(options.seams), options.note ?? null, { ...options, where: 'done' });
 
-  function seen(leaseId: string, note: string | null, options: { now?: number } = {}): DoneResult {
-    return closeWithGates(leaseId, [], note, { now: options.now ?? deps.clock.now() });
-  }
+  /** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
+  const seen = (leaseId: string, note: string | null, options: SeenOptions): DoneResult =>
+    closeWithGates(leaseId, [], note, { ...options, where: 'seen' });
 
   // ── escalate / beat ───────────────────────────────────────────────────────
 

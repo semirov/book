@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GateAssignment } from '../../src/engine/gates.ts';
 import { readUnresolved } from '../../src/engineState/reader.ts';
-import { chapterText, createEngineFixture, runStubStep } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
 
 /**
  * BOOK-76 / BOOK-DOC-52 §4 — «a physics claim that fails the pass never lands».
@@ -40,7 +40,7 @@ function answer(
     session: gate.session,
     verdict,
     findings,
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 100,
     tokensOut: 10,
   });
@@ -163,7 +163,7 @@ describe('a blocking physics verdict cannot be closed away (BOOK-76)', () => {
       // The writer does not re-land: the blocking verdict is still on the row, below the cap.
       let refusal: { code?: string; status?: number; message?: string } | null = null;
       try {
-        fixture.engine.done(assignment.leaseId, { seams: [] });
+        fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL });
       } catch (error) {
         refusal = error as { code?: string; status?: number; message?: string };
       }

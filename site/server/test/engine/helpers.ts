@@ -176,6 +176,14 @@ export function createEngineFixture(options: {
   };
 }
 
+/**
+ * The model a scripted session declares (ADR-038, BOOK-62). It is **recorded, not called**:
+ * the deterministic suite still runs no model, but the engine now refuses any close or verdict
+ * whose declared model is not the pipeline's, so the script must name the pinned one. Exported
+ * once, from the loaded fixture, so no second literal of the model lives in test code.
+ */
+export const PIPELINE_MODEL = loadConfig({}).pipeline.model;
+
 export type GateScript = { verdict: 'HOLDS' | 'GAP'; findings?: Finding[] };
 
 export type StubScript = {
@@ -225,7 +233,7 @@ function submitGate(fixture: Fixture, role: 'editor' | 'consultant', script: Stu
     session: gate.session,
     verdict: plan?.verdict ?? 'HOLDS',
     findings: plan?.findings ?? [],
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 120,
     tokensOut: 12,
   });
@@ -294,7 +302,7 @@ export function driveStub(fixture: Fixture, assignment: WriterAssignment, script
   const result = engine.done(assignment.leaseId, {
     seams: script.seams ?? [],
     note: script.note ?? 'scripted session',
-    model: 'stub/deepseek-flash',
+    model: PIPELINE_MODEL,
     tokensIn: 500,
     tokensOut: 80,
   });

@@ -28,7 +28,9 @@
     "engine": "node server/dist/engine.js",
     "engine:cli": "node bin/engine.mjs",
     "dev": "node scripts/dev.mjs",
-    "verify": "npm run typecheck && npm run arch && npm run test && npm run frame:check"
+    "verify": "npm run typecheck && npm run arch && npm run test && npm run frame:check",
+    "test:model": "node model-lane/run.mjs",
+    "test:model:pass": "node model-lane/pass.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

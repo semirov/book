@@ -262,6 +262,10 @@ kept; the page shows «пауза · дневной потолок $10,00 · в�
 memo line per pass in `process/write.log.md`, created if absent — a memo, not the position:
 `PASS N — lane <Пn | Оn | финал>, wrote chNN. | cost so far: $Y / day $D`.
 
+**The pipeline runs on `deepseek/deepseek-v4-pro`** — the row that table prices at $0.66 input / $1.98 output
+per 1M tokens, pinned by `site/config/pipeline.json` (BOOK-62). Reasoning is billed as output, so a pass's
+outbound tokens drive the memo figure, not the chapter's length.
+
 **Beats are automatic; the wall is the only time bound.** The engine's own tick beats the lease of every
 open step, so a real pass — 20 000–30 000 characters and two model gates — is not a stranded step and
 nobody has to `beat` by hand. A manual `engine.mjs beat` still works and cannot push a lease past the
@@ -273,6 +277,6 @@ before the wall is accepted and recorded as `expired-close`; `land`/`beat` still
 session whose step has been taken by another live lease is refused `LEASE_HELD`.
 
 **Handoff.** Create the next session: openchamber `session.create`, directory `/Users/filipp/projects/book`,
-agent `orchestrator`, model `deepseek/deepseek-flash`, prompt «Do the next writing pass per
+agent `orchestrator`, model `deepseek/deepseek-v4-pro`, prompt «Do the next writing pass per
 process/ROLE_PROMPTS.md, then hand off the same way. Take your position from manuscript/ and git log.»
 End with `PASS N done — wrote chNN. Next: <lane>.`

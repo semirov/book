@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { insertRevision } from '../../src/db/repo/revisions.ts';
 import { assertEndingFreeze } from '../../src/engine/freeze.ts';
-import { chapterText, createEngineFixture, runStubStep } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from './helpers.ts';
 
 function seedCascadeRevisionOfTheEnding(fixture: ReturnType<typeof createEngineFixture>): void {
   fixture.db
@@ -62,13 +62,13 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
           session: gate.session,
           verdict: 'HOLDS',
           findings: [],
-          model: 'stub/deepseek-flash',
+          model: PIPELINE_MODEL,
           tokensIn: 120,
           tokensOut: 12,
         });
       }
       expect(() =>
-        fixture.engine.done(assignment.leaseId, { seams: [], note: 'scripted session' }),
+        fixture.engine.done(assignment.leaseId, { seams: [], note: 'scripted session', model: PIPELINE_MODEL }),
       ).toThrowError(/F025|конец фиксирован/u);
       // The step is still open: a refused close writes nothing.
       const step = fixture.db

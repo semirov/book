@@ -9,7 +9,7 @@ import { SITE_ROOT } from '../../src/config.ts';
 import { buildControl } from '../../src/engine/control.ts';
 import { insertComment } from '../../src/comments/repo.ts';
 import { upsertIdentity } from '../../src/db/repo/identities.ts';
-import { chapterText, createEngineFixture } from './helpers.ts';
+import { PIPELINE_MODEL, chapterText, createEngineFixture } from './helpers.ts';
 
 const exec = promisify(execFile);
 const TOKEN = 'test-token';
@@ -222,6 +222,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         session: 'editor-1',
         verdict: 'HOLDS',
         findings: [],
+        model: PIPELINE_MODEL,
       });
       expect(editor.body.data).toMatchObject({ action: 'close', verdict: 'HOLDS' });
       expect((await post('/internal/next', { role: 'consultant', session: 'consultant-1' })).status).toBe(200);
@@ -231,9 +232,15 @@ describe('the internal API (§4.2, §6A.11)', () => {
         session: 'consultant-1',
         verdict: 'HOLDS',
         findings: [],
+        model: PIPELINE_MODEL,
       });
       expect(consultant.status).toBe(200);
-      const done = await post('/internal/done', { leaseId: job.leaseId, seams: [], note: 'готово' });
+      const done = await post('/internal/done', {
+        leaseId: job.leaseId,
+        seams: [],
+        note: 'готово',
+        model: PIPELINE_MODEL,
+      });
       expect(done.body.data).toMatchObject({ outcome: 'rewritten', changeStatus: 'done' });
 
       // A draft cannot be landed as a no-op, and escalation closes it with a reason.
@@ -281,6 +288,29 @@ describe('the internal API (§4.2, §6A.11)', () => {
       const beat = await cli(url, ['beat', assignment.leaseId]);
       expect(beat.code).toBe(0);
       expect(JSON.parse(beat.stdout)).toMatchObject({ leaseId: assignment.leaseId });
+
+      // BOOK-62: a prose step declares the pinned model, and `trace` prints it on the step and
+      // on both gates — «which model wrote this chapter» without grepping.
+      fixture.writeChapterBlocks(3, 'Глава', ['Служебный абзац для проверки объёма страницы.']);
+      expect((await cli(url, ['start', assignment.leaseId])).code).toBe(0);
+      expect((await cli(url, ['land', assignment.leaseId])).code).toBe(0);
+      for (const role of ['editor', 'consultant']) {
+        await cli(url, ['next', '--role', role, '--session', `${role}-1`]);
+        const answer = await cli(url, [
+          'verdict', assignment.stepId, '--role', role, '--session', `${role}-1`, '--verdict', 'HOLDS',
+          '--model', PIPELINE_MODEL,
+        ]);
+        expect(answer.code, answer.stderr).toBe(0);
+      }
+      const closed = await cli(url, ['done', assignment.leaseId, '--model', PIPELINE_MODEL]);
+      expect(closed.code, closed.stderr).toBe(0);
+      const stepTrace = await cli(url, ['trace', assignment.stepId]);
+      expect(stepTrace.code).toBe(0);
+      expect(stepTrace.stdout).toContain('closed');
+      expect(stepTrace.stdout.split('\n')[0]).toContain(`model ${PIPELINE_MODEL}`);
+      const gateLine = stepTrace.stdout.split('\n').find((row) => row.includes('gates:')) ?? '';
+      expect(gateLine).toContain(`editor:HOLDS [${PIPELINE_MODEL}]`);
+      expect(gateLine).toContain(`consultant:HOLDS [${PIPELINE_MODEL}]`);
 
       const pending = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'уточнить абзац' });
       const trace = await cli(url, ['trace', pending.id]);
