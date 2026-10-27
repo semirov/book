@@ -165,6 +165,17 @@ function insertLease(
   ).run(lease.id, lease.stepId, lease.changeId, lease.cascadeId, lease.lane, lease.chapter, lease.kind, AT, AT, '2026-10-25T12:02:00Z');
 }
 
+/** One gate verdict row per `(step, role)` is the contract, so a rewrite replaces it. */
+function insertVerdict(
+  db: Db,
+  verdict: { stepId: string; role: 'editor' | 'consultant'; verdict: 'HOLDS' | 'GAP'; findings?: unknown },
+): void {
+  db.prepare(
+    `INSERT OR REPLACE INTO gate_verdicts (step_id, role, verdict, findings, cycles, model, tokens_in, tokens_out, at)
+     VALUES (?, ?, ?, ?, 0, 'deepseek-flash', 10, 5, ?)`,
+  ).run(verdict.stepId, verdict.role, verdict.verdict, JSON.stringify(verdict.findings ?? []), AT);
+}
+
 /** The engine's writer side of the fixtures: one open ripple and one escalated seam. */
 function seed(db: Db): void {
   insertChange(db, {
@@ -387,6 +398,29 @@ describe('GET /api/changes/:id', () => {
     for (const forbidden of ['findings', 'verdict', 'editor', 'consultant', 'HOLDS', 'GAP', 'секретный вывод']) {
       expect(raw).not.toContain(forbidden);
     }
+  });
+
+  // BOOK-76: the physics pass travels as one word — and no claim is made before every step
+  // of the change has a consultant row. The no-leak loop above stays untouched: `passed` and
+  // `failed` carry neither a role nor a verdict word.
+  it('carries the physics pass as one word, and nothing until every step answered', async () => {
+    const booted = await boot();
+    const read = async (): Promise<Record<string, unknown>> => (await app!.inject({ method: 'GET', url: '/api/changes/chg_open' })).json();
+
+    // No consultant row at all: no line on the card.
+    expect((await read()).scienceCheck).toBeNull();
+
+    // One of two steps answered: still no claim.
+    insertVerdict(booted.db, { stepId: 'stp_origin', role: 'consultant', verdict: 'HOLDS' });
+    expect((await read()).scienceCheck).toBeNull();
+
+    // Every step holds: passed.
+    insertVerdict(booted.db, { stepId: 'stp_up', role: 'consultant', verdict: 'HOLDS' });
+    expect((await read()).scienceCheck).toBe('passed');
+
+    // A `GAP` is always a blocker — a blockerless one is stored as `HOLDS` — so it fails.
+    insertVerdict(booted.db, { stepId: 'stp_up', role: 'consultant', verdict: 'GAP', findings: [{ severity: 'blocker', location: 'глава 10', defect: 'свет пришёл раньше, чем мог', fix: 'дать сигналу носитель' }] });
+    expect((await read()).scienceCheck).toBe('failed');
   });
 
   it('answers 404 for an unknown change', async () => {

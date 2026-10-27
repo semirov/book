@@ -184,7 +184,7 @@ CREATE TABLE changes (
   status       TEXT NOT NULL CHECK (status IN
                  ('pending','processing','stale','done','void','escalated','failed')),
   relevance    TEXT,                               -- JSON Relevance (§6A.7)
-  outcome      TEXT,                               -- applied|adapted|dropped|superseded|budget|edge|oscillation|origin
+  outcome      TEXT,                               -- applied|adapted|dropped|superseded|budget|edge|oscillation|origin|science
   reason       TEXT,                               -- public one-liner when dropped/escalated
   cascade_id   TEXT,
   model        TEXT,                               -- frozen at close (§6D.5)

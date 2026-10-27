@@ -3,8 +3,9 @@
  *
  * A comment thread shows **two** lines and never collapses them into one «готово»:
  * acceptance is a promise, application is a fact, and how far the consequence travelled is
- * a third fact (`принято → внесено → дошло до глав 7–9`). Nothing here names a gate, a
- * finding or a role: those are not in the public DTO at all (§6B.6).
+ * a third fact (`принято → внесено → дошло до глав 7–9`). BOOK-76: the record now carries one
+ * gate fact — `ChangeDto.scienceCheck` — but its word lives in `lib/science.ts`; nothing here
+ * names a gate, a finding or a role.
  */
 
 import {
@@ -165,6 +166,9 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
   if (outcome === 'origin') return 'остановлено: нужно решение';
   if (outcome === 'delta') return 'остановлено: слишком много текста';
   if (outcome === 'finding') return 'внесено · замечание сохранено';
+  // BOOK-76: a physics stop is not «внесено» and not «замечание сохранено» — the claim
+  // never entered the book and the change waits for a decision.
+  if (outcome === 'science') return 'остановлено: физика не подтверждена';
   if (outcome === 'ending') return 'финал проверен, нужно решение';
   if (outcome === 'gate_timeout') return 'остановлено: проверка не ответила';
   return 'идёт';

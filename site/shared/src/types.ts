@@ -142,7 +142,7 @@ export type StateSnapshot = {
   };
   unresolved: Array<{
     boundary: number | 'front' | 'ending';
-    reason: 'origin' | 'ending' | 'oscillation' | 'budget' | 'delta' | 'finding' | 'gate_timeout';
+    reason: 'origin' | 'ending' | 'oscillation' | 'budget' | 'delta' | 'finding' | 'science' | 'gate_timeout';
     changeId: string | null;
     since: string;
     /** The writer's one clause for the seam, public; never a gate finding (§11.7). */

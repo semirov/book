@@ -37,6 +37,7 @@ function change(cost: ChangeCostDto | null): ChangeDto {
     steps: [],
     appliedRevs: [],
     cost,
+    scienceCheck: null,
     history: null,
     enqueuedAt: '2026-10-25T11:59:00Z',
     startedAt: '2026-10-25T12:00:00Z',

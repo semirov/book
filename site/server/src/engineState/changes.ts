@@ -1,15 +1,17 @@
 /**
  * The **public** projection of a change (ARCHITECTURE.md §6A.7, §6A.8, §6B.6, §9, §11.7).
  *
- * Built only from `changes`, `cascades`, `steps` and the public label of the comment. The
- * gate table is read for one thing only — the **mode** of a retroactive cause (`modes.ts`),
- * as a plain list of the three fixed words. An editor verdict, a consultant verdict and a
- * finding's text have no representation in these types at all, so the change card cannot
- * render one.
+ * Built from `changes`, `cascades`, `steps` and the public label of the comment. The gate
+ * table is read for two things only: the **mode** of a retroactive cause (`modes.ts`), as a
+ * plain list of the three fixed words, and — BOOK-76 — the physics pass, reduced to one word
+ * (`scienceCheckOf`). An editor verdict, a consultant verdict, a finding's text, a severity
+ * and a role still have no representation in these types at all.
  *
  * Three aggregates are public on purpose — the iteration number («правка 3»), whether a
  * finding survived («замечание сохранено») and the modes a cause was filed under; all are
- * facts about the ripple, not the hidden roles' words (§6B.6).
+ * facts about the ripple, not the hidden roles' words (§6B.6). BOOK-76 adds a fourth fact
+ * of the same kind: whether the physics pass held, which is the one gate fact the reader is
+ * told (§BOOK-DOC-52 §3).
  */
 
 import {
@@ -171,6 +173,24 @@ function publicCascadeOf(
   };
 }
 
+/**
+ * BOOK-76 — the physics pass as one public word. `'failed'` if any step was answered `GAP`
+ * (a blockerless `GAP` is stored as `HOLDS`, so a `GAP` row is always a blocker);
+ * `'passed'` only when every step of the change has a consultant row; `null` otherwise —
+ * no steps, or a step not yet answered. The role name never leaves web copy.
+ */
+function scienceCheckOf(db: Db, steps: readonly StepRow[]): 'passed' | 'failed' | null {
+  if (steps.length === 0) return null;
+  const rows = db
+    .prepare(
+      `SELECT step_id, verdict FROM gate_verdicts WHERE role = 'consultant'
+        AND step_id IN (${steps.map(() => '?').join(',')})`,
+    )
+    .all(...steps.map((step) => step.step_id)) as Array<{ step_id: string; verdict: 'HOLDS' | 'GAP' }>;
+  if (rows.some((row) => row.verdict === 'GAP')) return 'failed';
+  return rows.length === steps.length ? 'passed' : null;
+}
+
 function positionOf(db: Db, change: ChangeRow): number | null {
   // BOOK-7: a premise waits for its chapter's first pass, not for the lane — it has no place
   // in the queue and must not shift anybody else's.
@@ -239,6 +259,8 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
       .map(([chapter, rev]) => ({ chapter, rev }))
       .sort((left, right) => left.chapter - right.chapter),
     cost: publicCost(change),
+    // BOOK-76: the one gate fact a reader is told — the physics pass, as one word.
+    scienceCheck: scienceCheckOf(db, steps),
     history:
       hseqFrom.length > 0 && hseqTo.length > 0
         ? { fromHseq: Math.min(...hseqFrom), toHseq: Math.max(...hseqTo) }

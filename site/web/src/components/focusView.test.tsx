@@ -101,6 +101,7 @@ const change: ChangeDto = {
     { chapter: 8, rev: 4 },
   ],
   cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0.04 },
+  scienceCheck: null,
   modes: [],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',

@@ -179,6 +179,9 @@ describe('ranges and labels', () => {
     expect(relevanceCopy('partial')).toBe('основа изменилась частично');
     expect(relevanceCopy('unknown')).toBe('основа не проверена');
     expect(outcomeCopy('finding')).toBe('внесено · замечание сохранено');
+    // BOOK-76: a physics stop never says «внесено» — the claim did not enter the book.
+    expect(outcomeCopy('science')).toBe('остановлено: физика не подтверждена');
+    expect(outcomeCopy('science')).not.toContain('внесено');
     expect(outcomeCopy('dropped')).toBe('снято');
     // BOOK-59: stopping at the wave bound asks for a decision; the word names no money.
     expect(outcomeCopy('budget')).toBe('остановлено: дальше — решением владельца');

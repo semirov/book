@@ -15,11 +15,14 @@ import { RecordRow } from './RecordRow.tsx';
  *
  * The retrospection is **оформляется, never masked**, so no surface may call a seam a «шов»,
  * announce that a contradiction was fixed, call a stretch of text «битый», use the trade's
- * word «retcon», or name a gate role — the gates are invisible to readers (invariant 18).
- * Checked in the rendered markup of every surface that can print them; the copy modules
- * those surfaces render from are scanned beside this test (`server/test/copy.test.ts`,
- * where reading source files is allowed). «Стык пересматривается» is the book's own word
- * for the seam and stays.
+ * word «retcon», or name a gate role the reader was never told about. Checked in the rendered
+ * markup of every surface that can print them; the copy modules those surfaces render from
+ * are scanned beside this test (`server/test/copy.test.ts`, where reading source files is
+ * allowed). «Стык пересматривается» is the book's own word for the seam and stays.
+ *
+ * BOOK-76: the physics pass is now named to the reader — one line on the change card, and
+ * `/rules` names the whole chain once. The ban therefore drops «консультант» and keeps every
+ * other role, the verdict words and the findings vocabulary the payload still does not carry.
  *
  * BOOK-DOC-43 §6 (BOOK-66): a placeholder may not promise progress it does not measure, so
  * the skeleton's own vocabulary is banned too. The surfaces this pass touched (the chronicle
@@ -32,7 +35,6 @@ const BANNED = [
   'битый',
   'retcon',
   'редактор',
-  'консультант',
   'аудитор',
   'почти готово',
   'осталось',
@@ -114,6 +116,7 @@ const change: ChangeDto = {
   ],
   appliedRevs: [{ chapter: 8, rev: 4 }],
   cost: null,
+  scienceCheck: 'passed',
   history: null,
   enqueuedAt: '2026-10-25T11:59:00Z',
   startedAt: '2026-10-25T12:00:00Z',
@@ -190,5 +193,13 @@ describe('the reader-facing copy guard', () => {
     expect(markup).toContain('причина установлена · поправка: пункт изложен в новой редакции');
     expect(markup).toContain('расхождение зафиксировано');
     expect(markup).toContain('стык пересматривается');
+  });
+
+  it('prints the physics pass as one line, and nothing while it has not answered', () => {
+    const card = (scienceCheck: ChangeDto['scienceCheck']): string =>
+      renderToStaticMarkup(<ChangeCard change={{ ...change, scienceCheck }} onClose={() => undefined} />);
+    expect(card('passed')).toContain('<dt>проверка</dt><dd>пройдена · научный консультант</dd>');
+    expect(card('failed')).toContain('<dt>проверка</dt><dd>не пройдена · научный консультант</dd>');
+    expect(card(null)).not.toContain('<dt>проверка</dt>');
   });
 });
