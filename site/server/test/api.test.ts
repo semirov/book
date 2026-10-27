@@ -474,20 +474,19 @@ describe('the shell', () => {
     const asset = await app!.inject({ method: 'GET', url: '/assets/app-b7c1.js' });
     expect(asset.statusCode).toBe(200);
     expect(String(asset.headers['content-type'])).toContain('javascript');
-    // The release's policy, pinned against a dependency bump: revalidate on every load, never
-    // a long immutable pin under a name the static layer did not hash.
-    expect(asset.headers['cache-control']).toBe('public, max-age=0');
+    // The release's policy, pinned against a dependency bump: a hashed name may be pinned for
+    // a year (BOOK-119), and the name is the hash of these bytes.
+    expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
     expect(asset.headers.etag).toBeTruthy();
     expect(asset.body).toContain('книга');
 
-    // Encoded separators are the classic escape: the answer is the SPA shell, never a file
-    // from outside `web/dist` (BOOK-27, the @fastify/static patch). The type and the body are
-    // both asserted, so a `200` carrying a leaked file cannot pass as a shell.
+    // Encoded separators are the classic escape: the answer is a JSON 404 from the release
+    // store, never a file from outside `web/dist` and never the shell (BOOK-27, BOOK-119).
     const escape = await app!.inject({ method: 'GET', url: '/assets/..%2f..%2fserver%2fpackage.json' });
-    expect(escape.statusCode).toBe(200);
-    expect(String(escape.headers['content-type'])).toContain('text/html');
-    expect(escape.body).toContain('книга');
+    expect(escape.statusCode).toBe(404);
+    expect(String(escape.headers['content-type'])).toContain('application/json');
     expect(escape.body).not.toContain('@book/server');
+    expect(escape.body).not.toContain('<html');
   });
 
   it('explains a missing build instead of pretending', async () => {

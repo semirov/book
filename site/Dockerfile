@@ -21,7 +21,10 @@ COPY . .
 # build just wrote (`builtAt`/`stamp`), not a commit it cannot know.
 ARG BOOK_BUILD_COMMIT=""
 ENV BOOK_BUILD_COMMIT=$BOOK_BUILD_COMMIT
-RUN npm run build && npm prune --omit=dev --no-audit --no-fund
+# BOOK-119: `build` lands in `web/dist/staging`; `release:publish` renames it into
+# `web/dist/releases/<id>` and points `current` at it. Without the publish the image has no
+# shell at all and the site answers `UI_NOT_BUILT`.
+RUN npm run build && npm run release:publish && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:22-slim AS runtime
 ENV NODE_ENV=production

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { LegalPage } from './components/LegalPage.tsx';
 import { bootAnalytics } from './lib/analytics.ts';
+import { disarmAfterMount } from './lib/bootSignal.ts';
 import { staticPage } from './lib/route.ts';
 import './styles/tokens.css';
 import './styles/base.css';
@@ -27,6 +28,16 @@ import './styles/marginalia.css';
 // height at title scale and owns every `data-seq` delay.
 import './styles/first-load.css';
 
+declare global {
+  interface Window {
+    /**
+     * BOOK-119 — the inline boot guard in `index.html`. Absent when the shell is older than
+     * the guard or the CSP refused its hash; then nothing is waiting to be disarmed.
+     */
+    __bootGuard?: { ok: () => void };
+  }
+}
+
 const container = document.getElementById('root');
 if (container === null) throw new Error('#root is missing from index.html');
 
@@ -47,3 +58,9 @@ createRoot(container).render(
     <div className="canvas">{page === null ? <App /> : <LegalPage page={page} />}</div>
   </StrictMode>,
 );
+
+// BOOK-119: the guard is disarmed by a fact, not by the call above — `render` only *schedules*
+// work, so disarming in this tick would remove the listeners and the five-second timer while
+// `#root` is still empty, and a render that never commits would be a blank page. Optional on
+// purpose: a shell served before the guard existed has no `__bootGuard`, and that must not throw.
+disarmAfterMount({ container, guard: () => window.__bootGuard?.ok() });

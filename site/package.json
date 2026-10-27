@@ -16,6 +16,8 @@
   "scripts": {
     "prebuild": "node scripts/build-info.mjs",
     "build": "npm run build -w @book/shared && npm run build -w @book/server && npm run build -w @book/web",
+    "release:publish": "node scripts/release.mjs publish",
+    "proof": "tsx scripts/proof-release.ts",
     "typecheck": "npm run build -w @book/shared && tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "arch": "node scripts/arch.mjs",
     "test": "vitest run",
