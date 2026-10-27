@@ -17,12 +17,12 @@ import { changeLines as changeLinesFor } from './changeStatus.ts';
 import { clampQuote } from './seam.ts';
 
 /**
- * BOOK-90 — the three words and the deck under them.
+ * BOOK-90 / BOOK-137 — the state words and the deck under them.
  *
  * One table for a filing, one for a change: every status has exactly one of «ждёт» · «идёт» ·
- * «внесено», and the second line carries what the word cannot (a refusal, a superseded
- * anchor, a held check, an expired pass). The revision object's two rows are resolved on the
- * paragraph's own text, by the same rule the mark uses.
+ * «внесено» · «рассмотрено», and the second line carries what the word cannot (a refusal, a
+ * superseded anchor, a held check, an expired pass, the paperwork mode). The revision object's
+ * two rows are resolved on the paragraph's own text, by the same rule the mark uses.
  */
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
@@ -36,6 +36,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: 'Свет был включён до меня.',
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -59,6 +60,8 @@ function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
     intent: 'оставить одно «слово»',
     premise: false,
     status: 'done',
+    frame: 'untouched',
+    frameMode: null,
     outcome: 'applied',
     reason: null,
     position: null,
@@ -73,9 +76,9 @@ function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   };
 }
 
-describe('the three words', () => {
-  it('are the only vocabulary: ждёт · идёт · внесено', () => {
-    expect(STATE_WORDS).toEqual({ waiting: 'ждёт', working: 'идёт', landed: 'внесено' });
+describe('the state words', () => {
+  it('are the only vocabulary: ждёт · идёт · внесено · рассмотрено', () => {
+    expect(STATE_WORDS).toEqual({ waiting: 'ждёт', working: 'идёт', landed: 'внесено', registered: 'рассмотрено' });
   });
 
   it('map every filing status onto exactly one of them, the code’s «accepted» being идёт', () => {
@@ -85,6 +88,8 @@ describe('the three words', () => {
       ['delivered', 'идёт'],
       ['accepted', 'идёт'],
       ['applied', 'внесено'],
+      // BOOK-137: accepted as paperwork — decided, and nothing was written.
+      ['registered', 'рассмотрено'],
       ['superseded', 'ждёт'],
       ['rejected', 'ждёт'],
       ['quarantined', 'ждёт'],
@@ -100,11 +105,13 @@ describe('the three words', () => {
     expect(filingState({ status: 'something' as CommentDto['status'] })).toBe('waiting');
   });
 
-  it('map a change’s status onto the same three words', () => {
+  it('map a change’s status onto the same words', () => {
     const table: Array<[Partial<ChangeSummaryDto>, string]> = [
       [{ status: 'pending' }, 'идёт'],
       [{ status: 'processing' }, 'идёт'],
       [{ status: 'done' }, 'внесено'],
+      // BOOK-137: `done` with `outcome: 'registered'` is a document, not an edit of the text.
+      [{ status: 'done', outcome: 'registered', frameMode: 'оформление' }, 'рассмотрено'],
       [{ status: 'stale' }, 'ждёт'],
       [{ status: 'escalated' }, 'ждёт'],
       [{ status: 'failed' }, 'ждёт'],
@@ -145,7 +152,36 @@ describe('the deck’s second line', () => {
     expect(landingReceipt(7, 4)).toBe('внесено в главу 07 · право на ваш текст перешло автору книги · ревизия 4');
   });
 
-  it('keeps a premise’s whole lifecycle on one honest line', () => {    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe('принято в основу, до первой редакции');
+  it('says what a paperwork filing was filed as, and that the sentence did not change', () => {
+    // The comment row carries no mode: its public one-liner is the one source of it, and a row
+    // that named none was filed as the default.
+    expect(filingConsequence(comment({ status: 'registered', reason: 'принято как оформление: рамка книги — фраза не меняется' }))).toBe(
+      'оформление · фраза не изменилась',
+    );
+    expect(filingConsequence(comment({ status: 'registered', reason: 'принято как поправка: рамка книги — фраза не меняется' }))).toBe(
+      'поправка · фраза не изменилась',
+    );
+    expect(filingConsequence(comment({ status: 'registered' }))).toBe('оформление · фраза не изменилась');
+    // A caller that knows the mode (a change's summary) never has it guessed from the line.
+    expect(
+      filingConsequence({
+        ...comment({ status: 'registered', reason: 'принято как оформление: рамка книги — фраза не меняется' }),
+        frameMode: 'расхождение',
+      }),
+    ).toBe('расхождение · фраза не изменилась');
+  });
+
+  it('never prints «внесено» for a paperwork filing, nor «рассмотрено» for a landed one', () => {
+    const registered = filingMarginalia(comment({ status: 'registered' }));
+    const landed = filingMarginalia(comment({ status: 'applied', applied: { chapter: 5, rev: 1 } }));
+    expect(registered.word).toBe('рассмотрено');
+    expect(registered.state).toBe('registered');
+    expect(landed.word).toBe('внесено');
+    expect(landed.state).toBe('landed');
+  });
+
+  it('keeps a premise’s whole lifecycle on one honest line', () => {
+    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe('принято в основу, до первой редакции');
     expect(filingConsequence(comment({ premise: true, status: 'applied', applied: { chapter: 5, rev: 2 } }))).toBe(
       'вошло в первую редакцию главы 5',
     );

@@ -39,6 +39,9 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
   delivered: { rule: 'solid', tone: 'live' },
   accepted: { rule: 'solid', tone: 'live' },
   applied: { rule: 'none', tone: 'done' },
+  // BOOK-137 — a filing on the canon sentence was accepted as paperwork: a solid rule (it is
+  // a decided record, not a live queue place) and the done ink, with the word «рассмотрено».
+  registered: { rule: 'solid', tone: 'done' },
   superseded: { rule: 'solid', tone: 'stopped' },
   rejected: { rule: 'solid', tone: 'stopped' },
   quarantined: { rule: 'solid', tone: 'stopped' },

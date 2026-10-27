@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
+import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 import { RIGHTS_COPY } from '../../src/rights/rules.ts';
 
 const RIGHTS_COLUMNS = [
@@ -73,7 +74,8 @@ describe('migrate — the one rights backfill', () => {
     db.exec(`DELETE FROM meta WHERE k = 'rights.backfill'`);
     db.pragma('user_version = 14');
 
-    expect(migrate(db)).toEqual({ from: 14, to: 15 });
+    // BOOK-61 is v15; BOOK-137 (v16) lands on the way to the head version.
+    expect(migrate(db)).toEqual({ from: 14, to: SCHEMA_VERSION });
 
     // A `new` row the scan refuses is rejected with B's fixed sentence, in the same act.
     expect(row(db, 'cmt_new_person')).toMatchObject({

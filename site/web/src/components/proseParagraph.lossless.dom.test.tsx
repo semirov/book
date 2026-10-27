@@ -88,7 +88,7 @@ async function render(): Promise<void> {
         blockIndex={0}
         baseRev={ENTRY.rev}
         text={TEXT}
-        frozen={false}
+        blockCount={1}
         comments={[]}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}

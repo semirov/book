@@ -17,6 +17,7 @@ import { formatShare, type MyDecisionDto, type MyDecisionsDto } from '@book/shar
 
 import { chapterRange } from './changeStatus.ts';
 import { plural } from './format.ts';
+import { STATE_WORDS } from './marginalia.ts';
 
 export type DecisionTone = 'done' | 'live' | 'stopped';
 export type DecisionLine = { text: string; tone: DecisionTone };
@@ -24,6 +25,9 @@ export type DecisionLine = { text: string; tone: DecisionTone };
 const STATE: Record<MyDecisionDto['outcome'], { copy: string; tone: DecisionTone }> = {
   applied: { copy: 'правка внесена', tone: 'done' },
   adapted: { copy: 'правка внесена частично', tone: 'done' },
+  // BOOK-137 — a filing on the canon sentence was decided as paperwork: «рассмотрено», never
+  // «внесена», because no letter of the sentence changed. The reason on the line says the mode.
+  registered: { copy: STATE_WORDS.registered, tone: 'done' },
   queued: { copy: 'принято · ждёт очереди', tone: 'live' },
   escalated: { copy: 'правка остановлена · ждёт решения автора', tone: 'live' },
   dropped: { copy: 'правка снята', tone: 'stopped' },

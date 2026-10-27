@@ -149,6 +149,7 @@ const PREMISE: CommentDto = {
   proposedText: null,
   interventionKind: 'document',
   status: 'delivered',
+  frame: 'untouched',
   premise: true,
   reason: null,
   refusal: null,

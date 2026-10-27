@@ -1,4 +1,4 @@
-import type { CatalogEntry, ComposerInfo, CommentDto, ViewerDto } from '@book/shared';
+import { FRAME_WARNING, type CatalogEntry, type ComposerInfo, type CommentDto, type FrameMark, type ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
 import { getComment } from '../api.ts';
@@ -19,9 +19,13 @@ import { InterventionForm } from './InterventionForm.tsx';
  * BOOK-DOC-34 §2.2–§2.3 — the strip laid into the seam, and the form that grows in it.
  *
  * One 44 px row carries the two facts and the one action: whose word this is and «вмешаться».
- * A frozen chapter has no form ever — its strip says «закреплено» and links to the rules. An
- * empty chapter takes a premise instead of a note. The receipt after a 201 stays until the
- * reader closes the strip (on touch: only ✕, `Esc` or another explicit act): no timer, no toast.
+ *
+ * BOOK-137: the freeze is the canon **sentence**, not its chapter — a `touched` seam says
+ * «рамка книги · не меняется», keeps the link to the rules, prints the warning line before the
+ * reader types, and still offers the form: the filing is taken and filed as paperwork, the
+ * letters never change. An empty chapter takes a premise instead of a note. The receipt after a
+ * 201 stays until the reader closes the strip (on touch: only ✕, `Esc` or another explicit act):
+ * no timer, no toast.
  *
  * BOOK-33: closing is `✕`, `Esc`, or — on a fine pointer only — a click outside the strip,
  * and it returns focus to the element the tap came from, so a keyboard reader is never
@@ -35,11 +39,18 @@ import { InterventionForm } from './InterventionForm.tsx';
  * Opening announces itself once through a polite live region, never on every keystroke.
  */
 
+/**
+ * BOOK-137 — the frame's one label, printed as the strip's provenance word for a `touched`
+ * selection. One literal in one place: the accessible name and the visible text read it.
+ */
+const FRAME_LABEL = 'рамка книги · не меняется';
+
 export type SeamProps = {
   entry: CatalogEntry;
   draftKey: string;
   anchor: SeamAnchor | null;
-  frozen: boolean;
+  /** BOOK-137 — how the selection sits against the canon sentence (`@book/shared`). */
+  frame: FrameMark;
   filings: SentenceFilings | null;
   /** The paragraph's index, kept so a re-anchor can find its new place by position. */
   blockIndex?: number | null;
@@ -67,7 +78,7 @@ export function Seam({
   entry,
   draftKey,
   anchor,
-  frozen,
+  frame,
   filings,
   blockIndex = null,
   existingPremise = null,
@@ -113,6 +124,8 @@ export function Seam({
    * here and the rebuilt form prints it again (BOOK-63: a refusal spends nothing).
    */
   const [refusal, setRefusal] = useState<ComposerError | null>(null);
+  /** BOOK-137: the selection is the canon sentence itself — the one edge that is not text. */
+  const frameTouched = frame === 'touched';
 
   const update = (next: SeamDraft): void => {
     setDraftState(next);
@@ -222,7 +235,7 @@ export function Seam({
         aria-label={`место вмешательства · глава ${String(entry.n).padStart(2, '0')}`}
         data-state="prov"
         data-open="false"
-        data-frozen={frozen ? 'true' : undefined}
+        data-frozen={frameTouched ? 'true' : undefined}
         data-premise={premise ? 'true' : undefined}
         data-base-rev={draft.baseRev ?? ''}
         data-block={draft.blockId ?? ''}
@@ -246,7 +259,7 @@ export function Seam({
       aria-label={`место вмешательства · глава ${String(entry.n).padStart(2, '0')}`}
       data-state={open ? 'form' : receipt === null ? 'strip' : 'receipt'}
       data-open={open ? 'true' : 'false'}
-      data-frozen={frozen ? 'true' : undefined}
+      data-frozen={frameTouched ? 'true' : undefined}
       data-premise={premise ? 'true' : undefined}
       data-base-rev={draft.baseRev ?? ''}
       data-block={draft.blockId ?? ''}
@@ -266,18 +279,21 @@ export function Seam({
             className="seam-prov"
             data-door="prov"
             onClick={(event) => onProvenance(event.currentTarget)}
-            aria-label="откуда это слово"
+            // The accessible name is the visible label, so the two can never disagree.
+            aria-label={frameTouched ? FRAME_LABEL : 'откуда это слово'}
           >
-            {frozen ? 'автор · закреплено' : 'откуда это слово'}
+            {frameTouched ? FRAME_LABEL : 'откуда это слово'}
           </button>
         )}
         {summary === null ? null : <span className="seam-draft ym-hide-content">{summary}</span>}
 
-        {frozen ? (
+        {frameTouched ? (
           <a className="seam-frozen" href="/rules#рамка">
             рамка книги →
           </a>
-        ) : premise && existingPremise !== null ? (
+        ) : null}
+
+        {premise && existingPremise !== null ? (
           <button
             type="button"
             className="seam-cta"
@@ -302,7 +318,12 @@ export function Seam({
       </div>
 
       {premiseNote === null ? null : <p className="seam-note">{premiseNote}</p>}
-      {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
+      {/*
+        BOOK-137 — the one warning line, read from `@book/shared` and printed in the strip
+        **before** the reader types: trying is allowed, and lying about the outcome is not.
+      */}
+      {frameTouched ? <p className="seam-note seam-frame">{FRAME_WARNING}</p> : null}
+      {premise && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
         // BOOK-70, amended by BOOK-111 (owner, 2026-10-27): the row prints the numeral, the
@@ -351,7 +372,7 @@ export function Seam({
 
       <div className="seam-grow">
         <div className="seam-grow-inner">
-          {open && !frozen ? (
+          {open ? (
             <InterventionForm
               entry={entry}
               draft={draft}

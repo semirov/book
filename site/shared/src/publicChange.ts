@@ -12,6 +12,7 @@
  * public part of `events`.
  */
 
+import type { FrameMark } from './frame.ts';
 import type { InterventionKind } from './intervention.ts';
 import type {
   AppliesVerdict,
@@ -218,6 +219,17 @@ export type ChangeSummaryDto = {
   rewritten: number[];
   /** Steps recorded for the change — the same number the card derives from `steps.length`. */
   steps: number;
+  /**
+   * BOOK-137 — how the filing sat against the frozen frame. `untouched` for every change that
+   * is not a reader's filing (a continuity or operator change) and for rows stored before v16,
+   * so the history never has to guess.
+   */
+  frame: FrameMark;
+  /**
+   * BOOK-137 — the paperwork mode of a `registered` change (`оформление` by default); `null`
+   * for a change that is text and has no paperwork to file.
+   */
+  frameMode: RetroMode | null;
   /** The retroactive causes filed with this change, in the fixed mode order. */
   modes: RetroMode[];
   cascade: null | { id: string; status: CascadeStatus; outcome: string | null };

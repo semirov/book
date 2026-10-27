@@ -239,6 +239,24 @@ const MIGRATIONS: Migration[] = [
       widenGateRoles(db);
     },
   },
+  {
+    // BOOK-137: the frozen frame may be touched but never changed, so a filing carries how it
+    // sat against the canon sentence and a change that touched it carries the paperwork mode it
+    // was filed as. Null is the honest answer for a row written before this step (no mark was
+    // ever taken); the CHECK travels with the ADD COLUMN, so a migrated install has the same
+    // shape as a fresh one.
+    to: 16,
+    up(db) {
+      addColumn(db, 'comments', 'frame', "TEXT CHECK (frame IN ('touched','adjacent','untouched'))");
+      addColumn(db, 'changes', 'frame', "TEXT CHECK (frame IN ('touched','adjacent','untouched'))");
+      addColumn(
+        db,
+        'changes',
+        'frame_mode',
+        "TEXT CHECK (frame_mode IN ('оформление','поправка','расхождение'))",
+      );
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

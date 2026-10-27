@@ -1,10 +1,18 @@
 /**
- * Acceptance → a queued change (ARCHITECTURE.md §12.1, §12.6).
+ * Acceptance → a queued change, or — on the frozen frame — paperwork (ARCHITECTURE.md §12.1,
+ * §12.6; BOOK-137).
  *
  * Acceptance is a promise, not a result: the comment becomes a `changes` row with an
  * *intent* and a base revision, and the FIFO lane applies it later. Both the host CLI and
  * the site's decisions tailer call this one function, so a change has exactly one shape no
  * matter which process wrote it, and re-running a decision is a no-op.
+ *
+ * BOOK-137: a filing that **touched** the frozen frame (ch01's opening sentence, ch67's
+ * finale) is accepted as paperwork: a `changes` row with `frame='touched'`, a paperwork mode,
+ * `status='done'` and `outcome='registered'` — no step, no ripple, no lane. The sentence's
+ * letters are not touched by anything here; the land guard (`engine/write.ts`) is what keeps
+ * them, and this row is the record that the world was told so. A filing beside the frame is an
+ * ordinary change that carries its mark.
  *
  * Insert and link happen in one transaction: a crash can never leave a queued change with
  * no comment pointing at it (or a comment "accepted" with nothing in the queue).
@@ -20,12 +28,20 @@
  * a refusal, not a pass; `AUDIT_REQUIRED`, `RIGHTS_REQUIRED` and `QUARANTINED` name which one.
  */
 
-import { PREMISE_FROZEN_REASON, normalizeInterventionKind } from '@book/shared';
+import {
+  DEFAULT_FRAME_MODE,
+  classifyFrame,
+  framePaperworkReason,
+  normalizeFrameMark,
+  normalizeInterventionKind,
+  type FrameMark,
+  type RetroMode,
+} from '@book/shared';
 
 import { insertChange } from '../engine/store.ts';
 import { PREMISE_SUPERSEDED_REASON, admitPremise } from '../engine/premise.ts';
 import type { Db } from '../db/db.ts';
-import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
+import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { newChangeId } from '../util/ulid.ts';
 
@@ -33,7 +49,11 @@ export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
   | {
       error: string;
-      code?: 'AUDIT_REQUIRED' | 'FROZEN_FRAME' | 'RIGHTS_REQUIRED' | 'QUARANTINED';
+      /**
+       * BOOK-61/BOOK-137 — which gate refused: A's hold, B's rights, C's auditor. The frozen
+       * frame is no longer a refusal here: a touched filing is accepted as paperwork.
+       */
+      code?: 'AUDIT_REQUIRED' | 'RIGHTS_REQUIRED' | 'QUARANTINED';
     };
 
 export type AcceptInput = {
@@ -41,14 +61,40 @@ export type AcceptInput = {
   intent: string;
   at: string;
   reason: string;
+  /**
+   * BOOK-137 — the paperwork mode the caller named for a filing that touches the frame;
+   * `null`/absent takes `DEFAULT_FRAME_MODE` (`оформление`). A mode on any other filing is
+   * ignored: a text change has no paperwork to file.
+   */
+  frameMode?: RetroMode | null;
   changeId?: string | null;
   baseRev?: number | null;
   batch?: string | null;
 };
 
+type ChapterRow = { rev: number; sha256: string; basis: number; block_count: number };
+
 /** A revision is 1..n; 0 is the premise base and never a base for text that exists. */
 function positiveRev(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/**
+ * The one frame rule (BOOK-137): the mark the comment carries, or — for a row stored before
+ * v14, which carries none — the same classifier applied to the stored anchor and the chapter's
+ * projection. One helper, never a second rule.
+ */
+function frameMarkOf(db: Db, comment: CommentRow, chapter: ChapterRow | undefined): FrameMark {
+  const stored = normalizeFrameMark(comment.frame);
+  if (stored !== null) return stored;
+  const block = comment.block_id === null ? undefined : readBlock(db, comment.block_id);
+  return classifyFrame({
+    chapter: comment.chapter,
+    quote: comment.quote,
+    blockIndex: block?.idx ?? comment.block_idx,
+    blockText: block?.text ?? null,
+    blockCount: chapter?.block_count ?? 0,
+  });
 }
 
 export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
@@ -91,20 +137,29 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
       };
     }
 
-    // BOOK-7: the frozen frame is decided from the slot itself, before the projection is
-    // read. A basis slot is projected with a row (rev 0, one block), so "no row" would let
-    // an intervention on ch01/ch67 through as an ordinary change on the frozen chapter.
-    if (comment.chapter === 1 || comment.chapter === 67) {
-      return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
-    }
-
     const chapter = db
       .prepare('SELECT rev, sha256, basis, block_count FROM chapters WHERE n = ?')
-      .get(comment.chapter) as
-      | { rev: number; sha256: string; basis: number; block_count: number }
-      | undefined;
+      .get(comment.chapter) as ChapterRow | undefined;
     const changeId = input.changeId ?? newChangeId(Date.parse(input.at));
     const existing = db.prepare('SELECT id FROM changes WHERE id = ?').get(changeId) as { id: string } | undefined;
+
+    // BOOK-137: a filing that touches the frozen frame is accepted as paperwork — recorded,
+    // done, and never handed to the lane. The mark comes from the row (or, for a pre-v16 row,
+    // from the same classifier over the anchor).
+    const mark = frameMarkOf(db, comment, chapter);
+    if (mark === 'touched') {
+      return register(db, {
+        comment,
+        chapter,
+        changeId,
+        existing: existing !== undefined,
+        intent: input.intent,
+        at: input.at,
+        mode: input.frameMode ?? DEFAULT_FRAME_MODE,
+        batch: input.batch ?? null,
+        baseRev: positiveRev(input.baseRev),
+      });
+    }
 
     // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a basis
     // row is a row, not prose. Only a written chapter takes an ordinary change.
@@ -119,6 +174,7 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
           interventionKind: normalizeInterventionKind(comment.intervention_kind),
           sourceComment: comment.id,
           sourceSession: null,
+          frame: mark,
           at: input.at,
         }).superseded;
       } else {
@@ -168,6 +224,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         baseBlocks: JSON.stringify(blocks.map((block) => block.hash)),
         scopeHint: 'phrase',
         premise: 0,
+        // BOOK-137: an ordinary change carries the mark its filing carried, so the history can
+        // tell an edit beside the frame from an edit of it.
+        frame: mark,
         enqueuedAt: input.at,
       });
       // BOOK-65: a change written through the interface is a public record entry, so its
@@ -206,4 +265,81 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     return { changeId, created: existing === undefined };
   });
   return run();
+}
+
+/**
+ * The paperwork branch of an acceptance (BOOK-137): a `done` change with `outcome='registered'`,
+ * one `registered` event and a comment that says «рассмотрено». No step, no cascade, no lane,
+ * no `queued` event — this change was never text, so nothing may think it is.
+ */
+function register(
+  db: Db,
+  input: {
+    comment: CommentRow;
+    chapter: ChapterRow | undefined;
+    changeId: string;
+    existing: boolean;
+    intent: string;
+    at: string;
+    mode: RetroMode;
+    batch: string | null;
+    baseRev: number | null;
+  },
+): AcceptResult {
+  const { comment, chapter } = input;
+  const reason = framePaperworkReason(input.mode);
+  const atMs = Number.isFinite(Date.parse(input.at)) ? Date.parse(input.at) : Date.now();
+  if (!input.existing) {
+    // A basis slot has no prose to record as a base: the projection's block list is empty, and
+    // the revision is the comment's own or the chapter's (0 for a slot that only holds its
+    // sentence).
+    const blocks =
+      chapter === undefined || chapter.basis !== 0
+        ? []
+        : (db.prepare('SELECT hash FROM blocks WHERE chapter = ? ORDER BY idx').all(comment.chapter) as Array<{
+            hash: string;
+          }>);
+    insertChange(db, {
+      id: input.changeId,
+      kind: 'accepted_comment',
+      interventionKind: normalizeInterventionKind(comment.intervention_kind),
+      chapter: comment.chapter,
+      anchor: JSON.stringify({
+        blockIds: comment.block_id === null ? [] : [comment.block_id],
+        quote: comment.quote,
+        prefix: comment.prefix,
+        suffix: comment.suffix,
+      }),
+      intent: input.intent,
+      proposedText: comment.proposed_text,
+      sourceComment: comment.id,
+      sourceSession: null,
+      baseRev: input.baseRev ?? positiveRev(comment.base_rev) ?? chapter?.rev ?? 0,
+      baseSha: chapter?.sha256 ?? '',
+      baseBlocks: JSON.stringify(blocks.map((block) => block.hash)),
+      scopeHint: 'phrase',
+      premise: 0,
+      frame: 'touched',
+      frameMode: input.mode,
+      status: 'done',
+      outcome: 'registered',
+      reason,
+      finishedAt: input.at,
+      enqueuedAt: input.at,
+    });
+    appendChangeEvent(db, input.changeId, 'registered', { frame: 'touched', mode: input.mode }, atMs);
+  }
+
+  db.prepare(
+    `UPDATE comments
+        SET status = 'registered', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
+      WHERE id = ?`,
+  ).run(input.at, reason, input.batch, input.changeId, comment.id);
+  appendCommentEvent(db, comment.id, 'decided', input.at, {
+    status: 'registered',
+    changeId: input.changeId,
+    frame: 'touched',
+    mode: input.mode,
+  });
+  return { changeId: input.changeId, created: !input.existing };
 }

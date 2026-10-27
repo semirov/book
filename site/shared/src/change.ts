@@ -40,7 +40,13 @@ export type ChangeOutcome =
    * The refusal is about the text, not about the reader's filing — that keeps its own state.
    */
   | 'rights'
-  | 'gate_timeout';
+  | 'gate_timeout'
+  /**
+   * BOOK-137: the filing touched the frozen frame and was accepted as **paperwork** — a
+   * document, not an edit. The row is `done` with no step and no ripple, and the canon
+   * sentence's letters are untouched.
+   */
+  | 'registered';
 
 export type SeamBoundary = number | 'front' | 'ending';
 

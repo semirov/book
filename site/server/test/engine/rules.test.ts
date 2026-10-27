@@ -187,7 +187,10 @@ describe('gate dispatch bookkeeping (§6B.3)', () => {
 
 describe('land — shapes the engine refuses to bless (§6A.11)', () => {
   it('records an unchanged file as a hold, not a revision', () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) } });
+    // BOOK-137: a landing on ch01 keeps the canon frame, so the fixture's chapter opens on it.
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', [`${FRAME_FIRST_SENTENCE} Тестовый абзац.`]) },
+    });
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
@@ -261,8 +264,12 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
 });
 
 describe('land — the length floor is a limit, not a hint (BOOK-24, F007)', () => {
-  /** A chapter file of exactly `chars` characters of prose. */
-  const page = (chars: number): string => `Начало\n\n${'а'.repeat(chars)}\n`;
+  /**
+   * A chapter file of exactly `chars` characters of prose. ch01 opens on the canon frame
+   * (BOOK-137), so the filler follows it and the sentence is left untouched by the test.
+   */
+  const page = (chars: number): string =>
+    `Начало\n\n${FRAME_FIRST_SENTENCE} ${'а'.repeat(chars - FRAME_FIRST_SENTENCE.length - 1)}\n`;
 
   /** A draft lease on chapter 1, started, with nothing landed yet. */
   function draft(fixture: ReturnType<typeof createEngineFixture>): string {

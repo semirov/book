@@ -1,4 +1,12 @@
-import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import {
+  DEFAULT_FRAME_MODE,
+  FAILED_ATTEMPT_LINE,
+  framePaperworkReason,
+  RETRO_MODES,
+  type ChangeSummaryDto,
+  type CommentDto,
+  type RetroMode,
+} from '@book/shared';
 
 import { RECEIPT_RIGHTS, receiptLine } from './terms.ts';
 import { clampQuote, splitSentences } from './seam.ts';
@@ -6,10 +14,15 @@ import { clampQuote, splitSentences } from './seam.ts';
 /**
  * BOOK-90 — marginalia: one vocabulary for the marks in the margin.
  *
- * The book has **three** state words and no fourth: «ждёт» (alive, waiting), «идёт» (alive,
- * in the machinery) and «внесено» (landed). Every surface that prints a state — the margin
- * note, the phone strip, the filing panel, the thread, the change card's stamp — reads them
- * here, so the same row cannot be «в процессе» in one place and «идёт» in another.
+ * The book has **four** state words and no fifth: «ждёт» (alive, waiting), «идёт» (alive, in
+ * the machinery), «внесено» (landed in the text) and — BOOK-137 — «рассмотрено» (decided as
+ * **paperwork**: the record exists, the sentence's letters did not change). Every surface that
+ * prints a state — the margin note, the phone strip, the filing panel, the thread, the change
+ * card's stamp — reads them here, so the same row cannot be «в процессе» in one place and
+ * «идёт» in another.
+ *
+ * The textual states and the paperwork one are exclusive: «рассмотрено» is never printed for a
+ * filing that was applied to text, and «внесено» never for one that was not.
  *
  * The word alone does not carry the facts: a refusal, a superseded anchor, a held check and
  * an expired pass are all «ждёт», and the second line (`consequence`) says which one it is.
@@ -17,19 +30,20 @@ import { clampQuote, splitSentences } from './seam.ts';
  * the vocabulary and not of a component.
  *
  * The code's comment status `accepted` («принято, правка в очереди») is a change now: it is
- * `идёт`, not `внесено`. Only `applied` is `внесено`.
+ * `идёт`, not `внесено`. Only `applied` is `внесено`; only `registered` is «рассмотрено».
  */
 
-export type State = 'waiting' | 'working' | 'landed';
+export type State = 'waiting' | 'working' | 'landed' | 'registered';
 
 /** The deck's one line for a premise that waits for the chapter's first pass (one source). */
 export const PREMISE_PENDING = 'принято в основу, до первой редакции';
 
-/** The three words. Nothing else may print a state (BOOK-90, Part II). */
+/** The state words. Nothing else may print a state (BOOK-90, Part II; BOOK-137). */
 export const STATE_WORDS: Readonly<Record<State, string>> = {
   waiting: 'ждёт',
   working: 'идёт',
   landed: 'внесено',
+  registered: 'рассмотрено',
 };
 
 /**
@@ -52,6 +66,14 @@ export const GATE_WORDS: Readonly<Record<GateWord, string>> = {
 /** HELD's own line: a hold is not history and no change is made from it (BOOK-DOC-42 §5). */
 export const HELD_LINE = 'замечание сохранено и ждёт человека — из него пока не делают правку';
 
+/**
+ * BOOK-137 — the paperwork's second line: the mode it was filed as, and the one fact that
+ * matters — the sentence did not change. One source for the filing and the change alike.
+ */
+export function registrationLine(mode: RetroMode = DEFAULT_FRAME_MODE): string {
+  return `${mode} · фраза не изменилась`;
+}
+
 export type Marginalia = {
   state: State;
   /** The state word, lowercase: the label register uppercases it in CSS. */
@@ -67,16 +89,23 @@ type FilingFacts = Pick<CommentDto, 'status'> & {
   chapter?: number;
   /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
   refusal?: CommentDto['refusal'];
-  /** The stored public line, joined under the gate's word where the gate owes one. */
+  /**
+   * The stored public line: joined under the gate's word where the gate owes one (BOOK-61), and
+   * it carries the paperwork mode of a `registered` row (BOOK-137).
+   */
   reason?: string | null;
   /** The linked change's attempt failed; the filing itself keeps its state. */
   attempt?: 'failed' | null;
+  /** BOOK-137 — the mode when the caller has it (a change's summary), never guessed. */
+  frameMode?: RetroMode | null;
 };
 
 type ChangeFacts = Pick<ChangeSummaryDto, 'status' | 'outcome'> & {
   premise?: boolean;
   /** A premise whose chapter has text: it entered the first edition. */
   premiseLanded?: boolean;
+  /** BOOK-137 — the paperwork mode of a `registered` change. */
+  frameMode?: RetroMode | null;
 };
 
 /** A note (no kind, no proposed text) never lands text: its terminal is «сохранено». */
@@ -89,6 +118,17 @@ function chapterOf(comment: FilingFacts): number {
   return comment.applied?.chapter ?? comment.chapter ?? 0;
 }
 
+/**
+ * The mode a `registered` comment was filed as. The comment row carries the server's public
+ * one-liner (`CommentDto.reason`) and no mode of its own, so the word is read back through
+ * the one function that writes that line — never through a second template.
+ */
+function registrationMode(comment: FilingFacts): RetroMode {
+  if (comment.frameMode !== undefined && comment.frameMode !== null) return comment.frameMode;
+  const reason = comment.reason ?? '';
+  return RETRO_MODES.find((mode) => framePaperworkReason(mode) === reason) ?? DEFAULT_FRAME_MODE;
+}
+
 /** The state family of a filing, before any of the words are chosen. */
 export function filingState(comment: FilingFacts): State {
   // BOOK-7: a premise is the chapter's starting point; it never enters the lane.
@@ -96,6 +136,10 @@ export function filingState(comment: FilingFacts): State {
   switch (comment.status) {
     case 'applied':
       return 'landed';
+    // BOOK-137: a filing on the canon sentence was accepted as paperwork. Nothing was written,
+    // so it is never «внесено» — and it is decided, so it is never «ждёт» or «идёт».
+    case 'registered':
+      return 'registered';
     case 'batched':
     case 'delivered':
     case 'accepted':
@@ -151,6 +195,10 @@ export function filingConsequence(comment: FilingFacts): string {
     }
   }
   switch (comment.status) {
+    // BOOK-137 — a filing on the frame became a document: the mode it was filed as, and the
+    // one fact a reader needs — their sentence is still the book's sentence.
+    case 'registered':
+      return registrationLine(registrationMode(comment));
     case 'batched':
     case 'delivered':
       return 'читает триаж';
@@ -193,6 +241,9 @@ export function changeState(change: ChangeFacts): State {
   // a failed attempt after the first edition does not un-enter a premise.
   if (change.premiseLanded === true) return 'landed';
   if (change.premise === true) return change.status === 'done' ? 'landed' : 'waiting';
+  // BOOK-137 — a `registered` change is `done` and yet never text: its own state wins over the
+  // status word, or the card would say «внесено» about a sentence nothing was written into.
+  if (change.outcome === 'registered') return 'registered';
   switch (change.status) {
     case 'done':
       return 'landed';

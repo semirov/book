@@ -94,6 +94,7 @@ const COMMENT: CommentDto = {
   proposedText: null,
   interventionKind: 'document',
   status: 'new',
+  frame: 'untouched',
   premise: false,
   reason: null,
   createdAt: '2026-10-25T12:00:00Z',

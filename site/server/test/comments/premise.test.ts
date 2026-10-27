@@ -6,11 +6,12 @@ import { bootComments, commentBody, type Harness } from './helpers.ts';
 /**
  * BOOK-7 — the door to an intervention on a chapter with no text.
  *
- * The frozen frame (ch01's opening, ch67's finale) is never a target. A basis slot is
- * projected with a row (rev 0, one block), so the guard must read the slot, not the absence
- * of a row: this fixture writes the real basis files and lets the ingest project them.
- * Every other empty slot takes a chapter-level intervention with base revision 0; a
- * paragraph quoted from no text is still a stale anchor.
+ * BOOK-137 amends the old rule: the frozen frame (ch01's opening, ch67's finale) is no longer
+ * a closed door. A filing may anchor on the canon sentence's own paragraph — the letters are
+ * kept by the land guard, and an accepted filing on it becomes paperwork. A basis slot is
+ * projected with a row (rev 0, one block), so the anchor is resolved against the slot's own
+ * paragraph, never against a missing row; only a **chapter-level** filing of such a slot takes
+ * the premise branch. A paragraph quoted from no text is still a stale anchor.
  */
 
 let harness: Harness | null = null;
@@ -55,27 +56,40 @@ describe('POST /api/comments on an empty chapter', () => {
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 0 });
   });
 
-  it('refuses a note or a proposed intervention on the frozen frame (FROZEN_FRAME)', async () => {
+  it('accepts a note or a proposed intervention on the frozen frame — as a filing, not a change', async () => {
     const h = await boot();
+    // BOOK-137: trying is allowed. The sentence's letters are kept by the land guard, and an
+    // accepted filing on it becomes paperwork — so the door is open and the thread says so.
     for (const chapter of [1, 67]) {
-      const note = await post(h, commentBody({ chapter, body: 'К этой главе есть замысел.' }));
-      expect(note.statusCode, `note ch${chapter}`).toBe(403);
-      expect(note.json(), `note ch${chapter}`).toMatchObject({ code: 'FROZEN_FRAME' });
-      expect(note.json().message).toContain('неподвижна');
+      const note = await post(h, commentBody({ chapter, body: `К главе ${chapter} есть замысел.` }));
+      expect(note.statusCode, `note ch${chapter}`).toBe(201);
+      expect(note.json().comment, `note ch${chapter}`).toMatchObject({ status: 'new' });
     }
     const first = await post(
       h,
       commentBody({ chapter: 1, body: 'Начать иначе.', proposedText: 'Первая фраза иначе.', interventionKind: 'decision' }),
     );
-    expect(first.statusCode).toBe(403);
-    expect(first.json()).toMatchObject({ code: 'FROZEN_FRAME' });
-    // ch67's proposed text keeps its older, equally public refusal.
-    const finale = await post(
+    expect(first.statusCode).toBe(201);
+    // A chapter-level filing of a basis slot is that slot's premise, exactly as BOOK-7 says.
+    expect(first.json().comment.frame).toBe('untouched');
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 3 });
+    // Nothing was written: the slot is still the slot.
+    expect(h.db.prepare('SELECT n, rev, basis FROM chapters WHERE n IN (1, 67) ORDER BY n').all()).toEqual([
+      { n: 1, rev: 0, basis: 1 },
+      { n: 67, rev: 0, basis: 1 },
+    ]);
+  });
+
+  it('resolves a block anchor on a basis slot like prose, and marks it touched', async () => {
+    const h = await boot();
+    // BOOK-137: the frame's own paragraph is the reader's target, not a stale anchor.
+    const block = h.db.prepare('SELECT id, text FROM blocks WHERE chapter = 1').get() as { id: string; text: string };
+    const response = await post(
       h,
-      commentBody({ chapter: 67, body: 'Закончить иначе.', proposedText: 'Последняя фраза иначе.', interventionKind: 'decision' }),
+      commentBody({ chapter: 1, blockId: block.id, quote: block.text, body: 'Первая фраза держит всю книгу.' }),
     );
-    expect(finale.statusCode).toBe(403);
-    expect(finale.json()).toMatchObject({ code: 'ENDING_FROZEN' });
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 0 });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().comment.frame).toBe('touched');
+    expect(response.json().comment.anchor).toMatchObject({ blockId: block.id, blockIndex: 0, resolved: true });
   });
 });

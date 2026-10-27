@@ -29,6 +29,8 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
     intent: 'в абзаце дважды «слово» — оставить одно',
     premise: false,
     status: 'done',
+    frame: 'untouched',
+    frameMode: null,
     outcome: 'applied',
     reason: null,
     position: null,
@@ -81,6 +83,20 @@ describe('the thread’s two lines', () => {
       first: 'внесено',
       second: 'частично · дошло до глав 7 и 9',
     });
+  });
+
+  it('files a paperwork change as «рассмотрено», with the mode and no reach (BOOK-137)', () => {
+    // `done` with `outcome: 'registered'`: the record exists, the sentence did not change. The
+    // word is the state's own, never «внесено», and the line names the mode, not a ripple.
+    const paperwork = summary({ outcome: 'registered', frame: 'touched', frameMode: 'оформление', steps: 0, chapters: [8], rewritten: [], cascade: null });
+    expect(changeLines(paperwork)).toMatchObject({
+      first: 'рассмотрено',
+      second: 'оформление · фраза не изменилась',
+      tone: 'done',
+    });
+    expect(progressLine(paperwork)).toBe('принято → рассмотрено');
+    expect(stampCopy(paperwork)).toBe('рассмотрено');
+    expect(outcomeCopy('registered')).toBe('рассмотрено');
   });
 
   it('always states why a change was dropped', () => {

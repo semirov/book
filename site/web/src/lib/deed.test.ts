@@ -55,6 +55,14 @@ describe('the five public states of a change', () => {
     ]);
   });
 
+  it('files a paperwork change as «зарегистрировано» alone (BOOK-137)', () => {
+    // A filing on the canon sentence is `done` with no step and no rewritten chapter: the mode
+    // is recorded, and the deed line still claims no case, no amendment and no cause.
+    expect(deedStates(deed({ modes: ['оформление'] }))).toEqual(['registered']);
+    expect(deedLine(deed({ modes: ['оформление'] }))).toBe('зарегистрировано');
+    expect(deedLine(deed({ modes: ['оформление'] }))).not.toContain('внесены изменения');
+  });
+
   it('reads an established cause with its mode, and an amendment as an amendment', () => {
     expect(deedWord('cause', ['оформление'])).toBe('причина установлена · оформление');
     expect(deedWord('cause', ['поправка'])).toBe(

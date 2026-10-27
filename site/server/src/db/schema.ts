@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 15** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 16** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -7,17 +7,19 @@
  * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change;
  * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`;
  * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured»
- * and «placeholder zero» are different data, not the same 0; BOOK-113 adds
+ * and «placeholder zero» are different data, not the same 0); BOOK-113 adds
  * `identities.edit_exempt` — off by default — so the owner can test a change without waiting
  * out the daily edit budget, while every other reader keeps it; BOOK-61 adds the three gates of
  * BOOK-DOC-42 — Gate A's hold (`comments.held_*`), Gate B's verdict (`comments.rights_*`,
- * `steps.rights_scan`) and the conditional `rights` role on both gate tables).
+ * `steps.rights_scan`) and the conditional `rights` role on both gate tables); BOOK-137 adds the
+ * frame mark to the comment and the change, and the paperwork mode to the change, so a filing
+ * that touched the canon sentence is recorded as paperwork instead of disappearing).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -144,6 +146,10 @@ CREATE TABLE changes (
   base_sha256  TEXT NOT NULL,
   base_blocks  TEXT NOT NULL,                      -- JSON array of block hashes
   scope_hint   TEXT NOT NULL CHECK (scope_hint IN ('phrase','chapter')),
+  -- BOOK-137: how the filing sat against the frozen frame, and — when it touched it — the
+  -- paperwork mode it was filed as. A registered change is a document, not an edit.
+  frame        TEXT CHECK (frame IN ('touched','adjacent','untouched')),
+  frame_mode   TEXT CHECK (frame_mode IN ('оформление','поправка','расхождение')),
   premise      INTEGER NOT NULL DEFAULT 0,       -- BOOK-7: 1 = a chapter-level premise, not prose (base_rev 0, no anchor)
   status       TEXT NOT NULL CHECK (status IN
                  ('pending','processing','stale','done','void','escalated','failed')),
@@ -236,7 +242,9 @@ CREATE TABLE comments (
   body_sha     TEXT NOT NULL,                  -- sha256(normalized body), for dedupe
   flags        TEXT NOT NULL DEFAULT '[]',     -- JSON guard flags; advisory, travels in a batch
   ip_hash      TEXT NOT NULL,                  -- HMAC-SHA256(salt, ip or /64)
-  status       TEXT NOT NULL,                  -- new|batched|delivered|accepted|applied|superseded|rejected|quarantined|expired|hidden
+  status       TEXT NOT NULL,                  -- new|batched|delivered|accepted|applied|registered|superseded|rejected|quarantined|expired|hidden
+  -- BOOK-137: the mark the classifier gave this filing at posting time (null before v16).
+  frame        TEXT CHECK (frame IN ('touched','adjacent','untouched')),
   guard        TEXT,                           -- null|'legal'|'instruction'|'spam'|'dup'
   created_at   TEXT NOT NULL,
   delivered_at TEXT,                           -- when it entered a batch

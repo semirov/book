@@ -17,6 +17,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: null,
     premise: false,
     status: 'new',
+    frame: 'untouched',
     reason: null,
     createdAt: '2026-10-25T12:04:11Z',
     decidedAt: null,
@@ -136,9 +137,10 @@ describe('comment thread copy (§11.6)', () => {
 });
 
 describe('the three refusals, told apart by their own words (BOOK-61)', () => {
-  it('keeps the book’s three state words and adds no fourth', () => {
-    // BOOK-90 is untouched: a gate's word is not a state, it heads the detail line.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено']);
+  it('keeps the book’s four state words and adds no fifth', () => {
+    // BOOK-90 is untouched, and BOOK-137 adds the paperwork's own word («рассмотрено»): a gate's
+    // word is not a state, it heads the detail line.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
     const gate = Object.values(GATE_WORDS);
     expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
     expect(new Set(gate).size).toBe(3);

@@ -17,7 +17,8 @@ import { AT, accept, change, fixtureOf, fourWritten, seed } from './premiseHelpe
  * The product loop must start from an empty book: the reader's change becomes the chapter's
  * **premise** (base revision 0, no anchor), waits for that chapter's first draft pass outside
  * the FIFO lane, rides on the writer's assignment, and closes into the first edition — or is
- * refused with a public reason. The frozen frame (ch01, ch67) is never a target.
+ * refused with a public reason. The frozen frame (ch01, ch67) is not a closed door (BOOK-137):
+ * a chapter-level filing on it is that slot's premise, and its sentence is kept at a landing.
  */
 
 describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
@@ -61,11 +62,10 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
     }
   });
 
-  it('keeps the frozen frame when the basis slots are projected with a row, not absent', () => {
+  it('accepts a chapter-level filing on a basis slot as its premise, never as prose (BOOK-137)', () => {
     const fixture = fixtureOf();
     try {
-      // The real basis files: the ingest projects ch01/ch67 as rows (rev 0, one block), so
-      // "no row in chapters" is not what makes them frozen.
+      // The real basis files: the ingest projects ch01/ch67 as rows (rev 0, one block).
       fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
       fixture.writeChapter(67, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
@@ -76,19 +76,35 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
         { n: 67, rev: 0, basis: 1, block_count: 1 },
       ]);
 
+      // BOOK-137: a chapter-level filing of a basis slot is that slot's premise, as BOOK-7 says.
       const firstNote = seed(fixture.db, { chapter: 1 });
       const firstEdit = seed(fixture.db, { chapter: 1, proposedText: 'Начать иначе.', kind: 'decision' });
       const finaleNote = seed(fixture.db, { chapter: 67 });
-      for (const [id, intent] of [
-        [firstNote, 'переписать первую фразу'],
-        [firstEdit, 'переписать начало'],
-        [finaleNote, 'переписать финал'],
-      ] as const) {
-        expect(accept(fixture.db, id, intent)).toMatchObject({ code: 'FROZEN_FRAME' });
-      }
-      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
 
-      // The engine's own admission path refuses both frames too.
+      const first = accept(fixture.db, firstNote, 'переписать первую фразу');
+      if ('error' in first) throw new Error(first.error);
+      expect(change(fixture.db, first.changeId)).toMatchObject({
+        chapter: 1,
+        premise: 1,
+        base_rev: 0,
+        frame: 'untouched',
+        status: 'pending',
+      });
+
+      expect(accept(fixture.db, firstEdit, 'переписать начало')).toMatchObject({ superseded: true });
+      const finale = accept(fixture.db, finaleNote, 'переписать финал');
+      if ('error' in finale) throw new Error(finale.error);
+      expect(change(fixture.db, finale.changeId)).toMatchObject({ chapter: 67, premise: 1, status: 'pending' });
+
+      // Neither sentence moved: the projection still holds the basis and nothing else.
+      expect(
+        fixture.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all(),
+      ).toEqual([
+        { n: 1, rev: 0, basis: 1, block_count: 1 },
+        { n: 67, rev: 0, basis: 1, block_count: 1 },
+      ]);
+
+      // The engine's own admission path still refuses a reader change on both frames.
       expect(() => fixture.engine.enqueue({ kind: 'reader_edit', chapter: 1, intent: 'начать иначе' })).toThrow(
         /неподвижна/u,
       );

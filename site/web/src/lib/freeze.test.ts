@@ -1,28 +1,40 @@
-import type { CatalogEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { frozenReasonOf, isFrozenChapter } from './freeze.ts';
+import { frameTextOf, isFrameParagraph } from './freeze.ts';
 
-describe('a frozen chapter (BOOK-33)', () => {
-  const entry = (n: number, overrides: Partial<CatalogEntry> = {}): Pick<CatalogEntry, 'n' | 'basis'> => ({ n, basis: false, ...overrides });
-
-  it('freezes ch01 and ch67 even when they are written', () => {
-    // The BOOK-32 shape: a written ch01 (frame + prose). The server answers FROZEN_FRAME.
-    expect(isFrozenChapter(entry(1))).toBe(true);
-    expect(isFrozenChapter(entry(67))).toBe(true);
-    expect(isFrozenChapter(entry(1, { basis: true }))).toBe(true);
+/**
+ * BOOK-137 — the freeze is the sentence, not the chapter.
+ *
+ * The old test asserted the opposite (`isFrozenChapter(1) === true` for a *written* ch01), and
+ * that claim is exactly what the owner met on the phone: his own prose answered «закреплено».
+ */
+describe('the frame is a sentence (BOOK-137)', () => {
+  it('names the one canon sentence of ch01 and ch67, and no other chapter has one', () => {
+    expect(frameTextOf(1)).toBe(FRAME_FIRST_SENTENCE);
+    expect(frameTextOf(67)).toBe(FRAME_LAST_SENTENCE);
+    expect(frameTextOf(2)).toBeNull();
+    expect(frameTextOf(65)).toBeNull();
   });
 
-  it('leaves every other chapter open, including its premise slots', () => {
-    expect(isFrozenChapter(entry(2))).toBe(false);
-    expect(isFrozenChapter(entry(8))).toBe(false);
-    expect(isFrozenChapter(entry(66))).toBe(false);
+  it('recognises the basis slot as the frame paragraph', () => {
+    expect(isFrameParagraph(1, FRAME_FIRST_SENTENCE)).toBe(true);
+    expect(isFrameParagraph(67, FRAME_LAST_SENTENCE)).toBe(true);
+    // A rewrapped line is the same sentence: whitespace is not text.
+    expect(isFrameParagraph(1, `  ${FRAME_FIRST_SENTENCE.replace(/ /gu, '\n')}  `)).toBe(true);
   });
 
-  it('names why a frozen strip is frozen', () => {
-    expect(frozenReasonOf(entry(1))).toBe('frame');
-    expect(frozenReasonOf(entry(67))).toBe('frame');
-    // Page 2 carries the basis wording rather than the frame's: the panel says «основание».
-    expect(frozenReasonOf(entry(0, { basis: true }))).toBe('basis');
+  it('leaves a written ch01 body ordinary prose', () => {
+    // The BOOK-32/BOOK-137 shape: the frame on line 1 and the author's own prose under it.
+    expect(isFrameParagraph(1, `${FRAME_FIRST_SENTENCE} Я постоял и вышел.`)).toBe(false);
+    expect(isFrameParagraph(1, 'Свет был включён до меня, и это было странно.')).toBe(false);
+    expect(isFrameParagraph(1, '')).toBe(false);
+  });
+
+  it('never freezes a chapter whose text is not the sentence — ch65 included', () => {
+    // Prod's own API has ch65 as `basis: false, written: true`; no path may close it.
+    expect(isFrameParagraph(65, 'Свет был включён до меня, и это было странно.')).toBe(false);
+    expect(isFrameParagraph(67, FRAME_FIRST_SENTENCE)).toBe(false);
+    expect(isFrameParagraph(8, FRAME_LAST_SENTENCE)).toBe(false);
   });
 });

@@ -13,8 +13,9 @@ import { longProse } from './helpers.ts';
 
 /**
  * M5 acceptance: a comment becomes a queued change only through a **valid intent**, an
- * intent naming another chapter is refused, chapter 67 is refused for a reader change, the
- * batch is the only thing a model sees, and a decision line is applied once.
+ * intent naming another chapter is refused, a filing on chapter 67 is batched and decided
+ * like any other (BOOK-137), the batch is the only thing a model sees, and a decision line is
+ * applied once.
  */
 
 let harness: Harness | null = null;
@@ -57,6 +58,16 @@ async function comment(h: Harness, body = 'В абзаце дважды «абз
   });
   expect(response.statusCode).toBe(201);
   return response.json().comment.id;
+}
+
+/** A filing on the last chapter, the way a reader makes one. */
+function post67(h: Harness) {
+  return h.app.inject({
+    method: 'POST',
+    url: '/api/comments',
+    headers: h.headers(),
+    payload: commentBody({ chapter: 67, body: 'Финал стоит сделать теплее.' }),
+  });
 }
 
 describe('feedback.mjs inbox — the only thing a model sees', () => {
@@ -110,11 +121,14 @@ describe('feedback.mjs inbox — the only thing a model sees', () => {
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM feedback_batches').get()).toEqual({ n: 0 });
   });
 
-  it('refuses a chapter-67 batch: that chapter is closed to reader changes', async () => {
+  it('batches a chapter-67 filing like any other (BOOK-137)', async () => {
     const h = await boot();
-    const refused = cli(h, 'inbox', '--chapter', '67');
-    expect(refused.code).toBe(1);
-    expect(refused.out.join('\n')).toContain('ENDING_FROZEN');
+    // BOOK-137: ch67 is no longer closed to the reader. A filing on the finale enters triage
+    // and may be accepted — as paperwork when it touches the canon sentence.
+    expect((await post67(h)).statusCode).toBe(201);
+    const batched = cli(h, 'inbox', '--chapter', '67');
+    expect(batched.code).toBe(0);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM feedback_batches').get()).toEqual({ n: 1 });
   });
 });
 
@@ -199,10 +213,11 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     expect(() => readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8')).toThrow();
   });
 
-  it('refuses an accepted decision on chapter 67', async () => {
+  it('accepts a decision on chapter 67, and leaves the text alone (BOOK-137)', async () => {
     const h = await boot();
-    // BOOK-7: posting to ch67 is refused at the door; the decision path is exercised on a row
-    // that already exists (a row stored before the frozen frame became a hard refusal).
+    // BOOK-137: the finale is no longer refused at the decision. A filing on it is accepted —
+    // the sentence's letters are kept at the landing, and a filing that touches them becomes
+    // paperwork. This row carries no mark (a pre-v14 row), so the decision re-derives it.
     const id = 'cmt_01JB7FEEDBACK000000000067';
     insertComment(h.db, {
       id,
@@ -227,7 +242,11 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       createdAt: '2026-10-25T12:01:00Z',
       idemKey: null,
     });
-    const refused = cli(
+    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
+    // BOOK-61: posting writes Gate B's verdict, and this row was seeded straight into the store —
+    // so it carries the answer a posting would have given it (`rights_verdict = 'CLEAR'`).
+    h.db.prepare(`UPDATE comments SET rights_verdict = 'CLEAR' WHERE id = ?`).run(id);
+    const decided = cli(
       h,
       'decide',
       id,
@@ -237,8 +256,10 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       '--intent',
       'смягчить последний абзац',
     );
-    expect(refused.code).toBe(1);
-    expect(refused.out.join('\n')).toContain('ENDING_FROZEN');
+    expect(decided.code).toBe(0);
+    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'accepted' });
+    // A chapter-level filing of a written chapter is untouched: an ordinary change, marked so.
+    expect(h.db.prepare('SELECT frame, outcome FROM changes').get()).toEqual({ frame: 'untouched', outcome: null });
   });
 
   it('records a rejection with its public reason and queues nothing', async () => {

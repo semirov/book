@@ -1,3 +1,4 @@
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import type { GateVerdict, StepTrace, WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -118,7 +119,8 @@ describe('M3 acceptance — the scripted session', () => {
   it('records a front step as holds when the first sheet did not change (§6C.2)', () => {
     const fixture = createEngineFixture({
       chapters: {
-        1: chapterText('Начало', ['Тестовый абзац.']),
+        // BOOK-137: ch01 opens on the canon frame, and the ripple keeps it below.
+        1: chapterText('Начало', [`${FRAME_FIRST_SENTENCE} Тестовый абзац.`]),
         2: chapterText('Вторая', ['Служебная строка.']),
       },
     });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
+import { longProse } from './helpers.ts';
 
 /**
  * M5 acceptance (§20 M5, adjusted to 1 edit/day): anonymous writes are refused, the shipped
@@ -170,11 +171,14 @@ describe('POST /api/comments — identity, the write gate and rate limits', () =
     expect(typeof second.json().resetAt).toBe('string');
   });
 
-  it('refuses a reader edit on chapter 67 (ENDING_FROZEN)', async () => {
-    const h = await boot();
+  it('accepts a reader edit on chapter 67 as a filing (BOOK-137)', async () => {
+    const h = await boot({ chapters: { 'ch67.md': longProse(['Служебный текст финала.']) } });
     const response = await post(h, commentBody({ chapter: 67, body: 'Финал стоит переписать иначе.', proposedText: 'Иначе.' }));
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({ code: 'ENDING_FROZEN' });
+    // BOOK-137: the door is open. Whether the sentence changes is the land guard's question,
+    // and an accepted filing on it becomes paperwork — never a refusal at the composer.
+    expect(response.statusCode).toBe(201);
+    expect(response.json().comment).toMatchObject({ chapter: 67, status: 'new' });
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 1 });
   });
 
   it('refuses a duplicate body within the dedupe window', async () => {

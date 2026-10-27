@@ -58,6 +58,8 @@ export type PremiseInput = {
   interventionKind: InterventionKind | null;
   sourceComment: string | null;
   sourceSession: string | null;
+  /** BOOK-137 — the mark the filing carried, copied onto the premise row (null outside one). */
+  frame?: string | null;
   at: string;
 };
 
@@ -88,6 +90,7 @@ export function admitPremise(db: Db, input: PremiseInput): PremiseAdmission {
     baseBlocks: '[]',
     scopeHint: 'chapter',
     premise: 1,
+    frame: input.frame ?? null,
     enqueuedAt: input.at,
   };
 

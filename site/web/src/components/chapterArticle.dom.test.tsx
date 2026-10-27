@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, ChapterDto } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_WARNING, type CatalogEntry, type ChapterDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -351,5 +351,149 @@ describe('the chapter skeleton under a browser', () => {
     });
 
     expect(container.querySelector('.ch-placeholder')).toBeNull();
+  });
+});
+
+/**
+ * BOOK-137 — the freeze is the canon **sentence**, not the chapter. The owner, on chapter 1
+ * (written, 24 434 characters): «в первой главе я не могу вмешаться, а должен». These mount a
+ * real written ch01 and ch65 and prove the tap target: a sentence span opens the strip on that
+ * word, «вмешаться» is there, and only the sentence answers «рамка книги · не меняется».
+ */
+
+/** `Я вошёл в пустую комнату. Её освещал яркий свет.` then the author's own prose. */
+const CH01_BLOCKS = [
+  FRAME_FIRST_SENTENCE,
+  'Свет был включён до меня, и это было странно.',
+  'Часы на стене шли.',
+  'Записку оставили на столе.',
+];
+
+function writtenChapter(n: number, texts: readonly string[]): ChapterDto {
+  const tag = String(n).padStart(2, '0');
+  return {
+    n,
+    title: null,
+    rev: 1,
+    chars: texts.join(' ').length,
+    basis: false,
+    blocks: texts.map((text, i) => ({ id: `ch${tag}#b${i}`, i, text, hash: `h${i}` })),
+    writtenAt: '2026-10-25T09:20:00Z',
+    updatedAt: '2026-10-25T09:20:00Z',
+  };
+}
+
+/** A controlled textarea needs the native setter, or React never sees the change. */
+function typeInto(selector: string, value: string): void {
+  const element = document.querySelector<HTMLTextAreaElement>(selector);
+  if (element === null) throw new Error(`no ${selector}`);
+  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  setter?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+async function mountWritten(entry: CatalogEntry, body: ChapterDto): Promise<HTMLDivElement> {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, status: 200, statusText: 'OK', json: async () => body }) as unknown as Response),
+  );
+  stillMotion();
+  vi.stubGlobal('IntersectionObserver', EagerObserver);
+  const container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(
+      <ChapterArticle
+        entry={entry}
+        revision={null}
+        revising={null}
+        caret={null}
+        fresh={false}
+        composer={EMPTY_COMPOSER}
+        viewer={{ signedIn: true, displayName: 'Филипп' }}
+        history
+      />,
+    );
+  });
+  await flush();
+  return container;
+}
+
+/** A tap on the first sentence of one block — the pointer the strip is meant to answer. */
+async function tapBlock(container: HTMLElement, blockId: string): Promise<void> {
+  const span = container.querySelector<HTMLElement>(`[data-block-id="${blockId}"] [data-s]`);
+  if (span === null) throw new Error(`no sentence span in ${blockId}`);
+  await act(async () => {
+    span.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4 }));
+  });
+}
+
+describe('the canon sentence is frozen, chapter 1 is not (BOOK-137)', () => {
+  it('opens the strip on a mid-chapter prose block, with «вмешаться» and a live form', async () => {
+    const container = await mountWritten(ENTRY, writtenChapter(1, CH01_BLOCKS));
+    // The rail (§4) is on the prose of a written ch01 — the owner's own «вмешаться».
+    expect(container.querySelector('[data-block-id="ch01#b3"] .seam-rail')).not.toBeNull();
+
+    await tapBlock(container, 'ch01#b3');
+    const seam = container.querySelector('.seam');
+    expect(seam).not.toBeNull();
+    // The word is the tapped sentence's first word, not the paragraph.
+    expect(seam?.querySelector('.seam-word')?.textContent).toBe('«Записку»');
+    expect(seam?.textContent).toContain('вмешаться');
+    expect(seam?.textContent).not.toContain('закреплено');
+    expect(seam?.textContent).not.toContain('рамка книги');
+    expect(seam?.getAttribute('data-frozen')).toBeNull();
+    expect(seam?.querySelector('.seam-frame')).toBeNull();
+
+    // The form grows in the strip, and only the draft decides whether it can be sent.
+    await act(async () => {
+      (container.querySelector('.seam-cta') as HTMLElement).click();
+    });
+    const submit = (): HTMLButtonElement | null => container.querySelector<HTMLButtonElement>('.seam-submit');
+    expect(submit()).not.toBeNull();
+    expect(submit()?.disabled).toBe(true);
+    await act(async () => {
+      typeInto('.seam-text', 'Записку оставили не ему.');
+    });
+    expect(submit()?.disabled).toBe(false);
+  });
+
+  it('says the frame does not change on the sentence’s own block, and still takes the filing', async () => {
+    const container = await mountWritten(ENTRY, writtenChapter(1, CH01_BLOCKS));
+    // The frame paragraph is the one paragraph with no rail of its own; a tap still works.
+    expect(container.querySelector('[data-block-id="ch01#b0"] .seam-rail')).toBeNull();
+
+    await tapBlock(container, 'ch01#b0');
+    const seam = container.querySelector('.seam');
+    expect(seam?.querySelector('.seam-prov')?.textContent).toBe('рамка книги · не меняется');
+    expect(seam?.querySelector('.seam-frozen')?.getAttribute('href')).toBe('/rules#рамка');
+    expect(seam?.getAttribute('data-frozen')).toBe('true');
+    // The warning line is in the strip before the reader types, and the form is not open yet.
+    expect(seam?.getAttribute('data-state')).toBe('strip');
+    expect(seam?.querySelector('.seam-note.seam-frame')?.textContent).toBe(FRAME_WARNING);
+    expect(seam?.querySelector('.seam-form')).toBeNull();
+    // «вмешаться» is offered here too: the filing is taken and filed as paperwork.
+    expect(seam?.querySelector('.seam-cta')?.textContent).toBe('вмешаться');
+    await act(async () => {
+      (container.querySelector('.seam-cta') as HTMLElement).click();
+    });
+    expect(container.querySelector('.seam-form')).not.toBeNull();
+  });
+
+  it('treats a written ch65 as ordinary prose: no frame, no frozen strip', async () => {
+    // Prod's own API: ch65 is `basis: false, written: true`. Nothing may close it.
+    const container = await mountWritten(
+      { ...ENTRY, n: 65, title: null, basis: false, written: true },
+      writtenChapter(65, ['Свет был включён до меня.', 'Часы на стене шли.', 'Записку оставили на столе.']),
+    );
+    await tapBlock(container, 'ch65#b1');
+    const seam = container.querySelector('.seam');
+    expect(seam?.querySelector('.seam-word')?.textContent).toBe('«Часы»');
+    expect(seam?.textContent).toContain('вмешаться');
+    expect(seam?.getAttribute('data-frozen')).toBeNull();
+    expect(seam?.querySelector('.seam-frame')).toBeNull();
+    expect(seam?.querySelector('.seam-frozen')).toBeNull();
+    expect(seam?.querySelector('.seam-prov')?.textContent).toBe('откуда это слово');
   });
 });

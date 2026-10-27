@@ -17,7 +17,9 @@
 import {
   PUBLIC_INTENT_MAX_CHARS,
   measuredRub,
+  normalizeFrameMark,
   normalizeInterventionKind,
+  normalizeRetroMode,
   parseSeams,
   readerReason,
   seamReason,
@@ -329,6 +331,10 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
     chapters,
     rewritten: rewritten.sort((left, right) => left - right),
     steps: steps.length,
+    // BOOK-137: the mark the filing carried and, for a `registered` change, the paperwork mode
+    // it was filed as. A row stored before v16 has neither, so it reads as `untouched`.
+    frame: normalizeFrameMark(change.frame) ?? 'untouched',
+    frameMode: normalizeRetroMode(change.frame_mode),
     modes: modesOfSteps(db, steps.map((step) => step.step_id)),
     cascade: cascade === undefined ? null : { id: cascade.id, status: cascade.status, outcome: cascade.outcome },
   };
@@ -352,7 +358,7 @@ export function listChanges(db: Db, filter: ChangeFilter = {}): ChangeSummaryDto
   }
   const limit = Math.min(50, Math.max(1, filter.limit ?? 20));
   const sql = `SELECT seq, id, kind, chapter, intent, premise, source_comment, base_rev, scope_hint, status,
-      relevance, outcome, reason, cascade_id, model, tokens_in, tokens_out, cost_rub,
+      relevance, outcome, reason, cascade_id, model, tokens_in, tokens_out, cost_rub, frame, frame_mode,
       enqueued_at, started_at, finished_at, attempts
     FROM changes${where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''}
     ORDER BY seq DESC LIMIT ?`;

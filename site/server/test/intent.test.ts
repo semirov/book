@@ -33,9 +33,15 @@ describe('--intent validation (§12.3)', () => {
     }
   });
 
-  it('refuses chapter 67 for a reader change (ENDING_FROZEN)', () => {
-    const verdict = validateIntent('убрать повтор в абзаце', 67);
-    expect(verdict).toMatchObject({ ok: false, code: 'ENDING_FROZEN' });
+  it('judges an intent for chapter 67 by its words, not by the chapter (BOOK-137)', () => {
+    // The finale is protected where text is written, not at the intent. These two sentences
+    // would have been refused for their chapter alone before BOOK-137; now one is a valid goal
+    // and the other is refused for what it asks, exactly as it would be in any other chapter.
+    expect(validateIntent('убрать повтор в последнем абзаце', 67)).toMatchObject({ ok: true });
+    expect(validateIntent('убрать повтор в главе 12', 67)).toMatchObject({
+      ok: false,
+      code: 'INTENT_OTHER_CHAPTER',
+    });
   });
 
   it('refuses an intent that carries meta-vocabulary or a shape request', () => {

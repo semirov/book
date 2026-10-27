@@ -29,6 +29,7 @@ function comment(id: string): CommentDto {
     premise: false,
     reason: null,
     refusal: null,
+    frame: null,
     createdAt: '2026-10-21T12:03:00Z',
     decidedAt: null,
     changeId: null,

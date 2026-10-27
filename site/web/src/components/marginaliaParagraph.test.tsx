@@ -43,6 +43,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: null,
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -63,7 +64,7 @@ function render(comments: readonly CommentDto[] = [], text = TEXT): string {
       blockIndex={1}
       baseRev={3}
       text={text}
-      frozen={false}
+      blockCount={1}
       comments={comments}
       history
       composer={EMPTY_COMPOSER}

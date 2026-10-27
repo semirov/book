@@ -1,4 +1,5 @@
-import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
+import { classifyFrame } from '@book/shared';
+import type { CatalogEntry, CommentDto, ComposerInfo, FrameMark, ViewerDto } from '@book/shared';
 import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { wordOffsetIn } from '../dom.ts';
@@ -9,7 +10,7 @@ import { Seam } from './Seam.tsx';
 import { SeamPanel } from './SeamPanel.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
-import { isFrozenChapter } from '../lib/freeze.ts';
+import { isFrameParagraph } from '../lib/freeze.ts';
 import { filingNumber, isAlive, staleLine } from '../lib/filings.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
 import { anchorFor, firstWord, seamKey } from '../lib/seam.ts';
@@ -47,7 +48,8 @@ export type ProseParagraphProps = {
    * and never reads `textContent`, which also carries filing numerals and «вмешаться».
    */
   text: string;
-  frozen: boolean;
+  /** BOOK-137 — the chapter's paragraph count: the shared rule reads the frame's place from it. */
+  blockCount: number;
   comments: readonly CommentDto[];
   composer: ComposerInfo;
   viewer: ViewerDto;
@@ -76,7 +78,7 @@ export function ProseParagraph({
   blockIndex,
   baseRev,
   text,
-  frozen,
+  blockCount,
   comments,
   composer,
   viewer,
@@ -89,7 +91,9 @@ export function ProseParagraph({
   history,
 }: ProseParagraphProps) {
   const seam = useOpenSeam();
-  const frozenChapter = frozen || isFrozenChapter(entry);
+  // BOOK-137 — the paragraph *is* the canon sentence (the basis slot): the one without a rail.
+  // Every paragraph of a written chapter has one, ch01 and ch65 alike; a tap still works here.
+  const frameOnly = isFrameParagraph(entry.n, text);
   const here = seam !== null && seam.chapter === entry.n && seam.blockId === blockId;
   /**
    * BOOK-111: the page's one panel, not this paragraph's state — a card and a word's panel are
@@ -102,6 +106,16 @@ export function ProseParagraph({
   /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
   const revision = useOpenRevision();
   const hostRef = useRef<HTMLElement | null>(null);
+  const anchor = here ? (seam?.anchor ?? null) : null;
+  /**
+   * BOOK-137 — the shared rule on the selection: only `touched` is the canon sentence itself.
+   * The word panel's «закреплено» variant follows this mark (or a paragraph that *is* the basis
+   * sentence), never the chapter number.
+   */
+  const frame: FrameMark =
+    anchor === null
+      ? 'untouched'
+      : classifyFrame({ chapter: entry.n, quote: anchor.quote, blockIndex, blockText: text, blockCount });
   /**
    * BOOK-DOC-34 §2.6 — the word panel's facts are read by one hook, the same one a filing
    * card's footer goes through: one chain read, one «свой след», and nothing with history off.
@@ -110,7 +124,7 @@ export function ProseParagraph({
     blockId,
     chapter: entry.n,
     word: provenancePanel?.word ?? null,
-    frozen,
+    frozen: frame === 'touched' || frameOnly,
     history,
     signedIn: viewer.signedIn,
     viewerName: viewer.displayName,
@@ -223,7 +237,6 @@ export function ProseParagraph({
     await provenance.load();
   };
 
-  const anchor = here ? (seam?.anchor ?? null) : null;
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
   /**
@@ -335,7 +348,7 @@ export function ProseParagraph({
       draftKey={seam?.key ?? `ch${entry.n}:${blockId}`}
       blockIndex={blockIndex}
       anchor={anchor}
-      frozen={frozenChapter}
+      frame={frame}
       filings={seamFilings}
       composer={composer}
       viewer={viewer}
@@ -380,7 +393,7 @@ export function ProseParagraph({
         onPointerEnter={hint}
       >
         {revising === null ? null : <span className="revising-label">{revising}</span>}
-        {frozenChapter ? null : (
+        {frameOnly ? null : (
           <button
             type="button"
             className="seam-rail"
