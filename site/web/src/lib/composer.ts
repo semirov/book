@@ -104,6 +104,11 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
 
 /** «осталось 7 из 10 за час · правок сегодня 0 из 1» — the limit is never a surprise. */
 export function budgetLine(budget: CommentBudget): string {
+  // BOOK-113: an exempt identity has no daily counter to show, so the line says so instead of
+  // printing «1 из 1» for a limit that does not apply to them.
+  if (budget.editsExempt === true) {
+    return `осталось ${budget.remaining} из ${budget.perHour} за час · правки без дневного ограничения`;
+  }
   return `осталось ${budget.remaining} из ${budget.perHour} за час · правок сегодня ${budget.editsRemaining} из ${budget.editsPerDay}`;
 }
 

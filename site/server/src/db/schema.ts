@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 13** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 14** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -7,13 +7,15 @@
  * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change;
  * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`;
  * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured»
- * and «placeholder zero» are different data, not the same 0).
+ * and «placeholder zero» are different data, not the same 0; BOOK-113 adds
+ * `identities.edit_exempt` — off by default — so the owner can test a change without waiting
+ * out the daily edit budget, while every other reader keeps it).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -334,6 +336,9 @@ CREATE TABLE identities (
   display_name  TEXT NOT NULL,                 -- chosen by the reader, ≤32 chars, editable in one place
   hide_from_authors INTEGER NOT NULL DEFAULT 0, -- opt-out of the end-matter list (§6C.5)
   blocked       INTEGER NOT NULL DEFAULT 0,    -- moderation: cannot post
+  -- BOOK-113: 1 = the daily edit budget (identity *and* network) does not apply to this
+  -- identity. Off by default; the comment budget still applies.
+  edit_exempt   INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL,
   last_seen_at  TEXT NOT NULL
 );

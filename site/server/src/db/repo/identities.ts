@@ -15,6 +15,12 @@ export type IdentityRow = {
   display_name: string;
   hide_from_authors: number;
   blocked: number;
+  /**
+   * BOOK-113 — 1 = the daily edit budget (identity *and* network) does not apply. Off by
+   * default: `CREATE TABLE`/the v14 migration fill it with 0, and a new row never sets it.
+   * The comment budget is untouched by this flag.
+   */
+  edit_exempt: number;
   created_at: string;
   last_seen_at: string;
 };

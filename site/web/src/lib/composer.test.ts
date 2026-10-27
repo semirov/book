@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  budgetLine,
   draftKindLine,
   errorCopy,
   retryCopy,
@@ -77,5 +78,22 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
   it('says in the draft state what is being brought, and that nothing is chosen yet', () => {
     expect(draftKindLine(null)).toBe('тип не выбран — без него правка не уйдёт');
     expect(draftKindLine('decision')).toBe('вносится: решение героя');
+  });
+
+  it('prints the exempt budget line without a daily counter (BOOK-113)', () => {
+    const line = budgetLine({
+      perHour: 10,
+      remaining: 9,
+      resetAt: null,
+      editsPerDay: 1,
+      editsRemaining: 1,
+      editsResetAt: null,
+      editsExempt: true,
+    });
+    expect(line).toBe('осталось 9 из 10 за час · правки без дневного ограничения');
+    // Everyone else keeps the exact existing shape.
+    expect(
+      budgetLine({ perHour: 10, remaining: 9, resetAt: null, editsPerDay: 1, editsRemaining: 0, editsResetAt: null }),
+    ).toBe('осталось 9 из 10 за час · правок сегодня 0 из 1');
   });
 });

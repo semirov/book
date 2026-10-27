@@ -206,6 +206,16 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // BOOK-113: the owner must see the effect of a change at once, so one identity may be
+    // exempt from the daily edit budget — both counters (identity and network) — while the
+    // comment budget still applies. Additive and off by default: every existing reader reads
+    // as 0 and keeps the product's one edit a day.
+    to: 14,
+    up(db) {
+      addColumn(db, 'identities', 'edit_exempt', 'INTEGER NOT NULL DEFAULT 0');
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

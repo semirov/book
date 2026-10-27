@@ -35,7 +35,7 @@ describe('migrate — schema v13', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(13);
+    expect(SCHEMA_VERSION).toBe(14);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -68,6 +68,8 @@ describe('migrate — schema v13', () => {
     expect(tableSql(db, 'changes')).toContain(
       `CHECK (intervention_kind IN ('document','decision','testimony','erasure'))`,
     );
+    // BOOK-113: the operator's edit exemption, off for every reader until a route turns it on.
+    expect(columns(db, 'identities')).toContain('edit_exempt');
     db.close();
   });
 
@@ -388,7 +390,7 @@ describe('migrate — schema v13', () => {
     }
     db.pragma('user_version = 12');
 
-    expect(migrate(db)).toEqual({ from: 12, to: 13 });
+    expect(migrate(db)).toEqual({ from: 12, to: 14 });
     for (const table of ['changes', 'steps', 'change_impact']) {
       expect(columns(db, table)).toContain('cost_priced');
     }
@@ -398,7 +400,25 @@ describe('migrate — schema v13', () => {
       { id: 'chg_placeholder', cost_priced: 0 },
     ]);
     // The old database boots: migrate probes it, and the next run has nothing to do.
-    expect(migrate(db)).toEqual({ from: 13, to: 13 });
+    expect(migrate(db)).toEqual({ from: 14, to: 14 });
+    db.close();
+  });
+
+  it('adds the BOOK-113 edit exemption to a v13 install', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    db.prepare(
+      `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+       VALUES ('idt_old', 'yandex-old', 'Аня', '2026-10-25T11:00:00Z', '2026-10-25T11:00:00Z')`,
+    ).run();
+    // Shape a v13 install: the flag did not exist before BOOK-113.
+    db.exec('ALTER TABLE identities DROP COLUMN edit_exempt');
+    db.pragma('user_version = 13');
+
+    expect(migrate(db)).toEqual({ from: 13, to: 14 });
+    // An existing reader is not exempt by accident: the column reads as 0.
+    expect(db.prepare('SELECT edit_exempt FROM identities WHERE id = ?').get('idt_old')).toEqual({ edit_exempt: 0 });
+    expect(migrate(db)).toEqual({ from: 14, to: 14 });
     db.close();
   });
 
