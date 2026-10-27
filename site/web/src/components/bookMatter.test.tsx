@@ -465,7 +465,12 @@ describe('the opening screen', () => {
   );
 
   it('starts with the cover and puts the header and the view switch below the annotation', () => {
-    expect(html.startsWith('<section class="page titul"')).toBe(true);
+    // BOOK-131: the plate is eager and high-priority, so React 19 hoists its one preload hint
+    // above the tree. The page still opens with the cover, and nothing else is hoisted.
+    const hoisted = html.match(/^(?:<link[^>]*>)+/u)?.[0] ?? '';
+    expect(hoisted).toMatch(/^<link rel="preload" as="image" imageSrcSet="\/cover\/cover-640\.jpg/u);
+    expect(hoisted.match(/<link/gu)).toHaveLength(1);
+    expect(html.slice(hoisted.length).startsWith('<section class="page titul"')).toBe(true);
     const cover = html.indexOf('class="page titul"');
     const annotation = html.indexOf('class="page annotation"');
     const header = html.indexOf('class="top"');

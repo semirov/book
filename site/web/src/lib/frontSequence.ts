@@ -13,6 +13,11 @@
  * a drift between the two fails `lib/frontSequence.test.ts` rather than showing up as a block
  * that animates a beat late. `data-seq` is set only for a page load that owns a sequence (§5,
  * §7): under reduced motion, behind a deep link or a restored scroll nothing is tagged at all.
+ *
+ * BOOK-131 — the table order is the **sequence** order, not the document order. The cover plate
+ * is the sheet's last child, but its turn is the byline's 500 ms slot: it is the sheet's second
+ * column, not a row after the promise. That is the one stated exception to "the order the
+ * document renders", and the 18 ids below are the sequence's, not the DOM's.
  */
 
 /** The gate on `<html>`: `run` while the sequence plays, `done` for the rest of the page load. */
@@ -37,8 +42,9 @@ export const ABOUT_PARAGRAPHS = 9;
 /**
  * What a block does when its turn comes. The title is **typed** by `lib/reveal.ts` and gets no
  * fade of its own: an `opacity: 0 → 1` on the `h1` would hide the caret in the very frame that
- * must show an empty title line under it. The rule **fades** only — a rising hairline is
- * invisible, and a `scaleX` would draw a line of progress (§4).
+ * must show an empty title line under it. The rule and the cover plate **fade** only — a rising
+ * hairline is invisible, a `scaleX` would draw a line of progress, and an image that performs
+ * arriving is fake liveness (§4, BOOK-131).
  */
 export type SeqMotion = 'typed' | 'fade' | 'rise';
 
@@ -51,6 +57,9 @@ export type SeqBlock = {
 
 export const SEQ_BLOCKS: readonly SeqBlock[] = [
   { id: 'title', at: 0, motion: 'typed' },
+  // BOOK-131 — the plate takes the byline's turn: the sheet's second column, not a row after
+  // the promise. It is the one block whose DOM node is not where this table puts it.
+  { id: 'cover', at: 500, motion: 'fade' },
   { id: 'byline', at: 500, motion: 'rise' },
   { id: 'genre', at: 580, motion: 'rise' },
   { id: 'promise', at: 660, motion: 'rise' },
@@ -66,7 +75,10 @@ export const SEQ_BLOCKS: readonly SeqBlock[] = [
   })),
 ];
 
-/** The ids in the owner's order — the order the document itself renders them in (§2). */
+/**
+ * The ids in the **sequence** order — not the document order: the plate is the sheet's last
+ * child while its turn is the byline's (§2, BOOK-131).
+ */
 export const SEQ_IDS: readonly string[] = SEQ_BLOCKS.map((block) => block.id);
 
 /** The turn of one block, or `null` for an id that is not part of the sequence. */

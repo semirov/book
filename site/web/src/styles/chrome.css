@@ -46,13 +46,42 @@
      window (1200 and up) from opening a void above the title: past it the field stops growing. */
   min-height: min(67.5vh, 720px);
   min-height: min(67.5svh, 720px);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  /* BOOK-131 — the sheet is a spread: the owner's four blocks in column 1, the cover plate in
+     column 2. The plate is a *column* of the title sheet, never a row of the reading sequence,
+     so nothing is inserted between the blocks: the frontispiece closes the right edge. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 35%;   /* plate = 35% of the measure */
+  column-gap: 6.25%;                            /* 40 px at 640 */
+  row-gap: 40px;                                /* the stack gap on the phone */
+  align-content: end;                           /* the field keeps its min-height */
+  align-items: end;                             /* plate bottom = the title block's last line */
   /* BOOK-88 final: the cover is a register, so it is exactly the column — the canvas owns the
      gutters now, and its own padding is block-only. */
   padding: calc(env(safe-area-inset-top) + 24px) 0 8px;
   text-align: left;
+}
+/* The owner's text is one block of the spread, so it stacks as it always did — inside column 1. */
+.titul-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* BOOK-131 — the plate. What this rule refuses, in one list, because every item was a
+   candidate design and lost: no shadow (a 60 px blur is a card lifted off the sheet, and in
+   this book a plate is printed on the same sheet as the type), no rounding, no second rule, no
+   mat or passe-partout, no lightening, no `filter`, no `mix-blend-mode`, no `background` behind
+   the drawing (at night the plate's field *is* the page's field — a lit box would glow), no
+   `object-fit: cover`, and no caption. What it keeps: one 1 px `--rule` hairline *outside* the
+   drawing (border-box, so it can never cover the drawn stroke the owner's frame puts at the very
+   edge), and a height that follows the 2:3 ratio — never a box, never a `max-height`. */
+.cover-plate {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  border: 1px solid var(--rule);
+  background: none;
+  object-fit: contain; /* belt and braces: never cover */
 }
 .title {
   margin: 0;
@@ -133,6 +162,13 @@
 @media (max-width: 599px) {
   .title {
     font-size: 44px;
+  }
+  /* BOOK-131 — the phone stacks: the plate is one column under the promise, the column's whole
+     width and never the viewport's. The row-gap above is the 40 px between the text and the
+     drawing; the plate is then the sheet's last line, not a second column. */
+  .titul {
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
   }
 }
 

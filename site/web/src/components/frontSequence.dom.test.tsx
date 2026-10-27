@@ -167,14 +167,17 @@ const heading = (): HTMLElement => {
 const caret = (): Element | null => container.querySelector('.caret-inline');
 
 describe('the commit where the data lands (BOOK-DOC-49 §2)', () => {
-  it('writes the gate before paint and tags the 17 blocks in document order', async () => {
+  it('writes the gate before paint and tags the 18 blocks in document order', async () => {
     await render();
     expect(gate()).toBe('run');
+    // BOOK-131: the plate is the sheet's last child, so it is the fifth node here — after the
+    // promise — while its turn in `SEQ_BLOCKS` is the byline's 500 ms slot.
     expect(tagged().map((node) => node.getAttribute('data-seq'))).toEqual([
       'title',
       'byline',
       'genre',
       'promise',
+      'cover',
       'how-1',
       'how-2',
       'how-3',
@@ -251,7 +254,7 @@ describe('the commit where the data lands (BOOK-DOC-49 §2)', () => {
     // Whatever the loop did, the page is final at the gate: the whole word, no caret left.
     expect(title.textContent).toBe('Бланк');
     expect(caret()).toBeNull();
-    expect(tagged()).toHaveLength(17);
+    expect(tagged()).toHaveLength(18);
     expect(vi.getTimerCount()).toBe(0);
     expect(errorCount()).toBe(0);
   });
