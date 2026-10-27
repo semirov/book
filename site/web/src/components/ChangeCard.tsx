@@ -1,5 +1,7 @@
 import { interventionKindLabel, type ChangeDto, type ChangeStepDto } from '@book/shared';
+import { useEffect, useRef } from 'react';
 
+import { track } from '../lib/analytics.ts';
 import {
   boundaryLabel,
   changeHeading,
@@ -38,6 +40,14 @@ export function ChangeCard({
   /** Reaching a chapter of either wing leaves the card and opens that chapter. */
   onOpenChapter?: (chapter: number) => void;
 }) {
+  // BOOK-63: the change's record was opened — once per change, not once per render.
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    if (announced.current === change.id) return;
+    announced.current = change.id;
+    track('record_open', {});
+  }, [change.id]);
+
   // BOOK-16: the kind, as the plain word a reader already knows from the rules page.
   const kindWord = interventionKindLabel(change.interventionKind);
   // BOOK-23: model and tokens always; the rubles only when they were measured.

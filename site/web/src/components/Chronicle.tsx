@@ -144,7 +144,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
 
       <div className="scrub" aria-label="перейти к моменту">
         <input
-          className="scrub-range"
+          className="scrub-range ym-disable-keys"
           type="range"
           min={0}
           max={Math.max(1, lastHseq)}

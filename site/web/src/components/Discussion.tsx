@@ -8,6 +8,9 @@ import { plural } from '../lib/format.ts';
 /**
  * The register (BOOK-DOC-34 §8): what a reader wrote and what became of it.
  *
+ * `ym-hide-content` (BOOK-63) covers the whole thread: the bodies are readers' words, and
+ * Webvisor must not record them even as text nodes.
+ *
  * The composer is gone — the form lives in the text, at the point it is about. What stays is
  * the record: the queue line, every filing with its decision then its application, and the one
  * teaching line that tells a reader how the text itself works. Bodies are text nodes: the page
@@ -23,7 +26,7 @@ export function Discussion({
   comments?: readonly CommentDto[];
 }) {
   return (
-    <section className="page talks" id="talks">
+    <section className="page talks ym-hide-content" id="talks">
       <header className="sec-h">
         <span className="lbl">обсуждение</span>
         {/* A bare counter is a number without its noun (BOOK-59). */}

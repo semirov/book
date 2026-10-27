@@ -1,6 +1,7 @@
 import type { CatalogEntry, ComposerInfo, CommentDto, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
+import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingNumber, filingQuote, filingWord, stripFilings, type SentenceFilings } from '../lib/filings.ts';
@@ -108,7 +109,7 @@ export function Seam({
 
   return (
     <div
-      className="seam"
+      className="seam ym-hide-content"
       role="group"
       aria-label={`место вмешательства · глава ${String(entry.n).padStart(2, '0')}`}
       data-state={open ? 'form' : receipt === null ? 'strip' : 'receipt'}
@@ -137,7 +138,7 @@ export function Seam({
             {frozen ? 'автор · закреплено' : 'откуда это слово'}
           </button>
         )}
-        {summary === null ? null : <span className="seam-draft">{summary}</span>}
+        {summary === null ? null : <span className="seam-draft ym-hide-content">{summary}</span>}
 
         {frozen ? (
           <a className="seam-frozen" href="/rules#рамка">
@@ -203,7 +204,7 @@ export function Seam({
       {receipt === null ? null : (
         // BOOK-59: no «ваши правки →» — that list wakes with the first applied change, and a
         // note never makes one; the receipt itself is the fact.
-        <p className="seam-receipt" role="status">
+        <p className="seam-receipt ym-hide-content" role="status">
           {receipt}
         </p>
       )}
@@ -222,6 +223,8 @@ export function Seam({
                 seamDrafts.drop(draftKey);
                 setOpen(false);
                 setReceipt(`${filingNumber({ id })} зарегистрировано · ждёт рассмотрения`);
+                // BOOK-63: the receipt is the fact the reader came for; the id stays out.
+                track('receipt_seen', {});
                 onPosted(entry.n);
               }}
             />

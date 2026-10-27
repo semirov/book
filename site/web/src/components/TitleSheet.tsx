@@ -1,5 +1,7 @@
 import type { FrontDto } from '@book/shared';
+import { useEffect, useRef } from 'react';
 
+import { track } from '../lib/analytics.ts';
 import { IDLE_TITLE, titleMotionClass, type TitleMotion } from '../lib/titleChange.ts';
 
 /**
@@ -34,6 +36,16 @@ export const TITLE_PROMISE =
  */
 export function TitleSheet({ front, motion = IDLE_TITLE }: { front: FrontDto; motion?: TitleMotion }) {
   const animation = titleMotionClass(motion);
+  /**
+   * `cover_seen` is the first screen **rendered**, not the shell requested (BOOK-63); the
+   * ref keeps React's development double-mount from counting the same act twice.
+   */
+  const announced = useRef(false);
+  useEffect(() => {
+    if (announced.current) return;
+    announced.current = true;
+    track('cover_seen', {});
+  }, []);
   return (
     <section className="page titul">
       <h1

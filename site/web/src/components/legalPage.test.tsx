@@ -2,6 +2,7 @@ import { CASCADE_MAX_WAVE, EDIT_MAX_CHARS, INTERVENTION_KIND_LIST } from '@book/
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { CONSENT_COPY } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
 import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.ts';
 import { LegalPage } from './LegalPage.tsx';
@@ -26,6 +27,21 @@ describe('/privacy', () => {
     expect(html).toContain('_ym_');
     expect(html).toContain('блокировщик рекламы');
     expect(html).toContain('Как обойтись без этого');
+  });
+
+  it('carries the legal researcher’s Metrika paragraph verbatim (BOOK-63)', () => {
+    const text = html.replace(/<[^>]+>/gu, '').replace(/\s+/gu, ' ').trim();
+    const paragraph =
+      'Мы включили Яндекс Метрику — счётчик посещаемости. С вашего согласия он отправляет в Яндекс то, что видит браузер: адрес страницы, откуда вы пришли, устройство, экран, IP-адрес и свои cookie _ym_*. Пол, возраст и интересы Метрика достраивает по данным Яндекса. Нужно, чтобы понимать, какие главы читают. Ваш текст, имя и номер читателя в счётчик не попадают никогда: в событиях только названия действий и номера глав. Данные хранит Яндекс в России, пока счётчик работает. Отказаться: расширение «Блокировщик Яндекс.Метрики» или запрет сторонних cookie в браузере — книга читается без счётчика.';
+    expect(text).toContain(paragraph);
+    expect(paragraph.split(/\s+/u)).toHaveLength(87);
+  });
+
+  it('keeps the consent line on /privacy, with the place to change the choice', () => {
+    expect(html).toContain(CONSENT_COPY);
+    expect(html).toContain('Разрешить');
+    expect(html).toContain('Только необходимое');
+    expect(html).toContain('сейчас: выключена');
   });
 
   it('states what the site stores itself and links to the rules and the book', () => {

@@ -1,6 +1,8 @@
 import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot } from '@book/shared';
 import { useState } from 'react';
 
+import { useCounterConfigured } from '../lib/analytics.ts';
+import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
 
@@ -14,6 +16,8 @@ import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
  */
 export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: FrontDto['imprint'] }) {
   const [theme, setTheme] = useState<Theme>(() => currentTheme());
+  const consent = useConsent();
+  const analyticsConfigured = useCounterConfigured();
 
   const toggle = (): void => {
     const next: Theme = theme === 'night' ? 'day' : 'night';
@@ -33,6 +37,18 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
         <span>печатается по ходу письма</span>
         <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
       </div>
+      {analyticsConfigured ? (
+        // BOOK-63: the quiet place to change the choice later; «изменить» returns the reader
+        // to the undecided state, and the strip asks again.
+        <div className="row">
+          <span className="analytics-line">
+            аналитика: {consent === 'granted' ? 'включена' : 'выключена'} ·{' '}
+            <button type="button" className="analytics-change" onClick={resetConsent}>
+              изменить
+            </button>
+          </span>
+        </div>
+      ) : null}
       <div className="row">
         <span>
           {imprint.copyright} · <a href="/privacy">приватность</a> · <a href="/rules">правила</a>

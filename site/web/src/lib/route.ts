@@ -26,3 +26,15 @@ export function staticPage(pathname: string): StaticPage | null {
 export function staticPageHref(page: StaticPage): string {
   return `/${page}`;
 }
+
+/**
+ * BOOK-63 — `#ch-12` is the one chapter deep link, and it is the element id the chapter
+ * already has. Anything else (`#правка-…`, a typo, a number outside the book) is not a
+ * chapter link, and the page must not scroll for it.
+ */
+export function chapterFromHash(hash: string, totalChapters: number): number | null {
+  const match = /^#ch-(\d{1,3})$/u.exec(hash);
+  if (match === null) return null;
+  const n = Number(match[1]);
+  return Number.isInteger(n) && n >= 1 && n <= totalChapters ? n : null;
+}

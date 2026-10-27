@@ -80,6 +80,14 @@ export function getState(): Promise<StateSnapshot> {
   return readJson<StateSnapshot>('/api/state');
 }
 
+/**
+ * BOOK-63: the counter id is configuration, not a bundle constant. `null` means the
+ * deployment has no counter — the page then loads no analytics at all.
+ */
+export function getAnalyticsConfig(): Promise<{ counter: string | null }> {
+  return readJson<{ counter: string | null }>('/api/analytics');
+}
+
 export function getChapters(): Promise<CatalogEntry[]> {
   return readJson<CatalogEntry[]>('/api/chapters');
 }

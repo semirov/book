@@ -16,6 +16,7 @@ import { buildCsp } from './http/csp.ts';
 import { isAllowedUpgradeOrigin } from './http/origin.ts';
 import { registerReadLimit } from './http/readLimit.ts';
 import { registerAdminRoutes } from './http/routes/admin.ts';
+import { registerAnalyticsRoutes } from './http/routes/analytics.ts';
 import { registerAuthRoutes } from './http/routes/auth.ts';
 import { registerAuthorsRoutes } from './http/routes/authors.ts';
 import { registerChangeRoutes } from './http/routes/changes.ts';
@@ -169,6 +170,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerReadLimit(app, deps);
 
   registerStateRoutes(app, deps);
+  registerAnalyticsRoutes(app, deps);
   registerFrontRoutes(app, deps);
   registerChapterRoutes(app, deps);
   registerChangeRoutes(app, deps);

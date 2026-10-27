@@ -41,6 +41,19 @@ describe('the generated CSP', () => {
     expect(withCounter).toContain('https://mc.yandex.ru');
   });
 
+  it('opens the counter in script-src, connect-src and img-src — and nowhere else (BOOK-63)', () => {
+    const csp = buildCsp({ ...base, captchaProvider: 'none', metrikaId: '113820311' });
+    const directives = new Map(csp.split('; ').map((directive) => [directive.split(' ')[0] ?? '', directive]));
+    for (const name of ['script-src', 'connect-src', 'img-src']) {
+      expect(directives.get(name), name).toContain('https://mc.yandex.ru');
+    }
+    // The loader needs no frame, no font and no object from Yandex.
+    for (const name of ['frame-src', 'font-src', 'object-src', 'form-action']) {
+      expect(directives.get(name), name).not.toContain('mc.yandex.ru');
+    }
+    for (const directive of csp.split(';')) expect(directive).not.toContain('unsafe-inline');
+  });
+
   it('opens no third-party origin when no provider is configured', () => {
     const csp = buildCsp({ ...base, captchaProvider: 'none' });
     expect(csp).toContain("frame-src 'none'");

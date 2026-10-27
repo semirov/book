@@ -2,6 +2,7 @@ import type { CatalogEntry, ComposerInfo, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, postAnchoredComment } from '../api.ts';
+import { track } from '../lib/analytics.ts';
 import { captchaApi, loadCaptchaScript } from '../lib/captcha.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, wordingLabel, type SeamDraft } from '../lib/draft.ts';
@@ -41,6 +42,17 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
   const noteOnly = draft.noteOnly;
   const needCaptcha = provider !== 'none' && composer.captcha.siteKey !== null;
 
+  /**
+   * BOOK-63: `form_open` is the form the reader sees, once per mount. It carries nothing —
+   * no chapter, no sentence, nothing they typed.
+   */
+  const announced = useRef(false);
+  useEffect(() => {
+    if (!viewer.signedIn || announced.current) return;
+    announced.current = true;
+    track('form_open', {});
+  }, [viewer.signedIn]);
+
   const arm = (): void => {
     if (mounted.current || !needCaptcha) return;
     mounted.current = true;
@@ -49,6 +61,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         const api = captchaApi(provider);
         if (api === null || widgetRef.current === null) {
           setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
+          track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
           return;
         }
         widgetId.current = api.render(widgetRef.current, {
@@ -59,10 +72,16 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
             setError((current) => (current?.code === 'CAPTCHA_FAILED' ? null : current));
           },
           'expired-callback': () => setToken(null),
-          'error-callback': () => setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' }),
+          'error-callback': () => {
+            setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
+            track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
+          },
         });
       })
-      .catch(() => setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' }));
+      .catch(() => {
+        setError({ code: 'CAPTCHA_UNAVAILABLE', message: '' });
+        track('error_shown', { code: 'CAPTCHA_UNAVAILABLE' });
+      });
   };
 
   useEffect(
@@ -82,10 +101,12 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
     if (!viewer.signedIn) return;
     if (needCaptcha && token === null) {
       setError({ code: 'CAPTCHA_FAILED', message: 'проверка не пройдена — попробуйте ещё раз' });
+      track('error_shown', { code: 'CAPTCHA_FAILED' });
       return;
     }
     if (body.length < composer.minChars) {
       setError({ code: 'INVALID', message: `замечание короче ${composer.minChars} символов` });
+      track('error_shown', { code: 'INVALID' });
       return;
     }
     setSending(true);
@@ -102,6 +123,8 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
       );
       setBudget({ line: budgetLine(response.remaining) });
       setError(null);
+      // BOOK-63: the two paths are distinct acts; the count of the day stays on the server.
+      track(noteOnly || draft.blockId === null ? 'submit_note' : 'submit_intervention', {});
       onPosted(response.comment.id);
     } catch (caught) {
       if (caught instanceof ApiError) {
@@ -111,9 +134,12 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
           ...(caught.retryAfterMs === undefined ? {} : { retryAfterMs: caught.retryAfterMs }),
           ...(caught.resetAt === undefined ? {} : { resetAt: caught.resetAt }),
         });
+        // The refusal is the server's; only its code leaves the page.
+        track('submit_refused', { code: caught.code });
         if (caught.code === 'CAPTCHA_FAILED') setToken(null);
       } else {
         setError({ code: 'INVALID', message: 'сеть не ответила — попробуйте ещё раз' });
+        track('error_shown', { code: 'INVALID' });
       }
     } finally {
       setSending(false);
@@ -134,7 +160,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
 
   return (
     <form
-      className="seam-form"
+      className="seam-form ym-hide-content"
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -144,7 +170,11 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
         kind={draft.kind}
         noteOnly={noteOnly}
         disabled={sending}
-        onPick={(choice) => onChange({ ...draft, kind: choice.kind, noteOnly: choice.noteOnly, body: choice.noteOnly ? draft.body : draft.body })}
+        onPick={(choice) => {
+          // BOOK-63: which row was picked — one of five words, never what the reader writes.
+          track('kind_pick', { kind: choice.noteOnly || choice.kind === null ? 'note' : choice.kind });
+          onChange({ ...draft, kind: choice.kind, noteOnly: choice.noteOnly, body: choice.noteOnly ? draft.body : draft.body });
+        }}
       />
 
       {noteOnly || draft.blockId === null ? null : (
@@ -154,7 +184,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
           </label>
           <input
             id={`seam-body-${entry.n}`}
-            className="seam-input"
+            className="seam-input ym-disable-keys"
             type="text"
             value={draft.body}
             maxLength={composer.maxChars}
@@ -173,7 +203,7 @@ export function InterventionForm({ entry, draft, composer, viewer, onChange, onP
       </label>
       <textarea
         id={`seam-text-${entry.n}`}
-        className="seam-text"
+        className="seam-text ym-disable-keys"
         value={draft.proposed}
         maxLength={limits.edit}
         rows={noteOnly ? 4 : 6}

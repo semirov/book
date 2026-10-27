@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
+import { track, type SeamSurface } from './analytics.ts';
 import type { SeamAnchor } from './seam.ts';
 
 /**
@@ -20,6 +21,12 @@ export type OpenSeam = {
   anchor: SeamAnchor | null;
   /** The element the tap landed in, so focus can return there when the strip closes. */
   origin: HTMLElement | null;
+  /**
+   * BOOK-63 — where the reader opened it. Rarely needed: the store names the surface itself
+   * (a seam with no block is an empty chapter's premise, everything else is the text); a
+   * future opening from the table of contents passes `toc`.
+   */
+  surface?: SeamSurface;
 };
 
 let current: OpenSeam | null = null;
@@ -36,6 +43,9 @@ function subscribe(listener: () => void): () => void {
 
 export function openSeam(next: OpenSeam): void {
   current = next;
+  // The event belongs to the act, so the store emits it: no caller can open a seam silently.
+  // A seam with no block is an empty chapter's premise; everything else opens in the text.
+  track('seam_open', { surface: next.surface ?? (next.blockId === null ? 'premise' : 'text') });
   emit();
 }
 

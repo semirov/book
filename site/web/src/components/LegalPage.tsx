@@ -1,5 +1,8 @@
 import { EDIT_MAX_CHARS, INTERVENTION_KIND_LIST } from '@book/shared';
+import { useEffect } from 'react';
 
+import { track } from '../lib/analytics.ts';
+import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
 import type { StaticPage } from '../lib/route.ts';
 import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.ts';
@@ -24,6 +27,7 @@ const SHARED_TAIL = [
 ];
 
 function Privacy() {
+  const consent = useConsent();
   return (
     <main className="page legal">
       <p className="kicker">приватность</p>
@@ -54,6 +58,31 @@ function Privacy() {
 
       <section>
         <h2>Счётчик посещений</h2>
+        {/* BOOK-63: the legal researcher's paragraph (comment #3619), verbatim. */}
+        <p>
+          Мы включили Яндекс Метрику — счётчик посещаемости. С вашего согласия он отправляет в
+          Яндекс то, что видит браузер: адрес страницы, откуда вы пришли, устройство, экран,
+          IP-адрес и свои cookie <code>_ym_*</code>. Пол, возраст и интересы Метрика достраивает
+          по данным Яндекса. Нужно, чтобы понимать, какие главы читают. Ваш текст, имя и номер
+          читателя в счётчик не попадают никогда: в событиях только названия действий и номера
+          глав. Данные хранит Яндекс в России, пока счётчик работает. Отказаться: расширение
+          «Блокировщик Яндекс.Метрики» или запрет сторонних cookie в браузере — книга читается
+          без счётчика.
+        </p>
+        <div className="consent-line" data-consent={consent}>
+          <p>{CONSENT_COPY}</p>
+          <div className="consent-actions">
+            <button type="button" className="consent-choice" onClick={() => setConsent('granted')}>
+              Разрешить
+            </button>
+            <button type="button" className="consent-choice" onClick={() => setConsent('denied')}>
+              Только необходимое
+            </button>
+            <span className="consent-state">
+              сейчас: {consent === 'granted' ? 'включена' : 'выключена'}
+            </span>
+          </div>
+        </div>
         <p>
           Если владелец включил Яндекс.Метрику, на странице загружается её скрипт с
           <code> mc.yandex.ru</code>: он видит адрес страницы, откуда вы пришли, тип устройства,
@@ -194,5 +223,9 @@ function Rules() {
 }
 
 export function LegalPage({ page }: { page: StaticPage }) {
+  // BOOK-63: opening the document is the act; the counter sees the page name, never a quote.
+  useEffect(() => {
+    track(page === 'privacy' ? 'privacy_open' : 'rules_open', {});
+  }, [page]);
   return page === 'privacy' ? <Privacy /> : <Rules />;
 }

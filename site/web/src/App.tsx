@@ -22,6 +22,7 @@ import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts'
 import { EndMatter } from './components/EndMatter.tsx';
 import { ChangeCard } from './components/ChangeCard.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
+import { ConsentBanner } from './components/ConsentBanner.tsx';
 import { ParagraphChain } from './components/ParagraphChain.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterArticle } from './components/ChapterArticle.tsx';
@@ -53,6 +54,7 @@ import { useReaderFeed } from './useReaderFeed.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { useFocusMode } from './useFocus.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
+import { useDeepLink } from './lib/useDeepLink.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
@@ -132,6 +134,7 @@ export function App() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+  useDeepLink(data !== null);
 
   const applyAuthorsCount = useCallback((count: AuthorsCountDto) => {
     setData((current) => (current === null ? current : withAuthorsCount(current, count)));
@@ -412,6 +415,7 @@ export function App() {
     return (
       <>
         {views}
+        <ConsentBanner />
         <Chronicle
           catalog={catalog}
           frontRev={front.rev}
@@ -442,6 +446,7 @@ export function App() {
         onViewChange={setView}
         motion={titleMotion}
       />
+      <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
       <main>
         {catalog.map((entry) => {

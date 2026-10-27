@@ -6,6 +6,7 @@ import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
 import { Seam } from './Seam.tsx';
+import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
 import { filingsForBlock, staleLine } from '../lib/filings.ts';
@@ -96,6 +97,14 @@ export function ProseParagraph({
     },
     [baseRev, blockId, entry.n, text],
   );
+
+  /**
+   * BOOK-63 — the first desktop hover over prose is `tooltip_seen`, once per session: the
+   * word's affordance appeared, and that is the act. A touch pointer is not a hover.
+   */
+  const hint = (event: ReactPointerEvent<HTMLElement>): void => {
+    if (event.pointerType === 'mouse') trackOnce('tooltip_seen', 'tooltip_seen', {});
+  };
 
   /**
    * A tap on a sentence. `pointerup` enforces the tap's own rule (a drag or a long press is
@@ -264,6 +273,7 @@ export function ProseParagraph({
           data-revising={revising ?? undefined}
           onPointerUp={pick}
           onClick={pick}
+          onPointerEnter={hint}
         >
           {revising === null ? null : <span className="revising-label">{revising}</span>}
           {frozenChapter ? null : (
@@ -306,6 +316,7 @@ export function ProseParagraph({
           data-revising={revising ?? undefined}
           onPointerUp={pick}
           onClick={pick}
+          onPointerEnter={hint}
         >
           {body}
         </div>

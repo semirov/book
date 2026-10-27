@@ -31,6 +31,7 @@ export function InterventionKinds({
             <input
               type="radio"
               name="intervention-kind"
+              className="ym-disable-keys"
               value={row.id ?? 'note'}
               checked={checked}
               onChange={() => onPick({ kind: row.id, noteOnly: row.id === null })}
