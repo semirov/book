@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatChars,
   formatDate,
+  formatFileSize,
   formatNumber,
   formatTime,
   plural,
@@ -67,5 +68,33 @@ describe('queueLabel', () => {
       expect(queueLabel(depth)).not.toContain('0 правок');
       expect(queueLabel(depth)).not.toContain('замечан');
     }
+  });
+});
+
+describe('formatFileSize', () => {
+  it('states megabytes with one comma-marked decimal and never a trailing «,0»', () => {
+    expect(formatFileSize(1_500_000)).toBe('1,5 МБ');
+    expect(formatFileSize(2_340_000)).toBe('2,3 МБ');
+    expect(formatFileSize(1_000_000)).toBe('1 МБ');
+    expect(formatFileSize(1_049_000)).toBe('1 МБ');
+    expect(formatFileSize(12_049_000)).toBe('12 МБ');
+    for (const bytes of [1_000_000, 2_000_000]) {
+      expect(formatFileSize(bytes)).not.toContain(',0');
+    }
+  });
+
+  it('states kilobytes below a megabyte, with a plain space and no fraction', () => {
+    expect(formatFileSize(512_000)).toBe('512 КБ');
+    expect(formatFileSize(999_400)).toBe('999 КБ');
+    expect(formatFileSize(999)).toBe('1 КБ');
+    // The boundary belongs to the larger unit: 999 999 rounds to 1 МБ, not to 1000 КБ.
+    expect(formatFileSize(999_999)).toBe('1 МБ');
+    expect(formatFileSize(512_000)).not.toContain('\u00a0');
+  });
+
+  it('never prints a number it was not given', () => {
+    expect(formatFileSize(0)).toBe('0 КБ');
+    expect(formatFileSize(Number.NaN)).toBe('0 КБ');
+    expect(formatFileSize(-1)).toBe('0 КБ');
   });
 });

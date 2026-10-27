@@ -13,6 +13,7 @@ import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts
 import type { Config } from './config.ts';
 import { readBookCost } from './cost/book.ts';
 import type { Db } from './db/db.ts';
+import { createExportCache, exportSourceOf } from './fb2/exportCache.ts';
 import type { Fb2Renderer } from './fb2/serialize.ts';
 import type { RouteDeps } from './http/deps.ts';
 import { registerCachePolicy } from './http/cache.ts';
@@ -197,8 +198,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
 
   registerStateRoutes(app, deps);
   registerAnalyticsRoutes(app, deps);
-  registerFrontRoutes(app, deps);
-  registerExportRoutes(app, deps);
+  // BOOK-138: one export memo for both surfaces — `/api/front` measures the bytes `/book.fb2`
+  // sends, so the page must not build a second copy of the book to learn a length.
+  const exportCache = createExportCache(exportSourceOf(deps), deps.config.coverPath);
+  registerFrontRoutes(app, deps, exportCache);
+  registerExportRoutes(app, deps, exportCache);
   registerCostRoutes(app, deps);
   registerChapterRoutes(app, deps);
   registerChangeRoutes(app, deps);

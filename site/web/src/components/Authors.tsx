@@ -38,7 +38,7 @@ export function Authors({
   hidePending = false,
   decisions = null,
   live,
-  revision = null,
+  exportBytes = null,
 }: {
   authors: AuthorsDto | null;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
@@ -71,11 +71,11 @@ export function Authors({
    */
   live: boolean;
   /**
-   * BOOK-60: the edition number `/api/front` reports, printed under the download link. It is
-   * the same number the FB2 file writes as `document-info/version`; absent on an older
-   * payload, and then the link prints no line.
+   * BOOK-138: the size of the file `/api/front` measured — the byte length of the body
+   * `/book.fb2` sends for this edition. The download link prints it; absent on an older
+   * payload, and then the link prints the verb alone.
    */
-  revision?: number | null;
+  exportBytes?: number | null;
 }) {
   // BOOK-56: the list is the book's past; the reader's own decisions are their present state,
   // so they render on their own rather than with the list they used to sit under.
@@ -86,7 +86,9 @@ export function Authors({
     return (
       <section className="page authors" aria-label={hasDecisions ? 'ваши правки и выгрузка книги' : 'выгрузка книги'}>
         {hasDecisions ? <OwnDecisions decisions={decisions} /> : null}
-        <ExportLink revision={revision} />
+        <div className="authors-export">
+          <ExportLink exportBytes={exportBytes} />
+        </div>
       </section>
     );
   }
@@ -159,7 +161,11 @@ export function Authors({
         />
       )}
       <OwnDecisions decisions={decisions} />
-      <ExportLink revision={revision} />
+      {/* BOOK-138: the download keeps the end matter's own spacing (`chrome.css`,
+          `.authors-export`); the link itself states no box, here or in the footer. */}
+      <div className="authors-export">
+        <ExportLink exportBytes={exportBytes} />
+      </div>
       <p className="copyright authors-copyright">{imprint.copyright}</p>
       {lastRevisionAt === null ? null : (
         <p className="authors-updated">последняя правка — {formatDate(lastRevisionAt)}</p>

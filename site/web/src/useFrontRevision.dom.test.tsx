@@ -4,6 +4,7 @@ import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ExportLink } from './components/ExportLink.tsx';
 import type { BookData } from './lib/bookState.ts';
 import { useFrontRevision } from './useFrontRevision.ts';
 
@@ -15,6 +16,9 @@ import { useFrontRevision } from './useFrontRevision.ts';
  * one read), only one request is ever in flight and a frame that arrives mid-read gets exactly
  * one follow-up, a failed read keeps the number the page already has, and unmounting clears
  * the pending timer. Real 1 s waits would make the suite slow and flaky, so time is faked.
+ *
+ * BOOK-138: the download's label is printed from the same state, so the size is asserted where
+ * the reader sees it — through a rendered `ExportLink`, not through the field alone.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -43,11 +47,20 @@ function Probe() {
   const [data, setData] = useState<BookData | null>(book());
   note = useFrontRevision(setData);
   revision = data?.front.revision ?? null;
-  return <span>{revision ?? '—'}</span>;
+  return (
+    <>
+      <span>{revision ?? '—'}</span>
+      <ExportLink exportBytes={data?.front.exportBytes ?? null} />
+    </>
+  );
 }
 
-const front = (value: number): Response =>
-  ({ ok: true, status: 200, json: async () => ({ revision: value }) as FrontDto }) as unknown as Response;
+const front = (value: number, exportBytes?: number): Response =>
+  ({
+    ok: true,
+    status: 200,
+    json: async () => ({ revision: value, ...(exportBytes === undefined ? {} : { exportBytes }) }) as FrontDto,
+  }) as unknown as Response;
 const down = (): Response => ({ ok: false, status: 503, statusText: 'down', json: async () => ({}) }) as unknown as Response;
 
 let root: Root | null = null;
@@ -181,5 +194,66 @@ describe('useFrontRevision (BOOK-60)', () => {
     root = null;
     await tick(5_000);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the download’s size (BOOK-138)', () => {
+  /** What the reader sees on the link, read from the DOM the hook actually updated. */
+  function label(): string {
+    return container?.querySelector('a.export-link')?.textContent ?? '';
+  }
+
+  it('moves with the edition a live frame names, without a reload', async () => {
+    let value = 7;
+    let size = 1_500_000;
+    const fetchMock = vi.fn(async () => front(value, size));
+    vi.stubGlobal('fetch', fetchMock);
+    await render();
+    // No number yet: the page has not read `/api/front` — the label states the verb alone.
+    expect(label()).toBe('скачать fb2');
+
+    // The first frame reads the edition and its size together.
+    await frame();
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(revision).toBe(7);
+    expect(label()).toBe('скачать fb2 · 1,5 МБ');
+
+    // A chapter lands: the new edition is a shorter file, and the label follows it.
+    value = 9;
+    size = 1_200_000;
+    await frame();
+    await tick();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(revision).toBe(9);
+    expect(label()).toBe('скачать fb2 · 1,2 МБ');
+  });
+
+  it('drops the size when a new edition’s payload carries none', async () => {
+    let size: number | undefined = 1_500_000;
+    let value = 7;
+    const fetchMock = vi.fn(async () => front(value, size));
+    vi.stubGlobal('fetch', fetchMock);
+    await render();
+
+    await frame();
+    await tick();
+    expect(label()).toBe('скачать fb2 · 1,5 МБ');
+
+    // BOOK-138: an older build (or a server after a rollback) names the new edition and no
+    // size. The held number described the previous file, so the label states the verb alone —
+    // never the last edition's size for the new file.
+    value = 9;
+    size = undefined;
+    await frame();
+    await tick();
+    expect(revision).toBe(9);
+    expect(label()).toBe('скачать fb2');
+
+    // The same edition read again without a size changes nothing: there is nothing to drop.
+    await frame();
+    await tick();
+    expect(revision).toBe(9);
+    expect(label()).toBe('скачать fb2');
   });
 });

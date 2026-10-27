@@ -210,11 +210,20 @@ export type FrontDto = {
   authors: AuthorsCountDto;
   /**
    * BOOK-60: the edition number — the same value `/book.fb2` writes as
-   * `document-info/version` (BOOK-DOC-41 §1), so the download line and the file can never
-   * disagree. Optional like `donateUrl`: fixtures written before the export stay valid, and
-   * the link then prints no line rather than inventing a number.
+   * `document-info/version` (BOOK-DOC-41 §1) and the ETag hashes, so the page and the file can
+   * never disagree about which edition is being read. Optional like `donateUrl`: fixtures
+   * written before the export stay valid. BOOK-138 removed it from the download label (the
+   * saved file is «Бланк.fb2», the number lives in the file), but the payload still carries it —
+   * the app compares it to decide that the page holds the edition the manuscript is in.
    */
   revision?: number;
+  /**
+   * BOOK-138: the byte length of the body `GET /book.fb2` sends for this edition — measured
+   * from the same parts the export sends, so the number the page prints beside the download is
+   * that answer's `content-length`. Absent when it is unknown (an older payload), and the link
+   * then prints no number rather than an invented one.
+   */
+  exportBytes?: number;
   /**
    * BOOK-126: the gift link the footer row prints, already validated at boot (`donateUrlOf`) —
    * `https://t.tb.ru/…` and nothing else. `null` or absent means the row does not render; the

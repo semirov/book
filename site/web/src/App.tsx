@@ -124,12 +124,12 @@ export function App() {
 
   /**
    * REST fallback and resync. The initial call must not overwrite a `hello` that already
-   * arrived (the socket can beat a slow request); an explicit resync after a `seq` gap must.
+   * arrived; a resync after a `seq` gap must. BOOK-138: its size travels with its revision.
    */
   const refreshAll = useCallback(async (force = false) => {
     try {
       const [state, catalog, front] = await Promise.all([getState(), getChapters(), getFront()]);
-      setData((current) => (helloSeen.current && current !== null && !force ? withRevision(current, front.revision) : withFreshFront({ state, catalog, front }, current)));
+      setData((current) => (helloSeen.current && current !== null && !force ? withRevision(current, front.revision, front.exportBytes) : withFreshFront({ state, catalog, front }, current)));
       setFailed(false);
     } catch {
       setFailed(true);
@@ -481,10 +481,10 @@ export function App() {
         decisions={decisions}
         onAuthorsCount={applyAuthorsCount}
         live={history}
-        revision={front.revision ?? null}
+        exportBytes={front.exportBytes ?? null}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
-      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} />
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
       )}

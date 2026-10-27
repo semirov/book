@@ -72,7 +72,14 @@ function stubDocument(): void {
 }
 
 /** The footer alone, with its optional rows under the caller's control. */
-function renderFooter(extra: { viewer?: ViewerDto; cost?: BookCostDto | null; donateUrl?: string | null } = {}): string {
+function renderFooter(
+  extra: {
+    viewer?: ViewerDto;
+    cost?: BookCostDto | null;
+    donateUrl?: string | null;
+    exportBytes?: number | null;
+  } = {},
+): string {
   stubDocument();
   const html = renderToStaticMarkup(
     <Colophon
@@ -81,6 +88,7 @@ function renderFooter(extra: { viewer?: ViewerDto; cost?: BookCostDto | null; do
       viewer={extra.viewer ?? { signedIn: false, displayName: null }}
       cost={extra.cost ?? null}
       donateUrl={extra.donateUrl ?? null}
+      exportBytes={extra.exportBytes ?? null}
     />,
   );
   const start = html.indexOf('<footer');
@@ -340,5 +348,109 @@ describe('the logout row’s sheet (BOOK-115)', () => {
     expect(error).toContain('color: var(--revise)');
     // The focus ring is the global `:focus-visible`; the row does not replace it.
     expect(book).not.toMatch(/\.logout[^{]*\{[^}]*outline:\s*none/u);
+  });
+});
+
+describe('the download row (BOOK-138)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const DONATE = 'https://t.tb.ru/pm_short/11T50nT6AL';
+
+  /** The footer's rows in order, each without its own wrapper. */
+  function rowsOf(footer: string): string[] {
+    return [...footer.matchAll(/<div class="row">([\s\S]*?)<\/div>/gu)].map((match) => match[1] ?? '');
+  }
+
+  it('AC — the row sits straight after the imprint row and before the gift row', () => {
+    const footer = renderFooter({ donateUrl: DONATE, exportBytes: 1_500_000 });
+    const rows = rowsOf(footer);
+    const imprint = rows.findIndex((row) => row.includes('imprint-line'));
+    const download = rows.findIndex((row) => row.includes('class="export-link"'));
+    const donate = rows.findIndex((row) => row.includes('class="donate"'));
+    expect(imprint).toBeGreaterThan(-1);
+    expect(download).toBe(imprint + 1);
+    expect(donate).toBe(download + 1);
+    // One row, one anchor: nothing else came with the link.
+    expect(footer.match(/class="export-link"/gu)).toHaveLength(1);
+  });
+
+  it('AC — carries the same exact anchor as the end matter, with the payload’s size', () => {
+    const footer = renderFooter({ exportBytes: 1_500_000 });
+    expect(footer).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2 · 1,5 МБ</a>');
+    // A real download, not a handler: the row holds the anchor and nothing else — no button,
+    // no script, no icon, no counter.
+    const row = rowsOf(footer).find((candidate) => candidate.includes('export-link')) ?? '';
+    expect(row.replace(/\s+/gu, ' ').trim()).toBe(
+      '<a class="export-link" href="/book.fb2" download="">скачать fb2 · 1,5 МБ</a>',
+    );
+    for (const gone of ['<button', '<script', '<img', 'onClick']) {
+      expect(row, gone).not.toContain(gone);
+    }
+  });
+
+  it('AC — the row exists without a size too, and prints no number then', () => {
+    const footer = renderFooter();
+    expect(footer).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2</a>');
+    expect(footer).not.toContain('КБ');
+    expect(footer).not.toContain('МБ');
+    // And it is a row of its own, not a sentence spliced onto the imprint line.
+    expect(rowsOf(footer).some((row) => row.includes('export-link'))).toBe(true);
+  });
+});
+
+describe('the download row’s sheet (BOOK-138)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // BOOK-138 AC — the register's mono line at the 12 px floor, the quiet ink and the house
+  // underline, with no box of its own; the 44 px target states itself at the phone width.
+  it('is mono, micro and underlined, with the 44 px phone target and no padding box', () => {
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    const rule = declarations(chrome, '.page .export-link');
+    expect(rule).toContain('font-family: var(--mono)');
+    expect(rule).toContain('font-size: var(--fs-micro)');
+    expect(rule).toContain('color: var(--ink-2)');
+    expect(rule).toContain('display: inline-flex');
+    expect(rule).toContain('align-items: center');
+    expect(rule).toContain('text-decoration: underline');
+    expect(rule).toContain('text-underline-offset: 4px');
+    // The footer is `.colophon`, whose label register is uppercase with 0.12em tracking
+    // (`base.css`). The one component must not shout in one place and whisper in the other:
+    // its own register is stated here, and the rule that scopes to `.page` is what paints.
+    expect(rule).toContain('text-transform: none');
+    expect(rule).toContain('letter-spacing: 0.02em');
+    expect(rule).not.toMatch(/(?:^|;)\s*padding/u);
+    expect(rule).not.toMatch(/(?:^|;)\s*margin/u);
+    expect(rule).not.toMatch(/(?:^|;)\s*border/u);
+    expect(rule).not.toMatch(/background/u);
+    expect(rule).not.toMatch(/overflow:/u);
+    // The old second line is gone from every sheet: the edition is not printed on the page.
+    expect(chrome).not.toContain('.authors-export-line');
+  });
+
+  it('states the 44 px target inside the phone query, and no width step above it', () => {
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    // `chrome.css` holds more than one phone block (the table of contents and the export), and
+    // `mediaBody` answers with the first; this finds the block that declares the selector.
+    const escaped = '.page .export-link'.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const phone =
+      new RegExp(`@media \\(max-width: 599px\\)\\s*\\{[^{}]*${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(chrome)?.[1] ?? '';
+    expect(phone).toContain('min-height: 44px');
+    // The base rule — the first rule of that selector, above the query — states no height: the
+    // target is a phone rule, like the gift row's.
+    const base = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(chrome)?.[1] ?? '';
+    expect(base).toContain('display: inline-flex');
+    expect(base).not.toMatch(/(?:^|;)\s*min-height/u);
+  });
+
+  // BOOK-138: the rule above is scoped to `.page`, so it paints in the footer only because the
+  // footer element itself is a `.page`. That chain is pinned here rather than left to the
+  // markup's memory: without the class the download would drop back to the colophon's label
+  // register in one of its two homes, which is the defect the two declarations above fix.
+  it('the footer itself is a page — the class the `.page .export-link` rule scopes to', () => {
+    expect(renderFooter()).toMatch(/^<footer class="page sheet colophon"/u);
   });
 });

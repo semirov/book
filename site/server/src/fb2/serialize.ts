@@ -49,8 +49,9 @@ export type Fb2Input = {
 
 /**
  * The file split around the export moment: `head` ends just before `document-info/date`, the
- * route inserts the date element of *this* response, `tail` starts at `src-url`. The memo in
- * the route keeps a `head`/`tail` pair per edition, so a repeated export costs one concat.
+ * route inserts the date element of *this* response, `tail` starts at `src-url`.
+ * `fb2/exportCache.ts` keeps a `head`/`tail` pair per edition *and cover*, so a repeated export
+ * costs one concat.
  */
 export type Fb2Parts = { head: string; tail: string };
 

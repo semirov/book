@@ -1,23 +1,30 @@
+import { formatFileSize } from '../lib/format.ts';
+
 /**
- * BOOK-60 / BOOK-DOC-41 §6 — the quiet download at the foot of the book.
+ * BOOK-60 / BOOK-138 — the download: one anchor, on two surfaces.
  *
- * Reading is never gated, so the link sits in the end matter as an `<a>`, never as a button
- * that shouts. The line under it names the file and the edition **before** the click: the
- * export date cannot honestly be printed here (it is the click's moment, and it lives in the
- * file and in `x-export-date`), so the line says where the date is. When `revision` is absent
- * (a payload from before BOOK-60, or an old fixture) the link stays and the line is omitted —
- * a number is never invented.
+ * Reading is never gated, so the file is an `<a href download>`, never a button that shouts, a
+ * fetch-and-blob or a script: a click is the browser's own download, and the name it saves —
+ * «Бланк.fb2» — is stated by the response (`content-disposition`), not by this markup. The same
+ * component sits in the end matter and in one footer row, so the two can never name two files.
+ *
+ * The label states the file's real size — the byte length `/api/front` measured from the bytes
+ * `/book.fb2` sends — and nothing else: the edition number lives in the file (`document-info/
+ * version`) and on the ETag, and the export date is the click's own moment, so neither is
+ * printed here.
+ *
+ * A number the page does not have is not printed at all: the label is the verb alone. That
+ * covers an absent field, a value that is not a number, and `0`: a file is never zero bytes, so
+ * a zero is a broken payload, not a measurement, and printing «0 КБ» would state a size the
+ * book cannot have. (`formatFileSize` still answers `0 КБ` for a direct call — the rule is the
+ * label's, not the formatter's.)
  */
-export function ExportLink({ revision }: { revision?: number | null }) {
-  const named = typeof revision === 'number';
+export function ExportLink({ exportBytes = null }: { exportBytes?: number | null }) {
+  const measured = typeof exportBytes === 'number' && Number.isFinite(exportBytes) && exportBytes > 0;
+  const size = measured ? formatFileSize(exportBytes) : null;
   return (
-    <div className="authors-export">
-      <a className="authors-export-link" href="/book.fb2">скачать в fb2</a>
-      {named ? (
-        <p className="authors-export-line">
-          blank-{revision}.fb2 · ревизия {revision} · дата выгрузки — в файле
-        </p>
-      ) : null}
-    </div>
+    <a className="export-link" href="/book.fb2" download="">
+      {size === null ? 'скачать fb2' : `скачать fb2 · ${size}`}
+    </a>
   );
 }

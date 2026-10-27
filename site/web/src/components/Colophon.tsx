@@ -7,6 +7,7 @@ import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
 import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
+import { ExportLink } from './ExportLink.tsx';
 import { LogoutRow } from './LogoutRow.tsx';
 import { MarginTail } from './MarginTail.tsx';
 
@@ -39,6 +40,7 @@ export function Colophon({
   viewer = { signedIn: false, displayName: null },
   cost = null,
   donateUrl = null,
+  exportBytes = null,
   reload,
 }: {
   state: StateSnapshot;
@@ -55,6 +57,12 @@ export function Colophon({
    * a deployment that does not ask for gifts says nothing about money at all.
    */
   donateUrl?: string | null;
+  /**
+   * BOOK-138: the size of the export, from the same `/api/front` payload the end matter gets.
+   * The row is printed even without it — a begun book already has a file — and the link then
+   * states the verb alone.
+   */
+  exportBytes?: number | null;
   /** Test seam only — jsdom cannot navigate; the page reloads into a guest session. */
   reload?: (url: string) => void;
 }) {
@@ -119,6 +127,13 @@ export function Colophon({
             <span className="switch" aria-hidden="true" />
             {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
           </button>
+        </div>
+        {/* BOOK-138: the file, in the footer's own register, straight after the imprint and
+            before the gift: a reader who came to take the book away finds it without
+            scrolling to the end matter, and a reader who stayed meets it where the page says
+            what it is. One row, one anchor, no counter and no script. */}
+        <div className="row">
+          <ExportLink exportBytes={exportBytes} />
         </div>
         {/* BOOK-126: the gift row — one outbound link and nothing else. A gift between
             individuals, not a payment and not a payment platform: no script, no iframe, no

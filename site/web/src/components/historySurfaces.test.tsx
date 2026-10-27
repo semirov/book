@@ -241,8 +241,9 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
     ]) {
       expect(html, `with an empty log the page must not render «${gone}»`).not.toContain(gone);
     }
-    // BOOK-60: the download is book matter, not history — it stays when the list does not.
-    expect(html).toContain('href="/book.fb2"');
+    // BOOK-60/BOOK-138: the download is book matter, not history — it stays when the list
+    // does not, as a real anchor that saves the file rather than as a request the page makes.
+    expect(html).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2</a>');
   });
 
   it('keeps the cover, page 2, the byline, the seam door and the filing’s own mark', () => {
@@ -294,8 +295,8 @@ describe('a pending filing is visible at its anchor while history stays off (BOO
     ]) {
       expect(html, `with readerChanges = 0 the page must not render «${gone}»`).not.toContain(gone);
     }
-    // BOOK-60: the FB2 download stays — it is not gated by the history flag.
-    expect(html).toContain('href="/book.fb2"');
+    // BOOK-60/BOOK-138: the FB2 download stays — it is not gated by the history flag.
+    expect(html).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2</a>');
   });
 });
 
@@ -309,8 +310,8 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
     for (const gone of ['class="ribbon', 'волна', 'class="prov-rows"', '<dt>след</dt>', 'class="chain', 'authors-list', 'authors-note', 'Авторы', 'class="page talks', 'focus-wings']) {
       expect(html, `before the first reader change the page must not render «${gone}»`).not.toContain(gone);
     }
-    // BOOK-60: the download is book matter and survives the history gate.
-    expect(html).toContain('href="/book.fb2"');
+    // BOOK-60/BOOK-138: the download is book matter and survives the history gate.
+    expect(html).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2</a>');
   });
 
   it('answers with one «начало книги» row and one quiet line, and nothing to scrub', async () => {

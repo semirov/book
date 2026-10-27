@@ -1,44 +1,54 @@
 /**
- * BOOK-60 — `GET /book.fb2` (BOOK-DOC-41 §2, §5); BOOK-133 embeds the cover.
+ * BOOK-60 — `GET /book.fb2` (BOOK-DOC-41 §2, §5); BOOK-133 embeds the cover, BOOK-138 shares
+ * the build with `/api/front`.
  *
  * The file is one edition of the manuscript: `document-info/version` is the low 52 bits of the
  * edition hash and `document-info/date` is the moment this response's bytes were built, in
  * `config.tz`. Two exports of one state share the version and differ only in the date.
  *
- * One build per edition *and cover*. The edition hash and the body are read inside one
- * `db.transaction`, so the number and the paragraphs come from one snapshot; the cover is read
- * before it (no file I/O inside the transaction) and cached by the file's size and mtime, so a
- * repeat costs one `stat` and no decode. The serializer memo is keyed by both hashes — a cover
- * swap is a different representation, not a stale copy of the old one.
+ * One build per edition *and cover*, and it is not this route's own: the parts live in
+ * `fb2/exportCache.ts`, which `/api/front` reads too — so a repeat costs one concat, a `304`
+ * costs the two hash reads and the cover's `stat`, and the size the page prints is this
+ * answer's `content-length`, not a second build. The edition hash and the body are read inside
+ * one `db.transaction`, so the number and the paragraphs come from one snapshot; the cover is
+ * resolved in the same call and cached by the file's size and mtime, so a repeat costs one
+ * `stat` and no decode. The memo is keyed by both hashes — a cover swap is a different
+ * representation, not a stale copy of the old one — because the cover is not part of the
+ * edition hash.
  *
  * `HEAD` answers headers only and never builds. The ETag carries both untruncated hashes, which
  * is why the revalidation exemption in `http/cache.ts` is safe: the tag names the paragraphs and
- * the image, so a `304` can only ever name bytes the client already holds. A cover that cannot
- * be embedded fails the export with `503` and a code — never a coverless file and never a
- * placeholder.
+ * the image, so a `304` can only ever name bytes the client already holds. The answer is
+ * `no-store` all the same (BOOK-138) — the edition changes with every chapter, so a stored copy
+ * is a stale copy by construction; the tag stays, and an explicit `If-None-Match` still gets a
+ * truthful `304`. A cover that cannot be embedded fails the export with `503` and a code —
+ * never a coverless file and never a placeholder.
+ *
+ * The name a reader saves is the book's own: «Бланк.fb2», in both the ASCII fallback and the
+ * UTF-8 form (RFC 6266) — BOOK-138. The edition number is not in the name: it is in the file
+ * (`document-info/version`) and on the ETag, where it names something the reader cannot mistype.
  */
-
-import { statSync } from 'node:fs';
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { listBlocks, listChapterRows } from '../../db/repo/chapters.ts';
-import { getFrontRow } from '../../db/repo/front.ts';
-import { COVER_ID, COVER_TYPE, CoverError, loadCover, type CoverImage } from '../../fb2/cover.ts';
+import type { CoverError } from '../../fb2/cover.ts';
 import { readEdition } from '../../fb2/edition.ts';
-import {
-  dateElement,
-  exportMoment,
-  paragraphText,
-  renderFb2,
-  type Fb2Input,
-  type Fb2Parts,
-} from '../../fb2/serialize.ts';
+import type { ExportCache, HeldExport } from '../../fb2/exportCache.ts';
+import { createExportCache, exportSourceOf } from '../../fb2/exportCache.ts';
+import { dateElement, exportMoment } from '../../fb2/serialize.ts';
 import type { RouteDeps } from '../deps.ts';
 
 export const FB2_PATH = '/book.fb2';
 /** The de-facto FB2 type: `+xml` still tells a reader it is XML. */
 const CONTENT_TYPE = 'application/x-fictionbook+xml; charset=utf-8';
+/** BOOK-138: the book's name, and the only source of the saved filename. */
+const FILE_NAME = 'Бланк';
+/**
+ * Both forms of the name (RFC 6266): `filename` is the ASCII fallback every client reads,
+ * `filename*` carries «Бланк» as percent-encoded UTF-8. Built from `FILE_NAME`, never pasted as
+ * escapes, so a rename cannot leave one form behind.
+ */
+const CONTENT_DISPOSITION = `attachment; filename="blank.fb2"; filename*=UTF-8''${encodeURIComponent(FILE_NAME)}.fb2`;
 
 /** BOOK-133: the edition and the image, both untruncated — a cover swap must move the tag. */
 function etagOf(hash: string, coverSha256: string): string {
@@ -54,133 +64,92 @@ function ifNoneMatch(header: string | undefined, etag: string): boolean {
   });
 }
 
-/** The serializer's whole input: nothing here comes from the seam, the history or the SPA. */
-function inputOf(deps: RouteDeps, revision: number, cover: CoverImage): Fb2Input {
-  const front = getFrontRow(deps.db);
-  return {
-    title: front !== undefined && front.title.length > 0 ? front.title : null,
-    about: front !== undefined && front.about.length > 0 ? front.about : null,
-    author: deps.imprint.author,
-    year: deps.imprint.year,
-    version: deps.version,
-    srcUrl: `${deps.config.publicOrigin}/`,
-    revision,
-    cover: { id: COVER_ID, contentType: COVER_TYPE, base64: cover.base64 },
-    chapters: listChapterRows(deps.db).map((row) => ({
-      n: row.n,
-      title: row.title,
-      // An absent row and a row with no blocks both render as `<empty-line/>` (§3).
-      paragraphs: listBlocks(deps.db, row.n).map((block) => paragraphText(block.text)),
-    })),
-  };
-}
-
-/** Size plus mtime is the change key: one `stat` per request, a read only on a real change. */
-function statKeyOf(path: string): string | null {
-  try {
-    const stats = statSync(path);
-    return `${String(stats.size)}:${String(stats.mtimeMs)}`;
-  } catch {
-    // The read below owns the failure: it names missing and unreadable differently.
-    return null;
-  }
-}
-
-export function registerExportRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  /** The last built edition *and cover*: the body around the date, never the date itself. */
-  let memo: { key: string; head: string; tail: string } | null = null;
-  let coverMemo: { key: string; cover: CoverImage } | null = null;
-  const render = deps.fb2?.render ?? renderFb2;
-
-  /** The decoded cover, read once per file version; a failure is a `CoverError`. */
-  const readCover = (): CoverImage => {
-    const key = statKeyOf(deps.config.coverPath);
-    if (key !== null && coverMemo !== null && coverMemo.key === key) return coverMemo.cover;
-    const cover = loadCover(deps.config.coverPath);
-    if (key !== null) coverMemo = { key, cover };
-    return cover;
-  };
-
+/**
+ * BOOK-138: the cache is a parameter with a fresh default, so a caller that registers
+ * one route (a test of the export alone) still gets a working memo without constructing one.
+ */
+export function registerExportRoutes(
+  app: FastifyInstance,
+  deps: RouteDeps,
+  cache: ExportCache = createExportCache(exportSourceOf(deps), deps.config.coverPath),
+): void {
   /**
    * A cover that cannot be embedded is a `503` about the export, not about the reader's
    * request: no attachment headers and no partial XML, because a truncated file would be
    * offered for download as if it were the book. The path is in the log line and in the
-   * message; the code is what a client branches on. An unexpected error keeps its own handler.
+   * message; the code is what a client branches on.
    */
-  const coverFailure = (request: FastifyRequest, reply: FastifyReply, error: unknown): FastifyReply => {
-    if (!(error instanceof CoverError)) throw error;
+  const coverFailure = (request: FastifyRequest, reply: FastifyReply, error: CoverError): FastifyReply => {
     request.log.error({ coverPath: deps.config.coverPath }, 'book.fb2: the cover cannot be embedded');
     return reply.code(503).header('cache-control', 'no-store').send({ code: error.code, message: error.message });
   };
 
   type Answer =
     | { kind: 'not-modified'; etag: string }
-    | { kind: 'body'; etag: string; revision: number; parts: Fb2Parts };
+    | { kind: 'cover-error'; error: CoverError }
+    | { kind: 'body'; etag: string; entry: HeldExport };
 
   // `exposeHeadRoute: false`: the generated HEAD would run the handler and build the file.
   app.get(FB2_PATH, { exposeHeadRoute: false }, async (request, reply) => {
-    let cover: CoverImage;
-    try {
-      // Before the transaction: the snapshot covers the database, not the filesystem.
-      cover = readCover();
-    } catch (error) {
-      return coverFailure(request, reply, error);
-    }
-
     const answer = deps.db.transaction((): Answer => {
       // One snapshot: the number and the paragraphs below name the same state.
       const edition = readEdition(deps.db, deps.imprint.author);
-      const etag = etagOf(edition.hash, cover.sha256);
+      // The cover is resolved with the edition, but the parts are built only for a body: a
+      // `304` names bytes the client already holds and builds none of them.
+      const resolved = cache.resolve(edition);
+      if (resolved.kind === 'cover-error') return { kind: 'cover-error', error: resolved.error };
+      const etag = etagOf(edition.hash, resolved.cover.sha256);
       if (ifNoneMatch(request.headers['if-none-match'], etag)) {
         return { kind: 'not-modified', etag };
       }
-      const key = `${edition.hash}:${cover.sha256}`;
-      const held = memo !== null && memo.key === key ? memo : null;
-      const parts = held ?? render(inputOf(deps, edition.revision, cover));
-      if (held === null) memo = { key, head: parts.head, tail: parts.tail };
-      return { kind: 'body', etag, revision: edition.revision, parts };
+      return { kind: 'body', etag, entry: resolved.entry() };
     })();
+
+    if (answer.kind === 'cover-error') return coverFailure(request, reply, answer.error);
 
     if (answer.kind === 'not-modified') {
       // The export moment is a property of a body; a `304` produced none, so it carries none.
-      return reply.code(304).header('etag', answer.etag).header('cache-control', 'no-cache').send();
+      return reply.code(304).header('etag', answer.etag).header('cache-control', 'no-store').send();
     }
 
     const moment = exportMoment(deps.now(), deps.config.tz);
     return reply
       .code(200)
       .header('content-type', CONTENT_TYPE)
-      .header('content-disposition', `attachment; filename="blank-${answer.revision}.fb2"`)
+      .header('content-disposition', CONTENT_DISPOSITION)
       .header('etag', answer.etag)
-      .header('cache-control', 'no-cache')
+      .header('cache-control', 'no-store')
       .header('x-export-date', moment.text)
-      .send(answer.parts.head + dateElement(moment) + answer.parts.tail);
+      .send(answer.entry.parts.head + dateElement(moment) + answer.entry.parts.tail);
   });
 
   app.head(FB2_PATH, async (request, reply) => {
-    // Two indexed reads and no build: a HEAD names the file a GET would send, and claims no
-    // export moment of its own (no bytes were built). It revalidates like the GET, because the
-    // ETag names the edition and the cover: a reader that holds it is told so without a file
-    // being built.
-    let cover: CoverImage;
-    try {
-      // A HEAD may `stat` the cover (it needs its hash for the tag), but never re-encodes one.
-      cover = readCover();
-    } catch (error) {
-      return coverFailure(request, reply, error);
-    }
+    // Two indexed reads, one `stat` and no build: a HEAD names the file a GET would send, and
+    // claims no export moment of its own (no bytes were built). It revalidates like the GET,
+    // because the ETag names the edition and the cover: a reader that holds it is told so
+    // without a file being built.
+    type HeadAnswer = { kind: 'cover-error'; error: CoverError } | { kind: 'etag'; etag: string };
 
-    const edition = deps.db.transaction(() => readEdition(deps.db, deps.imprint.author))();
-    const etag = etagOf(edition.hash, cover.sha256);
-    if (ifNoneMatch(request.headers['if-none-match'], etag)) {
-      return reply.code(304).header('etag', etag).header('cache-control', 'no-cache').send();
+    const answer = deps.db.transaction((): HeadAnswer => {
+      const edition = readEdition(deps.db, deps.imprint.author);
+      // A HEAD may `stat` the cover (it needs its hash for the tag), but never re-encodes one,
+      // and never asks the cache for the parts.
+      const resolved = cache.resolve(edition);
+      if (resolved.kind === 'cover-error') return { kind: 'cover-error', error: resolved.error };
+      return { kind: 'etag', etag: etagOf(edition.hash, resolved.cover.sha256) };
+    })();
+
+    if (answer.kind === 'cover-error') return coverFailure(request, reply, answer.error);
+
+    if (ifNoneMatch(request.headers['if-none-match'], answer.etag)) {
+      return reply.code(304).header('etag', answer.etag).header('cache-control', 'no-store').send();
     }
     return reply
       .code(200)
       .header('content-type', CONTENT_TYPE)
-      .header('content-disposition', `attachment; filename="blank-${edition.revision}.fb2"`)
-      .header('etag', etag)
-      .header('cache-control', 'no-cache')
+      .header('content-disposition', CONTENT_DISPOSITION)
+      .header('etag', answer.etag)
+      .header('cache-control', 'no-store')
       .send();
   });
 }

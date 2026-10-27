@@ -16,19 +16,22 @@
  *     is a real saving (172 KB of woff2 re-downloaded per page load is not); everywhere else a
  *     `304` would tell a client to reuse exactly the copy this pass exists to eliminate.
  *
- *     BOOK-60 adds one exact path to that set: `/book.fb2`. Its ETag is the edition hash —
- *     computed from the stored file hashes of the front matter and all 67 chapters — so a
- *     `304` there can only ever name the same paragraphs the client already holds, and the
- *     export's whole point (BOOK-60 AC4) is that a reader who already has the bytes is not
- *     sent them again. The exemption is safe *because* the name is the content; a tag that
- *     named anything else would put the stale-prose defect straight back. The fields the tag
+ *     BOOK-60 adds one exact path to that set: `/book.fb2`. Its ETag names the edition hash —
+ *     computed from the stored file hashes of the front matter and all 67 chapters — and, since
+ *     BOOK-133, the cover's sha256, so a `304` there can only ever name the same paragraphs and
+ *     the same image the client already holds. The exemption is safe *because* the name is the
+ *     content; a tag that named anything else would put the stale-prose defect straight back.
+ *     The answer is `no-store` (BOOK-138), so no browser is told to keep these bytes and none
+ *     revalidates them on its own: the exemption answers the client that sends `If-None-Match`
+ *     of its own accord, and it buys that client a `304` instead of 1.5 MB. The fields the tag
  *     does not name — `program-used`, `src-url`, `title-info/date` — are boot-time constants
  *     (BOOK-DOC-41 §1), so they ride along on a `304` without making it stale.
  *   · `onSend` marks every `/api/` answer, `/healthz` and every HTML document `no-store`, and
  *     does it *after* the route wrote its headers — a route cannot loosen the rule,
  *     `@fastify/static` keeps its own policy for the rest. `/book.fb2` is not HTML and not
- *     under `/api/`, so the export's own `no-cache` (a fresh copy would carry an older export
- *     date, the ETag makes revalidation free) stands.
+ *     under `/api/`, so its route states the policy itself: BOOK-138 makes it `no-store` too,
+ *     because the edition changes with every chapter and a stored copy of the file is a stale
+ *     copy. The tag stays, so an explicit `If-None-Match` still gets a truthful `304`.
  *
  * ETags stay: they still name the representation (a test, a proxy log and a future client can
  * compare them), and outside prose they still answer `304`.
@@ -44,8 +47,9 @@ import type { FastifyInstance } from 'fastify';
 const REVALIDATABLE = ['/assets/', '/fonts/', '/theme.js', '/favicon.svg'] as const;
 
 /**
- * BOOK-60: the one non-static surface allowed to revalidate. Its tag is the edition hash, so
- * it names the paragraphs themselves — see the module comment.
+ * BOOK-60: the one non-static surface allowed to revalidate. Since BOOK-133 its tag is the
+ * edition hash *and* the cover's sha256, so it names the paragraphs and the image themselves —
+ * see the module comment.
  */
 const REVALIDATABLE_EXACT = ['/book.fb2'] as const;
 
