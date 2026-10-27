@@ -32,6 +32,26 @@ export const STATE_WORDS: Readonly<Record<State, string>> = {
   landed: 'внесено',
 };
 
+/**
+ * BOOK-61 — the **gate's** word, one per refusal, and never a fourth state word.
+ *
+ * A filing stopped by a gate is still «ждёт» (or «идёт», or «внесено»): the state word says
+ * where the row stands in the book's machinery, and these say which gate stopped it. «Не
+ * принято» (B, the law) is never «отклонено» (C, the auditor) and neither is «проверяется»
+ * (A, a hold before a model read it) — the reader must be able to tell the three apart, and an
+ * operator reads `held_rule`/`rights_rule`/`audit_verdict` instead.
+ */
+export type GateWord = 'held' | 'rights' | 'auditor';
+
+export const GATE_WORDS: Readonly<Record<GateWord, string>> = {
+  held: 'проверяется',
+  rights: 'не принято',
+  auditor: 'отклонено',
+};
+
+/** HELD's own line: a hold is not history and no change is made from it (BOOK-DOC-42 §5). */
+export const HELD_LINE = 'замечание сохранено и ждёт человека — из него пока не делают правку';
+
 export type Marginalia = {
   state: State;
   /** The state word, lowercase: the label register uppercases it in CSS. */
@@ -45,6 +65,10 @@ type FilingFacts = Pick<CommentDto, 'status'> & {
   interventionKind?: CommentDto['interventionKind'];
   applied?: CommentDto['applied'];
   chapter?: number;
+  /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
+  refusal?: CommentDto['refusal'];
+  /** The stored public line, joined under the gate's word where the gate owes one. */
+  reason?: string | null;
 };
 
 type ChangeFacts = Pick<ChangeSummaryDto, 'status' | 'outcome'> & { premise?: boolean };
@@ -105,9 +129,12 @@ export function filingConsequence(comment: FilingFacts): string {
     case 'superseded':
       return 'снято: текст успел измениться';
     case 'rejected':
-      return 'отклонено';
+      // BOOK-61: B prints its fixed sentence (stored in `reason`), C's word stands alone and
+      // `commentView` appends the auditor's own reason beside it.
+      return comment.refusal === 'rights' ? (comment.reason ?? GATE_WORDS.rights) : GATE_WORDS.auditor;
     case 'quarantined':
-      return 'проверяется перед триажем';
+      // A hold's line, never the guard's taxonomy: the rule an operator reads is `held_rule`.
+      return `${GATE_WORDS.held}: ${HELD_LINE}`;
     case 'expired':
       return 'проход не состоялся';
     case 'hidden':

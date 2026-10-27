@@ -99,6 +99,7 @@ const COMMENT: CommentDto = {
   decidedAt: null,
   changeId: null,
   applied: null,
+      refusal: null,
 };
 
 const CHANGE: ChangeDto = {

@@ -53,6 +53,7 @@ function comment(blockId: string, overrides: Partial<CommentDto> = {}): CommentD
     status: 'new',
     premise: false,
     reason: null,
+    refusal: null,
     createdAt: '2026-10-21T12:03:00Z',
     decidedAt: null,
     changeId: null,

@@ -59,6 +59,7 @@ const PENDING: CommentDto = {
   premise: true,
   status: 'new',
   reason: null,
+  refusal: null,
   createdAt: '2026-10-27T18:04:17Z',
   decidedAt: null,
   changeId: null,

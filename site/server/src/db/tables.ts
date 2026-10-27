@@ -124,9 +124,85 @@ CREATE TRIGGER events_no_delete BEFORE DELETE ON events
   BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
 
 /**
+ * The two gate tables (BOOK-61). They live apart from `steps` because `ensureStepLifecycle`
+ * rebuilds `steps` on an old install while both gate tables already exist — and because the
+ * migration that widened `role` rebuilds them together.
+ *
+ * Gate B is conditional: the `rights` role exists only when a step's scan flagged or when a
+ * filing's rights answer is required, so `GATE_ROLES` (engine/gates.ts) stays editor,
+ * consultant. `gate_verdicts.verdict` is coupled to the role: a rights answer is CLEAR or
+ * REFUSED, a prose answer is HOLDS or GAP, and one gate's word never stands for another's.
+ */
+export const GATE_TABLES_SQL = `
+CREATE TABLE gate_dispatches (                   -- who was handed the gate for this step (§6B.4)
+  step_id     TEXT NOT NULL REFERENCES steps(step_id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('editor','consultant','rights')),
+  session     TEXT NOT NULL,                     -- the session the verdict must come back from
+  dispatched_at TEXT NOT NULL,
+  expires_at  TEXT NOT NULL,
+  PRIMARY KEY (step_id, role)
+);
+
+CREATE TABLE gate_verdicts (                     -- provenance of the hidden roles (§6B.3)
+  step_id     TEXT NOT NULL REFERENCES steps(step_id) ON DELETE CASCADE,
+  role        TEXT NOT NULL CHECK (role IN ('editor','consultant','rights')),
+  verdict     TEXT NOT NULL
+              CHECK ((role = 'rights' AND verdict IN ('CLEAR','REFUSED'))
+                  OR (role IN ('editor','consultant') AND verdict IN ('HOLDS','GAP'))),
+  findings    TEXT NOT NULL DEFAULT '[]',        -- JSON; admin-only, never public
+  cycles      INTEGER NOT NULL DEFAULT 0,
+  model       TEXT NOT NULL,
+  tokens_in   INTEGER NOT NULL DEFAULT 0,
+  tokens_out  INTEGER NOT NULL DEFAULT 0,
+  at          TEXT NOT NULL,
+  late        INTEGER NOT NULL DEFAULT 0,        -- 1 = arrived after GATE_TTL_MS
+  PRIMARY KEY (step_id, role)
+);`;
+
+/**
  * The `steps` table is the one table M3 needs more than §8 sketched: a step exists *before*
  * it is closed (it carries the lease and hangs both gate verdicts off its id), so `outcome`
  * is null while the step is open, and the land/close facts are columns rather than a second
  * table. `migrate.ts` rebuilds a pre-M3 `steps` table in place; the shape is declared once,
  * here, and reused by the repair so the two cannot drift.
  */
+
+/** Every column a rebuilt `steps` table must carry (the repair in `migrate.ts` checks them). */
+export const STEPS_COLUMNS = [
+  'step_id',
+  'cascade_id',
+  'seq',
+  'wave',
+  'lane',
+  'pass',
+  'chapter',
+  'boundary',
+  'premise_change',
+  'outcome',
+  'rev_before',
+  'rev_after',
+  'seams_in',
+  'seams_out',
+  'blocks_touched',
+  'chars_delta',
+  'model',
+  'tokens_in',
+  'tokens_out',
+  'cost_rub',
+  'cost_priced',
+  'hseq_from',
+  'hseq_to',
+  'lease_id',
+  'session',
+  'at',
+  'ms',
+  'note',
+  'cycle',
+  'last_findings',
+  'start_sha',
+  'landed_at',
+  'landed_sha',
+  'pre_blocks',
+  'rights_scan',
+  'closed_at',
+] as const;

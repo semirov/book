@@ -16,7 +16,9 @@ import type { Finding, FindingSeverity, GateRole } from '@book/shared';
 import { normalizeRetroMode } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { isRightsRule, rightsRefusalLine, type RightsRuleId } from '../rights/rules.ts';
 import { toIso } from '../util/time.ts';
+import { readRightsScan } from './helpers.ts';
 import {
   deleteDispatch,
   getDispatch,
@@ -30,6 +32,15 @@ import {
 import { refuse, type EngineDeps } from './types.ts';
 
 export const GATE_ROLES: readonly GateRole[] = ['editor', 'consultant'];
+
+/**
+ * BOOK-61 — Gate B is **conditional**: the `rights` role exists only when a step's scan
+ * flagged. It is not in `GATE_ROLES`, because a step does not owe that answer; it owes it
+ * only when the deterministic scan could not clear the text.
+ */
+export const RIGHTS_ROLE = 'rights' as const;
+
+export type MissingVerdict = GateRole | typeof RIGHTS_ROLE;
 
 export type GateAssignment = {
   stepId: string;
@@ -228,8 +239,14 @@ export function recordVerdict(
 }
 
 /** Both verdicts, in order, or a refusal that names what is missing. */
-export function missingVerdicts(db: Db, stepId: string): GateRole[] {
-  return GATE_ROLES.filter((role) => getVerdict(db, stepId, role) === undefined);
+export function missingVerdicts(db: Db, step: StepRow): MissingVerdict[] {
+  const missing: MissingVerdict[] = GATE_ROLES.filter((role) => getVerdict(db, step.step_id, role) === undefined);
+  // BOOK-61: a flagged scan makes Gate B mandatory. A step that cannot close without its two
+  // prose verdicts cannot close without this one either — and a `clear` scan asks nothing.
+  if (readRightsScan(step)?.verdict === 'flag' && getVerdict(db, step.step_id, RIGHTS_ROLE) === undefined) {
+    missing.push(RIGHTS_ROLE);
+  }
+  return missing;
 }
 
 /** A `GAP` with a blocker on record for one role — the raw fact, before any cap is applied. */
@@ -261,7 +278,7 @@ export function assignmentOf(
 ): GateAssignment {
   return {
     stepId: step.step_id,
-    role: dispatch.role,
+    role: dispatch.role as GateRole,
     session: dispatch.session,
     pass: step.pass,
     chapter: step.chapter,
@@ -272,4 +289,121 @@ export function assignmentOf(
     indexSlice,
     expiresAt: dispatch.expires_at,
   };
+}
+
+// ── Gate B on prose — the conditional rights role (BOOK-61) ───────────────────
+
+/**
+ * What a rights session receives. It is its own shape, not a `GateAssignment`: the question is
+ * different (may this text be in the book?), the answer is a different enum, and the scan that
+ * demanded it is the whole brief — a rule id and the block it hit, never the book.
+ */
+export type RightsAssignment = {
+  stepId: string;
+  role: typeof RIGHTS_ROLE;
+  session: string;
+  pass: string;
+  chapter: number | null;
+  landedSha: string | null;
+  /** The rule the scan flagged, so the session does not have to guess the question. */
+  rule: string;
+  block: number | null;
+  expiresAt: string;
+};
+
+/** Hand a flagged step to a rights session. Order does not apply: B is not one of the two prose gates. */
+export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: string): RightsAssignment {
+  const now = deps.clock.now();
+  const at = toIso(now);
+  if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
+  if (step.landed_at === null) {
+    refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
+  }
+  const scan = readRightsScan(step);
+  if (scan?.verdict !== 'flag') refuse('RIGHTS_NOT_REQUIRED', 409, `step ${step.step_id} has no flagged rights scan`);
+  if (getVerdict(deps.db, step.step_id, RIGHTS_ROLE)) {
+    refuse('GATE_ANSWERED', 409, `the rights gate already answered step ${step.step_id}`);
+  }
+  const existing = getDispatch(deps.db, step.step_id, RIGHTS_ROLE);
+  if (existing && existing.session !== session && existing.expires_at > at) {
+    refuse('GATE_TAKEN', 409, `step ${step.step_id} is being read by another rights session`);
+  }
+  const expiresAt = toIso(now + deps.config.gateTtlMs);
+  upsertDispatch(deps.db, {
+    step_id: step.step_id,
+    role: RIGHTS_ROLE,
+    session,
+    dispatched_at: existing && existing.session === session ? existing.dispatched_at : at,
+    expires_at: expiresAt,
+  });
+  return {
+    stepId: step.step_id,
+    role: RIGHTS_ROLE,
+    session,
+    pass: step.pass,
+    chapter: step.chapter,
+    landedSha: step.landed_sha,
+    rule: scan.rule,
+    block: scan.block ?? null,
+    expiresAt,
+  };
+}
+
+export type RightsAnswer = {
+  role: typeof RIGHTS_ROLE;
+  verdict: 'CLEAR' | 'REFUSED';
+  /** Required for `REFUSED` (an id from `rights/rules.ts`), forbidden for `CLEAR`. */
+  rule: string | null;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+};
+
+/**
+ * Record Gate B's answer for a step. The engine validates the rule against the closed table
+ * and refuses a refusal it cannot print — a `REFUSED` without a sentence would be a silent
+ * refusal, and a `CLEAR` that names a rule would be a second, contradictory answer. Nothing
+ * here judges prose; it stores what the session said, under the session it was handed.
+ */
+export function recordRightsVerdict(
+  deps: EngineDeps,
+  step: StepRow,
+  answer: RightsAnswer,
+  session: string,
+): { verdict: 'CLEAR' | 'REFUSED'; rule: string | null } {
+  const db = deps.db;
+  const at = toIso(deps.clock.now());
+  const dispatch = getDispatch(db, step.step_id, RIGHTS_ROLE);
+  if (!dispatch) refuse('GATE_NOT_DISPATCHED', 409, `no rights gate was dispatched for step ${step.step_id}`);
+  if (dispatch.session !== session) {
+    refuse('GATE_NOT_DISPATCHED', 409, `step ${step.step_id} was dispatched to another session`);
+  }
+  if (step.landed_at === null) refuse('NOT_LANDED', 409, 'a verdict for an unlanded file is refused (§6A.11)');
+  if (answer.verdict === 'CLEAR' && answer.rule !== null) {
+    refuse('RIGHTS_RULE_WITH_CLEAR', 422, 'a CLEAR names no rule');
+  }
+  if (answer.verdict === 'REFUSED') {
+    if (answer.rule === null) refuse('RIGHTS_RULE_REQUIRED', 422, 'a REFUSED needs a rule id');
+    if (!isRightsRule(answer.rule) || rightsRefusalLine(answer.rule) === null) {
+      refuse('RIGHTS_RULE_UNKNOWN', 422, `${answer.rule} is not in the rights table`);
+    }
+  }
+
+  const findings = answer.rule === null ? [] : [{ rule: answer.rule }];
+  const row: Omit<VerdictRow, 'late'> & { late: number } = {
+    step_id: step.step_id,
+    role: RIGHTS_ROLE,
+    verdict: answer.verdict,
+    findings: JSON.stringify(findings),
+    cycles: step.cycle,
+    model: text(answer.model, 120) || 'stub',
+    tokens_in: Math.max(0, Math.trunc(answer.tokensIn)),
+    tokens_out: Math.max(0, Math.trunc(answer.tokensOut)),
+    at,
+    late: dispatch.expires_at <= at ? 1 : 0,
+  };
+  upsertVerdict(db, row);
+  // The assignment is consumed by the answer, exactly as a prose gate's is.
+  deleteDispatch(db, step.step_id, RIGHTS_ROLE);
+  return { verdict: row.verdict as 'CLEAR' | 'REFUSED', rule: answer.rule === null ? null : (answer.rule as RightsRuleId) };
 }

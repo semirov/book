@@ -8,6 +8,7 @@ import {
   changeNumber,
   chapterRange,
   outcomeCopy,
+  outcomeLine,
   premiseOutcomeCopy,
   progressLine,
   recordReason,
@@ -186,6 +187,25 @@ describe('ranges and labels', () => {
     // BOOK-59: stopping at the wave bound asks for a decision; the word names no money.
     expect(outcomeCopy('budget')).toBe('остановлено: дальше — решением владельца');
     expect(outcomeCopy('budget')).not.toContain('бюджет');
+    // BOOK-61: Gate B's one word — never «внесено», never the auditor's word.
+    expect(outcomeCopy('rights')).toBe('не принято');
+    expect(outcomeCopy('rights')).not.toContain('внесено');
+  });
+
+  it('prints the gate’s sentence once: a reason that opens with the outcome word is the line', () => {
+    // Gate B: the fixed sentence already begins with «не принято», so the footer is one line.
+    expect(
+      outcomeLine({ premise: false, status: 'escalated', outcome: 'rights', reason: 'не принято: чужая цитата без источника' }),
+    ).toEqual({ word: null, reason: 'не принято: чужая цитата без источника' });
+    // Every other stop keeps both parts, exactly as before this pass.
+    expect(
+      outcomeLine({ premise: false, status: 'escalated', outcome: 'budget', reason: 'правка остановлена бюджетом — нужно решение' }),
+    ).toEqual({ word: 'остановлено: дальше — решением владельца', reason: 'правка остановлена бюджетом — нужно решение' });
+    // A stop with no reason still says its word.
+    expect(outcomeLine({ premise: false, status: 'escalated', outcome: 'rights', reason: null })).toEqual({
+      word: 'не принято',
+      reason: null,
+    });
   });
 
   it('labels a step and its wing without naming a gate', () => {

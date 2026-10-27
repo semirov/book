@@ -95,6 +95,7 @@ export type StepRow = {
   landed_at: string | null;
   landed_sha: string | null;
   pre_blocks: string | null;
+  rights_scan: string | null;         // BOOK-61 — Gate B's scan of the new blocks, as JSON
   closed_at: string | null;
 };
 
@@ -133,8 +134,9 @@ export type CascadeRow = {
 
 export type VerdictRow = {
   step_id: string;
-  role: 'editor' | 'consultant';
-  verdict: 'HOLDS' | 'GAP';
+  /** `rights` is the conditional Gate B role (BOOK-61); the table couples it to its verdict. */
+  role: 'editor' | 'consultant' | 'rights';
+  verdict: 'HOLDS' | 'GAP' | 'CLEAR' | 'REFUSED';
   findings: string;
   cycles: number;
   model: string;
@@ -146,7 +148,7 @@ export type VerdictRow = {
 
 export type DispatchRow = {
   step_id: string;
-  role: 'editor' | 'consultant';
+  role: 'editor' | 'consultant' | 'rights';   // BOOK-61: `rights` only when a scan flagged
   session: string;
   dispatched_at: string;
   expires_at: string;
@@ -155,7 +157,6 @@ export type DispatchRow = {
 export type LaneRow = { id: number; holder: string | null; heartbeat_at: string | null };
 
 // ── changes ──────────────────────────────────────────────────────────────────
-
 export type NewChange = {
   id: string;
   kind: string;

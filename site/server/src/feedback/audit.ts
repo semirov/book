@@ -34,6 +34,7 @@ export type AuditFailureCode =
   | 'AUDIT_UNKNOWN_COMMENT'
   | 'AUDIT_ALREADY_RECORDED'
   | 'AUDIT_ALREADY_DECIDED'
+  | 'AUDIT_AFTER_HOLD'
   | 'AUDIT_REASON_REQUIRED'
   | 'AUDIT_REASON_TOO_LONG'
   | 'AUDIT_LABEL_TOO_LONG';
@@ -67,6 +68,25 @@ export function recordAudit(db: Db, input: RecordAuditInput): RecordAuditResult 
   }
 
   const run = db.transaction((): RecordAuditResult => {
+    // BOOK-61 (BOOK-DOC-42 §1 step 3): a held row is never audited. Gate A stopped it before
+    // any model read it, so an audit would be a verdict about text nobody was allowed to read —
+    // and the auditor's OFF would refuse a reader whose note was never judged. The conditional
+    // UPDATE below cannot express this (a held row still has both columns null), so the status
+    // is read first, inside the same transaction.
+    const current = db.prepare('SELECT status FROM comments WHERE id = ?').get(input.commentId) as
+      | { status: string }
+      | undefined;
+    if (current === undefined) {
+      return { ok: false, code: 'AUDIT_UNKNOWN_COMMENT', message: `unknown comment: ${input.commentId}` };
+    }
+    if (current.status === 'quarantined') {
+      return {
+        ok: false,
+        code: 'AUDIT_AFTER_HOLD',
+        message: `${input.commentId} is held — a model has not read it, so it is not audited`,
+      };
+    }
+
     // An `OFF` without a public reason would refuse a reader silently: refuse the verdict.
     if (input.verdict === 'OFF' && reason === null) {
       return {

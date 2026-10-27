@@ -28,6 +28,7 @@ import { closeStep, currentRev } from './close.ts';
 import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
+import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapter, readFront } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
@@ -300,12 +301,22 @@ export function createWriteOps(deps: EngineDeps) {
       };
     }
 
+    // BOOK-61 — Gate B on the prose surface. The question is asked of the *delta* only: the
+    // blocks whose hash is absent from the pre-image `start` captured. A range that did not
+    // move keeps the verdict it had, and a chapter that already passed is not re-judged whole
+    // (BOOK-DOC-42 §1). A land that moves the sha is answered here, before anything is written,
+    // so a refused chapter leaves no partial state behind.
+    const state = scanStepDelta(step, chapter);
+    if (state.refusal !== null) refuse('RIGHTS_STOPLIST', 409, state.refusal, { rule: state.rule, block: state.block });
+
     if (step.landed_at !== null) {
       // The text changed after an answer: the old verdicts described a file a gate can no
       // longer see. They are dropped and asked again — no gate blesses unseen text.
       store.deleteVerdicts(db, step.step_id);
       store.deleteDispatch(db, step.step_id, 'editor');
       store.deleteDispatch(db, step.step_id, 'consultant');
+      // The scan described that same file: a moved sha is scanned afresh below.
+      store.updateStep(db, step.step_id, { rights_scan: null });
     }
     const measured = measureDelta(step, chapter?.blocks ?? []);
     const changedFromStart = step.start_sha === null || sha !== step.start_sha;
@@ -324,6 +335,7 @@ export function createWriteOps(deps: EngineDeps) {
       rev_after: revAfter,
       blocks_touched: measured.touched,
       chars_delta: measured.delta,
+      rights_scan: state.stored,
     });
     appendEvent(
       db,

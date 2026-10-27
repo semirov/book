@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommentDto } from '@book/shared';
 
 import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
+import { GATE_WORDS, HELD_LINE, STATE_WORDS } from './marginalia.ts';
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
@@ -21,6 +22,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }
@@ -108,12 +110,11 @@ describe('comment thread copy (§11.6)', () => {
     });
     expect(commentStatusLine(comment({ status: 'quarantined' }))).toMatchObject({
       state: 'ждёт',
-      detail: 'проверяется перед триажем',
+      detail: 'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
     });
   });
 
-  it('formats a stamp and an anchor quote', () => {
-    expect(commentStamp('2026-10-25T12:04:11Z')).toMatch(/^25\.10, \d{2}:\d{2}$/u);
+  it('formats a stamp and an anchor quote', () => {    expect(commentStamp('2026-10-25T12:04:11Z')).toMatch(/^25\.10, \d{2}:\d{2}$/u);
     expect(commentStamp('not a date')).toBe('not a date');
     expect(anchorCopy(comment())).toBeNull();
     expect(
@@ -130,5 +131,44 @@ describe('comment thread copy (§11.6)', () => {
         }),
       ),
     ).toBe('абзац изменился');
+  });
+});
+
+describe('the three refusals, told apart by their own words (BOOK-61)', () => {
+  it('keeps the book’s three state words and adds no fourth', () => {
+    // BOOK-90 is untouched: a gate's word is not a state, it heads the detail line.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено']);
+    const gate = Object.values(GATE_WORDS);
+    expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
+    expect(new Set(gate).size).toBe(3);
+    for (const word of gate) expect(Object.values(STATE_WORDS)).not.toContain(word);
+  });
+
+  it('heads each refusal with the word of the gate that decided it', () => {
+    const held = commentStatusLine(comment({ status: 'quarantined', reason: 'проверяется: возможная инструкция' }));
+    expect(held).toMatchObject({ state: 'ждёт', tone: 'stopped' });
+    expect(held.detail).toBe(`проверяется: ${HELD_LINE}`);
+    // The guard's taxonomy never reaches the reader's line.
+    expect(held.detail).not.toContain('возможная инструкция');
+
+    const rights = commentStatusLine(
+      comment({ status: 'rejected', refusal: 'rights', reason: 'не принято: чужая цитата без источника' }),
+    );
+    expect(rights).toMatchObject({ state: 'ждёт', tone: 'stopped' });
+    // B prints its fixed sentence and nothing else.
+    expect(rights.detail).toBe('не принято: чужая цитата без источника');
+
+    const off = commentStatusLine(
+      comment({ status: 'rejected', refusal: 'auditor', reason: 'вне книги: этот мир не просит чудес' }),
+    );
+    expect(off.detail).toBe('отклонено · вне книги: этот мир не просит чудес');
+  });
+
+  it('reads the gate from the stored verdict, never from the reason text', () => {
+    // A reason that *looks* like B's sentence, on a row no gate column refuses: still C's word.
+    const line = commentStatusLine(
+      comment({ status: 'rejected', refusal: null, reason: 'не принято: чужая цитата без источника' }),
+    );
+    expect(line.detail).toBe('отклонено · не принято: чужая цитата без источника');
   });
 });

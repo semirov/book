@@ -29,6 +29,7 @@ function comment(overrides: Partial<CommentDto> & { id: string; createdAt: strin
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }

@@ -107,6 +107,7 @@ const PREMISE: CommentDto = {
   status: 'delivered',
   premise: true,
   reason: null,
+  refusal: null,
   createdAt: '2026-10-27T09:10:00Z',
   decidedAt: null,
   changeId: null,

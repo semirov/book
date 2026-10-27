@@ -20,6 +20,8 @@ const ALERT_KIND: Record<string, EngineAlert['kind']> = {
   finding: 'finding',
   // BOOK-76: the physics pass stopping a change is its own alert, not a prose finding.
   science: 'science',
+  // BOOK-61: a prose refusal by Gate B is its own alert, not a prose finding either.
+  rights: 'rights',
   gate_timeout: 'gate_timeout',
 };
 

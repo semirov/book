@@ -93,6 +93,9 @@ const CLOSE_COPY = {
   ending: 'финал проверен, но требует решения',
   // BOOK-76: the claim itself did not enter the book — never «правка опубликована».
   science: 'не входит в книгу — правка ждёт решения',
+  // BOOK-61: Gate B's one word (§5). The card's reason carries the rule's own fixed
+  // sentence; this line is the fallback when a close names no rule.
+  rights: 'не принято',
   gate: 'проверка не ответила вовремя — шаг остановлен',
 } as const;
 

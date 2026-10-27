@@ -28,6 +28,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }

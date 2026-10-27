@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { GATE_WORDS, HELD_LINE } from '../lib/marginalia.ts';
 import { hideRevision } from '../lib/useRevision.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
@@ -51,6 +52,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }
@@ -206,16 +208,18 @@ describe('opening the revision object from the paragraph', () => {
   it('a held comment renders its check line under the waiting word', async () => {
     // BOOK-111 §5: a quarantined filing waits — and is never silent. With history off (the
     // prod state: no reader change yet) the note still prints the word and the check line.
+    // BOOK-61: the line is the gate's own fixed sentence (`HELD_LINE`), never the guard's
+    // taxonomy and never a stored `reason` — the two designs share the behaviour, one copy.
     await mount([comment({ status: 'quarantined' })], TEXT, false);
     const note = container.querySelector('.margin-note');
     expect(note).not.toBeNull();
     expect(note?.textContent ?? '').toContain('ждёт');
-    expect(note?.textContent ?? '').toContain('проверяется перед триажем');
+    expect(note?.textContent ?? '').toContain(HELD_LINE);
     // The word and the line sit in that order: what it is, then what happens next.
     const word = note?.querySelector('.margin-note-word')?.textContent ?? '';
     const next = note?.querySelector('.margin-note-next')?.textContent ?? '';
     expect(word).toBe('ждёт');
-    expect(next).toBe('проверяется перед триажем');
+    expect(next).toBe(`${GATE_WORDS.held}: ${HELD_LINE}`);
   });
 
   it('keeps one object open: opening another closes the first', async () => {

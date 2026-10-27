@@ -35,6 +35,11 @@ export type ChangeOutcome =
   | 'ending'
   /** BOOK-76: the physics pass stopped the change — the failing claim never entered the book. */
   | 'science'
+  /**
+   * BOOK-61: Gate B refused the prose a wave wrote («не принято», the rule's fixed sentence).
+   * The refusal is about the text, not about the reader's filing — that keeps its own state.
+   */
+  | 'rights'
   | 'gate_timeout';
 
 export type SeamBoundary = number | 'front' | 'ending';
@@ -188,6 +193,8 @@ export type CascadeOutcome =
   | 'escalated:ending'
   /** BOOK-76: a physics claim that failed the consultant never lands and never ripples on. */
   | 'escalated:science'
+  /** BOOK-61: Gate B refused the new prose of a chapter; the step stops and waits for a decision. */
+  | 'escalated:rights'
   | 'escalated:gate_timeout';
 
 /**
@@ -336,6 +343,12 @@ export type StepTrace = {
     at: string;
     late: boolean;
   }>;
+  /**
+   * BOOK-61 — Gate B's answer on this step, when the scan flagged and a session answered.
+   * `null` when the gate was not required. It is kept apart from `gates` because its enum is
+   * its own (`CLEAR`/`REFUSED`), and its rule is a rule id, not a finding.
+   */
+  rights: { verdict: 'CLEAR' | 'REFUSED'; rule: string | null; at: string } | null;
 };
 
 export type ChangeTrace = {

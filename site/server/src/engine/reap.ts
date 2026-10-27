@@ -180,7 +180,7 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   // ── gates that never answered ─────────────────────────────────────────────
   const staleDispatches = db
     .prepare('SELECT * FROM gate_dispatches WHERE expires_at <= ?')
-    .all(at) as Array<{ step_id: string; role: 'editor' | 'consultant' }>;
+    .all(at) as Array<{ step_id: string; role: 'editor' | 'consultant' | 'rights' }>;
   for (const dispatch of staleDispatches) {
     const step = store.getStep(db, dispatch.step_id);
     store.deleteDispatch(db, dispatch.step_id, dispatch.role);

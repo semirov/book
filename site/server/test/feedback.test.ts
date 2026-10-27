@@ -75,11 +75,23 @@ describe('feedback.mjs inbox — the only thing a model sees', () => {
     expect(batch.count).toBe(1);
     const lines = readBatchLines(dir ?? '', batch.id);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ id, chapter: 8, rev: 1, proposed: null });
-    // Batch values are JSON scalars, never markdown containers.
+    // BOOK-61: a line is a `book.filing/v1` envelope; `itemId` is outside the untrusted
+    // subtrees, and every value a stranger wrote is marked.
+    expect(lines[0]).toMatchObject({
+      envelope: 'book.filing/v1',
+      itemId: id,
+      chapter: 8,
+      rev: 1,
+      proposed: { value: null, untrusted: true },
+    });
+    expect(lines[0]?.text.untrusted).toBe(true);
+    // The batch is fenced at both ends, and every value is a JSON scalar, never a container.
     const raw = readFileSync(join(dir ?? '', batch.path), 'utf8');
-    expect(raw.split('\n').filter(Boolean)).toHaveLength(1);
-    expect(JSON.parse(raw.trim()).text).toContain('дважды');
+    const written = raw.split('\n').filter(Boolean);
+    expect(written).toHaveLength(3);
+    expect(written[0]).toBe(`<<<DATA ${batch.id}>>>`);
+    expect(written[2]).toBe(`<<<DATA ${batch.id}>>>`);
+    expect(JSON.parse(written[1] ?? '').text.value).toContain('дважды');
     expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'batched' });
 
     expect(cli(h, 'read', batch.id).code).toBe(0);

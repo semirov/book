@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 14** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 15** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -9,27 +9,31 @@
  * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured»
  * and «placeholder zero» are different data, not the same 0; BOOK-113 adds
  * `identities.edit_exempt` — off by default — so the owner can test a change without waiting
- * out the daily edit budget, while every other reader keeps it).
+ * out the daily edit budget, while every other reader keeps it; BOOK-61 adds the three gates of
+ * BOOK-DOC-42 — Gate A's hold (`comments.held_*`), Gate B's verdict (`comments.rights_*`,
+ * `steps.rights_scan`) and the conditional `rights` role on both gate tables).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
  * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
  * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
   CHAPTERS_COLUMNS,
   CHAPTERS_TABLE_SQL,
   EVENTS_TABLE_SQL,
+  GATE_TABLES_SQL,
   RECONCILES_TABLE_SQL,
+  STEPS_COLUMNS,
   chaptersTableSql,
 } from './tables.ts';
 
@@ -63,59 +67,16 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   landed_at   TEXT,                              -- the file was written (or "already true")
   landed_sha  TEXT,                              -- sha of the landed text; a gate reads this
   pre_blocks  TEXT,                              -- JSON block hashes before the write (delta ratio)
+  -- BOOK-61: Gate B's deterministic scan of the blocks this step wrote.
+  -- JSON {"verdict":"clear"|"flag","rule":…,"block":…,"detail":…}; cleared when landed_sha moves.
+  -- A refusal is never stored here: the law's own class refuses the land, a quote is a flag.
+  rights_scan TEXT,
   closed_at   TEXT,
   UNIQUE (cascade_id, seq)
 );
 CREATE INDEX steps_chapter ON steps(chapter, at);
 CREATE INDEX steps_open ON steps(outcome, at);
-
-CREATE TABLE gate_dispatches (                   -- who was handed the gate for this step (§6B.4)
-  step_id     TEXT NOT NULL REFERENCES steps(step_id) ON DELETE CASCADE,
-  role        TEXT NOT NULL CHECK (role IN ('editor','consultant')),
-  session     TEXT NOT NULL,                     -- the session the verdict must come back from
-  dispatched_at TEXT NOT NULL,
-  expires_at  TEXT NOT NULL,
-  PRIMARY KEY (step_id, role)
-);`;
-
-/** Every column a rebuilt `steps` table must carry (the repair in `migrate.ts` checks them). */
-export const STEPS_COLUMNS = [
-  'step_id',
-  'cascade_id',
-  'seq',
-  'wave',
-  'lane',
-  'pass',
-  'chapter',
-  'boundary',
-  'premise_change',
-  'outcome',
-  'rev_before',
-  'rev_after',
-  'seams_in',
-  'seams_out',
-  'blocks_touched',
-  'chars_delta',
-  'model',
-  'tokens_in',
-  'tokens_out',
-  'cost_rub',
-  'cost_priced',
-  'hseq_from',
-  'hseq_to',
-  'lease_id',
-  'session',
-  'at',
-  'ms',
-  'note',
-  'cycle',
-  'last_findings',
-  'start_sha',
-  'landed_at',
-  'landed_sha',
-  'pre_blocks',
-  'closed_at',
-] as const;
+`;
 
 export const SCHEMA_SQL = `
 ${CHAPTERS_TABLE_SQL}
@@ -186,7 +147,7 @@ CREATE TABLE changes (
   status       TEXT NOT NULL CHECK (status IN
                  ('pending','processing','stale','done','void','escalated','failed')),
   relevance    TEXT,                               -- JSON Relevance (§6A.7)
-  outcome      TEXT,                               -- applied|adapted|dropped|superseded|budget|edge|oscillation|origin|science
+  outcome      TEXT,                               -- applied|adapted|dropped|superseded|budget|edge|oscillation|origin|science|rights
   reason       TEXT,                               -- public one-liner when dropped/escalated
   cascade_id   TEXT,
   model        TEXT,                               -- frozen at close (§6D.5)
@@ -228,19 +189,7 @@ CREATE TABLE cascades (
 
 ${STEPS_TABLE_SQL}
 
-CREATE TABLE gate_verdicts (                     -- provenance of the hidden roles (§6B.3)
-  step_id     TEXT NOT NULL REFERENCES steps(step_id) ON DELETE CASCADE,
-  role        TEXT NOT NULL CHECK (role IN ('editor','consultant')),
-  verdict     TEXT NOT NULL CHECK (verdict IN ('HOLDS','GAP')),
-  findings    TEXT NOT NULL DEFAULT '[]',        -- JSON; admin-only, never public
-  cycles      INTEGER NOT NULL DEFAULT 0,
-  model       TEXT NOT NULL,
-  tokens_in   INTEGER NOT NULL DEFAULT 0,
-  tokens_out  INTEGER NOT NULL DEFAULT 0,
-  at          TEXT NOT NULL,
-  late        INTEGER NOT NULL DEFAULT 0,        -- 1 = arrived after GATE_TTL_MS
-  PRIMARY KEY (step_id, role)
-);
+${GATE_TABLES_SQL}
 
 CREATE TABLE leases (
   id           TEXT PRIMARY KEY,                   -- 'lea_01JB7…'
@@ -296,12 +245,25 @@ CREATE TABLE comments (
   change_id    TEXT REFERENCES changes(id),    -- the queued change, when accepted
   applied_chapter INTEGER,
   applied_rev  INTEGER,
-  -- The auditor's verdict (BOOK-9): one row, written once, before triage. FITS is the
+  -- BOOK-9: the auditor's verdict, written once, before triage. FITS is the
   -- only permission a change has; OFF also refuses the comment in the same act.
   audit_verdict TEXT CHECK (audit_verdict IN ('FITS','OFF')),
   audit_reason  TEXT,                          -- the auditor's plain reason (≤200 chars), never a taxonomy
   audited_at    TEXT,
   audited_by    TEXT,                          -- the operator/session label, ≤64 chars
+  -- BOOK-61 Gate A: a hold and who decided it. held_rule is the filter's own id (INJ-…), so
+  -- the operator sees why the row stopped; the public line stays «проверяется», never the
+  -- taxonomy. A released row keeps these columns as the record of the hold.
+  held_rule    TEXT,
+  held_by      TEXT CHECK (held_by IN ('filter','classifier','operator')),
+  held_at      TEXT,
+  -- BOOK-61 Gate B: the rights verdict of a filing. One column per writer, first verdict wins;
+  -- rights_source says what decided — the deterministic scan, the rights gate, an operator.
+  rights_verdict TEXT CHECK (rights_verdict IN ('CLEAR','REFUSED')),
+  rights_rule    TEXT,
+  rights_at      TEXT,
+  rights_by      TEXT,
+  rights_source  TEXT CHECK (rights_source IN ('scan','model','operator')),
   idem_key     TEXT UNIQUE
 );
 CREATE INDEX comments_chapter ON comments(chapter, created_at);
@@ -313,7 +275,9 @@ CREATE TABLE comment_events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
   at         TEXT NOT NULL,
-  type       TEXT NOT NULL,                    -- posted|quarantined|queued|delivered|decided|released|hidden|expired
+  -- BOOK-61 adds held (Gate A stopped the row before a model could read it) and rights
+  -- (Gate B decided it); free text, so the vocabulary is documented here and nowhere else.
+  type       TEXT NOT NULL,                    -- posted|quarantined|held|released|queued|delivered|decided|rights|hidden|expired
   meta       TEXT                              -- JSON, no bodies
 );
 

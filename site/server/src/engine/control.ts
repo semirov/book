@@ -35,7 +35,8 @@ const id = z.string().min(1).max(80);
 const nextBody = z
   .object({
     for: z.enum(['fwd', 'bwd']).optional(),
-    role: z.enum(['editor', 'consultant']).optional(),
+    // BOOK-61: `rights` is Gate B, offered only for a step whose scan flagged.
+    role: z.enum(['editor', 'consultant', 'rights']).optional(),
     session,
   })
   .refine((value) => (value.for === undefined) !== (value.role === undefined), {
@@ -57,9 +58,12 @@ const landBody = z.object({
 
 const verdictBody = z.object({
   stepId: id,
-  role: z.enum(['editor', 'consultant']),
+  // BOOK-61: Gate B answers CLEAR/REFUSED on the same row the two prose roles answer
+  // HOLDS/GAP; the pair is read together below, and a mismatched pair is refused.
+  role: z.enum(['editor', 'consultant', 'rights']),
   session,
-  verdict: z.enum(['HOLDS', 'GAP']),
+  verdict: z.enum(['HOLDS', 'GAP', 'CLEAR', 'REFUSED']),
+  rule: z.string().max(40).nullish(),
   findings: z.unknown().optional(),
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
@@ -146,8 +150,28 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     const body = landBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.land(body.leaseId, { noWrite: body.noWrite, rev: body.rev }) };
   });
-  app.post('/internal/verdict', async (request) => {
+  app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});
+    if (body.role === 'rights') {
+      if (body.verdict !== 'CLEAR' && body.verdict !== 'REFUSED') {
+        return reply.code(422).send({ code: 'INVALID_VERDICT', message: 'a rights verdict is CLEAR|REFUSED' });
+      }
+      return {
+        ok: true,
+        data: options.engine.verdictRights(body.stepId, {
+          role: 'rights',
+          session: body.session,
+          verdict: body.verdict,
+          rule: body.rule ?? null,
+          model: body.model ?? 'stub',
+          tokensIn: body.tokensIn ?? 0,
+          tokensOut: body.tokensOut ?? 0,
+        }),
+      };
+    }
+    if (body.verdict !== 'HOLDS' && body.verdict !== 'GAP') {
+      return reply.code(422).send({ code: 'INVALID_VERDICT', message: 'a prose verdict is HOLDS|GAP' });
+    }
     return {
       ok: true,
       data: options.engine.verdict(body.stepId, {

@@ -170,8 +170,26 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
   // never entered the book and the change waits for a decision.
   if (outcome === 'science') return 'остановлено: физика не подтверждена';
   if (outcome === 'ending') return 'финал проверен, нужно решение';
+  // BOOK-61: Gate B's one word. The card's reason carries the rule's own sentence — never
+  // «внесено», and never the auditor's word for a refusal about the law.
+  if (outcome === 'rights') return 'не принято';
   if (outcome === 'gate_timeout') return 'остановлено: проверка не ответила';
   return 'идёт';
+}
+
+/**
+ * BOOK-61 — the change card's footer is one line: the outcome word, then the reason. A reason
+ * that **already opens with that word** is that line (Gate B's fixed sentence — «не принято:
+ * чужая цитата без источника»), so the word is not printed beside it a second time. Every
+ * other outcome keeps both parts exactly as before.
+ */
+export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outcome' | 'reason'>): {
+  word: string | null;
+  reason: string | null;
+} {
+  const word = change.premise ? premiseOutcomeCopy(change) : outcomeCopy(change.outcome);
+  if (change.reason !== null && change.reason.startsWith(word)) return { word: null, reason: change.reason };
+  return { word, reason: change.reason };
 }
 
 /**

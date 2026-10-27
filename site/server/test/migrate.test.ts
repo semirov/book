@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v13', () => {
+describe('migrate — schema v14', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(14);
+    expect(SCHEMA_VERSION).toBe(15);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -390,7 +390,7 @@ describe('migrate — schema v13', () => {
     }
     db.pragma('user_version = 12');
 
-    expect(migrate(db)).toEqual({ from: 12, to: 14 });
+    expect(migrate(db)).toEqual({ from: 12, to: 15 });
     for (const table of ['changes', 'steps', 'change_impact']) {
       expect(columns(db, table)).toContain('cost_priced');
     }
@@ -400,7 +400,7 @@ describe('migrate — schema v13', () => {
       { id: 'chg_placeholder', cost_priced: 0 },
     ]);
     // The old database boots: migrate probes it, and the next run has nothing to do.
-    expect(migrate(db)).toEqual({ from: 14, to: 14 });
+    expect(migrate(db)).toEqual({ from: 15, to: 15 });
     db.close();
   });
 
@@ -415,10 +415,11 @@ describe('migrate — schema v13', () => {
     db.exec('ALTER TABLE identities DROP COLUMN edit_exempt');
     db.pragma('user_version = 13');
 
-    expect(migrate(db)).toEqual({ from: 13, to: 14 });
+    // BOOK-113 and BOOK-61 land on the way to the head version.
+    expect(migrate(db)).toEqual({ from: 13, to: 15 });
     // An existing reader is not exempt by accident: the column reads as 0.
     expect(db.prepare('SELECT edit_exempt FROM identities WHERE id = ?').get('idt_old')).toEqual({ edit_exempt: 0 });
-    expect(migrate(db)).toEqual({ from: 14, to: 14 });
+    expect(migrate(db)).toEqual({ from: 15, to: 15 });
     db.close();
   });
 

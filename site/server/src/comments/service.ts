@@ -3,7 +3,13 @@
  *
  * The order is the security design and must not be rearranged:
  *   identity → idempotent replay → queue backpressure → CAPTCHA (only when a provider is
- *   configured) → sanitize → dedupe → anchor → guard → rate slots → store → broadcast.
+ *   configured) → sanitize → dedupe → anchor → guard (A) → rights scan (B) → budget/rate
+ *   slots → store → rights write (B) → broadcast.
+ *
+ * Gate B's **scan** runs before the budget and its refusal spends no slot (BOOK-61 review m2);
+ * its **write** is after the insert, because a verdict is a column on the row and not a field
+ * of the request. The budget itself is `budget.ts` (BOOK-113): an exempt identity spends no
+ * edit slot, while the comment budget still applies to everyone.
  *
  * BOOK-64 (2026-10-27): the shipped gate is the authenticated identity plus the comment and
  * edit rate limits, so with `captchaProvider: 'none'` the verification step is skipped and the
@@ -23,9 +29,6 @@ import {
   COMMENT_RAW_MAX_BYTES,
   EDIT_MAX_CHARS,
   EDIT_RAW_MAX_BYTES,
-  PREMISE_FROZEN_REASON,
-  TOTAL_CHAPTERS,
-  type CommentAnchor,
   type CommentBudget,
   type InterventionKind,
   type PostCommentInput,
@@ -38,24 +41,25 @@ import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
-import { editDailyMessage } from './dailyLimit.ts';
+import { resolveAnchor } from './anchor.ts';
 import { readBudget } from './budget.ts';
+import { editDailyMessage } from './dailyLimit.ts';
+import { fail, isPresent, type ServiceFailure } from './failure.ts';
 import { checkInterventionKind } from './intervention.ts';
 import { classifyComment } from './guard.ts';
 import {
   appendCommentEvent,
   findDuplicate,
   insertComment,
-  readBlock,
-  readChapterBase,
   readCommentRow,
   readCommentRowByIdemKey,
   toCommentDto,
   type CommentRow,
 } from './repo.ts';
-import { sanitizeAffix, sanitizeAuthor, sanitizeBody, sanitizeProposed, sanitizeQuote } from './sanitize.ts';
+import { sanitizeAuthor, sanitizeBody, sanitizeProposed } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
 import { commentSpecs, editSpecs } from '../rate/policy.ts';
+import { applyRights, scanFiling } from '../rights/apply.ts';
 
 export type CommentServiceDeps = {
   db: Db;
@@ -70,22 +74,7 @@ export type CommentServiceDeps = {
 
 export type PostContext = { identity: IdentityRow; ip: string; ipKey: string };
 
-export type ServiceFailure = {
-  ok: false;
-  status: number;
-  code: string;
-  message: string;
-  retryAfterMs?: number;
-  resetAt?: string;
-  currentText?: string;
-  /** BOOK-111: the filing a refusal names — a duplicate's own row, so the reader can open it. */
-  commentId?: string;
-  /**
-   * Which budget refused an edit. Internal only — the route logs it (identity and network
-   * refusals are distinguishable to an operator) and never sends it to the reader.
-   */
-  budget?: 'identity' | 'ip';
-};
+export type { ServiceFailure } from './failure.ts';
 
 export type ServiceResult = { ok: true; status: number; body: PostCommentResponse } | ServiceFailure;
 
@@ -217,10 +206,15 @@ export class CommentService {
       return fail(409, 'DUPLICATE', 'такое замечание уже отправлено', duplicate.id);
     }
 
-    const anchor = this.resolveAnchor(input);
+    const anchor = resolveAnchor(this.db, input);
     if (anchor.ok === false) return anchor.failure;
 
     const guard = classifyComment(body.text, proposedText);
+    const filing = { body: body.text, proposed: proposedText, quote: anchor.anchor.quote };
+    // Gate B's scan (BOOK-61): the law is asked before any budget is spent, so a refused
+    // filing costs the reader no slot. The answer is written to the row after the insert —
+    // a verdict is a column, and the row must exist first.
+    const rights = scanFiling(this.db, input.chapter, filing);
     const specs = [
       ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
       // BOOK-113: an exempt identity spends no edit slot — both the identity and the network
@@ -231,7 +225,7 @@ export class CommentService {
         ? []
         : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
     ];
-    const consumed = this.limiter.consume(specs);
+    const consumed = rights.verdict === 'refused' ? { allowed: true as const } : this.limiter.consume(specs);
     if (!consumed.allowed) {
       const blocked = consumed.blocked;
       const resetAt = blocked.resetAtMs === null ? undefined : new Date(blocked.resetAtMs).toISOString();
@@ -296,6 +290,9 @@ export class CommentService {
     if (guard.status === 'quarantined') {
       appendCommentEvent(this.db, id, 'quarantined', at, { reason: guard.reason });
     }
+    // Gate B (BOOK-61): the law outranks the scope; its own column, written once. The scan
+    // above is handed over so the answer the budget respected is the answer stored.
+    applyRights(this.db, id, input.chapter, filing, at, rights);
 
     const row = readCommentRow(this.db, id);
     if (row === undefined) return fail(500, 'INTERNAL', 'замечание не сохранилось');
@@ -367,105 +364,6 @@ export class CommentService {
     // so the refusal names no comment id: 409 and nothing more.
     return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
   }
-
-  /**
-   * A comment attaches to a paragraph from one revision. If that paragraph has changed,
-   * the composer must be told (`STALE_ANCHOR`) rather than attach the note to the wrong
-   * place (§9, §12.1).
-   *
-   * BOOK-7: the frozen frame is decided from the slot itself — ch01 and ch67 are never
-   * targets, whether or not the projection already holds their basis sentence. Premise vs
-   * ordinary is decided by whether the slot is *written* (`basis`/`block_count`), not by the
-   * absence of a row: a basis slot has a row, and it is still not prose. A chapter-level
-   * intervention on an unwritten slot is that slot's premise (base revision 0, no block).
-   */
-  private resolveAnchor(
-    input: PostCommentInput,
-  ): { ok: true; anchor: CommentAnchor; baseRev: number | null } | { ok: false; failure: ServiceFailure } {
-    if (input.chapter === 1 || input.chapter === TOTAL_CHAPTERS) {
-      return { ok: false, failure: fail(403, 'FROZEN_FRAME', PREMISE_FROZEN_REASON) };
-    }
-    const base = readChapterBase(this.db, input.chapter);
-    const quote = sanitizeQuote(input.quote);
-    const blockId = isPresent(input.blockId) ? input.blockId : null;
-    const baseRev = typeof input.baseRev === 'number' ? input.baseRev : null;
-
-    if (base === undefined || base.basis !== 0 || base.blockCount === 0) {
-      if (blockId !== null) {
-        return {
-          ok: false,
-          failure: fail(409, 'STALE_ANCHOR', 'глава ещё не написана — замечание можно оставить к главе целиком'),
-        };
-      }
-      return {
-        ok: true,
-        baseRev: 0,
-        anchor: {
-          blockId: null,
-          blockIndex: null,
-          quote: null,
-          prefix: sanitizeAffix(input.prefix),
-          suffix: sanitizeAffix(input.suffix),
-          resolved: true,
-        },
-      };
-    }
-
-    if (blockId === null) {
-      return {
-        ok: true,
-        // BOOK-111: a chapter-wide note on a **written** chapter is not a premise, and the
-        // schema defines a premise as `base_rev 0`. A crafted or leftover `0` (or a negative)
-        // must never be stored here, or `toCommentDto` would report the reader's note on
-        // written text as the chapter's premise: the chapter's own revision is the floor.
-        baseRev: baseRev !== null && baseRev > 0 ? baseRev : base.rev,
-        anchor: {
-          blockId: null,
-          blockIndex: null,
-          quote: null,
-          prefix: sanitizeAffix(input.prefix),
-          suffix: sanitizeAffix(input.suffix),
-          resolved: true,
-        },
-      };
-    }
-
-    const block = readBlock(this.db, blockId);
-    const stale =
-      block === undefined ||
-      block.chapter !== input.chapter ||
-      (quote !== null && !block.text.includes(quote)) ||
-      (baseRev !== null && baseRev !== base.rev);
-    if (stale) {
-      return {
-        ok: false,
-        failure: {
-          ok: false,
-          status: 409,
-          code: 'STALE_ANCHOR',
-          message: 'абзац изменился — вот он сейчас, привяжите замечание заново',
-          ...(block === undefined ? {} : { currentText: block.text }),
-        },
-      };
-    }
-
-    return {
-      ok: true,
-      baseRev: baseRev ?? base.rev,
-      anchor: {
-        blockId,
-        blockIndex: block.idx,
-        quote,
-        prefix: sanitizeAffix(input.prefix),
-        suffix: sanitizeAffix(input.suffix),
-        resolved: true,
-      },
-    };
-  }
-}
-
-function isPresent(value: string | null | undefined): value is string {
-  return typeof value === 'string' && value.length > 0;
 }
 
 /**
@@ -483,8 +381,4 @@ export function isUniqueViolation(error: unknown): boolean {
     return typeof message !== 'string' || message.includes('idem_key');
   }
   return false;
-}
-
-function fail(status: number, code: string, message: string, commentId?: string): ServiceFailure {
-  return { ok: false, status, code, message, ...(commentId === undefined ? {} : { commentId }) };
 }

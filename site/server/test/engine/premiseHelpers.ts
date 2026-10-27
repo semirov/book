@@ -51,11 +51,13 @@ export function seed(
     createdAt: AT,
     idemKey: null,
   });
-  // BOOK-9: only a recorded `FITS` may become a change; this fixture records it directly.
-  db.prepare(`UPDATE comments SET audit_verdict = 'FITS', audited_at = ?, audited_by = 'triage-1' WHERE id = ?`).run(
-    AT,
-    id,
-  );
+  // BOOK-9/BOOK-61: only a recorded `FITS` and a `CLEAR` right may become a change; this
+  // fixture records both directly.
+  db.prepare(
+    `UPDATE comments SET audit_verdict = 'FITS', audited_at = ?, audited_by = 'triage-1',
+       rights_verdict = 'CLEAR', rights_at = ?, rights_source = 'scan'
+     WHERE id = ?`,
+  ).run(AT, AT, id);
   return id;
 }
 

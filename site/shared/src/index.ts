@@ -20,7 +20,8 @@ export * from './intent.ts';
  * `LegalDenylist`, which `book.ts` already owns.
  */
 export { runValidation } from './validate/rules.ts';
-export { compilePatterns } from './validate/denylist.ts';
+export { buildNameIndex, compilePatterns, findDenylistedNames } from './validate/denylist.ts';
+export type { DenylistHit, NameIndex } from './validate/denylist.ts';
 export { checkCommitScope, commitSubject, isBookFile, isSweep, stagedBookFiles, SWEEP_PREFIX } from './validate/commit.ts';
 export type {
   // `Finding` is already `change.ts`'s (a gate's finding); the validator's own record of a

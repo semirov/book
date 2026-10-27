@@ -33,6 +33,15 @@ const INVISIBLES = /[\u200B-\u200F\uFEFF\u202A-\u202E\u2066-\u2069]|[\u{E0000}-\
 const HTML_TAG = /<\/?[A-Za-z!][^>]{0,500}>/gu;
 const CODE_FENCE = /`{3,}/gu;
 
+/**
+ * BOOK-61 — the first half of the post-check's `norm`: NFKC, then C0/C1 and the invisibles to
+ * one space. A verdict's quote must match the value it names even when the model retyped it
+ * with a tab where the reader wrote a space, so the comparison is made on this form.
+ */
+export function spaceInvisible(raw: string): string {
+  return raw.normalize('NFKC').replace(INVISIBLES, ' ').replace(CONTROLS, ' ');
+}
+
 /** NFKC, controls and invisibles out, spaces collapsed, newlines at most doubled. */
 export function normalizeText(raw: string): string {
   return raw

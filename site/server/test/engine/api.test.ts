@@ -317,7 +317,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       displayName: 'Аня',
       at: '2026-10-26T10:00:00Z',
     });
-    const seed = (id: string, verdict: string | null): string => {
+    const seed = (id: string, verdict: string | null, rights: string | null = 'CLEAR'): string => {
       insertComment(fixture.db, {
         id,
         identityId: identity.id,
@@ -344,15 +344,19 @@ describe('the internal API (§4.2, §6A.11)', () => {
       if (verdict !== null) {
         fixture.db.prepare('UPDATE comments SET audit_verdict = ? WHERE id = ?').run(verdict, id);
       }
+      // BOOK-61: the internal queue reads the same three columns acceptance does.
+      fixture.db.prepare('UPDATE comments SET rights_verdict = ? WHERE id = ?').run(rights, id);
       return id;
     };
     const unaudited = seed('cmt_01JB7ENGINE000000000000001', null);
     const refusedByAuditor = seed('cmt_01JB7ENGINE000000000000002', 'OFF');
     const fits = seed('cmt_01JB7ENGINE000000000000003', 'FITS');
+    // A row the rights gate has not cleared is refused before the auditor is even consulted.
+    const noRights = seed('cmt_01JB7ENGINE000000000000004', 'FITS', null);
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     const auth = { authorization: `Bearer ${TOKEN}` };
     try {
-      for (const commentId of [unaudited, refusedByAuditor, 'cmt_missing']) {
+      for (const commentId of [unaudited, refusedByAuditor, noRights, 'cmt_missing']) {
         const response = await app.inject({
           method: 'POST',
           url: '/internal/changes',
@@ -361,7 +365,12 @@ describe('the internal API (§4.2, §6A.11)', () => {
         });
         expect(response.statusCode).toBe(422);
         expect(response.json()).toMatchObject({
-          code: commentId === 'cmt_missing' ? 'UNKNOWN_COMMENT' : 'AUDIT_REQUIRED',
+          code:
+            commentId === 'cmt_missing'
+              ? 'UNKNOWN_COMMENT'
+              : commentId === noRights
+                ? 'RIGHTS_REQUIRED'
+                : 'AUDIT_REQUIRED',
         });
       }
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
@@ -427,7 +436,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       createdAt: '2026-10-26T10:01:00Z',
       idemKey: null,
     });
-    fixture.db.prepare(`UPDATE comments SET audit_verdict = 'FITS' WHERE id = ?`).run(commentId);
+    fixture.db.prepare(`UPDATE comments SET audit_verdict = 'FITS', rights_verdict = 'CLEAR' WHERE id = ?`).run(commentId);
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     const auth = { authorization: `Bearer ${TOKEN}` };
     const enqueue = (intent: string) =>

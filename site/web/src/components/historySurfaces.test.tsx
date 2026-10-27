@@ -143,6 +143,7 @@ const filing: CommentDto = {
   decidedAt: null,
   changeId: null,
   applied: null,
+      refusal: null,
 };
 
 const TEXT = 'Я вошёл в пустую комнату. Её освещал яркий свет.';

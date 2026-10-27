@@ -1,4 +1,5 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, chaptersTableSql } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, chaptersTableSql } from './schema.ts';
+import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 
@@ -216,6 +217,28 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'identities', 'edit_exempt', 'INTEGER NOT NULL DEFAULT 0');
     },
   },
+  {
+    // BOOK-61: three gates on a change (BOOK-DOC-42). Gate A's hold and Gate B's verdict are
+    // plain comment columns — a hold is data about a row, not a state of its own. The two gate
+    // tables widen `role` to the conditional `rights` under a coupled check, which SQLite
+    // cannot add in place, so both are rebuilt with every row.
+    //
+    // `steps.rights_scan` has no statement here on purpose: `ensureStepLifecycle` rebuilds a
+    // `steps` table that lacks any column of `STEPS_COLUMNS`, and that rebuild is the fresh
+    // install's exact shape. A migrated install and a fresh one therefore agree on both.
+    to: 15,
+    up(db) {
+      addColumn(db, 'comments', 'held_rule', 'TEXT');
+      addColumn(db, 'comments', 'held_by', `TEXT CHECK (held_by IN ('filter','classifier','operator'))`);
+      addColumn(db, 'comments', 'held_at', 'TEXT');
+      addColumn(db, 'comments', 'rights_verdict', `TEXT CHECK (rights_verdict IN ('CLEAR','REFUSED'))`);
+      addColumn(db, 'comments', 'rights_rule', 'TEXT');
+      addColumn(db, 'comments', 'rights_at', 'TEXT');
+      addColumn(db, 'comments', 'rights_by', 'TEXT');
+      addColumn(db, 'comments', 'rights_source', `TEXT CHECK (rights_source IN ('scan','model','operator'))`);
+      widenGateRoles(db);
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */
@@ -224,6 +247,45 @@ function addColumn(db: Db, table: string, column: string, definition: string): v
     (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name),
   );
   if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+/** The columns both the v13 gate tables and the v14 ones carry — the rebuild copies them. */
+const DISPATCH_COLUMNS = ['step_id', 'role', 'session', 'dispatched_at', 'expires_at'] as const;
+const VERDICT_COLUMNS = [
+  'step_id',
+  'role',
+  'verdict',
+  'findings',
+  'cycles',
+  'model',
+  'tokens_in',
+  'tokens_out',
+  'at',
+  'late',
+] as const;
+
+/**
+ * BOOK-61: the two gate tables gain the conditional `rights` role, and `gate_verdicts` couples
+ * the verdict to the role. SQLite cannot widen an inline CHECK, so both tables are rebuilt —
+ * renamed aside, recreated from the same constant a fresh install uses, copied, dropped. The
+ * step is idempotent: a table whose SQL already names `rights` is left alone.
+ */
+function widenGateRoles(db: Db): void {
+  const sql = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'gate_verdicts'`)
+    .get() as { sql: string } | undefined;
+  if (sql === undefined || sql.sql.includes("'rights'")) return;
+  db.exec('ALTER TABLE gate_dispatches RENAME TO gate_dispatches_v13');
+  db.exec('ALTER TABLE gate_verdicts RENAME TO gate_verdicts_v13');
+  db.exec(GATE_TABLES_SQL);
+  const dispatches = DISPATCH_COLUMNS.join(', ');
+  db.exec(
+    `INSERT INTO gate_dispatches (${dispatches}) SELECT ${dispatches} FROM gate_dispatches_v13`,
+  );
+  const verdicts = VERDICT_COLUMNS.join(', ');
+  db.exec(`INSERT INTO gate_verdicts (${verdicts}) SELECT ${verdicts} FROM gate_verdicts_v13`);
+  db.exec('DROP TABLE gate_dispatches_v13');
+  db.exec('DROP TABLE gate_verdicts_v13');
 }
 
 function tableExists(db: Db, name: string): boolean {
@@ -258,6 +320,10 @@ export function migrate(db: Db): { from: number; to: number } {
   }
 
   ensureStepLifecycle(db);
+  // BOOK-61 review B3: a row posted before Gate B existed carries no rights answer, and every
+  // gate behind it reads `NULL` as "no answer" — the filing would wait forever. One deterministic
+  // pass over the undecided, still-open rows; marked done in `meta`, so a boot costs nothing.
+  backfillRights(db, new Date().toISOString());
   probe(db);
   return { from, to: current };
 }
@@ -278,6 +344,11 @@ export function ensureStepLifecycle(db: Db): boolean {
 
   const shared = STEPS_COLUMNS.filter((column) => byName.has(column));
   db.pragma('foreign_keys = OFF');
+  // BOOK-61: without this, `RENAME` rewrites every table that references `steps` — gate
+  // verdicts, dispatches, leases — to point at the temporary name, and the drop below
+  // orphans them. `arch.mjs`/`probe` then fail `foreign_key_check` on a real upgrade.
+  const legacy = Number(db.pragma('legacy_alter_table', { simple: true }) ?? 0);
+  db.pragma('legacy_alter_table = ON');
   try {
     db.transaction(() => {
       db.exec('ALTER TABLE steps RENAME TO steps_pre_m3');
@@ -290,6 +361,7 @@ export function ensureStepLifecycle(db: Db): boolean {
       db.exec('DROP TABLE steps_pre_m3');
     })();
   } finally {
+    db.pragma(`legacy_alter_table = ${legacy === 1 ? 'ON' : 'OFF'}`);
     db.pragma('foreign_keys = ON');
   }
   return true;

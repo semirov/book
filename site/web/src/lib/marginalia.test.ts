@@ -7,6 +7,7 @@ import {
   filingConsequence,
   filingMarginalia,
   filingState,
+  HELD_LINE,
   landingReceipt,
   revisionOf,
   sentenceAt,
@@ -40,6 +41,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }
@@ -121,7 +123,9 @@ describe('the deck’s second line', () => {
     expect(filingConsequence(comment({ status: 'accepted', interventionKind: null }))).toBe('замечание в очереди');
     expect(filingConsequence(comment({ status: 'superseded' }))).toBe('снято: текст успел измениться');
     expect(filingConsequence(comment({ status: 'rejected' }))).toBe('отклонено');
-    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe('проверяется перед триажем');
+    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(
+      'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
+    );
     expect(filingConsequence(comment({ status: 'expired' }))).toBe('проход не состоялся');
     expect(filingConsequence(comment({ status: 'hidden' }))).toBe('скрыто');
     expect(filingConsequence(comment({ status: 'unknown' as CommentDto['status'] }))).toBe('попадёт в триаж');
@@ -137,8 +141,7 @@ describe('the deck’s second line', () => {
     expect(landingReceipt(7, 4)).toBe('внесено в главу 07 · право на ваш текст перешло автору книги · ревизия 4');
   });
 
-  it('keeps a premise’s whole lifecycle on one honest line', () => {
-    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe('принято в основу, до первой редакции');
+  it('keeps a premise’s whole lifecycle on one honest line', () => {    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe('принято в основу, до первой редакции');
     expect(filingConsequence(comment({ premise: true, status: 'applied', applied: { chapter: 5, rev: 2 } }))).toBe(
       'вошло в первую редакцию главы 5',
     );
@@ -274,5 +277,31 @@ describe('the sentence a filing stands on', () => {
   it('refuses an unresolved anchor and a place it cannot name', () => {
     expect(sentenceAt(TEXT, anchor({ resolved: false }))).toBeNull();
     expect(sentenceAt(TEXT, anchor({ prefix: null, suffix: null }))).toBeNull();
+  });
+});
+
+describe('the gate’s word beside the state’s word (BOOK-61)', () => {
+  it('gives a hold the hold’s line, not the guard’s taxonomy', () => {
+    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(`проверяется: ${HELD_LINE}`);
+    expect(filingConsequence(comment({ status: 'quarantined' }))).not.toContain('возможная инструкция');
+  });
+
+  it('prints B’s fixed sentence as the line, and C’s word alone', () => {
+    // B's sentence is stored in `reason` at the moment of the refusal; the page prints it whole.
+    expect(
+      filingConsequence(
+        comment({ status: 'rejected', refusal: 'rights', reason: 'не принято: пересказ чужого текста без источника' }),
+      ),
+    ).toBe('не принято: пересказ чужого текста без источника');
+    // C keeps its own word here; `commentView` appends the auditor's reason beside it.
+    expect(filingConsequence(comment({ status: 'rejected', refusal: 'auditor', reason: 'вне книги' }))).toBe('отклонено');
+  });
+
+  it('keeps the state word «ждёт» under every refusal', () => {
+    for (const refusal of ['held', 'rights', 'auditor'] as const) {
+      expect(filingMarginalia(comment({ status: refusal === 'held' ? 'quarantined' : 'rejected', refusal })).word).toBe(
+        'ждёт',
+      );
+    }
   });
 });
