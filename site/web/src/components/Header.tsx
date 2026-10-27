@@ -1,9 +1,10 @@
-import { TOTAL_CHAPTERS, type StateSnapshot } from '@book/shared';
+import { TOTAL_CHAPTERS, type CatalogEntry, type StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import { engineChipCopy, chipCopy } from '../lib/format.ts';
 import { liveChapter, revisingChapter } from '../lib/spine.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
+import { PageNumber } from './PageNumber.tsx';
 
 /**
  * Two label rows and the cascade ribbon (DESIGN §5.3, §7.1–7.2; BOOK-DOC-5 §5). The strip
@@ -19,11 +20,13 @@ import { CascadeRibbon } from './CascadeRibbon.tsx';
 export function Header({
   state,
   ribbon,
+  catalog,
   markers: escalation,
   onOpenChange,
 }: {
   state: StateSnapshot;
   ribbon: Ribbon | null;
+  catalog: readonly CatalogEntry[];
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
 }) {
@@ -43,6 +46,9 @@ export function Header({
       <div className="page sheet top-in">
         <div className="top-row">
           <span className="brand">Книга · {TOTAL_CHAPTERS} глав</span>
+          {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
+              margin and out of this row's flow (live.css). */}
+          <PageNumber catalog={catalog} />
         </div>
         <div className="top-row">
           <span className={chip.live ? 'live' : 'live idle'}>

@@ -437,6 +437,7 @@ export function App() {
         front={front}
         state={state}
         ribbon={ribbon}
+        catalog={catalog}
         escalation={escalationMarkers(state.unresolved)}
         onOpenChange={card.open}
         view={view}

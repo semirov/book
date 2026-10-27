@@ -294,7 +294,7 @@ describe('the removed chips are gone from their surfaces', () => {
   });
 
   it('prints one chip in the header — the queue counter is gone, not emptied', () => {
-    const html = renderToStaticMarkup(<Header state={state} ribbon={null} markers={[]} onOpenChange={() => undefined} />);
+    const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} />);
     expect(html).toContain('глав ещё нет');
     expect(html).not.toContain('class="queue"');
     expect(html).not.toContain('замечаний');

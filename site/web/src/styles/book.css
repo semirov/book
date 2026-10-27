@@ -3,8 +3,13 @@
    seam, the colophon.
    ============================================================================ */
 
+/* BOOK-89 (D1/D3) — a chapter opens a page: the break is the book's largest air
+   (72 = 2.38 lines at the ≥1024 leading), over the `.ch-h` hairline. Pages are virtual, so
+   there is no page box and no page mark at the header: the running folio carries the number
+   the moment the chapter's boundary is crossed. The narrow steps are declared below the
+   prose rule, so the first `max-width: 599px` block of this sheet stays the phone's `.p`. */
 .ch {
-  padding-top: 40px;
+  padding-top: 72px;
 }
 .ch-h {
   display: flex;
@@ -82,6 +87,18 @@
 @media (max-width: 599px) {
   .p {
     text-align: left;
+  }
+}
+
+/* BOOK-89 — the chapter break at the two narrow steps: 64 above 600, 56 on the phone. */
+@media (max-width: 1023px) {
+  .ch {
+    padding-top: 64px;
+  }
+}
+@media (max-width: 599px) {
+  .ch {
+    padding-top: 56px;
   }
 }
 
