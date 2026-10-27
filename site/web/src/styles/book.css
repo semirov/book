@@ -288,6 +288,17 @@
   gap: 12px;
   align-items: center;
 }
+/* BOOK-94: the imprint line is a sentence now, and it wraps without a one-word last line.
+   The register does not change: the shared `.colophon` rules keep the micro floor, the
+   uppercase transform and the tracking. */
+.colophon .imprint-line {
+  text-wrap: pretty;
+}
+/* BOOK-94: the long sentence pushes the toggle onto its own line, and `space-between` cannot
+   reach it there — the auto margin keeps the toggle on the column's right edge, under «… зн.». */
+.colophon .theme {
+  margin-inline-start: auto;
+}
 .colophon .mono {
   font-family: var(--mono);
   letter-spacing: 0.03em;
