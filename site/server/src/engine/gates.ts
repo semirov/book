@@ -6,6 +6,10 @@
  * cannot exist before the editor's; a verdict cannot arrive from a session that was not
  * handed the step; and a `GAP` without a `blocker` is a matter of taste, which the engine
  * downgrades to `HOLDS` and records.
+ *
+ * BOOK-76 — the cap's consequence splits by role: an editor blocker is published with its
+ * finding, a consultant blocker stops the step instead. «Physics failed» and «prose judged»
+ * are not the same fact and must not share one outcome.
  */
 
 import type { Finding, FindingSeverity, GateRole } from '@book/shared';
@@ -195,8 +199,12 @@ export function recordVerdict(
     if (step.pass === 'ending') {
       // ADR-024: the ending is never rewritten; a blocker escalates at close.
       action = 'close';
+    } else if (cycles >= deps.config.gateCycles) {
+      // BOOK-76: the cap publishes a prose judgement with its finding, but a physics claim
+      // that does not hold never lands — the step stops and the ripple decides what follows.
+      action = answer.role === 'consultant' ? 'close' : 'publish_with_finding';
     } else {
-      action = cycles >= deps.config.gateCycles ? 'publish_with_finding' : 'revise';
+      action = 'revise';
     }
   }
 
@@ -224,15 +232,26 @@ export function missingVerdicts(db: Db, stepId: string): GateRole[] {
   return GATE_ROLES.filter((role) => getVerdict(db, stepId, role) === undefined);
 }
 
-/** A step is closed `published_with_finding` when a blocker survived the cycle cap. */
-export function survivedFinding(db: Db, stepId: string, gateCycles: number, cycle: number): boolean {
-  if (cycle < gateCycles) return false;
-  return GATE_ROLES.some((role) => {
-    const verdict = getVerdict(db, stepId, role);
-    if (!verdict || verdict.verdict !== 'GAP') return false;
-    const findings = normalizeFindings(JSON.parse(verdict.findings) as unknown);
-    return hasBlocker(findings);
-  });
+/** A `GAP` with a blocker on record for one role — the raw fact, before any cap is applied. */
+export function blockingVerdict(db: Db, stepId: string, role: GateRole): boolean {
+  const verdict = getVerdict(db, stepId, role);
+  if (!verdict || verdict.verdict !== 'GAP') return false;
+  return hasBlocker(normalizeFindings(JSON.parse(verdict.findings) as unknown));
+}
+
+/**
+ * A blocker that survived the cycle cap, scoped to one role (BOOK-76). An editor's is
+ * published with its finding; a consultant's stops the step — the two consequences are not
+ * interchangeable, so the question is asked per role rather than per step.
+ */
+export function survivedBlocker(
+  db: Db,
+  stepId: string,
+  gateCycles: number,
+  cycle: number,
+  role: GateRole,
+): boolean {
+  return cycle >= gateCycles && blockingVerdict(db, stepId, role);
 }
 
 export function assignmentOf(

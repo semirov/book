@@ -60,6 +60,7 @@ const change: ChangeDto = {
   steps: [],
   appliedRevs: [{ chapter: 8, rev: 4 }],
   cost: null,
+  scienceCheck: null,
   history: null,
   enqueuedAt: '2026-10-25T12:05:00Z',
   startedAt: '2026-10-25T12:06:00Z',

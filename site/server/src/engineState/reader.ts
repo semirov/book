@@ -244,6 +244,8 @@ function chapterBoundary(text: string, chapter: number): SeamBoundary {
 function unresolvedReason(outcome: string | null): StateSnapshot['unresolved'][number]['reason'] {
   if (outcome === 'budget' || outcome === 'oscillation' || outcome === 'origin' || outcome === 'delta') return outcome;
   if (outcome === 'ending') return 'ending';
+  // BOOK-76: a physics stop is its own unresolved seam, not a finding that was kept.
+  if (outcome === 'science') return 'science';
   if (outcome === 'gate_timeout') return 'gate_timeout';
   return 'finding';
 }

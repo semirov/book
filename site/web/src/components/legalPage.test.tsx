@@ -166,8 +166,24 @@ describe('/rules', () => {
 
   it('says none of the internal words to a reader (BOOK-22)', () => {
     const markup = text.toLowerCase();
-    for (const word of ['fits', 'off', 'auditor', 'аудитор', 'шов', 'противоречие исправлено', 'битый', '!']) {
+    // BOOK-76 dropped the ban on «аудитор»: the reader is now told the chain that reads the
+    // text, and the auditor is one of its steps. The gate vocabulary stays internal.
+    for (const word of ['fits', 'off', 'auditor', 'шов', 'противоречие исправлено', 'битый', '!', 'вердикт', 'findings', 'holds', 'gap', 'gate', 'blocker']) {
       expect(markup).not.toContain(word);
     }
+  });
+
+  it('names the chain that reads the text, between the refusals and the mechanics (BOOK-76)', () => {
+    const flat = text.replace(/\s+/gu, ' ');
+    expect(flat).toContain('Кто читает текст');
+    expect(flat).toContain('научный консультант');
+    expect(flat).toContain('Не проходит проверку — в книгу не входит');
+    // The section sits where a reader looks for the rule, not appended at the end.
+    const refusedAt = text.indexOf('Что не принимается');
+    const readersAt = text.indexOf('Кто читает текст');
+    const worksAt = text.indexOf('Как это работает');
+    expect(refusedAt).toBeGreaterThan(-1);
+    expect(readersAt).toBeGreaterThan(refusedAt);
+    expect(readersAt).toBeLessThan(worksAt);
   });
 });

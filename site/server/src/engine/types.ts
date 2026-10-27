@@ -47,6 +47,8 @@ export type EngineAlert = {
     | 'origin'
     | 'delta'
     | 'ending'
+    /** BOOK-76: a physics claim failed the consultant and the change stopped. */
+    | 'science'
     | 'gate_timeout'
     /** BOOK-18: the derived index could not be built or written at a gate dispatch. */
     | 'index';

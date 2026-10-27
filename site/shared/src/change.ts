@@ -33,6 +33,8 @@ export type ChangeOutcome =
   | 'delta'
   | 'finding'
   | 'ending'
+  /** BOOK-76: the physics pass stopped the change — the failing claim never entered the book. */
+  | 'science'
   | 'gate_timeout';
 
 export type SeamBoundary = number | 'front' | 'ending';
@@ -184,6 +186,8 @@ export type CascadeOutcome =
   | 'escalated:finding'
   | 'escalated:delta'
   | 'escalated:ending'
+  /** BOOK-76: a physics claim that failed the consultant never lands and never ripples on. */
+  | 'escalated:science'
   | 'escalated:gate_timeout';
 
 /**

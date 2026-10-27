@@ -85,6 +85,7 @@ const CHANGE: ChangeDto = {
   steps: [],
   appliedRevs: [],
   cost: null,
+  scienceCheck: null,
   history: null,
   enqueuedAt: '2026-10-25T11:00:00Z',
   startedAt: null,

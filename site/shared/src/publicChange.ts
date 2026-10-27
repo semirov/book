@@ -2,12 +2,14 @@
  * The **public** shape of the writing engine (ARCHITECTURE.md §6A.8, §6B.6, §9, §10.3a).
  *
  * The site renders changes, a queue and a ripple from these objects; the engine keeps the
- * internal ones (`shared/src/change.ts`). The split is the point: there is no field here
- * that could carry a gate verdict, a finding, or the name of a hidden role, so "no gate
- * field in a public payload" is a property of the type, not a rule a renderer may forget.
+ * internal ones (`shared/src/change.ts`). BOOK-76 amends the old rule: **one** fact about a
+ * gate is now public — the physics pass, as the single word `scienceCheck` — and the name of
+ * the role that answers it lives in web copy (`web/src/lib/science.ts`), never here. No field
+ * in this file carries a verdict, a finding, a severity or a price.
  *
  * Everything is derived from rows the engine already writes:
- * `changes`, `cascades`, `steps`, `change_events` and the public part of `events`.
+ * `changes`, `cascades`, `steps`, `change_events`, `gate_verdicts` (that one word) and the
+ * public part of `events`.
  */
 
 import type { InterventionKind } from './intervention.ts';
@@ -82,7 +84,11 @@ export function measuredRub(stored: number | null | undefined, priced: boolean):
   return stored;
 }
 
-/** One step of a ripple — no verdict, no finding, no editor, no consultant (§6B.6). */
+/**
+ * One step of a ripple — what the step did, and whether a finding survived it. Never a
+ * verdict word, a finding's text, a severity or a role (§6B.6); the physics pass travels as
+ * one word on the change itself (`ChangeDto.scienceCheck`).
+ */
 export type ChangeStepDto = {
   seq: number;
   wave: number;
@@ -120,7 +126,10 @@ export type ChangeCascadeDto = {
    * per change. Never the finding text, never a role (§6B.6).
    */
   modes: RetroMode[];
-  /** Aggregate only (§6A.8) — never findings. */
+  /**
+   * Aggregate only (§6A.8) — the iteration count and whether a finding survived the cap,
+   * never the findings themselves and never which role said what.
+   */
   gates: { cycles: number; findingSurvived: boolean };
   tokens: { total: number };
   ms: number;
@@ -161,6 +170,13 @@ export type ChangeDto = {
   appliedRevs: Array<{ chapter: number; rev: number }>;
   /** Null when nothing was spent yet; `cost.rub` is null whenever the money is unmeasured. */
   cost: ChangeCostDto | null;
+  /**
+   * BOOK-76 — the physics pass on this change as one public fact: `'passed'` when every
+   * step that closed carries a consultant `HOLDS`, `'failed'` when one carries `GAP`
+   * (a `GAP` implies a blocker — a blockerless one is stored as `HOLDS`), `null` while a
+   * step has no answer. Never a finding, never a severity, never a role, never a price.
+   */
+  scienceCheck: 'passed' | 'failed' | null;
   history: null | { fromHseq: number; toHseq: number };
   enqueuedAt: string;
   startedAt: string | null;

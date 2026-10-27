@@ -17,6 +17,7 @@ import { WING_WORDS, wingOfChapter } from '../lib/cascade.ts';
 import { changeDeedLine } from '../lib/deed.ts';
 import { costLine, focusHash } from '../lib/focus.ts';
 import { formatCharsShort, formatTime } from '../lib/format.ts';
+import { scienceLine } from '../lib/science.ts';
 
 /**
  * The change card (ARCHITECTURE §11.7, DESIGN §7.11–7.13): the intent as the author's
@@ -27,8 +28,11 @@ import { formatCharsShort, formatTime } from '../lib/format.ts';
  * happened (`lib/deed.ts`) — registered, filed, amended, cause established, divergence
  * recorded — and a cause carries its mode («оформление», «поправка: пункт изложен в новой
  * редакции»). Every chapter of a wing is a link to that chapter, and says which wing reached
- * it and why. There is no gate section and no field to build one from: the DTO has no
- * verdict, no finding text and no role (§6B.6).
+ * it and why.
+ *
+ * BOOK-76: the record carries exactly one gate fact — whether the physics pass held, as one
+ * word from `lib/science.ts` (`проверка · пройдена`). It is absent when no pass has answered,
+ * and the DTO still carries no finding, severity or price.
  */
 export function ChangeCard({
   change,
@@ -52,6 +56,8 @@ export function ChangeCard({
   const kindWord = interventionKindLabel(change.interventionKind);
   // BOOK-23: model and tokens always; the rubles only when they were measured.
   const cost = costLine(change, null);
+  // BOOK-76: one word about the physics pass, and nothing at all while it has not answered.
+  const science = scienceLine(change.scienceCheck);
   const wings = change.steps.filter((step) => typeof step.chapter === 'number' && step.wing !== null);
   const reached = [...new Set(wings.map((step) => step.chapter as number))].sort((left, right) => left - right);
 
@@ -99,6 +105,12 @@ export function ChangeCard({
             {change.position === null ? stampCopy(change) : `${change.position}-я в очереди`}
           </dd>
         </div>
+        {science === null ? null : (
+          <div>
+            <dt>проверка</dt>
+            <dd>{science}</dd>
+          </div>
+        )}
       </dl>
 
       {change.relevance !== null && change.relevance.evidence.length > 0 ? (

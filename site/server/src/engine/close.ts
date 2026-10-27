@@ -48,13 +48,8 @@ export function changeOutcomeOf(cascade: CascadeOutcome): ChangeOutcome {
   if (!cascade.startsWith('escalated:')) return 'applied';
   const reason = cascade.slice('escalated:'.length);
   if (
-    reason === 'budget' ||
-    reason === 'oscillation' ||
-    reason === 'origin' ||
-    reason === 'delta' ||
-    reason === 'finding' ||
-    reason === 'ending' ||
-    reason === 'gate_timeout'
+    reason === 'budget' || reason === 'oscillation' || reason === 'origin' || reason === 'delta' ||
+    reason === 'finding' || reason === 'ending' || reason === 'science' || reason === 'gate_timeout'
   ) {
     return reason;
   }
@@ -68,6 +63,8 @@ const ESCALATION_COPY: Record<string, CloseCopyKey> = {
   delta: 'delta',
   ending: 'ending',
   finding: 'finding',
+  // BOOK-76: a stop by the physics pass reads «не входит в книгу», not «правка опубликована».
+  science: 'science',
   gate_timeout: 'gate',
 };
 

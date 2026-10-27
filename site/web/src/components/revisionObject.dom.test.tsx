@@ -128,6 +128,7 @@ function change(overrides: Partial<ChangeDto> = {}): ChangeDto {
     ],
     appliedRevs: [{ chapter: 8, rev: 4 }, { chapter: 9, rev: 2 }],
     cost: null,
+    scienceCheck: 'passed',
     history: null,
     enqueuedAt: '2026-10-25T11:59:00Z',
     startedAt: '2026-10-25T12:00:00Z',

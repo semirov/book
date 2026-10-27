@@ -18,6 +18,8 @@ const ALERT_KIND: Record<string, EngineAlert['kind']> = {
   delta: 'delta',
   ending: 'ending',
   finding: 'finding',
+  // BOOK-76: the physics pass stopping a change is its own alert, not a prose finding.
+  science: 'science',
   gate_timeout: 'gate_timeout',
 };
 

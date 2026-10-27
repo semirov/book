@@ -121,6 +121,7 @@ const CHANGE: ChangeDto = {
   steps: [],
   appliedRevs: [],
   cost: null,
+  scienceCheck: null,
   modes: [],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',

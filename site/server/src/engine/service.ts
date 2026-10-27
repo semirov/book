@@ -31,7 +31,7 @@ import { toIso } from '../util/time.ts';
 import { closeStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
 import { type DraftLane } from './draft.ts';
-import { assignmentOf, missingVerdicts, openDispatch, recordVerdict, survivedFinding, type GateAssignment, type GateAnswer } from './gates.ts';
+import { assignmentOf, blockingVerdict, missingVerdicts, openDispatch, recordVerdict, survivedBlocker, type GateAssignment, type GateAnswer } from './gates.ts';
 import {
   blockHashes,
   changeForStep,
@@ -249,9 +249,15 @@ export function createEngine(deps: EngineDeps) {
 
     const change = changeForStep(db, step);
     const gates = store.listVerdicts(db, step.step_id);
+    // BOOK-76: a blocking consultant verdict below the cap must not close the step — revise and land again, or escalate. The ending escalates at close instead (ADR-024).
+    if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'consultant')) {
+      refuse('BLOCKER_UNRESOLVED', 409, 'the physics pass named a blocker on this text: revise it and land again, or escalate');
+    }
     const tokensIn = (options.tokensIn ?? 0) + gates.reduce((sum, row) => sum + row.tokens_in, 0);
     const tokensOut = (options.tokensOut ?? 0) + gates.reduce((sum, row) => sum + row.tokens_out, 0);
-    const published = survivedFinding(db, step.step_id, config.gateCycles, step.cycle);
+    // BOOK-76: an editor blocker publishes with its finding; a consultant blocker stops the step.
+    const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
+    const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');
 
     const front = step.pass === 'front' ? readFront(bookRoot) : null;
     const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
@@ -271,18 +277,12 @@ export function createEngine(deps: EngineDeps) {
           ),
       );
 
-    let outcome: StepOutcome = endingGap
-      ? 'escalated'
-      : published
-        ? 'published_with_finding'
-        : step.pass === 'ending'
-          ? 'evaluated'
-          : unchanged
-            ? 'holds'
-            : 'rewritten';
-    let escalation: CascadeOutcome | null = endingGap ? 'escalated:ending' : null;
+    // BOOK-76: precedence — the ending's GAP, then the physics pass, then a prose finding.
+    const gateStop: 'ending' | 'science' | null = endingGap ? 'ending' : scienceBlocked ? 'science' : null;
+    let outcome: StepOutcome = gateStop !== null ? 'escalated' : editorBlocked ? 'published_with_finding' : step.pass === 'ending' ? 'evaluated' : unchanged ? 'holds' : 'rewritten';
+    let escalation: CascadeOutcome | null = gateStop === null ? null : gateStop === 'ending' ? 'escalated:ending' : 'escalated:science';
 
-    if (step.pass === 'cascade' && !published && outcome === 'rewritten' && chapter !== null) {
+    if (step.pass === 'cascade' && !editorBlocked && outcome === 'rewritten' && chapter !== null) {
       const budget = step.cascade_id
         ? safeJson<{ maxDeltaRatio: number }>(store.getCascade(db, step.cascade_id)?.budget ?? null)
         : null;
@@ -315,7 +315,8 @@ export function createEngine(deps: EngineDeps) {
         tokensIn,
         tokensOut,
         changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
-        changeReason: outcome === 'escalated' ? 'починка вышла за границы правки — нужно решение' : null,
+        // BOOK-76: a science stop carries its own public sentence (`escalated:science`).
+        changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? 'починка вышла за границы правки — нужно решение' : null,
         escalation,
         expiredLeaseId: expired ? lease.id : null,
       },

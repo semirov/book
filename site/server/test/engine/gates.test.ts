@@ -183,6 +183,46 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
     }
   });
 
+  it('keeps the editor cap publishing with its finding — the mirror of the science stop', () => {
+    // BOOK-76: the split is deliberate. A prose judgement that survived the cap publishes
+    // (today's case above); a physics claim that does not hold stops the step instead.
+    const fixture = createEngineFixture();
+    try {
+      const assignment = draftOnce(fixture);
+      const actions: string[] = [];
+      for (let cycle = 0; cycle <= fixture.config.gateCycles; cycle += 1) {
+        const editor = answer(fixture, 'editor', 'GAP', blocker('the corridor contradicts its neighbour'));
+        actions.push(editor.action);
+        if (editor.action !== 'revise') break;
+        // The writer revises and the verdicts are re-asked on the new text.
+        fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац.', `Правка ${cycle + 1}.`]);
+        fixture.engine.land(assignment.leaseId);
+      }
+      expect(actions).toEqual(['revise', 'revise', 'revise', 'publish_with_finding']);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('stops the step on a consultant blocker at the cap instead of publishing it', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = draftOnce(fixture);
+      const actions: string[] = [];
+      for (let cycle = 0; cycle <= fixture.config.gateCycles; cycle += 1) {
+        answer(fixture, 'editor', 'HOLDS');
+        const consultant = answer(fixture, 'consultant', 'GAP', blocker('no carrier for the signal'));
+        actions.push(consultant.action);
+        if (consultant.action !== 'revise') break;
+        fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац.', `Правка ${cycle + 1}.`]);
+        fixture.engine.land(assignment.leaseId);
+      }
+      expect(actions).toEqual(['revise', 'revise', 'revise', 'close']);
+    } finally {
+      fixture.close();
+    }
+  });
+
   it('drops the verdict that described the previous revision', () => {
     const fixture = createEngineFixture();
     try {

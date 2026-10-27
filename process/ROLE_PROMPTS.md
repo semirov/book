@@ -2,7 +2,8 @@
 
 The one brief the engine dispatches. Canon for all three: `concept/CONCEPT.md`, `concept/CLIMAX.md`,
 `style/VOICE.md`, `outline/PLAN.md`. Every pass runs writer → editor → science consultant — never
-skipped, hidden from the reader: only the writer is visible, both verdicts stay provenance.
+skipped; only the writer's prose is visible, both verdicts stay provenance, and the reader is told the
+chain that reads the text, never a finding (`/rules`, BOOK-76).
 
 ## Invariants — every role
 
@@ -172,8 +173,10 @@ piece, its written neighbours when the pass touched a mechanism, the assignment,
 "Why" may be asked and may stay unanswered. Flag prophecy: a chosen person, cosmic intention, "the
 universe wanted", a voice, a revelation, sacred silence.
 
-**Verdict.** Findings: severity · location (chapter, quote ≤10 words) · the physics broken · the minimal
-honest fix, or "leave unexplained" where silence is better. Never invent technology to patch a scene.
+**Verdict.** `HOLDS` or `GAP`, then findings: severity · location (chapter, quote ≤10 words) · the physics
+broken · the minimal honest fix, or "leave unexplained" where silence is better. A blocker must not reach
+the reader, and past the cycle cap the step stops instead of publishing. Never invent technology to patch a
+scene.
 ```
 
 ## 4. Dispatch, permissions, handoff
@@ -188,6 +191,10 @@ writer (visible) → editor (HOLDS/GAP) → if GAP the writer revises that piece
 consultant → if blocker the writer revises and both re-check only the changed claims → commit with a
 footnote (iteration, what changed, cost/model). Both verdicts are kept as provenance: auditable, never
 rendered as a second voice on the page.
+
+**The cap, by role.** Past the cycle cap a blocker is not re-asked, and the two consequences differ: the
+editor's blocker publishes the step with its finding, the consultant's stops it — a physics claim that does
+not hold never enters the book, and the change waits for a decision.
 
 **Cost.** Estimate tokens × $0.0000003 (the real flash blend), add to the running total; above $9.50 →
 `BUDGET STOP`, no spawn. One memo line per pass in `process/write.log.md`, created if absent — a memo,

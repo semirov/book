@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -9,13 +9,16 @@ import { describe, expect, it } from 'vitest';
  * The rendered half is `web/src/components/copyGuard.test.tsx`: it renders every surface that
  * can print a reader-facing line and greps the markup. This half greps the **copy modules**
  * those surfaces render from, so a new string cannot slip in between render tests. The banned
- * words: «шов», «противоречие исправлено», «битый», «retcon», and the name of any gate role —
- * the gates are invisible to readers (invariant 18), and the retrospection is оформляется,
- * never masked.
+ * words: «шов», «противоречие исправлено», «битый», «retcon», and the name of any gate role
+ * the reader was never told about — the retrospection is оформляется, never masked.
+ *
+ * BOOK-76: the physics pass is named to the reader, so «консультант» is no longer banned —
+ * and, to keep that one reversal from spreading, the name is allowed in exactly two source
+ * files (plus the owner's own opening block) and required in those two.
  */
 
 const ROOT = join(import.meta.dirname, '../..');
-const BANNED = ['шов', 'противоречие исправлено', 'битый', 'retcon', 'редактор', 'консультант', 'аудитор'];
+const BANNED = ['шов', 'противоречие исправлено', 'битый', 'retcon', 'редактор', 'аудитор'];
 
 const COPY_MODULES = [
   // BOOK-16: the labels a reader sees for the four kinds, and the draft's own line.
@@ -40,6 +43,8 @@ const COPY_MODULES = [
   // BOOK-75: the full hall's plate and its state line.
   'web/src/lib/capacity.ts',
   'server/src/history/summary.ts',
+  // BOOK-76: the change record's one line about the physics pass.
+  'web/src/lib/science.ts',
 ];
 
 describe('the copy modules a reader sees', () => {
@@ -85,5 +90,35 @@ describe('the wave promise of the copy (BOOK-59)', () => {
         expect(promise.pattern.test(source), `${promise.name} — ${file.replace(`${ROOT}/`, '')}`).toBe(false);
       }
     }
+  });
+});
+
+/**
+ * BOOK-76 — the physics pass is named to the reader, and the **stem** «консультант» may live
+ * in exactly two source files: the card's copy module and `/rules`. A third file is allowed
+ * but not required: `components/HowTheBookIsMade.tsx` is the owner's opening block, and his
+ * sentence is his to insert. The stem, not the phrase, is matched, so «консультант проверил»
+ * on a new surface would fail too — the allowed set is path-based, not wording-based.
+ */
+const SCIENCE_ROLE_STEM = 'консультант';
+const SCIENCE_ROLE_ALLOWED = new Set([
+  'web/src/lib/science.ts',
+  'web/src/components/LegalPage.tsx',
+  'web/src/components/HowTheBookIsMade.tsx',
+]);
+const SCIENCE_ROLE_REQUIRED = ['web/src/lib/science.ts', 'web/src/components/LegalPage.tsx'];
+
+describe('the physics pass is named where a reader looks, and nowhere else (BOOK-76)', () => {
+  it('carries the role stem in the card copy and /rules only', () => {
+    const carriers: string[] = [];
+    for (const file of webSources(join(ROOT, 'web/src'))) {
+      if (readFileSync(file, 'utf8').toLowerCase().includes(SCIENCE_ROLE_STEM)) {
+        carriers.push(relative(ROOT, file).split(sep).join('/'));
+      }
+    }
+    for (const carrier of carriers) {
+      expect(SCIENCE_ROLE_ALLOWED.has(carrier), `the physics pass is named in ${carrier}`).toBe(true);
+    }
+    for (const required of SCIENCE_ROLE_REQUIRED) expect(carriers, required).toContain(required);
   });
 });

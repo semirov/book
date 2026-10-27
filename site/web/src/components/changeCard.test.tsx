@@ -115,6 +115,7 @@ const change: ChangeDto = {
     { chapter: 8, rev: 4 },
   ],
   cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0.04 },
+  scienceCheck: 'passed',
   modes: ['оформление'],
   history: { fromHseq: 10, toHseq: 14 },
   enqueuedAt: '2026-10-25T11:59:00Z',
@@ -122,7 +123,7 @@ const change: ChangeDto = {
   decidedAt: '2026-10-25T12:05:00Z',
 };
 
-const GATE_WORDS = ['вердикт', 'findings', 'редактор', 'консультант', 'HOLDS', 'GAP', 'gate'];
+const GATE_WORDS = ['вердикт', 'findings', 'редактор', 'HOLDS', 'GAP', 'gate'];
 
 describe('ChangeCard', () => {
   it('shows the quoted intent, the steps, the seams and the outcome', () => {
@@ -150,6 +151,32 @@ describe('ChangeCard', () => {
   it('never renders a gate field, a finding or a hidden role', () => {
     const html = renderToStaticMarkup(<ChangeCard change={change} onClose={() => undefined} />).toLowerCase();
     for (const word of GATE_WORDS) expect(html).not.toContain(word.toLowerCase());
+  });
+
+  // BOOK-76: one gate fact is public — whether the physics pass held — and only as one line.
+  it('states the physics pass, and says nothing while no pass has answered', () => {
+    const card = (scienceCheck: ChangeDto['scienceCheck']): string =>
+      renderToStaticMarkup(<ChangeCard change={{ ...change, scienceCheck }} onClose={() => undefined} />);
+    expect(card('passed')).toContain('<dt>проверка</dt><dd>пройдена · научный консультант</dd>');
+    expect(card('failed')).toContain('<dt>проверка</dt><dd>не пройдена · научный консультант</dd>');
+    expect(card(null)).not.toContain('<dt>проверка</dt>');
+  });
+
+  it('stops a change that failed the physics pass without saying «внесено»', () => {
+    const stopped: ChangeDto = {
+      ...change,
+      status: 'escalated',
+      outcome: 'science',
+      reason: 'не входит в книгу — правка ждёт решения',
+      scienceCheck: 'failed',
+      steps: [{ ...change.steps[0]!, outcome: 'escalated', note: null }, ...change.steps.slice(1)],
+    };
+    const html = renderToStaticMarkup(<ChangeCard change={stopped} onClose={() => undefined} />);
+    expect(html).toContain('остановлено: физика не подтверждена');
+    expect(html).toContain('не входит в книгу — правка ждёт решения');
+    expect(html).toContain('глава 8: ждёт решения');
+    expect(html).not.toContain('внесено');
+    expect(html).not.toContain('замечание сохранено');
   });
 
   it('shows the public reason of a dropped change and no typing', () => {

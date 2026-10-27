@@ -51,7 +51,7 @@ named in `defect`, the verdict word stays `HOLDS|GAP`. A gate is always a **diff
 editor answers before the consultant (`GATE_ORDER`); only the dispatched session may answer
 (`GATE_NOT_DISPATCHED`), a blockerless `GAP` is recorded as `HOLDS` — findings are provenance, not a veto.
 `revise` puts them into the writer's next assignment: fix what was named, `land`, re-gate; a blocker past
-the cycle cap closes it `published_with_finding`.
+the cycle cap publishes the step with its finding (editor) or stops it (consultant).
 
 ## 4. Close the step
 
