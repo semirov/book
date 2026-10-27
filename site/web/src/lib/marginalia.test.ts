@@ -52,6 +52,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   return {
     premiseLanded: false,
+    sourceCommentId: null,
     id: 'chg_1',
     seq: 4,
     chapter: 8,

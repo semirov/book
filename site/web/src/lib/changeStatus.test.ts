@@ -22,6 +22,7 @@ import {
 function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   return {
     premiseLanded: false,
+    sourceCommentId: null,
     id: 'chg_1',
     seq: 4,
     chapter: 8,

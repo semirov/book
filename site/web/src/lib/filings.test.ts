@@ -1,7 +1,10 @@
-import type { CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
+  attemptsOf,
+  earlierAttempts,
+  filingAttempt,
   filingInk,
   filingNumber,
   filingQuote,
@@ -12,6 +15,7 @@ import {
   sortFilings,
   staleLine,
   stripFilings,
+  threadFilings,
 } from './filings.ts';
 
 function comment(overrides: Partial<CommentDto> & { id: string; createdAt: string }): CommentDto {
@@ -143,5 +147,64 @@ describe('insertFiling — the posted row enters the feed (BOOK-111)', () => {
     const feed = [NEW];
     insertFiling(feed, ACCEPTED);
     expect(feed).toEqual([NEW]);
+  });
+});
+
+/**
+ * BOOK-137 — the two derivations the reader's surfaces share: what the thread lists, and where
+ * an attempt lives. One filing is one entry, and a premise is never one of the thread's.
+ */
+describe('one filing, one entry (BOOK-137)', () => {
+  const summary = (overrides: Partial<ChangeSummaryDto>) => ({
+    premiseLanded: false,
+    sourceCommentId: NEW.id,
+    id: 'chg_1',
+    seq: 1,
+    chapter: 8,
+    intent: 'оставить одно «слово»',
+    premise: false,
+    status: 'pending' as const,
+    outcome: null,
+    reason: null,
+    position: null,
+    enqueuedAt: '2026-10-21T12:04:00Z',
+    decidedAt: null,
+    chapters: [8],
+    rewritten: [],
+    steps: 0,
+    modes: [],
+    cascade: null,
+    ...overrides,
+  });
+
+  it('lists the thread’s filings without a premise, which belongs to the chapter’s row', () => {
+    const premise = comment({ id: 'cmt_premise', createdAt: '2026-10-20T09:00:00Z', premise: true });
+    expect(threadFilings([NEW, premise, ACCEPTED]).map((row) => row.id)).toEqual([NEW.id, ACCEPTED.id]);
+    expect(threadFilings([])).toEqual([]);
+  });
+
+  it('keeps the attempts of one filing in order, and only its own', () => {
+    const changes = [
+      summary({ id: 'chg_2', seq: 2 }),
+      summary({ id: 'chg_1', seq: 1 }),
+      summary({ id: 'chg_other', seq: 3, sourceCommentId: 'cmt_elsewhere' }),
+      summary({ id: 'chg_author', seq: 4, sourceCommentId: null }),
+    ];
+    expect(attemptsOf(changes, NEW.id).map((row) => row.id)).toEqual(['chg_1', 'chg_2']);
+    // An author's own change has no filing and is never an attempt of one.
+    expect(attemptsOf(changes, 'cmt_elsewhere').map((row) => row.id)).toEqual(['chg_other']);
+    expect(filingAttempt(NEW, changes)).toEqual({ id: 'chg_2', number: '002' });
+    expect(earlierAttempts(NEW, changes).map((row) => row.id)).toEqual(['chg_1']);
+    // One attempt has nothing earlier, and no change at all is no link.
+    expect(earlierAttempts(NEW, [summary({})])).toEqual([]);
+    expect(filingAttempt(NEW, [])).toBeNull();
+  });
+
+  it('falls back to the comment’s own changeId when the loaded window misses the attempt', () => {
+    // The thread reads the newest page of the lane: an older attempt is not in it, and the row
+    // still opens the change — without inventing a number it cannot read.
+    const linked = { ...NEW, changeId: 'chg_old' };
+    expect(filingAttempt(linked, [])).toEqual({ id: 'chg_old', number: null });
+    expect(linked.changeId).not.toBeNull();
   });
 });

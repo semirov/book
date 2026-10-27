@@ -1,5 +1,6 @@
-import type { CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
+import { changeNumber } from './changeStatus.ts';
 import { filingMarginalia } from './marginalia.ts';
 
 /**
@@ -169,3 +170,61 @@ export function filingQuote(comment: CommentDto, max = 120): string {
   if (flat.length === 0) return 'абзац изменился';
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
+
+/**
+ * BOOK-137 — **one filing is one entry**, and the entry's home is decided here, once.
+ *
+ * A premise is not a remark about a sentence: it is the chapter's starting point, and its
+ * only entry is the chapter's own row (`PremiseRow`, `premiseFiling` in `premise.ts`). The
+ * reader's thread therefore lists every filing **except** a premise — the prod page showed
+ * the same premise twice, as a comment block and as the chapter's row, with two numbers and
+ * two states.
+ */
+export function threadFilings(comments: readonly CommentDto[]): CommentDto[] {
+  return comments.filter((comment) => comment.premise !== true);
+}
+
+/** The number an entry prints for a change: `14` → `014` (§DESIGN 7.12). */
+export type FilingAttempt = {
+  /** The change the entry's `прицел` link opens. */
+  id: string;
+  /** The attempt's own number (`001`), or null when the page's window does not carry it. */
+  number: string | null;
+};
+
+/**
+ * BOOK-137 — **an attempt is not a row**: a change is inside the entry of the filing that
+ * caused it (`changes.source_comment`), never beside it. `changeId` on the comment is the
+ * link the row has always carried; it is the fallback when the loaded window of changes does
+ * not reach this filing's attempts (the thread reads the newest page of the lane only).
+ *
+ * A change with no source comment belongs to the author and the chronicle, and is never a
+ * thread entry — that is why the thread's change list is empty by construction.
+ */
+export function attemptsOf(changes: readonly ChangeSummaryDto[], commentId: string): ChangeSummaryDto[] {
+  return changes
+    .filter((change) => change.sourceCommentId === commentId)
+    .sort((left, right) => left.seq - right.seq);
+}
+
+/** The latest attempt — the one number and the one `прицел` an entry carries. */
+export function filingAttempt(
+  comment: Pick<CommentDto, 'id' | 'changeId'>,
+  changes: readonly ChangeSummaryDto[] = [],
+): FilingAttempt | null {
+  const latest = attemptsOf(changes, comment.id).at(-1);
+  if (latest !== undefined) return { id: latest.id, number: changeNumber(latest.seq) };
+  return comment.changeId === null ? null : { id: comment.changeId, number: null };
+}
+
+/**
+ * The attempts before the latest — the short list inside the filing panel. They keep the
+ * entry's one number and one link: a second number on the page would be a second entry.
+ */
+export function earlierAttempts(
+  comment: Pick<CommentDto, 'id'>,
+  changes: readonly ChangeSummaryDto[] = [],
+): ChangeSummaryDto[] {
+  return attemptsOf(changes, comment.id).slice(0, -1);
+}
+

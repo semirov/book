@@ -1,10 +1,10 @@
 /**
  * The live table of contents (ARCHITECTURE.md §6C.7, §11.8): four numbered parts, 67
- * entries. A row's text is derived, never generated (BOOK-DOC-5 §4): a written chapter
- * shows its title line verbatim, a basis slot shows its frozen frame sentence verbatim, and
- * an empty slot shows no text at all — its number and page are the row. There is still no
- * «Глава N» fallback, because an invented title would be an invented chapter, and no state
- * word either: the contents is a reading surface (BOOK-112).
+ * entries. A row's text is derived, never generated (BOOK-DOC-5 §4): a written chapter shows
+ * its title line verbatim — or the word «написана» when it has none (BOOK-137) — a basis slot
+ * shows its frozen frame sentence verbatim, and an empty slot shows no text at all: its number
+ * and page are the row. There is still no «Глава N» fallback, because an invented title would
+ * be an invented chapter.
  *
  * Derived on every change from the catalog; nothing here is stored, and the TOC can never
  * disagree with the chapter list because both read the same rows.
@@ -22,7 +22,8 @@ export type TocEntryView = {
   title: string | null;
   written: boolean;
   rev: number;
-  /** The row's text: a title line, or a basis slot's frozen sentence; null for an empty slot. */
+  /** The row's text: a title line, a written chapter's «написана», or a basis slot's frozen
+   *  sentence; null for an empty slot. */
   text: string | null;
   /** The chapter's opening page, from `chapterStartPages` — never a second count (BOOK-89). */
   page: number;
@@ -56,12 +57,17 @@ export function slotLabel(title: string | null): string {
 }
 
 /**
- * The text a row carries: a written chapter's title line (null when the title line is broken —
- * the row still opens its prose), a basis slot's frozen frame, or nothing at all for a slot
- * that holds no prose (§4, BOOK-112).
+ * The text a row carries: a written chapter's title line, the word «написана» when a written
+ * chapter has no title line of its own, a basis slot's frozen frame, or nothing at all for a
+ * slot that holds no prose (§4, BOOK-112).
+ *
+ * BOOK-137 — a written chapter's row is never a bare number. The contents showed `01` with no
+ * text while the chapter was written and had a title line it could not show; «написана» is the
+ * truth word for that row (a fact about the book, not the interface's status), and an empty
+ * slot still prints nothing: it has no truth to state about text it does not hold.
  */
 export function slotText(entry: TocSource): string | null {
-  if (entry.written) return slotLabel(entry.title) || null;
+  if (entry.written) return slotLabel(entry.title) || 'написана';
   if (entry.basis === true) return frameSentenceOf(entry.n);
   return null;
 }

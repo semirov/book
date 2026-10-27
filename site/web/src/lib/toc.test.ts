@@ -64,12 +64,22 @@ describe('slotText', () => {
     expect(slotText(entry(67, { basis: true }))).toBe(FRAME_LAST_SENTENCE);
   });
 
-  it('says nothing for a slot with no prose: no state word, no invented title (BOOK-112)', () => {
+  it('says nothing for a slot with no prose: no invented title (BOOK-112)', () => {
     expect(slotText(entry(3))).toBeNull();
-    // A basis flag outside the frame is not a sentence, and a written row with a broken title
-    // line keeps its prose and says nothing — neither becomes a state word.
+    // A basis flag outside the frame is not a sentence.
     expect(slotText(entry(8, { basis: true }))).toBeNull();
-    expect(slotText(entry(9, { written: true, title: null }))).toBeNull();
+  });
+
+  it('states a written chapter that has no title line: «написана» (BOOK-137)', () => {
+    // The prod contents showed a bare `01` for a written chapter: the row had prose to open
+    // and no text to read. A written chapter is a fact about the book, so the row says it.
+    expect(slotText(entry(9, { written: true, title: null }))).toBe('написана');
+    expect(slotText(entry(9, { written: true, title: '  ' }))).toBe('написана');
+    // Its own title line wins whenever there is one, and an empty slot keeps no text at all.
+    expect(slotText(entry(9, { written: true, title: 'Ночная смена' }))).toBe('Ночная смена');
+    expect(slotText(entry(10))).toBeNull();
+    // The frozen slot keeps its frame sentence, never the word.
+    expect(slotText(entry(67, { basis: true }))).toBe(FRAME_LAST_SENTENCE);
   });
 });
 
@@ -81,8 +91,12 @@ describe('tocEntry', () => {
       link: true,
       href: '#ch-1',
     });
-    // A written chapter with a broken title line keeps its prose reachable.
-    expect(tocEntry(entry(2, { written: true, title: null }), null, 2)).toMatchObject({ text: null, link: true });
+    // A written chapter with a broken title line keeps its prose reachable, and its row says
+    // «написана» rather than standing bare (BOOK-137).
+    expect(tocEntry(entry(2, { written: true, title: null }), null, 2)).toMatchObject({
+      text: 'написана',
+      link: true,
+    });
     // An empty slot prints no text at all — its number and page are the row — and stays inert.
     expect(tocEntry(entry(3), null, 3)).toMatchObject({ text: null, link: false, page: 3 });
   });
@@ -114,7 +128,7 @@ describe('tocParts', () => {
       current: false,
       href: '#ch-1',
     });
-    expect(parts[0]?.entries[1]).toMatchObject({ n: 2, text: null, written: true, current: true });
+    expect(parts[0]?.entries[1]).toMatchObject({ n: 2, text: 'написана', written: true, current: true });
     expect(parts[0]?.entries[2]).toMatchObject({
       n: 3,
       text: null,

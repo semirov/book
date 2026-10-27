@@ -250,13 +250,16 @@ describe('the focus view', () => {
     expect(at9).toContain('data-chapter="9"');
   });
 
-  it('prints nothing for a wing that reached nothing — no dash, no empty span (BOOK-70)', () => {
+  it('prints nothing for a wing that never opened — no dash, no state word, no slot', () => {
     const empty = { frontier: 8, wave: 0, state: 'waiting' as const, reached: [] };
     const html = renderToStaticMarkup(<FocusWings wings={{ down: empty, up: empty }} live />);
     expect(html).not.toContain('focus-wing-r');
     expect(html).not.toContain('—');
-    // The state word still says it, once, in the wing's own line.
-    expect(html.match(/не открылось/gu)).toHaveLength(2);
+    // BOOK-137: the reading surface never prints the machinery's own condition — an empty wing
+    // is skipped, not described.
+    expect(html).not.toContain('не открылось');
+    expect(html).not.toContain('class="focus-wing"');
+    expect(html).not.toContain('focus-wing-h');
   });
 
   it('shows a dropped change’s reason and does not type', () => {

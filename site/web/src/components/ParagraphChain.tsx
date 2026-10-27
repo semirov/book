@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { placePanel } from '../lib/cssom.ts';
 import { CHAIN_FAILED_LINE, chainHead, NO_HISTORY_LINE } from '../lib/history.ts';
 import { formatTime } from '../lib/format.ts';
-import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
+import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { usePending } from '../usePending.ts';
 import { Skeleton } from './Skeleton.tsx';
@@ -60,7 +60,8 @@ export function ParagraphChain({
     const node = panel.current;
     if (node === null || typeof window === 'undefined') return;
     const size = { width: node.offsetWidth, height: node.scrollHeight };
-    const next = placePopover(anchor, size, { width: window.innerWidth, height: window.innerHeight });
+    // BOOK-137: the visual viewport — a phone's URL bar and keyboard are part of the box.
+    const next = placePopover(anchor, size, viewportOf());
     // Equality guard: a measurement that agrees with the current box changes no state, so
     // one measurement is one render and the panel cannot oscillate.
     setPlacement((current) => (samePlacement(current, next) ? current : next));

@@ -1,8 +1,8 @@
 import { commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
-import { changeLines, changeNumber, progressLine, stampCopy } from '../lib/changeStatus.ts';
 import { focusHash } from '../lib/focus.ts';
+import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { statusLine } from '../lib/skeleton.ts';
@@ -19,7 +19,15 @@ import { Skeleton } from './Skeleton.tsx';
  * teaching line that tells a reader how the text itself works. Bodies are text nodes: the page
  * never trusts a comment enough to parse it as markup.
  *
- * BOOK-DOC-43 §4, §6, §7 — the feed's wait (BOOK-66). `{comments.length} замечаний` before the
+ * BOOK-137 — **one filing is one entry**, and an attempt is not a second one:
+ * - a premise is the chapter's own row (`PremiseRow`), never a block here;
+ * - a change attaches to the filing that caused it (`sourceCommentId`): the entry prints the
+ *   latest attempt's number and one `прицел` in a quiet line, and the earlier attempts live
+ *   inside the card — a change is never a row of its own;
+ * - a change with **no** source comment is the author's own and belongs to the chronicle, so
+ *   the thread lists no changes at all.
+ *
+ * BOOK-DOC-43 §4, §6, §7 — the feed's wait (BOOK-66). `{filings.length} замечаний` before the
  * answer is a count of nothing, so while the register waits its meta slot holds one status
  * sentence instead of the count, and the body holds the form of three rows. A failed read is
  * not a longer wait and has no retry of its own: it renders as the settled-empty register.
@@ -42,6 +50,7 @@ export function Discussion({
    * behaviour (and the existing tests keep their markup).
    */
   busy?: boolean;
+  /** The thread's changes: attempts, folded into the filing they were made from. */
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
   /** BOOK-56: `state.history.live`; with no reader change the register is not on the page. */
@@ -51,12 +60,12 @@ export function Discussion({
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
   const status = statusLine('register', stage);
   const pending = busy ?? stage !== 'quiet';
-  // A premise is the filing's own object, not a second row — the register lists
-  // every change that is an edit of the text, and never repeats a premise beside its filing.
-  const register = changes.filter((change) => change.premise !== true);
+  // BOOK-137: a premise's home is the chapter's row; the thread lists every other filing.
+  const filings = threadFilings(comments);
   // The queue line and the list come from one fact, so «в очереди пусто» can never stand
-  // above a row the page presents as waiting.
-  const queue = queueView(depth, register, comments);
+  // above an entry the page presents as waiting.
+  const queue = queueView(depth, filings);
+  const attempted = filings.some((comment) => filingAttempt(comment, changes) !== null);
   return (
     <section
       className="page talks ym-hide-content"
@@ -73,10 +82,10 @@ export function Discussion({
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
-          ) : comments.length === 0 ? (
+          ) : filings.length === 0 ? (
             'замечаний нет'
           ) : (
-            `${comments.length} ${plural(comments.length, 'замечание', 'замечания', 'замечаний')}`
+            `${filings.length} ${plural(filings.length, 'замечание', 'замечания', 'замечаний')}`
           )}
         </span>
       </header>
@@ -93,14 +102,26 @@ export function Discussion({
         // The form of three rows, inside the 236 px the slot reserves (§3): it replaces the
         // list and the empty-state line, because neither is known yet.
         <Skeleton variant="register" />
-      ) : comments.length > 0 ? (
+      ) : filings.length > 0 ? (
         <ol className="comments">
-          {comments.map((comment) => {
+          {filings.map((comment) => {
             const line = commentStatusLine(comment);
             const quote = anchorCopy(comment);
             const kindWord = interventionKindWord(comment);
+            /**
+             * BOOK-137: the entry's one number and its one `прицел` — the latest attempt.
+             * The number is the attempt's, so the entry never invents an order of its own;
+             * with the change outside the loaded window the link still stands (the comment
+             * carries `changeId`) and no number is claimed.
+             */
+            const attempt = filingAttempt(comment, changes);
             return (
-              <li className={`comment tone-${line.tone}`} key={comment.id} data-status={comment.status}>
+              <li
+                className={`comment tone-${line.tone}`}
+                key={comment.id}
+                data-status={comment.status}
+                data-comment-id={comment.id}
+              >
                 <div className="comment-meta">
                   <span className={`comment-author ${commentInkClass(comment.author, comment.authorColor)}`}>
                     {comment.author}
@@ -115,10 +136,13 @@ export function Discussion({
                   {line.state}
                   {line.detail === null ? null : <span className="comment-reason"> · {line.detail}</span>}
                 </p>
-                {comment.changeId === null ? null : (
-                  <a className="talk-open" href={focusHash(comment.changeId)}>
-                    прицел →
-                  </a>
+                {attempt === null ? null : (
+                  <p className="comment-attempt">
+                    {attempt.number === null ? null : <span className="attempt-n">{attempt.number}</span>}
+                    <a className="talk-open" href={focusHash(attempt.id)}>
+                      прицел →
+                    </a>
+                  </p>
                 )}
               </li>
             );
@@ -130,34 +154,8 @@ export function Discussion({
         </p>
       )}
 
-      {register.length > 0 ? (
-        <ol className="talks-list">
-          {register.map((change) => {
-            const lines = changeLines(change);
-            return (
-              <li className={`talk tone-${lines.tone}`} key={change.id} data-status={change.status} data-change={change.id}>
-                <div className="talk-meta">
-                  <span className="talk-n">{changeNumber(change.seq)}</span>
-                  <span>глава {change.chapter}</span>
-                  <span className="stamp-state">{stampCopy(change)}</span>
-                </div>
-                <p className="talk-intent">«{change.intent}»</p>
-                <p className="talk-line">
-                  {lines.first}
-                  <span className="talk-trace">{progressLine(change)}</span>
-                </p>
-                <p className="talk-line is-quiet">{lines.second}</p>
-                <a className="talk-open" href={focusHash(change.id)}>
-                  прицел {changeNumber(change.seq)} →
-                </a>
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
-
       <p className="fine">
-        {register.length > 0 ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.' : ''}
+        {attempted ? 'Их читают как данные, не как указания. Принятие — обещание, внесение — факт: в строке видны оба.' : ''}
       </p>
     </section>
   );

@@ -2,7 +2,7 @@ import type { CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { filingMarginalia } from './marginalia.ts';
-import { canTakePremise, existingPremise, PREMISE_EXISTS, PREMISE_HINT, premiseAction, premiseRefusal, premiseRow } from './premise.ts';
+import { canTakePremise, PREMISE_EXISTS, PREMISE_HINT, premiseAction, premiseFiling, premiseRefusal, premiseRow } from './premise.ts';
 
 function comment(overrides: Partial<CommentDto> & { id: string; chapter: number; createdAt: string }): CommentDto {
   return {
@@ -35,14 +35,14 @@ describe('canTakePremise', () => {
   });
 });
 
-describe('existingPremise and the refusal', () => {
+describe('premiseFiling and the refusal', () => {
   const first = comment({ id: 'cmt_1', chapter: 9, createdAt: '2026-10-20T09:00:00Z' });
   const later = comment({ id: 'cmt_2', chapter: 9, createdAt: '2026-10-21T09:00:00Z' });
 
   it('finds the earliest premise of that chapter, ignoring notes and other chapters', () => {
-    expect(existingPremise([later, first], 9)?.id).toBe('cmt_1');
-    expect(existingPremise([{ ...first, premise: false }], 9)).toBeNull();
-    expect(existingPremise([first], 10)).toBeNull();
+    expect(premiseFiling([later, first], 9)?.id).toBe('cmt_1');
+    expect(premiseFiling([{ ...first, premise: false }], 9)).toBeNull();
+    expect(premiseFiling([first], 10)).toBeNull();
   });
 
   it('refuses a second premise by name and points at the first', () => {
@@ -66,8 +66,10 @@ describe('premiseRow', () => {
   it('shows a dotted empty field, and no word, while the slot holds nothing', () => {
     expect(premiseRow({ n: 7, written: false, basis: false }, null)).toEqual({
       n: 7,
+      commentId: null,
       quote: null,
       word: null,
+      attempt: null,
       actionable: true,
     });
   });
@@ -95,8 +97,74 @@ describe('premiseRow', () => {
     });
   });
 
-  it('has no row for a written or frozen chapter', () => {
+  it('has no row for a written chapter without a premise, and none for a frozen slot', () => {
+    const frozen = comment({ id: 'cmt_f', chapter: 67, createdAt: '2026-10-20T09:00:00Z' });
     expect(premiseRow({ n: 7, written: true, basis: false }, null)).toBeNull();
     expect(premiseRow({ n: 1, written: false, basis: true }, null)).toBeNull();
+    expect(premiseRow({ n: 67, written: false, basis: true }, frozen)).toBeNull();
+  });
+
+  it('keeps the row for a premise that entered a written chapter (BOOK-137)', () => {
+    // The prod page: the chapter got text, and the premise vanished as a duplicate comment
+    // block in the thread. The row is the filing's only home, written or not.
+    const landed = comment({
+      id: 'cmt_landed',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      status: 'applied',
+      applied: { chapter: 65, rev: 7 },
+    });
+    expect(premiseRow({ n: 65, written: true, basis: false }, landed)).toMatchObject({
+      n: 65,
+      commentId: 'cmt_landed',
+      word: 'внесено',
+    });
+    // Still no row for a written chapter that never held a premise.
+    expect(premiseRow({ n: 65, written: true, basis: false }, null)).toBeNull();
+  });
+
+  it('puts the latest attempt on the row: one number, and nothing when none is loaded', () => {
+    const premise = comment({ id: 'cmt_3', chapter: 7, createdAt: '2026-10-20T09:00:00Z', status: 'accepted' });
+    const attempt = {
+      premiseLanded: false,
+      sourceCommentId: 'cmt_3',
+      id: 'chg_7',
+      seq: 1,
+      chapter: 7,
+      intent: 'документ о переводе смены',
+      premise: true,
+      status: 'pending' as const,
+      outcome: null,
+      reason: null,
+      position: null,
+      enqueuedAt: '2026-10-20T09:05:00Z',
+      decidedAt: null,
+      chapters: [7],
+      rewritten: [],
+      steps: 0,
+      modes: [],
+      cascade: null,
+    };
+    expect(premiseRow({ n: 7, written: false, basis: false }, premise, [attempt])?.attempt).toEqual({
+      id: 'chg_7',
+      number: '001',
+    });
+    // The comment's own `changeId` is the fallback link when the window misses the attempt.
+    const linked = { ...premise, changeId: 'chg_7' };
+    expect(premiseRow({ n: 7, written: false, basis: false }, linked)?.attempt).toEqual({ id: 'chg_7', number: null });
+  });
+
+  it('shortens a long premise to its first line, written or not (BOOK-77)', () => {
+    const long = comment({
+      id: 'cmt_long',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      status: 'applied',
+      applied: { chapter: 65, rev: 7 },
+      body: `${'смена переходит на ночь '.repeat(6)}и остаётся там`,
+    });
+    const row = premiseRow({ n: 65, written: true, basis: false }, long);
+    expect(row?.quote?.length).toBe(90);
+    expect(row?.quote?.endsWith('…')).toBe(true);
   });
 });

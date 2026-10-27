@@ -12,13 +12,15 @@ import { Skeleton } from './Skeleton.tsx';
  * «Авторы» — the end matter, after chapter 67 (§6C.5, §11.8).
  *
  * The author is listed first with the remainder of the text (`1 − Σ shares`), because the
- * copyright line names one person and the site must not imply the book is co-authored in
- * law. A reader's share is «доля в окончательном тексте»: the characters whose *last* cause
- * is that reader's change — the only attribution the system can compute without a theory of
- * influence, and it says so on the page. The writer, the editor and the consultant are not
- * listed: they are the process, not persons (§6C.5 rule 3).
+ * imprint names one person and the site must not imply the book is co-authored in law. A
+ * reader's share is «доля в окончательном тексте»: the characters whose *last* cause is that
+ * reader's change — the only attribution the system can compute without a theory of influence,
+ * and it says so on the page. The writer, the editor and the consultant are not listed: they
+ * are the process, not persons (§6C.5 rule 3).
  *
- * No publisher, no ISBN, no year: the imprint is config (§6C.6) and F020 keeps it exact.
+ * No publisher, no ISBN, no year: the imprint is config (§6C.6) and F020 keeps it exact. The
+ * rights statement itself is printed once, in the colophon (BOOK-137): this block keeps the
+ * author's name and the date the text last changed, and no second «©».
  *
  * BOOK-DOC-43 §4, §6, §7 — the shares are a measurement, and a measurement has a wait
  * (BOOK-66). While it runs, the roster is the form of three rows and the meta line says
@@ -161,12 +163,18 @@ export function Authors({
         />
       )}
       <OwnDecisions decisions={decisions} />
-      {/* BOOK-138: the download keeps the end matter's own spacing (`chrome.css`,
-          `.authors-export`); the link itself states no box, here or in the footer. */}
+      {/*
+        BOOK-138 — the download keeps the end matter's own spacing (`chrome.css`,
+        `.authors-export`); the link itself states no box, here or in the footer. The label
+        carries the size `/api/front` measured (BOOK-138), never the edition.
+
+        BOOK-137 — the page carries **one** ©. The imprint's copyright line lives in the
+        colophon only: the end matter keeps the author names and the date of the last change,
+        and printing the rights statement a second time made the footer read as two books.
+      */}
       <div className="authors-export">
         <ExportLink exportBytes={exportBytes} />
       </div>
-      <p className="copyright authors-copyright">{imprint.copyright}</p>
       {lastRevisionAt === null ? null : (
         <p className="authors-updated">последняя правка — {formatDate(lastRevisionAt)}</p>
       )}

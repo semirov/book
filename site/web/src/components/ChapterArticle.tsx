@@ -1,6 +1,7 @@
 import {
   type BlockRevisingPayload,
   type CatalogEntry,
+  type ChangeSummaryDto,
   type ChapterDto,
   type ChapterRevisionPayload,
   type CommentDto,
@@ -22,7 +23,7 @@ import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { usePending } from '../usePending.ts';
 import { ChapterHeader } from './ChapterHeader.tsx';
-import { EmptyChapter } from './EmptyChapter.tsx';
+import { PremiseEntry } from './PremiseEntry.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import {
@@ -63,6 +64,11 @@ export type ChapterArticleProps = {
   onProvenance?: (blockId: string, anchor: HTMLElement) => void;
   /** BOOK-DOC-34: this chapter's filings, loaded lazily on the same trigger as the prose. */
   comments?: readonly CommentDto[];
+  /**
+   * BOOK-137: the thread's changes — the attempts a filing carries. The premise's row names
+   * the latest one, so a change is never a second row beside its filing.
+   */
+  changes?: readonly ChangeSummaryDto[];
   /** The chapter's filings were asked for when its slot came into view. */
   onRead?: (chapter: number) => void;
   /** A filing was posted in this chapter: its DTO reaches the page, then the register. */
@@ -83,6 +89,7 @@ export function ChapterArticle({
   fresh,
   onProvenance,
   comments = [],
+  changes = [],
   onRead,
   onPosted,
   composer,
@@ -325,12 +332,14 @@ export function ChapterArticle({
         aria-label={`глава ${entry.n}`}
         ref={article}
       >
-        <EmptyChapter
+        <PremiseEntry
           entry={entry}
           comments={comments}
+          changes={changes}
           composer={composer}
           viewer={viewer}
           firstEmpty={firstEmpty}
+          form
           onPosted={onPosted}
         />
       </article>
@@ -353,6 +362,23 @@ export function ChapterArticle({
         <h3 className="ch-title fade-in" key={`title-${entry.rev}-${entry.title}`}>
           {entry.title}
         </h3>
+      ) : null}
+
+      {/*
+        BOOK-137 — a written chapter keeps its premise's one entry. The filing must not move
+        house when the text arrives: the row above the prose is where the reader finds the
+        premise, its state and the number of its latest attempt, and the thread never lists it.
+      */}
+      {entry.written && !entry.basis ? (
+        <PremiseEntry
+          entry={entry}
+          comments={comments}
+          changes={changes}
+          composer={composer}
+          viewer={viewer}
+          firstEmpty={false}
+          onPosted={onPosted}
+        />
       ) : null}
 
       {chapter !== null

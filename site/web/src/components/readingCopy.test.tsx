@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, ChapterDto, CommentDto, StateSnapshot } from '@book/shared';
+import {
+  FRAME_LAST_SENTENCE,
+  type CatalogEntry,
+  type ChapterDto,
+  type CommentDto,
+  type StateSnapshot,
+} from '@book/shared';
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { spineMarkers } from '../lib/spine.ts';
 import { ChapterList } from './ChapterList.tsx';
@@ -77,7 +84,11 @@ function slot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   };
 }
 
-/** One written chapter, three empty ones, the frozen last slot — the whole reading surface. */
+/**
+ * One written chapter with a title line, one written chapter without one, three empty slots and
+ * the frozen last slot — the whole reading surface, including the case BOOK-137 fixed: a
+ * written chapter's contents row is never a bare number.
+ */
 const CATALOG: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
   const n = index + 1;
   if (n === 1) {
@@ -91,9 +102,41 @@ const CATALOG: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
       updatedAt: '2026-10-27T09:00:00Z',
     });
   }
+  if (n === 2) {
+    return slot(n, {
+      rev: 1,
+      chars: SENTENCE.length,
+      blocks: 1,
+      written: true,
+      writtenAt: '2026-10-27T09:30:00Z',
+      updatedAt: '2026-10-27T09:30:00Z',
+    });
+  }
   if (n === 67) return slot(n, { basis: true, blocks: 1 });
   return slot(n);
 });
+
+/**
+ * BOOK-137 — a ripple whose wings never opened. The running head carries it, and the reading
+ * surface prints nothing about it: a wing that never opened is a diagnostic, not reading.
+ */
+const WAITING_RIBBON: Ribbon = {
+  changeId: 'chg_65',
+  cascadeId: null,
+  chapter: 65,
+  wave: 0,
+  status: 'open',
+  outcome: null,
+  touched: [65],
+  rewritten: [],
+  step: null,
+  wings: {
+    down: { frontier: 65, wave: 0, state: 'waiting', reached: [] },
+    up: { frontier: 65, wave: 0, state: 'waiting', reached: [] },
+  },
+  frontier: { down: 65, up: 65 },
+  seams: [],
+};
 
 const PREMISE: CommentDto = {
   attempt: null,
@@ -126,6 +169,9 @@ const CHAPTER: ChapterDto = {
   updatedAt: '2026-10-27T09:00:00Z',
 };
 
+/** The second written chapter has prose and no title line of its own (BOOK-137). */
+const UNTITLED: ChapterDto = { ...CHAPTER, n: 2, title: null, rev: 1 };
+
 /** The interface's own vocabulary: none of it may reach the three reading surfaces. */
 const BANNED = [
   'Книга ·',
@@ -138,6 +184,8 @@ const BANNED = [
   'не замечание к тексту',
   'первой редакцией',
   '— · —',
+  // BOOK-137: a wing that never opened prints nothing at all — no diagnostic on the page.
+  'не открылось',
 ];
 
 /** A count of chapters is a count: `67 глав`, `3 главы с текстом`, `написано 2 из 67`. */
@@ -175,7 +223,14 @@ let container: HTMLDivElement;
 function page(): ReactElement {
   return (
     <>
-      <Header state={STATE} ribbon={null} catalog={CATALOG} markers={[]} onOpenChange={() => undefined} live />
+      <Header
+        state={STATE}
+        ribbon={WAITING_RIBBON}
+        catalog={CATALOG}
+        markers={[]}
+        onOpenChange={() => undefined}
+        live
+      />
       <TableOfContents catalog={CATALOG} state={STATE} currentChapter={null} />
       <ChapterList
         catalog={CATALOG}
@@ -184,6 +239,7 @@ function page(): ReactElement {
         markers={spineMarkers(STATE)}
         fresh={null}
         chapterFeed={{ 3: { items: [PREMISE], loaded: true } }}
+        changes={[]}
         onRead={() => undefined}
         onPosted={() => undefined}
         onProvenance={() => undefined}
@@ -260,6 +316,7 @@ beforeEach(() => {
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith('/api/chapters/1')) return json(CHAPTER);
+      if (url.endsWith('/api/chapters/2')) return json(UNTITLED);
       // Any other lazy feed is absent in this fixture: an empty book is not an error.
       return json({ code: 'NOT_FOUND', message: 'not found' }, 404);
     }),
@@ -331,5 +388,21 @@ describe('the reading surface prints the book, not the product', () => {
     expect(toc).toContain(TITLE);
     // The folio prints the page the contents calls chapter 1's.
     expect(container.querySelector('.folio')?.textContent).toBe('1');
+  });
+
+  it('gives a written chapter its own row text and leaves the empty slot bare (BOOK-137)', async () => {
+    await mount();
+    const row = (n: string): HTMLElement | null =>
+      [...container.querySelectorAll<HTMLElement>('#toc .toc-row')].find(
+        (element) => element.querySelector('.toc-num')?.textContent === n,
+      ) ?? null;
+    // A written chapter with no title line states the truth word, not a bare number.
+    expect(row('02')?.querySelector('.toc-text')?.textContent).toBe('написана');
+    // A written chapter with its own title line keeps the title, never the word beside it.
+    expect(row('01')?.querySelector('.toc-text')?.textContent).toBe(TITLE);
+    // An empty slot still prints no text at all: its number and page are the row.
+    expect(row('03')?.querySelector('.toc-text')).toBeNull();
+    // The frozen slot keeps its frame sentence.
+    expect(row('67')?.querySelector('.toc-text')?.textContent).toBe(FRAME_LAST_SENTENCE);
   });
 });

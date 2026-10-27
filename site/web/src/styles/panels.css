@@ -199,6 +199,21 @@
   font-size: var(--fs-meta);
   color: var(--ink-3);
 }
+/* BOOK-137 — the attempts before the latest one, inside the entry: short lines, no numbers
+   and no links (the entry above the card owns the one number and the one `прицел`). */
+.filing-attempts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.filing-attempt {
+  font-family: var(--ui);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--ink-3);
+}
 /* BOOK-111 (owner, 2026-10-27) — the quiet door between the two halves of the one box: the
    provenance of the sentence a card quotes, or the sentence's own filing from the word's
    record. One line in the panel's micro register; the close stays the head's and only the

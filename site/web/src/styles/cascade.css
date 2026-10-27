@@ -256,58 +256,10 @@
   text-decoration: none;
 }
 
-/* ---------- the thread's two lines (§11.6, §10.3a) ---------- */
-.talks-list {
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.talk {
-  padding: 10px 0;
-  border-top: 1px solid var(--rule);
-}
-.talk-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.talk-n {
-  font-family: var(--mono);
-  letter-spacing: 0.04em;
-}
-.talk-intent {
-  margin: 6px 0 4px;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  line-height: 1.5;
-  color: var(--ink);
-}
-.talk-line {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px 12px;
-  margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-meta);
-  line-height: 1.45;
-  color: var(--ink-2);
-}
-.talk-line.is-quiet {
-  font-style: italic;
-  color: var(--ink-3);
-}
-.talk-trace {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-}
+/* ---------- the entry's way into its change (BOOK-137) ---------- */
+/* The only part of the old two-line change row that survives: a filing's entry still opens
+   its latest attempt in one tap. The row itself is gone — a change is an attempt inside its
+   filing's entry, never a second row (BOOK-137). */
 .talk-open {
   display: inline-flex;
   align-items: center;

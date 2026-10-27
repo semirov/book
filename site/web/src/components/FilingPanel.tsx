@@ -1,4 +1,4 @@
-import type { CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import type { AnchorRect } from '../lib/popover.ts';
 import { SeamPanel } from './SeamPanel.tsx';
@@ -10,6 +10,11 @@ import { SeamPanel } from './SeamPanel.tsx';
  * popover: the `<aside>` is `SeamPanel`'s, and this file is the surface's name and its class,
  * nothing else. No placement, focus or `Escape` here, so the page can never hold two.
  *
+ * BOOK-137 — the card is where a filing keeps what its one entry does not print: the earlier
+ * attempts (`earlierAttempts`, without numbers or links — the entry above the card owns the
+ * one number and the one `прицел`) and, for a premise, the change's own intent as the derived
+ * reading of what was accepted into the basis.
+ *
  * `filing-panel ym-hide-content` is the masked root the Webvisor guard (BOOK-77) reads here,
  * and the very string the shell is told to wear: one literal, no copy to drift.
  */
@@ -20,12 +25,18 @@ export function FilingPanel({
   anchor,
   onClose,
   onProvenance,
+  earlierAttempts = [],
+  premiseIntent = null,
 }: {
   comment: CommentDto;
   anchor: AnchorRect | null;
   onClose: () => void;
   /** The provenance of the filing's sentence, in the same box (§2.7, amended). */
   onProvenance?: () => void;
+  /** BOOK-137: earlier attempts, oldest first — inside the entry, never rows of their own. */
+  earlierAttempts?: readonly ChangeSummaryDto[];
+  /** BOOK-137: the premise's derived reading, from its change's intent. */
+  premiseIntent?: string | null;
 }) {
   return (
     <SeamPanel
@@ -35,6 +46,8 @@ export function FilingPanel({
       anchor={anchor}
       onClose={onClose}
       onProvenance={onProvenance}
+      earlierAttempts={earlierAttempts}
+      premiseIntent={premiseIntent}
     />
   );
 }

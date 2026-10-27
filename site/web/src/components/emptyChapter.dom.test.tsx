@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { existingPremise, PREMISE_HINT, premiseAction } from '../lib/premise.ts';
+import { PREMISE_HINT, premiseAction, premiseFiling } from '../lib/premise.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -310,7 +310,7 @@ describe('the premise strip in an empty chapter', () => {
     expect(row?.getAttribute('data-state')).toBe('held');
     expect(row?.querySelector('.premise-quote')?.textContent).toBe('«а как это работает»');
     expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
-    expect(premiseAction(existingPremise([PENDING], 7)).kind).toBe('card');
+    expect(premiseAction(premiseFiling([PENDING], 7)).kind).toBe('card');
 
     await act(async () => row?.click());
 

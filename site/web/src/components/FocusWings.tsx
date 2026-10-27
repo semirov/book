@@ -8,7 +8,8 @@ import { scaleTicks } from '../lib/focus.ts';
  * The focus view's two wings and its local window (ARCHITECTURE §11.9, BOOK-DOC-4).
  *
  * Both directions of one consequence are printed at once: each wing says its direction, its
- * own wave, its state and the chapters it reached. The window is a plain grid of chapters
+ * own wave, its state and the chapters it reached. A wing that never opened prints nothing and
+ * is skipped (BOOK-137): a diagnostic is not reading. The window is a plain grid of chapters
  * around the ripple, so a 7–9 ripple does not collapse into one pixel of a 67-chapter scale —
  * and the grid needs no inline style (CSP forbids them): the column count is a precomputed
  * class, the marks are classes, and a frame arriving changes a class, never the layout height.
@@ -20,9 +21,12 @@ export function FocusWings({ wings, live }: { wings: CascadeWingsDto; live: bool
     <div className="focus-wings">
       {(['down', 'up'] as const).map((side: Wing) => {
         const reached = wingReachedCopy(wings[side]);
+        const line = wingLine(side, wings[side]);
+        // BOOK-137: an empty wing is no slot at all — no state word, no dash, no span.
+        if (line === '' && reached === '') return null;
         return (
           <div className="focus-wing" key={side} data-state={wings[side].state}>
-            <span className="focus-wing-h">{wingLine(side, wings[side])}</span>
+            {line === '' ? null : <span className="focus-wing-h">{line}</span>}
             {/* An empty wing prints nothing: no dash, no empty span (BOOK-70). */}
             {reached === '' ? null : <span className="focus-wing-r">{reached}</span>}
           </div>

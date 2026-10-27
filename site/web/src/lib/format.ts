@@ -6,7 +6,7 @@
  * ledger reads the same for every reader.
  */
 
-import type { ChangeStatus, ChangeSummaryDto, CommentDto, CommentStatus } from '@book/shared';
+import type { CommentDto, CommentStatus } from '@book/shared';
 
 export const SITE_TIMEZONE = 'Europe/Moscow';
 export const NBSP = '\u00a0';
@@ -95,37 +95,39 @@ export function queueLabel(depth: number): string {
   return `в очереди ${depth} ${plural(depth, 'правка', 'правки', 'правок')}`;
 }
 
-/** A row the register presents as still on its way: its kind and its public id. */
-export type QueueRow = { kind: 'filing' | 'change'; id: string };
-
-/** The two sets the register calls «in the queue» — one place, so the line and the list agree. */
-const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
-const QUEUED_CHANGE = new Set<ChangeStatus>(['pending', 'processing']);
-
-/** The rows the register may present as queued: a filing and a change, by public id. */
-type QueueComment = Pick<CommentDto, 'id' | 'status'>;
-type QueueChange = Pick<ChangeSummaryDto, 'id' | 'status' | 'premise'>;
+/** A row the register presents as still on its way: a filing, by its public id. */
+export type QueueRow = { kind: 'filing'; id: string };
 
 /**
- * The queue line and the list behind it, from one fact.
+ * The one set the register calls «in the queue».
  *
- * The register shows a filing and a change as one object: a queued row is a filing still in
- * triage (or in the lane) and a non-premise change holding a place (`pending`/`processing`).
+ * BOOK-137 — a **change is not a row**: it is the attempt of the filing that caused it, shown
+ * inside that filing's entry, so counting it beside the filing would count one thing twice.
+ * A premise never takes a queue place at all: it waits for the chapter's first pass (BOOK-7),
+ * and its row says so in its own word.
+ */
+const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
+
+/** The entry the register may present as queued: a filing, by public id, with its own state. */
+type QueueComment = Pick<CommentDto, 'id' | 'status'> & { premise?: boolean };
+
+/**
+ * The queue line and the entries behind it, from one fact.
+ *
  * `depth` is the server's own count of the lane and may include rows beyond this page, so the
- * line prints the larger of the two: it can never say «в очереди пусто» while a row is
- * presented as waiting, and it never shrinks the depth the engine measured.
+ * line prints the larger of the two: it can never say «в очереди пусто» while an entry is
+ * presented as waiting, and it never shrinks the depth the engine measured. With BOOK-137 the
+ * entries are filings only — a change attaches to its filing — so the count of queued rows is
+ * the count of queued filings, and one filing with an attempt is still one row.
  */
 export function queueView(
   depth: number,
-  changes: readonly QueueChange[] = [],
-  comments: readonly QueueComment[] = [],
+  entries: readonly QueueComment[] = [],
 ): { count: number; rows: QueueRow[] } {
   const rows: QueueRow[] = [];
-  for (const comment of comments) {
-    if (QUEUED_FILING.has(comment.status)) rows.push({ kind: 'filing', id: comment.id });
-  }
-  for (const change of changes) {
-    if (change.premise !== true && QUEUED_CHANGE.has(change.status)) rows.push({ kind: 'change', id: change.id });
+  for (const entry of entries) {
+    if (entry.premise === true) continue;
+    if (QUEUED_FILING.has(entry.status)) rows.push({ kind: 'filing', id: entry.id });
   }
   return { count: Math.max(Math.max(0, Math.trunc(depth)), rows.length), rows };
 }

@@ -6,9 +6,10 @@ import { tocAriaLabel, tocParts, writtenCount } from '../lib/toc.ts';
 /**
  * Живое оглавление (ARCHITECTURE §6C.7, §11.8; BOOK-DOC-5 §4): four numbered parts, 67
  * rows, and no invented titles. A row shows its chapter's title line, the frozen frame
- * sentence of a basis slot (ch01/ch67), or — for a slot that holds no prose at all — nothing:
- * a number and its page. A row that says no text is still exposed, and the page it opens is
- * spoken as `страница N`. No state word («замысел» was BOOK-89's and is gone), no leader
+ * sentence of a basis slot (ch01/ch67), the word «написана» for a written chapter that has no
+ * title line (BOOK-137), or — for a slot that holds no prose at all — nothing: a number and
+ * its page. A row that says no text is still exposed, and the page it opens is spoken as
+ * `страница N`. No invented state word («замысел» was BOOK-89's and is gone), no leader
  * glyphs, no row rules, no part ranges, no repeated book title, and no marker beside the
  * numeral: the column of numbers is the structural mark (owner, 2026-10-27: no arrows and no
  * caret dot in the TOC).

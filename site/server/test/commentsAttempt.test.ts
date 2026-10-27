@@ -260,6 +260,20 @@ describe('the public reason of a change is a sentence, never a code', () => {
     expect(failed?.premiseLanded).toBe(false);
   });
 
+  it('names the filing a summary was made from, and null for a change with none (BOOK-137)', async () => {
+    // The thread folds an attempt into the entry of its filing by this key. A change the author
+    // raised alone carries no filing, and the reader's thread lists no row for it.
+    const h = await boot();
+    seedTwo(h);
+    const summaries = (await h.app.inject({ method: 'GET', url: '/api/changes' })).json() as ChangeSummaryDto[];
+    expect(summaries.find((row) => row.id === 'chg_65')?.sourceCommentId).toBe('cmt_65');
+    expect(summaries.find((row) => row.id === 'chg_65b')?.sourceCommentId).toBe('cmt_65b');
+    seedFiling(h, { id: 'cmt_authorless', chapter: 9, status: 'accepted' });
+    seedChange(h, { id: 'chg_authorless', chapter: 9, status: 'done', outcome: 'applied', commentId: null });
+    const again = (await h.app.inject({ method: 'GET', url: '/api/changes' })).json() as ChangeSummaryDto[];
+    expect(again.find((row) => row.id === 'chg_authorless')?.sourceCommentId).toBeNull();
+  });
+
   it('the own decision of a landed premise is applied', async () => {
     const h = await boot();
     seedLandedPremise(h);

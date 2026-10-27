@@ -223,6 +223,7 @@ describe('the register while its feed is landing', () => {
 function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
   return {
     premiseLanded: false,
+    sourceCommentId: 'cmt_1',
     id: 'chg_1',
     seq: 1,
     chapter: 65,
@@ -249,17 +250,19 @@ function text(html: string): string {
 }
 
 /**
- * The queue line and the list behind it agree, and a premise is the filing's own
- * object rather than a second row. The prod page said «в очереди пусто» over two rows it
- * presented as waiting, and showed the same premise twice: as a filing and as a change.
+ * One filing is one entry: a premise is the chapter's row (never a block here), and a change
+ * is the attempt of the filing it came from (never a second row). The prod page said «в
+ * очереди пусто» over two rows it presented as waiting, and showed the same premise twice: as
+ * a filing and as the chapter's row.
  */
 describe('one state per filing on the register', () => {
-  it('one accepted and one pending filing agree with the queue line', () => {
+  it('lists the thread’s filings only, and counts the queue from the same rows', () => {
     const html = renderToStaticMarkup(
       <Discussion
         depth={0}
         comments={[
-          // A premise whose chapter 65 has text: entered the first edition, nothing to wait for.
+          // A premise whose chapter 65 has text: it entered the first edition, and its home is
+          // the chapter's own row — the thread prints no block for it.
           comment({
             id: 'cmt_65',
             chapter: 65,
@@ -267,23 +270,26 @@ describe('one state per filing on the register', () => {
             status: 'applied',
             applied: { chapter: 65, rev: 7 },
           }),
-          // A filing still in triage: one queued row, and the line must count it.
+          // A filing still in triage: one queued entry, and the line must count it.
           comment({ id: 'cmt_9', chapter: 9, status: 'new' }),
         ]}
         changes={[
-          // The same premise as a change — never a second row on the register.
-          change({ id: 'chg_65', premise: true, premiseLanded: true, status: 'void', outcome: 'dropped', reason: FAILED_ATTEMPT_LINE }),
+          // The premise as its own change: an attempt inside the entry, never a row.
+          change({ id: 'chg_65', premise: true, premiseLanded: true, status: 'done', outcome: 'applied', sourceCommentId: 'cmt_65' }),
         ]}
         live
       />,
     );
     const plain = text(html);
-    expect(plain).toContain('внесено');
-    expect(plain).toContain('вошло в первую редакцию главы 65');
     expect(plain).toContain('ждёт');
     expect(plain).toContain('в очереди 1 правка');
     expect(plain).not.toContain('в очереди пусто');
-    // One queued row = one filing; the premise change is not a row of its own.
+    // The premise's word is its row's, not the thread's: one entry, one state, no duplicate.
+    expect(plain).not.toContain('внесено');
+    expect(plain).toContain('1 замечание');
+    expect(html).not.toContain('data-comment-id="cmt_65"');
+    expect(html).toContain('data-comment-id="cmt_9"');
+    // One queued entry = one filing; the premise change is not a row of its own.
     expect(html).not.toContain('data-change="chg_65"');
     expect(html.match(/class="talk tone-/gu) ?? []).toHaveLength(0);
   });

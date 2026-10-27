@@ -199,6 +199,13 @@ export type ChangeSummaryDto = {
   premise: boolean;
   /** A premise whose chapter has text: it entered the first edition. */
   premiseLanded: boolean;
+  /**
+   * The filing this change was made from (`changes.source_comment`), or `null` for a change
+   * the author raised on their own. It is how a reader's thread attaches an attempt to the
+   * entry it belongs to: a change is never a row of its own, and a change with no filing is
+   * the chronicle's, not the thread's.
+   */
+  sourceCommentId: string | null;
   status: ChangeStatus;
   outcome: ChangeOutcome | null;
   reason: string | null;

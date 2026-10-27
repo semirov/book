@@ -1,6 +1,7 @@
 import type {
   BlockRevisingPayload,
   CatalogEntry,
+  ChangeSummaryDto,
   ChapterRevisionPayload,
   CommentDto,
   ComposerInfo,
@@ -26,6 +27,7 @@ export function ChapterList({
   markers,
   fresh,
   chapterFeed,
+  changes,
   onRead,
   onPosted,
   onProvenance,
@@ -39,6 +41,8 @@ export function ChapterList({
   markers: SpineMarkers;
   fresh: number | null;
   chapterFeed: Record<number, ChapterFeed>;
+  /** BOOK-137: the thread's changes, folded into their filing's entry — never a row. */
+  changes: readonly ChangeSummaryDto[];
   onRead: (chapter: number) => void;
   onPosted: (comment: CommentDto) => void;
   onProvenance: (blockId: string, anchor: HTMLElement) => void;
@@ -66,6 +70,7 @@ export function ChapterList({
             firstEmpty={firstEmpty === entry.n}
             onProvenance={onProvenance}
             comments={chapterFeed[entry.n]?.items ?? []}
+            changes={changes}
             onRead={onRead}
             onPosted={onPosted}
             composer={composer}

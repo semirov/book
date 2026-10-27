@@ -1,10 +1,11 @@
-import type { CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { placePanel } from '../lib/cssom.ts';
+import { changeLines } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
 import { filingNumber } from '../lib/filings.ts';
-import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
+import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { frozenActionHref, type ProvenanceView } from '../lib/provenance.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
@@ -42,6 +43,10 @@ export type FilingContext = Shell & {
   comment: CommentDto;
   /** The card offers the provenance of its sentence's first word, in the same box. */
   onProvenance?: () => void;
+  /** BOOK-137: the attempts before the latest one, oldest first; no numbers and no links. */
+  earlierAttempts?: readonly ChangeSummaryDto[];
+  /** BOOK-137: the premise's derived reading — its change's intent, or null. */
+  premiseIntent?: string | null;
 };
 
 export type SeamPanelProps = ProvenanceContext | FilingContext;
@@ -87,8 +92,12 @@ export function SeamPanel(props: SeamPanelProps) {
     if (anchor === null) return;
     const node = panel.current;
     if (node === null || typeof window === 'undefined') return;
-    const size = { width: Math.min(420, window.innerWidth - 24), height: node.scrollHeight };
-    const next = placePopover(anchor, size, { width: window.innerWidth, height: window.innerHeight });
+    // BOOK-137 — the box is the **visual** viewport, not the layout one: on a phone the URL
+    // bar and the keyboard take room from it, and a panel clamped to `innerWidth/innerHeight`
+    // opened below the fold.
+    const viewport = viewportOf();
+    const size = { width: Math.min(420, viewport.width - 24), height: node.scrollHeight };
+    const next = placePopover(anchor, size, viewport);
     setPlacement((current) => (samePlacement(current, next) ? current : next));
   }, [anchor, context, view, comment]);
 
@@ -197,11 +206,21 @@ function ProvenanceBody({ view, onClose, onForm, onFiling, filingLabel }: Proven
  * with it — is a `.filing-sentence`: 14 px, the book's voice, and it may wrap, because a clause
  * cut to one line at 320 px either overflows the panel or lies about its length.
  */
-function FilingBody({ comment, onClose, onProvenance }: FilingContext) {
+function FilingBody({ comment, onClose, onProvenance, earlierAttempts = [], premiseIntent = null }: FilingContext) {
   const line = commentStatusLine(comment);
   const quote = anchorCopy(comment);
   /** A chip has two inks: `--live` for work in flight, `--ink-3` for everything settled. */
   const ink = line.tone === 'live' ? 'ink-live' : 'ink-quiet';
+  /**
+   * BOOK-137 — a premise's derived reading: the intent of the change it was taken into, in
+   * the change's own words. While the premise waits, that sentence says what was accepted
+   * into the basis; a landed premise keeps its receipt («вошло в первую редакцию…»), which is
+   * a fact about the book and not a restatement of the reader.
+   */
+  const reading =
+    premiseIntent !== null && comment.premise === true && comment.status !== 'applied'
+      ? `принято в основу: ${premiseIntent}`
+      : line.detail;
 
   return (
     <>
@@ -226,7 +245,24 @@ function FilingBody({ comment, onClose, onProvenance }: FilingContext) {
         fact the three-word state cannot carry. It was printed as the state itself (BOOK-58/
         BOOK-70); the word now stands alone and this line keeps the fact whole.
       */}
-      {line.detail === null ? null : <p className="filing-fact">{line.detail}</p>}
+      {reading === null ? null : <p className="filing-fact">{reading}</p>}
+      {/*
+        BOOK-137 — the attempts before the latest one, inside the entry they belong to and
+        without a number or a link of their own: the entry's quiet line above the card carries
+        the one number and the one `прицел` of the latest attempt.
+      */}
+      {earlierAttempts.length === 0 ? null : (
+        <ol className="filing-attempts">
+          {earlierAttempts.map((attempt) => {
+            const lines = changeLines(attempt);
+            return (
+              <li className="filing-attempt" key={attempt.id}>
+                {lines.first} · {lines.second}
+              </li>
+            );
+          })}
+        </ol>
+      )}
       {/* BOOK-DOC-34 §2.7, amended by BOOK-111: the phrase this filing is about has its own
           record, and it opens here — one box, two contexts, never a third surface. */}
       {onProvenance === undefined ? null : (

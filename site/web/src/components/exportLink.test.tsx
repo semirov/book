@@ -47,18 +47,28 @@ describe('the FB2 download (BOOK-138)', () => {
     }
   });
 
-  it('AC1 — the end matter carries it after the shares and before the copyright', () => {
+  it('AC1 — the end matter carries it after the shares and before the last-change date', () => {
     // An explicit quiet stage keeps the measurement row on the page: without it the assertion
-    // would compare against `indexOf` misses and prove nothing.
+    // would compare against `indexOf` misses and prove nothing. The closing line is the date:
+    // BOOK-137 removed the second «©», so the rights statement has no copy here to sit before.
     const html = renderToStaticMarkup(
-      <Authors authors={null} imprint={imprint} lastRevisionAt={null} live stage="quiet" exportBytes={BYTES} />,
+      <Authors
+        authors={null}
+        imprint={imprint}
+        lastRevisionAt="2026-10-25T09:20:00Z"
+        live
+        stage="quiet"
+        exportBytes={BYTES}
+      />,
     );
     const share = html.indexOf('authors-share');
     const link = html.indexOf('href="/book.fb2"');
     expect(share).toBeGreaterThan(-1);
     expect(link).toBeGreaterThan(share);
-    expect(link).toBeLessThan(html.indexOf('authors-copyright'));
+    expect(link).toBeLessThan(html.indexOf('authors-updated'));
     expect(html).toContain('скачать fb2 · 1,5 МБ');
+    // BOOK-137 — one © on the page: the end matter prints no rights statement of its own.
+    expect(html).not.toContain('authors-copyright');
     // BOOK-138 removed the second line: the edition is in the file and on the ETag, not here.
     expect(html).not.toContain('blank-');
     expect(html).not.toContain('ревизия');

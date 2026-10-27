@@ -279,31 +279,29 @@ describe('both wings, as data', () => {
   it('prints a wing’s own wave, state and reached chapters', () => {
     // BOOK-59: the one wave a ripple has is not news, and there is never a «волна 0».
     expect(wingLine('down', ribbon.wings.down)).toBe('вниз · идёт');
-    expect(wingLine('up', { ...ribbon.wings.up, state: 'waiting', wave: 0, reached: [] })).toBe(
-      'вверх · не открылось',
-    );
     // Only a second wave says anything, and it got there by the owner's decision.
     expect(wingLine('up', { ...ribbon.wings.up, wave: 2, state: 'moving' })).toBe('вверх · волна 2 · решением · идёт');
     expect(wingReachedCopy(ribbon.wings.down)).toBe('07');
   });
 
   it('prints nothing for a wing that reached nothing, in every state (BOOK-70)', () => {
-    // The state word already stands in `wingLine`; a second «не открылось», a «дальше держится»
-    // or a bare «—» would be the same fact twice, or a claim the data does not make.
+    // The state word already stands in `wingLine`; a «дальше держится» or a bare «—» would be
+    // the same fact twice, or a claim the data does not make.
     for (const state of ['waiting', 'moving', 'stopped', 'settled'] as const) {
       expect(wingReachedCopy({ ...ribbon.wings.up, state, reached: [] }), state).toBe('');
     }
     expect(wingStateCopy('settled')).toBe('остановилось');
     expect(wingStateCopy('stopped')).toBe('остановлено');
-    expect(wingStateCopy('waiting')).toBe('не открылось');
     expect(wingStateCopy('moving')).toBe('идёт');
   });
 
-  it('says «не открылось» only from the state word, never twice', () => {
+  it('says nothing at all for a wing that never opened (BOOK-137)', () => {
+    // A diagnostic is not reading: «не открылось» left every reading surface, and with it the
+    // empty wing itself — the ribbon's origin still names the change.
     const waiting = { ...ribbon.wings.up, state: 'waiting' as const, wave: 0, reached: [] };
-    expect(wingLine('up', waiting)).toBe('вверх · не открылось');
+    expect(wingStateCopy('waiting')).toBe('');
+    expect(wingLine('up', waiting)).toBe('');
     expect(wingReachedCopy(waiting)).toBe('');
-    expect(`${wingLine('up', waiting)}${wingReachedCopy(waiting)}`.match(/не открылось/gu)).toHaveLength(1);
   });
 
   it('places a chapter on the wing that reached it', () => {

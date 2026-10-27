@@ -317,6 +317,9 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
       reason: change.reason,
       written: chapterWritten(db, change.chapter),
     }),
+    // The filing this attempt was made from: the thread folds a change into its entry by
+    // this key, and a change the author raised alone (no comment) has none.
+    sourceCommentId: change.source_comment,
     status: change.status,
     outcome: (change.outcome as ChangeOutcome | null) ?? null,
     reason: readerReason(change.reason),

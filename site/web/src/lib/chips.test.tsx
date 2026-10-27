@@ -43,7 +43,6 @@ export const CHIP_PINS: readonly ChipPin[] = [
   { surface: 'discussion · .sec-meta', condition: 'three filings', text: '3 замечания', length: 11, tier: 'count' },
   { surface: 'ribbon · wing state', condition: 'the wing has finished', text: 'остановилось', length: 12, tier: 'state' },
   { surface: 'ribbon · wing state', condition: 'the wing was stopped', text: 'остановлено', length: 11, tier: 'state' },
-  { surface: 'ribbon · wing state', condition: 'the wing never opened', text: 'не открылось', length: 12, tier: 'state' },
   { surface: 'ribbon · wing state', condition: 'the wing is moving', text: 'идёт', length: 4, tier: 'state' },
   { surface: 'ribbon · wing line', condition: 'one wing, one wave', text: 'вниз · идёт', length: 11, tier: 'line' },
   {
