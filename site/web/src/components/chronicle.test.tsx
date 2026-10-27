@@ -1,9 +1,9 @@
-import type { CatalogEntry, HistoryRecordDto, ParagraphChainDto } from '@book/shared';
+import type { CatalogEntry, HistoryRecordDto, HistoryTimelineDto, ParagraphChainDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { NBSP } from '../lib/format.ts';
-import { Chronicle } from './Chronicle.tsx';
+import { Chronicle, ChronicleRecords } from './Chronicle.tsx';
 import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { RecordRow } from './RecordRow.tsx';
@@ -364,7 +364,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 
   it('renders no filter chips and no tick strip, and no readout before an answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} started live />,
     );
     // BOOK-DOC-50 §9: the chips filtered the list while the rail kept the whole log.
     for (const chip of ['всё', 'правки', 'черновики', 'первая страница', 'перезаписи']) {
@@ -430,6 +430,54 @@ describe('the chronicle’s surface (§11.10)', () => {
 });
 
 /**
+ * BOOK-56 — a begun book's chronicle holds exactly one record, its beginning. The row is not
+ * a change: no number, author, card or scrub target. The empty-log sentence is another fact.
+ */
+describe('the one starting record of a begun book (BOOK-56)', () => {
+  // The log's first moment and no reader change: the one record is where the book began.
+  const begun = { lastHseq: 3, lastAt: '2026-10-21T06:12:00Z', firstAt: '2026-10-21T06:12:00Z', at: '2026-10-25T12:00:00Z', items: [], nextBefore: null } as HistoryTimelineDto;
+
+  it('prints the quiet line and one «начало книги» row with the log’s first moment', () => {
+    const html = renderToStaticMarkup(<ChronicleRecords timeline={begun} failed={false} onOpenChange={noop} />);
+    expect(html).toContain('перематывать пока нечего: книга ещё не правила читателем');
+    expect(html).toContain('class="chr-timeline"');
+    expect(html).toContain('<li class="chr-row">');
+    expect(html).toContain('<span class="chr-seq">начало книги</span>');
+    expect(html).toContain(`<span class="chr-date">21.10.2026${MID}09:12</span>`);
+    // Exactly one row, and no way to act on it: the moment moves only through the control.
+    expect(html.match(/<li/gu)).toHaveLength(1);
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('карточка');
+    expect(html).not.toContain('class="chr-alias"');
+    expect(html).not.toContain('правка');
+    // The empty-log sentence is a different fact; the two never print together.
+    expect(html).not.toContain('пока ничего не записано');
+  });
+
+  it('keeps «пока ничего не записано» for an empty log and claims nothing after a failure', () => {
+    const empty = renderToStaticMarkup(
+      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed={false} onOpenChange={noop} />,
+    );
+    expect(empty).toContain('пока ничего не записано');
+    expect(empty).not.toContain('начало книги');
+    // A failed read is not an absence: the sentence belongs to an answer that came back.
+    const failed = renderToStaticMarkup(
+      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed onOpenChange={noop} />,
+    );
+    expect(failed).not.toContain('пока ничего не записано');
+  });
+
+  it('leaves the record list exactly as it is once a reader change exists', () => {
+    const html = renderToStaticMarkup(
+      <ChronicleRecords timeline={{ ...begun, items: ITEMS, lastHseq: 10 }} failed={false} onOpenChange={noop} />,
+    );
+    expect(html.match(/<li/gu)).toHaveLength(3);
+    expect(html).not.toContain('перематывать пока нечего');
+    expect(html).not.toContain('начало книги');
+  });
+});
+
+/**
  * BOOK-DOC-43 §4, §6, §7 — the timeline's wait (BOOK-66).
  *
  * The first render is the quiet one: the surface is busy from the request, and nothing below
@@ -439,7 +487,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 describe('the chronicle while the timeline is in flight', () => {
   it('is busy from the request and prints no absence before the answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} started live />,
     );
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('role="status"');

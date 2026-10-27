@@ -35,7 +35,7 @@ import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
-import { historyLive } from './lib/historyState.ts';
+import { historyLive, historyStarted } from './lib/historyState.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -364,6 +364,8 @@ export function App() {
   const { state, catalog, front } = data;
   /** BOOK-56: the one fact every history surface reads. */
   const history = historyLive(state);
+  /** BOOK-56: the book has begun, so the chronicle exists from its first record. */
+  const chronicle = historyStarted(state);
   const markers = spineMarkers(state);
   const currentChapter = state.current !== null && state.current.chapter !== 'front' ? state.current.chapter : null;
 
@@ -383,7 +385,7 @@ export function App() {
     noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
   };
 
-  const views = <ViewSwitch view={view} onChange={setView} live={history} />;
+  const views = <ViewSwitch view={view} onChange={setView} live={chronicle} />;
   const focusView =
     focus.id === null ? null : (
       <FocusView
@@ -398,7 +400,7 @@ export function App() {
       />
     );
 
-  if (view === 'chronicle' && history) {
+  if (view === 'chronicle' && chronicle) {
     return (
       <>
         {views}
@@ -408,6 +410,7 @@ export function App() {
           frontRev={front.rev}
           tick={historyTick}
           onOpenChange={card.open}
+          started={chronicle}
           live={history}
         />
         {card.change === null ? null : (
@@ -435,6 +438,7 @@ export function App() {
         onViewChange={setView}
         motion={titleMotion}
         live={history}
+        chronicle={chronicle}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
@@ -459,7 +463,6 @@ export function App() {
         signedIn={viewer.signedIn}
         decisions={decisions}
         onAuthorsCount={applyAuthorsCount}
-        onOpenChronicle={() => setView('chronicle')}
         live={history}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />

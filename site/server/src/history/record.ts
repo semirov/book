@@ -20,6 +20,7 @@ import { seamReason } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { lastHseq, pageLimit } from './events.ts';
+import { firstEventAt } from './live.ts';
 
 export type RecordRow = {
   change_id: string;
@@ -92,7 +93,13 @@ function clockAt(db: Db, hseq: number): string | null {
 export function readRecord(
   db: Db,
   filter: RecordFilter = {},
-): { lastHseq: number; lastAt: string | null; items: HistoryRecordDto[]; nextBefore: number | null } {
+): {
+  lastHseq: number;
+  lastAt: string | null;
+  firstAt: string | null;
+  items: HistoryRecordDto[];
+  nextBefore: number | null;
+} {
   const params: number[] = [];
   let clause = '';
   if (filter.before !== undefined) {
@@ -104,5 +111,7 @@ export function readRecord(
   const items = rows.map((row) => toHistoryRecord(row));
   const nextBefore = rows.length === pageLimit(filter.limit) ? (rows.at(-1)?.hseq ?? null) : null;
   const bookClock = lastHseq(db);
-  return { lastHseq: bookClock, lastAt: clockAt(db, bookClock), items, nextBefore };
+  // The other end of the same clock: the starting record a begun book always has. It is not a
+  // change and is not in `items` — `items` stays one row per reader change (BOOK-65).
+  return { lastHseq: bookClock, lastAt: clockAt(db, bookClock), firstAt: firstEventAt(db), items, nextBefore };
 }

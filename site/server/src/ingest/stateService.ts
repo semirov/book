@@ -11,7 +11,7 @@ import { listCatalog } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { getNumber, setMeta } from '../db/repo/meta.ts';
 import { readEngineOverlay } from '../engineState/reader.ts';
-import { countReaderChanges } from '../history/live.ts';
+import { countReaderChanges, firstEventAt } from '../history/live.ts';
 import { type ChapterFact, type FrontFact, deriveState, stateFingerprint } from './stateMachine.ts';
 
 export class StateService {
@@ -65,18 +65,24 @@ export class StateService {
     return countReaderChanges(this.db);
   }
 
+  /** BOOK-56: the log has begun, so the chronicle exists from its first record. */
+  started(): boolean {
+    return firstEventAt(this.db) !== null;
+  }
+
   snapshot(): StateSnapshot {
     const facts = this.facts();
     const basis = this.basis();
     const front = this.front();
     const readerChanges = this.readerChanges();
+    const started = this.started();
     const overlay = readEngineOverlay(this.db, this.clock().getTime());
-    const fingerprint = stateFingerprint(facts, front, overlay.fingerprint, basis, readerChanges);
+    const fingerprint = stateFingerprint(facts, front, overlay.fingerprint, basis, readerChanges, started);
     if (this.cached !== null && fingerprint === this.fingerprint) return this.cached;
 
     const version = getNumber(this.db, 'state_version', 0) + 1;
     setMeta(this.db, 'state_version', String(version));
-    const snapshot = deriveState({ facts, basis, front, now: this.clock(), version, overlay, readerChanges });
+    const snapshot = deriveState({ facts, basis, front, now: this.clock(), version, overlay, readerChanges, started });
     this.cached = snapshot;
     this.fingerprint = fingerprint;
     return snapshot;

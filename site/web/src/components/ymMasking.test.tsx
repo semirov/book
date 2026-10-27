@@ -181,7 +181,7 @@ const CHAIN: ParagraphChainDto = {
 describe('the reader’s name and words are masked from Webvisor', () => {
   it('masks the authors list, including the reader’s own trace in it', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} onOpenChronicle={() => undefined} ownTrace={OWN_TRACE} live />,
+      <Authors authors={AUTHORS} imprint={IMPRINT} lastRevisionAt={null} ownTrace={OWN_TRACE} live />,
     );
     expectMasked(html, SENTINEL.name, '.authors');
     // Two rows carry the same name (the list and «ваш след»): both are under the mask.
@@ -227,7 +227,7 @@ describe('the reader’s name and words are masked from Webvisor', () => {
 
   it('masks the chronicle and every record row, aria-label included', () => {
     const section = renderToStaticMarkup(
-      <Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />,
+      <Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />,
     );
     expect(section).toContain('chronicle');
     expect(section).toContain('ym-hide-content');

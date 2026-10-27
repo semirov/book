@@ -56,11 +56,20 @@ export type DeriveInput = {
    * revisions do not raise it.
    */
   readerChanges?: number;
+  /**
+   * The log holds its first record (`firstEventAt(db) !== null`). It makes the chronicle
+   * exist from the book's start — one record, «начало книги» — while every other history
+   * surface still waits for a reader change.
+   */
+  started?: boolean;
 };
 
 export function deriveState(input: DeriveInput): StateSnapshot {
   const facts = [...input.facts].filter((fact) => fact.blocks > 0).sort((a, b) => a.n - b.n);
   const readerChanges = Math.max(0, Math.trunc(input.readerChanges ?? 0));
+  // A reader change is a record too, so it starts the chronicle even if the caller did not say
+  // so; the log's first row is the other, smaller way for a book to have begun.
+  const started = readerChanges > 0 || input.started === true;
   const written = facts.map((fact) => fact.n);
   const writtenSet = new Set(written);
   const empty = allChapterNumbers().filter((n) => !writtenSet.has(n));
@@ -132,6 +141,7 @@ export function deriveState(input: DeriveInput): StateSnapshot {
     history: {
       live: readerChanges > 0,
       readerChanges,
+      started,
     },
   };
 }
@@ -181,6 +191,7 @@ export function stateFingerprint(
   engine = '',
   basis: readonly number[] = [],
   readerChanges = 0,
+  started = false,
 ): string {
   return JSON.stringify({
     chapters: [...facts]
@@ -192,5 +203,8 @@ export function stateFingerprint(
     // BOOK-56: the first reader change changes what the page renders, so the snapshot it
     // serves must not be the cached one.
     readerChanges,
+    // …and so does the first record in the log: it is the chronicle's one starting record,
+    // so a begun book renders a surface an empty one does not.
+    started,
   });
 }

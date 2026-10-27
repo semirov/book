@@ -10,8 +10,11 @@ import { Authors } from './Authors.tsx';
  *
  * The shares are a *measurement*, not a live fact: they arrive from `/api/authors`, not from
  * the socket, and a failed request must not take the page down — the author and the
- * copyright are already known from the imprint, and only the numbers wait. Opening the
- * chronicle re-measures, because that is the moment a reader asks «как менялись доли».
+ * copyright are already known from the imprint, and only the numbers wait. Hiding from the
+ * list re-measures, because a reader who changed the flag asks to see the list as it now is.
+ *
+ * The view switch at the top of the page is the only way into the chronicle; the end matter
+ * carries no door of its own.
  *
  * A signed-in reader also sees their own trace (`/api/authors/me`, own only) and can hide
  * from the list and come back — hiding is not deletion, so the list re-measures afterwards
@@ -21,7 +24,6 @@ export function EndMatter({
   imprint,
   lastRevisionAt,
   signedIn,
-  onOpenChronicle,
   onAuthorsCount,
   decisions = null,
   live,
@@ -29,11 +31,14 @@ export function EndMatter({
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
   signedIn: boolean;
-  onOpenChronicle: () => void;
   onAuthorsCount?: (count: AuthorsCountDto) => void;
   /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
   decisions?: MyDecisionsDto | null;
-  /** BOOK-56: `state.history.live`; the authors list and the person's trail are history. */
+  /**
+   * BOOK-56: `state.history.live`; the authors list and the person's trail are history. A
+   * begun book has a chronicle with one record and no authors yet, so this block stays off
+   * until a reader has changed the text.
+   */
   live: boolean;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
@@ -41,8 +46,8 @@ export function EndMatter({
    * BOOK-DOC-43 §4 — the shares have a wait, and «—» must not stand for two different things
    * (BOOK-66). `authorsSettled` turns true when the request answered **or** failed, so the
    * surface leaves the waiting state on either outcome; `authorsFailed` keeps the failure
-   * distinguishable from a measurement that came back empty. A later re-measure (opening the
-   * chronicle, hiding from the list) refreshes the numbers without re-arming the wait.
+   * distinguishable from a measurement that came back empty. A later re-measure (hiding from
+   * the list) refreshes the numbers without re-arming the wait.
    */
   const [authorsSettled, setAuthorsSettled] = useState(false);
   const [authorsFailed, setAuthorsFailed] = useState(false);
@@ -119,10 +124,6 @@ export function EndMatter({
       authorsFailed={authorsFailed}
       imprint={imprint}
       lastRevisionAt={lastRevisionAt}
-      onOpenChronicle={() => {
-        void load();
-        onOpenChronicle();
-      }}
       ownTrace={ownTrace}
       decisions={decisions}
       hidePending={hidePending}

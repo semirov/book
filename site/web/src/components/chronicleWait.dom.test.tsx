@@ -36,6 +36,7 @@ function page(hseqs: readonly number[], lastHseq: number): HistoryTimelineDto {
   return {
     lastHseq,
     lastAt: items[0]?.at ?? null,
+    firstAt: items.at(-1)?.at ?? null,
     at: '2026-10-26T10:00:00Z',
     items,
     nextBefore: null,
@@ -73,7 +74,7 @@ function mount(): HTMLDivElement {
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />);
   });
   return container;
 }
