@@ -318,7 +318,12 @@ describe('GET /api/chapters/:n/stages (§3)', () => {
       url: '/api/chapters/8/stages',
       headers: { 'if-none-match': String(etag) },
     });
-    expect(repeat.statusCode).toBe(304);
+    // BOOK-109: a poll is answered with the body, and the tag says the representation is the
+    // same one — a late reader always receives the settled stages, never a replayed animation.
+    expect(repeat.statusCode).toBe(200);
+    expect(repeat.headers.etag).toBe(etag);
+    expect(repeat.headers['cache-control']).toBe('no-store');
+    expect((repeat.json() as { stages: PassStageEvent[] }).stages).toHaveLength(1);
 
     appendStage(ctx!.db, stageInput({ passId: 'stp_etag', stage: 'read', at: T0 + 5 }));
     const after = await ctx!.app.inject({

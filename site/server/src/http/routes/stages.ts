@@ -48,11 +48,12 @@ export function registerStageRoutes(app: FastifyInstance, deps: RouteDeps): void
       const pass = rawPass ?? null;
       const cursor = maxStageSeq(deps.db);
       const etag = `"stages-${n}-${cursor}"`;
-      reply
+      // BOOK-109: the ETag is compared, never traded for a `304` — a poll of a book being
+      // written must be answered with the body, and the stages a late reader gets are the
+      // settled ones, with their own `at`. The freshness policy is the app's (`http/cache.ts`).
+      return reply
         .header('etag', etag)
-        .header('cache-control', 'public, max-age=2, stale-while-revalidate=10');
-      if (request.headers['if-none-match'] === etag) return reply.code(304).send();
-      return reply.send({ stages: listStages(deps.db, n, { limit: stageListLimit(request.query.limit), pass }) });
+        .send({ stages: listStages(deps.db, n, { limit: stageListLimit(request.query.limit), pass }) });
     },
   );
 }
