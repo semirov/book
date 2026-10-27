@@ -138,6 +138,23 @@ describe('a filing in the paragraph', () => {
     expect(html).toContain('data-quote="Её освещал тусклый свет."');
   });
 
+  it('gives the one mark on a rewritten sentence to the alive filing', () => {
+    // Both anchors resolve to the same rewritten sentence; the alive filing wins the slot (the
+    // same rule `FilingMark` uses), so a pending note is never displaced by a landed tick.
+    const CHANGED = 'Я вошёл в пустую комнату. Свет был включён до меня и горел всю ночь.';
+    const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
+    const landed = comment({
+      id: 'cmt_01J9Z8K4Q8',
+      status: 'applied',
+      applied: { chapter: 8, rev: 4 },
+      anchor: { ...comment().anchor, quote: 'горел всю ночь' },
+    });
+    const html = render([landed, pending], CHANGED);
+    expect(html).toContain('filing-alive');
+    expect(html).not.toContain('filing-tick');
+    expect(html).toContain('cited rule-dotted ink-quiet');
+  });
+
   it('invents no place for an unresolved anchor whose wording is gone', () => {
     const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
     const html = render(
@@ -152,6 +169,17 @@ describe('a filing in the paragraph', () => {
     );
     expect(html).not.toContain('filing-tick');
     expect(html).toContain('абзац изменился');
+  });
+
+  it('leaves a landed-only sentence unruled — a pending sentence keeps its rule', () => {
+    // BOOK-90: `applied` ink has `rule: 'none'`; the tick is the whole mark. A rule on the
+    // sentence would be a live filing's claim, so the class must not be there at all.
+    const landed = render([comment({ status: 'applied', applied: { chapter: 8, rev: 4 } })]);
+    expect(landed).toContain('filing-tick');
+    expect(landed).not.toContain('cited');
+    expect(landed).not.toContain('rule-dotted');
+    const pending = render([comment()]);
+    expect(pending).toContain('class="cited rule-dotted ink-quiet"');
   });
 
   it('draws the accepted mark, not a note, for a landed change', () => {

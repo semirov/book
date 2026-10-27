@@ -265,7 +265,13 @@ export function ProseParagraph({
    */
   const exact = new Set(sentences.map((sentence) => clampQuote(sentence.text)));
   const moved = new Map<number, SentenceFilings>();
-  for (const group of blockFilings) {
+  // One sentence keeps one mark, and the alive filing wins the slot (as `FilingMark` does):
+  // a pending group resolving to the same rewritten sentence must not be displaced by a
+  // landed one. The sort is stable, so equal groups keep the order the block gave them.
+  const byAlive = [...blockFilings].sort(
+    (left, right) => Number(right.all.some(isAlive)) - Number(left.all.some(isAlive)),
+  );
+  for (const group of byAlive) {
     if (group.quote === null || exact.has(group.quote)) continue;
     for (const comment of group.all) {
       const start = sentenceAt(text, comment.anchor);
