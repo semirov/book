@@ -12,7 +12,9 @@
  * `status='done'` and `outcome='registered'` — no step, no ripple, no lane. The sentence's
  * letters are not touched by anything here; the land guard (`engine/write.ts`) is what keeps
  * them, and this row is the record that the world was told so. A filing beside the frame is an
- * ordinary change that carries its mark.
+ * ordinary change that carries its mark — and a filing beside the frame on a **basis-only** slot
+ * (ch01/ch67, the frame is the whole text) is refused with `FROZEN_FRAME`, the queue's own answer,
+ * because there is no prose to rewrite and no anchor to place.
  *
  * Insert and link happen in one transaction: a crash can never leave a queued change with
  * no comment pointing at it (or a comment "accepted" with nothing in the queue).
@@ -30,6 +32,7 @@
 
 import {
   DEFAULT_FRAME_MODE,
+  PREMISE_FROZEN_REASON,
   classifyFrame,
   framePaperworkReason,
   normalizeFrameMark,
@@ -40,6 +43,7 @@ import {
 
 import { insertChange } from '../engine/store.ts';
 import { PREMISE_SUPERSEDED_REASON, admitPremise } from '../engine/premise.ts';
+import { isBasisSlot } from '../engine/text.ts';
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
@@ -50,10 +54,11 @@ export type AcceptResult =
   | {
       error: string;
       /**
-       * BOOK-61/BOOK-137 — which gate refused: A's hold, B's rights, C's auditor. The frozen
-       * frame is no longer a refusal here: a touched filing is accepted as paperwork.
+       * BOOK-61/BOOK-137 — which question refused: A's hold, B's rights, C's auditor, or the
+       * basis-only slot a filing missed the frame on (the queue's own `FROZEN_FRAME`). A
+       * touched filing is still accepted as paperwork.
        */
-      code?: 'AUDIT_REQUIRED' | 'RIGHTS_REQUIRED' | 'QUARANTINED';
+      code?: 'AUDIT_REQUIRED' | 'RIGHTS_REQUIRED' | 'QUARANTINED' | 'FROZEN_FRAME';
     };
 
 export type AcceptInput = {
@@ -161,9 +166,16 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
       });
     }
 
-    // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a basis
-    // row is a row, not prose. Only a written chapter takes an ordinary change.
-    if (chapter === undefined || chapter.basis !== 0 || chapter.block_count === 0) {
+    // BOOK-137: a filing that misses the frame but lands on a basis-only slot has no prose to
+    // rewrite and no anchor to place — the frame is the whole text — so the answer is the queue's
+    // own refusal, never a premise waiting for a first draft that cannot rewrite the sentence.
+    if (isBasisSlot(chapter)) {
+      return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
+    }
+
+    // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a row with no
+    // blocks is an empty slot, not prose. Only a written chapter takes an ordinary change.
+    if (chapter === undefined || chapter.block_count === 0) {
       let superseded = false;
       if (existing === undefined) {
         superseded = admitPremise(db, {

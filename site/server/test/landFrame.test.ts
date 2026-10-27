@@ -1,8 +1,34 @@
+import { join } from 'node:path';
+
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type WriterAssignment } from '@book/shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { EngineError } from '../src/engine/types.ts';
 import { createEngineFixture, type Fixture } from './engine/helpers.ts';
+
+/**
+ * BOOK-137 — the landing's **second** read. `land`'s guard reads the file, and the ingest it
+ * publishes through reads it again; a live session may write in between, and then nothing was
+ * published at all. The seam is the read itself: the mocked `readChapter` writes the weaker
+ * file between the guard's read and the ingest's, which is exactly what a watcher would see.
+ */
+const seam = vi.hoisted(() => ({ armed: false, reads: 0, path: '', weaker: '' }));
+
+vi.mock('../src/engine/text.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/engine/text.ts')>();
+  const { writeFileSync } = await import('node:fs');
+  return {
+    ...actual,
+    readChapter: (bookRoot: string, n: number) => {
+      if (seam.armed && actual.chapterPath(bookRoot, n) === seam.path) {
+        seam.reads += 1;
+        // Read 1 is the guard's; read 2 is the ingest's own — the file moves in between.
+        if (seam.reads === 2) writeFileSync(seam.path, seam.weaker, 'utf8');
+      }
+      return actual.readChapter(bookRoot, n);
+    },
+  };
+});
 
 /**
  * BOOK-137 — the frame check on a landing (F029).
@@ -153,6 +179,43 @@ describe('land — the frozen frame is character-exact (F029, BOOK-137)', () => 
       expect(fixture.engine.land(assignment.leaseId)).toMatchObject({ landed: true, changed: true, revAfter: 1 });
       expect(revisionsOf(fixture, 1)).toEqual([{ rev: 1 }]);
     } finally {
+      fixture.close();
+    }
+  });
+
+  it('refuses a landing whose file is weakened after the guard read, and records no landing', () => {
+    const fixture = createEngineFixture({ front: null });
+    try {
+      const assignment = draftOf(fixture, 'fwd');
+      expect(assignment.chapter).toBe(1);
+      fixture.writeChapter(1, `Начало\n\n${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${FILLER}\n`);
+
+      // The guard will read this file intact; the ingest will read the weaker one.
+      seam.path = join(fixture.manuscript, 'ch01.md');
+      seam.weaker = `Начало\n\n${WEAKENED_FIRST} Я постоял и вышел.\n\n${FILLER}\n`;
+      seam.reads = 0;
+      seam.armed = true;
+
+      const error = refusal(() => fixture.engine.land(assignment.leaseId));
+      seam.armed = false;
+
+      // The guard's read, the ingest's, and the fresh read the refusal is asked of.
+      expect(seam.reads).toBeGreaterThanOrEqual(2);
+      expect(error).toMatchObject({ code: 'FRAME_CHANGED', status: 409 });
+      expect(error?.message).toBe('рамка книги: фраза этой главы не меняется — правка остаётся бумагой');
+      // The refusal asked the guard again of the fresh file, which is no longer intact.
+      expect(error?.detail).toEqual({ intact: false });
+
+      // The ingest published nothing and the step invents nothing: no revision, no `landed_sha`,
+      // no `rev_after` — a landing the site never served is not recorded as one.
+      expect(revisionsOf(fixture, 1)).toEqual([]);
+      expect(
+        fixture.db
+          .prepare('SELECT landed_at, landed_sha, rev_after FROM steps WHERE step_id = ?')
+          .get(assignment.stepId),
+      ).toEqual({ landed_at: null, landed_sha: null, rev_after: null });
+    } finally {
+      seam.armed = false;
       fixture.close();
     }
   });

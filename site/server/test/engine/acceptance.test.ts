@@ -157,14 +157,15 @@ describe('M3 acceptance — the scripted session', () => {
     }
   });
 
-  it('refuses a change aimed at the fixed ending (ADR-024)', () => {
+  it('admits an ordinary change on a written ch67 (BOOK-137)', () => {
     const fixture = createEngineFixture({
       chapters: { 66: chapterText('Пролог', ['Служебная строка.']), 67: chapterText('Финал', ['Свет погас.']) },
     });
     try {
-      expect(() =>
-        fixture.engine.enqueue({ kind: 'reader_edit', chapter: 67, intent: 'пусть кто-то спасётся' }),
-      ).toThrow(/финал/u);
+      // The ending is prose like any other chapter: the frame is guarded at the landing, not by
+      // refusing a reader's change merely because its chapter number is 67.
+      const reader = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 67, intent: 'пусть кто-то спасётся' });
+      expect(reader.status).toBe('pending');
       const continuity = fixture.engine.enqueue({ kind: 'operator', chapter: 67, intent: 'поправить пунктуацию' });
       expect(continuity.status).toBe('pending');
     } finally {

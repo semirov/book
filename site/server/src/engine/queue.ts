@@ -35,7 +35,7 @@ import { admitPremise, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
-import { isWrittenChapter, readChapter, writtenChapters } from './text.ts';
+import { isBasisSlot, isWrittenChapter, readChapter, writtenChapters } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -70,10 +70,6 @@ export function createQueue(deps: EngineDeps) {
     const chapter = Math.trunc(input.chapter);
     if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
       refuse('INVALID_CHAPTER', 422, 'a change belongs to a chapter in 1..67');
-    }
-    if (chapter === 67 && (input.kind === 'reader_edit' || input.kind === 'accepted_comment')) {
-      // ADR-024: a reader-driven path may not reach the ending.
-      refuse('ENDING_FROZEN', 422, 'финал не переписывается по замечаниям');
     }
     // BOOK-9: a change that names a comment is the comment's intervention — it exists only
     // if the auditor recorded `FITS` on that row. This is the second creator of `changes`
@@ -111,17 +107,18 @@ export function createQueue(deps: EngineDeps) {
       refuse('INVALID_INTENT', 422, `intent is ${intent.length} characters, limit is ${INTENT_MAX_CHARS}`);
     }
     const text = readChapter(bookRoot, chapter);
-    // A basis-only slot (ch01/ch67) is unwritten: its frozen sentence is not a base for edits.
+    // Read the slot's shape before the predicate narrows the chapter to "written".
+    const basisOnly = isBasisSlot(text);
+    // BOOK-137: a basis-only slot (ch01/ch67) is its frame sentence and nothing else — no prose
+    // to write against and no anchor to place — so the site's own answer is the honest one: the
+    // frame is the whole text. Any other empty slot is that chapter's premise (BOOK-7), whichever
+    // its number; a written chapter, ch67 included, takes an ordinary change.
     if (!isWrittenChapter(text)) {
-      if (chapter === 1) {
-        // BOOK-7: the opening sentence is never a target; ch01 holds only that sentence.
+      if (basisOnly) {
         refuse('FROZEN_FRAME', 422, PREMISE_FROZEN_REASON);
       }
-      if (chapter === 67) {
-        refuse('ENDING_FROZEN', 422, 'финал не переписывается по замечаниям');
-      }
-      // BOOK-7: an intervention on an empty slot (ch02..ch66) is the chapter's premise —
-      // a durable row with base_rev 0, no anchor, and no place in the FIFO lane.
+      // BOOK-7: an intervention on an empty slot is the chapter's premise — a durable row with
+      // base_rev 0, no anchor, and no place in the FIFO lane.
       if (input.kind === 'reader_edit' || input.kind === 'accepted_comment') {
         if (store.countPending(db) >= config.queueSoftCap) {
           refuse('QUEUE_FULL', 503, 'очередь правок заполнена — попробуйте позже');

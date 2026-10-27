@@ -74,6 +74,16 @@ export function change(db: Db, id: string): Record<string, unknown> {
   return db.prepare('SELECT * FROM changes WHERE id = ?').get(id) as Record<string, unknown>;
 }
 
+/** The refusal code an engine call answers with, or null when it went through. */
+export function codeOf(run: () => unknown): string | null {
+  try {
+    run();
+  } catch (error) {
+    return (error as { code?: string }).code ?? null;
+  }
+  return null;
+}
+
 /** Chapters 1..4 written, so the forward lane's next draft slot is chapter 5. */
 export function fourWritten(fixture: Fixture): void {
   for (let n = 1; n <= 4; n += 1) {

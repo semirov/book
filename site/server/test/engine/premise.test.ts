@@ -1,5 +1,4 @@
 import type { WriterAssignment } from '@book/shared';
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { readCommentRow, toCommentDto } from '../../src/comments/repo.ts';
@@ -57,60 +56,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       expect(trace.change.change.premise).toBe(true);
       expect(trace.change.change.status).toBe('pending');
       expect(trace.change.cascade).toBeNull();
-    } finally {
-      fixture.close();
-    }
-  });
-
-  it('accepts a chapter-level filing on a basis slot as its premise, never as prose (BOOK-137)', () => {
-    const fixture = fixtureOf();
-    try {
-      // The real basis files: the ingest projects ch01/ch67 as rows (rev 0, one block).
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
-      ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
-      expect(
-        fixture.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all(),
-      ).toEqual([
-        { n: 1, rev: 0, basis: 1, block_count: 1 },
-        { n: 67, rev: 0, basis: 1, block_count: 1 },
-      ]);
-
-      // BOOK-137: a chapter-level filing of a basis slot is that slot's premise, as BOOK-7 says.
-      const firstNote = seed(fixture.db, { chapter: 1 });
-      const firstEdit = seed(fixture.db, { chapter: 1, proposedText: 'Начать иначе.', kind: 'decision' });
-      const finaleNote = seed(fixture.db, { chapter: 67 });
-
-      const first = accept(fixture.db, firstNote, 'переписать первую фразу');
-      if ('error' in first) throw new Error(first.error);
-      expect(change(fixture.db, first.changeId)).toMatchObject({
-        chapter: 1,
-        premise: 1,
-        base_rev: 0,
-        frame: 'untouched',
-        status: 'pending',
-      });
-
-      expect(accept(fixture.db, firstEdit, 'переписать начало')).toMatchObject({ superseded: true });
-      const finale = accept(fixture.db, finaleNote, 'переписать финал');
-      if ('error' in finale) throw new Error(finale.error);
-      expect(change(fixture.db, finale.changeId)).toMatchObject({ chapter: 67, premise: 1, status: 'pending' });
-
-      // Neither sentence moved: the projection still holds the basis and nothing else.
-      expect(
-        fixture.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all(),
-      ).toEqual([
-        { n: 1, rev: 0, basis: 1, block_count: 1 },
-        { n: 67, rev: 0, basis: 1, block_count: 1 },
-      ]);
-
-      // The engine's own admission path still refuses a reader change on both frames.
-      expect(() => fixture.engine.enqueue({ kind: 'reader_edit', chapter: 1, intent: 'начать иначе' })).toThrow(
-        /неподвижна/u,
-      );
-      expect(() => fixture.engine.enqueue({ kind: 'reader_edit', chapter: 67, intent: 'закончить иначе' })).toThrow(
-        /финал/u,
-      );
     } finally {
       fixture.close();
     }
@@ -270,7 +215,8 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
 
       // Chapter 9 was written with no step at all: its premise can never enter an edition.
       fixture.writeChapterBlocks(9, 'Глава 9', ['Девятая глава написана рукой автора.', 'Служебный абзац.']);
-      // A frame chapter must never hold a premise either — a hand-inserted row is closed here.
+      // A written ch01 can no more take a premise than any other written chapter — the freeze is
+      // the basis-only slot's shape, so a hand-inserted row here is closed as stale (BOOK-137).
       fixture.db
         .prepare(
           `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, premise, status, enqueued_at)
@@ -294,7 +240,7 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       expect(change(fixture.db, 'chg_bad_frame')).toMatchObject({
         status: 'void',
         outcome: 'dropped',
-        reason: 'фраза этой главы неподвижна — замысел к ней не принимается',
+        reason: 'глава написана без этого замысла',
       });
       // The open draft still owns its premise: reconcile does not touch another step's job.
       expect(change(fixture.db, owned.changeId)).toMatchObject({ status: 'pending' });

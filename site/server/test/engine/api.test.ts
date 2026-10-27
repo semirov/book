@@ -136,7 +136,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
     }
   });
 
-  it('admits a change, hands out the job, and refuses the ending', async () => {
+  it('admits a change, hands out the job, and admits a written ending', async () => {
     const fixture = createEngineFixture({
       chapters: { 1: chapterText('Начало', ['Тестовый абзац.']), 67: chapterText('Финал', ['Свет погас.']) },
     });
@@ -171,14 +171,14 @@ describe('the internal API (§4.2, §6A.11)', () => {
       expect(trace.statusCode).toBe(200);
       expect(trace.json().data).toMatchObject({ kind: 'change', change: { change: { id: change.id } } });
 
+      // A written ch67 takes an ordinary change (BOOK-137): the frame is guarded at the landing.
       const ending = await app.inject({
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
         payload: { kind: 'reader_edit', chapter: 67, intent: 'пусть кто-то спасётся' },
       });
-      expect(ending.statusCode).toBe(422);
-      expect(ending.json()).toMatchObject({ code: 'ENDING_FROZEN' });
+      expect(ending.json()).toMatchObject({ ok: true, data: { status: 'pending' } });
 
       const invalid = await app.inject({
         method: 'POST',
