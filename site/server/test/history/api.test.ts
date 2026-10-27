@@ -47,7 +47,8 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
     const response = await app!.inject({ method: 'GET', url: '/api/history/timeline' });
     expect(response.statusCode).toBe(200);
-    expect(response.headers['cache-control']).toBe('no-cache');
+    // BOOK-109: the chronicle moves under a fixed URL, so the app's policy answers `no-store`.
+    expect(response.headers['cache-control']).toBe('no-store');
     const body = response.json() as {
       lastHseq: number;
       lastAt: string | null;
@@ -132,12 +133,17 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
     const etag = then.headers.etag;
     expect(etag).toBe(`"ch09@h${before}"`);
+    // BOOK-109: the tag names the moment, and a conditional request still gets the chapter —
+    // a 304 would let a client keep a "then" it asked to re-read.
     const cached = await app!.inject({
       method: 'GET',
       url: `/api/history/chapters/9?at=${before}`,
       headers: { 'if-none-match': String(etag) },
     });
-    expect(cached.statusCode).toBe(304);
+    expect(cached.statusCode).toBe(200);
+    expect(cached.headers.etag).toBe(etag);
+    expect(cached.headers['cache-control']).toBe('no-store');
+    expect((cached.json() as { blocks: unknown[] }).blocks).toHaveLength(1);
 
     const missing = await app!.inject({ method: 'GET', url: '/api/history/chapters/9?at=0' });
     expect(missing.statusCode).toBe(404);

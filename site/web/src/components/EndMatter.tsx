@@ -99,7 +99,8 @@ export function EndMatter({
         const result = await postAuthorsHide(hidden);
         setOwnTrace((current) => (current === null ? current : { ...current, hidden: result.hidden }));
         onAuthorsCount?.(result.authors);
-        // The list route is cached `max-age=30`; after a mutation read it past the cache.
+        // The list route answers `no-store` (BOOK-109); after a mutation read it past any copy
+        // the browser still holds.
         await load(true);
       } catch {
         /* the flag did not change: the button stays as it was, nothing claims success */

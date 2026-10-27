@@ -46,7 +46,9 @@ describe('GET /api/analytics', () => {
     const response = await app!.inject({ method: 'GET', url: '/api/analytics' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ counter: '113820311' });
-    expect(response.headers['cache-control']).toBe('public, max-age=60');
+    // BOOK-109: the id is configuration, and the app's policy answers every `/api/` read
+    // `no-store` — a stored counter would outlive the deployment that changed it.
+    expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('answers null when the deployment has no counter', async () => {

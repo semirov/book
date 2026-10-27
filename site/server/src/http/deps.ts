@@ -16,6 +16,8 @@ export type RouteDeps = {
   config: Config;
   startedAt: number;
   version: string;
+  /** BOOK-109: the build this process is, read once at boot (`build.ts`), reported by `/healthz`. */
+  commit: string;
   webDist: string;
   imprint: Imprint;
   /** Live watcher counters; absent in REST-only tests, which then report the last scan. */

@@ -294,6 +294,13 @@
 .colophon .imprint-line {
   text-wrap: pretty;
 }
+/* BOOK-109: the build the page is — a data mark, so the micro rung and the quiet ink. The
+   label register's uppercase is not its voice: «сборка 5558449 · 27.10 20:52» is read as it is. */
+.colophon .build-stamp {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  text-transform: none;
+}
 /* BOOK-94: the long sentence pushes the toggle onto its own line, and `space-between` cannot
    reach it there — the auto margin keeps the toggle on the column's right edge, under «… зн.». */
 .colophon .theme {

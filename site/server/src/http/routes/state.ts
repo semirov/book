@@ -3,19 +3,23 @@ import type { FastifyInstance } from 'fastify';
 import { listCatalog } from '../../db/repo/chapters.ts';
 import type { RouteDeps } from '../deps.ts';
 
+/**
+ * `GET /api/state` and `GET /api/chapters` — the SPA's poll and the опись.
+ *
+ * The ETag stays: it names the representation (`state-<version>`), and a client may compare it
+ * with the one it remembers. It never produces a `304` — a poll must be answered with the body,
+ * because the state is a statement about a book being written and a reuse of the last copy is
+ * exactly the stale frame this pass removes (BOOK-109). The freshness policy is the app's
+ * (`http/cache.ts`): `no-store` for both, set above the route.
+ */
 export function registerStateRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  app.get('/api/state', async (request, reply) => {
+  app.get('/api/state', async (_request, reply) => {
     const state = deps.state.snapshot();
-    const etag = `"state-${state.version}"`;
-    reply
-      .header('etag', etag)
-      .header('cache-control', 'public, max-age=2, stale-while-revalidate=10');
-    if (request.headers['if-none-match'] === etag) return reply.code(304).send();
-    return reply.send(state);
+    return reply.header('etag', `"state-${state.version}"`).send(state);
   });
 
   app.get('/api/chapters', async (_request, reply) => {
     // All 67 slots, always: the опись is rendered from this without a request per slot.
-    return reply.header('cache-control', 'public, max-age=2').send(listCatalog(deps.db));
+    return reply.send(listCatalog(deps.db));
   });
 }

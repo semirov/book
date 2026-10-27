@@ -6,7 +6,8 @@
  * can answer with a verdict, a finding or the name of a hidden role (§6B.6).
  *
  * No auth: the book is read in public. No ETag on the list — the queue moves under it, and
- * the SPA already polls it live.
+ * the SPA already polls it live. No freshness header either: the app's one policy
+ * (`http/cache.ts`) answers `no-store` for every `/api/` path (BOOK-109).
  */
 
 import type { ChangeStatus } from '@book/shared';
@@ -59,13 +60,13 @@ export function registerChangeRoutes(app: FastifyInstance, deps: RouteDeps): voi
     }
 
     const changes = listChanges(deps.db, { status: status as ChangeStatus | undefined, chapter, limit, before });
-    return reply.header('cache-control', 'public, max-age=1').send(changes);
+    return reply.send(changes);
   });
 
   app.get('/api/changes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const change = readChange(deps.db, id, Date.now());
     if (change === null) return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such change' });
-    return reply.header('cache-control', 'public, max-age=1').send(change);
+    return reply.send(change);
   });
 }

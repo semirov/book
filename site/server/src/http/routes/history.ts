@@ -4,6 +4,11 @@
  *
  * All of it is public and read-only: the past is generated from the log and the snapshot
  * store, and it never feeds the editor, the engine or the queue.
+ *
+ * No route here sets a freshness header and none answers a conditional request: the app's one
+ * policy (`http/cache.ts`) marks every `/api/` answer `no-store`, because the chronicle moves
+ * under a fixed URL and a reused copy is a stale chronicle (BOOK-109). The chapter's ETag stays
+ * as the name of the moment it serves.
  */
 
 import type {
@@ -56,7 +61,7 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
       }),
       at: new Date(deps.now().getTime()).toISOString(),
     };
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** The book as it was: metadata only, no bodies (§6F.2). */
@@ -66,7 +71,7 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
       return reply.code(422).send({ code: 'INVALID_MOMENT', message: 'hseq must be a number, an ISO time or "now"' });
     }
     const body: BookAtDto = bookAt(db, moment === 'now' ? null : moment);
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** One chapter as it was, with its own ETag: `ch09@h1043` (§6F.2). */
@@ -84,9 +89,7 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
           .send({ code: 'NOT_WRITTEN_THEN', message: 'chapter did not exist at that moment' });
       }
       const etag = `"ch${String(n).padStart(2, '0')}@h${body.hseq}"`;
-      reply.header('etag', etag).header('cache-control', 'no-cache');
-      if (request.headers['if-none-match'] === etag) return reply.code(304).send();
-      return reply.send(body);
+      return reply.header('etag', etag).send(body);
     },
   );
 
@@ -99,7 +102,7 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
       return reply.code(422).send({ code: 'INVALID_CHAPTER', message: 'chapter must be 1..67' });
     }
     const body: HistoryDiffDto = readDiff(db, from, to, chapter);
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** The lineage chain of one paragraph: where it came from, what rewrote it (§6F.3). */
@@ -110,26 +113,26 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
     }
     const body = readParagraphChain(db, blockId) as ParagraphChainDto | null;
     if (body === null) return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such paragraph' });
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** What a change actually did (§6F.5); a projection, recomputed when absent. */
   app.get<{ Params: { changeId: string } }>('/api/history/impact/:changeId', async (request, reply) => {
     const body = readImpact(db, request.params.changeId, deps.now().getTime()) as ChangeImpactDto | null;
     if (body === null) return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such change' });
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** Whose text survived, and how the share moved (§6F.4). */
   app.get('/api/history/contributors', async (_request, reply) => {
     const body: ContributorsDto = readContributors(db);
-    return reply.header('cache-control', 'no-cache').send(body);
+    return reply.send(body);
   });
 
   /** The scrubber's right edge and a cheap "is there anything new" probe. */
   app.get('/api/history/status', async (_request, reply) => {
     const hseq = lastHseq(db);
     const row = db.prepare('SELECT at FROM events WHERE hseq = ?').get(hseq) as { at: string } | undefined;
-    return reply.header('cache-control', 'no-cache').send({ hseq, at: row?.at ?? null });
+    return reply.send({ hseq, at: row?.at ?? null });
   });
 }

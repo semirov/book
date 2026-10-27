@@ -237,8 +237,9 @@ export function getHistoryContributors(): Promise<ContributorsDto> {
 
 /**
  * The end matter's list (§6C.5): the author as the remainder plus the measured shares.
- * `fresh` is for the post-mutation path: the route is `public, max-age=30`, and a browser
- * cache must not show the list as it was before the reader hid or reappeared.
+ * `fresh` is for the post-mutation path: the route answers `no-store` (BOOK-109), but a copy a
+ * browser still holds from before it must not show the list as it was before the reader hid
+ * or reappeared.
  */
 export function getAuthors(options: { fresh?: boolean } = {}): Promise<AuthorsDto> {
   return readJson<AuthorsDto>('/api/authors', options.fresh === true ? { cache: 'no-store' } : undefined);

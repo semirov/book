@@ -13,6 +13,7 @@ import type { ViewerDto } from '@book/shared';
 
 import { buildApp } from './app.ts';
 import { createAuthorsCount } from './authors/count.ts';
+import { readBuildCommit } from './build.ts';
 import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
 import { databaseFile, openDatabase } from './db/db.ts';
 import { migrate } from './db/migrate.ts';
@@ -123,11 +124,15 @@ async function main(): Promise<void> {
   }, 1_000);
   decisionTimer.unref?.();
 
+  // BOOK-109: the build this process is, read once — it is what `/healthz` answers with when
+  // the owner asks which host served a page, and the one line the boot log adds about identity.
+  const commit = readBuildCommit();
   const app = await buildApp({
     config,
     db,
     state,
     imprint,
+    commit,
     wsHub: hub,
     watcherStatus: watcher.status,
     version: serverVersion(),
@@ -147,6 +152,7 @@ async function main(): Promise<void> {
   app.log.info(
     {
       site: SITE_ROOT,
+      build: commit,
       bookRoot: config.bookRoot,
       dataDir: config.dataDir,
       feedbackDir: config.feedbackDir,

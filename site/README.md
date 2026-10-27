@@ -84,9 +84,11 @@ held by another live lease is refused `LEASE_HELD`.
 The engine's internal API needs a bearer token from `DATA_DIR/engine.token` (or `ENGINE_TOKEN_FILE`).
 It reads no model, writes no prose, and is never proxied by Caddy.
 
-`GET /healthz` is liveness plus the facts an operator needs first: watcher tick, engine heartbeat, front
-present, pricing loaded. Counts, the lane holder and integrity live behind the admin token at
-`/api/admin/*`, which Caddy answers 404 for; reach it through `docker compose exec` or an SSH tunnel.
+`GET /healthz` is liveness plus the identity of the answering process: the build's `commit`, the
+`bookRoot` and `dataDir` it reads, `startedAt`, and the watcher tick with the engine status. That is
+what tells two hosts (and a stale client) apart after a deploy. Counts, the version, the lane holder
+and integrity live behind the admin token at `/api/admin/*`, which Caddy answers 404 for; reach it
+through `docker compose exec` or an SSH tunnel.
 
 ## Deploy shape
 
@@ -107,7 +109,7 @@ readable and sign-in answers `503 OAUTH_UNCONFIGURED`.
 ```sh
 docker compose build
 docker compose up -d book engine
-curl -fsS http://192.168.1.76:8090/healthz | jq '{watcher,engine,front,pricing}'   # the published LAN port
+curl -fsS http://192.168.1.76:8090/healthz | jq '{commit,startedAt,watcher,engine}'   # the published LAN port
 ```
 
 Rollback: `bin/restore.mjs` for text, the previous image tag for code, then `engine.mjs reconcile`.
