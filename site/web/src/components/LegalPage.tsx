@@ -5,7 +5,15 @@ import { track } from '../lib/analytics.ts';
 import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
 import type { StaticPage } from '../lib/route.ts';
-import { RIGHTS_ASSIGNMENT, RIGHTS_FALLBACK, TERMS_VERSION } from '../lib/terms.ts';
+import {
+  MACHINE_TOOL_CAVEAT,
+  MACHINE_TOOL_RULES,
+  RIGHTS_ASSIGNMENT,
+  RIGHTS_FALLBACK,
+  RIGHTS_RETAINED,
+  TERMS_VERSION,
+  TOOL_CLAUSE,
+} from '../lib/terms.ts';
 
 /**
  * The static pages (audit M5): «приватность» and «правила».
@@ -127,16 +135,29 @@ function Rules() {
         <p>Писатель берёт идею, а не байты: ваша фраза может пережить книгу или исчезнуть.</p>
       </section>
 
+      {/* BOOK-72: the transfer and what stays are two sections, in that order — a reader
+          reads the grant first, then the list of what no grant touched. */}
       <section>
-        <h2>Что вы отдаёте и что остаётся вашим</h2>
+        <h2>Что вы отдаёте</h2>
         {/* The version rides on the paragraph: the terms a reader accepts are identifiable. */}
         <p data-terms={TERMS_VERSION}>{RIGHTS_ASSIGNMENT}</p>
         <p>{RIGHTS_FALLBACK}</p>
+        {/* BOOK-69: the tool clause sits inside the terms block, beside the assignment. */}
+        <p>{TOOL_CLAUSE}</p>
         <p>
           Следующая волна правок может эту фразу переписать или стереть. Свою долю в
           окончательном тексте вы видите в конце книги — там же, где перечислены все, чьи слова
           в нём остались.
         </p>
+      </section>
+
+      <section>
+        <h2>Что у вас остаётся</h2>
+        <ul>
+          {RIGHTS_RETAINED.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       </section>
 
       <section>
@@ -189,6 +210,14 @@ function Rules() {
           вам и другим читателям. Замечание может быть остановлено до чтения — тогда его прочитает
           человек.
         </p>
+      </section>
+
+      {/* BOOK-69: who writes the book, said before the chain that reads a change — the reader
+          meets the machine in every section above, so it is named once as the author's tool. */}
+      <section>
+        <h2>Кто пишет книгу</h2>
+        <p>{MACHINE_TOOL_RULES}</p>
+        <p>{MACHINE_TOOL_CAVEAT}</p>
       </section>
 
       {/* BOOK-76 / BOOK-DOC-52 §5.1: the chain a change passes, named once, where a reader
