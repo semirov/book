@@ -1,32 +1,89 @@
 // @vitest-environment jsdom
-import { PAGE_CHARS, type ChapterLength } from '@book/shared';
-import { act, createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chapterStartPages, PAGE_CHARS, totalPages, type ChapterLength } from '@book/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ANCHOR_EPS,
+  atDocumentEnd,
+  chapterAt,
   charsInBlocks,
+  headOffset,
   LINE_CHARS,
-  readingLineY,
+  readingAt,
+  readingLine,
   steadyPosition,
-  useRunningPage,
   type BlockSpan,
+  type SlotSpan,
 } from './pageTrack.ts';
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+/**
+ * BOOK-104 — the page model, pure: one line at the head's edge decides the chapter, the
+ * catalogue's own `chars` decide the page. The hook's half (scroll, rects, state) lives in
+ * `useReading.dom.test.ts`.
+ */
 
-describe('readingLineY', () => {
-  it('sits at 40 % of the viewport: 337.6 at 844, 360 at 900', () => {
-    expect(readingLineY(844)).toBeCloseTo(337.6);
-    expect(readingLineY(900)).toBe(360);
-    expect(readingLineY(1000)).toBe(400);
+describe('readingLine', () => {
+  it('sits at the head’s offset plus the anchor’s rounding: 66 at the 64 px fallback', () => {
+    expect(readingLine(64)).toBe(64 + ANCHOR_EPS);
+    expect(readingLine(64)).toBe(66);
+    expect(readingLine(80)).toBe(82);
   });
 
-  it('keeps 96px clear of the sticky head and of the bottom edge', () => {
-    expect(readingLineY(300)).toBe(120);
-    expect(readingLineY(150)).toBe(96); // below 192 the floor wins, never a negative line
-    expect(readingLineY(0)).toBe(96);
-    expect(readingLineY(Number.NaN)).toBe(96);
+  it('falls back to the 64 px head, never to a negative or a fractions-of-nothing line', () => {
+    expect(readingLine(Number.NaN)).toBe(66);
+    expect(readingLine(0)).toBe(66);
+    expect(readingLine(-40)).toBe(66);
+  });
+});
+
+describe('headOffset', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads the sheet’s own --offset-top', () => {
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '80px' }));
+    expect(headOffset()).toBe(80);
+  });
+
+  it('keeps 64 when the token cannot be read', () => {
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+    expect(headOffset()).toBe(64);
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'auto' }));
+    expect(headOffset()).toBe(64);
+  });
+});
+
+describe('chapterAt', () => {
+  // The measured defect (BOOK-104): an empty chapter is ~90 px and the old band started at
+  // the head's offset, so ch20's last pixel named ch20 while the reader was in ch21.
+  const slots: SlotSpan[] = [
+    { n: 20, top: 5, bottom: 65 },
+    { n: 21, top: 65, bottom: 125 },
+  ];
+
+  it('is half-open: the line on a boundary belongs to the chapter that starts there', () => {
+    expect(chapterAt(slots, 4)).toBeNull();
+    expect(chapterAt(slots, 5)).toBe(20);
+    expect(chapterAt(slots, 64.9)).toBe(20);
+    expect(chapterAt(slots, 65)).toBe(21);
+    expect(chapterAt(slots, 66)).toBe(21);
+    expect(chapterAt(slots, 124)).toBe(21);
+  });
+
+  it('names the anchor’s line where the old band named the chapter above it', () => {
+    expect(chapterAt(slots, 64)).toBe(20); // the bug, stated: the head's offset is still ch20
+    expect(chapterAt(slots, 66)).toBe(21); // the line 64 + eps is ch21, which is what #ch-21 asks
+  });
+
+  it('is null above the first slot and below the last', () => {
+    expect(chapterAt(slots, -1)).toBeNull();
+    expect(chapterAt(slots, Number.NEGATIVE_INFINITY)).toBeNull();
+    expect(chapterAt(slots, 125)).toBeNull();
+    expect(chapterAt(slots, 9_999)).toBeNull();
+    expect(chapterAt([], 66)).toBeNull();
+  });
+
+  it('is null in a gap between slots: no article contains the line', () => {
+    expect(chapterAt([{ n: 1, top: 0, bottom: 10 }, { n: 2, top: 20, bottom: 30 }], 15)).toBeNull();
   });
 });
 
@@ -110,224 +167,120 @@ describe('steadyPosition', () => {
   });
 });
 
-/** jsdom has no layout: every rect the hook reads comes from this table. */
-type Box = { top: number; height: number };
-
-const VIEWPORT = 800; // the reading line is 320 (0.4 × 800)
-
-const catalog: ChapterLength[] = [
-  { n: 1, chars: 2 * PAGE_CHARS }, // two pages
-  { n: 2, chars: 1_800 }, // one page, and its prose has not arrived
-];
-
-/** ch01 is one 3600-character block; ch02 is present but empty until the resize test fills it. */
-const BOOK = `
-  <article data-n="1" data-rev="1">
-    <p data-block-id="a" data-chars="3600"></p>
-  </article>
-  <article data-n="2" data-rev="1"></article>
-`;
-
-const layout = new Map<string, Box>();
-
-function box(selector: string): Box | null {
-  return layout.get(selector) ?? null;
+/** The slots an all-empty book has: one 90 px row per chapter, laid end to end. */
+function emptySlots(count: number, top = 500, height = 90): SlotSpan[] {
+  return Array.from({ length: count }, (_, index) => ({
+    n: index + 1,
+    top: top + index * height,
+    bottom: top + (index + 1) * height,
+  }));
 }
 
-function rectOf(entry: Box): DOMRect {
-  // The table holds document coordinates; a browser returns viewport ones.
-  const top = entry.top - window.scrollY;
-  return {
-    top,
-    bottom: top + entry.height,
-    height: entry.height,
-    left: 0,
-    right: 0,
-    width: 0,
-    x: 0,
-    y: top,
-    toJSON: () => entry,
-  } as DOMRect;
+function spansByChapter(map: Record<number, BlockSpan[]>): (n: number) => readonly BlockSpan[] {
+  return (n) => map[n] ?? [];
 }
 
-/** Identity for a node in the table: `article` → `article:1`, a block → `block:a`. */
-function key(element: Element): string | null {
-  const chapter = element.getAttribute('data-n');
-  if (chapter !== null) return `article:${chapter}`;
-  const block = element.getAttribute('data-block-id');
-  return block === null ? null : `block:${block}`;
-}
-
-function stubLayout(): void {
-  for (const element of document.querySelectorAll<HTMLElement>('article[data-n], [data-block-id]')) {
-    const keyOf = key(element);
-    const entry = keyOf === null ? null : box(keyOf);
-    element.getBoundingClientRect = () => rectOf(entry ?? { top: 0, height: 0 });
-  }
-}
-
-/** How many times the leaf rendered: a flip is one render, a held page is none. */
-let renders = 0;
-
-function Probe({ catalog: chapters }: { catalog: readonly ChapterLength[] }) {
-  renders += 1;
-  const page = useRunningPage(chapters);
-  return createElement('span', { className: 'probe' }, page === null ? 'none' : String(page));
-}
-
-let root: Root | null = null;
-let container: HTMLDivElement;
-
-function mount(): void {
-  container = document.createElement('div');
-  document.body.append(container);
-  root = createRoot(container);
-  act(() => root?.render(createElement(Probe, { catalog })));
-}
-
-function page(): string {
-  return container.textContent ?? '';
-}
-
-function scrollTo(scroll: number): void {
-  Object.defineProperty(window, 'scrollY', { configurable: true, value: scroll });
-  act(() => {
-    window.dispatchEvent(new Event('scroll'));
+describe('atDocumentEnd', () => {
+  it('is the page’s last pixel, and only where the page can scroll at all', () => {
+    expect(atDocumentEnd(1_000, 900, 1_900)).toBe(true); // 1900 ≥ 1899
+    expect(atDocumentEnd(999, 900, 1_900)).toBe(true); // one pixel short still counts
+    expect(atDocumentEnd(998, 900, 1_900)).toBe(false);
+    // A document shorter than the viewport has no end to reach, and an unlaid-out one (jsdom)
+    // reports 0 — neither is the end of the book.
+    expect(atDocumentEnd(0, 900, 900)).toBe(false);
+    expect(atDocumentEnd(0, 900, 0)).toBe(false);
+    expect(atDocumentEnd(Number.NaN, 900, 1_900)).toBe(false);
+    expect(atDocumentEnd(1_000, Number.NaN, 1_900)).toBe(false);
+    expect(atDocumentEnd(1_000, 900, Number.POSITIVE_INFINITY)).toBe(false);
   });
-}
-
-function resize(): void {
-  act(() => {
-    window.dispatchEvent(new Event('resize'));
-  });
-}
-
-beforeEach(() => {
-  document.body.innerHTML = BOOK;
-  Object.defineProperty(window, 'innerHeight', { configurable: true, value: VIEWPORT });
-  Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
-  Object.assign(window, {
-    // Run the frame at once: the id is 0 because the hook resets its own handle when the
-    // callback starts, and a synchronous stub must leave the handle free for the next frame.
-    requestAnimationFrame: (callback: FrameRequestCallback) => {
-      callback(0);
-      return 0;
-    },
-    cancelAnimationFrame: () => undefined,
-  });
-  layout.clear();
-  // The cover and the contents sit above ch01, so the line starts where no chapter owns it.
-  layout.set('article:1', { top: 500, height: 1_600 });
-  layout.set('block:a', { top: 500, height: 1_600 });
-  layout.set('article:2', { top: 2_100, height: 400 });
-  stubLayout();
-  mount();
 });
 
-afterEach(() => {
-  act(() => root?.unmount());
-  root = null;
-  document.body.innerHTML = '';
-});
-
-describe('useRunningPage', () => {
-  it('shows nothing while the front matter or the contents own the reading line', () => {
-    expect(page()).toBe('none');
+describe('readingAt', () => {
+  it('prints the slot number as the page on an all-empty 67-slot book: one page per chapter', () => {
+    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
+    const slots = emptySlots(67);
+    for (const slot of slots) {
+      const reading = readingAt(catalog, slots, slot.top + ANCHOR_EPS, spansByChapter({}));
+      expect(reading?.n).toBe(slot.n);
+      // The contents counts the same characters, so the folio *is* the contents' number.
+      expect(reading?.page).toBe(slot.n);
+    }
+    // Nothing above the first slot and nothing below the last.
+    expect(readingAt(catalog, slots, 499, spansByChapter({}))).toBeNull();
+    expect(readingAt(catalog, slots, 500 + 67 * 90, spansByChapter({}))).toBeNull();
   });
 
-  it('derives the page from the chapter the reading line is in', () => {
-    scrollTo(900); // line 1220 → 1620 characters into ch01
-    expect(page()).toBe('1');
+  it('pages a written chapter from its own prose: start + floor(chars / PAGE_CHARS), clamped', () => {
+    const catalog: ChapterLength[] = [
+      { n: 1, chars: 2 * PAGE_CHARS },
+      { n: 2, chars: 0 },
+    ];
+    const slots: SlotSpan[] = [
+      { n: 1, top: 0, bottom: 600 },
+      { n: 2, top: 600, bottom: 690 },
+    ];
+    const blocks = spansByChapter({ 1: [{ top: 0, bottom: 600, chars: 2 * PAGE_CHARS }] });
+
+    expect(readingAt(catalog, slots, 0, blocks)).toEqual({ n: 1, chars: 0, page: 1 });
+    expect(readingAt(catalog, slots, 300, blocks)).toEqual({ n: 1, chars: PAGE_CHARS, page: 2 });
+    // Below the last block of the chapter the count is the chapter's own length, clamped to
+    // its own last page — never a page the chapter does not have.
+    expect(readingAt(catalog, slots, 599, blocks)).toEqual({ n: 1, chars: 3_594, page: 2 });
+    // An empty chapter opens its own start page: ch02 starts on page 3.
+    expect(readingAt(catalog, slots, 600, spansByChapter({}))).toEqual({ n: 2, chars: 0, page: 3 });
   });
 
-  it('flips the page when the reader passes a page boundary', () => {
-    scrollTo(900);
-    expect(page()).toBe('1');
-    scrollTo(980); // line 1300 → 1800 characters: the second page
-    expect(page()).toBe('2');
+  it('treats a chapter absent from the catalog as an empty chapter, not a crash', () => {
+    const catalog: ChapterLength[] = [
+      { n: 1, chars: 2 * PAGE_CHARS },
+      { n: 2, chars: 1_800 },
+    ];
+    const slots: SlotSpan[] = [{ n: 9, top: 0, bottom: 90 }];
+    expect(readingAt(catalog, slots, 2, spansByChapter({}))).toEqual({
+      n: 9,
+      chars: 0,
+      page: chapterStartPages(catalog).get(9),
+    });
   });
 
-  it('holds the number under sub-line jitter across a boundary (hysteresis)', () => {
-    scrollTo(980);
-    expect(page()).toBe('2');
-    scrollTo(960); // 1755 characters: 45 under the boundary, less than one line of jitter
-    expect(page()).toBe('2');
-    scrollTo(820); // 1440 characters: past the tolerance, back on the first page
-    expect(page()).toBe('1');
+  it('ends the book at the document’s end: the last chapter, on its own last page', () => {
+    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
+    const slots = emptySlots(67);
+    const line = slots[59]!.top + ANCHOR_EPS; // inside ch60: what `#ch-67` really leaves
+
+    // Without the end rule the line names the chapter it is in — the reported defect.
+    expect(readingAt(catalog, slots, line, spansByChapter({}))?.n).toBe(60);
+
+    // At the end of the document the last chapter owns the reader, and its page is the page
+    // the contents prints: an empty chapter's last page is its start page.
+    const end = readingAt(catalog, slots, line, spansByChapter({}), null, true);
+    expect(end).toEqual({ n: 67, chars: 0, page: 67 });
+    expect(end?.page).toBe(chapterStartPages(catalog).get(67));
+
+    // Without any slot there is no chapter to end on.
+    expect(readingAt(catalog, [], line, spansByChapter({}), null, true)).toBeNull();
   });
 
-  it('writes no state when the position moves but the page does not flip', () => {
-    scrollTo(900); // 1620 characters into ch01: page 1
-    const before = renders;
-    scrollTo(780); // 1440 characters: past the hysteresis, still the first page
-    expect(page()).toBe('1');
-    expect(renders).toBe(before);
-    scrollTo(980); // 1800 characters: the boundary, so the page flips once
-    expect(renders).toBe(before + 1);
+  it('prints a written last chapter’s last page at the end, never its start', () => {
+    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
+    catalog[66] = { n: 67, chars: 2 * PAGE_CHARS };
+    const slots = emptySlots(67);
+
+    const end = readingAt(catalog, slots, slots[10]!.top, spansByChapter({}), null, true);
+    expect(end?.n).toBe(67);
+    // `pageAt` over the chapter's full length is the book's last page — no second arithmetic.
+    expect(end?.page).toBe(totalPages(catalog));
   });
 
-  it('shows a chapter’s start page when its prose is not loaded yet', () => {
-    scrollTo(1900); // line 2220 → ch02, which has no blocks at all
-    expect(page()).toBe('3');
-  });
+  it('steadies the page against the previous position, never the chapter', () => {
+    const catalog: ChapterLength[] = [{ n: 1, chars: 2 * PAGE_CHARS }];
+    const slots: SlotSpan[] = [{ n: 1, top: 0, bottom: 600 }];
+    const blocks = spansByChapter({ 1: [{ top: 0, bottom: 600, chars: 2 * PAGE_CHARS }] });
+    const committed = { n: 1, chars: PAGE_CHARS, page: 2 };
 
-  it('shows nothing below the last chapter: the end matter has no page', () => {
-    scrollTo(2400); // line 2720 → below ch02
-    expect(page()).toBe('none');
-  });
-
-  it('walks back a chapter when the reader scrolls up, and clears the number past the book', () => {
-    scrollTo(1900); // ch02
-    expect(page()).toBe('3');
-    scrollTo(900); // back up into ch01
-    expect(page()).toBe('1');
-    scrollTo(2400); // past the last chapter: the end matter owns the line
-    expect(page()).toBe('none');
-  });
-
-  it('renders no number when the page has no chapters at all', () => {
-    act(() => root?.unmount());
-    document.body.innerHTML = '';
-    container = document.createElement('div');
-    document.body.append(container);
-    root = createRoot(container);
-    act(() => root?.render(createElement(Probe, { catalog })));
-    scrollTo(900);
-    expect(page()).toBe('none');
-  });
-
-  it('shows the chapter’s start page for a block without a character count', () => {
-    const second = document.querySelector('article[data-n="2"]');
-    if (second !== null) second.innerHTML = '<p data-block-id="b"></p>';
-    layout.set('block:b', { top: 2_100, height: 400 });
-    stubLayout();
-    resize();
-    scrollTo(1900); // line 2220, inside the attribute-less block
-    expect(page()).toBe('3');
-  });
-
-  it('cancels a pending frame on unmount', () => {
-    act(() => root?.unmount());
-    root = null;
-    container = document.createElement('div');
-    document.body.append(container);
-    const cancel = vi.fn();
-    Object.assign(window, { requestAnimationFrame: () => 7, cancelAnimationFrame: cancel });
-    root = createRoot(container);
-    act(() => root?.render(createElement(Probe, { catalog })));
-    act(() => root?.unmount());
-    root = null;
-    expect(cancel).toHaveBeenCalledWith(7);
-  });
-
-  it('re-measures after a resize, so prose arriving above the reader shifts the page', () => {
-    expect(page()).toBe('none');
-    // ch01 moves to the top of the document, as it does once the cover is scrolled past and
-    // the contents collapse: the same scroll position now sits inside a chapter.
-    layout.set('article:1', { top: 0, height: 1_600 });
-    layout.set('block:a', { top: 0, height: 1_600 });
-    stubLayout();
-    resize();
-    expect(page()).toBe('1');
+    // 24 characters under a page boundary: less than one line, so the page holds.
+    expect(readingAt(catalog, slots, 296, blocks, committed)).toEqual({ n: 1, chars: PAGE_CHARS, page: 2 });
+    // A chapter opening is never steadied: at 600 the line is in no chapter at all.
+    expect(readingAt(catalog, slots, 600, blocks, committed)).toBeNull();
   });
 });

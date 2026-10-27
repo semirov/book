@@ -326,4 +326,9 @@
     position: static;
     padding-inline-start: 12px;
   }
+  /* BOOK-104: on the phone the head carries one number — the page: a chapter numeral beside it
+     reads as a duplicate («1 | 1»), and the chapter keeps its own in its row and in the contents. */
+  .top-chapter {
+    display: none;
+  }
 }
