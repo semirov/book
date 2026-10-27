@@ -55,9 +55,11 @@ export function ProvenancePanel({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // BOOK-77 (audit F1): chain values and rows carry a reader's label, so both placements of
+  // the panel are masked.
   return (
     <aside
-      className={`prov-panel${placement === null ? '' : ' prov-panel-anchored'}`}
+      className={`prov-panel ym-hide-content${placement === null ? '' : ' prov-panel-anchored'}`}
       role="dialog"
       aria-modal="false"
       aria-label={view.title}

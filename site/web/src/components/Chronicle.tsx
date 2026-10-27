@@ -120,7 +120,9 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
   }, [changes]);
 
   return (
-    <section className="chronicle page sheet" aria-label="хроника книги">
+    // BOOK-77 (audit F1): event summaries carry intent text, and a chapter's past pages carry
+    // reader-attributed revision lines — not for the recorder.
+    <section className="chronicle page sheet ym-hide-content" aria-label="хроника книги">
       <div className="chr-head">
         <h2 className="chr-title">хроника</h2>
         <p className="chr-sub">
@@ -264,7 +266,9 @@ export function TimelineRow({
 }) {
   const decided = event.kind === 'change.decided' || event.kind === 'cascade.closed';
   return (
-    <li className="chr-row">
+    // BOOK-77 (audit F1): the row is masked on its own, so it holds even when it is rendered
+    // outside the chronicle — the summary (and the button's aria-label) is reader-derived.
+    <li className="chr-row ym-hide-content">
       <button type="button" className="chr-row-main" onClick={onPick} aria-label={`${event.summary} — книга на этот момент`}>
         <span className="chr-time">{formatTime(event.at)}</span>
         <span className="chr-target">{targetLabel(event)}</span>

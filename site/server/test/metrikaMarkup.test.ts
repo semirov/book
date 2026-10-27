@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest';
 /**
  * BOOK-63 — the Webvisor rules, as a source guard (comment #3618).
  *
- * Webvisor records the DOM and typing; this site has a reader's own words in three places.
+ * Webvisor records the DOM and typing; this site has a reader's own words in many places.
  * The counter's «Записывать все поля» setting stays off (the operator's job, stated in the
  * report), but the code is belt and braces: no `ym-record-keys` anywhere, `ym-disable-keys`
- * on every field, and `ym-hide-content` over the seam, the form, the thread, the receipt and
- * the draft. A new input that forgets the class fails here instead of shipping.
+ * on every field, and `ym-hide-content` over every block that renders a reader's words, name
+ * or quote — the seam, the form, the thread, the receipt, the draft (BOOK-63), and the end
+ * matter, the change card, the filing and provenance panels, the chronicle, the chain and
+ * the premise slot (BOOK-77, audit F1). A new surface that forgets the class fails here
+ * instead of shipping: the consent line promises «Текст и имя в неё не попадают».
  */
 
 import { METRIKA_INIT, METRIKA_TAG_URL } from '../../web/src/lib/analytics.ts';
@@ -53,6 +56,18 @@ describe('the reader’s fields are never recorded', () => {
       ['components/Seam.tsx', 'className="seam-receipt ym-hide-content"'],
       ['components/InterventionForm.tsx', 'className="seam-form ym-hide-content"'],
       ['components/Discussion.tsx', 'className="page talks ym-hide-content"'],
+      // BOOK-77 (audit F1): every other surface that renders a reader's name, quote or body.
+      ['components/Authors.tsx', 'className="page authors ym-hide-content"'],
+      ['components/Authors.tsx', 'className="authors-row ym-disable-clickmap"'],
+      ['components/OwnTrace.tsx', 'className="own-trace ym-disable-clickmap"'],
+      ['components/ChangeCard.tsx', 'className="change-card ym-hide-content"'],
+      ['components/FilingPanel.tsx', 'filing-panel ym-hide-content'],
+      ['components/ProvenancePanel.tsx', 'prov-panel ym-hide-content'],
+      ['components/Chronicle.tsx', 'className="chronicle page sheet ym-hide-content"'],
+      ['components/Chronicle.tsx', 'className="chr-row ym-hide-content"'],
+      ['components/ParagraphChain.tsx', 'chain ym-hide-content'],
+      ['components/PremiseRow.tsx', 'className="premise ym-hide-content"'],
+      ['components/FocusView.tsx', 'className="focus-note ym-hide-content"'],
     ];
     for (const [file, marker] of expectations) expect(read(file), file).toContain(marker);
   });

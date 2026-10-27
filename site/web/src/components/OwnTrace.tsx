@@ -37,7 +37,8 @@ export function OwnTrace({
   pending?: boolean;
 }) {
   return (
-    <section className="own-trace" aria-label="ваш след">
+    // BOOK-77 (audit F1): the reader's own display name is in here — no clickmap entry for it.
+    <section className="own-trace ym-disable-clickmap" aria-label="ваш след">
       <p className="own-trace-title">ваш след</p>
       <p className="own-trace-line">{traceLine(trace)}</p>
       <p className="own-trace-edits">

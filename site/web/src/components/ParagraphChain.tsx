@@ -58,9 +58,11 @@ export function ParagraphChain({
     placePanel(panel.current, placement);
   }, [placement]);
 
+  // BOOK-77 (audit F1): the chain names the readers who wrote each version — masked in both
+  // placements, because the panel is also mounted outside the chronicle.
   return (
     <aside
-      className={`chain${placement === null ? '' : ' chain-anchored'}`}
+      className={`chain ym-hide-content${placement === null ? '' : ' chain-anchored'}`}
       role="dialog"
       aria-label="откуда эта фраза"
       ref={panel}

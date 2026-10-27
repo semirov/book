@@ -2,7 +2,7 @@
 import { IMPRINT_AUTHOR, IMPRINT_COPYRIGHT, type StateSnapshot } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { configureCounter } from '../lib/analytics.ts';
 import { CONSENT_COPY, resetConsent, setConsent } from '../lib/consent.ts';
@@ -15,6 +15,9 @@ import { ConsentBanner } from './ConsentBanner.tsx';
  * The copy is the researcher's line verbatim, the link goes to /privacy, the choice is
  * made by a click (no pre-checked state, no «продолжая пользоваться»), the strip disappears
  * once a choice exists, and «изменить» in the colophon brings it back.
+ *
+ * BOOK-77 (F2): a withdrawal after a live tag reloads the page. jsdom cannot navigate, so the
+ * test supplies the page — and reads the request the teardown makes.
  */
 
 const state = {
@@ -23,6 +26,8 @@ const state = {
 const imprint = { author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT };
 
 const COUNTER = '113820311';
+const reload = vi.fn();
+vi.stubGlobal('location', { hostname: 'book.semirov.dev', reload });
 configureCounter(COUNTER);
 
 let container: HTMLDivElement;
