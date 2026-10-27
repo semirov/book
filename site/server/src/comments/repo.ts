@@ -247,6 +247,12 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
   const changeLine = change === undefined ? null : readerReason(change.reason);
   const codeInChange = change !== undefined && holdsInternalCode(change.reason);
   const reason = premise && !codeInChange ? (changeLine ?? rowLine) : rowLine;
+  // The receipt of a premise is the **derived** landing, never `written` alone: a rejected or
+  // superseded premise on a written chapter decided against that text and carries no receipt.
+  // A landing has no receipt columns of its own — the chapter it entered and that chapter's
+  // revision are the receipt. Never invented: no chapter row, no `applied`.
+  const landedReceipt =
+    premise && status === 'applied' && base !== undefined ? { chapter: row.chapter, rev: base.rev } : null;
   return {
     id: row.id,
     chapter: row.chapter,
@@ -276,11 +282,10 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // entered and that chapter's revision are the receipt. Never invented: no chapter row,
     // no `applied`.
     applied:
-      premise && written && base !== undefined
-        ? { chapter: row.chapter, rev: base.rev }
-        : row.applied_chapter !== null && row.applied_rev !== null
-          ? { chapter: row.applied_chapter, rev: row.applied_rev }
-          : null,
+      landedReceipt ??
+      (row.applied_chapter !== null && row.applied_rev !== null
+        ? { chapter: row.applied_chapter, rev: row.applied_rev }
+        : null),
   };
 }
 
@@ -320,6 +325,16 @@ const OWN_STATES = new Set<CommentStatus>(['rejected', 'quarantined', 'supersede
 const ATTEMPT_STATES = new Set<string>(['void', 'failed', 'escalated']);
 
 /**
+ * Did this change decide in **human words**? A `void` whose reason is a sentence is the
+ * writer's refusal or a supersede; a `void` whose reason is an internal code is an attempt
+ * that came back empty, and one with **no** reason at all decides nothing — the chapter's
+ * text is the answer in both of those cases.
+ */
+function decided(reason: string | null): boolean {
+  return !holdsInternalCode(reason) && readerReason(reason) !== null;
+}
+
+/**
  * Did this premise land? The one derived fact every surface reads: the change's own answer plus
  * the book's, never a second vocabulary
  * (`ChangeDto.premiseLanded`, a filing's `applied`, a reader's own outcome).
@@ -340,7 +355,7 @@ export function premiseLanded(facts: {
 }): boolean {
   if (facts.premise !== 1 && facts.premise !== true) return false;
   if (facts.status === 'done') return true;
-  if (facts.status === 'void' && !holdsInternalCode(facts.reason)) return false;
+  if (facts.status === 'void' && decided(facts.reason)) return false;
   return facts.written;
 }
 
@@ -368,7 +383,7 @@ function premiseStatus(
   ) {
     return 'applied';
   }
-  if (change !== undefined && change.status === 'void' && !holdsInternalCode(change.reason)) {
+  if (change !== undefined && change.status === 'void' && decided(change.reason)) {
     return change.outcome === 'superseded' ? 'superseded' : 'rejected';
   }
   if (change !== undefined && change.status === 'pending') return 'accepted';
@@ -378,11 +393,15 @@ function premiseStatus(
 /**
  * Is the linked change a failed attempt? The engine's `void`/`failed`/`escalated` with an
  * internal-code reason is one: the filing keeps its state and the page says the attempt
- * came back empty. A filing that landed never carries one, and a human refusal is not an
- * attempt — it reaches the reader as its own sentence.
+ * came back empty. A filing that landed never carries one, a human refusal is not an attempt —
+ * it reaches the reader as its own sentence — and neither is a **silent** change, whose reason
+ * is `null` and whose answer is the chapter's text. A filing that decided itself (`rejected`,
+ * `quarantined`, `superseded`, `hidden`) said the last word: its own refusal is not an echo of
+ * an attempt behind it.
  */
 function failedAttempt(change: LinkedChange | undefined, status: CommentStatus): CommentDto['attempt'] {
   if (change === undefined || status === 'applied') return null;
+  if (OWN_STATES.has(status)) return null;
   if (!ATTEMPT_STATES.has(change.status)) return null;
   return holdsInternalCode(change.reason) ? 'failed' : null;
 }

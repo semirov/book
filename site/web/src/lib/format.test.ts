@@ -139,6 +139,18 @@ describe('queueView', () => {
     expect(view.count).toBe(1);
   });
 
+  it('counts a filing in triage: the word «в очереди» covers it', () => {
+    // The rule `QUEUED_FILING` states: the line counts what the page presents as waiting or
+    // working. A `batched`/`delivered` filing is being read by triage — on its way into the
+    // lane, not out of the book — so it counts, and the line never reads «пусто» above it.
+    const view = queueView(0, [filing('cmt_t', 'batched'), filing('cmt_d', 'delivered')]);
+    expect(view.count).toBe(2);
+    expect(view.rows).toEqual([
+      { kind: 'filing', id: 'cmt_t' },
+      { kind: 'filing', id: 'cmt_d' },
+    ]);
+  });
+
   it('keeps the server’s own depth when the page shows fewer rows than the lane holds', () => {
     // The API pages the thread; the line is about the lane, so a bigger depth still prints.
     expect(queueView(5, []).count).toBe(5);

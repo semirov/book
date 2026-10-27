@@ -254,11 +254,17 @@ describe('ranges and labels', () => {
 });
 
 describe('BOOK-65 — one outcome word for one public record entry', () => {
-  function record(overrides: Partial<Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'reason'>> = {}) {
-    return { status: 'done', outcome: 'applied', premise: false, reason: null, ...overrides } as Pick<
-      HistoryRecordDto,
-      'status' | 'outcome' | 'premise' | 'reason'
-    >;
+  function record(
+    overrides: Partial<Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded' | 'reason'>> = {},
+  ) {
+    return {
+      status: 'done',
+      outcome: 'applied',
+      premise: false,
+      premiseLanded: false,
+      reason: null,
+      ...overrides,
+    } as Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded' | 'reason'>;
   }
 
   it('uses exactly the three public state words, agreeing with the card', () => {
@@ -300,6 +306,22 @@ describe('BOOK-65 — one outcome word for one public record entry', () => {
     // …and an absent or empty reason prints nothing at all.
     expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: null }))).toBeNull();
     expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: '' }))).toBeNull();
+  });
+
+  it('reads the prod shape as «учтён»: a landed premise is not its failed attempt', () => {
+    // The prod shape: chapter 65 was written, the premise’s change ended `void`/`dropped` with
+    // the sanitized failure line, and the row said «замысел … снят». The chapter’s text is the
+    // landing (`premiseLanded`), so the word is the premise’s own and the attempt is stale news.
+    const prod = record({
+      premise: true,
+      premiseLanded: true,
+      status: 'void',
+      outcome: 'dropped',
+      reason: 'модель ответила не по форме — заявка остаётся в очереди',
+    });
+    expect(recordWord(prod)).toBe('учтён');
+    expect(recordReason(prod)).toBeNull();
+    expect(JSON.stringify([recordWord(prod), recordReason(prod)])).not.toMatch(/не по форме|снят/u);
   });
 });
 

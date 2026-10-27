@@ -200,7 +200,121 @@ describe('one state per filing: the row plus one fact', () => {
     });
     const filing = first(await listComments(h, 9));
     expect(filing).toMatchObject({ status: 'rejected', reason: 'вне рамок: канон' });
-    expect(filing.attempt).toBe('failed');
+    // A row that refused the filing said the last word: the attempt behind it is not an echo of
+    // that refusal, and the page prints the row's own sentence, never «модель … не по форме».
+    expect(filing.attempt).toBeNull();
+  });
+
+  it('leaves every own-decision state without an attempt line', async () => {
+    const h = await boot();
+    // `hidden` is a moderation state and never listed; the three public own-decision states are.
+    const states = ['rejected', 'quarantined', 'superseded'] as const;
+    for (const state of states) {
+      seedFiling(h, { id: `cmt_own_${state}`, chapter: 9, status: state, reason: 'вне рамок: канон' });
+      seedChange(h, {
+        id: `chg_own_${state}`,
+        chapter: 9,
+        premise: 1,
+        status: 'void',
+        outcome: 'dropped',
+        reason: SHAPE_REASON,
+        commentId: `cmt_own_${state}`,
+      });
+    }
+    const byState = new Map((await listComments(h, 9)).map((filing) => [filing.status, filing.attempt]));
+    for (const state of states) expect(byState.get(state), state).toBeNull();
+  });
+
+  it('carries no receipt when a premise decided against a written chapter', async () => {
+    const h = await boot();
+    // Chapter 65 has text, but this row refused the filing: the row's own word is the state, and
+    // a receipt would claim the reader's words entered an edition they did not shape.
+    seedFiling(h, { id: 'cmt_65r', chapter: 65, status: 'rejected', reason: 'вне рамок: канон' });
+    seedChange(h, {
+      id: 'chg_65r',
+      chapter: 65,
+      premise: 1,
+      status: 'void',
+      outcome: 'dropped',
+      reason: SHAPE_REASON,
+      commentId: 'cmt_65r',
+    });
+    expect(first(await listComments(h, 65))).toMatchObject({ status: 'rejected', applied: null, attempt: null });
+  });
+
+  it('carries no receipt when a human sentence superseded a premise on a written chapter', async () => {
+    const h = await boot();
+    seedFiling(h, { id: 'cmt_65s', chapter: 65, status: 'accepted', reason: ACCEPTED_LINE });
+    seedChange(h, {
+      id: 'chg_65s',
+      chapter: 65,
+      premise: 1,
+      status: 'void',
+      outcome: 'superseded',
+      reason: 'у главы уже есть замысел',
+      commentId: 'cmt_65s',
+    });
+    expect(first(await listComments(h, 65))).toMatchObject({
+      status: 'superseded',
+      applied: null,
+      reason: 'у главы уже есть замысел',
+    });
+  });
+
+  it('a silent change decides nothing: the written chapter still lands the premise', async () => {
+    const h = await boot();
+    // `void` with no reason is not a refusal: the writer said nothing, and the chapter's text
+    // is the answer — the attempt-free counterpart of the prod shape above.
+    seedFiling(h, { id: 'cmt_65q', chapter: 65, status: 'accepted', reason: ACCEPTED_LINE });
+    seedChange(h, {
+      id: 'chg_65q',
+      chapter: 65,
+      premise: 1,
+      status: 'void',
+      outcome: 'dropped',
+      reason: null,
+      commentId: 'cmt_65q',
+    });
+    expect(first(await listComments(h, 65))).toMatchObject({
+      status: 'applied',
+      applied: { chapter: 65, rev: chapterRev(h, 65) },
+      attempt: null,
+      reason: ACCEPTED_LINE,
+    });
+  });
+
+  it('a silent change over an empty chapter leaves the premise waiting', async () => {
+    const h = await boot();
+    seedFiling(h, { id: 'cmt_09q', chapter: 9, status: 'accepted', reason: null });
+    seedChange(h, {
+      id: 'chg_09q',
+      chapter: 9,
+      premise: 1,
+      status: 'void',
+      outcome: 'dropped',
+      reason: null,
+      commentId: 'cmt_09q',
+    });
+    expect(first(await listComments(h, 9))).toMatchObject({
+      status: 'accepted',
+      applied: null,
+      attempt: null,
+    });
+  });
+
+  it('keeps a note’s own stored receipt: only a premise reads its receipt from the chapter', async () => {
+    const h = await boot();
+    // A change attached with no premise makes the row an ordinary filing, so the receipt comes
+    // from the row's own `applied_*` columns — the branch a premise must never take.
+    seedFiling(h, { id: 'cmt_note', chapter: 8, status: 'applied', reason: null });
+    seedChange(h, { id: 'chg_note', chapter: 8, status: 'done', outcome: 'applied', commentId: 'cmt_note' });
+    h.db.prepare('UPDATE comments SET applied_chapter = 8, applied_rev = 3 WHERE id = ?').run('cmt_note');
+    expect(first(await listComments(h, 8))).toMatchObject({
+      id: 'cmt_note',
+      premise: false,
+      status: 'applied',
+      applied: { chapter: 8, rev: 3 },
+    });
   });
 });
 

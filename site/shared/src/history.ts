@@ -103,6 +103,14 @@ export type HistoryRecordDto = {
   chapter: number;
   /** BOOK-7: a chapter's premise is not «правка N»; the row's word says so. */
   premise: boolean;
+  /**
+   * BOOK-7 — the book's own fact about a premise: its chapter has text, so the premise entered
+   * the first edition, whatever the attempt behind it went on to say. Derived on the server
+   * from the chapter row, the same way the thread and the card read it (`comments/repo.ts`),
+   * so the record cannot print «снят» about a chapter that exists. Always `false` for a
+   * change that is not a premise.
+   */
+  premiseLanded: boolean;
   /** The display name of the reader who filed it, snapshotted on the comment. */
   alias: string;
   status: ChangeStatus;

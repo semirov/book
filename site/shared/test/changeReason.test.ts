@@ -56,9 +56,16 @@ describe('readerReason', () => {
   it('recognises an internal code by shape, not by a list of today’s codes', () => {
     expect(holdsInternalCode('PROVIDER_SHAPE')).toBe(true);
     expect(holdsInternalCode('модель не ответила: PROVIDER_SHAPE')).toBe(true);
+    // The engine stores its handles in both registers; the lowercase snake spelling is still a
+    // code, and it never reaches the reader either.
+    expect(holdsInternalCode('provider_shape')).toBe(true);
+    expect(holdsInternalCode('движок: engine_timeout')).toBe(true);
+    expect(readerReason('модель: provider_shape')).toBe(FAILED_ATTEMPT_LINE);
+    expect(readerReason('движок: engine_timeout')).toBe(ENGINE_SILENT_LINE);
     // A sentence with capitals and no underscore is a sentence; a lowercase word is not a code.
     expect(holdsInternalCode('глава 65 не готова')).toBe(false);
     expect(holdsInternalCode('Gate-Timeout')).toBe(false);
+    expect(holdsInternalCode('глава 65 уже написана')).toBe(false);
     expect(holdsInternalCode(null)).toBe(false);
   });
 });

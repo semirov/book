@@ -148,6 +148,7 @@ const record: HistoryRecordDto = {
   seq: 7,
   chapter: 8,
   premise: false,
+  premiseLanded: false,
   alias: 'Аня',
   status: 'done',
   outcome: 'adapted',

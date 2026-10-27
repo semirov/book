@@ -18,9 +18,8 @@ import { Chronicle } from './Chronicle.tsx';
  * the control: clicking an entry opens its card, it never scrubs.
  *
  * BOOK-DOC-43 §4, §6, §7, §10 (BOOK-66) — the same mount proves the timeline's wait: the
- * thresholds need a clock, so they live here; the failure of the timeline leaves its failure
- * block and «повторить» re-reads it, and the failure of `getHistoryAt` leaves its line with the
- * retry that re-requests the same hseq.
+ * thresholds need a clock, so they live here; a failure keeps its block and «повторить»
+ * re-reads it, and the failure of `getHistoryAt` keeps the retry for the same hseq.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -34,6 +33,7 @@ function record(hseq: number, at: string, seq: number): HistoryRecordDto {
     seq,
     chapter: 1,
     premise: false,
+    premiseLanded: false,
     alias: 'Филипп',
     status: 'done',
     outcome: 'applied',

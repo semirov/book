@@ -191,6 +191,31 @@ describe('a failed attempt on a filing', () => {
     expect(line.detail).toBe(FAILED_ATTEMPT_LINE);
   });
 
+  it('keeps the row’s own sentence beside the attempt line on a waiting filing', () => {
+    // The attempt is the consequence, the reason is what the row itself said: `new` keeps both,
+    // as `accepted` already did, instead of dropping the human sentence.
+    const line = commentStatusLine(
+      comment({ status: 'new', attempt: 'failed', reason: 'вне рамок: форма книги' }),
+    );
+    expect(line).toMatchObject({ state: STATE_WORDS.waiting });
+    expect(line.detail).toBe(`${FAILED_ATTEMPT_LINE} · вне рамок: форма книги`);
+  });
+
+  it('never puts the attempt line under a refusal: the row keeps its own sentence', () => {
+    // A refused filing is not a failed attempt (BOOK-136): even if the flag reached the page,
+    // the gate’s word and the row’s own reason are the whole line — never «модель … не по форме».
+    const refused = commentStatusLine(
+      comment({ status: 'rejected', reason: 'вне рамок: канон', attempt: 'failed' }),
+    );
+    expect(refused.detail).toBe('отклонено · вне рамок: канон');
+    expect(refused.detail).not.toContain(FAILED_ATTEMPT_LINE);
+    // A row that decided itself has no attempt line for the same reason, held and hidden too.
+    for (const status of ['quarantined', 'superseded', 'hidden'] as const) {
+      const line = commentStatusLine(comment({ status, attempt: 'failed' }));
+      expect(line.detail ?? '', status).not.toContain(FAILED_ATTEMPT_LINE);
+    }
+  });
+
   it('never overrides a landing: an applied premise keeps its receipt', () => {
     const landed = comment({ premise: true, status: 'applied', applied: { chapter: 65, rev: 7 }, attempt: null });
     const line = commentStatusLine(landed);

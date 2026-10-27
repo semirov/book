@@ -435,11 +435,13 @@ export const ENGINE_SILENT_LINE = 'движок не ответил — попы
 export const ATTEMPT_LINE = 'попытка не удалась — заявка остаётся в очереди';
 
 /**
- * An internal code (`PROVIDER_SHAPE`, `ENGINE_TIMEOUT`, `GATE_TIMEOUT`): two or more
- * upper-case runs joined by underscores. No public surface may print one — a reader reads the
- * book's words, and a code is a handle for the operator's log.
+ * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`, `GATE_TIMEOUT`),
+ * or their lowercase/snake spelling (`provider_shape`, `engine_timeout`) — an engine's handles
+ * come in both registers. No public surface may print one: a reader reads the book's words, and
+ * a code is a handle for the operator's log. A sentence with capitals and no underscore
+ * («Gate-Timeout», «глава 65 не готова») is a sentence.
  */
-const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/u;
+const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
 
 /** Does this text carry an internal code? One predicate, so the sanitizer and the DTO agree. */
 export function holdsInternalCode(raw: unknown): boolean {
@@ -455,7 +457,7 @@ export function readerReason(raw: unknown): string | null {
   const text = seamReason(raw);
   if (text.length === 0) return null;
   if (!holdsInternalCode(text)) return text;
-  if (text.includes('PROVIDER_SHAPE')) return FAILED_ATTEMPT_LINE;
+  if (/provider_shape/iu.test(text)) return FAILED_ATTEMPT_LINE;
   if (/ENGINE_TIMEOUT|timeout/iu.test(text)) return ENGINE_SILENT_LINE;
   return ATTEMPT_LINE;
 }

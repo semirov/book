@@ -148,6 +148,7 @@ const RECORD: HistoryRecordDto = {
   seq: 7,
   chapter: 8,
   premise: false,
+  premiseLanded: false,
   alias: SENTINEL.name,
   status: 'done',
   outcome: 'applied',

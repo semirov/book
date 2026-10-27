@@ -210,15 +210,20 @@ export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outc
  * `changeState`, so the list and the card can never say two different states one click apart.
  * A refusal keeps its word — «снято» · «перекрыто» — from `outcomeCopy`, and a stopped change
  * says «остановлено». A premise speaks of «замысел», so its word agrees with that noun instead
- * («учтён» · «снят» · «ждёт»).
+ * («учтён» · «снят» · «ждёт»); «учтён» follows the chapter's own text (`premiseLanded`), so a
+ * premise the writer landed and a failed attempt left behind cannot read «снят».
  *
  * Nothing here invents a register: every word already exists in `STATE_WORDS`,
  * `outcomeCopy` or the premise's own card copy. The final wording belongs to BOOK-59's copy
  * pass; this function is where that pass changes it.
  */
-export function recordWord(record: Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise'>): string {
+export function recordWord(
+  record: Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded'>,
+): string {
   if (record.premise) {
-    if (record.status === 'done') return 'учтён';
+    // The chapter's text is the landing — the same fact the card's stamp reads. A premise whose
+    // chapter has an edition is «учтён» whatever the attempt behind it went on to say.
+    if (record.premiseLanded || record.status === 'done') return 'учтён';
     if (record.status === 'void') return 'снят';
     return STATE_WORDS.waiting;
   }
@@ -234,9 +239,14 @@ export function recordWord(record: Pick<HistoryRecordDto, 'status' | 'outcome' |
  *
  * The server already bounds and normalises it (`record.ts`), so the row appends nothing of its
  * own: the reason is the only tail a record entry may carry, and only where there is one.
+ * A premise that landed carries none, whatever its change row still says: the failed attempt
+ * behind a written chapter is stale news, not the premise's line.
  */
-export function recordReason(record: Pick<HistoryRecordDto, 'status' | 'reason'>): string | null {
+export function recordReason(
+  record: Pick<HistoryRecordDto, 'status' | 'reason' | 'premiseLanded'>,
+): string | null {
   if (record.reason === null || record.reason.length === 0) return null;
+  if (record.premiseLanded) return null;
   if (record.status === 'void' || record.status === 'escalated' || record.status === 'failed') return record.reason;
   return null;
 }

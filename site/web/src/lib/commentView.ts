@@ -55,9 +55,15 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
   const { word } = filingMarginalia(comment);
   switch (comment.status) {
     case 'new':
-      // A filing whose attempt came back empty still waits, and the human line
-      // under the word is the deck's — the state word alone would hide the attempt.
-      return lineOf(word, comment.attempt === 'failed' ? filingConsequence(comment) : null, 'quiet');
+      // A filing whose attempt came back empty still waits, and the human line under the word
+      // is the deck's — the state word alone would hide the attempt. The row's own sentence is
+      // a separate fact and keeps its place beside it, exactly as on an accepted row: the
+      // attempt is the consequence, the reason is what the row itself said.
+      return lineOf(
+        word,
+        comment.attempt === 'failed' ? joinDetail(filingConsequence(comment), comment.reason) : comment.reason,
+        'quiet',
+      );
     case 'batched':
     case 'delivered':
       return lineOf(word, null, 'live');

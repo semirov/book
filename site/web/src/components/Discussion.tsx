@@ -24,8 +24,9 @@ import { Skeleton } from './Skeleton.tsx';
  * - a change attaches to the filing that caused it (`sourceCommentId`): the entry prints the
  *   latest attempt's number and one `прицел` in a quiet line, and the earlier attempts live
  *   inside the card — a change is never a row of its own;
- * - a change with **no** source comment is the author's own and belongs to the chronicle, so
- *   the thread lists no changes at all.
+ * - a change with **no** source comment is the author's own: it is not on this surface, and the
+ *   record does not list it either (the chronicle reads source-comment changes only), so the
+ *   thread never shows a change of its own.
  *
  * BOOK-DOC-43 §4, §6, §7 — the feed's wait (BOOK-66). `{filings.length} замечаний` before the
  * answer is a count of nothing, so while the register waits its meta slot holds one status
