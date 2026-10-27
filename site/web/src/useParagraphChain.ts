@@ -1,7 +1,7 @@
 import type { ParagraphChainDto } from '@book/shared';
 import { useCallback, useRef, useState } from 'react';
 
-import { getHistoryParagraph } from './api.ts';
+import { knownParagraphChain, loadParagraphChain } from './lib/paragraphChainCache.ts';
 import type { AnchorRect } from './lib/popover.ts';
 
 /**
@@ -18,6 +18,12 @@ import type { AnchorRect } from './lib/popover.ts';
  * would take the retry away with it. The generation guard is bumped by `open`, `retry` and
  * `close`, so a retry is a fresh request (never dropped) and the previous attempt's late
  * answer can neither reopen nor replace it.
+ *
+ * BOOK-68: a 404 is an answer — `chain` stays `null` and `failed` stays false, and the panel
+ * says «у этой строки нет истории». A block whose history the client already knows (a 404, or
+ * a DTO with no versions) is not asked about twice: the memo lives in `paragraphChainCache.ts`
+ * and is shared by the book and the chronicle, so a re-open there is a local read. A failure
+ * is never memoised, so «повторить» always reaches the server.
  */
 export type ParagraphChainMode = {
   chain: ParagraphChainDto | null;
@@ -45,8 +51,16 @@ export function useParagraphChain(): ParagraphChainMode {
     const token = (generation.current += 1);
     setChain(null);
     setFailed(false);
+    // BOOK-68: a block the client already knows has no history is not asked about again —
+    // reopening it is not a new question. A failure never got here, so `повторить` asks.
+    const memo = knownParagraphChain(blockId);
+    if (memo.known) {
+      setLoading(false);
+      setChain(memo.chain);
+      return;
+    }
     setLoading(true);
-    void getHistoryParagraph(blockId)
+    void loadParagraphChain(blockId)
       .then((loaded) => {
         if (generation.current === token) setChain(loaded);
       })

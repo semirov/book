@@ -1,7 +1,7 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
 import { useCallback, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
-import { getAuthors, getHistoryParagraph, getMyTrace } from '../api.ts';
+import { getAuthors, getMyTrace } from '../api.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
@@ -10,6 +10,8 @@ import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
 import { filingsForBlock, staleLine } from '../lib/filings.ts';
+import type { ChainHistory } from '../lib/history.ts';
+import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
 import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
 import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
@@ -71,7 +73,12 @@ export function ProseParagraph({
   const frozenChapter = frozen || isFrozenChapter(entry);
   const here = seam !== null && seam.chapter === entry.n && seam.blockId === blockId;
   const [panel, setPanel] = useState<PanelState>(null);
-  const [chain, setChain] = useState<ParagraphChainDto | null>(null);
+  // BOOK-68: the paragraph's own history, as the word panel may speak of it. No chain yet is
+  // «still reading», never «no history» — and a 404 is an answer, not a failure.
+  const [history, setHistory] = useState<{ state: ChainHistory; chain: ParagraphChainDto | null }>({
+    state: 'loading',
+    chain: null,
+  });
   const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
   const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
   const blockFilings = filingsForBlock(comments, blockId);
@@ -131,11 +138,18 @@ export function ProseParagraph({
   // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel.
   const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
     setPanel({ kind: 'provenance', word, rect: at.getBoundingClientRect(), origin: at });
-    if (chain === null) {
+    // BOOK-68: a chain the client already holds (a 404, or a DTO with no versions) is not
+    // asked for again; a failure is not an answer, so the row says the read failed.
+    const memo = knownParagraphChain(blockId);
+    if (memo.known) {
+      setHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
+    } else {
+      setHistory({ state: 'loading', chain: null });
       try {
-        setChain(await getHistoryParagraph(blockId));
+        const loaded = await loadParagraphChain(blockId);
+        setHistory({ state: loaded === null ? 'none' : 'ready', chain: loaded });
       } catch {
-        /* the panel says what it can without the chain */
+        setHistory({ state: 'failed', chain: null });
       }
     }
     // BOOK-33: the viewer's own curve is the one the panel may print for their own word, and
@@ -161,6 +175,7 @@ export function ProseParagraph({
   // Who wrote this version, from the log's own vocabulary: a reader, the author, or a
   // version the log cannot assign. A chain that has not arrived yet is not a claim — it is
   // the machine default, and the panel re-renders when the chain answers.
+  const chain = history.chain;
   const actorKind = chain?.versions.at(-1)?.actor?.kind;
   const variant: ProvenanceVariant = frozen
     ? 'frozen'
@@ -187,6 +202,7 @@ export function ProseParagraph({
           variant,
           share,
           chain,
+          history: history.state,
           at: chain?.versions.at(-1)?.at ?? null,
           frozenOf: 'frame',
         })
@@ -196,31 +212,49 @@ export function ProseParagraph({
   const anchor = here ? (seam?.anchor ?? null) : null;
   const cut = anchor === null ? -1 : anchor.sentence.end;
 
-  const renderSentences = (from: number, to: number): ReactNode => {
-    return sentences.map((sentence, index) => {
-      if (sentence.start < from || sentence.end > to) return null;
+  /**
+   * BOOK-68 — the paragraph is rendered as slices of its own text, never re-assembled.
+   *
+   * `splitSentences` covers the prose, not every character: the whitespace between two
+   * sentences, a closing quote that follows a space, the leading indent and the tail after
+   * the last recognised sentence all used to be dropped, and the seam made it worse by
+   * rendering two ranges. Here every character between `from` and `to` reaches the page: a
+   * raw gap is a text node, a sentence is one span holding exactly `text.slice(start, end)`,
+   * and the tail after the last sentence is raw text. Nothing is invented, so the paragraph
+   * reads the same closed, parted and closed again.
+   */
+  const renderRange = (from: number, to: number): ReactNode => {
+    const nodes: ReactNode[] = [];
+    let cursor = from;
+    sentences.forEach((sentence, index) => {
+      if (sentence.start < from || sentence.end > to) return;
+      // The gap the splitter did not claim — double spaces, a stray quote, an indent.
+      if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
       // The anchor quote is clamped to the server's bound, so a long sentence is matched by
       // the same clamp the filing was made with — not by its raw text (BOOK-33).
       const quote = clampQuote(sentence.text);
       const filings = blockFilings.find((item) => item.quote !== null && item.quote === quote);
       const cited = citedClass(filings);
-      return (
+      nodes.push(
         <span
           key={`${sentence.start}-${index}`}
           className={cited === null ? undefined : cited}
           data-s={sentence.start}
           data-quote={sentence.text}
         >
-          {sentence.text}
+          {text.slice(sentence.start, sentence.end)}
           {filings === undefined || filings.stale ? null : (
             <FilingMark filings={filings} onOpen={(comment, origin) =>
               setPanel({ kind: 'filing', comment, rect: origin.getBoundingClientRect(), origin })
             } />
           )}
-          {index === sentences.length - 1 ? null : ' '}
-        </span>
+        </span>,
       );
+      cursor = sentence.end;
     });
+    // The tail after the last sentence — a paragraph need not end with a full stop.
+    if (cursor < to) nodes.push(text.slice(cursor, to));
+    return nodes;
   };
 
   const strip = here ? (
@@ -254,12 +288,12 @@ export function ProseParagraph({
 
   const body =
     anchor === null ? (
-      renderSentences(0, Number.POSITIVE_INFINITY)
+      renderRange(0, Number.POSITIVE_INFINITY)
     ) : (
       <>
-        {renderSentences(0, cut)}
+        {renderRange(0, cut)}
         {strip}
-        {renderSentences(cut, Number.POSITIVE_INFINITY)}
+        {renderRange(cut, Number.POSITIVE_INFINITY)}
       </>
     );
 

@@ -2,6 +2,8 @@ import { formatShare, type ParagraphChainDto } from '@book/shared';
 
 import { changeNumber } from './changeStatus.ts';
 import { plural } from './format.ts';
+import { CHAIN_FAILED_LINE, NO_HISTORY_LINE, type ChainHistory } from './history.ts';
+import { statusLine } from './skeleton.ts';
 
 /**
  * BOOK-DOC-34 §2.6 — the DNA panel: one word's provenance, said honestly.
@@ -38,6 +40,8 @@ export type ProvenanceInput = {
   /** What the panel may say about the trace; the caller decides what it legitimately holds. */
   share: TraceShare;
   chain: ParagraphChainDto | null;
+  /** BOOK-68: the paragraph's history as the panel may speak of it — never a claim without data. */
+  history: ChainHistory;
   /** The moment of the block's last version, for «когда». */
   at: string | null;
   /** The frozen variants say why: the book's frame, or the page 2 basis. */
@@ -101,6 +105,27 @@ export function rewriteLine(chain: ParagraphChainDto | null): string {
   return `переписан ${rewrites} ${plural(rewrites, 'раз', 'раза', 'раз')} после неё`;
 }
 
+/**
+ * BOOK-68 — the `абзац` row. A rewrite count is a claim, so it needs the chain: a missing
+ * history says «у этой строки нет истории», a request still in flight says the chain is being
+ * read, and a request that failed says so. `rewriteLine(null)` is never printed for a live
+ * panel.
+ */
+export function paragraphLine(history: ChainHistory, chain: ParagraphChainDto | null): string {
+  if (chain !== null) return rewriteLine(chain);
+  switch (history) {
+    case 'loading':
+      // The wait's one sentence lives in the loading register (BOOK-66, §6). The row itself
+      // has no quiet stage — it is only asked while the panel is open — so it prints the
+      // sentence the form's stage carries, at once.
+      return statusLine('chain', 'skeleton') ?? '';
+    case 'failed':
+      return CHAIN_FAILED_LINE;
+    default:
+      return NO_HISTORY_LINE;
+  }
+}
+
 /** `2026-10-21T12:04:11Z` → «21.10.2026, 12:04»; the site prints Moscow time. */
 function moment(iso: string | null): string {
   if (iso === null) return '—';
@@ -123,7 +148,7 @@ export function provenanceView(input: ProvenanceInput): ProvenanceView {
     { label: 'кто внёс', value: actor },
     { label: 'когда', value: moment(input.at ?? last?.at ?? null) },
     { label: 'след', value: input.variant === 'frozen' ? frozenTrace(input.frozenOf) : shareLine(input.share) },
-    { label: 'абзац', value: rewriteLine(input.chain) },
+    { label: 'абзац', value: paragraphLine(input.history, input.chain) },
   ];
   if (input.variant !== 'frozen') rows.push({ label: 'точность', value: 'слово в пределах абзаца', quiet: true });
 

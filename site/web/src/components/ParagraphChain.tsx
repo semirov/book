@@ -2,7 +2,7 @@ import type { ParagraphChainDto } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { placePanel } from '../lib/cssom.ts';
-import { chainHead } from '../lib/history.ts';
+import { CHAIN_FAILED_LINE, chainHead, NO_HISTORY_LINE } from '../lib/history.ts';
 import { formatTime } from '../lib/format.ts';
 import { placePopover, samePlacement, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { statusLine } from '../lib/skeleton.ts';
@@ -96,14 +96,14 @@ export function ParagraphChain({
           and same class, so the two surfaces read as one system (BOOK-70). */}
       {!loading && failed ? (
         <div className="state-line">
-          <span>история не прочиталась</span>
+          <span>{CHAIN_FAILED_LINE}</span>
           <button type="button" onClick={onRetry}>
             повторить
           </button>
         </div>
       ) : null}
       {/* The absence is a fact about a read that came back: never printed for a failure. */}
-      {!loading && !failed && chain === null ? <p className="chr-empty">у этой строки нет истории</p> : null}
+      {!loading && !failed && chain === null ? <p className="chr-empty">{NO_HISTORY_LINE}</p> : null}
       {chain === null ? null : (
         <>
           <p className="chain-line">{chain.line}</p>

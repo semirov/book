@@ -138,3 +138,20 @@ export function stepMoment(items: HistoryEventDto[], value: number, direction: -
 export function chainHead(chain: { alive: boolean; chapter: number }): string {
   return chain.alive ? `эта строка сейчас в тексте · глава ${chain.chapter}` : `эта строка убрана · глава ${chain.chapter}`;
 }
+
+/**
+ * BOOK-68 — the two answers a paragraph's history may speak of, in one place.
+ *
+ * A 404 is an answer, not a failure: it says «у этой строки нет истории» in the chain panel
+ * and in the word's `абзац` row alike. Only a request that never answered says «история не
+ * прочиталась» — BOOK-70's one failure line, the same words the chronicle's state line uses —
+ * and it offers «повторить» instead of a claim about the text.
+ *
+ * The wait's own sentence («цепочка читается…») is not here: it belongs to the loading
+ * register in `skeleton.ts` (`statusLine('chain', …)`), one sentence for every surface.
+ */
+export const NO_HISTORY_LINE = 'у этой строки нет истории';
+export const CHAIN_FAILED_LINE = 'история не прочиталась';
+
+/** What the panels may say about a paragraph's history while the answer is on its way. */
+export type ChainHistory = 'loading' | 'none' | 'ready' | 'failed';
