@@ -1,0 +1,121 @@
+/* BOOK-DOC-49 — the first load: the title is typed, the rest of the opening rises into place.
+ *
+ * One gate, `<html data-front-seq="run">`: written in a layout effect of the commit where the
+ * front lands (before paint), cleared to `done` at 1 920 ms and at once on the reader's first
+ * input or a `front:updated`, never removed. Every rule below hangs on the `run` value, so a
+ * document that is `done` — or one that never wrote the gate at all (reduced motion, a deep
+ * link, a restored scroll) — renders the final page from base styles, and no animation holds
+ * anything invisible.
+ *
+ * The delays are CSS's and the ids are the JS table's (`lib/frontSequence.ts`): one rule per
+ * `[data-seq]`, and a drift between the two fails `lib/frontSequence.test.ts`. A block travels
+ * 4 px in 220 ms (`--dur-ui`), opacity and transform only — nothing in the sequence measures
+ * layout, so the first screen's settled state is its first geometry and CLS is 0 by structure.
+ *
+ * The title is the one block that is not faded in: it is typed a grapheme at a time at 18 cps
+ * by `lib/reveal.ts`, and its line box is held from the first frame by the caret, which is why
+ * an `opacity: 0` on the `h1` would be wrong — it would hide the very mark that says the word
+ * is coming. The rule fades only: a rising hairline is invisible, and a `scaleX` would draw a
+ * line of progress (§4, §8).
+ */
+
+@keyframes seq-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes seq-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+html[data-front-seq="run"] [data-seq] {
+  animation: seq-in var(--dur-ui) var(--ease-out) both;
+}
+
+/* After the generic rule, so these two overrides win on order at the same specificity. */
+html[data-front-seq="run"] [data-seq="title"] {
+  animation: none;
+}
+html[data-front-seq="run"] [data-seq="rule"] {
+  animation-name: seq-fade;
+}
+
+/* `text-wrap: balance` would re-break the line for every grapheme that lands, so it is off
+   while the caret is there and back in the frame the caret leaves (`data-caret` goes with it).
+   For «Бланк» neither state ever wraps; this is the renamed-title path (§3). */
+html[data-front-seq="run"] .title[data-caret] {
+  text-wrap: wrap;
+}
+
+/* The title's caret is the chapter's element — 2 px, `var(--live)`, `.blink` — with one
+   override (§3): 0.72em rides the cap height and stays inside the `h1`'s 60.3 px strut at
+   58 px type, so the line box is the same whether the caret is there or gone. The chapter's
+   1.02em would be a 59 px bar beside that 60.3 px line — tall enough to read as a filled
+   block rather than a caret between the glyphs. The width stays 2 px at every size, the same
+   hairline the chapter draws: in this book a caret does not scale with type. */
+.titul .caret-inline {
+  height: 0.72em;
+  vertical-align: -0.02em;
+}
+
+/* ---------- the stagger: 80 ms, uniform, in document order (§2) ---------- */
+
+html[data-front-seq="run"] [data-seq="byline"] {
+  animation-delay: 500ms;
+}
+html[data-front-seq="run"] [data-seq="genre"] {
+  animation-delay: 580ms;
+}
+html[data-front-seq="run"] [data-seq="promise"] {
+  animation-delay: 660ms;
+}
+html[data-front-seq="run"] [data-seq="how-1"] {
+  animation-delay: 740ms;
+}
+html[data-front-seq="run"] [data-seq="how-2"] {
+  animation-delay: 820ms;
+}
+html[data-front-seq="run"] [data-seq="how-3"] {
+  animation-delay: 900ms;
+}
+html[data-front-seq="run"] [data-seq="rule"] {
+  animation-delay: 980ms;
+}
+html[data-front-seq="run"] [data-seq="about-1"] {
+  animation-delay: 1060ms;
+}
+html[data-front-seq="run"] [data-seq="about-2"] {
+  animation-delay: 1140ms;
+}
+html[data-front-seq="run"] [data-seq="about-3"] {
+  animation-delay: 1220ms;
+}
+html[data-front-seq="run"] [data-seq="about-4"] {
+  animation-delay: 1300ms;
+}
+html[data-front-seq="run"] [data-seq="about-5"] {
+  animation-delay: 1380ms;
+}
+html[data-front-seq="run"] [data-seq="about-6"] {
+  animation-delay: 1460ms;
+}
+html[data-front-seq="run"] [data-seq="about-7"] {
+  animation-delay: 1540ms;
+}
+html[data-front-seq="run"] [data-seq="about-8"] {
+  animation-delay: 1620ms;
+}
+html[data-front-seq="run"] [data-seq="about-9"] {
+  animation-delay: 1700ms;
+}
