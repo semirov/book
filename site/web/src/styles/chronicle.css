@@ -1,8 +1,10 @@
 /* ============================================================================
    CHRONICLE — the second way of reading the same page (ARCHITECTURE §11.10).
    A timeline, a scrubber, a past that is read-only, and the paragraph chain.
-   Adaptive: the chronicle is the sheet register, so it widens; its rows keep a
-   62ch reading bound, and the phone is the narrow step of one system (BOOK-DOC-35).
+   Adaptive: the chronicle is a register of the page's one column (BOOK-88) — its rows run
+   from the column's left edge to its right, and its own copy caps (64ch here, 62ch on a
+   row) bound a sentence, never the box. The phone is the narrow step of one system
+   (BOOK-DOC-35).
    ============================================================================ */
 
 .views {
@@ -47,7 +49,9 @@
 .chr-sub {
   font-size: var(--fs-note);
   color: var(--ink-3);
-  max-width: 30rem;
+  /* A copy cap, not a box: 64ch of 15px PT Serif ≈ the 30rem this used to be, and a `rem`
+     bound was the one thing BOOK-88's guard could not tell from a register's width. */
+  max-width: 64ch;
 }
 
 .chr-filters {
@@ -144,7 +148,8 @@
 .past-about {
   font-size: var(--fs-note);
   color: var(--ink-2);
-  max-width: 30rem;
+  /* The same copy cap as `.chr-sub`: a bound on the sentence, not on the register's box. */
+  max-width: 64ch;
 }
 .past-toc {
   list-style: none;

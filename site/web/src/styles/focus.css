@@ -85,9 +85,11 @@ body.is-focus {
 /* ---------- the lit sheet ---------- */
 .focus-stage {
   position: relative;
-  /* BOOK-DOC-35 §7: the lit sheet keeps the text register's measure. Panel 720 → body 686 →
-     stage 590 → paper 580 → 540px of text at 19px (≈57 ch measured in PT Serif; page 2 at
-     18px holds ≈60). The stage is centred so the sheet stays on the reading axis. */
+  /* BOOK-DOC-35 §7: the lit sheet is its own narrower paper laid over the page, not the page's
+     column (BOOK-88: the overlay is outside the one-column rule; the prose block is 600 px at
+     ≥1024 and this sheet holds 540). Panel 720 → body 686 → stage 590 → paper 580 → 540 px of
+     text at 19 px (≈57 ch measured in PT Serif; page 2 at 18 px holds ≈67). The stage is
+     centred so the sheet stays on the reading axis. */
   max-width: 590px;
   margin-inline: auto;
   padding: 5px;

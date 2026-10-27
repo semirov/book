@@ -15,7 +15,9 @@ import { ViewSwitch, type BookView } from './ViewSwitch.tsx';
  *
  * The rule is deliberate layout, not text: the owner's `***` separates what the site says
  * about the book from the book's own words, and it is an `<hr>` so that no reader, no API
- * response and no manuscript string ever carries those three characters.
+ * response and no manuscript string ever carries those three characters. It sits in one
+ * `.page` of its own (BOOK-88): the rule is prose, so it needs the column's box to start on
+ * the column's left edge and the measure to end on the prose's right edge.
  *
  * A book's opening has no status bar — the chip and «книга · хроника» arrive when the
  * inventory starts, below the annotation, where the sticky header covers the TOC and the
@@ -55,7 +57,11 @@ export function Opening({
     <>
       <TitleSheet front={front} motion={motion} seq={seq} running={stage === 'run'} />
       <HowTheBookIsMade seq={seq} />
-      <hr className="front-rule" data-seq={seq ? 'rule' : undefined} />
+      {/* BOOK-88: the wrapper gives the rule the column's box to start from; its own `max-width`
+          (base.css) ends it on the prose's right edge. `data-seq` stays on the `<hr>`. */}
+      <div className="page">
+        <hr className="front-rule" data-seq={seq ? 'rule' : undefined} />
+      </div>
       <Annotation front={front} seq={seq} />
       <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} />
       <ViewSwitch view={view} onChange={onViewChange} />

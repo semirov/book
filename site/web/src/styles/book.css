@@ -371,8 +371,9 @@
 .front-rule {
   border: 0;
   border-top: 1px solid var(--rule);
-  /* On the text column: the measure on the wide screens, the gutters on the phone. */
-  width: calc(100% - 2 * var(--gut));
-  max-width: var(--measure);
-  margin: 0 auto;
+  /* BOOK-88: the rule is prose, not a register. The one prose rule in base.css puts it on the
+     measure (`max-width: var(--measure)`), flush left, so its two ends land on the prose's own
+     edges; `Opening.tsx` wraps it in one `.page` so it also starts on the column's left edge.
+     No `width: calc(…)` here: that used to shrink the rule by the gutters a second time. */
+  margin: 0;
 }

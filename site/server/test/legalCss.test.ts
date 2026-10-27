@@ -104,7 +104,12 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     // The body rung, not one step above it: `--fs-lead` is the annotation's (BOOK-DOC-35 §4.1),
     // and the legal lead's stature is the standfirst — italic, `--ink-2`.
     expect(lead.declarations['font-size']).toBe('var(--fs-body)');
-    expect(lead.declarations['max-width']).toBe('none');
+    // BOOK-88 merged: the lead states no width of its own — it is one more child of the column,
+    // capped by the one prose rule. `none` was the old 664 px text box's "no narrower than the
+    // box"; in the 1000 px column it out-specifies `.legal > *` at (0,2,0) v (0,1,0) and runs
+    // the whole page. The pin moves to the rule that now owns the lead's width.
+    expect(lead.declarations['max-width']).toBeUndefined();
+    expect(winning('.legal > *').declarations['max-width']).toBe('var(--measure)');
     expect(sides(lead)).toEqual(['0', '0', '0', '0']);
     expect(lead.declarations['font-family']).toBe('var(--serif)');
     expect(lead.declarations['line-height']).toBe('1.55');

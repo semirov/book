@@ -137,6 +137,8 @@
   letter-spacing: 0.18em;
   color: var(--ink-3);
 }
+/* BOOK-92 retired `p.premise` here: the legal lead has its own class, so BOOK-88's flush-left
+   tweak of that rule has nothing left to hold and goes with it. */
 .copyright {
   margin: 7px 0 0;
   font-size: var(--fs-micro);
@@ -167,9 +169,10 @@
   }
 }
 
-/* a failing fetch is a sentence and a retry, never a spinner */
+/* a failing fetch is a sentence and a retry, never a spinner. BOOK-88: the row is prose — the
+   one rule in base.css caps it at the measure, flush left, and the retry sits on the measure's
+   right edge; the box itself is the column. */
 .state-line {
-  max-width: calc(var(--measure) + 2 * var(--gut));
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -396,12 +399,17 @@
   text-underline-offset: 4px;
 }
 
-/* The static documents (audit M5): «приватность» and «правила». Same measure and voice as the
-   book, no card, no third-party byte — they must read when the API is down. BOOK-92: one
-   spacing style (8 / 12 / 24 / 32); the labels — kicker, nav — keep their voice. */
+/* The static documents (audit M5): «приватность» and «правила». Same column and voice as the
+   book, no card, no third-party byte — they must read when the API is down. BOOK-88: the
+   document is a `.page`, so it takes the column from `.page` and states no box of its own —
+   its old `calc(measure + 2 gutters)` was 664 px centred in the 1000 px column, which put
+   its text 168 px inside the column's text edge; its lines are capped by the one prose rule
+   (`.legal > *`) instead. BOOK-92: one spacing style (8 / 12 / 24 / 32); the labels — kicker,
+   nav — keep their voice. The two intents do not fight: BOOK-92 states rhythm (margins,
+   padding, faces), the prose rule states the width, and the one width BOOK-92 did state — the
+   lead's `none` — is dropped for the same reason `.legal`'s own box was: under the old 664 px
+   box it meant the text box, in the column it would mean the whole 1000 px. */
 .legal {
-  max-width: calc(var(--measure) + 2 * var(--gut));
-  margin: 0 auto;
   padding: 72px var(--gut) 96px;
 }
 .legal .kicker {
@@ -417,7 +425,12 @@
   line-height: 1.12;
 }
 .legal .legal-lead {
-  max-width: none;
+  /* BOOK-92 declared `max-width: none` here, against a `.legal` that was the 664 px text box.
+     The document is the 1000 px column now (BOOK-88), and `none` at (0,2,0) would out-specify
+     the one prose rule (`.legal > *`, 0,1,0): the lead would run the whole column while the
+     title, the sections and the paragraphs after it stop at the measure. The lead therefore
+     states no width at all — it is one more child of the column, capped by that one rule.
+   */
   margin: 0;
   font-family: var(--serif);
   font-size: var(--fs-body);

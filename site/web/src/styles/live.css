@@ -21,9 +21,11 @@
   padding: 26px var(--gut) 72px;
   /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
   scroll-margin-top: var(--offset-top);
-  /* BOOK-73 — one list, one column at every width: the desktop canvas stays ≤1000px.
-     `display: grid` is the one-column layout itself, and no rule may add a second track, so
-     the 67 rows read as a single flow from part I to part IV. */
+  /* BOOK-73 — one list, one column at every width; BOOK-88 — that column is the page's own:
+     the TOC is a register of the `.page` it already is, so its rows run from the column's
+     left edge to its right and are NOT capped at the prose measure (a numeral column and its
+     line are furniture, not prose). `display: grid` is the one-column layout itself, and no
+     rule may add a second track, so the 67 rows read as a single flow from part I to part IV. */
   display: grid;
   grid-template-columns: 1fr;
   align-items: start;
