@@ -19,9 +19,10 @@ import { isChapterNumber } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { chapterAt, bookAt, resolveMoment } from '../../history/book.ts';
-import { lastHseq, readTimeline } from '../../history/events.ts';
+import { lastHseq } from '../../history/events.ts';
 import { readImpact } from '../../history/impact.ts';
 import { readContributors, readDiff, readParagraphChain } from '../../history/query.ts';
+import { readRecord } from '../../history/record.ts';
 import type { RouteDeps } from '../deps.ts';
 
 const chapterParams = {
@@ -31,7 +32,7 @@ const chapterParams = {
   additionalProperties: false,
 } as const;
 
-type MomentQuery = { at?: string | number; before?: string | number; limit?: string | number; kind?: string; chapter?: string | number };
+type MomentQuery = { at?: string | number; before?: string | number; limit?: string | number; chapter?: string | number };
 
 function positive(value: unknown): number | undefined {
   if (value === undefined) return undefined;
@@ -42,16 +43,16 @@ function positive(value: unknown): number | undefined {
 export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const { db } = deps;
 
-  /** The chronicle's spine: newest first, one summary line each, cursor by `hseq`. */
+  /**
+   * The record's spine: one change a reader made, newest first, cursor by the change's last
+   * `hseq`. `kind` and per-event filters are gone with the event list itself (BOOK-65).
+   */
   app.get<{ Querystring: MomentQuery }>('/api/history/timeline', async (request, reply) => {
-    const { before, limit, kind, chapter } = request.query;
-    const chapterNumber = positive(chapter);
+    const { before, limit } = request.query;
     const body: HistoryTimelineDto = {
-      ...readTimeline(db, {
+      ...readRecord(db, {
         before: positive(before),
         limit: positive(limit),
-        kind: typeof kind === 'string' && kind.length > 0 ? kind : undefined,
-        chapter: chapterNumber !== undefined && isChapterNumber(chapterNumber) ? chapterNumber : undefined,
       }),
       at: new Date(deps.now().getTime()).toISOString(),
     };

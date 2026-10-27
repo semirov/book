@@ -6,13 +6,12 @@ import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { buildApp } from '../../src/app.ts';
 import { loadConfig } from '../../src/config.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
-import { lastHseq, readTimeline } from '../../src/history/events.ts';
+import { appendEvent } from '../../src/history/log.ts';
+import { lastHseq } from '../../src/history/events.ts';
+import { readRecord } from '../../src/history/record.ts';
 import { publicAlias } from '../../src/util/alias.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
 import { ingest, releaseLease, seedChange } from './helpers.ts';
-
-const ABOUT =
-  'Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги. Тестовая аннотация для проверки разбора первой страницы. Она состоит из служебных предложений и не является текстом книги.';
 
 let fixture: Fixture | null = null;
 let app: FastifyInstance | null = null;
@@ -39,53 +38,53 @@ afterEach(async () => {
 const CHAPTER = longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.'], 'Тестовая глава');
 
 describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
-  it('serves the scratch timeline newest first, with summaries and a cursor', async () => {
+  it('serves the record newest first, one change per entry, with a cursor', async () => {
     const local = await boot();
-    ingest(local, '00-front.md', `Без названия\n\n${ABOUT}\n`);
-    ingest(local, 'ch01.md', CHAPTER);
+    const first = seedChange(local.db, { index: 1, chapter: 1, label: 'Аня' });
+    appendEvent(local.db, { kind: 'change.queued', changeId: first.changeId, chapter: 1 }, Date.parse('2026-10-25T09:00:00Z'));
+    const second = seedChange(local.db, { index: 2, chapter: 2, label: 'Марк' });
+    appendEvent(local.db, { kind: 'change.queued', changeId: second.changeId, chapter: 2 }, Date.parse('2026-10-25T09:10:00Z'));
 
     const response = await app!.inject({ method: 'GET', url: '/api/history/timeline' });
     expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-cache');
     const body = response.json() as {
       lastHseq: number;
       at: string;
-      items: Array<{ hseq: number; kind: string; summary: string; author: { kind: string; label: string } }>;
+      items: Array<{ hseq: number; seq: number; chapter: number; alias: string }>;
       nextBefore: number | null;
     };
     expect(body.lastHseq).toBe(lastHseq(local.db));
-    expect(body.items.length).toBeGreaterThanOrEqual(2);
+    expect(body.items).toHaveLength(2);
+    // Newest first, one row per change — never one per event.
+    expect(body.items.map((item) => item.seq)).toEqual([2, 1]);
+    expect(body.items[0]?.alias).toBe('Марк');
+    expect(body.items[0]?.chapter).toBe(2);
     expect(body.items[0]?.hseq).toBeGreaterThan(body.items[1]?.hseq ?? 0);
-    expect(body.items.some((item) => item.summary.includes('глава 1'))).toBe(true);
-    expect(body.items.some((item) => /первая страница|название/u.test(item.summary))).toBe(true);
-    // Two events under the default limit of 50: this short page is the whole log, so it
-    // reaches the first event and carries no cursor (BOOK-DOC-50 §7).
+    // A short page reaches the oldest record: it carries no cursor (BOOK-DOC-50 §7).
     expect(body.nextBefore).toBeNull();
 
     // Cursor semantics: a full page yields its last row's `hseq`, and `before` is exclusive.
     const firstPage = await app!.inject({ method: 'GET', url: '/api/history/timeline?limit=1' });
-    expect(firstPage.json().items).toHaveLength(1);
-    const first = firstPage.json() as { items: Array<{ hseq: number }>; nextBefore: number | null };
-    expect(first.nextBefore).toBe(first.items[0]?.hseq);
+    const firstPageBody = firstPage.json() as { items: Array<{ hseq: number; seq: number }>; nextBefore: number | null };
+    expect(firstPageBody.items).toHaveLength(1);
+    expect(firstPageBody.nextBefore).toBe(firstPageBody.items[0]?.hseq);
     const secondPage = await app!.inject({
       method: 'GET',
-      url: `/api/history/timeline?limit=1&before=${first.nextBefore}`,
+      url: `/api/history/timeline?limit=1&before=${firstPageBody.nextBefore}`,
     });
     expect(secondPage.statusCode).toBe(200);
-    const second = (secondPage.json() as { items: Array<{ hseq: number }> }).items[0];
-    expect(second?.hseq).toBeLessThan(first.items[0]?.hseq ?? 0);
+    const secondBody = secondPage.json() as { items: Array<{ hseq: number; seq: number }>; nextBefore: number | null };
+    expect(secondBody.items).toHaveLength(1);
+    expect(secondBody.items[0]?.seq).toBe(1);
+    // A full page always carries its own edge; the next request would simply be empty.
+    expect(secondBody.nextBefore).toBe(secondBody.items[0]?.hseq);
+
     const exhausted = await app!.inject({
       method: 'GET',
       url: `/api/history/timeline?before=${body.items.at(-1)?.hseq}`,
     });
     expect((exhausted.json() as { items: unknown[] }).items).toHaveLength(0);
-
-    const filtered = await app!.inject({ method: 'GET', url: '/api/history/timeline?kind=front.revised' });
-    expect((filtered.json() as { items: Array<{ kind: string }> }).items.every((item) => item.kind === 'front.revised')).toBe(
-      true,
-    );
-
-    const byChapter = await app!.inject({ method: 'GET', url: '/api/history/timeline?chapter=1' });
-    expect((byChapter.json() as { items: Array<{ chapter: number }> }).items.every((item) => item.chapter === 1)).toBe(true);
   });
 
   it('serves the book at a moment and marks what did not exist yet', async () => {
@@ -142,7 +141,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(invalid.statusCode).toBe(400);
   });
 
-  it('publishes a reader as an alias in the timeline, never the identity key (audit m3)', async () => {
+  it('publishes a reader as an alias in the record, never the identity key (audit m3)', async () => {
     const local = await boot();
     ingest(local, 'ch01.md', CHAPTER);
     const seeded = seedChange(local.db, { index: 3, chapter: 1, label: 'Аня' });
@@ -158,13 +157,14 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
 
     const timeline = await app!.inject({ method: 'GET', url: '/api/history/timeline' });
     const body = timeline.json() as {
-      items: Array<{ author: { kind: string; identityId: string | null; label: string } }>;
+      items: Array<{ alias: string; changeId: string }>;
     };
-    const reader = body.items.find((item) => item.author.kind === 'reader');
+    const reader = body.items.find((item) => item.changeId === seeded.changeId);
     expect(reader).toBeDefined();
-    expect(reader?.author.identityId).toBe(publicAlias(seeded.identityId));
-    // The same handle the contributors list uses, and no raw key anywhere in the payload.
+    expect(reader?.alias).toBe('Аня');
+    // A record carries no identity at all — not even the public handle.
     expect(timeline.body).not.toContain(seeded.identityId);
+    expect(timeline.body).not.toContain(publicAlias(seeded.identityId));
   });
 
   it('serves the change log of a span', async () => {
@@ -287,30 +287,30 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
   });
 });
 
-describe('the timeline cursor is the page’s own edge (BOOK-DOC-50 §7)', () => {
+describe('the record cursor is the page’s own edge (BOOK-DOC-50 §7)', () => {
   it('carries a cursor only on a full page, and none on a short or empty one', async () => {
     const local = await boot();
 
-    // Nothing is logged: no rows and no cursor.
-    const empty = readTimeline(local.db);
+    // No reader change is logged: no rows and no cursor.
+    const empty = readRecord(local.db);
     expect(empty.items).toEqual([]);
     expect(empty.nextBefore).toBeNull();
 
-    ingest(local, 'ch01.md', CHAPTER);
+    const seeded = seedChange(local.db, { index: 1, chapter: 1, label: 'Аня' });
+    appendEvent(local.db, { kind: 'change.queued', changeId: seeded.changeId, chapter: 1 }, Date.parse('2026-10-25T09:00:00Z'));
 
-    // The whole log on one page: it reached the first event, so nothing lies before it.
-    const short = readTimeline(local.db);
-    expect(short.items.length).toBeGreaterThan(0);
-    expect(short.items.length).toBeLessThan(50);
+    // The whole record on one page: it reached the oldest entry, so nothing lies before it.
+    const short = readRecord(local.db);
+    expect(short.items).toHaveLength(1);
     expect(short.nextBefore).toBeNull();
 
-    // A full page — the limit below the row count — ends on its last row's `hseq`.
-    const full = readTimeline(local.db, { limit: 1 });
+    // A full page — the limit equal to the row count — ends on its last row's `hseq`.
+    const full = readRecord(local.db, { limit: 1 });
     expect(full.items).toHaveLength(1);
     expect(full.nextBefore).toBe(full.items[0]?.hseq);
 
     // The cursor and the query share one clamp: `limit: 0` is a page of one row, not zero.
-    const clamped = readTimeline(local.db, { limit: 0 });
+    const clamped = readRecord(local.db, { limit: 0 });
     expect(clamped.items).toHaveLength(1);
     expect(clamped.nextBefore).toBe(clamped.items[0]?.hseq);
   });
