@@ -155,9 +155,9 @@ describe('cover', () => {
   it('carries the owner\'s category line verbatim, once, between the byline and the promise', () => {
     const html = coverHtml();
     expect(TITLE_GENRE).toBe(
-      'Литературно-инженерный перформанс: книга возникает прямо перед тобой, а читатели вмешиваются в её судьбу.',
+      'Литературно-инженерный перформанс: книга пишется публично, а читатели оставляют в ней след.',
     );
-    expect(html.match(/Литературно-инженерный перформанс: книга возникает прямо перед тобой, а читатели вмешиваются в её судьбу\./gu)).toHaveLength(1);
+    expect(html.match(/Литературно-инженерный перформанс: книга пишется публично, а читатели оставляют в ней след\./gu)).toHaveLength(1);
     expect(html).toContain('class="title-genre"');
     // Book matter in tone (BOOK-39): no eyebrow of uppercase labels, no card, no arrow,
     // no exclamation — and the genre is named once, not twice.
