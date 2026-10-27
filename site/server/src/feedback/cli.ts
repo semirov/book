@@ -12,7 +12,7 @@
  *   feedback.mjs hold   <commentId> --rule <INJ-…> --evidence <field>:<quote> [--by label]
  *   feedback.mjs release <commentId> --reason "…" [--by label]
  *   feedback.mjs read   <batchId>
- *   feedback.mjs decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
+ *   feedback.mjs decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R] [--mode …]
  *   feedback.mjs decide <commentId> rejected --reason "…"
  *   feedback.mjs close  <batchId>
  *   feedback.mjs list   [--status new] [--limit 50]
@@ -38,6 +38,7 @@ import {
   EDIT_DAY_MS,
   interventionKindLabel,
   normalizeInterventionKind,
+  normalizeRetroMode,
   validateInterventionKind,
   validateIntent,
   validateReason,
@@ -109,10 +110,11 @@ const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|
   rights <commentId> --answer <json | @file | ->
   release <commentId> --reason "…" [--by label]
   read   <batchId>
-  decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
+  decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R] [--mode оформление|поправка|расхождение]
   decide <commentId> rejected --reason "…"
   close  <batchId>
-  list   [--status new] [--limit 50]`;
+  list   [--status new] [--limit 50]
+  a filing on the frozen frame is accepted as paperwork: --mode names the document it became`;
 
 export function runFeedback(argv: string[], io: FeedbackIo): number {
   const now = io.now ?? (() => new Date());
@@ -170,10 +172,6 @@ function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     if (!Number.isInteger(raw) || raw < 1 || raw > 67) {
       io.print('refused: --chapter must be 1..67');
       return 2;
-    }
-    if (raw === 67) {
-      io.print('refused: глава 67 заморожена — замечания к ней не становятся правками (ENDING_FROZEN)');
-      return 1;
     }
     chapter = raw;
   }
@@ -241,16 +239,19 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     io.print(`refused: ${commentId} is already decided (first decision wins)`);
     return 1;
   }
+  // BOOK-137: the paperwork mode a filing on the frozen frame is filed as. Absent means the
+  // engine's default; an unknown word is refused here, never guessed at.
+  const rawMode = parsed.flags.get('mode');
+  const mode = rawMode === undefined ? null : normalizeRetroMode(rawMode);
+  if (rawMode !== undefined && mode === null) {
+    io.print('refused: --mode must be оформление, поправка or расхождение');
+    return 2;
+  }
   const reason = validateReason(parsed.flags.get('reason') ?? '');
   if (!reason.ok) {
     io.print(`refused: ${reason.reason}`);
     return 1;
   }
-  if (comment.chapter === 67) {
-    io.print('refused: глава 67 заморожена — правка читателя туда не входит (ENDING_FROZEN)');
-    return 1;
-  }
-
   const at = now().toISOString();
   if (verdict === 'rejected') {
     io.db
@@ -345,6 +346,7 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     reason: reason.reason,
     baseRev,
     batch: comment.batch_id,
+    ...(mode === null ? {} : { frameMode: mode }),
   });
   if ('error' in accepted) {
     const prefix = accepted.code === undefined ? 'refused' : `refused (${accepted.code})`;
@@ -372,12 +374,20 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     changeId: accepted.changeId,
     rev: { chapter: comment.chapter, rev: baseRev },
     base: { sha256: chapter?.sha256 ?? '' },
+    ...(mode === null ? {} : { mode }),
   });
   // BOOK-7: a second premise for the same chapter is a decision, not a second place in line.
+  // BOOK-137: a filing that touched the frozen frame is paperwork — the CLI says so with the
+  // same line the change and the comment carry, never «внесено».
+  const linked = io.db.prepare('SELECT outcome, reason FROM changes WHERE id = ?').get(accepted.changeId) as
+    | { outcome: string | null; reason: string | null }
+    | undefined;
   io.print(
     accepted.superseded === true
       ? `${comment.id}: superseded — у главы уже есть замысел → ${accepted.changeId}`
-      : `${comment.id}: accepted → ${accepted.changeId}`,
+      : linked?.outcome === 'registered'
+        ? `${comment.id}: ${linked.reason ?? 'принято'} → ${accepted.changeId}`
+        : `${comment.id}: accepted → ${accepted.changeId}`,
   );
   return 0;
 }

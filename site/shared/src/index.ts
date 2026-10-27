@@ -1,4 +1,5 @@
 export * from './book.ts';
+export * from './frame.ts';
 export * from './pages.ts';
 export * from './types.ts';
 export * from './protocol.ts';

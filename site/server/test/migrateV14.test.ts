@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { migrate } from '../src/db/migrate.ts';
+import { SCHEMA_VERSION } from '../src/db/schema.ts';
 
 /**
  * The BOOK-61 gates in isolation — schema v15, the step after main's BOOK-113 (`v14`): Gate A's
@@ -106,7 +107,8 @@ describe('the BOOK-61 gates (schema v15)', () => {
     db.pragma('user_version = 14');
 
     try {
-      expect(migrate(db)).toEqual({ from: 14, to: 15 });
+      // BOOK-61 is this step; BOOK-137 (v16) lands on the way to the head version.
+      expect(migrate(db)).toEqual({ from: 14, to: SCHEMA_VERSION });
 
       // Every row survived both rebuilds.
       expect(db.prepare('SELECT role, verdict FROM gate_verdicts').all()).toEqual([{ role: 'editor', verdict: 'HOLDS' }]);
@@ -156,7 +158,7 @@ describe('the BOOK-61 gates (schema v15)', () => {
       expect(() => insertComment.run('cmt_bad_2', null, 'guess')).toThrow(/CHECK/u);
       expect(() => insertComment.run('cmt_ok', 'operator', 'scan')).not.toThrow();
       // Idempotent: the second run has nothing to do.
-      expect(migrate(db)).toEqual({ from: 15, to: 15 });
+      expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     } finally {
       db.close();
       fresh.close();

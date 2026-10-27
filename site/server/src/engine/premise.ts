@@ -27,9 +27,10 @@ import {
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordImpact } from '../history/impact.ts';
 import type { Db } from '../db/db.ts';
+import { getChapterRow } from '../db/repo/chapters.ts';
 import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
-import { isWritten } from './text.ts';
+import { isBasisSlot, isWritten } from './text.ts';
 import type { EngineDeps } from './types.ts';
 
 /** «у главы уже есть замысел» — the second premise of one chapter, told to its reader. */
@@ -58,6 +59,8 @@ export type PremiseInput = {
   interventionKind: InterventionKind | null;
   sourceComment: string | null;
   sourceSession: string | null;
+  /** BOOK-137 — the mark the filing carried, copied onto the premise row (null outside one). */
+  frame?: string | null;
   at: string;
 };
 
@@ -88,6 +91,7 @@ export function admitPremise(db: Db, input: PremiseInput): PremiseAdmission {
     baseBlocks: '[]',
     scopeHint: 'chapter',
     premise: 1,
+    frame: input.frame ?? null,
     enqueuedAt: input.at,
   };
 
@@ -214,7 +218,10 @@ export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now
       .prepare(`SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`)
       .get(premise.chapter);
     if (open !== undefined) continue;
-    if (premise.chapter === 1 || premise.chapter === 67) {
+    // BOOK-137: the freeze is the slot's shape, not the number. Before, a premise on ch01/ch67
+    // was rejected by number alone; now a **basis-only** slot is rejected the same way, and a
+    // written ch01/ch67 falls to the stale branch like any other written chapter.
+    if (isBasisSlot(getChapterRow(deps.db, premise.chapter))) {
       if (settle(deps, premise, 'rejected', PREMISE_FROZEN_REASON, now) !== null) settled += 1;
       continue;
     }

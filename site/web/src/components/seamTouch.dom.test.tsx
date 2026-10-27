@@ -55,6 +55,7 @@ function comment(blockId: string, overrides: Partial<CommentDto> = {}): CommentD
     reason: null,
     refusal: null,
     attempt: null,
+    frame: null,
     createdAt: '2026-10-21T12:03:00Z',
     decidedAt: null,
     changeId: null,
@@ -157,7 +158,7 @@ async function mountParagraph(blockId: string, comments: readonly CommentDto[] =
         blockIndex={0}
         baseRev={entry.rev}
         text={TEXT}
-        frozen={false}
+        blockCount={40}
         comments={comments}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}

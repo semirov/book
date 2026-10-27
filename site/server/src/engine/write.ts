@@ -20,6 +20,7 @@ import {
 
 import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
 import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
+import { frameIntact } from '../ingest/frameGuard.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
@@ -54,6 +55,15 @@ export type LandResult = {
 };
 
 /**
+ * BOOK-137 — the frame's refusal, spoken by both doors: the guard before the ingest reads the
+ * file, and the ingest reads it again; the letter of the answer never changes.
+ */
+const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой главы не меняется — правка остаётся бумагой';
+
+/** What the ingest published for a landing — and whether it refused the frame outright. */
+type IngestOutcome = { rev: number | null; changed: boolean; frameRejected: boolean };
+
+/**
  * §6F.1: a landing is a revision, and a revision exists in the same transaction as its log
  * entry. `land` therefore publishes the file it just validated through the same ingest the
  * watcher uses — one choke point, so an engine run and an observed write cannot disagree.
@@ -63,11 +73,11 @@ function ingestLanding(
   deps: EngineDeps,
   step: store.StepRow,
   at: number,
-): { rev: number | null; changed: boolean } {
+): IngestOutcome {
   const dataDir = deps.config.dataDir;
   if (step.pass === 'front') {
     const front = readFront(deps.bookRoot);
-    if (!front.exists) return { rev: null, changed: false };
+    if (!front.exists) return { rev: null, changed: false, frameRejected: false };
     const result: ApplyFrontResult = applyFrontFile({
       db: deps.db,
       dataDir,
@@ -75,11 +85,11 @@ function ingestLanding(
       mtimeMs: at,
       nowMs: at,
     });
-    return { rev: result.rev, changed: result.status !== 'unchanged' };
+    return { rev: result.rev, changed: result.status !== 'unchanged', frameRejected: false };
   }
-  if (step.chapter === null) return { rev: null, changed: false };
+  if (step.chapter === null) return { rev: null, changed: false, frameRejected: false };
   const chapter = readChapter(deps.bookRoot, step.chapter);
-  if (!chapter.exists) return { rev: null, changed: false };
+  if (!chapter.exists) return { rev: null, changed: false, frameRejected: false };
   const result: ApplyChapterResult = applyChapterFile({
     db: deps.db,
     dataDir,
@@ -88,8 +98,14 @@ function ingestLanding(
     mtimeMs: at,
     nowMs: at,
   });
-  if (result.status === 'created' || result.status === 'revised') return { rev: result.rev, changed: true };
-  return { rev: null, changed: false };
+  // BOOK-137: the second read is weaker than the guard's. Nothing was published, and the caller
+  // must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
+  if (result.status === 'frame-rejected') return { rev: null, changed: false, frameRejected: true };
+  if (result.status === 'created' || result.status === 'revised') {
+    return { rev: result.rev, changed: true, frameRejected: false };
+  }
+  // `empty`/`emptied`: an empty write between two saves publishes no revision either.
+  return { rev: null, changed: false, frameRejected: false };
 }
 
 export function createWriteOps(deps: EngineDeps) {
@@ -289,6 +305,12 @@ export function createWriteOps(deps: EngineDeps) {
       refuse('CHAPTER_TOO_LONG', 409, `chapter is ${chapter.chars} characters; the maximum is ${CHAPTER_CHARS.max} (F007)`);
     }
 
+    // BOOK-137: before the file becomes a revision, the frame must be the frame. The refusal
+    // names the rule and says what happens instead — the filing stays paperwork.
+    if (step.pass !== 'front' && step.chapter !== null && chapter !== null && !frameIntact(step.chapter, chapter.raw)) {
+      refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE);
+    }
+
     const sha = target.sha256;
     if (step.landed_at !== null && step.landed_sha === sha) {
       return {
@@ -321,7 +343,20 @@ export function createWriteOps(deps: EngineDeps) {
     const measured = measureDelta(step, chapter?.blocks ?? []);
     const changedFromStart = step.start_sha === null || sha !== step.start_sha;
     // The revision is published here, with its `hseq` and its cause (§6F.1, §6F.2).
-    const ingested = changedFromStart ? ingestLanding(deps, step, at) : { rev: null, changed: false };
+    const ingested: IngestOutcome = changedFromStart
+      ? ingestLanding(deps, step, at)
+      : { rev: null, changed: false, frameRejected: false };
+    // BOOK-137, second read: the guard above read the file once and the ingest reads it again,
+    // so a file that moved in between publishes nothing. The guard's question is asked of the
+    // file as it stands now — the detail says whether it already flipped back — and the step
+    // records no revision at all: inventing a `revAfter` here would call a landing a revision
+    // the site never served.
+    if (ingested.frameRejected && step.chapter !== null) {
+      const fresh = readChapter(bookRoot, step.chapter);
+      refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE, {
+        intact: frameIntact(step.chapter, fresh.raw),
+      });
+    }
     const revAfter = changedFromStart
       ? (ingested.rev ??
         (step.chapter === null

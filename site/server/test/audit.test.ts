@@ -89,6 +89,9 @@ function seed(h: Harness, id: string, chapter = 8): void {
     createdAt: '2026-10-25T12:01:00Z',
     idemKey: null,
   });
+  // BOOK-61: posting writes Gate B's verdict, and this row is seeded straight into the store —
+  // so it carries the answer a posting would have given it. The audit gate (C) is still open.
+  h.db.prepare(`UPDATE comments SET rights_verdict = 'CLEAR' WHERE id = ?`).run(id);
 }
 
 describe('feedback.mjs audit — the verdict is data, written once, before triage', () => {
@@ -234,18 +237,25 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(late.out.join('\n')).toContain('already decided');
   });
 
-  it('keeps ENDING_FROZEN ahead of the audit gate on chapter 67', async () => {
+  it('accepts a chapter-67 filing as paperwork, and asks for the audit first (BOOK-137)', async () => {
     const h = await boot();
-    // BOOK-7: posting to the frozen frame is refused at the door, so the row is seeded as a
-    // pre-existing one; the CLI must still refuse a decision before it asks for an audit.
+    // BOOK-137: ch67 is no longer a door closed at the decision. A filing on the finale is
+    // accepted — as paperwork when it touches the frame's sentence, never as text. The audit
+    // gate still comes first: a row with no `FITS` cannot become a document either.
     const id = 'cmt_01JB7FROZEN0000000000067';
     seed(h, id, 67);
-    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
 
-    const refused = cli(h, 'decide', id, 'accepted', '--reason', 'смягчить финал', '--intent', 'смягчить последний абзац');
-    expect(refused.code).toBe(1);
-    expect(refused.out.join('\n')).toContain('ENDING_FROZEN');
-    expect(refused.out.join('\n')).not.toContain('AUDIT_REQUIRED');
+    const unaudited = cli(h, 'decide', id, 'accepted', '--reason', 'смягчить финал', '--intent', 'смягчить последний абзац');
+    expect(unaudited.code).toBe(1);
+    expect(unaudited.out.join('\n')).toContain('AUDIT_REQUIRED');
+
+    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
+    const decided = cli(h, 'decide', id, 'accepted', '--reason', 'смягчить финал', '--intent', 'смягчить последний абзац');
+    expect(decided.code).toBe(0);
+    // The seeded row carries no mark (a pre-v14 row): the decision re-derives it from the
+    // anchor and the projection, and a chapter-level filing of a written chapter is untouched.
+    expect(auditRow(h, id)).toMatchObject({ status: 'accepted' });
+    expect(h.db.prepare('SELECT frame FROM changes').get()).toEqual({ frame: 'untouched' });
   });
 
   it('refuses bad input with a message and the right exit code', async () => {

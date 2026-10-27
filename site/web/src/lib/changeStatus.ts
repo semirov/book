@@ -20,7 +20,7 @@ import {
 } from '@book/shared';
 
 import { plural } from './format.ts';
-import { changeState, changeWord, PREMISE_PENDING, STATE_WORDS } from './marginalia.ts';
+import { changeState, changeWord, PREMISE_PENDING, registrationLine, STATE_WORDS } from './marginalia.ts';
 
 export type ChangeLines = {
   first: string;
@@ -101,6 +101,11 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
       tone: 'escalated',
     };
   }
+  if (change.outcome === 'registered') {
+    // BOOK-137 — paperwork: nothing was written into the book, so the second line names the
+    // mode it was filed as and the fact that matters, never a reach it did not have.
+    return { first, second: registrationLine(change.frameMode ?? undefined), tone: 'done' };
+  }
   if (change.status === 'pending') {
     return {
       first,
@@ -143,6 +148,8 @@ export function progressLine(change: ChangeSummaryDto): string {
     }
     return `принято в основу → ${state}`;
   }
+  // BOOK-137 — paperwork travelled nowhere: no reach to print after the word.
+  if (change.outcome === 'registered') return `принято → ${state}`;
   if (change.status === 'done') return `принято → ${state} → ${reachCopy(change)}`;
   return `принято → ${state}`;
 }
@@ -168,6 +175,8 @@ export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'>
 export function outcomeCopy(outcome: ChangeOutcome | null): string {
   if (outcome === 'applied') return 'внесено';
   if (outcome === 'adapted') return 'внесено частично';
+  // BOOK-137 — the paperwork's own word, from the one vocabulary: the sentence did not change.
+  if (outcome === 'registered') return STATE_WORDS.registered;
   if (outcome === 'dropped') return 'снято';
   if (outcome === 'superseded') return 'перекрыто';
   // BOOK-59: the wave bound is where a deeper change asks for a decision, not a failure, and

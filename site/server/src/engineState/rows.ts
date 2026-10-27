@@ -23,6 +23,10 @@ export type ChangeRow = {
   scope_hint: 'phrase' | 'chapter';
   /** BOOK-7 — 1 = a chapter-level premise (no lane claim, no ripple of its own). */
   premise: number;
+  /** BOOK-137 — the frame mark of the filing (null for a non-reader change and pre-v16 rows). */
+  frame: string | null;
+  /** BOOK-137 — the paperwork mode of a `registered` change. */
+  frame_mode: string | null;
   status: 'pending' | 'processing' | 'stale' | 'done' | 'void' | 'escalated' | 'failed';
   relevance: string | null;
   outcome: string | null;

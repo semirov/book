@@ -174,8 +174,10 @@ export type NewChange = {
   scopeHint: string;
   /** BOOK-7 — 1 when the chapter had no text and the intervention is its premise. */
   premise: 0 | 1;
-  /** Defaults to a queued change; a premise admitted after another one is born superseded. */
-  status?: 'pending' | 'void';
+  /** BOOK-137 — the filing's frame mark; and the mode of a `registered` (paperwork) change. */
+  frame?: string | null;
+  frameMode?: string | null;
+  status?: 'pending' | 'void' | 'done'; // queued; a premise may be born superseded, paperwork done
   outcome?: string | null;
   reason?: string | null;
   finishedAt?: string | null;
@@ -183,21 +185,19 @@ export type NewChange = {
 };
 
 export function insertChange(db: Db, change: NewChange): number {
-  const row = {
-    status: 'pending',
-    outcome: null,
-    reason: null,
-    finishedAt: null,
-    ...change,
-  };
+  const row = { status: 'pending', outcome: null, reason: null, finishedAt: null, ...change };
+  // BOOK-137: an absent mark is stored as null (a change that raised no comment), never a word.
+  Object.assign(row, { frame: change.frame ?? null, frameMode: change.frameMode ?? null });
   const result = db
     .prepare(
       `INSERT INTO changes
          (id, kind, intervention_kind, chapter, anchor, intent, proposed_text, source_comment, source_session,
-          base_rev, base_sha256, base_blocks, scope_hint, premise, status, outcome, reason, finished_at, enqueued_at)
+          base_rev, base_sha256, base_blocks, scope_hint, premise, frame, frame_mode, status, outcome, reason,
+          finished_at, enqueued_at)
        VALUES
          (@id, @kind, @interventionKind, @chapter, @anchor, @intent, @proposedText, @sourceComment, @sourceSession,
-          @baseRev, @baseSha, @baseBlocks, @scopeHint, @premise, @status, @outcome, @reason, @finishedAt, @enqueuedAt)`,
+          @baseRev, @baseSha, @baseBlocks, @scopeHint, @premise, @frame, @frameMode, @status, @outcome, @reason,
+          @finishedAt, @enqueuedAt)`,
     )
     .run(row);
   return Number(result.lastInsertRowid);

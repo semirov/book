@@ -46,6 +46,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: null,
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -82,7 +83,7 @@ async function mount(comments: readonly CommentDto[], text = TEXT, history = tru
         blockIndex={1}
         baseRev={3}
         text={text}
-        frozen={false}
+        blockCount={1}
         comments={comments}
         history={history}
         composer={EMPTY_COMPOSER}
@@ -172,7 +173,7 @@ describe('opening the revision object from the paragraph', () => {
             blockIndex={0}
             baseRev={3}
             text={TEXT}
-            frozen={false}
+            blockCount={1}
             comments={[first]}
             history
             composer={EMPTY_COMPOSER}
@@ -185,7 +186,7 @@ describe('opening the revision object from the paragraph', () => {
             blockIndex={1}
             baseRev={3}
             text={TEXT}
-            frozen={false}
+            blockCount={1}
             comments={[second]}
             history
             composer={EMPTY_COMPOSER}

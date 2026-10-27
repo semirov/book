@@ -30,6 +30,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: 'testimony',
     premise: false,
     status: 'accepted',
+    frame: 'untouched',
     reason: 'входит в книгу',
     createdAt: '2026-10-25T12:04:11Z',
     decidedAt: '2026-10-25T12:05:00Z',

@@ -1,11 +1,14 @@
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { computeShares, measureContributions, readSeries } from '../../src/history/erosion.ts';
 import { readContributors } from '../../src/history/query.ts';
 import { historyFixture, ingest, releaseLease, seedChange } from './helpers.ts';
 
-const INTRO = 'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.';
-const REWRITTEN = 'Тестовый абзац номер один, изменённый. Это служебный текст, он не является текстом книги.';
+// BOOK-137: ch01's paragraph opens on the canon frame; the counts below are whole blocks, so
+// the sentence is part of both texts and the comparison still measures who wrote what.
+const INTRO = `${FRAME_FIRST_SENTENCE} Тестовый абзац номер один. Это служебный текст, он не является текстом книги.`;
+const REWRITTEN = `${FRAME_FIRST_SENTENCE} Тестовый абзац номер один, изменённый. Это служебный текст, он не является текстом книги.`;
 
 function twoReaders(): ReturnType<typeof historyFixture> {
   const fixture = historyFixture();

@@ -60,6 +60,16 @@ export function isWritten(bookRoot: string, n: number): boolean {
   return isWrittenChapter(readChapter(bookRoot, n));
 }
 
+/**
+ * A basis-only slot (§BOOK-6): its whole text is the frame sentence, so it is not prose — read
+ * from the file (`ParsedChapter.basis`, what the engine parses) or from the projection
+ * (`chapters.basis`, what the site serves). One predicate, so the queue, the acceptance path and
+ * the premise sweep cannot mean two things by "the frame is the whole text".
+ */
+export function isBasisSlot(slot: { basis: boolean | number } | undefined): boolean {
+  return slot !== undefined && slot.basis !== false && slot.basis !== 0;
+}
+
 /** Chapter numbers the cascade may walk into: written, in 1..67. */
 export function writtenChapters(bookRoot: string): Set<number> {
   const written = new Set<number>();

@@ -273,7 +273,7 @@ describe('GET /api/chapters/:n', () => {
     expect(body.n).toBe(1);
     expect(body.title).toBe('Заголовок главы');
     expect(body.rev).toBe(1);
-    expect(body.blocks[0]).toMatchObject({ i: 0, text: 'Первый абзац главы.' });
+    expect(body.blocks[0]).toMatchObject({ i: 0, text: `${FRAME_FIRST_SENTENCE} Первый абзац главы.` });
     expect(body.blocks[0].id).toMatch(/^ch01#[0-9a-f]{8}$/u);
   });
 
@@ -296,7 +296,8 @@ describe('GET /api/chapters/:n', () => {
     const body = response.json();
     expect(body.title).toBeNull();
     expect(body.blocks.length).toBeGreaterThan(0);
-    expect(body.blocks[0].text.startsWith('Тестовый абзац номер один')).toBe(true);
+    // The frame rides the first paragraph (BOOK-137); no title line is still a published chapter.
+    expect(body.blocks[0].text.startsWith(`${FRAME_FIRST_SENTENCE} Тестовый абзац номер один`)).toBe(true);
 
     const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
       Record<string, unknown>

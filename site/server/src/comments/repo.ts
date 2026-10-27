@@ -10,6 +10,7 @@ import {
   PUBLIC_COMMENT_STATUSES,
   authorColor,
   holdsInternalCode,
+  normalizeFrameMark,
   normalizeInterventionKind,
   readerReason,
   type CommentAnchor,
@@ -17,6 +18,7 @@ import {
   type CommentGuard,
   type CommentRefusal,
   type CommentStatus,
+  type FrameMark,
   type InterventionKind,
 } from '@book/shared';
 
@@ -42,6 +44,8 @@ export type CommentRow = {
   flags: string;
   ip_hash: string;
   status: string;
+  /** BOOK-137 — the frame mark taken at posting time; null for a row stored before v16. */
+  frame: string | null;
   guard: string | null;
   created_at: string;
   delivered_at: string | null;
@@ -88,6 +92,12 @@ export type NewCommentRow = {
   flags: string[];
   ipHash: string;
   status: CommentStatus;
+  /**
+   * BOOK-137 — how the filing sits against the frozen frame (see `shared/src/frame.ts`). The
+   * posting service always takes it; an older writer (a backfill, a test seed of a pre-v16 row)
+   * omits it, and the decision re-derives the mark from the anchor.
+   */
+  frame?: FrameMark | null;
   guard: CommentGuard | null;
   reason: string | null;
   createdAt: string;
@@ -98,11 +108,13 @@ export function insertComment(db: Db, comment: NewCommentRow): void {
   db.prepare(
     `INSERT INTO comments
        (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, author,
-        body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status, guard, created_at, reason, idem_key)
+        body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status, frame, guard, created_at, reason,
+        idem_key)
      VALUES
        (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix, @author,
-        @body, @proposedText, @interventionKind, @bodySha, @flags, @ipHash, @status, @guard, @createdAt, @reason, @idemKey)`,
-  ).run({ ...comment, flags: JSON.stringify(comment.flags) });
+        @body, @proposedText, @interventionKind, @bodySha, @flags, @ipHash, @status, @frame, @guard, @createdAt,
+        @reason, @idemKey)`,
+  ).run({ ...comment, frame: comment.frame ?? null, flags: JSON.stringify(comment.flags) });
 }
 
 export function readCommentRow(db: Db, id: string): CommentRow | undefined {
@@ -268,6 +280,9 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // BOOK-61: the gate that refused, derived here from the stored verdicts — one place, so no
     // surface can guess it from the reason text.
     refusal: refusalOf(row),
+    // BOOK-137: a stored word this build does not know is dropped, never printed; `null` is an
+    // old row (before v16), whose mark the decision re-derives when it is accepted.
+    frame: normalizeFrameMark(row.frame),
     premise,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered

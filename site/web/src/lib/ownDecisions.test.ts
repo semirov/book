@@ -61,6 +61,24 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
     );
   });
 
+  it('says «рассмотрено» for a paperwork decision, and never «правка внесена» (BOOK-137)', () => {
+    const line = decisionLine(
+      applied({
+        outcome: 'registered',
+        reason: 'принято как оформление: рамка книги — фраза не меняется',
+        chapters: [],
+        waves: null,
+        blocks: null,
+        intent: null,
+        shareAtDecision: null,
+      }),
+      0.004,
+    );
+    expect(line.text).toBe('рассмотрено · принято как оформление: рамка книги — фраза не меняется');
+    expect(line.text).not.toContain('внесена');
+    expect(line.tone).toBe('done');
+  });
+
   it('counts one changed paragraph in Russian, not «изменилось 1 абзацев»', () => {
     expect(blocksCopy(1)).toBe('изменился 1 абзац');
     expect(blocksCopy(2)).toBe('изменилось 2 абзаца');

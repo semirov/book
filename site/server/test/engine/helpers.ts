@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CHAPTER_CHARS } from '@book/shared';
+import { CHAPTER_CHARS, frameSentenceOf } from '@book/shared';
 import type {
   Finding,
   SeamRef,
@@ -125,8 +125,14 @@ export function createEngineFixture(options: {
   const writeChapter = (n: number, text: string): void => {
     writeFileSync(join(manuscript, `ch${String(n).padStart(2, '0')}.md`), text, 'utf8');
   };
+  /**
+   * BOOK-137: the canon frame opens ch01 and closes ch67, so a chapter written by paragraph
+   * carries it — the land guard refuses a landing that lets the sentence move, exactly as in
+   * production. A test that needs a byte-exact file (a basis-only slot, a broken frame) writes
+   * it with `writeChapter`, which stays raw.
+   */
   const writeChapterBlocks = (n: number, title: string, blocks: string[]): void => {
-    writeChapter(n, chapterText(title, blocks));
+    writeChapter(n, chapterText(title, withFrame(n, blocks)));
   };
   const writeFront = (title: string, about: string): void => {
     writeFileSync(join(manuscript, '00-front.md'), `${title}\n\n${about}\n`, 'utf8');
@@ -216,11 +222,28 @@ function defaultBlocks(pass: StepPass, chapter: number | 'front'): string[] {
   ];
 }
 
+/**
+ * BOOK-137: a session that lands on ch01 or ch67 must keep the canon sentence — the land guard
+ * refuses a landing whose frame is not character-identical, exactly as production does. The
+ * scripted writer is a session, so it keeps the frame the way a live one has to.
+ */
+function withFrame(chapter: number | 'front', blocks: string[]): string[] {
+  const frame = typeof chapter === 'number' ? frameSentenceOf(chapter) : null;
+  if (frame === null || blocks.length === 0) return blocks;
+  // `chapterText` pads an empty list to a page on its own, so the frame rides the first block.
+  const last = blocks.length - 1;
+  const merged = (block: string): string => (block.includes(frame) ? block : `${block} ${frame}`);
+  return chapter === 1
+    ? [`${frame} ${blocks[0] ?? ''}`.trim(), ...blocks.slice(1)]
+    : [...blocks.slice(0, last), merged(blocks[last] ?? '')];
+}
+
 function writeFor(fixture: Fixture, assignment: WriterAssignment, script: StubScript, blocks: string[]): void {
   if (assignment.chapter === 'front') {
     fixture.writeFront(script.title ?? 'Без названия', blocks.join('\n\n'));
     return;
   }
+  // `writeChapterBlocks` keeps the frame of ch01/ch67 itself, so every scripted writer does.
   fixture.writeChapterBlocks(assignment.chapter, script.title ?? `Глава ${assignment.chapter}`, blocks);
 }
 

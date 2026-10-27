@@ -115,8 +115,9 @@
   text-decoration: none;
   cursor: pointer;
 }
+/* BOOK-137: the link now travels with the form's own action, so the CTA's auto margin is the
+   one that pushes the pair right — the link sits beside it instead of far from it. */
 .seam-frozen {
-  margin-left: auto;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   color: var(--ink-3);
@@ -143,6 +144,12 @@
   font-size: var(--fs-label);
   line-height: 1.4;
   color: var(--ink-3);
+}
+/* BOOK-137 — the frame's warning. The same note register, in the reader's own ink: it is a
+   fact about the text they selected, printed before they type, not a hint about the interface.
+   One line, no box: the strip already carries the rule above it. */
+.seam-frame {
+  color: var(--ink-2);
 }
 .seam-receipt {
   margin: 0;

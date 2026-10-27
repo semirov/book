@@ -17,6 +17,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: null,
     premise: false,
     status: 'new',
+    frame: 'untouched',
     reason: null,
     createdAt: '2026-10-25T12:04:11Z',
     decidedAt: null,
@@ -74,6 +75,29 @@ describe('comment thread copy (§11.6)', () => {
       tone: 'stopped',
       form: 'chip',
     });
+  });
+
+  it('prints the paperwork’s own line for a registered filing, and nothing else', () => {
+    // BOOK-137 — a filing on the canon sentence was decided as paperwork: the thread says
+    // «рассмотрено · оформление · фраза не изменилась». The stored reason is the same fact in
+    // the server's words, so it is not appended twice; a named mode replaces the default one.
+    const line = commentStatusLine(
+      comment({ status: 'registered', reason: 'принято как оформление: рамка книги — фраза не меняется' }),
+    );
+    expect(line).toEqual({
+      state: 'рассмотрено',
+      detail: 'оформление · фраза не изменилась',
+      tone: 'done',
+      form: 'chip',
+    });
+    expect(commentStatusLine(comment({ status: 'registered', reason: null }))).toMatchObject({
+      state: 'рассмотрено',
+      detail: 'оформление · фраза не изменилась',
+    });
+    expect(
+      commentStatusLine(comment({ status: 'registered', reason: 'принято как поправка: рамка книги — фраза не меняется' }))
+        .detail,
+    ).toBe('поправка · фраза не изменилась');
   });
 
   it('keeps every state a chip: the clause and the receipt are the detail (BOOK-90)', () => {
@@ -136,9 +160,10 @@ describe('comment thread copy (§11.6)', () => {
 });
 
 describe('the three refusals, told apart by their own words (BOOK-61)', () => {
-  it('keeps the book’s three state words and adds no fourth', () => {
-    // BOOK-90 is untouched: a gate's word is not a state, it heads the detail line.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено']);
+  it('keeps the book’s four state words and adds no fifth', () => {
+    // BOOK-90 is untouched, and BOOK-137 adds the paperwork's own word («рассмотрено»): a gate's
+    // word is not a state, it heads the detail line.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
     const gate = Object.values(GATE_WORDS);
     expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
     expect(new Set(gate).size).toBe(3);

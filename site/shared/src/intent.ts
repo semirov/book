@@ -22,7 +22,6 @@ import { intentMetaViolation } from './injection.ts';
 import type { InterventionKind } from './intervention.ts';
 
 export type IntentFailureCode =
-  | 'ENDING_FROZEN'
   | 'INTENT_TOO_SHORT'
   | 'INTENT_TOO_LONG'
   | 'INTENT_OTHER_CHAPTER'
@@ -234,11 +233,14 @@ export function proseCorrectionViolation(intent: string): string | null {
   return scanRequest(intent, CORRECTION_REQUEST, (word) => (isProseMechanic(word) ? 'hit' : 'stop'), false);
 }
 
+/**
+ * BOOK-137: a chapter is no longer refused for being the last one. ch67 used to be closed here
+ * («финал заморожен»), which made a filing on the finale undecidable — the reader's paperwork
+ * could never be recorded. The ending is protected where text is: a ripple never rewrites it
+ * (`engine/queue.ts`, `engine/lease`), a landing must keep the canon sentence (`engine/write.ts`)
+ * and an accepted filing that touches that sentence becomes paperwork (`feedback/accept.ts`).
+ */
 export function validateIntent(raw: string, chapter: number, context: IntentContext = {}): IntentVerdict {
-  if (chapter === 67) {
-    return { ok: false, code: 'ENDING_FROZEN', reason: 'финал заморожен: правка читателя в главу 67 не входит' };
-  }
-
   const intent = normalizeIntent(raw);
   if (intent.length < INTENT_MIN_CHARS) {
     return { ok: false, code: 'INTENT_TOO_SHORT', reason: `интент короче ${INTENT_MIN_CHARS} символов` };

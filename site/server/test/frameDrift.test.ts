@@ -135,6 +135,8 @@ describe('checkFrameDrift — ch01 opens the frame, ch67 closes it (BOOK-109)', 
 
 /** Values written above: the owner's report, and a second, different corruption. */
 const WRONG = 'Рано утром я проснулся по будильнику, был обычный будний день.';
+/** BOOK-137: the fixture's ch01 file opens on the canon frame, so its first paragraph is this. */
+const MANUSCRIPT_FIRST = `${FRAME_FIRST_SENTENCE} Первый абзац главы.`;
 const WRONG_AGAIN = 'Другая подмена первого абзаца.';
 
 /** A row the file does not hold: the shape of the owner's report — old prose, new file. */
@@ -163,7 +165,7 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
 
     const drift = driftLines(log);
     expect(drift).toHaveLength(1);
-    expect(drift[0]).toMatchObject({ chapter: 1, served: WRONG, manuscript: 'Первый абзац главы.' });
+    expect(drift[0]).toMatchObject({ chapter: 1, served: WRONG, manuscript: MANUSCRIPT_FIRST });
     expect(String(drift[0]?.file)).toBe(join(fixture!.root, 'manuscript', 'ch01.md'));
   });
 
@@ -190,10 +192,10 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);
-    expect(driftLines(log)[1]).toMatchObject({ served: WRONG_AGAIN, manuscript: 'Первый абзац главы.' });
+    expect(driftLines(log)[1]).toMatchObject({ served: WRONG_AGAIN, manuscript: MANUSCRIPT_FIRST });
 
     // Agreement clears the memory, so the same drift returning later is reported again.
-    setFirstBlock('Первый абзац главы.');
+    setFirstBlock(MANUSCRIPT_FIRST);
     await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);

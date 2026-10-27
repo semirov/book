@@ -1,4 +1,4 @@
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
@@ -12,7 +12,7 @@ import { parseFront } from '../src/ingest/parseFront.ts';
 import { reconcile, rememberScan } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
 import { sha256Hex } from '../src/util/hash.ts';
-import { createFixture, longProse, type Fixture } from './helpers.ts';
+import { createFixture, longProse, withFrame, type Fixture } from './helpers.ts';
 
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 const CHAPTER_TWO = longProse(['Начало второй главы.']);
@@ -72,14 +72,20 @@ describe('reconcile — first sighting', () => {
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
     expect(report.created).toEqual([1]);
-    const expected = parseChapter(1, CHAPTER_ONE);
+    // BOOK-137: the fixture keeps the canon frame, so the file is `CHAPTER_ONE` plus it.
+    const expected = parseChapter(1, withFrame(1, CHAPTER_ONE));
     const row = getChapterRow(fixture.db, 1);
     expect(row).toMatchObject({ n: 1, rev: 1, block_count: expected.blocks.length });
     expect(row?.chars).toBe(expected.chars);
 
     const blocks = listBlocks(fixture.db, 1);
     expect(blocks).toHaveLength(expected.blocks.length);
-    expect(blocks[0]).toMatchObject({ idx: 0, text: 'Первый абзац главы.', first_rev: 1, last_rev: 1 });
+    expect(blocks[0]).toMatchObject({
+      idx: 0,
+      text: `${FRAME_FIRST_SENTENCE} Первый абзац главы.`,
+      first_rev: 1,
+      last_rev: 1,
+    });
 
     const revisions = listRevisions(fixture.db, 1);
     expect(revisions).toHaveLength(1);
@@ -131,7 +137,7 @@ describe('reconcile — a revision', () => {
     expect(existsSync(join(fixture.dataDir, String(revisions[1]?.snapshot)))).toBe(true);
 
     const after = listBlocks(fixture.db, 1);
-    expect(after[0]?.text).toBe('Первый абзац главы, переписанный.');
+    expect(after[0]?.text).toBe(`${FRAME_FIRST_SENTENCE} Первый абзац главы, переписанный.`);
     expect(after[1]?.id).toBe(before[1]?.id);
     expect(after[1]?.first_rev).toBe(1);
     expect(after[1]?.last_rev).toBe(2);
@@ -263,9 +269,32 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
 
     fixture.write('ch01.md', CHAPTER_ONE);
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
-    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 0, rev: 1, chars: parseChapter(1, CHAPTER_ONE).chars });
+    expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 0, rev: 1, chars: parseChapter(1, withFrame(1, CHAPTER_ONE)).chars });
     expect(listCatalog(fixture.db)[0]).toMatchObject({ written: true, basis: false });
     expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([1]);
+  });
+});
+
+describe('reconcile — a moved frame publishes nothing (BOOK-137)', () => {
+  it('reports the file, publishes no chapter from it, and still scans the rest of the book', () => {
+    fixture = createFixture();
+    // Raw bytes on purpose: the fixture's own write keeps the frame, and this test is the one
+    // that must see what a weakened file does.
+    writeFileSync(
+      join(fixture.manuscript, 'ch01.md'),
+      `${FRAME_FIRST_SENTENCE.replace('яркий', 'тусклый')}\n\nЯ постоял и вышел.\n`,
+      'utf8',
+    );
+    writeFileSync(join(fixture.manuscript, 'ch02.md'), CHAPTER_TWO, 'utf8');
+
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    // The boot goes on: the other chapter is published, and the refusal names ch01 only.
+    expect(report.frameRejected).toEqual([1]);
+    expect(report.created).toEqual([2]);
+    expect(getChapterRow(fixture.db, 1)).toBeUndefined();
+    expect(listRevisions(fixture.db, 1)).toEqual([]);
+    expect(listCatalog(fixture.db)[0]).toMatchObject({ n: 1, written: false, rev: 0 });
   });
 });
 
@@ -296,6 +325,7 @@ describe('state version', () => {
       unchanged: [],
       removed: [],
       emptied: [],
+      frameRejected: [],
       ignored: [],
       readErrors: [],
       front: 'missing',

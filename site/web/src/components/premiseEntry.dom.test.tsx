@@ -53,6 +53,7 @@ const PREMISE: CommentDto = {
   // BOOK-136's matrix: a premise whose chapter has text is «внесено», whatever the change row
   // went on to say after a failed attempt.
   status: 'applied',
+  frame: 'untouched',
   reason: null,
   refusal: null,
   createdAt: '2026-10-27T18:04:17Z',
@@ -70,6 +71,8 @@ const ATTEMPT: ChangeSummaryDto = {
   intent: 'смена переходит на ночь, а не на утро',
   premise: true,
   status: 'done',
+  frame: 'untouched',
+  frameMode: null,
   outcome: 'applied',
   reason: null,
   position: null,
@@ -206,6 +209,8 @@ describe('one filing, one entry (BOOK-137)', () => {
       intent: 'смена переходит на ночь',
       premise: true,
       status: 'pending',
+      frame: 'untouched' as const,
+      frameMode: null,
       outcome: null,
       reason: null,
       position: null,

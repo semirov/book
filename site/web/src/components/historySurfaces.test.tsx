@@ -144,6 +144,7 @@ const filing: CommentDto = {
   interventionKind: null,
   premise: false,
   status: 'new',
+  frame: 'untouched',
   reason: null,
   createdAt: '2026-10-21T12:03:00Z',
   decidedAt: null,
@@ -198,7 +199,7 @@ function page(current: StateSnapshot): string {
         blockIndex={0}
         baseRev={1}
         text={TEXT}
-        frozen={false}
+        blockCount={1}
         comments={[filing]}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}

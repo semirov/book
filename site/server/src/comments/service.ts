@@ -29,6 +29,7 @@ import {
   COMMENT_RAW_MAX_BYTES,
   EDIT_MAX_CHARS,
   EDIT_RAW_MAX_BYTES,
+  classifyFrame,
   type CommentBudget,
   type InterventionKind,
   type PostCommentInput,
@@ -120,10 +121,6 @@ export class CommentService {
     if (context.identity.blocked !== 0) {
       return fail(403, 'BLOCKED', 'замечания от этого автора не принимаются');
     }
-    // Chapter 67 is frozen against reader-driven changes (§6C.4, ADR-024).
-    if (isPresent(input.proposedText) && input.chapter === 67) {
-      return fail(403, 'ENDING_FROZEN', 'финал заморожен: правка читателя в главу 67 не входит');
-    }
 
     // Idempotent replay: the same key returns the first result, never a second comment.
     const replay = this.replay(input, context.identity.id, context.ipKey);
@@ -208,6 +205,15 @@ export class CommentService {
 
     const anchor = resolveAnchor(this.db, input);
     if (anchor.ok === false) return anchor.failure;
+    // BOOK-137: how this filing sits against the frozen frame, taken once, stored once. The
+    // mark is data about the reader's aim; the sentence's letters are protected at a landing.
+    const frame = classifyFrame({
+      chapter: input.chapter,
+      quote: anchor.anchor.quote,
+      blockIndex: anchor.anchor.blockIndex,
+      blockText: anchor.blockText,
+      blockCount: anchor.blockCount,
+    });
 
     const guard = classifyComment(body.text, proposedText);
     const filing = { body: body.text, proposed: proposedText, quote: anchor.anchor.quote };
@@ -274,6 +280,7 @@ export class CommentService {
         flags: guard.flags,
         ipHash: this.ipHash(context.ipKey),
         status: guard.status,
+        frame,
         guard: guard.guard,
         reason: guard.reason,
         createdAt: at,

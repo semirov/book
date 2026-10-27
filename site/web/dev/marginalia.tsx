@@ -248,7 +248,7 @@ function paragraph(row: CatalogEntry, index: number, blockId: string, text: stri
       blockIndex={index}
       baseRev={row.rev}
       text={text}
-      frozen={false}
+      blockCount={1}
       comments={COMMENTS}
       composer={EMPTY_COMPOSER}
       viewer={VIEWER}
@@ -376,32 +376,32 @@ function StripScene(): ReactElement {
     <div className="canvas">
     <main className="page">
       <Demo id="premise">
-        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-empty" anchor={null} frozen={false} filings={null}
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-empty" anchor={null} frame="untouched" filings={null}
           composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
           onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>
       <Demo id="held">
-        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-held" anchor={null} frozen={false} filings={null}
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-held" anchor={null} frame="untouched" filings={null}
           existingPremise={HELD_PREMISE} composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop}
           onClose={noop} onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>
       <Demo id="provenance">
-        <Seam entry={STRIP_ENTRY} draftKey="ch08:provenance" anchor={STRIP_ANCHOR} frozen={false} filings={null}
+        <Seam entry={STRIP_ENTRY} draftKey="ch08:provenance" anchor={STRIP_ANCHOR} frame="untouched" filings={null}
           composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
           onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>
       <Demo id="draft">
-        <Seam entry={STRIP_ENTRY} draftKey={DRAFT_KEY} anchor={STRIP_ANCHOR} frozen={false} filings={null}
+        <Seam entry={STRIP_ENTRY} draftKey={DRAFT_KEY} anchor={STRIP_ANCHOR} frame="untouched" filings={null}
           composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
           onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>
       <Demo id="receipt">
-        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-receipt" anchor={null} frozen={false} filings={null}
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-receipt" anchor={null} frame="untouched" filings={null}
           composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
           onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>
       <Demo id="filings">
-        <Seam entry={STRIP_ENTRY} draftKey="ch08:filings" anchor={STRIP_ANCHOR} frozen={false} filings={STRIP_FILINGS}
+        <Seam entry={STRIP_ENTRY} draftKey="ch08:filings" anchor={STRIP_ANCHOR} frame="untouched" filings={STRIP_FILINGS}
           composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
           onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
       </Demo>

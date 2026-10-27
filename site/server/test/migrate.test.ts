@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v14', () => {
+describe('migrate — schema v16', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -53,6 +53,11 @@ describe('migrate — schema v14', () => {
       expect.arrayContaining(['audit_verdict', 'audit_reason', 'audited_at', 'audited_by']),
     );
     expect(tableSql(db, 'comments')).toContain(`CHECK (audit_verdict IN ('FITS','OFF'))`);
+    // BOOK-137: the frame mark on the filing and on the change, and the paperwork mode.
+    expect(columns(db, 'comments')).toContain('frame');
+    expect(columns(db, 'changes')).toEqual(expect.arrayContaining(['frame', 'frame_mode']));
+    expect(tableSql(db, 'comments')).toContain(`CHECK (frame IN ('touched','adjacent','untouched'))`);
+    expect(tableSql(db, 'changes')).toContain(`CHECK (frame_mode IN ('оформление','поправка','расхождение'))`);
     // BOOK-7: an intervention on an empty chapter is that chapter's premise.
     expect(columns(db, 'changes')).toContain('premise');
     expect(columns(db, 'steps')).toContain('premise_change');
@@ -144,7 +149,6 @@ describe('migrate — schema v14', () => {
     db.exec('DROP INDEX revisions_hseq');
     db.exec('ALTER TABLE revisions DROP COLUMN hseq');
     db.pragma('user_version = 4');
-
     expect(migrate(db)).toEqual({ from: 4, to: SCHEMA_VERSION });
     expect(columns(db, 'revisions')).toContain('hseq');
     expect(tables(db)).toContain('block_versions');
@@ -389,8 +393,7 @@ describe('migrate — schema v14', () => {
       db.exec(`ALTER TABLE ${table} DROP COLUMN cost_priced`);
     }
     db.pragma('user_version = 12');
-
-    expect(migrate(db)).toEqual({ from: 12, to: 15 });
+    expect(migrate(db)).toEqual({ from: 12, to: SCHEMA_VERSION });
     for (const table of ['changes', 'steps', 'change_impact']) {
       expect(columns(db, table)).toContain('cost_priced');
     }
@@ -400,7 +403,7 @@ describe('migrate — schema v14', () => {
       { id: 'chg_placeholder', cost_priced: 0 },
     ]);
     // The old database boots: migrate probes it, and the next run has nothing to do.
-    expect(migrate(db)).toEqual({ from: 15, to: 15 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });
 
@@ -414,12 +417,11 @@ describe('migrate — schema v14', () => {
     // Shape a v13 install: the flag did not exist before BOOK-113.
     db.exec('ALTER TABLE identities DROP COLUMN edit_exempt');
     db.pragma('user_version = 13');
-
-    // BOOK-113 and BOOK-61 land on the way to the head version.
-    expect(migrate(db)).toEqual({ from: 13, to: 15 });
+    // BOOK-113, BOOK-61 and BOOK-137 land on the way to the head version.
+    expect(migrate(db)).toEqual({ from: 13, to: SCHEMA_VERSION });
     // An existing reader is not exempt by accident: the column reads as 0.
     expect(db.prepare('SELECT edit_exempt FROM identities WHERE id = ?').get('idt_old')).toEqual({ edit_exempt: 0 });
-    expect(migrate(db)).toEqual({ from: 15, to: 15 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });
 
@@ -431,7 +433,6 @@ describe('migrate — schema v14', () => {
     db.exec('ALTER TABLE comments DROP COLUMN base_rev');
     db.exec('ALTER TABLE comments DROP COLUMN flags');
     db.pragma('user_version = 3');
-
     expect(migrate(db)).toEqual({ from: 3, to: SCHEMA_VERSION });
     const cols = columns(db, 'comments');
     expect(cols).toEqual(expect.arrayContaining(['proposed_text', 'base_rev', 'flags']));

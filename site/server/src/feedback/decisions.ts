@@ -13,7 +13,13 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { validateIntent, validateInterventionKind, type CommentDecisionPayload } from '@book/shared';
+import {
+  normalizeRetroMode,
+  validateIntent,
+  validateInterventionKind,
+  type CommentDecisionPayload,
+  type RetroMode,
+} from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
@@ -36,6 +42,11 @@ export type DecisionLine = {
   changeId?: string | null;
   rev?: { chapter: number; rev: number } | null;
   base?: { sha256: string } | null;
+  /**
+   * BOOK-137 — the paperwork mode the triage named for a filing that touches the frozen frame;
+   * an unknown word is dropped here, exactly as `normalizeRetroMode` drops it anywhere else.
+   */
+  mode?: RetroMode | null;
 };
 
 export type DecisionsTailerOptions = {
@@ -163,6 +174,7 @@ export class DecisionsTailer {
       changeId: decision.changeId ?? null,
       baseRev: decision.rev?.rev ?? null,
       batch: decision.batch ?? null,
+      frameMode: decision.mode ?? null,
     });
     if ('error' in accepted) {
       this.reject(comment, accepted.error, at, decision.batch ?? null);
@@ -200,6 +212,8 @@ export class DecisionsTailer {
   private announceQueued(changeId: string): void {
     const change = this.db.prepare('SELECT * FROM changes WHERE id = ?').get(changeId) as ChangeRow | undefined;
     if (change === undefined || change.premise === 1) return;
+    // BOOK-137: paperwork never enters the lane, so «в очереди» is not a thing it can be.
+    if (change.outcome === 'registered') return;
     const depth = readQueue(this.db, this.now().getTime()).depth;
     const ahead = countRows(
       this.db,
@@ -329,5 +343,6 @@ export function parseDecision(raw: unknown): DecisionLine | null {
     changeId: typeof value.changeId === 'string' ? value.changeId : null,
     rev: value.rev ?? null,
     base: value.base ?? null,
+    mode: normalizeRetroMode(value.mode),
   };
 }

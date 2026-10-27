@@ -33,6 +33,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: null,
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',

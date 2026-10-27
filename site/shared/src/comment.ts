@@ -7,6 +7,7 @@
  * into a sentence: every reader-authored value is a separate, bounded string.
  */
 
+import type { FrameMark } from './frame.ts';
 import type { InterventionKind } from './intervention.ts';
 
 /** §12.4 — the bounds that are enforced twice: in the composer and on the server. */
@@ -84,6 +85,11 @@ export type CommentStatus =
   | 'delivered'
   | 'accepted'
   | 'applied'
+  /**
+   * BOOK-137 — the filing touched the frozen frame and was accepted as paperwork: the record
+   * exists and the sentence's letters did not change. Never `applied`: nothing was written.
+   */
+  | 'registered'
   | 'superseded'
   | 'rejected'
   | 'quarantined'
@@ -147,6 +153,12 @@ export type CommentDto = {
    * The reader's line is chosen from this field, never from the text of `reason`.
    */
   refusal: CommentRefusal | null;
+  /**
+   * BOOK-137 — how this filing sat against the frozen frame when it was made: `touched` (it
+   * intersects the canon sentence), `adjacent` (its paragraph), `untouched`. `null` for a row
+   * stored before v16 — the reader's decision still knows its mark, the old row does not.
+   */
+  frame: FrameMark | null;
   /**
    * BOOK-7 — the intervention became its chapter's premise (the slot was empty when it was
    * accepted). Derived from the linked change, so the thread cannot say «в очереди» about a
@@ -330,6 +342,7 @@ export const PUBLIC_COMMENT_STATUSES: readonly CommentStatus[] = [
   'delivered',
   'accepted',
   'applied',
+  'registered',
   'superseded',
   'rejected',
   'quarantined',

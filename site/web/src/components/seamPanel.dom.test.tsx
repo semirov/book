@@ -60,6 +60,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     status: 'new',
     refusal: null,
     attempt: null,
+    frame: null,
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -106,7 +107,7 @@ async function renderParagraph(comments: readonly CommentDto[], history: boolean
         blockIndex={0}
         baseRev={ENTRY.rev}
         text={TEXT}
-        frozen={false}
+        blockCount={40}
         comments={comments}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}

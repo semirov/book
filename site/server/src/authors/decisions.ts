@@ -189,6 +189,9 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
     return row.comment_status === 'rejected' ? 'refused' : 'dropped';
   }
   if (WAITING.has(row.change_status)) return 'queued';
+  // BOOK-137: paperwork is not text. A filing accepted on the frozen frame is «рассмотрено»,
+  // and the reader's own record must not borrow the word a landing earned.
+  if (row.change_outcome === 'registered') return 'registered';
   // One vocabulary for the outcome, shared with the frame and the change card.
   return decisionOutcome({
     status: row.change_status as ChangeStatus,

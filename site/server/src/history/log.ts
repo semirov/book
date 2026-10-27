@@ -69,6 +69,7 @@ export function appendEvent(db: Db, input: AppendEventInput, nowMs: number = Dat
 
 export type ChangeEventType =
   | 'queued'
+  | 'registered'
   | 'processing'
   | 'stale'
   | 'adapted'

@@ -28,6 +28,11 @@ export const MY_OPEN_LIMIT = 10;
 export type MyDecisionOutcome =
   | 'applied'
   | 'adapted'
+  /**
+   * BOOK-137 — the filing touched the frozen frame and was accepted as paperwork: «рассмотрено»,
+   * never «внесено». It carries no waves, no chapters and no blocks, because nothing was written.
+   */
+  | 'registered'
   | 'queued'
   | 'escalated'
   | 'dropped'

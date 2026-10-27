@@ -1,3 +1,4 @@
+import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { databaseFile, openDatabase } from '../../src/db/db.ts';
@@ -6,7 +7,8 @@ import { applyFrontFile } from '../../src/ingest/applyFront.ts';
 
 import { historyFixture } from './helpers.ts';
 
-const TEXT = 'Первая\n\nТестовый абзац номер один. Это служебный текст, он не является текстом книги.';
+// BOOK-137: the file opens on the canon frame, or the ingest would publish nothing at all.
+const TEXT = `Первая\n\n${FRAME_FIRST_SENTENCE} Тестовый абзац номер один. Это служебный текст, он не является текстом книги.`;
 
 describe('one observed write, two processes (§6F.1)', () => {
   it('the loser of a landing race records nothing rather than failing', () => {

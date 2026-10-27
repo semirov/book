@@ -27,6 +27,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     interventionKind: null,
     premise: false,
     status: 'new',
+    frame: 'untouched',
     reason: null,
     createdAt: '2026-10-25T12:04:11Z',
     decidedAt: null,

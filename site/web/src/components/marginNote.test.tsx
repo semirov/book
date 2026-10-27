@@ -31,6 +31,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: 'Свет был включён до меня.',
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -191,9 +192,11 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     }
   });
 
-  it('has exactly three words, and none of them is a phrase', () => {
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено']);
-    for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди']) {
+  it('has exactly four words, and none of them is a phrase', () => {
+    // BOOK-137 added the paperwork state: «рассмотрено» is a decision about a record, and
+    // «внесено» stays what the text says — the two are never used for one another.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
+    for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }
   });

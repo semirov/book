@@ -17,7 +17,6 @@ import { reserveHeight } from '../lib/cssom.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
 import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
-import { isFrozenChapter } from '../lib/freeze.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
@@ -393,7 +392,7 @@ export function ChapterArticle({
                   blockIndex={index}
                   baseRev={chapter.rev}
                   text={text}
-                  frozen={isFrozenChapter(entry)}
+                  blockCount={chapter.blocks.length}
                   comments={comments}
                   composer={composer}
                   viewer={viewer}
@@ -427,7 +426,7 @@ export function ChapterArticle({
           blockIndex={0}
           baseRev={0}
           text={basisSentence}
-          frozen
+          blockCount={1}
           comments={comments}
           composer={composer}
           viewer={viewer}

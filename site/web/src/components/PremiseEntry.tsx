@@ -110,7 +110,7 @@ export function PremiseEntry({
           entry={entry}
           draftKey={`ch${entry.n}:premise`}
           anchor={null}
-          frozen={false}
+          frame="untouched"
           filings={null}
           existingPremise={premise}
           composer={composer}

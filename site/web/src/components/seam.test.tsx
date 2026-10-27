@@ -1,4 +1,4 @@
-import type { CatalogEntry, CommentDto } from '@book/shared';
+import { FRAME_WARNING, type CatalogEntry, type CommentDto, type FrameMark } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -42,6 +42,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: 'Свет был включён до меня.',
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     createdAt: '2026-10-21T12:03:00Z',
@@ -56,14 +57,14 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 const FILINGS = filingsForBlock([comment()], 'ch08#aa11bb22');
 
-function strip(overrides: { frozen?: boolean; premise?: boolean; signedIn?: boolean; withFilings?: boolean } = {}): string {
+function strip(overrides: { frame?: FrameMark; premise?: boolean; signedIn?: boolean; withFilings?: boolean } = {}): string {
   const anchor = overrides.premise === true ? null : anchorFor({ text: TEXT, blockId: 'ch08#aa11bb22', baseRev: 3, offset: 2 });
   return renderToStaticMarkup(
     <Seam
-      entry={entry(overrides.frozen === true ? 1 : 8, { basis: overrides.frozen === true })}
+      entry={entry(overrides.frame === 'touched' ? 1 : 8, { basis: overrides.frame === 'touched' })}
       draftKey="ch8:test"
       anchor={anchor}
-      frozen={overrides.frozen === true}
+      frame={overrides.frame ?? 'untouched'}
       filings={overrides.withFilings === true ? (FILINGS[0] ?? null) : null}
       composer={EMPTY_COMPOSER}
       viewer={{ signedIn: overrides.signedIn ?? true, displayName: 'Филипп' }}
@@ -94,13 +95,26 @@ describe('the strip at the seam', () => {
     expect(html).not.toContain('вмешаться</button>');
   });
 
-  it('has no form on a frozen chapter, ever — and says why', () => {
-    const html = strip({ frozen: true });
-    expect(html).toContain('закреплено');
+  it('says the frame does not change, links the rules, warns — and still takes the filing', () => {
+    // The old claim was «no form on ch01/ch67, ever». BOOK-137: the **sentence** is frozen; the
+    // filing is taken and filed as paperwork, so the strip says so and offers the form.
+    const html = strip({ frame: 'touched' });
+    expect(html).toContain('рамка книги · не меняется');
     expect(html).toContain('рамка книги →');
     expect(html).toContain('/rules#рамка');
-    expect(html).not.toContain('вмешаться');
-    expect(html).not.toContain('войти через Яндекс');
+    // One copy of the warning line, from `@book/shared`.
+    expect(html).toContain(FRAME_WARNING);
+    expect(html.match(/seam-note seam-frame/gu)).toHaveLength(1);
+    expect(html).toContain('вмешаться');
+    expect(html).not.toContain('закреплено');
+    expect(html).toContain('data-frozen="true"');
+  });
+
+  it('still offers the way in to a signed-out reader on the canon sentence', () => {
+    const html = strip({ frame: 'touched', signedIn: false });
+    expect(html).toContain('рамка книги · не меняется');
+    expect(html).toContain('войти через Яндекс');
+    expect(html).not.toContain('вмешаться</button>');
   });
 
   it('takes a premise in an empty chapter, with the honest line about what it is', () => {
@@ -123,7 +137,7 @@ describe('the strip at the seam', () => {
   });
 
   it('never says «шов» and never puts a style attribute in the markup', () => {
-    const html = [strip(), strip({ frozen: true }), strip({ premise: true })].join('\n');
+    const html = [strip(), strip({ frame: 'touched' }), strip({ premise: true })].join('\n');
     expect(html.toLowerCase()).not.toContain('шов');
     expect(html).not.toMatch(/style=/u);
   });

@@ -28,6 +28,7 @@ function comment(overrides: Partial<CommentDto> & { id: string; createdAt: strin
     proposedText: 'Свет был включён до меня.',
     interventionKind: 'testimony',
     status: 'new',
+    frame: 'untouched',
     premise: false,
     reason: null,
     decidedAt: null,
@@ -67,6 +68,12 @@ describe('filingInk', () => {
 
   it('falls back to the quiet wait for a state a build does not know', () => {
     expect(filingInk({ status: 'something' as CommentDto['status'] }).word).toBe('ждёт');
+  });
+
+  it('gives a paperwork filing a solid rule and the done ink (BOOK-137)', () => {
+    // The sentence did not change, so the mark keeps a rule; the decision is made, so it is done.
+    expect(filingInk({ status: 'registered' })).toEqual({ word: 'рассмотрено', rule: 'solid', tone: 'done' });
+    expect(isPending({ status: 'registered' })).toBe(false);
   });
 });
 
@@ -164,6 +171,8 @@ describe('one filing, one entry (BOOK-137)', () => {
     intent: 'оставить одно «слово»',
     premise: false,
     status: 'pending' as const,
+    frame: 'untouched' as const,
+    frameMode: null,
     outcome: null,
     reason: null,
     position: null,

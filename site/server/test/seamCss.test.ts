@@ -79,6 +79,40 @@ describe('the deleted composer left no rules behind (major 11)', () => {
   });
 });
 
+describe('the tap target at 390 is the word, not an overlay (BOOK-137)', () => {
+  it('hides the desktop rail below 1024 rather than floating it over the prose', () => {
+    const narrow = seamForm.slice(seamForm.indexOf('@media (max-width: 1023px)'));
+    expect(narrow).not.toBe('');
+    expect(rule(narrow, '.seam-rail')).toContain('display: none');
+    // Above that it lives in the 198 px outer margin, and only while the paragraph is hovered.
+    const rail = rule(seamForm, '.seam-rail');
+    expect(rail).toContain('left: -104px');
+    expect(rail).toContain('opacity: 0');
+    expect(rule(seamForm, '.seam-rail')).not.toContain('right: 0');
+  });
+
+  it('keeps the frame row in the flow: no absolutely-positioned overlay over .p', () => {
+    // The strip is a block sibling after the paragraph (BOOK-68). Nothing the frame adds — the
+    // label, the link, the warning — may become a layer the reader taps instead of the word.
+    for (const selector of ['.seam', '.seam-row', '.seam-prov', '.seam-frame', '.seam-frozen', '.seam-word']) {
+      const declarations = rule(seam, selector);
+      expect(declarations, selector).not.toContain('position: absolute');
+      expect(declarations, selector).not.toContain('position: fixed');
+    }
+    expect(seam).not.toMatch(/\.seam(?:-(?:row|frame|frozen|word))?\s*\{[^}]*position:\s*(?:absolute|fixed)/u);
+    // The paragraph is the positioning context (the rail's own anchor), and it is a block.
+    expect(rule(seam, '.p')).toContain('position: relative');
+    expect(seam).toMatch(/\.seam\s*\{[^}]*border-top: 1px solid/u);
+  });
+
+  it('prints the frame warning in the note register, one line', () => {
+    expect(rule(seam, '.seam-frame')).toContain('color: var(--ink-2)');
+    // No box, no rule of its own: the strip already carries them.
+    expect(rule(seam, '.seam-frame')).not.toContain('border');
+    expect(rule(seam, '.seam-frame')).not.toContain('position');
+  });
+});
+
 describe('below 768 the strip is a stack, one line per role (BOOK-90)', () => {
   const narrow = seam.slice(seam.indexOf('@media (max-width: 767px)'));
 
