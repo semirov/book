@@ -119,6 +119,7 @@ kickstart() {
 
 # --- prepare: get the wanted commit into the clone --------------------------------------------
 if [ "$PHASE" = "prepare" ]; then
+  mkdir -p "$STATE_DIR"
   [ -d "$ROOT/.git" ] || die "no deploy clone at $ROOT (the workflow bootstraps it; by hand: git clone $REPO_URL $ROOT)"
 
   say "fetching $REPO_URL"
