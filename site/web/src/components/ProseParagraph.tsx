@@ -9,8 +9,9 @@ import { Seam } from './Seam.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
-import { filingsForBlock, isAlive, staleLine } from '../lib/filings.ts';
+import { filingsForBlock, isAlive, staleLine, type SentenceFilings } from '../lib/filings.ts';
 import type { ChainHistory } from '../lib/history.ts';
+import { sentenceAt } from '../lib/marginalia.ts';
 import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
 import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
 import { anchorFor, clampQuote, seamKey, splitSentences } from '../lib/seam.ts';
@@ -255,12 +256,32 @@ export function ProseParagraph({
       : null;
 
   const sentences = splitSentences(text);
+  /**
+   * BOOK-90 — a landed change rewrites its own sentence, so its stored quote matches no
+   * sentence any more. The filing still has a place: the same anchor resolution the revision
+   * object reads «стало» with names the sentence that now stands there, and the tick is drawn
+   * on it. Without this the record is unreachable from the text it changed. An unresolved
+   * anchor is not a place (the stale line says so), and a sentence keeps one mark.
+   */
+  const exact = new Set(sentences.map((sentence) => clampQuote(sentence.text)));
+  const moved = new Map<number, SentenceFilings>();
+  for (const group of blockFilings) {
+    if (group.quote === null || exact.has(group.quote)) continue;
+    for (const comment of group.all) {
+      const start = sentenceAt(text, comment.anchor);
+      if (start === null || moved.has(start)) continue;
+      moved.set(start, group);
+      break;
+    }
+  }
   const anchor = here ? (seam?.anchor ?? null) : null;
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
   /** Alive filings per sentence, in reading order: the phone strip lists them as they stand. */
   const alive = sentences.flatMap((sentence) => {
-    const group = blockFilings.find((item) => item.quote !== null && item.quote === clampQuote(sentence.text));
+    const group =
+      blockFilings.find((item) => item.quote !== null && item.quote === clampQuote(sentence.text)) ??
+      moved.get(sentence.start);
     return group === undefined ? [] : group.all.filter(isAlive);
   });
   const filingKey = blockFilings.map((group) => group.all.map((comment) => `${comment.id}:${comment.status}`).join(',')).join('|');
@@ -291,7 +312,8 @@ export function ProseParagraph({
       // The anchor quote is clamped to the server's bound, so a long sentence is matched by
       // the same clamp the filing was made with — not by its raw text (BOOK-33).
       const quote = clampQuote(sentence.text);
-      const filings = blockFilings.find((item) => item.quote !== null && item.quote === quote);
+      const filings =
+        blockFilings.find((item) => item.quote !== null && item.quote === quote) ?? moved.get(sentence.start);
       const cited = citedClass(filings);
       // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the
       // cited rule's underline — text decoration sets no box, so no line moves.

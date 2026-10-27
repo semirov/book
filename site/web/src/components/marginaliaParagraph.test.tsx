@@ -53,14 +53,14 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   };
 }
 
-function render(comments: readonly CommentDto[] = []): string {
+function render(comments: readonly CommentDto[] = [], text = TEXT): string {
   return renderToStaticMarkup(
     <ProseParagraph
       entry={ENTRY}
       blockId={BLOCK_ID}
       blockIndex={1}
       baseRev={3}
-      text={TEXT}
+      text={text}
       frozen={false}
       comments={comments}
       history
@@ -116,6 +116,42 @@ describe('a filing in the paragraph', () => {
     expect(stale).not.toContain('margin-note');
     expect(stale).not.toContain('phone-strip');
     expect(stale).toContain('абзац изменился');
+  });
+
+  it('keeps the landed tick on the sentence the change rewrote', () => {
+    // The change landed and rewrote its sentence: the stored quote matches no sentence now.
+    // The place still does, and the object opened from that tick reads «стало» from the same
+    // resolution — so the record stays reachable from the text it changed.
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const anchor = { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ' };
+    const html = render([comment({ status: 'applied', applied: { chapter: 8, rev: 4 }, changeId: 'chg_1', anchor })], CHANGED);
+    expect(html).toContain('filing-tick');
+    expect(html).toContain('data-quote="Её освещал тусклый свет."');
+  });
+
+  it('keeps an alive note on the sentence its place points at', () => {
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const anchor = { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ' };
+    const html = render([comment({ anchor })], CHANGED);
+    expect(html).toContain('class="margin-note');
+    expect(html).toContain('ждёт');
+    expect(html).toContain('data-quote="Её освещал тусклый свет."');
+  });
+
+  it('invents no place for an unresolved anchor whose wording is gone', () => {
+    const CHANGED = 'Я вошёл в пустую комнату. Её освещал тусклый свет.';
+    const html = render(
+      [
+        comment({
+          status: 'applied',
+          applied: { chapter: 8, rev: 4 },
+          anchor: { ...comment().anchor, prefix: 'Я вошёл в пустую комнату. ', resolved: false },
+        }),
+      ],
+      CHANGED,
+    );
+    expect(html).not.toContain('filing-tick');
+    expect(html).toContain('абзац изменился');
   });
 
   it('draws the accepted mark, not a note, for a landed change', () => {

@@ -291,6 +291,22 @@ function anchoredAt(text: string, anchor: CommentDto['anchor']): number | null {
  * «стало» — the applied text, never the reader's `proposedText`. When the place cannot be
  * found, the object says «текст изменился после правки» instead of inventing a sentence.
  */
+/**
+ * BOOK-90 — the sentence the anchor's **place** points at in the current text.
+ *
+ * A landed change rewrites its own sentence, so the stored quote no longer equals any
+ * sentence's text; the place still does. The tick and «стало» resolve through this one
+ * function, so the mark can never stand on a different sentence from the record it opens.
+ * Null when the anchor is unresolved or the place cannot be named.
+ */
+export function sentenceAt(text: string, anchor: CommentDto['anchor']): number | null {
+  if (!anchor.resolved) return null;
+  const at = anchoredAt(text, anchor);
+  if (at === null) return null;
+  const sentence = splitSentences(text).find((item) => item.start <= at && at < item.end);
+  return sentence === undefined ? null : sentence.start;
+}
+
 export function revisionOf(comment: Pick<CommentDto, 'anchor'>, text: string): Revision {
   const before = comment.anchor.quote;
   if (before === null || before.length === 0) return { before: null, after: null, status: 'unresolved' };

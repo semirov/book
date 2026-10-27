@@ -41,7 +41,34 @@ import './fixture.css';
  */
 
 const VIEWER = { signedIn: false, displayName: null } as const;
-const before = new URLSearchParams(window.location.search).has('before');
+const params = new URLSearchParams(window.location.search);
+const before = params.has('before');
+/** AC6: one frame holding the pending note, the landed change's object and the empty row. */
+const final = params.has('final');
+
+/**
+ * The dev server has no engine behind `/api`: answer the fixture's one change locally, so the
+ * object shows its real shape (wave · reach · door) and the console carries no failed request.
+ */
+const DEV_CHANGE = {
+  id: 'chg_demo',
+  seq: 14,
+  chapter: 1,
+  status: 'done',
+  cascade: { wave: 2, modes: [] },
+  steps: [],
+  appliedRevs: [{ chapter: 1, rev: 4 }],
+};
+const fetchReal = window.fetch.bind(window);
+window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+  if (url.includes('/api/changes/chg_demo')) {
+    return Promise.resolve(
+      new Response(JSON.stringify(DEV_CHANGE), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+  }
+  return fetchReal(input, init);
+}) as typeof window.fetch;
 
 /** The fixture's block ids: a filing names one, and the paragraph it belongs to. */
 const B1 = 'ch01#p1';
@@ -54,6 +81,8 @@ const P1 = 'Я вошёл в пустую комнату. Её освещал я
 const P2 = 'Свет был включён до меня. Об этом никто не говорил. Я закрыл дверь и остался стоять в темноте.';
 const P3 = 'Потом я понял, что свет не выключали. Он просто перестал быть нужен. Слово «потом» здесь лишнее.';
 const P4 = 'В коридоре было тихо. Часы на стене показывали половину восьмого. Кто-то поднимался по лестнице.';
+/** The landed change rewrote its sentence: the stored quote is the text as it was. */
+const P2F = 'Я вошёл в пустую комнату. Свет был включён до меня и горел всю ночь. Об этом никто не говорил.';
 const P5 = 'Я вернулся на лестницу. Свет уже не горел. Дверь была приоткрыта, и в комнате кто-то ждал.';
 
 const STATE: StateSnapshot = {
@@ -140,7 +169,14 @@ const COMMENTS: CommentDto[] = [
   comment({
     id: 'cmt_demo_002',
     chapter: 1,
-    anchor: { blockId: B2, blockIndex: 1, quote: 'Свет был включён до меня.', prefix: null, suffix: null, resolved: true },
+    anchor: {
+      blockId: B2,
+      blockIndex: 1,
+      quote: 'Свет был включён до меня.',
+      prefix: 'Я вошёл в пустую комнату. ',
+      suffix: null,
+      resolved: true,
+    },
     author: 'Борис',
     body: 'свет включили до него — это важно для сцены',
     status: 'applied',
@@ -242,7 +278,34 @@ function EmptySlot({ n, firstEmpty }: { n: number; firstEmpty?: boolean }): Reac
   );
 }
 
+function FinalScene(): ReactElement {
+  return (
+    <>
+      <Header
+        state={STATE}
+        ribbon={null}
+        catalog={[CH1, CH2, emptyEntry(3), emptyEntry(4), CH5, entry(22), entry(23), entry(24), entry(25), emptyEntry(21)]}
+        markers={[]}
+        onOpenChange={() => undefined}
+      />
+      <main>
+        <article className="page ch" id="ch-1" data-n={1} aria-label="глава 1">
+          {header(CH1)}
+          <h3 className="ch-title">Комната на восьмом</h3>
+          {paragraph(CH1, 0, B1, P1)}
+          {paragraph(CH1, 1, B2, P2F)}
+        </article>
+        <EmptySlot n={3} firstEmpty />
+      </main>
+      {/* Enough page after the slot, so the phone shot can lift the row clear of the sheet. */}
+      <div className="after-space" aria-hidden="true" />
+      <MarginTail />
+    </>
+  );
+}
+
 function App(): ReactElement {
+  if (final) return <FinalScene />;
   return (
     <>
       <Header
