@@ -9,6 +9,9 @@ import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
  * choice is `unset` and **only when the deployment has a counter** — with no counter there
  * is nothing to consent to and the page loads nothing.
  *
+ * BOOK-88: `.consent-body` is the notice's prose block — the copy and the two hairlines sit on
+ * the page's prose measure, flush left, and the three actions share one mono action register.
+ *
  * The copy is the legal researcher's line verbatim (comment #3619): what leaves the page,
  * and the one thing that never does. There is no pre-checked state and no «продолжая
  * пользоваться»: the script starts on «Разрешить», not on the first page view.
@@ -20,17 +23,19 @@ export function ConsentBanner() {
 
   return (
     <section className="page consent" aria-label="аналитика" data-consent="ask">
-      <p className="consent-copy">{CONSENT_COPY}</p>
-      <div className="consent-actions">
-        <button type="button" className="consent-choice" onClick={() => setConsent('granted')}>
-          Разрешить
-        </button>
-        <button type="button" className="consent-choice" onClick={() => setConsent('denied')}>
-          Только необходимое
-        </button>
-        <a className="consent-link" href="/privacy">
-          приватность →
-        </a>
+      <div className="consent-body">
+        <p className="consent-copy">{CONSENT_COPY}</p>
+        <div className="consent-actions">
+          <button type="button" className="consent-choice" onClick={() => setConsent('granted')}>
+            Разрешить
+          </button>
+          <button type="button" className="consent-choice" onClick={() => setConsent('denied')}>
+            Только необходимое
+          </button>
+          <a className="consent-link" href="/privacy">
+            приватность →
+          </a>
+        </div>
       </div>
     </section>
   );

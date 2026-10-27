@@ -1,5 +1,5 @@
 /* ============================================================================
-   CHROME — sticky header, title sheet, the annotation, the static documents.
+   CHROME — sticky header, title sheet, the annotation. The static documents: legal.css.
    ============================================================================ */
 
 .top {
@@ -137,6 +137,7 @@
   letter-spacing: 0.18em;
   color: var(--ink-3);
 }
+/* BOOK-92 retired `p.premise`; BOOK-88's flush-left tweak of that rule went with it. */
 .copyright {
   margin: 7px 0 0;
   font-size: var(--fs-micro);
@@ -167,9 +168,9 @@
   }
 }
 
-/* a failing fetch is a sentence and a retry, never a spinner */
+/* a failing fetch is a sentence and a retry, never a spinner. BOOK-88: the row is prose — the
+   one rule in base.css caps it at the measure, flush left, and the retry sits on that edge. */
 .state-line {
-  max-width: calc(var(--measure) + 2 * var(--gut));
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -396,92 +397,9 @@
   text-underline-offset: 4px;
 }
 
-/* The static documents (audit M5): «приватность» and «правила». Same measure and voice as the
-   book, no card, no third-party byte — they must read when the API is down. BOOK-92: one
-   spacing style (8 / 12 / 24 / 32); the labels — kicker, nav — keep their voice. */
-.legal {
-  max-width: calc(var(--measure) + 2 * var(--gut));
-  margin: 0 auto;
-  padding: 72px var(--gut) 96px;
-}
-.legal .kicker {
-  margin: 0 0 8px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  line-height: 1.35;
-  color: var(--ink-3);
-}
-.legal .title {
-  margin: 0 0 24px;
-  font-size: clamp(28px, 6vw, 40px);
-  line-height: 1.12;
-}
-.legal .legal-lead {
-  max-width: none;
-  margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  line-height: 1.55;
-  font-style: italic;
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
-.legal section {
-  margin-top: 32px;
-}
-.legal h2 {
-  margin: 0 0 12px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.legal p,
-.legal li {
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  line-height: 1.6;
-  color: var(--ink);
-}
-.legal p + p,
-.legal ul + p {
-  margin-top: 12px;
-}
-.legal ul {
-  margin: 12px 0 0;
-  padding-left: 20px;
-}
-.legal li + li {
-  margin-top: 8px;
-}
-.legal code {
-  font-family: var(--mono);
-  font-size: 0.86em;
-  color: var(--ink-2);
-}
-.legal-how {
-  color: var(--ink-2);
-  border-left: 2px solid var(--rule-2);
-  padding-left: 12px;
-}
-.legal .legal-tail {
-  margin-top: 32px;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule);
-  font-size: var(--fs-note);
-  color: var(--ink-2);
-}
-/* A label, not a paragraph: `.legal .legal-nav` out-specifies both `.legal p` and `.legal p + p`. */
-.legal .legal-nav {
-  display: flex;
-  gap: 18px;
-  margin-top: 24px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+/* The two static documents live in legal.css — BOOK-88 (booted right after this sheet). */
+
+/* The legal nav's links take the colophon's treatment: one rule, kept with the frame. */
 .legal-nav a,
 .colophon a {
   color: var(--ink-2);

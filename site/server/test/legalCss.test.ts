@@ -10,7 +10,7 @@ import type { ParsedRule } from './sheets.ts';
  * sections shared one left edge. The cause was a cascade collision, so these guards read the
  * cascade the way the browser does — the declaration that **wins** a selector (the last one in
  * boot order) and how many rules declare it at all — not the first text that matches a name.
- * That was the hole in the first version: `panels.css` loads after `chrome.css`, so one appended
+ * That was the hole in the first version: `panels.css` loads after `legal.css`, so one appended
  * `26ch` rule re-opened the defect and every test stayed green.
  *
  * Pinned here: the lead is its own class (`.legal .legal-lead`), the kicker and the nav keep the
@@ -80,20 +80,20 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
 
   it('declares every guarded rule once, so no later sheet can re-open it', () => {
     // Count, sheet and order in one assertion: a second definition in `panels.css` (loaded after
-    // `chrome.css`) is a failure here, not a silent win — this is the review's major.
+    // `legal.css`) is a failure here, not a silent win — this is the review's major.
     for (const selector of GUARDED) {
-      expect(definitions(selector).map((rule) => rule.sheet), selector).toEqual(['chrome']);
+      expect(definitions(selector).map((rule) => rule.sheet), selector).toEqual(['legal']);
     }
     // `winning` is the last rule in boot order; with one definition each it is that same rule.
-    for (const selector of GUARDED) expect(winning(selector).sheet).toBe('chrome');
+    for (const selector of GUARDED) expect(winning(selector).sheet).toBe('legal');
     // The seeded shape of the re-opened block, and what the guard reports instead of passing:
     // the first match would have been the right one, the winner is the defect.
     const hijacked = {
-      chrome: '.legal .legal-lead { margin: 0; }',
+      legal: '.legal .legal-lead { margin: 0; }',
       panels: '.legal .legal-lead { margin: 0 auto; }',
     };
     expect(definitions('.legal .legal-lead', hijacked).map((rule) => rule.sheet)).toEqual([
-      'chrome',
+      'legal',
       'panels',
     ]);
     expect(winning('.legal .legal-lead', hijacked).sheet).toBe('panels');
@@ -104,7 +104,12 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     // The body rung, not one step above it: `--fs-lead` is the annotation's (BOOK-DOC-35 §4.1),
     // and the legal lead's stature is the standfirst — italic, `--ink-2`.
     expect(lead.declarations['font-size']).toBe('var(--fs-body)');
-    expect(lead.declarations['max-width']).toBe('none');
+    // BOOK-88 merged: the lead states no width of its own — it is one more child of the column,
+    // capped by the one prose rule. `none` was the old 664 px text box's "no narrower than the
+    // box"; in the 1000 px column it out-specifies `.legal > *` at (0,2,0) v (0,1,0) and runs
+    // the whole page. The pin moves to the rule that now owns the lead's width.
+    expect(lead.declarations['max-width']).toBeUndefined();
+    expect(winning('.legal > *').declarations['max-width']).toBe('var(--measure)');
     expect(sides(lead)).toEqual(['0', '0', '0', '0']);
     expect(lead.declarations['font-family']).toBe('var(--serif)');
     expect(lead.declarations['line-height']).toBe('1.55');
@@ -115,10 +120,10 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
   });
 
   it('rejects a lead narrowed to 26ch or centred by a later sheet, a comment or a longhand', () => {
-    // The reviewer's exact case: `chrome.css` is right and `panels.css` — loaded after it —
+    // The reviewer's exact case: `legal.css` is right and `panels.css` — loaded after it —
     // re-centres the quote. The count assertion above fails first; the winner is guilty too.
     const hijacked = {
-      chrome: '.legal .legal-lead { max-width: none; margin: 0; }',
+      legal: '.legal .legal-lead { max-width: none; margin: 0; }',
       panels: '.legal .legal-lead { max-width: 26ch; margin: 0 auto; }',
     };
     expect(definitions('.legal .legal-lead', hijacked)).toHaveLength(2);
@@ -128,13 +133,13 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     ]);
     // A commented-out good rule before a live broken one passes a grep, not this scan.
     const commented = {
-      chrome: [
+      legal: [
         '/* .legal .legal-lead { max-width: none; margin: 0; } */',
         '.legal .legal-lead { max-width: 26ch; margin: 0 auto; }',
         '',
       ].join('\n'),
     };
-    expect(definitions('.legal .legal-lead', commented).map((rule) => rule.sheet)).toEqual(['chrome']);
+    expect(definitions('.legal .legal-lead', commented).map((rule) => rule.sheet)).toEqual(['legal']);
     expect(centring(winning('.legal .legal-lead', commented))).toEqual([
       'max-width: 26ch',
       'margin: 0 auto',
@@ -143,7 +148,7 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     expect(
       centring(
         winning('.legal .legal-lead', {
-          chrome:
+          legal:
             '.legal .legal-lead { max-width: 34ch; margin-top: 0; margin-right: auto; margin-bottom: 0; margin-left: auto; }',
         }),
       ),
@@ -152,7 +157,7 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     expect(
       centring(
         winning('.legal .legal-lead', {
-          chrome: '.legal .legal-lead { color: var(--ink-2); margin: 0 0 0 0; max-width: none; }',
+          legal: '.legal .legal-lead { color: var(--ink-2); margin: 0 0 0 0; max-width: none; }',
         }),
       ),
     ).toEqual([]);
@@ -163,15 +168,15 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     expect(parts.filter((part) => part === 'p.premise')).toEqual([]);
     // The other component of the same name is a 44px field row and owns its own class.
     expect(definitions('.premise').map((rule) => rule.sheet)).toEqual(['seam-form']);
-    // The collision does not move: `chrome.css`, where the lead's quote lived, keeps no claim on
+    // The collision does not move: `legal.css`, where the lead's quote lives, keeps no claim on
     // the empty chapter's field — a commented-out rule does not count either.
     expect(
-      cascadeRules({ chrome: sheets.chrome ?? '' })
+      cascadeRules({ legal: sheets.legal ?? '' })
         .flatMap((rule) => rule.parts)
         .filter((part) => part === '.premise'),
     ).toEqual([]);
     expect(
-      cascadeRules({ chrome: '/* .premise { margin: 4px 0 0; } */' }).flatMap((rule) => rule.parts),
+      cascadeRules({ legal: '/* .premise { margin: 4px 0 0; } */' }).flatMap((rule) => rule.parts),
     ).toEqual([]);
   });
 
@@ -209,20 +214,20 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
   it('reads a step split over two rules, and refuses a half-declared step', () => {
     // One grouped rule or two: the geometry is the same, so both pass.
     const split = {
-      chrome: '.legal p + p { margin-top: 12px; } .legal ul + p { margin-top: 12px; }',
+      legal: '.legal p + p { margin-top: 12px; } .legal ul + p { margin-top: 12px; }',
     };
     expect(winning('.legal p + p', split).declarations['margin-top']).toBe('12px');
     expect(winning('.legal ul + p', split).declarations['margin-top']).toBe('12px');
     // A half-declared step has no rule for the missing half, so the lookup throws instead of
     // passing quietly — the shape the first version of this guard could not see.
-    expect(() => winning('.legal ul + p', { chrome: '.legal p + p { margin-top: 12px; }' })).toThrow(
+    expect(() => winning('.legal ul + p', { legal: '.legal p + p { margin-top: 12px; }' })).toThrow(
       /no rule declares/u,
     );
   });
 
   it('rejects a kicker that loses the label voice to `.legal p`', () => {
     const kicker = (body: string): ParsedRule =>
-      winning('.legal .kicker', { chrome: `.legal .kicker { ${body} }` });
+      winning('.legal .kicker', { legal: `.legal .kicker { ${body} }` });
     // The shape the defect had: a margin only, so `.legal p` owns the face, the size and the ink.
     expect(missingVoice(kicker('margin: 0 0 8px'))).toEqual([
       'font-family: var(--label)',
@@ -279,13 +284,13 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     expect(shouting(rules)).toEqual([]);
     // The rejection path, on a seeded cascade: a shout is reported by its selector.
     expect(
-      shouting(legalRules({ chrome: '.legal .legal-tail { color: var(--ink-2) !important; }' })),
+      shouting(legalRules({ legal: '.legal .legal-tail { color: var(--ink-2) !important; }' })),
     ).toEqual(['.legal .legal-tail']);
     // A comment is not a rule, and a neighbouring class is not the subject.
     expect(
       shouting(
         legalRules({
-          chrome: [
+          legal: [
             '/* .legal .legal-tail { color: var(--ink-2) !important; } */',
             '.legal-how { color: var(--ink-2) !important; }',
             '',

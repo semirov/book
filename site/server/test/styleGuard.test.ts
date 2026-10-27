@@ -50,7 +50,7 @@ describe('BOOK-DOC-35 — the styles guard', () => {
     // The retired rung stays retired: its name is not a ladder value.
     expect(tokens).not.toContain('--fs-nano');
     // And no other sheet declares a rung.
-    for (const name of ['base.css', 'book.css', 'chrome.css', 'live.css']) {
+    for (const name of ['base.css', 'book.css', 'chrome.css', 'legal.css', 'live.css']) {
       const css = readFileSync(join(STYLES, name), 'utf8');
       expect(css, name).not.toMatch(/--fs-[a-z0-9-]+\s*:/u);
     }

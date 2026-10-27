@@ -21,9 +21,11 @@
   padding: 26px var(--gut) 72px;
   /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
   scroll-margin-top: var(--offset-top);
-  /* BOOK-73 — one list, one column at every width: the desktop canvas stays ≤1000px.
-     `display: grid` is the one-column layout itself, and no rule may add a second track, so
-     the 67 rows read as a single flow from part I to part IV. */
+  /* BOOK-73 — one list, one column at every width; BOOK-88 — that column is the page's own:
+     the TOC is a register of the `.page` it already is, so its rows run from the column's
+     left edge to its right and are NOT capped at the prose measure (a numeral column and its
+     line are furniture, not prose). `display: grid` is the one-column layout itself, and no
+     rule may add a second track, so the 67 rows read as a single flow from part I to part IV. */
   display: grid;
   grid-template-columns: 1fr;
   align-items: start;
@@ -83,10 +85,10 @@
   column-gap: 14px;
   align-items: baseline;
   height: 26px;
-  /* BOOK-89 (owner, 2026-10-27) — the page number closes the row on the prose's right edge,
-     not on the contents container's: half the difference between the row and the measure,
-     floored at zero (the phone's row is narrower than the measure). */
-  padding-inline-end: max(0px, calc((100% - var(--measure)) / 2));
+  /* BOOK-89 (owner, 2026-10-27) — the page number closes the row on the prose's right edge:
+     the row's own left edge is the column's, so the offset is the whole difference between the
+     row and the measure, floored at zero (the phone's row is narrower than the measure). */
+  padding-inline-end: max(0px, calc(100% - var(--measure)));
 }
 
 /* A row with text opens its chapter: numeral, title line (or frozen sentence), page. */
@@ -97,8 +99,9 @@
   align-items: baseline;
   min-height: 44px;
   padding: 10px 0;
-  /* The same inset as `.toc-line`: the page cell ends on the prose axis, not the row's edge. */
-  padding-inline-end: max(0px, calc((100% - var(--measure)) / 2));
+  /* The same inset as `.toc-line`: the page cell closes on the prose's right edge — the whole
+     row-minus-measure difference, floored at zero on a narrow row. */
+  padding-inline-end: max(0px, calc(100% - var(--measure)));
   text-decoration: none;
 }
 .toc-link:hover .toc-num,
@@ -300,7 +303,7 @@
    without moving a line of prose (D2/D3). */
 .folio {
   position: fixed;
-  inset-inline-end: calc(var(--gut) + max(0px, (100% - var(--shell)) / 2));
+  inset-inline-end: calc(var(--gut) + max(0px, (100% - var(--column)) / 2));
   top: calc(clamp(96px, 40vh, calc(100% - 96px)) - 6px);
   font-family: var(--mono);
   font-size: var(--fs-micro);
