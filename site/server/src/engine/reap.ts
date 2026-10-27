@@ -76,7 +76,8 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         {
           outcome: 'escalated',
           seamsOut: parseSeams(null),
-          note: `step wall: the step stayed open longer than STEP_WALL_MS (${String(deps.config.stepWallMs)} ms)`,
+          // The note is read by an operator and copied to a page: a sentence, never a constant.
+          note: `шаг не закрылся за отведённое время (${String(Math.round(deps.config.stepWallMs / 60_000))} мин) — проход остановлен`,
           model: null,
           tokensIn: 0,
           tokensOut: 0,

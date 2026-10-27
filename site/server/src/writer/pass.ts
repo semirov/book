@@ -15,12 +15,13 @@
  * A refusal the engine states (`CHAPTER_WRITTEN`, `PASS_LEASED`, `TOKENS_EXHAUSTED`) is returned,
  * never thrown. The bound this file enforces is money, not tokens: the estimate (`estimate.ts`)
  * is checked before the pass is opened and again, from the real prompt, before the first call.
- * A failure **after** the lease is parked: `escalate` with one plain Russian sentence plus a
- * `refused` stage carrying the same sentence — a pass is never silently dropped.
+ * A failure after the lease parks the pass — `escalate` with one plain sentence plus a `refused`
+ * stage carrying it, never silently dropped. Past the first landing a failure is auxiliary
+ * instead (owner, 2026-10-28): a stage, a transcript or an engine transport that fails is logged
+ * and remembered, never escalated over text that landed; the close is the fact that must land.
  *
- * `landed` is emitted once per pass, after the gates, and carries the pass's whole money line
- * (writer calls and gate calls). `done` carries the writer's own tokens only: the engine adds
- * each gate's tokens from its verdict rows, so the step total is not counted twice.
+ * `landed` carries the pass's whole money line (writer calls and gate calls); `done` carries the
+ * writer's own tokens only, because the engine adds each gate's from its verdict rows.
  */
 
 import { readFileSync } from 'node:fs';
@@ -32,10 +33,11 @@ import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
-import { createLane, finalize, mergeContinuation, charsOf, assignmentData, reasonOf, type Answer, type GateRun, type Lane, type PassResult, type ProviderCall } from './passLane.ts';
+import { createLane, finalize, mergeContinuation, charsOf, assignmentData, type Answer, type GateRun, type Lane, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { buildContinuePrompt, buildWriterPrompt, type BuiltPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { WriterMessage } from './provider.ts';
+import { failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
@@ -131,13 +133,12 @@ async function draftAnswer(lane: Lane, built: BuiltPrompt): Promise<Answer> {
   const first = await lane.ask('draft', request, 'draft');
   const checked = lane.check(first.text, first.finishReason);
   if (checked.ok) return checked;
-  const reason = checked.reason;
   const second = await lane.ask('repair', [
     ...request,
     { role: 'assistant', content: first.text.slice(0, 1_500) },
     {
       role: 'user',
-      content: `## Отказ\n\nПредыдущий ответ не прошёл проверку: ${reason}.\nВерни главу заново, целиком: первая строка — название, вторая — пустая, дальше проза. Причину отказа учти.`,
+      content: `## Отказ\n\nПредыдущий ответ не прошёл проверку: ${checked.reason}.\nВерни главу заново, целиком: первая строка — название, вторая — пустая, дальше проза. Причину отказа учти.`,
     },
   ]);
   return lane.check(second.text, second.finishReason);
@@ -183,21 +184,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     }
   }
 
-  // 1. The money guard (§6, BOOK-117): a spent day, or a pass that would cross a cap, does not
-  //    even ask for a job — nothing is opened and the queue stays exactly as it was.
+  // 1. The money guard (§6, BOOK-117): a pass that would cross a cap never asks for a job.
   let state: EngineStateView;
   try {
     state = await engine.state();
   } catch (error) {
     return { status: 'refused', reason: reasonOf(error) };
   }
-  // Tokens are information, never a bound (the owner's instruction, 2026-10-27): the $ cap is
-  // the bound, so `state.tokens.today` is not read here at all.
+  // Tokens are information, not a bound (2026-10-27): the $ cap is, so `tokens.today` is unread.
   const budget: BudgetDto | null = state.budget ?? null;
   let estimate: PassEstimate | null = null;
   if (budget === null) {
-    // An engine from before the cap reports no money. The pass proceeds and says so: a silent
-    // pretend-bound is worse than a bound nobody can read.
+    // An engine from before the cap reports no money: say so — a silent pretend-bound is worse.
     deps.log('[writer] бюджет недоступен: движок не отдаёт потолки — проход идёт без денежной проверки');
   } else if (budget.state === 'stop' || budget.state === 'pause') {
     deps.log(`[writer] idle ${budget.line}`);
@@ -239,8 +237,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
   const job: WriterAssignment = picked;
   if (typeof job.chapter !== 'number') {
-    // A `front` step carries no chapter, and the stage store resolves the chapter from the step:
-    // there is nowhere to put a `refused` stage, so the plain sentence is the whole record.
+    // A `front` step has no chapter, so there is nowhere to put a `refused` stage: the sentence stands.
     const reason = 'этот проход не про главу — его ведёт другая полоса, а не писатель';
     try {
       await engine.escalate(job.leaseId, reason);
@@ -260,6 +257,16 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   // The estimate that let the pass open travels with it: the transcript is where money is proved.
   if (estimate !== null) lane.setEstimate(estimate);
   let beforeText = '';
+
+  /** One gate round: the editor, then the consultant when the editor asks for no revision. */
+  async function gateRound(): Promise<{ ok: true; editor: GateRun; consultant: GateRun | null } | { ok: false; failure: Failure }> {
+    try {
+      const editor = await lane.runGate('editor');
+      return { ok: true, editor, consultant: editor.revise ? null : await lane.runGate('consultant') };
+    } catch (error) {
+      return { ok: false, failure: failureOf(error) };
+    }
+  }
 
   try {
     // 3. `queued`: the engine opened the step; the writer is the one that says so.
@@ -283,13 +290,13 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         started = await engine.start(job.leaseId);
       } catch (error) {
-        return await lane.park(reasonOf(error));
+        return await lane.park(failureOf(error));
       }
-      if (typeof started.sha !== 'string') return await lane.park('движок не зафиксировал исходный текст главы');
+      if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
       try {
         lane.preSnapshot(now());
       } catch {
-        return await lane.park('не удалось сохранить снимок главы перед проходом');
+        return await lane.park({ detail: 'не удалось сохранить снимок главы перед проходом' });
       }
       beforeText = readChapter(bookRoot, chapter).exists ? readFileSync(chapterPath(bookRoot, chapter), 'utf8') : '';
 
@@ -298,7 +305,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         built = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
       } catch (error) {
-        return await lane.park(`промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300));
+        return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
       lane.setPrompt(built.sections.length, built.promptSha256);
       const neighbours = [chapter - 1, chapter + 1].filter(
@@ -318,10 +325,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         at: now(),
       });
 
-      // 6. The belt (§6): the money is still unspent. The real prompt can be larger than the
-      //    pre-estimate, and the ledger is shared — another lane may have spent the headroom
-      //    while this pass was being opened. Price the real prompt against the ledger as it is
-      //    now, and park this pass alone if it would cross a cap.
+      // 6. The belt (§6): the real prompt can be larger than the pre-estimate and the ledger is
+      //    shared, so price it again against the ledger as it is now and park this pass alone.
       if (budget !== null) {
         try {
           const fresh: BudgetDto | null = (await engine.state()).budget ?? null;
@@ -335,7 +340,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
             const crossed = capLine(fresh, real.usd);
             if (crossed !== null) {
               deps.log(`[writer] ${crossed}`);
-              return await lane.park(crossed);
+              return await lane.park({ detail: crossed });
             }
           }
         } catch (error) {
@@ -350,8 +355,12 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       if (!checked.ok) {
         // Only the model's own refusal of the work refuses the premise; a failed call, a cut
         // answer or a broken shape is a pass that broke, never the reader's intervention declined.
-        const reason = `ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300);
-        return await lane.park(reason, checked.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed');
+        return await lane.park({
+          code: checked.code,
+          detail: `ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300),
+          fallback: readerFallbacks.gate,
+          cause: checked.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed',
+        });
       }
       text = finalize(checked.text);
       text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax });
@@ -360,39 +369,58 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         lane.writeText(text);
       } catch {
-        return await lane.park('не удалось записать главу');
+        return await lane.park({ detail: 'не удалось записать главу' });
       }
       try {
         await engine.land(job.leaseId);
       } catch (error) {
-        return await lane.park(reasonOf(error));
+        return await lane.park(failureOf(error));
       }
       // A landing drops the verdicts of the previous revision: both gates are asked again.
       answered.editor = false;
       answered.consultant = false;
     } else {
       // A resumed step whose file vanished has nothing to gate: say so instead of closing blind.
-      if (!readChapter(bookRoot, chapter).exists) return await lane.park('текста главы нет на диске — проход не возобновить');
+      if (!readChapter(bookRoot, chapter).exists) {
+        return await lane.park({ detail: 'текста главы нет на диске — проход не возобновить' });
+      }
       text = readFileSync(chapterPath(bookRoot, chapter), 'utf8');
       beforeText = text;
     }
 
     // 9. The gates: editor, then consultant; at most one revision cycle for the whole pass.
+    //    Past the first landing these are *auxiliary*: a failure is remembered and `done` still runs.
     let revisions = 0;
+    let failed: Failure | null = null;
     for (;;) {
-      const editor: GateRun = await lane.runGate('editor');
-      const consultant: GateRun | null = editor.revise ? null : await lane.runGate('consultant');
+      let round = await gateRound();
+      if (!round.ok && isTransportFailure(round.failure)) {
+        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail} — повтор`);
+        round = await gateRound();
+      }
+      if (!round.ok) {
+        failed = round.failure;
+        break;
+      }
+      const { editor, consultant } = round;
       if (!editor.revise && consultant?.revise !== true) break;
       if (revisions >= MAX_REVISIONS) break;
       revisions += 1;
       const revised = await lane.reviseText([...editor.findings, ...(consultant?.findings ?? [])]);
-      if (revised === null) return await lane.park('правка после замечаний гейта не прошла проверку');
+      if (revised === null) {
+        return await lane.park({ detail: 'правка после замечаний гейта не прошла проверку' });
+      }
       text = revised;
       answered.editor = false;
       answered.consultant = false;
     }
+    if (failed !== null) {
+      // Remembered, not fatal: the transcript is where a survived failure is proved.
+      deps.log(`[writer] гейт не ответил (${failed.code ?? 'без кода'}): ${failed.detail} — шаг закрывается`);
+      lane.remember(failed);
+    }
 
-    // 10. `landed`: one fact for the pass — the span, the tokens, the money.
+    // 10. `landed`: the span, the tokens, the money — a stage, so it can never throw.
     const usage = lane.usage();
     const passCost = costUsd(config.pipeline.pricing, usage);
     const parsed = parseChapter(chapter, text);
@@ -416,19 +444,38 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       at: now(),
     });
 
-    // 11. `done`: the writer's tokens only; the engine adds each gate's from its verdict rows.
-    let closed: DoneView;
-    try {
-      closed = await engine.done({
-        leaseId: job.leaseId,
-        note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
-        model: config.model,
-        tokensIn: lane.writerTokens().in,
-        tokensOut: lane.writerTokens().out,
-        seams: [],
-      });
-    } catch (error) {
-      return await lane.park(reasonOf(error));
+    // 11. `done`: the writer's tokens only (the engine adds each gate's). A landed step closes on
+    //     what it has: `STEP_CLOSED` is that close, a transport failure gets one more try.
+    let closed: DoneView | null = null;
+    let closeFailure: Failure | null = null;
+    for (let attempt = 0; attempt < 2 && closed === null; attempt += 1) {
+      try {
+        closed = await engine.done({
+          leaseId: job.leaseId,
+          note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
+          model: config.model,
+          tokensIn: lane.writerTokens().in,
+          tokensOut: lane.writerTokens().out,
+          seams: [],
+        });
+      } catch (error) {
+        closeFailure = failureOf(error);
+        // The step is closed either way; `done` on it is a no-op, and the pass says what it did.
+        if (closeFailure.code === 'STEP_CLOSED') {
+          closed = { stepId: job.stepId, outcome: 'already-closed', cascadeId: null, changeStatus: null };
+          break;
+        }
+        if (!isTransportFailure(closeFailure) || attempt > 0) break;
+        deps.log(`[writer] done не прошёл (${closeFailure.code ?? 'транспорт'}): ${closeFailure.detail} — повтор`);
+      }
+    }
+    if (closed === null) {
+      // The gate's own failure is why the verdicts never arrived; the close's refusal is its own.
+      const why: Failure =
+        closeFailure?.code === 'VERDICTS_REQUIRED' && failed !== null
+          ? failed
+          : (closeFailure ?? failed ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
+      return await lane.park({ ...why, fallback: why === failed ? readerFallbacks.gate : readerFallbacks.stopped });
     }
 
     const result: PassResult = {
@@ -444,7 +491,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     );
     return result;
   } catch (error) {
-    const parked = await lane.park(reasonOf(error));
+    const parked = await lane.park(failureOf(error));
     lane.transcript(parked);
     return parked;
   }

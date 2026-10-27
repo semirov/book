@@ -13,15 +13,15 @@ import { join } from 'node:path';
 import { chapterLabel, type WriterAssignment } from '@book/shared';
 
 import { chapterPath, readChapter } from '../engine/text.ts';
-import type { PremiseCause } from '../engine/types.ts';
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
-import { EngineRefusalError, type EngineClient, type GateAssignmentView } from './client.ts';
+import type { EngineClient, GateAssignmentView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
 import { buildGatePrompt, parseGateAnswer, type GateFinding, type GateRoleName } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
+import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import type { WriterConfig } from './config.ts';
@@ -57,28 +57,6 @@ export type CallRecord = {
   answer: string;
   usage: PipelineUsage;
 };
-
-/** A refusal the lane states in its own words (never a provider key, never a URL). */
-export class PassRefusal extends Error {
-  constructor(reason: string) {
-    super(reason);
-    this.name = 'PassRefusal';
-  }
-}
-
-/** Whatever went wrong, in one plain sentence an operator (and the escalate note) can carry. */
-export function reasonOf(error: unknown): string {
-  if (error instanceof PassRefusal) return error.message;
-  if (error instanceof EngineRefusalError) {
-    const detail = error.message.trim();
-    return detail.length === 0 ? `движок отказал: ${error.code}` : `движок отказал: ${error.code}: ${detail}`.slice(0, 300);
-  }
-  if (error instanceof Error && 'code' in error && typeof (error as { code: unknown }).code === 'string') {
-    return `модель не ответила: ${(error as { code: string }).code}`;
-  }
-  if (error instanceof Error) return `сбой прохода: ${error.name}`;
-  return 'сбой прохода';
-}
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
   return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
@@ -150,8 +128,10 @@ export type GateRun = { revise: boolean; findings: GateFinding[] };
 export type Lane = {
   emit(input: StageEmitInput): Promise<void>;
   ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue'): Promise<ProviderResult>;
-  /** Park the pass: one sentence, one `refused` stage; `cause` defaults to `failed` (a broken call). */
-  park(reason: string, cause?: PremiseCause): Promise<PassResult>;
+  /** Park the pass: one reader's sentence, one `refused` stage; `cause` defaults to `failed`. */
+  park(why: ParkInput): Promise<PassResult>;
+  /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
+  remember(failure: Failure | null): void;
   writeText(value: string): void;
   preSnapshot(at: number): void;
   transcript(result: PassResult): void;
@@ -168,10 +148,7 @@ export type Lane = {
   setEstimate(value: PassEstimate): void;
 };
 
-/**
- * The lane for one pass. `answered` is shared with the caller (a landing resets both gates), and
- * `chapter` is a real chapter: a `front` pass never reaches here.
- */
+/** The lane for one pass: `answered` is shared with the caller, `chapter` is a real chapter. */
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
   const { config, engine, bookRoot, now } = input;
   const sink: StageSink = { stage: (event) => engine.stage(event) };
@@ -184,19 +161,28 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let promptSections = 0;
   let promptSha256: string | null = null;
   let estimate: PassEstimate | null = null;
+  // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
+  let failure: Failure | null = null;
+  let note: string | null = null;
 
+  /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
+   *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28).
+   *  The line it prints is the stage's own summary — never the prompt, never the key. */
   async function emit(stage: StageEmitInput): Promise<void> {
-    // One log line per stage, carrying the stage's own summary — never the prompt, never the key.
-    input.log(stageLogLine(stage.at, stage.stage, stage.summary));
-    const stored = await emitStage(sink, stage);
-    if (!stored.ok) input.log(`[writer] stage ${stage.stage} not stored: ${stored.code}`);
+    try {
+      input.log(stageLogLine(stage.at, stage.stage, stage.summary));
+      const stored = await emitStage(sink, stage);
+      if (!stored.ok) input.log(`[writer] stage ${stage.stage} not stored: ${stored.code}`);
+    } catch (error) {
+      input.log(`[writer] stage ${stage.stage} not emitted: ${failureOf(error).detail}`);
+    }
   }
 
   async function beat(): Promise<void> {
     try {
       await engine.beat(job.leaseId);
     } catch (error) {
-      throw new PassRefusal(`аренда прохода не подтверждена: ${reasonOf(error)}`);
+      throw new PassRefusal(`аренда прохода не подтверждена: ${reasonOf(error)}`, codeOf(error));
     }
   }
 
@@ -235,7 +221,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
-      throw new PassRefusal(reasonOf(error));
+      throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     // The writer's own tokens: what `done` reports. Each gate's are stored with its verdict row
     // and the engine adds them at close, so they are never counted twice.
@@ -245,8 +231,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     all = addUsage(all, result.usage);
     reported = result.responseModel;
-    // The pin's own wire id (`apiModelOf`) is the same weights, not a divergence; any other id
-    // is the honest-limit case below: recorded once, and the pass goes on.
+    // The pin's own wire id (`apiModelOf`) is the same weights; any other id is the honest-limit
+    // case below: recorded once, and the pass goes on.
     if (mismatch === null && result.responseModel !== config.model && result.responseModel !== config.apiModel) {
       mismatch = { declared: config.model, reported: result.responseModel };
     }
@@ -281,19 +267,24 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   /** The pin once a call happened — what the engine is told; `null` before one. */
   function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
 
-  async function park(reason: string, cause: PremiseCause = 'failed'): Promise<PassResult> {
-    let note = reason;
-    // BOOK-117: a parked pass is still a pass that spent money. The usage the lane has counted so
-    // far travels with the escalate, so the ledger prices it and the day's bound sees it. A park
-    // before the first call claims no model and no tokens — nothing ran, nothing is charged.
+  /** Park the pass: the note is a sentence, the log line and the transcript carry the code. */
+  async function park(why: ParkInput): Promise<PassResult> {
+    // A coded failure the table does not know still owes the reader a sentence, not a code word.
+    const code = why.code ?? null;
+    const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
+    failure = { code, detail: why.detail };
+    note = sentence;
+    input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
+    // BOOK-117: a parked pass spent money too, so the usage travels with the escalate and the
+    // ledger prices it. A park before the first call claims no model and no tokens.
     const spent = calls.length === 0
       ? { tokensIn: 0, tokensOut: 0 }
       : { model: config.model, tokensIn: all.in, tokensOut: all.out };
     try {
-      await engine.escalate(job.leaseId, reason.slice(0, 400), spent, cause);
+      await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
-      // The lease may already be gone (an expired pass): the stage still records the truth.
-      note = `${reason} (${reasonOf(error)})`.slice(0, 400);
+      // The lease may already be gone (an expired pass): the stage still records the truth, and
+      // the engine's refusal stays in the log — never inside the reader's sentence.
       input.log(`[writer] escalate refused: ${reasonOf(error)}`);
     }
     await emit({
@@ -301,7 +292,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       chapter,
       passId: job.stepId,
       changeId: job.changeId,
-      summary: stageSummary.refused({ reason: note }),
+      summary: stageSummary.refused({ reason: sentence }),
       // No call, no pin: a park before the model ran claims no model (and no money).
       model: laneModel(),
       at: now(),
@@ -310,7 +301,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
-      reason: note,
+      // What the operator's line and the transcript read: the technical sentence, code included.
+      reason: why.detail,
       tokens: { ...written },
       costUsd: costUsd(config.pipeline.pricing, all),
     };
@@ -357,6 +349,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         promptSha256,
         sections: promptSections,
         estimate,
+        // The reader's sentence, and beside it the code and the detail it was built from.
+        note,
+        failure,
         result: { status: result.status, reason: result.reason ?? null },
         calls: calls.map((call) => ({ ...call })),
       };
@@ -377,7 +372,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     try {
       gate = await engine.nextGate(role, config.session);
     } catch (error) {
-      throw new PassRefusal(reasonOf(error));
+      throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
     const gatePrompt = buildGatePrompt({
@@ -402,7 +397,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       { role: 'user', content: gatePrompt.user },
     ]);
     const parsed = parseGateAnswer(answer.text, role);
-    if (!parsed.ok) throw new PassRefusal(`${parsed.code}: ${parsed.reason}`.slice(0, 300));
+    if (!parsed.ok) throw new PassRefusal(`${parsed.code}: ${parsed.reason}`.slice(0, 300), parsed.code);
     let action: string;
     try {
       const verdict = await engine.verdict({
@@ -418,7 +413,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       });
       action = verdict.action;
     } catch (error) {
-      throw new PassRefusal(reasonOf(error));
+      throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     answered[role] = true;
     await emit({
@@ -470,7 +465,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       writeText(revised);
       await engine.land(job.leaseId);
     } catch (error) {
-      throw new PassRefusal(reasonOf(error));
+      throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     return revised;
   }
@@ -479,6 +474,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     emit,
     ask,
     park,
+    /** A failure the pass survived: the transcript is where a survived failure is proved. */
+    remember: (value) => {
+      if (value !== null) failure = value;
+    },
     writeText,
     preSnapshot,
     transcript,

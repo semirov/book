@@ -153,6 +153,9 @@ describe('loadWriterConfig — bounds and defaults', () => {
     expect(config.maxPassesPerDay).toBe(4);
     expect(config.pauseMs).toBe(900_000);
     expect(config.engineUrl).toBe('http://127.0.0.1:8081');
+    // The engine is local but single-threaded: 60 s, not the old hard-coded 10 — on the measured
+    // pass (chapter 65) `land` outran 10 s after the chapter had landed and been published.
+    expect(config.engineTimeoutMs).toBe(60_000);
     expect(config.engineTokenFile).toBe(DEFAULT_ENGINE_TOKEN_FILE);
     expect(config.session).toBe('writer');
     expect(config.pipelinePath).toBe(PIPELINE);
@@ -181,6 +184,14 @@ describe('loadWriterConfig — bounds and defaults', () => {
     // The pass guard is its own variable: one override does not move the other two.
     expect(config.maxTokensPerPass).toBe(200_000);
     expect(refusalOf(env({ WRITER_GATE_TOKENS: '0' })).message).toContain('WRITER_GATE_TOKENS');
+  });
+
+  it('lets the environment set the engine’s own timeout, and refuses one below a second', () => {
+    expect(loadWriterConfig(env({ WRITER_ENGINE_TIMEOUT_MS: '90000' })).engineTimeoutMs).toBe(90_000);
+    // It is a request cap, not a lease: a value under a second cannot be anything but a mistake.
+    expect(refusalOf(env({ WRITER_ENGINE_TIMEOUT_MS: '999' })).message).toContain('WRITER_ENGINE_TIMEOUT_MS');
+    // The printable shape carries it, so an operator can read which cap the process ran under.
+    expect(loadWriterConfig(env()).redacted().engineTimeoutMs).toBe(60_000);
   });
 
   it('refuses an integer below its floor and a number that is not safe', () => {

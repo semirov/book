@@ -214,7 +214,7 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   // The engine client is built where it is used: a dry run must not need a token to exist.
   const engineOf = (): ReturnType<typeof createEngineClient> => {
     try {
-      return createEngineClient({ baseUrl: config.engineUrl, tokenFile: config.engineTokenFile });
+      return createEngineClient({ baseUrl: config.engineUrl, tokenFile: config.engineTokenFile, timeoutMs: config.engineTimeoutMs });
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : 'engine token refused');
     }

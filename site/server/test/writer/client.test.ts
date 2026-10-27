@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { EngineRefusalError, createEngineClient, type FetchLike } from '../../src/writer/client.ts';
+import { EngineRefusalError, ENGINE_TIMEOUT_MS, createEngineClient, type FetchLike } from '../../src/writer/client.ts';
 
 const dirs: string[] = [];
 const TOKEN = 'engine-token-never-print-9f21';
@@ -60,6 +60,68 @@ async function refusalOf(run: () => Promise<unknown>): Promise<EngineRefusalErro
   }
   throw new Error('expected a refusal');
 }
+
+describe('createEngineClient — the transport survives a busy engine', () => {
+  it('gives the engine 60 s by default, not the old 10', async () => {
+    expect(ENGINE_TIMEOUT_MS).toBe(60_000);
+    // The cap the client actually applied is the one its refusal names — a test at 5 ms, so the
+    // number in the message proves the wiring without waiting a real minute.
+    const client = createEngineClient({
+      baseUrl: 'http://127.0.0.1:9',
+      tokenFile: tokenFile(),
+      timeoutMs: 5,
+      fetch: (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    });
+    expect((await client.state().catch((error: unknown) => error)) as {
+      code: string;
+      message: string;
+    }).toMatchObject({ code: 'ENGINE_TIMEOUT', message: 'the engine did not answer within 5 ms' });
+  });
+
+  it('retries a transport failure once, because every call is idempotent', async () => {
+    let attempts = 0;
+    const { fetch, seen } = transportOf(() => {
+      attempts += 1;
+      if (attempts === 1) throw new Error('fetch failed');
+      return json({ ok: true, data: { status: 'running', tokens: {} } });
+    });
+    const client = createEngineClient({ baseUrl: 'http://127.0.0.1:9', tokenFile: tokenFile(), fetch });
+    await expect(client.state()).resolves.toMatchObject({ status: 'running' });
+    expect(seen).toHaveLength(2);
+  });
+
+  it('gives up after the second transport failure, with its own code and no URL', async () => {
+    let attempts = 0;
+    // Both attempts hang, and the transport's own error is a raw `fetch failed`: the pass must read
+    // the client's code, because that is what the reader's sentence is built from.
+    const hanging = createEngineClient({
+      baseUrl: 'http://127.0.0.1:9',
+      tokenFile: tokenFile(),
+      timeoutMs: 5,
+      fetch: (_url, init) => {
+        attempts += 1;
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('fetch failed')));
+        });
+      },
+    });
+    const refusal = await refusalOf(() => hanging.state());
+    expect(refusal.code).toBe('ENGINE_TIMEOUT');
+    expect(refusal.message).toBe('the engine did not answer within 5 ms');
+    expect(refusal.message).not.toContain('127.0.0.1');
+    expect(attempts).toBe(2);
+  });
+
+  it('does not retry a refusal: a 4xx code is the engine’s answer', async () => {
+    const { fetch, seen } = transportOf(() => json({ code: 'PASS_LEASED', message: 'занято' }, 409));
+    const client = createEngineClient({ baseUrl: 'http://127.0.0.1:9', tokenFile: tokenFile(), fetch });
+    expect((await refusalOf(() => client.pass(65, 'writer-test'))).code).toBe('PASS_LEASED');
+    expect(seen).toHaveLength(1);
+  });
+});
 
 describe('createEngineClient', () => {
   it('sends the token in the header and never in the URL', async () => {

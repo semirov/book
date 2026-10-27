@@ -62,6 +62,8 @@ export type WriterConfigRedacted = {
   maxPassesPerDay: number;
   pauseMs: number;
   engineUrl: string;
+  /** The engine's own cap, per request (`WRITER_ENGINE_TIMEOUT_MS`). */
+  engineTimeoutMs: number;
   engineTokenFile: string;
   session: string;
 };
@@ -180,6 +182,10 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),
     pauseMs: integer(env, 'WRITER_PAUSE_MS', 900_000, 0),
     engineUrl,
+    // The engine's own cap, and 60 s rather than the old 10: the engine is local but it is busy,
+    // and on the measured pass (chapter 65) `land` outran 10 s *after* the chapter had landed and
+    // been published — the pass was closed as a timeout over a chapter that was already written.
+    engineTimeoutMs: integer(env, 'WRITER_ENGINE_TIMEOUT_MS', 60_000, 1_000),
     engineTokenFile: resolve(SITE_ROOT, text(env, 'ENGINE_TOKEN_FILE', DEFAULT_ENGINE_TOKEN_FILE)),
     session: text(env, 'WRITER_SESSION', 'writer'),
   };

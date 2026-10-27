@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import type { PassDeps } from '../../src/writer/pass.ts';
 import { runPass } from '../../src/writer/pass.ts';
 import { ProviderError } from '../../src/writer/provider.ts';
+import { readerSentences } from '../../src/writer/reasons.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
@@ -78,7 +79,9 @@ describe('a parked pass tells a broken call from a refusal', () => {
       expect(result.reason).toContain('ANSWER_REFUSAL');
       const row = changeRow(harness, changeId);
       expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });
-      expect(String(row?.reason)).toContain('ANSWER_REFUSAL');
+      // The reader reads a sentence; the code it came from is in the log and the transcript.
+      expect(String(row?.reason)).toBe(readerSentences.refusal);
+      expect(harness.logs.some((line) => line.includes('parked ANSWER_REFUSAL'))).toBe(true);
     } finally {
       await harness.close();
     }

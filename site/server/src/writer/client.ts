@@ -8,7 +8,14 @@
  * Two invariants live here rather than in the pass:
  *  · the bearer token is read from `ENGINE_TOKEN_FILE` **once**, at construction, and travels
  *    only in the `authorization` header — never in a URL, a log line or an error message;
- *  · every request is bounded (10 s): a hung engine must not hang the supervised writer.
+ *  · every request is bounded (`WRITER_ENGINE_TIMEOUT_MS`, 60 s): a hung engine must not hang the
+ *    supervised writer, and a busy one must not lose a pass whose text has already landed. The
+ *    engine is local but single-threaded, and the measured pass (chapter 65) had `land` outrun the
+ *    old hard-coded 10 s;
+ *  · a **transport** failure (timeout, connection reset) is retried once, because every call here
+ *    is idempotent by design: `land` on the same sha is a no-op, `verdict` replaces the one row
+ *    per role, `done` on a closed step answers `STEP_CLOSED`. A refusal — a 4xx code — is the
+ *    engine's answer and is never retried.
  *
  * The transport is injected so the tests need no network, and this file lives outside
  * `engine/**`, which is where the architecture rule forbids `fetch` (ADR-012).
@@ -20,7 +27,15 @@ import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
 import type { PremiseCause } from '../engine/types.ts';
 
-export const ENGINE_TIMEOUT_MS = 10_000;
+export const ENGINE_TIMEOUT_MS = 60_000;
+
+/** One retry, and only on the transport: every call of this client is idempotent by design. */
+const TRANSPORT_ATTEMPTS = 2;
+
+/** The two codes this client owns: the engine did not answer, which is not a refusal. */
+export function isEngineTransportCode(code: string | null | undefined): boolean {
+  return code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE';
+}
 
 /** `fetch` (or a test double): the only seam this client has to the outside. */
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
@@ -102,6 +117,10 @@ export type VerdictView = {
   late: boolean;
 };
 
+/**
+ * What a close answers. `STEP_CLOSED` from `done` is not a failure — the step is closed either way,
+ * and the pass reads it as the close it asked for (`pass.ts`, the owner's rule of 2026-10-28).
+ */
 export type DoneView = {
   stepId: string;
   outcome: string;
@@ -186,7 +205,8 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
   const timeoutMs = options.timeoutMs ?? ENGINE_TIMEOUT_MS;
   const base = options.baseUrl.replace(/\/+$/u, '');
 
-  async function send(method: 'GET' | 'POST', path: string, body: unknown): Promise<unknown> {
+  /** One request, bounded by the timeout above. */
+  async function request(method: 'GET' | 'POST', path: string, body: unknown): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let response: Response;
@@ -232,6 +252,22 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       );
     }
     return answer.data;
+  }
+
+  /**
+   * One request, with one retry on the transport and none on a refusal. A failure that survives
+   * the retry is `ENGINE_TIMEOUT` / `ENGINE_UNREACHABLE` — never a raw `fetch failed`: the code is
+   * what the pass branches on and what the reader's sentence is built from.
+   */
+  async function send(method: 'GET' | 'POST', path: string, body: unknown): Promise<unknown> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await request(method, path, body);
+      } catch (error) {
+        const transport = error instanceof EngineRefusalError && isEngineTransportCode(error.code);
+        if (!transport || attempt >= TRANSPORT_ATTEMPTS) throw error;
+      }
+    }
   }
 
   const post = (path: string, body: unknown): Promise<unknown> => send('POST', path, body);

@@ -199,7 +199,7 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       expect(report.stepWalls).toEqual([assignment.stepId]);
       const step = store.getStep(fixture.db, assignment.stepId);
       expect(step?.outcome).toBe('escalated');
-      expect(step?.note).toContain('step wall');
+      expect(step?.note).toContain('отведённое время');
 
       const lease = leaseRow(fixture, assignment.leaseId);
       expect(lease.released_at).not.toBeNull();
@@ -219,6 +219,33 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       const reissued = fixture.engine.next({ for: 'fwd', session: 'writer-2' }) as WriterAssignment | null;
       expect(reissued?.stepId).not.toBe(assignment.stepId);
       expect(store.getStep(fixture.db, assignment.stepId)?.outcome).toBe('escalated');
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('escalates a step past the wall while its lease is alive, and leaves one just under it', () => {
+    const fixture = chapterOneFixture();
+    try {
+      const live = addStep(fixture, {
+        id: 'stp_live',
+        chapter: 1,
+        at: fixture.clock.now() - fixture.config.stepWallMs + 60_000,
+      });
+      const lease = leaseOf(fixture, live, 'w-live');
+      // Just under the wall: the engine beats the lease itself, so nothing happens.
+      expect(tick(fixture, 30_000).stepWalls).toEqual([]);
+      expect(store.getStep(fixture.db, 'stp_live')?.outcome).toBeNull();
+      expect(leaseRow(fixture, lease.id).released_at).toBeNull();
+
+      // Past it: the same live, beaten lease does not save the step.
+      expect(tick(fixture, 31_000).stepWalls).toEqual(['stp_live']);
+      const closed = store.getStep(fixture.db, 'stp_live');
+      expect(closed?.outcome).toBe('escalated');
+      expect(leaseRow(fixture, lease.id).release_reason).toBe('escalated');
+      // The note is a sentence an operator can read — never a config constant.
+      expect(closed?.note).not.toContain('_');
+      expect(closed?.note).toContain('отведённое время');
     } finally {
       fixture.close();
     }
