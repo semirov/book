@@ -138,7 +138,7 @@ describe('the guard fires on every class of violation it names', () => {
     expect(measureBox.some((problem) => problem.includes('var(--measure) is text width, never the width of a box'))).toBe(true);
 
     // `.legal` and `.state-line` used to re-declare this and centre themselves: the third edge.
-    const oldBox = layoutProblems(seeded('../styles/chrome.css', '.legal { max-width: calc(var(--measure) + 2 * var(--gut)); }'));
+    const oldBox = layoutProblems(seeded('../styles/legal.css', '.legal { max-width: calc(var(--measure) + 2 * var(--gut)); }'));
     expect(oldBox.some((problem) => problem.includes('is the old text box'))).toBe(true);
   });
 

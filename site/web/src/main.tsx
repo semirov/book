@@ -8,6 +8,7 @@ import { staticPage } from './lib/route.ts';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
+import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';
 import './styles/skeleton.css';

@@ -1,5 +1,5 @@
 /* ============================================================================
-   CHROME — sticky header, title sheet, the annotation, the static documents.
+   CHROME — sticky header, title sheet, the annotation. The static documents: legal.css.
    ============================================================================ */
 
 .top {
@@ -397,91 +397,9 @@
   text-underline-offset: 4px;
 }
 
-/* The static documents (audit M5): «приватность» and «правила» — same column and voice as the
-   book, no card, no third-party byte, readable with the API down. BOOK-88: the document is a
-   `.page` and states no box — `.legal > *` caps the lines. BOOK-92: rhythm 8/12/24/32, label voice. */
-.legal {
-  padding: 72px var(--gut) 96px;
-}
-.legal .kicker {
-  margin: 0 0 8px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  line-height: 1.35;
-  color: var(--ink-3);
-}
-.legal .title {
-  margin: 0 0 24px;
-  font-size: clamp(28px, 6vw, 40px);
-  line-height: 1.12;
-}
-.legal .legal-lead {
-  /* BOOK-92's `max-width: none` went with the box: at (0,2,0) it would out-specify the one prose
-     rule (`.legal > *`, 0,1,0) and run the lead across the whole column while the rest stops. */
-  margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  line-height: 1.55;
-  font-style: italic;
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
-.legal section {
-  margin-top: 32px;
-}
-.legal h2 {
-  margin: 0 0 12px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-}
-.legal p,
-.legal li {
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  line-height: 1.6;
-  color: var(--ink);
-}
-.legal p + p,
-.legal ul + p {
-  margin-top: 12px;
-}
-.legal ul {
-  margin: 12px 0 0;
-  padding-left: 20px;
-}
-.legal li + li {
-  margin-top: 8px;
-}
-.legal code {
-  font-family: var(--mono);
-  font-size: 0.86em;
-  color: var(--ink-2);
-}
-.legal-how {
-  color: var(--ink-2);
-  border-left: 2px solid var(--rule-2);
-  padding-left: 12px;
-}
-.legal .legal-tail {
-  margin-top: 32px;
-  padding-top: 16px;
-  border-top: 1px solid var(--rule);
-  font-size: var(--fs-note);
-  color: var(--ink-2);
-}
-/* A label, not a paragraph: `.legal .legal-nav` out-specifies both `.legal p` and `.legal p + p`. */
-.legal .legal-nav {
-  display: flex;
-  gap: 18px;
-  margin-top: 24px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+/* The two static documents live in legal.css — BOOK-88 (booted right after this sheet). */
+
+/* The legal nav's links take the colophon's treatment: one rule, kept with the frame. */
 .legal-nav a,
 .colophon a {
   color: var(--ink-2);
