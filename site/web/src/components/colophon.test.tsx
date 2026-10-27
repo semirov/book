@@ -9,6 +9,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { COLOPHON_MOTTO, Colophon } from './Colophon.tsx';
 
+/** Every stylesheet as text, keyed by path: whether the source link is printed is a rule
+ *  across the set, not of one sheet (`bookMatter.test.tsx` reads the sheets the same way). */
+const sheets = import.meta.glob<string>('../styles/*.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+/**
+ * The declarations of every rule whose selector is exactly `selector`: the colophon's link is
+ * dressed by two consecutive blocks in `chrome.css` (the underline, then the 24 px target),
+ * so the helper reads the union rather than the first match.
+ */
+function declarations(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'gu'))]
+    .map((match) => match[1] ?? '')
+    .join(';');
+}
+
+/** The body of `@media (<query>) { … }`, with nested braces balanced. */
+function mediaBody(css: string, query: string): string {
+  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
+  if (start < 0) return '';
+  const open = css.indexOf('{', start);
+  let depth = 0;
+  for (let index = open; index < css.length; index += 1) {
+    if (css[index] === '{') depth += 1;
+    if (css[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return css.slice(open + 1, index);
+    }
+  }
+  return '';
+}
+
 const state = {
   chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
 } as unknown as StateSnapshot;
@@ -178,5 +214,120 @@ describe('the colophon', () => {
     expect(
       imprintProblems({ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT, publisher: null, year: 'auto' }),
     ).toEqual([]);
+  });
+});
+
+/** The colophon of an empty book, as the server prints it. */
+function renderColophon(): string {
+  stubDocument();
+  return renderToStaticMarkup(
+    <Colophon state={state} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />,
+  );
+}
+
+/**
+ * The one anchor to the repository: its attribute string and its label. Throws when the link
+ * is absent, so a deleted link fails here instead of passing an empty comparison.
+ */
+function sourceAnchor(html: string): { attrs: string; label: string } {
+  const match = /<a ([^>]*href="https:\/\/github\.com\/semirov\/book"[^>]*)>([\s\S]*?)<\/a>/u.exec(html);
+  if (match === null) throw new Error('the colophon has no link to the source');
+  return { attrs: match[1] ?? '', label: match[2] ?? '' };
+}
+
+describe('the source link in the end matter (BOOK-78)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // BOOK-78 AC1/AC3 — one link, the literal href, opened in a new tab without an opener.
+  // Everything is spelled out here on purpose: a test that compares against a constant the
+  // component exports only proves the constant agrees with itself.
+  it('is one link to the repository, opened in a new tab without the opener', () => {
+    const html = renderColophon();
+    expect(html.match(/href="https:\/\/github\.com\/semirov\/book"/gu)).toHaveLength(1);
+    const { attrs } = sourceAnchor(html);
+    expect(attrs).toContain('href="https://github.com/semirov/book"');
+    expect(attrs).toContain('target="_blank"');
+    expect(attrs).toContain('rel="noopener noreferrer"');
+    // A fact, not a campaign: no query string, no fragment, no tracking hook, no tooltip.
+    expect(attrs).not.toContain('?');
+    expect(attrs).not.toContain('#');
+    expect(attrs).not.toContain('utm_');
+    expect(attrs).not.toMatch(/metrika|ym-|data-|onclick|title=/u);
+    expect(html).not.toContain('utm_');
+  });
+
+  // BOOK-78 AC2 — the label is the owner's sentence, character for character and lowercase;
+  // the colophon's shared uppercase transform is presentation, so the source says lowercase.
+  it('carries the truthful label in the owner\'s words, and nothing beside it', () => {
+    const html = renderColophon();
+    const { label } = sourceAnchor(html);
+    expect(label).toBe('исходный код сайта открыт');
+    // The words in the source, before CSS uppercases the register.
+    expect(webSources['./Colophon.tsx']).toContain('исходный код сайта открыт');
+    // One fact and nothing more: no trademark, no count, no star, no cheer, no tooltip.
+    expect(html).not.toContain('GitHub');
+    expect(html).not.toContain('звёзд');
+    expect(html).not.toContain('★');
+    expect(label).not.toContain('!');
+    expect(label).not.toContain('пожалуйста');
+  });
+
+  // BOOK-78 decision 2 — the anchor is a sibling right after the imprint sentence's span,
+  // before the theme toggle: the licence line stays one sentence, and BOOK-94 pins it.
+  it('sits beside the licence line, outside the sentence BOOK-94 pins', () => {
+    const html = renderColophon();
+    const imprint = html.indexOf('class="imprint-line"');
+    const anchor = html.indexOf('href="https://github.com/semirov/book"');
+    const theme = html.indexOf('class="theme"');
+    expect(imprint).toBeGreaterThan(-1);
+    expect(theme).toBeGreaterThan(-1);
+    expect(anchor).toBeGreaterThan(imprint);
+    expect(anchor).toBeLessThan(theme);
+    // Not inside the pinned span: its text is still the six words of BOOK-94 AC1.
+    expect(imprintLine(html)).not.toContain('github.com');
+  });
+
+  // BOOK-78 AC1 — «reachable at 390 and 1440» without a browser. This test claims the
+  // stylesheet, not pixels: the anchor is printed (the test above), the row wraps so the extra
+  // item can fall to the next line at 390, the anchor is a 24 px underlined target at both
+  // widths, and no rule in the sheet set hides or clips it at any width. It does not prove the
+  // layout, only that nothing in the sheets takes the link away.
+  it('keeps its wrap, its 24 px target and never hides the row, from the sheets', () => {
+    const book = sheets['../styles/book.css'] ?? '';
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    expect(declarations(book, '.colophon .row')).toContain('display: flex');
+    expect(declarations(book, '.colophon .row')).toContain('flex-wrap: wrap');
+    expect(declarations(chrome, '.colophon a')).toContain('display: inline-flex');
+    expect(declarations(chrome, '.colophon a')).toContain('min-height: 24px');
+    expect(declarations(chrome, '.colophon a')).toContain('text-decoration: underline');
+
+    // The sheet set, rule by rule: no `.colophon` rule hides a box or clips its content.
+    const rules = (css: string): Array<[string, string]> =>
+      [...css.replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}]+)\{([^{}]*)\}/gu)].map((match) => [
+        (match[1] ?? '').replace(/\s+/gu, ' ').trim(),
+        match[2] ?? '',
+      ]);
+    for (const [file, css] of Object.entries(sheets)) {
+      for (const [selector, body] of rules(css)) {
+        if (!/\.colophon\b/u.test(selector)) continue;
+        const where = `${file}: ${selector}`;
+        expect(body, where).not.toMatch(/display:\s*none/u);
+        expect(body, where).not.toMatch(/visibility:\s*hidden/u);
+        expect(body, where).not.toMatch(/overflow:\s*hidden/u);
+      }
+      // And no width step re-lays the row or strips the link — the wrap is the same at 390
+      // and at 1440, because no query touches either selector.
+      for (const [, query] of css.matchAll(/@media\s*\(([^)]*)\)\s*\{/gu)) {
+        const body = mediaBody(css, query ?? '');
+        for (const selector of ['.colophon .row', '.colophon a']) {
+          const where = `${file} @media (${query}) ${selector}`;
+          expect(declarations(body, selector), where).not.toMatch(
+            /display:\s*none|visibility:\s*hidden|overflow:\s*hidden|flex-wrap:\s*nowrap|min-height:\s*0/u,
+          );
+        }
+      }
+    }
   });
 });
