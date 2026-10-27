@@ -32,6 +32,7 @@ import {
   createReveal,
   finishReveal,
   planReveal,
+  printsChange,
   revealComplete,
   skipBlocks,
   tickReveal,
@@ -44,7 +45,7 @@ import {
  * - the header comes from the catalog on the first paint, the prose on scroll;
  * - new text prints at 18 cps, block by block, only in the viewport; everything else is
  *   already set (ADR-006 — the server never streams tokens);
- * - a revision is applied by `rev`; a rewrite cross-fades, it never re-types old text;
+ * - a revision is applied by `rev`: a machine rewrite cross-fades, a reader's change prints;
  * - the caret sits after the block being printed, or after the last block of the lane's
  *   chapter; a cascade moves no caret;
  * - blocks named by `block:revising` carry the ochre rule, not the whole chapter;
@@ -111,6 +112,9 @@ export function ChapterArticle({
   const loading = useRef(false);
   const measured = useRef(false);
   const speed = useRef(1);
+  /** BOOK-117 §1: the change behind a revision (held across a refetch), and its first block. */
+  const changeIds = useRef<ReadonlySet<string> | null>(null);
+  const line = useRef<string | null>(null);
 
   const printing = reveal !== null && !revealComplete(reveal);
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
@@ -123,12 +127,13 @@ export function ChapterArticle({
    */
   const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
   const stage = usePending(busy);
-  const startReveal = useCallback((loaded: ChapterDto) => {
+  const startReveal = useCallback((loaded: ChapterDto, changed: ReadonlySet<string> | null = null) => {
     const reduce = reducedMotion();
     const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : Date.now() - Date.parse(loaded.writtenAt);
     const plan = planReveal({
       blocks: loaded.blocks,
-      mode: fresh ? 'live' : 'join',
+      mode: changed === null ? (fresh ? 'live' : 'join') : 'change',
+      changedIds: changed ?? undefined,
       chapterAgeMs: Math.max(0, ageMs),
       reducedMotion: reduce,
     });
@@ -148,7 +153,9 @@ export function ChapterArticle({
       }
       setFailed(false);
       setChapter(result);
-      startReveal(result);
+      const changed = changeIds.current;
+      changeIds.current = null;
+      startReveal(result, changed); // the fact travels: a refetched change still prints
     } catch {
       setFailed(true);
     } finally {
@@ -219,12 +226,23 @@ export function ChapterArticle({
           updatedAt: revision.updatedAt,
           blocks: patched,
         });
-        setRevisedIds(new Set(revisedBlockIds(revision.patch)));
-        // A rewrite cross-fades; it never re-types. If text was still printing, stop.
-        setReveal((current) => (current === null ? current : finishReveal(current)));
+        if (!printsChange(revision)) {
+          setRevisedIds(new Set(revisedBlockIds(revision.patch)));
+          // A machine rewrite cross-fades; it never re-types. If text was still printing, stop.
+          setReveal((current) => (current === null ? current : finishReveal(current)));
+          return;
+        }
+        // BOOK-117 §1 — a change the reader made is *seen being written*: its blocks print.
+        const change = revisedBlockIds(revision.patch);
+        setRevisedIds(new Set());
+        line.current = change[0] ?? null;
+        setReveal(createReveal(patched.filter((block) => change.includes(block.id)), { reducedMotion: reducedMotion() }));
+        measured.current = true; // it prints where it is; the reader comes to it
         return;
       }
     }
+    // An unappliable patch is refetched, and the change behind it travels with the request.
+    if (revision !== null && revision.n === entry.n && revision.rev > chapter.rev && printsChange(revision)) changeIds.current = new Set(revisedBlockIds(revision.patch));
     void load();
   }, [chapter, entry, showsText, inView, load, revision]);
 
@@ -269,6 +287,17 @@ export function ChapterArticle({
       if (rect.bottom < -1.5 * height || rect.top > 2.5 * height) skipped.add(id);
     }
     if (skipped.size > 0) setReveal((current) => (current === null ? current : skipBlocks(current, skipped)));
+  }, [chapter, reveal]);
+
+  // BOOK-117 §1 — the change is brought to the reading line, and only when it is off-screen.
+  useEffect(() => {
+    const id = line.current;
+    line.current = null;
+    const node = id === null ? null : article.current?.querySelector<HTMLElement>(`[data-block-id="${id}"]`);
+    if (node === null || node === undefined) return;
+    const rect = node.getBoundingClientRect();
+    if (rect.top >= 0 && rect.bottom <= (window.innerHeight || 800)) return;
+    node.scrollIntoView?.({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' });
   }, [chapter, reveal]);
 
   // The reload that a stale send asks for is the moment to re-key the draft: the new block

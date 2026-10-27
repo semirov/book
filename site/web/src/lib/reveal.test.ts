@@ -10,6 +10,7 @@ import {
   graphemeCount,
   graphemes,
   planReveal,
+  printsChange,
   revealComplete,
   skipBlocks,
   tickReveal,
@@ -81,6 +82,60 @@ describe('planReveal', () => {
     const plan = planReveal({ blocks: blocks(3), mode: 'live', chapterAgeMs: 0, reducedMotion: true });
     expect(plan.queued).toEqual([]);
     expect(plan.instant).toHaveLength(3);
+  });
+});
+
+describe('a change is printed, a machine pass is not (BOOK-117 §1)', () => {
+  const chapter = [
+    { id: 'ch08#c0', text: 'первый' },
+    { id: 'ch08#c1', text: 'второй' },
+    { id: 'ch08#c2', text: 'третий' },
+  ];
+
+  it('queues only the blocks the revision touched, in document order', () => {
+    const plan = planReveal({ blocks: chapter, mode: 'change', changedIds: new Set(['ch08#c2', 'ch08#c1']), chapterAgeMs: 0 });
+    expect(plan.queued).toEqual(['ch08#c1', 'ch08#c2']);
+    // Untouched blocks are already final: they are not indexed, not even as instant ones.
+    expect(plan.instant).toEqual(['ch08#c0']);
+  });
+
+  it('prints nothing when the revision touched no block that is on the page', () => {
+    const plan = planReveal({ blocks: chapter, mode: 'change', changedIds: new Set(['ch08#gone']), chapterAgeMs: 0 });
+    expect(plan.queued).toEqual([]);
+    expect(plan.instant).toHaveLength(3);
+    // A frame that names nothing prints nothing: the mode alone never types a whole chapter.
+    expect(planReveal({ blocks: chapter, mode: 'change', chapterAgeMs: 0 }).queued).toEqual([]);
+  });
+
+  it('prints an old chapter’s change: age is a fact about joining, not about the change', () => {
+    // The same frame that would print nothing on `join` for a chapter written days ago prints
+    // its change: the reader is watching the words arrive, not reading history (BOOK-117 §1).
+    const joined = planReveal({ blocks: chapter, mode: 'join', chapterAgeMs: 6 * 60_000 });
+    expect(joined.queued).toEqual([]);
+    const changed = planReveal({ blocks: chapter, mode: 'change', changedIds: new Set(['ch08#c1']), chapterAgeMs: 6 * 60_000 });
+    expect(changed.queued).toEqual(['ch08#c1']);
+  });
+
+  it('is instant under reduced motion', () => {
+    const plan = planReveal({ blocks: chapter, mode: 'change', changedIds: new Set(['ch08#c1']), chapterAgeMs: 0, reducedMotion: true });
+    expect(plan.queued).toEqual([]);
+    expect(plan.instant).toHaveLength(3);
+  });
+
+  it('caps a large change at the queue bound', () => {
+    const many = blocks(30).map((block, index) => ({ ...block, id: `ch08#d${index}` }));
+    const plan = planReveal({ blocks: many, mode: 'change', changedIds: new Set(many.map((block) => block.id)), chapterAgeMs: 0 });
+    expect(plan.queued).toHaveLength(REVEAL.maxQueueBlocks);
+  });
+
+  it('reads the frame: a reader’s change prints, a cascade or a rewrite cross-fades', () => {
+    const cause = { changeId: 'chg_01J9Z8K4Q7' };
+    for (const kind of ['edit', 'polish', 'create']) expect(printsChange({ kind, cause }), kind).toBe(true);
+    for (const kind of ['rewrite', 'restore']) expect(printsChange({ kind, cause }), kind).toBe(false);
+    // No change behind it: machinery, whatever the kind says.
+    for (const kind of ['edit', 'polish', 'create']) {
+      expect(printsChange({ kind, cause: { changeId: null } }), kind).toBe(false);
+    }
   });
 });
 

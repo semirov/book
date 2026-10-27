@@ -3,8 +3,10 @@
  *
  * The client applies a patch **only** when `rev === loadedRev + 1`; a patch that cannot
  * be applied returns `null` and the caller refetches, because a half-applied chapter is
- * worse than a request. Rewrites never re-type old text: replaced/inserted blocks
- * cross-fade, they do not print (ARCHITECTURE §11.4–11.5).
+ * worse than a request. A machine rewrite never re-types old text: replaced/inserted blocks
+ * cross-fade (ARCHITECTURE §11.4–11.5). A revision a reader caused is the exception — its
+ * blocks print through the reveal, and the caller decides which with `printsChange`
+ * (BOOK-117 §1).
  */
 
 import type { BlockDto, PatchOp } from '@book/shared';
@@ -62,7 +64,7 @@ export function applyPatch(blocks: readonly BlockDto[], ops: readonly PatchOp[])
   return out.map((block, index) => ({ ...block, i: index }));
 }
 
-/** Block ids changed by a patch: what the chapter marks as «правлено» and cross-fades. */
+/** Block ids changed by a patch: what a machine revision cross-fades, and what a change prints. */
 export function revisedBlockIds(ops: readonly PatchOp[]): string[] {
   const ids = new Set<string>();
   for (const op of ops) {

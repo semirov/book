@@ -110,6 +110,21 @@ export function Colophon({
           </div>
         ) : null}
         <LogoutRow viewer={viewer} reload={reload} />
+        {/* BOOK-117: the money bound is a fact of this register, not a notice. The server
+            composes the one line from the `pass_spend` ledger and this row prints it verbatim —
+            nothing added, nothing rephrased, so a pause or a stop is visible without a click.
+            `ok` (and a snapshot that predates the field) prints nothing here, which keeps the
+            markup of an unbound book exactly as it was. */}
+        {state.budget !== undefined && state.budget.state !== 'ok' ? (
+          <div
+            className="row"
+            role="note"
+            data-budget-state={state.budget.state}
+            aria-label={state.budget.line}
+          >
+            <span className="mono">{state.budget.line}</span>
+          </div>
+        ) : null}
         <div className="row">
           <span className="imprint-line">
             {imprint.copyright} — {COLOPHON_MOTTO}
