@@ -20,10 +20,9 @@
 #     restarts nothing. The build is then published as an immutable release and `current` is
 #     swapped *before* the restart, so the shell a browser gets always has its own assets;
 #   * before the restart it reads the box's load and says so (a long window is explained, never
-#     hidden, and the deploy still proceeds), takes one baseline probe, and measures the
+#     hidden, and the deploy still proceeds), takes one baseline read, and measures the
 #     **visible downtime**: the last 200 before `kickstart` to the first 200 after it — not a
-#     copy of its own polling window. A site that was already down (`baseline=down`) or never
-#     answered reports `restart_ms=unknown`;
+#     copy of its own polling window;
 #   * `/healthz` is polled every 200 ms with a budget from the box (`BOOK_HEALTH_TIMEOUT`,
 #     default 180 s). A timeout is not a verdict: the grace window (`BOOK_HEALTH_GRACE`, 60 s)
 #     re-checks, and a 200 naming the commit just built is a **late success** — no rebuild, no
@@ -43,14 +42,55 @@
 #   * a failed health or frame check rolls the clone back to the previously deployed commit,
 #     rebuilds, republishes, restarts, and re-checks — then exits 1 either way, so CI stays red.
 #
+# BOOK-119 hotfix (the deploys of 523f234 and 230a62f that went red while succeeding):
+#   * **one probe, one result shape.** `lib.sh:health_read` is a plain `curl --max-time 2` — the
+#     same call for the baseline, the restart window and every re-read — so they cannot disagree.
+#     The baseline is `up` only on a real 200 with `"ok":true`, `down` only on a real non-200
+#     answer, and `unknown` when the read could not be made; the audit carries `err=<curl exit>`
+#     and the log carries curl's own line. A measurement that failed is never the site being dead;
+#   * the window always has a real elapsed time: it reads once before it looks at any deadline,
+#     and a `health=fail` that did not spend its budget is measured again — `fail after 0 ms`
+#     cannot happen. After a restart that was issued there is always a window (no "no healthz
+#     window was measured" state);
+#   * a rollback needs two independent negatives: the window spent its whole budget **and** a plain
+#     read says the process is not serving the commit this run built. With one of them missing the
+#     deploy does not restart anything — it exits 1 and names what it saw (`rollback-refused`);
+#   * `prod is DOWN` is printed only after a plain read found no answer; a 200 naming the commit
+#     this run built is a late success — green, `health=late`, `slow=1`, no second restart;
+#   * one deploy at a time: `$STATE_DIR/deploy.lock` (a directory holding the holder's pid and
+#     start stamp) is taken before the fetch and the checkout, replaced atomically when stale, and
+#     released by a trap on every exit path;
+#   * a stopped service is deployable: `kickstart` that fails because the job is not loaded
+#     bootstraps it from `$PLIST` and tries once more (`kickstart: not loaded — bootstrapped from`,
+#     audit `recovered=bootstrap`);
+#   * the load guard reads `sysctl -n vm.loadavg` itself (falling back to `uptime`), so a number
+#     that is there is never printed as `unknown`; only when both fail does it say
+#     `load=unavailable (sysctl: <line>)`.
+#
+# Exit codes: 0 healthy (fast or late); 1 a real deploy failure (rolled back, rollback failed, or
+# refused for lack of evidence); 2 usage; 3 refused — another deploy holds the lock and nothing was
+# checked out, built, published or restarted (the driver must not read it as a red product
+# deploy). The prod-root guard keeps its own path: a `die`, exit 1, before anything is fetched or
+# built.
+#
+# Overrides for a rehearsal (nothing below is needed for a real deploy): `BOOK_STATE_DIR` moves
+# the lock, the audit log and the last-good records; `BOOK_LOCK_STALE_S` moves the 45-minute
+# staleness limit; `BOOK_SERVICE_LABEL` and the plist path follow `$HOME`.
+#
 # Secrets: this script reads no secret and prints no value. `site/.env` is gitignored and is
 # never touched by a checkout, `npm ci` or a build — only the service reads it.
 set -euo pipefail
 
+# The probe, the window, the load, the service start and the lock live beside this script (lib.sh,
+# extracted with it by the workflow), so they can be exercised — and tested — without a deploy.
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+
 ROOT="${BOOK_DEPLOY_ROOT:-$HOME/book-deploy}"
 REPO_URL="${BOOK_REPO_URL:-https://github.com/semirov/book.git}"
-STATE_DIR="${HOME}/.local/state/book-deploy"
+STATE_DIR="${BOOK_STATE_DIR:-${HOME}/.local/state/book-deploy}"
 AUDIT_LOG="${STATE_DIR}/deploy-audit.log"
+LOCK_DIR="${STATE_DIR}/deploy.lock"
 SERVICE_LABEL="${BOOK_SERVICE_LABEL:-dev.book-site}"
 PLIST="${HOME}/Library/LaunchAgents/${SERVICE_LABEL}.plist"
 HEALTH_TIMEOUT="${BOOK_HEALTH_TIMEOUT:-180}"       # seconds, the long budget the box actually needs
@@ -66,14 +106,28 @@ DRY_RUN=0
 # kills a re-exec'd child that meets an unset variable (BOOK-79 was exactly that).
 HEALTH="none"
 HEALTH_MS="0"
+FIRST_AT=0
+REPORTED_COMMIT=""
+WINDOW_READS=0
 RESTART_MS="unknown"
 RELEASE=""
 BUILT_COMMIT=""
-LOAD_PER_CORE="unknown"
+LOAD_L1=""
+LOAD_CORES="unknown"
+LOAD_PER_CORE="unavailable"
+LOAD_ABOVE=0
+LOAD_SOURCE=""
+LOAD_MSG=""
 LOAD_PAUSE_USED=0
 SLOW=0
 BASELINE="unknown"
 BASELINE_AT=0
+BASELINE_STATUS=0
+BASELINE_COMMIT=""
+BASELINE_ERR=""
+BASELINE_MSG=""
+PLAIN_COMMIT=""
+ROLLBACK_WHY=""
 PERCENT=0
 FRAME="n/a"
 KICKSTART_T0=""
@@ -104,20 +158,10 @@ audit() {
   printf '%s %s\n' "$(now)" "$*" >> "$AUDIT_LOG"
 }
 
-# One `key=value` field of a probe's output. Values never contain a space, and some modes print
-# their tokens on one line (`baseline`, `load`), so the text is split on spaces too — an anchored
-# `^key=` would silently return "" for everything but the first token.
-field() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p" | head -1; }
-
-# Is `$1` the commit `$2` names? Args order: (long, reported) — the report may be abbreviated.
-starts_with() { case "$1" in "$2"*) return 0 ;; *) return 1 ;; esac; }
-
-# Digits only: an audit field must never be handed to `$(( ))` as a word.
-is_number() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
-
 # The visible downtime (#3711): the last 200 before the restart to the first 200 after it.
-# `unknown` when the site was already down (nothing to lose), when the new build never answered,
-# or when the two stamps do not make a window — never a copy of the deploy's polling time.
+# `unknown` when the site was already down or could not be read (no baseline stamp), when the new
+# build never answered, or when the two stamps do not make a window — never a copy of the deploy's
+# polling time.
 downtime() { # (baseline_at, first_at, health)
   case "$3" in fast|late) ;; *) printf 'unknown'; return 0 ;; esac
   if is_number "$1" && is_number "$2" && [ "$1" -gt 0 ] && [ "$2" -ge "$1" ]; then
@@ -127,10 +171,20 @@ downtime() { # (baseline_at, first_at, health)
   printf 'unknown'
 }
 
-# The numbers every audit line carries, whatever the outcome (a comparable record of the box).
+# B2: every upgrade of a verdict stamps its own moment, so the numbers are recomputed from the
+# final verdict — an audit can never print `health=late restart_ms=unknown`.
+recompute_window() {
+  RESTART_MS="$(downtime "$BASELINE_AT" "$FIRST_AT" "$HEALTH")"
+  PERCENT=0
+  if is_number "$HEALTH_MS" && [ "$BUDGET_MS" -gt 0 ]; then PERCENT=$(( HEALTH_MS * 100 / BUDGET_MS )); fi
+}
+
+# The numbers every audit line carries, whatever the outcome (a comparable record of the box), and
+# the facts about *this* run: which probe measured, what the lock did, whether the service had to
+# be bootstrapped, and why a failed baseline read failed.
 audit_tail() { # (restart_ms, health_ms, budget_pct, baseline)
-  printf 'restart_ms=%s health_ms=%s budget_ms=%s budget_pct=%s load=%s/core load_pause=%s slow=%s baseline=%s' \
-    "$1" "$2" "$BUDGET_MS" "$3" "$LOAD_PER_CORE" "$LOAD_PAUSE_USED" "$SLOW" "$4"
+  printf 'restart_ms=%s health_ms=%s budget_ms=%s budget_pct=%s load=%s cores=%s load_pause=%s slow=%s baseline=%s err=%s probe=%s lock=%s recovered=%s' \
+    "$1" "$2" "$BUDGET_MS" "$3" "$LOAD_PER_CORE" "$LOAD_CORES" "$LOAD_PAUSE_USED" "$SLOW" "$4" "${BASELINE_ERR:-none}" "$PROBE_USED" "$LOCK" "${KICKSTART_RECOVERED:-none}"
 }
 
 # `build-info.json` is what the running process reports as `/healthz.commit` (BOOK-109). The
@@ -156,24 +210,6 @@ site_url() {
   port="$(plist_field EnvironmentVariables.PORT || echo 8091)"
   case "$host" in ''|0.0.0.0|'::'|'*') host=127.0.0.1 ;; esac
   printf 'http://%s:%s' "$host" "$port"
-}
-
-# The commit the process answers with, or a failed command when it is not healthy. Used for the
-# one question the rollback must ask before doing anything: "does this process already serve
-# the old code?" — a second restart of the same commit is the defect this pass removes.
-running_commit() {
-  local body
-  body="$(curl -fsS --max-time 2 "$1" 2>/dev/null)" || return 1
-  printf '%s' "$body" | grep -q '"ok":true' || return 1
-  printf '%s' "$body" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p'
-}
-
-# `restart-probe.mjs wait` from KICKSTART_T0 — one implementation for the deploy and the
-# rollback, so "healthy" cannot mean two things.
-probe_wait() {
-  local args=(--url "$1" --since "$KICKSTART_T0" --budget-ms "$BUDGET_MS" --grace-ms "$GRACE_MS" --expect-commit "$2")
-  if [ -n "$3" ]; then args+=(--prev-commit "$3"); fi
-  node "$ROOT/site/scripts/restart-probe.mjs" wait "${args[@]}" 2>/dev/null
 }
 
 service_root_guard() {
@@ -204,11 +240,6 @@ resolve_ref() {
   return 1
 }
 
-kickstart() {
-  say "restarting $SERVICE_LABEL"
-  launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL"
-}
-
 frame_check() {
   # BOOK-107: /healthz says the process is alive, not that it serves the canon. The check is
   # read-only, makes one attempt per chapter inside one 25 s budget, and writes nothing. A
@@ -221,10 +252,50 @@ frame_check() {
   node "$ROOT/site/scripts/frame-check.mjs" "${args[@]}"
 }
 
+# The green end of any path: the site serves the build of this run, so check the canon, record it
+# and exit 0. `keep` leaves `last-good` alone — the release `current` names is then not this
+# build's (a late answer after a rollback had already published the previous release).
+finish_green() { # (optional: keep)
+  say "checking the frozen frame"
+  # Exit 0 is the only success. A mismatch (1) means the running site serves text that is not
+  # the canon; a usage error (2) means this checkout cannot even run its own script. Both are
+  # this deploy being unhealthy, so both take the red path below — never `exit 0`.
+  if frame_check; then
+    FRAME="ok"
+    if [ "${1:-}" != "keep" ]; then
+      mkdir -p "$STATE_DIR"
+      echo "$GOOD" > "$STATE_DIR/last-good"
+      if [ -n "$RELEASE" ] && [ "$RELEASE" != "unknown" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
+    fi
+    audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=ok restart=$(restart_field) $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    say "healthy: $SHORT at $URL; time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms, visible downtime ${RESTART_MS} ms, load ${LOAD_PER_CORE}/core, probe=$PROBE_USED, lock=$LOCK"
+    exit 0
+  fi
+  FRAME="fail"
+  say "the running site does not serve the frozen frame"
+  return 1
+}
+
 # --- prepare: get the wanted commit into the clone --------------------------------------------
 if [ "$PHASE" = "prepare" ]; then
   mkdir -p "$STATE_DIR"
+  # A dry run reads nothing and writes nothing, so it takes no lock — but it says what a real run
+  # would meet, which is how a rehearsal can show the refusal without touching prod.
+  if [ "$DRY_RUN" = "1" ]; then
+    say "dry run: lock $(lock_report) — this run takes nothing"
+  fi
   [ -d "$ROOT/.git" ] || die "no deploy clone at $ROOT (the workflow bootstraps it; by hand: git clone $REPO_URL $ROOT)"
+
+  # One deploy at a time, and *before* the fetch and the checkout: the incident's second restart
+  # came from two runs flipping one tree between `npm ci` and the build. The lock is taken here,
+  # survives the `exec` below (the pid does not change) and is released by the run phase's trap —
+  # this trap covers a die between the two.
+  if [ "$DRY_RUN" != "1" ]; then
+    lock_acquire
+    trap 'lock_release' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+  fi
 
   say "fetching $REPO_URL"
   git -C "$ROOT" fetch --quiet --tags --prune origin || die "git fetch failed"
@@ -251,23 +322,33 @@ if [ "$PHASE" = "prepare" ]; then
   echo "$PREV" > "$STATE_DIR/previous"
   git -C "$ROOT" checkout --quiet --detach "$TARGET" || die "checkout of $SHORT failed"
 
-  # If this deploy replaced this very script, finish with the new copy — no stale half-run.
+  # If this deploy replaced this very script, finish with the new copy — no stale half-run. The
+  # lock belongs to the pid, and `exec` keeps it: the child inherits it and says which one it got.
   SELF="$ROOT/site/deploy/deploy.sh"
   if [ "${BOOK_DEPLOY_REEXEC:-0}" != "1" ]; then
     set -- --phase run --root "$ROOT" --ref "$TARGET" --health-timeout "$HEALTH_TIMEOUT"
     if [ "$MODE" = "rollback" ]; then set -- "$@" --rollback; fi
-    exec env BOOK_DEPLOY_REEXEC=1 "$SELF" "$@"
+    exec env BOOK_DEPLOY_REEXEC=1 BOOK_LOCK_FROM_PREPARE="$LOCK" "$SELF" "$@"
   fi
   PHASE="run"
 fi
 
 # --- run: gate, proof, load, publish, restart, health ------------------------------------------
+# The lock was taken in prepare and survives the `exec`: re-assert it here, and own it until this
+# process ends — a refusal, a die and a green exit all leave through the same trap.
+trap 'lock_release' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+lock_resume
 PREV="${PREV:-$(cat "$STATE_DIR/previous" 2>/dev/null || true)}"
 # The prepare phase re-execs this script for the run phase, and the re-exec carries no SHORT from
 # that process: recompute it here, or `set -u` kills a deploy that is already healthy (BOOK-79).
 SHORT="$(git -C "$ROOT" rev-parse --short HEAD)"
 command -v npm >/dev/null || die "npm is not on PATH (the deploy workflow sets PATH=/opt/homebrew/bin:…; by hand: export PATH=/opt/homebrew/bin:\$PATH)"
 command -v node >/dev/null || die "node is not on PATH (see npm above)"
+# The probe is a plain curl, so it is preflighted like the other two: a deploy that cannot read
+# /healthz must say so before it publishes anything, not after the restart.
+command -v curl >/dev/null || die "curl is not on PATH — the deploy reads /healthz with it; nothing was deployed or restarted"
 cd "$ROOT/site"
 say "gate: npm ci"
 npm ci --no-audit --no-fund >/dev/null 2>&1 || die "npm ci failed at $(git -C "$ROOT" rev-parse --short HEAD)"
@@ -293,13 +374,12 @@ service_root_guard
 
 # The box, not an ideal machine (BOOK-119 #3711): at load ~40 on 10 cores a healthy boot took
 # longer than 60 s. Say what the box is doing; pause once above the threshold; never refuse.
-LOAD_OUT="$(node "$ROOT/site/scripts/restart-probe.mjs" load --max-per-core "$LOAD_PER_CORE_MAX" 2>/dev/null || true)"
-LOAD_L1="$(field "$LOAD_OUT" load)"
-LOAD_CORES="$(field "$LOAD_OUT" cores)"
-LOAD_PER_CORE="$(field "$LOAD_OUT" per_core)"
-LOAD_ABOVE="$(field "$LOAD_OUT" above)"
-[ -n "$LOAD_PER_CORE" ] || LOAD_PER_CORE="unknown"
-say "load guard: load=${LOAD_L1:-unknown} on ${LOAD_CORES:-unknown} cores = ${LOAD_PER_CORE}/core"
+load_read "$LOAD_PER_CORE_MAX"
+if [ "$LOAD_L1" = "unavailable" ]; then
+  say "load guard: load=unavailable (sysctl: ${LOAD_MSG}) — no number for this box; the deploy proceeds"
+else
+  say "load guard: load=${LOAD_L1} on ${LOAD_CORES} cores = ${LOAD_PER_CORE}/core (via ${LOAD_SOURCE})"
+fi
 if [ "${LOAD_ABOVE:-0}" = "1" ]; then
   say "load guard: ${LOAD_PER_CORE}/core is above ${LOAD_PER_CORE_MAX} — pausing ${LOAD_PAUSE}s before the restart; the deploy window is longer on purpose, the deploy still happens"
   sleep "$LOAD_PAUSE"
@@ -315,88 +395,57 @@ RELEASE="$(readlink "$ROOT/site/web/dist/current" 2>/dev/null | sed 's|.*/||')"
 say "publish: current -> release $RELEASE"
 
 URL="$(health_url)"
-BASELINE="down"
-BASELINE_AT=0
-BASE_OUT="$(node "$ROOT/site/scripts/restart-probe.mjs" baseline --url "$URL" 2>/dev/null || true)"
-BASELINE="$(field "$BASE_OUT" probe)"
-BASELINE="${BASELINE:-down}"
-BASELINE_AT="$(field "$BASE_OUT" at)"
-BASELINE_AT="${BASELINE_AT:-0}"
-say "restart baseline: $BASELINE at $URL — last 200 before the restart at ${BASELINE_AT} (0 = the site was already down, not attributed to this deploy)"
+# A1: the baseline is the same probe as the window (`health_read`), and its failure is recorded,
+# not interpreted: `down` is a real non-200 answer, `unknown` a read that could not be made.
+baseline_read "$URL" || true
+case "$BASELINE" in
+  up) say "restart baseline: up at $URL — last 200 before the restart at ${BASELINE_AT} (served ${BASELINE_COMMIT:-unknown})" ;;
+  down) say "restart baseline: down at $URL — the site answered status=${BASELINE_STATUS} and was not 200; nothing to attribute to this deploy (err=none)" ;;
+  *) say "restart baseline: unknown at $URL — could not be measured (err=${BASELINE_ERR} ${BASELINE_MSG}); the downtime will be unknown, and this is not evidence about the site" ;;
+esac
 
 # BOOK-119 review: `set -e` used to end the run here on a failed `launchctl kickstart` — after
 # the publish, with `current` already on the new release and no audit line at all. A failed
 # signal is a health outcome, and the red path below asks whether the previous commit serves.
-KICKSTART_T0="$(node -p 'Date.now()')"
-HEALTH_OUT=""
-if kickstart; then
-  set +e
-  HEALTH_OUT="$(probe_wait "$URL" "$BUILT_COMMIT" "$PREV")"
-  set -e
+KICKSTART_T0="$(now_ms)"
+if service_kickstart "$SERVICE_LABEL" "$PLIST"; then
+  # A2: a restart was issued, so a window is measured around it — always, with a real elapsed time.
+  window_settle "$URL" "$BUILT_COMMIT" "$PREV" "$KICKSTART_T0"
 else
-  say "kickstart failed: the job was not signalled — the previous process is still serving"
+  HEALTH="none"
+  say "kickstart: no restart was issued (see above) — nothing to measure; the red path reads what answers instead"
 fi
-HEALTH="$(field "$HEALTH_OUT" health)"
-HEALTH="${HEALTH:-fail}"
-HEALTH_MS="$(field "$HEALTH_OUT" health_ms)"
-HEALTH_MS="${HEALTH_MS:-0}"
-FIRST_AT="$(field "$HEALTH_OUT" first_at)"
-REPORTED_COMMIT="$(field "$HEALTH_OUT" commit)"
-# Visible downtime (#3711): the last 200 before the restart to the first 200 after it — a fact
-# about the site, not `health_ms`, which is the deploy's own polling window (dead time included).
-RESTART_MS="$(downtime "$BASELINE_AT" "$FIRST_AT" "$HEALTH")"
-PERCENT=0
-if is_number "$HEALTH_MS" && [ "$BUDGET_MS" -gt 0 ]; then PERCENT=$((HEALTH_MS * 100 / BUDGET_MS)); fi
+recompute_window
 
-if [ -z "$HEALTH_OUT" ]; then
-  say "no healthz window was measured: the restart did not happen (see above)"
-elif [ "$HEALTH" = "fast" ]; then
-  say "healthz ok after ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget (poll 200 ms, ±200 ms resolution)"
-elif [ "$HEALTH" = "late" ]; then
-  SLOW=1
-  say "healthz ok LATE after ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget; the budget ran out but the process now serves ${BUILT_COMMIT}: late success, no rebuild, no second restart"
-elif [ "$HEALTH" = "stale" ]; then
-  say "healthz answers ${REPORTED_COMMIT:-unknown}, the previous build — the new code (${BUILT_COMMIT}) never served after ${HEALTH_MS} ms; not restarting the same commit twice"
-else
-  say "healthz did not answer ${BUILT_COMMIT} after ${HEALTH_MS} ms (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms)"
-fi
+case "$HEALTH" in
+  fast) say "healthz ok after ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget (poll 200 ms, ${WINDOW_READS:-0} reads)" ;;
+  late) SLOW=1
+        say "healthz ok LATE after ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget; the budget ran out but the process now serves ${BUILT_COMMIT}: late success, no rebuild, no second restart" ;;
+  stale) say "healthz answers ${REPORTED_COMMIT:-unknown}, the previous build — the new code (${BUILT_COMMIT}) never served after ${HEALTH_MS} ms (${WINDOW_READS:-0} reads); not restarting the same commit twice" ;;
+  fail) say "healthz did not answer ${BUILT_COMMIT} after ${HEALTH_MS} ms (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms, ${WINDOW_READS:-0} reads); probe=$PROBE_USED" ;;
+  *) say "no restart was issued, so there is no window: health=$HEALTH" ;;
+esac
 if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
   say "time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of the ${BUDGET_MS} ms budget; visible downtime ${RESTART_MS} ms (baseline ${BASELINE} at ${BASELINE_AT}, first 200 at ${FIRST_AT})"
-fi
-
-if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
-  say "checking the frozen frame"
-  # Exit 0 is the only success. A mismatch (1) means the running site serves text that is not
-  # the canon; a usage error (2) means this checkout cannot even run its own script. Both are
-  # this deploy being unhealthy, so both take the rollback path below — never `exit 0`.
-  if frame_check; then
-    FRAME="ok"
-    mkdir -p "$STATE_DIR"
-    echo "$GOOD" > "$STATE_DIR/last-good"
-    if [ -n "$RELEASE" ] && [ "$RELEASE" != "unknown" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
-    audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=ok restart=ran $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
-    say "healthy: $SHORT at $URL; time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms, visible downtime ${RESTART_MS} ms, load ${LOAD_PER_CORE}/core"
-    exit 0
-  fi
-  say "the running site does not serve the frozen frame — rolling back"
-  FRAME="fail"
+  finish_green || true
 fi
 
 # --- red path ----------------------------------------------------------------------------------
-# The defect in BOOK-119 #3711: a timeout rebuilt the same commit and restarted again. Before
-# anything is rebuilt, ask two questions — is the process already serving the previous commit,
-# and does it serve the canon? Only then may `last-good` record it.
-#
-# In `--rollback` mode `PREV` is re-read from `$STATE_DIR/previous`: it is the commit being rolled
-# back *from*. Skipping there would write the bad commit as last-good and hand the die-message a
-# command that reinstalls it — so the skip is deploy-only, and a rollback that did not reach its
-# own commit is `rollback-failed` and never touches `last-good`.
-ROLLBACK_SKIPPED=0
-ALREADY=""
-if [ "$MODE" = "deploy" ] && [ -n "$PREV" ]; then
-  ALREADY="$(running_commit "$URL" || true)"
+# One plain read (three when the window saw nothing usable) is the last evidence before anything is
+# rebuilt or restarted. It upgrades a verdict the window missed and stamps its own moment (B2), so
+# `health=late` never reaches an audit with `restart_ms=unknown`.
+plain_verdict "$URL" "$BUILT_COMMIT" "$PREV" 3 || true
+recompute_window
+if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
+  say "late success: prod serves ${PLAIN_COMMIT:-$BUILT_COMMIT} — the deploy went through and the measurement lost it; no rebuild, no second restart"
+  finish_green || true
 fi
-if [ -n "$ALREADY" ] && starts_with "$PREV" "$ALREADY"; then
+
+# The process already serves the previous commit: nothing was rebuilt, and nothing will be. In
+# `--rollback` mode `PREV` is re-read from `$STATE_DIR/previous`: it is the commit being rolled
+# back *from*, so the skip is deploy-only, and a rollback that did not reach its own commit is
+# `rollback-failed` and never touches `last-good`.
+if [ "$MODE" = "deploy" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PREV"; then
   say "the running process already serves ${PREV:0:7} — checking the frame and the release on disk before anything is written"
   if frame_check; then
     FRAME="ok"
@@ -405,42 +454,62 @@ if [ -n "$ALREADY" ] && starts_with "$PREV" "$ALREADY"; then
     # process agree — otherwise the next restart serves the red shell this deploy just refused.
     LAST_GOOD_RELEASE="$(cat "$STATE_DIR/last-good-release" 2>/dev/null || true)"
     if [ -n "$LAST_GOOD_RELEASE" ] && node "$ROOT/site/scripts/release.mjs" swap --id "$LAST_GOOD_RELEASE" >/dev/null 2>&1; then
-      ROLLBACK_SKIPPED=1
       RELEASE="$LAST_GOOD_RELEASE"
       say "current -> release $RELEASE (a moment ago it named the failed publish)"
     else
       say "the release behind ${PREV:0:7} is not in the store (last-good-release='${LAST_GOOD_RELEASE:-none}') — rebuilding it so disk and process agree"
     fi
-  else
-    # The process answers, but not with the canon: `last-good` must not record it, and a restart
-    # of the same commit would not change what the data says.
-    FRAME="fail"
-    say "the running process answers ${PREV:0:7} but does not serve the frozen frame; last-good was NOT written — a human must look at the canon"
-    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=fail restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    say "the running process already serves ${PREV:0:7} and is healthy — no npm ci, no rebuild, no publish, no second restart"
+    mkdir -p "$STATE_DIR"
+    echo "$PREV" > "$STATE_DIR/last-good" # `last-good-release` already names $RELEASE
+    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=ok restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    say "deploy of $SHORT is red; prod still serves ${PREV:0:7}, current is back on release $RELEASE — the process was not restarted"
     exit 1
   fi
+  # The process answers, but not with the canon: `last-good` must not record it, and a restart
+  # of the same commit would not change what the data says.
+  FRAME="fail"
+  say "the running process answers ${PREV:0:7} but does not serve the frozen frame; last-good was NOT written — a human must look at the canon"
+  audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=fail restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  exit 1
 fi
 
-if [ "$ROLLBACK_SKIPPED" = "1" ]; then
-  say "the running process already serves ${PREV:0:7} and is healthy — no npm ci, no rebuild, no publish, no second restart"
-  mkdir -p "$STATE_DIR"
-  echo "$PREV" > "$STATE_DIR/last-good" # `last-good-release` already names $RELEASE
-  audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$BUILT_COMMIT release=$RELEASE health=$HEALTH frame=ok restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
-  say "deploy of $SHORT is red; prod still serves ${PREV:0:7}, current is back on release $RELEASE — the process was not restarted"
-  exit 1
+# A restart that was never issued says nothing about the build: no rollback, no second attempt to
+# signal the same broken job — a human has to look at the service.
+if [ "$HEALTH" = "none" ]; then
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=none frame=$FRAME restart=failed $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  die "the restart could not be issued (kickstart failed even after bootstrapping from $PLIST) — nothing was restarted, nothing was rolled back; prod answers ${PLAIN_COMMIT:-nothing} at $URL; a human must look"
+fi
+
+# A frame failure is a canon problem, not a code one: a rollback would restart code that is
+# already answering and change nothing about the data — so nothing is restarted, and the message
+# names what answered.
+if [ "$FRAME" = "fail" ]; then
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=fail restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  if [ -n "$PLAIN_COMMIT" ]; then
+    die "prod answers $PLAIN_COMMIT but does not serve the frozen frame (health=$HEALTH after ${HEALTH_MS} ms) — a rollback would restart code that already answers and change nothing about the canon; nothing was restarted. A human must look at the canon"
+  fi
+  die "prod answers nothing at $URL and the frame cannot be checked (health=$HEALTH after ${HEALTH_MS} ms) — a rollback would restart on a guess; nothing was restarted. A human must look"
 fi
 
 # A rollback that did not reach its own commit has nothing better behind it: the generic path
 # below would check out `PREV`, which in this mode is the commit the rollback exists to leave.
 if [ "$MODE" = "rollback" ]; then
-  ROLLBACK_RESTART=failed
-  case "$HEALTH" in fast|late) ROLLBACK_RESTART=ran ;; esac
-  audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$ROLLBACK_RESTART release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
-  die "the rollback did not come up healthy (health=$HEALTH frame=$FRAME, prod reports ${REPORTED_COMMIT:-nothing}) — prod is DOWN, a human must look"
+  audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  if [ -n "$PLAIN_COMMIT" ]; then
+    die "the rollback did not come up healthy (health=$HEALTH after ${HEALTH_MS} ms of ${BUDGET_MS} ms, frame=$FRAME); prod answers $PLAIN_COMMIT, not the commit the rollback built — a human must look"
+  fi
+  die "the rollback did not come up healthy (health=$HEALTH after ${HEALTH_MS} ms of ${BUDGET_MS} ms, frame=$FRAME); prod answers nothing at $URL — a human must look"
 fi
 
-[ -n "$PREV" ] || die "no previous commit to roll back to; prod is NOT healthy — a human must look"
-say "rolling back to ${PREV:0:7}: the running process does not serve it"
+# A4: two independent negatives, or prod is not restarted on a guess.
+if ! rollback_allowed "$HEALTH_MS" "$BUDGET_MS" "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME restart=skipped $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  die "not rolling back — $ROLLBACK_WHY; a rollback restarts prod, and this verdict has only one negative. Nothing was restarted. A human must look"
+fi
+
+[ -n "$PREV" ] || die "no previous commit to roll back to; prod is NOT serving the build of this run — a human must look"
+say "rolling back to ${PREV:0:7}: health=$HEALTH after ${HEALTH_MS} ms and prod does not serve ${BUILT_COMMIT}"
 git -C "$ROOT" checkout --quiet --detach "$PREV" || die "rollback checkout failed"
 cd "$ROOT/site"
 npm ci --no-audit --no-fund >/dev/null 2>&1 || say "warning: npm ci failed during rollback; rebuilding anyway"
@@ -450,46 +519,53 @@ RELEASE="$(readlink "$ROOT/site/web/dist/current" 2>/dev/null | sed 's|.*/||')"
 ROLLBACK_COMMIT="$(built_commit)"
 # The rollback restarts too, so it takes its own baseline: the line must state what the site lost
 # in this restart, not reuse the numbers of the attempt that failed.
-BASELINE="down"
-BASELINE_AT=0
-BASE_OUT="$(node "$ROOT/site/scripts/restart-probe.mjs" baseline --url "$URL" 2>/dev/null || true)"
-BASELINE="$(field "$BASE_OUT" probe)"
-BASELINE="${BASELINE:-down}"
-BASELINE_AT="$(field "$BASE_OUT" at)"
-BASELINE_AT="${BASELINE_AT:-0}"
-KICKSTART_T0="$(node -p 'Date.now()')"
-ROLLBACK_OUT=""
-if kickstart; then
-  set +e
-  ROLLBACK_OUT="$(probe_wait "$URL" "$ROLLBACK_COMMIT" "$BUILT_COMMIT")"
-  set -e
+baseline_read "$URL" || true
+say "rollback baseline: $BASELINE at $URL (err=${BASELINE_ERR:-none}${BASELINE_MSG:+ $BASELINE_MSG})"
+KICKSTART_T0="$(now_ms)"
+if service_kickstart "$SERVICE_LABEL" "$PLIST"; then
+  window_settle "$URL" "$ROLLBACK_COMMIT" "$BUILT_COMMIT" "$KICKSTART_T0"
 else
-  say "kickstart failed during the rollback: the job was not signalled"
+  HEALTH="none"
+  say "kickstart: the rollback could not restart the service (see above)"
 fi
-HEALTH="$(field "$ROLLBACK_OUT" health)"
-HEALTH="${HEALTH:-fail}"
-HEALTH_MS="$(field "$ROLLBACK_OUT" health_ms)"
-HEALTH_MS="${HEALTH_MS:-0}"
-RESTART_MS="$(downtime "$BASELINE_AT" "$(field "$ROLLBACK_OUT" first_at)" "$HEALTH")"
-PERCENT=0
-if is_number "$HEALTH_MS" && [ "$BUDGET_MS" -gt 0 ]; then PERCENT=$((HEALTH_MS * 100 / BUDGET_MS)); fi
-say "rollback healthz: $HEALTH after ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms; visible downtime ${RESTART_MS} ms"
+recompute_window
+say "rollback healthz: $HEALTH after ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms; visible downtime ${RESTART_MS} ms; probe=$PROBE_USED"
+
+# The same evidence rule as the deploy's own restart: three plain reads before the rollback is
+# called dead. Its own build answering is the success path below; echo of the failed build is a
+# late success of the deploy above.
+if [ "$HEALTH" != "fast" ] && [ "$HEALTH" != "late" ]; then
+  plain_verdict "$URL" "$ROLLBACK_COMMIT" "$BUILT_COMMIT" 3 || true
+  recompute_window
+fi
 if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
   say "checking the frozen frame of the rollback"
   if frame_check; then
     FRAME="ok"
     echo "$PREV" > "$STATE_DIR/last-good"
     if [ -n "$RELEASE" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
-    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=ok restart=ran release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+    audit "rolled-back mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=ok restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
     say "rolled back to ${PREV:0:7}; prod healthy; the deploy of $SHORT stays red"
     exit 1
   fi
   FRAME="fail"
   say "the rollback answers but does not serve the frozen frame; last-good was NOT written"
 fi
-# The audit must not contradict itself: this path did restart once, and a late answer is slow.
-ROLLBACK_RESTART=failed
-if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then ROLLBACK_RESTART=ran; fi
-if [ "$HEALTH" = "late" ]; then SLOW=1; fi
-audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$ROLLBACK_RESTART release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
-die "rollback did not come up healthy either — prod is DOWN, a human must look; the audit names release=${RELEASE:-unknown}, health=$HEALTH, frame=$FRAME (log: ~/Library/Logs/book-site.log)"
+
+# The process answering with the *deploy's* build after the rollback is the incident's exact
+# state: the site was up the whole time. That is a late success — green, and the audit says it.
+if [ "$HEALTH" = "stale" ] && names_commit "$PLAIN_COMMIT" "$BUILT_COMMIT"; then
+  HEALTH="late"
+  SLOW=1
+  say "late success: prod serves ${PLAIN_COMMIT} (the build of the deploy that was being rolled back) — nothing is restarted again"
+  if [ -n "$RELEASE" ] && [ "$RELEASE" != "unknown" ]; then
+    say "note: current names release $RELEASE (the rollback's publish) while the process serves $SHORT — the next deploy makes disk agree"
+  fi
+  finish_green keep || true
+fi
+
+audit "rollback-failed mode=$MODE ref=$REF sha=$PREV target=$GOOD health=$HEALTH frame=$FRAME restart=$(restart_field) release=$RELEASE $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+if [ -n "$PLAIN_COMMIT" ]; then
+  die "rollback did not come up healthy (health=$HEALTH after ${HEALTH_MS} ms, frame=$FRAME); prod answers $PLAIN_COMMIT, not the build of this run — a human must look; the audit names release=${RELEASE:-unknown} (log: ~/Library/Logs/book-site.log)"
+fi
+die "rollback did not come up healthy either — prod answers nothing at $URL, a human must look; the audit names release=${RELEASE:-unknown}, health=$HEALTH, frame=$FRAME (log: ~/Library/Logs/book-site.log)"
