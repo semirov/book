@@ -225,7 +225,10 @@
 }
 .boot-status {
   position: absolute;
-  inset-inline: var(--gut);
+  /* BOOK-88 final: the boot field is a `.page`, i.e. the column itself, so the sentence needs
+     no gutter of its own — 0 puts it on the same left edge the cover's title lands on when
+     the app arrives (the whole point of the shared field). */
+  inset-inline: 0;
   top: calc(env(safe-area-inset-top) + 24px);
   margin: 0;
   font-family: var(--label);

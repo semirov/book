@@ -54,32 +54,44 @@ h3 {
   font-weight: 400;
 }
 
-/* BOOK-88 §2 — the page is ONE column, and inside it one prose block.
-   `--column` is the frame: up to 1000 px, centred, with the gutters inside it, so every
-   register — header, cover, page 2, TOC, chronicle, colophon, discussion, the legal
-   documents — and the prose itself start on the same left edge. `--measure` never sizes a
-   box: it is the text width of the prose, and the one rule below is the only place it caps
-   text (the paragraph-chain popover in chronicle.css reads it for its own overlay geometry,
-   never as prose). `.sheet` stays in the markup as the name of a register and has no rule of
-   its own: the override that gave those registers the frame's full width is what pulled the
-   header's right-hand item off the text it belongs to (BOOK-88). Base rules are the desktop:
-   every query below narrows, never widens. */
-.page {
+/* BOOK-88 §2 — ONE canvas, and inside it ONE column for every text block.
+   `--column` is the canvas: up to 1000 px, centred, and the only box on the page allowed to
+   be wider than the text. It owns the gutters (`padding-inline`) and the centring, and it is
+   the only rule that states either — a register that re-adds a gutter or its own `auto`
+   margin takes the column off the canvas's left edge. `--measure` is THE column: the TOC,
+   the colophon, the header's rows, the cover, page 2, the discussion, the legal documents
+   and the prose are all exactly this box, flush left inside the canvas (252 at 1440 — the
+   owner's number, not the canvas's 220), so the reading measure *is* the column and no two
+   blocks can read as two documents. The 1000 px survives as the outer bound that centres the
+   column; nothing inside it may be wider than the column but a marginal note (the folio), and
+   those are listed, one by one, in the guard. `.sheet` stays in the markup as the name of a
+   register and has no rule of its own. Base rules are the desktop: every query below narrows,
+   never widens. */
+.canvas {
   max-width: var(--column);
   margin: 0 auto;
-  padding: 0 var(--gut);
+  padding-inline: var(--gut);
 }
-/* THE ONE PROSE RULE (BOOK-88 §2). The prose keeps a comfortable measure inside the column
-   and stays flush left: no `margin-inline: auto` on any of these selectors, in any sheet, or
-   the text drifts to a third left edge. `.toc-row` / `.toc-link` / `.toc-line` are
-   deliberately absent — the TOC is column furniture, not prose. `.ch-placeholder` is the form
-   of the prose (its bars must stand where the text will) and `.ch-fail` is the chapter's own
-   `.state-line`, whose retry belongs on the same right edge as the page's. `.consent-body` is
-   the consent strip's content block: the notice stands on the prose measure, so the copy and
-   its two hairlines share one left edge with the page's text. BOOK-68: the seam strip and its
-   stale line are block **siblings** of the paragraph, not of it — so they are prose too, or
-   the strip's band and its `.seam-cta` (`margin-left: auto`) run to the column's right edge
-   while the paragraph above them stops at the measure. */
+/* Every register is exactly the text column: the canvas supplies the gutters and the
+   centring, so a register states neither. Its own padding is block-only (`26px 0 72px`). */
+.page {
+  max-width: var(--measure);
+  margin: 0;
+  padding: 0;
+}
+/* THE ONE PROSE RULE (BOOK-88 §2). The prose *is* the column since the final frame, so this
+   cap is nearly a no-op — it is kept because it is what pins a future child: a prose block
+   may never be wider than the column it stands in, whoever its parent is. Flush left, always:
+   no `margin-inline: auto` on any of these selectors, in any sheet, or the text drifts to a
+   third left edge. `.toc-row` / `.toc-link` / `.toc-line` are deliberately absent — the TOC
+   is column furniture, not prose. `.ch-placeholder` is the form of the prose (its bars must
+   stand where the text will) and `.ch-fail` is the chapter's own `.state-line`, whose retry
+   belongs on the same right edge as the page's. `.consent-body` is the consent strip's
+   content block: the notice stands on the column, so the copy and its two hairlines share one
+   left edge with the page's text. BOOK-68: the seam strip and its stale line are block
+   **siblings** of the paragraph, not of it — so they are prose too, or the strip's band and
+   its `.seam-cta` (`margin-left: auto`) run to the column's right edge while the paragraph
+   above them stops at the measure. */
 .p,
 .ch-title,
 .ch-h,
@@ -173,9 +185,13 @@ h3 {
   border: 0;
 }
 
-/* The no-JS fallback is not a `.page` (it lives in `index.html`), but it is the same column. */
+/* The no-JS fallback is not a `.page` and not inside `.canvas` (it lives in `index.html`), so
+   nothing supplies its gutters and nothing centres it: it states the measure plus its own two
+   gutters and centres the result — the one box outside the canvas, named in the guard's
+   `OUTSIDE_CANVAS` row. It is centred rather than flush left because there is no canvas to be
+   flush inside; its text is centred anyway. */
 .noscript {
-  max-width: var(--column);
+  max-width: calc(var(--measure) + 2 * var(--gut));
   margin: 0 auto;
   padding: 64px var(--gut);
   text-align: center;

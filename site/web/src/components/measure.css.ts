@@ -35,6 +35,10 @@ export const BASE = '../styles/base.css';
 export const where = (rule: Rule, property: string, value: string): string =>
   `${rule.file}: ${rule.selector} { ${property}: ${value} }`;
 
+/** A rule whose selector is exactly one selector — no list, no compound, no descendant. */
+export const exactly = (rule: Rule, selector: string): boolean =>
+  rule.parts.length === 1 && squash(rule.parts[0] ?? '') === squash(selector);
+
 /** Every value a rule states for one property or token, with the rule it came from. */
 export function stating(rules: Rule[], name: string): Array<{ rule: Rule; value: string }> {
   return rules.flatMap((rule) => {

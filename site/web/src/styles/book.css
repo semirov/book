@@ -273,7 +273,8 @@
 .colophon {
   margin-top: 52px;
   border-top: 1px solid var(--ink);
-  padding: 14px var(--gut) 44px;
+  /* Block-only: the colophon is the column (BOOK-88 final). */
+  padding: 14px 0 44px;
   display: grid;
   gap: 8px;
   font-size: var(--fs-micro);

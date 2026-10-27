@@ -164,13 +164,15 @@
   --fs-body: 18px;
   --fs-lead: 19px;
 
-  /* space — BOOK-DOC-35 §1, BOOK-88 §2: the frame, the column and the prose block.
-     `--column` is THE COLUMN — the page's one frame: up to 1000 px, centred, with the gutters
-     inside it, and every register (header, cover, page 2, TOC, chronicle, colophon, the
-     discussion, the legal documents) is laid out in that same box, on that same left edge.
-     It is the only token that sizes a box.
-     `--measure` is the width of the prose TEXT and never a box: one rule in base.css caps the
-     prose at it, flush left inside the column — 37.5rem = 600 px = 67 ch at 18 px. */
+  /* space — BOOK-DOC-35 §1, BOOK-88 §2: the canvas, the column and the prose block.
+     `--column` is THE CANVAS — up to 1000 px, centred, with the gutters inside it. It is the
+     outer bound, and the only box on the page that may be wider than the text: the sole reader
+     of the token. Nothing inside it may be wider than the measure but a marginal note (the
+     running folio), and those are listed one by one in the layout guard.
+     `--measure` is THE COLUMN — 37.5rem = 600 px = 67 ch at 18 px, and every register (the
+     TOC, the colophon, the header's rows, the cover, page 2, the discussion, the legal
+     documents) is exactly this box, flush left inside the canvas: 252 at 1440, the canvas's
+     220 plus its 32 px gutter. The prose is not narrower than the column any more. */
   --gut: 32px;
   --column: 1000px;
   --measure: 37.5rem;

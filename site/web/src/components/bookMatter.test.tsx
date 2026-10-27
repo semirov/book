@@ -433,14 +433,6 @@ describe('the live table of contents', () => {
     expect(empty).toContain('toc-row-empty');
     expect(visibleText(empty).trim()).toBe('08замысел8');
     expect(rowPage(empty)).toBe(8);
-
-    // BOOK-89 (owner): the page cell ends on the prose axis — the whole row-minus-measure inset, not half (BOOK-88).
-    const inset = 'padding-inline-end: max(0px, calc(100% - var(--measure)))';
-    const live = sheets['../styles/live.css'] ?? '';
-    expect(declarations(live, '.toc-link')).toContain(inset);
-    expect(declarations(live, '.toc-line')).toContain(inset);
-    expect(declarations(live, '.toc-page')).toContain('inline-size: 3ch');
-    expect(declarations(live, '.toc-page')).toContain('white-space: nowrap');
   });
 
   it('speaks the page once per row: the drawn digit is aria-hidden, «страница N» is not', () => {
