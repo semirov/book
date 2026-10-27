@@ -46,8 +46,9 @@
 
 /* ---- the chapter's prose field -------------------------------------------------------
    8 lines as three paragraphs 3 / 3 / 2. It sets no height of its own: it lives inside the
-   `.ch-placeholder` box, whose min-height is already the estimated chapter height (≥1200 px),
-   so 8 × 1.68em + 2 × 1.02em ≈ 264 px at 390 adds 0 to the page. */
+   `.ch-placeholder` box, whose min-height is `max(estimateChapterHeight, CHAPTER_BOX_PX)` —
+   the form's own worst case, 279 px — so 8 × 1.68em + 2 × 1.02em ≈ 264 px at 390 adds
+   0 to the page. */
 
 .skel-p {
   margin: 0;
