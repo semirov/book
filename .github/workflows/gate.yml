@@ -1,0 +1,54 @@
+name: Gate
+
+# The one gate every change passes: the same commands CONTRIBUTING.md asks a person to run,
+# on the same Node as prod. Red here means the branch does not land — main is protected and
+# requires this check (BOOK-74).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A PR branch only needs its newest head; main is never cancelled mid-run (a deploy may follow).
+  group: gate-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Equal to prod: `node -v` on the Mac mini. `engines` in site/package.json allows a
+          # range; CI does not get to pick a different point release than the one that serves.
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install (npm ci, lockfile is the contract)
+        working-directory: site
+        run: npm ci
+
+      - name: Verify (typecheck, arch, tests)
+        working-directory: site
+        run: npm run verify
+
+      - name: Coverage (floor from vitest.config.ts, a red run is a red gate)
+        working-directory: site
+        run: npm run test:coverage
+
+      - name: Build
+        working-directory: site
+        run: npm run build
+
+      # Manuscript and canon must not drift from the site: runs from the repo root, no build needed.
+      - name: Validate manuscript (structure and law rules)
+        run: node site/bin/validate.mjs --strict

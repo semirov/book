@@ -1,0 +1,66 @@
+name: Deploy
+
+# Prod is the Mac mini that runs this repository's launchd jobs. The job reaches it through that
+# machine's own self-hosted runner (label `mac-mini`): no inbound SSH, no private key stored,
+# and the job needs no repository secret — the deploy clone is fetched over https from a public
+# repository, and `site/.env` never leaves the machine.
+#
+# The runner is not offered to pull requests. A deploy can only be started by a person with
+# write access (workflow_dispatch) or by pushing a tag, so unreviewed fork code never runs on the
+# machine that serves the book. `actions/checkout` is deliberately absent: it would `git clean`
+# the workspace, and the one file that must survive — `site/.env` — is gitignored.
+#
+# The script does the rest: gate (typecheck, arch, tests, coverage floor, build, manuscript),
+# refuse if prod is not running this checkout, `launchctl kickstart -k`, wait for /healthz 200,
+# and roll back to the previous commit if the service does not come up. Runbook: Lific BOOK-74.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Deploy a ref, or roll back to the last known good commit
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      ref:
+        description: Branch, tag or sha to deploy (ignored by rollback)
+        default: main
+        required: true
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: [self-hosted, macOS, mac-mini]
+    timeout-minutes: 45
+    steps:
+      - name: Bootstrap the deploy clone
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="${BOOK_DEPLOY_ROOT:-$HOME/book-deploy}"
+          if [ ! -d "$root/.git" ]; then
+            git clone --quiet "https://github.com/${GITHUB_REPOSITORY}.git" "$root"
+          fi
+          echo "deploy root: $root ($(git -C "$root" rev-parse --short HEAD))"
+
+      - name: Deploy
+        shell: bash
+        env:
+          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+          ACTION: ${{ github.event_name == 'workflow_dispatch' && inputs.action || 'deploy' }}
+        run: |
+          set -euo pipefail
+          root="${BOOK_DEPLOY_ROOT:-$HOME/book-deploy}"
+          if [ "$ACTION" = "rollback" ]; then
+            exec "$root/site/deploy/deploy.sh" --rollback
+          fi
+          exec "$root/site/deploy/deploy.sh" --ref "$TARGET_REF"
