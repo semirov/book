@@ -1,11 +1,12 @@
 /**
- * BOOK-88 — the guard behind `measure.test.ts`: one canvas, one column, one right edge.
+ * BOOK-88/BOOK-91 — the guard behind `measure.test.ts`: one column, one canvas, equal margins.
  *
- * The rule (owner, 2026-10-27, final): the canvas is 1000 px at most and centred; the column is
- * the reading measure, and *every* text block is exactly that box — the header's rows, the
- * ribbon, the cover, page 2, the TOC, the chronicle, the colophon, the discussion, the legal
- * documents, the consent strip and the prose. The prose is no longer narrower than the column:
- * it *is* the column, flush left inside the canvas (252 at 1440, not 220).
+ * The rule (owner, 2026-10-27, final; BOOK-91): the column is the reading measure, and *every*
+ * text block is exactly that box — the header's rows, the ribbon, the cover, page 2, the TOC,
+ * the chronicle, the colophon, the discussion, the legal documents, the consent strip and the
+ * prose. The canvas is not a second, wider frame: it is the column plus its two gutters and it
+ * centres the column in the viewport (400 at 1440, 192 at 1024, 73 at 768 — equal on both
+ * sides), instead of leaving every pixel of slack on the right.
  *
  * This module is the file side: it globs the cascade and the register components as text and
  * exposes the entry points the test needs. The six sheet checks are in `measure.rules.ts` and
@@ -28,7 +29,7 @@ import {
 import { layoutProblemsOf, tokenPxOf } from './measure.rules.ts';
 
 export { BASE, TOKENS } from './measure.css.ts';
-export { CANVAS, CANVAS_READERS } from './measure.tokens.ts';
+export { CANVAS, CANVAS_BOUND, FOLIO_INSET } from './measure.tokens.ts';
 export { COLUMN_BOXES, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS } from './measure.rules.ts';
 
 /** The sheets as text, and the entry point they are derived from. */

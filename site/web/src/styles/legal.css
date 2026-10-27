@@ -10,8 +10,9 @@
 /* The static documents (audit M5): «приватность» and «правила». Same column and voice as the
    book, no card, no third-party byte — they must read when the API is down. BOOK-88: the
    document is a `.page`, so it takes the column from `.page` and states no box of its own.
-   The final frame made that column the prose's own measure (600 at 1440, flush left in the
-   canvas at 252), so every child of the document — kicker, title, sections, lead — shares
+   The final frame made that column the prose's own measure (640 at 1440, centred, so the
+   document starts at 400), so every child of the document — kicker, title, sections, lead —
+   shares
    both edges, and the one prose rule (`.legal > *`) is the cap that pins them. BOOK-92 states
    rhythm (8 / 12 / 24 / 32) and the label voice — kicker, nav — and the two intents do not
    fight, because the width is `.page`'s. The one width BOOK-92 did state, the lead's `none`,

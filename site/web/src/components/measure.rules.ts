@@ -1,22 +1,22 @@
 /**
- * BOOK-88 — the six checks behind `measure.test.ts`: one canvas, one column, one right edge.
+ * BOOK-88/BOOK-91 — the six checks behind `measure.test.ts`: one column, one canvas, equal margins.
  *
- * The rule (owner, 2026-10-27, final): the canvas is 1000 px at most and centred; the column
- * is the reading measure — 600 px at ≥1024, 584 px below, 342 px at 390 — and *every* text
- * block is exactly that box: the TOC, the colophon, the header's rows, the cover, page 2, the
- * discussion, the legal documents and the prose. The prose is no longer narrower than the
- * column: it *is* the column, so no two blocks can read as two documents. The 1000 px
- * survives as the outer bound that centres the column (220..1220 at 1440), and the column is
- * flush left inside it (252..852) — not centred in the viewport.
+ * The rule (owner, 2026-10-27, final; BOOK-91): the column is the reading measure — 640 px at
+ * ≥1024, 622.4 px below, 342 px at 390 — and *every* text block is exactly that box: the TOC,
+ * the colophon, the header's rows, the cover, page 2, the discussion, the legal documents and
+ * the prose. There is no second frame: the canvas is the column plus its two gutters and
+ * centres it, so the same slack sits on both sides (400..1040 in a 368..1072 canvas at 1440;
+ * 192..832 in 160..864 at 1024; 73..695 in 41..727 at 768; 24..366 at 390). The prose is not
+ * narrower than the column: it *is* the column, so no two blocks can read as two documents.
  *
  * The defect this is built for is a class, not a number: a text block stating a width of its
- * own. Rules are read as text and checked for: the two tokens and their homes (1, and
- * `--shell` gone for good); `var(--column)` as the box of `.canvas` only, plus the folio's one
- * position (2, in `measure.tokens.ts`); every register box exactly the measure, and no other
- * `max-width` but a copy cap, a listed overlay or the one box outside the canvas (3, 4); no
- * register stating an inline padding or a horizontal margin — the canvas owns both (5); every
- * prose selector still named by the one prose rule, which is what pins a future child (6).
- * The four-viewport arithmetic, on `tokenPx`, is check 7, in the test.
+ * own. Rules are read as text and checked for: the measure and its two steps, the retired
+ * `--shell`/`--column` gone for good (1); the canvas as the column plus its gutters, centred,
+ * and the folio's one position (2, in `measure.tokens.ts`); every register box exactly the
+ * measure, and no other `max-width` but a copy cap, a listed overlay or the one box outside
+ * the canvas (3, 4); no register stating an inline padding or a horizontal margin — the canvas
+ * owns both (5); every prose selector still named by the one prose rule, which is what pins a
+ * future child (6). The four-viewport arithmetic, on `tokenPx`, is check 7, in the test.
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row) bound a
  * sentence, not the page — and the overlays, which are laid over the page and keep their own
@@ -34,7 +34,7 @@ import {
   GAUGE,
   type Rule,
 } from './measure.css.ts';
-import { canvasProblems, tokenProblems, CANVAS } from './measure.tokens.ts';
+import { canvasProblems, tokenProblems, CANVAS, CANVAS_BOUND } from './measure.tokens.ts';
 
 /** The prose block of the design memo §2 — the selectors the one prose rule names. */
 export const PROSE = [
@@ -119,8 +119,9 @@ const CENTRED = [
 /** What may legitimately narrow a `ch` line: one cap, or one against the parent's width. A
  *  `percentage`/`none` cap is a media cap too (`img { max-width: 100% }`), never a page width. */
 const COPY_CAP = /^(?:none|100%|min\(\s*100%\s*,\s*[1-9]\d*ch\s*\)|[1-9]\d*ch)$/u;
-/** The measure plus two gutters: the no-JS fallback's box, and the chain overlay's. Inside the
- *  canvas it is the old text box — the one that lands the text two gutters past the column. */
+/** The measure plus two gutters: the canvas's own bound, the no-JS fallback's box, and the
+ *  chain overlay's. It is the canvas now (BOOK-91) — a register inside the canvas is the
+ *  measure, never this box. */
 const OUTSIDE_TEXT_BOX = 'calc(var(--measure)+2*var(--gut))';
 const MEASURE_VALUE = 'var(--measure)';
 const CENTRING = 'only the canvas, the no-JS box and the overlays may centre themselves; the registers stay flush left inside the canvas';
@@ -198,8 +199,8 @@ function boxProblems(rules: Rule[]): string[] {
     const raw = rule.declarations.get('max-width');
     if (raw === undefined) continue;
     const value = squash(raw);
-    // The canvas's own bound is `measure.tokens.ts`'s check 2; it is the one wider box.
-    if (exactly(rule, CANVAS) && value === 'var(--column)') continue;
+    // The canvas's own bound is `measure.tokens.ts`'s check 2: the column plus its gutters.
+    if (exactly(rule, CANVAS) && value === squash(CANVAS_BOUND)) continue;
     if (value === MEASURE_VALUE && (isColumnBox(rule) || isProse(rule))) continue;
     // `none` is a copy cap only for a block that is not a register: on a register it removes
     // the column and leaves the canvas's 936 px — the exact defect this file is for.
@@ -214,7 +215,7 @@ function boxProblems(rules: Rule[]): string[] {
     );
     if (overlay === undefined) {
       problems.push(
-        `${where(rule, 'max-width', raw)} — a register is exactly the column (max-width: var(--measure)); the canvas (var(--column)) is the only wider box, and a ch cap is copy, not a page`,
+        `${where(rule, 'max-width', raw)} — a register is exactly the column (max-width: var(--measure)); the canvas is the column plus its two gutters, and a ch cap is copy, not a page`,
       );
     }
   }
@@ -245,14 +246,17 @@ function boxProblems(rules: Rule[]): string[] {
 }
 
 /** 4 — the measure is the column: only `.page`, `.ribbon` and the prose rule state it, only as
- *  a `max-width`; the measure-plus-two-gutters box belongs to the two overlays and the box
- *  outside the canvas, never to a register. */
+ *  a `max-width`; the measure-plus-two-gutters box is the canvas's own bound (BOOK-91), and
+ *  belongs elsewhere only to the chain overlay and the box outside the canvas. */
 function measureBoxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
       if (SIZING.has(property) && value.includes(MEASURE_VALUE)) {
         if (property === 'max-width' && (isColumnBox(rule) || isProse(rule))) continue;
+        // The canvas is the column plus its gutters: the one sizing use of the measure that is
+        // not the measure itself.
+        if (property === 'max-width' && exactly(rule, CANVAS) && squash(value) === squash(CANVAS_BOUND)) continue;
         const overlay = OVERLAYS.find((entry) => entry.property === property && isNamed(rule, entry.selector));
         if (overlay === undefined && outsideRow(rule) === undefined) {
           problems.push(
@@ -261,10 +265,12 @@ function measureBoxProblems(rules: Rule[]): string[] {
         }
       }
       if (!squash(value).includes(OUTSIDE_TEXT_BOX)) continue;
+      // The canvas's own bound (check 2 pins it): the column plus its gutters, once.
+      if (property === 'max-width' && exactly(rule, CANVAS) && squash(value) === squash(CANVAS_BOUND)) continue;
       const overlay = OVERLAYS.find((entry) => squash(entry.value).includes(OUTSIDE_TEXT_BOX) && isNamed(rule, entry.selector));
       if (overlay === undefined && outsideRow(rule) === undefined) {
         problems.push(
-          `${where(rule, property, value)} — calc(var(--measure) + 2 * var(--gut)) is the no-JS box outside the canvas: inside it the canvas supplies the gutters, so a register states no such box (BOOK-88)`,
+          `${where(rule, property, value)} — calc(var(--measure) + 2 * var(--gut)) is the canvas's own box (and the no-JS fallback's): inside the canvas a register is the measure, so it states no such box (BOOK-88)`,
         );
       }
     }

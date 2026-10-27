@@ -3,43 +3,43 @@ import { describe, expect, it } from 'vitest';
 import { charsPerLine, estimateChapterHeight } from './layout.ts';
 
 /**
- * BOOK-88 — the placeholder estimate follows the prose block of `styles/base.css`.
+ * BOOK-88/BOOK-91 — the placeholder estimate follows the prose block of `styles/base.css`.
  *
- * The prose is `min(600, viewport − 2 × gut)` at ≥1024 and `min(584, …)` at ≤1023, at
- * 18 / 17.5 / 17 px, with a 32 px gutter (24 px below 600). `charsPerLine` is that width
- * divided by half an em, rounded down, times a 0.94 haircut: it may never over-estimate a
- * line, because an over-estimate under-reserves the placeholder and a chapter's arrival
- * shifts every chapter below it.
+ * The prose is `min(640, viewport − 2 × gut)` at ≥1024 and `min(622.4, …)` at ≤1023 (38.9rem,
+ * the same 71 ch at 17.5 px as 640 at 18), at 18 / 17.5 / 17 px, with a 32 px gutter (24 px
+ * below 600). `charsPerLine` is that width divided by half an em, rounded down, times a 0.94
+ * haircut: it may never over-estimate a line, because an over-estimate under-reserves the
+ * placeholder and a chapter's arrival shifts every chapter below it.
  */
 
 const PROSE = [
   // viewport, gutter, measure, font — the prose block the sheets declare.
-  [1440, 32, 600, 18],
-  [1024, 32, 600, 18],
-  [768, 32, 584, 17.5],
-  [600, 32, 584, 17.5],
-  [390, 24, 584, 17],
-  [320, 24, 584, 17],
+  [1440, 32, 640, 18],
+  [1024, 32, 640, 18],
+  [768, 32, 622.4, 17.5],
+  [600, 32, 622.4, 17.5],
+  [390, 24, 622.4, 17],
+  [320, 24, 622.4, 17],
 ] as const;
 
 const proseWidth = (viewport: number, gutter: number, measure: number): number =>
   Math.min(measure, viewport - 2 * gutter);
 
 describe('charsPerLine', () => {
-  it('follows the prose block of the design (BOOK-88)', () => {
-    // 600 px at 18 px → 62; 584 px at 17.5 px → 62; 342 px at 17 px → 37; 272 px → 30.
-    expect(charsPerLine(1440)).toBe(62);
-    expect(charsPerLine(768)).toBe(62);
+  it('follows the prose block of the design (BOOK-88/BOOK-91)', () => {
+    // 640 px at 18 px → 66; 622.4 px at 17.5 px → 66; 342 px at 17 px → 37; 272 px → 30.
+    expect(charsPerLine(1440)).toBe(66);
+    expect(charsPerLine(768)).toBe(66);
     expect(charsPerLine(390)).toBe(37);
     expect(charsPerLine(320)).toBe(30);
   });
 
   it('pins every breakpoint and the band interiors', () => {
     // 1023/1024 is the prose step, 599/600 the type-and-gutter step, 359/360 the phone floor.
-    expect([charsPerLine(1023), charsPerLine(1024)]).toEqual([62, 62]);
+    expect([charsPerLine(1023), charsPerLine(1024)]).toEqual([66, 66]);
     expect([charsPerLine(599), charsPerLine(600)]).toEqual([60, 57]);
     expect([charsPerLine(359), charsPerLine(360)]).toEqual([34, 34]);
-    expect([360, 390, 600, 647, 768, 1024, 1440].map(charsPerLine)).toEqual([34, 37, 57, 62, 62, 62, 62]);
+    expect([360, 390, 600, 647, 768, 1024, 1440].map(charsPerLine)).toEqual([34, 37, 57, 62, 66, 66, 66]);
   });
 
   it('never over-estimates a line in any band', () => {

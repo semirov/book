@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { marginFits, placeMargin } from './marginPass.ts';
+import { marginFits, noteWidth, placeMargin } from './marginPass.ts';
 
 /**
  * BOOK-90 §1.9 — the margin's pass, as a pure function.
@@ -18,7 +18,7 @@ describe('marginFits — the measured guard (BOOK-DOC-47 §7)', () => {
     expect(marginFits(782, 1024)).toBe(true);
   });
 
-  it('is a measurement, not a breakpoint: the coming frame’s paragraphs', () => {
+  it('is a measurement, not a breakpoint: the one-column frame’s paragraphs', () => {
     expect(marginFits(752, 1024)).toBe(true); // 396 px of channel at 1024
     expect(marginFits(792, 1440)).toBe(true); // the same at 1440
   });
@@ -27,6 +27,26 @@ describe('marginFits — the measured guard (BOOK-DOC-47 §7)', () => {
     expect(marginFits(789, 1024)).toBe(false);
     expect(marginFits(1205, 1440)).toBe(false);
     expect(marginFits(1000, 1024)).toBe(false);
+  });
+});
+
+describe('noteWidth — the note narrows with the channel, it is never clipped (BOOK-91)', () => {
+  it('holds the design’s 188 px while the centred column leaves room', () => {
+    expect(noteWidth(1440, 640)).toBe(188);
+    expect(noteWidth(1100, 640)).toBeCloseTo(182, 6);
+  });
+
+  it('gives the channel itself at the 1024 step, and never a negative width', () => {
+    // (1024 − 640) / 2 = 192 of channel, minus the 40 px mark and 8 px of air.
+    expect(noteWidth(1024, 640)).toBe(144);
+    expect(noteWidth(1024, 622.4)).toBeCloseTo(152.8, 6);
+    expect(noteWidth(390, 622.4)).toBe(0);
+  });
+
+  it('keeps the note a margin at 1024 — the narrowed width is what lets it fit', () => {
+    // The prose's right edge at 1024 is 832; with the design width the note would end at 1060.
+    expect(marginFits(832, 1024, 40, 188)).toBe(false);
+    expect(marginFits(832, 1024, 40, noteWidth(1024, 640))).toBe(true);
   });
 });
 
