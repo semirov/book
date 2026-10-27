@@ -15,8 +15,9 @@
  * The title is the one block that is not faded in: it is typed a grapheme at a time at 18 cps
  * by `lib/reveal.ts`, and its line box is held from the first frame by the caret, which is why
  * an `opacity: 0` on the `h1` would be wrong — it would hide the very mark that says the word
- * is coming. The rule fades only: a rising hairline is invisible, and a `scaleX` would draw a
- * line of progress (§4, §8).
+ * is coming. The rule and the cover plate fade only: a rising hairline is invisible, a `scaleX`
+ * would draw a line of progress, and an image that performs arriving is fake liveness (§4, §8,
+ * BOOK-131).
  */
 
 @keyframes seq-in {
@@ -43,11 +44,17 @@ html[data-front-seq="run"] [data-seq] {
   animation: seq-in var(--dur-ui) var(--ease-out) both;
 }
 
-/* After the generic rule, so these two overrides win on order at the same specificity. */
+/* After the generic rule, so the three overrides below win on order at the same specificity. */
 html[data-front-seq="run"] [data-seq="title"] {
   animation: none;
 }
 html[data-front-seq="run"] [data-seq="rule"] {
+  animation-name: seq-fade;
+}
+/* BOOK-131 — the plate is the sheet's second column, so it takes the byline's turn instead of a
+   turn after the promise (the one stated exception of §2). Opacity only: no rise, no wipe, no
+   typing. An image that performs arriving is fake liveness (§4). */
+html[data-front-seq="run"] [data-seq="cover"] {
   animation-name: seq-fade;
 }
 
@@ -69,8 +76,13 @@ html[data-front-seq="run"] .title[data-caret] {
   vertical-align: -0.02em;
 }
 
-/* ---------- the stagger: 80 ms, uniform, in document order (§2) ---------- */
+/* ---------- the stagger: 80 ms, uniform, from the byline on (§2) ---------- */
 
+/* BOOK-131 — the one exception to that stagger: the plate shares the byline's slot, because it
+   is the sheet's second column and not a row after the promise. It still starts at 500 ms. */
+html[data-front-seq="run"] [data-seq="cover"] {
+  animation-delay: 500ms;
+}
 html[data-front-seq="run"] [data-seq="byline"] {
   animation-delay: 500ms;
 }

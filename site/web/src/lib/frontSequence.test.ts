@@ -19,7 +19,9 @@ import {
 /**
  * BOOK-DOC-49 §2, §7 — the first-load sequence, pinned as the contract it is.
  *
- * The table is the owner's order and the spec's offsets; the sheet's delay rules are the same
+ * The table is the **sequence** order and the spec's offsets — not the owner's order, which is
+ * title → byline → genre → promise: the plate is not one of his blocks, it takes the byline's
+ * turn because it is the sheet's second column (BOOK-131). The sheet's delay rules are the same
  * numbers in CSS, so the last case here is the guard that keeps the two from drifting (a block
  * that animates a beat late is otherwise found by eye, weeks later).
  */
@@ -32,9 +34,13 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
 });
 const sheet = sheets['../styles/first-load.css'] ?? '';
 
-/** The owner's order, written out — not derived from the table under test. */
-const OWNER_ORDER = [
+/** The **sequence** order, written out — not derived from the table under test, and not the
+ *  owner's order either: the owner's own blocks are title → byline → genre → promise, while
+ *  `cover` is the plate that takes the byline's turn because it is the sheet's second column
+ *  (BOOK-131). Its DOM node is the sheet's last child. */
+const SEQUENCE_ORDER = [
   'title',
+  'cover',
   'byline',
   'genre',
   'promise',
@@ -53,17 +59,18 @@ const OWNER_ORDER = [
   'about-9',
 ];
 
-const OWNER_OFFSETS = [0, 500, 580, 660, 740, 820, 900, 980, 1_060, 1_140, 1_220, 1_300, 1_380, 1_460, 1_540, 1_620, 1_700];
+const SEQUENCE_OFFSETS = [0, 500, 500, 580, 660, 740, 820, 900, 980, 1_060, 1_140, 1_220, 1_300, 1_380, 1_460, 1_540, 1_620, 1_700];
 
 describe('the sequence table (BOOK-DOC-49 §2)', () => {
-  it('names its 17 blocks in the owner’s order', () => {
-    expect(SEQ_IDS).toEqual(OWNER_ORDER);
-    expect(SEQ_BLOCKS).toHaveLength(17);
+  it('names its 18 blocks in the sequence order, the plate on the byline’s turn', () => {
+    expect(SEQ_IDS).toEqual(SEQUENCE_ORDER);
+    expect(SEQ_BLOCKS).toHaveLength(18);
+    expect(seqAt('cover')).toBe(500);
   });
 
   it('starts every block on the offset the spec printed', () => {
-    expect(SEQ_BLOCKS.map((block) => block.at)).toEqual(OWNER_OFFSETS);
-    for (const [index, id] of OWNER_ORDER.entries()) expect(seqAt(id), id).toBe(OWNER_OFFSETS[index]);
+    expect(SEQ_BLOCKS.map((block) => block.at)).toEqual(SEQUENCE_OFFSETS);
+    for (const [index, id] of SEQUENCE_ORDER.entries()) expect(seqAt(id), id).toBe(SEQUENCE_OFFSETS[index]);
     expect(seqAt('about-10')).toBeNull();
     expect(seqAt('kicker')).toBeNull();
   });
@@ -78,8 +85,12 @@ describe('the sequence table (BOOK-DOC-49 §2)', () => {
     const last = SEQ_BLOCKS.at(-1);
     expect(last?.id).toBe('about-9');
     expect((last?.at ?? 0) + BLOCK_MS).toBe(TOTAL_MS);
-    // 80 ms, uniform, in document order — from the byline on (the title is typed, not staggered).
-    const staggered = SEQ_BLOCKS.slice(1);
+    // 80 ms, uniform, from the byline on (the title is typed, not staggered) — with the one
+    // stated exception: the plate is the sheet's second column, not a row after the promise, so
+    // it shares the byline's 500 ms slot instead of taking a turn of its own (BOOK-131). The
+    // rest of the stagger is not weakened: every other step is still exactly 80 ms.
+    expect(seqAt('cover')).toBe(seqAt('byline'));
+    const staggered = SEQ_BLOCKS.filter((block) => block.id !== 'cover').slice(1);
     for (let index = 1; index < staggered.length; index += 1) {
       const previous = staggered[index - 1]?.at ?? 0;
       const current = staggered[index]?.at ?? 0;
@@ -87,10 +98,10 @@ describe('the sequence table (BOOK-DOC-49 §2)', () => {
     }
   });
 
-  it('types one block, fades the rule, and rises everything else', () => {
+  it('types one block, fades the rule and the plate, and rises everything else', () => {
     const byMotion = (motion: string) => SEQ_BLOCKS.filter((block) => block.motion === motion).map((block) => block.id);
     expect(byMotion('typed')).toEqual(['title']);
-    expect(byMotion('fade')).toEqual(['rule']);
+    expect(byMotion('fade')).toEqual(['cover', 'rule']);
     expect(byMotion('rise')).toHaveLength(15);
     // Page 2 is the nine paragraphs the front matter carries and no more.
     expect(ABOUT_PARAGRAPHS).toBe(9);
@@ -156,6 +167,16 @@ describe('the sheet and the table agree (BOOK-DOC-49 §7)', () => {
     );
     expect(sheet).toContain('transform: translateY(4px)');
     expect(sheet).not.toContain('translateY(8px)');
+  });
+
+  it('fades the plate on the byline’s slot, opacity only (BOOK-131)', () => {
+    // The plate is the sheet's second column, not a row of the sequence: it takes the byline's
+    // 500 ms turn, and its animation is the sheet's own fade — no rise, no wipe, no typing.
+    expect(seqAt('cover')).toBe(500);
+    expect(sheet).toMatch(/html\[data-front-seq="run"\] \[data-seq="cover"\] \{\s*animation-name: seq-fade;/u);
+    expect(sheet).toMatch(/html\[data-front-seq="run"\] \[data-seq="cover"\] \{\s*animation-delay: 500ms;/u);
+    // The generic rule would rise it 4 px; the override above is what keeps it a fade.
+    expect(sheet).not.toMatch(/\[data-seq="cover"\][^}]*translateY/u);
   });
 
   it('keeps the title caret at the one overridden height and no other', () => {

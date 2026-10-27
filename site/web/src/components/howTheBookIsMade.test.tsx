@@ -120,7 +120,7 @@ describe('how the book is made', () => {
   it('counts no lines and reinstates no caption (BOOK-39)', () => {
     // The owner's final text does not count the book's lines, so no reader-facing copy may,
     // and the retired caption «Восемь линий…» is not a constant of the cover any more.
-    expect(Object.keys(titleSheet)).toEqual(['TITLE_GENRE', 'TITLE_PROMISE', 'TitleSheet']);
+    expect(Object.keys(titleSheet)).toEqual(['TITLE_GENRE', 'TITLE_PROMISE', 'COVER_ALT', 'TitleSheet']);
     expect(Object.keys(titleSheet)).not.toContain('COVER_CAPTION');
     for (const paragraph of HOW_THE_BOOK_IS_MADE) expect(paragraph).not.toMatch(/восемь|линий/iu);
     expect(titleSheet.TITLE_GENRE).not.toContain('Восемь');
