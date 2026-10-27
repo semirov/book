@@ -79,7 +79,7 @@
 #
 # Secrets: this script reads no secret and prints no value. `site/.env` is gitignored and is
 # never touched by a checkout, `npm ci` or a build — only the service reads it.
-set -euo pipefail
+set -eEuo pipefail
 
 # The probe, the window, the load, the service start and the lock live beside this script (lib.sh,
 # extracted with it by the workflow), so they can be exercised — and tested — without a deploy.
@@ -132,7 +132,14 @@ PERCENT=0
 FRAME="n/a"
 KICKSTART_T0=""
 
-usage() { sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
+# Where the run is, so a death names it. `REASON_PRINTED` keeps two reporters from both speaking,
+# `AUDIT_WRITTEN` keeps a red run from writing a second audit line.
+STEP="start"
+REASON_PRINTED=0
+AUDIT_WRITTEN=0
+FAILED_CAUSE=""
+
+usage() { sed -n '2,/^set -eEuo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -152,11 +159,25 @@ GRACE_MS=$((HEALTH_GRACE * 1000))
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 say() { printf '%s deploy: %s\n' "$(now)" "$*"; }
-die() { printf '%s deploy: FAILED: %s\n' "$(now)" "$*" >&2; exit 1; }
+die() {
+  printf '%s deploy: FAILED: %s\n' "$(now)" "$*" >&2
+  REASON_PRINTED=1
+  exit 1
+}
 audit() {
   mkdir -p "$STATE_DIR"
   printf '%s %s\n' "$(now)" "$*" >> "$AUDIT_LOG"
+  AUDIT_WRITTEN=1
 }
+
+# Every exit path says why (BOOK-119 hotfix, pass 3): `fail_on_err` for a command that died under
+# `set -e`, `fail_on_exit` for a status nobody explained, and the lock released after both so a red
+# run can never end with `lock: released` alone. A usage error (before this point) takes no lock and
+# writes no audit; a refusal (exit 3) is a notice, not a failure.
+trap 'fail_on_err "$LINENO" "$BASH_COMMAND"' ERR
+trap 'fail_on_exit; lock_release' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # The visible downtime (#3711): the last 200 before the restart to the first 200 after it.
 # `unknown` when the site was already down or could not be read (no baseline stamp), when the new
@@ -256,6 +277,7 @@ frame_check() {
 # and exit 0. `keep` leaves `last-good` alone — the release `current` names is then not this
 # build's (a late answer after a rollback had already published the previous release).
 finish_green() { # (optional: keep)
+  STEP="frame"
   say "checking the frozen frame"
   # Exit 0 is the only success. A mismatch (1) means the running site serves text that is not
   # the canon; a usage error (2) means this checkout cannot even run its own script. Both are
@@ -291,10 +313,8 @@ if [ "$PHASE" = "prepare" ]; then
   # survives the `exec` below (the pid does not change) and is released by the run phase's trap —
   # this trap covers a die between the two.
   if [ "$DRY_RUN" != "1" ]; then
+    STEP="prepare: lock"
     lock_acquire
-    trap 'lock_release' EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
   fi
 
   say "fetching $REPO_URL"
@@ -335,12 +355,11 @@ fi
 
 # --- run: gate, proof, load, publish, restart, health ------------------------------------------
 # The lock was taken in prepare and survives the `exec`: re-assert it here, and own it until this
-# process ends — a refusal, a die and a green exit all leave through the same trap.
-trap 'lock_release' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# process ends — a refusal, a die and a green exit all leave through the traps installed above.
+STEP="run: lock"
 lock_resume
 PREV="${PREV:-$(cat "$STATE_DIR/previous" 2>/dev/null || true)}"
+STEP="run: preflight"
 # The prepare phase re-execs this script for the run phase, and the re-exec carries no SHORT from
 # that process: recompute it here, or `set -u` kills a deploy that is already healthy (BOOK-79).
 SHORT="$(git -C "$ROOT" rev-parse --short HEAD)"
@@ -350,30 +369,38 @@ command -v node >/dev/null || die "node is not on PATH (see npm above)"
 # /healthz must say so before it publishes anything, not after the restart.
 command -v curl >/dev/null || die "curl is not on PATH — the deploy reads /healthz with it; nothing was deployed or restarted"
 cd "$ROOT/site"
+STEP="gate: npm ci"
 say "gate: npm ci"
 npm ci --no-audit --no-fund >/dev/null 2>&1 || die "npm ci failed at $(git -C "$ROOT" rev-parse --short HEAD)"
+STEP="gate: verify"
 say "gate: verify (typecheck, arch, tests)"
 npm run verify || die "gate (verify) is red — nothing was deployed or restarted"
+STEP="gate: coverage"
 say "gate: coverage"
 npm run test:coverage || die "coverage floor not met — nothing was deployed or restarted"
+STEP="gate: build"
 say "gate: build"
 npm run build || die "build failed — nothing was deployed or restarted"
+STEP="gate: manuscript"
 say "gate: manuscript"
 node "$ROOT/site/bin/validate.mjs" --strict || die "manuscript validation is red — nothing was deployed or restarted"
 
 # BOOK-119: the two proofs run on the build that just landed in `dist/staging`. They read real
 # bytes: a red proof means an asset URL would not survive the next publish or the guard would
 # not speak — and then nothing is published and nothing is restarted.
+STEP="gate: proof"
 say "gate: proof (old asset survives a publish; the guard speaks without a bundle)"
 npm run proof || die "proof is red — nothing was published or restarted"
 
 GOOD="$(git -C "$ROOT" rev-parse HEAD)"
 BUILT_COMMIT="$(built_commit)"
 [ -n "$BUILT_COMMIT" ] || die "build-info.json carries no commit — the deploy cannot name the build it made"
+STEP="guard: prod root"
 service_root_guard
 
 # The box, not an ideal machine (BOOK-119 #3711): at load ~40 on 10 cores a healthy boot took
 # longer than 60 s. Say what the box is doing; pause once above the threshold; never refuse.
+STEP="load"
 load_read "$LOAD_PER_CORE_MAX"
 if [ "$LOAD_L1" = "unavailable" ]; then
   say "load guard: load=unavailable (sysctl: ${LOAD_MSG}) — no number for this box; the deploy proceeds"
@@ -388,6 +415,7 @@ fi
 
 # Publish after a green proof, before the restart: for seconds the old process serves the new
 # shell's API — compatible by construction, and it is what makes the restart asset-safe.
+STEP="publish"
 say "publish: release"
 npm run release:publish -- --state "$STATE_DIR" || die "publish failed — current is untouched, nothing was restarted"
 RELEASE="$(readlink "$ROOT/site/web/dist/current" 2>/dev/null | sed 's|.*/||')"
@@ -395,6 +423,7 @@ RELEASE="$(readlink "$ROOT/site/web/dist/current" 2>/dev/null | sed 's|.*/||')"
 say "publish: current -> release $RELEASE"
 
 URL="$(health_url)"
+STEP="baseline"
 # A1: the baseline is the same probe as the window (`health_read`), and its failure is recorded,
 # not interpreted: `down` is a real non-200 answer, `unknown` a read that could not be made.
 baseline_read "$URL" || true
@@ -407,9 +436,11 @@ esac
 # BOOK-119 review: `set -e` used to end the run here on a failed `launchctl kickstart` — after
 # the publish, with `current` already on the new release and no audit line at all. A failed
 # signal is a health outcome, and the red path below asks whether the previous commit serves.
+STEP="restart"
 KICKSTART_T0="$(now_ms)"
 if service_kickstart "$SERVICE_LABEL" "$PLIST"; then
   # A2: a restart was issued, so a window is measured around it — always, with a real elapsed time.
+  STEP="health window"
   window_settle "$URL" "$BUILT_COMMIT" "$PREV" "$KICKSTART_T0"
 else
   HEALTH="none"
@@ -430,6 +461,7 @@ if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
   finish_green || true
 fi
 
+STEP="health window"
 # --- red path ----------------------------------------------------------------------------------
 # One plain read (three when the window saw nothing usable) is the last evidence before anything is
 # rebuilt or restarted. It upgrades a verdict the window missed and stamps its own moment (B2), so
@@ -446,6 +478,7 @@ fi
 # back *from*, so the skip is deploy-only, and a rollback that did not reach its own commit is
 # `rollback-failed` and never touches `last-good`.
 if [ "$MODE" = "deploy" ] && [ -n "$PREV" ] && names_commit "$PLAIN_COMMIT" "$PREV"; then
+  STEP="frame"
   say "the running process already serves ${PREV:0:7} — checking the frame and the release on disk before anything is written"
   if frame_check; then
     FRAME="ok"
@@ -509,17 +542,21 @@ if ! rollback_allowed "$HEALTH_MS" "$BUDGET_MS" "$PLAIN_COMMIT" "$BUILT_COMMIT";
 fi
 
 [ -n "$PREV" ] || die "no previous commit to roll back to; prod is NOT serving the build of this run — a human must look"
+STEP="rollback"
 say "rolling back to ${PREV:0:7}: health=$HEALTH after ${HEALTH_MS} ms and prod does not serve ${BUILT_COMMIT}"
 git -C "$ROOT" checkout --quiet --detach "$PREV" || die "rollback checkout failed"
 cd "$ROOT/site"
 npm ci --no-audit --no-fund >/dev/null 2>&1 || say "warning: npm ci failed during rollback; rebuilding anyway"
+STEP="rollback: build"
 npm run build || die "rollback build failed; prod is NOT healthy — a human must look"
+STEP="rollback: publish"
 npm run release:publish -- --state "$STATE_DIR" || die "rollback publish failed; prod is NOT healthy — a human must look"
 RELEASE="$(readlink "$ROOT/site/web/dist/current" 2>/dev/null | sed 's|.*/||')"
 ROLLBACK_COMMIT="$(built_commit)"
 # The rollback restarts too, so it takes its own baseline: the line must state what the site lost
 # in this restart, not reuse the numbers of the attempt that failed.
 baseline_read "$URL" || true
+STEP="rollback: restart"
 say "rollback baseline: $BASELINE at $URL (err=${BASELINE_ERR:-none}${BASELINE_MSG:+ $BASELINE_MSG})"
 KICKSTART_T0="$(now_ms)"
 if service_kickstart "$SERVICE_LABEL" "$PLIST"; then
@@ -529,6 +566,7 @@ else
   say "kickstart: the rollback could not restart the service (see above)"
 fi
 recompute_window
+STEP="rollback: health window"
 say "rollback healthz: $HEALTH after ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms; visible downtime ${RESTART_MS} ms; probe=$PROBE_USED"
 
 # The same evidence rule as the deploy's own restart: three plain reads before the rollback is
@@ -539,6 +577,7 @@ if [ "$HEALTH" != "fast" ] && [ "$HEALTH" != "late" ]; then
   recompute_window
 fi
 if [ "$HEALTH" = "fast" ] || [ "$HEALTH" = "late" ]; then
+  STEP="rollback: frame"
   say "checking the frozen frame of the rollback"
   if frame_check; then
     FRAME="ok"

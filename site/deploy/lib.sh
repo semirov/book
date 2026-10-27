@@ -43,13 +43,28 @@ KICKSTART_T0="${KICKSTART_T0:-}"
 # `bootstrap` when a job that was not loaded had to be bootstrapped from its plist, else "".
 KICKSTART_RECOVERED=""
 
+# Epoch seconds, as a command: `BOOK_NOW` pins it for a test, `date` is the box. A clock that
+# cannot answer leaves the value empty — `lock_age` then says 0, so a broken clock can never make a
+# live lock look stale.
+now_s() {
+  if [ -n "${BOOK_NOW:-}" ]; then printf '%s' "$BOOK_NOW"; return 0; fi
+  date +%s 2>/dev/null || true
+}
+
+# Is pid `$1` alive? `BOOK_KILL` replaces `kill -0` for a test; a liveness check that fails is "no",
+# never an exit.
+pid_alive() {
+  # shellcheck disable=SC2086  # `BOOK_KILL` may be a command with arguments in a test
+  ${BOOK_KILL:-kill} -0 "${1:-}" 2>/dev/null
+}
+
 # Epoch milliseconds. `node` is the box's clock; when node is unavailable, `perl` (which ships with
 # macOS and with every runner) keeps the window honest to the millisecond, and whole seconds are
 # the last resort so a loop can still finish.
 now_ms() {
   node -p 'Date.now()' 2>/dev/null && return 0
   perl -MTime::HiRes=time -e 'printf "%d\n", time*1000' 2>/dev/null && return 0
-  printf '%s000' "$(date +%s)"
+  printf '%s000' "$(now_s)"
 }
 
 # Digits only: a value from a file or a probe must never be handed to `$(( ))` as a word.
@@ -79,13 +94,15 @@ window_say() {
 #   R_OK     1 when the answer is 200 and `"ok":true`
 #   R_COMMIT the commit the process reports ("" when it names none)
 #   R_ERR    curl's first stderr line ("" when the read itself succeeded)
-# Returns 0 when the server answered (whatever the status), 1 when the read could not be made.
+# Always returns 0: "the site did not answer" is the answer (`R_OK=0`), and a probe that returned
+# non-zero would let `set -e` kill a deploy inside its health window — the 00:36 run died exactly
+# there, with `lock: released` as its last line and no reason.
 health_read() { # (url)
   local url="$1" raw code=0 status body
   R_CODE=0; R_STATUS=0; R_OK=0; R_COMMIT=""; R_ERR=""
   if ! command -v curl >/dev/null 2>&1; then
     R_CODE=127; R_ERR="curl: not on PATH"
-    return 1
+    return 0
   fi
   # `%{http_code}` is written even when the transfer fails (`000`), so one call carries the status,
   # the body and curl's own error text. The marker is plain text on purpose: `-w @file` means
@@ -98,12 +115,12 @@ health_read() { # (url)
   case "$status" in [0-9][0-9][0-9]) R_STATUS="$status" ;; *) R_STATUS=0 ;; esac
   if [ "$R_STATUS" = "000" ]; then R_STATUS=0; fi # curl's "no HTTP status at all"
   if [ "$code" -ne 0 ]; then
-    R_ERR="$(printf '%s\n' "$body" | head -n 1)"
-    return 1
+    R_ERR="$(printf '%s\n' "$body" | head -n 1 2>/dev/null || true)"
+    return 0
   fi
-  if [ "$R_STATUS" = "200" ] && printf '%s' "$body" | grep -q '"ok":true'; then
+  if [ "$R_STATUS" = "200" ] && printf '%s' "$body" | grep -q '"ok":true' 2>/dev/null; then
     R_OK=1
-    R_COMMIT="$(printf '%s' "$body" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')"
+    R_COMMIT="$(printf '%s' "$body" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p' 2>/dev/null || true)"
   fi
   return 0
 }
@@ -146,7 +163,9 @@ window_read() { # (url expect prev since_ms)
   local url="$1" expect="$2" prev="${3:-}" since="$4"
   local budget_end=$(( since + BUDGET_MS )) grace_end_ms=$(( since + BUDGET_MS + GRACE_MS ))
   local grace_end_s=$(( grace_end_ms / 1000 ))
-  local at=0 last_commit="" last_at=0 reads=0
+  local at=0 last_commit="" last_at=0 reads=0 now=0
+  # A clock that cannot answer must not make the loop endless: the poll count is the second bound.
+  local max_reads=$(( (BUDGET_MS + GRACE_MS) / 200 + 2 ))
   HEALTH="fail"; HEALTH_MS=0; FIRST_AT=0; REPORTED_COMMIT=""; WINDOW_READS=0
   while :; do
     health_read "$url"
@@ -165,10 +184,13 @@ window_read() { # (url expect prev since_ms)
         break
       fi
     fi
-    # One deadline for every poll. `date` is the cheap clock and only the last second is checked
-    # to the millisecond, so a sub-second budget is still spent and the poll stays 200 ms.
-    if [ "$(date +%s)" -ge "$grace_end_s" ] && [ "$(now_ms)" -ge "$grace_end_ms" ]; then break; fi
-    sleep 0.2
+    # One deadline for every poll. `now_s` is the cheap clock and only the last second is checked
+    # to the millisecond, so a sub-second budget is still spent and the poll stays 200 ms. A clock
+    # that fails leaves the deadline to `max_reads`; a `sleep` that fails is one fast poll.
+    if [ "$reads" -ge "$max_reads" ]; then break; fi
+    now="$(now_s)"
+    if is_number "$now" && [ "$now" -ge "$grace_end_s" ] && [ "$(now_ms)" -ge "$grace_end_ms" ]; then break; fi
+    sleep 0.2 || true
   done
   if [ "$HEALTH" = "fail" ] && [ -n "$last_commit" ] && names_commit "$last_commit" "$prev"; then
     HEALTH="stale"; FIRST_AT="$last_at"; REPORTED_COMMIT="$last_commit"
@@ -229,7 +251,7 @@ plain_verdict() { # (url expect prev [tries])
       commit="$R_COMMIT"
       break
     fi
-    if [ "$attempt" -lt "$tries" ]; then sleep 0.4; fi
+    if [ "$attempt" -lt "$tries" ]; then sleep 0.4 || true; fi
   done
   if [ "$answered" != "1" ]; then
     window_say "plain read: no answer on $url after ${attempt} read(s) (err=${R_CODE}${R_ERR:+ ${R_ERR}}) — the $HEALTH verdict stands"
@@ -341,19 +363,27 @@ service_kickstart() { # (label, plist)
 }
 
 # --- one deploy at a time -----------------------------------------------------------------------
+#
+# Everything a test needs to drive this block without a clock or a real pid is injected here:
+# `BOOK_NOW` pins the clock, `BOOK_KILL` replaces `kill -0` (liveness), `BOOK_SLEEP` replaces the
+# settle. A deploy sets none of them and gets the box.
 
 lock_holder() { cat "$LOCK_DIR/pid" 2>/dev/null || true; }
 
-lock_age() { # (since_epoch_s) -> seconds, 0 when unreadable
+lock_age() { # (since_epoch_s) -> seconds, 0 when the clock or the stamp cannot be read
   local now since
-  now="$(date +%s)"
+  now="$(now_s)"
   since="${1:-}"
-  if is_number "$since" && [ "$now" -ge "$since" ]; then
+  if is_number "$now" && is_number "$since" && [ "$now" -ge "$since" ]; then
     printf '%s' "$(( now - since ))"
     return 0
   fi
   printf '0'
 }
+
+# The settle a collided takeover takes before it reads the lock again. `BOOK_SLEEP` makes a scenario
+# instant; a settle that fails is one fast retry, never an exit.
+lock_sleep() { "${BOOK_SLEEP:-sleep}" "${1:-0}" || true; }
 
 # Who holds the lock, in one line, read-only: a dry run says this without taking anything.
 lock_report() {
@@ -375,38 +405,53 @@ lock_read() {
   LOCK_AGE="$(lock_age "$LOCK_SINCE")"
 }
 
-# A live holder whose lock is not stale: the only honest reason to refuse.
+# A live holder whose lock is not stale: the only honest reason to say another deploy is running.
 lock_held_live() {
-  is_number "${LOCK_HOLDER:-}" && kill -0 "$LOCK_HOLDER" 2>/dev/null && [ "${LOCK_AGE:-0}" -lt "$LOCK_STALE_S" ]
+  is_number "${LOCK_HOLDER:-}" && pid_alive "$LOCK_HOLDER" && [ "${LOCK_AGE:-0}" -lt "$LOCK_STALE_S" ]
+}
+
+# May this lock be replaced? A readable pid that is dead, or an age past the stale limit — the age
+# is what collects a lock nobody can name (`pid unknown` must not block deploys forever) while a
+# fresh lock with no readable pid is still somebody's.
+lock_collectable() {
+  if is_number "${LOCK_HOLDER:-}" && ! pid_alive "$LOCK_HOLDER"; then return 0; fi
+  [ "${LOCK_AGE:-0}" -ge "$LOCK_STALE_S" ]
 }
 
 # This run owns a directory it has just created: sign it.
 lock_write() {
   printf '%s\n' "$$" > "$LOCK_DIR/pid"
-  date +%s > "$LOCK_DIR/since"
+  now_s > "$LOCK_DIR/since"
   LOCK_OWNED=1
   window_say "lock: ${LOCK} (pid $$, ${LOCK_DIR})"
 }
 
 # One takeover attempt. `mv` of a directory succeeds for exactly one caller, so this is the atomic
-# step: the winner verifies that what it moved is the directory it judged stale (`$1`), removes it
-# and creates its own. A failed move, or a directory that changed hands in between, is a lost race —
-# never a refusal by itself.
-lock_take_over() { # (pid_judged_stale)
-  local judged="${1:-}" stale="${LOCK_DIR}.stale.$$" moved
-  [ -n "$judged" ] || return 1
+# step: the winner verifies that what it moved is the directory it judged collectable — the same
+# pid when it had one, still stale by age when it had none — removes it and creates its own. A
+# failed move, or a directory that changed hands in between, is a lost race, never a refusal.
+lock_take_over() { # (pid_judged_collectable)
+  local judged="${1:-}" stale="${LOCK_DIR}.stale.$$" moved_pid moved_age
+  if [ -z "$judged" ] && [ "${LOCK_AGE:-0}" -lt "$LOCK_STALE_S" ]; then return 1; fi
   mv "$LOCK_DIR" "$stale" 2>/dev/null || return 1
-  moved="$(cat "$stale/pid" 2>/dev/null || true)"
-  if [ "$moved" != "$judged" ]; then
-    # Give it back when the path is free: it may belong to a live deploy that just took it.
-    if ! mv "$stale" "$LOCK_DIR" 2>/dev/null; then
-      window_say "lock: a directory taken over at $LOCK_DIR could not be given back (pid ${moved:-not readable}); it stays at $stale"
-    fi
-    return 1
+  moved_pid="$(cat "$stale/pid" 2>/dev/null || true)"
+  moved_age="$(lock_age "$(cat "$stale/since" 2>/dev/null || true)")"
+  if [ -n "$judged" ]; then
+    if [ "$moved_pid" != "$judged" ]; then lock_give_back "$stale" "$moved_pid"; return 1; fi
+  elif [ "$moved_age" -lt "$LOCK_STALE_S" ]; then
+    lock_give_back "$stale" "$moved_pid"; return 1
   fi
   rm -rf "$stale"
   mkdir "$LOCK_DIR" 2>/dev/null || return 1
   return 0
+}
+
+# A directory taken over that turned out not to be the one judged stale: put it back when the path
+# is free (it may be a live deploy's), and never delete what may be somebody's lock.
+lock_give_back() { # (moved_dir, moved_pid)
+  if ! mv "$1" "$LOCK_DIR" 2>/dev/null; then
+    window_say "lock: a directory taken over at $LOCK_DIR could not be given back (pid ${2:-not readable}); it stays at $1"
+  fi
 }
 
 lock_refuse() { # (reason)
@@ -415,11 +460,16 @@ lock_refuse() { # (reason)
   exit 3
 }
 
+lock_refuse_held() {
+  lock_refuse "another deploy is running: pid ${LOCK_HOLDER} since ${LOCK_SINCE:-unknown} (age ${LOCK_AGE}s, lock ${LOCK_DIR})"
+}
+
 # Take the lock, or refuse with exit 3. Exit 3 is the interface: the driver must not read it as a
 # red product deploy — by the time it is printed nothing has been checked out, built, published or
-# restarted (the lock is taken before the fetch and before the checkout). A stale lock is replaced
-# by moving it aside first, so two runs cannot both "take over" the same directory: `mv` of one
-# directory succeeds for exactly one of them.
+# restarted (the lock is taken before the fetch and before the checkout). A collectable lock is
+# replaced by moving it aside first, so two runs cannot both "take over" one directory. A takeover
+# that loses its race is re-read once after `BOOK_LOCK_RETRY_S`: a refusal names the holder that is
+# really there (or says a taker is starting), never "pid unknown" on a lock nobody holds.
 lock_acquire() {
   mkdir -p "$STATE_DIR"
   if mkdir "$LOCK_DIR" 2>/dev/null; then
@@ -428,35 +478,33 @@ lock_acquire() {
     return 0
   fi
   lock_read
-  if lock_held_live; then
-    lock_refuse "another deploy is running: pid ${LOCK_HOLDER} since ${LOCK_SINCE:-unknown} (age ${LOCK_AGE}s, lock ${LOCK_DIR})"
-  fi
-  if lock_take_over "${LOCK_HOLDER}"; then
+  if lock_held_live; then lock_refuse_held; fi
+  if lock_collectable && lock_take_over "${LOCK_HOLDER}"; then
     LOCK="taken-over"
     window_say "lock: taking over a stale lock — pid ${LOCK_HOLDER:-none}, since ${LOCK_SINCE:-unknown}, age ${LOCK_AGE}s (limit ${LOCK_STALE_S}s)"
     lock_write
     return 0
   fi
-  # The directory changed hands between the read and the move. Refusing here would name nobody and
-  # tell the driver "another deploy is running" when there is none: one settle, one re-read, and
-  # only a live holder (or a taker caught in the act) may refuse.
-  sleep "$LOCK_RETRY_S"
+  # Undecided: a taker may be writing its pid right now, or the directory changed hands. One
+  # settle, one re-read.
+  lock_sleep "$LOCK_RETRY_S"
   lock_read
-  if lock_held_live; then
-    lock_refuse "another deploy is running: pid ${LOCK_HOLDER} since ${LOCK_SINCE:-unknown} (age ${LOCK_AGE}s, lock ${LOCK_DIR})"
-  fi
-  if [ -z "${LOCK_HOLDER:-}" ] && mkdir "$LOCK_DIR" 2>/dev/null; then
-    LOCK="held"
-    lock_write
-    return 0
-  fi
-  if lock_take_over "${LOCK_HOLDER}"; then
+  if lock_held_live; then lock_refuse_held; fi
+  if lock_collectable && lock_take_over "${LOCK_HOLDER}"; then
     LOCK="taken-over"
     window_say "lock: taking over a stale lock (after a ${LOCK_RETRY_S}s settle) — pid ${LOCK_HOLDER:-none}, age ${LOCK_AGE}s"
     lock_write
     return 0
   fi
-  lock_refuse "another deploy is taking the lock at $LOCK_DIR over right now (pid ${LOCK_HOLDER:-not readable yet})"
+  if [ ! -d "$LOCK_DIR" ] && mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK="held"
+    lock_write
+    return 0
+  fi
+  if ! is_number "${LOCK_HOLDER:-}"; then
+    lock_refuse "another deploy is starting: the lock at $LOCK_DIR has no readable pid (${LOCK_HOLDER:+found '$LOCK_HOLDER', }since ${LOCK_SINCE:-unknown}, age ${LOCK_AGE}s of the ${LOCK_STALE_S}s stale limit)"
+  fi
+  lock_refuse "another deploy is taking the lock at $LOCK_DIR over right now (pid $LOCK_HOLDER)"
 }
 
 # The run phase is a re-exec of the same pid (`exec` keeps it), so the lock taken in `prepare` is
@@ -478,4 +526,43 @@ lock_release() {
   if [ "$(lock_holder)" = "$$" ]; then rm -rf "$LOCK_DIR"; fi
   LOCK_OWNED=0
   window_say "lock: released"
+}
+
+# --- the reason a run died ----------------------------------------------------------------------
+#
+# A deploy that dies must say why in one line and leave an audit line. The 00:36 run of a492d1a
+# ended with `lock: released` and nothing else: the window called a probe that returned non-zero
+# and `set -e` took the process down before any verdict. `deploy.sh` now sets STEP before every
+# stage, sets REASON_PRINTED in `die()`, AUDIT_WRITTEN in `audit()`, and installs these two traps.
+
+# The numbers every failure line and every `failed` audit line carries.
+fail_state() {
+  printf 'health=%s health_ms=%s budget_ms=%s baseline=%s release=%s' \
+    "${HEALTH:-none}" "${HEALTH_MS:-0}" "${BUDGET_MS:-0}" "${BASELINE:-unknown}" "${RELEASE:-none}"
+}
+
+# ERR: one line, once, naming the step, the command and the line it died on.
+fail_on_err() { # (line, command) — passed by the trap, because `LINENO` inside a function is not it
+  local status=$? line="${1:-?}" cause="${2:-unknown}"
+  if [ "${REASON_PRINTED:-0}" = "1" ]; then return 0; fi
+  REASON_PRINTED=1
+  FAILED_CAUSE="$cause"
+  window_say "FAILED at ${STEP:-start}: ${cause} (line ${line}) — $(fail_state); nothing further will be restarted"
+  return 0
+}
+
+# EXIT: a red run never ends with `lock: released` alone. When nothing above explained the status,
+# say so, and write the one audit line the run owes.
+fail_on_exit() {
+  local status=$?
+  if [ "${status}" -eq 0 ] || [ "${status}" -eq 3 ]; then return 0; fi
+  if [ "${REASON_PRINTED:-0}" != "1" ]; then
+    REASON_PRINTED=1
+    window_say "FAILED at ${STEP:-start}: no reason recorded — $(fail_state); nothing further will be restarted"
+  fi
+  if [ "${AUDIT_WRITTEN:-0}" != "1" ] && declare -F audit >/dev/null 2>&1; then
+    audit "failed mode=${MODE:-unknown} ref=${REF:-unknown} sha=${GOOD:-unknown} step=${STEP:-start} health=${HEALTH:-none} restart_ms=${RESTART_MS:-unknown} budget_ms=${BUDGET_MS:-0} baseline=${BASELINE:-unknown} release=${RELEASE:-none} cause=${FAILED_CAUSE:-unknown}"
+    AUDIT_WRITTEN=1
+  fi
+  return 0
 }
