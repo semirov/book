@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The writer lane's own process on the Mac mini (BOOK-117, runbook docs/writer-lane.md).
+     Third entrypoint of the same image: `server/dist/writer/main.js --loop`. It leases one
+     pass at a time from the engine's internal API, calls the pinned model, writes the chapter
+     file into BOOK_ROOT/manuscript, lands it through `/internal/land` and closes it through the
+     two gates. It listens on no port and is never proxied.
+
+     Install:
+       cp site/deploy/dev.book-writer.plist ~/Library/LaunchAgents/
+       launchctl bootout gui/$(id -u)/dev.book-writer 2>/dev/null
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.book-writer.plist
+     Status: `launchctl list | grep dev.book-writer`; the log is ~/Library/Logs/book-writer.log.
+
+     Secrets: none in this file and none in the environment (invariant 30). The provider key is
+     a 0600 file named by DEEPSEEK_API_KEY_FILE, read by the process, never echoed; the engine's
+     bearer token is a file too. `DRAFTING=on` lives on the engine's plist, not here: the writer
+     can only ask for a pass the engine is willing to hand out.
+
+     Bounds (all in the process, not here except where a deployment overrides): one pass at a
+     time (the lease), WRITER_DAILY_TOKENS per day, WRITER_MAX_PASSES_PER_DAY passes, a pause
+     between passes. KeepAlive restarts a crashed loop after ThrottleInterval; the loop itself
+     never exits on an empty queue — it sleeps. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.book-writer</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>--env-file=/Users/filipp/projects/book/site/.env</string>
+    <string>server/dist/writer/main.js</string>
+    <string>--loop</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/filipp/book-lane/site</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key><string>production</string>
+    <key>BOOK_ROOT</key><string>/Users/filipp/projects/book</string>
+    <key>DATA_DIR</key><string>/Users/filipp/book-site-data</string>
+    <key>ENGINE_TOKEN_FILE</key><string>/Users/filipp/book-site-data/engine.token</string>
+    <key>WRITER_ENGINE_URL</key><string>http://127.0.0.1:8081</string>
+    <key>WRITER_SESSION</key><string>writer</string>
+    <key>WRITER_MODEL</key><string>deepseek/deepseek-v4-pro</string>
+    <key>DEEPSEEK_API_KEY_FILE</key><string>/Users/filipp/.config/book/deepseek.key</string>
+    <key>PIPELINE_PATH</key><string>/Users/filipp/book-lane/site/config/pipeline.json</string>
+    <key>WRITER_DAILY_TOKENS</key><string>1500000</string>
+    <key>WRITER_MAX_TOKENS_PER_CALL</key><string>32000</string>
+    <key>BOOK_BUDGET_DAY_USD</key><string>10</string>
+    <key>BOOK_BUDGET_BOOK_USD</key><string>1000</string>
+    <key>WRITER_MAX_PASSES_PER_DAY</key><string>4</string>
+    <key>WRITER_PAUSE_MS</key><string>900000</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/filipp/Library/Logs/book-writer.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/filipp/Library/Logs/book-writer.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>
