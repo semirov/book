@@ -1,4 +1,4 @@
-# «Тоска» — a novel written in public
+# «Бланк» — a novel written in public
 
 A cold hard-SF novel of тоска, written in the open on one page: 67 chapters in fixed slots, four unnamed
 parts, four lines forward and four backward. A reader leaves an intervention — a document, a character's

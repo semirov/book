@@ -27,7 +27,7 @@ export interface TitleTarget {
 /**
  * Write the tab title — or leave it alone. Three states, because a load has three:
  * `undefined` = the state has not arrived yet (the static shell's title stands, so a phone
- * never flashes «Книга» over «Тоска»), `null` = the first sheet genuinely has no title
+ * never flashes «Книга» over «Бланк»), `null` = the first sheet genuinely has no title
  * line (the cover's fallback), a string = the live title. The value comes from the same
  * front DTO the cover renders, so a `front:updated` rename reaches the tab on its own.
  */

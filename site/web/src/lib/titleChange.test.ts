@@ -5,7 +5,7 @@ import { IDLE_TITLE, nextTitleMotion, titleMotionClass } from './titleChange.ts'
 
 function event(overrides: Partial<FrontUpdatedPayload> = {}): FrontUpdatedPayload {
   return {
-    title: 'Тоска',
+    title: 'Бланк',
     about: 'Аннотация',
     rev: 2,
     previousRev: 1,

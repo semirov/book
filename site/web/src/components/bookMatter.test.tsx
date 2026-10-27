@@ -38,7 +38,7 @@ function mediaBody(css: string, condition: string): string {
 }
 
 const front: FrontDto = {
-  title: 'Тоска',
+  title: 'Бланк',
   about: 'Первый абзац аннотации.\n\nВторой абзац аннотации.',
   rev: 1,
   toc: [],
@@ -112,7 +112,7 @@ function textOf(html: string): string {
 describe('cover', () => {
   it('is the title, the live byline, the promise and the caption — and nothing else', () => {
     expect(textOf(coverHtml())).toBe(
-      `Тоска${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
+      `Бланк${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
     );
   });
 

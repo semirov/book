@@ -18,7 +18,7 @@ const shellOgDescription = shellValue(/<meta property="og:description" content="
 
 describe('documentTitle', () => {
   it('names the book exactly as the first sheet does, and its author', () => {
-    expect(documentTitle('Тоска')).toBe(`Тоска — ${IMPRINT_AUTHOR}`);
+    expect(documentTitle('Бланк')).toBe(`Бланк — ${IMPRINT_AUTHOR}`);
   });
 
   it('falls back to the cover word while the sheet has no title line', () => {
@@ -29,7 +29,7 @@ describe('documentTitle', () => {
 });
 
 describe('applyDocumentTitle', () => {
-  const painted = { title: `Тоска — ${IMPRINT_AUTHOR}` };
+  const painted = { title: `Бланк — ${IMPRINT_AUTHOR}` };
 
   it('leaves the title alone until the state has arrived', () => {
     const target = { ...painted };
@@ -46,11 +46,11 @@ describe('applyDocumentTitle', () => {
   it('follows a load: shell → untouched → fallback → live title', () => {
     const target = { ...painted };
     applyDocumentTitle(undefined, target);
-    expect(target.title).toBe(`Тоска — ${IMPRINT_AUTHOR}`);
+    expect(target.title).toBe(`Бланк — ${IMPRINT_AUTHOR}`);
     applyDocumentTitle(null, target);
     expect(target.title).toBe(`Книга — ${IMPRINT_AUTHOR}`);
-    applyDocumentTitle('Тоска', target);
-    expect(target.title).toBe(`Тоска — ${IMPRINT_AUTHOR}`);
+    applyDocumentTitle('Бланк', target);
+    expect(target.title).toBe(`Бланк — ${IMPRINT_AUTHOR}`);
   });
 });
 
@@ -59,7 +59,7 @@ describe('the static shell (index.html)', () => {
   // printed book, and the tab format is the one `documentTitle` writes. Whether the words
   // are the manuscript's is checked against `manuscript/00-front.md` in `server/test`.
   it('names the printed book in the tab and the social title', () => {
-    expect(shellTitle).toBe(documentTitle('Тоска'));
+    expect(shellTitle).toBe(documentTitle('Бланк'));
     expect(shellOgTitle).toBe(shellTitle);
   });
 
@@ -76,7 +76,7 @@ describe('the static shell (index.html)', () => {
 describe('the static shell <noscript>', () => {
   it('gives the title and the author, then the JavaScript notice', () => {
     const body = shell.slice(shell.indexOf('<noscript>'), shell.indexOf('</noscript>'));
-    expect(body).toContain(`<h1 class="title">Тоска</h1>`);
+    expect(body).toContain(`<h1 class="title">Бланк</h1>`);
     expect(body).toContain(`<p class="author">${IMPRINT_AUTHOR}</p>`);
     expect(body).toContain('для чтения нужен браузер с JavaScript');
   });
