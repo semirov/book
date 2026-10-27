@@ -38,9 +38,27 @@ describe('the colophon', () => {
     const html = renderToStaticMarkup(
       <Colophon state={state} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />,
     );
-    // A number carries its noun: «0 глав из 67», never «0 / 67».
-    expect(html).toContain('книга · 0 глав из 67');
+    // A number carries its noun: «12 глав из 67», never «12 / 67».
+    const written = {
+      ...state,
+      chapters: { ...state.chapters, count: 12 },
+    } as unknown as StateSnapshot;
+    expect(renderToStaticMarkup(<Colophon state={written} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />)).toContain(
+      'книга · 12 глав из 67',
+    );
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/rules"');
+  });
+
+  it('states the empty book as a sentence, never as a count of nothing (BOOK-70)', () => {
+    stubDocument();
+    const html = renderToStaticMarkup(
+      <Colophon state={state} imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }} />,
+    );
+    expect(html).toContain('книга · глав ещё нет');
+    expect(html).not.toContain('0 глав');
+    expect(html).not.toContain('из 67');
+    // The owner's copy is untouched.
+    expect(html).toContain('печатается по ходу письма');
   });
 });

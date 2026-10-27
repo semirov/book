@@ -58,51 +58,68 @@ describe('times and dates', () => {
 });
 
 describe('chipCopy', () => {
-  const now = new Date('2026-10-25T12:00:00Z');
+  const RETIRED = ['книга начинается', 'записи нет', 'тишина с', 'минут назад', 'только что'];
 
-  it('says the book begins on day one', () => {
-    expect(chipCopy({ count: 0, lastChangeAt: null }, now)).toEqual({ text: 'книга начинается', live: false });
+  it('says the book has no chapters yet, with no mood about it', () => {
+    expect(chipCopy({ count: 0, lastChangeAt: null })).toEqual({ text: 'глав ещё нет', live: false });
   });
 
-  it('says there is no entry when a chapter has no timestamp', () => {
-    expect(chipCopy({ count: 3, lastChangeAt: null }, now)).toEqual({ text: 'записи нет', live: false });
+  it('falls to the count of chapters with text when no date can be read', () => {
+    // No timestamp is a missing field, not a fact about the book (BOOK-70).
+    expect(chipCopy({ count: 3, lastChangeAt: null })).toEqual({ text: '3 главы с текстом', live: false });
+    expect(chipCopy({ count: 11, lastChangeAt: null }).text).toBe('11 глав с текстом');
+    // An unparseable date is the same missing answer, not «записи нет».
+    expect(chipCopy({ count: 3, lastChangeAt: 'not-a-date' })).toEqual({ text: '3 главы с текстом', live: false });
   });
 
-  it('counts minutes under an hour', () => {
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T11:59:30Z' }, now).text).toBe(
-      'последняя запись · только что',
-    );
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T11:59:00Z' }, now).text).toBe(
-      'последняя запись · 1 минуту назад',
-    );
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T11:57:00Z' }, now).text).toBe(
-      'последняя запись · 3 минуты назад',
-    );
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T11:01:00Z' }, now).text).toBe(
-      'последняя запись · 59 минут назад',
-    );
+  it('prints the day of the last entry, and never a clock beside the word', () => {
+    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T09:52:00Z' })).toEqual({
+      text: 'последняя запись · 25.10',
+      live: false,
+    });
+    // «последняя запись · 12:52» is a word plus a clock: the cap and the voice rule forbid it.
+    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T09:52:00Z' }).text).not.toMatch(/\d\d:\d\d/u);
   });
 
-  it('shows the clock between one and six hours', () => {
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T10:30:00Z' }, now).text).toBe('последняя запись · 13:30');
+  it('keeps every chip inside the 24-character cap', () => {
+    for (const input of [
+      { count: 0, lastChangeAt: null },
+      { count: 1, lastChangeAt: null },
+      { count: 3, lastChangeAt: null },
+      { count: 11, lastChangeAt: null },
+      { count: 67, lastChangeAt: null },
+      { count: 1, lastChangeAt: '2026-10-25T09:52:00Z' },
+      { count: 67, lastChangeAt: '2026-12-31T23:59:00Z' },
+    ]) {
+      expect(chipCopy(input).text.length, chipCopy(input).text).toBeLessThanOrEqual(24);
+    }
   });
 
-  it('says silence after six hours, never "offline"', () => {
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T06:00:00Z' }, now).text).toBe('тишина с 09:00');
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-22T06:00:00Z' }, now).text).toBe('тишина с 22.10');
-  });
-
-  it('never claims liveness without an engine', () => {
-    expect(chipCopy({ count: 3, lastChangeAt: '2026-10-25T11:59:00Z' }, now).live).toBe(false);
-    expect(chipCopy({ count: 0, lastChangeAt: null }, now).live).toBe(false);
+  it('never claims liveness without an engine, and never uses a retired word', () => {
+    for (const input of [
+      { count: 0, lastChangeAt: null },
+      { count: 3, lastChangeAt: null },
+      { count: 3, lastChangeAt: '2026-10-25T11:59:00Z' },
+    ]) {
+      const chip = chipCopy(input);
+      expect(chip.live).toBe(false);
+      for (const word of RETIRED) expect(chip.text, word).not.toContain(word);
+    }
   });
 });
 
 describe('queueLabel', () => {
-  it('states the queue as a fact', () => {
-    expect(queueLabel(0)).toBe('замечаний нет');
-    expect(queueLabel(1)).toBe('1 замечание');
-    expect(queueLabel(4)).toBe('4 замечания');
-    expect(queueLabel(11)).toBe('11 замечаний');
+  it('states the queue as a fact, with the noun it counts', () => {
+    expect(queueLabel(0)).toBe('в очереди пусто');
+    expect(queueLabel(1)).toBe('в очереди 1 правка');
+    expect(queueLabel(4)).toBe('в очереди 4 правки');
+    expect(queueLabel(11)).toBe('в очереди 11 правок');
+  });
+
+  it('never counts nothing and never says «замечание» — the queue is made of правки', () => {
+    for (const depth of [0, 1, 4, 11]) {
+      expect(queueLabel(depth)).not.toContain('0 правок');
+      expect(queueLabel(depth)).not.toContain('замечан');
+    }
   });
 });

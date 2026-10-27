@@ -139,6 +139,8 @@ describe('ChangeCard', () => {
     expect(html).toContain('в главе 7 сказано иначе');
     expect(html).toContain('стык пересматривается');
     expect(html).toContain('внесено');
+    // BOOK-70: a state is a chip in the label's voice, and the status modifier names which one.
+    expect(html).toContain('class="stamp-state stamp-done"');
     // BOOK-23: the card prints the model and the tokens, and the price only because this
     // fixture's cost was measured.
     expect(html).toContain('deepseek-flash · 150\u00a0572\u00a0токена · 0,04\u00a0₽');
@@ -164,7 +166,10 @@ describe('ChangeCard', () => {
     const html = renderToStaticMarkup(<ChangeCard change={dropped} onClose={() => undefined} />);
     expect(html).toContain('снято');
     expect(html).toContain('в главе уже одно упоминание — второе убрано');
-    expect(html).toContain('шагов пока нет');
+    // BOOK-70: no steps prints nothing — the label stays, the container keeps no placeholder.
+    expect(html).toContain('class="change-sub"');
+    expect(html).not.toContain('шагов пока нет');
+    expect(html).not.toContain('change-empty');
   });
 
   it('renders the outcome as делопроизводство, with the cause and its mode', () => {
@@ -371,7 +376,9 @@ describe('CascadeRibbon', () => {
       />,
     );
     expect(quiet).not.toContain('ribbon-ring');
-    expect(quiet.match(/class="ribbon-none"/g) ?? []).toHaveLength(2);
+    // BOOK-70: an empty wing renders no reached element at all — no placeholder span, no «—».
+    expect(quiet).not.toContain('ribbon-none');
+    expect(quiet).not.toContain('ribbon-reached');
     expect(quiet.match(/не открылось/g) ?? []).toHaveLength(2);
   });
 

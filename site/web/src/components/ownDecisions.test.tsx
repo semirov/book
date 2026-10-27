@@ -65,6 +65,9 @@ describe('«ваши правки» in the end matter (BOOK-13)', () => {
     });
     const html = renderToStaticMarkup(<OwnDecisions decisions={refused} />);
     expect(html).toContain('правка не принята · правка не про эту книгу: здесь нет утешения');
+    // BOOK-70: the decision's moment is a stamp-time (mono, tabular), not the old shared `.stamp`.
+    expect(html).toContain('class="stamp-time"');
+    expect(html).not.toContain('class="stamp"');
     expect(html).not.toContain('волн');
     expect(html).not.toContain('изменилось');
     expect(html).not.toContain('ваша доля');

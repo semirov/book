@@ -92,9 +92,7 @@ function WingColumn({ side, wing }: { side: Wing; wing: RibbonWing }) {
   return (
     <div className={`ribbon-wing is-${side}`} data-state={wing.state}>
       <span className="ribbon-wing-h">{wingLine(side, wing)}</span>
-      {wing.reached.length === 0 ? (
-        <span className="ribbon-none" aria-hidden="true" />
-      ) : (
+      {wing.reached.length === 0 ? null : (
         <span className="ribbon-reached">
           {wing.reached.map((chapter) => (
             <a

@@ -58,9 +58,6 @@
 .ribbon-wing.is-up .ribbon-reached {
   justify-content: flex-end;
 }
-.ribbon-none {
-  min-height: 20px;
-}
 /* A 44 px tap target around a 20 px mark, as the rest of the mobile chrome does. */
 .ribbon-ch {
   min-width: 28px;

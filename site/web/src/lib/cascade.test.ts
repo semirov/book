@@ -13,6 +13,7 @@ import {
   wingLine,
   wingOfChapter,
   wingReachedCopy,
+  wingStateCopy,
   RIBBON_MAX_WAVE,
   type Ribbon,
 } from './cascade.ts';
@@ -283,8 +284,25 @@ describe('both wings, as data', () => {
     // Only a second wave says anything, and it got there by the owner's decision.
     expect(wingLine('up', { ...ribbon.wings.up, wave: 2, state: 'moving' })).toBe('вверх · волна 2 · решением · идёт');
     expect(wingReachedCopy(ribbon.wings.down)).toBe('07');
-    expect(wingReachedCopy({ ...ribbon.wings.up, state: 'waiting', reached: [] })).toBe('не открылось');
-    expect(wingReachedCopy({ ...ribbon.wings.up, state: 'settled', reached: [] })).toBe('дальше держится');
+  });
+
+  it('prints nothing for a wing that reached nothing, in every state (BOOK-70)', () => {
+    // The state word already stands in `wingLine`; a second «не открылось», a «дальше держится»
+    // or a bare «—» would be the same fact twice, or a claim the data does not make.
+    for (const state of ['waiting', 'moving', 'stopped', 'settled'] as const) {
+      expect(wingReachedCopy({ ...ribbon.wings.up, state, reached: [] }), state).toBe('');
+    }
+    expect(wingStateCopy('settled')).toBe('остановилось');
+    expect(wingStateCopy('stopped')).toBe('остановлено');
+    expect(wingStateCopy('waiting')).toBe('не открылось');
+    expect(wingStateCopy('moving')).toBe('идёт');
+  });
+
+  it('says «не открылось» only from the state word, never twice', () => {
+    const waiting = { ...ribbon.wings.up, state: 'waiting' as const, wave: 0, reached: [] };
+    expect(wingLine('up', waiting)).toBe('вверх · не открылось');
+    expect(wingReachedCopy(waiting)).toBe('');
+    expect(`${wingLine('up', waiting)}${wingReachedCopy(waiting)}`.match(/не открылось/gu)).toHaveLength(1);
   });
 
   it('places a chapter on the wing that reached it', () => {

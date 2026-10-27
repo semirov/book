@@ -374,7 +374,7 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
           <section className="focus-note ym-hide-content" aria-label={footnoteCopy(change)}>
             <header className="focus-note-h">
               <span>{footnoteCopy(change)}</span>
-              <span className="focus-stamp">{panelStamp(change)}</span>
+              <span className="focus-stamp stamp-state">{panelStamp(change)}</span>
             </header>
             <dl className="focus-rows">
               <div>

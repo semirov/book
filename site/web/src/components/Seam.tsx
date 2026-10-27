@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { filingNumber, filingQuote, filingWord, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
 import { InterventionForm } from './InterventionForm.tsx';
@@ -171,18 +171,21 @@ export function Seam({
       {premise && !frozen ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
+        // BOOK-70: the row prints the numeral, the reader and the moment; the state word is
+        // the button's label, not a fourth span — one voice per line, and the numeral keeps
+        // its own (mono, tabular) without a second word beside it.
         <button
           type="button"
           className="seam-filing"
           key={comment.id}
           data-status={comment.status}
+          aria-label={`замечание ${filingNumber(comment)} · ${filingInk(comment).word} · «${filingQuote(comment)}»`}
           onClick={(event) => openFiling(comment, event.currentTarget)}
         >
           <span className={`seam-filing-line ink-${comment.status === 'new' ? 'quiet' : 'live'}`}>
             <span className="seam-filing-n">{filingNumber(comment)}</span>
             <span>{comment.author}</span>
             <span className="seam-filing-stamp">{commentStamp(comment.createdAt)}</span>
-            <span>{filingWord(comment)}</span>
           </span>
           <span className="seam-filing-quote">«{filingQuote(comment)}»</span>
         </button>

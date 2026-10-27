@@ -16,14 +16,16 @@ import { scaleTicks } from '../lib/focus.ts';
 export function FocusWings({ wings }: { wings: CascadeWingsDto }) {
   return (
     <div className="focus-wings">
-      {(['down', 'up'] as const).map((side: Wing) => (
-        <div className="focus-wing" key={side} data-state={wings[side].state}>
-          <span className="focus-wing-h">{wingLine(side, wings[side])}</span>
-          <span className="focus-wing-r">
-            {wings[side].reached.length === 0 ? '—' : wingReachedCopy(wings[side])}
-          </span>
-        </div>
-      ))}
+      {(['down', 'up'] as const).map((side: Wing) => {
+        const reached = wingReachedCopy(wings[side]);
+        return (
+          <div className="focus-wing" key={side} data-state={wings[side].state}>
+            <span className="focus-wing-h">{wingLine(side, wings[side])}</span>
+            {/* An empty wing prints nothing: no dash, no empty span (BOOK-70). */}
+            {reached === '' ? null : <span className="focus-wing-r">{reached}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }

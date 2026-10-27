@@ -212,3 +212,26 @@
 .skel-sheet .skel-p + .skel-p {
   margin-top: 0.9em;
 }
+
+/* ---- the boot field (BOOK-66) -------------------------------------------------------
+   BOOK-DOC-43 §3 — the field is the cover's frame and the sentence is absolute, so the
+   first paint already is the final rectangle: the sentence adds no height and the cover
+   cannot move when the app arrives. It lives here, with the other wait forms, rather than
+   in chrome.css, which is a page-2 sheet. */
+.boot-wait {
+  min-height: min(67.5vh, 720px);
+  min-height: min(67.5svh, 720px);
+  position: relative;
+}
+.boot-status {
+  position: absolute;
+  inset-inline: var(--gut);
+  top: calc(env(safe-area-inset-top) + 24px);
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}

@@ -32,10 +32,13 @@ export const TITLE_PROMISE =
  *
  * The byline is «author + N» with N from the server (`front.authors`), never a hardcoded
  * surname and never a client-side count: page 1 and the authors list must agree, so they
- * read one measurement. N is always rendered — on the empty book it reads «+ 0».
+ * read one measurement. BOOK-70: «+ N» is a reference chip and a count of nothing is not a
+ * count — on a book nobody has touched the author stands alone.
  */
 export function TitleSheet({ front, motion = IDLE_TITLE }: { front: FrontDto; motion?: TitleMotion }) {
   const animation = titleMotionClass(motion);
+  /** The readers whose text survived; `+ 0` is a count of nothing and is not printed. */
+  const readers = front.authors?.count ?? 0;
   /**
    * `cover_seen` is the first screen **rendered**, not the shell requested (BOOK-63); the
    * ref keeps React's development double-mount from counting the same act twice.
@@ -54,7 +57,16 @@ export function TitleSheet({ front, motion = IDLE_TITLE }: { front: FrontDto; mo
       >
         {front.title ?? 'Книга'}
       </h1>
-      <p className="author">{`${front.imprint.author} + ${front.authors?.count ?? 0}`}</p>
+      <p className="author">
+        {front.imprint.author}
+        {/* The space belongs to the byline, not to the chip: a chip is `+ 3`, never ` + 3`. */}
+        {readers >= 1 ? (
+          <>
+            {' '}
+            <span className="author-plus">{`+ ${readers}`}</span>
+          </>
+        ) : null}
+      </p>
       <p className="title-genre">{TITLE_GENRE}</p>
       <p className="title-promise">{TITLE_PROMISE}</p>
     </section>

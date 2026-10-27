@@ -145,8 +145,7 @@
   color: var(--ink-3);
   text-decoration: none;
 }
-.filing-meta,
-.filing-word {
+.filing-meta {
   margin: 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
@@ -166,10 +165,33 @@
   line-height: 1.6;
   color: var(--ink);
 }
+/* The filing's state, printed once (BOOK-70): a chip — 12 px, the label's voice, one line,
+   one of two inks. `ink-live` while it is in work, `ink-quiet` for everything settled; the
+   tone class still travels on the element, but a chip may not take a third ink. */
 .filing-state {
   margin: 0;
-  font-family: var(--ui);
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+.filing-state.ink-live {
+  color: var(--live);
+}
+/* A state that does not fit a chip — a clause («снято: текст успел измениться») or a receipt
+   («внесено в главу 07 · право на ваш текст перешло автору книги») — is a sentence: 14 px,
+   sentence case, and it may wrap. The form is decided by the text in `lib/commentView.ts`. */
+.filing-sentence {
+  margin: 0;
+  font-family: var(--serif);
   font-size: var(--fs-meta);
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--ink-2);
 }
 .filing-fact {
   margin: 0;

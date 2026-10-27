@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { CASCADE_MAX_WAVE } from '@book/shared';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,11 @@ describe('loadConfig', () => {
     expect(config.budgetMaxSteps).toBe(13);
     // A wave is a round of both wings: the shipped lag keeps the far wing in that round.
     expect(config.upwardLagWaves).toBe(0);
-    expect(config.bookRoot.endsWith('book')).toBe(true);
+    // The folder's *name* is not the invariant: a worktree (`feat-book70-chips`) is a book root
+    // too. What must hold is that the default is the repository holding this `site/`, and that
+    // it really is the book (the manuscript is there).
+    expect(config.bookRoot).toBe(resolve(SITE_ROOT, '..'));
+    expect(existsSync(join(config.bookRoot, 'manuscript'))).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
   });
 

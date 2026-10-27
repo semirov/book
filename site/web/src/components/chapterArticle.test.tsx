@@ -33,8 +33,8 @@ function prose(html: string): string {
   return html.replace(/<[^>]+>/gu, '');
 }
 
-describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
-  it('reads a basis-only chapter as its frozen sentence, with no «не написана» label', () => {
+describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
+  it('reads a basis-only chapter as its frozen sentence, with no state label in the header', () => {
     const html = render(entry(1, { basis: true, blocks: 1 }));
     expect(prose(html)).toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('не написана');
@@ -51,10 +51,14 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     expect(html).toContain('data-basis="true"');
   });
 
-  it('renders an untouched slot as today: a slim empty article, no prose', () => {
+  it('renders an untouched slot as today: a slim empty article, no prose, no placeholder word', () => {
     const html = render(entry(2));
     expect(html).toContain('ch-empty');
-    expect(html).toContain('не написана');
+    // BOOK-70: an unwritten chapter prints nothing in `.ch-meta` — no «не написана», no dash.
+    expect(html).not.toContain('не написана');
+    expect(html).toContain('<span class="ch-meta"></span>');
+    expect(html).not.toContain('ch-print');
+    expect(html).not.toContain('ch-data');
     expect(html).not.toContain(FRAME_FIRST_SENTENCE);
     expect(html).not.toContain('data-basis');
   });
@@ -69,5 +73,18 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6)', () => {
     expect(html).toContain('Тестовая глава');
     expect(html).toContain('class="ch-placeholder"');
     expect(html).not.toMatch(/style=/u);
+  });
+
+  it('splits the header meta into a state chip and a data line, and the data is a written fact', () => {
+    const written = render(entry(3, { written: true, chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' }));
+    expect(written).toContain('class="ch-data"');
+    expect(written).toContain('9\u00a0003\u00a0знака · 12:52');
+    // «печатается» belongs to the printing chapter: it is not in the markup on a first paint.
+    expect(written).not.toContain('ch-print');
+
+    const unwritten = render(entry(4, { chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' }));
+    // The data line names a chapter's text and a moment; with no text there is nothing to date.
+    expect(unwritten).not.toContain('ch-data');
+    expect(unwritten).toContain('<span class="ch-meta"></span>');
   });
 });

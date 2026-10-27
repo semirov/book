@@ -28,9 +28,11 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
   return (
     <footer className="page sheet colophon" id="colo">
       <div className="row">
+        {/* BOOK-70: a count of nothing is a sentence, not a chip. */}
         <span>
-          книга · {state.chapters.count} {plural(state.chapters.count, 'глава', 'главы', 'глав')} из{' '}
-          {TOTAL_CHAPTERS}
+          {state.chapters.count === 0
+            ? 'книга · глав ещё нет'
+            : `книга · ${state.chapters.count} ${plural(state.chapters.count, 'глава', 'главы', 'глав')} из ${TOTAL_CHAPTERS}`}
         </span>
       </div>
       <div className="row">
