@@ -98,6 +98,30 @@ export function lib(body: string, env: Record<string, string> = {}): Promise<{ c
   });
 }
 
+/**
+ * A taker's script for the lock race: take the lock (a refusal exits 3 and prints why), say when it
+ * held it, hold for `holdS` seconds, release. Transcript lines are `acquired|released <label> …`.
+ */
+export function taker(stateDir: string, label: string, holdS = 0.6): string {
+  return [
+    `STATE_DIR="${stateDir}"`,
+    'LOCK_DIR="$STATE_DIR/deploy.lock"',
+    'lock_acquire',
+    `printf "acquired ${label} pid=%s at=%s\\n" "$$" "$(now_ms)"`,
+    `sleep ${holdS}`,
+    `printf "released ${label} pid=%s at=%s\\n" "$$" "$(now_ms)"`,
+    'lock_release',
+  ].join('\n');
+}
+
+/** The window one taker's transcript says it held the lock, or null when it never held it. */
+export function heldWindow(out: string, label: string): { pid: number; start: number; end: number } | null {
+  const got = new RegExp(`acquired ${label} pid=(\\d+) at=(\\d+)`, 'u').exec(out);
+  if (got === null) return null;
+  const gone = new RegExp(`released ${label} pid=(\\d+) at=(\\d+)`, 'u').exec(out);
+  return { pid: Number(got[1]), start: Number(got[2]), end: Number(gone?.[2] ?? '0') };
+}
+
 export type Answer = { status: number; body: unknown };
 
 /** A real server on a random port; `/healthz` answers with whatever the handler returns. */

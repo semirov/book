@@ -26,7 +26,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { OK, SILENT, closeAll, deploy, emptyRoot, fakes, holdLock, lib, serve, temp } from './deployHarness.ts';
+import { OK, SILENT, closeAll, deploy, emptyRoot, fakes, heldWindow, holdLock, lib, serve, taker, temp } from './deployHarness.ts';
 
 // Every test here spawns real processes. On a loaded box a whole-suite run can stretch the clock
 // several times over, and a spawn is not a hang: the timeout is about a wedged child, not a busy
@@ -83,24 +83,46 @@ describe('the lock: one deploy at a time', () => {
     expect(existsSync(join(stateDir, 'deploy.lock'))).toBe(false);
   });
 
-  it('lets exactly one of two takers have a stale lock', async () => {
+  it('never refuses while nobody holds the lock: at most one taker holds it, and a settled attempt gets in', async () => {
     const stateDir = temp();
     holdLock(stateDir, 4_194_305, Math.floor(Date.now() / 1000));
-    const body = [
-      `STATE_DIR="${stateDir}"`,
-      'LOCK_DIR="$STATE_DIR/deploy.lock"',
-      'lock_acquire',
-      'printf "won %s\\n" "$$"',
-      'sleep 0.6',
-      'lock_release',
-    ].join('\n');
-    const [first, second] = await Promise.all([lib(body), lib(body)]);
+    // The settle is the lib's own knob, shortened so the test does not wait on a busy runner.
+    const env = { BOOK_LOCK_RETRY_S: '0.2' };
+    const runs = await Promise.all([lib(taker(stateDir, 'a'), env), lib(taker(stateDir, 'b'), env)]);
+    const transcript = runs.map((run) => run.out).join('\n---\n');
 
-    const won = [first, second].filter((run) => /won \d+/u.test(run.out));
-    const refused = [first, second].filter((run) => run.code === 3);
-    expect(won, `${first.out}\n---\n${second.out}`).toHaveLength(1);
-    expect(refused, `${first.out}\n---\n${second.out}`).toHaveLength(1);
-    // The winner released what it held; the loser never touched the winner's lock.
+    // 1. At most one taker holds the lock at any moment: the held windows must not overlap.
+    const windows = runs
+      .flatMap((run, index) => heldWindow(run.out, 'ab'[index] ?? 'x') ?? [])
+      .sort((left, right) => left.start - right.start);
+    for (let index = 1; index < windows.length; index += 1) {
+      expect(windows[index]!.start, transcript).toBeGreaterThanOrEqual(windows[index - 1]!.end);
+    }
+
+    // 2. Somebody gets in, and a refusal names the holder that is really there — never "another
+    //    deploy is running" with nobody behind it (the CI flake this pass fixes).
+    expect(windows.length, transcript).toBeGreaterThanOrEqual(1);
+    const holders = new Set(windows.map((window) => window.pid));
+    for (const run of runs.filter((candidate) => candidate.code === 3)) {
+      const named = /another deploy is running: pid (\d+)/u.exec(run.out);
+      if (named !== null) {
+        expect(holders.has(Number(named[1])), run.out).toBe(true);
+      } else {
+        // The only other honest refusal: a taker caught in the act, with no pid to name yet.
+        expect(run.out, 'a refusal must never say a deploy is running with no holder').toMatch(
+          /another deploy is taking the lock .* over right now/u,
+        );
+      }
+    }
+    expect(runs.filter((run) => run.code !== 0 && run.code !== 3), transcript).toHaveLength(0);
+
+    // 3. The race must not leave a phantom lock: a deploy arriving after both takers gets in.
+    const settled = await lib(
+      [`STATE_DIR="${stateDir}"`, 'LOCK_DIR="$STATE_DIR/deploy.lock"', 'lock_acquire', 'printf "acquired pid=%s\\n" "$$"', 'lock_release'].join('\n'),
+      env,
+    );
+    expect(settled.code, settled.out).toBe(0);
+    expect(settled.out).toMatch(/acquired pid=\d+/u);
     expect(existsSync(join(stateDir, 'deploy.lock'))).toBe(false);
   });
 

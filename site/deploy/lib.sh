@@ -20,7 +20,9 @@
 # 3. The rest of the deploy's primitives live here too, so they can be exercised without a deploy:
 #    the rollback gate (`rollback_allowed`: two independent negatives), the load reading (parsed
 #    from `sysctl`, never `unknown` when a number is there), the service start (including the
-#    bootstrap of a job that is not loaded) and the lock (one deploy per root, atomic takeover).
+#    bootstrap of a job that is not loaded) and the lock (one deploy per root, atomic takeover). A
+#    takeover that loses its race is re-read once after `BOOK_LOCK_RETRY_S`: a refusal names the
+#    holder that is really there, or says a taker is active — never "pid unknown" on a free lock.
 
 # --- numbers and names the callers share --------------------------------------------------------
 
@@ -34,6 +36,8 @@ PROBE_USED="curl"
 LOCK="${LOCK:-none}"
 LOCK_OWNED="${LOCK_OWNED:-0}"
 LOCK_STALE_S="${BOOK_LOCK_STALE_S:-2700}" # 45 min: a lock that old cannot belong to a live deploy
+LOCK_RETRY_S="${BOOK_LOCK_RETRY_S:-1}"     # one settle before a collided takeover is read again
+LOCK_HOLDER=""; LOCK_SINCE=""; LOCK_AGE=0 # what the last read of the lock directory found
 # The instant before the restart this run issued; every window and re-read is measured from it.
 KICKSTART_T0="${KICKSTART_T0:-}"
 # `bootstrap` when a job that was not loaded had to be bootstrapped from its plist, else "".
@@ -363,6 +367,48 @@ lock_report() {
   printf 'held by pid %s since %s (%ss old, stale after %ss)' "${holder:-unknown}" "${since:-unknown}" "$(lock_age "$since")" "$LOCK_STALE_S"
 }
 
+# What the lock directory says right now: the holder's pid, its start stamp and its age. A missing
+# directory leaves all three empty (age 0).
+lock_read() {
+  LOCK_HOLDER="$(lock_holder)"
+  LOCK_SINCE="$(cat "$LOCK_DIR/since" 2>/dev/null || true)"
+  LOCK_AGE="$(lock_age "$LOCK_SINCE")"
+}
+
+# A live holder whose lock is not stale: the only honest reason to refuse.
+lock_held_live() {
+  is_number "${LOCK_HOLDER:-}" && kill -0 "$LOCK_HOLDER" 2>/dev/null && [ "${LOCK_AGE:-0}" -lt "$LOCK_STALE_S" ]
+}
+
+# This run owns a directory it has just created: sign it.
+lock_write() {
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+  date +%s > "$LOCK_DIR/since"
+  LOCK_OWNED=1
+  window_say "lock: ${LOCK} (pid $$, ${LOCK_DIR})"
+}
+
+# One takeover attempt. `mv` of a directory succeeds for exactly one caller, so this is the atomic
+# step: the winner verifies that what it moved is the directory it judged stale (`$1`), removes it
+# and creates its own. A failed move, or a directory that changed hands in between, is a lost race —
+# never a refusal by itself.
+lock_take_over() { # (pid_judged_stale)
+  local judged="${1:-}" stale="${LOCK_DIR}.stale.$$" moved
+  [ -n "$judged" ] || return 1
+  mv "$LOCK_DIR" "$stale" 2>/dev/null || return 1
+  moved="$(cat "$stale/pid" 2>/dev/null || true)"
+  if [ "$moved" != "$judged" ]; then
+    # Give it back when the path is free: it may belong to a live deploy that just took it.
+    if ! mv "$stale" "$LOCK_DIR" 2>/dev/null; then
+      window_say "lock: a directory taken over at $LOCK_DIR could not be given back (pid ${moved:-not readable}); it stays at $stale"
+    fi
+    return 1
+  fi
+  rm -rf "$stale"
+  mkdir "$LOCK_DIR" 2>/dev/null || return 1
+  return 0
+}
+
 lock_refuse() { # (reason)
   printf '%s deploy: FAILED: %s — refused with exit 3; nothing was checked out, built, published or restarted\n' \
     "$(window_stamp)" "$1" >&2
@@ -375,38 +421,42 @@ lock_refuse() { # (reason)
 # by moving it aside first, so two runs cannot both "take over" the same directory: `mv` of one
 # directory succeeds for exactly one of them.
 lock_acquire() {
-  local holder since age moved stale
   mkdir -p "$STATE_DIR"
   if mkdir "$LOCK_DIR" 2>/dev/null; then
     LOCK="held"
-  else
-    holder="$(lock_holder)"
-    since="$(cat "$LOCK_DIR/since" 2>/dev/null || true)"
-    age="$(lock_age "$since")"
-    if is_number "$holder" && kill -0 "$holder" 2>/dev/null && [ "$age" -lt "$LOCK_STALE_S" ]; then
-      lock_refuse "another deploy is running: pid $holder since ${since:-unknown} (age ${age}s, lock $LOCK_DIR)"
-    fi
-    stale="${LOCK_DIR}.stale.$$"
-    if ! mv "$LOCK_DIR" "$stale" 2>/dev/null; then
-      lock_refuse "another deploy took the stale lock at $LOCK_DIR while this one was taking it over"
-    fi
-    moved="$(cat "$stale/pid" 2>/dev/null || true)"
-    if [ "$moved" != "$holder" ]; then
-      # What was moved is not the lock this run judged stale — put it back, the holder may be live.
-      mv "$stale" "$LOCK_DIR" 2>/dev/null || true
-      lock_refuse "the lock at $LOCK_DIR changed hands while this run was taking it over (pid ${moved:-unknown})"
-    fi
-    rm -rf "$stale"
-    if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-      lock_refuse "another deploy took the lock at $LOCK_DIR while this one was taking it over"
-    fi
-    LOCK="taken-over"
-    window_say "lock: taking over a stale lock — pid ${holder:-unknown}, since ${since:-unknown}, age ${age}s (limit ${LOCK_STALE_S}s)"
+    lock_write
+    return 0
   fi
-  printf '%s\n' "$$" > "$LOCK_DIR/pid"
-  date +%s > "$LOCK_DIR/since"
-  LOCK_OWNED=1
-  window_say "lock: ${LOCK} (pid $$, ${LOCK_DIR})"
+  lock_read
+  if lock_held_live; then
+    lock_refuse "another deploy is running: pid ${LOCK_HOLDER} since ${LOCK_SINCE:-unknown} (age ${LOCK_AGE}s, lock ${LOCK_DIR})"
+  fi
+  if lock_take_over "${LOCK_HOLDER}"; then
+    LOCK="taken-over"
+    window_say "lock: taking over a stale lock — pid ${LOCK_HOLDER:-none}, since ${LOCK_SINCE:-unknown}, age ${LOCK_AGE}s (limit ${LOCK_STALE_S}s)"
+    lock_write
+    return 0
+  fi
+  # The directory changed hands between the read and the move. Refusing here would name nobody and
+  # tell the driver "another deploy is running" when there is none: one settle, one re-read, and
+  # only a live holder (or a taker caught in the act) may refuse.
+  sleep "$LOCK_RETRY_S"
+  lock_read
+  if lock_held_live; then
+    lock_refuse "another deploy is running: pid ${LOCK_HOLDER} since ${LOCK_SINCE:-unknown} (age ${LOCK_AGE}s, lock ${LOCK_DIR})"
+  fi
+  if [ -z "${LOCK_HOLDER:-}" ] && mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK="held"
+    lock_write
+    return 0
+  fi
+  if lock_take_over "${LOCK_HOLDER}"; then
+    LOCK="taken-over"
+    window_say "lock: taking over a stale lock (after a ${LOCK_RETRY_S}s settle) — pid ${LOCK_HOLDER:-none}, age ${LOCK_AGE}s"
+    lock_write
+    return 0
+  fi
+  lock_refuse "another deploy is taking the lock at $LOCK_DIR over right now (pid ${LOCK_HOLDER:-not readable yet})"
 }
 
 # The run phase is a re-exec of the same pid (`exec` keeps it), so the lock taken in `prepare` is
