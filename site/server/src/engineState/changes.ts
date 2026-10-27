@@ -14,9 +14,11 @@
 
 import {
   PUBLIC_INTENT_MAX_CHARS,
+  measuredRub,
   normalizeInterventionKind,
   parseSeams,
   seamReason,
+  type ChangeCostDto,
   type ChangeDto,
   type ChangeOutcome,
   type ChangeStatus,
@@ -180,6 +182,21 @@ function positionOf(db: Db, change: ChangeRow): number | null {
   );
 }
 
+/**
+ * The cost as the public DTO carries it: the model and the tokens when they exist, and the
+ * money only when the row is marked as priced (`cost_priced`). Nothing was spent and nothing
+ * was measured is the same absence — `null`.
+ */
+function publicCost(change: ChangeRow): ChangeCostDto | null {
+  if (change.model === null && change.tokens_in + change.tokens_out === 0) return null;
+  return {
+    model: change.model,
+    tokensIn: change.tokens_in,
+    tokensOut: change.tokens_out,
+    rub: measuredRub(change.cost_rub, change.cost_priced === 1),
+  };
+}
+
 /** `GET /api/changes/:id` — the change card's one call (§9, §11.7). */
 export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null {
   const change = readChangeRow(db, id);
@@ -221,10 +238,7 @@ export function readChange(db: Db, id: string, nowMs: number): ChangeDto | null 
     appliedRevs: [...applied]
       .map(([chapter, rev]) => ({ chapter, rev }))
       .sort((left, right) => left.chapter - right.chapter),
-    cost:
-      change.model === null && change.tokens_in + change.tokens_out === 0
-        ? null
-        : { model: change.model, tokensIn: change.tokens_in, tokensOut: change.tokens_out, rub: change.cost_rub },
+    cost: publicCost(change),
     history:
       hseqFrom.length > 0 && hseqTo.length > 0
         ? { fromHseq: Math.min(...hseqFrom), toHseq: Math.max(...hseqTo) }

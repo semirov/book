@@ -55,6 +55,33 @@ export type PublicRelevance = {
 /** A seam as the reader can check it: the boundary and the writer's one clause. */
 export type PublicSeam = { boundary: SeamBoundary; reason: string; resolved: boolean };
 
+/**
+ * A change's own numbers (BOOK-DOC-4 «Honesty about cost»): the model, the tokens it spent,
+ * and the money **only if it was measured**.
+ *
+ * `rub: null` means no price was applied to these tokens — the row's `cost_rub` is the
+ * column's placeholder zero and its `cost_priced` marker is 0 — so no surface may print a
+ * ₽ figure for it. A priced contribution that happened to cost nothing is the number `0`,
+ * and only a measured zero prints «0,00 ₽».
+ */
+export type ChangeCostDto = {
+  model: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  rub: number | null;
+};
+
+/**
+ * The one place that decides whether a stored amount is a measurement: only a row carrying
+ * the `cost_priced` marker has a price, and a priced zero is a real «0,00 ₽». No price source
+ * exists yet, so every row written today is unpriced and its money travels as `null`.
+ */
+export function measuredRub(stored: number | null | undefined, priced: boolean): number | null {
+  if (!priced) return null;
+  if (typeof stored !== 'number' || !Number.isFinite(stored) || stored < 0) return null;
+  return stored;
+}
+
 /** One step of a ripple — no verdict, no finding, no editor, no consultant (§6B.6). */
 export type ChangeStepDto = {
   seq: number;
@@ -132,7 +159,8 @@ export type ChangeDto = {
   modes: RetroMode[];
   steps: ChangeStepDto[];
   appliedRevs: Array<{ chapter: number; rev: number }>;
-  cost: null | { model: string | null; tokensIn: number; tokensOut: number; rub: number };
+  /** Null when nothing was spent yet; `cost.rub` is null whenever the money is unmeasured. */
+  cost: ChangeCostDto | null;
   history: null | { fromHseq: number; toHseq: number };
   enqueuedAt: string;
   startedAt: string | null;

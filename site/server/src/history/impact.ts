@@ -8,7 +8,7 @@
  */
 
 import type { ChangeImpactDto, SeamBoundary } from '@book/shared';
-import { parseSeams } from '@book/shared';
+import { measuredRub, parseSeams } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
@@ -27,6 +27,7 @@ type ImpactRow = {
   depth_up: number;
   tokens: number;
   cost_rub: number;
+  cost_priced: number;
   ms: number;
   from_hseq: number;
   to_hseq: number;
@@ -42,6 +43,7 @@ type StepRow = {
   tokens_in: number;
   tokens_out: number;
   cost_rub: number;
+  cost_priced: number;
   chars_delta: number | null;
   hseq_from: number | null;
   hseq_to: number | null;
@@ -62,7 +64,7 @@ function fromRow(row: ImpactRow): ChangeImpactDto {
     seams: safeJson<Array<{ boundary: SeamBoundary; resolved: boolean }>>(row.seams) ?? [],
     depth: { down: row.depth_down, up: row.depth_up },
     tokens: row.tokens,
-    costRub: row.cost_rub,
+    costRub: measuredRub(row.cost_rub, row.cost_priced === 1),
     ms: row.ms,
     history: { fromHseq: row.from_hseq, toHseq: row.to_hseq },
     computedAt: row.computed_at,
@@ -72,7 +74,7 @@ function fromRow(row: ImpactRow): ChangeImpactDto {
 function stepsOfChange(db: Db, change: ChangeRow): StepRow[] {
   return db
     .prepare(
-      `SELECT step_id, chapter, outcome, seams_out, tokens_in, tokens_out, cost_rub, chars_delta,
+      `SELECT step_id, chapter, outcome, seams_out, tokens_in, tokens_out, cost_rub, cost_priced, chars_delta,
               hseq_from, hseq_to, at
          FROM steps
         WHERE step_id IN (SELECT step_id FROM leases WHERE change_id = ?)
@@ -152,7 +154,12 @@ export function computeImpact(db: Db, changeId: string, nowMs: number = Date.now
     seams,
     depth: { down: cascade?.depth_bwd ?? 0, up: cascade?.depth_fwd ?? 0 },
     tokens: steps.reduce((sum, step) => sum + step.tokens_in + step.tokens_out, 0),
-    costRub: steps.reduce((sum, step) => sum + step.cost_rub, 0),
+    // BOOK-23: the projection inherits the same rule as the change DTO — only a ripple whose
+    // steps were priced has a money figure, and a sum of placeholder zeros stays absent.
+    costRub: measuredRub(
+      steps.reduce((sum, step) => sum + step.cost_rub, 0),
+      steps.some((step) => step.cost_priced === 1),
+    ),
     ms: Math.max(0, closedMs - Date.parse(cascade?.opened_at ?? change.enqueued_at)),
     history: { fromHseq, toHseq },
     computedAt: toIso(nowMs),
@@ -166,10 +173,10 @@ export function recordImpact(db: Db, changeId: string, nowMs: number = Date.now(
   db.prepare(
     `INSERT INTO change_impact
        (change_id, chapters_touched, chapters_rewritten, blocks_changed, chars_added, chars_removed,
-        overwrites, seams, depth_down, depth_up, tokens, cost_rub, ms, from_hseq, to_hseq, computed_at)
+        overwrites, seams, depth_down, depth_up, tokens, cost_rub, cost_priced, ms, from_hseq, to_hseq, computed_at)
      VALUES
        (@changeId, @chaptersTouched, @chaptersRewritten, @blocksChanged, @charsAdded, @charsRemoved,
-        @overwrites, @seams, @depthDown, @depthUp, @tokens, @costRub, @ms, @fromHseq, @toHseq, @computedAt)
+        @overwrites, @seams, @depthDown, @depthUp, @tokens, @costRub, @costPriced, @ms, @fromHseq, @toHseq, @computedAt)
      ON CONFLICT(change_id) DO UPDATE SET
        chapters_touched = excluded.chapters_touched,
        chapters_rewritten = excluded.chapters_rewritten,
@@ -182,6 +189,7 @@ export function recordImpact(db: Db, changeId: string, nowMs: number = Date.now(
        depth_up = excluded.depth_up,
        tokens = excluded.tokens,
        cost_rub = excluded.cost_rub,
+       cost_priced = excluded.cost_priced,
        ms = excluded.ms,
        from_hseq = excluded.from_hseq,
        to_hseq = excluded.to_hseq,
@@ -198,7 +206,8 @@ export function recordImpact(db: Db, changeId: string, nowMs: number = Date.now(
     depthDown: impact.depth.down,
     depthUp: impact.depth.up,
     tokens: impact.tokens,
-    costRub: impact.costRub,
+    costRub: impact.costRub ?? 0,
+    costPriced: impact.costRub === null ? 0 : 1,
     ms: impact.ms,
     fromHseq: impact.history.fromHseq,
     toHseq: impact.history.toHseq,

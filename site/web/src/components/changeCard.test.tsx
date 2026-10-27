@@ -139,7 +139,9 @@ describe('ChangeCard', () => {
     expect(html).toContain('в главе 7 сказано иначе');
     expect(html).toContain('стык пересматривается');
     expect(html).toContain('внесено');
-    expect(html).toContain('0.04 ₽');
+    // BOOK-23: the card prints the model and the tokens, and the price only because this
+    // fixture's cost was measured.
+    expect(html).toContain('deepseek-flash · 150\u00a0572\u00a0токена · 0,04\u00a0₽');
     expect(html).toContain('href="#правка-chg_1"');
   });
 

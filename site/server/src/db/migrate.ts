@@ -193,6 +193,19 @@ const MIGRATIONS: Migration[] = [
       db.exec('DROP TABLE events_v11');
     },
   },
+  {
+    // BOOK-23: a money figure is a measurement only when something priced it, so «priced and
+    // free» (0,00 ₽) stops being indistinguishable from «never measured». Three additive
+    // columns; rows written before this step get the honest answer — an amount that was
+    // actually recorded (>0) is a measurement, and a stored zero was never a price.
+    to: 13,
+    up(db) {
+      for (const table of ['changes', 'steps', 'change_impact']) {
+        addColumn(db, table, 'cost_priced', 'INTEGER NOT NULL DEFAULT 0');
+        db.exec(`UPDATE ${table} SET cost_priced = 1 WHERE cost_rub > 0`);
+      }
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

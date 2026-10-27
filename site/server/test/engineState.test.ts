@@ -378,7 +378,9 @@ describe('GET /api/changes/:id', () => {
       { chapter: 9, rev: 4 },
       { chapter: 10, rev: 2 },
     ]);
-    expect(body.cost).toMatchObject({ model: 'deepseek-flash', tokensIn: 120, tokensOut: 60 });
+    // BOOK-23: the model and the tokens are facts; the money is absent because nothing
+    // measured it — never a 0 dressed as a measurement.
+    expect(body.cost).toEqual({ model: 'deepseek-flash', tokensIn: 120, tokensOut: 60, rub: null });
     expect(body.history).toEqual({ fromHseq: 10, toHseq: 13 });
 
     const raw = JSON.stringify(body);

@@ -119,8 +119,9 @@ export function closeChange(
   reason: string | null,
   now: number,
 ): void {
-  // Tokens and the model are frozen here, once (§6D.5). Cost stays 0 until pricing.json
-  // lands in M6b; a zero is a known placeholder, not a computed number.
+  // Tokens and the model are frozen here, once (§6D.5). Cost stays 0 — no price source exists
+  // yet — so the row is not priced (`cost_priced` stays 0) and BOOK-23 reads the amount as
+  // «not measured» (`measuredRub`): no surface prints a ₽ figure from a placeholder zero.
   const steps = store.stepsOfChange(deps.db, change.id);
   const tokensIn = steps.reduce((sum, step) => sum + step.tokens_in, 0);
   const tokensOut = steps.reduce((sum, step) => sum + step.tokens_out, 0);

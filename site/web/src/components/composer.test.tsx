@@ -81,6 +81,19 @@ describe('the composer (BOOK-DOC-5 §4 — no invented chapter names)', () => {
     expect(html).not.toContain('checked=""');
   });
 
+  it('states what posting means: a non-exclusive licence, authorship kept (BOOK-23)', () => {
+    // One quiet line, no checkbox: the composer says what sending a contribution grants,
+    // and points at the rules page that carries the rest of it.
+    expect(html).toContain('неисключительную лицензию');
+    // BOOK-DOC-4 says «public attribution»: the line says the name is seen by everyone,
+    // beside the text and in the contributors list.
+    expect(html).toContain('ваше имя видно');
+    expect(html).toContain('всем — рядом с текстом и в списке авторов');
+    expect(html).toContain('Авторство остаётся у вас');
+    expect(html).toContain('class="fine composer-licence"');
+    expect(html).toContain('href="/rules"');
+  });
+
   it('takes both caps from the frame: maxlength, the counter, and the edit hint', () => {
     expect(html).toMatch(/maxlength="1200"/iu);
     expect(html).toContain('0 / 1200');

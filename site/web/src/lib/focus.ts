@@ -296,18 +296,25 @@ export function touchedChaptersCopy(
     .join(' · ');
 }
 
-/** The honest money line: actual tokens and rubles, from `cost` or the impact projection. */
+/**
+ * The honest money line: the model and the tokens, and the rubles **only when they were
+ * measured** (BOOK-DOC-4 «Honesty about cost», BOOK-23). `rub: null` is «not measured» and
+ * prints no ₽ figure at all; the number `0` is a measured price of zero and prints «0,00 ₽».
+ * One rule for the card and the focus view, so neither can invent a zero of its own.
+ */
 export function costLine(
   change: Pick<ChangeDto, 'cost'>,
   impact: Pick<ChangeImpactDto, 'tokens' | 'costRub'> | null,
 ): string | null {
-  const tokens =
-    change.cost === null ? (impact === null ? null : impact.tokens) : change.cost.tokensIn + change.cost.tokensOut;
-  const rub = change.cost === null ? (impact === null ? null : impact.costRub) : change.cost.rub;
+  const cost = change.cost;
+  const tokens = cost === null ? (impact === null ? null : impact.tokens) : cost.tokensIn + cost.tokensOut;
+  const rub = cost === null ? (impact === null ? null : impact.costRub) : cost.rub;
   const parts: string[] = [];
-  if (change.cost?.model !== null && change.cost?.model !== undefined) parts.push(change.cost.model);
+  if (cost?.model !== null && cost?.model !== undefined) parts.push(cost.model);
   if (tokens !== null && tokens > 0) parts.push(`${formatNumber(tokens)}${NBSP}${plural(tokens, 'токен', 'токена', 'токенов')}`);
-  if (rub !== null && rub > 0) parts.push(`${rub.toFixed(2).replace('.', ',')}${NBSP}₽`);
+  if (typeof rub === 'number' && Number.isFinite(rub) && rub >= 0) {
+    parts.push(`${rub.toFixed(2).replace('.', ',')}${NBSP}₽`);
+  }
   return parts.length === 0 ? null : parts.join(' · ');
 }
 

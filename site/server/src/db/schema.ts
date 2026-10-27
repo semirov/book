@@ -1,17 +1,19 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 12** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 13** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
  * `steps.premise_change`); BOOK-9 adds the auditor's verdict to a comment, recorded before
  * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change;
- * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`).
+ * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`;
+ * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured»
+ * and «placeholder zero» are different data, not the same 0).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -48,7 +50,8 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   model       TEXT,                              -- the writer model used for this step
   tokens_in   INTEGER NOT NULL DEFAULT 0,
   tokens_out  INTEGER NOT NULL DEFAULT 0,
-  cost_rub    REAL    NOT NULL DEFAULT 0,        -- frozen at close (§6D.5)
+  cost_rub    REAL    NOT NULL DEFAULT 0,        -- frozen at close (§6D.5); a placeholder zero unless cost_priced (BOOK-23)
+  cost_priced INTEGER NOT NULL DEFAULT 0,        -- BOOK-23: 1 = cost_rub is a measurement, 0 = never priced
   hseq_from   INTEGER, hseq_to INTEGER,          -- the history span this step wrote (§6F.1)
   lease_id    TEXT, session TEXT,
   at          TEXT NOT NULL, ms INTEGER, note TEXT,
@@ -95,6 +98,7 @@ export const STEPS_COLUMNS = [
   'tokens_in',
   'tokens_out',
   'cost_rub',
+  'cost_priced',
   'hseq_from',
   'hseq_to',
   'lease_id',
@@ -186,7 +190,8 @@ CREATE TABLE changes (
   model        TEXT,                               -- frozen at close (§6D.5)
   tokens_in    INTEGER NOT NULL DEFAULT 0,
   tokens_out   INTEGER NOT NULL DEFAULT 0,
-  cost_rub     REAL    NOT NULL DEFAULT 0,
+  cost_rub     REAL    NOT NULL DEFAULT 0,         -- a placeholder zero unless cost_priced (BOOK-23)
+  cost_priced  INTEGER NOT NULL DEFAULT 0,         -- BOOK-23: 1 = cost_rub is a measurement, 0 = never priced
   cost_usd     REAL    NOT NULL DEFAULT 0,
   tokens       INTEGER NOT NULL DEFAULT 0,         -- legacy sum, kept for one migration cycle
   enqueued_at  TEXT NOT NULL,
@@ -416,6 +421,7 @@ CREATE TABLE change_impact (                   -- materialized at close, rebuild
   depth_up           INTEGER NOT NULL,
   tokens             INTEGER NOT NULL,
   cost_rub           REAL    NOT NULL,
+  cost_priced        INTEGER NOT NULL DEFAULT 0,   -- BOOK-23: 1 = cost_rub is a measurement
   ms                 INTEGER NOT NULL,
   from_hseq          INTEGER NOT NULL,
   to_hseq            INTEGER NOT NULL,

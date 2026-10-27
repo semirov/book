@@ -41,6 +41,8 @@ export type ChangeRow = {
   tokens_in: number;
   tokens_out: number;
   cost_rub: number;
+  /** BOOK-23: 1 = `cost_rub` is a measurement; 0 = the placeholder zero of an unpriced row. */
+  cost_priced: number;
   cost_usd: number;
   tokens: number;
   enqueued_at: string;
@@ -78,6 +80,8 @@ export type StepRow = {
   tokens_in: number;
   tokens_out: number;
   cost_rub: number;
+  /** BOOK-23: 1 = `cost_rub` is a measurement, 0 = never priced. */
+  cost_priced: number;
   hseq_from: number | null;
   hseq_to: number | null;
   lease_id: string | null;

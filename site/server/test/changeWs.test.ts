@@ -193,6 +193,12 @@ describe('a change walks two chapters on two browsers', () => {
     });
     await waitFor(() => second.frames.find((frame) => frame.type === 'change:decided'));
 
+    // BOOK-23: the decided frame carries tokens and no money — an unmeasured price cannot
+    // leak into a surface through the socket.
+    expect(decided.data.tokens).toEqual({ total: 120 });
+    expect(JSON.stringify(decided.data)).not.toContain('rub');
+    expect(JSON.stringify(decided.data)).not.toContain('₽');
+
     const raw = JSON.stringify([first.frames, second.frames]);
     for (const forbidden of ['findings', 'verdict', 'editor', 'consultant', 'HOLDS', 'GAP']) {
       expect(raw).not.toContain(forbidden);

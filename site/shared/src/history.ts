@@ -152,7 +152,11 @@ export type ChangeImpactDto = {
   seams: Array<{ boundary: number | 'front' | 'ending'; resolved: boolean }>;
   depth: { down: number; up: number };
   tokens: number;
-  costRub: number;
+  /**
+   * The money the change actually spent, or `null` when it was never measured (BOOK-23).
+   * A zero here would be a placeholder dressed as a measurement, so it stays absent.
+   */
+  costRub: number | null;
   ms: number;
   history: { fromHseq: number; toHseq: number };
   computedAt: string;

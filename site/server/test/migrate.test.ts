@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v12', () => {
+describe('migrate — schema v13', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(12);
+    expect(SCHEMA_VERSION).toBe(13);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -369,6 +369,36 @@ describe('migrate — schema v12', () => {
     db.prepare(`UPDATE changes SET status = 'done', outcome = 'applied' WHERE id = 'chg_p1'`).run();
     expect(() => insert.run('chg_p3', 'pending')).not.toThrow();
     expect(() => insert.run('chg_p4', 'void')).not.toThrow();
+    db.close();
+  });
+
+  it('adds cost_priced to a v12 install and backfills an amount that was really recorded (BOOK-23)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const insert = db.prepare(
+      `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint,
+         status, cost_rub, enqueued_at)
+       VALUES (?, 'accepted_comment', 5, 'замер', 1, 'sha', '[]', 'phrase', 'done', ?, '2026-10-25T12:00:00Z')`,
+    );
+    insert.run('chg_measured', 7.5);
+    insert.run('chg_placeholder', 0);
+    // Shape a v12 install: the marker did not exist before this step.
+    for (const table of ['changes', 'steps', 'change_impact']) {
+      db.exec(`ALTER TABLE ${table} DROP COLUMN cost_priced`);
+    }
+    db.pragma('user_version = 12');
+
+    expect(migrate(db)).toEqual({ from: 12, to: 13 });
+    for (const table of ['changes', 'steps', 'change_impact']) {
+      expect(columns(db, table)).toContain('cost_priced');
+    }
+    // A recorded amount keeps being a measurement; a stored zero was never a price.
+    expect(db.prepare('SELECT id, cost_priced FROM changes ORDER BY id').all()).toEqual([
+      { id: 'chg_measured', cost_priced: 1 },
+      { id: 'chg_placeholder', cost_priced: 0 },
+    ]);
+    // The old database boots: migrate probes it, and the next run has nothing to do.
+    expect(migrate(db)).toEqual({ from: 13, to: 13 });
     db.close();
   });
 

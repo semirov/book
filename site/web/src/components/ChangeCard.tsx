@@ -13,7 +13,7 @@ import {
 } from '../lib/changeStatus.ts';
 import { WING_WORDS, wingOfChapter } from '../lib/cascade.ts';
 import { changeDeedLine } from '../lib/deed.ts';
-import { focusHash } from '../lib/focus.ts';
+import { costLine, focusHash } from '../lib/focus.ts';
 import { formatCharsShort, formatTime } from '../lib/format.ts';
 
 /**
@@ -40,6 +40,8 @@ export function ChangeCard({
 }) {
   // BOOK-16: the kind, as the plain word a reader already knows from the rules page.
   const kindWord = interventionKindLabel(change.interventionKind);
+  // BOOK-23: model and tokens always; the rubles only when they were measured.
+  const cost = costLine(change, null);
   const wings = change.steps.filter((step) => typeof step.chapter === 'number' && step.wing !== null);
   const reached = [...new Set(wings.map((step) => step.chapter as number))].sort((left, right) => left - right);
 
@@ -143,11 +145,7 @@ export function ChangeCard({
           {change.premise ? premiseOutcomeCopy(change) : outcomeCopy(change.outcome)}
         </span>
         {change.reason !== null ? <span className="change-reason">{change.reason}</span> : null}
-        {change.cost === null ? null : (
-          <span className="change-cost">
-            {formatCharsShort(change.cost.tokensIn + change.cost.tokensOut)} токенов · {change.cost.rub.toFixed(2)} ₽
-          </span>
-        )}
+        {cost === null ? null : <span className="change-cost">{cost}</span>}
         {change.decidedAt === null ? null : <span className="change-time">закрыта {formatTime(change.decidedAt)}</span>}
         <a className="change-focus" href={focusHash(change.id)}>
           прицел →

@@ -36,6 +36,10 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
       const impact = readImpact(fixture.db, change.id);
       expect(impact?.changeId).toBe(change.id);
       expect(impact?.depth).toEqual({ down: 0, up: 0 });
+      // BOOK-23: steps recorded tokens but no price, so the money is absent — a sum of
+      // placeholder zeros is not a measurement and must not print as «0,00 ₽».
+      expect(impact?.tokens).toBeGreaterThan(0);
+      expect(impact?.costRub).toBeNull();
     } finally {
       fixture.close();
     }

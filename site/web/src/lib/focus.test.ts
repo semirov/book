@@ -339,6 +339,34 @@ describe('the panel’s lines', () => {
     expect(costLine({ ...change, cost: null }, null)).toBeNull();
   });
 
+  it('prints no money for a cost that was never measured (BOOK-23)', () => {
+    // `rub: null` is the absence of a measurement — the row's `cost_rub` placeholder zero.
+    const unmeasured = {
+      ...change,
+      cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: null },
+    };
+    expect(costLine(unmeasured, null)).toBe('deepseek-flash · 150\u00a0572\u00a0токена');
+    expect(costLine(unmeasured, null)).not.toContain('₽');
+    // The impact projection obeys the same rule: its own zero-sum is not a measurement.
+    expect(costLine({ ...change, cost: null }, { ...impact, costRub: null })).toBe('150\u00a0572\u00a0токена');
+  });
+
+  it('prints a measured zero, so «free» is not mistaken for «unmeasured»', () => {
+    // This exact DTO is what `GET /api/changes/:id` emits for a row with `cost_priced = 1`
+    // and `cost_rub = 0` (`server/test/engineState.test.ts` proves the wire value).
+    const free = { ...change, cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0 } };
+    expect(costLine(free, null)).toBe('deepseek-flash · 150\u00a0572\u00a0токена · 0,00\u00a0₽');
+  });
+
+  it('never prints a number that cannot be a price', () => {
+    for (const rub of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      const broken = { ...change, cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub } };
+      const line = costLine(broken, null) ?? '';
+      expect(line).not.toContain('₽');
+      expect(line).not.toContain('NaN');
+    }
+  });
+
   it('gives every degenerate case its own line and never types it', () => {
     expect(sheetNotice({ ...change, status: 'pending', position: 2 })).toBe('правка в очереди · 2-я');
     expect(

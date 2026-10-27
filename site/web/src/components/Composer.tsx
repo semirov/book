@@ -329,6 +329,14 @@ export function Composer({
       ) : null}
       {view.kind === 'ready' && view.detail !== null ? <p className="fine">{view.detail}</p> : null}
 
+      {/* BOOK-23 / BOOK-DOC-4 «Authors and attribution»: what posting means, said once, in the
+          composer itself — no checkbox, because there is nothing to tick off but a grant. */}
+      <p className="fine composer-licence">
+        Отправляя, вы даёте книге неисключительную лицензию на принятый вариант: ваше имя видно
+        всем — рядом с текстом и в списке авторов. Авторство остаётся у вас.{' '}
+        <a className="composer-link" href="/rules">правила →</a>
+      </p>
+
       <div className="composer-actions">
         <button type="button" onClick={() => void submit()} disabled={sending || token === null}>
           {sending ? 'отправляется' : premise ? 'оставить замысел' : 'оставить замечание'}

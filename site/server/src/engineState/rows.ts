@@ -32,6 +32,8 @@ export type ChangeRow = {
   tokens_in: number;
   tokens_out: number;
   cost_rub: number;
+  /** BOOK-23: 1 = `cost_rub` is a measurement; 0 = the placeholder zero of an unpriced row. */
+  cost_priced: number;
   enqueued_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -77,6 +79,8 @@ export type StepRow = {
   blocks_touched: number | null;
   chars_delta: number | null;
   cost_rub: number;
+  /** BOOK-23: 1 = `cost_rub` is a measurement, 0 = never priced. */
+  cost_priced: number;
   tokens_in: number;
   tokens_out: number;
   hseq_from: number | null;
@@ -105,7 +109,7 @@ export type LeaseRow = {
 };
 
 export const CHANGE_COLUMNS = `seq, id, kind, chapter, intent, source_comment, base_rev, scope_hint, status,
-  relevance, outcome, reason, cascade_id, model, tokens_in, tokens_out, cost_rub,
+  relevance, outcome, reason, cascade_id, model, tokens_in, tokens_out, cost_rub, cost_priced,
   enqueued_at, started_at, finished_at, attempts`;
 
 export function safeJson<T>(raw: string | null): T | null {

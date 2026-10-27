@@ -73,6 +73,19 @@ describe('/rules', () => {
     expect(noteAt).toBeLessThan(refusedAt);
   });
 
+  it('states the licence grant, once, in the reader’s own words (BOOK-23)', () => {
+    // BOOK-DOC-4 «Authors and attribution»: posting an accepted contribution grants a
+    // non-exclusive licence with public attribution; authorship stays with the reader, and
+    // a later ripple may rewrite or erase the phrase — the surviving share stays visible.
+    expect(text).toContain('неисключительную лицензию');
+    // Public attribution, in the reader's words: the name is seen by everyone, beside the
+    // text and in the list of authors at the end of the book.
+    expect(text).toContain('ваше имя видно всем — рядом с текстом и в списке авторов в конце книги');
+    expect(text).toContain('Авторство остаётся за вами');
+    expect(text).toContain('переписать или стереть');
+    expect(text).toContain('Свою долю в окончательном тексте');
+  });
+
   it('states the bounds in one place: the length, one place, the day, the hour', () => {
     expect(text).toContain(`до ${formatNumber(EDIT_MAX_CHARS)} знаков`);
     expect(text).toContain('в одном месте');
