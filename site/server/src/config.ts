@@ -49,8 +49,19 @@ const schema = z.object({
   tz: z.string().default('Europe/Moscow'),
   // Reserved budgets — read by M3 (the engine); defined now so the config is complete.
   maxWs: z.coerce.number().int().min(1).default(100),
-  /** Soft per-IP socket cap; the oldest connection of that IP is closed on overflow (§10.1). */
-  wsPerIp: z.coerce.number().int().min(1).default(4),
+  /**
+   * Per-network socket cap: 20 readers share one address (§10.1). Over this cap — or over the
+   * 100 seats — the **newcomer** is refused with `1013 CAPACITY`; an open seat is never taken
+   * from a reader (BOOK-75; CGNAT households, BOOK-DOC-33 M-major).
+   *
+   * Why 20: a household or a shared connection is phones, laptops and tabs — the previous cap
+   * of 4 was smaller than one family, and behind CGNAT two families share one address.
+   * 20 × 5 networks is the whole 100-seat hall, so one address can hold at most a fifth of it
+   * (at 4 it took 25 addresses to fill it): that is what limits a script. A carrier NAT
+   * fronting hundreds of subscribers still queues past 20, and that is acceptable exactly
+   * because nobody is evicted to seat them — they wait, and the plate says so.
+   */
+  wsPerIp: z.coerce.number().int().min(1).default(20),
   /** Protocol ping interval; two missed pongs terminate a socket (§10.1). */
   wsHeartbeatMs: z.coerce.number().int().min(1_000).default(30_000),
   /**

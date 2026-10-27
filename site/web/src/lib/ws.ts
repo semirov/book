@@ -2,13 +2,16 @@
  * The reader's socket (ARCHITECTURE.md §10.4): connect, dispatch, heal.
  *
  * Reconnect is exponential, 0.5 s → 15 s with ±20 % jitter, reset by a successful
- * `hello`. A `1013` close is not retried in a loop: the SPEC wants a waiting screen and one
- * «попробовать снова» button, so the socket stops and exposes `retry()`.
+ * `hello`. A `1013` close is not a stop any more: the hub is full and the seat frees on its
+ * own, so the socket waits with its own slow cadence (`capacityDelay`, BOOK-75) and reports
+ * `'capacity'` while it waits — the plate takes no click.
  *
  * The transport is injected so the reconnect rules can be tested without a browser.
  */
 
 import type { Envelope } from '@book/shared';
+
+import { capacityDelay } from './capacity.ts';
 
 export type SocketStatus = 'connecting' | 'open' | 'closed' | 'capacity';
 
@@ -59,6 +62,10 @@ export class BookSocket {
   private socket: WebSocketLike | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
+  /** The full hall's own counter: a queue, not a failure, so it never feeds the 15 s backoff. */
+  private capacityAttempt = 0;
+  /** True from a `1013` until the next socket opens; `open()` stays quiet while it is set. */
+  private waiting = false;
   private lastSeq = 0;
   private stopped = true;
 
@@ -78,16 +85,19 @@ export class BookSocket {
   connect(): void {
     this.stopped = false;
     this.attempt = 0;
+    this.capacityAttempt = 0;
+    this.waiting = false;
     this.open();
   }
 
-  /** The «попробовать снова» button: one attempt, then the same backoff applies. */
+  /** One attempt on demand; the same cadence applies after it. */
   retry(): void {
     this.connect();
   }
 
   close(): void {
     this.stopped = true;
+    this.waiting = false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this.socket?.close(1000, 'CLIENT_CLOSE');
@@ -101,11 +111,14 @@ export class BookSocket {
 
   private open(): void {
     if (this.stopped) return;
-    this.handlers.onStatus?.('connecting');
+    // A capacity attempt must not flicker the plate back to the connection-lost status: the
+    // status stays `'capacity'` until this socket opens (or fails for another reason).
+    if (!this.waiting) this.handlers.onStatus?.('connecting');
     let socket: WebSocketLike;
     try {
       socket = this.factory(this.url);
     } catch {
+      this.waiting = false;
       this.handlers.onStatus?.('closed');
       this.reconnect();
       return;
@@ -113,6 +126,7 @@ export class BookSocket {
     this.socket = socket;
 
     socket.onopen = () => {
+      this.waiting = false;
       this.lastSeq = 0;
       this.handlers.onStatus?.('open');
     };
@@ -120,10 +134,13 @@ export class BookSocket {
     socket.onclose = (event) => {
       this.socket = null;
       if (event.code === 1013) {
-        this.stopped = true;
+        // The hall is full: report the wait and knock again on the capacity cadence.
+        this.waiting = true;
         this.handlers.onStatus?.('capacity', { closeCode: event.code });
+        this.reconnectCapacity();
         return;
       }
+      this.waiting = false;
       this.handlers.onStatus?.('closed', { closeCode: event.code });
       this.reconnect();
     };
@@ -153,8 +170,12 @@ export class BookSocket {
 
     if (this.lastSeq !== 0 && envelope.seq !== this.lastSeq + 1) this.handlers.onGap?.();
     this.lastSeq = envelope.seq;
-    // §10.4: the backoff resets on a successful hello, not merely on a TCP upgrade.
-    if (envelope.type === 'hello') this.attempt = 0;
+    // §10.4: the backoff resets on a successful hello, not merely on a TCP upgrade — and a
+    // reader who has been waiting for a seat starts a fresh queue too.
+    if (envelope.type === 'hello') {
+      this.attempt = 0;
+      this.capacityAttempt = 0;
+    }
     this.handlers.onEvent(envelope as Envelope);
   }
 
@@ -164,6 +185,18 @@ export class BookSocket {
     const delay = reconnectDelay(this.attempt, this.random);
     this.attempt += 1;
     this.handlers.onStatus?.('closed', { attempt: this.attempt });
+    this.timer = this.schedule(() => {
+      this.timer = null;
+      this.open();
+    }, delay);
+  }
+
+  /** The full hall's knock: slow, jittered, and it never stops (BOOK-75). */
+  private reconnectCapacity(): void {
+    if (this.stopped) return;
+    if (this.timer !== null) clearTimeout(this.timer);
+    const delay = capacityDelay(this.capacityAttempt, this.random);
+    this.capacityAttempt += 1;
     this.timer = this.schedule(() => {
       this.timer = null;
       this.open();

@@ -1,6 +1,7 @@
 import type { Envelope } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { capacityDelay } from './capacity.ts';
 import { BookSocket, reconnectDelay, websocketUrl, type Scheduler, type WebSocketLike } from './ws.ts';
 
 class FakeSocket implements WebSocketLike {
@@ -103,6 +104,28 @@ describe('reconnectDelay', () => {
   });
 });
 
+describe('capacityDelay', () => {
+  it('waits 16–24 s on the first knock — far longer than the ordinary backoff', () => {
+    expect(capacityDelay(0, () => 0)).toBe(16_000);
+    expect(capacityDelay(0, () => 0.5)).toBe(20_000);
+    expect(capacityDelay(0, () => 1)).toBe(24_000);
+  });
+
+  it('grows once, then holds a 30 s base, and stays jittered at both ends', () => {
+    expect(capacityDelay(1, () => 0.5)).toBe(30_000);
+    expect(capacityDelay(9, () => 0.5)).toBe(30_000);
+    expect(capacityDelay(9, () => 0)).toBe(24_000);
+    expect(capacityDelay(9, () => 1)).toBe(36_000);
+    // A negative attempt is the first one, like `reconnectDelay`.
+    expect(capacityDelay(-3, () => 0.5)).toBe(20_000);
+  });
+
+  it('jitters ±20 % around the base', () => {
+    expect(capacityDelay(0, () => 0.25)).toBe(18_000);
+    expect(capacityDelay(0, () => 0.75)).toBe(22_000);
+  });
+});
+
 describe('websocketUrl', () => {
   it('points at /ws on the same origin, wss under https', () => {
     expect(websocketUrl('https://book.semirov.dev/some/path?x=1#y')).toBe('wss://book.semirov.dev/ws');
@@ -165,17 +188,40 @@ describe('BookSocket', () => {
     expect(rig.delays[1]).toBe(1_000);
   });
 
-  it('stops on 1013 and lets the reader retry once', () => {
+  it('waits out a 1013 on its own cadence instead of stopping', () => {
     const rig = setup();
     rig.socket.connect();
-    const first = rig.sockets[0]!;
-    first.open();
-    first.serverClose(1013, 'CAPACITY');
-    expect(rig.statuses.at(-1)).toBe('capacity');
-    expect(rig.delays).toEqual([]);
+    rig.sockets[0]!.open();
+    rig.sockets[0]!.serverClose(1013, 'CAPACITY');
 
-    rig.socket.retry();
+    expect(rig.statuses.at(-1)).toBe('capacity');
+    // One knock, slow: not the ordinary 500 ms backoff, and inside the queue's own range.
+    expect(rig.delays).toHaveLength(1);
+    expect(rig.delays[0]).toBeGreaterThanOrEqual(16_000);
+    expect(rig.delays[0]).toBeLessThanOrEqual(30_000);
+
+    // The wait itself knocks again — no button, no reload — while the reported status stays
+    // `'capacity'`: the plate must not flicker back to the connection-lost line.
+    rig.scheduled[0]!();
     expect(rig.sockets).toHaveLength(2);
+    expect(rig.statuses.at(-1)).toBe('capacity');
+    expect(rig.statuses.filter((status) => status === 'connecting')).toHaveLength(1);
+
+    // A seat freed: the socket opens and the plate goes away.
+    rig.sockets[1]!.open();
+    expect(rig.statuses.at(-1)).toBe('open');
+
+    // `hello` resets the queue: a refusal after it waits 20 s again, not the grown 30 s.
+    rig.sockets[1]!.deliver({ v: 1, type: 'hello', seq: 1, ts: '', data: {} });
+    rig.sockets[1]!.serverClose(1013, 'CAPACITY');
+    expect(rig.delays[1]).toBe(20_000);
+
+    rig.scheduled[1]!();
+    rig.sockets[2]!.open();
+    rig.sockets[2]!.deliver({ v: 1, type: 'hello', seq: 1, ts: '', data: {} });
+    rig.sockets[2]!.serverClose(1006);
+    // Back on the ordinary backoff, from attempt 0: the full hall did not inflate it.
+    expect(rig.delays[2]).toBe(500);
   });
 
   it('closes cleanly and stops reconnecting', () => {

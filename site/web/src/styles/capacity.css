@@ -1,0 +1,57 @@
+/* ============================================================================
+   CAPACITY — BOOK-75: the hall is full and the reader is in the queue.
+   The strip waits at the foot of the page; the prose above it is REST and keeps reading.
+   ============================================================================ */
+
+/* A fixed strip, so no line of prose moves when it appears or leaves (AC2). The band is
+   full-bleed paper with its hairline; the text starts on the prose's own left edge, so no
+   second box has to be nested to align it. */
+.capacity-plate {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 50;
+  background: var(--paper);
+  border-block-start: 1px solid var(--rule);
+  /* The band is full-bleed paper; the text starts on the prose's own left edge. In the current
+     frame the canvas is `--measure` + two `--gut`, centred, so that edge is (100% - measure) / 2
+     — the folio's arithmetic without its 20 px. `max(--gut, …)` is the phone case, where the
+     measure is wider than the viewport and the canvas keeps only its gutter. */
+  padding-inline: max(var(--gut), calc((100% - var(--measure)) / 2));
+  padding-block: 12px calc(12px + env(safe-area-inset-bottom));
+}
+
+/* The plate line speaks in the book's prose register: one fact, then the promise. */
+.capacity-plate-line {
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+/* The state line is apparatus: the label register, one quiet line. */
+.capacity-plate-state {
+  margin-block-start: 6px;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+/* The strip floats over the page, so the last line must still be reachable when the reader
+   is at the very end: this is trailing space only — the document grows, nothing above moves
+   (`base.css` is untouched, so every other page keeps its own bottom margin). */
+body:has(.capacity-plate) {
+  padding-block-end: calc(112px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 599px) {
+  .capacity-plate {
+    padding-block: 10px calc(10px + env(safe-area-inset-bottom));
+  }
+}

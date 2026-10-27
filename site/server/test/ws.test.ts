@@ -30,7 +30,7 @@ type Harness = {
   hub: WsHub;
   state: StateService;
   config: Config;
-  connect: (headers?: Record<string, string>) => Promise<Client>;
+  connect: (headers?: Record<string, string>, upgrade?: Record<string, unknown>) => Promise<Client>;
   close: () => Promise<void>;
 };
 
@@ -57,12 +57,21 @@ async function boot(hubOptions: Partial<WsHubOptions> = {}): Promise<Harness> {
   await app.ready();
 
   const clients: Client[] = [];
-  const connect = async (headers: Record<string, string> = {}): Promise<Client> => {
+  /**
+   * `upgrade` is the rest of the injected upgrade context. `injectWS` builds a raw request
+   * without a socket, so `request.ip` is undefined and the peer keys to `''`; a test that
+   * needs a real network key states the loopback peer itself, then `x-forwarded-for` is
+   * believed (loopback is a trusted proxy, §14).
+   */
+  const connect = async (
+    headers: Record<string, string> = {},
+    upgrade: Record<string, unknown> = {},
+  ): Promise<Client> => {
     const frames: Frame[] = [];
     const closes: Array<{ code: number; reason: string }> = [];
     const ws = await app.injectWS(
       '/ws',
-      { headers },
+      { headers, ...upgrade },
       {
         onInit: (socket) => {
           socket.on('message', (data) => {
@@ -139,7 +148,7 @@ describe('hello', () => {
     expect(hello.v).toBe(1);
     expect(hello.seq).toBe(1);
     expect(hello.data.protocolVersion).toBe(3);
-    expect(hello.data.limits).toMatchObject({ commentsPerHour: 10, maxConnections: 100, perIp: 4 });
+    expect(hello.data.limits).toMatchObject({ commentsPerHour: 10, maxConnections: 100, perIp: 20 });
     expect(hello.data.front).toMatchObject({
       title: 'Без названия',
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
@@ -269,18 +278,59 @@ describe('capacity', () => {
     expect(harness!.hub.connectionCount()).toBe(2);
   });
 
-  it('closes the oldest connection of an IP over the soft per-IP cap', async () => {
+  it('refuses the newcomer over the per-network cap and keeps the open seats', async () => {
     await boot({ perIp: 2, maxConnections: 10 });
     const one = await harness!.connect();
     await waitFor(() => one.frames.find((frame) => frame.type === 'hello'));
     const two = await harness!.connect();
     await waitFor(() => two.frames.find((frame) => frame.type === 'hello'));
-    const three = await harness!.connect();
-    await waitFor(() => three.frames.find((frame) => frame.type === 'hello'));
 
-    const closed = await waitFor(() => (one.closes.length > 0 ? one.closes[0] : null));
+    const three = await harness!.connect();
+    const closed = await waitFor(() => (three.closes.length > 0 ? three.closes[0] : null));
     expect(closed.code).toBe(1013);
+    expect(closed.reason).toBe('CAPACITY');
+    // The newcomer is refused before any frame: no `hello`, nothing to learn.
+    expect(three.frames).toHaveLength(0);
+    // BOOK-75: a reader who is already reading is never evicted to seat another — a CGNAT
+    // household shares one address, and taking the oldest seat would kick a reader mid-page.
+    expect(one.closes).toHaveLength(0);
+    expect(two.closes).toHaveLength(0);
     expect(harness!.hub.connectionCount()).toBe(2);
     expect(harness!.hub.connectionsFor('')).toBe(2);
   });
+
+  it('holds 100 seats, refuses the 101st, and hands a freed seat to the next reader', async () => {
+    await boot({ maxConnections: 100, perIp: 20 });
+
+    // One distinct network per seat. `injectWS` has no socket of its own, so the loopback
+    // peer is stated: loopback is a trusted proxy (§14), and each forwarded address becomes
+    // its own key — 100 networks, not 100 sockets behind one.
+    const fromLoopback = { socket: { remoteAddress: '127.0.0.1' } };
+    const readers: Client[] = [];
+    for (let i = 1; i <= 100; i += 1) {
+      readers.push(await harness!.connect({ 'x-forwarded-for': `10.0.1.${i}` }, fromLoopback));
+      if (i % 25 === 0) {
+        const batch = readers.slice(-25);
+        await Promise.all(
+          batch.map((client) => waitFor(() => client.frames.find((frame) => frame.type === 'hello'), 10_000)),
+        );
+      }
+    }
+    expect(harness!.hub.connectionCount()).toBe(100);
+
+    const overflow = await harness!.connect({ 'x-forwarded-for': '10.0.2.1' }, fromLoopback);
+    const closed = await waitFor(() => (overflow.closes.length > 0 ? overflow.closes[0] : null));
+    expect(closed.code).toBe(1013);
+    expect(closed.reason).toBe('CAPACITY');
+    expect(overflow.frames).toHaveLength(0);
+    expect(harness!.hub.connectionCount()).toBe(100);
+
+    // A seat really frees: one reader leaves and the next knock is admitted with `hello`.
+    readers[0]!.ws.terminate();
+    await waitFor(() => (harness!.hub.connectionCount() === 99 ? true : null));
+    const freed = await harness!.connect({ 'x-forwarded-for': '10.0.2.1' }, fromLoopback);
+    const hello = await waitFor(() => freed.frames.find((frame) => frame.type === 'hello'));
+    expect(hello.seq).toBe(1);
+    expect(harness!.hub.connectionCount()).toBe(100);
+  }, 30_000);
 });
