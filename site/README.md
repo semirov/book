@@ -6,8 +6,8 @@ database follows. If the two ever disagree, the files win and `POST /api/admin/r
 projection.
 
 Architecture, invariants and the check that enforces each: [`ARCHITECTURE.md`](./ARCHITECTURE.md).
-Product rules (owner): [BOOK-DOC-4](https://wiki.semirov.dev/BOOK/pages/407). Design: [BOOK-DOC-3](https://wiki.semirov.dev/BOOK/pages/406).
-ADRs (one decision per page) and the operator runbook live in Lific, not in this repository.
+Product rules (owner) and the design live with the project's records, not in this repository: one decision
+per page, and the operator runbook in the same place.
 
 ## Run
 
