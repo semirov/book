@@ -38,6 +38,10 @@ export function bookFromHello(hello: HelloPayload, held: BookData | null = null)
       imprint: hello.front.imprint,
       // A reconnect heals the byline from `hello`, but never lowers a newer live count.
       authors: newestAuthorsCount(held?.front.authors, hello.front.authors),
+      // BOOK-126: the gift link is config, not live data — a frame without it (an older hello,
+      // a resync that predates the field) must keep what the page already has instead of
+      // switching the row off and back on.
+      donateUrl: hello.front.donateUrl ?? held?.front.donateUrl ?? null,
     },
   };
 }
@@ -63,7 +67,13 @@ export function withFreshFront(next: BookData, held: BookData | null): BookData 
   if (held === null) return next;
   return {
     ...next,
-    front: { ...next.front, authors: newestAuthorsCount(held.front.authors, next.front.authors) },
+    front: {
+      ...next.front,
+      authors: newestAuthorsCount(held.front.authors, next.front.authors),
+      // BOOK-126: the resync replaces `front` wholesale; the gift link is config and must hold
+      // when the payload does not carry it, so the footer row never flickers off and on.
+      donateUrl: next.front.donateUrl ?? held.front.donateUrl ?? null,
+    },
   };
 }
 

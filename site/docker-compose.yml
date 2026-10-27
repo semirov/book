@@ -26,6 +26,10 @@ services:
       HOST: 0.0.0.0
       WEB_DIST: /app/web/dist
       IMPRINT_PATH: ./config/imprint.json
+      # BOOK-126: the gift link is PUBLIC — it is printed on the page, so it is a plain value,
+      # not a `_FILE` mount. Allowlisted at boot (https, host exactly t.tb.ru, no port, no
+      # credentials); an empty or refused value renders no row at all.
+      DONATE_URL: "https://t.tb.ru/pm_short/11T50nT6AL"
       WATCH_POLL_MS: "700"
       # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
       # its own address inside X-Forwarded-For and dodge the per-IP limits.

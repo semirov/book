@@ -72,7 +72,7 @@ function stubDocument(): void {
 }
 
 /** The footer alone, with its optional rows under the caller's control. */
-function renderFooter(extra: { viewer?: ViewerDto; cost?: BookCostDto | null } = {}): string {
+function renderFooter(extra: { viewer?: ViewerDto; cost?: BookCostDto | null; donateUrl?: string | null } = {}): string {
   stubDocument();
   const html = renderToStaticMarkup(
     <Colophon
@@ -80,6 +80,7 @@ function renderFooter(extra: { viewer?: ViewerDto; cost?: BookCostDto | null } =
       imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }}
       viewer={extra.viewer ?? { signedIn: false, displayName: null }}
       cost={extra.cost ?? null}
+      donateUrl={extra.donateUrl ?? null}
     />,
   );
   const start = html.indexOf('<footer');
@@ -189,6 +190,66 @@ describe('the cost line in the footer (BOOK-114)', () => {
     const footer = renderFooter({ cost: costFixture({ usd: null, unpriced: ['mystery-llm'] }) });
     expect(seenText(footer)).toContain(`израсходовано 1\u00a0234\u00a0567 токенов · цена не задана`);
     expect(footer).not.toContain('$');
+  });
+});
+
+describe('the gift row (BOOK-126)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const LINK = 'https://t.tb.ru/pm_short/11T50nT6AL';
+
+  // BOOK-126 AC1 — a deployment that does not ask for gifts says nothing about money.
+  it('prints no row and no link at all when no link is configured', () => {
+    const footer = renderFooter({ donateUrl: null });
+    expect(footer).not.toContain('class="donate"');
+    expect(footer).not.toContain('поддержать книгу');
+    expect(footer).not.toContain('t.tb.ru');
+    // The default prop is the same absence.
+    expect(renderFooter()).not.toContain('поддержать книгу');
+  });
+
+  // BOOK-126 AC2 — one outbound anchor, the exact validated string, and nothing embedded.
+  it('prints exactly one anchor with the validated href and no payment-platform byte', () => {
+    const footer = renderFooter({ donateUrl: LINK });
+    const anchors = [...footer.matchAll(/<a\b[^>]*class="donate"[^>]*>([\s\S]*?)<\/a>/gu)];
+    expect(anchors).toHaveLength(1);
+    const tag = anchors[0]?.[0] ?? '';
+    expect(tag).toContain(`href="${LINK}"`);
+    expect(tag).toContain('target="_blank"');
+    expect(tag).toContain('rel="noopener noreferrer"');
+    // The owner's words, with the real arrow and no icon or counter beside them.
+    expect(anchors[0]?.[1]).toBe('поддержать книгу →');
+    expect(seenText(footer)).toContain('поддержать книгу →');
+    // Nothing of the platform is embedded: no script, no iframe, no pixel.
+    for (const embedded of ['<iframe', '<script', '<img', 'data-', 'title=']) {
+      expect(footer, embedded).not.toContain(embedded);
+    }
+    // And the href is the value as configured — no query string invented, no UTM.
+    expect(footer.match(/https:\/\/t\.tb\.ru\/pm_short\/11T50nT6AL/gu)).toHaveLength(1);
+  });
+});
+
+describe('the gift row’s sheet (BOOK-126)', () => {
+  // BOOK-126 AC3 — the register's lowercase mono line at the 12 px floor with a 44 px target,
+  // and no box of its own: the row is the column, and the underline is the house treatment.
+  it('is mono, micro and quiet, with the 44 px target and no padding of its own', () => {
+    const book = sheets['../styles/book.css'] ?? '';
+    const rule = declarations(book, '.colophon .donate');
+    expect(rule).toContain('font-family: var(--mono)');
+    expect(rule).toContain('font-size: var(--fs-micro)');
+    expect(rule).toContain('color: var(--ink-3)');
+    expect(rule).toContain('display: inline-flex');
+    expect(rule).toContain('align-items: center');
+    expect(rule).toContain('min-height: 44px');
+    expect(rule).toContain('text-transform: none');
+    expect(rule).toContain('letter-spacing: 0.02em');
+    expect(rule).not.toMatch(/(?:^|;)\s*padding/u);
+    expect(rule).not.toMatch(/(?:^|;)\s*margin/u);
+    expect(rule).not.toMatch(/overflow:/u);
+    // The underline is the colophon's own link treatment, untouched by this rule.
+    expect(rule).not.toContain('text-decoration');
   });
 });
 

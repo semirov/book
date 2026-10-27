@@ -313,6 +313,19 @@
   font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
 }
+/* BOOK-126 — the gift row's one link: the register's lowercase line at the 12 px floor, mono
+   like the other data marks, and a 44 px target on the phone. The house underline (chrome.css,
+   `.colophon a`) stays; the row states no box of its own — the register owns it. */
+.colophon .donate {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-3);
+}
 /* BOOK-114 — the book's outlay, the last line of the page: the marks' register, mono, and a
    number that never breaks. */
 .colophon .cost-line {

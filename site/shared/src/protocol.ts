@@ -95,6 +95,8 @@ export type HelloPayload = {
     imprint: { author: string; copyright: string };
     /** The title page's byline count, so a reconnect heals it without a second request. */
     authors: AuthorsCountDto;
+    /** BOOK-126: the footer's gift link, already validated at boot; absent/null = no row. */
+    donateUrl?: string | null;
   };
   /** All 67 slots, written or not: an empty slot is the normal state, not a 404. */
   catalog: CatalogEntry[];

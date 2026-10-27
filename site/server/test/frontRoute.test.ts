@@ -95,6 +95,8 @@ describe('GET /api/front', () => {
       rev: 1,
       imprint: { author: 'Филипп Семиров', copyright: '© Филипп Семиров' },
       authors: { count: 0, measuredAt: expect.any(String) },
+      // BOOK-126: no DONATE_URL in this boot, so the footer's gift row has nothing to print.
+      donateUrl: null,
     });
     expect(body.toc).toHaveLength(67);
     expect(body.toc[0]).toMatchObject({ part: 1, n: 1, title: 'Заголовок главы', written: true, rev: 1 });
@@ -162,6 +164,29 @@ describe('GET /api/front', () => {
     expect(second.headers.etag).toBe('"front-1-a2"');
     expect(second.json()).toMatchObject({ authors: { count: 2 } });
     expect(byline.calls()).toBe(2);
+  });
+
+  it('carries the boot-validated gift link (BOOK-126)', async () => {
+    await boot({
+      chapters: { '00-front.md': FRONT },
+      env: { DONATE_URL: 'https://t.tb.ru/pm_short/11T50nT6AL' },
+    });
+    const body = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+    // The value is the owner's, unchanged, and it travels on the payload that already exists.
+    expect(body.donateUrl).toBe('https://t.tb.ru/pm_short/11T50nT6AL');
+  });
+
+  it('carries null when the configured link is refused, never a dead href (BOOK-126)', async () => {
+    // The boot warns once about the refused value (BOOK-126); the warning itself is pinned in
+    // `config.test.ts`, so here it is only silenced.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await boot({ chapters: { '00-front.md': FRONT }, env: { DONATE_URL: 'https://evil.tb.ru/x' } });
+      const body = (await app!.inject({ method: 'GET', url: '/api/front' })).json();
+      expect(body.donateUrl).toBeNull();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('is honest at launch when there is no first sheet: null title and page 2', async () => {

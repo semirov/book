@@ -27,10 +27,10 @@ export const COLOPHON_MOTTO = 'С любовью к научной фантас�
  * (it is author and copyright only). What stays dates itself — «печатается по ходу письма».
  *
  * The footer is read in this order by a reader: the counts, the way out (BOOK-115), the
- * imprint, the build the page is (BOOK-109), and the book's outlay last (BOOK-114) — the page
- * states what it cost after it has said what it is and which copy of it the reader holds.
- * `cost === null` prints no row at all: before the first successful read the total is unknown,
- * and an unknown total is not a zero.
+ * imprint, how to support the book (BOOK-126), the build the page is (BOOK-109), and the book's
+ * outlay last (BOOK-114) — the page states what it cost after it has said what it is, which copy
+ * of it the reader holds and how to help. `cost === null` prints no row at all: before the first
+ * successful read the total is unknown, and an unknown total is not a zero.
  */
 export function Colophon({
   state,
@@ -38,6 +38,7 @@ export function Colophon({
   build = BUILD,
   viewer = { signedIn: false, displayName: null },
   cost = null,
+  donateUrl = null,
   reload,
 }: {
   state: StateSnapshot;
@@ -49,6 +50,11 @@ export function Colophon({
   build?: BuildId;
   viewer?: ViewerDto;
   cost?: BookCostDto | null;
+  /**
+   * BOOK-126: the gift link, already validated at boot (`donateUrlOf`). `null` prints no row —
+   * a deployment that does not ask for gifts says nothing about money at all.
+   */
+  donateUrl?: string | null;
   /** Test seam only — jsdom cannot navigate; the page reloads into a guest session. */
   reload?: (url: string) => void;
 }) {
@@ -114,6 +120,17 @@ export function Colophon({
             {theme === 'night' ? 'дневной бланк' : 'ночная смена'}
           </button>
         </div>
+        {/* BOOK-126: the gift row — one outbound link and nothing else. A gift between
+            individuals, not a payment and not a payment platform: no script, no iframe, no
+            widget, no pixel, so the reader stays unknown to us and the CSP is untouched. It
+            prints only a value validated at boot; with none, the row does not exist. */}
+        {donateUrl === null ? null : (
+          <div className="row">
+            <a className="donate" href={donateUrl} target="_blank" rel="noopener noreferrer">
+              поддержать книгу →
+            </a>
+          </div>
+        )}
         {/* BOOK-109: which build the reader is holding. A row of its own after the imprint
             line, in the micro rung — the one fact that tells two hosts (and a stale cache)
             apart, printed quietly and never as a claim about the text. */}

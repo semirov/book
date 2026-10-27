@@ -173,6 +173,39 @@ describe('/rules', () => {
     }
   });
 
+  // BOOK-126 — money, said once and plainly: a gift, buying nothing, with the bank running the
+  // payment. It sits between the mechanics and the refusals, and it is copy, not a control.
+  it('states the gift verbatim, once, before the refusals (BOOK-126)', () => {
+    const flat = text.replace(/\s+/gu, ' ');
+    const paragraph =
+      'Деньги, которые приходят по ссылке «поддержать книгу», — подарок. Они ничего не оплачивают: ' +
+      'ни доступа, ни глав, ни решений по правкам. Книга остаётся бесплатной, а очередь правок — общей.';
+    expect(flat).toContain(paragraph);
+    expect(flat).toContain('Платёж проводит банк: кто его сделал, мы не видим.');
+    // One section, one print of the control's name.
+    expect(flat.split('поддержать книгу')).toHaveLength(2);
+    expect(flat).toContain('Деньги');
+    // No pleading, no thanks, no sum, no goal — the copy the owner approved, and nothing else.
+    expect(paragraph.replace(/\s+/gu, '')).not.toMatch(/\d/u);
+    for (const word of ['спасибо', 'пожалуйста', 'пожертвование', 'подписка', 'цель']) {
+      expect(flat.toLowerCase()).not.toContain(word);
+    }
+    // Placed after the mechanics and before the refusals.
+    const moneyAt = flat.indexOf('Деньги');
+    const boundsAt = flat.indexOf('Сколько и как часто');
+    const refusedAt = flat.indexOf('Что не принимается');
+    expect(moneyAt).toBeGreaterThan(boundsAt);
+    expect(moneyAt).toBeLessThan(refusedAt);
+  });
+
+  // Audit M5 — the page is static: it fetches nothing and runs no third-party byte, so the
+  // paragraph names the control instead of pointing at a link it cannot know is rendered.
+  it('embeds no script, no iframe and no pixel (audit M5)', () => {
+    for (const embedded of ['<script', '<iframe', '<img', 't.tb.ru', 'href="https://']) {
+      expect(html, embedded).not.toContain(embedded);
+    }
+  });
+
   it('names the chain that reads the text, between the refusals and the mechanics (BOOK-76)', () => {
     const flat = text.replace(/\s+/gu, ' ');
     expect(flat).toContain('Кто читает текст');

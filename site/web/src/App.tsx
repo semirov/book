@@ -481,7 +481,7 @@ export function App() {
         live={history}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
-      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} />
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} />
       {card.change === null ? null : (
         <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
       )}

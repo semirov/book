@@ -379,23 +379,25 @@ describe('the build stamp in the end matter (BOOK-109)', () => {
 });
 
 /**
- * BOOK-114, BOOK-115 — the order of the rows below the imprint line, with the build stamp
- * (BOOK-109) between them: who is reading, what the book is, which copy it is, what it cost.
- * The rendering and the sheets of the two new rows live in `colophonFooter.test.tsx` — the
- * colophon is read as one document, and its tests are two because a file has a line limit.
+ * BOOK-114, BOOK-115, BOOK-126 — the order of the rows below the imprint line, with the gift
+ * row and the build stamp (BOOK-109) between them: who is reading, what the book is, how to
+ * support it, which copy it is, what it cost. The rendering and the sheets of the new rows live
+ * in `colophonFooter.test.tsx` — the colophon is read as one document, and its tests are two
+ * because a file has a line limit.
  */
-describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115)', () => {
+describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('puts the logout row, then the imprint, then the build stamp, then the cost line', () => {
+  it('puts the logout row, then the imprint, then the gift row, then the build stamp, then the cost line', () => {
     stubDocument();
     const html = renderToStaticMarkup(
       <Colophon
         state={state}
         imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
+        donateUrl="https://t.tb.ru/pm_short/11T50nT6AL"
         build={{ commit: '5558449', stamp: '27.10 20:52' }}
         cost={{ tokens: 1_234_567, tokensIn: 1_000_000, tokensOut: 234_567, steps: 9, usd: 12.34, unpriced: [] }}
       />,
@@ -403,14 +405,17 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115)', () => {
     const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
     const logout = footer.indexOf('class="logout-row"');
     const imprint = footer.indexOf('class="imprint-line"');
+    const donate = footer.indexOf('class="donate"');
     const build = footer.indexOf('class="build-stamp"');
     const cost = footer.indexOf('class="cost-line"');
     expect(logout).toBeGreaterThan(-1);
     expect(imprint).toBeGreaterThan(-1);
+    expect(donate).toBeGreaterThan(-1);
     expect(build).toBeGreaterThan(-1);
     expect(cost).toBeGreaterThan(-1);
     expect(logout).toBeLessThan(imprint);
-    expect(imprint).toBeLessThan(build);
+    expect(imprint).toBeLessThan(donate);
+    expect(donate).toBeLessThan(build);
     expect(build).toBeLessThan(cost);
     // Nothing follows the cost line: it is the last row of the page, after both legal links.
     expect(cost).toBeGreaterThan(footer.indexOf('href="/privacy"'));

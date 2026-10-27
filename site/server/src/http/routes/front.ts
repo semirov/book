@@ -56,6 +56,8 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
       })),
       imprint: { author: deps.imprint.author, copyright: deps.imprint.copyright },
       authors,
+      // BOOK-126: already validated at boot (`donateUrlOf`), so the page prints it or nothing.
+      donateUrl: deps.config.donateUrl,
     };
     return reply.send(body);
   });
