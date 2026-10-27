@@ -21,11 +21,11 @@
   padding: 26px var(--gut) 72px;
   /* The strip is sticky from this section on: a jump to #toc must not hide its label. */
   scroll-margin-top: var(--offset-top);
-  /* BOOK-DOC-35 §5 — the contents are a spread on the frame: two 444px columns of the 936px
-     sheet. The 67 rows are the only list that gets better wider; the prose never follows. */
+  /* BOOK-73 — one list, one column at every width: the desktop canvas stays ≤1000px.
+     `display: grid` is the one-column layout itself, and no rule may add a second track, so
+     the 67 rows read as a single flow from part I to part IV. */
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 48px;
+  grid-template-columns: 1fr;
   align-items: start;
 }
 .toc-label {
@@ -50,9 +50,9 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
-/* The label is the grid's first child, so parts I and II are children 2 and 3: both columns
-   start flush with the label, and III/IV keep their air. */
-.toc-part:nth-child(-n + 3) .toc-part-h {
+/* With a single column the label is child 1 and part I is child 2: only part I starts flush
+   with the label; parts II–IV keep their 32px of air between them. */
+.toc-part:nth-child(2) .toc-part-h {
   padding-top: 0;
 }
 
@@ -245,11 +245,4 @@
   font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-}
-
-/* BOOK-DOC-35 §3 — the narrow case of the same contents page: one column, same rows. */
-@media (max-width: 1023px) {
-  .toc {
-    grid-template-columns: 1fr;
-  }
 }
