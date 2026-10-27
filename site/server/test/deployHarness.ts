@@ -7,12 +7,19 @@
  * this process, and `spawnSync` would block the event loop that has to answer the `curl` under test.
  */
 
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+/**
+ * The shell the tests drive. `/bin/bash` is 3.2 on macOS and 5.x on Linux; `BOOK_TEST_BASH` points
+ * the same suite at another interpreter, because a contract that only holds on one bash is not a
+ * contract.
+ */
+export const BASH = process.env.BOOK_TEST_BASH ?? '/bin/bash';
 
 export const DEPLOY = resolve(import.meta.dirname, '..', '..', 'deploy', 'deploy.sh');
 export const LIB = resolve(import.meta.dirname, '..', '..', 'deploy', 'lib.sh');
@@ -76,15 +83,15 @@ export function deploy(args: string[], env: Record<string, string> = {}): { code
   delete merged.BOOK_LOCK_STALE_S;
   delete merged.BOOK_STATE_DIR;
   Object.assign(merged, env);
-  const result = spawnSync('/bin/bash', [DEPLOY, ...args], { encoding: 'utf8', env: merged, timeout: 30_000 });
+  const result = spawnSync(BASH, [DEPLOY, ...args], { encoding: 'utf8', env: merged, timeout: 60_000 });
   return { code: result.status, out: `${result.stdout}${result.stderr}` };
 }
 
-/** The lib's functions, driven by bash exactly the way `deploy.sh` drives them. */
-export function lib(body: string, env: Record<string, string> = {}): Promise<{ code: number | null; out: string }> {
-  const script = `set -euo pipefail\n. "${LIB}"\n${body}\n`;
+/** One bash process with the lib sourced; the caller decides the shell options. */
+export function shell(body: string, env: Record<string, string> = {}, options = 'set -euo pipefail'): Promise<{ code: number | null; out: string }> {
+  const script = `${options}\n. "${LIB}"\n${body}\n`;
   return new Promise((done) => {
-    const child = spawn('/bin/bash', ['-c', script], { env: { ...process.env, ...env } });
+    const child = spawn(BASH, ['-c', script], { env: { ...process.env, ...env } });
     let out = '';
     child.stdout.on('data', (chunk: Buffer) => {
       out += String(chunk);
@@ -98,28 +105,24 @@ export function lib(body: string, env: Record<string, string> = {}): Promise<{ c
   });
 }
 
-/**
- * A taker's script for the lock race: take the lock (a refusal exits 3 and prints why), say when it
- * held it, hold for `holdS` seconds, release. Transcript lines are `acquired|released <label> …`.
- */
-export function taker(stateDir: string, label: string, holdS = 0.6): string {
-  return [
-    `STATE_DIR="${stateDir}"`,
-    'LOCK_DIR="$STATE_DIR/deploy.lock"',
-    'lock_acquire',
-    `printf "acquired ${label} pid=%s at=%s\\n" "$$" "$(now_ms)"`,
-    `sleep ${holdS}`,
-    `printf "released ${label} pid=%s at=%s\\n" "$$" "$(now_ms)"`,
-    'lock_release',
-  ].join('\n');
+/** The lib's functions, driven by bash exactly the way `deploy.sh` drives them. */
+export function lib(body: string, env: Record<string, string> = {}): Promise<{ code: number | null; out: string }> {
+  return shell(body, env);
 }
 
-/** The window one taker's transcript says it held the lock, or null when it never held it. */
-export function heldWindow(out: string, label: string): { pid: number; start: number; end: number } | null {
-  const got = new RegExp(`acquired ${label} pid=(\\d+) at=(\\d+)`, 'u').exec(out);
-  if (got === null) return null;
-  const gone = new RegExp(`released ${label} pid=(\\d+) at=(\\d+)`, 'u').exec(out);
-  return { pid: Number(got[1]), start: Number(got[2]), end: Number(gone?.[2] ?? '0') };
+/** A deploy-shaped shell: `set -eE` so the failure reporters fire the way they do in deploy.sh. */
+export function failRun(body: string, env: Record<string, string> = {}): Promise<{ code: number | null; out: string }> {
+  return shell(body, env, 'set -eEuo pipefail');
+}
+
+/** A root that is a git clone with a `site/`: `--phase run` gets past `git rev-parse` and dies at
+ * the first real gate step, which is what a red-run test needs. */
+export function gitRoot(): string {
+  const dir = temp('book-deploy-root-');
+  execFileSync('git', ['-C', dir, 'init', '-q']);
+  execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  mkdirSync(join(dir, 'site'), { recursive: true });
+  return dir;
 }
 
 export type Answer = { status: number; body: unknown };
