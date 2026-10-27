@@ -1,11 +1,12 @@
-import type { CatalogEntry, HistoryEventDto, ParagraphChainDto } from '@book/shared';
+import type { CatalogEntry, HistoryRecordDto, ParagraphChainDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { NBSP } from '../lib/format.ts';
-import { Chronicle, TimelineRow } from './Chronicle.tsx';
+import { Chronicle } from './Chronicle.tsx';
 import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
+import { RecordRow } from './RecordRow.tsx';
 import { ViewSwitch } from './ViewSwitch.tsx';
 
 const CHAIN: ParagraphChainDto = {
@@ -68,46 +69,43 @@ const CATALOG: CatalogEntry[] = [
 
 const noop = (): void => undefined;
 
-/** Newest first, as the timeline sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12 (MSK). */
-const ITEMS: HistoryEventDto[] = [
+/** Newest first, as the record sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12 (MSK). */
+const ITEMS: HistoryRecordDto[] = [
   {
     hseq: 10,
     at: '2026-10-27T12:40:00Z',
-    kind: 'front.revised',
-    chapter: null,
-    isFront: true,
-    rev: 3,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'первая страница переписана',
+    seq: 9,
+    chapter: 9,
+    premise: false,
+    alias: 'Аня',
+    status: 'done',
+    outcome: 'applied',
+    reason: null,
+    changeId: 'chg_9',
   },
   {
     hseq: 7,
     at: '2026-10-26T06:00:00Z',
-    kind: 'chapter.created',
+    seq: 7,
     chapter: 9,
-    isFront: false,
-    rev: 1,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'глава 9 написана',
+    premise: false,
+    alias: 'Марк',
+    status: 'processing',
+    outcome: null,
+    reason: null,
+    changeId: 'chg_7',
   },
   {
     hseq: 4,
     at: '2026-10-21T06:12:00Z',
-    kind: 'chapter.created',
+    seq: 4,
     chapter: 8,
-    isFront: false,
-    rev: 1,
-    changeId: null,
-    cascadeId: null,
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'глава 8 написана',
+    premise: false,
+    alias: 'Аня',
+    status: 'pending',
+    outcome: null,
+    reason: null,
+    changeId: 'chg_4',
   },
 ];
 
@@ -127,81 +125,109 @@ function declarations(css: string, selector: string): string {
   return match?.[1] ?? '';
 }
 
-describe('the chronicle’s deed line', () => {
-  const decided: HistoryEventDto = {
-    hseq: 42,
-    at: '2026-10-25T12:05:00Z',
-    kind: 'change.decided',
-    chapter: 8,
-    isFront: false,
-    rev: null,
-    changeId: 'chg_1',
-    cascadeId: 'csc_1',
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'правка 7 внесена',
-  };
+describe('one public record entry (BOOK-65)', () => {
+  it('carries the six facts of the change and exactly one way into the card', () => {
+    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
 
-  it('prints the same five words as the card on a decided row', () => {
-    const html = renderToStaticMarkup(
-      <TimelineRow
-        event={decided}
-        deed="зарегистрировано · заведено дело · внесены изменения · причина установлена · оформление"
-        onPick={noop}
-        onOpenChange={noop}
-      />,
-    );
-    expect(html).toContain('зарегистрировано · заведено дело · внесены изменения');
-    expect(html).toContain('причина установлена · оформление');
-    expect(html).not.toContain('чужой');
+    expect(html).toContain('правка 7');
+    expect(html).toContain(`26.10.2026${MID}09:00`);
+    expect(html).toContain('глава 9');
+    expect(html).toContain('Марк');
+    expect(html).toContain('идёт');
+    // One control, and the only link is the card — no «прицел», no second door.
+    expect(html.match(/<button/gu)).toHaveLength(1);
+    expect(html).not.toContain('прицел');
+    expect(html).not.toContain('chr-deed');
+    expect(html).toContain('карточка');
   });
 
-  it('shows no deed line when the change is outside the feed — no data, no claim', () => {
-    const html = renderToStaticMarkup(<TimelineRow event={decided} deed={null} onPick={noop} onOpenChange={noop} />);
-    expect(html).not.toContain('зарегистрировано');
+  it('prints no event vocabulary at all, even when a row is handed one', () => {
+    // The record DTO has no event fields; this row proves the component would not print them
+    // if one leaked in. The deed words are the five this pass removed from the list.
+    const leaked = {
+      ...ITEMS[1]!,
+      kind: 'change.decided',
+      summary: 'правка 7 внесена',
+      cascadeId: 'csc_1',
+      stepId: 'stp_1',
+      intent: 'в этом абзаце дважды «фонарь» — оставить один',
+      deed: 'зарегистрировано · заведено дело · внесены изменения · причина установлена',
+    } as unknown as HistoryRecordDto;
+    const html = renderToStaticMarkup(<RecordRow record={leaked} onOpenChange={noop} />);
+
+    for (const gone of [
+      'правка 7 внесена',
+      'заведено дело',
+      'внесены изменения',
+      'причина установлена',
+      'дважды «фонарь»',
+      'change.decided',
+      'csc_1',
+      'stp_1',
+    ]) {
+      expect(html, `the record row must not print «${gone}»`).not.toContain(gone);
+    }
+  });
+
+  it('names the row for assistive tech with the same six facts, and no event vocabulary', () => {
+    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
+    expect(html).toContain(
+      `aria-label="26.10.2026${MID}09:00, правка 7, глава 9, Марк, идёт — открыть карточку правки"`,
+    );
   });
 });
 
-describe('a document statement in the chronicle (BOOK-18)', () => {
-  const statement: HistoryEventDto = {
-    hseq: 51,
-    at: '2026-10-25T12:10:00Z',
-    kind: 'document.status',
-    chapter: null,
-    isFront: false,
-    rev: null,
-    changeId: 'chg_9',
-    cascadeId: 'csc_9',
-    stepId: null,
-    author: { kind: 'writer', identityId: null, label: 'автор' },
-    summary: 'статус документа приказ № 4 изменён в главах 12, 19, 44',
-  };
+describe('a refused change on the record (BOOK-65)', () => {
+  it('prints its one outcome word and the public reason after it', () => {
+    const refused: HistoryRecordDto = {
+      ...ITEMS[0]!,
+      status: 'void',
+      outcome: 'dropped',
+      reason: 'текст успел измениться',
+    };
+    const html = renderToStaticMarkup(<RecordRow record={refused} onOpenChange={noop} />);
+    expect(html).toContain('снято');
+    expect(html).toContain('текст успел измениться');
+    // The reason is a tail on the same entry, not a second line of body copy.
+    expect(html).not.toContain('причина');
+  });
 
-  it('prints the one line the server built, with the book as its target', () => {
-    const html = renderToStaticMarkup(<TimelineRow event={statement} deed={null} onPick={noop} onOpenChange={noop} />);
-    expect(html).toContain('статус документа приказ № 4 изменён в главах 12, 19, 44');
-    expect(html).toContain('книга');
-    expect(html).toContain('правка');
-    // No role and no finding reach the row: only the statement, the target and the change.
-    expect(html).not.toMatch(/editor|consultant|blocker/u);
+  it('prints the word alone when a stopped change carries no reason', () => {
+    const stopped: HistoryRecordDto = { ...ITEMS[0]!, status: 'escalated', outcome: 'origin', reason: null };
+    const html = renderToStaticMarkup(<RecordRow record={stopped} onOpenChange={noop} />);
+    expect(html).toContain('остановлено');
+    expect(html).not.toContain('chr-reason');
+  });
+});
+
+describe('a premise on the record (BOOK-7, BOOK-65)', () => {
+  it('carries its own number and speaks of a «замысел», agreeing with the noun', () => {
+    const premise: HistoryRecordDto = { ...ITEMS[0]!, premise: true, status: 'done', outcome: 'applied' };
+    const html = renderToStaticMarkup(<RecordRow record={premise} onOpenChange={noop} />);
+    expect(html).toContain('замысел 9');
+    expect(html).toContain('учтён');
+    // The number is present on every entry: a premise is not an exception to AC5.
+    expect(html).toContain('<span class="chr-seq">замысел 9</span>');
   });
 });
 
 describe('the record row is dated (BOOK-DOC-50 §5)', () => {
-  it('carries the record’s own date and time in its aria-label', () => {
-    const html = renderToStaticMarkup(<TimelineRow event={ITEMS[1]!} deed={null} onPick={noop} onOpenChange={noop} />);
-    expect(html).toContain(
-      `aria-label="26.10.2026${MID}09:00, глава 9 написана — книга на этот момент"`,
-    );
-    // The visible cell stays the row's own clock; the date comes from the day heading above.
-    expect(html).toContain('09:00');
+  it('carries the record’s own date and time, whole, and never splits them', () => {
+    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
+    // The date is one run in the markup and one unbreakable run in the sheet.
+    expect(html).toContain(`<span class="chr-date">26.10.2026${MID}09:00</span>`);
+    const date = declarations(sheets['../styles/chronicle.css'] ?? '', '.chr-date');
+    expect(date).toContain('white-space: nowrap');
+    // …and the row wraps between facts, so a phone reads it as a list, not a cut date.
+    const row = declarations(sheets['../styles/chronicle.css'] ?? '', '.chr-row');
+    expect(row).toContain('flex-wrap: wrap');
   });
 });
 
 describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
   it('prints a dated readout, the record counter and both dated ends', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     // The readout answers "what time" with the record under the thumb.
     expect(html).toContain(`26.10.2026${MID}09:00`);
@@ -223,7 +249,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('prints each dated end as two unbreakable parts and never splits a date or a time', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     // The date and the ` · HH:MM` tail, from the one source (`momentParts`): the string is
     // whole, split only where the box may wrap.
@@ -246,20 +272,42 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('appends «сейчас» at the right edge and reuses the same text as the range value', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={null} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />,
     );
     expect(html).toContain(`27.10.2026${MID}15:40${MID}сейчас`);
     expect(html).toContain(`aria-valuetext="27.10.2026${MID}15:40${MID}сейчас"`);
     expect(html).toContain('запись 3 из 3');
   });
 
+  it('dates the rest position by the log’s own last moment, not by the newest record (BOOK-65 M2)', () => {
+    // A machine pass moved the clock past the newest change: `lastHseq` 12 at 18:05 MSK, while
+    // the newest entry is still 10 at 15:40. «сейчас» must name the logged instant, not the
+    // entry's.
+    const html = renderToStaticMarkup(
+      <MomentControl
+        items={ITEMS}
+        lastHseq={12}
+        lastAt="2026-10-27T15:05:00Z"
+        more={false}
+        thumb={null}
+        onInput={noop}
+        onCommit={noop}
+      />,
+    );
+    expect(html).toContain(`27.10.2026${MID}18:05${MID}сейчас`);
+    expect(html).toContain('<span class="chr-end-date">с 27.10.2026</span>');
+    expect(html).toContain(`<span class="chr-end-clock">${MID}18:05</span>`);
+    // The newest entry keeps its own date below; only the rest position speaks for the clock.
+    expect(html).not.toContain(`27.10.2026${MID}15:40${MID}сейчас`);
+  });
+
   it('says «до …» before the oldest loaded record only when an older page exists', () => {
     const before = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more thumb={0} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more thumb={0} onInput={noop} onCommit={noop} />,
     );
     expect(before).toContain(`до${NBSP}21.10.2026${MID}09:12`);
     const clamped = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={0} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={0} onInput={noop} onCommit={noop} />,
     );
     expect(clamped).not.toContain('до');
     expect(clamped).toContain(`21.10.2026${MID}09:12`);
@@ -267,7 +315,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('offers exactly one «сейчас» control and no way back to it inside the past', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     const buttons = html.match(/<button[\s\S]*?<\/button>/gu) ?? [];
     expect(buttons).toHaveLength(1);
@@ -277,7 +325,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
   it('draws no rail under two records', () => {
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} more={false} thumb={null} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />,
     );
     expect(html).not.toContain('type="range"');
     expect(html).toContain('начало книги');
@@ -297,7 +345,7 @@ describe('the readout row on a narrow phone (BOOK-DOC-50 §2)', () => {
     expect(head).not.toMatch(/(?:^|[;\s])height:\s*22px/u);
     // …and nothing in the markup pins a width that would defeat the wrap (BOOK-30).
     const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} more={false} thumb={7} onInput={noop} onCommit={noop} />,
+      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
     );
     expect(html).toContain('class="scrub-head"');
     expect(html).not.toMatch(/style=/u);
@@ -316,7 +364,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 
   it('renders no filter chips and no tick strip, and no readout before an answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} changes={[]} onOpenChange={noop} live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} live />,
     );
     // BOOK-DOC-50 §9: the chips filtered the list while the rail kept the whole log.
     for (const chip of ['всё', 'правки', 'черновики', 'первая страница', 'перезаписи']) {
@@ -391,7 +439,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 describe('the chronicle while the timeline is in flight', () => {
   it('is busy from the request and prints no absence before the answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} changes={[]} onOpenChange={noop} live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} live />,
     );
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('role="status"');

@@ -7,7 +7,6 @@ import {
   deedLine,
   deedStates,
   deedWord,
-  summaryDeed,
   type DeedInput,
 } from './deed.ts';
 
@@ -83,41 +82,13 @@ describe('the five public states of a change', () => {
     );
   });
 
-  it('derives the same line from a change DTO and from its list row', () => {
+  it('derives the line from a change DTO', () => {
     const fromChange = changeDeedLine({
       cascade: { chaptersRewritten: [7, 8] },
       steps: [{}, {}] as never,
       modes: ['оформление'],
     } as never);
     expect(fromChange).toBe('зарегистрировано · заведено дело · внесены изменения · причина установлена · оформление');
-
-    const fromRow = summaryDeed({
-      cascade: { id: 'csc_1', status: 'closed', outcome: 'consistent' },
-      chapters: [8, 7],
-      rewritten: [8, 7],
-      modes: ['оформление'],
-    } as never);
-    expect(deedLine(fromRow)).toBe(fromChange);
-  });
-
-  it('files a change that never opened a case, and says nothing for no row at all', () => {
-    expect(deedStates(summaryDeed(null))).toEqual([]);
-    expect(
-      deedStates(summaryDeed({ cascade: null, chapters: [8], rewritten: [], steps: 0, modes: [] } as never)),
-    ).toEqual(['registered']);
-  });
-
-  it('files a local change the same way on the card and in the chronicle row', () => {
-    const card = changeDeedLine({
-      cascade: null,
-      steps: [{ chapter: 8, outcome: 'rewritten' }],
-      modes: [],
-    } as never);
-    const row = deedLine(
-      summaryDeed({ cascade: null, chapters: [8], rewritten: [8], steps: 1, modes: [] } as never),
-    );
-    expect(row).toBe(card);
-    expect(row).toBe('зарегистрировано · заведено дело · внесены изменения');
   });
 
   it('counts a local change’s landed step as an amendment, since no cascade carries it', () => {

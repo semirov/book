@@ -6,6 +6,7 @@
  * and the paragraph chain read — never a chapter body, and never a gate finding (§6F.7).
  */
 
+import type { ChangeOutcome, ChangeStatus } from './change.ts';
 import type { BlockDto } from './types.ts';
 
 /**
@@ -70,12 +71,54 @@ export type HistoryEventDto = {
   summary: string;
 };
 
+/**
+ * The public record: **one change a person made through the interface**, once (BOOK-65).
+ *
+ * The chronicle is no longer a projection of the log. Every event — a front revision, a gate
+ * dispatch, a wave, a lease, a join, a hide — is the machinery talking, and printing it turned
+ * the bookkeeping into a public line. A record reads the `changes` table instead, joined to
+ * the comment a reader filed: a change exists because a person asked for it, so one change is
+ * exactly one entry, and a machine-only pass has nothing to show.
+ *
+ * `events` still feeds the change card, the diff, the paragraph chain, the authors' series and
+ * the `history:event` frame. It appears here only as the moment: `hseq` is the change's last
+ * log entry, because the scrubber and `GET /api/history/at/:hseq` already speak in `hseq`.
+ * There is no `kind`, no cascade, no step and no event summary in this DTO — the public record
+ * must have no event vocabulary to print.
+ */
+export type HistoryRecordDto = {
+  /** The moment key: the `hseq` of the change's last log entry. */
+  hseq: number;
+  /** ISO-8601 UTC of that same entry, display only. Ordering is `hseq`, never this. */
+  at: string;
+  /** The change's public iteration number — «правка 7». */
+  seq: number;
+  /** 1..67: the chapter the change was filed against. */
+  chapter: number;
+  /** BOOK-7: a chapter's premise is not «правка N»; the row's word says so. */
+  premise: boolean;
+  /** The display name of the reader who filed it, snapshotted on the comment. */
+  alias: string;
+  status: ChangeStatus;
+  outcome: ChangeOutcome | null;
+  /** The public one-liner of a refused or stopped change; null otherwise. */
+  reason: string | null;
+  /** The one way in: the change card. */
+  changeId: string;
+};
+
 export type HistoryTimelineDto = {
   /** The book's clock right now — the scrubber's right edge and `bookAt`'s default. */
   lastHseq: number;
+  /**
+   * The logged moment of `lastHseq` (BOOK-65): the rest position prints this, or the newest
+   * record when the log holds no row. It is the log's own last instant, never the browser
+   * clock — BOOK-DOC-48 refused a clock, not a logged moment.
+   */
+  lastAt: string | null;
   at: string;
-  items: HistoryEventDto[];
-  /** Cursor for the next page (`before`); null when the page reached the first event. */
+  items: HistoryRecordDto[];
+  /** Cursor for the next page (`before`); null when the page reached the oldest record. */
   nextBefore: number | null;
 };
 

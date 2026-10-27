@@ -2,8 +2,9 @@
  * Reading the log as a public projection (§6F.1, §6F.7).
  *
  * `log.ts` is the only writer of `events`; this module is the only reader that turns a row
- * into the shape the chronicle shows. The event's `payload` is bounded and public by
- * construction (§6F.1 rule 6), and nothing here selects `gate_verdicts`.
+ * into the shape the WS frame and the historical views use. The public record itself is
+ * `record.ts` (BOOK-65): a log row is machinery, not an entry. The event's `payload` is bounded
+ * and public by construction (§6F.1 rule 6), and nothing here selects `gate_verdicts`.
  */
 
 import type { HistoryAuthorKind, HistoryEventDto, HistoryKind } from '@book/shared';
@@ -50,8 +51,11 @@ const SELECT_EVENT = `SELECT e.*, (SELECT c.seq FROM changes c WHERE c.id = e.ch
 const PAGE_LIMIT_DEFAULT = 50;
 const PAGE_LIMIT_MAX = 200;
 
-/** The number of rows a page actually asks for (`limit` is optional and bounded). */
-function pageLimit(limit: number | undefined): number {
+/**
+ * The number of rows a page actually asks for (`limit` is optional and bounded). Shared with
+ * `record.ts`, so the public record and the event views cannot grow two cursor contracts.
+ */
+export function pageLimit(limit: number | undefined): number {
   return Math.min(PAGE_LIMIT_MAX, Math.max(1, limit ?? PAGE_LIMIT_DEFAULT));
 }
 
@@ -127,21 +131,4 @@ export function toHistoryEvent(row: EventRow): HistoryEventDto {
 /** The frame of one event: the row already carries its change number and its summary. */
 export function toHistoryFrame(row: EventRow): HistoryEventDto {
   return toHistoryEvent(row);
-}
-
-/**
- * The public timeline page, newest first, with a cursor (§6F.2).
- *
- * The cursor is the last row's `hseq` **only when the page is full**: a page shorter than its
- * limit is the oldest one, so nothing lies before it and `nextBefore` is `null` — the client
- * must not offer «до …» for a history it has already shown completely.
- */
-export function readTimeline(
-  db: Db,
-  filter: EventListFilter = {},
-): { lastHseq: number; items: HistoryEventDto[]; nextBefore: number | null } {
-  const rows = listEventRows(db, filter);
-  const items = rows.map((row) => toHistoryEvent(row));
-  const nextBefore = rows.length === pageLimit(filter.limit) ? (rows.at(-1)?.hseq ?? null) : null;
-  return { lastHseq: lastHseq(db), items, nextBefore };
 }

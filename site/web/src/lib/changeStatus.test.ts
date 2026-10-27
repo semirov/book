@@ -1,4 +1,4 @@
-import type { ChangeStepDto, ChangeSummaryDto } from '@book/shared';
+import type { ChangeStepDto, ChangeSummaryDto, HistoryRecordDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -10,6 +10,8 @@ import {
   outcomeCopy,
   premiseOutcomeCopy,
   progressLine,
+  recordReason,
+  recordWord,
   relevanceCopy,
   stampCopy,
   stepLabel,
@@ -223,5 +225,55 @@ describe('ranges and labels', () => {
     expect(stampCopy(summary({ status: 'escalated', outcome: 'budget' }))).toBe('ждёт');
     expect(stampCopy(summary({ status: 'stale' }))).toBe('ждёт');
     expect(stampCopy(summary({ status: 'failed', outcome: null }))).toBe('ждёт');
+  });
+});
+
+describe('BOOK-65 — one outcome word for one public record entry', () => {
+  function record(overrides: Partial<Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'reason'>> = {}) {
+    return { status: 'done', outcome: 'applied', premise: false, reason: null, ...overrides } as Pick<
+      HistoryRecordDto,
+      'status' | 'outcome' | 'premise' | 'reason'
+    >;
+  }
+
+  it('uses exactly the three public state words, agreeing with the card', () => {
+    // A queue place is «идёт» on the card's stamp (`changeState`), so it is «идёт» here too;
+    // `stale` is a re-decision, which waits. The two surfaces share one mapping (BOOK-65 M1).
+    expect(recordWord(record({ status: 'pending', outcome: null }))).toBe('идёт');
+    expect(recordWord(record({ status: 'processing', outcome: null }))).toBe('идёт');
+    expect(recordWord(record({ status: 'stale', outcome: null }))).toBe('ждёт');
+    expect(recordWord(record({ status: 'done' }))).toBe('внесено');
+    expect(recordWord(record({ status: 'done', outcome: 'adapted' }))).toBe('внесено');
+  });
+
+  it('gives a refused or stopped change one word from the existing vocabulary', () => {
+    expect(recordWord(record({ status: 'void', outcome: 'dropped' }))).toBe('снято');
+    expect(recordWord(record({ status: 'void', outcome: 'superseded' }))).toBe('перекрыто');
+    for (const status of ['escalated', 'failed'] as const) {
+      expect(recordWord(record({ status, outcome: 'budget' }))).toBe('остановлено');
+    }
+  });
+
+  it('speaks of a premise in its own gender and never as «внесено»', () => {
+    expect(recordWord(record({ premise: true, status: 'done' }))).toBe('учтён');
+    expect(recordWord(record({ premise: true, status: 'void', outcome: 'superseded' }))).toBe('снят');
+    expect(recordWord(record({ premise: true, status: 'pending', outcome: null }))).toBe('ждёт');
+    expect(recordWord(record({ premise: true, status: 'processing', outcome: null }))).toBe('ждёт');
+  });
+
+  it('prints the reason only after a refused or stopped word', () => {
+    expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: 'текст успел измениться' }))).toBe(
+      'текст успел измениться',
+    );
+    expect(recordReason(record({ status: 'escalated', outcome: 'origin', reason: 'нужно решение автора' }))).toBe(
+      'нужно решение автора',
+    );
+    expect(recordReason(record({ status: 'failed', outcome: null, reason: 'повторные обрывы' }))).toBe('повторные обрывы');
+    // A reason is never appended to a change that is still on its way or already landed…
+    expect(recordReason(record({ status: 'done', reason: 'не печатается' }))).toBeNull();
+    expect(recordReason(record({ status: 'pending', reason: 'не печатается' }))).toBeNull();
+    // …and an absent or empty reason prints nothing at all.
+    expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: null }))).toBeNull();
+    expect(recordReason(record({ status: 'void', outcome: 'dropped', reason: '' }))).toBeNull();
   });
 });

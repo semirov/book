@@ -1,67 +1,15 @@
 /**
- * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2, BOOK-DOC-50): grouping, the
- * moment's dated readout and the read-only notice a past moment carries.
+ * The chronicle's pure helpers (ARCHITECTURE §11.10, §6F.2, BOOK-DOC-50): the moment's dated
+ * readout and the read-only notice a past moment carries.
  *
  * Everything here is a function of the payloads the server sends — no clocks, no fetching —
- * so the chronicle's behaviour is testable without a browser.
+ * so the chronicle's behaviour is testable without a browser. The list is a list of changes
+ * (BOOK-65), so these helpers read a `HistoryRecordDto`, not a log row.
  */
 
-import type { BookAtDto, CatalogEntry, HistoryEventDto } from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryRecordDto } from '@book/shared';
 
 import { MIDDOT, NBSP, formatDate, formatTime } from './format.ts';
-
-/** «25 октября» in the site's timezone. */
-const DAY = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
-
-export function dayLabel(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : DAY.format(date);
-}
-
-/**
- * The calendar day `dayLabel` prints for the same instant, as `YYYY-MM-DD`.
- *
- * The group key and the heading must name the same day: keying on the UTC slice split one
- * Moscow evening (≥ 21:00 UTC) into two headings with identical text — in the list that is
- * now the axis, two «26 октября» in a row.
- */
-const DAY_KEY = new Intl.DateTimeFormat('en-US', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  timeZone: 'Europe/Moscow',
-});
-
-function dayKey(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const parts = DAY_KEY.formatToParts(date);
-  const pick = (type: string): string => parts.find((part) => part.type === type)?.value ?? '';
-  return `${pick('year')}-${pick('month')}-${pick('day')}`;
-}
-
-export type DayGroup = { day: string; label: string; items: HistoryEventDto[] };
-
-/** Newest first in, newest first out, one group per calendar day. */
-export function groupByDay(items: HistoryEventDto[]): DayGroup[] {
-  const groups: DayGroup[] = [];
-  for (const event of items) {
-    const day = dayKey(event.at);
-    const last = groups.at(-1);
-    if (last !== undefined && last.day === day) {
-      last.items.push(event);
-      continue;
-    }
-    groups.push({ day, label: dayLabel(event.at), items: [event] });
-  }
-  return groups;
-}
-
-/** «глава 9» · «первая страница» · «книга». */
-export function targetLabel(event: HistoryEventDto): string {
-  if (event.isFront) return 'первая страница';
-  return event.chapter === null ? 'книга' : `глава ${event.chapter}`;
-}
 
 export type PastDifference = {
   changed: number[];
@@ -116,7 +64,7 @@ export function momentText(iso: string | null | undefined): string {
 export type MomentLabel = {
   /** The readout: `25.10.2026 · 12:00`, `до 21.10.2026 · 09:12`, or '' with no records. */
   text: string;
-  /** The thumb sits at the right edge, so the label is the newest record. */
+  /** The thumb sits at the right edge, so the label is the book's own last logged moment. */
   isNow: boolean;
   /** The record under the thumb, counted chronologically over the loaded rows: oldest = 1. */
   position: number;
@@ -126,22 +74,26 @@ export type MomentLabel = {
  * What the thumb points at, answered from the loaded page alone (BOOK-DOC-50 §2, §6) — the
  * readout is a log fact, never the answer of a request, so it survives a load and a failure.
  *
- * `items` is newest first. Before the oldest loaded record the readout says `до …` **only**
- * when an older page exists (`more`); without one it clamps to the oldest record it has and
- * claims nothing it cannot show.
+ * `items` is newest first. At the right edge the readout prints `lastAt` — the **logged** moment
+ * of `lastHseq`, not the newest record's: a machine pass moves the book's clock without adding
+ * a record, and the old code printed the newest entry's date under «сейчас» (BOOK-65). Before
+ * the oldest loaded record the readout says `до …` **only** when an older page exists (`more`);
+ * without one it clamps to the oldest record it has and claims nothing it cannot show.
  */
 export function momentLabel(
-  items: HistoryEventDto[],
+  items: HistoryRecordDto[],
   value: number,
   lastHseq: number,
   more: boolean,
+  lastAt: string | null,
 ): MomentLabel {
   const newest = items[0];
   if (newest === undefined) return { text: '', isNow: false, position: 0 };
   if (lastHseq > 0 && value >= lastHseq) {
-    return { text: momentText(newest.at), isNow: true, position: items.length };
+    // The fallback is for a log that somehow holds no row at `lastHseq`: never the browser clock.
+    return { text: momentText(lastAt ?? newest.at), isNow: true, position: items.length };
   }
-  const index = items.findIndex((event) => event.hseq <= value);
+  const index = items.findIndex((record) => record.hseq <= value);
   if (index === -1) {
     // Past the oldest loaded record: say «до …» only when the log has an older page.
     const oldest = items[items.length - 1]!;
@@ -155,8 +107,8 @@ export function momentLabel(
 }
 
 /** The record one step to the left/right of the thumb (a control that can be stepped). */
-export function stepMoment(items: HistoryEventDto[], value: number, direction: -1 | 1): number {
-  const hseqs = items.map((event) => event.hseq).sort((left, right) => left - right);
+export function stepMoment(items: HistoryRecordDto[], value: number, direction: -1 | 1): number {
+  const hseqs = items.map((record) => record.hseq).sort((left, right) => left - right);
   if (hseqs.length === 0) return value;
   if (direction === -1) {
     const lower = hseqs.filter((hseq) => hseq < value);

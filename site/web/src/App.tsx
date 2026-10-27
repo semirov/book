@@ -292,6 +292,10 @@ export function App() {
           }
           case 'change:queued': {
             void refreshChanges();
+            // BOOK-65: a comment accepted through the interface appends `change.queued`, so
+            // this frame — not `history:event` — is the first notice the reader's own line
+            // exists. The tick re-reads the record; the frame payload is untouched.
+            setHistoryTick((current) => current + 1);
             break;
           }
           case 'change:processing': {
@@ -413,7 +417,6 @@ export function App() {
           catalog={catalog}
           frontRev={front.rev}
           tick={historyTick}
-          changes={changes}
           onOpenChange={card.open}
           live={history}
         />

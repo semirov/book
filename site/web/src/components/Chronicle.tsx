@@ -1,21 +1,18 @@
 import type {
   BookAtDto,
   CatalogEntry,
-  ChangeSummaryDto,
   HistoryChapterDto,
-  HistoryEventDto,
   HistoryTimelineDto,
 } from '@book/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
-import { deedLine, summaryDeed } from '../lib/deed.ts';
-import { focusHash } from '../lib/focus.ts';
-import { formatChars, formatTime } from '../lib/format.ts';
-import { compareToNow, groupByDay, momentText, targetLabel } from '../lib/history.ts';
+import { formatChars } from '../lib/format.ts';
+import { compareToNow } from '../lib/history.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
+import { RecordRow } from './RecordRow.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import { useParagraphChain } from '../useParagraphChain.ts';
 import { usePending } from '../usePending.ts';
@@ -48,6 +45,11 @@ type MomentState =
  *
  * «⋯ откуда эта фраза» on a paragraph opens its lineage chain: where it was written, what
  * rewrote it, and whose contribution the rewrite ended.
+ *
+ * BOOK-65: the surface's own subheading is gone with the event list. It promised «каждая
+ * перезапись, каждый замер» — machinery the record no longer prints — so keeping it would
+ * describe a surface that no longer exists. The replacement words are BOOK-59's, not this
+ * change's.
  */
 export type ChronicleProps = {
   /** The live catalog: the past is compared against it to say what changed since. */
@@ -55,17 +57,12 @@ export type ChronicleProps = {
   frontRev: number;
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
-  /**
-   * The public change feed (`GET /api/changes`): the deed line of a decided row is the same
-   * five words the card prints. A change outside the feed simply has no line — no data, no claim.
-   */
-  changes: ChangeSummaryDto[];
   onOpenChange: (changeId: string) => void;
   /** BOOK-56: `state.history.live`; without a reader change there is no chronicle at all. */
   live: boolean;
 };
 
-export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -138,7 +135,6 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
 
   const lastHseq = timeline?.lastHseq ?? 0;
   const items = timeline?.items ?? [];
-  const groups = useMemo(() => groupByDay(items), [items]);
 
   /** The chosen moment, or `null` at the right edge — the one state the control has. */
   const current = thumb !== null && lastHseq > 0 && thumb < lastHseq ? thumb : null;
@@ -152,7 +148,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
     setMoment({ phase: 'idle' });
   }, [clearIdle]);
 
-  /** A release, a row click or a key release: the moment is asked for now. */
+  /** A release or a key release: the moment is asked for now. */
   const commit = useCallback(
     (value: number) => {
       if (lastHseq <= 0 || value >= lastHseq) {
@@ -208,13 +204,6 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
     [past, catalog, frontRev],
   );
 
-  /** The deed line per change, derived once from the public feed (one copy source: `lib/deed.ts`). */
-  const deeds = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of changes) map.set(entry.id, deedLine(summaryDeed(entry)));
-    return map;
-  }, [changes]);
-
   const retry = useCallback(() => {
     if (current === null) return;
     requested.current = null;
@@ -250,15 +239,13 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
     >
       <div className="chr-head">
         <h2 className="chr-title">хроника</h2>
-        <p className="chr-sub">
-          книга рассказывает, как её писали: каждая правка, каждая перезапись, каждый замер.
-        </p>
       </div>
 
       {items.length === 0 ? null : (
         <MomentControl
           items={items}
           lastHseq={lastHseq}
+          lastAt={timeline?.lastAt ?? null}
           more={timeline !== null && timeline.nextBefore !== null}
           thumb={thumb}
           onInput={move}
@@ -330,21 +317,10 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
       ) : (
         <>
           <ol className="chr-timeline">
-            {groups.map((group) => (
-              <li key={group.day} className="chr-day">
-                <h3 className="chr-day-label">{group.label}</h3>
-                <ol>
-                  {group.items.map((event) => (
-                    <TimelineRow
-                      key={event.hseq}
-                      event={event}
-                      deed={event.changeId === null ? null : (deeds.get(event.changeId) ?? null)}
-                      onPick={() => (event.hseq >= lastHseq ? resetToNow() : commit(event.hseq))}
-                      onOpenChange={onOpenChange}
-                    />
-                  ))}
-                </ol>
-              </li>
+            {items.map((record) => (
+              // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
+              // lands for that change, and a remount would drop keyboard focus on a live tick.
+              <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
             ))}
           </ol>
           {items.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
@@ -372,48 +348,6 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live
         />
       ) : null}
     </section>
-  );
-}
-
-/** One log row. Exported so its markup can be asserted without a browser or a socket. */
-export function TimelineRow({
-  event,
-  deed,
-  onPick,
-  onOpenChange,
-}: {
-  event: HistoryEventDto;
-  deed: string | null;
-  onPick: () => void;
-  onOpenChange: (changeId: string) => void;
-}) {
-  const decided = event.kind === 'change.decided' || event.kind === 'cascade.closed';
-  return (
-    // BOOK-77 (audit F1): the row is masked on its own, so it holds even when it is rendered
-    // outside the chronicle — the summary (and the button's aria-label) is reader-derived.
-    <li className="chr-row ym-hide-content">
-      <button
-        type="button"
-        className="chr-row-main"
-        onClick={onPick}
-        aria-label={`${momentText(event.at)}, ${event.summary} — книга на этот момент`}
-      >
-        <span className="chr-time">{formatTime(event.at)}</span>
-        <span className="chr-target">{targetLabel(event)}</span>
-        <span className="chr-summary">{event.summary}</span>
-        {deed !== null && decided ? <span className="chr-deed">{deed}</span> : null}
-      </button>
-      {event.changeId === null ? null : (
-        <>
-          <button type="button" className="chr-change" onClick={() => onOpenChange(event.changeId ?? '')}>
-            правка
-          </button>
-          <a className="chr-change" href={focusHash(event.changeId)}>
-            прицел
-          </a>
-        </>
-      )}
-    </li>
   );
 }
 

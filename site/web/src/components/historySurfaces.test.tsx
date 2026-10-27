@@ -159,7 +159,7 @@ function page(current: StateSnapshot): string {
         onViewChange={noop}
         live={live}
       />
-      <Chronicle catalog={catalog} frontRev={1} tick={0} changes={[]} onOpenChange={noop} live={live} />
+      <Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} live={live} />
       <ProvenancePanel
         view={provenanceView({ word: 'пустую', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: CHAIN, at: null, history: 'ready', live })}
         anchor={null}

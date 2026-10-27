@@ -6,7 +6,7 @@
  * the text is amended, a cause is established, a divergence may be recorded. Each word is
  * earned by data — no step, no «заведено дело»; no rewritten chapter, no «внесены
  * изменения» — and a refused intervention shows none of them. The same words are rendered
- * by the change card, the focus view and the chronicle, so this module is their one source.
+ * by the change card and the focus view, so this module is their one source.
  *
  * The retroactive cause is filed in one of three modes (`shared/src/change.ts`): **оформление**
  * (the cause existed, now registered), **поправка** (the past reformulated, not denied —
@@ -14,7 +14,7 @@
  * match; the seam is тоска, not a bug). Never «исправлено», never a role, never exclamation.
  */
 
-import type { ChangeDto, ChangeSummaryDto, RetroMode } from '@book/shared';
+import type { ChangeDto, RetroMode } from '@book/shared';
 
 export type DeedState = 'registered' | 'filed' | 'changed' | 'cause' | 'divergence';
 
@@ -92,17 +92,6 @@ function changeDeed(change: ChangeDto): DeedInput {
     accepted: true,
     steps: change.steps.length,
     rewritten: change.cascade === null ? [...new Set(landed)] : change.cascade.chaptersRewritten,
-    modes: change.modes,
-  };
-}
-
-/** The chronicle's input: the list row, whose `steps`/`rewritten`/`modes` are public. */
-export function summaryDeed(change: ChangeSummaryDto | null): DeedInput {
-  if (change === null) return { accepted: false, steps: 0, rewritten: [], modes: [] };
-  return {
-    accepted: true,
-    steps: change.steps,
-    rewritten: change.rewritten,
     modes: change.modes,
   };
 }
