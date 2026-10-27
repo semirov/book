@@ -5,6 +5,7 @@ export * from './protocol.ts';
 export * from './change.ts';
 export * from './history.ts';
 export * from './authors.ts';
+export * from './cost.ts';
 export * from './publicChange.ts';
 export * from './captcha.ts';
 export * from './comment.ts';

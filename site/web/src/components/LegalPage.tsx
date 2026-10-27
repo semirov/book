@@ -160,6 +160,22 @@ function Rules() {
         </ul>
       </section>
 
+      {/* BOOK-126 — money, stated once and plainly. The page is static (audit M5): it fetches
+          nothing and renders no third-party byte, so it cannot know whether this deployment
+          shows the footer's «поддержать книгу» row — hence «по ссылке «поддержать книгу»» names
+          the control by its own words instead of pointing at «эту ссылку». A gift between
+          individuals: it buys nothing, the queue is shared, and the bank runs the payment, so
+          we do not see who made it. */}
+      <section>
+        <h2>Деньги</h2>
+        <p>
+          Деньги, которые приходят по ссылке «поддержать книгу», — подарок. Они ничего не
+          оплачивают: ни доступа, ни глав, ни решений по правкам. Книга остаётся бесплатной, а
+          очередь правок — общей.
+        </p>
+        <p>Платёж проводит банк: кто его сделал, мы не видим.</p>
+      </section>
+
       <section>
         <h2>Что не принимается</h2>
         <ul>

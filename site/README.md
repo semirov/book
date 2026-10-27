@@ -122,6 +122,7 @@ Every variable is parsed with a default at boot (`server/src/config.ts`); a bad 
 rather than the first request. `BOOK_ROOT` (default: the repository root), `DATA_DIR` (`site/.data`),
 `WEB_DIST`, `PORT`/`HOST`, `LOG_LEVEL`, `BOOK_TZ`, `WATCH_POLL_MS`, `EMPTY_WRITE_GRACE_MS`,
 `MAX_WS`/`WS_PER_IP`, `TRUSTED_PROXIES`, `READ_PER_MINUTE`, `COMMENTS_PER_HOUR_IP`,
-`COMMENTS_PER_HOUR_IDENTITY`, `EDIT_SUBMISSIONS_PER_DAY`, `QUEUE_SOFT_CAP`, `BUDGET_*`; `.env.example`
+`COMMENTS_PER_HOUR_IDENTITY`, `EDIT_SUBMISSIONS_PER_DAY`, `QUEUE_SOFT_CAP`, `BUDGET_*`, `DONATE_URL`
+(the public gift link of the footer row — `https://t.tb.ru/…` only, empty means no row); `.env.example`
 lists them with their defaults. `GET /privacy` and `/rules` state what the site runs, what it stores
 and what the write gate is (BOOK-64: an authenticated identity plus the rate limits).

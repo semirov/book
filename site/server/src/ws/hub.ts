@@ -281,6 +281,8 @@ export class WsHub {
         rev: state.front.rev,
         imprint: { author: this.imprint.author, copyright: this.imprint.copyright },
         authors: this.authorsCount(),
+        // BOOK-126: the footer's gift row survives a reconnect; the value is boot-validated.
+        donateUrl: this.config.donateUrl,
       },
       catalog,
       state,

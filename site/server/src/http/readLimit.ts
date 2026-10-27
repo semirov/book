@@ -1,16 +1,17 @@
 /**
  * The read API's budget (audit M6, ARCHITECTURE.md §14).
  *
- * The expensive reads are the history projections, the reader's own record, the end matter
- * and the title page's byline: `/api/history/at/:hseq` alone is 67 indexed lookups, `/diff`
- * recomputes a span on every call, `/api/me/decisions` and `/api/authors` measure the whole
- * book for every request (`/api/authors` also reads every identity, the projection and each
- * contributor's first change; `/api/authors/me` adds the survival join), and `/api/front`
- * carries the contributor count — a whole-book aggregate page 1 asks for on every load.
- * Nothing here is cacheable (BOOK-109: the app answers `no-store`), so every repeat is a real
- * read and a script can ask for them thousands of times; they take a per-network window in the
- * same `rate_events` store as everything else — one limiter, one salt, one hash, no second
- * store to drift.
+ * The expensive reads are the history projections, the reader's own record, the end matter and
+ * the two whole-book aggregates page views ask for on every load: `/api/history/at/:hseq` alone
+ * is 67 indexed lookups, `/diff` recomputes a span on every call, `/api/me/decisions` and
+ * `/api/authors` measure the whole book for every request (`/api/authors` also reads every
+ * identity, the projection and each contributor's first change; `/api/authors/me` adds the
+ * survival join), `/api/front` carries the contributor count, and `/api/cost` sums every step's
+ * tokens and money. Nothing here is cacheable (BOOK-109: the app answers `no-store`), so every
+ * repeat is a real transfer; the two aggregates are remembered per book state, but the rest
+ * have nothing to absorb a repeat, and a script can ask for all of it thousands of times —
+ * they take a per-network window in the same `rate_events` store as everything else: one
+ * limiter, one salt, one hash, no second store to drift.
  *
  * The key is the hashed network, never the address: `rate_events` only ever holds a hash.
  */
@@ -22,9 +23,10 @@ import type { RouteDeps } from './deps.ts';
 
 /**
  * The prefixes that take the read budget. `/api/state` is the SPA's poll and the cheapest;
- * `/api/front` is page 1 (the byline aggregate); `/api/me` is the reader's own record;
- * `/api/authors` is the end matter — the whole-book measurement plus every contributor's
- * first change, public and anonymous, and its `/me` sibling pays the same measurement.
+ * `/api/front` is page 1 (the byline aggregate); `/api/cost` is the footer's outlay (the steps
+ * aggregate); `/api/me` is the reader's own record; `/api/authors` is the end matter — the
+ * whole-book measurement plus every contributor's first change, public and anonymous, and its
+ * `/me` sibling pays the same measurement.
  *
  * The byline count is *not* shared with the list here: the list's own measurement already
  * yields the number (`contributors.length`, the same filter `authors/count.ts` applies), so a
@@ -37,6 +39,7 @@ export const READ_LIMITED_PREFIXES = [
   '/api/changes',
   '/api/state',
   '/api/front',
+  '/api/cost',
   '/api/me',
   '/api/authors',
 ] as const;

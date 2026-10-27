@@ -208,6 +208,13 @@ export type FrontDto = {
   imprint: { author: string; copyright: string };
   /** The title page's byline count, measured server-side (BOOK-DOC-4); always present. */
   authors: AuthorsCountDto;
+  /**
+   * BOOK-126: the gift link the footer row prints, already validated at boot (`donateUrlOf`) —
+   * `https://t.tb.ru/…` and nothing else. `null` or absent means the row does not render; the
+   * field is optional so every fixture written before the row stays valid. It is not book
+   * matter, so it is not part of `imprint`.
+   */
+  donateUrl?: string | null;
 };
 
 export type BlockDto = {

@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
 import { assertDataDirIsolation, productionDataDirs } from './dataDirGuard.ts';
+import { donateUrlOf } from './donate.ts';
 
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -118,6 +119,15 @@ const schema = z.object({
    */
   captchaAllowTestSiteKey: z.enum(['0', '1']).default('0'),
   captchaTimeoutMs: z.coerce.number().int().min(500).max(10_000).default(3_000),
+  /**
+   * BOOK-126: the one outbound link of the gift row. Public by nature — it is printed on the
+   * page — so it is a plain value, not a `_FILE` mount. `donateUrlOf` (`donate.ts`) validates
+   * it: empty or refused is `null`, and the row then does not render at all.
+   */
+  donateUrl: z
+    .string()
+    .default('')
+    .transform((value) => donateUrlOf(value)),
   /** Empty = no script, no third-party origin in the CSP (§15.6). */
   metrikaId: z.string().default(''),
   /**
@@ -338,6 +348,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     captchaSecret: readMountedSecret(env, 'CAPTCHA_SECRET', production),
     captchaAllowTestSiteKey: env.CAPTCHA_ALLOW_TEST_SITE_KEY,
     captchaTimeoutMs: env.CAPTCHA_TIMEOUT_MS,
+    donateUrl: env.DONATE_URL,
     metrikaId: env.METRIKA_ID,
     budgetMaxWave: env.BUDGET_MAX_WAVE,
     budgetMaxChapters: env.BUDGET_MAX_CHAPTERS,
@@ -368,6 +379,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`invalid configuration: ${details}`);
   }
   const config = parsed.data;
+  // BOOK-126: no link at all is a deployment that does not ask for gifts. A *set* link that
+  // fails the allowlist is an operator mistake and must be visible, but the boot keeps going —
+  // a typo must not keep the book offline, and a dead link would be worse than no row. The
+  // reason is named; the rejected value is not echoed.
+  if (config.donateUrl === null && (env.DONATE_URL ?? '').trim().length > 0) {
+    console.warn(
+      'DONATE_URL was set but is not an https://t.tb.ru link (no port, no credentials) — ' +
+        'the «поддержать книгу» row is off',
+    );
+  }
   // BOOK-107: the wall around the data dirs, both directions. A boot that is not production
   // must never point at the prod data dir, and a production boot must never keep its data in
   // the checkout. The guard runs on the parsed paths (DATA_DIR is not resolved by the schema,

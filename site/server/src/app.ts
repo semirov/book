@@ -5,12 +5,13 @@ import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import Fastify, { LogController, type FastifyError, type FastifyInstance } from 'fastify';
 
-import type { AuthorsCountDto, Imprint, ServerEventType } from '@book/shared';
+import type { AuthorsCountDto, BookCostDto, Imprint, ServerEventType } from '@book/shared';
 import { REQUEST_BODY_MAX_BYTES } from '@book/shared';
 import { createAuthorsCount } from './authors/count.ts';
 import { readBuildCommit } from './build.ts';
 import { createCaptchaVerifier, type CaptchaVerifier } from './captcha/verify.ts';
 import type { Config } from './config.ts';
+import { readBookCost } from './cost/book.ts';
 import type { Db } from './db/db.ts';
 import type { RouteDeps } from './http/deps.ts';
 import { registerCachePolicy } from './http/cache.ts';
@@ -24,6 +25,7 @@ import { registerAuthorsRoutes } from './http/routes/authors.ts';
 import { registerChangeRoutes } from './http/routes/changes.ts';
 import { registerChapterRoutes } from './http/routes/chapters.ts';
 import { registerCommentRoutes } from './http/routes/comments.ts';
+import { registerCostRoutes } from './http/routes/cost.ts';
 import { registerFrontRoutes } from './http/routes/front.ts';
 import { registerHealthRoutes } from './http/routes/health.ts';
 import { registerHistoryRoutes } from './http/routes/history.ts';
@@ -72,6 +74,8 @@ export type AppOptions = {
   adminToken?: string;
   /** Shared with the WS hub in production so the byline markers are comparable. */
   authorsCount?: () => AuthorsCountDto;
+  /** Test seam for the book's outlay: counts the scans a `/api/cost` page pays for. */
+  bookCost?: () => BookCostDto;
 };
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
@@ -108,6 +112,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
   const emit = options.emit ?? (options.wsHub === undefined ? undefined : (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => options.wsHub?.publish(type, data));
   const authorsCount = options.authorsCount ?? createAuthorsCount(options.db, now);
+  const bookCost = options.bookCost ?? ((): BookCostDto => readBookCost(options.db));
 
   const deps: RouteDeps = {
     db: options.db,
@@ -127,6 +132,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     now,
     adminToken: options.adminToken ?? readAdminToken(options.config.adminToken, options.config.adminTokenFile),
     authorsCount,
+    bookCost,
     ...(emit === undefined ? {} : { emit }),
     ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
   };
@@ -182,6 +188,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerStateRoutes(app, deps);
   registerAnalyticsRoutes(app, deps);
   registerFrontRoutes(app, deps);
+  registerCostRoutes(app, deps);
   registerChapterRoutes(app, deps);
   registerChangeRoutes(app, deps);
   registerCommentRoutes(app, deps);

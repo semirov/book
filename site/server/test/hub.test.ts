@@ -66,11 +66,18 @@ function rig(
     maxConnections?: number;
     perIp?: number;
     stateThrottleMs?: number;
+    /** Extra env for the boot: the config-driven values a frame carries (BOOK-126). */
+    env?: Record<string, string>;
   } = {},
 ): Rig {
   const fixture = createFixture({});
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
-  const config = loadConfig({ BOOK_ROOT: fixture.root, DATA_DIR: fixture.dataDir, WEB_DIST: fixture.dataDir });
+  const config = loadConfig({
+    BOOK_ROOT: fixture.root,
+    DATA_DIR: fixture.dataDir,
+    WEB_DIST: fixture.dataDir,
+    ...options.env,
+  });
   const state = new StateService(fixture.db);
   const hub = new WsHub({
     db: fixture.db,
@@ -117,6 +124,14 @@ describe('hello and connections', () => {
     expect(hello.seq).toBe(1);
     expect(hello.data.state.version).toBe(1);
     expect(hub.connectionCount()).toBe(1);
+    close();
+  });
+
+  it('carries the gift link in hello.front, so a reconnect keeps the footer row (BOOK-126)', async () => {
+    const { socket, close } = rig({ env: { DONATE_URL: 'https://t.tb.ru/pm_short/11T50nT6AL' } });
+    await flush();
+    const hello = socket.frames()[0] as { data: { front: { donateUrl?: string | null } } };
+    expect(hello.data.front.donateUrl).toBe('https://t.tb.ru/pm_short/11T50nT6AL');
     close();
   });
 

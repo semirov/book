@@ -313,6 +313,60 @@
   font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
 }
+/* BOOK-126 — the gift row's one link: the register's lowercase line at the 12 px floor, mono
+   like the other data marks, and a 44 px target on the phone. The house underline (chrome.css,
+   `.colophon a`) stays; the row states no box of its own — the register owns it. */
+.colophon .donate {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink-3);
+}
+/* BOOK-114 — the book's outlay, the last line of the page: the marks' register, mono, and a
+   number that never breaks. */
+.colophon .cost-line {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.colophon .cost-line > span {
+  white-space: nowrap;
+}
+/* BOOK-115 — the way out: the reader's own name keeps its case (the register's uppercase is
+   for the marks, not for a person), and the verb is a word in the row, not a framed control.
+   The row is mono at the 12 px floor — the book's data voice, not the label's — so the name
+   and the button are read as one measurement of the session, and the tracking follows the
+   case: 0,12em belongs to the capitals. */
+.colophon .logout-row {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+.colophon .logout {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: none;
+  text-transform: none;
+}
+/* The refusal is one line under the row, in the house error ink — the same voice as a seam
+   that could not be applied, not a dialog and not a colour of its own. Mono keeps its own case
+   everywhere else in the sheets, and a sentence of refusal is read, not stamped. */
+.colophon .logout-error {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--revise);
+}
 .theme {
   display: inline-flex;
   align-items: center;

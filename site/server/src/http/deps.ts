@@ -1,4 +1,4 @@
-import type { AuthorsCountDto, Imprint, QueueDto, ServerEventType } from '@book/shared';
+import type { AuthorsCountDto, BookCostDto, Imprint, QueueDto, ServerEventType } from '@book/shared';
 
 import type { CaptchaVerifier } from '../captcha/verify.ts';
 import type { Config } from '../config.ts';
@@ -43,4 +43,6 @@ export type RouteDeps = {
   adminToken: string;
   /** The title page's byline count, with a monotonic marker shared by every surface. */
   authorsCount: () => AuthorsCountDto;
+  /** §9/BOOK-114: the book's outlay — one whole-book aggregate, memoised by book state. */
+  bookCost: () => BookCostDto;
 };

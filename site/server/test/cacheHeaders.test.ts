@@ -87,6 +87,7 @@ describe('the API is never cached (BOOK-109)', () => {
       '/api/state',
       '/api/chapters',
       '/api/front',
+      '/api/cost',
       '/api/authors',
       '/api/history/timeline',
       '/api/history/status',
@@ -101,7 +102,7 @@ describe('the API is never cached (BOOK-109)', () => {
 
     // The tags stay: they name the projection, a proxy log still reads them, and a client may
     // compare them — they just never licence a reuse.
-    for (const url of ['/api/chapters/1', '/api/chapters/67', '/api/state', '/api/front']) {
+    for (const url of ['/api/chapters/1', '/api/chapters/67', '/api/state', '/api/front', '/api/cost']) {
       const response = await app!.inject({ method: 'GET', url });
       expect(response.headers.etag, url).toBeTruthy();
     }
@@ -114,6 +115,7 @@ describe('the API is never cached (BOOK-109)', () => {
       '/api/chapters/1',
       '/api/state',
       '/api/front',
+      '/api/cost',
       `/api/history/chapters/1?at=${hseq}`,
     ];
     for (const url of urls) {

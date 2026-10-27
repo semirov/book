@@ -1,36 +1,11 @@
 import type { AuthorsCountDto, FrontDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
-import type { Db } from '../../db/db.ts';
+import { bookStateKey } from '../../db/bookKey.ts';
 import { listCatalog } from '../../db/repo/chapters.ts';
 import { getFrontRow } from '../../db/repo/front.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import type { RouteDeps } from '../deps.ts';
-
-/**
- * What the byline count depends on, cheaply: the front revision, every chapter `rev`, the
- * last paragraph version written, and **which** readers are hidden (`POST /api/authors/hide`
- * moves the count without touching the text).
- *
- * The count itself is a whole-book aggregate (`authors/count.ts`): the last version of every
- * paragraph joined to `identities`. A repeated request must not pay for it, so the answer is
- * remembered under this key and invalidated by it. Every part is a small indexed read — a
- * 67-row `chapters` sum, the `block_versions_hseq` index and the reader list — never a scan
- * of the block history.
- */
-function bylineKey(db: Db, frontRev: number): string {
-  const chapters = db.prepare('SELECT COALESCE(SUM(rev), 0) AS revs FROM chapters').get() as { revs: number };
-  // The set, not a count: two readers swapping the flag keep the same sum but not the same byline.
-  const hidden = db
-    .prepare(
-      `SELECT COALESCE(GROUP_CONCAT(id), '') AS ids
-         FROM (SELECT id FROM identities WHERE hide_from_authors = 1 ORDER BY id)`,
-    )
-    .get() as { ids: string };
-  // Paragraph versions are append-only: the newest one is the last write of prose.
-  const lastBlock = db.prepare('SELECT COALESCE(MAX(hseq), 0) AS hseq FROM block_versions').get() as { hseq: number };
-  return `${frontRev}|${chapters.revs}|${lastBlock.hseq}|${hidden.ids}`;
-}
 
 /** N is part of the representation, so it is part of the validator (§10, BOOK-DOC-4). */
 function frontEtag(frontRev: number, count: number): string {
@@ -58,7 +33,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
   app.get('/api/front', async (_request, reply) => {
     const front = getFrontRow(deps.db);
     const rev = front?.rev ?? 0;
-    const key = bylineKey(deps.db, rev);
+    const key = bookStateKey(deps.db, rev);
 
     // A representation is being built: measure once per book state, and keep it.
     const remembered = memo !== null && memo.key === key ? memo.authors : null;
@@ -81,6 +56,8 @@ export function registerFrontRoutes(app: FastifyInstance, deps: RouteDeps): void
       })),
       imprint: { author: deps.imprint.author, copyright: deps.imprint.copyright },
       authors,
+      // BOOK-126: already validated at boot (`donateUrlOf`), so the page prints it or nothing.
+      donateUrl: deps.config.donateUrl,
     };
     return reply.send(body);
   });
