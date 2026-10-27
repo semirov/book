@@ -1,4 +1,4 @@
-import type { AuthorsDto } from '@book/shared';
+import type { AuthorsDto, MyDecisionsDto } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -40,7 +40,7 @@ describe('the end matter (§6C.5)', () => {
         imprint={imprint}
         lastRevisionAt="2026-10-25T09:20:00Z"
         onOpenChronicle={() => undefined}
-      />,
+      live />,
     );
     expect(html).toContain('Авторы');
     expect(html).toContain('доля в окончательном тексте');
@@ -63,7 +63,7 @@ describe('the end matter (§6C.5)', () => {
         imprint={imprint}
         lastRevisionAt="2026-10-25T09:20:00Z"
         onOpenChronicle={() => undefined}
-      />,
+      live />,
     );
     expect(html).toContain('© Филипп Семиров');
     expect(html).toContain('последняя правка');
@@ -76,14 +76,14 @@ describe('the end matter (§6C.5)', () => {
 
   it('offers the erosion curve, not just a number', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
     );
     expect(html).toContain('как менялись доли');
   });
 
   it('shows one author and no invented share while the measurement is in flight', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={null} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} />,
+      <Authors authors={null} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
     );
     expect(html).toContain('Филипп Семиров');
     expect(html).toContain('—');
@@ -110,14 +110,14 @@ describe('the end matter (§6C.5)', () => {
         onOpenChronicle={() => undefined}
         ownTrace={ownTrace}
         onToggleHidden={() => undefined}
-      />,
+      live />,
     );
     expect(signedIn).toContain('ваш след');
     expect(signedIn).toContain('пережила 4 ревизии, сейчас 0,4 %');
     expect(signedIn).toContain('скрыть из списка авторов');
 
     const guest = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
     );
     expect(guest).not.toContain('ваш след');
   });
@@ -130,10 +130,76 @@ describe('the end matter (§6C.5)', () => {
       sum: 1,
     };
     const html = renderToStaticMarkup(
-      <Authors authors={empty} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} />,
+      <Authors authors={empty} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
     );
     expect(html).toContain('100,0 %');
     expect(html).toContain('пока весь текст написан автором');
+  });
+});
+
+describe('the reader’s own decisions outlive the history gate (BOOK-56)', () => {
+  const decisions: MyDecisionsDto = {
+    items: [
+      {
+        commentId: 'cmt_1',
+        changeId: 'chg_1',
+        chapter: 8,
+        premise: false,
+        intent: 'убрать второе «слово»',
+        outcome: 'applied',
+        reason: null,
+        chapters: [8],
+        waves: 1,
+        blocks: 2,
+        shareAtDecision: { share: 0.004, day: '2026-10-25' },
+        decidedAt: '2026-10-25T12:00:00Z',
+      },
+    ],
+    open: [],
+    share: 0.004,
+  };
+
+  it('renders them with the authors list off — they are the reader’s present state', () => {
+    const html = renderToStaticMarkup(
+      <Authors
+        authors={measured}
+        imprint={imprint}
+        lastRevisionAt="2026-10-25T09:20:00Z"
+        onOpenChronicle={() => undefined}
+        decisions={decisions}
+        live={false}
+      />,
+    );
+    expect(html).toContain('ваши правки');
+    expect(html).toContain('правка внесена');
+    // The book's past stays off: no list, no note, no chronicle door, no stamp.
+    expect(html).not.toContain('Авторы');
+    expect(html).not.toContain('authors-list');
+    expect(html).not.toContain('доля в окончательном тексте');
+    expect(html).not.toContain('как менялись доли');
+    expect(html).not.toContain('последняя правка');
+  });
+
+  it('is not on the page at all when history is off and the reader has no decisions', () => {
+    const html = renderToStaticMarkup(
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live={false} />,
+    );
+    expect(html).toBe('');
+  });
+
+  it('keeps the list beside them when history is on', () => {
+    const html = renderToStaticMarkup(
+      <Authors
+        authors={measured}
+        imprint={imprint}
+        lastRevisionAt={null}
+        onOpenChronicle={() => undefined}
+        decisions={decisions}
+        live
+      />,
+    );
+    expect(html).toContain('Авторы');
+    expect(html).toContain('ваши правки');
   });
 });
 
@@ -154,6 +220,7 @@ describe('«Авторы» while the shares are counted', () => {
       <Authors
         authors={props.authors}
         stage={props.stage}
+        live
         {...(props.authorsFailed === true ? { authorsFailed: true } : {})}
         imprint={imprint}
         lastRevisionAt={null}
@@ -192,6 +259,7 @@ describe('«Авторы» while the shares are counted', () => {
         authors={null}
         stage="quiet"
         busy
+        live
         imprint={imprint}
         lastRevisionAt={null}
         onOpenChronicle={() => undefined}
@@ -205,6 +273,7 @@ describe('«Авторы» while the shares are counted', () => {
         authors={measured}
         stage="quiet"
         busy={false}
+        live
         imprint={imprint}
         lastRevisionAt={null}
         onOpenChronicle={() => undefined}

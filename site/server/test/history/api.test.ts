@@ -6,7 +6,7 @@ import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { buildApp } from '../../src/app.ts';
 import { loadConfig } from '../../src/config.ts';
 import { StateService } from '../../src/ingest/stateService.ts';
-import { lastHseq } from '../../src/history/events.ts';
+import { lastHseq, readTimeline } from '../../src/history/events.ts';
 import { publicAlias } from '../../src/util/alias.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
 import { ingest, releaseLease, seedChange } from './helpers.ts';
@@ -57,20 +57,26 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(body.items[0]?.hseq).toBeGreaterThan(body.items[1]?.hseq ?? 0);
     expect(body.items.some((item) => item.summary.includes('глава 1'))).toBe(true);
     expect(body.items.some((item) => /первая страница|название/u.test(item.summary))).toBe(true);
-    expect(body.nextBefore).toBe(body.items.at(-1)?.hseq ?? null);
+    // Two events under the default limit of 50: this short page is the whole log, so it
+    // reaches the first event and carries no cursor (BOOK-DOC-50 §7).
+    expect(body.nextBefore).toBeNull();
 
-    // Cursor semantics: `before` is exclusive, so the next page starts after the last row.
+    // Cursor semantics: a full page yields its last row's `hseq`, and `before` is exclusive.
     const firstPage = await app!.inject({ method: 'GET', url: '/api/history/timeline?limit=1' });
-    const newest = (firstPage.json() as { items: Array<{ hseq: number }>; nextBefore: number }).items[0];
     expect(firstPage.json().items).toHaveLength(1);
+    const first = firstPage.json() as { items: Array<{ hseq: number }>; nextBefore: number | null };
+    expect(first.nextBefore).toBe(first.items[0]?.hseq);
     const secondPage = await app!.inject({
       method: 'GET',
-      url: `/api/history/timeline?limit=1&before=${(firstPage.json() as { nextBefore: number }).nextBefore}`,
+      url: `/api/history/timeline?limit=1&before=${first.nextBefore}`,
     });
     expect(secondPage.statusCode).toBe(200);
     const second = (secondPage.json() as { items: Array<{ hseq: number }> }).items[0];
-    expect(second?.hseq).toBeLessThan(newest?.hseq ?? 0);
-    const exhausted = await app!.inject({ method: 'GET', url: `/api/history/timeline?before=${body.nextBefore}` });
+    expect(second?.hseq).toBeLessThan(first.items[0]?.hseq ?? 0);
+    const exhausted = await app!.inject({
+      method: 'GET',
+      url: `/api/history/timeline?before=${body.items.at(-1)?.hseq}`,
+    });
     expect((exhausted.json() as { items: unknown[] }).items).toHaveLength(0);
 
     const filtered = await app!.inject({ method: 'GET', url: '/api/history/timeline?kind=front.revised' });
@@ -278,5 +284,34 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
       title: null,
       chars: 0,
     });
+  });
+});
+
+describe('the timeline cursor is the page’s own edge (BOOK-DOC-50 §7)', () => {
+  it('carries a cursor only on a full page, and none on a short or empty one', async () => {
+    const local = await boot();
+
+    // Nothing is logged: no rows and no cursor.
+    const empty = readTimeline(local.db);
+    expect(empty.items).toEqual([]);
+    expect(empty.nextBefore).toBeNull();
+
+    ingest(local, 'ch01.md', CHAPTER);
+
+    // The whole log on one page: it reached the first event, so nothing lies before it.
+    const short = readTimeline(local.db);
+    expect(short.items.length).toBeGreaterThan(0);
+    expect(short.items.length).toBeLessThan(50);
+    expect(short.nextBefore).toBeNull();
+
+    // A full page — the limit below the row count — ends on its last row's `hseq`.
+    const full = readTimeline(local.db, { limit: 1 });
+    expect(full.items).toHaveLength(1);
+    expect(full.nextBefore).toBe(full.items[0]?.hseq);
+
+    // The cursor and the query share one clamp: `limit: 0` is a page of one row, not zero.
+    const clamped = readTimeline(local.db, { limit: 0 });
+    expect(clamped.items).toHaveLength(1);
+    expect(clamped.nextBefore).toBe(clamped.items[0]?.hseq);
   });
 });

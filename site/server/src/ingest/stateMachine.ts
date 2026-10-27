@@ -50,10 +50,17 @@ export type DeriveInput = {
   basis?: number[];
   /** Engine facts (queue, ripple, unresolved seams, live lease); absent in degraded mode. */
   overlay?: EngineOverlay;
+  /**
+   * BOOK-56 — how many changes the log holds that a reader caused
+   * (`changes.source_comment IS NOT NULL`). Zero keeps every history surface off; machine
+   * revisions do not raise it.
+   */
+  readerChanges?: number;
 };
 
 export function deriveState(input: DeriveInput): StateSnapshot {
   const facts = [...input.facts].filter((fact) => fact.blocks > 0).sort((a, b) => a.n - b.n);
+  const readerChanges = Math.max(0, Math.trunc(input.readerChanges ?? 0));
   const written = facts.map((fact) => fact.n);
   const writtenSet = new Set(written);
   const empty = allChapterNumbers().filter((n) => !writtenSet.has(n));
@@ -122,6 +129,10 @@ export function deriveState(input: DeriveInput): StateSnapshot {
       lastLogLineAt: null,
       source: input.overlay === undefined ? 'files' : 'mixed',
     },
+    history: {
+      live: readerChanges > 0,
+      readerChanges,
+    },
   };
 }
 
@@ -169,6 +180,7 @@ export function stateFingerprint(
   front: FrontFact = EMPTY_FRONT,
   engine = '',
   basis: readonly number[] = [],
+  readerChanges = 0,
 ): string {
   return JSON.stringify({
     chapters: [...facts]
@@ -177,5 +189,8 @@ export function stateFingerprint(
     front: [front.rev, front.title, front.about, front.updatedAt],
     basis: [...basis].sort((a, b) => a - b),
     engine,
+    // BOOK-56: the first reader change changes what the page renders, so the snapshot it
+    // serves must not be the cached one.
+    readerChanges,
   });
 }

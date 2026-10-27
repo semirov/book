@@ -60,6 +60,12 @@ export type ProseParagraphProps = {
   revised?: boolean;
   /** A step is rewriting this block: the ochre label and rule (§11.5). */
   revising?: string | null;
+  /**
+   * BOOK-56: `state.history.live`. Off removes the paragraph-chain door («⋯»), the DNA rows
+   * in the panel and the trace fetches behind them. The word, its place and «вмешаться»
+   * stay; a filing's own mark stays too.
+   */
+  history: boolean;
 };
 
 type PanelState =
@@ -83,6 +89,7 @@ export function ProseParagraph({
   caret = null,
   revised = false,
   revising = null,
+  history,
 }: ProseParagraphProps) {
   const seam = useOpenSeam();
   const frozenChapter = frozen || isFrozenChapter(entry);
@@ -92,8 +99,9 @@ export function ProseParagraph({
   const revision = useOpenRevision();
   const hostRef = useRef<HTMLElement | null>(null);
   // BOOK-68: the paragraph's own history, as the word panel may speak of it. No chain yet is
-  // «still reading», never «no history» — and a 404 is an answer, not a failure.
-  const [history, setHistory] = useState<{ state: ChainHistory; chain: ParagraphChainDto | null }>({
+  // «still reading», never «no history» — and a 404 is an answer, not a failure. Named apart
+  // from the BOOK-56 `history` prop: one is the chain's state, the other the surface's gate.
+  const [chainHistory, setChainHistory] = useState<{ state: ChainHistory; chain: ParagraphChainDto | null }>({
     state: 'loading',
     chain: null,
   });
@@ -172,18 +180,21 @@ export function ProseParagraph({
   // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel.
   const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
     setPanel({ kind: 'provenance', word, rect: at.getBoundingClientRect(), origin: at });
+    // BOOK-56: the chain and both share rows are history; with history off the panel keeps
+    // only the word, its place and «вмешаться», so nothing is fetched for rows not rendered.
+    if (!history) return;
     // BOOK-68: a chain the client already holds (a 404, or a DTO with no versions) is not
     // asked for again; a failure is not an answer, so the row says the read failed.
     const memo = knownParagraphChain(blockId);
     if (memo.known) {
-      setHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
+      setChainHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
     } else {
-      setHistory({ state: 'loading', chain: null });
+      setChainHistory({ state: 'loading', chain: null });
       try {
         const loaded = await loadParagraphChain(blockId);
-        setHistory({ state: loaded === null ? 'none' : 'ready', chain: loaded });
+        setChainHistory({ state: loaded === null ? 'none' : 'ready', chain: loaded });
       } catch {
-        setHistory({ state: 'failed', chain: null });
+        setChainHistory({ state: 'failed', chain: null });
       }
     }
     // BOOK-33: the viewer's own curve is the one the panel may print for their own word, and
@@ -209,7 +220,7 @@ export function ProseParagraph({
   // Who wrote this version, from the log's own vocabulary: a reader, the author, or a
   // version the log cannot assign. A chain that has not arrived yet is not a claim — it is
   // the machine default, and the panel re-renders when the chain answers.
-  const chain = history.chain;
+  const chain = chainHistory.chain;
   const actorKind = chain?.versions.at(-1)?.actor?.kind;
   const variant: ProvenanceVariant = frozen
     ? 'frozen'
@@ -236,9 +247,10 @@ export function ProseParagraph({
           variant,
           share,
           chain,
-          history: history.state,
+          history: chainHistory.state,
           at: chain?.versions.at(-1)?.at ?? null,
           frozenOf: 'frame',
+          live: history,
         })
       : null;
 
@@ -401,7 +413,7 @@ export function ProseParagraph({
             aria-hidden="true"
           />
         )}
-        {onBlockProvenance === undefined ? null : (
+        {onBlockProvenance === undefined || !history ? null : (
           <button
             type="button"
             className="prov"

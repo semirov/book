@@ -33,7 +33,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 }
 
 function render(comments: readonly CommentDto[]): string {
-  return renderToStaticMarkup(<Discussion depth={0} comments={comments} />);
+  return renderToStaticMarkup(<Discussion depth={0} comments={comments} live />);
 }
 
 /** The ink rules a stylesheet declares: class slot → colour. */
@@ -94,35 +94,39 @@ describe('the register’s counters', () => {
 
   it('names what each number counts, in the form the number asks for', () => {
     const html = renderToStaticMarkup(
-      <Discussion depth={3} comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' }), comment({ id: 'cmt_3' })]} />,
+      <Discussion
+        depth={3}
+        comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' }), comment({ id: 'cmt_3' })]}
+        live
+      />,
     );
     expect(text(html)).toContain('3 замечания');
     expect(text(html)).toContain('в очереди 3 правки');
   });
 
   it('uses the singular and the plural count forms', () => {
-    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[comment({ id: 'cmt_1' })]} />))).toContain(
+    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[comment({ id: 'cmt_1' })]} live />))).toContain(
       '1 замечание',
     );
-    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} />))).toContain('в очереди 1 правка');
-    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} />))).toContain('в очереди 5 правок');
+    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} live />))).toContain('в очереди 1 правка');
+    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} live />))).toContain('в очереди 5 правок');
   });
 
   it('splits the stamp: a comment’s moment is a stamp-time, never the old shared `.stamp`', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment({ id: 'cmt_1' })]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment({ id: 'cmt_1' })]} live />);
     expect(html).toContain('class="stamp-time"');
     expect(html).not.toContain('class="stamp"');
   });
 
   it('states the zeros as sentences, never as counts of nothing', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} live />);
     expect(text(html)).toContain('замечаний нет');
     expect(text(html)).toContain('в очереди пусто');
     for (const wrong of ['0 замечаний', 'в очереди 0', '0 правок']) expect(text(html), wrong).not.toContain(wrong);
   });
 
   it('keeps the empty register quiet without naming a «замечание» as a premise', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} live />);
     expect(html).not.toContain('Глав ещё нет');
     expect(html).not.toContain('станет её замыслом');
   });
@@ -138,7 +142,7 @@ describe('the register’s counters', () => {
  */
 describe('the register while its feed is landing', () => {
   function markup(comments: readonly CommentDto[], stage: 'quiet' | 'skeleton' | 'slow'): string {
-    return renderToStaticMarkup(<Discussion depth={0} stage={stage} comments={comments} />);
+    return renderToStaticMarkup(<Discussion depth={0} stage={stage} comments={comments} live />);
   }
 
   it('says what is loading instead of «0 замечаний», and holds the form of three rows', () => {
@@ -177,12 +181,12 @@ describe('the register while its feed is landing', () => {
   it('is busy for the whole request, not from the 150 ms sentence (§7 alignment)', () => {
     // The attribute is the wait's fact; the sentence is what the reader sees of it. Before the
     // threshold the register is busy and says nothing — the same rule ChapterArticle follows.
-    const html = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy comments={[]} />);
+    const html = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy comments={[]} live />);
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('role="status"');
     expect(html).not.toContain('class="skel');
     // Settled: the claim is removed, not set to «false».
-    const settled = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy={false} comments={[]} />);
+    const settled = renderToStaticMarkup(<Discussion depth={0} stage="quiet" busy={false} comments={[]} live />);
     expect(settled).not.toContain('aria-busy');
   });
 

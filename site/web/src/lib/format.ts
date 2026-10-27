@@ -8,6 +8,8 @@
 
 export const SITE_TIMEZONE = 'Europe/Moscow';
 export const NBSP = '\u00a0';
+/** The separator of a date and a time (`25.10.2026 · 12:00`), unbreakable on both sides. */
+export const MIDDOT = `${NBSP}·${NBSP}`;
 
 const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',

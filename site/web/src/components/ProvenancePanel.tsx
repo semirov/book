@@ -75,22 +75,29 @@ export function ProvenancePanel({
       <p className="prov-word">
         {view.word} <span className="prov-chapter">{view.chapterLine}</span>
       </p>
-      <ol className="prov-chain">
-        {view.chain.map((node) => (
-          <li key={node.label} className="prov-node">
-            <span className="prov-node-label">{node.label}</span>
-            <span className="prov-node-value">{node.value}</span>
-          </li>
-        ))}
-      </ol>
-      <dl className="prov-rows">
-        {view.rows.map((row) => (
-          <div className="prov-row" key={row.label} data-quiet={row.quiet === true ? 'true' : undefined}>
-            <dt>{row.label}</dt>
-            <dd>{row.value}</dd>
-          </div>
-        ))}
-      </dl>
+      {/* BOOK-56: the chain rows («кто», «правка», «эта страница») are the log's own answer;
+          with history off the view carries none, and no empty list is left behind. */}
+      {view.chain.length === 0 ? null : (
+        <ol className="prov-chain">
+          {view.chain.map((node) => (
+            <li key={node.label} className="prov-node">
+              <span className="prov-node-label">{node.label}</span>
+              <span className="prov-node-value">{node.value}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {/* BOOK-56: with history off the view carries no rows — no empty DNA block. */}
+      {view.rows.length === 0 ? null : (
+        <dl className="prov-rows">
+          {view.rows.map((row) => (
+            <div className="prov-row" key={row.label} data-quiet={row.quiet === true ? 'true' : undefined}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {view.copy === null ? null : <p className="prov-copy">{view.copy}</p>}
       {view.action.kind === 'rules' ? (
         <a className="prov-rules" href={frozenActionHref()}>

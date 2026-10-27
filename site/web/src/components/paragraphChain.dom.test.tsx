@@ -92,6 +92,7 @@ function Probe(): ReactElement {
           onRetry={mode.retry}
           onClose={mode.close}
           anchor={mode.anchor}
+          live
         />
       ) : null}
     </div>
@@ -111,6 +112,7 @@ describe('the paragraph chain panel under a browser', () => {
         onClose={() => undefined}
         onRetry={() => undefined}
         anchor={anchor}
+        live
       />
     );
 
@@ -146,6 +148,7 @@ describe('the chain’s wait and failure (BOOK-DOC-43)', () => {
           onClose={() => undefined}
           onRetry={() => undefined}
           anchor={ANCHOR}
+          live
         />,
       );
     };
@@ -197,7 +200,7 @@ describe('the chain’s wait and failure (BOOK-DOC-43)', () => {
 
     await act(async () =>
       root?.render(
-        <ParagraphChain chain={null} loading={false} failed onClose={() => undefined} onRetry={onRetry} />,
+        <ParagraphChain chain={null} loading={false} failed onClose={() => undefined} onRetry={onRetry} live />,
       ),
     );
 
@@ -225,6 +228,7 @@ describe('the chain’s wait and failure (BOOK-DOC-43)', () => {
           failed={false}
           onClose={() => undefined}
           onRetry={() => undefined}
+          live
         />,
       ),
     );
@@ -286,6 +290,7 @@ describe('the chain’s hook (BOOK-DOC-43 §10)', () => {
             onClose={mode.close}
             onRetry={mode.retry}
             anchor={mode.anchor}
+            live
           />
         ) : null}
       </>

@@ -34,6 +34,7 @@ export function ParagraphChain({
   onClose,
   onRetry,
   anchor = null,
+  live,
 }: {
   chain: ParagraphChainDto | null;
   loading: boolean;
@@ -42,6 +43,8 @@ export function ParagraphChain({
   onClose: () => void;
   onRetry: () => void;
   anchor?: AnchorRect | null;
+  /** BOOK-56: `state.history.live`; the revision apparatus is history, not the text. */
+  live: boolean;
 }) {
   const panel = useRef<HTMLElement>(null);
   const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
@@ -68,6 +71,10 @@ export function ParagraphChain({
   useMeasuredLayout(() => {
     placePanel(panel.current, placement);
   }, [placement]);
+
+  // After every hook: the flag may turn on while the panel is mounted (a reader change just
+  // landed), and the hook order must not depend on it.
+  if (!live) return null;
 
   // BOOK-77 (audit F1): the chain names the readers who wrote each version — masked in both
   // placements, because the panel is also mounted outside the chronicle.

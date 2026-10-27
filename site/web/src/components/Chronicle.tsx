@@ -6,33 +6,42 @@ import type {
   HistoryEventDto,
   HistoryTimelineDto,
 } from '@book/shared';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
-import { placeTicks } from '../lib/cssom.ts';
 import { deedLine, summaryDeed } from '../lib/deed.ts';
 import { focusHash } from '../lib/focus.ts';
 import { formatChars, formatTime } from '../lib/format.ts';
-import {
-  HISTORY_FILTERS,
-  compareToNow,
-  filterEvents,
-  groupByDay,
-  scrubLabel,
-  scrubTicks,
-  targetLabel,
-  type HistoryFilter,
-} from '../lib/history.ts';
+import { compareToNow, groupByDay, momentText, targetLabel } from '../lib/history.ts';
 import { statusLine } from '../lib/skeleton.ts';
-import { useParagraphChain } from '../useParagraphChain.ts';
-import { usePending } from '../usePending.ts';
+import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { Skeleton } from './Skeleton.tsx';
+import { useParagraphChain } from '../useParagraphChain.ts';
+import { usePending } from '../usePending.ts';
+
+/** A drag idles before it asks (BOOK-DOC-50 §6); a release asks at once. */
+const INPUT_IDLE_MS = 120;
+/** BOOK-DOC-43 §6: silence is honest for a moment, `момент читается` after this. */
+const WAIT_MS = 150;
+/** …and past this the surface says the read is slow instead of pretending it is absent. */
+const SLOW_MS = 2_000;
 
 /**
- * The chronicle and the time-travel scrubber (ARCHITECTURE §11.10, §6F.2, §6F.3).
+ * The moment's read, as one state (BOOK-DOC-50 §6, §7): the past is rendered only when the
+ * answer is **for this hseq**; anything else shows the loading form. `id` makes a later
+ * request replace an earlier one, so a stale answer can neither paint nor be mistaken.
+ */
+type MomentState =
+  | { phase: 'idle' }
+  | { phase: 'loading'; hseq: number; id: number; waiting: boolean; slow: boolean }
+  | { phase: 'ready'; id: number; at: BookAtDto }
+  | { phase: 'failed'; hseq: number; id: number };
+
+/**
+ * The chronicle and its moment control (ARCHITECTURE §11.10, §6F.2, §6F.3, BOOK-DOC-50).
  *
- * Read-only, without exception: no composer, no caret, no queue band. A tick selects a
+ * Read-only, without exception: no composer, no caret, no queue band. The rail picks a
  * moment and the past renders above the timeline — the cover, page 2, the TOC with the
  * titles *of that moment* and every written chapter behind a tap (the body is fetched per
  * chapter with `chNN@hNNN`, so scrubbing never transfers a book).
@@ -52,17 +61,19 @@ export type ChronicleProps = {
    */
   changes: ChangeSummaryDto[];
   onOpenChange: (changeId: string) => void;
+  /** BOOK-56: `state.history.live`; without a reader change there is no chronicle at all. */
+  live: boolean;
 };
 
-export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange, live }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
-  const [filter, setFilter] = useState<HistoryFilter>('all');
-  const [moment, setMoment] = useState<number | null>(null);
-  const [past, setPast] = useState<BookAtDto | null>(null);
-  /** §10 — a failed `getHistoryAt` used to leave «момент читается…» for ever (BOOK-66). */
-  const [momentFailed, setMomentFailed] = useState(false);
-  const [momentAttempt, setMomentAttempt] = useState(0);
+  const [thumb, setThumb] = useState<number | null>(null);
+  const [moment, setMoment] = useState<MomentState>({ phase: 'idle' });
+  /** The last answer asked for, so a release after a drag does not repeat a request. */
+  const requested = useRef<number | null>(null);
+  const requestId = useRef(0);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     chain,
     loading: chainLoading,
@@ -92,57 +103,142 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
 
   /**
    * BOOK-DOC-43 §4, §6, §10 (BOOK-66) — the timeline's wait: true from the request until it
-   * settles, data or failure, so nothing below the scrubber is printed while nobody knows.
+   * settles, data or failure, so nothing below the rail is printed while nobody knows.
    */
   const waiting = timeline === null && !failed;
   const stage = usePending(waiting);
   const status = statusLine('chronicle', stage);
 
-  useEffect(() => {
-    if (moment === null) {
-      setPast(null);
-      setMomentFailed(false);
-      return;
+  const clearIdle = useCallback(() => {
+    if (idleTimer.current !== null) {
+      clearTimeout(idleTimer.current);
+      idleTimer.current = null;
     }
-    let cancelled = false;
-    // A new moment (or a retry) starts from nothing: the previous moment's past is not
-    // this moment, and a stale picture must not answer for a failed read.
-    setPast(null);
-    setMomentFailed(false);
-    void getHistoryAt(moment)
-      .then((at) => {
-        if (!cancelled) setPast(at);
-      })
-      .catch(() => {
-        // The wait is over: the line below says it failed, and `повторить` re-requests it.
-        if (!cancelled) setMomentFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [moment, momentAttempt]);
+  }, []);
 
-  const items = timeline?.items ?? [];
-  const visible = useMemo(() => filterEvents(items, filter), [items, filter]);
-  const groups = useMemo(() => groupByDay(visible), [visible]);
+  /** Ask the server for one moment; a later call replaces an earlier one. */
+  const load = useCallback((hseq: number) => {
+    if (requested.current === hseq) return;
+    requested.current = hseq;
+    requestId.current += 1;
+    const id = requestId.current;
+    setMoment({ phase: 'loading', hseq, id, waiting: false, slow: false });
+    void getHistoryAt(hseq).then(
+      (at) => {
+        if (requestId.current !== id) return;
+        // An answer for another moment is not an answer to this one (BOOK-DOC-50 §7): it is
+        // the failure state, with its copy and its retry — never a skeleton left standing.
+        setMoment(at.hseq === hseq ? { phase: 'ready', id, at } : { phase: 'failed', hseq, id });
+      },
+      () => {
+        if (requestId.current === id) setMoment({ phase: 'failed', hseq, id });
+      },
+    );
+  }, []);
+
   const lastHseq = timeline?.lastHseq ?? 0;
-  const ticks = useMemo(() => scrubTicks(items, lastHseq), [items, lastHseq]);
-  const tickBox = useRef<HTMLDivElement | null>(null);
+  const items = timeline?.items ?? [];
+  const groups = useMemo(() => groupByDay(items), [items]);
 
-  // BOOK-30: the tick offsets are CSSOM writes (`placeTicks`), not style attributes. The
-  // layout effect runs before paint, so a tick never shows at `left:auto` for a frame.
-  useLayoutEffect(() => {
-    const box = tickBox.current;
-    if (box === null) return;
-    placeTicks(box.querySelectorAll('i'), ticks);
-  }, [ticks]);
-  const difference = useMemo(() => (past === null ? null : compareToNow(past, catalog, frontRev)), [past, catalog, frontRev]);
+  /** The chosen moment, or `null` at the right edge — the one state the control has. */
+  const current = thumb !== null && lastHseq > 0 && thumb < lastHseq ? thumb : null;
+
+  const resetToNow = useCallback(() => {
+    // A late answer must not paint over «сейчас».
+    requestId.current += 1;
+    requested.current = null;
+    clearIdle();
+    setThumb(null);
+    setMoment({ phase: 'idle' });
+  }, [clearIdle]);
+
+  /** A release, a row click or a key release: the moment is asked for now. */
+  const commit = useCallback(
+    (value: number) => {
+      if (lastHseq <= 0 || value >= lastHseq) {
+        resetToNow();
+        return;
+      }
+      clearIdle();
+      setThumb(value);
+      load(value);
+    },
+    [lastHseq, clearIdle, load, resetToNow],
+  );
+
+  /** One frame of a drag or a key: the readout moves locally, the network waits for idle. */
+  const move = useCallback(
+    (value: number) => {
+      if (lastHseq <= 0 || value >= lastHseq) {
+        resetToNow();
+        return;
+      }
+      setThumb(value);
+      clearIdle();
+      idleTimer.current = setTimeout(() => {
+        idleTimer.current = null;
+        load(value);
+      }, INPUT_IDLE_MS);
+    },
+    [lastHseq, clearIdle, load, resetToNow],
+  );
+
+  useEffect(() => clearIdle, [clearIdle]);
+
+  // BOOK-DOC-43 §6 inside the moment slot: 150 ms is a wait, 2 000 ms is a slow read.
+  const loadId = moment.phase === 'loading' ? moment.id : 0;
+  useEffect(() => {
+    if (loadId === 0) return;
+    const patch = (next: { waiting?: boolean; slow?: boolean }): void => {
+      setMoment((state) => (state.phase === 'loading' && state.id === loadId ? { ...state, ...next } : state));
+    };
+    const wait = setTimeout(() => patch({ waiting: true }), WAIT_MS);
+    const slow = setTimeout(() => patch({ slow: true }), SLOW_MS);
+    return () => {
+      clearTimeout(wait);
+      clearTimeout(slow);
+    };
+  }, [loadId]);
+
+  const past = moment.phase === 'ready' && moment.at.hseq === current ? moment.at : null;
+  const momentFailed = current !== null && moment.phase === 'failed' && moment.hseq === current;
+  const asking = moment.phase === 'loading' && moment.hseq === current ? moment : null;
+  const difference = useMemo(
+    () => (past === null ? null : compareToNow(past, catalog, frontRev)),
+    [past, catalog, frontRev],
+  );
+
   /** The deed line per change, derived once from the public feed (one copy source: `lib/deed.ts`). */
   const deeds = useMemo(() => {
     const map = new Map<string, string>();
     for (const entry of changes) map.set(entry.id, deedLine(summaryDeed(entry)));
     return map;
   }, [changes]);
+
+  const retry = useCallback(() => {
+    if (current === null) return;
+    requested.current = null;
+    load(current);
+  }, [current, load]);
+
+  // After every hook: the flag may turn on with the first reader change while this mount
+  // stays alive, so the hook order must not depend on it.
+  if (!live) return null;
+
+  // The readout keeps its date through a load and a failure: it comes from the log, not
+  // from the request. Only the past block below changes its shape.
+  const note =
+    past !== null
+      ? (difference?.notice ?? '')
+      : momentFailed
+        ? 'момент не прочитался'
+        : asking === null
+          ? ''
+          : asking.slow
+            ? 'момент идёт дольше обычного · книга появится здесь же'
+            : asking.waiting
+              ? 'момент читается'
+              : '';
 
   return (
     // BOOK-77 (audit F1): event summaries carry intent text, and a chapter's past pages carry
@@ -159,67 +255,31 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
         </p>
       </div>
 
-      <div className="chr-filters" role="group" aria-label="что показывать">
-        {HISTORY_FILTERS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            className={`chr-filter${filter === entry.id ? ' is-on' : ''}`}
-            aria-pressed={filter === entry.id}
-            onClick={() => setFilter(entry.id)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="scrub" aria-label="перейти к моменту">
-        <input
-          className="scrub-range ym-disable-keys"
-          type="range"
-          min={0}
-          max={Math.max(1, lastHseq)}
-          step={1}
-          value={moment ?? lastHseq}
-          aria-valuetext={scrubLabel(moment ?? lastHseq, lastHseq, past?.at ?? null)}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            setMoment(value >= lastHseq ? null : value);
-          }}
+      {items.length === 0 ? null : (
+        <MomentControl
+          items={items}
+          lastHseq={lastHseq}
+          more={timeline !== null && timeline.nextBefore !== null}
+          thumb={thumb}
+          onInput={move}
+          onCommit={commit}
         />
-        <div className="scrub-ticks" aria-hidden="true" ref={tickBox}>
-          {ticks.map((position, index) => (
-            <i key={`${position}-${index}`} />
-          ))}
-        </div>
-        <div className="scrub-row">
-          <span className="scrub-label">{scrubLabel(moment ?? lastHseq, lastHseq, past?.at ?? null)}</span>
-          <button type="button" className="scrub-now" onClick={() => setMoment(null)}>
-            сейчас
-          </button>
-        </div>
-      </div>
+      )}
 
-      {moment === null ? null : (
+      {current === null ? null : (
         <div className="past">
           <p className="past-note">
-            {/* §10: the loading line goes with the failure — nothing claims to still be reading. */}
-            {momentFailed ? null : (difference?.notice ?? 'момент читается')}
-            <button type="button" className="past-now" onClick={() => setMoment(null)}>
-              вернуться к «сейчас»
-            </button>
+            {note}
+            {momentFailed ? (
+              <button type="button" className="past-retry" onClick={retry}>
+                повторить
+              </button>
+            ) : null}
           </p>
           {past === null ? (
-            momentFailed ? (
-              <div className="state-line">
-                <span>момент не прочитался</span>
-                <button type="button" onClick={() => setMomentAttempt((attempt) => attempt + 1)}>
-                  повторить
-                </button>
-              </div>
-            ) : (
-              <p className="chr-empty">момент читается…</p>
-            )
+            // BOOK-66's one form for a wait. A failure prints its line alone: a skeleton that
+            // outlived `момент не прочитался` would keep claiming a read that is over.
+            asking === null ? null : <Skeleton variant="chronicle" />
           ) : (
             <>
               <div className="past-cover">
@@ -279,7 +339,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
                       key={event.hseq}
                       event={event}
                       deed={event.changeId === null ? null : (deeds.get(event.changeId) ?? null)}
-                      onPick={() => setMoment(event.hseq)}
+                      onPick={() => (event.hseq >= lastHseq ? resetToNow() : commit(event.hseq))}
                       onOpenChange={onOpenChange}
                     />
                   ))}
@@ -287,7 +347,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
               </li>
             ))}
           </ol>
-          {visible.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
+          {items.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
         </>
       )}
       {failed ? (
@@ -308,6 +368,7 @@ export function Chronicle({ catalog, frontRev, tick, changes, onOpenChange }: Ch
           onClose={closeChain}
           onRetry={retryChain}
           anchor={chainAnchor}
+          live={live}
         />
       ) : null}
     </section>
@@ -331,7 +392,12 @@ export function TimelineRow({
     // BOOK-77 (audit F1): the row is masked on its own, so it holds even when it is rendered
     // outside the chronicle — the summary (and the button's aria-label) is reader-derived.
     <li className="chr-row ym-hide-content">
-      <button type="button" className="chr-row-main" onClick={onPick} aria-label={`${event.summary} — книга на этот момент`}>
+      <button
+        type="button"
+        className="chr-row-main"
+        onClick={onPick}
+        aria-label={`${momentText(event.at)}, ${event.summary} — книга на этот момент`}
+      >
         <span className="chr-time">{formatTime(event.at)}</span>
         <span className="chr-target">{targetLabel(event)}</span>
         <span className="chr-summary">{event.summary}</span>

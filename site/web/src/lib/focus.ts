@@ -271,9 +271,12 @@ export function assessmentCopy(
   change: Pick<ChangeDto, 'id' | 'status' | 'outcome' | 'cascade' | 'steps'>,
   ribbon: Ribbon | null,
   maxWave: number = RIBBON_MAX_WAVE,
+  history = true,
 ): string {
-  const wave = waveCopy(waveOf(change), maxWave);
   const stage = stageCopy(focusStage(change, ribbon));
+  // BOOK-56: with history off the cascade is not narrated — the stage word still is.
+  if (!history) return `этап: ${stage}`;
+  const wave = waveCopy(waveOf(change), maxWave);
   return wave === '' ? `этап: ${stage}` : `${wave} · этап: ${stage}`;
 }
 

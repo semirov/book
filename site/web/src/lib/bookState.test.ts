@@ -64,6 +64,7 @@ function state(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     current: null,
     unresolved: [],
     activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
+    history: { live: false, readerChanges: 0 },
     ...overrides,
   };
 }
@@ -167,6 +168,13 @@ describe('state merges', () => {
     const current = data();
     expect(withState(current, state({ version: 0 }))).toBe(current);
     expect(withState(current, state({ version: 2 })).state.version).toBe(2);
+  });
+
+  it('carries the history fact through a state update (BOOK-56)', () => {
+    const current = data();
+    expect(current.state.history.live).toBe(false);
+    const next = withState(current, state({ version: 2, history: { live: true, readerChanges: 1 } }));
+    expect(next.state.history).toEqual({ live: true, readerChanges: 1 });
   });
 
   it('applies front:updated without touching the catalog', () => {

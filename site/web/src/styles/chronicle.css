@@ -1,6 +1,6 @@
 /* ============================================================================
    CHRONICLE — the second way of reading the same page (ARCHITECTURE §11.10).
-   A timeline, a scrubber, a past that is read-only, and the paragraph chain.
+   A timeline, one moment rail, a past that is read-only, and the paragraph chain.
    Adaptive: the chronicle is a register of the page's one column (BOOK-88) — its rows run
    from the column's left edge to its right, and its own copy caps (64ch here, 62ch on a
    row) bound a sentence, never the box. The phone is the narrow step of one system
@@ -54,69 +54,149 @@
   max-width: 64ch;
 }
 
-.chr-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 14px 0 10px;
-}
-.chr-filter {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.06em;
-  color: var(--ink-2);
-  border: 1px solid var(--rule);
-  padding: 4px 9px;
-  border-radius: 999px;
-}
-.chr-filter.is-on {
-  color: var(--paper);
-  background: var(--ink-2);
-  border-color: var(--ink-2);
-}
-
-/* ── the scrubber ─────────────────────────────────────────────────────────── */
+/* ── the moment: readout, rail, ends (BOOK-DOC-50 §2–§5) ──────────────────── */
+/* One control, one state: a dated readout over a 1 px rail, two dated ends under it.
+   Zero unlabelled marks — the record list below is the axis. */
 .scrub {
   position: relative;
-  padding: 8px 0 6px;
+  padding: 12px 0 8px;
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
-.scrub-range {
-  width: 100%;
-  margin: 0;
-  accent-color: var(--live);
-  height: 28px;
-}
-.scrub-ticks {
-  position: relative;
-  height: 6px;
-  margin: -8px 0 2px;
-  pointer-events: none;
-}
-.scrub-ticks i {
-  position: absolute;
-  top: 0;
-  width: 1px;
-  height: 4px;
-  background: var(--rule-2);
-  transform: translateX(-0.5px);
-}
-.scrub-row {
+.scrub-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  /* Under 360 px the readout and the counter do not fit on one line: the row wraps instead of
+     spilling the count out of the sheet. `line-height` keeps one line at exactly the 22 px of
+     the desktop row (the inherited 1.68 box is 25.2 px), and `min-height` lets a wrapped
+     second line show instead of being clipped by a fixed height. */
+  flex-wrap: wrap;
+  row-gap: 2px;
+  line-height: 22px;
+  min-height: 22px;
+  margin-bottom: 8px;
   font-family: var(--mono);
-  font-size: var(--fs-meta);
+}
+.scrub-moment {
+  font-size: var(--fs-note);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.scrub-moment-now {
+  font-family: var(--label);
+  font-size: var(--fs-label);
   color: var(--ink-2);
 }
-.scrub-now {
+.scrub-count {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+/* the band is 44 px, so a finger on the thumb never covers the readout above it */
+.scrub-rail {
+  position: relative;
+  height: 44px;
+}
+.scrub-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--rule);
+  pointer-events: none;
+}
+.scrub-fill {
+  display: block;
+  height: 1px;
+  width: 0;
+  background: var(--rule-2);
+}
+.scrub-range {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: none;
+  accent-color: var(--live);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.scrub-range::-webkit-slider-runnable-track {
+  height: 1px;
+  background: transparent;
+}
+.scrub-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 20px;
+  margin-top: -9.5px;
+  border: 0;
+  border-radius: 0;
+  background: var(--live);
+  box-shadow: none;
+}
+.scrub-range::-moz-range-track {
+  height: 1px;
+  background: transparent;
+}
+.scrub-range::-moz-range-thumb {
+  width: 8px;
+  height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: var(--live);
+  box-shadow: none;
+}
+.chr-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.chr-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0;
+  text-align: left;
   font-family: var(--label);
-  letter-spacing: 0.06em;
+}
+.chr-end-word {
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: lowercase;
+  color: var(--ink-2);
+}
+/* A moment at an end is two unbreakable parts — the date and the ` · HH:MM` tail — in a box
+   that wraps only between them: a date, a year or a time is never cut (BOOK-DOC-50 §3), and
+   no `overflow-wrap`/`word-break` may split a digit run. The middot carries its own NBSP. */
+.chr-end-at {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  /* inherited by both parts: a date, a year and a time are each one unbreakable run */
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* the right end is the only reset: one state, one control (BOOK-DOC-50 §3, §9) */
+.chr-end-now {
+  cursor: pointer;
+}
+.chr-end-now:hover .chr-end-word,
+.chr-end-now:focus-visible .chr-end-word {
   color: var(--live);
-  text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 /* ── the past, read-only ──────────────────────────────────────────────────── */
@@ -124,6 +204,7 @@
   padding: 14px 0 20px;
   border-bottom: 1px solid var(--rule-2);
 }
+/* one line, reserved: «момент читается» must not move the book when it arrives */
 .past-note {
   font-size: var(--fs-note);
   color: var(--ink-2);
@@ -131,9 +212,10 @@
   flex-wrap: wrap;
   gap: 10px;
   align-items: baseline;
+  min-height: 22px;
   margin-bottom: 14px;
 }
-.past-now {
+.past-retry {
   font-family: var(--label);
   font-size: var(--fs-label);
   letter-spacing: 0.06em;
@@ -251,7 +333,9 @@
 }
 .chr-time {
   font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
 .chr-target {
   font-family: var(--label);
@@ -381,5 +465,10 @@
   }
   .chr-target {
     display: none;
+  }
+  /* each end keeps its word and its whole date: a flex basis, not a box of its own, so both
+     ends stay on one line and a long date wraps inside its own half (BOOK-88) */
+  .chr-end {
+    flex: 0 1 45%;
   }
 }

@@ -81,6 +81,7 @@ async function mount(comments: readonly CommentDto[]): Promise<void> {
         text={TEXT}
         frozen={false}
         comments={comments}
+        history
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
         onPosted={() => undefined}
@@ -148,6 +149,7 @@ describe('opening the revision object from the paragraph', () => {
             text={TEXT}
             frozen={false}
             comments={[first]}
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: true, displayName: 'Филипп' }}
             onPosted={() => undefined}
@@ -160,6 +162,7 @@ describe('opening the revision object from the paragraph', () => {
             text={TEXT}
             frozen={false}
             comments={[second]}
+            history
             composer={EMPTY_COMPOSER}
             viewer={{ signedIn: true, displayName: 'Филипп' }}
             onPosted={() => undefined}

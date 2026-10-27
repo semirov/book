@@ -187,6 +187,27 @@ describe('stateFingerprint', () => {
     // Order is not identity here either.
     expect(stateFingerprint([], undefined, '', [67, 1])).toBe(stateFingerprint([], undefined, '', [1, 67]));
   });
+
+  it('changes when the first reader change turns history on (BOOK-56)', () => {
+    expect(stateFingerprint([], undefined, '', [], 1)).not.toBe(stateFingerprint([], undefined, '', [], 0));
+  });
+});
+
+describe('history (BOOK-56)', () => {
+  it('is off on an empty log, and says the count it was derived from', () => {
+    expect(derive([]).history).toEqual({ live: false, readerChanges: 0 });
+  });
+
+  it('turns on with one reader change, and only with a positive count', () => {
+    expect(deriveState({ facts: [], now, version: 1, readerChanges: 1 }).history).toEqual({
+      live: true,
+      readerChanges: 1,
+    });
+    expect(deriveState({ facts: [], now, version: 1, readerChanges: -3 }).history).toEqual({
+      live: false,
+      readerChanges: 0,
+    });
+  });
 });
 
 describe('a slot that holds only its basis sentence (BOOK-6)', () => {

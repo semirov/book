@@ -63,6 +63,7 @@ function render(comments: readonly CommentDto[] = []): string {
       text={TEXT}
       frozen={false}
       comments={comments}
+      history
       composer={EMPTY_COMPOSER}
       viewer={{ signedIn: true, displayName: 'Филипп' }}
       onPosted={() => undefined}

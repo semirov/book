@@ -159,10 +159,10 @@ function surfaces(): string {
         ribbon={ribbon}
         markers={[{ key: 'chg_1:9', boundary: 9, reason: 'budget', note: 'ключ теперь у другого', changeId: 'chg_1' }]}
         onOpenChange={() => undefined}
-      />,
+      live />,
     ),
     renderToStaticMarkup(
-      <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} />,
+      <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} live />,
     ),
     renderToStaticMarkup(
       <TimelineRow
@@ -172,7 +172,7 @@ function surfaces(): string {
         onOpenChange={() => undefined}
       />,
     ),
-    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} />),
+    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />),
     renderToStaticMarkup(
       <ParagraphChain
         chain={null}
@@ -180,6 +180,7 @@ function surfaces(): string {
         failed
         onClose={() => undefined}
         onRetry={() => undefined}
+        live
       />,
     ),
   ].join('\n');

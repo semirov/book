@@ -30,6 +30,7 @@ export function ChapterList({
   onProvenance,
   composer,
   viewer,
+  history,
 }: {
   catalog: readonly CatalogEntry[];
   revisions: Record<number, ChapterRevisionPayload>;
@@ -42,6 +43,8 @@ export function ChapterList({
   onProvenance: (blockId: string, anchor: HTMLElement) => void;
   composer: ComposerInfo;
   viewer: ViewerDto;
+  /** BOOK-56: `state.history.live` — off drops the chain door and the DNA rows, not the text. */
+  history: boolean;
 }) {
   const firstEmpty = catalog.find((entry) => canTakePremise(entry))?.n ?? null;
   return (
@@ -66,6 +69,7 @@ export function ChapterList({
             onPosted={onPosted}
             composer={composer}
             viewer={viewer}
+            history={history}
           />
         );
       })}

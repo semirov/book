@@ -187,4 +187,26 @@ describe('provenanceView', () => {
     const view = provenanceView({ word: 'свет', chapter: 8, variant: 'unattributed', share: { kind: 'none' }, chain: null, history: 'none', at: null });
     expect(view.rows.find((row) => row.label === 'кто внёс')?.value).toBe('правка вне процесса');
   });
+
+  it('renders the record without the DNA block while history is off (BOOK-56)', () => {
+    const view = provenanceView({
+      word: 'пустую',
+      chapter: 8,
+      variant: 'machine',
+      share: { kind: 'none' },
+      chain: CHAIN,
+      at: null,
+      history: 'ready',
+      live: false,
+    });
+    // The word, its place and «вмешаться» stay; the DNA rows, the chain rows («кто»,
+    // «правка», «эта страница») and the lineage copy are absent — the panel no longer fetches
+    // a chain it cannot show.
+    expect(view.rows).toEqual([]);
+    expect(view.chain).toEqual([]);
+    expect(view.copy).toBeNull();
+    expect(view.word).toBe('пустую');
+    expect(view.chapterLine).toBe('глава 08');
+    expect(view.action).toEqual({ kind: 'form', label: 'вмешаться здесь' });
+  });
 });

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { placePanel, placeTicks, reserveHeight, type PanelBox } from './cssom.ts';
+import { placeFill, placePanel, reserveHeight, type PanelBox } from './cssom.ts';
 
 /** BOOK-30 — the values a `style` attribute would carry, written through CSSOM instead. */
 
-function node(): { style: { minHeight: string; left: string } } {
-  return { style: { minHeight: '', left: '' } };
+function node(): { style: { minHeight: string; width: string } } {
+  return { style: { minHeight: '', width: '' } };
 }
 
 describe('reserveHeight', () => {
@@ -20,23 +20,29 @@ describe('reserveHeight', () => {
   });
 });
 
-describe('placeTicks', () => {
-  it('places one tick per position, in order', () => {
-    const ticks = [node(), node(), node()];
-    placeTicks(ticks, [10, 50, 100]);
-    expect(ticks.map((tick) => tick.style.left)).toEqual(['10%', '50%', '100%']);
+describe('placeFill (BOOK-DOC-50 §4)', () => {
+  it('writes the traversed part of the rail as a percentage of its width', () => {
+    const fill = node();
+    placeFill(fill, 42.5);
+    expect(fill.style.width).toBe('42.5%');
+    placeFill(fill, 0);
+    expect(fill.style.width).toBe('0%');
+    placeFill(fill, 100);
+    expect(fill.style.width).toBe('100%');
   });
 
-  it('never writes past the elements or the positions it was given', () => {
-    const fewerElements = [node()];
-    placeTicks(fewerElements, [10, 50]);
-    expect(fewerElements[0]?.style.left).toBe('10%');
+  it('clamps to the track, so a stale value never paints past an end', () => {
+    const fill = node();
+    placeFill(fill, 140);
+    expect(fill.style.width).toBe('100%');
+    placeFill(fill, -3);
+    expect(fill.style.width).toBe('0%');
+    placeFill(fill, Number.NaN);
+    expect(fill.style.width).toBe('0%');
+  });
 
-    const fewerPositions = [node(), node()];
-    placeTicks(fewerPositions, []);
-    expect(fewerPositions[1]?.style.left).toBe('');
-
-    expect(() => placeTicks([], [10])).not.toThrow();
+  it('tolerates a missing node (the rail is not rendered under two records)', () => {
+    expect(() => placeFill(null, 50)).not.toThrow();
   });
 });
 

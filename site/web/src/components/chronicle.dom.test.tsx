@@ -2,66 +2,96 @@
 import type { BookAtDto, HistoryEventDto, HistoryTimelineDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NBSP } from '../lib/format.ts';
 import { Chronicle } from './Chronicle.tsx';
 
 /**
- * BOOK-30 — the scrubber's ticks are placed by a live CSSOM write.
+ * BOOK-DOC-50 §6, §7 — the moment under a browser.
  *
- * A dead ref would leave every `<i>` at `left:auto` and the SSR test would still pass.
- * This mounts the chronicle, lets it read a stub timeline, and checks the offsets the
- * browser receives — including the case where the event set shrinks.
+ * A drag moves the readout in the same frame and asks nothing; idle asks once; a release asks
+ * at once; an answer that is not for the thumb cannot paint; a failure keeps the date, the
+ * thumb and a retry for that same hseq. And there is not one unlabelled mark in the DOM.
  *
- * BOOK-DOC-43 §4, §6, §7, §10 (BOOK-66) — the same mount proves the timeline's wait and the
- * moment's: the thresholds need a clock, so they live here; the failure of `getHistoryAt`
- * must leave «момент читается…» and offer the retry that re-requests the same hseq.
+ * BOOK-DOC-43 §4, §6, §7, §10 (BOOK-66) — the same mount proves the timeline's wait: the
+ * thresholds need a clock, so they live here; the failure of the timeline leaves its failure
+ * block and «повторить» re-reads it, and the failure of `getHistoryAt` leaves its line with the
+ * retry that re-requests the same hseq.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-function event(hseq: number, chapter: number): HistoryEventDto {
+const MID = `${NBSP}·${NBSP}`;
+
+function event(hseq: number, at: string, summary: string): HistoryEventDto {
   return {
     hseq,
-    at: '2026-10-26T10:00:00Z',
+    at,
     kind: 'chapter.created',
-    chapter,
+    chapter: 1,
     isFront: false,
     rev: 1,
     changeId: null,
     cascadeId: null,
     stepId: null,
     author: { kind: 'author', identityId: null, label: 'Филипп' },
-    summary: `глава ${chapter} создана`,
+    summary,
   };
 }
 
-function page(hseqs: readonly number[], lastHseq: number): HistoryTimelineDto {
+/** Newest first, as the API sends them: 10 at 27.10 15:40, 7 at 26.10 09:00, 4 at 21.10 09:12. */
+const ITEMS: HistoryEventDto[] = [
+  event(10, '2026-10-27T12:40:00Z', 'глава 9 написана'),
+  event(7, '2026-10-26T06:00:00Z', 'глава 8 переписана'),
+  event(4, '2026-10-21T06:12:00Z', 'глава 8 написана'),
+];
+
+function page(items: HistoryEventDto[], lastHseq: number, nextBefore: number | null = null): HistoryTimelineDto {
+  return { lastHseq, at: '2026-10-27T12:40:00Z', items, nextBefore };
+}
+
+function bookAt(hseq: number): BookAtDto {
   return {
-    lastHseq,
-    at: '2026-10-26T10:00:00Z',
-    items: hseqs.map((hseq, index) => event(hseq, index + 1)),
-    nextBefore: null,
+    hseq,
+    at: '2026-10-26T06:00:00Z',
+    front: { rev: 1, title: 'Книга момента', about: null },
+    chapters: [],
+    lastHseq: 10,
   };
 }
-
-/** The book as it was at hseq 2: enough for the past to have a title. */
-const AT: BookAtDto = {
-  hseq: 2,
-  at: '2026-10-26T10:00:00Z',
-  front: { rev: 1, title: 'Книга', about: null },
-  chapters: [],
-  lastHseq: 5,
-};
 
 /** `readJson` needs only `ok` and `json()` on the happy path; no jsdom `fetch`/`Response`. */
 function answer(body: unknown): Response {
+  return { ok: true, status: 200, statusText: 'OK', json: async () => body } as unknown as Response;
+}
+
+function refusal(): Response {
   return {
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: async () => body,
+    ok: false,
+    status: 500,
+    statusText: 'Internal Server Error',
+    json: async () => ({ code: 'internal', message: 'internal' }),
   } as unknown as Response;
+}
+
+type Handler = (url: string) => Response | Promise<Response>;
+
+/** The little of a `vi.fn` this file reads: which URLs were asked for, in order. */
+type FetchMock = { mock: { calls: unknown[][] } };
+
+function stubFetch(handler: Handler): FetchMock {
+  const mock = vi.fn((input: string | URL | Request) => Promise.resolve(handler(String(input))));
+  vi.stubGlobal('fetch', mock);
+  return mock;
+}
+
+/** The `n` of every `/api/history/at/<n>` asked for, in order. */
+function askedAt(mock: FetchMock): string[] {
+  return mock.mock.calls
+    .map((call) => String(call[0]))
+    .filter((url) => url.startsWith('/api/history/at/'))
+    .map((url) => url.slice('/api/history/at/'.length));
 }
 
 async function flush(): Promise<void> {
@@ -72,222 +102,347 @@ async function flush(): Promise<void> {
   });
 }
 
+/** Advance the fake clock and let the promise chain settle inside one act(). */
+async function advance(ms: number): Promise<void> {
+  await act(async () => {
+    vi.advanceTimersByTime(ms);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 let root: Root | null = null;
+let container: HTMLDivElement;
+
+function mount(): void {
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  act(() => {
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} changes={[]} onOpenChange={() => undefined} live />);
+  });
+}
+
+function range(): HTMLInputElement {
+  const input = container.querySelector<HTMLInputElement>('input[type="range"]');
+  if (input === null) throw new Error('the rail is not rendered');
+  return input;
+}
+
+/** A native `input` event past React's value tracker: the same event a drag sends. */
+function dragTo(value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(range(), value);
+  act(() => {
+    range().dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+function releaseAt(value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(range(), value);
+  act(() => {
+    range().dispatchEvent(new Event('pointerup', { bubbles: true }));
+  });
+}
+
+function readout(): string {
+  return container.querySelector('.scrub-moment')?.textContent ?? '';
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(async () => {
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
-  vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
-function mount(): { container: HTMLDivElement; render: (tick: number) => void } {
-  const container = document.createElement('div');
-  document.body.append(container);
-  root = createRoot(container);
-  const render = (tick: number): void => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={tick} changes={[]} onOpenChange={() => undefined} />);
-  };
-  return { container, render };
-}
-
-describe('the chronicle ticks under a browser', () => {
-  it('places every tick from its event, and shrinks the set when events shrink', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(answer(page([2, 5, 10], 10)))
-      .mockResolvedValueOnce(answer(page([3, 10], 10)));
-    vi.stubGlobal('fetch', fetchMock);
-
-    const container = document.createElement('div');
-    document.body.append(container);
-    root = createRoot(container);
-    const render = (tick: number) => (
-      <Chronicle catalog={[]} frontRev={1} tick={tick} changes={[]} onOpenChange={() => undefined} />
-    );
-
-    await act(async () => root?.render(render(0)));
+describe('the moment rail under a browser (BOOK-DOC-50 §4, §6)', () => {
+  it('draws no tick marks and fills the rail through CSSOM', async () => {
+    stubFetch(() => answer(page(ITEMS, 10)));
+    mount();
     await flush();
 
-    const ticks = (): string[] =>
-      [...container.querySelectorAll<HTMLElement>('.scrub-ticks i')].map((tick) => tick.style.left);
-    expect(ticks()).toEqual(['20%', '50%', '100%']);
+    expect(container.querySelector('.scrub-ticks')).toBeNull();
+    expect(container.querySelector('.scrub-ticks i')).toBeNull();
+    // The traversed part is a CSSOM write on the fill, not a style attribute in the markup.
+    const fill = container.querySelector<HTMLElement>('.scrub-fill');
+    expect(fill?.style.width).toBe('100%');
+    expect(container.querySelector('.scrub-range')?.getAttribute('style')).toBeNull();
 
-    // A new tick on the feed refetches a smaller page: stale ticks must not survive.
-    await act(async () => root?.render(render(1)));
-    await flush();
-
-    expect(container.querySelectorAll('.scrub-ticks i')).toHaveLength(2);
-    expect(ticks()).toEqual(['30%', '100%']);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('the chronicle while the timeline is in flight (BOOK-DOC-43)', () => {
-  it('shows nothing before 150 ms, the sentence and the form at 150, the slow line at 2 000, rows on settle', async () => {
-    let settle: ((value: Response) => void) | null = null;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => new Promise<Response>((resolve) => {
-        settle = resolve;
-      })),
-    );
-    vi.useFakeTimers();
-    const { container, render } = mount();
-
-    await act(async () => render(0));
-    const section = container.querySelector('section.chronicle');
-    expect(section?.getAttribute('aria-busy')).toBe('true');
-
-    // 149 ms — quiet: no form, no sentence, and the §10 false fact is not printed.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(149);
-    });
-    expect(container.querySelector('.skel')).toBeNull();
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.textContent).not.toContain('записи читаются');
-    expect(container.textContent).not.toContain('пока ничего не записано');
-    expect(container.querySelector('ol.chr-timeline')).toBeNull();
-
-    // 150 ms — the status in the `.chr-empty` slot, the form of one day label + three rows.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    const status = container.querySelector('p.chr-empty');
-    expect(status?.getAttribute('role')).toBe('status');
-    expect(status?.getAttribute('aria-live')).toBe('polite');
-    expect(status?.getAttribute('aria-atomic')).toBe('true');
-    expect(status?.textContent).toBe('записи читаются');
-    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
-    expect(container.querySelector('.skel-chronicle')?.getAttribute('data-rows')).toBe('3');
-    expect(container.querySelectorAll('.skel-chronicle .skel-row')).toHaveLength(3);
-
-    // 2 000 ms — one plain sentence, still one status.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_850);
-    });
-    expect(container.querySelector('p.chr-empty')?.textContent).toBe(
-      'записи идут дольше обычного · хроника появится здесь же',
-    );
-
-    // Settle: rows in the same commit that removes the form; the busy claim is removed.
-    await act(async () => settle?.(answer(page([2, 5], 5))));
-    await flush();
-    expect(container.querySelector('.skel')).toBeNull();
-    expect(container.querySelectorAll('.chr-row')).toHaveLength(2);
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(section?.hasAttribute('aria-busy')).toBe(false);
+    dragTo('7');
+    expect(fill?.style.width).toBe('70%');
   });
 
-  it('replaces the wait with the failure block: no form, no status, no absence', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
-    const { container, render } = mount();
-
-    await act(async () => render(0));
+  it('moves the readout with no request while the thumb is moving', async () => {
+    const fetchMock = stubFetch(() => answer(page(ITEMS, 10)));
+    mount();
     await flush();
+    const before = askedAt(fetchMock).length;
 
-    expect(container.textContent).toContain('хроника не прочиталась');
-    expect(container.textContent).toContain('повторить');
-    expect(container.querySelector('.skel')).toBeNull();
-    expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(container.textContent).not.toContain('пока ничего не записано');
-    expect(container.querySelector('section.chronicle')?.hasAttribute('aria-busy')).toBe(false);
+    dragTo('7');
+    expect(readout()).toContain(`26.10.2026${MID}09:00`);
+    expect(container.querySelector('.scrub-count')?.textContent).toBe('запись 2 из 3');
+    expect(askedAt(fetchMock)).toHaveLength(before);
   });
 
-  it('starts a retry as a wait again: no failure line, busy at once, the form back at 150 ms', async () => {
-    vi.useFakeTimers();
-    let calls = 0;
-    let hang: ((value: Response) => void) | null = null;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => {
-        calls += 1;
-        if (calls === 1) return Promise.reject(new Error('offline'));
-        return new Promise<Response>((resolve) => {
-          hang = resolve;
-        });
-      }),
-    );
-    const { container, render } = mount();
-
-    await act(async () => render(0));
+  it('asks once when the drag idles, and an answer for another moment is a failure with a retry', async () => {
+    let lies = true;
+    const fetchMock = stubFetch((url) => {
+      if (!url.startsWith('/api/history/at/')) return answer(page(ITEMS, 10));
+      const hseq = Number(url.slice('/api/history/at/'.length));
+      // The server echoes the requested hseq (clamped); here the first answer is for another one.
+      return answer(bookAt(lies ? 4 : hseq));
+    });
+    mount();
     await flush();
-    expect(container.textContent).toContain('хроника не прочиталась');
 
-    const retry = container.querySelector<HTMLButtonElement>('.state-line button');
+    dragTo('5');
+    dragTo('6');
+    dragTo('7');
+    await advance(120);
+    expect(askedAt(fetchMock)).toEqual(['7']);
+    // The answer is for hseq 4, so the book of another moment must not paint…
+    expect(container.querySelector('.past-cover')).toBeNull();
+    // …and it must not leave the skeleton standing: the mismatch is the failure state (§7).
+    expect(container.querySelector('.past-note')?.textContent).toContain('момент не прочитался');
+    expect(container.querySelector('.skel')).toBeNull();
+    // The readout keeps its date: it comes from the loaded log, not from the answer.
+    expect(readout()).toContain(`26.10.2026${MID}09:00`);
+
+    // The retry asks for the thumb's own hseq again; this time the past paints.
+    lies = false;
+    const retry = container.querySelector<HTMLButtonElement>('.past-retry');
     expect(retry?.textContent).toBe('повторить');
-    await act(async () => retry?.click());
-    expect(calls).toBe(2);
-
-    // The failure goes when the request starts, not when it answers (§10): the section is busy
-    // again and, before 150 ms, still prints nothing.
-    expect(container.textContent).not.toContain('хроника не прочиталась');
-    expect(container.querySelector('section.chronicle')?.getAttribute('aria-busy')).toBe('true');
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(149);
+      retry?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(container.querySelector('.skel')).toBeNull();
-    expect(container.querySelector('[role="status"]')).toBeNull();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(container.querySelector('.skel-chronicle')).not.toBeNull();
-    expect(container.querySelector('[role="status"]')?.textContent).toBe('записи читаются');
-
-    await act(async () => hang?.(answer(page([2, 5], 5))));
-    await flush();
-    expect(container.querySelector('.skel')).toBeNull();
-    expect(container.querySelectorAll('.chr-row')).toHaveLength(2);
+    expect(askedAt(fetchMock)).toEqual(['7', '7']);
+    expect(container.querySelector('.past-cover')).not.toBeNull();
+    expect(container.querySelector('.past-note')?.textContent).toContain('так книга выглядела в');
   });
 
-  it('prints «пока ничего не записано» only for an answer with no events', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer(page([], 0))));
-    const { container, render } = mount();
-
-    await act(async () => render(0));
+  it('renders the past when the answer is for the thumb', async () => {
+    stubFetch((url) =>
+      url.startsWith('/api/history/at/') ? answer(bookAt(Number(url.slice('/api/history/at/'.length)))) : answer(page(ITEMS, 10)),
+    );
+    mount();
     await flush();
 
+    dragTo('7');
+    await advance(120);
+    expect(container.querySelector('.past-cover')?.textContent).toContain('Книга момента');
+    expect(container.querySelector('.skel')).toBeNull();
+    expect(container.querySelector('.past-note')?.textContent).toContain('так книга выглядела в');
+  });
+
+  it('asks at once on release, without waiting for the idle', async () => {
+    const fetchMock = stubFetch((url) =>
+      url.startsWith('/api/history/at/') ? answer(bookAt(Number(url.slice('/api/history/at/'.length)))) : answer(page(ITEMS, 10)),
+    );
+    mount();
+    await flush();
+
+    dragTo('4');
+    releaseAt('4');
+    await advance(0);
+    expect(askedAt(fetchMock)).toEqual(['4']);
+    expect(container.querySelector('.past-cover')).not.toBeNull();
+  });
+
+  it('lets a later request replace an earlier one, so an old answer never paints (§5–§6)', async () => {
+    const pending = new Map<string, (body: unknown) => void>();
+    const fetchMock = stubFetch((url) => {
+      if (!url.startsWith('/api/history/at/')) return answer(page(ITEMS, 10));
+      const hseq = url.slice('/api/history/at/'.length);
+      return new Promise<Response>((resolve) => {
+        pending.set(hseq, (body) => resolve(answer(body)));
+      });
+    });
+    mount();
+    await flush();
+
+    dragTo('7');
+    await advance(120);
+    dragTo('4');
+    await advance(120);
+    expect(askedAt(fetchMock)).toEqual(['7', '4']);
+
+    const settle = async (hseq: string, body: unknown): Promise<void> => {
+      await act(async () => {
+        pending.get(hseq)?.(body);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    // The second request answers first and paints its own moment…
+    await settle('4', { ...bookAt(4), front: { rev: 1, title: 'Момент 4', about: null } });
+    expect(container.querySelector('.past-title')?.textContent).toBe('Момент 4');
+    // …then the earlier answer arrives late: it may not replace the later one.
+    await settle('7', { ...bookAt(7), front: { rev: 1, title: 'Момент 7', about: null } });
+    expect(container.querySelector('.past-title')?.textContent).toBe('Момент 4');
+    expect(container.textContent).not.toContain('Момент 7');
+  });
+
+  it('keeps the readout’s date through a failure and refetches that hseq on «повторить»', async () => {
+    let fail = true;
+    const fetchMock = stubFetch((url) => {
+      if (!url.startsWith('/api/history/at/')) return answer(page(ITEMS, 10));
+      const hseq = Number(url.slice('/api/history/at/'.length));
+      return fail ? refusal() : answer(bookAt(hseq));
+    });
+    mount();
+    await flush();
+
+    dragTo('4');
+    await advance(120);
+    expect(container.querySelector('.past-note')?.textContent).toContain('момент не прочитался');
+    expect(readout()).toContain(`21.10.2026${MID}09:12`);
+    expect(range().value).toBe('4');
+    // A failure is not a wait: no form of any kind is left standing for it.
+    expect(container.querySelector('.skel')).toBeNull();
+
+    fail = false;
+    const retry = container.querySelector<HTMLButtonElement>('.past-retry');
+    expect(retry?.textContent).toBe('повторить');
+    await act(async () => {
+      retry?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(askedAt(fetchMock)).toEqual(['4', '4']);
+    expect(container.querySelector('.past-note')?.textContent).toContain('так книга выглядела в');
+    expect(container.querySelector('.past-cover')).not.toBeNull();
+  });
+
+  it('says «момент читается» after 150 ms and names the slow read at 2 000 ms', async () => {
+    stubFetch((url) => (url.startsWith('/api/history/at/') ? new Promise<Response>(() => undefined) : answer(page(ITEMS, 10))));
+    mount();
+    await flush();
+
+    dragTo('7');
+    await advance(120);
+    // The fetch has started but nothing is said yet: the date is enough for 150 ms.
+    expect(container.querySelector('.past-note')?.textContent).toBe('');
+    await advance(150);
+    expect(container.querySelector('.past-note')?.textContent).toContain('момент читается');
+    // The wait has a form of its own: one skeleton from the one system (BOOK-66).
+    expect(container.querySelector('.skel-chronicle')).not.toBeNull();
+    await advance(2_000);
+    expect(container.querySelector('.past-note')?.textContent).toContain('момент идёт дольше обычного · книга появится здесь же');
+  });
+
+  it('walks one record per arrow key and takes the ends on Home and End', async () => {
+    stubFetch((url) =>
+      url.startsWith('/api/history/at/') ? answer(bookAt(Number(url.slice('/api/history/at/'.length)))) : answer(page(ITEMS, 10)),
+    );
+    mount();
+    await flush();
+
+    const key = (name: string): void => {
+      act(() => {
+        range().dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+      });
+    };
+
+    key('ArrowLeft');
+    expect(readout()).toContain(`26.10.2026${MID}09:00`);
+    key('ArrowLeft');
+    expect(readout()).toContain(`21.10.2026${MID}09:12`);
+    key('ArrowLeft');
+    expect(readout()).toContain(`21.10.2026${MID}09:12`);
+    key('ArrowRight');
+    expect(readout()).toContain(`26.10.2026${MID}09:00`);
+    key('End');
+    expect(readout()).toContain(`27.10.2026${MID}15:40`);
+    key('Home');
+    expect(readout()).toContain(`21.10.2026${MID}09:12`);
+    // The readout is the range's own value text, so assistive tech reads the same moment.
+    expect(range().getAttribute('aria-valuetext')).toBe(container.querySelector('.scrub-moment')?.textContent);
+  });
+
+  it('commits a key stop on keyup with exactly one request for that record (§5)', async () => {
+    const fetchMock = stubFetch((url) =>
+      url.startsWith('/api/history/at/')
+        ? answer(bookAt(Number(url.slice('/api/history/at/'.length))))
+        : answer(page(ITEMS, 10)),
+    );
+    mount();
+    await flush();
+
+    act(() => {
+      range().dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    // A key moves the readout in the same frame and asks nothing.
+    expect(readout()).toContain(`26.10.2026${MID}09:00`);
+    expect(askedAt(fetchMock)).toEqual([]);
+
+    act(() => {
+      range().dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
+    });
+    await advance(0);
+    expect(askedAt(fetchMock)).toEqual(['7']);
+    expect(container.querySelector('.past-cover')).not.toBeNull();
+
+    // The release cancelled the idle: the same stop is never asked for twice.
+    await advance(200);
+    expect(askedAt(fetchMock)).toEqual(['7']);
+  });
+
+  it('has no readout, no ends and no rail while nothing is logged', async () => {
+    stubFetch(() => answer(page([], 0)));
+    mount();
+    await flush();
+
+    expect(container.querySelector('.scrub')).toBeNull();
     expect(container.textContent).toContain('пока ничего не записано');
+    expect(container.querySelector('.chr-ends')).toBeNull();
     expect(container.querySelector('section.chronicle')?.hasAttribute('aria-busy')).toBe(false);
   });
 });
 
-describe('the moment’s read (BOOK-DOC-43 §10)', () => {
+describe('the moment’s read from a row (BOOK-DOC-43 §10)', () => {
   it('leaves the loading line on failure, and retries the same hseq', async () => {
     let atCalls = 0;
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const path = String(input);
-      if (path.includes('/api/history/at/')) {
+    const fetchMock = stubFetch((url) => {
+      if (url.startsWith('/api/history/at/')) {
         atCalls += 1;
-        return atCalls === 1 ? Promise.reject(new Error('offline')) : Promise.resolve(answer(AT));
+        return atCalls === 1 ? refusal() : answer(bookAt(Number(url.slice('/api/history/at/'.length))));
       }
-      return Promise.resolve(answer(page([2, 5], 5)));
+      return answer(page(ITEMS, 10));
     });
-    vi.stubGlobal('fetch', fetchMock);
-    const { container, render } = mount();
-
-    await act(async () => render(0));
+    mount();
     await flush();
 
     const row = container.querySelector<HTMLButtonElement>('.chr-row-main');
     expect(row).not.toBeNull();
-    await act(async () => row?.click());
+    // A row picks its own moment: the oldest row asks for 4.
+    const oldest = container.querySelectorAll<HTMLButtonElement>('.chr-row-main')[2];
+    await act(async () => oldest?.click());
     await flush();
 
-    // The wait is over: no «момент читается…», one failure line, one retry.
+    // The wait is over: no «момент читается», one failure line, one retry for that hseq.
     expect(container.textContent).toContain('момент не прочитался');
     expect(container.textContent).not.toContain('момент читается');
-    const retry = container.querySelector<HTMLButtonElement>('.past .state-line button');
+    expect(container.querySelector('.skel')).toBeNull();
+    const retry = container.querySelector<HTMLButtonElement>('.past-retry');
     expect(retry?.textContent).toBe('повторить');
 
     await act(async () => retry?.click());
     await flush();
 
-    const atUrls = fetchMock.mock.calls.map((call) => String(call[0])).filter((path) => path.includes('/api/history/at/'));
-    expect(atUrls).toEqual(['/api/history/at/2', '/api/history/at/2']);
+    expect(askedAt(fetchMock)).toEqual(['4', '4']);
     expect(container.textContent).not.toContain('момент не прочитался');
-    expect(container.querySelector('.past-title')?.textContent).toBe('Книга');
+    expect(container.querySelector('.past-title')?.textContent).toBe('Книга момента');
   });
 });

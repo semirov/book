@@ -11,6 +11,7 @@ import { listCatalog } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { getNumber, setMeta } from '../db/repo/meta.ts';
 import { readEngineOverlay } from '../engineState/reader.ts';
+import { countReaderChanges } from '../history/live.ts';
 import { type ChapterFact, type FrontFact, deriveState, stateFingerprint } from './stateMachine.ts';
 
 export class StateService {
@@ -59,17 +60,23 @@ export class StateService {
     return this.cached?.version ?? null;
   }
 
+  /** BOOK-56: the one derived fact behind every history surface (0 keeps history off). */
+  readerChanges(): number {
+    return countReaderChanges(this.db);
+  }
+
   snapshot(): StateSnapshot {
     const facts = this.facts();
     const basis = this.basis();
     const front = this.front();
+    const readerChanges = this.readerChanges();
     const overlay = readEngineOverlay(this.db, this.clock().getTime());
-    const fingerprint = stateFingerprint(facts, front, overlay.fingerprint, basis);
+    const fingerprint = stateFingerprint(facts, front, overlay.fingerprint, basis, readerChanges);
     if (this.cached !== null && fingerprint === this.fingerprint) return this.cached;
 
     const version = getNumber(this.db, 'state_version', 0) + 1;
     setMeta(this.db, 'state_version', String(version));
-    const snapshot = deriveState({ facts, basis, front, now: this.clock(), version, overlay });
+    const snapshot = deriveState({ facts, basis, front, now: this.clock(), version, overlay, readerChanges });
     this.cached = snapshot;
     this.fingerprint = fingerprint;
     return snapshot;

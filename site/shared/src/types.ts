@@ -5,6 +5,7 @@
 
 import type { AuthorsCountDto } from './authors.ts';
 import type { Direction, Part } from './book.ts';
+import type { HistoryStateDto } from './history.ts';
 
 /** `absent` — no engine process has ever written a heartbeat (§9, §18). */
 export type EngineStatus = 'running' | 'throttled' | 'paused' | 'escalated' | 'down' | 'absent' | 'unknown';
@@ -153,6 +154,13 @@ export type StateSnapshot = {
     lastLogLineAt: string | null;
     source: 'files' | 'engine' | 'mixed';
   };
+  /**
+   * BOOK-56 — the one derived fact every history surface reads (chronicle, cascade,
+   * provenance, revision apparatus, authors, discussion). Computed from
+   * `changes.source_comment IS NOT NULL`; while `live` is false those surfaces are not
+   * rendered at all, rather than hidden.
+   */
+  history: HistoryStateDto;
 };
 
 /** One row of `GET /api/chapters` — all 67 slots, always. */

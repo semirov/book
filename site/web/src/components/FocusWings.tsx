@@ -13,7 +13,9 @@ import { scaleTicks } from '../lib/focus.ts';
  * and the grid needs no inline style (CSP forbids them): the column count is a precomputed
  * class, the marks are classes, and a frame arriving changes a class, never the layout height.
  */
-export function FocusWings({ wings }: { wings: CascadeWingsDto }) {
+export function FocusWings({ wings, live }: { wings: CascadeWingsDto; live: boolean }) {
+  // BOOK-56: the wings are the cascade's history; with no reader change they are absent.
+  if (!live) return null;
   return (
     <div className="focus-wings">
       {(['down', 'up'] as const).map((side: Wing) => {

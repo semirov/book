@@ -46,6 +46,15 @@ export type EventListFilter = {
  */
 const SELECT_EVENT = `SELECT e.*, (SELECT c.seq FROM changes c WHERE c.id = e.change_id) AS change_seq FROM events e`;
 
+/** The page's default size and its ceiling: one clamp, read by the query and the cursor. */
+const PAGE_LIMIT_DEFAULT = 50;
+const PAGE_LIMIT_MAX = 200;
+
+/** The number of rows a page actually asks for (`limit` is optional and bounded). */
+function pageLimit(limit: number | undefined): number {
+  return Math.min(PAGE_LIMIT_MAX, Math.max(1, limit ?? PAGE_LIMIT_DEFAULT));
+}
+
 export function readEventRow(db: Db, hseq: number): EventRow | undefined {
   return db.prepare(`${SELECT_EVENT} WHERE e.hseq = ?`).get(hseq) as EventRow | undefined;
 }
@@ -78,10 +87,9 @@ export function listEventRows(db: Db, filter: EventListFilter = {}): EventRow[] 
     where.push('chapter = ?');
     params.push(filter.chapter);
   }
-  const limit = Math.min(200, Math.max(1, filter.limit ?? 50));
   const clause = where.length > 0 ? ` WHERE ${where.map((part) => `e.${part}`).join(' AND ')}` : '';
   const sql = `${SELECT_EVENT}${clause} ORDER BY e.hseq DESC LIMIT ?`;
-  return db.prepare(sql).all(...params, limit) as EventRow[];
+  return db.prepare(sql).all(...params, pageLimit(filter.limit)) as EventRow[];
 }
 
 export function toHistoryEvent(row: EventRow): HistoryEventDto {
@@ -121,13 +129,19 @@ export function toHistoryFrame(row: EventRow): HistoryEventDto {
   return toHistoryEvent(row);
 }
 
-/** The public timeline page, newest first, with a cursor (§6F.2). */
+/**
+ * The public timeline page, newest first, with a cursor (§6F.2).
+ *
+ * The cursor is the last row's `hseq` **only when the page is full**: a page shorter than its
+ * limit is the oldest one, so nothing lies before it and `nextBefore` is `null` — the client
+ * must not offer «до …» for a history it has already shown completely.
+ */
 export function readTimeline(
   db: Db,
   filter: EventListFilter = {},
 ): { lastHseq: number; items: HistoryEventDto[]; nextBefore: number | null } {
   const rows = listEventRows(db, filter);
   const items = rows.map((row) => toHistoryEvent(row));
-  const nextBefore = rows.length === 0 ? null : (rows.at(-1)?.hseq ?? null);
+  const nextBefore = rows.length === pageLimit(filter.limit) ? (rows.at(-1)?.hseq ?? null) : null;
   return { lastHseq: lastHseq(db), items, nextBefore };
 }

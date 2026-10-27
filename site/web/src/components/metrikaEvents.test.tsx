@@ -204,6 +204,7 @@ describe('opening a seam', () => {
         comments={[]}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
+        history
         onPosted={() => undefined}
       />,
     );
@@ -228,6 +229,7 @@ describe('opening a seam', () => {
         comments={[]}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Филипп' }}
+        history
         onPosted={() => undefined}
       />,
     );

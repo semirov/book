@@ -18,13 +18,17 @@ export function CascadeRibbon({
   ribbon,
   markers,
   onOpenChange,
+  live,
 }: {
   ribbon: Ribbon | null;
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
+  /** BOOK-56: the cascade is history; without a reader change it is not rendered at all. */
+  live: boolean;
 }) {
+  if (!live) return null;
   if (ribbon === null && markers.length === 0) return null;
-  const live = rippleIsLive(ribbon);
+  const rippleLive = rippleIsLive(ribbon);
   const label = ribbon === null ? 'стык пересматривается' : ribbonSummary(ribbon);
 
   return (
@@ -53,7 +57,7 @@ export function CascadeRibbon({
         </div>
       )}
 
-      {live ? (
+      {rippleLive ? (
         <span className="ribbon-rings" aria-hidden="true">
           {[0, 1, 2].map((ring) => (
             <i key={`ring-${ring}`} className="ribbon-ring" data-ring={ring} />
