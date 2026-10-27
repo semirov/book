@@ -3,6 +3,10 @@
  * takes every secret from a `0600` file, so the fixture writes real files instead of plain
  * values. Each `secretFile` call writes a new file, so a test that swaps one secret in leaves
  * the others alone. A suite that imports this calls `cleanupSecretFiles` in `afterAll`.
+ *
+ * `DATA_DIR` is a temp dir outside the checkout on purpose (BOOK-107): a production boot whose
+ * data lives inside the repository is refused, so without it every production-shaped failure
+ * here would report the guard instead of the thing under test.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,6 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const secretsDir = mkdtempSync(join(tmpdir(), 'book-prod-secrets-'));
+/** Production data, never inside the repository (BOOK-107). */
+const dataDir = mkdtempSync(join(tmpdir(), 'book-prod-data-'));
 let secretSeq = 0;
 
 /** Writes `value` to a fresh `0600` file and returns its path. */
@@ -26,11 +32,13 @@ export function absentSecretFile(name: string): string {
 
 export function cleanupSecretFiles(): void {
   rmSync(secretsDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
 }
 
 /** A valid production shape, so each refusal in a test fails for exactly one reason. */
 export const production = {
   NODE_ENV: 'production',
+  DATA_DIR: dataDir,
   PUBLIC_ORIGIN: 'https://book.test',
   SESSION_SECRET_FILE: secretFile('session-secret-from-test'),
   IP_SALT_FILE: secretFile('ip-salt-from-test'),

@@ -19,12 +19,13 @@
     "arch": "node scripts/arch.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "frame:check": "node scripts/frame-check.mjs",
     "validate": "node bin/validate.mjs",
     "start": "node server/dist/index.js",
     "engine": "node server/dist/engine.js",
     "engine:cli": "node bin/engine.mjs",
     "dev": "node scripts/dev.mjs",
-    "verify": "npm run typecheck && npm run arch && npm run test"
+    "verify": "npm run typecheck && npm run arch && npm run test && npm run frame:check"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

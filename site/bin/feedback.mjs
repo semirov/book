@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { databaseFile, openDatabase } from '../server/src/db/db.ts';
 import { migrate } from '../server/src/db/migrate.ts';
+import { assertDataDirIsolation, isProductionEnv, productionDataDirs } from '../server/src/dataDirGuard.ts';
 import { runFeedback } from '../server/src/feedback/cli.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -34,6 +35,19 @@ function pathFromEnv(value, fallback) {
 const dataDir = pathFromEnv(process.env.DATA_DIR, join(SITE_ROOT, '.data'));
 const feedbackDir = pathFromEnv(process.env.FEEDBACK_DIR, join(SITE_ROOT, 'data', 'feedback'));
 const editsPerDay = Number.parseInt(process.env.EDIT_SUBMISSIONS_PER_DAY ?? '1', 10);
+
+// BOOK-107: this CLI opens `book.db` writable, so it uses the boot's wall — a dev shell that
+// exported the prod data dir is refused here, before anything is opened or migrated.
+try {
+  assertDataDirIsolation(
+    { dataDir, adminTokenFile: '', engineTokenFile: '', feedbackDir },
+    isProductionEnv(),
+    { prodDirs: productionDataDirs() },
+  );
+} catch (error) {
+  console.error(`feedback: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 
 const db = openDatabase(databaseFile(dataDir));
 try {

@@ -16,6 +16,8 @@ import { z } from 'zod';
 
 import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
+import { assertDataDirIsolation, productionDataDirs } from './dataDirGuard.ts';
+
 /** `site/` — works from `server/src` (tsx) and from `server/dist` (node). */
 export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -366,6 +368,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`invalid configuration: ${details}`);
   }
   const config = parsed.data;
+  // BOOK-107: the wall around the data dirs, both directions. A boot that is not production
+  // must never point at the prod data dir, and a production boot must never keep its data in
+  // the checkout. The guard runs on the parsed paths (DATA_DIR is not resolved by the schema,
+  // so it resolves it) and uses the same `production` flag every invariant below keys on.
+  assertDataDirIsolation(
+    {
+      dataDir: config.dataDir,
+      adminTokenFile: config.adminTokenFile,
+      engineTokenFile: config.engineTokenFile,
+      feedbackDir: config.feedbackDir,
+    },
+    production,
+    { prodDirs: productionDataDirs(env), repoRoot: resolve(SITE_ROOT, '..') },
+  );
   // §12.8 (BOOK-64): the gate is an authenticated identity plus the comment and edit rate
   // limits, so a deployment may boot with no challenge at all. What still fails loudly is a
   // *half-configured* captcha: a sitekey without a secret renders a widget nothing can

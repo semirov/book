@@ -10,6 +10,11 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // The suite's environment, in one place (BOOK-107): a fresh temp DATA_DIR per test file,
+    // and a before/after snapshot of the dev and production data dirs, so a test that writes
+    // to either one turns the run red.
+    globalSetup: [resolve(import.meta.dirname, 'test/globalSetup.ts')],
+    setupFiles: [resolve(import.meta.dirname, 'test/setup.ts')],
     // Stylesheets are read as text (`styles/*.css?raw`): the prose measure is an invariant
     // the page-2 test checks, and Vitest stubs CSS imports to '' without this.
     css: true,

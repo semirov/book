@@ -47,7 +47,7 @@ function walk(dir, out = []) {
   return out;
 }
 
-const files = ['shared', 'server', 'web/src', 'bin', 'scripts', 'config'].flatMap((dir) => walk(join(ROOT, dir)));
+const files = ['shared', 'server', 'web/src', 'bin', 'scripts', 'config', 'test'].flatMap((dir) => walk(join(ROOT, dir)));
 
 /** 1 — file size */
 for (const file of files) {

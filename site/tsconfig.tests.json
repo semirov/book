@@ -22,6 +22,7 @@
   "include": [
     "shared/test/**/*.ts",
     "server/test/**/*.ts",
+    "test/**/*.ts",
     "web/src/**/*.test.{ts,tsx}",
     "vitest.config.ts"
   ]
