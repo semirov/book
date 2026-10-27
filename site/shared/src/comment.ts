@@ -167,6 +167,12 @@ export type CommentBudget = {
   editsPerDay: number;
   editsRemaining: number;
   editsResetAt: string | null;
+  /**
+   * BOOK-113 — the operator's own identity may be exempt from the daily edit budget while the
+   * owner tests a change. `true` is the only value ever sent; everyone else gets the field
+   * omitted, so the ordinary budget keeps its shape. The comment budget still applies.
+   */
+  editsExempt?: boolean;
 };
 
 export type PostCommentInput = {

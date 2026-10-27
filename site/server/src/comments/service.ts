@@ -38,7 +38,8 @@ import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
-import { editDailyMessage, laterReset } from './dailyLimit.ts';
+import { editDailyMessage } from './dailyLimit.ts';
+import { readBudget } from './budget.ts';
 import { checkInterventionKind } from './intervention.ts';
 import { classifyComment } from './guard.ts';
 import {
@@ -54,7 +55,7 @@ import {
 } from './repo.ts';
 import { sanitizeAffix, sanitizeAuthor, sanitizeBody, sanitizeProposed, sanitizeQuote } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
-import { commentIdentityKey, commentSpecs, editIdentityKey, editIpKey, editSpecs } from '../rate/policy.ts';
+import { commentSpecs, editSpecs } from '../rate/policy.ts';
 
 export type CommentServiceDeps = {
   db: Db;
@@ -110,35 +111,15 @@ export class CommentService {
   }
 
   /**
-   * §14: the composer shows what is left, so the limit is never a surprise. The edit budget is
-   * two counters (BOOK-DOC-4 rule 5), so the reader is shown the tighter one: the network may
-   * already be spent while their own day is not (`min`), and the reset is the later of the two.
+   * §14: the composer shows what is left, so the limit is never a surprise (the two counters
+   * and the BOOK-113 exemption live in `budget.ts`).
    */
   budget(identityId: string, ipKey: string): CommentBudget {
-    const comments = this.limiter.check({
-      key: commentIdentityKey(identityId),
-      limit: this.config.commentsPerHourIdentity,
-      windowMs: 60 * 60_000,
-    });
-    const edits = this.limiter.check({
-      key: editIdentityKey(identityId),
-      limit: this.config.editSubmissionsPerDay,
-      windowMs: 24 * 60 * 60_000,
-    });
-    const editsByNetwork = this.limiter.check({
-      key: editIpKey(this.ipHash, ipKey),
-      limit: this.config.editSubmissionsPerDay,
-      windowMs: 24 * 60 * 60_000,
-    });
-    const editResetAtMs = laterReset(edits.resetAtMs, editsByNetwork.resetAtMs);
-    return {
-      perHour: comments.limit,
-      remaining: comments.remaining,
-      resetAt: comments.resetAtMs === null ? null : new Date(comments.resetAtMs).toISOString(),
-      editsPerDay: edits.limit,
-      editsRemaining: Math.min(edits.remaining, editsByNetwork.remaining),
-      editsResetAt: editResetAtMs === null ? null : new Date(editResetAtMs).toISOString(),
-    };
+    return readBudget(
+      { db: this.db, config: this.config, limiter: this.limiter, ipHash: this.ipHash },
+      identityId,
+      ipKey,
+    );
   }
 
   async post(input: PostCommentInput, context: PostContext): Promise<ServiceResult> {
@@ -240,7 +221,10 @@ export class CommentService {
     const guard = classifyComment(body.text, proposedText);
     const specs = [
       ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
-      ...(proposedText === null
+      // BOOK-113: an exempt identity spends no edit slot — both the identity and the network
+      // key are skipped, otherwise the network cap would still refuse the owner's second edit
+      // in a day. The comment budget above still applies to them.
+      ...(proposedText === null || context.identity.edit_exempt !== 0
         ? []
         : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
     ];
