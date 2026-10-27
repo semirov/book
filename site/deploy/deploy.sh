@@ -76,7 +76,9 @@ health_url() {
 wait_for_health() {
   local url="$1" deadline=$(( $(date +%s) + HEALTH_TIMEOUT )) body
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    if body="$(curl -fsS --max-time 3 "$url" 2>/dev/null)" && printf '%s' "$body" | grep -q '"ok":true'; then
+    # /healthz answers in milliseconds on an idle machine and in ~3 s under a full build+test load
+    # (observed 2026-10-27); the per-attempt budget must not turn a slow answer into a rollback.
+    if body="$(curl -fsS --max-time 10 "$url" 2>/dev/null)" && printf '%s' "$body" | grep -q '"ok":true'; then
       return 0
     fi
     sleep 2

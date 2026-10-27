@@ -155,18 +155,21 @@ awk -v me="$ME" -v cpu_hard="$CPU_HARD" -v rss_hard="$RSS_HARD_MB" -v deny="$DEN
       if (!(p in t2)) continue
       d = t2[p] - t1[p]; if (d < 0) d = 0
       cpu = d * 100 / 2
-      kind = ""
-      if (cpu >= cpu_hard) kind = "cpu"
-      else if (rss[p] / 1024 >= rss_hard) kind = "rss"
-      if (kind == "") continue
-      printf "%s|%s|%d|%.0f|%s\n", p, kind, rss[p] / 1024, cpu, comm[p]
+      hot = (cpu >= cpu_hard || rss[p] / 1024 >= rss_hard)
+      # Every orphan of ours is reported (`mine`), hot or not: leaky test workers and stray
+      # helpers are how the machine gets slow long before anything is over a kill threshold.
+      printf "%s|%s|%s|%d|%.0f|%s\n", p, (hot ? "hot" : "cold"), (cpu >= cpu_hard ? "cpu" : "rss"), rss[p] / 1024, cpu, comm[p]
     }
   }' "$TMP/snap1" "$TMP/snap2" >"$TMP/orphans"
 
 : >"$TMP/strikes"
 KILLED=0
-while IFS='|' read -r pid kind rssv cpuv cmd; do
+MINE="$(awk 'END{print NR+0}' "$TMP/orphans")"
+ORPHAN_WARN="${BOOK_WD_ORPHAN_WARN:-25}"
+[ "$MINE" -gt "$ORPHAN_WARN" ] && { note "orphans_mine=$MINE"; flag warn; }
+while IFS='|' read -r pid heat kind rssv cpuv cmd; do
   [ -n "$pid" ] || continue
+  [ "$heat" = "hot" ] || continue
   [ "$pid" = "$$" ] && continue
   first=""; strikes=0
   if [ -f "$STRIKES" ]; then
@@ -203,7 +206,7 @@ while IFS='|' read -r pid kind rssv cpuv cmd; do
   flag crit
 done <"$TMP/orphans"
 mv -f "$TMP/strikes" "$STRIKES" 2>/dev/null || : >"$STRIKES"
-ORPHANS="$(awk 'END{print NR+0}' "$STRIKES")"
+ORPHANS="$MINE"
 
 # --- one line per run, one summary per week ---------------------------------------------------
 STATUS_WORD=ok
