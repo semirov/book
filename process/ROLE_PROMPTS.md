@@ -192,13 +192,21 @@ consultant → if blocker the writer revises and both re-check only the changed 
 footnote (iteration, what changed, cost/model). Both verdicts are kept as provenance: auditable, never
 rendered as a second voice on the page.
 
-**The cap, by role.** Past the cycle cap a blocker is not re-asked, and the two consequences differ: the
-editor's blocker publishes the step with its finding, the consultant's stops it — a physics claim that does
-not hold never enters the book, and the change waits for a decision.
+**The cap, by role.** Past the cycle cap a blocker is not re-asked. **A veto is a veto at the cap too**
+(BOOK-120, BOOK-DOC-57): a blocker in the six veto classes — structure (S1–S5), a world-ledger
+contradiction, voice (V1–V6), the anti-AI battery, a science claim that does not hold, or the frozen frame —
+**stops the step and the chapter is published as absent with its finding**; the cap never converts a veto
+into a footnote, because a mediocre chapter in the book is the one outcome the product has no room for.
+Only non-veto findings publish with a note. Either way the finding is kept as provenance, and the change
+waits for a decision rather than sliding into the prose.
 
-**Cost.** Estimate tokens × $0.0000003 (the real flash blend), add to the running total; above $9.50 →
-`BUDGET STOP`, no spawn. One memo line per pass in `process/write.log.md`, created if absent — a memo,
-not the position: `PASS N — lane <Пn | Оn | финал>, wrote chNN. | est cost so far: $Y`.
+**Cost.** Money, not a proxy (owner, 2026-10-27): tokens × the rate table BOOK-114 carries, added to a
+running total that the engine keeps — a pass estimates its own cost before it starts and is refused when the
+cap is already crossed. Two hard caps: **$10 per UTC day → пауза** (no new pass is spawned; the queue is
+kept; the page shows «пауза · дневной потолок $10,00 · возобновится в 00:00 UTC»; it resumes by itself at
+00:00 UTC) and **$1000 for the whole book → стоп** (only the owner re-opens it). Alert at 80 % of each. One
+memo line per pass in `process/write.log.md`, created if absent — a memo, not the position:
+`PASS N — lane <Пn | Оn | финал>, wrote chNN. | cost so far: $Y / day $D`.
 
 **Beats are automatic; the wall is the only time bound.** The engine's own tick beats the lease of every
 open step, so a real pass — 20 000–30 000 characters and two model gates — is not a stranded step and
