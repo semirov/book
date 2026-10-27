@@ -296,6 +296,44 @@ describe('the record’s page and cursor (§6F.2)', () => {
   });
 });
 
+describe('the record’s own ends on the book’s clock (BOOK-56)', () => {
+  it('has no first moment on an empty log', () => {
+    fixture = createFixture();
+    const page = readRecord(fixture.db);
+
+    expect(page.firstAt).toBeNull();
+    expect(page.lastAt).toBeNull();
+    expect(page.items).toEqual([]);
+  });
+
+  it('names the log’s first row as the starting record, whatever the record holds', () => {
+    fixture = createFixture();
+    const db = fixture.db;
+    const seeded = seedChange(db, { index: 1, chapter: 8, label: 'Аня' });
+    appendEvent(db, { kind: 'change.queued', changeId: seeded.changeId, chapter: 8 }, BASE_MS);
+    appendEvent(db, { kind: 'change.decided', changeId: seeded.changeId, chapter: 8 }, BASE_MS + 60_000);
+
+    const page = readRecord(db);
+    // The first event of the change is the book's beginning; the change's last entry is not.
+    expect(page.firstAt).toBe('2026-10-25T09:00:00Z');
+    expect(page.items[0]?.at).toBe('2026-10-25T09:01:00Z');
+    expect(page.lastAt).toBe('2026-10-25T09:01:00Z');
+    // The starting record is not an entry of the record: `items` stays one row per change.
+    expect(page.items.map((record) => record.changeId)).toEqual([seeded.changeId]);
+  });
+
+  it('names a machine pass as the beginning without adding it to the record', () => {
+    fixture = createFixture();
+    const db = fixture.db;
+    appendEvent(db, { kind: 'front.revised', isFront: true, rev: 1 }, BASE_MS);
+    appendEvent(db, { kind: 'chapter.created', chapter: 1 }, BASE_MS + 60_000);
+
+    const page = readRecord(db);
+    expect(page.firstAt).toBe('2026-10-25T09:00:00Z');
+    expect(page.items).toEqual([]);
+  });
+});
+
 describe('the public reason a row may print', () => {
   it('normalises and bounds the change’s reason, and treats an empty one as absent', () => {
     fixture = createFixture();

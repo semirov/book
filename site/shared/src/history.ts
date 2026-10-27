@@ -22,6 +22,12 @@ export type HistoryStateDto = {
   live: boolean;
   /** The count it was derived from; public, and never a per-reader number. */
   readerChanges: number;
+  /**
+   * The log holds its first record, so the chronicle exists from the book's start — one
+   * record, «начало книги». The rest of the apparatus still waits for a reader change, so
+   * this is implied by, and never a replacement for, `live`.
+   */
+  started: boolean;
 };
 
 export type HistoryKind =
@@ -116,6 +122,12 @@ export type HistoryTimelineDto = {
    * clock — BOOK-DOC-48 refused a clock, not a logged moment.
    */
   lastAt: string | null;
+  /**
+   * The book's first logged moment: the starting record's date (`начало книги`), or `null`
+   * only on an empty log. A started book shows one record — its beginning — before any reader
+   * has changed the text; the first reader change adds the changes themselves.
+   */
+  firstAt: string | null;
   at: string;
   items: HistoryRecordDto[];
   /** Cursor for the next page (`before`); null when the page reached the oldest record. */

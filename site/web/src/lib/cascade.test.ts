@@ -41,7 +41,7 @@ function state(cascade: StateSnapshot['cascade']): StateSnapshot {
     current: null,
     unresolved: [],
     activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
-    history: { live: true, readerChanges: 1 },
+    history: { live: true, readerChanges: 1, started: true },
   };
 }
 

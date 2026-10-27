@@ -82,7 +82,7 @@ const STATE: StateSnapshot = {
   current: null,
   unresolved: [],
   activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
-  history: { live: false, readerChanges: 0 },
+  history: { live: false, readerChanges: 0, started: false },
 };
 
 type Box = { top: number; height: number };

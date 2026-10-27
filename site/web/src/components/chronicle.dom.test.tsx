@@ -51,7 +51,15 @@ const ITEMS: HistoryRecordDto[] = [
 
 function page(items: HistoryRecordDto[], lastHseq: number, nextBefore: number | null = null): HistoryTimelineDto {
   // The log's own last moment travels with the page; these fixtures put it on the newest row.
-  return { lastHseq, lastAt: items[0]?.at ?? null, at: '2026-10-27T12:40:00Z', items, nextBefore };
+  // `firstAt` is the log's oldest row — the starting record (`null` on an empty log).
+  return {
+    lastHseq,
+    lastAt: items[0]?.at ?? null,
+    firstAt: items.at(-1)?.at ?? null,
+    at: '2026-10-27T12:40:00Z',
+    items,
+    nextBefore,
+  };
 }
 
 function bookAt(hseq: number): BookAtDto {
@@ -123,7 +131,7 @@ function mount(onOpenChange: (changeId: string) => void = () => undefined): void
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={onOpenChange} live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={onOpenChange} started live />);
   });
 }
 
@@ -411,6 +419,27 @@ describe('the moment rail under a browser (BOOK-DOC-50 §4, §6)', () => {
     expect(container.textContent).toContain('пока ничего не записано');
     expect(container.querySelector('.chr-ends')).toBeNull();
     expect(container.querySelector('section.chronicle')?.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it('prints the one starting record of a begun book and still no rail (BOOK-56)', async () => {
+    // The log holds its first moment and no reader change: the chronicle exists, with exactly
+    // one record — «начало книги» — and nothing to rewind yet.
+    stubFetch(() => answer({ ...page([], 3), lastAt: '2026-10-21T06:12:00Z', firstAt: '2026-10-21T06:12:00Z' }));
+    mount();
+    await flush();
+
+    const rows = container.querySelectorAll('li.chr-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toBe(`начало книги${`21.10.2026${MID}09:12`}`);
+    expect(container.textContent).toContain('перематывать пока нечего: книга ещё не правила читателем');
+    expect(container.textContent).not.toContain('пока ничего не записано');
+    // Nothing to scrub: no control, no rail, no ends, no readout — and no button at all.
+    expect(container.querySelector('.scrub')).toBeNull();
+    expect(container.querySelector('.chr-ends')).toBeNull();
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    // The surface settled: it is not busy and prints no wait.
+    expect(container.querySelector('section.chronicle')?.hasAttribute('aria-busy')).toBe(false);
+    expect(container.querySelector('section.chronicle')?.hasAttribute('aria-label')).toBe(true);
   });
 });
 

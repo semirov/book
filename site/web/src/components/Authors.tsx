@@ -32,7 +32,6 @@ export function Authors({
   authorsFailed = false,
   imprint,
   lastRevisionAt,
-  onOpenChronicle,
   ownTrace = null,
   onToggleHidden,
   hidePending = false,
@@ -51,7 +50,6 @@ export function Authors({
   authorsFailed?: boolean;
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
-  onOpenChronicle: () => void;
   /** The signed-in reader's own trace; `null` for an anonymous visitor. */
   ownTrace?: MyTraceDto | null;
   onToggleHidden?: (hidden: boolean) => void;
@@ -63,6 +61,11 @@ export function Authors({
    * change there is no one to list, so the list itself is gated. The reader's own decisions
    * are not the book's past but their own present state, so they outlive the gate; with
    * neither, the section is not on the page at all.
+   *
+   * This block — the shares and the reader's joint series — belongs to `live`, not to the
+   * chronicle: a begun book has a chronicle with one record and no authors yet. The view
+   * switch at the top of the page is the only way into the chronicle; the end matter keeps
+   * no second door.
    */
   live: boolean;
 }) {
@@ -145,9 +148,6 @@ export function Authors({
         />
       )}
       <OwnDecisions decisions={decisions} />
-      <button className="authors-link" type="button" onClick={onOpenChronicle}>
-        как менялись доли
-      </button>
       <p className="copyright authors-copyright">{imprint.copyright}</p>
       {lastRevisionAt === null ? null : (
         <p className="authors-updated">последняя правка — {formatDate(lastRevisionAt)}</p>

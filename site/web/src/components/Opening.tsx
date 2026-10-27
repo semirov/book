@@ -41,6 +41,7 @@ export function Opening({
   onViewChange,
   motion,
   live,
+  chronicle,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -51,11 +52,18 @@ export function Opening({
   view: BookView;
   onViewChange: (view: BookView) => void;
   motion?: TitleMotion;
-  /** BOOK-56: `state.history.live`; off removes the chronicle switch and the ribbon. */
+  /** BOOK-56: `state.history.live`; off removes the cascade ribbon, which is history. */
   live: boolean;
+  /**
+   * BOOK-56: `state.history.started` — the chronicle exists, so «книга · хроника» is a way in.
+   * Absent falls back to `live`: an older caller knows only that, and a reader change starts
+   * the chronicle too.
+   */
+  chronicle?: boolean;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
+  const wayIn = chronicle ?? live;
   return (
     <>
       <TitleSheet front={front} motion={motion} seq={seq} running={stage === 'run'} />
@@ -67,7 +75,7 @@ export function Opening({
       </div>
       <Annotation front={front} seq={seq} />
       <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} live={live} />
-      <ViewSwitch view={view} onChange={onViewChange} live={live} />
+      <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
     </>
   );
 }

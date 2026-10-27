@@ -1,9 +1,13 @@
+// @vitest-environment jsdom
 import type { CatalogEntry, CommentDto, ParagraphChainDto, StateSnapshot } from '@book/shared';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { historyLive } from '../lib/historyState.ts';
+import { NBSP } from '../lib/format.ts';
+import { historyLive, historyStarted } from '../lib/historyState.ts';
 import { provenanceView } from '../lib/provenance.ts';
 import type { Ribbon } from '../lib/cascade.ts';
 import { Chronicle } from './Chronicle.tsx';
@@ -16,13 +20,21 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 import { ProvenancePanel } from './ProvenancePanel.tsx';
 
 /**
- * BOOK-56 — one fact, every history surface.
+ * BOOK-56 — one fact, every history surface, and the book's own beginning.
  *
- * The two tests below render the **same** live-shaped fixture twice: once with no reader
- * change and once with one. Nothing here inspects a CSS class to decide what is hidden —
- * the absent surfaces are absent from the markup, and the kept ones (the cover, page 2, the
- * seam, a filing's own mark) are still there.
+ * The same live-shaped fixture renders three times: an empty log (nothing at all), a begun
+ * book (the chronicle and its one starting record, nothing else) and one reader change
+ * (everything). Nothing here inspects a CSS class to decide what is hidden — the absent
+ * surfaces are absent from the markup, and the kept ones (the cover, page 2, the seam, a
+ * filing's own mark) are still there.
+ *
+ * The starting record is answered by the server, so the state that prints it is mounted
+ * rather than stringified: a static render never runs the request the chronicle opens.
  */
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+const MID = `${NBSP}·${NBSP}`;
 
 const imprint = { author: 'Филипп Семиров', copyright: '© Филипп Семиров' };
 
@@ -43,7 +55,8 @@ const catalog: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
   };
 });
 
-function state(live: boolean): StateSnapshot {
+/** The two facts the server derives from the log: a reader change, and the book's first row. */
+function state(history: { live: boolean; started: boolean }): StateSnapshot {
   return {
     version: 1,
     at: '2026-10-25T12:00:00Z',
@@ -66,7 +79,7 @@ function state(live: boolean): StateSnapshot {
     current: null,
     unresolved: [],
     activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
-    history: { live, readerChanges: live ? 1 : 0 },
+    history: { ...history, readerChanges: history.live ? 1 : 0 },
   };
 }
 
@@ -136,9 +149,10 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 const noop = (): void => undefined;
 
-/** The same page in both states; only the fixture's one fact differs. */
+/** The same page in every state; only the fixture's two facts differ. */
 function page(current: StateSnapshot): string {
   const live = historyLive(current);
+  const chronicle = historyStarted(current);
   return renderToStaticMarkup(
     <>
       <Opening
@@ -158,8 +172,11 @@ function page(current: StateSnapshot): string {
         view="book"
         onViewChange={noop}
         live={live}
+        chronicle={chronicle}
       />
-      <Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} live={live} />
+      {chronicle ? (
+        <Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} started={chronicle} live={live} />
+      ) : null}
       <ProvenancePanel
         view={provenanceView({ word: 'пустую', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: CHAIN, at: null, history: 'ready', live })}
         anchor={null}
@@ -182,14 +199,19 @@ function page(current: StateSnapshot): string {
         onBlockProvenance={noop}
         history={live}
       />
-      <EndMatter imprint={imprint} lastRevisionAt="2026-10-25T09:20:00Z" signedIn={false} onOpenChronicle={noop} live={live} />
+      <EndMatter
+        imprint={imprint}
+        lastRevisionAt="2026-10-25T09:20:00Z"
+        signedIn={false}
+        live={live}
+      />
       <Discussion depth={0} changes={[]} comments={[]} live={live} />
     </>,
   );
 }
 
-describe('with no reader change the history surfaces are not in the markup (AC1, AC6)', () => {
-  const html = page(state(false));
+describe('on an empty log the history surfaces are not in the markup (AC1, AC6)', () => {
+  const html = page(state({ live: false, started: false }));
 
   it('renders none of the chronicle, cascade, provenance, apparatus, authors or discussion', () => {
     for (const gone of [
@@ -203,15 +225,14 @@ describe('with no reader change the history surfaces are not in the markup (AC1,
       '<dt>след</dt>',
       'переписан',
       'class="chain',
-      'class="page authors"',
+      'class="page authors',
       'Авторы',
-      'как менялись доли',
       'class="page talks"',
       'обсуждение',
       'class="views',
       'focus-wings',
     ]) {
-      expect(html, `with 0 reader changes the page must not render «${gone}»`).not.toContain(gone);
+      expect(html, `with an empty log the page must not render «${gone}»`).not.toContain(gone);
     }
   });
 
@@ -232,8 +253,41 @@ describe('with no reader change the history surfaces are not in the markup (AC1,
   });
 });
 
+describe('a begun book has a chronicle with one starting record (BOOK-56)', () => {
+  const current = state({ live: false, started: true });
+  const html = page(current);
+
+  it('renders the chronicle and its way in, and keeps every other history surface off', () => {
+    expect(html).toContain('class="chronicle');
+    expect(html).toContain('class="views');
+    for (const gone of ['class="ribbon', 'волна', 'class="prov-rows"', '<dt>след</dt>', 'class="chain', 'class="page authors', 'class="page talks', 'focus-wings']) {
+      expect(html, `before the first reader change the page must not render «${gone}»`).not.toContain(gone);
+    }
+  });
+
+  it('answers with one «начало книги» row and one quiet line, and nothing to scrub', async () => {
+    // The row is the server's answer, so this state is mounted: the chronicle asks for the
+    // timeline on mount and prints what came back.
+    const container = mountChronicle();
+    await settle();
+
+    const rows = container.querySelectorAll('li.chr-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toBe(`начало книги${`21.10.2026${MID}09:12`}`);
+    expect(container.textContent).toContain('перематывать пока нечего: книга ещё не правила читателем');
+    // Not a change dressed as one: no number, no author, no card, no moment to move.
+    expect(container.querySelector('.chr-seq')?.textContent).toBe('начало книги');
+    expect(container.querySelector('.chr-change')).toBeNull();
+    expect(container.querySelector('.chr-alias')).toBeNull();
+    expect(container.querySelector('.scrub')).toBeNull();
+    expect(container.querySelector('.chr-ends')).toBeNull();
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+    expect(container.textContent).not.toContain('пока ничего не записано');
+  });
+});
+
 describe('the first reader change turns every surface on (AC3)', () => {
-  const html = page(state(true));
+  const html = page(state({ live: true, started: true }));
 
   it('renders the chronicle, the cascade, the provenance rows and the revision apparatus', () => {
     expect(html).toContain('class="chronicle');
@@ -247,12 +301,59 @@ describe('the first reader change turns every surface on (AC3)', () => {
     expect(html).toContain('class="chain');
   });
 
-  it('renders the authors list, the end-matter link and the discussion', () => {
+  it('renders the authors list and the discussion, and no second door into the chronicle', () => {
     // BOOK-77 (HEAD side) appends `ym-hide-content`, so the class string is only a prefix.
     expect(html).toContain('class="page authors');
     expect(html).toContain('Авторы');
-    expect(html).toContain('как менялись доли');
+    // The view switch at the top of the page is the only way into the chronicle; the end
+    // matter's «как менялись доли» button sat behind the `live` gate and could never open a
+    // begun book's chronicle, so it is gone.
+    expect(html).not.toContain('как менялись доли');
     expect(html).toContain('class="page talks');
     expect(html).toContain('class="views');
   });
+});
+
+/** `readJson` needs only `ok` and `json()` on the happy path; no jsdom `fetch`/`Response`. */
+function answer(body: unknown): Response {
+  return { ok: true, status: 200, statusText: 'OK', json: async () => body } as unknown as Response;
+}
+
+let root: Root | null = null;
+
+/** The chronicle alone, mounted: its one starting record is the log's own first moment. */
+function mountChronicle(): HTMLElement {
+  vi.stubGlobal('fetch', () =>
+    Promise.resolve(
+      answer({
+        lastHseq: 7,
+        lastAt: '2026-10-21T06:12:00Z',
+        firstAt: '2026-10-21T06:12:00Z',
+        at: '2026-10-25T12:00:00Z',
+        items: [],
+        nextBefore: null,
+      }),
+    ),
+  );
+  const container = document.body.appendChild(document.createElement('div'));
+  root = createRoot(container);
+  act(() => {
+    root?.render(<Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} started live={false} />);
+  });
+  return container;
+}
+
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+afterEach(async () => {
+  if (root !== null) await act(async () => root?.unmount());
+  root = null;
+  document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });

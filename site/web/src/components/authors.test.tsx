@@ -39,8 +39,7 @@ describe('the end matter (§6C.5)', () => {
         authors={measured}
         imprint={imprint}
         lastRevisionAt="2026-10-25T09:20:00Z"
-        onOpenChronicle={() => undefined}
-      live />,
+        live />,
     );
     expect(html).toContain('Авторы');
     expect(html).toContain('доля в окончательном тексте');
@@ -62,8 +61,7 @@ describe('the end matter (§6C.5)', () => {
         authors={measured}
         imprint={imprint}
         lastRevisionAt="2026-10-25T09:20:00Z"
-        onOpenChronicle={() => undefined}
-      live />,
+        live />,
     );
     expect(html).toContain('© Филипп Семиров');
     expect(html).toContain('последняя правка');
@@ -74,16 +72,22 @@ describe('the end matter (§6C.5)', () => {
     expect(html).not.toContain('© Филипп Семиров, 20');
   });
 
-  it('offers the erosion curve, not just a number', () => {
+  it('keeps no second door to the chronicle: the view switch at the top is the only one', () => {
+    // The end matter showed «как менялись доли» only behind the authors list, which is itself
+    // gated on `live` — so the door could never open a begun book's chronicle. It is gone; the
+    // shares and the joint series are the only things this block offers.
     const html = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live />,
     );
-    expect(html).toContain('как менялись доли');
+    expect(html).toContain('class="authors-list"');
+    expect(html).not.toContain('как менялись доли');
+    expect(html).not.toContain('authors-link');
+    expect(html.match(/<button/gu)).toBeNull();
   });
 
   it('shows one author and no invented share while the measurement is in flight', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={null} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
+      <Authors authors={null} imprint={imprint} lastRevisionAt={null} live />,
     );
     expect(html).toContain('Филипп Семиров');
     expect(html).toContain('—');
@@ -107,17 +111,16 @@ describe('the end matter (§6C.5)', () => {
         authors={measured}
         imprint={imprint}
         lastRevisionAt={null}
-        onOpenChronicle={() => undefined}
         ownTrace={ownTrace}
         onToggleHidden={() => undefined}
-      live />,
+        live />,
     );
     expect(signedIn).toContain('ваш след');
     expect(signedIn).toContain('пережила 4 ревизии, сейчас 0,4 %');
     expect(signedIn).toContain('скрыть из списка авторов');
 
     const guest = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live />,
     );
     expect(guest).not.toContain('ваш след');
   });
@@ -130,7 +133,7 @@ describe('the end matter (§6C.5)', () => {
       sum: 1,
     };
     const html = renderToStaticMarkup(
-      <Authors authors={empty} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live />,
+      <Authors authors={empty} imprint={imprint} lastRevisionAt={null} live />,
     );
     expect(html).toContain('100,0 %');
     expect(html).toContain('пока весь текст написан автором');
@@ -165,7 +168,6 @@ describe('the reader’s own decisions outlive the history gate (BOOK-56)', () =
         authors={measured}
         imprint={imprint}
         lastRevisionAt="2026-10-25T09:20:00Z"
-        onOpenChronicle={() => undefined}
         decisions={decisions}
         live={false}
       />,
@@ -182,7 +184,7 @@ describe('the reader’s own decisions outlive the history gate (BOOK-56)', () =
 
   it('is not on the page at all when history is off and the reader has no decisions', () => {
     const html = renderToStaticMarkup(
-      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} onOpenChronicle={() => undefined} live={false} />,
+      <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} />,
     );
     expect(html).toBe('');
   });
@@ -193,7 +195,6 @@ describe('the reader’s own decisions outlive the history gate (BOOK-56)', () =
         authors={measured}
         imprint={imprint}
         lastRevisionAt={null}
-        onOpenChronicle={() => undefined}
         decisions={decisions}
         live
       />,
@@ -224,7 +225,6 @@ describe('«Авторы» while the shares are counted', () => {
         {...(props.authorsFailed === true ? { authorsFailed: true } : {})}
         imprint={imprint}
         lastRevisionAt={null}
-        onOpenChronicle={() => undefined}
       />,
     );
   }
@@ -262,7 +262,6 @@ describe('«Авторы» while the shares are counted', () => {
         live
         imprint={imprint}
         lastRevisionAt={null}
-        onOpenChronicle={() => undefined}
       />,
     );
     expect(html).toContain('aria-busy="true"');
@@ -276,7 +275,6 @@ describe('«Авторы» while the shares are counted', () => {
         live
         imprint={imprint}
         lastRevisionAt={null}
-        onOpenChronicle={() => undefined}
       />,
     );
     expect(settled).not.toContain('aria-busy');

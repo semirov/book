@@ -168,7 +168,7 @@ function surfaces(): string {
       <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} live />,
     ),
     renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
-    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} live />),
+    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />),
     renderToStaticMarkup(
       <ParagraphChain
         chain={null}

@@ -191,22 +191,42 @@ describe('stateFingerprint', () => {
   it('changes when the first reader change turns history on (BOOK-56)', () => {
     expect(stateFingerprint([], undefined, '', [], 1)).not.toBe(stateFingerprint([], undefined, '', [], 0));
   });
+
+  it('changes when the log’s first record starts the chronicle (BOOK-56)', () => {
+    // Same facts, same reader count: only the book's own beginning differs.
+    expect(stateFingerprint([], undefined, '', [], 0, true)).not.toBe(stateFingerprint([], undefined, '', [], 0));
+    expect(stateFingerprint([], undefined, '', [], 0, false)).toBe(stateFingerprint([], undefined, '', [], 0));
+  });
 });
 
 describe('history (BOOK-56)', () => {
-  it('is off on an empty log, and says the count it was derived from', () => {
-    expect(derive([]).history).toEqual({ live: false, readerChanges: 0 });
+  it('is off on an empty log, which has not even begun', () => {
+    expect(derive([]).history).toEqual({ live: false, readerChanges: 0, started: false });
   });
 
   it('turns on with one reader change, and only with a positive count', () => {
     expect(deriveState({ facts: [], now, version: 1, readerChanges: 1 }).history).toEqual({
       live: true,
       readerChanges: 1,
+      started: true,
     });
     expect(deriveState({ facts: [], now, version: 1, readerChanges: -3 }).history).toEqual({
       live: false,
       readerChanges: 0,
+      started: false,
     });
+  });
+
+  it('starts the chronicle from the log’s first record, before any reader change', () => {
+    expect(deriveState({ facts: [], now, version: 1, started: true }).history).toEqual({
+      live: false,
+      readerChanges: 0,
+      started: true,
+    });
+    // A record stays a record: a reader change starts the chronicle even if the caller said
+    // nothing about the log.
+    expect(deriveState({ facts: [], now, version: 1, readerChanges: 2 }).history.started).toBe(true);
+    expect(deriveState({ facts: [], now, version: 1, started: false }).history.started).toBe(false);
   });
 });
 

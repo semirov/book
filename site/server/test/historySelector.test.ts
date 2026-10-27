@@ -103,15 +103,28 @@ describe('the history fact has one reader in the SPA (BOOK-56)', () => {
     expect(defaultsOn.test('let alive = true;')).toBe(false);
   });
 
-  it('calls the selector once — in `App` — and passes its boolean down', () => {
+  it('calls the selectors once — in `App` — and passes their facts down', () => {
     expect(files.filter((file) => file.text.includes('historyLive(')).map((file) => file.path).sort()).toEqual([
+      'App.tsx',
+      'lib/historyState.ts',
+    ]);
+    expect(files.filter((file) => file.text.includes('historyStarted(')).map((file) => file.path).sort()).toEqual([
       'App.tsx',
       'lib/historyState.ts',
     ]);
     const app = files.find((file) => file.path === 'App.tsx')?.text ?? '';
     expect(app.match(/historyLive\(state\)/gu)).toHaveLength(1);
-    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(8);
+    expect(app.match(/historyStarted\(state\)/gu)).toHaveLength(1);
+    // The chronicle's presence follows `started`; every history surface inside it follows
+    // `live`. Both facts reach the page from this one place.
+    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(7);
+    expect(app.match(/live=\{chronicle\}/gu)).toHaveLength(1);
+    expect(app.match(/started=\{chronicle\}/gu)).toHaveLength(1);
+    // The chronicle's own fact reaches two places: the page's view switch and the surface
+    // itself. The end matter gets no `chronicle` prop — its door sat behind `live` and could
+    // never open, while the switch is reachable from a begun book.
+    expect(app.match(/chronicle=\{chronicle\}/gu)).toHaveLength(1);
     expect(app).toContain('history={history}');
-    expect(app).toContain("view === 'chronicle' && history");
+    expect(app).toContain("view === 'chronicle' && chronicle");
   });
 });

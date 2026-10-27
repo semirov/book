@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
 import { formatChars } from '../lib/format.ts';
-import { compareToNow } from '../lib/history.ts';
+import { compareToNow, momentText } from '../lib/history.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
@@ -58,11 +58,17 @@ export type ChronicleProps = {
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
   onOpenChange: (changeId: string) => void;
-  /** BOOK-56: `state.history.live`; without a reader change there is no chronicle at all. */
+  /**
+   * BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
+   * exists from the book's start. Its one starting row is not a history surface and needs
+   * no reader change.
+   */
+  started: boolean;
+  /** BOOK-56: `state.history.live`; without a reader change the record list stays empty and the chain off. */
   live: boolean;
 };
 
-export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -210,9 +216,9 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: Chron
     load(current);
   }, [current, load]);
 
-  // After every hook: the flag may turn on with the first reader change while this mount
-  // stays alive, so the hook order must not depend on it.
-  if (!live) return null;
+  // After every hook: the surface may wake while this mount stays alive — the book's first
+  // record, then the first reader change — so the hook order must not depend on it.
+  if (!started) return null;
 
   // The readout keeps its date through a load and a failure: it comes from the log, not
   // from the request. Only the past block below changes its shape.
@@ -315,16 +321,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: Chron
           </>
         )
       ) : (
-        <>
-          <ol className="chr-timeline">
-            {items.map((record) => (
-              // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
-              // lands for that change, and a remount would drop keyboard focus on a live tick.
-              <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
-            ))}
-          </ol>
-          {items.length === 0 && !failed ? <p className="chr-empty">пока ничего не записано</p> : null}
-        </>
+        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} />
       )}
       {failed ? (
         <div className="state-line">
@@ -348,6 +345,58 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, live }: Chron
         />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The record list under the head (BOOK-65, BOOK-56).
+ *
+ * Three states, and each one says only what the answer holds. Records: one row per change.
+ * A begun book with no reader change: the log's first moment is the one record, «начало
+ * книги», and one quiet line says there is nothing to rewind yet. An empty log: the record
+ * is empty, and that is a fact about an answer, never printed after a failed read.
+ */
+export function ChronicleRecords({
+  timeline,
+  failed,
+  onOpenChange,
+}: {
+  timeline: HistoryTimelineDto;
+  /** The last read failed: an absence is not claimed on top of it. */
+  failed: boolean;
+  onOpenChange: (changeId: string) => void;
+}) {
+  if (timeline.items.length > 0) {
+    return (
+      <ol className="chr-timeline">
+        {timeline.items.map((record) => (
+          // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
+          // lands for that change, and a remount would drop keyboard focus on a live tick.
+          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
+        ))}
+      </ol>
+    );
+  }
+  if (timeline.firstAt === null) {
+    return failed ? null : <p className="chr-empty">пока ничего не записано</p>;
+  }
+  // An answer that predates the field carries no `firstAt` at all: the log's first moment is
+  // unknown, so no row may claim a date for it. The quiet line needs no date and stands alone.
+  const firstAt = timeline.firstAt;
+  return (
+    <>
+      <p className="chr-empty">перематывать пока нечего: книга ещё не правила читателем</p>
+      {firstAt ? (
+        // The starting record is not a change and must not look like one (BOOK-65): no number,
+        // no author, no card — and nothing to scrub, so the row is not a control.
+        <ol className="chr-timeline">
+          <li className="chr-row">
+            <span className="chr-seq">начало книги</span>
+            <span className="chr-date">{momentText(firstAt)}</span>
+          </li>
+        </ol>
+      ) : null}
+    </>
   );
 }
 

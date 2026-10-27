@@ -274,20 +274,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
-.authors-link {
-  margin-top: 16px;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  cursor: pointer;
-}
 .authors-copyright {
   margin-top: 22px;
 }

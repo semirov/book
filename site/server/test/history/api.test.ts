@@ -51,6 +51,7 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     const body = response.json() as {
       lastHseq: number;
       lastAt: string | null;
+      firstAt: string | null;
       at: string;
       items: Array<{ hseq: number; seq: number; chapter: number; alias: string }>;
       nextBefore: number | null;
@@ -58,6 +59,8 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(body.lastHseq).toBe(lastHseq(local.db));
     // The rest position is the log's own last moment — the newest change's filing here.
     expect(body.lastAt).toBe('2026-10-25T09:10:00Z');
+    // …and the starting record is the log's first moment: the older change's filing (BOOK-56).
+    expect(body.firstAt).toBe('2026-10-25T09:00:00Z');
     expect(body.items).toHaveLength(2);
     // Newest first, one row per change — never one per event.
     expect(body.items.map((item) => item.seq)).toEqual([2, 1]);
