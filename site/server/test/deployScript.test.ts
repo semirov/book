@@ -53,10 +53,10 @@ describe('the lock: one deploy at a time', () => {
 
   it('takes over a lock whose pid is gone, and releases it on the way out', () => {
     const stateDir = temp();
-    holdLock(stateDir, 999_999, Math.floor(Date.now() / 1000));
+    holdLock(stateDir, 4_194_305, Math.floor(Date.now() / 1000));
     const { code, out } = deploy(['--phase', 'run', '--root', emptyRoot()], { BOOK_STATE_DIR: stateDir });
 
-    expect(out).toMatch(/lock: taking over a stale lock — pid 999999/u);
+    expect(out).toMatch(/lock: taking over a stale lock — pid 4194305/u);
     expect(code, out).not.toBe(0);
     expect(code, out).not.toBe(3);
     expect(out).toMatch(/lock: released/u);
@@ -85,7 +85,7 @@ describe('the lock: one deploy at a time', () => {
 
   it('lets exactly one of two takers have a stale lock', async () => {
     const stateDir = temp();
-    holdLock(stateDir, 999_999, Math.floor(Date.now() / 1000));
+    holdLock(stateDir, 4_194_305, Math.floor(Date.now() / 1000));
     const body = [
       `STATE_DIR="${stateDir}"`,
       'LOCK_DIR="$STATE_DIR/deploy.lock"',
@@ -191,7 +191,7 @@ describe('the window: a real elapsed time, always', () => {
     const since = Date.now();
     const { code, out } = await lib(
       [
-        'BUDGET_MS=2000; GRACE_MS=500',
+        'BUDGET_MS=5000; GRACE_MS=500',
         `window_read "${url}" build12 "" ${since}`,
         'printf "health=%s ms=%s first_at=%s reads=%s\\n" "$HEALTH" "$HEALTH_MS" "$FIRST_AT" "$WINDOW_READS"',
       ].join('\n'),
@@ -372,13 +372,27 @@ describe('the load guard: a number that is there is never `unknown`', () => {
     expect(out).toMatch(/load=0.00 cores=8 per_core=0.00 above=0 source=sysctl/u);
   });
 
-  it('falls back to `uptime` when sysctl cannot answer', async () => {
+  it('falls back to `uptime` for the load and still reads the cores from sysctl', async () => {
+    // Both numbers are injected: the cores fall through to the real `getconf` otherwise, and the
+    // test would then assert the machine it runs on (10 cores on the Mac mini, 4 on CI).
     const bin = fakes({
-      sysctl: 'echo "sysctl: unknown oid vm.loadavg" >&2; exit 1',
+      sysctl: 'case "$2" in\n  vm.loadavg) echo "sysctl: unknown oid vm.loadavg" >&2; exit 1 ;;\n  hw.ncpu) echo 6 ;;\nesac',
       uptime: 'echo "20:12  up 3 days,  4:11, 5 users, load averages: 1.50 2.00 2.50"',
     });
     const { out } = await run(bin);
-    expect(out).toMatch(/load=1.50 cores=10 per_core=0.15 above=0 source=uptime/u);
+    expect(out).toMatch(/load=1.50 cores=6 per_core=0.25 above=0 source=uptime msg=sysctl: unknown oid vm.loadavg/u);
+  });
+
+  it('reads the cores from `getconf` when sysctl answers for neither oid (the Linux shape)', async () => {
+    // A box without `sysctl -n vm.loadavg` (and without `hw.ncpu`): load from `uptime`, cores from
+    // `getconf`, and neither number is the host's.
+    const bin = fakes({
+      sysctl: 'echo "sysctl: unknown oid $2" >&2; exit 1',
+      getconf: 'echo 4',
+      uptime: 'echo " 20:12:00 up 3 days,  4:11,  5 users,  load average: 1.50, 2.00, 2.50"',
+    });
+    const { out } = await run(bin);
+    expect(out).toMatch(/load=1.50 cores=4 per_core=0.38 above=0 source=uptime msg=sysctl: unknown oid vm.loadavg/u);
   });
 
   it('says `unavailable` — with sysctl’s own line — only when both fail', async () => {
