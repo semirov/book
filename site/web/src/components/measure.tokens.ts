@@ -4,13 +4,33 @@
  * 1. `--column` and `--measure` have one home each (`tokens.css`), at the values the design
  *    memo fixes, and the retired `--shell` is gone for good.
  * 2. `var(--column)` is the box of `.page` (and of `.ribbon` / `.noscript`, the two boxes that
- *    are the column without being a `.page` inside it), and only as a `max-width`.
+ *    are the column without being a `.page` inside it), only as a `max-width` — plus one
+ *    position, the running folio's right margin, which places a box against the frame and sizes
+ *    nothing with it (`FRAME_READERS`).
  */
 
 import { squash, stating, where, TOKENS, type Rule } from './measure.css.ts';
 
-/** The three boxes that are the column, and the only readers of `var(--column)`. */
+/** The three boxes that are the column, and the only readers of `var(--column)` as a box. */
 export const COLUMN_SELECTORS = ['.page', '.ribbon', '.noscript'] as const;
+
+/** A frame reader may place its box against the column; it may never size a box with it. */
+type FramePosition = 'inset' | 'inset-inline' | 'inset-inline-start' | 'inset-inline-end';
+
+/**
+ * The one reader of the frame that is not a box (BOOK-89): the running folio stands in the right
+ * margin, flush with the frame's inner right edge, and states no width of its own — it is
+ * `position: fixed` with nothing in the text column. Its offset is the frame's outer arithmetic,
+ * so it names `var(--column)`; a `width`/`max-width` from the same token is still the bug check 2
+ * is for. A second row is a new decision, like one in `OVERLAYS`.
+ */
+export const FRAME_READERS: ReadonlyArray<{ selector: string; property: FramePosition; why: string }> = [
+  {
+    selector: '.folio',
+    property: 'inset-inline-end',
+    why: 'the number sits in the margin between the text and the frame’s edge; a size here would be a box',
+  },
+];
 
 const COLUMN_VALUE = 'var(--column)';
 
@@ -69,14 +89,17 @@ export function tokenProblems(rules: Rule[]): string[] {
   return problems;
 }
 
-/** 2 — `var(--column)` is the box of the column, and only as a `max-width`. */
+/** 2 — `var(--column)` is the box of the column, only as a `max-width`; one position may read it. */
 export function columnProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
+  const exactly = (rule: Rule, selector: string): boolean =>
+    rule.parts.length === 1 && squash(rule.parts[0] ?? '') === squash(selector);
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
       if (!value.includes(COLUMN_VALUE)) continue;
-      const named = rule.parts.length === 1 && (COLUMN_SELECTORS as readonly string[]).includes(rule.parts[0] ?? '');
-      if (property !== 'max-width' || !named) {
+      const box = property === 'max-width' && COLUMN_SELECTORS.some((selector) => exactly(rule, selector));
+      const reader = FRAME_READERS.find((entry) => entry.property === property && exactly(rule, entry.selector));
+      if (!box && reader === undefined) {
         problems.push(
           `${where(rule, property, value)} — var(--column) is the box of .page (and of .ribbon / .noscript, the two boxes that are the column without being a .page inside it), and only as a max-width`,
         );
@@ -85,12 +108,20 @@ export function columnProblems(rules: Rule[]): string[] {
   }
   for (const selector of COLUMN_SELECTORS) {
     const found = rules.some(
-      (rule) =>
-        rule.parts.length === 1 &&
-        squash(rule.parts[0] ?? '') === squash(selector) &&
-        squash(rule.declarations.get('max-width') ?? '') === COLUMN_VALUE,
+      (rule) => exactly(rule, selector) && squash(rule.declarations.get('max-width') ?? '') === COLUMN_VALUE,
     );
     if (!found) problems.push(`${selector} does not state its box — the column is var(--column)`);
+  }
+  // An exception nobody holds is a rule nobody holds: a stale row must fail too.
+  for (const reader of FRAME_READERS) {
+    const held = rules.some(
+      (rule) => exactly(rule, reader.selector) && (rule.declarations.get(reader.property) ?? '').includes(COLUMN_VALUE),
+    );
+    if (!held) {
+      problems.push(
+        `${reader.selector} { ${reader.property} } does not read var(--column) — a stale frame-reader exception (${reader.why})`,
+      );
+    }
   }
   return problems;
 }

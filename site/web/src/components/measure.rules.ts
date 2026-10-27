@@ -9,7 +9,8 @@
  * The defect this is built for is a class, not a number: a later sheet stating a width of its
  * own (`.page.sheet { max-width: … }`, `.legal { max-width: calc(measure + gutters);
  * margin: 0 auto }`). Rules are read as text and checked for: the two tokens and their homes
- * (1, and `--shell` gone for good); `var(--column)` as the box of the column only (2); every
+ * (1, and `--shell` gone for good); `var(--column)` as the box of the column only, plus the
+ * folio's one position in the margin (2); every
  * other `max-width` being the prose measure, a copy cap or a listed overlay, and no register
  * stating a `width` of its own (3); the measure never sizing a non-prose box and the old text
  * box `calc(measure + 2 gutters)` surviving only in `.chain` (4); no self-centring, one

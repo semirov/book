@@ -112,6 +112,22 @@ describe('the guard fires on every class of violation it names', () => {
     expect(alias.some((problem) => problem.includes('.page.sheet { max-width: var(--shell) }'))).toBe(true);
   });
 
+  it('reads the frame as a position on the folio, and never as a size', () => {
+    // BOOK-89's running folio is the one reader of the frame that is not a box: its right margin
+    // is the frame's inner right edge. The real tree holds it (the seed-free run above), and the
+    // token is still a size nowhere else.
+    const sized = layoutProblems(seeded('../styles/live.css', '.folio { width: var(--column); }'));
+    expect(sized.some((problem) => problem.includes('.folio { width: var(--column) } — var(--column) is the box of .page'))).toBe(true);
+
+    // Another selector may not borrow the permission: a position on it is the same second frame.
+    const borrowed = layoutProblems(seeded('../styles/live.css', '.seam { inset-inline-end: var(--column); }'));
+    expect(borrowed.some((problem) => problem.includes('.seam { inset-inline-end: var(--column) }'))).toBe(true);
+
+    // The exception is held by the tree, not by the comment: drop the read and the guard says so.
+    const stale = layoutProblems(replaced('../styles/live.css', '(100% - var(--column)) / 2', '0px'));
+    expect(stale.some((problem) => problem.includes('a stale frame-reader exception'))).toBe(true);
+  });
+
   it('a register that states its own width, from a later sheet or as a literal', () => {
     // The exact BOOK-88 regression: a later sheet re-widening a register past `.page`, which
     // is what `.page.sheet` did (it is inert now, so only a seeded rule can bring it back).

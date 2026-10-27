@@ -42,7 +42,7 @@ export const CHAPTER_CHARS = {
 
 /**
  * One page of prose (BOOK-89): 67 characters per line × 27 lines at PT Serif 18/30.24 in the
- * 540px measure ≈ 1800 — a normal A5 page. The page is a projection of the text, never a
+ * 600px measure ≈ 1800 — a normal A5 page. The page is a projection of the text, never a
  * stored field: `shared/src/pages.ts` turns it into chapter start pages, the TOC and the
  * reader's folio read those numbers, and no other module owns a second count.
  */
