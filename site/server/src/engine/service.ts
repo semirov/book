@@ -40,7 +40,7 @@ import {
   safeJson,
   sameSequence,
 } from './helpers.ts';
-import { beatLease, liveLease, releaseLease } from './leases.ts';
+import { beatLease, beatOpenSteps, openStepForClose, releaseLease } from './leases.ts';
 import { dailyTokens } from './draft.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
@@ -93,12 +93,7 @@ export function createEngine(deps: EngineDeps) {
     return step;
   };
 
-  const leaseStep = (leaseId: string): { lease: store.LeaseRow; step: store.StepRow } => {
-    const lease = liveLease(deps, leaseId);
-    const step = freshStep(lease.step_id);
-    if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is already closed`);
-    return { lease, step };
-  };
+  const leaseStep = (leaseId: string) => openStepForClose(deps, leaseId);
 
   const assign = (step: store.StepRow, leaseId: string): WriterAssignment =>
     writerAssignment(deps, step, leaseId, changeForStep(db, step)?.id ?? null);
@@ -215,7 +210,7 @@ export function createEngine(deps: EngineDeps) {
     options: { model?: string; tokensIn?: number; tokensOut?: number; now?: number },
   ): DoneResult {
     const at = options.now ?? deps.clock.now();
-    const { step } = leaseStep(leaseId);
+    const { lease, step, expired } = leaseStep(leaseId);
     if (step.landed_at === null) {
       refuse('NOT_LANDED', 409, 'a step closes on a landed file — call land first (§6A.11)');
     }
@@ -243,6 +238,7 @@ export function createEngine(deps: EngineDeps) {
             tokensOut: options.tokensOut ?? 0,
             escalation: 'escalated:origin',
             changeReason: 'починка требует главы позади волны — нужно решение',
+            expiredLeaseId: expired ? lease.id : null,
           },
           at,
         );
@@ -321,6 +317,7 @@ export function createEngine(deps: EngineDeps) {
         changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
         changeReason: outcome === 'escalated' ? 'починка вышла за границы правки — нужно решение' : null,
         escalation,
+        expiredLeaseId: expired ? lease.id : null,
       },
       at,
     );
@@ -362,7 +359,7 @@ export function createEngine(deps: EngineDeps) {
 
   function escalate(leaseId: string, because: string, options: { now?: number } = {}): DoneResult {
     const at = options.now ?? deps.clock.now();
-    const { lease, step } = leaseStep(leaseId);
+    const { lease, step, expired } = leaseStep(leaseId);
     const reason = because.toLowerCase();
     const outcome: CascadeOutcome = reason.includes('budget')
       ? 'escalated:budget'
@@ -387,10 +384,10 @@ export function createEngine(deps: EngineDeps) {
         tokensOut: 0,
         escalation: outcome,
         changeReason: because.slice(0, REASON_MAX_CHARS),
+        expiredLeaseId: expired ? lease.id : null,
       },
       at,
     );
-    releaseLease(db, lease.id, 'escalated', at);
     return { stepId: step.step_id, outcome: 'escalated', cascadeId: result.cascadeId, changeStatus: 'escalated' };
   }
 
@@ -474,6 +471,8 @@ export function createEngine(deps: EngineDeps) {
     store.setMeta(db, 'engine.status', status);
     const lane = store.readLane(db);
     if (lane.holder) store.heartbeatLaneRow(db, lane.holder, iso(at));
+    // BOOK-34: the engine beats the leases of its open steps itself (bounded by the step wall).
+    beatOpenSteps(deps, at);
   }
 
   return {

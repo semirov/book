@@ -131,6 +131,14 @@ const schema = z.object({
   gateCycles: z.coerce.number().int().min(1).default(3),
   gateTtlMs: z.coerce.number().int().min(1).default(300_000),
   leaseTtlMs: z.coerce.number().int().min(1).default(120_000),
+  /**
+   * BOOK-34 — the step wall: how long one step may stay open, measured from `steps.at`,
+   * the column that is the step's opening (there is no `opened_at` on `steps`).
+   * The engine beats a step's own lease (a real 20 000–30 000-character pass plus both gates
+   * outlives `leaseTtlMs`), so this wall is the only bound on a step's growth: past it the
+   * reaper escalates the step and releases its lease. 45 min covers a slow model with room.
+   */
+  stepWallMs: z.coerce.number().int().min(1).default(2_700_000),
   /** A lane whose holder stopped beating is reclaimed after this long (§6A.3). */
   laneTtlMs: z.coerce.number().int().min(1).default(90_000),
   reaperMs: z.coerce.number().int().min(100).default(15_000),
@@ -184,6 +192,18 @@ const schema = z.object({
       message:
         `BUDGET_MAX_CHAPTERS must be at least 2 × BUDGET_MAX_WAVE (${String(2 * config.budgetMaxWave)}) ` +
         'so the chapter bound cannot bind before the wave bound',
+    });
+  }
+  // BOOK-34: the step wall is a wall, not a hint. A wall below the lease TTL would escalate
+  // every step on the first tick while its lease is still fresh; equality is allowed (a wall
+  // exactly at the TTL), but the wall may never sit under the bound the engine beats by itself.
+  if (config.stepWallMs < config.leaseTtlMs) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['stepWallMs'],
+      message:
+        `STEP_WALL_MS must be at least LEASE_TTL_MS (${String(config.leaseTtlMs)}): ` +
+        'a step wall below the lease TTL would stop steps the engine is still beating',
     });
   }
 });
@@ -297,6 +317,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gateCycles: env.GATE_CYCLES,
     gateTtlMs: env.GATE_TTL_MS,
     leaseTtlMs: env.LEASE_TTL_MS,
+    stepWallMs: env.STEP_WALL_MS,
     laneTtlMs: env.LANE_TTL_MS,
     reaperMs: env.ENGINE_REAPER_MS,
     maxConcurrentSteps: env.ENGINE_MAX_CONCURRENT_STEPS,

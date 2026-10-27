@@ -21,6 +21,8 @@ describe('loadConfig', () => {
     expect(config.tz).toBe('Europe/Moscow');
     expect(config.maxWs).toBe(100);
     expect(config.leaseTtlMs).toBe(120_000);
+    // BOOK-34: the step wall is the only bound on a step's growth; 45 min, well above the TTL.
+    expect(config.stepWallMs).toBe(2_700_000);
     // audit m1: the proxy is one host, not a /24 that lets the LAN forge its address.
     expect(config.trustedProxies).toBe('127.0.0.1,::1,192.168.1.44/32');
     expect(config.readPerMinute).toBe(60);
@@ -70,6 +72,15 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ BUDGET_MAX_STEPS: '8' })).toThrow(
       /BUDGET_MAX_STEPS must be at least 2 × BUDGET_MAX_WAVE \+ 2 \(12\)/u,
     );
+  });
+
+  it('refuses a step wall below the lease TTL (BOOK-34)', () => {
+    // The engine beats a step's lease itself; a wall below the TTL would stop the step
+    // before its lease is even stale, so the wall may not sit under the TTL (equality is fine).
+    expect(() => loadConfig({ STEP_WALL_MS: '60000', LEASE_TTL_MS: '120000' })).toThrow(
+      /STEP_WALL_MS must be at least LEASE_TTL_MS \(120000\)/u,
+    );
+    expect(loadConfig({ STEP_WALL_MS: '120000', LEASE_TTL_MS: '120000' }).stepWallMs).toBe(120_000);
   });
 
   it('resolves a relative WEB_DIST against site/ (compose passes ./web/dist)', () => {

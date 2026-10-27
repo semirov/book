@@ -48,6 +48,15 @@ node bin/index.mjs show|rebuild                   # the derived index: paths, ha
 node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile
 ```
 
+Beats are automatic: the engine's own tick (`ENGINE_REAPER_MS`) refreshes the lease of every open step,
+so a real pass longer than `LEASE_TTL_MS` is normal and a session never has to keep its lease alive by
+hand. The **step wall** (`STEP_WALL_MS`, default 45 min from the step's opening) is the only bound: past
+it the reaper escalates the step, records `escalated:gate_timeout` with «шаг не закрылся за отведённое
+время — нужно решение» and releases the lease, so a dead session cannot hold a chapter past the wall.
+A close (`done`/`seen`/`escalate`) that arrives after the lease expired but before the wall is accepted
+and recorded as `expired-close`; `land`/`beat` still need a live lease, and a session whose step is now
+held by another live lease is refused `LEASE_HELD`.
+
 The engine's internal API needs a bearer token from `DATA_DIR/engine.token` (or `ENGINE_TOKEN_FILE`).
 It reads no model, writes no prose, and is never proxied by Caddy.
 

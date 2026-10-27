@@ -35,7 +35,7 @@ import {
   type CascadeStepFact,
   type CloseCopyKey,
 } from './cascade.ts';
-import { releaseLease } from './leases.ts';
+import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
@@ -345,6 +345,11 @@ export type CloseStepInput = {
   changeReason?: string | null;
   /** Why the step is escalated; also the cascade outcome when it belongs to one. */
   escalation?: CascadeOutcome | null;
+  /**
+   * BOOK-34: the id of a lease that had already expired when this close arrived — the release
+   * then reads `expired-close` and `step.closed` says so.
+   */
+  expiredLeaseId?: string | null;
 };
 
 export type CloseStepResult = {
@@ -366,7 +371,10 @@ export function closeStep(
   // F025: a step is never closed on top of a cascade rewrite of the ending (§6C.4).
   assertEndingFreeze(db);
 
-  const lease = store.liveLeaseForStep(db, step.step_id);
+  // BOOK-34: a close after expiry may name a lease the reaper already released as `expired`;
+  // attribution is then that lease — a *different* live lease means the step was taken over
+  // since the session last looked, and the close is refused (`LEASE_HELD`), not mis-booked.
+  const { lease, live } = leaseForClose(db, step.step_id, input.expiredLeaseId);
   const gateRows = store.listVerdicts(db, step.step_id);
   const ms = Math.max(0, now - Date.parse(step.at));
 
@@ -383,8 +391,10 @@ export function closeStep(
       lease_id: lease?.id ?? step.lease_id,
       session: lease?.session ?? step.session,
     });
-    if (lease) {
-      releaseLease(db, lease.id, input.outcome === 'escalated' ? 'escalated' : input.outcome === 'holds' ? 'holds' : 'done', now);
+    if (input.expiredLeaseId) {
+      releaseForExpiredClose(db, live, input.expiredLeaseId, now);
+    } else if (live) {
+      releaseLease(db, live.id, input.outcome === 'escalated' ? 'escalated' : input.outcome === 'holds' ? 'holds' : 'done', now);
     }
     store.deleteDispatches(db, step.step_id);
     // BOOK-7: a draft's first pass settles its chapter's premise from the text that now
@@ -409,6 +419,7 @@ export function closeStep(
           pass: step.pass,
           outcome: input.outcome,
           gates: gateRows.map((row) => ({ role: row.role, verdict: row.verdict })),
+          ...(input.expiredLeaseId ? { expiredClose: true } : {}),
         },
       },
       now,
