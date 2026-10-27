@@ -1,7 +1,7 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
-import { useState } from 'react';
 
 import { existingPremise, premiseAction, premiseRow } from '../lib/premise.ts';
+import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { FilingPanel } from './FilingPanel.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
@@ -33,13 +33,35 @@ export function EmptyChapter({
   viewer: ViewerDto;
   /** The first empty chapter in the flow: it owns the page's one explanation sentence. */
   firstEmpty: boolean;
-  onPosted?: (chapter: number) => void;
+  /** BOOK-111: the posted DTO reaches the page, which shows the row without a reload. */
+  onPosted?: (comment: CommentDto) => void;
 }) {
   const seam = useOpenSeam();
-  const [premiseCard, setPremiseCard] = useState<{ comment: CommentDto; rect: DOMRect } | null>(null);
+  /** BOOK-111: the page's one panel; this chapter's premise owns only its own slot in it. */
+  const filing = useOpenFiling();
+  const owner = `ch${entry.n}:premise`;
+  const panel =
+    filing !== null && filing.kind === 'filing' && filing.owner === owner && filing.comment !== null
+      ? { comment: filing.comment, rect: filing.rect }
+      : null;
   const premise = existingPremise(comments, entry.n);
   const row = premiseRow(entry, premise);
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
+
+  /**
+   * BOOK-111: one way into a filing that already exists. The premise row, and the strip's
+   * rows — including the one a duplicate refusal points at — open the same card, anchored on
+   * the element that was tapped, so closing it returns the reader there.
+   */
+  const openFiling = (comment: CommentDto, origin: HTMLElement): void => {
+    showFiling({
+      kind: 'filing',
+      owner,
+      comment,
+      origin,
+      rect: origin.getBoundingClientRect(),
+    });
+  };
 
   return (
     <>
@@ -50,7 +72,7 @@ export function EmptyChapter({
             // BOOK-33: a slot that already holds a premise opens THAT premise's card — a
             // second form would be refused by the server («у главы уже есть замысел»).
             if (premiseAction(premise).kind === 'card') {
-              if (premise !== null) setPremiseCard({ comment: premise, rect: origin.getBoundingClientRect() });
+              if (premise !== null) openFiling(premise, origin);
               return;
             }
             openSeam({
@@ -73,15 +95,15 @@ export function EmptyChapter({
           existingPremise={premise}
           composer={composer}
           viewer={viewer}
-          onPosted={(n) => onPosted?.(n)}
+          onPosted={(comment) => onPosted?.(comment)}
           onClose={closeSeam}
           onProvenance={() => undefined}
-          onOpenFiling={() => undefined}
+          onOpenFiling={openFiling}
           premiseHint={firstEmpty && open}
         />
       ) : null}
-      {premiseCard === null ? null : (
-        <FilingPanel comment={premiseCard.comment} anchor={premiseCard.rect} onClose={() => setPremiseCard(null)} />
+      {panel === null ? null : (
+        <FilingPanel comment={panel.comment} anchor={panel.rect} onClose={hideFiling} />
       )}
     </>
   );

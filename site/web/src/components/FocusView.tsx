@@ -299,178 +299,172 @@ export function FocusView({ change, impact, missing, ribbon, maxWave, revisions,
   const typed = reveal !== null && revealComplete(reveal) && printable.length > 0;
 
   return (
-    <div
-      className="focus"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`прицел · правка ${change.seq}`}
-      ref={dialog}
-      tabIndex={-1}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
+    <FocusShell
+      dialog={dialog}
+      onClose={close}
+      label={`прицел · правка ${change.seq}`}
       onWheel={stopFollowing}
       onTouchMove={stopFollowing}
     >
-      <div className="focus-panel">
-        <div className="focus-bar">
-          <span className="focus-tag">прицел</span>
-          <span className="focus-n">правка {String(change.seq).padStart(3, '0')}</span>
-          <button className="focus-exit" type="button" onClick={close}>
-            выйти
-          </button>
-        </div>
-
-        <div className="focus-body">
-          <p className="focus-where">
-            глава {chapterLabel(chapter ?? change.chapter)} · изменённые абзацы
-            {!live || step === null ? '' : ` · ${formatTime(step.at)}`}
-          </p>
-
-          <section className="focus-stage" aria-label="лист правки">
-            <div className="focus-paper" aria-live="off">
-              <i className="focus-corner" aria-hidden="true" />
-              {blocks !== null && blocks.length > 0 ? (
-                blocks.map((block) =>
-                  block.op === 'removed' ? (
-                    <p className="focus-removed" key={block.id}>
-                      абзац убран
-                    </p>
-                  ) : (
-                    <p className="focus-p" key={block.id} data-block-id={block.id}>
-                      {reveal === null ? block.text : blockText(reveal, block.id, block.text)}
-                    </p>
-                  ),
-                )
-              ) : (
-                <p className="focus-sheet-note">{sheetCopy(notice, change.reason, loading, change.status)}</p>
-              )}
-              {printing ? <span className="focus-caret" aria-hidden="true" /> : null}
-            </div>
-            <i className="focus-corner is-ne" aria-hidden="true" />
-            <i className="focus-corner is-sw" aria-hidden="true" />
-            <i className="focus-corner is-se" aria-hidden="true" />
-          </section>
-
-          {change.relevance !== null && change.relevance.evidence.length > 0 && stage === 'stale' ? (
-            <ul className="focus-evidence">
-              {change.relevance.evidence.slice(0, 3).map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          ) : null}
-
-          <div className="focus-readout">
-            {waveLine === '' ? null : <span>{waveLine}</span>}
-            <span>{stageCopy(stage)}</span>
-          </div>
-
-          <FocusWings wings={wingPair} live={live} />
-          {live ? (
-            <FocusTrack from={scale.from} to={scale.to} origin={change.chapter} current={current} />
-          ) : null}
-
-          {/* BOOK-56: «сноска N», its stamp and the deed rows are the book’s past;
-              with history off they are absent, not hidden — the change’s sheet stays. */}
-          {live ? (
-            <section className="focus-note ym-hide-content" aria-label={footnoteCopy(change)}>
-              <header className="focus-note-h">
-                <span>{footnoteCopy(change)}</span>
-                <span className="focus-stamp stamp-state">{panelStamp(change)}</span>
-              </header>
-              <dl className="focus-rows">
-                <div>
-                  <dt>дело</dt>
-                  <dd className="focus-deed">{deed}</dd>
-                </div>
-                <div>
-                  <dt>основание</dt>
-                  <dd>{basisCopy(change)}</dd>
-                </div>
-                <div>
-                  <dt>что меняется</dt>
-                  <dd className="focus-intent">«{change.intent}»</dd>
-                </div>
-                <div>
-                  <dt>что внесло</dt>
-                  <dd>
-                    {change.steps.length === 0 ? (
-                      <span className="focus-quiet">{change.status === 'void' ? 'шагов нет' : 'формируется'}</span>
-                    ) : (
-                      <ol className="focus-steps">
-                        {change.steps.map((entry) => (
-                          <li key={`${entry.seq}-${entry.at}`}>
-                            {typeof entry.chapter === 'number' ? (
-                              <button
-                                type="button"
-                                className={entry.chapter === chapter ? 'is-on' : ''}
-                                onClick={() => pick(entry.chapter as number)}
-                              >
-                                <span aria-hidden="true">{wingGlyph(entry)}</span> {stepLabel(entry)}
-                              </button>
-                            ) : (
-                              <span>
-                                <span aria-hidden="true">{wingGlyph(entry)}</span> {stepLabel(entry)}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </dd>
-                </div>
-                <div>
-                  <dt>затронуто</dt>
-                  <dd>{touchedChaptersCopy(change, impact)}</dd>
-                </div>
-                <div>
-                  <dt>оценка</dt>
-                  <dd>
-                    {assessmentCopy(change, ribbon, bound, live)}
-                    {change.relevance === null || change.relevance.grade === 'fresh' ? null : (
-                      <span className="focus-quiet"> · {relevanceCopy(change.relevance.grade)}</span>
-                    )}
-                  </dd>
-                </div>
-                {cost === null ? null : (
-                  <div>
-                    <dt>цена</dt>
-                    <dd className="focus-cost">{cost}</dd>
-                  </div>
-                )}
-              </dl>
-              {change.reason === null ? null : <p className="focus-reason">{change.reason}</p>}
-            </section>
-          ) : null}
-        </div>
-
-        <div className="focus-actions">
-          {chapter === null ? null : (
-            <button type="button" className="focus-action" onClick={() => revealChapter(chapter)}>
-              к главе {chapter}
-            </button>
-          )}
-          <button
-            type="button"
-            className={`focus-action${following ? ' is-on' : ''}`}
-            aria-pressed={following}
-            onClick={() => {
-              setFollowing((held) => {
-                if (!held) setManual(null);
-                return !held;
-              });
-            }}
-          >
-            {following ? 'слежу' : 'следовать'}
-          </button>
-          {typed ? (
-            <button type="button" className="focus-action" onClick={replay}>
-              ещё раз
-            </button>
-          ) : null}
-        </div>
+      {/* The frame, its backdrop and its one explicit way out are `FocusShell`'s: a settled
+          change is the same dialog as the wait, with the change's own name on it. */}
+      <div className="focus-bar">
+        <span className="focus-tag">прицел</span>
+        <span className="focus-n">правка {String(change.seq).padStart(3, '0')}</span>
+        <button className="focus-exit" type="button" onClick={close}>
+          выйти
+        </button>
       </div>
-    </div>
+
+      <div className="focus-body">
+        <p className="focus-where">
+          глава {chapterLabel(chapter ?? change.chapter)} · изменённые абзацы
+          {!live || step === null ? '' : ` · ${formatTime(step.at)}`}
+        </p>
+
+        <section className="focus-stage" aria-label="лист правки">
+          <div className="focus-paper" aria-live="off">
+            <i className="focus-corner" aria-hidden="true" />
+            {blocks !== null && blocks.length > 0 ? (
+              blocks.map((block) =>
+                block.op === 'removed' ? (
+                  <p className="focus-removed" key={block.id}>
+                    абзац убран
+                  </p>
+                ) : (
+                  <p className="focus-p" key={block.id} data-block-id={block.id}>
+                    {reveal === null ? block.text : blockText(reveal, block.id, block.text)}
+                  </p>
+                ),
+              )
+            ) : (
+              <p className="focus-sheet-note">{sheetCopy(notice, change.reason, loading, change.status)}</p>
+            )}
+            {printing ? <span className="focus-caret" aria-hidden="true" /> : null}
+          </div>
+          <i className="focus-corner is-ne" aria-hidden="true" />
+          <i className="focus-corner is-sw" aria-hidden="true" />
+          <i className="focus-corner is-se" aria-hidden="true" />
+        </section>
+
+        {change.relevance !== null && change.relevance.evidence.length > 0 && stage === 'stale' ? (
+          <ul className="focus-evidence">
+            {change.relevance.evidence.slice(0, 3).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="focus-readout">
+          {waveLine === '' ? null : <span>{waveLine}</span>}
+          <span>{stageCopy(stage)}</span>
+        </div>
+
+        <FocusWings wings={wingPair} live={live} />
+        {live ? (
+          <FocusTrack from={scale.from} to={scale.to} origin={change.chapter} current={current} />
+        ) : null}
+
+        {/* BOOK-56: «сноска N», its stamp and the deed rows are the book’s past;
+            with history off they are absent, not hidden — the change’s sheet stays. */}
+        {live ? (
+          <section className="focus-note ym-hide-content" aria-label={footnoteCopy(change)}>
+            <header className="focus-note-h">
+              <span>{footnoteCopy(change)}</span>
+              <span className="focus-stamp stamp-state">{panelStamp(change)}</span>
+            </header>
+            <dl className="focus-rows">
+              <div>
+                <dt>дело</dt>
+                <dd className="focus-deed">{deed}</dd>
+              </div>
+              <div>
+                <dt>основание</dt>
+                <dd>{basisCopy(change)}</dd>
+              </div>
+              <div>
+                <dt>что меняется</dt>
+                <dd className="focus-intent">«{change.intent}»</dd>
+              </div>
+              <div>
+                <dt>что внесло</dt>
+                <dd>
+                  {change.steps.length === 0 ? (
+                    <span className="focus-quiet">{change.status === 'void' ? 'шагов нет' : 'формируется'}</span>
+                  ) : (
+                    <ol className="focus-steps">
+                      {change.steps.map((entry) => (
+                        <li key={`${entry.seq}-${entry.at}`}>
+                          {typeof entry.chapter === 'number' ? (
+                            <button
+                              type="button"
+                              className={entry.chapter === chapter ? 'is-on' : ''}
+                              onClick={() => pick(entry.chapter as number)}
+                            >
+                              <span aria-hidden="true">{wingGlyph(entry)}</span> {stepLabel(entry)}
+                            </button>
+                          ) : (
+                            <span>
+                              <span aria-hidden="true">{wingGlyph(entry)}</span> {stepLabel(entry)}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>затронуто</dt>
+                <dd>{touchedChaptersCopy(change, impact)}</dd>
+              </div>
+              <div>
+                <dt>оценка</dt>
+                <dd>
+                  {assessmentCopy(change, ribbon, bound, live)}
+                  {change.relevance === null || change.relevance.grade === 'fresh' ? null : (
+                    <span className="focus-quiet"> · {relevanceCopy(change.relevance.grade)}</span>
+                  )}
+                </dd>
+              </div>
+              {cost === null ? null : (
+                <div>
+                  <dt>цена</dt>
+                  <dd className="focus-cost">{cost}</dd>
+                </div>
+              )}
+            </dl>
+            {change.reason === null ? null : <p className="focus-reason">{change.reason}</p>}
+          </section>
+        ) : null}
+      </div>
+
+      <div className="focus-actions">
+        {chapter === null ? null : (
+          <button type="button" className="focus-action" onClick={() => revealChapter(chapter)}>
+            к главе {chapter}
+          </button>
+        )}
+        <button
+          type="button"
+          className={`focus-action${following ? ' is-on' : ''}`}
+          aria-pressed={following}
+          onClick={() => {
+            setFollowing((held) => {
+              if (!held) setManual(null);
+              return !held;
+            });
+          }}
+        >
+          {following ? 'слежу' : 'следовать'}
+        </button>
+        {typed ? (
+          <button type="button" className="focus-action" onClick={replay}>
+            ещё раз
+          </button>
+        ) : null}
+      </div>
+    </FocusShell>
   );
 }
 

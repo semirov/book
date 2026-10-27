@@ -7,6 +7,7 @@ import type {
   ChangeSummaryDto,
   ChapterDto,
   ChangeImpactDto,
+  CommentDto,
   CommentPage,
   ContributorsDto,
   FrontDto,
@@ -30,6 +31,11 @@ export class ApiError extends Error {
     readonly retryAfterMs?: number,
     readonly resetAt?: string,
     readonly currentText?: string,
+    /**
+     * BOOK-111: a duplicate refusal names the filing that already exists, so the form can open
+     * it instead of asking the reader to write the same thing again.
+     */
+    readonly commentId?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -51,6 +57,7 @@ async function toApiError(response: Response): Promise<ApiError> {
   let retryAfterMs: number | undefined;
   let resetAt: string | undefined;
   let currentText: string | undefined;
+  let commentId: string | undefined;
   try {
     const body = (await response.json()) as {
       code?: unknown;
@@ -58,16 +65,18 @@ async function toApiError(response: Response): Promise<ApiError> {
       retryAfterMs?: unknown;
       resetAt?: unknown;
       currentText?: unknown;
+      commentId?: unknown;
     };
     if (typeof body.code === 'string') code = body.code;
     if (typeof body.message === 'string') message = body.message;
     if (typeof body.retryAfterMs === 'number') retryAfterMs = body.retryAfterMs;
     if (typeof body.resetAt === 'string') resetAt = body.resetAt;
     if (typeof body.currentText === 'string') currentText = body.currentText;
+    if (typeof body.commentId === 'string') commentId = body.commentId;
   } catch {
     /* a non-JSON error is still an error */
   }
-  return new ApiError(response.status, code, message, retryAfterMs, resetAt, currentText);
+  return new ApiError(response.status, code, message, retryAfterMs, resetAt, currentText, commentId);
 }
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -139,6 +148,17 @@ export function getComments(options: { chapter?: number; limit?: number; before?
   params.set('limit', String(Math.min(50, Math.max(1, options.limit ?? 20))));
   if (options.before !== undefined) params.set('before', options.before);
   return readJson<CommentPage>(`/api/comments?${params.toString()}`);
+}
+
+/**
+ * BOOK-111 — one filing by id, for a refusal that names the one already sent. `null` is a
+ * normal answer: the row was hidden or never existed, so the form keeps its refusal line.
+ */
+export async function getComment(id: string): Promise<CommentDto | null> {
+  const response = await requestJson(`/api/comments/${encodeURIComponent(id)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as CommentDto;
 }
 
 /**

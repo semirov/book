@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-import type { CatalogEntry } from '@book/shared';
+import type { CatalogEntry, CommentDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { PREMISE_HINT } from '../lib/premise.ts';
+import { existingPremise, PREMISE_HINT, premiseAction } from '../lib/premise.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -46,6 +46,24 @@ class IdleObserver {
   unobserve(): void {}
   disconnect(): void {}
 }
+/** BOOK-111 — the prod row of ch65: a chapter-level filing, no change, `status 'new'`. */
+const PENDING: CommentDto = {
+  id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+  chapter: 7,
+  anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
+  author: 'Аня',
+  authorColor: '#6f9bb5',
+  body: 'а как это работает',
+  proposedText: null,
+  interventionKind: null,
+  premise: true,
+  status: 'new',
+  reason: null,
+  createdAt: '2026-10-27T18:04:17Z',
+  decidedAt: null,
+  changeId: null,
+  applied: null,
+};
 
 let root: Root | null = null;
 let container: HTMLDivElement;
@@ -263,5 +281,142 @@ describe('the premise strip in an empty chapter', () => {
     const row = container.querySelector('.premise-row');
     expect(row?.textContent).toBe('07');
     expect(row?.querySelector('.premise-leader')).not.toBeNull();
+  });
+
+  it('a pending chapter-level filing is the chapter’s premise', async () => {
+    // BOOK-111 — the prod row: `premise: true, status: 'new'`, no change yet. The row must
+    // print the reader's quote and the word «ждёт», and the tap must open THAT filing's card,
+    // never the form (a second premise would be refused by the server).
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={ENTRY}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          firstEmpty
+          history={false}
+          comments={[PENDING]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
+    expect(row?.getAttribute('data-state')).toBe('held');
+    expect(row?.querySelector('.premise-quote')?.textContent).toBe('«а как это работает»');
+    expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
+    expect(premiseAction(existingPremise([PENDING], 7)).kind).toBe('card');
+
+    await act(async () => row?.click());
+
+    // The card, not the form: the filing the reader already sent is the one they get.
+    expect(container.querySelector('.filing-panel')).not.toBeNull();
+    expect(container.querySelector('.seam-form')).toBeNull();
+    expect(container.querySelector('#ch-7 .seam')).toBeNull();
+  });
+
+  it('keeps the state word on the row’s own line: three siblings, three tracks', async () => {
+    // The regression this pins: with a two-track template the word auto-placed into row 2 and
+    // the 44 px row printed two lines. The word is the row's third child in the third track.
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={ENTRY}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          firstEmpty
+          history={false}
+          comments={[PENDING]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+
+    const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
+    expect(row).not.toBeNull();
+    const cells = [...(row?.children ?? [])].map((child) => child.getAttribute('class'));
+    expect(cells).toEqual(['premise-n', 'premise-field premise-quote', 'premise-label']);
+    // A nested word could still wrap under the numeral: every cell is a direct child.
+    for (const cell of [...(row?.children ?? [])]) expect(cell.parentElement).toBe(row);
+
+    const rule = /(?:^|\n)\s*\.premise-row\s*\{([^}]*)\}/u.exec(sheets['../styles/seam-form.css'] ?? '')?.[1] ?? '';
+    const template = /grid-template-columns:\s*([^;]*)/u.exec(rule)?.[1]?.trim() ?? '';
+    // Three tracks: one per cell. `minmax(0, 1fr)` is one track, not three.
+    expect(template.replace(/minmax\([^)]*\)/gu, 'M').split(/\s+/u)).toHaveLength(3);
+    // No template row count: the row stays one line whatever the word's width.
+    expect(rule).not.toContain('grid-template-rows');
+  });
+
+  it('opens the premise card from a duplicate refusal on an empty chapter (BOOK-111)', async () => {
+    // The prod 409 on an unwritten chapter: the form says the filing exists, and its door reads
+    // the row by id and opens it — the same card the premise row opens, not a second form.
+    vi.stubGlobal('IntersectionObserver', IdleObserver);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/comments/cmt_x')) {
+          return new Response(JSON.stringify(PENDING), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response(
+          JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_x' }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }),
+    );
+
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={ENTRY}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          history={false}
+          comments={[]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+    await act(async () => container.querySelector<HTMLElement>('#ch-7 .premise-row')?.click());
+    // The row opens the strip; «заложить замысел» opens the form.
+    await act(async () => container.querySelector<HTMLElement>('#ch-7 .seam-cta')?.click());
+    expect(container.querySelector('#ch-7 .seam-form')).not.toBeNull();
+
+    const text = container.querySelector<HTMLTextAreaElement>('#ch-7 textarea.seam-text');
+    expect(text).not.toBeNull();
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(text, 'А как?');
+    await act(async () => text?.dispatchEvent(new Event('input', { bubbles: true })));
+    await act(async () => {
+      container.querySelector('#ch-7 form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('#ch-7 .seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    const open = [...container.querySelectorAll<HTMLButtonElement>('#ch-7 button.seam-inline-action')].find(
+      (button) => button.textContent?.trim() === 'открыть отправленное',
+    );
+    expect(open).not.toBeUndefined();
+    await act(async () => {
+      open?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const panel = container.querySelector('.filing-panel');
+    expect(panel, 'the refusal opens the filing that already exists').not.toBeNull();
+    expect(panel?.textContent).toContain('а как это работает');
+    // The strip keeps the draft behind the panel (BOOK-63: a refusal spends nothing), so the
+    // panel's close still has the button to return to — the form is not rebuilt or reopened.
+    expect(container.querySelector('#ch-7 .seam-form')).not.toBeNull();
   });
 });

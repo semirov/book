@@ -10,11 +10,11 @@ import type { PremiseRow as PremiseRowData } from '../lib/premise.ts';
  * grid whose last cell is `1fr`, so adding that cell later is a data change, not a layout
  * change.
  *
- * **The row prints no state word.** It is a chapter number, a leader and — when the slot
- * holds one — the premise's own quote. «замысел» is a label of the interface, and the
- * reading surface prints the book: the state belongs to the strip the reader opens, to the
- * chronicle and to the panels. A held premise keeps its quote in the field; the tap opens the
- * premise's own card.
+ * **The row prints the book, and one word when the slot is taken.** It is a chapter number, a
+ * leader and — when the slot holds one — the premise's own quote, followed by that premise's
+ * state word («ждёт»). Why a word after all: an empty slot and a pending filing must not read
+ * alike, or the reader who already filed taps again and is refused (BOOK-111, owner
+ * 2026-10-27). The word is the deck's own (`filingMarginalia`), never a label invented here.
  */
 export function PremiseRow({
   row,
@@ -30,7 +30,7 @@ export function PremiseRow({
         type="button"
         className="premise-row"
         data-state={row.quote === null ? 'empty' : 'held'}
-        aria-label={`глава ${row.n}`}
+        aria-label={row.word === null ? `глава ${row.n}` : `глава ${row.n} · ${row.word}`}
         onClick={(event) => onOpen(event.currentTarget)}
       >
         <span className="premise-n">{String(row.n).padStart(2, '0')}</span>
@@ -39,6 +39,7 @@ export function PremiseRow({
         ) : (
           <span className="premise-field premise-quote">«{row.quote}»</span>
         )}
+        {row.word === null ? null : <span className="premise-label">{row.word}</span>}
       </button>
     </div>
   );

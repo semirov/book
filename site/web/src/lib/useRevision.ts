@@ -17,6 +17,8 @@ export type OpenRevision = {
 
 let current: OpenRevision | null = null;
 const listeners = new Set<() => void>();
+/** Closers of the page's other overlays, registered by their own stores (BOOK-111). */
+const otherOverlays: Array<() => void> = [];
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
@@ -28,8 +30,21 @@ function emit(): void {
 }
 
 export function showRevision(next: OpenRevision): void {
+  // BOOK-111 — the page's one overlay slot. The filing store registers its closer here
+  // (`useFiling.ts`), so the rule lives in the stores and imports run one way only: this
+  // module never names the filing slot.
+  for (const close of otherOverlays) close();
   current = next;
   emit();
+}
+
+/**
+ * The page's other overlays hand `showRevision` their own closer. Registered by the store
+ * that owns the surface, not by a call site: no tap can open a record over a filing card
+ * without this store closing it first.
+ */
+export function onOpenRevision(close: () => void): void {
+  otherOverlays.push(close);
 }
 
 export function hideRevision(): void {

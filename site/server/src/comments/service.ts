@@ -38,7 +38,8 @@ import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
-import { editDailyMessage, laterReset } from './dailyLimit.ts';
+import { editDailyMessage } from './dailyLimit.ts';
+import { readBudget } from './budget.ts';
 import { checkInterventionKind } from './intervention.ts';
 import { classifyComment } from './guard.ts';
 import {
@@ -54,7 +55,7 @@ import {
 } from './repo.ts';
 import { sanitizeAffix, sanitizeAuthor, sanitizeBody, sanitizeProposed, sanitizeQuote } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
-import { commentIdentityKey, commentSpecs, editIdentityKey, editIpKey, editSpecs } from '../rate/policy.ts';
+import { commentSpecs, editSpecs } from '../rate/policy.ts';
 
 export type CommentServiceDeps = {
   db: Db;
@@ -77,6 +78,8 @@ export type ServiceFailure = {
   retryAfterMs?: number;
   resetAt?: string;
   currentText?: string;
+  /** BOOK-111: the filing a refusal names — a duplicate's own row, so the reader can open it. */
+  commentId?: string;
   /**
    * Which budget refused an edit. Internal only — the route logs it (identity and network
    * refusals are distinguishable to an operator) and never sends it to the reader.
@@ -110,35 +113,15 @@ export class CommentService {
   }
 
   /**
-   * §14: the composer shows what is left, so the limit is never a surprise. The edit budget is
-   * two counters (BOOK-DOC-4 rule 5), so the reader is shown the tighter one: the network may
-   * already be spent while their own day is not (`min`), and the reset is the later of the two.
+   * §14: the composer shows what is left, so the limit is never a surprise (the two counters
+   * and the BOOK-113 exemption live in `budget.ts`).
    */
   budget(identityId: string, ipKey: string): CommentBudget {
-    const comments = this.limiter.check({
-      key: commentIdentityKey(identityId),
-      limit: this.config.commentsPerHourIdentity,
-      windowMs: 60 * 60_000,
-    });
-    const edits = this.limiter.check({
-      key: editIdentityKey(identityId),
-      limit: this.config.editSubmissionsPerDay,
-      windowMs: 24 * 60 * 60_000,
-    });
-    const editsByNetwork = this.limiter.check({
-      key: editIpKey(this.ipHash, ipKey),
-      limit: this.config.editSubmissionsPerDay,
-      windowMs: 24 * 60 * 60_000,
-    });
-    const editResetAtMs = laterReset(edits.resetAtMs, editsByNetwork.resetAtMs);
-    return {
-      perHour: comments.limit,
-      remaining: comments.remaining,
-      resetAt: comments.resetAtMs === null ? null : new Date(comments.resetAtMs).toISOString(),
-      editsPerDay: edits.limit,
-      editsRemaining: Math.min(edits.remaining, editsByNetwork.remaining),
-      editsResetAt: editResetAtMs === null ? null : new Date(editResetAtMs).toISOString(),
-    };
+    return readBudget(
+      { db: this.db, config: this.config, limiter: this.limiter, ipHash: this.ipHash },
+      identityId,
+      ipKey,
+    );
   }
 
   async post(input: PostCommentInput, context: PostContext): Promise<ServiceResult> {
@@ -231,7 +214,7 @@ export class CommentService {
         const replayed = this.replay(input, context.identity.id, context.ipKey);
         if (replayed !== null) return replayed;
       }
-      return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
+      return fail(409, 'DUPLICATE', 'такое замечание уже отправлено', duplicate.id);
     }
 
     const anchor = this.resolveAnchor(input);
@@ -240,7 +223,11 @@ export class CommentService {
     const guard = classifyComment(body.text, proposedText);
     const specs = [
       ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
-      ...(proposedText === null
+      // BOOK-113: an exempt identity spends no edit slot — both the identity and the network
+      // key are skipped, otherwise the network cap would still refuse the owner's second edit
+      // in a day. The comment budget above still applies to them. Fail closed: only an
+      // explicit `1` exempts, so a missing or unknown value is never a hole.
+      ...(proposedText === null || context.identity.edit_exempt === 1
         ? []
         : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
     ];
@@ -279,7 +266,9 @@ export class CommentService {
         chapter: input.chapter,
         blockId: anchor.anchor.blockId,
         blockIndex: anchor.anchor.blockIndex,
-        baseRev: input.baseRev ?? anchor.baseRev,
+        // The anchor decides the revision (`resolveAnchor`): a written chapter never stores
+        // `base_rev 0`, an unwritten one always does (BOOK-111).
+        baseRev: anchor.baseRev,
         quote: anchor.anchor.quote,
         prefix: anchor.anchor.prefix,
         suffix: anchor.anchor.suffix,
@@ -373,7 +362,9 @@ export class CommentService {
     if (existing.identity_id === identityId) {
       return { ok: true, status: 201, body: this.response(existing, ipKey) };
     }
-    // A key is scoped to one reader; a foreign key is a collision, not a replay.
+    // A key is scoped to one reader; a foreign key is a collision, not a replay. The row is
+    // another reader's, and may be hidden from this one (quarantined, or never theirs to see),
+    // so the refusal names no comment id: 409 and nothing more.
     return fail(409, 'DUPLICATE', 'такое замечание уже отправлено');
   }
 
@@ -423,7 +414,11 @@ export class CommentService {
     if (blockId === null) {
       return {
         ok: true,
-        baseRev: baseRev ?? base.rev,
+        // BOOK-111: a chapter-wide note on a **written** chapter is not a premise, and the
+        // schema defines a premise as `base_rev 0`. A crafted or leftover `0` (or a negative)
+        // must never be stored here, or `toCommentDto` would report the reader's note on
+        // written text as the chapter's premise: the chapter's own revision is the floor.
+        baseRev: baseRev !== null && baseRev > 0 ? baseRev : base.rev,
         anchor: {
           blockId: null,
           blockIndex: null,
@@ -490,6 +485,6 @@ export function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-function fail(status: number, code: string, message: string): ServiceFailure {
-  return { ok: false, status, code, message };
+function fail(status: number, code: string, message: string, commentId?: string): ServiceFailure {
+  return { ok: false, status, code, message, ...(commentId === undefined ? {} : { commentId }) };
 }

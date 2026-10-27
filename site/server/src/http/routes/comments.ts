@@ -3,9 +3,10 @@
  * §12.1, §12.8, §14).
  *
  * Reading is public; writing needs a Yandex session. The author is taken from the session,
- * never from the body, so nobody can post under another reader's name. Every failure is the
- * uniform `{code, message, retryAfterMs?}` shape, with a Russian message the composer can
- * show as-is.
+ * never from the body, so nobody can post under another reader's name. Every failure has the
+ * uniform `{code, message, retryAfterMs?, commentId?}` shape, with a Russian message the
+ * composer can show as-is. `commentId` travels only on a duplicate: it is the reader's own
+ * filing, so the refused form can open the one that already exists (BOOK-111).
  */
 
 import type { CommentPage, PostCommentInput } from '@book/shared';
@@ -130,6 +131,7 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
         ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
         ...(result.resetAt === undefined ? {} : { resetAt: result.resetAt }),
         ...(result.currentText === undefined ? {} : { currentText: result.currentText }),
+        ...(result.commentId === undefined ? {} : { commentId: result.commentId }),
       });
     }
     return reply.code(result.status).header('cache-control', 'no-store').send(result.body);

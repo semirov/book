@@ -195,7 +195,11 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
   // BOOK-7: a premise's state is the change's state — one source, so the thread cannot say
   // «в очереди» about an intervention that waits for the chapter's first pass instead.
   const change = linkedChange(db, row.change_id);
-  const premise = change?.premise === 1;
+  // BOOK-111: a chapter-level filing with no change yet IS the chapter's premise — the schema's
+  // own definition (`base_rev 0`, no anchor). Without this an unwritten chapter kept reading
+  // as an empty slot and refused the reader's next tap as a duplicate.
+  const premise =
+    change?.premise === 1 || (change === undefined && row.block_id === null && row.base_rev === 0);
   const status =
     premise && change !== undefined ? premiseStatus(change, row.status as CommentStatus) : (row.status as CommentStatus);
   return {

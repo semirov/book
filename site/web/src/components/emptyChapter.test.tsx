@@ -102,12 +102,16 @@ describe('the row’s geometry is the prose’s geometry', () => {
     expect(row).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
     // The hit area stays the column's whole width; only its content ends on the prose edge.
     expect(row).toContain('width: 100%');
-    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr)');
+    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
     expect(row).toContain('min-height: 44px');
     // The numeral is the mono micro rung, tabular.
     expect(declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-n')).toContain('font-variant-numeric: tabular-nums');
-    // BOOK-112: no state slot is left in the sheet.
-    expect(sheets['../styles/seam-form.css'] ?? '').not.toContain('.premise-label');
+    // BOOK-112 amended by BOOK-111: the one label the flow may print is a held premise's own
+    // state word — and it is the label register, not the retired state slot (no `.premise-hint`).
+    const label = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-label');
+    expect(label).toContain('font-family: var(--label)');
+    expect(label).toContain('font-size: var(--fs-micro)');
+    expect(label).toContain('text-transform: uppercase');
     expect(sheets['../styles/seam-form.css'] ?? '').not.toContain('.premise-hint');
     // No second heading rule is left for the empty slot.
     expect(sheets['../styles/live.css'] ?? '').not.toContain('.ch-empty .ch-n');

@@ -442,7 +442,10 @@ describe('GET /api/comments', () => {
       h.headers({ cookie: `book_session=${otherSession.cookie}` }),
     );
     expect(foreign.statusCode).toBe(409);
+    // Another reader's row is not named: it may be hidden from them, and the refusal is about
+    // the key, not about a filing this reader was never shown (BOOK-111).
     expect(foreign.json()).toMatchObject({ code: 'DUPLICATE' });
+    expect(foreign.json().commentId).toBeUndefined();
   });
 
   it('is idempotent for one idempotency key', async () => {

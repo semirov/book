@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CatalogEntry } from '@book/shared';
+import type { CatalogEntry, CommentDto } from '@book/shared';
 import { INTERVENTION_KINDS } from '@book/shared';
 import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -73,7 +73,15 @@ function draftOf(origin: typeof PARAGRAPH | typeof PREMISE, overrides: Partial<S
  * The form is controlled: the page owns the draft (the seam keeps it in its own store), so a
  * test that types or picks must hold the state, not pass a frozen object.
  */
-function LiveForm({ initial, onPosted }: { initial: SeamDraft; onPosted?: (id: string) => void }) {
+function LiveForm({
+  initial,
+  onPosted,
+  onOpenDuplicate,
+}: {
+  initial: SeamDraft;
+  onPosted?: (comment: CommentDto) => void;
+  onOpenDuplicate?: (id: string, origin: HTMLElement) => void;
+}) {
   const [draft, setDraft] = useState<SeamDraft>(initial);
   return (
     <InterventionForm
@@ -83,12 +91,26 @@ function LiveForm({ initial, onPosted }: { initial: SeamDraft; onPosted?: (id: s
       viewer={{ signedIn: true, displayName: 'Аня' }}
       onChange={setDraft}
       onPosted={onPosted ?? (() => undefined)}
+      {...(onOpenDuplicate === undefined ? {} : { onOpenDuplicate })}
     />
   );
 }
 
-function mount(initial: SeamDraft, onPosted?: (id: string) => void): void {
-  act(() => root.render(<LiveForm key={JSON.stringify(initial)} initial={initial} onPosted={onPosted} />));
+function mount(
+  initial: SeamDraft,
+  onPosted?: (comment: CommentDto) => void,
+  onOpenDuplicate?: (id: string, origin: HTMLElement) => void,
+): void {
+  act(() =>
+    root.render(
+      <LiveForm
+        key={JSON.stringify(initial)}
+        initial={initial}
+        {...(onPosted === undefined ? {} : { onPosted })}
+        {...(onOpenDuplicate === undefined ? {} : { onOpenDuplicate })}
+      />,
+    ),
+  );
 }
 
 function renderForm(body: string): ReturnType<typeof emptyDraft> {
@@ -167,7 +189,8 @@ describe('the intervention form without a challenge (BOOK-64)', () => {
     const body = JSON.parse(String((fetchSpy.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as Record<string, unknown>;
     expect(body).toMatchObject({ chapter: 8, body: 'свет не от лампы', blockId: 'ch08#aa11bb22' });
     expect(body).not.toHaveProperty('captchaToken');
-    expect(posted).toHaveBeenCalledWith('cmt_1');
+    // BOOK-111: the form hands the caller the posted DTO itself, not its id.
+    expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 'cmt_1' }));
   });
 });
 
@@ -306,7 +329,7 @@ describe('the note path (BOOK-57)', () => {
     expect(sent).toMatchObject({ chapter: 8, body: 'в абзаце повтор' });
     expect(sent).not.toHaveProperty('proposedText');
     expect(sent).not.toHaveProperty('interventionKind');
-    expect(posted).toHaveBeenCalledWith('cmt_note');
+    expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 'cmt_note' }));
   });
 
   it('offers the note when the day’s edit is spent', async () => {
@@ -336,5 +359,77 @@ describe('the note path (BOOK-57)', () => {
     expect(textarea().value).toBe('свидетель видел, как свет включили');
     // The recovery and the note submit are one word, from one function.
     expect(container.querySelector('button.seam-submit')?.textContent).toBe('оставить замечание');
+  });
+});
+
+describe('a refusal that names the existing filing (BOOK-111)', () => {
+  it('a duplicate answer prints the line and opens the existing filing', async () => {
+    // BOOK-111 — the prod 409: the reader's own filing already exists. The line must be on the
+    // page (the strip, `role="alert"`), and the 409's `commentId` must give a way to it.
+    const fetchSpy = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_x' }),
+        { status: 409, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    const opened = vi.fn();
+    mount(draftOf(PREMISE, { proposed: 'А как?' }), undefined, opened);
+
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+
+    const alert = container.querySelector('.seam-error');
+    expect(alert).not.toBeNull();
+    expect(alert?.getAttribute('role')).toBe('alert');
+    expect(alert?.textContent).toContain('такое замечание уже отправлено');
+    // The refused text is kept: the line says the filing exists, not that the thought is lost.
+    expect(container.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe('А как?');
+
+    const open = [...container.querySelectorAll<HTMLButtonElement>('button.seam-inline-action')].find(
+      (button) => button.textContent?.trim() === 'открыть отправленное',
+    );
+    expect(open, 'the duplicate offers the door to the filing already sent').not.toBeUndefined();
+    act(() => open?.click());
+    expect(opened).toHaveBeenCalledWith('cmt_x', open);
+  });
+
+  it('keeps the duplicate line when the door is pressed: a refusal is never cleared', async () => {
+    const fetchSpy = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_x' }),
+        { status: 409, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    mount(draftOf(PREMISE, { proposed: 'А как?' }), undefined, () => undefined);
+
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    const open = [...container.querySelectorAll<HTMLButtonElement>('button.seam-inline-action')].find(
+      (button) => button.textContent?.trim() === 'открыть отправленное',
+    );
+    act(() => open?.click());
+    expect(container.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+  });
+
+  it('offers no duplicate door when the 409 carries no id', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено' }), {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+    mount(draftOf(PREMISE, { proposed: 'А как?' }), undefined, () => undefined);
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(container.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    expect(container.querySelectorAll('button.seam-inline-action')).toHaveLength(0);
   });
 });

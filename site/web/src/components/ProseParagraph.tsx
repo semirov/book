@@ -17,6 +17,7 @@ import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } fro
 import { anchorFor, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
+import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
 import { MarginNote } from './MarginNote.tsx';
 import { PhoneStrip } from './PhoneStrip.tsx';
@@ -51,7 +52,8 @@ export type ProseParagraphProps = {
   comments: readonly CommentDto[];
   composer: ComposerInfo;
   viewer: ViewerDto;
-  onPosted: (chapter: number) => void;
+  /** BOOK-111: the posted DTO, so the page shows the reader's own row at once. */
+  onPosted: (comment: CommentDto) => void;
   onBlockProvenance?: (blockId: string, anchor: HTMLElement) => void;
   /** STALE_ANCHOR: the chapter reloads, then the draft is re-keyed onto the new text. */
   onReanchor?: (draft: SeamDraft) => void;
@@ -68,11 +70,6 @@ export type ProseParagraphProps = {
    */
   history: boolean;
 };
-
-type PanelState =
-  | { kind: 'provenance'; word: string; rect: DOMRect; origin: HTMLElement | null }
-  | { kind: 'filing'; comment: CommentDto; rect: DOMRect; origin: HTMLElement | null }
-  | null;
 
 export function ProseParagraph({
   entry,
@@ -95,7 +92,14 @@ export function ProseParagraph({
   const seam = useOpenSeam();
   const frozenChapter = frozen || isFrozenChapter(entry);
   const here = seam !== null && seam.chapter === entry.n && seam.blockId === blockId;
-  const [panel, setPanel] = useState<PanelState>(null);
+  /**
+   * BOOK-111: the page's one panel, not this paragraph's state — a card and a word's panel are
+   * the same slot, and only the surface that opened it draws it.
+   */
+  const filing = useOpenFiling();
+  const panel = filing !== null && filing.owner === blockId ? filing : null;
+  const filingPanel = panel !== null && panel.kind === 'filing' ? panel : null;
+  const provenancePanel = panel !== null && panel.kind === 'provenance' ? panel : null;
   /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
   const revision = useOpenRevision();
   const hostRef = useRef<HTMLElement | null>(null);
@@ -116,8 +120,8 @@ export function ProseParagraph({
   if (revised) classes.push('is-revised');
 
   const openRevision = useCallback((comment: CommentDto, origin: HTMLElement): void => {
+    // BOOK-111: one panel at a time — the store closes the filing card (see `useRevision`).
     showRevision({ comment, origin });
-    setPanel(null);
   }, []);
 
   const closeRevision = useCallback((): void => {
@@ -128,6 +132,21 @@ export function ProseParagraph({
     if (origin !== null && origin.isConnected) origin.focus();
     else hostRef.current?.focus();
   }, [revision]);
+
+  /** BOOK-111: one way into a filing card — the page's store, owned by this paragraph. */
+  const openFiling = useCallback(
+    (comment: CommentDto, origin: HTMLElement): void => {
+      showFiling({ kind: 'filing', owner: blockId, comment, origin, rect: origin.getBoundingClientRect() });
+    },
+    [blockId],
+  );
+
+  /** §7: the trigger comes back when the panel leaves, never nowhere. */
+  const closePanel = useCallback((): void => {
+    const origin = panel?.origin ?? null;
+    hideFiling();
+    origin?.focus();
+  }, [panel]);
 
   const openAt = useCallback(
     (origin: HTMLElement, offset: number, target: HTMLElement): void => {
@@ -140,7 +159,6 @@ export function ProseParagraph({
         anchor,
         origin: target,
       });
-      setPanel(null);
       origin.scrollIntoView?.({ block: 'nearest' });
     },
     [baseRev, blockId, entry.n, text],
@@ -180,7 +198,7 @@ export function ProseParagraph({
 
   // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel.
   const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
-    setPanel({ kind: 'provenance', word, rect: at.getBoundingClientRect(), origin: at });
+    showFiling({ kind: 'provenance', owner: blockId, comment: null, origin: at, rect: at.getBoundingClientRect(), word });
     // BOOK-56: the chain and both share rows are history; with history off the panel keeps
     // only the word, its place and «вмешаться», so nothing is fetched for rows not rendered.
     if (!history) return;
@@ -232,7 +250,7 @@ export function ProseParagraph({
         : 'unattributed';
   const lastActor = chain?.versions.at(-1)?.actor ?? null;
   const share: TraceShare =
-    panel?.kind !== 'provenance'
+    provenancePanel === null
       ? { kind: 'none' }
       : shareFor({
           actor: lastActor === null ? null : { kind: lastActor.kind, label: lastActor.label },
@@ -241,9 +259,10 @@ export function ProseParagraph({
           publicShares,
         });
   const view =
-    panel?.kind === 'provenance'
-      ? provenanceView({
-          word: panel.word,
+    provenancePanel === null
+      ? null
+      : provenanceView({
+          word: provenancePanel.word ?? '',
           chapter: entry.n,
           variant,
           share,
@@ -252,8 +271,7 @@ export function ProseParagraph({
           at: chain?.versions.at(-1)?.at ?? null,
           frozenOf: 'frame',
           live: history,
-        })
-      : null;
+        });
 
   const anchor = here ? (seam?.anchor ?? null) : null;
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
@@ -301,9 +319,7 @@ export function ProseParagraph({
             <>
               <FilingMark
                 filings={filings}
-                onOpen={(comment, origin) =>
-                  setPanel({ kind: 'filing', comment, rect: origin.getBoundingClientRect(), origin })
-                }
+                onOpen={openFiling}
                 onOpenRevision={openRevision}
               />
               {filings.all
@@ -349,9 +365,7 @@ export function ProseParagraph({
       }}
       onReanchor={onReanchor}
       onProvenance={(origin) => void openProvenance(origin, anchor?.word ?? anchor?.quote ?? '')}
-      onOpenFiling={(comment, origin) =>
-        setPanel({ kind: 'filing', comment, rect: origin.getBoundingClientRect(), origin })
-      }
+      onOpenFiling={openFiling}
     />
   ) : null;
 
@@ -423,37 +437,25 @@ export function ProseParagraph({
           className="p-stale"
           onClick={(event) => {
             const first = comments.find((comment) => comment.anchor.blockId === blockId && !comment.anchor.resolved);
-            if (first !== undefined) setPanel({ kind: 'filing', comment: first, rect: event.currentTarget.getBoundingClientRect(), origin: event.currentTarget });
+            if (first !== undefined) openFiling(first, event.currentTarget);
           }}
         >
           {stale}
         </button>
       )}
-      {view === null || panel?.kind !== 'provenance' ? null : (
+      {view === null || provenancePanel === null ? null : (
         <ProvenancePanel
           view={view}
-          anchor={panel.rect}
-          onClose={() => {
-            // Focus returns to the cluster that opened the panel (§7), not nowhere.
-            const origin = panel?.origin ?? null;
-            setPanel(null);
-            origin?.focus();
-          }}
-          onForm={() => setPanel(null)}
+          anchor={provenancePanel.rect}
+          // Focus returns to the cluster that opened the panel (§7), not nowhere.
+          onClose={closePanel}
+          onForm={hideFiling}
         />
       )}
-      {panel?.kind === 'filing' ? (
-        <FilingPanel
-          comment={panel.comment}
-          anchor={panel.rect}
-          onClose={() => {
-            // Same contract as the provenance panel: focus goes back to the mark or row.
-            const origin = panel.origin;
-            setPanel(null);
-            origin?.focus();
-          }}
-        />
-      ) : null}
+      {filingPanel === null || filingPanel.comment === null ? null : (
+        // Same contract as the provenance panel: focus goes back to the mark or row.
+        <FilingPanel comment={filingPanel.comment} anchor={filingPanel.rect} onClose={closePanel} />
+      )}
     </>
   );
 }

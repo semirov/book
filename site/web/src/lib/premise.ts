@@ -1,6 +1,7 @@
 import { TOTAL_CHAPTERS, type CatalogEntry, type CommentDto } from '@book/shared';
 
 import { filingNumber } from './filings.ts';
+import { filingMarginalia } from './marginalia.ts';
 
 /**
  * BOOK-7 / BOOK-DOC-34 §2.4 — the empty chapter's premise.
@@ -43,18 +44,24 @@ export function premiseRefusal(first: CommentDto): { line: string; detail: strin
 }
 
 /**
- * The empty slot's row (BOOK-90 A) — one numeral, one field:
+ * The empty slot's row (BOOK-90 A) — one numeral, one field, and — while the slot holds a
+ * premise — that premise's state word:
  *
  *   `02 ················································`
+ *   `02 «смена переходит на ночь» ················ ждёт`
  *
- * The row is data, not copy: a chapter's number and the premise's own first line, or a
- * dotted leader for a slot that still holds nothing. It prints no label and no state word —
- * the reading surface prints the book (BOOK-112).
+ * The row is data, not copy: a chapter's number, the premise's own first line, and the word
+ * the deck prints for its state. Why the word is there: an empty slot and a pending filing
+ * must not read the same — the reader who already filed something saw «nothing at all» and
+ * tapped again (BOOK-111, owner 2026-10-27). The word is `null` on an empty slot, and that is
+ * the only shape the reading surface may print as a blank (BOOK-112, amended for this case).
  */
 export type PremiseRow = {
   n: number;
   /** The existing premise's first line, or null for a slot that is still empty. */
   quote: string | null;
+  /** The premise's state word («ждёт»), or null for a slot that still holds nothing. */
+  word: string | null;
   actionable: boolean;
 };
 
@@ -66,6 +73,7 @@ export function premiseRow(
   return {
     n: entry.n,
     quote: premise === null ? null : firstLine(premise.body),
+    word: premise === null ? null : filingMarginalia(premise).word,
     actionable: true,
   };
 }

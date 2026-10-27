@@ -6,6 +6,7 @@ import {
   filingNumber,
   filingQuote,
   filingsForBlock,
+  insertFiling,
   isPending,
   isStale,
   sortFilings,
@@ -116,5 +117,29 @@ describe('the mark and its quote', () => {
     expect(filingQuote(NEW)).toBe('Её освещал яркий свет.');
     expect(filingQuote(STALE)).toBe('абзац изменился');
     expect(filingQuote({ ...NEW, anchor: { ...NEW.anchor, quote: 'а'.repeat(200) } })).toHaveLength(120);
+  });
+});
+
+describe('insertFiling — the posted row enters the feed (BOOK-111)', () => {
+  it('inserts in ascending order, at the place the moment asks for', () => {
+    const later = comment({ id: 'cmt_later', createdAt: '2026-10-27T18:05:00Z' });
+    const earlier = comment({ id: 'cmt_earlier', createdAt: '2026-10-27T18:03:00Z' });
+    const posted = comment({ id: 'cmt_posted', createdAt: '2026-10-27T18:04:17Z' });
+
+    const next = insertFiling([earlier, later], posted);
+    expect(next?.map((row) => row.id)).toEqual(['cmt_earlier', 'cmt_posted', 'cmt_later']);
+    // Appending is the common case: the newest filing lands at the end.
+    expect(insertFiling([earlier], later)?.map((row) => row.id)).toEqual(['cmt_earlier', 'cmt_later']);
+    expect(insertFiling([], posted)?.map((row) => row.id)).toEqual(['cmt_posted']);
+  });
+
+  it('is idempotent: the durable refresh finds the id already there and changes nothing', () => {
+    // `null` is the contract — the caller keeps the same array, so no second row and no render.
+    expect(insertFiling([NEW], NEW)).toBeNull();
+    expect(insertFiling([ACCEPTED, NEW], NEW)).toBeNull();
+    // And it does not mutate what it was given.
+    const feed = [NEW];
+    insertFiling(feed, ACCEPTED);
+    expect(feed).toEqual([NEW]);
   });
 });

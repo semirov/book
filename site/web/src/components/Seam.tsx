@@ -1,13 +1,17 @@
 import type { CatalogEntry, ComposerInfo, CommentDto, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
+import { getComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
-import { STATE_WORDS } from '../lib/marginalia.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingMarginalia } from '../lib/marginalia.ts';
+import { attachOutsideClose } from '../lib/outsideClose.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
+import { useOpenFiling } from '../lib/useFiling.ts';
+import { useOpenRevision } from '../lib/useRevision.ts';
 import { InterventionForm } from './InterventionForm.tsx';
 
 /**
@@ -16,10 +20,17 @@ import { InterventionForm } from './InterventionForm.tsx';
  * One 44 px row carries the two facts and the one action: whose word this is and «вмешаться».
  * A frozen chapter has no form ever — its strip says «закреплено» and links to the rules. An
  * empty chapter takes a premise instead of a note. The receipt after a 201 stays until the
- * reader taps elsewhere: no timer, no toast.
+ * reader closes the strip (on touch: only ✕, `Esc` or another explicit act): no timer, no toast.
  *
- * BOOK-33: closing is `✕`, `Esc` or a pointer outside the strip — and it returns focus to the
- * element the tap came from, so a keyboard reader is never dropped at the top of the page.
+ * BOOK-33: closing is `✕`, `Esc`, or — on a fine pointer only — a click outside the strip,
+ * and it returns focus to the element the tap came from, so a keyboard reader is never
+ * dropped at the top of the page.
+ *
+ * BOOK-111 (owner, 2026-10-27): on a touch surface a thumb anywhere else changes nothing —
+ * a scroll is not a tap, and the strip is closed by its own ✕, a successful submit or `Esc`.
+ * A panel the reader opens collapses the form (the strip stays, and stays the anchor): two
+ * half-written surfaces never coexist.
+ *
  * Opening announces itself once through a polite live region, never on every keystroke.
  */
 
@@ -35,7 +46,8 @@ export type SeamProps = {
   existingPremise?: CommentDto | null;
   composer: ComposerInfo;
   viewer: ViewerDto;
-  onPosted: (chapter: number) => void;
+  /** BOOK-111: the posted DTO itself — the feed shows the row without a reload. */
+  onPosted: (comment: CommentDto) => void;
   onClose: () => void;
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
@@ -76,6 +88,9 @@ export function Seam({
   const [open, setOpen] = useState(() => seamDrafts.read(draftKey) !== null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const node = useRef<HTMLDivElement>(null);
+  /** BOOK-111: the page's one panel — a card or a revision object collapses this form. */
+  const panel = useOpenFiling();
+  const revision = useOpenRevision();
   const refusal = premise && existingPremise !== null && !open ? 'у главы уже есть замысел' : null;
 
   const update = (next: SeamDraft): void => {
@@ -83,33 +98,58 @@ export function Seam({
     seamDrafts.keep(draftKey, next);
   };
 
-  // Esc closes; a pointer outside the strip (and outside the panels) closes. Both return focus
-  // to the trigger, which the caller keeps in `origin`.
+  // Esc closes; a click outside the strip (and outside the panels) closes on a fine pointer;
+  // a tap on a touch surface does not — a scroll or a thumb graze must not eat the form.
+  // Closing returns focus to the trigger, which the caller keeps in `origin`.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
       if (document.querySelector('.prov-panel, .filing-panel') !== null) return;
       onClose();
     };
-    const onPointerDown = (event: PointerEvent): void => {
-      const target = event.target as HTMLElement | null;
-      if (target === null) return;
-      if (target.closest('.seam, .prov-panel, .filing-panel') !== null) return;
-      onClose();
-    };
+    const detach = attachOutsideClose({
+      isInside: (target) => target.closest('.seam, .prov-panel, .filing-panel') !== null,
+      onOutside: onClose,
+    });
     document.addEventListener('keydown', onKey);
-    document.addEventListener('pointerdown', onPointerDown, true);
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.removeEventListener('pointerdown', onPointerDown, true);
+      detach();
     };
   }, [onClose]);
+
+  /**
+   * BOOK-111 — one overlay at a time. A filing card or a revision object the reader opens
+   * collapses this form; the strip stays, so the panel still has the row it came from behind
+   * it. The form's own duplicate door is the exception: that panel is opened **from** the
+   * refusal, and the form is what the reader returns to (BOOK-63 — a refusal spends nothing).
+   */
+  useEffect(() => {
+    if (panel === null && revision === null) return;
+    const form = node.current?.querySelector('.seam-form') ?? null;
+    if (form !== null && panel !== null && panel.origin !== null && form.contains(panel.origin)) return;
+    setOpen(false);
+  }, [panel, revision]);
 
   const summary = receipt === null ? draftSummary(draft) : null;
   const rows = filings === null ? { shown: [] as CommentDto[], more: 0 } : stripFilings(filings);
   const word = premise ? '«главы ещё нет»' : `«${anchor.word ?? anchor.quote}»`;
 
   const openFiling = (comment: CommentDto, origin: HTMLElement): void => onOpenFiling(comment, origin);
+
+  /**
+   * BOOK-111: a refusal that names the existing filing opens it. The row is the durable one —
+   * the page holds a stale copy or none at all — so it is read by id, and the tap that opened
+   * the panel returns to the button that asked (the form's own action).
+   */
+  const openDuplicate = async (id: string, origin: HTMLElement): Promise<void> => {
+    try {
+      const comment = await getComment(id);
+      if (comment !== null) openFiling(comment, origin);
+    } catch {
+      /* the refusal line stays: the reader still knows it was sent, even if the read failed */
+    }
+  };
 
   return (
     <div
@@ -175,9 +215,9 @@ export function Seam({
       {premise && !frozen && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
 
       {rows.shown.map((comment) => (
-        // BOOK-70: the row prints the numeral, the reader and the moment; the state word is
-        // the button's label, not a fourth span — one voice per line, and the numeral keeps
-        // its own (mono, tabular) without a second word beside it.
+        // BOOK-70, amended by BOOK-111 (owner, 2026-10-27): the row prints the numeral, the
+        // state word, the reader and the moment. The word is visible — a filing that exists
+        // must say it waits — and still travels in the button's label for a screen reader.
         <button
           type="button"
           className="seam-filing"
@@ -188,6 +228,7 @@ export function Seam({
         >
           <span className={`seam-filing-line ink-${comment.status === 'new' ? 'quiet' : 'live'}`}>
             <span className="seam-filing-n">{filingNumber(comment)}</span>
+            <span className="seam-filing-word">{filingInk(comment).word}</span>
             <span>{comment.author}</span>
             <span className="seam-filing-stamp">{commentStamp(comment.createdAt)}</span>
           </span>
@@ -226,14 +267,19 @@ export function Seam({
               viewer={viewer}
               onChange={update}
               onReanchor={onReanchor}
-              onPosted={(id) => {
+              onOpenDuplicate={(id, origin) => void openDuplicate(id, origin)}
+              onPosted={(comment) => {
                 seamDrafts.drop(draftKey);
                 setOpen(false);
-                // BOOK-90: «зарегистрировано» is the deed word; the state is the one word «ждёт».
-                setReceipt(`${filingNumber({ id })} зарегистрировано · ${STATE_WORDS.waiting}`);
+                // BOOK-90: «зарегистрировано» is the deed word; the state is the deck's own
+                // word for the posted row, so the receipt cannot drift from the feed.
+                const marginalia = filingMarginalia(comment);
+                // A held filing says what holds it (BOOK-111 §5): word, then the check line.
+                const held = comment.status === 'quarantined' ? ` · ${marginalia.consequence}` : '';
+                setReceipt(`${filingNumber(comment)} зарегистрировано · ${marginalia.word}${held}`);
                 // BOOK-63: the receipt is the fact the reader came for; the id stays out.
                 track('receipt_seen', {});
-                onPosted(entry.n);
+                onPosted(comment);
               }}
             />
           ) : null}

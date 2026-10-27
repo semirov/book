@@ -2,6 +2,7 @@ import type { ChangeSummaryDto, CommentDto, MyDecisionsDto } from '@book/shared'
 import { useCallback, useRef, useState } from 'react';
 
 import { getChanges, getChapterComments, getComments, getMyDecisions } from './api.ts';
+import { insertFiling } from './lib/filings.ts';
 import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib/ownDecisions.ts';
 
 /**
@@ -111,6 +112,24 @@ export function useReaderFeed() {
     await Promise.all(chapters.map((chapter) => refreshChapter(chapter)));
   }, [refreshChapter]);
 
+  /**
+   * BOOK-111 — the posted DTO enters the feed in the same frame, before any request settles.
+   *
+   * The 201 answer is the row the reader just made: it is inserted (never appended twice) into
+   * the thread's feed and into its chapter's, and the chapter is marked loaded — its marks are
+   * now settled from this row. A later `refreshComments` is the durable truth and replaces the
+   * list wholesale, so a row that survived here cannot appear twice.
+   */
+  const acceptComment = useCallback((comment: CommentDto) => {
+    setComments((current) => insertFiling(current, comment) ?? current);
+    setChapterFeed((current) => {
+      const feed = current[comment.chapter] ?? { items: [], loaded: true };
+      const items = insertFiling(feed.items, comment);
+      if (items === null && feed.loaded) return current;
+      return { ...current, [comment.chapter]: { items: items ?? feed.items, loaded: true } };
+    });
+  }, []);
+
   const refreshDecisions = useCallback(async () => {
     try {
       const next = await getMyDecisions();
@@ -148,6 +167,7 @@ export function useReaderFeed() {
     loadThread,
     refreshChanges,
     refreshComments,
+    acceptComment,
     loadChapter,
     refreshChapter,
     refreshLoaded,

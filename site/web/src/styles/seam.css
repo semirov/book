@@ -184,6 +184,18 @@
   white-space: nowrap;
   color: var(--live);
 }
+/* The state word of a strip row (BOOK-111): the row must say that the filing exists and
+   waits — the aria-label alone is not visible to a reader looking at the page. Label register,
+   ink like the row's own micro text. */
+.seam-filing-word {
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
 /* The moment of the filing: mono, tabular, 12 px — a stamp-time, declared here so the row's
    inherited voice cannot drift (BOOK-70). */
 .seam-filing-stamp {

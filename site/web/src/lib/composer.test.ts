@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  budgetLine,
   draftKindLine,
   errorCopy,
   retryCopy,
@@ -26,6 +27,46 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
     }
   });
 
+  it('answers every code the POST route can return with a Russian sentence, never the code (BOOK-111)', () => {
+    // The audit the owner's 409 asked for: no code may reach the reader as a raw token, and
+    // no transport answer may print an English status line.
+    const codes = [
+      'INVALID',
+      'TOO_LONG',
+      'DUPLICATE',
+      'STALE_ANCHOR',
+      'RATE_LIMITED',
+      'EDIT_DAILY_LIMIT',
+      'QUEUE_FULL',
+      'ENDING_FROZEN',
+      'FROZEN_FRAME',
+      'BLOCKED',
+      'UNAUTHENTICATED',
+      'CAPTCHA_UNAVAILABLE',
+      'CAPTCHA_FAILED',
+      'INTERNAL',
+      'ORIGIN',
+      'CONTENT_TYPE',
+    ];
+    for (const code of codes) {
+      const copy = errorCopy({ code, message: 'internal detail that must not be shown first' });
+      expect(copy.line.length, code).toBeGreaterThan(0);
+      expect(copy.line, code).toMatch(/\p{Script=Cyrillic}/u);
+      expect(copy.line, code).not.toContain(code);
+      expect(copy.line, code).not.toContain('internal detail');
+      expect(copy.detail ?? '', code).not.toContain('internal detail');
+    }
+    // A bare status fallback is a sentence too: `HTTP_500` used to print `Internal Server Error`.
+    const fallback = errorCopy({ code: 'HTTP_500', message: 'Internal Server Error' });
+    expect(fallback.line).toBe('не удалось отправить замечание — попробуйте ещё раз');
+    expect(fallback.detail).toBeNull();
+    expect(fallback.canRetry).toBe(true);
+    // A Russian server line is kept as the detail; an English one never is.
+    expect(errorCopy({ code: 'INVALID', message: 'замечание короче 3 символов' }).detail).toBe('замечание короче 3 символов');
+    expect(errorCopy({ code: 'INVALID', message: 'body must be a string' }).detail).toBeNull();
+    expect(errorCopy({ code: 'HTTP_503', message: 'сервис недоступен' }).detail).toBe('сервис недоступен');
+  });
+
   it('shows a reset moment and a human retry estimate', () => {
     const copy = errorCopy({ code: 'RATE_LIMITED', message: '', resetAt: '2026-10-25T13:04:11Z' });
     expect(copy.detail).toMatch(/^до \d{2}:\d{2}$/u);
@@ -37,5 +78,22 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
   it('says in the draft state what is being brought, and that nothing is chosen yet', () => {
     expect(draftKindLine(null)).toBe('тип не выбран — без него правка не уйдёт');
     expect(draftKindLine('decision')).toBe('вносится: решение героя');
+  });
+
+  it('prints the exempt budget line without a daily counter (BOOK-113)', () => {
+    const line = budgetLine({
+      perHour: 10,
+      remaining: 9,
+      resetAt: null,
+      editsPerDay: 1,
+      editsRemaining: 1,
+      editsResetAt: null,
+      editsExempt: true,
+    });
+    expect(line).toBe('осталось 9 из 10 за час · правки без дневного ограничения');
+    // Everyone else keeps the exact existing shape.
+    expect(
+      budgetLine({ perHour: 10, remaining: 9, resetAt: null, editsPerDay: 1, editsRemaining: 0, editsResetAt: null }),
+    ).toBe('осталось 9 из 10 за час · правок сегодня 0 из 1');
   });
 });
