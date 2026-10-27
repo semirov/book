@@ -1,4 +1,4 @@
-import type { FrontDto, StateSnapshot } from '@book/shared';
+import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
@@ -24,6 +24,7 @@ export function Opening({
   front,
   state,
   ribbon,
+  catalog,
   escalation,
   onOpenChange,
   view,
@@ -33,6 +34,7 @@ export function Opening({
   front: FrontDto;
   state: StateSnapshot;
   ribbon: Ribbon | null;
+  catalog: readonly CatalogEntry[];
   escalation: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
   view: BookView;
@@ -45,7 +47,7 @@ export function Opening({
       <HowTheBookIsMade />
       <hr className="front-rule" />
       <Annotation front={front} />
-      <Header state={state} ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} />
+      <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} />
       <ViewSwitch view={view} onChange={onViewChange} />
     </>
   );

@@ -93,6 +93,7 @@ describe('how the book is made', () => {
         front={front}
         state={state}
         ribbon={null}
+        catalog={[]}
         escalation={[]}
         onOpenChange={() => undefined}
         view="book"

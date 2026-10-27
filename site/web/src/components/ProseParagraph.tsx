@@ -32,6 +32,11 @@ export type ProseParagraphProps = {
   blockId: string;
   blockIndex: number;
   baseRev: number;
+  /**
+   * The prose as the reader has it — during the printing reveal, the prefix printed so far.
+   * Its length is the block's `data-chars` (BOOK-89): the folio counts text that is there,
+   * and never reads `textContent`, which also carries filing numerals and «вмешаться».
+   */
   text: string;
   frozen: boolean;
   comments: readonly CommentDto[];
@@ -303,6 +308,7 @@ export function ProseParagraph({
       <p
         className={classes.join(' ')}
         data-block-id={blockId}
+        data-chars={text.length}
         tabIndex={-1}
         data-revising={revising ?? undefined}
         onPointerUp={pick}

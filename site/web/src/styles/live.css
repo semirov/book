@@ -75,23 +75,30 @@
   color: var(--ink);
 }
 
-/* The same columns for a row that opens nothing. */
+/* The same columns for a row that opens nothing. BOOK-89: the third track is the page — a
+   fixed 3ch so a 2-digit and a 3-digit number cannot move the title's left edge (36 + 14). */
 .toc-line {
   display: grid;
-  grid-template-columns: 36px 1fr;
+  grid-template-columns: 36px minmax(0, 1fr) 3ch;
   column-gap: 14px;
-  align-items: center;
+  align-items: baseline;
   height: 26px;
+  /* BOOK-89 (owner, 2026-10-27) — the page number closes the row on the prose's right edge,
+     not on the contents container's: half the difference between the row and the measure,
+     floored at zero (the phone's row is narrower than the measure). */
+  padding-inline-end: max(0px, calc((100% - var(--measure)) / 2));
 }
 
-/* A row with text opens its chapter: numeral and title line (or frozen sentence), nothing else. */
+/* A row with text opens its chapter: numeral, title line (or frozen sentence), page. */
 .toc-link {
   display: grid;
-  grid-template-columns: 36px 1fr;
+  grid-template-columns: 36px minmax(0, 1fr) 3ch;
   column-gap: 14px;
   align-items: baseline;
   min-height: 44px;
   padding: 10px 0;
+  /* The same inset as `.toc-line`: the page cell ends on the prose axis, not the row's edge. */
+  padding-inline-end: max(0px, calc((100% - var(--measure)) / 2));
   text-decoration: none;
 }
 .toc-link:hover .toc-num,
@@ -99,13 +106,53 @@
   color: var(--live);
 }
 .toc-text {
-  min-width: 0;
+  /* The leader lives in this cell (`::after`, below): a zero-height dotted hairline that
+     takes exactly the space the text leaves on its own line. It never strokes through a
+     wrapped title, and a row that fills its line leaves it at zero width (BOOK-89 D4). */
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-inline-size: 0;
   font-family: var(--serif);
   font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--ink);
   text-wrap: pretty;
   overflow-wrap: break-word;
+}
+.toc-text::after {
+  content: '';
+  flex: 1 1 0;
+  /* No minimum: a title that fills its line (or wraps) leaves the hairline at zero width
+     rather than a stub that could read as an ellipsis. */
+  min-inline-size: 0;
+  block-size: 0;
+  border-block-start: 1px dotted var(--ink-3);
+}
+
+/* BOOK-89 — the starting page of the chapter: a bare numeral in the apparatus register,
+   right-aligned in its fixed track, on the same baseline as the numeral (D4/D5). */
+.toc-page {
+  grid-column: 3;
+  justify-self: end;
+  text-align: right;
+  inline-size: 3ch;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+
+/* BOOK-89 — an empty slot's state word: the flow's own state vocabulary (`.premise-label`
+   in seam-form.css), not a type voice. It sits in the text cell, so the leader still runs. */
+.toc-state {
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
 }
 
 /* ---------- the chapter caret blinks only while its lane writes (§11.3–11.4) ---------- */
@@ -245,4 +292,30 @@
   font-size: var(--fs-label);
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+/* ---------- BOOK-89: the running folio — one number, out of the flow ---------- */
+/* ≥768: the right margin, the ink flush with the frame's inner right edge, its box centre on
+   the reading line (40 % of the viewport, 6px up to sit on the line rather than beside it).
+   `position: fixed` with no box in the text column: the number may change a hundred times
+   without moving a line of prose (D2/D3). */
+.folio {
+  position: fixed;
+  inset-inline-end: calc(var(--gut) + max(0px, (100% - var(--shell)) / 2));
+  top: calc(clamp(96px, 40vh, calc(100% - 96px)) - 6px);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 12px;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+/* <768: the last item of the sticky head's first row — the only slot where the margin is the
+   page itself. The box (16.2px) is shorter than the brand's line (17.55px), so row 1 does not
+   grow, and the head keeps its measured height (D2). */
+@media (max-width: 767px) {
+  .folio {
+    position: static;
+    padding-inline-start: 12px;
+    line-height: 1.35;
+  }
 }
