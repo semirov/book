@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COMMENT_QUOTE_MAX_CHARS } from '@book/shared';
 
-import { anchorFor, clampQuote, reanchorAnchor, seamKey, sentenceAt, splitSentences, wordAt } from './seam.ts';
+import { anchorFor, clampQuote, firstWord, reanchorAnchor, seamKey, sentenceAt, splitSentences, wordAt } from './seam.ts';
 
 const TEXT = 'Я вошёл в пустую комнату. Её освещал яркий свет.';
 
@@ -142,5 +142,16 @@ describe('anchorFor', () => {
       COMMENT_QUOTE_MAX_CHARS,
     );
     expect(anchorFor({ text: '', blockId: 'ch08#aa11bb22', baseRev: 1, offset: 0 })).toBeNull();
+  });
+});
+
+describe('the first word of a stored quote (BOOK-111)', () => {
+  it('names the word a surface may explain when all it holds is the quoted sentence', () => {
+    expect(firstWord('Её освещал яркий свет.')).toBe('Её');
+    // Punctuation and quotes are not a word: the door would lead to nothing.
+    expect(firstWord('«Я» вошёл в комнату.')).toBe('Я');
+    expect(firstWord('   ')).toBeNull();
+    expect(firstWord('')).toBeNull();
+    expect(firstWord(null)).toBeNull();
   });
 });

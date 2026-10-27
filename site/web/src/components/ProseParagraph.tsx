@@ -1,24 +1,23 @@
-import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
+import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
-import { getAuthors, getMyTrace } from '../api.ts';
+import { wordOffsetIn } from '../dom.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
-import { FilingPanel } from './FilingPanel.tsx';
-import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { FILING_PANEL_CLASS } from './FilingPanel.tsx';
+import { PROV_PANEL_CLASS } from './ProvenancePanel.tsx';
 import { Seam } from './Seam.tsx';
+import { SeamPanel } from './SeamPanel.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrozenChapter } from '../lib/freeze.ts';
-import { isAlive, staleLine } from '../lib/filings.ts';
-import type { ChainHistory } from '../lib/history.ts';
-import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
+import { filingNumber, isAlive, staleLine } from '../lib/filings.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
-import { provenanceView, shareFor, type ProvenanceVariant, type TraceShare } from '../lib/provenance.ts';
-import { anchorFor, seamKey } from '../lib/seam.ts';
+import { anchorFor, firstWord, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
+import { useProvenance } from '../lib/useProvenance.ts';
 import { MarginNote } from './MarginNote.tsx';
 import { PhoneStrip } from './PhoneStrip.tsx';
 import { RevisionObject } from './RevisionObject.tsx';
@@ -103,15 +102,19 @@ export function ProseParagraph({
   /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
   const revision = useOpenRevision();
   const hostRef = useRef<HTMLElement | null>(null);
-  // BOOK-68: the paragraph's own history, as the word panel may speak of it. No chain yet is
-  // «still reading», never «no history» — and a 404 is an answer, not a failure. Named apart
-  // from the BOOK-56 `history` prop: one is the chain's state, the other the surface's gate.
-  const [chainHistory, setChainHistory] = useState<{ state: ChainHistory; chain: ParagraphChainDto | null }>({
-    state: 'loading',
-    chain: null,
+  /**
+   * BOOK-DOC-34 §2.6 — the word panel's facts are read by one hook, the same one a filing
+   * card's footer goes through: one chain read, one «свой след», and nothing with history off.
+   */
+  const provenance = useProvenance({
+    blockId,
+    chapter: entry.n,
+    word: provenancePanel?.word ?? null,
+    frozen,
+    history,
+    signedIn: viewer.signedIn,
+    viewerName: viewer.displayName,
   });
-  const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
-  const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
   const { sentences, groups: blockFilings, marks, alive, key: filingKey } = proseMarks(text, comments, blockId);
   const stale = staleLine(comments.filter((comment) => comment.anchor.blockId === blockId));
   const classes = ['p'];
@@ -136,7 +139,16 @@ export function ProseParagraph({
   /** BOOK-111: one way into a filing card — the page's store, owned by this paragraph. */
   const openFiling = useCallback(
     (comment: CommentDto, origin: HTMLElement): void => {
-      showFiling({ kind: 'filing', owner: blockId, comment, origin, rect: origin.getBoundingClientRect() });
+      showFiling({
+        kind: 'filing',
+        owner: blockId,
+        comment,
+        origin,
+        rect: origin.getBoundingClientRect(),
+        // BOOK-111 (owner, 2026-10-27): the tap landed in the strip, so the strip is the same
+        // place as the panel — it collapses to one line instead of vanishing behind it.
+        fromSeam: origin.closest('.seam') !== null,
+      });
     },
     [blockId],
   );
@@ -196,86 +208,58 @@ export function ProseParagraph({
     openAt(host, offset, host);
   };
 
-  // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel.
+  // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel; the hook is
+  // the one reader of those facts, and both of the panel's doors go through its `load`.
   const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
-    showFiling({ kind: 'provenance', owner: blockId, comment: null, origin: at, rect: at.getBoundingClientRect(), word });
-    // BOOK-56: the chain and both share rows are history; with history off the panel keeps
-    // only the word, its place and «вмешаться», so nothing is fetched for rows not rendered.
-    if (!history) return;
-    // BOOK-68: a chain the client already holds (a 404, or a DTO with no versions) is not
-    // asked for again; a failure is not an answer, so the row says the read failed.
-    const memo = knownParagraphChain(blockId);
-    if (memo.known) {
-      setChainHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
-    } else {
-      setChainHistory({ state: 'loading', chain: null });
-      try {
-        const loaded = await loadParagraphChain(blockId);
-        setChainHistory({ state: loaded === null ? 'none' : 'ready', chain: loaded });
-      } catch {
-        setChainHistory({ state: 'failed', chain: null });
-      }
-    }
-    // BOOK-33: the viewer's own curve is the one the panel may print for their own word, and
-    // the authors list carries the public numbers for somebody else's. Own-only, always.
-    if (viewer.signedIn && own === null) {
-      try {
-        const trace = await getMyTrace();
-        setOwn({ share: trace.share, survivedRevisions: trace.survivedRevisions });
-      } catch {
-        /* a signed-out session that expired: the row falls back to the public shape */
-      }
-    }
-    if (publicShares.length === 0) {
-      try {
-        const authors = await getAuthors();
-        setPublicShares(authors.contributors.map((row) => ({ label: row.label, share: row.share, edits: row.edits })));
-      } catch {
-        /* no public list: a foreign word says «след не измерен», never a borrowed number */
-      }
-    }
+    showFiling({
+      kind: 'provenance',
+      owner: blockId,
+      comment: null,
+      origin: at,
+      rect: at.getBoundingClientRect(),
+      word,
+      fromSeam: at.closest('.seam') !== null,
+    });
+    await provenance.load();
   };
-
-  // Who wrote this version, from the log's own vocabulary: a reader, the author, or a
-  // version the log cannot assign. A chain that has not arrived yet is not a claim — it is
-  // the machine default, and the panel re-renders when the chain answers.
-  const chain = chainHistory.chain;
-  const actorKind = chain?.versions.at(-1)?.actor?.kind;
-  const variant: ProvenanceVariant = frozen
-    ? 'frozen'
-    : actorKind === 'reader'
-      ? 'reader'
-      : actorKind === undefined || actorKind === 'author' || actorKind === 'writer'
-        ? 'machine'
-        : 'unattributed';
-  const lastActor = chain?.versions.at(-1)?.actor ?? null;
-  const share: TraceShare =
-    provenancePanel === null
-      ? { kind: 'none' }
-      : shareFor({
-          actor: lastActor === null ? null : { kind: lastActor.kind, label: lastActor.label },
-          viewerName: viewer.displayName,
-          own,
-          publicShares,
-        });
-  const view =
-    provenancePanel === null
-      ? null
-      : provenanceView({
-          word: provenancePanel.word ?? '',
-          chapter: entry.n,
-          variant,
-          share,
-          chain,
-          history: chainHistory.state,
-          at: chain?.versions.at(-1)?.at ?? null,
-          frozenOf: 'frame',
-          live: history,
-        });
 
   const anchor = here ? (seam?.anchor ?? null) : null;
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
+  /**
+   * BOOK-111 (owner, 2026-10-27) — the strip's sentence and its filing are the two halves of
+   * one popover. The strip's own resolution decides which group belongs to this sentence
+   * (exact quote first, a single moved group second), so the switch and the strip's rows can
+   * never point at different records.
+   */
+  const seamFilings =
+    blockFilings.find((item) => anchor !== null && item.quote === anchor.quote) ??
+    (blockFilings.length === 1 ? (blockFilings[0] ?? null) : null);
+  const seamFiling = seamFilings?.all[0] ?? null;
+  /** The word a filing card may explain: the first of the sentence it quotes. */
+  const filingWord = filingPanel === null || filingPanel.comment === null ? null : firstWord(filingPanel.comment.anchor.quote);
+  const view = provenance.view;
+
+  /**
+   * The provenance panel turns into the sentence's card in the same box: the anchor rect, the
+   * origin and `fromSeam` travel unchanged, so the strip stays collapsed and closing the card
+   * still returns focus to the button that opened the word.
+   */
+  const switchToFiling = (comment: CommentDto): void => {
+    if (panel === null) return;
+    showFiling({ ...panel, kind: 'filing', comment, word: undefined });
+  };
+
+  /**
+   * The card turns into the provenance of the first word it quotes, in the same box. The chain
+   * is read through the same hook the strip's own door uses: same fetches, and with history off
+   * nothing is asked at all.
+   */
+  const switchToProvenance = (word: string): void => {
+    if (panel === null) return;
+    showFiling({ ...panel, kind: 'provenance', comment: null, word });
+    void provenance.load();
+  };
 
   // BOOK-90: the margin is page-wide; this paragraph only tells it that its anchors may have
   // moved (a seam opened, a revision arrived, the text changed).
@@ -352,9 +336,7 @@ export function ProseParagraph({
       blockIndex={blockIndex}
       anchor={anchor}
       frozen={frozenChapter}
-      filings={
-        blockFilings.find((item) => anchor !== null && item.quote === anchor.quote) ?? (blockFilings.length === 1 ? blockFilings[0]! : null)
-      }
+      filings={seamFilings}
       composer={composer}
       viewer={viewer}
       onPosted={onPosted}
@@ -363,6 +345,7 @@ export function ProseParagraph({
         closeSeam();
         origin?.focus();
       }}
+      onClosePanel={closePanel}
       onReanchor={onReanchor}
       onProvenance={(origin) => void openProvenance(origin, anchor?.word ?? anchor?.quote ?? '')}
       onOpenFiling={openFiling}
@@ -443,48 +426,35 @@ export function ProseParagraph({
           {stale}
         </button>
       )}
-      {view === null || provenancePanel === null ? null : (
-        <ProvenancePanel
+      {/*
+        BOOK-111 (owner, 2026-10-27): one box, two contexts — one slot in the tree, so a turn
+        from the word's record to the sentence's card keeps the very same `<aside>` (and the
+        reader's place in it). Two sibling slots would remount the box and hand back a new node.
+      */}
+      {view !== null && provenancePanel !== null ? (
+        <SeamPanel
+          context="provenance"
+          rootClass={PROV_PANEL_CLASS}
           view={view}
           anchor={provenancePanel.rect}
-          // Focus returns to the cluster that opened the panel (§7), not nowhere.
           onClose={closePanel}
           onForm={hideFiling}
+          onFiling={
+            provenancePanel.fromSeam && seamFiling !== null ? () => switchToFiling(seamFiling) : undefined
+          }
+          filingLabel={provenancePanel.fromSeam && seamFiling !== null ? `замечание ${filingNumber(seamFiling)} →` : undefined}
         />
-      )}
-      {filingPanel === null || filingPanel.comment === null ? null : (
-        // Same contract as the provenance panel: focus goes back to the mark or row.
-        <FilingPanel comment={filingPanel.comment} anchor={filingPanel.rect} onClose={closePanel} />
+      ) : filingPanel === null || filingPanel.comment === null ? null : (
+        // Same contract as the word's panel: same shell, one close, focus back to the mark or row.
+        <SeamPanel
+          context="filing"
+          rootClass={FILING_PANEL_CLASS}
+          comment={filingPanel.comment}
+          anchor={filingPanel.rect}
+          onClose={closePanel}
+          onProvenance={filingWord === null ? undefined : () => switchToProvenance(filingWord)}
+        />
       )}
     </>
   );
-}
-
-/**
- * The caret offset inside the tapped sentence span, in characters from the block's start.
- * `caretPositionFromPoint` is Firefox, `caretRangeFromPoint` is Chrome/Safari; a browser with
- * neither falls back to the sentence's own start, which still names the right sentence.
- */
-function wordOffsetIn(target: HTMLElement, x: number, y: number): number | null {
-  const start = Number(target.getAttribute('data-s') ?? '0');
-  if (typeof document === 'undefined') return null;
-  const doc = document as Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  };
-  let node: Node | null = null;
-  let within = 0;
-  const position = doc.caretPositionFromPoint?.(x, y);
-  if (position !== null && position !== undefined) {
-    node = position.offsetNode;
-    within = position.offset;
-  } else {
-    const range = doc.caretRangeFromPoint?.(x, y) ?? null;
-    node = range?.startContainer ?? null;
-    within = range?.startOffset ?? 0;
-  }
-  if (node === null || !target.contains(node)) return null;
-  // A sentence span holds one text node, so the caret offset inside it is the offset inside
-  // the sentence; the block offset is that plus the sentence's own start.
-  return start + Math.min(within, (target.textContent ?? '').length);
 }

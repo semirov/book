@@ -162,6 +162,16 @@ export function wordAt(text: string, offset: number): Word | null {
   return best;
 }
 
+/**
+ * The first word of a stored quote — the one word a surface may name when all it holds is the
+ * sentence a filing cites (BOOK-111: the card's way into that phrase's provenance). An empty
+ * quote has no word, and the door which would lead to it is not offered.
+ */
+export function firstWord(text: string | null): string | null {
+  if (text === null || text.trim().length === 0) return null;
+  return wordAt(text, 0)?.text ?? null;
+}
+
 /** The sentence holding the offset, or the nearest one. */
 export function sentenceAt(text: string, offset: number): Sentence | null {
   const sentences = splitSentences(text);

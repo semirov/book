@@ -43,6 +43,14 @@ export type FormProps = {
    * the refused form's own action, so closing the panel returns focus there.
    */
   onOpenDuplicate?: (id: string, origin: HTMLElement) => void;
+  /**
+   * BOOK-111: a refusal the strip holds while this form is unmounted. A panel opened from the
+   * form's own refusal collapses the strip, so the form is rebuilt when the panel closes; the
+   * refusal is the strip's fact and comes back with it (BOOK-63: a refusal spends nothing).
+   */
+  initialError?: ComposerError | null;
+  /** Every set or clear of the refusal reaches the strip, so a remount prints the same line. */
+  onRefused?: (error: ComposerError | null) => void;
 };
 
 export function InterventionForm({
@@ -54,9 +62,11 @@ export function InterventionForm({
   onPosted,
   onReanchor,
   onOpenDuplicate,
+  initialError = null,
+  onRefused,
 }: FormProps) {
   const limits = draftLimits(composer);
-  const [error, setError] = useState<ComposerError | null>(null);
+  const [error, setError] = useState<ComposerError | null>(initialError);
   const [sending, setSending] = useState(false);
   const [budget, setBudget] = useState<{ line: string } | null>(null);
 
@@ -94,10 +104,19 @@ export function InterventionForm({
     track('kind_pick', { kind: 'note' });
   };
 
+  /**
+   * BOOK-111: the refusal is the strip's fact as well as this form's — a panel that opens from
+   * it unmounts the form, and the strip hands the same line back when the panel closes.
+   */
+  const refuse = (next: ComposerError | null): void => {
+    setError(next);
+    onRefused?.(next);
+  };
+
   const submit = async (): Promise<void> => {
     if (!viewer.signedIn) return;
     if (body.length < composer.minChars) {
-      setError({ code: 'INVALID', message: `замечание короче ${composer.minChars} символов` });
+      refuse({ code: 'INVALID', message: `замечание короче ${composer.minChars} символов` });
       track('error_shown', { code: 'INVALID' });
       return;
     }
@@ -113,13 +132,13 @@ export function InterventionForm({
         }),
       );
       setBudget({ line: budgetLine(response.remaining) });
-      setError(null);
+      refuse(null);
       // BOOK-63: the two paths are distinct acts; the count of the day stays on the server.
       track(noteOnly || draft.blockId === null ? 'submit_note' : 'submit_intervention', {});
       onPosted(response.comment);
     } catch (caught) {
       if (caught instanceof ApiError) {
-        setError({
+        refuse({
           code: caught.code,
           message: caught.message,
           ...(caught.retryAfterMs === undefined ? {} : { retryAfterMs: caught.retryAfterMs }),
@@ -129,7 +148,7 @@ export function InterventionForm({
         // The refusal is the server's; only its code leaves the page.
         track('submit_refused', { code: caught.code });
       } else {
-        setError({ code: 'INVALID', message: 'сеть не ответила — попробуйте ещё раз' });
+        refuse({ code: 'INVALID', message: 'сеть не ответила — попробуйте ещё раз' });
         track('error_shown', { code: 'INVALID' });
       }
     } finally {
@@ -222,10 +241,13 @@ export function InterventionForm({
           ) : null}
           {duplicateId === null || onOpenDuplicate === undefined ? null : (
             // BOOK-111: the 409 names the filing that already exists; the reader gets a way to
-            // it instead of a second identical form. The button is the origin, so focus returns.
+            // it instead of a second identical form. The button is the origin, so focus returns
+            // (`data-door` lets the strip hand it back after the panel's collapse, since the
+            // form is rebuilt when the strip's rows come back).
             <button
               type="button"
               className="seam-inline-action"
+              data-door="duplicate"
               onClick={(event) => onOpenDuplicate(duplicateId, event.currentTarget)}
             >
               открыть отправленное
@@ -240,7 +262,7 @@ export function InterventionForm({
                 // note — no kind, no wording — instead of being lost. The label is the note
                 // submit's own, so the recovery and the action cannot drift apart.
                 onChange({ ...draft, noteOnly: true });
-                setError(null);
+                refuse(null);
               }}
             >
               {submitLabel({ noteOnly: true, blockId: draft.blockId })}

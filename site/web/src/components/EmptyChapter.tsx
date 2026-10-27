@@ -51,7 +51,9 @@ export function EmptyChapter({
   /**
    * BOOK-111: one way into a filing that already exists. The premise row, and the strip's
    * rows — including the one a duplicate refusal points at — open the same card, anchored on
-   * the element that was tapped, so closing it returns the reader there.
+   * the element that was tapped, so closing it returns the reader there. `fromSeam` is read
+   * off the element, exactly as the paragraph does it: a row inside the strip turns into the
+   * strip's one line, anything else closes the strip it would have stood beside.
    */
   const openFiling = (comment: CommentDto, origin: HTMLElement): void => {
     showFiling({
@@ -60,6 +62,7 @@ export function EmptyChapter({
       comment,
       origin,
       rect: origin.getBoundingClientRect(),
+      fromSeam: origin.closest('.seam') !== null,
     });
   };
 
@@ -97,6 +100,7 @@ export function EmptyChapter({
           viewer={viewer}
           onPosted={(comment) => onPosted?.(comment)}
           onClose={closeSeam}
+          onClosePanel={hideFiling}
           onProvenance={() => undefined}
           onOpenFiling={openFiling}
           premiseHint={firstEmpty && open}

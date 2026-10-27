@@ -291,7 +291,9 @@
 .phone-strip-row:focus-visible,
 .revision-close:focus-visible,
 .revision-door:focus-visible,
-.revision:focus-visible {
+.revision:focus-visible,
+.prov-filing:focus-visible,
+.filing-prov:focus-visible {
   /* BOOK-90: one ring, one offset — the margin's objects included. */
   outline: 2px solid var(--live);
   outline-offset: 2px;
@@ -336,6 +338,43 @@
 }
 .seam-submit:hover:not(:disabled) {
   background: var(--live);
+}
+
+/* ---------- the strip while a panel speaks for it ---------- */
+/* BOOK-111 (owner, 2026-10-27) — «Два поповера»: a panel opened from the strip is not a second
+   box beside it, so the strip itself becomes one line and the floating panel is the only full
+   frame on screen. No ✕ and no action live here: the panel carries the one close, and closing
+   it gives these rows back. The line never wraps and never stacks on a phone — the word keeps
+   its guillemets and is ellipsised only when it truly cannot fit, because a stack of two lines
+   would be the second surface the owner asked us to remove. */
+.seam-prov-line {
+  display: flex;
+  align-items: baseline;
+  min-height: 44px;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.seam-prov-word {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.seam-prov-trail {
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
 
 /* ---------- below 768: the strip is a small stack, not one crowded row ----------
