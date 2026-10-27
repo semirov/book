@@ -273,7 +273,7 @@ export type FrontMatterParse = {
 /**
  * `manuscript/00-front.md`: line 1 the live title, line 2 blank, then the annotation as
  * 1–12 blocks of 300–4 000 characters, plain text (§6C.2, F021). The band is a guard against
- * an empty blurb and an unbounded dump, not a page budget: the owner's annotation is seven
+ * an empty blurb and an unbounded dump, not a page budget: the owner's annotation is nine
  * paragraphs and is valid as written.
  */
 export function parseFrontMatter(raw: string): FrontMatterParse {

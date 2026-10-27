@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Annotation } from './Annotation.tsx';
 import { Opening } from './Opening.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
-import { COVER_CAPTION, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
+import { TITLE_GENRE, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
 
 /** Every stylesheet as text, keyed by path: the prose measure is a rule across the set. */
 const sheets = import.meta.glob<string>('../styles/*.css', {
@@ -21,9 +21,9 @@ function declarations(css: string, selector: string): string {
   return match?.[1] ?? '';
 }
 
-/** The body of `@media (min-width: <condition>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, condition: string): string {
-  const start = css.search(new RegExp(`@media \\(min-width:\\s*${condition}\\)\\s*\\{`, 'u'));
+/** The body of `@media (<query>) { … }`, with nested braces balanced. */
+function mediaBody(css: string, query: string): string {
+  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
   if (start < 0) return '';
   const open = css.indexOf('{', start);
   let depth = 0;
@@ -110,9 +110,9 @@ function textOf(html: string): string {
 }
 
 describe('cover', () => {
-  it('is the title, the live byline, the promise and the caption — and nothing else', () => {
+  it('is the title, the live byline, the category line and the promise — and nothing else', () => {
     expect(textOf(coverHtml())).toBe(
-      `Бланк${'Филипп Семиров + 0'}${TITLE_PROMISE}${COVER_CAPTION}`,
+      `Бланк${'Филипп Семиров + 0'}${TITLE_GENRE}${TITLE_PROMISE}`,
     );
   });
 
@@ -152,14 +152,28 @@ describe('cover', () => {
     expect(html).not.toContain('undefined');
   });
 
-  it('carries the approved caption exactly once, with no period added', () => {
+  it('carries the owner\'s category line verbatim, once, between the byline and the promise', () => {
     const html = coverHtml();
-    expect(html.match(/Восемь линий, четыре из начала в конец, четыре из конца в начало/gu)).toHaveLength(1);
-    expect(COVER_CAPTION).toBe('Восемь линий, четыре из начала в конец, четыре из конца в начало');
-    expect(COVER_CAPTION.endsWith('.')).toBe(false);
-    expect(html).toContain('class="cover-caption"');
-    // The owner's second sentence is guidance for the book, not cover copy.
-    expect(html).not.toContain('схождени');
+    expect(TITLE_GENRE).toBe(
+      'Литературно-инженерный перформанс: книга возникает прямо перед тобой, а читатели вмешиваются в её судьбу.',
+    );
+    expect(html.match(/Литературно-инженерный перформанс: книга возникает прямо перед тобой, а читатели вмешиваются в её судьбу\./gu)).toHaveLength(1);
+    expect(html).toContain('class="title-genre"');
+    // Book matter in tone (BOOK-39): no eyebrow of uppercase labels, no card, no arrow,
+    // no exclamation — and the genre is named once, not twice.
+    expect(html.match(/title-genre/gu)).toHaveLength(1);
+    expect(html).not.toContain('!');
+    expect(html).not.toContain('→');
+    // The retired caption is gone from page 1 and is not reinstated anywhere.
+    expect(html).not.toContain('Восемь');
+    expect(html).not.toContain('линий');
+    expect(html).not.toContain('cover-caption');
+    // The order the owner set: title, byline, category line, promise.
+    const order = ['class="title"', 'class="author"', 'class="title-genre"', 'class="title-promise"'].map(
+      (needle) => html.indexOf(needle),
+    );
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(new Set(order).size).toBe(4);
   });
 
   it('carries none of the rejected front-page copy (BOOK-DOC-5 §2)', () => {
@@ -172,6 +186,8 @@ describe('cover', () => {
       'открытую',
       '©',
       '67',
+      'Восемь',
+      'линий',
       'kicker',
       'subtitle',
       'double-rule',
@@ -186,7 +202,7 @@ describe('cover', () => {
 
   it('falls back to the site label when the title line is missing', () => {
     const html = renderToStaticMarkup(<TitleSheet front={{ ...front, title: null }} />);
-    expect(textOf(html)).toBe(`КнигаФилипп Семиров + 0${TITLE_PROMISE}${COVER_CAPTION}`);
+    expect(textOf(html)).toBe(`КнигаФилипп Семиров + 0${TITLE_GENRE}${TITLE_PROMISE}`);
   });
 
   it('is still on first paint and fades only on a real title change', () => {
@@ -230,14 +246,15 @@ describe('page 2', () => {
     expect(renderToStaticMarkup(<Annotation front={{ ...front, about: null }} />)).toBe('');
   });
 
-  it('reads ragged-right below 600px and justified above, from the one prose rule', () => {
+  it('reads justified at the desktop measure and ragged-right on the phone, from the one prose rule', () => {
     // The phone defect: `.p` was justified at every width, and `.annotation .p` re-justified
-    // page 2 on top of the shared rule, so page 2 kept rivers at 342px.
+    // page 2 on top of the shared rule, so page 2 kept rivers at 342px. BOOK-DOC-35 §3 keeps
+    // that fix but states it the adaptive way: the desktop is the base, the phone is the query.
     const book = sheets['../styles/book.css'] ?? '';
-    expect(declarations(book, '.p')).toContain('text-align: left');
-    // The threshold is pinned: 600px, the same breakpoint as the type and the gutters.
-    expect(book).toMatch(/@media \(min-width:\s*600px\)/u);
-    expect(declarations(mediaBody(book, '600px'), '.p')).toContain('text-align: justify');
+    expect(declarations(book, '.p')).toContain('text-align: justify');
+    // The threshold is pinned: 599px (the 600 step), the same breakpoint as the gutters.
+    expect(book).toMatch(/@media \(max-width:\s*599px\)/u);
+    expect(declarations(mediaBody(book, 'max-width: 599px'), '.p')).toContain('text-align: left');
     // Exactly one justification in the whole sheet set, and it is that block.
     const justified = Object.keys(sheets).filter((file) => (sheets[file] ?? '').includes('text-align: justify'));
     expect(justified).toEqual(['../styles/book.css']);
@@ -370,7 +387,7 @@ describe('the opening screen', () => {
     const cover = html.indexOf('class="page titul"');
     const annotation = html.indexOf('class="page annotation"');
     const header = html.indexOf('class="top"');
-    const views = html.indexOf('class="views page"');
+    const views = html.indexOf('class="views page sheet"');
     expect(annotation).toBeGreaterThan(cover);
     expect(header).toBeGreaterThan(annotation);
     expect(views).toBeGreaterThan(header);
