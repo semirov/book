@@ -406,7 +406,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         tokensOut: usage.out,
         costUsd: passCost,
       }),
-      model: lane.model() ?? config.model,
+      model: config.model,
       span: changedSpans(beforeText, text, chapter),
       tokens: { in: usage.in, out: usage.out },
       costUsd: passCost,
@@ -419,7 +419,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       closed = await engine.done({
         leaseId: job.leaseId,
         note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
-        model: lane.model() ?? config.model,
+        model: config.model,
         tokensIn: lane.writerTokens().in,
         tokensOut: lane.writerTokens().out,
         seams: [],

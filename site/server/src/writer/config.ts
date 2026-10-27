@@ -159,7 +159,11 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     keySource: source,
     timeoutMs: integer(env, 'WRITER_TIMEOUT_MS', 420_000, 1),
     maxTokensPerCall: integer(env, 'WRITER_MAX_TOKENS_PER_CALL', 16_000, 1),
-    maxTokensPerPass: integer(env, 'WRITER_MAX_TOKENS_PER_PASS', 48_000, 1),
+    // A runaway guard, not the bound: money is the bound ($10 a day, `budget.ts`). The default is
+    // the measured shape of a real pass, with room — a chapter of 20 697 characters cost 18 561
+    // *output* tokens on a reasoning model, and a pass also runs an editor and one revision. The
+    // old 48 000 stopped an ordinary pass in the middle of its revision.
+    maxTokensPerPass: integer(env, 'WRITER_MAX_TOKENS_PER_PASS', 120_000, 1),
     continueMax: integer(env, 'WRITER_CONTINUE_MAX', 2, 0),
     dailyTokens: integer(env, 'WRITER_DAILY_TOKENS', 1_500_000, 1),
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),

@@ -1,8 +1,6 @@
 /**
- * One pass, end to end (`docs/writer-lane.md` §1, §5): a real engine, a real control API and a
- * scripted provider. What is asserted is the whole trail — the file, the step, the change, the
- * premise, the stages in order, the money, the transcript — because each of those is a fact a
- * reader or an operator can see and a missing one is a silent lie.
+ * One pass, end to end (`docs/writer-lane.md` §1, §5): a real engine, a scripted provider, and
+ * every fact a reader could see — file, step, change, stages, money, transcript — asserted.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -14,36 +12,30 @@ import type { BudgetDto } from '@book/shared';
 
 import { formatUsd } from '../../src/budget.ts';
 import { main } from '../../src/writer/main.ts';
+import type { PassDeps } from '../../src/writer/pass.ts';
+import { runPass } from '../../src/writer/pass.ts';
 import { costUsd } from '../../src/writer/pipeline.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { toIso } from '../../src/util/time.ts';
-import { chapterAnswer, createHarness, stepRow } from './harness.ts';
+import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
 const CHAPTER = 65;
 
+const spendRow = (harness: Harness, stepId: string): Record<string, unknown> | undefined =>
+  harness.fixture.db.prepare('SELECT * FROM pass_spend WHERE pass_id = ?').get(stepId) as Record<string, unknown> | undefined;
+
 /** The engine's money answer as a test states it: no ledger, just the numbers the guard reads. */
 function budgetOf(input: {
-  daySpent: number;
-  bookSpent?: number;
-  dayCap?: number;
-  bookCap?: number;
-  state?: BudgetDto['state'];
-  line?: string;
-  tokens?: number;
+  daySpent: number; bookSpent?: number; dayCap?: number; bookCap?: number;
+  state?: BudgetDto['state']; line?: string; tokens?: number;
 }): BudgetDto {
   const dayCap = input.dayCap ?? 10;
-  const bookCap = input.bookCap ?? 1_000;
   const bookSpent = input.bookSpent ?? input.daySpent;
+  const bookCap = input.bookCap ?? 1_000;
   return {
     state: input.state ?? 'ok',
     line: input.line ?? '',
-    day: {
-      spentUsd: input.daySpent,
-      capUsd: dayCap,
-      ratio: input.daySpent / dayCap,
-      day: '2026-10-27',
-      resumesAt: '2026-10-28T00:00:00.000Z',
-    },
+    day: { spentUsd: input.daySpent, capUsd: dayCap, ratio: input.daySpent / dayCap, day: '2026-10-27', resumesAt: '2026-10-28T00:00:00.000Z' },
     book: { spentUsd: bookSpent, capUsd: bookCap, ratio: bookSpent / bookCap },
     tokens: { today: input.tokens ?? 0 },
   };
@@ -71,28 +63,24 @@ describe('runPass — one pass, end to end', () => {
       expect(written).toContain('служебный абзац для проверки объёма страницы');
       expect(existsSync(`${chainPath}.tmp`)).toBe(false);
 
-      // 2. The step is closed with the model and the summed tokens (writer + both gates).
+      // 2. The step is closed with the pinned model and the summed tokens (writer + both gates).
       const step = stepRow(harness.fixture, result.stepId ?? '');
-      expect(step).toMatchObject({ outcome: 'rewritten', model: harness.config.apiModel, cycle: 0 });
+      expect(step).toMatchObject({ outcome: 'rewritten', model: 'deepseek/deepseek-v4-pro', cycle: 0 });
       expect(step?.tokens_in).toBe(3_000);
       expect(step?.tokens_out).toBe(600);
 
+      // 2b. The ledger row is priced on the pin, equal to the cost of the usage the step summed.
+      const spend = spendRow(harness, result.stepId ?? '');
+      expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
+      expect(Number(spend?.usd)).toBeGreaterThan(0);
+      expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
+
       // 3. The premise settles as applied — the change is not a cascade.
-      expect(
-        harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId),
-      ).toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 65' });
+      expect(harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId)).toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 65' });
 
       // 4. The stages, in the order the work happened; one producer per stage.
       const stages = listStages(harness.fixture.db, CHAPTER);
-      expect(stages.map((stage) => stage.stage)).toEqual([
-        'queued',
-        'read',
-        'drafting',
-        'drafting',
-        'verdict',
-        'verdict',
-        'landed',
-      ]);
+      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict', 'verdict', 'landed']);
       expect(stages.map((stage) => stage.stageSeq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
       for (const stage of stages) {
         expect(stage.chapter).toBe(CHAPTER);
@@ -125,6 +113,9 @@ describe('runPass — one pass, end to end', () => {
         calls: Array<{ kind: string; system: string; user: string; answer: string }>;
         sections: number;
         promptSha256: string;
+        model: string;
+        reportedModel: string;
+        modelMismatch: { declared: string; reported: string } | null;
         estimate: { usd: number; calls: number; tokensIn: number; assumptions: Record<string, number> };
         result: { status: string };
       };
@@ -133,6 +124,10 @@ describe('runPass — one pass, end to end', () => {
       expect(parsed.sections).toBeGreaterThan(3);
       expect(parsed.promptSha256).toMatch(/^[0-9a-f]{64}$/u);
       expect(parsed.result.status).toBe('closed');
+      // The pin closes the pass; the provider's own word is kept beside it, and they agree here.
+      expect(parsed.model).toBe(harness.config.model);
+      expect(parsed.reportedModel).toBe(harness.config.apiModel);
+      expect(parsed.modelMismatch).toBeNull();
 
       // 6b. The estimate that let the pass run is in the transcript, and one line says it aloud.
       expect(parsed.estimate.usd).toBeGreaterThan(0);
@@ -141,15 +136,45 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.logs.some((line) => line.includes('оценка прохода $'))).toBe(true);
 
       // 7. The pre-image was taken before the write, and says the slot was empty.
-      const pre = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'pre', 'ch65.json'), 'utf8'),
-      ) as { state: string; sha: string | null; chapter: number };
+      const pre = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'pre', 'ch65.json'), 'utf8')) as { state: string; sha: string | null; chapter: number };
       expect(pre).toMatchObject({ chapter: CHAPTER, state: 'absent', sha: null });
 
       // 8. One log line per stage, each with the stage's own summary — never the prompt.
       expect(harness.logs.filter((line) => line.includes('queued'))).toHaveLength(1);
       expect(harness.logs.join('\n')).not.toContain('служебный абзац');
       expect(harness.calls).toHaveLength(3);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('closes on the pin when the provider reports other weights, and records the mismatch as evidence', async () => {
+    const harness = await createHarness();
+    try {
+      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // ADR-038 §2: other weights are evidence, not a refusal — the pass takes this provider here.
+      const deps: PassDeps = {
+        config: harness.config, bookRoot: harness.bookRoot, dataDir: harness.dataDir, engine: harness.client,
+        now: () => harness.fixture.clock.now(), log: (line) => harness.logs.push(line), chapter: CHAPTER,
+        provider: async (request) => ({ ...(await harness.provider(request)), responseModel: 'deepseek-v4-pro-0901' }),
+      };
+      const result = await runPass(deps);
+      expect(result.status).toBe('closed');
+      const stepId = result.stepId ?? '';
+      // The step and the ledger carry the pin; the money is priced, not zero.
+      expect(stepRow(harness.fixture, stepId)?.model).toBe(harness.config.model);
+      expect(spendRow(harness, stepId)).toMatchObject({ model: harness.config.model, priced: 1 });
+      expect(Number(spendRow(harness, stepId)?.usd)).toBeGreaterThan(0);
+      // The transcript keeps both: what the engine recorded and what actually answered.
+      const saved = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${stepId}.json`), 'utf8')) as {
+        model: string; reportedModel: string; modelMismatch: { declared: string; reported: string } | null;
+      };
+      expect(saved).toMatchObject({
+        model: harness.config.model,
+        reportedModel: 'deepseek-v4-pro-0901',
+        modelMismatch: { declared: harness.config.model, reported: 'deepseek-v4-pro-0901' },
+      });
     } finally {
       await harness.close();
     }
@@ -164,7 +189,15 @@ describe('runPass — one pass, end to end', () => {
       expect(result.status).toBe('parked');
       expect(result.reason).toContain('ANSWER_REFUSAL');
       expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(false);
-      expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
+
+      // The park carries what it spent: both draft attempts priced, so the bound sees the pass.
+      const parkedStep = stepRow(harness.fixture, result.stepId ?? '');
+      expect(parkedStep).toMatchObject({
+        outcome: 'escalated', model: harness.config.model, tokens_in: 2_000, tokens_out: 400,
+      });
+      const ledger = spendRow(harness, result.stepId ?? '');
+      expect(ledger).toMatchObject({ model: harness.config.model, tokens_in: 2_000, tokens_out: 400, priced: 1 });
+      expect(Number(ledger?.usd)).toBeGreaterThan(0);
 
       const stages = listStages(harness.fixture.db, CHAPTER);
       expect(stages.filter((stage) => stage.stage === 'refused')).toHaveLength(1);
@@ -237,8 +270,7 @@ describe('runPass — one pass, end to end', () => {
   it('resumes a landed step at the gates instead of writing it again', async () => {
     const harness = await createHarness();
     try {
-      // The writer that opened this pass is gone after the landing: the text is on disk and the
-      // step is open, so the next pass must close it, not rewrite it.
+      // The writer that opened this pass is gone after the landing: the text is on disk and the step is open, so the next pass must close it, not rewrite it.
       const assignment = harness.assignment(CHAPTER);
       harness.fixture.engine.start(assignment.leaseId);
       harness.fixture.writeChapter(CHAPTER, chapterAnswer());
@@ -251,12 +283,7 @@ describe('runPass — one pass, end to end', () => {
       expect(readFileSync(join(harness.bookRoot, 'manuscript', 'ch65.md'), 'utf8')).toBe(onDisk);
       // No model call wrote prose: only the two gates answered.
       expect(harness.calls.map((call) => call.messages[0]?.content.slice(0, 2))).toHaveLength(2);
-      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual([
-        'queued',
-        'verdict',
-        'verdict',
-        'landed',
-      ]);
+      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'verdict', 'verdict', 'landed']);
     } finally {
       await harness.close();
     }
@@ -292,11 +319,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
       // The estimate is printed, with the day and the book it was measured against.
-      expect(
-        harness.logs.some((line) =>
-          line.includes('оценка прохода $0,2000 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'),
-        ),
-      ).toBe(true);
+      expect(harness.logs.some((line) => line.includes('оценка прохода $0,2000 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'))).toBe(true);
     } finally {
       await harness.close();
     }
@@ -305,8 +328,7 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle with the stop line when the estimate would spend the book’s last dollars', async () => {
     const harness = await createHarness();
     try {
-      // A whole pass no longer fits into the book's last dollar: stopped, not paused, and not
-      // for the day — the book ends here.
+      // A whole pass no longer fits into the book's last dollar: stopped, not paused, and the book ends here.
       harness.hooks.budget = budgetOf({ daySpent: 0, bookSpent: 999.99 });
       const result = await harness.run({ chapter: CHAPTER });
 
@@ -357,13 +379,10 @@ describe('runPass — one pass, end to end', () => {
   it('parks the pass before any provider call when the real prompt crosses the cap', async () => {
     const harness = await createHarness();
     try {
-      // The ledger is shared: this pass was priced on an empty day, and another lane spent the
-      // headroom while it was being opened. The belt prices the real prompt and stops at once.
+      // The ledger is shared: another lane spent the headroom while this pass was being opened.
       harness.hooks.budget = budgetOf({ daySpent: 0 });
       harness.hooks.beforeCall = (name) => {
-        if (name === 'pass') {
-          harness.hooks.budget = budgetOf({ daySpent: 9.99, state: 'pause', line: PAUSE_LINE });
-        }
+        if (name === 'pass') harness.hooks.budget = budgetOf({ daySpent: 9.99, state: 'pause', line: PAUSE_LINE });
       };
       const result = await harness.run({ chapter: CHAPTER });
 
@@ -371,15 +390,12 @@ describe('runPass — one pass, end to end', () => {
       expect(result.reason).toBe(PAUSE_LINE);
       expect(harness.engineCalls).toContain('pass');
       expect(harness.engineCalls).toContain('escalate');
-      // Nothing was spent: the provider was never called.
+      // Nothing was spent: the provider was never called, and the row says so (BOOK-23).
       expect(harness.calls).toHaveLength(0);
+      expect(spendRow(harness, result.stepId ?? '')).toMatchObject({ model: null, tokens_in: 0, tokens_out: 0, priced: 0 });
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
       expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(false);
-      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual([
-        'queued',
-        'read',
-        'refused',
-      ]);
+      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'read', 'refused']);
     } finally {
       await harness.close();
     }
@@ -390,9 +406,7 @@ describe('runPass — one pass, end to end', () => {
     try {
       harness.hooks.budget = budgetOf({ daySpent: 0, bookSpent: 0 });
       harness.hooks.beforeCall = (name) => {
-        if (name === 'pass') {
-          harness.hooks.budget = budgetOf({ daySpent: 1.5, bookSpent: 999.99, state: 'stop', line: STOP_LINE });
-        }
+        if (name === 'pass') harness.hooks.budget = budgetOf({ daySpent: 1.5, bookSpent: 999.99, state: 'stop', line: STOP_LINE });
       };
       const result = await harness.run({ chapter: CHAPTER });
 
@@ -421,8 +435,7 @@ describe('runPass — one pass, end to end', () => {
   });
 
   it('keeps the pass running when the ledger cannot be re-read before the first call', async () => {
-    // The guard price already passed and nothing was spent; a failed re-read is logged, not
-    // turned into a refusal that hides the truth (a provider call still needs a live engine).
+    // The guard price passed and nothing was spent; a failed re-read is logged, not a refusal.
     const first = await createHarness();
     try {
       let stated = 0;
@@ -443,8 +456,7 @@ describe('runPass — one pass, end to end', () => {
     try {
       second.hooks.beforeCall = (name) => {
         if (name === 'pass') second.hooks.budget = null;
-      };
-      second.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      };      second.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       expect((await second.run({ chapter: CHAPTER })).status).toBe('closed');
     } finally {
       await second.close();

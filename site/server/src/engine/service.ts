@@ -76,13 +76,15 @@ export type DoneOptions = {
   tokensOut?: number;
   now?: number;
 };
-
 /** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
 export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
 
-/** BOOK-117: an escalation may say what the pass spent, and whether it refused or broke. */
+/**
+ * ADR-038 §2: a stop reports the same triple, and a model is never *required* of it — a caller
+ * that burned tokens reports them, one that claims nothing keeps the null/0 default.
+ * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
+ */
 export type EscalateOptions = {
-  /** Null when the pass claims no text; an escalation that spent nothing says so. */
   model?: string | null;
   tokensIn?: number;
   tokensOut?: number;
@@ -294,10 +296,8 @@ export function createEngine(deps: EngineDeps) {
     if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'consultant')) {
       refuse('BLOCKER_UNRESOLVED', 409, 'the physics pass named a blocker on this text: revise it and land again, or escalate');
     }
-    // BOOK-117: `closeStep` attributes the step's tokens itself (reported ∪ drafting stages ∪
-    // gate verdicts), so a caller never adds a verdict twice; the sums here are the report only.
-    const tokensIn = options.tokensIn ?? 0;
-    const tokensOut = options.tokensOut ?? 0;
+    const tokensIn = (options.tokensIn ?? 0) + gates.reduce((sum, row) => sum + row.tokens_in, 0);
+    const tokensOut = (options.tokensOut ?? 0) + gates.reduce((sum, row) => sum + row.tokens_out, 0);
     // BOOK-76: an editor blocker publishes with its finding; a consultant blocker stops the step.
     const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
     const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');

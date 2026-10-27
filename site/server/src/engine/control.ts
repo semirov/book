@@ -103,7 +103,19 @@ const seenBody = z.object({
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
 });
-const escalateBody = z.object({ leaseId: id, because: z.string().min(1).max(400) });
+/**
+ * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them,
+ * and one that claims nothing keeps the null/0 default. The triple is the same shape `done` takes.
+ * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
+ */
+const escalateBody = z.object({
+  leaseId: id,
+  because: z.string().min(1).max(400),
+  model: z.string().max(120).optional(),
+  tokensIn: z.number().int().min(0).optional(),
+  tokensOut: z.number().int().min(0).optional(),
+  cause: z.enum(['refused', 'failed']).optional(),
+});
 const beatBody = z.object({ leaseId: id });
 const traceBody = z.object({ id });
 const nothing = z.object({}).optional();
@@ -265,7 +277,15 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   });
   app.post('/internal/escalate', async (request) => {
     const body = escalateBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.escalate(body.leaseId, body.because) };
+    return {
+      ok: true,
+      data: options.engine.escalate(body.leaseId, body.because, {
+        model: body.model,
+        tokensIn: body.tokensIn,
+        tokensOut: body.tokensOut,
+        cause: body.cause,
+      }),
+    };
   });
   app.post('/internal/beat', async (request) => {
     const body = beatBody.parse(request.body ?? {});

@@ -127,6 +127,14 @@ export type DoneInput = {
   seams?: unknown[];
 };
 
+/** What an escalation reports about the model calls it made before it parked (BOOK-117). */
+export type EscalateSpend = {
+  /** The model that ran; omitted when none did — the engine's own default is `null` (ADR-038 §2). */
+  model?: string;
+  tokensIn: number;
+  tokensOut: number;
+};
+
 export type EngineClient = {
   state(): Promise<EngineStateView>;
   /** The lane's next job, or null when the lane has nothing (never a refusal). */
@@ -138,7 +146,7 @@ export type EngineClient = {
   land(leaseId: string): Promise<LandView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
   done(body: DoneInput): Promise<DoneView>;
-  escalate(leaseId: string, because: string): Promise<DoneView>;
+  escalate(leaseId: string, because: string, spend?: EscalateSpend): Promise<DoneView>;
   beat(leaseId: string): Promise<{ leaseId: string; expiresAt: string }>;
   reconcile(chapter: number, because: string): Promise<unknown>;
   stage(event: Record<string, unknown>): Promise<unknown>;
@@ -236,8 +244,11 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,
     done: async (body) => (await post('/internal/done', body)) as DoneView,
-    escalate: async (leaseId, because) =>
-      (await post('/internal/escalate', { leaseId, because })) as DoneView,
+    escalate: async (leaseId, because, spend) =>
+      (await post(
+        '/internal/escalate',
+        spend === undefined ? { leaseId, because } : { leaseId, because, ...spend },
+      )) as DoneView,
     beat: async (leaseId) =>
       (await post('/internal/beat', { leaseId })) as { leaseId: string; expiresAt: string },
     reconcile: async (chapter, because) => post('/internal/reconcile', { chapter, because }),

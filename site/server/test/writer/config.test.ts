@@ -141,7 +141,10 @@ describe('loadWriterConfig — bounds and defaults', () => {
     const config = loadWriterConfig(env());
     expect(config.timeoutMs).toBe(420_000);
     expect(config.maxTokensPerCall).toBe(16_000);
-    expect(config.maxTokensPerPass).toBe(48_000);
+    // A runaway guard, not the bound: the default fits a real pass (a 20 697-character chapter
+    // cost 18 561 output tokens, plus an editor and one revision), so it never stops an ordinary
+    // one. The bound is money ($10 a day).
+    expect(config.maxTokensPerPass).toBe(120_000);
     expect(config.continueMax).toBe(2);
     expect(config.dailyTokens).toBe(1_500_000);
     expect(config.maxPassesPerDay).toBe(4);
@@ -161,6 +164,11 @@ describe('loadWriterConfig — bounds and defaults', () => {
     expect(failure.code).toBe('CONFIG_INVALID');
     expect(failure.message).toContain('WRITER_MAX_TOKENS_PER_CALL');
     expect(failure.message).not.toContain('sixteen');
+  });
+
+  it('lets the environment still set the per-pass guard', () => {
+    expect(loadWriterConfig(env({ WRITER_MAX_TOKENS_PER_PASS: '60000' })).maxTokensPerPass).toBe(60_000);
+    expect(refusalOf(env({ WRITER_MAX_TOKENS_PER_PASS: '0' })).message).toContain('WRITER_MAX_TOKENS_PER_PASS');
   });
 
   it('refuses an integer below its floor and a number that is not safe', () => {

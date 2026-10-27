@@ -160,6 +160,7 @@ export type Lane = {
   reviseText(findings: GateFinding[]): Promise<string | null>;
   usage(): PipelineUsage;
   writerTokens(): { in: number; out: number };
+  /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
   model(): string | null;
   setPrompt(sections: number, sha256: string | null): void;
   /** The money answer that let this pass run: what the transcript records as the estimate. */
@@ -177,6 +178,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   const written = { in: 0, out: 0 };
   let all: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
   let reported: string | null = null;
+  // ADR-038 §2's honest limit: other weights are evidence, not a refusal.
+  let mismatch: { declared: string; reported: string } | null = null;
   let promptSections = 0;
   let promptSha256: string | null = null;
   let estimate: PassEstimate | null = null;
@@ -241,6 +244,11 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     all = addUsage(all, result.usage);
     reported = result.responseModel;
+    // The pin's own wire id (`apiModelOf`) is the same weights, not a divergence; any other id
+    // is the honest-limit case below: recorded once, and the pass goes on.
+    if (mismatch === null && result.responseModel !== config.model && result.responseModel !== config.apiModel) {
+      mismatch = { declared: config.model, reported: result.responseModel };
+    }
     calls.push({
       kind,
       system: messages.find((message) => message.role === 'system')?.content ?? '',
@@ -262,17 +270,26 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
           tokensIn: result.usage.in,
           tokensOut: result.usage.out,
         }),
-        model: result.responseModel,
+        model: config.model,
         at: now(),
       });
     }
     return result;
   }
 
+  /** The pin once a call happened — what the engine is told; `null` before one. */
+  function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
+
   async function park(reason: string): Promise<PassResult> {
     let note = reason;
+    // BOOK-117: a parked pass is still a pass that spent money. The usage the lane has counted so
+    // far travels with the escalate, so the ledger prices it and the day's bound sees it. A park
+    // before the first call claims no model and no tokens — nothing ran, nothing is charged.
+    const spent = calls.length === 0
+      ? { tokensIn: 0, tokensOut: 0 }
+      : { model: config.model, tokensIn: all.in, tokensOut: all.out };
     try {
-      await engine.escalate(job.leaseId, reason.slice(0, 400));
+      await engine.escalate(job.leaseId, reason.slice(0, 400), spent);
     } catch (error) {
       // The lease may already be gone (an expired pass): the stage still records the truth.
       note = `${reason} (${reasonOf(error)})`.slice(0, 400);
@@ -284,7 +301,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       passId: job.stepId,
       changeId: job.changeId,
       summary: stageSummary.refused({ reason: note }),
-      model: reported,
+      // No call, no pin: a park before the model ran claims no model (and no money).
+      model: laneModel(),
       at: now(),
     });
     return {
@@ -332,6 +350,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         at: now(),
         model: config.model,
         apiModel: config.apiModel,
+        // The weights that answered, and the one line that says they differed from the pin.
+        reportedModel: reported,
+        modelMismatch: mismatch,
         promptSha256,
         sections: promptSections,
         estimate,
@@ -389,7 +410,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         session: gate.session,
         verdict: parsed.verdict,
         findings: parsed.findings,
-        model: answer.responseModel,
+        // The pin, never the wire id: the verdict row is read by the ledger's arithmetic.
+        model: config.model,
         tokensIn: answer.usage.in,
         tokensOut: answer.usage.out,
       });
@@ -409,7 +431,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         findings: parsed.findings.length,
         blockers: parsed.findings.filter((finding) => finding.severity === 'blocker').length,
       }),
-      model: answer.responseModel,
+      model: config.model,
       at: now(),
     });
     return { revise: action === 'revise', findings: parsed.findings };
@@ -464,7 +486,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     reviseText,
     usage: () => all,
     writerTokens: () => ({ ...written }),
-    model: () => reported,
+    model: () => laneModel(),
     setPrompt: (sections, sha) => {
       promptSections = sections;
       promptSha256 = sha;
