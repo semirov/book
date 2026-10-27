@@ -8,6 +8,14 @@ import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
 import { MarginTail } from './MarginTail.tsx';
 
 /**
+ * The motto after the imprint's dash: presentation only, so it lives here and not in `shared`.
+ * `IMPRINT_COPYRIGHT` stays the rights statement — it travels into file exports and
+ * `imprintProblems()` validates it exactly — while this sentence is read by the page and
+ * nothing else. One copy, one print (BOOK-94).
+ */
+export const COLOPHON_MOTTO = 'С любовью к научной фантастике и современным технологиям';
+
+/**
  * The imprint line (`imprint.copyright`) lives here: the cover no longer carries «©»
  * (BOOK-DOC-5 §2), and «Авторы» keeps its own copy of it.
  *
@@ -55,8 +63,9 @@ export function Colophon({ state, imprint }: { state: StateSnapshot; imprint: Fr
           </div>
         ) : null}
         <div className="row">
-          <span>
-            {imprint.copyright} · <a href="/privacy">приватность</a> · <a href="/rules">правила</a>
+          <span className="imprint-line">
+            {imprint.copyright} — {COLOPHON_MOTTO} · <a href="/privacy">приватность</a> ·{' '}
+            <a href="/rules">правила</a>
           </span>
           <button
             className="theme"
