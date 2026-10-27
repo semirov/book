@@ -192,9 +192,13 @@ consultant → if blocker the writer revises and both re-check only the changed 
 footnote (iteration, what changed, cost/model). Both verdicts are kept as provenance: auditable, never
 rendered as a second voice on the page.
 
-**The cap, by role.** Past the cycle cap a blocker is not re-asked, and the two consequences differ: the
-editor's blocker publishes the step with its finding, the consultant's stops it — a physics claim that does
-not hold never enters the book, and the change waits for a decision.
+**The cap, by role.** Past the cycle cap a blocker is not re-asked. **A veto is a veto at the cap too**
+(BOOK-120, BOOK-DOC-57): a blocker in the six veto classes — structure (S1–S5), a world-ledger
+contradiction, voice (V1–V6), the anti-AI battery, a science claim that does not hold, or the frozen frame —
+**stops the step and the chapter is published as absent with its finding**; the cap never converts a veto
+into a footnote, because a mediocre chapter in the book is the one outcome the product has no room for.
+Only non-veto findings publish with a note. Either way the finding is kept as provenance, and the change
+waits for a decision rather than sliding into the prose.
 
 **Cost.** Estimate tokens × $0.0000003 (the real flash blend), add to the running total; above $9.50 →
 `BUDGET STOP`, no spawn. One memo line per pass in `process/write.log.md`, created if absent — a memo,
