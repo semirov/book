@@ -26,17 +26,15 @@ export const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 
 const schema = z.object({
   bookRoot: z.string().default(resolve(SITE_ROOT, '..')),
   dataDir: z.string().default(resolve(SITE_ROOT, '.data')),
-  /**
-   * The built SPA. `@fastify/static` requires an absolute root, so a relative value (the
-   * compose file's `./web/dist`) is resolved against `site/` — an absolute value is kept
-   * as it is. The default is already absolute.
-   */
+  /** The built SPA: `@fastify/static` needs an absolute root; a relative value resolves against `site/`. */
   webDist: z
     .string()
     .default(resolve(SITE_ROOT, 'web', 'dist'))
     .transform((value) => resolve(SITE_ROOT, value)),
   /** The read-only imprint config (§6C.6); F020 and the boot both validate it. */
   imprintPath: z.string().default(resolve(SITE_ROOT, 'config', 'imprint.json')),
+  /** BOOK-133: the cover the FB2 embeds; the path exists in the image — a miss fails the export, not the boot. */
+  coverPath: z.string().default(resolve(SITE_ROOT, 'web', 'public', 'cover', 'cover.png')),
   /** The hand-curated legal denylist (§13.4, F005); read, never refreshed from the book. */
   denylistPath: z.string().default(resolve(SITE_ROOT, 'config', 'legal.denylist.json')),
   /** ADR-038: the one file that names the pipeline's model (BOOK-62); a bad one stops the boot. */
@@ -317,6 +315,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: env.DATA_DIR,
     webDist: env.WEB_DIST,
     imprintPath: env.IMPRINT_PATH,
+    coverPath: env.COVER_PATH,
     denylistPath: env.DENYLIST_PATH,
     pipelinePath: env.PIPELINE_PATH,
     adminTokenFile: env.ADMIN_TOKEN_FILE,

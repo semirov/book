@@ -1,24 +1,30 @@
 /**
- * BOOK-60 — `GET /book.fb2` (BOOK-DOC-41 §2, §5).
+ * BOOK-60 — `GET /book.fb2` (BOOK-DOC-41 §2, §5); BOOK-133 embeds the cover.
  *
  * The file is one edition of the manuscript: `document-info/version` is the low 52 bits of the
  * edition hash and `document-info/date` is the moment this response's bytes were built, in
  * `config.tz`. Two exports of one state share the version and differ only in the date.
  *
- * One build per edition. The edition hash and the body are read inside one `db.transaction`, so
- * the number and the paragraphs come from one snapshot; a memo in this closure keeps the
- * serialized body around the date placeholder, so a repeat costs one concat and a `304` costs
- * the two hash reads, a string compare and one read-budget slot — no block, no serializer.
+ * One build per edition *and cover*. The edition hash and the body are read inside one
+ * `db.transaction`, so the number and the paragraphs come from one snapshot; the cover is read
+ * before it (no file I/O inside the transaction) and cached by the file's size and mtime, so a
+ * repeat costs one `stat` and no decode. The serializer memo is keyed by both hashes — a cover
+ * swap is a different representation, not a stale copy of the old one.
  *
- * `HEAD` answers headers only and never builds. The ETag is the untruncated hash, which is why
- * the revalidation exemption in `http/cache.ts` is safe: the tag names the paragraphs, so a
- * `304` can only ever name the paragraphs the client already holds.
+ * `HEAD` answers headers only and never builds. The ETag carries both untruncated hashes, which
+ * is why the revalidation exemption in `http/cache.ts` is safe: the tag names the paragraphs and
+ * the image, so a `304` can only ever name bytes the client already holds. A cover that cannot
+ * be embedded fails the export with `503` and a code — never a coverless file and never a
+ * placeholder.
  */
 
-import type { FastifyInstance } from 'fastify';
+import { statSync } from 'node:fs';
+
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { listBlocks, listChapterRows } from '../../db/repo/chapters.ts';
 import { getFrontRow } from '../../db/repo/front.ts';
+import { COVER_ID, COVER_TYPE, CoverError, loadCover, type CoverImage } from '../../fb2/cover.ts';
 import { readEdition } from '../../fb2/edition.ts';
 import {
   dateElement,
@@ -34,8 +40,9 @@ export const FB2_PATH = '/book.fb2';
 /** The de-facto FB2 type: `+xml` still tells a reader it is XML. */
 const CONTENT_TYPE = 'application/x-fictionbook+xml; charset=utf-8';
 
-function etagOf(hash: string): string {
-  return `"fb2-${hash}"`;
+/** BOOK-133: the edition and the image, both untruncated — a cover swap must move the tag. */
+function etagOf(hash: string, coverSha256: string): string {
+  return `"fb2-${hash}-${coverSha256}"`;
 }
 
 /** `If-None-Match` is a list, and a weak tag names the same representation on this surface. */
@@ -48,7 +55,7 @@ function ifNoneMatch(header: string | undefined, etag: string): boolean {
 }
 
 /** The serializer's whole input: nothing here comes from the seam, the history or the SPA. */
-function inputOf(deps: RouteDeps, revision: number): Fb2Input {
+function inputOf(deps: RouteDeps, revision: number, cover: CoverImage): Fb2Input {
   const front = getFrontRow(deps.db);
   return {
     title: front !== undefined && front.title.length > 0 ? front.title : null,
@@ -58,6 +65,7 @@ function inputOf(deps: RouteDeps, revision: number): Fb2Input {
     version: deps.version,
     srcUrl: `${deps.config.publicOrigin}/`,
     revision,
+    cover: { id: COVER_ID, contentType: COVER_TYPE, base64: cover.base64 },
     chapters: listChapterRows(deps.db).map((row) => ({
       n: row.n,
       title: row.title,
@@ -67,10 +75,43 @@ function inputOf(deps: RouteDeps, revision: number): Fb2Input {
   };
 }
 
+/** Size plus mtime is the change key: one `stat` per request, a read only on a real change. */
+function statKeyOf(path: string): string | null {
+  try {
+    const stats = statSync(path);
+    return `${String(stats.size)}:${String(stats.mtimeMs)}`;
+  } catch {
+    // The read below owns the failure: it names missing and unreadable differently.
+    return null;
+  }
+}
+
 export function registerExportRoutes(app: FastifyInstance, deps: RouteDeps): void {
-  /** The last built edition: the body around the date, never the date itself. */
-  let memo: { hash: string; head: string; tail: string } | null = null;
+  /** The last built edition *and cover*: the body around the date, never the date itself. */
+  let memo: { key: string; head: string; tail: string } | null = null;
+  let coverMemo: { key: string; cover: CoverImage } | null = null;
   const render = deps.fb2?.render ?? renderFb2;
+
+  /** The decoded cover, read once per file version; a failure is a `CoverError`. */
+  const readCover = (): CoverImage => {
+    const key = statKeyOf(deps.config.coverPath);
+    if (key !== null && coverMemo !== null && coverMemo.key === key) return coverMemo.cover;
+    const cover = loadCover(deps.config.coverPath);
+    if (key !== null) coverMemo = { key, cover };
+    return cover;
+  };
+
+  /**
+   * A cover that cannot be embedded is a `503` about the export, not about the reader's
+   * request: no attachment headers and no partial XML, because a truncated file would be
+   * offered for download as if it were the book. The path is in the log line and in the
+   * message; the code is what a client branches on. An unexpected error keeps its own handler.
+   */
+  const coverFailure = (request: FastifyRequest, reply: FastifyReply, error: unknown): FastifyReply => {
+    if (!(error instanceof CoverError)) throw error;
+    request.log.error({ coverPath: deps.config.coverPath }, 'book.fb2: the cover cannot be embedded');
+    return reply.code(503).header('cache-control', 'no-store').send({ code: error.code, message: error.message });
+  };
 
   type Answer =
     | { kind: 'not-modified'; etag: string }
@@ -78,16 +119,25 @@ export function registerExportRoutes(app: FastifyInstance, deps: RouteDeps): voi
 
   // `exposeHeadRoute: false`: the generated HEAD would run the handler and build the file.
   app.get(FB2_PATH, { exposeHeadRoute: false }, async (request, reply) => {
+    let cover: CoverImage;
+    try {
+      // Before the transaction: the snapshot covers the database, not the filesystem.
+      cover = readCover();
+    } catch (error) {
+      return coverFailure(request, reply, error);
+    }
+
     const answer = deps.db.transaction((): Answer => {
       // One snapshot: the number and the paragraphs below name the same state.
       const edition = readEdition(deps.db, deps.imprint.author);
-      const etag = etagOf(edition.hash);
+      const etag = etagOf(edition.hash, cover.sha256);
       if (ifNoneMatch(request.headers['if-none-match'], etag)) {
         return { kind: 'not-modified', etag };
       }
-      const held = memo !== null && memo.hash === edition.hash ? memo : null;
-      const parts = held ?? render(inputOf(deps, edition.revision));
-      if (held === null) memo = { hash: edition.hash, head: parts.head, tail: parts.tail };
+      const key = `${edition.hash}:${cover.sha256}`;
+      const held = memo !== null && memo.key === key ? memo : null;
+      const parts = held ?? render(inputOf(deps, edition.revision, cover));
+      if (held === null) memo = { key, head: parts.head, tail: parts.tail };
       return { kind: 'body', etag, revision: edition.revision, parts };
     })();
 
@@ -110,9 +160,18 @@ export function registerExportRoutes(app: FastifyInstance, deps: RouteDeps): voi
   app.head(FB2_PATH, async (request, reply) => {
     // Two indexed reads and no build: a HEAD names the file a GET would send, and claims no
     // export moment of its own (no bytes were built). It revalidates like the GET, because the
-    // ETag is the edition: a reader that holds it is told so without a file being built.
+    // ETag names the edition and the cover: a reader that holds it is told so without a file
+    // being built.
+    let cover: CoverImage;
+    try {
+      // A HEAD may `stat` the cover (it needs its hash for the tag), but never re-encodes one.
+      cover = readCover();
+    } catch (error) {
+      return coverFailure(request, reply, error);
+    }
+
     const edition = deps.db.transaction(() => readEdition(deps.db, deps.imprint.author))();
-    const etag = etagOf(edition.hash);
+    const etag = etagOf(edition.hash, cover.sha256);
     if (ifNoneMatch(request.headers['if-none-match'], etag)) {
       return reply.code(304).header('etag', etag).header('cache-control', 'no-cache').send();
     }
