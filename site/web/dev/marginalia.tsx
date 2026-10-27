@@ -1,4 +1,4 @@
-import type { CatalogEntry, CommentDto, StateSnapshot } from '@book/shared';
+import type { CatalogEntry, CommentDto, StateSnapshot, ViewerDto } from '@book/shared';
 import { StrictMode, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -6,7 +6,11 @@ import { ChapterArticle } from '../src/components/ChapterArticle.tsx';
 import { Header } from '../src/components/Header.tsx';
 import { MarginTail } from '../src/components/MarginTail.tsx';
 import { ProseParagraph } from '../src/components/ProseParagraph.tsx';
+import { Seam } from '../src/components/Seam.tsx';
 import { EMPTY_COMPOSER } from '../src/lib/composer.ts';
+import { emptyDraft, seamDrafts } from '../src/lib/draft.ts';
+import { filingsForBlock } from '../src/lib/filings.ts';
+import type { SeamAnchor } from '../src/lib/seam.ts';
 import { PREMISE_HINT } from '../src/lib/premise.ts';
 import '../src/styles/tokens.css';
 import '../src/styles/base.css';
@@ -45,6 +49,8 @@ const params = new URLSearchParams(window.location.search);
 const before = params.has('before');
 /** AC6: one frame holding the pending note, the landed change's object and the empty row. */
 const final = params.has('final');
+/** The strip's six states, one above the other, for the phone-form check. */
+const strips = params.has('strips');
 
 /**
  * The dev server has no engine behind `/api`: answer the fixture's one change locally, so the
@@ -62,6 +68,20 @@ const DEV_CHANGE = {
 const fetchReal = window.fetch.bind(window);
 window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+  if (url.endsWith('/api/comments')) {
+    // The receipt state is a 201: the fixture answers it so the strip can be photographed
+    // after a real submit.
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          comment: { id: 'cmt_01J9Z8K4Q7' },
+          remaining: { perHour: 20, remaining: 19, resetAt: null, editsPerDay: 10, editsRemaining: 9 },
+          queue: { depth: 0 },
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+  }
   if (url.includes('/api/changes/chg_demo')) {
     return Promise.resolve(
       new Response(JSON.stringify(DEV_CHANGE), { status: 200, headers: { 'content-type': 'application/json' } }),
@@ -260,7 +280,7 @@ function BeforeEmpty({ n }: { n: number }): ReactElement {
   );
 }
 
-function EmptySlot({ n, firstEmpty }: { n: number; firstEmpty?: boolean }): ReactElement {
+function EmptySlot({ n, firstEmpty, viewer = VIEWER }: { n: number; firstEmpty?: boolean; viewer?: ViewerDto }): ReactElement {
   if (before) return <BeforeEmpty n={n} />;
   return (
     <ChapterArticle
@@ -272,7 +292,7 @@ function EmptySlot({ n, firstEmpty }: { n: number; firstEmpty?: boolean }): Reac
       firstEmpty={firstEmpty === true}
       history
       composer={EMPTY_COMPOSER}
-      viewer={VIEWER}
+      viewer={viewer}
       onPosted={() => undefined}
     />
   );
@@ -288,15 +308,17 @@ function FinalScene(): ReactElement {
         markers={[]}
         onOpenChange={() => undefined}
       />
-      <main>
-        <article className="page ch" id="ch-1" data-n={1} aria-label="глава 1">
-          {header(CH1)}
-          <h3 className="ch-title">Комната на восьмом</h3>
-          {paragraph(CH1, 0, B1, P1)}
-          {paragraph(CH1, 1, B2, P2F)}
-        </article>
-        <EmptySlot n={3} firstEmpty />
-      </main>
+      <div className="canvas">
+        <main className="page">
+          <article className="page ch" id="ch-1" data-n={1} aria-label="глава 1">
+            {header(CH1)}
+            <h3 className="ch-title">Комната на восьмом</h3>
+            {paragraph(CH1, 0, B1, P1)}
+            {paragraph(CH1, 1, B2, P2F)}
+          </article>
+          <EmptySlot n={3} firstEmpty viewer={SIGNED_IN} />
+        </main>
+      </div>
       {/* Enough page after the slot, so the phone shot can lift the row clear of the sheet. */}
       <div className="after-space" aria-hidden="true" />
       <MarginTail />
@@ -304,7 +326,92 @@ function FinalScene(): ReactElement {
   );
 }
 
+const SIGNED_IN = { signedIn: true, displayName: 'Филипп' } as const;
+const STRIP_ENTRY = emptyEntry(3);
+const STRIP_SENTENCE = { text: 'Её освещал яркий свет.', start: 26, end: 49 };
+const STRIP_ANCHOR: SeamAnchor = {
+  blockId: 'ch08#aa11bb22',
+  baseRev: 3,
+  quote: STRIP_SENTENCE.text,
+  prefix: 'Я вошёл в пустую комнату. ',
+  suffix: '',
+  sentence: STRIP_SENTENCE,
+  word: 'свет',
+};
+const HELD_PREMISE = comment({
+  id: 'cmt_demo_010',
+  chapter: 3,
+  premise: true,
+  anchor: { blockId: null, blockIndex: null, quote: 'свет в комнате', prefix: null, suffix: null, resolved: true },
+});
+const STRIP_FILING = comment({
+  id: 'cmt_demo_003',
+  chapter: 8,
+  author: 'Глеб Романович',
+  status: 'accepted',
+  interventionKind: 'decision',
+  createdAt: '2026-10-25T10:00:00Z',
+  anchor: { blockId: STRIP_ANCHOR.blockId, blockIndex: 1, quote: STRIP_ANCHOR.quote, prefix: null, suffix: null, resolved: true },
+});
+const STRIP_FILINGS = filingsForBlock([STRIP_FILING], STRIP_ANCHOR.blockId)[0]!;
+const DRAFT_KEY = 'ch08:strip-demo';
+seamDrafts.keep(DRAFT_KEY, {
+  ...emptyDraft({ chapter: 8, blockId: STRIP_ANCHOR.blockId, baseRev: 3, blockIndex: 1, sentence: STRIP_ANCHOR.quote }),
+  body: 'в комнате должен быть свет, но не от лампы',
+});
+
+function Demo({ id, children }: { id: string; children: ReactElement }): ReactElement {
+  return (
+    <section className="ch-empty" data-strip={id}>
+      {children}
+    </section>
+  );
+}
+
+const noop = (): void => undefined;
+
+/** The strip's states, each with the real `Seam` and its own draft key. */
+function StripScene(): ReactElement {
+  return (
+    <div className="canvas">
+    <main className="page">
+      <Demo id="premise">
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-empty" anchor={null} frozen={false} filings={null}
+          composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
+          onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+      <Demo id="held">
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-held" anchor={null} frozen={false} filings={null}
+          existingPremise={HELD_PREMISE} composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop}
+          onClose={noop} onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+      <Demo id="provenance">
+        <Seam entry={STRIP_ENTRY} draftKey="ch08:provenance" anchor={STRIP_ANCHOR} frozen={false} filings={null}
+          composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
+          onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+      <Demo id="draft">
+        <Seam entry={STRIP_ENTRY} draftKey={DRAFT_KEY} anchor={STRIP_ANCHOR} frozen={false} filings={null}
+          composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
+          onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+      <Demo id="receipt">
+        <Seam entry={STRIP_ENTRY} draftKey="ch3:premise-receipt" anchor={null} frozen={false} filings={null}
+          composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
+          onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+      <Demo id="filings">
+        <Seam entry={STRIP_ENTRY} draftKey="ch08:filings" anchor={STRIP_ANCHOR} frozen={false} filings={STRIP_FILINGS}
+          composer={EMPTY_COMPOSER} viewer={SIGNED_IN} onPosted={noop} onClose={noop}
+          onProvenance={noop} onOpenFiling={noop} premiseHint={false} />
+      </Demo>
+    </main>
+    </div>
+  );
+}
+
 function App(): ReactElement {
+  if (strips) return <StripScene />;
   if (final) return <FinalScene />;
   return (
     <>

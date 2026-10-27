@@ -325,3 +325,64 @@
 .seam-submit:hover:not(:disabled) {
   background: var(--live);
 }
+
+/* ---------- below 768: the strip is a small stack, not one crowded row ----------
+   The owner, on the phone: «better several lines than glued together with a line break».
+   One line per role — the state word (12 px register) alone, the quote whole, then the
+   actions. The quote wraps at word boundaries and is never clamped: an ellipsis on a quote
+   is a lie about the text. The action and ✕ share the last line while the label fits; at
+   360 the ✕ drops to its own line, right-aligned, rather than the label shrinking or
+   breaking mid-phrase. ≥768 keeps the one row as it is. */
+@media (max-width: 767px) {
+  .seam-row {
+    flex-wrap: wrap;
+  }
+  .seam-prov {
+    order: 1;
+    flex: 0 0 100%;
+  }
+  /* A premise's state word is not a control: it is one line, not a 44 px target. */
+  span.seam-prov {
+    min-height: 0;
+  }
+  .seam-word {
+    order: 2;
+    flex: 0 0 100%;
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .seam-draft {
+    order: 3;
+    flex: 0 0 100%;
+    white-space: normal;
+  }
+  .seam-cta,
+  .seam-frozen {
+    order: 4;
+    flex: 0 1 auto;
+    margin-left: 0;
+    padding-left: 0;
+    white-space: nowrap;
+  }
+  .seam-close {
+    order: 5;
+    margin-left: auto;
+  }
+  /* Every tappable line is a 44 px target, and the filing's facts wrap instead of clipping. */
+  .seam-filing {
+    min-height: 44px;
+  }
+  .seam-filing-line {
+    flex-wrap: wrap;
+  }
+  .seam-filing-quote {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+  }
+  .seam-inline-action {
+    white-space: nowrap;
+  }
+}

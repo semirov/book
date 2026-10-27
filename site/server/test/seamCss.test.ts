@@ -78,3 +78,47 @@ describe('the deleted composer left no rules behind (major 11)', () => {
     }
   });
 });
+
+describe('below 768 the strip is a stack, one line per role (BOOK-90)', () => {
+  const narrow = seam.slice(seam.indexOf('@media (max-width: 767px)'));
+
+  it('targets the phone range and wraps the row', () => {
+    expect(narrow).not.toBe('');
+    expect(narrow).toContain('@media (max-width: 767px)');
+    expect(rule(narrow, '.seam-row')).toContain('flex-wrap: wrap');
+  });
+
+  it('puts the state word first, the quote second, the actions third', () => {
+    const prov = rule(narrow, '.seam-prov');
+    expect(prov).toContain('order: 1');
+    expect(prov).toContain('flex: 0 0 100%');
+    const word = rule(narrow, '.seam-word');
+    expect(word).toContain('order: 2');
+    expect(word).toContain('flex: 0 0 100%');
+    // The quote is whole: no clamp, no ellipsis, no forced single line on the phone.
+    expect(word).toContain('white-space: normal');
+    expect(word).toContain('text-overflow: clip');
+    expect(word).not.toContain('ellipsis');
+    expect(word).not.toContain('nowrap');
+    expect(narrow).toMatch(/\.seam-cta,\s*\n\s*\.seam-frozen\s*\{[^}]*order: 4/u);
+    const close = rule(narrow, '.seam-close');
+    expect(close).toContain('order: 5');
+    expect(close).toContain('margin-left: auto');
+  });
+
+  it('keeps every action label on one line, and never clips a filing quote', () => {
+    expect(narrow).toMatch(/\.seam-cta,\s*\n\s*\.seam-frozen\s*\{[^}]*white-space: nowrap/u);
+    expect(rule(narrow, '.seam-filing')).toContain('min-height: 44px');
+    expect(rule(narrow, '.seam-filing-line')).toContain('flex-wrap: wrap');
+    const quote = rule(narrow, '.seam-filing-quote');
+    expect(quote).toContain('overflow: visible');
+    expect(quote).toContain('-webkit-line-clamp: unset');
+  });
+
+  it('leaves the one-row strip above 768 exactly as it was', () => {
+    // The desktop row still truncates its quote rather than growing: the phone rule is a
+    // separate block, not a change to the base.
+    expect(rule(seam, '.seam-word')).toContain('text-overflow: ellipsis');
+    expect(rule(seam, '.seam-word')).toContain('white-space: nowrap');
+  });
+});
