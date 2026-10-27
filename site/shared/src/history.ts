@@ -110,6 +110,12 @@ export type HistoryRecordDto = {
 export type HistoryTimelineDto = {
   /** The book's clock right now — the scrubber's right edge and `bookAt`'s default. */
   lastHseq: number;
+  /**
+   * The logged moment of `lastHseq` (BOOK-65): the rest position prints this, or the newest
+   * record when the log holds no row. It is the log's own last instant, never the browser
+   * clock — BOOK-DOC-48 refused a clock, not a logged moment.
+   */
+  lastAt: string | null;
   at: string;
   items: HistoryRecordDto[];
   /** Cursor for the next page (`before`); null when the page reached the oldest record. */

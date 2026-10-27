@@ -8,10 +8,11 @@
  * supplies the moment: a change's last `hseq` is its place on the book's clock, and the
  * scrubber already speaks in `hseq`.
  *
- * A change the engine enqueues always carries at least one event (`change.queued` is appended
- * in the same transaction as the row), so every reader change has a moment. A row inserted by
- * hand without an event has no place on the clock and is not listed; `record.test.ts` proves
- * that such a row can only come from a fixture, never from the engine.
+ * A path that inserts a change appends `change.queued` in the same transaction
+ * (`engine/queue.ts` for an enqueued change, `admitPremise` for a premise, `feedback/accept.ts`
+ * for a comment accepted through the interface), so every reader change has a place on the
+ * clock. This reader still guards the join: a row with no event row has no moment and is not
+ * listed — `record.test.ts` proves the interface path satisfies the invariant.
  */
 
 import type { ChangeOutcome, ChangeStatus, HistoryRecordDto } from '@book/shared';
@@ -73,18 +74,25 @@ function toHistoryRecord(row: RecordRow): HistoryRecordDto {
   };
 }
 
+/** The book's clock's own last moment: the `at` of the event at `lastHseq`, or `null`. */
+function clockAt(db: Db, hseq: number): string | null {
+  const row = db.prepare('SELECT at FROM events WHERE hseq = ?').get(hseq) as { at: string } | undefined;
+  return row?.at ?? null;
+}
+
 /**
  * The public record page, newest first, with a cursor (§6F.2).
  *
  * The cursor is the last row's `hseq` **only when the page is full**: a page shorter than its
  * limit is the oldest one, so nothing lies before it and `nextBefore` is `null` — the client
- * must not offer «до …» for a record it has already shown completely. `lastHseq` is the book's
- * clock, not the newest record's: a machine pass still moves time without adding an entry.
+ * must not offer «до …» for a record it has already shown completely. `lastHseq`/`lastAt` are
+ * the book's clock, not the newest record's: a machine pass still moves time without adding an
+ * entry, so the scrubber's rest position must show the log's own last moment.
  */
 export function readRecord(
   db: Db,
   filter: RecordFilter = {},
-): { lastHseq: number; items: HistoryRecordDto[]; nextBefore: number | null } {
+): { lastHseq: number; lastAt: string | null; items: HistoryRecordDto[]; nextBefore: number | null } {
   const params: number[] = [];
   let clause = '';
   if (filter.before !== undefined) {
@@ -95,5 +103,6 @@ export function readRecord(
   const rows = db.prepare(sql).all(...params, pageLimit(filter.limit)) as RecordRow[];
   const items = rows.map((row) => toHistoryRecord(row));
   const nextBefore = rows.length === pageLimit(filter.limit) ? (rows.at(-1)?.hseq ?? null) : null;
-  return { lastHseq: lastHseq(db), items, nextBefore };
+  const bookClock = lastHseq(db);
+  return { lastHseq: bookClock, lastAt: clockAt(db, bookClock), items, nextBefore };
 }

@@ -1,7 +1,9 @@
 import type { HistoryKind } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { readCommentRow } from '../../src/comments/repo.ts';
 import type { Db } from '../../src/db/db.ts';
+import { acceptComment } from '../../src/feedback/accept.ts';
 import { appendEvent } from '../../src/history/log.ts';
 import { readRecord } from '../../src/history/record.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
@@ -140,6 +142,8 @@ describe('no technical event reaches the record (AC2)', () => {
     const page = readRecord(db);
     expect(page.items).toEqual([]);
     expect(page.nextBefore).toBeNull();
+    // The surface is empty but the clock is not: the rest position still has a logged moment.
+    expect(page.lastAt).toBe('2026-10-25T09:00:11Z');
   });
 });
 
@@ -165,14 +169,91 @@ describe('a machine-only pass adds no entry (AC3)', () => {
   });
 });
 
-describe('a change with no log row has no place on the clock', () => {
-  it('lists nothing for a hand-seeded change, which the engine cannot produce', () => {
-    fixture = createFixture();
-    // `seedChange` inserts the row directly. Every engine path appends `change.queued` in the
-    // same transaction (`engine/queue.ts`), so a reader change never reaches this state.
-    seedChange(fixture.db, { index: 1, chapter: 5, label: 'Аня' });
+/**
+ * A comment filed through the interface and accepted by the real path: ingest a written chapter,
+ * store an audited filing, then call `acceptComment` — the function the CLI and the decisions
+ * tailer call. No hand-written `changes` row, no hand-written event.
+ */
+function acceptThroughInterface(local: Fixture, at = '2026-10-25T10:00:00Z'): { changeId: string; at: string } {
+  ingest(local, 'ch08.md', longProse(['Первый абзац. Это служебный текст, он не является текстом книги.'], 'Глава 8'));
+  local.db
+    .prepare(
+      `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+       VALUES ('idt_1', 'sub-1', 'Аня', '2026-10-20T09:00:00Z', '2026-10-25T08:00:00Z')`,
+    )
+    .run();
+  local.db
+    .prepare(
+      `INSERT INTO comments (id, identity_id, chapter, block_id, author, body, body_sha, ip_hash, status,
+                             created_at, audit_verdict)
+       VALUES ('cmt_iface', 'idt_1', 8, 'ch08#aa11bb22', 'Аня', 'абзац слишком часто', 'sha-1', 'iph',
+               'new', '2026-10-24T09:00:00Z', 'FITS')`,
+    )
+    .run();
+  const comment = readCommentRow(local.db, 'cmt_iface');
+  if (comment === undefined) throw new Error('the filing was not stored');
+  const result = acceptComment(local.db, {
+    comment,
+    intent: 'убрать второе упоминание абзаца',
+    at,
+    reason: 'принято',
+  });
+  if ('error' in result) throw new Error(result.error);
+  return { changeId: result.changeId, at };
+}
 
-    expect(readRecord(fixture.db).items).toEqual([]);
+describe('a change accepted through the interface (BOOK-65 B1)', () => {
+  it('is one record entry with its alias and date — the interface path, not a seeded row', () => {
+    fixture = createFixture();
+    const { changeId, at } = acceptThroughInterface(fixture);
+
+    const items = readRecord(fixture.db).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      changeId,
+      alias: 'Аня',
+      at,
+      chapter: 8,
+      status: 'pending',
+      premise: false,
+    });
+  });
+
+  it('carries its clock row, written by acceptance itself', () => {
+    fixture = createFixture();
+    const { changeId } = acceptThroughInterface(fixture);
+
+    // The invariant every insert path must keep: a change is never written without
+    // `change.queued` in the same transaction (`engine/queue.ts`, `admitPremise`, `accept.ts`).
+    const rows = fixture.db.prepare('SELECT kind FROM events WHERE change_id = ? ORDER BY hseq').all(changeId) as Array<{
+      kind: string;
+    }>;
+    expect(rows.map((row) => row.kind)).toEqual(['change.queued']);
+    expect(readRecord(fixture.db).items.map((item) => item.changeId)).toEqual([changeId]);
+  });
+
+  it('does not throw on a corrupt decision line: a non-time `at` still writes one clock row', () => {
+    fixture = createFixture();
+    let accepted: { changeId: string; at: string } | undefined;
+    // The tailer advances its offset before this call, so a junk `at` must not throw.
+    expect(() => {
+      accepted = acceptThroughInterface(fixture!, 'не время');
+    }).not.toThrow();
+    expect(accepted).toBeDefined();
+    const { changeId } = accepted!;
+
+    const clockRows = fixture.db.prepare('SELECT COUNT(*) AS n FROM events WHERE change_id = ?').get(changeId) as {
+      n: number;
+    };
+    expect(clockRows.n).toBe(1);
+    const items = readRecord(fixture.db).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]?.changeId).toBe(changeId);
+    // The stored string is untouched: only the clock fell back to now.
+    const change = fixture.db.prepare('SELECT enqueued_at FROM changes WHERE id = ?').get(changeId) as {
+      enqueued_at: string;
+    };
+    expect(change.enqueued_at).toBe('не время');
   });
 });
 
@@ -204,11 +285,14 @@ describe('the record’s page and cursor (§6F.2)', () => {
 
     // The page's clock is the book's, not the newest record's: a machine pass moves time and
     // adds no row, so the scrubber's right edge stays honest while the list does not grow.
-    const machine = appendEvent(db, { kind: 'chapter.revised', chapter: 1 }, BASE_MS + 99_000);
+    const machine = appendEvent(db, { kind: 'chapter.revised', chapter: 1 }, BASE_MS + 120_000);
     const afterMachinePass = readRecord(db);
     expect(afterMachinePass.lastHseq).toBe(machine);
+    expect(afterMachinePass.lastAt).toBe('2026-10-25T09:02:00Z');
     expect(afterMachinePass.lastHseq).toBeGreaterThan(afterMachinePass.items[0]?.hseq ?? 0);
     expect(afterMachinePass.items).toHaveLength(3);
+    // The record's own newest moment did not move with the clock.
+    expect(afterMachinePass.items[0]?.at).not.toBe(afterMachinePass.lastAt);
   });
 });
 

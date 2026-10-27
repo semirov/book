@@ -50,11 +50,14 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(response.headers['cache-control']).toBe('no-cache');
     const body = response.json() as {
       lastHseq: number;
+      lastAt: string | null;
       at: string;
       items: Array<{ hseq: number; seq: number; chapter: number; alias: string }>;
       nextBefore: number | null;
     };
     expect(body.lastHseq).toBe(lastHseq(local.db));
+    // The rest position is the log's own last moment — the newest change's filing here.
+    expect(body.lastAt).toBe('2026-10-25T09:10:00Z');
     expect(body.items).toHaveLength(2);
     // Newest first, one row per change — never one per event.
     expect(body.items.map((item) => item.seq)).toEqual([2, 1]);
@@ -295,6 +298,7 @@ describe('the record cursor is the page’s own edge (BOOK-DOC-50 §7)', () => {
     const empty = readRecord(local.db);
     expect(empty.items).toEqual([]);
     expect(empty.nextBefore).toBeNull();
+    expect(empty.lastAt).toBeNull();
 
     const seeded = seedChange(local.db, { index: 1, chapter: 1, label: 'Аня' });
     appendEvent(local.db, { kind: 'change.queued', changeId: seeded.changeId, chapter: 1 }, Date.parse('2026-10-25T09:00:00Z'));

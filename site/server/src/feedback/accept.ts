@@ -22,6 +22,7 @@ import { insertChange } from '../engine/store.ts';
 import { PREMISE_SUPERSEDED_REASON, admitPremise } from '../engine/premise.ts';
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
+import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { newChangeId } from '../util/ulid.ts';
 
 export type AcceptResult =
@@ -124,7 +125,7 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // text, the change must be recorded against the revision that stands, not against 0.
     const baseRev = positiveRev(input.baseRev) ?? positiveRev(comment.base_rev) ?? chapter.rev;
     if (existing === undefined) {
-      insertChange(db, {
+      const seq = insertChange(db, {
         id: changeId,
         kind: 'accepted_comment',
         // BOOK-16: the kind travels with the comment into the change, so the writer's
@@ -149,6 +150,30 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         premise: 0,
         enqueuedAt: input.at,
       });
+      // BOOK-65: a change written through the interface is a public record entry, so its
+      // clock row is written here, in the same transaction — exactly as `engine/queue.ts`
+      // does for a change it enqueues and `admitPremise` does for a premise. Without this
+      // line the ordinary acceptance path produced a change with no place on the clock and
+      // the record stayed empty while `history.live` was already true.
+      //
+      // A corrupt `decisions.jsonl` line can carry a non-ISO `at` (`parseDecision` passes it
+      // through), and `readNewLines` advances its offset before this call: throwing here would
+      // drop the rest of the chunk. So the clock falls back to now rather than fail; the row's
+      // own `enqueued_at` and the comment's `decided_at` keep the stored string unchanged.
+      const parsedAt = Date.parse(input.at);
+      const atMs = Number.isFinite(parsedAt) ? parsedAt : Date.now();
+      appendChangeEvent(db, changeId, 'queued', { chapter: comment.chapter, kind: 'accepted_comment' }, atMs);
+      appendEvent(
+        db,
+        {
+          kind: 'change.queued',
+          changeId,
+          chapter: comment.chapter,
+          authorKind: 'reader',
+          payload: { seq, intent: input.intent },
+        },
+        atMs,
+      );
     }
 
     db.prepare(
