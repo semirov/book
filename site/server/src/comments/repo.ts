@@ -13,6 +13,7 @@ import {
   type CommentAnchor,
   type CommentDto,
   type CommentGuard,
+  type CommentRefusal,
   type CommentStatus,
   type InterventionKind,
 } from '@book/shared';
@@ -53,6 +54,16 @@ export type CommentRow = {
   audit_reason: string | null;
   audited_at: string | null;
   audited_by: string | null;
+  /** BOOK-61 Gate A — the hold: the rule that stopped the row, who decided, and when. */
+  held_rule: string | null;
+  held_by: string | null;
+  held_at: string | null;
+  /** BOOK-61 Gate B — the rights verdict; one writer per column, first verdict wins. */
+  rights_verdict: string | null;
+  rights_rule: string | null;
+  rights_at: string | null;
+  rights_by: string | null;
+  rights_source: string | null;
   idem_key: string | null;
 };
 
@@ -214,6 +225,9 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // covers a note and every row written before BOOK-16.
     interventionKind: normalizeInterventionKind(row.intervention_kind),
     status,
+    // BOOK-61: the gate that refused, derived here from the stored verdicts — one place, so no
+    // surface can guess it from the reason text.
+    refusal: refusalOf(row),
     premise,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
@@ -228,6 +242,25 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
         ? { chapter: row.applied_chapter, rev: row.applied_rev }
         : null,
   };
+}
+
+/**
+ * The gate that refused a filing (BOOK-61): derived once, from the verdict columns only.
+ *
+ * A **rejected** row belongs to the gate that wrote the rejection (B1): only B sets
+ * `decided_at` together with its sentence, so a row A rejected on scope keeps A's state even
+ * when B later records its own verdict column, and the page never heads A's reason with B's
+ * word. A held row is A's whatever B answered.
+ */
+function refusalOf(row: CommentRow): CommentRefusal | null {
+  if (row.status === 'quarantined') return 'held';
+  if (row.status === 'rejected') {
+    if (row.rights_verdict === 'REFUSED' && row.decided_at !== null) return 'rights';
+    return row.audit_verdict === 'OFF' ? 'auditor' : null;
+  }
+  if (row.rights_verdict === 'REFUSED') return 'rights';
+  if (row.audit_verdict === 'OFF') return 'auditor';
+  return null;
 }
 
 type LinkedChange = { premise: number; status: string; outcome: string | null; reason: string | null };

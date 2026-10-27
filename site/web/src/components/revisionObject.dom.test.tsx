@@ -48,6 +48,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: '2026-10-21T12:04:00Z',
     changeId: 'chg_1',
     applied: { chapter: 8, rev: 4 },
+    refusal: null,
     ...overrides,
   };
 }

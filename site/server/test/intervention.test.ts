@@ -137,7 +137,7 @@ describe('an intervention kind end to end (BOOK-16)', () => {
       const batch = h.db.prepare('SELECT id FROM feedback_batches ORDER BY created_at DESC LIMIT 1').get() as {
         id: string;
       };
-      const [item] = readBatchLines(dir ?? '', batch.id).filter((line) => line.id === dto.id);
+      const [item] = readBatchLines(dir ?? '', batch.id).filter((line) => line.itemId === dto.id);
       expect(item?.kind, kind).toBe(kind);
       // The batch is closed for the next round: the comment is `batched`, and the next inbox
       // must not pick it again.
@@ -328,6 +328,9 @@ describe('an intervention kind end to end (BOOK-16)', () => {
       idemKey: null,
     });
     expect(cli(h, 'audit', 'cmt_01JB7OLD00000000000000000', '--verdict', 'FITS').code).toBe(0);
+    // BOOK-61: a row stored before the scan existed still needs its right cleared — the batch
+    // boundary or an operator writes it; acceptance has no default.
+    h.db.prepare(`UPDATE comments SET rights_verdict = 'CLEAR' WHERE id = ?`).run('cmt_01JB7OLD00000000000000000');
     const decided = cli(
       h,
       'decide',
@@ -429,7 +432,7 @@ describe('the kind reaches the intent and the writer (BOOK-16)', () => {
         idemKey: null,
       });
       fixture.db
-        .prepare(`UPDATE comments SET audit_verdict = 'FITS', audited_at = ? WHERE id = ?`)
+        .prepare(`UPDATE comments SET audit_verdict = 'FITS', audited_at = ?, rights_verdict = 'CLEAR' WHERE id = ?`)
         .run('2026-10-25T12:02:00Z', 'cmt_01JB7KIND0000000000000000');
       const change = fixture.engine.enqueue({
         kind: 'accepted_comment',

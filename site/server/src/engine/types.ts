@@ -49,6 +49,8 @@ export type EngineAlert = {
     | 'ending'
     /** BOOK-76: a physics claim failed the consultant and the change stopped. */
     | 'science'
+    /** BOOK-61: Gate B refused a chapter's new prose and the step stopped. */
+    | 'rights'
     | 'gate_timeout'
     /** BOOK-18: the derived index could not be built or written at a gate dispatch. */
     | 'index';

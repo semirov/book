@@ -14,6 +14,10 @@
  * one other creator of a `changes` row that names a comment — the internal queue route — asks
  * the same question (`engine/queue.ts`). A row that already points at a change keeps its
  * idempotent answer (pre-BOOK-9 rows are read, never re-decided).
+ *
+ * BOOK-61: three columns, three writers, no default — `status <> 'quarantined'` (A),
+ * `rights_verdict = 'CLEAR'` (B), `audit_verdict = 'FITS'` (C). A gate that has not spoken is
+ * a refusal, not a pass; `AUDIT_REQUIRED`, `RIGHTS_REQUIRED` and `QUARANTINED` name which one.
  */
 
 import { PREMISE_FROZEN_REASON, normalizeInterventionKind } from '@book/shared';
@@ -27,7 +31,10 @@ import { newChangeId } from '../util/ulid.ts';
 
 export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
-  | { error: string; code?: 'AUDIT_REQUIRED' | 'FROZEN_FRAME' };
+  | {
+      error: string;
+      code?: 'AUDIT_REQUIRED' | 'FROZEN_FRAME' | 'RIGHTS_REQUIRED' | 'QUARANTINED';
+    };
 
 export type AcceptInput = {
   comment: CommentRow;
@@ -58,6 +65,19 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         changeId: comment.change_id,
         created: false,
         ...(linked?.outcome === 'superseded' ? { superseded: true } : {}),
+      };
+    }
+
+    // BOOK-61: three columns, three writers, no default. A held row was never read by a model;
+    // a row with no rights verdict is not cleared; only a granted right and a recorded FITS
+    // make a change. The order is the order of the gates — A, then B, then C.
+    if (comment.status === 'quarantined') {
+      return { code: 'QUARANTINED', error: 'замечание ещё проверяется — правку из него не делают' };
+    }
+    if (comment.rights_verdict !== 'CLEAR') {
+      return {
+        code: 'RIGHTS_REQUIRED',
+        error: 'право на текст не подтверждено — правку из него не делают',
       };
     }
 

@@ -7,11 +7,24 @@
  * use, and returns the exit code.
  *
  *   node site/bin/feedback.mjs inbox --limit 20
+ *   node site/bin/feedback.mjs inbox --held
+ *   node site/bin/feedback.mjs inbox --rights
  *   node site/bin/feedback.mjs audit cmt_… --verdict FITS --by triage-1
+ *   node site/bin/feedback.mjs audit cmt_… --answer answer.json
+ *   node site/bin/feedback.mjs hold cmt_… --rule INJ-IMPERATIVE --evidence "text:…" --by triage-1
+ *   node site/bin/feedback.mjs rights cmt_… --verdict REFUSED --rule RIGHTS-QUOTE --by triage-1
+ *   node site/bin/feedback.mjs rights cmt_… --answer answer.json
+ *   node site/bin/feedback.mjs release cmt_… --reason "…" --by operator-1
  *   node site/bin/feedback.mjs decide cmt_… accepted --reason "…" --intent "…" --rev ch08@3
  *
  * Every comment is audited before it can be decided (BOOK-9); `OFF` refuses it to the reader
- * with the auditor's reason. Exit codes: 0 recorded, 1 refused/error, 2 usage.
+ * with the auditor's reason. Since BOOK-61 a held filing is not lost: `hold` records the Gate A
+ * rule and `release` puts the row back in the queue; `rights` records Gate B's rule-bound
+ * verdict and `rights` refuses without a rule. A model's own `book.verdict/v1` object can be
+ * handed over with `--answer <json | @file | ->`: it is parsed against the batch the filing
+ * belongs to and post-checked before anything is recorded, and it cannot be mixed with
+ * `--verdict`/`--reason`. Exit codes: 0 recorded, 1 refused/error,
+ * 2 usage.
  *
  * Environment: DATA_DIR (default `site/.data`), FEEDBACK_DIR (default `site/data/feedback`),
  * EDIT_SUBMISSIONS_PER_DAY (default 1). No network, no model call.

@@ -31,7 +31,17 @@ import { toIso } from '../util/time.ts';
 import { closeStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
 import { type DraftLane } from './draft.ts';
-import { assignmentOf, blockingVerdict, missingVerdicts, openDispatch, recordVerdict, survivedBlocker, type GateAssignment, type GateAnswer } from './gates.ts';
+import {
+  assignmentOf,
+  blockingVerdict,
+  missingVerdicts,
+  openDispatch,
+  recordVerdict,
+  survivedBlocker,
+  type GateAssignment,
+  type GateAnswer,
+  type RightsAssignment,
+} from './gates.ts';
 import {
   blockHashes,
   changeForStep,
@@ -40,16 +50,18 @@ import {
   safeJson,
   sameSequence,
 } from './helpers.ts';
-import { beatLease, beatOpenSteps, openStepForClose, releaseLease } from './leases.ts';
-import { dailyTokens } from './draft.ts';
+import { beatLease, openStepForClose, releaseLease } from './leases.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapter, readFront } from './text.ts';
-import { readTrace, writerAssignment, type TraceResult } from './trace.ts';
+import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
+import { createOverview } from './overview.ts';
+import { createRightsGate } from './rightsGate.ts';
+import { ensureRightsScan } from './rightsScan.ts';
 import { createWriteOps } from './write.ts';
 
 export type { EnqueueInput } from './queue.ts';
@@ -63,7 +75,7 @@ export type DoneOptions = {
   now?: number;
 };
 
-export type NextInput = { for?: string; role?: GateRole; session: string };
+export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
 
 export type DoneResult = {
   stepId: string;
@@ -72,19 +84,13 @@ export type DoneResult = {
   changeStatus: ChangeStatus | null;
 };
 
-export type EngineState = {
-  status: 'running' | 'throttled';
-  lane: { holder: string | null; heartbeatAt: string | null };
-  queue: { pending: number; processing: number; openCascades: number };
-  steps: { open: number; leased: number };
-  tokens: { today: number; dailyBudget: number };
-  alerts: unknown;
-};
+export type { EngineState } from './overview.ts';
 
 export function createEngine(deps: EngineDeps) {
   const { db, config, bookRoot } = deps;
   const queue = createQueue(deps);
   const write = createWriteOps(deps);
+  const overview = createOverview(deps);
   const iso = (ms: number = deps.clock.now()): string => toIso(ms);
 
   const freshStep = (stepId: string): store.StepRow => {
@@ -126,13 +132,22 @@ export function createEngine(deps: EngineDeps) {
     return null;
   }
 
-  function next(input: NextInput): WriterAssignment | GateAssignment | null {
+  /**
+   * BOOK-61 — the conditional rights gate lives in its own module (`rightsGate.ts`): a
+   * different question, a different enum, and its own close. The engine only wires it in.
+   */
+  const rights = createRightsGate(deps);
+
+  function next(input: NextInput): WriterAssignment | GateAssignment | RightsAssignment | null {
     if (!input.session || input.session.length > 64) refuse('INVALID_SESSION', 422, 'a session name is required');
     reap(deps, deps.clock.now());
 
+    // BOOK-61: `rights` is the conditional gate — it is offered only for a step whose scan
+    // flagged, and it is offered before any writer claim (it belongs to a landed step).
+    if (input.role === 'rights') return rights.next(input.session);
     if (input.role) return nextGate(input.role, input.session);
     if (input.for !== 'fwd' && input.for !== 'bwd') {
-      refuse('INVALID_LANE', 422, 'either --for fwd|bwd or --role editor|consultant is required');
+      refuse('INVALID_LANE', 422, 'either --for fwd|bwd or --role editor|consultant|rights is required');
     }
     const lane: DraftLane = input.for;
 
@@ -214,8 +229,21 @@ export function createEngine(deps: EngineDeps) {
     if (step.landed_at === null) {
       refuse('NOT_LANDED', 409, 'a step closes on a landed file — call land first (§6A.11)');
     }
-    const missing = missingVerdicts(db, step.step_id);
+    // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
+    // is asked now, on the way out, so no step closes without B having been offered the step.
+    const closing = ensureRightsScan(deps, step);
+    const missing = missingVerdicts(db, closing);
     if (missing.length > 0) {
+      // BOOK-61: Gate B's requirement has its own code — the operator must be able to tell a
+      // prose gate that has not spoken from a law question that has not been answered.
+      if (missing.includes('rights')) {
+        refuse(
+          'RIGHTS_REQUIRED',
+          409,
+          `право на текст не подтверждено — не хватает: ${missing.join(', ')}`,
+          { missing },
+        );
+      }
       refuse('VERDICTS_REQUIRED', 409, `a step cannot close without both verdicts; missing: ${missing.join(', ')}`, {
         missing,
       });
@@ -398,28 +426,7 @@ export function createEngine(deps: EngineDeps) {
     return { leaseId: lease.id, expiresAt: lease.expires_at };
   }
 
-  // ── state / trace / reconcile ─────────────────────────────────────────────
-
-  function state(): EngineState {
-    const lane = store.readLane(db);
-    const today = dailyTokens(db, deps.clock.now());
-    return {
-      status: today >= config.budgetDailyTokens ? 'throttled' : 'running',
-      lane: { holder: lane.holder, heartbeatAt: lane.heartbeat_at },
-      queue: {
-        pending: store.countPending(db),
-        processing: store.countProcessing(db),
-        openCascades: store.listOpenCascades(db).length,
-      },
-      steps: { open: store.countOpenSteps(db), leased: store.liveLeases(db).length },
-      tokens: { today, dailyBudget: config.budgetDailyTokens },
-      alerts: safeJson(store.getMeta(db, 'engine.alerts')),
-    };
-  }
-
-  function trace(identifier: string): TraceResult | null {
-    return readTrace(deps, identifier);
-  }
+  // ── reconcile ─────────────────────────────────────────────────────────────
 
   /**
    * Two operator meanings of one word, kept apart by the caller (§13.3): with a chapter it is
@@ -453,45 +460,23 @@ export function createEngine(deps: EngineDeps) {
     };
   }
 
-  /**
-   * BOOK-16 — the kind stored with a comment, raw. The control route validates an intent
-   * against the world-fact the change will carry (`queue.ts` copies the same column), and an
-   * unknown value has to stay detectable, so it is returned as stored rather than normalized.
-   */
-  function commentKind(commentId: string): string | null {
-    const row = db.prepare('SELECT intervention_kind FROM comments WHERE id = ?').get(commentId) as
-      | { intervention_kind: string | null }
-      | undefined;
-    return row?.intervention_kind ?? null;
-  }
-
-  function heartbeat(): void {
-    const at = deps.clock.now();
-    store.setMeta(db, 'engine.heartbeat', iso(at));
-    const status = state().status;
-    store.setMeta(db, 'engine.status', status);
-    const lane = store.readLane(db);
-    if (lane.holder) store.heartbeatLaneRow(db, lane.holder, iso(at));
-    // BOOK-34: the engine beats the leases of its open steps itself (bounded by the step wall).
-    beatOpenSteps(deps, at);
-  }
-
   return {
     next,
     start: write.start,
     land: write.land,
     verdict,
+    verdictRights: rights.verdict,
     done,
     seen,
     escalate,
     beat,
     enqueue: queue.enqueue,
-    commentKind,
-    state,
-    trace,
+    commentKind: overview.commentKind,
+    state: overview.state,
+    trace: overview.trace,
     reconcile,
     reconcileRestore: reconcileRestoreOf,
-    heartbeat,
+    heartbeat: overview.heartbeat,
     reap: (): ReapReport => reap(deps, deps.clock.now()),
   };
 }

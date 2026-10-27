@@ -6,8 +6,7 @@ import {
   boundaryLabel,
   changeHeading,
   chapterRange,
-  outcomeCopy,
-  premiseOutcomeCopy,
+  outcomeLine,
   relevanceCopy,
   stampCopy,
   stepLabel,
@@ -58,6 +57,9 @@ export function ChangeCard({
   const cost = costLine(change, null);
   // BOOK-76: one word about the physics pass, and nothing at all while it has not answered.
   const science = scienceLine(change.scienceCheck);
+  // BOOK-61: the footer is one line — the outcome word, then the reason, and never the word
+  // twice when the reason is already the gate's own sentence («не принято: …»).
+  const footer = outcomeLine(change);
   const wings = change.steps.filter((step) => typeof step.chapter === 'number' && step.wing !== null);
   const reached = [...new Set(wings.map((step) => step.chapter as number))].sort((left, right) => left - right);
 
@@ -164,10 +166,8 @@ export function ChangeCard({
       ) : null}
 
       <footer className="change-foot">
-        <span className="change-outcome">
-          {change.premise ? premiseOutcomeCopy(change) : outcomeCopy(change.outcome)}
-        </span>
-        {change.reason !== null ? <span className="change-reason">{change.reason}</span> : null}
+        {footer.word === null ? null : <span className="change-outcome">{footer.word}</span>}
+        {footer.reason === null ? null : <span className="change-reason">{footer.reason}</span>}
         {cost === null ? null : <span className="change-cost">{cost}</span>}
         {change.decidedAt === null ? null : <span className="change-time">закрыта {formatTime(change.decidedAt)}</span>}
         <a className="change-focus" href={focusHash(change.id)}>

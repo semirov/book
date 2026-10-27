@@ -6,8 +6,11 @@
  * file exchange (`batches/*.jsonl`, `decisions.jsonl`). It never calls a model, never
  * writes prose and never touches the manuscript.
  *
- *   feedback.mjs inbox  [--limit 20] [--chapter 8]
+ *   feedback.mjs inbox  [--limit 20] [--chapter 8] [--held] [--rights]
  *   feedback.mjs audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
+ *   feedback.mjs audit  <commentId> --answer <json | @file | ->
+ *   feedback.mjs hold   <commentId> --rule <INJ-…> --evidence <field>:<quote> [--by label]
+ *   feedback.mjs release <commentId> --reason "…" [--by label]
  *   feedback.mjs read   <batchId>
  *   feedback.mjs decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
  *   feedback.mjs decide <commentId> rejected --reason "…"
@@ -19,17 +22,22 @@
  * brief, and this CLI only records its verdict. `FITS` permits a later `decide`; `OFF`
  * refuses the comment to the reader, with the auditor's reason, in the same act.
  *
+ * BOOK-61 adds Gate A's two operator acts: `hold` is the A pass's write (a stopped filing
+ * becomes `quarantined` with the rule that stopped it, and the evidence passes the same
+ * post-check a model's verdict does); `release` is the operator's undo (HELD → `new`).
+ *
+ * Gate B's surface is here too: `rights` records the gate's rule-bound verdict, `inbox
+ * --rights` lists flagged rows, and `release` lifts a `RIGHTS-QUOTE` refusal (not a stop one).
+ *
  * The core is here, not in `bin/`, so the rules are unit-tested with a real database; the
  * `bin/feedback.mjs` wrapper only resolves paths and the exit code.
  */
 
-import { appendFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 
 import {
-  COMMENT_AUDITED_BY_MAX_CHARS,
   EDIT_DAY_MS,
   interventionKindLabel,
+  normalizeInterventionKind,
   validateInterventionKind,
   validateIntent,
   validateReason,
@@ -41,7 +49,6 @@ import { readCommentRow } from '../comments/repo.ts';
 import { editIdentityKey, editIpKeyFromHash } from '../rate/policy.ts';
 import { RateLimiter, type LimitSpec } from '../rate/limiter.ts';
 import { acceptComment } from './accept.ts';
-import { recordAudit } from './audit.ts';
 import {
   closeBatch,
   createBatch,
@@ -51,6 +58,8 @@ import {
   readBatch,
   readBatchLines,
 } from './batches.ts';
+import { appendDecision } from './decisionsFile.ts';
+import { audit, heldInbox, hold, release, rights, rightsInbox } from './operator.ts';
 import { chapterVocabulary } from './vocabulary.ts';
 
 export type FeedbackIo = {
@@ -79,7 +88,7 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const name = arg.slice(2);
-    if (name === 'help' || name === 'json') {
+    if (name === 'help' || name === 'json' || name === 'held' || name === 'rights') {
       flags.set(name, 'true');
       continue;
     }
@@ -91,9 +100,14 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
   return { command: positionals.shift() ?? null, positionals, flags };
 }
 
-const USAGE = `usage: feedback.mjs <inbox|audit|read|decide|close|list> [...]
-  inbox  [--limit 20] [--chapter 8]
+const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|close|list> [...]
+  inbox  [--limit 20] [--chapter 8] [--held] [--rights]
   audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
+  audit  <commentId> --answer <json | @file | ->
+  hold   <commentId> --rule <INJ-…> --evidence <field>:<quote> [--by label]
+  rights <commentId> --verdict CLEAR|REFUSED --rule <id> [--source "…"] [--by label]
+  rights <commentId> --answer <json | @file | ->
+  release <commentId> --reason "…" [--by label]
   read   <batchId>
   decide <commentId> accepted --reason "…" --intent "…" [--rev chNN@R]
   decide <commentId> rejected --reason "…"
@@ -121,6 +135,12 @@ export function runFeedback(argv: string[], io: FeedbackIo): number {
         return inbox(parsed, io, now);
       case 'audit':
         return audit(parsed, io, now);
+      case 'hold':
+        return hold(parsed, io, now);
+      case 'rights':
+        return rights(parsed, io, now);
+      case 'release':
+        return release(parsed, io, now);
       case 'read':
         return read(parsed, io);
       case 'decide':
@@ -141,6 +161,8 @@ export function runFeedback(argv: string[], io: FeedbackIo): number {
 }
 
 function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
+  if (parsed.flags.has('held')) return heldInbox(parsed, io);
+  if (parsed.flags.has('rights')) return rightsInbox(parsed, io);
   const limit = intFlag(parsed.flags.get('limit'), 20);
   let chapter: number | undefined;
   if (parsed.flags.has('chapter')) {
@@ -162,11 +184,11 @@ function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   io.print(`batch ${result.batchId} → ${result.path}`);
   // BOOK-16: each item is named with the kind it declares — the auditor judges the
-  // intervention as that world-fact, and `—` means a row stored before BOOK-16. The labels
-  // come from the batch file that was just written (one read, not a query per item).
+  // intervention as that world-fact, and `—` means a row stored before BOOK-16. BOOK-61: the
+  // batch file holds envelopes, so the id printed here is the envelope's `itemId`.
   const items = readBatchLines(io.dir, result.batchId);
   for (const item of items) {
-    io.print(`  ${item.id}  ${interventionKindLabel(item.kind) ?? '—'}`);
+    io.print(`  ${item.itemId}  ${interventionKindLabel(normalizeInterventionKind(item.kind)) ?? '—'}`);
   }
   io.print('  каждое замечание сначала проходит audit (FITS|OFF): без FITS decide откажет');
   return 0;
@@ -200,80 +222,6 @@ function close(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   closeBatch(io.db, batchId, now().toISOString());
   io.print(`${batchId}: closed`);
-  return 0;
-}
-
-/**
- * `audit <commentId> --verdict FITS|OFF --reason "…" [--by label]` (BOOK-9).
- *
- * The verdict is recorded once, before triage. `OFF` is also the refusal: the comment becomes
- * `rejected` with the auditor's plain reason and a decision line, exactly like any other
- * refusal, and no change exists. `FITS` only permits a later `decide`.
- */
-function audit(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
-  const commentId = parsed.positionals[0];
-  const verdict = parsed.flags.get('verdict');
-  if (commentId === undefined || (verdict !== 'FITS' && verdict !== 'OFF')) {
-    io.print('usage: feedback.mjs audit <commentId> --verdict FITS|OFF --reason "…" [--by label]');
-    return 2;
-  }
-  const comment = readCommentRow(io.db, commentId);
-  if (comment === undefined) {
-    io.print(`unknown comment: ${commentId}`);
-    return 1;
-  }
-  if (comment.audit_verdict !== null) {
-    io.print(`refused: ${commentId} already has a verdict (first verdict wins)`);
-    return 1;
-  }
-  if (comment.decided_at !== null) {
-    io.print(`refused: ${commentId} is already decided — triage is not audited after the fact`);
-    return 1;
-  }
-
-  const rawReason = parsed.flags.get('reason');
-  const checked = rawReason === undefined ? null : validateReason(rawReason);
-  if (checked !== null && !checked.ok) {
-    io.print(`refused: ${checked.reason}`);
-    return 1;
-  }
-  const reason = checked === null ? null : checked.reason;
-  const label = (parsed.flags.get('by') ?? '').replace(/\s+/gu, ' ').trim();
-  if (label.length > COMMENT_AUDITED_BY_MAX_CHARS) {
-    io.print(`refused: --by is longer than ${COMMENT_AUDITED_BY_MAX_CHARS} characters`);
-    return 1;
-  }
-  const by = label.length === 0 ? null : label;
-
-  const at = now().toISOString();
-  if (verdict === 'OFF') {
-    if (reason === null) {
-      io.print('refused: OFF needs --reason "…" — the reader sees that line as the refusal');
-      return 1;
-    }
-    const recorded = recordAudit(io.db, { commentId: comment.id, verdict, reason, by, at });
-    if (!recorded.ok) {
-      io.print(`refused (${recorded.code}): ${recorded.message}`);
-      return 1;
-    }
-    appendDecision(io.dir, {
-      id: comment.id,
-      status: 'rejected',
-      reason,
-      at,
-      batch: comment.batch_id,
-      changeId: null,
-    });
-    io.print(`${comment.id}: OFF · отклонено, читатель увидит причину`);
-    return 0;
-  }
-
-  const recorded = recordAudit(io.db, { commentId: comment.id, verdict, reason, by, at });
-  if (!recorded.ok) {
-    io.print(`refused (${recorded.code}): ${recorded.message}`);
-    return 1;
-  }
-  io.print(`${comment.id}: FITS · можно решать`);
   return 0;
 }
 
@@ -451,11 +399,6 @@ function list(parsed: ParsedArgs, io: FeedbackIo): number {
   const batches = listBatches(io.db, 5);
   for (const batch of batches) io.print(`batch ${batch.id}  ${batch.count}  ${batch.closed_at ?? 'open'}`);
   return 0;
-}
-
-function appendDecision(dir: string, line: Record<string, unknown>): void {
-  mkdirSync(dir, { recursive: true });
-  appendFileSync(join(dir, 'decisions.jsonl'), `${JSON.stringify(line)}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
 function parseRev(raw: string | undefined): { chapter: number; rev: number } | null {

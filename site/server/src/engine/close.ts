@@ -49,7 +49,8 @@ export function changeOutcomeOf(cascade: CascadeOutcome): ChangeOutcome {
   const reason = cascade.slice('escalated:'.length);
   if (
     reason === 'budget' || reason === 'oscillation' || reason === 'origin' || reason === 'delta' ||
-    reason === 'finding' || reason === 'ending' || reason === 'science' || reason === 'gate_timeout'
+    reason === 'finding' || reason === 'ending' || reason === 'science' || reason === 'rights' ||
+    reason === 'gate_timeout'
   ) {
     return reason;
   }
@@ -65,6 +66,8 @@ const ESCALATION_COPY: Record<string, CloseCopyKey> = {
   finding: 'finding',
   // BOOK-76: a stop by the physics pass reads «не входит в книгу», not «правка опубликована».
   science: 'science',
+  // BOOK-61: Gate B's stop reads «не принято» — never the prose gates' two outcomes.
+  rights: 'rights',
   gate_timeout: 'gate',
 };
 

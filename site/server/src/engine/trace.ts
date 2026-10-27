@@ -43,7 +43,9 @@ function json<T>(raw: string | null, fallback: T): T {
 function gateOf(row: VerdictRow): StepTrace['gates'][number] {
   return {
     role: row.role as GateRole,
-    verdict: row.verdict,
+    // Only the two prose roles reach here (`stepTraceOf` filters Gate B out): a rights answer
+    // is a different enum and is read from the step's own scan and change, not as a finding.
+    verdict: row.verdict as 'HOLDS' | 'GAP',
     findings: json(row.findings, []),
     cycles: row.cycles,
     model: row.model,
@@ -52,6 +54,14 @@ function gateOf(row: VerdictRow): StepTrace['gates'][number] {
     at: row.at,
     late: row.late === 1,
   };
+}
+
+/** Gate B's answer, when it exists: the enum plus the rule id it named (never a finding). */
+function rightsOf(rows: readonly VerdictRow[]): StepTrace['rights'] {
+  const row = rows.find((candidate) => candidate.role === 'rights');
+  if (row === undefined) return null;
+  const rule = (json<Array<{ rule?: unknown }>>(row.findings, [])[0]?.rule ?? null) as string | null;
+  return { verdict: row.verdict === 'CLEAR' ? 'CLEAR' : 'REFUSED', rule, at: row.at };
 }
 
 export function stepTrace(deps: EngineDeps, stepId: string): StepTrace | null {
@@ -90,7 +100,13 @@ export function stepTraceOf(deps: EngineDeps, row: StepRow): StepTrace {
       closedAt: row.closed_at,
       note: row.note,
     },
-    gates: store.listVerdicts(deps.db, row.step_id).map(gateOf),
+    gates: store
+      .listVerdicts(deps.db, row.step_id)
+      // BOOK-61: Gate B is conditional and answers CLEAR/REFUSED — a different enum and a
+      // different question. It is printed as its own line (`rights`), never as a third gate.
+      .filter((verdict) => verdict.role !== 'rights')
+      .map(gateOf),
+    rights: rightsOf(store.listVerdicts(deps.db, row.step_id)),
   };
 }
 

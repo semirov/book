@@ -324,6 +324,7 @@ describe('the thread’s two-line status', () => {
       decidedAt: '2026-10-25T12:05:00Z',
       changeId: 'chg_1',
       applied: { chapter: 8, rev: 4 },
+      refusal: null,
     };
     const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment]} live />);
     expect(html).toContain('href="#правка-chg_1"');

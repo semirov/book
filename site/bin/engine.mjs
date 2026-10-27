@@ -8,10 +8,12 @@
  *
  *   engine.mjs next --for fwd|bwd            → a writer assignment (or null)
  *   engine.mjs next --role editor|consultant → a gate assignment (or null)
+ *   engine.mjs next --role rights            → Gate B's assignment, for a flagged step (or null)
  *   engine.mjs start <leaseId> [--decision adapt|drop|void --reason … [--intent …]]
  *   engine.mjs land <leaseId> [--rev N] [--no-write]
- *   engine.mjs verdict <stepId> --role editor|consultant --session S --verdict HOLDS|GAP
+ *   engine.mjs verdict <stepId> --role editor|consultant [--session S] --verdict HOLDS|GAP
  *                              [--findings findings.json] [--model M] [--tokens-in N] [--tokens-out N]
+ *   engine.mjs verdict <stepId> --role rights [--session S] --verdict CLEAR|REFUSED [--rule <id>]
  *   engine.mjs done <leaseId> [--seams seams.json] [--note "…"] [--model M]
  *   engine.mjs seen <leaseId> [--note "…"]
  *   engine.mjs escalate <leaseId> --because "…"
@@ -121,6 +123,10 @@ function renderTrace(trace) {
       `step ${trace.step.stepId} · ${trace.step.pass} · ${trace.step.state}${trace.step.outcome ? ` · ${trace.step.outcome}` : ''}` +
         ` · chapter ${trace.step.chapter ?? 'front'} · wave ${trace.step.wave}`,
       `  gates: ${trace.step.gates.map((gate) => `${gate.role}:${gate.verdict}${gate.late ? ' (late)' : ''}`).join(' · ') || 'none'}`,
+      // BOOK-61: Gate B is conditional and has its own enum — one line, never a third gate.
+      ...(trace.step.rights === null
+        ? []
+        : [`  rights: ${trace.step.rights.verdict}${trace.step.rights.rule === null ? '' : ` ${trace.step.rights.rule}`}`]),
       `  seams in: ${renderSeams(trace.step.seamsIn)}`,
       `  seams out: ${renderSeams(trace.step.seamsOut)}`,
       `  tokens: ${trace.step.tokensIn}/${trace.step.tokensOut} · session ${trace.step.session ?? '—'}`,
@@ -151,7 +157,8 @@ function renderTrace(trace) {
     lines.push(
       `    #${step.step.seq} w${step.step.wave} ${step.step.pass}/${step.step.lane ?? '—'} ch${step.step.chapter ?? 'front'}` +
         ` · ${step.step.outcome ?? 'open'} · rev ${step.step.revBefore ?? '—'}→${step.step.revAfter ?? '—'}` +
-        ` · gates ${step.gates.map((gate) => `${gate.role}:${gate.verdict}`).join(',') || 'none'}`,
+        ` · gates ${step.gates.map((gate) => `${gate.role}:${gate.verdict}`).join(',') || 'none'}` +
+        `${step.rights === null ? '' : ` · rights ${step.rights.verdict}`}`,
     );
     lines.push(`       seams in ${renderSeams(step.step.seamsIn)} · out ${renderSeams(step.step.seamsOut)}`);
   }
@@ -207,8 +214,26 @@ async function main() {
     case 'verdict': {
       const stepId = need(0, 'stepId');
       const role = flags.get('role');
-      if (role !== 'editor' && role !== 'consultant') throw new Error('--role editor|consultant is required');
+      if (role !== 'editor' && role !== 'consultant' && role !== 'rights') {
+        throw new Error('--role editor|consultant|rights is required');
+      }
       const verdict = flags.get('verdict');
+      // BOOK-61: Gate B answers with its own enum and names a rule id (never a sentence).
+      if (role === 'rights') {
+        if (verdict !== 'CLEAR' && verdict !== 'REFUSED') throw new Error('--verdict CLEAR|REFUSED is required');
+        const result = await call('/internal/verdict', {
+          stepId,
+          role,
+          session: session(flags, role),
+          verdict,
+          rule: flags.get('rule'),
+          model: flags.get('model'),
+          tokensIn: numberFlag(flags, 'tokens-in'),
+          tokensOut: numberFlag(flags, 'tokens-out'),
+        });
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
       if (verdict !== 'HOLDS' && verdict !== 'GAP') throw new Error('--verdict HOLDS|GAP is required');
       const result = await call('/internal/verdict', {
         stepId,

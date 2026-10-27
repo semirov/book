@@ -185,9 +185,9 @@ function acceptThroughInterface(local: Fixture, at = '2026-10-25T10:00:00Z'): { 
   local.db
     .prepare(
       `INSERT INTO comments (id, identity_id, chapter, block_id, author, body, body_sha, ip_hash, status,
-                             created_at, audit_verdict)
+                             created_at, audit_verdict, rights_verdict)
        VALUES ('cmt_iface', 'idt_1', 8, 'ch08#aa11bb22', 'Аня', 'абзац слишком часто', 'sha-1', 'iph',
-               'new', '2026-10-24T09:00:00Z', 'FITS')`,
+               'new', '2026-10-24T09:00:00Z', 'FITS', 'CLEAR')`,
     )
     .run();
   const comment = readCommentRow(local.db, 'cmt_iface');

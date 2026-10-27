@@ -74,9 +74,14 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
     case 'superseded':
       return lineOf(word, joinDetail('снято: текст успел измениться', comment.reason), 'stopped');
     case 'rejected':
-      return lineOf(word, joinDetail('отклонено', comment.reason), 'stopped');
+      // BOOK-61: each refusal heads its line with the gate's own word. B's line is the fixed
+      // sentence alone (nothing else — a model never writes it); C's keeps the auditor's reason.
+      return comment.refusal === 'rights'
+        ? lineOf(word, filingConsequence(comment), 'stopped')
+        : lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'stopped');
     case 'quarantined':
-      return lineOf(word, joinDetail('проверяется перед триажем', comment.reason), 'stopped');
+      // HELD: the word «проверяется» and the hold's own line, never the guard's taxonomy.
+      return lineOf(word, filingConsequence(comment), 'stopped');
     case 'expired':
       return lineOf(word, joinDetail('проход не состоялся', comment.reason), 'stopped');
     case 'hidden':

@@ -103,6 +103,16 @@ export type CommentAuditVerdict = 'FITS' | 'OFF';
 /** BOOK-9 — the operator/session label stamped next to a verdict (provenance, not prose). */
 export const COMMENT_AUDITED_BY_MAX_CHARS = 64;
 
+/**
+ * BOOK-61 — which of the three gates refused a filing, or `null` when none did.
+ *
+ * It is **derived from the stored verdicts** (`status`/`held_rule`, `rights_*`, `audit_*`) and
+ * carried to the page on purpose: a reader must be able to tell the three refusals apart by
+ * their words («проверяется» · «не принято» · «отклонено»), and no surface may recover that by
+ * reading the reason text — a model can write a reason, and a string test is not a verdict.
+ */
+export type CommentRefusal = 'held' | 'rights' | 'auditor';
+
 /** The anchor is a quote from one revision; `resolved:false` means the quote is gone. */
 export type CommentAnchor = {
   blockId: string | null;
@@ -132,6 +142,11 @@ export type CommentDto = {
    */
   interventionKind: InterventionKind | null;
   status: CommentStatus;
+  /**
+   * BOOK-61 — the gate that refused it: `held` (A), `rights` (B) or `auditor` (C), else `null`.
+   * The reader's line is chosen from this field, never from the text of `reason`.
+   */
+  refusal: CommentRefusal | null;
   /**
    * BOOK-7 — the intervention became its chapter's premise (the slot was empty when it was
    * accepted). Derived from the linked change, so the thread cannot say «в очереди» about a

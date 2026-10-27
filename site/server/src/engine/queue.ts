@@ -83,9 +83,19 @@ export function createQueue(deps: EngineDeps) {
     let interventionKind: InterventionKind | null = null;
     if (input.commentId !== null && input.commentId !== undefined) {
       const source = db
-        .prepare('SELECT audit_verdict, intervention_kind FROM comments WHERE id = ?')
-        .get(input.commentId) as { audit_verdict: string | null; intervention_kind: string | null } | undefined;
+        .prepare('SELECT audit_verdict, intervention_kind, rights_verdict, status FROM comments WHERE id = ?')
+        .get(input.commentId) as
+        | { audit_verdict: string | null; intervention_kind: string | null; rights_verdict: string | null; status: string }
+        | undefined;
       if (source === undefined) refuse('UNKNOWN_COMMENT', 422, 'такого замечания нет');
+      // BOOK-61: the same three columns `feedback/accept.ts` reads, in the same order. A gate
+      // that has not spoken is a refusal here too — this is the second creator of a change.
+      if (source.status === 'quarantined') {
+        refuse('QUARANTINED', 422, 'замечание ещё проверяется — правку из него не делают');
+      }
+      if (source.rights_verdict !== 'CLEAR') {
+        refuse('RIGHTS_REQUIRED', 422, 'право на текст не подтверждено — правку из него не делают');
+      }
       if (source.audit_verdict !== 'FITS') {
         refuse(
           'AUDIT_REQUIRED',

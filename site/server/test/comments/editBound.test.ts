@@ -62,8 +62,11 @@ describe('a reader intervention at the edit bound (BOOK-DOC-4 rule 1)', () => {
     expect(batch.ids).toEqual([dto.id]);
 
     const [item] = readBatchLines(dir, batch.batchId);
-    expect(item?.id).toBe(dto.id);
-    expect(item?.proposed).toBe(proposed);
+    // BOOK-61: a batch line is a `book.filing/v1` envelope, so the values sit under
+    // `{value, untrusted:true}` and the id is the envelope's `itemId`.
+    expect(item?.itemId).toBe(dto.id);
+    expect(item?.proposed.value).toBe(proposed);
+    expect(item?.proposed.untrusted).toBe(true);
   });
 
   it('refuses 10 001 characters with a code and consumes no slot', async () => {

@@ -288,12 +288,15 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(listed.statusCode).toBe(200);
     const item = (listed.json() as { items: Array<Record<string, unknown>> }).items[0] ?? {};
     expect(item).toMatchObject({ id, status: 'rejected', reason });
+    // BOOK-61: `refusal` names the gate that refused in the reader's own vocabulary — the word
+    // «отклонено» — never the verdict, its enum or its column.
+    expect(item.refusal).toBe('auditor');
     const body = JSON.stringify(listed.json());
-    for (const word of ['audit', 'auditVerdict', 'FITS', 'OFF']) expect(body).not.toContain(word);
+    for (const word of ['auditVerdict', 'audit_verdict', 'FITS', 'OFF']) expect(body).not.toContain(word);
 
     const single = await h.app.inject({ method: 'GET', url: `/api/comments/${id}` });
     expect(single.json()).toMatchObject({ status: 'rejected', reason });
-    expect(JSON.stringify(single.json())).not.toContain('audit');
+    expect(JSON.stringify(single.json())).not.toContain('audit_verdict');
   });
 });
 

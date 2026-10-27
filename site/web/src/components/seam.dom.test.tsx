@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { HELD_LINE } from '../lib/marginalia.ts';
 import { anchorFor, clampQuote, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
@@ -54,6 +55,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     decidedAt: null,
     changeId: null,
     applied: null,
+    refusal: null,
     ...overrides,
   };
 }
@@ -243,8 +245,9 @@ describe('the posted filing enters the page at once (BOOK-111)', () => {
   it('adds the check line to the receipt when the filing is held', async () => {
     const { receipt } = await submitWith(comment({ status: 'quarantined' }));
     // BOOK-111 §5: a held filing is never silent — the receipt says what happens before triage.
+    // BOOK-61: the check line is the gate's fixed sentence (`HELD_LINE`), one copy for the page.
     expect(receipt).toContain('ждёт');
-    expect(receipt).toContain('проверяется перед триажем');
+    expect(receipt).toContain(HELD_LINE);
   });
 });
 

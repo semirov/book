@@ -25,6 +25,41 @@ export function preBlocksOf(step: store.StepRow): PreBlock[] {
   return safeJson<PreBlock[]>(step.pre_blocks) ?? [];
 }
 
+/**
+ * BOOK-61 — Gate B's answer about the blocks one step wrote (`steps.rights_scan`).
+ *
+ * The engine stores the scan as JSON so a later call reads the same answer the land wrote: a
+ * `flag` makes the rights gate mandatory, a `clear` says the delta was clean. A malformed
+ * value reads as `null` — "no scan" is a state the pipeline understands (no gate is demanded
+ * and nothing is cleared), while a guessed `clear` would be a default verdict.
+ */
+export type StepRightsScan =
+  | { verdict: 'clear' }
+  | { verdict: 'flag'; rule: string; block?: number; detail?: string };
+
+export function readRightsScan(step: store.StepRow): StepRightsScan | null {
+  const raw = safeJson<Record<string, unknown>>(step.rights_scan);
+  if (raw === null) return null;
+  if (raw.verdict === 'clear') return { verdict: 'clear' };
+  if (raw.verdict !== 'flag' || typeof raw.rule !== 'string' || raw.rule.length === 0) return null;
+  return {
+    verdict: 'flag',
+    rule: raw.rule,
+    ...(typeof raw.block === 'number' ? { block: raw.block } : {}),
+    ...(typeof raw.detail === 'string' ? { detail: raw.detail } : {}),
+  };
+}
+
+/**
+ * The blocks a step wrote: those whose hash is absent from the pre-image `start` captured.
+ * This is the delta Gate B reads — a range that did not move keeps the verdict it had, and an
+ * already-written chapter is never re-judged as a whole (BOOK-DOC-42 §1).
+ */
+export function deltaBlocks<T extends { hash: string }>(step: store.StepRow, blocks: readonly T[]): T[] {
+  const before = new Set(preBlocksOf(step).map((block) => block.hash));
+  return blocks.filter((block) => !before.has(block.hash));
+}
+
 export function boundaryFor(chapter: number): string {
   return chapter === 1 ? 'front' : String(chapter);
 }
