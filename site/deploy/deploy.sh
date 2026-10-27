@@ -158,6 +158,8 @@ fi
 
 # --- run: gate, guard, restart, health --------------------------------------------------------
 PREV="${PREV:-$(cat "$STATE_DIR/previous" 2>/dev/null || true)}"
+command -v npm >/dev/null || die "npm is not on PATH (the deploy workflow sets PATH=/opt/homebrew/bin:…; by hand: export PATH=/opt/homebrew/bin:\$PATH)"
+command -v node >/dev/null || die "node is not on PATH (see npm above)"
 cd "$ROOT/site"
 say "gate: npm ci"
 npm ci --no-audit --no-fund >/dev/null 2>&1 || die "npm ci failed at $(git -C "$ROOT" rev-parse --short HEAD)"

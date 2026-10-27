@@ -8,11 +8,12 @@ name: Deploy
 # The runner is not offered to pull requests. A deploy can only be started by a person with
 # write access (workflow_dispatch) or by pushing a tag, so unreviewed fork code never runs on the
 # machine that serves the book. `actions/checkout` is deliberately absent: it would `git clean`
-# the workspace, and the one file that must survive — `site/.env` — is gitignored.
+# the workspace, and the one file that must survive — the gitignored `site/.env` — would go.
 #
-# The script does the rest: gate (typecheck, arch, tests, coverage floor, build, manuscript),
-# refuse if prod is not running this checkout, `launchctl kickstart -k`, wait for /healthz 200,
-# and roll back to the previous commit if the service does not come up. Runbook: Lific BOOK-74.
+# site/deploy/deploy.sh does the rest: gate (typecheck, arch, tests, coverage floor, build,
+# manuscript), refuse if prod is not running this checkout, `launchctl kickstart -k`, wait for
+# /healthz 200, and roll back to the previous commit if the service does not come up.
+# Runbook: Lific BOOK-74.
 
 on:
   workflow_dispatch:
@@ -41,17 +42,10 @@ jobs:
     name: deploy
     runs-on: [self-hosted, macOS, mac-mini]
     timeout-minutes: 45
+    env:
+      # The runner starts from launchd's minimal environment; node comes from Homebrew.
+      PATH: /opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
     steps:
-      - name: Bootstrap the deploy clone
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="${BOOK_DEPLOY_ROOT:-$HOME/book-deploy}"
-          if [ ! -d "$root/.git" ]; then
-            git clone --quiet "https://github.com/${GITHUB_REPOSITORY}.git" "$root"
-          fi
-          echo "deploy root: $root ($(git -C "$root" rev-parse --short HEAD))"
-
       - name: Deploy
         shell: bash
         env:
@@ -60,7 +54,31 @@ jobs:
         run: |
           set -euo pipefail
           root="${BOOK_DEPLOY_ROOT:-$HOME/book-deploy}"
-          if [ "$ACTION" = "rollback" ]; then
-            exec "$root/site/deploy/deploy.sh" --rollback
+          if [ ! -d "$root/.git" ]; then
+            git clone --quiet "https://github.com/${GITHUB_REPOSITORY}.git" "$root"
           fi
-          exec "$root/site/deploy/deploy.sh" --ref "$TARGET_REF"
+          echo "deploy root: $root at $(git -C "$root" rev-parse --short HEAD)"
+
+          # Materialise the target ref first, so the script that runs is the one that ships with
+          # the code being deployed — a cold clone starts at main, which may not have it yet.
+          if [ "$ACTION" = "deploy" ]; then
+            git -C "$root" fetch --quiet --prune --tags origin
+            sha="$(git -C "$root" rev-parse --verify --quiet "origin/${TARGET_REF}^{commit}" || true)"
+            if [ -z "$sha" ]; then sha="$(git -C "$root" rev-parse --verify --quiet "refs/tags/${TARGET_REF}^{commit}" || true)"; fi
+            if [ -z "$sha" ]; then sha="$(git -C "$root" rev-parse --verify --quiet "${TARGET_REF}^{commit}" || true)"; fi
+            if [ -z "$sha" ]; then
+              echo "::error::cannot resolve '$TARGET_REF' in $root"
+              exit 2
+            fi
+            git -C "$root" checkout --quiet --detach "$sha"
+          fi
+
+          script="$root/site/deploy/deploy.sh"
+          if [ ! -f "$script" ]; then
+            echo "::error::no site/deploy/deploy.sh at $(git -C "$root" rev-parse --short HEAD) — deploy the branch that adds it"
+            exit 2
+          fi
+          if [ "$ACTION" = "rollback" ]; then
+            exec /bin/bash "$script" --rollback
+          fi
+          exec /bin/bash "$script" --ref "$TARGET_REF"

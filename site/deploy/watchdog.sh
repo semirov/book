@@ -141,6 +141,9 @@ awk -v me="$ME" -v cpu_hard="$CPU_HARD" -v rss_hard="$RSS_HARD_MB" -v deny="$DEN
     if ($2 == 1 && $3 == me && !($1 in managed)) {
       cmd = $6; for (i = 7; i <= NF; i++) cmd = cmd " " $i
       if (cmd ~ deny) next
+      # macOS reparents its own XPC services, widgets and loginwindow to launchd; they are not
+      # launchd *jobs*, so they are not in `launchctl list`, and they are not ours to kill.
+      if ($6 ~ /^\/(System|Applications|usr\/libexec|sbin|usr\/sbin)\//) next
       pid[$1] = 1; t1[$1] = secs($5); rss[$1] = $4; comm[$1] = $6
     }
     next
