@@ -10,12 +10,15 @@
  *   4. the book's invariants are where the UI expects them (67 chapters, engine tables,
  *      the rule ids covered by tests);
  *   5. the engine calls no model and no network: it is a deterministic state machine;
- *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) stay
- *      internal: no line of them appears in the built bundle.
+ *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) and the
+ *      prompt tree (`.opencode/skills/`, BOOK-5) stay internal: no line of them appears in the
+ *      built bundle.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
+
+import { f023Problems } from './containment.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 /** The book repository: `site/` lives inside it (§21.1). */
@@ -196,47 +199,17 @@ for (const included of ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib
 }
 
 /**
- * 6 — F023, support-file containment. The guard is a canary: every long line of every
- * support file is a string that must not appear in what the site ships. `web/dist` is
- * skipped by `walk`, so it is read directly; a missing build is not a failure here — the
- * build gate runs after this one.
+ * 6 — F023, support-file containment. The guard is a canary: every long line of every support
+ * file is a string that must not appear in what the site ships. `web/dist` is skipped by
+ * `walk`, so it is read directly; a missing build is not a failure here — the build gate runs
+ * after this one.
+ *
+ * BOOK-5: a skill is a prompt, so `.opencode/skills/**` (`PROMPT_FILES` in `containment.mjs`)
+ * is guarded exactly like `process/` — the procedure an agent follows never ships as text.
  */
-const SUPPORT_DIRS = ['bible', 'outline', 'process', 'concept', 'style'];
-const TEXT_FILE = /\.(md|txt|json)$/u;
-
-function walkAll(dir, out = []) {
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === '.git') continue;
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) walkAll(path, out);
-    else out.push(path);
-  }
-  return out;
-}
-
-const canaries = [];
-for (const dir of SUPPORT_DIRS) {
-  const root = join(BOOK_ROOT, dir);
-  if (!existsSync(root)) continue;
-  for (const file of walkAll(root)) {
-    if (!TEXT_FILE.test(file)) continue;
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const text = line.replace(/^[\s#>*\-]+/u, '').trim();
-      if (text.length >= 60) canaries.push({ file, text });
-    }
-  }
-}
-
 const distDir = join(ROOT, 'web', 'dist');
-if (canaries.length > 0 && existsSync(distDir)) {
-  const shipped = walkAll(distDir).filter((file) => /\.(js|css|html|svg|json)$/u.test(file));
-  for (const file of shipped) {
-    const content = readFileSync(file, 'utf8');
-    const hit = canaries.find((canary) => content.includes(canary.text));
-    if (hit !== undefined) {
-      report(file, `F023: ships a line of the support file ${relative(BOOK_ROOT, hit.file)}`);
-    }
-  }
+for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
+  report(problem.file, problem.message);
 }
 
 /**
