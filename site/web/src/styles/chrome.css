@@ -73,11 +73,13 @@
 
 /* ---------- обложка: the title and the signature, nothing else (BOOK-DOC-5 §2) ---------- */
 .titul {
-  /* `67.5vh` first: a browser without `svh` keeps the field; §2 sizes it on the small viewport.
-     The field is 67.5% of the screen so the title's baseline lands at ≈465 of 844 (the lower
-     third), the caption sits 8 px above the field, and page 2 still peeks below the fold. */
-  min-height: 67.5vh;
-  min-height: 67.5svh;
+  /* The cover's four lines — title, byline, genre, promise — sit at the bottom of the field;
+     the sheet itself is not the size of the screen. `67.5vh` first: a browser without `svh`
+     keeps the field; §2 sizes it on the small viewport, so the title's baseline lands in the
+     lower third and page 2 peeks below the fold at 844. The 720 px cap is what stops a tall
+     window (1200 and up) from opening a void above the title: past it the field stops growing. */
+  min-height: min(67.5vh, 720px);
+  min-height: min(67.5svh, 720px);
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -99,7 +101,7 @@
   hyphens: manual;
 }
 .author {
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   font-family: var(--mono);
   font-size: var(--fs-label);
   font-weight: 400;
@@ -108,22 +110,13 @@
   text-transform: uppercase;
   color: var(--ink-2);
 }
-/* The owner's caption (2026-10-26): one mono line under the signature, same left edge. */
-.cover-caption {
-  margin: 18px 0 0;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  font-weight: 400;
-  line-height: 1.6;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-2);
-  text-wrap: pretty;
-}
-/* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent. */
+/* The promise (BOOK-DOC-4): book matter, subordinate to the title, no card and no accent.
+   One measure for the genre line and the promise (`book.css` owns the genre's copy of it):
+   `58ch` of PT Serif at 15 px is ≈464 px, so both wrap at the same width whatever they say —
+   a `ch` cap tuned to a line count would tie the layout to one sentence. */
 .title-promise {
-  max-width: 32ch;
-  margin: 16px 0 0;
+  max-width: min(100%, 58ch);
+  margin: 24px 0 0;
   font-family: var(--serif);
   font-size: var(--fs-note);
   font-weight: 400;

@@ -176,6 +176,38 @@ describe('cover', () => {
     expect(new Set(order).size).toBe(4);
   });
 
+  it('puts the genre line and the promise on one measure, and no caption rule is left in the sheets', () => {
+    // Two caps tuned to two sentences (34ch and 32ch) gave the cover two ragged edges; one cap
+    // for both is copy-independent — a `ch` cap sized to a line count is what BOOK-DOC-39 forbids.
+    const book = sheets['../styles/book.css'] ?? '';
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    expect(declarations(book, '.title-genre')).toContain('max-width: min(100%, 58ch)');
+    expect(declarations(chrome, '.title-promise')).toContain('max-width: min(100%, 58ch)');
+    const caps = Object.keys(sheets)
+      .sort()
+      .filter((file) => (sheets[file] ?? '').includes('min(100%, 58ch)'));
+    expect(caps).toEqual(['../styles/book.css', '../styles/chrome.css']);
+    // The retired caption is not a rule anywhere in the sheet set, only an absence.
+    for (const file of Object.keys(sheets)) {
+      expect(sheets[file], file).not.toContain('cover-caption');
+    }
+  });
+
+  it('keeps the cover rhythm explicit: 24 / 32 / 24 px between the lines, 64 px after the promise', () => {
+    const book = sheets['../styles/book.css'] ?? '';
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    expect(declarations(chrome, '.author')).toContain('margin: 24px 0 0');
+    expect(declarations(book, '.title-genre')).toContain('margin: 32px 0 0');
+    expect(declarations(chrome, '.title-promise')).toContain('margin: 24px 0 0');
+    expect(declarations(book, '.how-made')).toContain('padding-top: 64px');
+  });
+
+  it('stops the cover field growing at 720 px, so a tall window leaves no void above the title', () => {
+    const titul = declarations(sheets['../styles/chrome.css'] ?? '', '.titul');
+    expect(titul).toContain('min-height: min(67.5vh, 720px)');
+    expect(titul).toContain('min-height: min(67.5svh, 720px)');
+  });
+
   it('carries none of the rejected front-page copy (BOOK-DOC-5 §2)', () => {
     const html = coverHtml();
     for (const gone of [

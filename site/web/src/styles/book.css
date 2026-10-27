@@ -312,8 +312,11 @@
    site's explanation from the book's own words — a divider in the layout, never a character
    in a string, and no inline style (the CSP has no `style-src-attr`). */
 .title-genre {
-  max-width: 34ch;
-  margin: 18px 0 0;
+  /* One measure with `.title-promise` (chrome.css): the same `58ch` cap on both, so the
+     category line and the promise end at one edge. Copy-independent — not a `ch` count tuned
+     to a line count (BOOK-DOC-39 forbids that). */
+  max-width: min(100%, 58ch);
+  margin: 32px 0 0;
   font-family: var(--serif);
   font-size: var(--fs-note);
   font-weight: 400;
@@ -322,7 +325,8 @@
   text-wrap: pretty;
 }
 .how-made {
-  padding-top: 40px;
+  /* The promise ends the cover; 64 px of air, then the site's own words (BOOK-39 rhythm). */
+  padding-top: 64px;
   padding-bottom: 40px;
 }
 .front-rule {
