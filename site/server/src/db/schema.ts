@@ -25,6 +25,8 @@
  * `sentence_id` carrier (plus the reader's selection offsets on a comment). Those carriers
  * deliberately carry **no foreign key** — SQLite cannot add one by `ALTER TABLE`, so a migrated
  * install would refuse what a fresh one accepts; the writer enforces the reference instead.
+ * v26 adds the three push tables (`push_subscriptions`, `push_log`, `push_outbox`, BOOK-189):
+ * a device list, a one-per-chapter claim and the queue the site process drains.
  * Text tables are a projection of the manuscript files; the engine tables are the only home of
  * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
  *
@@ -36,7 +38,7 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -45,6 +47,7 @@ export const SCHEMA_VERSION = 25;
  */
 import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 import { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export {
@@ -63,6 +66,7 @@ export {
   chaptersTableSql,
 } from './tables.ts';
 export { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+export { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 export { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export const SCHEMA_SQL = `
@@ -382,6 +386,8 @@ ${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger an
 
 ${SENTENCE_TABLES_SQL}                  -- ADR-044: the sentence rows and their touch ledger
 
+${PUSH_TABLES_SQL}                     -- BOOK-189: push subscriptions, the claim and the outbox
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -468,6 +474,7 @@ export const REQUIRED_TABLES = [
   'meta',
   ...LEDGER_REQUIRED_TABLES,
   ...SENTENCE_REQUIRED_TABLES,
+  ...PUSH_REQUIRED_TABLES,
 ] as const;
 
 /** §6F.1: the log is append-only; a missing trigger means the promise is not kept (F027). */

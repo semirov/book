@@ -70,6 +70,34 @@
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+/* BOOK-189 — the colophon's notifications row, beside «изменить» because it is the same kind of
+   control: the reader's own answer about what this browser is allowed to do. The row keeps the
+   data voice (mono, the 12 px floor, its own case), the verb is a word in the row at the 44 px
+   touch target, and the setting itself stays in the register's quiet ink. Book.css owns the
+   colophon's rows and is at its line budget; these four rules must not split it. */
+.colophon .push-row {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+.colophon .push-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: none;
+  text-transform: none;
+}
+.colophon .push-toggle[disabled] {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* The retry line sits in the row it belongs to: one failed attempt, in the house error ink,
+   and the setting beside it does not move. */
+.colophon .push-error {
+  color: var(--revise);
+}
 /* The same line on /privacy: the place where a reader can change the choice later. */
 .consent-line {
   margin: 14px 0;

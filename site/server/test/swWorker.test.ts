@@ -12,7 +12,12 @@
  *   asset      the stored copy, and no network read while it is there;
  *   unhashed   the network, and the stored copy only as the offline fallback.
  *
- * A new release never takes an open page over: nothing here calls into `clients` but `claim`.
+ * A new release never takes an open page over: nothing here calls into `clients` but `claim` and
+ * the click a notification carries (BOOK-189).
+ *
+ * The new listeners are driven the same way: a `push` event with `data.json()` reaches
+ * `registration.showNotification`, and a `notificationclick` focuses the window that already shows
+ * the chapter or opens it. Both take their payload from the event and are given nothing else.
  */
 
 import { Script } from 'node:vm';
@@ -35,10 +40,25 @@ const PRECACHE = precacheList([
 
 type FetchEvent = { request: { url: string; mode: string; method: string }; respondWith?: (answer: Promise<Response>) => void };
 
+/** What `registration.showNotification` was handed, in order. */
+type Shown = { title: string; options: Record<string, unknown> };
+
 type Harness = {
   install(): Promise<void>;
   activate(): Promise<void>;
   fetch(path: string, mode?: string): Promise<Response | null>;
+  /** A `push` event whose `data.json()` answers `payload` (`null` = no data at all). */
+  push(payload: unknown): Promise<void>;
+  /** A `push` event whose data cannot be parsed: `data.json()` rejects. */
+  pushUnreadable(): Promise<void>;
+  /** A `notificationclick` on a notification carrying `data`. */
+  click(data: unknown): Promise<void>;
+  /** The windows `clients.matchAll()` reports, as their URLs. */
+  windows: string[];
+  shown: Shown[];
+  focused: string[];
+  opened: string[];
+  closed: () => number;
   networkCalls: string[];
   deleted: string[];
   stored(): string[];
@@ -53,6 +73,11 @@ function runWorker(): Harness {
   const stores = new Map<string, Map<string, Response>>();
   const deleted: string[] = [];
   const networkCalls: string[] = [];
+  const shown: Shown[] = [];
+  const focused: string[] = [];
+  const opened: string[] = [];
+  const windows: string[] = [];
+  let closed = 0;
   let claims = 0;
   let failNetwork = false;
 
@@ -100,6 +125,24 @@ function runWorker(): Harness {
     clients: {
       async claim() {
         claims += 1;
+      },
+      async matchAll() {
+        return windows.map((url) => ({
+          url,
+          async focus() {
+            focused.push(url);
+            return null;
+          },
+        }));
+      },
+      async openWindow(url: string) {
+        opened.push(url);
+        return null;
+      },
+    },
+    registration: {
+      async showNotification(title: string, options: Record<string, unknown>) {
+        shown.push({ title, options });
       },
     },
     addEventListener(type: string, listener: (event: unknown) => void) {
@@ -151,6 +194,33 @@ function runWorker(): Harness {
       await dispatch('fetch', event);
       return answer === null ? null : await answer;
     },
+    async push(payload) {
+      await dispatch('push', { data: { json: async () => payload } });
+    },
+    async pushUnreadable() {
+      await dispatch('push', {
+        data: {
+          json: async () => {
+            throw new SyntaxError('not JSON');
+          },
+        },
+      });
+    },
+    async click(data) {
+      await dispatch('notificationclick', {
+        notification: {
+          data,
+          close: () => {
+            closed += 1;
+          },
+        },
+      });
+    },
+    windows,
+    shown,
+    focused,
+    opened,
+    closed: () => closed,
     networkCalls,
     deleted,
     stored: () => [...store(CACHE).keys()].sort(),
@@ -257,5 +327,98 @@ describe('the generated worker, run against a fake scope', () => {
       'stored:/fonts/ptserif-400-cyrillic.woff2',
     );
     await expect(worker.fetch('/icons/gone.png')).rejects.toThrow(/network down/u);
+  });
+});
+
+/**
+ * BOOK-189 — the two push listeners, driven the way the browser drives them.
+ *
+ * The payload is the site's whole message: four fields, rendered as they arrive. A field that is
+ * not what the site promised is refused rather than trusted — the destination is a chapter path
+ * or the front page, the tag is a short name or absent, and a body that is not `{title, body}`
+ * shows nothing at all. Nothing here reads the reader: no identity, no name, no count.
+ */
+describe('the push listeners (BOOK-189)', () => {
+  const PAYLOAD = { title: 'глава 20 написана', body: 'Бланк', url: '/ch/20', tag: 'ch20' };
+
+  it('shows the payload it was handed: title, body, destination, tag and the site icon', async () => {
+    const worker = runWorker();
+    await worker.push(PAYLOAD);
+
+    expect(worker.shown).toEqual([
+      {
+        title: 'глава 20 написана',
+        options: { body: 'Бланк', data: { url: '/ch/20' }, tag: 'ch20', icon: '/icons/icon-192.png' },
+      },
+    ]);
+    // One notification, from the payload it was given: the worker reads nothing else.
+    expect(worker.shown).toHaveLength(1);
+  });
+
+  it('cuts a title and a body to what a notification line can show', async () => {
+    const worker = runWorker();
+    await worker.push({ title: 'я'.repeat(300), body: 'б'.repeat(300), url: '/ch/7', tag: 'ch7' });
+    const [shown] = worker.shown;
+    expect(shown?.title).toHaveLength(120);
+    expect(String(shown?.options.body)).toHaveLength(120);
+  });
+
+  it('lands a destination that is not a chapter on the front page, and keeps a bad tag out', async () => {
+    const worker = runWorker();
+    await worker.push({ title: 'глава 20 написана', body: 'Бланк', url: 'https://evil.example/ch/20', tag: 'a b' });
+    const [shown] = worker.shown;
+    expect(shown?.options.data).toEqual({ url: '/' });
+    // An absent tag is not an empty one: the notification simply carries no tag.
+    expect(shown?.options).not.toHaveProperty('tag');
+
+    // `/ch/1234` is not a chapter, and neither is a path with anything appended to it.
+    await worker.push({ title: 'глава 20 написана', body: 'Бланк', url: '/ch/1234' });
+    expect(worker.shown[1]?.options.data).toEqual({ url: '/' });
+    await worker.push({ title: 'глава 20 написана', body: 'Бланк', url: '/ch/20?x=1' });
+    expect(worker.shown[2]?.options.data).toEqual({ url: '/' });
+    await worker.push({ title: 'глава 20 написана', body: 'Бланк', url: '/ch/20' });
+    expect(worker.shown[3]?.options.data).toEqual({ url: '/ch/20' });
+  });
+
+  it('shows nothing when the payload is malformed, unreadable or absent', async () => {
+    const worker = runWorker();
+    // A title that is not a string, a body that is missing: nothing is shown.
+    await worker.push({ title: 1, body: 'Бланк', url: '/ch/20' });
+    await worker.push({ title: 'глава 20 написана', url: '/ch/20' });
+    await worker.push(null);
+    await worker.push('глава 20 написана');
+    // The event's `data.json()` rejected: a browser can hand a worker anything.
+    await worker.pushUnreadable();
+    expect(worker.shown).toEqual([]);
+  });
+
+  it('focuses the window that already shows the chapter, and opens nothing', async () => {
+    const worker = runWorker();
+    worker.windows.push('https://book.semirov.dev/ch/21', 'https://book.semirov.dev/ch/20?at=5');
+    await worker.click({ url: '/ch/20' });
+
+    expect(worker.closed()).toBe(1);
+    // The path decides, not the query: `/ch/20?at=5` is the chapter the reader asked for.
+    expect(worker.focused).toEqual(['https://book.semirov.dev/ch/20?at=5']);
+    expect(worker.opened).toEqual([]);
+  });
+
+  it('opens the chapter when no window shows it, and the front page for a bad destination', async () => {
+    const worker = runWorker();
+    worker.windows.push('https://book.semirov.dev/ch/3');
+    await worker.click({ url: '/ch/20' });
+    expect(worker.focused).toEqual([]);
+    expect(worker.opened).toEqual(['/ch/20']);
+
+    // A window whose url cannot be parsed is not the chapter either.
+    worker.windows.push('not a url');
+    await worker.click({ url: '/ch/20' });
+    expect(worker.opened).toEqual(['/ch/20', '/ch/20']);
+
+    // A notification with no data, or with a destination that is not a chapter, lands on the front.
+    await worker.click(null);
+    await worker.click({ url: 'javascript:alert(1)' });
+    expect(worker.opened).toEqual(['/ch/20', '/ch/20', '/', '/']);
+    expect(worker.closed()).toBe(4);
   });
 });

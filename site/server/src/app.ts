@@ -34,6 +34,7 @@ import { registerFrontRoutes } from './http/routes/front.ts';
 import { registerHealthRoutes } from './http/routes/health.ts';
 import { registerHistoryRoutes } from './http/routes/history.ts';
 import { registerMeRoutes } from './http/routes/me.ts';
+import { registerPushRoutes } from './http/routes/push.ts';
 import { registerStageRoutes } from './http/routes/stages.ts';
 import { registerStateRoutes } from './http/routes/state.ts';
 import { SessionStore } from './identity/session.ts';
@@ -42,6 +43,7 @@ import type { StateService } from './ingest/stateService.ts';
 import type { WatcherStatus } from './ingest/watcher.ts';
 import { loadImprint } from './imprint.ts';
 import { readAdminToken } from './integrity/config.ts';
+import { readVapid } from './push/vapid.ts';
 import { RateLimiter } from './rate/limiter.ts';
 import { isTrustedProxy, normalizeIp } from './util/ip.ts';
 import { createIpHasher, ephemeralSecret } from './util/ipHash.ts';
@@ -90,6 +92,11 @@ export type AppOptions = {
   bookCost?: () => BookCostDto;
   /** BOOK-60: serializer seam for `/book.fb2`; counts the builds a request pays for. */
   fb2?: { render: Fb2Renderer };
+  /**
+   * BOOK-189: the VAPID key pair for Web Push. The default reads `config.vapidFile` once
+   * (`push/vapid.ts`); `null` means push is off, which is a normal deployment, not a failure.
+   */
+  vapid?: { privateKey: string; publicKey: string } | null;
 };
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
@@ -127,6 +134,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const emit = options.emit ?? (options.wsHub === undefined ? undefined : (type: Exclude<ServerEventType, 'hello' | 'state:snapshot'>, data: unknown) => options.wsHub?.publish(type, data));
   const authorsCount = options.authorsCount ?? createAuthorsCount(options.db, now);
   const bookCost = options.bookCost ?? ((): BookCostDto => readBookCost(options.db));
+  // BOOK-189: read once, here, so no route can reach the key file and a broken file is one log
+  // line at boot rather than a surprise on the first subscribe.
+  const pushKeys = options.vapid === undefined ? readVapid(options.config.vapidFile).keys : options.vapid;
 
   const deps: RouteDeps = {
     db: options.db,
@@ -148,6 +158,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     ...(options.onBookReset === undefined ? {} : { onBookReset: options.onBookReset }),
     authorsCount,
     bookCost,
+    pushKey: pushKeys?.publicKey ?? null,
     ...(emit === undefined ? {} : { emit }),
     ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
     ...(options.fb2 === undefined ? {} : { fb2: options.fb2 }),
@@ -236,6 +247,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   registerHistoryRoutes(app, deps);
   registerAuthorsRoutes(app, deps);
   registerMeRoutes(app, deps);
+  registerPushRoutes(app, deps);
   registerAdminRoutes(app, deps);
 
   app.addHook('onClose', async () => {
