@@ -16,7 +16,7 @@
  */
 
 import type { Imprint, LegalDenylist, ValidatorFinding } from '@book/shared';
-import { runValidation, type ValidateResult } from '@book/shared';
+import { CHAPTER_CHARS, runValidation, type ValidateResult } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { scanManuscript } from '../ingest/scanManuscript.ts';
@@ -30,8 +30,8 @@ import {
   type UngatedChapter,
 } from './ungated.ts';
 
-/** `F007` says a chapter under the band is thin; the panel counts, it does not judge. */
-const THIN_LIMIT = 20_000;
+/** `F007` says a chapter under the band is thin; the panel reads the band, never its own copy. */
+const THIN_LIMIT = CHAPTER_CHARS.min;
 const FINDING_LIMIT = 50;
 
 export type IntegrityAttributionRow = {

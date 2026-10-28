@@ -20,7 +20,8 @@ import type {
   StepTrace,
   WriterAssignment,
 } from '@book/shared';
-import { normalizeInterventionKind, parseSeams } from '@book/shared';
+import {
+  CHAPTER_CHARS, normalizeInterventionKind, parseSeams } from '@book/shared';
 
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
@@ -198,7 +199,7 @@ export function writerAssignment(
             before: step.chapter > 1 ? step.chapter - 1 : null,
             after: step.chapter < 67 ? step.chapter + 1 : null,
           },
-    expectation: step.pass === 'draft' ? { chars: { min: 20_000, max: 30_000 } } : null,
+    expectation: step.pass === 'draft' ? { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } } : null,
     intent: change ? { value: change.intent, untrusted: true } : null,
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.

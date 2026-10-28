@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { WriterAssignment } from '@book/shared';
+import { CHAPTER_CHARS, type WriterAssignment } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { SITE_ROOT } from '../../src/config.ts';
@@ -283,7 +283,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       const assignment = JSON.parse(job.stdout) as WriterAssignment;
       expect(assignment).toMatchObject({ pass: 'draft', chapter: 3 });
       expect(assignment.leaseId).toMatch(/^lea_/u);
-      expect(assignment.expectation?.chars).toEqual({ min: 20_000, max: 30_000 });
+      expect(assignment.expectation?.chars).toEqual({ min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max });
 
       const beat = await cli(url, ['beat', assignment.leaseId]);
       expect(beat.code).toBe(0);

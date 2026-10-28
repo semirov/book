@@ -319,7 +319,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
       // The estimate is printed, with the day and the book it was measured against.
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,2000 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'))).toBe(true);
+      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'))).toBe(true);
     } finally {
       await harness.close();
     }
@@ -370,7 +370,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.engineCalls.slice(0, 2)).toEqual(['state', 'pass']);
       expect(harness.engineCalls.filter((name) => name === 'state')).toHaveLength(2);
       expect(harness.engineCalls.indexOf('state', 1)).toBeGreaterThan(harness.engineCalls.indexOf('start'));
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,2000'))).toBe(true);
+      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800'))).toBe(true);
     } finally {
       await harness.close();
     }

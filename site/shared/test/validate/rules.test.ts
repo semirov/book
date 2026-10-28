@@ -215,10 +215,15 @@ describe('F007 — chapter length at both moments', () => {
     expect(rules(result)).not.toContain('F007');
   });
 
-  it('warns at 19 999 characters (thin chapter)', () => {
-    const result = run({ files: [FRONT, chapter('Тонкая', 'а'.repeat(19_999))] });
+  it('warns at 9 999 characters (thin chapter) — the band starts at 10 000 (BOOK-160)', () => {
+    const result = run({ files: [FRONT, chapter('Тонкая', 'а'.repeat(9_999))] });
     expect(withRule(result, 'F007')[0]).toMatchObject({ severity: 'warn' });
     expect(withRule(result, 'F007')[0]?.message).toContain('thin chapter');
+  });
+
+  it('accepts 10 000 characters — inside the band, and still a permission, not a target', () => {
+    const result = run({ files: [FRONT, chapter('Короткая', 'а'.repeat(10_000))] });
+    expect(rules(result)).not.toContain('F007');
   });
 
   it('rejects 1 599 characters — the floor is a limit, not a hint (BOOK-24)', () => {
