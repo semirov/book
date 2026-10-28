@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { closePassStrip, currentPassStrip } from '../lib/usePassStrip.ts';
 import { FootJumps, type FootJumpsProps } from './FootJumps.tsx';
 
 /**
@@ -45,6 +46,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  closePassStrip();
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
@@ -149,6 +151,32 @@ describe('the door into the carets', () => {
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 200, behavior: 'auto' });
     expect(nav().getAttribute('data-watch')).toBe('off');
     expect(document.activeElement).toBe(door);
+    expect(errorCount()).toBe(0);
+  });
+
+  it('opens the pass strip on the live block before the cut, and still lands on #pass', async () => {
+    vi.useFakeTimers();
+    scrollValue = 200;
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    await render({ processing: true, chapter: 7 });
+    const block = appendPass(500);
+    block.setAttribute('data-pass-block', 'ch07#bbbb2222');
+    expect(currentPassStrip()).toBeNull();
+
+    await act(async () => {
+      (passItem() as HTMLAnchorElement).click();
+    });
+    // The strip is open on the block the page names, before a single pixel has moved.
+    expect(currentPassStrip()).toEqual({ chapter: 7, blockId: 'ch07#bbbb2222' });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+    });
+    // The cut still lands on the pass's first line: the strip sits under the paragraph.
+    expect(scrollTo).toHaveBeenCalledWith({ top: 620, behavior: 'auto' });
+    expect(nav().getAttribute('data-watch')).toBe('on');
     expect(errorCount()).toBe(0);
   });
 

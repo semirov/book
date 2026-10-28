@@ -26,6 +26,8 @@ import './styles/seam.css';
 // BOOK-121 — the pass's box, its two carets and the ink gate; after the seam, before the
 // panels, because the pass paints prose and never a panel.
 import './styles/pass-live.css';
+// BOOK-167 — the pass strip: a block in the seam's place, after the pass's own ink.
+import './styles/pass-strip.css';
 // BOOK-166 — the pass record: a page framed like the colophon, after the surfaces it sits beside.
 import './styles/pass-record.css';
 import './styles/panels.css';

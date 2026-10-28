@@ -7,9 +7,10 @@ import {
   type ChapterRevisionPayload,
   type CommentDto,
   type ComposerInfo,
+  type PassStageEvent,
   type ViewerDto,
 } from '@book/shared';
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getChapter } from '../api.ts';
 import { reducedMotion } from '../dom.ts';
@@ -23,17 +24,12 @@ import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { usePending } from '../usePending.ts';
 import { usePrintingReveal } from '../lib/usePrintingReveal.ts';
+import { createReveal, finishReveal, printsChange } from '../lib/reveal.ts';
 import { ChapterHeader } from './ChapterHeader.tsx';
+import { ChapterProse } from './ChapterProse.tsx';
 import { PremiseEntry } from './PremiseEntry.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { Skeleton } from './Skeleton.tsx';
-import {
-  activeBlockId,
-  blockText,
-  createReveal,
-  finishReveal,
-  printsChange,
-} from '../lib/reveal.ts';
 
 /**
  * One chapter slot (ARCHITECTURE §11.2, §11.3, §11.5):
@@ -83,6 +79,11 @@ export type ChapterArticleProps = {
    * refetch this page does anyway is then *printed* — the reader watches the change land.
    */
   passActive?: boolean;
+  /**
+   * BOOK-167: the page's stage log for this chapter (`useStages`). The prose prints the block a
+   * `typing`/`landed` stage names, and the strip under it reads the same events.
+   */
+  stages?: readonly PassStageEvent[];
 };
 
 export function ChapterArticle({
@@ -102,6 +103,7 @@ export function ChapterArticle({
   history,
   firstEmpty = false,
   passActive = false,
+  stages,
 }: ChapterArticleProps) {
   const seam = useOpenSeam();
   /**
@@ -293,15 +295,6 @@ export function ChapterArticle({
     setReanchor(null);
   }, [chapter, entry.n, reanchor, seam]);
 
-  const showCaret = caret?.show === true && chapter !== null && entry.written;
-  const caretBlockId = reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter?.blocks.at(-1)?.id ?? null : null)) : null;
-  const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
-  /**
-   * BOOK-156 (#3802 §4) — `#pass` is the live pass's first line, a real element with a
-   * `scroll-margin-top` of `--offset-top + 16` (foot-jumps.css). Only a live revising block
-   * carries it: no pass, no anchor, so the grip's third item can never point at a promise.
-   */
-  const passBlockId = revising !== null && revising.active ? (revising.blockIds[0] ?? null) : null;
   /** §6: `null` while the wait is quiet — the header then prints what it prints today. */
   const status = statusLine('chapter', stage, entry.n);
 
@@ -372,43 +365,29 @@ export function ChapterArticle({
         />
       ) : null}
 
-      {chapter !== null
-        ? chapter.blocks.map((block, index) => {
-            const text = reveal === null ? block.text : blockText(reveal, block.id, block.text);
-            const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
-            return (
-              <Fragment key={block.id}>
-                {passBlockId === block.id ? <span id="pass" aria-hidden="true" /> : null}
-                <ProseParagraph
-                  entry={entry}
-                  blockId={block.id}
-                  blockIndex={index}
-                  baseRev={chapter.rev}
-                  text={text}
-                  blockCount={chapter.blocks.length}
-                  comments={comments}
-                  nowMs={nowMs}
-                  composer={composer}
-                  viewer={viewer}
-                  onPosted={(comment) => onPosted?.(comment)}
-                  onBlockProvenance={onProvenance}
-                  history={history}
-                  onReanchor={(draft) => {
-                    setReanchor({ draft, blockGone: false });
-                    void load();
-                  }}
-                  caret={
-                    caretBlockId === block.id
-                      ? { printing, live: caret?.live === true && !printing }
-                      : null
-                  }
-                  revised={revisedIds.has(block.id)}
-                  revising={revisingCause === null ? null : revisingCause === 'cascade' ? 'правится · по замечанию' : 'правится'}
-                />
-              </Fragment>
-            );
-          })
-        : null}
+      {chapter !== null ? (
+        <ChapterProse
+          entry={entry}
+          chapter={chapter}
+          reveal={reveal}
+          revisedIds={revisedIds}
+          revising={revising}
+          caret={caret}
+          printing={printing}
+          comments={comments}
+          nowMs={nowMs}
+          composer={composer}
+          viewer={viewer}
+          history={history}
+          stages={stages}
+          onPosted={onPosted}
+          onProvenance={onProvenance}
+          onReanchor={(draft) => {
+            setReanchor({ draft, blockGone: false });
+            void load();
+          }}
+        />
+      ) : null}
 
       {chapter === null && basisSentence !== null ? (
         // A basis slot is complete before the request: the frozen frame is one shared
