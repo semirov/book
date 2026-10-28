@@ -3,7 +3,7 @@
  * like `deploy.sh` spawns it, never as a function call. What is asserted is the contract
  * `deploy.sh` reads: exit 0 with the readout, exit 1 with `expected`/`actual`, exit 2 for bad
  * usage, and a mismatch (not a crash) for a wrong row, a missing row, a chapter that lost the
- * sentence and a non-200 answer. Since v23 the check reads the volume, not the manuscript, so a
+ * sentence and a non-200 answer. Since v28 the check reads the volume, not the manuscript, so a
  * checkout with no `book.db` has nothing to fail about — that case is asserted too.
  *
  * The cases that drive `checkServer` directly inject the clock, so the deadline is decided, not
@@ -105,7 +105,7 @@ async function serveCanon(): Promise<string> {
 }
 
 /**
- * A migrated `book.db` — the shape the service reads: v23, so the frame rows are seeded by the
+ * A migrated `book.db` — the shape the service reads: v28, so the frame rows are seeded by the
  * migration, plus one block per frame chapter when the case asks for prose.
  */
 function writeBookDb(
@@ -272,7 +272,7 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     expect(result.stdout).toContain('frame: FAILED — 1 of 2 checks');
   });
 
-  it('names the missing schema when the volume predates v23', async () => {
+  it('names the missing schema when the volume predates v28', async () => {
     const dataDir = tmpDir('book-frame-v22-');
     writeBookDb(dataDir);
     const db = openDatabase(databaseFile(dataDir));
@@ -282,7 +282,7 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     const result = await run(['--data-dir', dataDir]);
     expect(result.status).toBe(1);
     expect(result.stdout).toMatch(/frame:   actual:   .*has no book_frame table/u);
-    expect(result.stdout).toContain('the frame rows arrive with v23');
+    expect(result.stdout).toContain('the frame rows arrive with v28');
   });
 
   it('skips the DB legs, without failing, when the data dir holds no book.db', async () => {

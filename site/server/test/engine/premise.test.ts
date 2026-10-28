@@ -26,7 +26,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
     try {
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске к сенсору.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       expect(change(fixture.db, accepted.changeId)).toMatchObject({
         chapter: 5,
@@ -66,7 +65,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
     try {
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       // A written chapter takes an ordinary change through the same lane, after the premise.
       fixture.seedChapterBlocks(10, 'Глава 10', ['Служебный абзац десятой главы. Он не служит текстом книги.']);
@@ -93,7 +91,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(assignment.pass).toBe('draft');
@@ -131,8 +128,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       const secondId = seed(fixture.db, { chapter: 5, proposedText: 'Свидетельство о потере.', kind: 'testimony' });
       const first = accept(fixture.db, firstId, 'в главе 5 появляется документ о допуске');
       const second = accept(fixture.db, secondId, 'в главе 5 появляется свидетельство');
-      if ('error' in first) throw new Error(first.error);
-      if ('error' in second) throw new Error(second.error);
       expect(second).toMatchObject({ superseded: true });
 
       expect(change(fixture.db, second.changeId)).toMatchObject({
@@ -183,7 +178,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       const id = seed(fixture.db, { chapter: 8, proposedText: 'Уточнить абзац.', kind: 'testimony' });
       const accepted = accept(fixture.db, id, 'в главе 8 уточнить абзац');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const row = change(fixture.db, accepted.changeId);
       expect(row).toMatchObject({ premise: 0, status: 'pending', chapter: 8 });
@@ -211,8 +205,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       const strandedId = seed(fixture.db, { chapter: 9, proposedText: 'Документ о допуске.', kind: 'document' });
       const owned = accept(fixture.db, ownedId, 'в главе 5 появляется документ');
       const stranded = accept(fixture.db, strandedId, 'в главе 9 появляется документ');
-      if ('error' in owned) throw new Error(owned.error);
-      if ('error' in stranded) throw new Error(stranded.error);
 
       // The draft for chapter 5 opens and takes its premise; then the owner hand-writes the
       // chapter while the step is still open — that premise is owned, not stranded.
@@ -262,7 +254,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(assignment.premise).not.toBeNull();
@@ -298,7 +289,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const first = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(first.premise).not.toBeNull();
@@ -322,7 +312,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(assignment.premise).not.toBeNull();
@@ -353,7 +342,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       fixture.engine.start(assignment.leaseId);
@@ -384,7 +372,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       driveStub(fixture, assignment, {
@@ -431,7 +418,6 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
         END`);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
       expect(accepted).toMatchObject({ superseded: true });
       expect(change(fixture.db, accepted.changeId)).toMatchObject({
         status: 'void',

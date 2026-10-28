@@ -1,138 +1,126 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { getMeta, setMeta } from '../src/db/repo/meta.ts';
 import { openDatabase, type Db } from '../src/db/db.ts';
+import { AUTHOR_MARKER_KEY, backfillAuthorMarker } from '../src/db/migrateV23.ts';
 import { migrate } from '../src/db/migrate.ts';
-import { FRAME_SEED, seedFrame } from '../src/db/migrateV23.ts';
 import { SCHEMA_VERSION } from '../src/db/schema.ts';
-import { sha256Hex } from '../src/util/hash.ts';
 
 /**
- * BOOK-187 — schema v23: the frame rows, the lane's state, the redacted transcripts and
- * ADR-041 §2.2's block deltas.
+ * v23 — the author marker (owner, 2026-10-28).
  *
- * The step is additive and idempotent, and every object comes from the one constant both the
- * fresh install and the upgrade read, so the two installs cannot drift. What is pinned here:
- * a fresh database is created at v23 *with* the two canon rows (the site serves the canon before
- * it has prose), a v22 database gains the same objects without losing a row, the seed never
- * overwrites a row that is already there, and the CHECKs are the schema's, not the caller's.
+ * `identities.is_author` says which reader *is* the imprint's author, so the byline stops
+ * counting the owner as his own reader («Филипп Семиров + 1», the 1 being him). The column is
+ * added by migration; the one-time backfill is recorded in `meta` and never guesses between
+ * several identities — a fresh book is marked by the operator through the admin route.
  */
 
-type FrameRow = { chapter: number; position: string; text: string; sha256: string; seeded_at: string };
-
-function frameRows(db: Db): FrameRow[] {
-  return db.prepare('SELECT chapter, position, text, sha256, seeded_at FROM book_frame ORDER BY chapter').all() as FrameRow[];
+function columns(db: Db, table: string): Array<{ name: string; notnull: number; dflt_value: string | null }> {
+  return db.pragma(`table_info(${table})`) as Array<{ name: string; notnull: number; dflt_value: string | null }>;
 }
 
-function columns(db: Db, table: string): string[] {
-  return (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name);
+function identity(db: Db, id: string, name: string): void {
+  db.prepare(
+    `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+     VALUES (?, ?, ?, '2026-10-20T09:00:00Z', '2026-10-25T08:00:00Z')`,
+  ).run(id, `sub-${id}`, name);
 }
 
-function indexes(db: Db): string[] {
-  return (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%'`).all() as Array<{
-    name: string;
-  }>).map((row) => row.name);
+function marked(db: Db): string[] {
+  return (db.prepare('SELECT id FROM identities WHERE is_author = 1 ORDER BY id').all() as Array<{ id: string }>).map(
+    (row) => row.id,
+  );
 }
 
-/** A v22 database: everything v23 adds is removed and the cursor put back one step. */
-function asV22(db: Db): void {
-  db.exec('DROP TABLE book_frame');
-  db.exec('DROP TABLE writer_state');
-  db.exec('DROP TABLE pass_transcripts');
-  db.exec('DROP TABLE block_deltas');
+/** Shape a v23 database as the v22 one an upgrade actually finds: no column, no decision. */
+function shapeAsV22(db: Db): void {
+  db.exec('ALTER TABLE identities DROP COLUMN is_author');
+  db.prepare('DELETE FROM meta WHERE k = ?').run(AUTHOR_MARKER_KEY);
   db.pragma('user_version = 22');
 }
 
-describe('migrate — BOOK-187 (v23): the book’s own state', () => {
-  it('creates the four tables, their indexes and the two frame rows on a fresh install', () => {
+/** Shape the same, but as if the column had been added and the backfill had not run yet. */
+function shapeAsV22ColumnOnly(db: Db): void {
+  db.prepare('DELETE FROM meta WHERE k = ?').run(AUTHOR_MARKER_KEY);
+  db.pragma('user_version = 22');
+}
+
+describe('migration v23 — the author marker', () => {
+  it('adds the column to a fresh install, unmarked, and records that the book has no author yet', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(23);
+    expect(SCHEMA_VERSION).toBe(28);
+    const column = columns(db, 'identities').find((entry) => entry.name === 'is_author');
+    expect(column).toMatchObject({ notnull: 1, dflt_value: '0' });
+    // Zero identities: nobody is guessed into the role, and the decision is on the record.
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('none:empty');
 
-    for (const table of ['book_frame', 'writer_state', 'pass_transcripts', 'block_deltas']) {
-      expect(columns(db, table).length, table).toBeGreaterThan(0);
-    }
-    expect(indexes(db)).toEqual(expect.arrayContaining(['pass_transcripts_at', 'block_deltas_rev', 'block_deltas_hseq']));
-
-    // The canon is in the volume before any prose: the site serves ch01/ch42 as basis slots.
-    const rows = frameRows(db);
-    expect(rows.map((row) => [row.chapter, row.position, row.text])).toEqual([
-      [1, 'first', FRAME_FIRST_SENTENCE],
-      [42, 'last', FRAME_LAST_SENTENCE],
-    ]);
-    for (const row of rows) {
-      expect(row.sha256).toBe(sha256Hex(row.text));
-      // `seeded_at` is the migration moment, so a fresh row is not dated before the run.
-      expect(Number.isNaN(Date.parse(row.seeded_at))).toBe(false);
-    }
-    // The seed names the same two constants the check compiles in — never a retyped sentence.
-    expect(FRAME_SEED.map((row) => row.text)).toEqual([FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE]);
+    // A reader who arrives after the migration is a reader, not the author.
+    identity(db, 'idt_later', 'Филипп Семиров');
+    expect(marked(db)).toEqual([]);
     db.close();
   });
 
-  it('upgrades a v22 install to the same shape, keeping every row it had', () => {
+  it('marks the only identity of a v22 book and records which one', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    db.prepare(
-      `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
-       VALUES (1, 3, 'Тестовая глава', 'abc', 10, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
-    ).run();
-    db.prepare(
-      `INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev)
-       VALUES ('ch01#aaaaaaaa', 1, 0, ?, 'aaaaaaaa', 1, 3)`,
-    ).run(FRAME_FIRST_SENTENCE);
-    asV22(db);
+    shapeAsV22(db);
+    identity(db, 'idt_only', 'Филипп Семиров');
 
-    expect(migrate(db)).toEqual({ from: 22, to: 23 });
-    expect(columns(db, 'block_deltas')).toEqual(
-      expect.arrayContaining(['block_uid', 'from_ver', 'to_ver', 'chapter', 'rev', 'ops', 'old_len', 'new_len', 'source', 'hseq', 'at']),
-    );
-    expect(frameRows(db).map((row) => row.text)).toEqual([FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE]);
-    // Nothing of the book moved: the projection the v22 install had is still there.
-    expect(db.prepare('SELECT title, rev FROM chapters WHERE n = 1').get()).toEqual({ title: 'Тестовая глава', rev: 3 });
-    expect(db.prepare('SELECT text FROM blocks WHERE id = ?').get('ch01#aaaaaaaa')).toEqual({ text: FRAME_FIRST_SENTENCE });
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
+    expect(marked(db)).toEqual(['idt_only']);
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('single:idt_only');
+
+    // A second boot does nothing at all: no re-guess, no rewritten decision.
+    db.prepare('UPDATE identities SET is_author = 0 WHERE id = ?').run('idt_only');
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+    expect(marked(db)).toEqual([]);
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('single:idt_only');
+    // Even the step itself, run by hand, does not re-mark: the `meta` decision is the guard.
+    backfillAuthorMarker(db);
+    expect(marked(db)).toEqual([]);
     db.close();
   });
 
-  it('is idempotent, and never overwrites a row that is already there', () => {
+  it('never guesses between several identities: it records the count and marks nobody', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    const before = frameRows(db);
-    // A second run, and a direct seed, both leave the rows exactly as they were.
-    expect(migrate(db)).toEqual({ from: 23, to: 23 });
-    seedFrame(db, '2030-01-01T00:00:00Z');
-    expect(frameRows(db)).toEqual(before);
+    shapeAsV22(db);
+    identity(db, 'idt_one', 'Филипп Семиров');
+    identity(db, 'idt_two', 'Аня');
+
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
+    expect(marked(db)).toEqual([]);
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('none:multiple:2');
     db.close();
   });
 
-  it('keeps the CHECKs and the composite keys the deltas and transcripts rely on', () => {
+  it('keeps a marker an install already carries, and changes nothing', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    const insertDelta = db.prepare(
-      `INSERT INTO block_deltas (block_uid, from_ver, to_ver, chapter, rev, ops, old_len, new_len, source, hseq, at)
-       VALUES ('uid', 1, 2, 1, 2, '[]', 3, 4, ?, 1, '2026-10-28T10:00:00Z')`,
-    );
-    expect(() => insertDelta.run('rebase')).toThrow(/CHECK constraint failed/u);
-    insertDelta.run('patch');
-    // One row per (block_uid, to_ver): a version cannot be described twice.
-    expect(() => insertDelta.run('diff')).toThrow(/UNIQUE constraint failed/u);
+    identity(db, 'idt_one', 'Филипп Семиров');
+    identity(db, 'idt_two', 'Аня');
+    db.prepare('UPDATE identities SET is_author = 1 WHERE id = ?').run('idt_two');
+    shapeAsV22ColumnOnly(db);
 
-    expect(() =>
-      db.prepare(`INSERT INTO book_frame (chapter, position, text, sha256, seeded_at) VALUES (1, 'middle', 'x', 'y', 'z')`).run(),
-    ).toThrow(/CHECK constraint failed/u);
-    expect(() =>
-      db.prepare(`INSERT INTO writer_state (id, day, passes, updated_at) VALUES (2, '2026-10-28', 0, 'z')`).run(),
-    ).toThrow(/CHECK constraint failed/u);
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
+    expect(marked(db)).toEqual(['idt_two']);
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('existing');
+    db.close();
+  });
 
-    db.prepare(
-      `INSERT INTO pass_transcripts (pass_id, seq, at, role, content_redacted) VALUES ('pass_1', 1, '2026-10-28T10:00:00Z', 'draft', '{}')`,
-    ).run();
-    // The defaults are zeros, not nulls: a pass with no counted tokens is a fact, not an absence.
-    expect(db.prepare('SELECT tokens_in, tokens_out, prompt_bundle FROM pass_transcripts WHERE pass_id = ?').get('pass_1')).toEqual({
-      tokens_in: 0,
-      tokens_out: 0,
-      prompt_bundle: null,
-    });
+  it('does not overwrite a decision that is already recorded', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    identity(db, 'idt_only', 'Филипп Семиров');
+    shapeAsV22ColumnOnly(db);
+    // An operator decision already on record — e.g. «several readers, no author» — stands.
+    setMeta(db, AUTHOR_MARKER_KEY, 'none:multiple:3');
+
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
+    expect(marked(db)).toEqual([]);
+    expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('none:multiple:3');
     db.close();
   });
 });

@@ -3,7 +3,7 @@
  * (BOOK-107, BOOK-187 / ADR-043 G6).
  *
  * The canon lives once, in `shared/src/book.ts`; this module imports those two sentences and never
- * restates them. Since v23 there is no file in the chain — the manuscript leg is deleted with the
+ * restates them. Since v28 (BOOK-187) there is no file in the chain — the manuscript leg is deleted with the
  * prose, because the volume is the book (ADR-043 G2):
  *
  *   1. **the letters** — the sentence the image compiles in, against the `book_frame` row the
@@ -216,7 +216,7 @@ export function checkFrame({ dataDir, DatabaseImpl = Database }) {
   try {
     const table = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'book_frame'`).get();
     if (table === undefined) {
-      return fail(`${file} has no book_frame table (schema v22 or older): the frame rows arrive with v23`);
+      return fail(`${file} has no book_frame table (schema v27 or older): the frame rows arrive with v28`);
     }
     const rows = db
       .prepare('SELECT chapter, position, text, sha256 FROM book_frame ORDER BY chapter')

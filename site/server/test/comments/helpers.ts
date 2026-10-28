@@ -96,6 +96,13 @@ export async function bootComments(options: {
   /** `false` shapes a deployment where the owner has not registered the OAuth app yet. */
   yandexConfigured?: boolean;
   oauthFetch?: OAuthFetch;
+  /**
+   * BOOK-189: the VAPID key pair the app is built with. `null` is a deployment without push;
+   * omitted means «read `vapidFile`», which is what a real boot does.
+   */
+  vapid?: { privateKey: string; publicKey: string } | null;
+  /** The path the app would read the key from (default: a path no test ever writes). */
+  vapidFile?: string;
 } = {}): Promise<Harness> {
   const fixture = createFixture(
     options.chapters ?? {
@@ -119,6 +126,7 @@ export async function bootComments(options: {
     YANDEX_AUTHORIZE_URL: 'https://idp.test/authorize',
     YANDEX_TOKEN_URL: 'https://idp.test/token',
     YANDEX_INFO_URL: 'https://idp.test/info',
+    ...(options.vapidFile === undefined ? {} : { VAPID_FILE: options.vapidFile }),
   });
 
   const captcha = captchaStub(options.captchaMode ?? 'ok');
@@ -155,6 +163,8 @@ export async function bootComments(options: {
     sessionSecret: 'test-session-secret',
     ipHash,
     now: clock.now,
+    // BOOK-189: an absent option means the app reads `config.vapidFile`, exactly like a boot.
+    ...(options.vapid === undefined ? {} : { vapid: options.vapid }),
     emit: (type, data) => emitted.push({ type, data }),
     oauthFetch:
       options.oauthFetch ??

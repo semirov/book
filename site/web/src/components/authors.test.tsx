@@ -106,6 +106,7 @@ describe('the end matter (§6C.5)', () => {
       share: 0.004,
       series: [],
       hidden: false,
+      isAuthor: false,
       survivedRevisions: 4,
     };
     const signedIn = renderToStaticMarkup(

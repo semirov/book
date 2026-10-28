@@ -18,7 +18,7 @@
  *     (`chapters.basis`, `chapters.chars`, `blocks`); a frame slot rewritten into prose refuses
  *     the whole operation, because the wipe would freeze the wrong text as the canon. The frame
  *     is re-seeded from `book_frame` (the volume's own copy of the canon, seeded by migration
- *     v23) — never from a chapter file, of which there is none any more;
+ *     v28) — never from a chapter file, of which there is none any more;
  *   * a live engine (an open step or an unreleased lease) refuses the wipe: deleting the rows
  *     a running step is writing into corrupts the book instead of resetting it;
  *   * the wipe is one transaction. Counts are asserted inside it, and `foreign_key_check` must
@@ -171,6 +171,9 @@ const WIPE_BEFORE_COMMENTS = [
   'thread_events',
   'threads',
   'facts',
+  // ADR-044: a touch names a sentence, so the ledger goes before the rows it describes.
+  'sentence_touches',
+  'sentences',
 ] as const;
 
 const WIPE_AFTER_COMMENTS = [
@@ -201,6 +204,7 @@ const AUTOINCREMENT_TABLES = [
   'thread_events',
   'mentions',
   'literals',
+  'sentence_touches',
 ] as const;
 
 type FrameSlot = { n: number; raw: string };
@@ -211,7 +215,7 @@ type FrameSlot = { n: number; raw: string };
  * The text comes from the rows: a `basis` chapter row is reprojected from its own title and
  * paragraph, so ch01 keeps its heading («Замечаний нет») and nothing is re-parsed from a file.
  * A slot without a chapter row is not a broken mount any more — the canon is a `book_frame`
- * row, seeded by migration v23, and that row is what re-seeds an empty slot. Only a volume that
+ * row, seeded by migration v28, and that row is what re-seeds an empty slot. Only a volume that
  * holds neither refuses.
  */
 function frameSlots(db: Db): FrameSlot[] {
@@ -254,6 +258,9 @@ function wipe(db: Db): void {
   db.exec('UPDATE changes SET source_comment = NULL');
   for (const table of WIPE_AFTER_COMMENTS) db.exec(`DELETE FROM ${table}`);
   db.prepare(`DELETE FROM meta WHERE k IN (${META_KEYS.map(() => '?').join(', ')})`).run(...META_KEYS);
+  // ADR-044: the sentence bookkeeping describes this book — its version, its import and the
+  // filings it re-anchored — so it goes with it, the drift lines included.
+  db.exec(`DELETE FROM meta WHERE k LIKE 'sentences.%'`);
   // The lane row is the fifo mutex and must exist exactly once (§6A.3): clear it, keep it.
   db.exec('UPDATE lane SET holder = NULL, heartbeat_at = NULL');
   db.prepare(
@@ -276,6 +283,8 @@ function assertWiped(db: Db, expectedVersion: number): void {
   if (slots !== FRAME_SLOTS.length) {
     throw new Error(`reset: the frame slots are not basis rows (${String(slots)} of 2)`);
   }
+  // ADR-044: the sentence tables are content, so `countBook` covers them; a surviving row is the
+  // same defect as a surviving fact.
   const left = countBook(db).filter((entry) => entry.rows !== 0);
   if (left.length > 0) {
     const names = left.map((entry) => entry.key).join(', ');

@@ -48,9 +48,17 @@ import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { newChangeId } from '../util/ulid.ts';
+import type { DispositionDecision, DispositionProposal } from './disposition.ts';
+import { chooseFor, paperDecisionOf, storeChain } from './dispositionStore.ts';
 
 export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
+  /**
+   * BOOK-174 — the ladder could not place the filing and no lock applies: nothing is written
+   * here, no change and no rejection. The caller records the escalation and tells the reader
+   * that the author decides.
+   */
+  | { escalated: true; decision: DispositionDecision }
   | {
       error: string;
       /**
@@ -75,6 +83,11 @@ export type AcceptInput = {
   changeId?: string | null;
   baseRev?: number | null;
   batch?: string | null;
+  /**
+   * BOOK-174 — the semantic reading the decision line proposed. Absent means `as_said`: the
+   * gates already passed, so the words are taken as said unless the chooser says otherwise.
+   */
+  proposal?: DispositionProposal | null;
 };
 
 type ChapterRow = { rev: number; sha256: string; basis: number; block_count: number };
@@ -151,8 +164,21 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // BOOK-137: a filing that touches the frozen frame is accepted as paperwork — recorded,
     // done, and never handed to the lane. The mark comes from the row (or, for a pre-v16 row,
     // from the same classifier over the anchor).
+    //
+    // BOOK-174 §2: paperwork **is** the reading. A touched filing is never «as said» (the
+    // sentence's letters do not move) and never refused (memo §4: a touched filing anywhere
+    // else is §2) — it is a document about the phrase, and that document is the lock's own
+    // alternative («документом об этой фразе»). So the chain is written here, from the sentence
+    // the filing carries, and not from the decision line's proposal.
+    //
+    // The basis-only corner (ch01/ch42/annotation, where the frame *is* the whole text) is
+    // answered here too, before the `frame` lock below: a filing that touches the frame needs no
+    // prose to stand in, and the lock's own alternative is exactly this registration. Refusing
+    // it would take away the one answer BOOK-174 §4 offers for that slot; a filing *beside* the
+    // frame on such a slot still meets `isBasisSlot` below and the lock.
     const mark = frameMarkOf(db, comment, chapter);
     if (mark === 'touched') {
+      const paper = paperDecisionOf(db, comment);
       return register(db, {
         comment,
         chapter,
@@ -163,14 +189,30 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         mode: input.frameMode ?? DEFAULT_FRAME_MODE,
         batch: input.batch ?? null,
         baseRev: positiveRev(input.baseRev),
+        decision: paper,
       });
     }
 
     // BOOK-137: a filing that misses the frame but lands on a basis-only slot has no prose to
     // rewrite and no anchor to place — the frame is the whole text — so the answer is the queue's
     // own refusal, never a premise waiting for a first draft that cannot rewrite the sentence.
+    // BOOK-174: that refusal is the frame lock, and its chain is stored here so the reader's
+    // report can be rendered even though nothing landed.
     if (isBasisSlot(chapter)) {
+      storeChain(db, comment.id, chooseFor(db, comment, input.proposal ?? null));
       return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
+    }
+
+    // BOOK-174: how this filing is read is decided once, here, before anything is written — by
+    // the chooser over the decision line's own reading. A filing the ladder cannot place and no
+    // lock holds is **escalated**: no change, no rejection, and the caller records the question.
+    const decision = chooseFor(db, comment, input.proposal ?? null);
+    if (decision.escalated) return { escalated: true, decision };
+    // A lock can only reach here through the finale (the other three are refused before this
+    // point); the chain is stored so the refusal is reported as the book's word, not a code.
+    if (decision.disposition === 'inadmissible') {
+      storeChain(db, comment.id, decision);
+      return { code: 'FROZEN_FRAME', error: decision.reason };
     }
 
     // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a row with no
@@ -202,6 +244,8 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
             SET status = ?, decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
           WHERE id = ?`,
       ).run(status, input.at, reason, input.batch ?? null, changeId, comment.id);
+      // BOOK-174: the chain is stored in the same transaction as the status it explains.
+      storeChain(db, comment.id, decision);
       appendCommentEvent(db, comment.id, 'decided', input.at, { status, changeId, premise: true });
       return { changeId, created: existing === undefined, superseded };
     }
@@ -223,6 +267,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         chapter: comment.chapter,
         anchor: JSON.stringify({
           blockIds: comment.block_id === null ? [] : [comment.block_id],
+          // ADR-044: the sentence the filing hangs on, so the writer's handles name a row rather
+          // than a re-derived split. Empty for a row written before v25 or a straddling quote.
+          sentenceIds: comment.sentence_id === null ? [] : [comment.sentence_id],
           quote: comment.quote,
           prefix: comment.prefix,
           suffix: comment.suffix,
@@ -272,6 +319,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
           SET status = 'accepted', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
         WHERE id = ?`,
     ).run(input.at, input.reason.slice(0, 200), input.batch ?? null, changeId, comment.id);
+    // BOOK-174: a `through_paper` acceptance is an ordinary change — the step writes the
+    // document — and the reading travels with the row in the same transaction.
+    storeChain(db, comment.id, decision);
     appendCommentEvent(db, comment.id, 'decided', input.at, { status: 'accepted', changeId });
 
     return { changeId, created: existing === undefined };
@@ -296,6 +346,8 @@ function register(
     mode: RetroMode;
     batch: string | null;
     baseRev: number | null;
+    /** BOOK-174 §2 — the reading a touched filing is registered under: a document, as paper. */
+    decision: DispositionDecision;
   },
 ): AcceptResult {
   const { comment, chapter } = input;
@@ -320,6 +372,7 @@ function register(
     chapter: comment.chapter,
     anchor: JSON.stringify({
       blockIds: comment.block_id === null ? [] : [comment.block_id],
+      sentenceIds: comment.sentence_id === null ? [] : [comment.sentence_id],
       quote: comment.quote,
       prefix: comment.prefix,
       suffix: comment.suffix,
@@ -348,6 +401,7 @@ function register(
         SET status = 'registered', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
       WHERE id = ?`,
   ).run(input.at, reason, input.batch, input.changeId, comment.id);
+  storeChain(db, comment.id, input.decision);
   appendCommentEvent(db, comment.id, 'decided', input.at, {
     status: 'registered',
     changeId: input.changeId,

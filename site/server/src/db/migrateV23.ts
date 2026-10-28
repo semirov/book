@@ -1,53 +1,60 @@
 /**
- * Migration v23 (BOOK-187, decisions ADR-043 and ADR-041) — the book's own state leaves the
- * filesystem.
+ * v23 — the author marker (`identities.is_author`), the owner's decision of 2026-10-28.
  *
- * Four additive tables (`book_frame`, `writer_state`, `pass_transcripts`, `block_deltas`), and
- * one seed: the two canon sentences. Nothing is rebuilt, no row changes shape, so an upgraded
- * v22 install and a fresh one are indistinguishable afterwards — both get the tables from the
- * same constant (`V23_TABLES_SQL`), and both get the seed from the same function below.
+ * The owner signs in and files like every reader, so his own identity was a contributor row and
+ * the `+1` on the byline was him. The column says which reader *is* the imprint's author; the
+ * readers list, the listed shares and the byline count skip him, while filings, discussion and
+ * his own trace stay his. It lives here rather than inside `migrate.ts` for the same reason the
+ * v22 ledger step does: the schema step is one line, the decision is documented once.
  *
- * **The frame is seeded from the constants the image compiles in**, never from a file and never
- * from a copy typed here: `FRAME_FIRST_SENTENCE` for ch01/`first` and `FRAME_LAST_SENTENCE` for
- * ch42/`last`, read from `@book/shared`. The DB row is the *served* text (the volume is the book,
- * ADR-043 G2) while the constant stays the independent witness the three-source check compares
- * against (G6) — which is why both the `text` and its `sha256` are stored.
- *
- * `ON CONFLICT(chapter, position) DO NOTHING` makes the seed idempotent in the strong sense: a
- * second run, a re-migration after a rollback or an operator's deliberate edit of a row is never
- * overwritten by the image's copy. `seeded_at` records the moment the row first appeared.
+ * The backfill runs exactly once and records what it decided in `meta`. It never guesses between
+ * several identities — several readers and no marker is `none:multiple:<n>`, and the operator
+ * marks his own later through `POST /api/admin/authors/author`.
  */
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, OPENING_CHAPTER, TOTAL_CHAPTERS } from '@book/shared';
-
-import { sha256Hex } from '../util/hash.ts';
 import type { Db } from './db.ts';
-import { V23_TABLES_SQL } from './tables.ts';
+import { getMeta, setMeta } from './repo/meta.ts';
 
-/** The two rows the canon is, and the position each one holds in the book. */
-export const FRAME_SEED = [
-  { chapter: OPENING_CHAPTER, position: 'first', text: FRAME_FIRST_SENTENCE },
-  { chapter: TOTAL_CHAPTERS, position: 'last', text: FRAME_LAST_SENTENCE },
-] as const;
+/** The `meta` key that records the one-time author backfill decision. */
+export const AUTHOR_MARKER_KEY = 'identities.is_author';
 
-/**
- * Insert the two canon rows if they are not there yet. Called by the v23 step and by nothing
- * else: a fresh install runs the step too, so it reads the same text from the same constants.
- */
-export function seedFrame(db: Db, at: string): void {
-  const insert = db.prepare(
-    `INSERT INTO book_frame (chapter, position, text, sha256, seeded_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(chapter, position) DO NOTHING`,
+export function migrateV23(db: Db): void {
+  // `ALTER TABLE … ADD COLUMN` unless the column is already there: the step runs on a fresh
+  // install too, and a build that runs it twice must not fail.
+  const columns = new Set(
+    (db.pragma('table_info(identities)') as Array<{ name: string }>).map((column) => column.name),
   );
-  for (const row of FRAME_SEED) insert.run(row.chapter, row.position, row.text, sha256Hex(row.text), at);
+  if (!columns.has('is_author')) {
+    db.exec('ALTER TABLE identities ADD COLUMN is_author INTEGER NOT NULL DEFAULT 0');
+  }
+  backfillAuthorMarker(db);
 }
 
 /**
- * The v23 step. Every statement is idempotent — `IF NOT EXISTS` for each object and
- * `DO NOTHING` for each seeded row — so a database that already ran it passes through untouched.
+ * Mark the author on a database that predates the column, exactly once.
+ *
+ * Four outcomes: `existing` (a marker is already there), `single:<id>` (the book held one
+ * identity, and it is the author), `none:empty` (no identity yet — a fresh book is marked by the
+ * operator) and `none:multiple:<n>` (several readers, no marker: never guess). A recorded
+ * decision is never recomputed, so a later boot cannot mark a reader nobody chose.
  */
-export function migrateV23(db: Db, at: string = new Date().toISOString()): void {
-  db.exec(V23_TABLES_SQL);
-  seedFrame(db, at);
+export function backfillAuthorMarker(db: Db): void {
+  if (getMeta(db, AUTHOR_MARKER_KEY) !== null) return;
+  const marked = db.prepare('SELECT COUNT(*) AS n FROM identities WHERE is_author = 1').get() as { n: number };
+  if (marked.n > 0) {
+    setMeta(db, AUTHOR_MARKER_KEY, 'existing');
+    return;
+  }
+  const total = db.prepare('SELECT COUNT(*) AS n FROM identities').get() as { n: number };
+  if (total.n === 0) {
+    setMeta(db, AUTHOR_MARKER_KEY, 'none:empty');
+    return;
+  }
+  if (total.n === 1) {
+    const only = db.prepare('SELECT id FROM identities').get() as { id: string };
+    db.prepare('UPDATE identities SET is_author = 1 WHERE id = ?').run(only.id);
+    setMeta(db, AUTHOR_MARKER_KEY, `single:${only.id}`);
+    return;
+  }
+  setMeta(db, AUTHOR_MARKER_KEY, `none:multiple:${String(total.n)}`);
 }

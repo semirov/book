@@ -5,7 +5,8 @@
  *   node bin/admin.mjs budget reset --identity <id|display-name|alias>
  *   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
  *   node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
-  node bin/admin.mjs pass start --chapter <n> [--url <url>]
+ *   node bin/admin.mjs pass start --chapter <n> [--url <url>]
+ *   node bin/admin.mjs doctor [--json] [--url <url>]
  *
  * Why a CLI: the owner has to see the effect of a change *now*, while the product's rule is
  * one edit a day. The budget commands change budget state (the `rate_events` rows, the
@@ -45,10 +46,12 @@ import { networkInterfaces } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_URL = 'http://127.0.0.1:8091';
+import { parseDoctorArgs, printDoctorReport, runDoctor } from './adminDoctor.mjs';
 import { parsePassArgs, runPassStart } from './adminPass.mjs';
 import { post } from './adminPost.mjs';
+
+const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_URL = 'http://127.0.0.1:8091';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -57,6 +60,7 @@ const USAGE = `usage:
   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
   node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
   node bin/admin.mjs pass start --chapter <n> [--url <url>]
+  node bin/admin.mjs doctor [--json] [--url <url>]
 
 flags:
   --chapter <n>        pass start: which chapter to open now (1..the book's last)
@@ -64,6 +68,7 @@ flags:
   --yes                reset book: perform the wipe (without it the command is a dry run)
   --dry-run            reset book: counts only; the default, and refused together with --yes
   --backup-ok          reset book: wipe even when the backup could not be taken and verified
+  --json               doctor: the report as one JSON object, for a driver; no table
   --url <url>          target; default BOOK_ADMIN_URL or ${DEFAULT_URL}
                        must be loopback or one of this machine's own addresses
   --help               this text
@@ -75,7 +80,9 @@ exit: 0 done · 2 usage or config · 3 no admin token · 4 non-local target
         ENGINE_BUSY, INVALID, a refused token)
         PASS_RUNNING, INVALID_CHAPTER, ENGINE_UNREACHABLE)
       6 DATA_DIR inside the checkout · 7 the backup failed and --backup-ok was not given
-      (budget keeps 0/2/5)`;
+      (budget keeps 0/2/5)
+doctor (BOOK-188) — read-only, writes nothing; exit 0 ready · 1 not ready (the table names it)
+      the doctor itself keeps 2 usage · 3 no admin token · 4 non-local target`;
 
 /** `node:os` addresses, minus the zone suffix (`fe80::1%en0`). */
 export function localAddresses() {
@@ -218,7 +225,7 @@ export function parseResetArgs(argv) {
 }
 
 
-/** The one command parser: `--help`, the two budget forms, the reset, and the pass trigger. */
+/** The one command parser: `--help`, the two budget forms, the reset, the pass trigger, the doctor. */
 export function parseCommand(argv) {
   const first = argv[0];
   if (first === undefined) throw new Error('no command given');
@@ -226,6 +233,7 @@ export function parseCommand(argv) {
   if (first === 'budget') return parseBudgetArgs(argv);
   if (first === 'reset') return parseResetArgs(argv);
   if (first === 'pass') return parsePassArgs(argv);
+  if (first === 'doctor') return parseDoctorArgs(argv);
   throw new Error(`unknown command: ${first}`);
 }
 
@@ -413,26 +421,33 @@ async function main(argv) {
     return 0;
   }
 
-  // BOOK-137: the reset distinguishes «no token» (3) from «not my machine» (4); the budget
-  // contract keeps one code (2) for both, and that stays as it was.
-  const reset = parsed.kind === 'reset-book' || parsed.kind === 'pass-start';
+  // BOOK-137/BOOK-188: the reset and the doctor distinguish «no token» (3) from «not my
+  // machine» (4); the budget contract keeps one code (2) for both, and that stays as it was.
+  const guarded = parsed.kind === 'reset-book' || parsed.kind === 'pass-start' || parsed.kind === 'doctor';
   let target;
   try {
     target = assertLocalTarget(parsed.url ?? process.env.BOOK_ADMIN_URL ?? DEFAULT_URL);
   } catch (error) {
     console.error(`admin: ${error.message}`);
-    return reset ? 4 : 2;
+    return guarded ? 4 : 2;
   }
   let token;
   try {
     token = resolveAdminToken();
   } catch (error) {
     console.error(`admin: ${error.message}`);
-    return reset ? 3 : 2;
+    return guarded ? 3 : 2;
   }
 
   if (parsed.kind === 'pass-start') return runPassStart(parsed, target, token);
-  return reset ? runReset(parsed, target, token) : runBudget(parsed, target, token);
+  // BOOK-188: the doctor answers with a report, not a refusal — `--json` prints it either way,
+  // because the driver reads stdout and the exit code, never the table.
+  if (parsed.kind === 'doctor') {
+    const report = await runDoctor({ target, token });
+    printDoctorReport(report, { json: parsed.json === true });
+    return report.exitCode;
+  }
+  return parsed.kind === 'reset-book' ? runReset(parsed, target, token) : runBudget(parsed, target, token);
 }
 
 const entry = process.argv[1];

@@ -72,6 +72,9 @@ export function showFiling(next: OpenFiling): void {
   // panel came from somewhere else — a panel opened from the strip is that strip, collapsed.
   closeOverlay('revision');
   if (!next.fromSeam) closeOverlay('seam');
+  // BOOK-128 #3852 — a card and the accordion are the same place: the card replaces the block
+  // rather than standing inside it.
+  closeOverlay('record');
   current = next;
   emit();
 }

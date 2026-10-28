@@ -98,7 +98,10 @@ export function useProvenance(input: {
   // Who wrote this version, from the log's own vocabulary: a reader, the pass, or a version
   // the log cannot assign. A chain that has not arrived yet is not a claim — the block waits.
   const chain = chainHistory.chain;
-  const last = chain?.versions.at(-1) ?? null;
+  // A malformed or empty answer is not a chain: `versions` is read defensively because the
+  // block prints whatever the log holds and never a crash instead of a line.
+  const versions = Array.isArray(chain?.versions) ? chain.versions : [];
+  const last = versions.at(-1) ?? null;
   const variant = variantOf({ frozen: frozenOf !== null, actorKind: last?.actor?.kind });
   const share: TraceShare = shareFor({
     actor: last?.actor == null ? null : { kind: last.actor.kind, label: last.actor.label },

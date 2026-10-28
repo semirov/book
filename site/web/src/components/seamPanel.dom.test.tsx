@@ -246,10 +246,11 @@ describe('the strip gets its rows and its focus back', () => {
   });
 });
 
-describe('the card is placed inside the visual viewport (BOOK-137)', () => {
-  it('applies the visual viewport’s offsets, not the layout window’s zeros', async () => {
-    // A phone with the URL bar showing: the visible box starts 120 px down and is 640 tall,
-    // while `window.innerHeight` still reports the whole layout viewport.
+describe('the card has no measured box (BOOK-128 #3852)', () => {
+  it('writes no placement over the card: it is in the page’s flow', async () => {
+    // A phone with the URL bar showing is exactly the case the old placement had to correct.
+    // There is nothing to correct now: the card is a block after its trigger, and no geometry
+    // is written on it — no `top`, no `left`, no `width`, no `max-height`.
     vi.stubGlobal('visualViewport', { width: 390, height: 640, offsetLeft: 0, offsetTop: 120 });
 
     await mount({ comments: [comment()] });
@@ -257,12 +258,8 @@ describe('the card is placed inside the visual viewport (BOOK-137)', () => {
 
     const panel = document.querySelector<HTMLElement>('.filing-panel');
     expect(panel).not.toBeNull();
-    // jsdom's ink has no layout: the anchor is at 0 and the card is empty, so its own height is
-    // 0 — the placement is the box's margin, counted from the visible viewport's top.
-    expect(panel?.style.top).toBe('132px');
-    expect(panel?.style.left).toBe('12px');
-    expect(panel?.style.width).toBe('366px');
-    expect(Number.parseFloat(panel?.style.maxHeight ?? '0')).toBeLessThanOrEqual(640 - 2 * 12);
+    expect(panel?.getAttribute('style')).toBeNull();
+    expect(panel?.classList.contains('filing-panel-anchored')).toBe(false);
   });
 });
 

@@ -5,17 +5,21 @@ import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
+import { migrateV25 } from './migrateV25.ts';
+import { migrateV26 } from './migrateV26.ts';
+import { migrateV27 } from './migrateV27.ts';
+import { migrateV28 } from './migrateV28.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
 /**
- * Apply schema migrations in order, then probe the result. `user_version` is the
- * migration cursor; later milestones append steps rather than editing this one.
+ * Apply schema migrations in order, then probe the result. `user_version` is the migration
+ * cursor; later milestones append steps rather than editing this one.
  *
- * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision
- * 1/2 is a projection of the manuscript or an engine table that has never been written
- * before M3, and the retired `obligations`/`cascade_stages` tables must disappear. Files
- * win for text (§18), so a field install of the skeleton loses only its projection.
+ * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a
+ * projection of the manuscript or an engine table that has never been written before M3, and the
+ * retired `obligations`/`cascade_stages` tables must disappear. Files win for text (§18), so a
+ * field install of the skeleton loses only its projection.
  */
 const MIGRATIONS: Migration[] = [
   {
@@ -149,11 +153,10 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // BOOK-7: an intervention on a chapter that has no text is that chapter's premise, not
-    // prose (BOOK-DOC-6). Two additive columns — the change flag and the draft step that
-    // consumed it; a comment's premise state is derived from the change, so the comment
-    // needs no column of its own. An old database keeps every row; a fresh install is
-    // created with both columns already present.
+    // BOOK-7: an intervention on a chapter that has no text is that chapter's premise, not prose
+    // (BOOK-DOC-6). Two additive columns — the change flag and the draft step that consumed it; a
+    // comment's premise state is derived from the change, so the comment needs no column of its own.
+    // An old database keeps every row; a fresh install is created with both columns already present.
     to: 11,
     up(db) {
       addColumn(db, 'changes', 'premise', 'INTEGER NOT NULL DEFAULT 0');
@@ -279,10 +282,9 @@ const MIGRATIONS: Migration[] = [
   },
   {
     // BOOK-58: the record of what a reader accepted. Four nullable columns — the terms of the
-    // submission (version and hash of the exact text) and, once a variant lands, the moment it
-    // was entered with the version that moment accepted. Null is the honest answer for a row
-    // written before this step: no terms were recorded, and none are invented now. Additive,
-    // so a migrated install and a fresh one have the same shape.
+    // submission (version and hash of the exact text) and, once a variant lands, the moment it was
+    // entered with the version that moment accepted. Null is the honest answer for an older row: no
+    // terms were recorded, and none are invented now. Additive, so a migrated install equals a fresh one.
     to: 19,
     up(db) {
       addColumn(db, 'comments', 'terms_version', 'TEXT');
@@ -292,11 +294,10 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // BOOK-158: a refusal is explained, revisable and bounded — so every submission a model may
-    // judge is a row in its own ledger, and the money of that judgement is a `triage` pass. The
-    // table is additive; the ledger's `pass` CHECK is widened, which SQLite cannot do in place,
-    // so the table is rebuilt with every row and its index kept (BOOK-18/BOOK-43 style). A
-    // migrated install must equal a fresh one, index for index.
+    // BOOK-158: a refusal is explained, revisable and bounded — every submission a model may judge
+    // is a row in its own ledger, and the money of that judgement is a `triage` pass. Additive; the
+    // ledger's `pass` CHECK is widened, which SQLite cannot do in place, so the table is rebuilt with
+    // every row and its index kept (BOOK-18/BOOK-43 style), equal to a fresh install index for index.
     to: 20,
     up(db) {
       if (!tableExists(db, 'comment_attempts')) db.exec(COMMENT_ATTEMPTS_TABLE_SQL);
@@ -314,22 +315,21 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
     },
   },
-  {
-    // BOOK-176 (BOOK-DOC-69): the span ledger. `block_versions` gains the edit list of a version,
-    // the ledger tables and the full-text mirror are created from the same constants a fresh
-    // install uses, and every live block gets a legacy span so «the block as it stands» is
-    // readable history rather than an exception. Idempotent to the statement.
-    to: 22,
-    up(db) {
-      migrateV22(db);
-    },
-  },
-  {
-    // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the redacted
-    // transcripts and the block deltas. Additive; a fresh install runs this step too.
-    to: 23,
-    up: migrateV23,
-  },
+  // BOOK-176 (BOOK-DOC-69): the span ledger, the mirror and a legacy span per live block, from
+  // the same constants a fresh install uses. Idempotent to the statement.
+  { to: 22, up: migrateV22 },
+  // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
+  { to: 23, up: migrateV23 },
+  // The sentence (ADR-044, BOOK-DOC-74): `migrateV25.ts` segments the live book and re-anchors the
+  // filings. 25, not 24: v24 is ADR-043's, still to be written — a gap in the cursor is fine.
+  { to: 25, up: migrateV25 },
+  // BOOK-189: the push tables — subscriptions, the claim and the outbox (26: 24 stays ADR-043's).
+  { to: 26, up: migrateV26 },
+  // BOOK-174: the chain and the counters (27 — v24 is ADR-043's, and the cursor has passed it).
+  { to: 27, up: migrateV27 },
+  // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the redacted transcripts and
+  // the block deltas — additive, and a fresh install runs it too, so a v27 volume gets the seeded rows.
+  { to: 28, up: migrateV28 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

@@ -44,6 +44,23 @@ describe('factAsOf — what the book believes in a chapter', () => {
     });
   });
 
+  it('carries the sentence a statement is told in, and reads it back (ADR-044)', () => {
+    fixture = ledgerFixture();
+    const { db } = fixture;
+    const id = assertFact(db, {
+      id: 'fct_sentence',
+      chapter: 8,
+      kind: 'document',
+      statement: 'Уведомление лежит в конверте.',
+      sentenceId: 'snt_01JB7Z00000000000000000000',
+      at: AT,
+    });
+    expect(factAsOf(db, 8).find((fact) => fact.id === id)?.sentence_id).toBe('snt_01JB7Z00000000000000000000');
+    // A fact with no sentence is still a fact: the column is a carrier, never a requirement.
+    const bare = assertFact(db, { id: 'fct_bare', chapter: 8, kind: 'state', statement: 'Служебное состояние.', at: AT });
+    expect(factAsOf(db, 8).find((fact) => fact.id === bare)?.sentence_id).toBeNull();
+  });
+
   it('is never deleted, and an unknown fact is a caller error rather than silence', () => {
     fixture = ledgerFixture();
     const { db } = fixture;

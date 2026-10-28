@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, splitSentences } from '@book/shared';
 
 import { REQUIRED_TRIGGERS } from '../src/db/schema.ts';
 import { BackupFailedError, countBook, resetBook } from '../src/reset/book.ts';
@@ -63,6 +63,7 @@ describe('POST /api/admin/reset/book — the guard and the dry run', () => {
     expect(before.blocks).toBeGreaterThan(0);
     expect(before.block_versions).toBeGreaterThan(0);
     expect(before.block_lineage).toBeGreaterThan(0);
+    expect(before.sentences).toBeGreaterThan(0);
 
     const response = await h.call({ dryRun: true });
     expect(response.statusCode).toBe(200);
@@ -146,9 +147,19 @@ describe('POST /api/admin/reset/book — the wipe', () => {
       'revisions',
       'block_versions',
       'block_lineage',
+      'sentence_touches',
     ]) {
       expect(count(db, `SELECT COUNT(*) AS n FROM ${table}`), table).toBe(0);
     }
+    // ADR-044: the only sentence rows a wiped book holds are the two frame paragraphs', and the
+    // counter ignores them the way it ignores their blocks.
+    const frameSentences = (
+      db
+        .prepare('SELECT b.text AS text FROM blocks b JOIN chapters c ON c.n = b.chapter WHERE c.basis = 1')
+        .all() as Array<{ text: string }>
+    ).reduce((sum, block) => sum + splitSentences(block.text).length, 0);
+    expect(count(db, 'SELECT COUNT(*) AS n FROM sentences')).toBe(frameSentences);
+    expect(countBook(db).find((entry) => entry.key === 'sentences')?.rows).toBe(0);
     // The people and the canon stay; only the frame is re-projected.
     expect(count(db, 'SELECT COUNT(*) AS n FROM identities')).toBe(1);
     expect(count(db, 'SELECT COUNT(*) AS n FROM sessions')).toBe(1);
@@ -157,6 +168,9 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     const keptMeta = db.prepare('SELECT k FROM meta ORDER BY k').all() as Array<{ k: string }>;
     expect(keptMeta.map((row) => row.k)).toEqual([
       'engine.heartbeat',
+      // The author marker is a fact about a person, not about the book: a launch reset keeps it,
+      // or the owner would silently become his own contributor again (owner, 2026-10-28).
+      'identities.is_author',
       'last_scan_at',
       'rights.backfill',
       'state_version',

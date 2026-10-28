@@ -2,7 +2,7 @@
  * The build stamp as the server reads it (BOOK-187, ADR-043 G8).
  *
  * `scripts/build-info.mjs` bakes `build-info.json` into the image: the commit, the moment, the
- * Moscow stamp, and — since v23 — two digests that a git-less host cannot re-derive: the prompt
+ * Moscow stamp, and — since v28 — two digests that a git-less host cannot re-derive: the prompt
  * bundle's sha and the image's own digest. Reading it is the *only* way the process learns which
  * rules it carries, so it never asks git, never spawns anything and never fails a boot: a missing
  * or corrupt file is "no stamp" (a dev checkout, a unit test), which the boot writes as empty

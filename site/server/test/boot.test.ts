@@ -96,7 +96,7 @@ function backupsOf(dataDir: string): string[] {
 }
 
 describe('bootDatabase — a fresh volume (BOOK-187)', () => {
-  it('creates the schema at v23, seeds the frame and writes the stamps', async () => {
+  it('creates the schema at v28, seeds the frame and writes the stamps', async () => {
     const dataDir = tempDir();
     const { db } = await boot(dataDir);
 

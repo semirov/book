@@ -21,7 +21,7 @@
  * invisible, and it broke every flip on the Debian runner.
  */
 
-import { existsSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,9 @@ import {
   DOMAIN,
   fixture,
   flip,
+  HAS_SQLITE3,
   headOf,
+  hostDb,
   indexOfLine,
   served,
   statCallsOf,
@@ -155,12 +157,103 @@ describe('the flip to compose', () => {
   });
 });
 
+describe('the data volume (BOOK-183)', () => {
+  /** The host data dir the launchd runtime serves from — the seed's source, and the export's target. */
+  // Written from parts, like `dataIsolation.test.ts` assembles its needles: no test file may spell
+  // the production data dir's name (the isolation test is the producer of that rule).
+  const hostData = (home: string) => join(home, ['book', 'site', 'data'].join('-'));
+
+  it('seeds an empty volume from the host dir before any container starts', async () => {
+    const f = await fixture();
+    mkdirSync(hostData(f.home), { recursive: true });
+    writeFileSync(join(hostData(f.home), 'book.db'), '', 'utf8');
+    const { code, out } = await flip(f, ['--to', 'compose', '--confirm'], {
+      FAKE_VOLUME_DB: '0', // the volume holds no book.db yet: a first flip
+      STUB_HEALTHY: '1',
+    });
+    expect(code, out).toBe(0);
+    const calls = callsOf(f);
+    const seed = indexOfLine(calls, /^migrate .*--seed-only/u);
+    const release = indexOfLine(calls, /^release /u);
+    expect(seed, out).toBeGreaterThan(-1);
+    // The seed is inherited from the flip (it must not refuse its own parent with exit 3), and it runs
+    // BEFORE the release: a container never starts on an empty volume.
+    expect(calls[seed]).toContain('inherited=1');
+    expect(calls[seed]).toContain(`--volume book-data`);
+    expect(release).toBeGreaterThan(seed);
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(true);
+  });
+
+  it('refuses to start containers when the volume could not be seeded, and brings launchd back', async () => {
+    const f = await fixture();
+    mkdirSync(hostData(f.home), { recursive: true });
+    writeFileSync(join(hostData(f.home), 'book.db'), '', 'utf8');
+    const { code, out } = await flip(f, ['--to', 'compose', '--confirm'], {
+      FAKE_VOLUME_DB: '0',
+      STUB_SEED_EXIT: '1',
+      STUB_HEALTHY: '1',
+    });
+    expect(code, out).toBe(1);
+    expect(out).toContain('launchd serves');
+    const calls = callsOf(f);
+    expect(indexOfLine(calls, /^release /u), 'no release may run on an empty volume').toBe(-1);
+    // The fallback was bootstrapped back, and the runtime file is untouched.
+    expect(calls).toContain(`launchctl bootstrap ${DOMAIN} ${join(f.home, 'Library/LaunchAgents/dev.book-site.plist')}`);
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(false);
+  });
+
+  it.skipIf(!HAS_SQLITE3)('refuses to serve a volume that differs from the host dir (the fallback window)', async () => {
+    const f = await fixture();
+    // launchd kept writing the host dir after the last export: the volume is a chapter behind. Serving
+    // it would publish stale data, and there is no merge — the flip refuses and puts launchd back.
+    hostDb(f.home, 18);
+    const { code, out } = await flip(f, ['--to', 'compose', '--confirm'], {
+      FAKE_VOLUME_DB: '1', // both sides hold a database
+      FAKE_CH_VOLUME: '17',
+      STUB_HEALTHY: '1',
+    });
+    expect(code, out).toBe(1);
+    // The reason names BOTH counts, so the operator can see which side is ahead.
+    expect(out).toContain('hold DIFFERENT books');
+    expect(out).toContain('chapters=18');
+    expect(out).toContain('"chapters":17');
+    // The operator's next command is printed whole: the sibling script, the host dir it must read, a
+    // FRESH volume name, and the confirmation flag — not a suggestion to overwrite the serving one.
+    expect(out).toContain(
+      `${join(f.script, '..', 'migrate-to-volume.sh')} --from ${hostData(f.home)} --volume <fresh-name> --confirm`,
+    );
+    // Nothing was released on the volume, and launchd serves again.
+    expect(callsOf(f).filter((line) => line.startsWith('release '))).toEqual([]);
+    expect(callsOf(f).some((line) => line.startsWith('launchctl bootstrap'))).toBe(true);
+    expect(out).toContain('launchd serves');
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(false);
+  });
+
+  it('does not bootstrap launchd when the export proof does not match the volume', async () => {
+    const f = await fixture();
+    writeFileSync(join(f.stateDir, 'runtime'), 'compose\n', 'utf8');
+    served(f, headOf(f.root));
+    const { code, out } = await flip(f, ['--to', 'launchd', '--confirm'], {
+      // The host copy comes out one chapter short of the volume: the counts must disagree, and that is
+      // the only reason this run may fail — a read error would prove nothing about the comparison.
+      FAKE_CH_HOST: '17',
+    });
+    expect(code, out).toBe(1);
+    expect(out).toContain('the export does not match volume book-data');
+    expect(out).toContain('host chapters=17');
+    expect(out).toContain('volume {"chapters":18');
+    expect(out).toContain('nothing was bootstrapped');
+    expect(callsOf(f).filter((line) => line.startsWith('launchctl bootstrap'))).toEqual([]);
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(true);
+  });
+});
+
 describe('the flip to launchd', () => {
   it('runs compose down and records runtime=launchd', async () => {
     const f = await fixture();
     writeFileSync(join(f.stateDir, 'runtime'), 'compose\n', 'utf8');
-    // launchd is what will answer here: the stack is already down and its bind comes back on bootstrap.
-    writeFileSync(f.serving, '', 'utf8');
+    // Nothing answers 8091 before the flip (the containers are what did), and the launchd bootstrap is
+    // what starts answering again — the liveness gate would refuse a flip that began with a 200 here.
     served(f, headOf(f.root));
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
     expect(code, out).toBe(0);
@@ -173,6 +266,14 @@ describe('the flip to launchd', () => {
       `launchctl bootstrap ${DOMAIN} ${join(f.home, 'Library/LaunchAgents/dev.book-site.plist')}`,
       `launchctl bootstrap ${DOMAIN} ${join(f.home, 'Library/LaunchAgents/dev.book-writer.plist')}`,
     ]);
+    // The export copy is the only writer of the host dir while the stack is down: a journal an earlier
+    // open left there would be overlaid onto the incoming pages, so it is removed BEFORE `cp -a`. The
+    // `-c` payload has newlines, so this is read across the whole log, not line by line.
+    const log = readFileSync(f.calls, 'utf8');
+    const dropped = log.indexOf('rm -f /to/book.db-wal /to/book.db-shm /to/book.db-journal');
+    expect(dropped).toBeGreaterThan(-1);
+    expect(dropped).toBeLessThan(log.indexOf('cp -a /from/.'));
+
     // No last good image is recorded, so the tree is left alone — and the flip says so, once.
     expect(out).toContain('tree: no last-good-image recorded — the deploy root stays where it is');
     expect(out).toContain('flip back complete');
@@ -182,7 +283,6 @@ describe('the flip to launchd', () => {
   it('refuses to claim launchd when what answers is not the tree it runs', async () => {
     const f = await fixture();
     const stranger = 'beeffff';
-    writeFileSync(f.serving, '', 'utf8');
     served(f, `${stranger}000`); // a build this root never checked out
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
     expect(code, out).toBe(1);
@@ -198,7 +298,6 @@ describe('the flip to launchd', () => {
     const packaged = headOf(f.root, 'HEAD~1'); // the image that gets served: an older commit
     expect(packaged).not.toBe(deployed);
     writeFileSync(join(f.stateDir, 'last-good-image'), `book:${packaged}\n`, 'utf8');
-    writeFileSync(f.serving, '', 'utf8');
     served(f, packaged); // launchd runs the aligned tree, so this is what it answers with
 
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
@@ -215,7 +314,6 @@ describe('the flip to launchd', () => {
     const deployed = headOf(f.root);
     const stranger = 'ab'.repeat(20); // 40 hex characters that this clone never had
     writeFileSync(join(f.stateDir, 'last-good-image'), `book:${stranger}\n`, 'utf8');
-    writeFileSync(f.serving, '', 'utf8');
     served(f, deployed); // the tree stays put, so launchd answers the commit it is on
 
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
@@ -228,10 +326,29 @@ describe('the flip to launchd', () => {
     expect(readFileSync(join(f.stateDir, 'runtime'), 'utf8').trim()).toBe('launchd');
   });
 
+  it('refuses to export while a launchd job is still running', async () => {
+    const f = await fixture();
+    writeFileSync(join(f.stateDir, 'runtime'), 'compose\n', 'utf8');
+    const { code, out } = await flip(f, ['--to', 'launchd', '--confirm'], { FAKE_JOB_RUNNING: '1' });
+
+    expect(code, out).toBe(1);
+    // The proof is `launchctl print`, not the health endpoint alone: a job can be running with the port
+    // already lost, and exporting under it would race its writer.
+    expect(out).toContain('is still running (launchctl print: state = running)');
+    expect(out).toContain('nothing was exported, nothing was bootstrapped');
+    expect(out).toContain('runtime unchanged');
+    const calls = callsOf(f);
+    expect(calls.filter((line) => line.startsWith('launchctl print'))).toEqual([`launchctl print ${DOMAIN}/dev.book-site`]);
+    // The stack was stopped first (that is the flip), and nothing after the refusal happened.
+    expect(indexOfLine(calls, /compose .* down$/u)).toBeGreaterThan(-1);
+    expect(calls.filter((line) => line.startsWith('docker run'))).toEqual([]);
+    expect(calls.filter((line) => line.startsWith('launchctl bootstrap'))).toEqual([]);
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(true);
+  });
+
   it('does not record runtime=launchd when compose down leaves a container behind', async () => {
     const f = await fixture();
     writeFileSync(join(f.stateDir, 'runtime'), 'compose\n', 'utf8');
-    writeFileSync(f.serving, '', 'utf8');
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm'], { FAKE_LEFTOVER: '1' });
     expect(code, out).toBe(1);
     // A stack that is still up owns 8091: launchd could not bind, and its 200 would be the

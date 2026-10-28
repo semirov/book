@@ -10,6 +10,7 @@ import { applyTheme, currentTheme, type Theme } from '../lib/theme.ts';
 import { ExportLink } from './ExportLink.tsx';
 import { LogoutRow } from './LogoutRow.tsx';
 import { MarginTail } from './MarginTail.tsx';
+import { PushToggle } from './PushToggle.tsx';
 
 /**
  * The motto after the imprint's dash: presentation only, so it lives here and not in `shared`.
@@ -32,11 +33,12 @@ export const COLOPHON_MOTTO = 'С любовью к научной фантас�
  * with the source link; the theme switch. Before this the three sat in one row and crammed at
  * 390 px (the owner: «странно»), six facts on one line.
  *
- * The footer is read in this order by a reader: the counts, the way out (BOOK-115), the
- * imprint, how to support the book (BOOK-126), the build the page is (BOOK-109), and the book's
- * outlay last (BOOK-114) — the page states what it cost after it has said what it is, which copy
- * of it the reader holds and how to help. `cost === null` prints no row at all: before the first
- * successful read the total is unknown, and an unknown total is not a zero.
+ * The footer is read in this order by a reader: the counts, the way out (BOOK-115), whether the
+ * reader hears about their own filings (BOOK-189), the imprint, how to support the book (BOOK-126),
+ * the build the page is (BOOK-109), and the book's outlay last (BOOK-114) — the page states what
+ * it cost after it has said what it is, which copy of it the reader holds and how to help.
+ * `cost === null` prints no row at all: before the first successful read the total is unknown, and
+ * an unknown total is not a zero.
  */
 export function Colophon({
   state,
@@ -110,6 +112,11 @@ export function Colophon({
           </div>
         ) : null}
         <LogoutRow viewer={viewer} reload={reload} />
+        {/* BOOK-189: the reader's own notifications, straight after the way out — the second
+            question about this session. The row draws itself only where push can work, so a
+            deployment without push, a browser without the objects and a signed-out reader all
+            print nothing here. */}
+        <PushToggle viewer={viewer} />
         {/* BOOK-117: the money bound is a fact of this register, not a notice. The server
             composes the one line from the `pass_spend` ledger and this row prints it verbatim —
             nothing added, nothing rephrased, so a pause or a stop is visible without a click.

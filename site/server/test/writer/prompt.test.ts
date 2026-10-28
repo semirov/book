@@ -8,7 +8,7 @@
  * this test's own adapter over the files it writes. No repo logic is stubbed.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -311,6 +311,112 @@ describe('buildWriterPrompt — the output contract and the hash', () => {
       return;
     }
     throw new Error('buildWriterPrompt accepted a file without section 1');
+  });
+});
+
+/**
+ * §1 is a universal contract: invariants + five plan fields + the answer shape. No chapter
+ * illustration, no stylistic categories, no percentages or bands. An editor pass may shorten
+ * prose, but must not restore any of those.
+ */
+describe('§1 stays a universal contract', () => {
+  const section = fenceOfSection1(readFileSync(ROLE_PROMPTS, 'utf8'));
+
+  it('keeps the three parts and the five plan fields', () => {
+    for (const heading of ['## The plan', '## Register', '## Invariants', '## Reader text and premise']) {
+      expect(section).toContain(heading);
+    }
+
+    // The five plan fields, each named by its backticked key.
+    for (const field of ['`act`', '`friction`', '`metaphor`', '`want`', '`register_intent`']) {
+      expect(section).toContain(field);
+    }
+
+    // The metaphor budget is zero: a gloss is not paid for, it is refused (VOICE: explained = dead).
+    const prose = section.replace(/\s+/gu, ' ');
+    expect(prose).toContain('`glosses` must be 0');
+    expect(prose).toContain('any gloss');
+    // `register_intent` names its reference: the neighbour given, or the canon on a first pass.
+    expect(prose).toContain('on a first pass, relative to the canon');
+
+    // Friction kinds stay a closed vocabulary; the plan cannot invent a fourth.
+    for (const kind of ['`procedural`', '`physical`', '`psychological`']) {
+      expect(section).toContain(kind);
+    }
+  });
+
+  it('keeps the earned turn and the static chapter', () => {
+    // The register is a curve, not a category: a turn needs a warrant, and a deliberately static
+    // chapter has to say what its stillness pays for. Asserted unwrapped, so a reflow is no finding.
+    const prose = section.replace(/\s+/gu, ' ');
+    expect(prose).toContain('what earned the turn');
+    expect(prose).toContain('A turn with no warrant is a defect');
+    expect(prose).toContain('deliberately static');
+    expect(prose).toContain('what the stillness pays for');
+    expect(prose).toContain('No consolation');
+  });
+
+  it('carries no stylistic category — no mode names, no percentages, no bands', () => {
+    // Style is the book's business, not the role prompt's: a label here turns a curve into a
+    // target. Backticked on purpose — the plain word «документ» is an intervention kind, legal.
+    for (const mode of ['`документ`', '`сцена`', '`балаган`', '`тишина`', '`отчёт`', '`дорога`']) {
+      expect(section).not.toContain(mode);
+    }
+    expect(section).not.toContain('%');
+    expect(section).not.toMatch(/\bband\b/u);
+    expect(section).not.toMatch(/\bCV\b/u);
+    // The one-line tone prescription moved to the canon files; §1 only points at them.
+    expect(section).not.toContain('Tone:');
+  });
+
+  it('quotes no prose longer than a canon phrase', () => {
+    // A transplanted line from a written chapter would read as a model to copy. Only short canon
+    // phrases may stand in quotes: a long quoted fragment is the finding, whatever it says.
+    const fragments = section.match(/«[^»]+»/gu) ?? [];
+    expect(fragments.length).toBeGreaterThan(0);
+    for (const fragment of fragments) {
+      expect(fragment.split(/\s+/u).filter(Boolean).length).toBeLessThanOrEqual(6);
+    }
+
+    // And no quoted phrase may be a line the manuscript already has. A missing manuscript directory
+    // fails loudly (readdirSync throws) on purpose: a guard that skips itself proves nothing.
+    const manuscriptDir = join(REPO, 'manuscript');
+    const manuscript = readdirSync(manuscriptDir)
+      .filter((file) => /^ch\d+\.md$/u.test(file))
+      .map((file) => readFileSync(join(manuscriptDir, file), 'utf8'))
+      .join('\n');
+    expect(manuscript.length).toBeGreaterThan(0);
+    for (const fragment of fragments) {
+      const inner = fragment.slice(1, -1);
+      // One-word quotes («Cheaper», «сейчас») are ordinary vocabulary, not a transplanted line.
+      if (inner.split(/\s+/u).filter(Boolean).length < 2) continue;
+      expect(manuscript).not.toContain(inner);
+    }
+  });
+
+  it('carries no illustration from chapter 1 — no names, no numbers, no prose', () => {
+    // The rule is generic: one example from a written chapter would turn a requirement into a
+    // template, and the next pass would copy the example instead of the requirement.
+    for (const example of [
+      '«как икона»',
+      'Тоня',
+      '748',
+      '750',
+      'Калининград',
+      'Ковалёв',
+      'хлорк',
+      '1-04',
+      'пятьдесят четыре',
+      'двадцать восемь',
+      'четыре тысячи',
+      '2 068',
+      'Ведомственных',
+      'Ты лицо',
+      'Замечаний',
+      'автомат',
+    ]) {
+      expect(section).not.toContain(example);
+    }
   });
 });
 

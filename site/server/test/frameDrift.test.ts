@@ -2,7 +2,7 @@
  * BOOK-109 / BOOK-187 — `FRAME_DRIFT`: the served frame against the row the volume holds.
  *
  * The owner read ch01/ch42 as text no source held, and neither the pages nor the probe could say
- * which side of the projection was wrong. Since v23 the comparison reads no file: the block a
+ * which side of the projection was wrong. Since v28 the comparison reads no file: the block a
  * request is about to serve is compared with the sentence `book_frame` keeps, so the log line
  * names both strings — and it speaks only for the two chapters that carry the frame.
  *
@@ -205,7 +205,7 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
 
   it('reports a missing frame row once per process, with the reason', async () => {
     const log = await bootLogged();
-    // A volume whose seed never ran (a pre-v23 database) has no row to compare against.
+    // A volume whose seed never ran (a pre-v28 database) has no row to compare against.
     fixture!.db.prepare('DELETE FROM book_frame WHERE chapter = 1').run();
 
     expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);

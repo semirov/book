@@ -23,6 +23,7 @@
 import { INTENT_MAX_CHARS } from './change.ts';
 import { COMMENT_REASON_MAX_CHARS, INTENT_MIN_CHARS } from './comment.ts';
 import { intentMetaViolation } from './injection.ts';
+import { splitSentences } from './sentences.ts';
 import type { InterventionKind } from './intervention.ts';
 
 export type IntentFailureCode =
@@ -286,8 +287,9 @@ export function validateIntent(raw: string, chapter: number, context: IntentCont
     return { ok: false, code: 'INTENT_TOO_LONG', reason: `интент длиннее ${INTENT_MAX_CHARS} символов` };
   }
 
-  // One goal clause + at most one constraint; three full stops is a prompt, not a goal.
-  const sentences = intent.split(/(?<=[.!?…])\s+/u).filter((part) => part.trim().length > 0);
+  // One goal clause + at most one constraint; three full stops is a prompt, not a goal. The
+  // sentences are the shared segmenter's (BOOK-DOC-74 §3.4), not a terminator-and-space split.
+  const sentences = splitSentences(intent).map(({ text }) => text);
   if (sentences.length > 2) {
     return { ok: false, code: 'INTENT_SHAPE', reason: 'интент: одна цель и не больше одного уточнения' };
   }

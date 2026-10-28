@@ -47,7 +47,7 @@ export type EnqueueInput = {
   kind: 'reader_edit' | 'accepted_comment' | 'continuity' | 'operator';
   chapter: number;
   intent: string;
-  anchor?: { blockIds: string[]; quote: string; prefix: string; suffix: string } | null;
+  anchor?: { blockIds: string[]; sentenceIds?: string[]; quote: string; prefix: string; suffix: string } | null;
   proposedText?: string | null;
   scopeHint?: 'phrase' | 'chapter';
   commentId?: string | null;
@@ -151,6 +151,7 @@ export function createQueue(deps: EngineDeps) {
     const anchor = input.anchor
       ? JSON.stringify({
           blockIds: input.anchor.blockIds.slice(0, 8),
+          sentenceIds: (input.anchor.sentenceIds ?? []).slice(0, 8),
           quote: input.anchor.quote.slice(0, 280),
           prefix: input.anchor.prefix.slice(0, 40),
           suffix: input.anchor.suffix.slice(0, 40),

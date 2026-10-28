@@ -9,10 +9,11 @@
  * reset itself reads rows.
  */
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, splitSentences } from '@book/shared';
 
 import type { Db } from '../src/db/db.ts';
 import { upsertIdentity } from '../src/db/repo/identities.ts';
+import { touchSentence } from '../src/sentences/store.ts';
 import { longProse, type Fixture } from './helpers.ts';
 
 export const AT = '2026-10-25T12:00:00Z';
@@ -31,6 +32,21 @@ export function bookFiles(): Record<string, string> {
     [`ch${String(TOTAL_CHAPTERS).padStart(2, '0')}.md`]: FRAME_LAST_SENTENCE,
     'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
   };
+}
+
+/**
+ * The sentences the ingest wrote for the written chapters, recomputed with the shared segmenter
+ * rather than read from the store: the dry run's answer and the fixture's own number must not be
+ * the same SQL. The frame slots are excluded, like `blocks` in the counters.
+ */
+function seededSentences(db: Db): number {
+  const blocks = db
+    .prepare(
+      `SELECT b.text AS text FROM blocks b JOIN chapters c ON c.n = b.chapter
+        WHERE c.basis = 0 ORDER BY b.chapter, b.idx`,
+    )
+    .all() as Array<{ text: string }>;
+  return blocks.reduce((sum, block) => sum + splitSentences(block.text).length, 0);
 }
 
 export function count(db: Db, sql: string): number {
@@ -137,6 +153,20 @@ export function seedBook(target: Fixture): string {
     `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, start, end)
      VALUES ('2065-09-14', '14.09.2065', 'ch08#seed0001', 'bkd_seed:1:0', 8, 'date', 0, 10)`,
   ).run();
+  // ADR-044: the ingest segmented every published block, so the sentence rows are already there;
+  // one touch makes the ledger non-empty, so the wipe has provenance to remove as well.
+  const sentence = db
+    .prepare(
+      `SELECT s.id AS id FROM sentences s
+         JOIN blocks b ON b.id = s.block_id
+         JOIN chapters c ON c.n = b.chapter
+        WHERE c.basis = 0 AND s.erased_at IS NULL
+        ORDER BY b.chapter, b.idx, s.idx LIMIT 1`,
+    )
+    .get() as { id: string } | undefined;
+  if (sentence !== undefined) {
+    touchSentence(db, { sentenceId: sentence.id, changeId: 'chg_one', kind: 'born', at: AT });
+  }
   const rate = db.prepare('INSERT INTO rate_events (key, ts) VALUES (?, ?)');
   rate.run(`edit:id:${owner}`, 1_760_000_000_000);
   rate.run('edit:ip:hash-one', 1_760_000_000_000);
@@ -182,6 +212,10 @@ export const CONTENT_KEYS = [
   'thread_events',
   'mentions',
   'literals',
+  // ADR-044: sentences are content, not a projection — a surviving row would name a span of text
+  // the reset deleted.
+  'sentences',
+  'sentence_touches',
   'overwrites',
   'contributions',
   'contribution_history',
@@ -223,6 +257,8 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     thread_events: 1,
     mentions: 1,
     literals: 1,
+    sentences: seededSentences(db),
+    sentence_touches: 1,
     overwrites: 0,
     contributions: 1,
     contribution_history: 1,

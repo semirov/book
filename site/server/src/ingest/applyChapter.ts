@@ -23,6 +23,7 @@ import {
 import { insertRevision } from '../db/repo/revisions.ts';
 import { recordBlockRevision, type BlockOverwrite } from '../history/blocks.ts';
 import { appendEvent } from '../history/log.ts';
+import { reconcileChapterSentences } from '../sentences/ingest.ts';
 import { toIso } from '../util/time.ts';
 import { writeSnapshot } from '../versions/snapshots.ts';
 import { type BlockDiff, diffBlocks } from './diffBlocks.ts';
@@ -155,6 +156,9 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
         updatedAt: observedAt,
       });
       replaceBlocks(db, n, 1, parsed.blocks);
+      // ADR-044: a published chapter has sentences from the moment it exists — the reader may
+      // file against one before the next boot scan runs.
+      reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
       const snapshot = writeSnapshot(input.dataDir, n, parsed.sha256, parsed.text);
       const hseq = appendEvent(
         db,
@@ -253,6 +257,9 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
       updatedAt: observedAt,
     });
     replaceBlocks(db, n, rev, parsed.blocks);
+    // ADR-044: the paragraphs this revision dropped have their sentences closed, the ones it
+    // holds are segmented — inside the same transaction, so a failed publish leaves neither.
+    reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
     const snapshot = writeSnapshot(input.dataDir, n, parsed.sha256, parsed.text);
     const hseq = appendEvent(
       db,
@@ -374,6 +381,7 @@ function projectBasis(
 ): ApplyChapterResult {
   const rev = existing?.rev ?? 0;
   const run = db.transaction(() => {
+    const before: BlockRow[] = existing === undefined ? EMPTY_BLOCKS : listBlocks(db, n);
     upsertChapterRow(db, {
       n,
       rev,
@@ -387,15 +395,28 @@ function projectBasis(
     });
     // The chapter row must exist first: `blocks` references it.
     replaceBlocks(db, n, rev, parsed.blocks);
+    // A basis slot is one paragraph the reader sees: it gets its sentence like any other text, and
+    // the prose it replaced closes.
+    reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
   });
   run();
   return { status: 'emptied', n };
 }
 
-/** Remove a chapter whose file disappeared. Files win, always (§18). */
+/**
+ * Remove a chapter whose file disappeared. Files win, always (§18).
+ *
+ * The sentences go with it: the chapter's paragraphs are closed first (`erased_at`), inside one
+ * transaction, so a filing that hung on one of them is not left pointing at a live row of text
+ * nobody can read any more. The rows themselves stay — a sentence is history (ADR-044 §2.4).
+ */
 export function removeChapter(db: Db, n: number): { status: 'removed'; n: number } | { status: 'absent'; n: number } {
   const existing = getChapterRow(db, n);
   if (existing === undefined) return { status: 'absent', n };
-  db.prepare('DELETE FROM chapters WHERE n = ?').run(n);
+  const run = db.transaction(() => {
+    reconcileChapterSentences(db, { chapter: n, before: listBlocks(db, n), after: [], at: toIso(Date.now()) });
+    db.prepare('DELETE FROM chapters WHERE n = ?').run(n);
+  });
+  run();
   return { status: 'removed', n };
 }

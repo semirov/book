@@ -101,7 +101,7 @@ export function decisionLine(decision: MyDecisionDto, shareNow: number): Decisio
       parts.push(decision.reason);
     }
     return {
-      text: parts.filter((part): part is string => part !== null && part.length > 0).join(' · '),
+      text: withReport(parts, decision),
       tone: state.tone,
     };
   }
@@ -119,7 +119,27 @@ export function decisionLine(decision: MyDecisionDto, shareNow: number): Decisio
     parts.push(decision.reason);
   }
 
-  return { text: parts.filter((part): part is string => part !== null && part.length > 0).join(' · '), tone: state.tone };
+  return { text: withReport(parts, decision), tone: state.tone };
+}
+
+/** The row's sentence: the summary's own clauses, then the reading's two lines. */
+function withReport(parts: Array<string | null>, decision: MyDecisionDto): string {
+  const collected = parts.filter((part): part is string => part !== null && part.length > 0);
+  appendReport(collected, decision);
+  return collected.join(' · ');
+}
+
+/**
+ * BOOK-174 — the reading's own two lines, after the summary and never in place of it: line 1
+ * says how the filing was read and line 2 why, in the closed words the server chose. A line
+ * already printed by the summary (an escalated filing's «ждёт решения автора») is not repeated.
+ */
+function appendReport(parts: string[], decision: MyDecisionDto): void {
+  const report = decision.report ?? null;
+  if (report === null) return;
+  for (const line of [report.line1, report.line2]) {
+    if (line.length > 0 && !parts.some((part) => part.includes(line))) parts.push(line);
+  }
 }
 
 /** The viewer's own comment ids: decided ones plus the ones still waiting. */

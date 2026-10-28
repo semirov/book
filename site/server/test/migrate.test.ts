@@ -25,18 +25,19 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v23', () => {
+describe('migrate — schema v28', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(23);
+    expect(SCHEMA_VERSION).toBe(28);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
     for (const table of REQUIRED_TABLES) expect(present).toContain(table);
     expect(present).not.toContain('obligations');
     expect(present).not.toContain('cascade_stages');
+    // BOOK-187 (v28): the four tables are in `REQUIRED_TABLES`, so the probe above already holds them.
     expect(triggers(db).sort()).toEqual([...REQUIRED_TRIGGERS].sort());
     expect(db.prepare('SELECT COUNT(*) AS n FROM lane').get()).toEqual({ n: 1 });
     // BOOK-6: a slot may hold only its basis sentence, which is not a written chapter.
@@ -73,8 +74,9 @@ describe('migrate — schema v23', () => {
     // BOOK-176 / BOOK-DOC-69: the ledger tables, the version's span list and the full-text mirror.
     expect(columns(db, 'block_versions')).toContain('spans');
     expect(present).toEqual(expect.arrayContaining(['facts', 'threads', 'thread_events', 'mentions', 'literals', 'blocks_fts']));
-    // BOOK-187 (v23): the book's own state, from the one constant a fresh install also reads.
-    expect(present).toEqual(expect.arrayContaining(['book_frame', 'writer_state', 'pass_transcripts', 'block_deltas']));
+    for (const t of ['comments', 'facts', 'literals', 'mentions']) expect(columns(db, t)).toContain('sentence_id');
+    expect(columns(db, 'comments')).toEqual(expect.arrayContaining(['sel_start', 'sel_end']));
+    expect(columns(db, 'identities')).toContain('is_author');
     db.close();
   });
 
@@ -118,13 +120,8 @@ describe('migrate — schema v23', () => {
     const present = tables(db);
     expect(present).not.toContain('obligations');
     expect(present).not.toContain('cascade_stages');
-    expect(present).toContain('steps');
-    expect(present).toContain('gate_verdicts');
-    expect(present).toContain('front_matter');
-    expect(present).toContain('identities');
-    expect(present).toContain('sessions');
-    expect(present).toContain('block_lineage');
-    expect(present).toContain('block_versions');
+    expect(present).toEqual(expect.arrayContaining(['steps', 'gate_verdicts', 'front_matter', 'identities', 'sessions']));
+    expect(present).toEqual(expect.arrayContaining(['block_lineage', 'block_versions']));
     expect(present).toContain('contribution_history');
     expect(columns(db, 'revisions')).toContain('hseq');
     expect(columns(db, 'chapters')).toContain('title');

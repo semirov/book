@@ -21,6 +21,8 @@ import { COMMENT_AUDITED_BY_MAX_CHARS } from '@book/shared';
 
 import { appendCommentEvent } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
+import { lockDecision } from '../feedback/disposition.ts';
+import { storeChain } from '../feedback/dispositionStore.ts';
 import { isRightsRule, rightsRefusalLine, type RightsRuleId } from './rules.ts';
 
 export type RightsVerdict = 'CLEAR' | 'REFUSED';
@@ -147,10 +149,15 @@ export function recordRights(db: Db, input: RecordRightsInput): RecordRightsResu
       // public reason; the verdict column above is B's and is written regardless. A caller that
       // owns the status (the backfill on a batched row) records the verdict without the line.
       if (input.publishRefusal !== false) {
-        db.prepare(
-          `UPDATE comments SET status = 'rejected', decided_at = ?, reason = ?
-            WHERE id = ? AND status IN ${UNDECIDED_STATUSES}`,
-        ).run(input.at, sentence, input.commentId);
+        const rejected = db
+          .prepare(
+            `UPDATE comments SET status = 'rejected', decided_at = ?, reason = ?
+              WHERE id = ? AND status IN ${UNDECIDED_STATUSES}`,
+          )
+          .run(input.at, sentence, input.commentId);
+        // BOOK-174: a rights refusal is the rights lock, and its chain travels with the row it
+        // refuses — the reader's report says «не принято» and why, with the alternative.
+        if (rejected.changes > 0) storeChain(db, input.commentId, lockDecision('rights'));
       }
       const row = db.prepare('SELECT flags FROM comments WHERE id = ?').get(input.commentId) as RightsRow;
       db.prepare('UPDATE comments SET flags = ? WHERE id = ?').run(

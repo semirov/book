@@ -29,6 +29,7 @@ import { recordAcceptance } from '../comments/acceptance.ts';
 import { recordImpact } from '../history/impact.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
+import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
 import { isBasisSlot, isWrittenIn } from './text.ts';
@@ -275,5 +276,9 @@ function settle(
     now,
   );
   recordImpact(deps.db, premise.id, now);
+  // BOOK-189: the premise's own settlement is what speaks to its reader — the draft step that
+  // consumed it announced nothing at land, exactly so a refusal here could never be contradicted.
+  // Only this branch is reachable after the conditional UPDATE above confirmed the transition.
+  sendPassEvent(deps.db, { kind: 'decision', changeId: premise.id }, now);
   return state;
 }

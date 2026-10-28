@@ -23,6 +23,7 @@ import { recordCloseSpend, spendOfClose } from '../budget.ts';
 import { budgetFromConfig } from './budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
+import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
@@ -153,6 +154,10 @@ export function closeChange(
   // §6F.5: the impact is materialized once, at close, and is a projection (§T-impact).
   recordImpact(deps.db, change.id, now);
   releaseLane(deps, change.id);
+  // BOOK-189: the reader who filed for this change hears how it was decided. The row's status
+  // and outcome are written above, so `sendPassEvent` reads the decision it is announcing rather
+  // than guessing it; a failed push is not a failed close (the helper never throws).
+  sendPassEvent(deps.db, { kind: 'decision', changeId: change.id }, now);
 }
 
 // ── cascade close ────────────────────────────────────────────────────────────

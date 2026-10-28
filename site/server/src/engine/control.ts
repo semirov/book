@@ -152,9 +152,8 @@ const seenBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
 });
 /**
- * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them,
- * and one that claims nothing keeps the null/0 default. The triple is the same shape `done` takes.
- * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
+ * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them, one
+ * that claims nothing keeps the null/0 default. BOOK-117 adds `cause` — a broken pass is no refusal.
  */
 const escalateBody = z.object({
   leaseId: id,
@@ -183,6 +182,7 @@ const enqueueBody = z.object({
   anchor: z
     .object({
       blockIds: z.array(z.string()).max(8),
+      sentenceIds: z.array(z.string()).max(8).optional(), // ADR-044: the rows the change is aimed at
       quote: z.string().max(280),
       prefix: z.string().max(40),
       suffix: z.string().max(40),
@@ -195,9 +195,9 @@ const enqueueBody = z.object({
 });
 
 /**
- * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the
- * summary/span bounds and the `truncated` flag are `stage.ts`'s job, so the door and the
- * store cannot drift. `chapter` and `changeId` are not in the body: they are the step's.
+ * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the summary/span
+ * bounds and the `truncated` flag are `stage.ts`'s job, so the door and the store cannot drift.
+ * `chapter` and `changeId` are not in the body: they are the step's.
  */
 const stageBody = z.object({
   passId: id,

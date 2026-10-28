@@ -34,7 +34,14 @@ import { loadImprint } from './imprint.ts';
 import { RateLimiter } from './rate/limiter.ts';
 import { parseCookies } from './util/cookies.ts';
 import { createIpHasher, ephemeralSecret } from './util/ipHash.ts';
+import { sendPassEvent } from './push/passEvent.ts';
+import { drainPush } from './push/sender.ts';
+import { createWebPushTransport } from './push/transport.ts';
+import { readVapid } from './push/vapid.ts';
 import { WsHub } from './ws/hub.ts';
+
+/** BOOK-189: how long the site waits between drains, measured from the end of the previous one. */
+const PUSH_TICK_MS = 2_000;
 
 function serverVersion(): string {
   try {
@@ -104,6 +111,12 @@ async function main(): Promise<void> {
     dir: config.feedbackDir,
     emit: (type, data) => hub.publish(type, data),
     now,
+    // BOOK-189: a filing refused at triage never becomes a change, so the engine's close hook can
+    // never speak for it. Its author hears the answer here, once — and push never throws, so a
+    // broken push table cannot stop the tailer.
+    notify: (commentId, report) => {
+      sendPassEvent(db, { kind: 'commentDecision', commentId, report }, now().getTime());
+    },
   });
   decisions.prime();
   // §6F.4: the nightly erosion series; the first measurement runs at boot.
@@ -120,6 +133,10 @@ async function main(): Promise<void> {
   // BOOK-109: the build this process is, read once — it is what `/healthz` answers with when
   // the owner asks which host served a page, and the one line the boot log adds about identity.
   const commit = readBuildCommit();
+  // BOOK-189: the VAPID key is read exactly once, here. Absent is «push is off» — a normal
+  // deployment — while an unreadable one is a stable code in the log and nothing else: no path,
+  // no key bytes, no file content.
+  const vapid = readVapid(config.vapidFile);
   const app = await buildApp({
     config,
     db,
@@ -134,10 +151,12 @@ async function main(): Promise<void> {
     ipHash,
     now,
     authorsCount,
+    vapid: vapid.keys,
     // BOOK-137: a reset restarts the ids the bridge's cursors point past; re-priming after the
     // wipe keeps the live chronicle narrating from the book's first new fact.
     onBookReset: () => bridge.prime(),
   });
+  if (vapid.problem !== null) app.log.warn({ problem: vapid.problem }, 'web push is off: the VAPID key is unreadable');
 
   bridge.start();
 
@@ -150,6 +169,33 @@ async function main(): Promise<void> {
     onError: (message, error) => app.log.error({ err: error }, message),
   });
   stages.start();
+
+  // BOOK-189: the site process is the only one with a network, so it is the one that drains the
+  // push outbox. No key, no timer: a deployment without VAPID does not even look at the queue.
+  //
+  // The tick is **self-rescheduling** — the next one is armed only after this one settles, with
+  // `setTimeout`, never `setInterval`: a push service slower than the interval would otherwise let
+  // two drains select the same row and tell the reader twice. `drainPush` claims each row as well,
+  // because a restarted site or a second process can overlap a tick whatever this timer does.
+  // The handle is unref'd (a pending drain must not keep the process alive) and cleared on shutdown.
+  const pushTransport = vapid.keys === null ? null : createWebPushTransport(vapid.keys, config.publicOrigin);
+  let pushTimer: NodeJS.Timeout | null = null;
+  let pushStopped = false;
+  if (pushTransport !== null) {
+    const transport = pushTransport;
+    const tickPush = async (): Promise<void> => {
+      try {
+        await drainPush(db, { transport, nowMs: Date.now(), log: (line) => app.log.info(line) });
+      } catch (error) {
+        app.log.error({ err: error }, 'push: drain failed');
+      }
+      if (pushStopped) return;
+      pushTimer = setTimeout(() => void tickPush(), PUSH_TICK_MS);
+      pushTimer.unref();
+    };
+    pushTimer = setTimeout(() => void tickPush(), PUSH_TICK_MS);
+    pushTimer.unref();
+  }
 
   await app.listen({ host: config.host, port: config.port });
 
@@ -173,6 +219,8 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
     clearInterval(decisionTimer);
+    pushStopped = true;
+    if (pushTimer !== null) clearTimeout(pushTimer);
     stopErosion();
     bridge.stop();
     stages.stop();

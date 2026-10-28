@@ -20,7 +20,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { readBookCost } from '../../src/cost/book.ts';
 import { runFeedback } from '../../src/feedback/cli.ts';
-import { AUDIT_FALLBACK } from '../../src/feedback/audit.ts';
 import { DECISION_FALLBACK, publicDecisionReason } from '../../src/feedback/decisions.ts';
 import { bootComments, commentBody, type Harness } from '../comments/helpers.ts';
 
@@ -76,7 +75,7 @@ function editKeys(h: Harness): string[] {
 const REJECT = ['--reason', 'вне рамок: не про текст этой главы'];
 
 describe('the ledger records the spend of a refused attempt', () => {
-  it('charges a triage pass and closes the attempt as refused', async () => {
+  it('charges a triage pass and closes the attempt as held (an escalation refuses nobody)', async () => {
     const h = await boot();
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
 
@@ -110,11 +109,15 @@ describe('the ledger records the spend of a refused attempt', () => {
       priced: 1,
       day: '2026-10-25',
     });
-    expect(attempt(h, id)).toMatchObject({ n: 1, outcome: 'refused' });
-    // The refusal cost the reader no edit: the day belongs to an accepted filing.
+    // BOOK-174: the line escalated the filing — the question waits for a person, and no gate
+    // refused it, so the ledger says `held`.
+    expect(attempt(h, id)).toMatchObject({ n: 1, outcome: 'held' });
+    // The answer cost the reader no edit: the day belongs to an accepted filing.
     expect(editKeys(h)).toEqual([]);
 
-    // A retried call is refused before it can charge the same attempt twice.
+    // A retried call is refused before it can charge the same attempt twice — the row is not a
+    // second decision's to make, even though the first one escalated it (BOOK-174: an escalated
+    // row is answered with `--as author`, and a re-run of the same line is not an answer).
     expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(1);
     expect(spend(h)).toHaveLength(1);
   });
@@ -143,7 +146,7 @@ describe('the ledger records the spend of a refused attempt', () => {
     expect(off.code).toBe(0);
     expect(spend(h)).toHaveLength(1);
     expect(spend(h)[0]).toMatchObject({ pass: 'triage', pass_id: `triage:${id}:1`, usd: 0.001, priced: 1 });
-    expect(attempt(h, id)).toMatchObject({ outcome: 'refused' });
+    expect(attempt(h, id)).toMatchObject({ outcome: 'held' });
   });
 
   it('writes no row when no amount was named, and keeps the attempt closed', async () => {
@@ -152,7 +155,7 @@ describe('the ledger records the spend of a refused attempt', () => {
     expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(0);
     expect(spend(h)).toHaveLength(1);
     expect(spend(h)[0]).toMatchObject({ model: null, tokens_in: 0, tokens_out: 0, usd: 0, priced: 0 });
-    expect(attempt(h, id)).toMatchObject({ outcome: 'refused' });
+    expect(attempt(h, id)).toMatchObject({ outcome: 'held' });
   });
 
   it('refuses a value that is not money instead of guessing one', async () => {
@@ -176,8 +179,10 @@ describe('the refusal the reader reads is always a sentence', () => {
     const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
     expect(cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'INTENT_SHAPE').code).toBe(0);
 
+    // BOOK-174: the handle stays the operator's (`audit_reason`); the reader is owed the answer,
+    // which for an `OFF` with no lock is the author's question.
     expect(h.db.prepare('SELECT reason, audit_reason FROM comments WHERE id = ?').get(id)).toEqual({
-      reason: AUDIT_FALLBACK,
+      reason: 'можно ли оформить это бумагой?',
       audit_reason: 'INTENT_SHAPE',
     });
   });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BREATHING_PX, gripHeight } from '../lib/headerOffset.ts';
@@ -78,7 +78,14 @@ describe('a filing lands on the paragraph it quotes', () => {
     expect(filing?.rect.top).toBe(landedTop);
     expect(filing?.origin).toBe(link);
     expect(panel()?.getAttribute('data-context')).toBe('filing');
-    expect(panel()?.classList.contains('filing-panel-anchored')).toBe(true);
+    // BOOK-128 #3852 — the card is a block in the flow, not a placed layer: no measured class,
+    // no portal at the document's end, and no inline box written over it.
+    expect(panel()?.classList.contains('filing-panel-anchored')).toBe(false);
+    // Review M5 — the card is a block **after** the row: a portal seat that is a sibling of the
+    // paragraph (or list item), never a child of it and never a flex item.
+    expect(panel()?.parentElement?.className).toBe('place-seat');
+    expect(panel()?.closest('p, li')).toBeNull();
+    expect(panel()?.getAttribute('style')).toBeNull();
     // A resolved block says nothing about a changed place.
     expect(panel()?.querySelector('.filing-place-note')).toBeNull();
   });
@@ -95,6 +102,61 @@ describe('a filing lands on the paragraph it quotes', () => {
     expect(panel()).toBeNull();
     expect(document.activeElement).toBe(link);
     expect(currentFiling()).toBeNull();
+  });
+});
+
+describe('the card is a block after the row, in every container that carries a door', () => {
+  /** Render a door inside its real container, open it, and hand back the card. */
+  async function openWith(node: ReactElement): Promise<HTMLElement> {
+    mountPage();
+    await page.render(node);
+    const door = page.container.querySelector<HTMLAnchorElement>('a.place-link');
+    if (door === null) throw new Error('no door');
+    await act(async () => {
+      door.click();
+    });
+    await page.settle();
+    const card = panel();
+    if (card === null) throw new Error('no card');
+    return card;
+  }
+
+  const door = (): ReactElement => (
+    <PlaceLink place={comment()}>«Я посмотрел на часы: девять сорок две.»</PlaceLink>
+  );
+
+  it('a Discussion quote: a div seat after the paragraph, never inside it', async () => {
+    const card = await openWith(<p className="comment-quote">{door()}</p>);
+    expect(card.parentElement?.tagName).toBe('DIV');
+    expect(card.parentElement?.className).toBe('place-seat');
+    expect(card.closest('p')).toBeNull();
+    expect(page.container.querySelector('p.comment-quote')?.contains(card)).toBe(false);
+  });
+
+  it('an own decision intent: a div seat after the paragraph', async () => {
+    const card = await openWith(<p className="own-decision-intent">{door()}</p>);
+    expect(card.parentElement?.tagName).toBe('DIV');
+    expect(card.closest('p')).toBeNull();
+    expect(page.container.querySelector('p.own-decision-intent')?.contains(card)).toBe(false);
+  });
+
+  it('a chronicle row: an li seat, a block sibling of the flex row inside the list', async () => {
+    const card = await openWith(
+      <ol className="chr-list">
+        <li className="chr-row" style={{ display: 'flex' }}>
+          {door()}
+        </li>
+      </ol>,
+    );
+    const seat = card.parentElement;
+    expect(seat?.tagName).toBe('LI');
+    expect(seat?.className).toBe('place-seat');
+    expect(card.closest('.chr-row')).toBeNull();
+    expect(page.container.querySelector('li.chr-row')?.contains(card)).toBe(false);
+    // A block sibling of the row, inside the list: a valid content model.
+    const list = page.container.querySelector('ol.chr-list');
+    expect(seat?.parentElement).toBe(list);
+    expect(seat?.previousElementSibling).toBe(list?.querySelector('li.chr-row'));
   });
 });
 

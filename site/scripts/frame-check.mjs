@@ -6,7 +6,7 @@
  * The canon lives once, in `shared/src/book.ts`. The owner twice saw ch01 and the finale serve
  * text that is not the canon while the manuscript, the data dir and the backups held only the
  * canon; this check answers «what does each of those places actually say now» in one read-only
- * pass. Since v23 there is no file in the chain (ADR-043 G6): the letters are compared with the
+ * pass. Since v28 there is no file in the chain (ADR-043 G6): the letters are compared with the
  * `book_frame` rows in the volume, the rows are compared with the blocks they are carried by, and
  * both are compared with what the running site answers.
  *

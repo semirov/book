@@ -48,7 +48,7 @@ npm install
 npm run dev                       # API :8080 + Vite :5173
 npm run build && npm start        # один процесс на :8080
 npm run verify                    # typecheck + arch + тесты + рамка (frame-check)
-node bin/validate.mjs             # проверка рукописи: 0 ошибок
+node bin/validate.mjs --from-db "$DATA_DIR"   # текст как он лежит в базе: 0 ошибок
 ```
 
 Операторская памятка и инварианты — [`site/README.md`](site/README.md).

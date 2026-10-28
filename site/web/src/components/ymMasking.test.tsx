@@ -80,6 +80,7 @@ const OWN_TRACE: MyTraceDto = {
   share: 0.004,
   series: [],
   hidden: false,
+  isAuthor: false,
   survivedRevisions: 4,
 };
 

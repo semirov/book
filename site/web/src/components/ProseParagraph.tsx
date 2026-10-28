@@ -3,28 +3,27 @@ import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, FrameMar
 import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { wordOffsetIn } from '../dom.ts';
-import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FILING_PANEL_CLASS } from './FilingPanel.tsx';
 import { Seam } from './Seam.tsx';
 import { SeamPanel } from './SeamPanel.tsx';
-import { SentenceBlock } from './SentenceBlock.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrameParagraph } from '../lib/freeze.ts';
-import { isAlive, staleLine, wordFilingOf } from '../lib/filings.ts';
+import { staleLine, wordFilingOf } from '../lib/filings.ts';
 import { blockElementId } from '../lib/place.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
 import type { WordFiling } from '../lib/provenance.ts';
-import { sentenceBlockFrame } from '../lib/sentence.ts';
-import { anchorFor, seamKey } from '../lib/seam.ts';
+import { closeRecord, lastTouchOf, openRecord, useOpenRecord } from '../lib/record.ts';
+import { anchorFor, seamKey, sentenceAt, wordAt } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
-import { hideRevision, showRevision, useOpenRevision } from '../lib/useRevision.ts';
+import { useOpenRevision } from '../lib/useRevision.ts';
+import { useParagraphPanels } from '../lib/useParagraphPanels.ts';
 import { useProvenance } from '../lib/useProvenance.ts';
-import { MarginNote } from './MarginNote.tsx';
 import { PhoneStrip } from './PhoneStrip.tsx';
-import { RevisionObject } from './RevisionObject.tsx';
+import { RecordSlot } from './RecordSlot.tsx';
+import { SentenceRuns } from './SentenceRuns.tsx';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
@@ -67,9 +66,9 @@ export type ProseParagraphProps = {
   /** BOOK-111: the posted DTO, so the page shows the reader's own row at once. */
   onPosted: (comment: CommentDto) => void;
   /**
-   * BOOK-128 comment #3815 — the phrase's facts, as the page's one chain mode. The `⋯` door is
-   * the toggle; the block it opens is this paragraph's margin item, so the state has to reach
-   * the paragraph rather than a floating box at the page root.
+   * ADR-044 — the phrase's chain mode is no longer read here: the sentence is the door, and the
+   * record reads the chain itself. The prop is kept because the page still owns the mode for
+   * `ChroniclePast`, and a stale prop is cheaper than a second chain request.
    */
   sentence?: ParagraphChainMode;
   /** STALE_ANCHOR: the chapter reloads, then the draft is re-keyed onto the new text. */
@@ -100,7 +99,6 @@ export function ProseParagraph({
   composer,
   viewer,
   onPosted,
-  sentence,
   onReanchor,
   caret = null,
   revised = false,
@@ -108,6 +106,14 @@ export function ProseParagraph({
   history,
 }: ProseParagraphProps) {
   const seam = useOpenSeam();
+  /** BOOK-128 #3852 — the page's one block: the touched span and the record it opened. */
+  const record = useOpenRecord();
+  const recordHere = record !== null && record.chapter === entry.n && record.blockId === blockId;
+  /**
+   * The mark: solid while the block is open, dotted after it closes, none once another span is
+   * touched. It is text decoration on the exact range, so no line box moves by a glyph.
+   */
+  const touched = recordHere ? { start: record.start, end: record.end } : lastTouchOf(entry.n, blockId);
   // BOOK-137 — the paragraph *is* the canon sentence (the basis slot): the one without a rail.
   // Every paragraph of a written chapter has one, ch01 and ch65 alike; a tap still works here.
   const frameOnly = isFrameParagraph(entry.n, text);
@@ -124,16 +130,23 @@ export function ProseParagraph({
   /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
   const revision = useOpenRevision();
   const hostRef = useRef<HTMLElement | null>(null);
+  const panels = useParagraphPanels({ blockId, hostRef });
+  const { openRevision, closeRevision, openFiling, closePanel } = panels;
   const anchor = here ? (seam?.anchor ?? null) : null;
+  /**
+   * BOOK-128 #3852 — the frame follows whichever surface is speaking for this paragraph: the
+   * record the tap opened, or the shipped seam still opened by its own store.
+   */
+  const speaking = recordHere && record !== null ? record.anchor : anchor;
   /**
    * BOOK-137 — the shared rule on the selection: only `touched` is the canon sentence itself.
    * The word's «закреплено» variant follows this mark (or a paragraph that *is* the basis
    * sentence), never the chapter number.
    */
   const frame: FrameMark =
-    anchor === null
+    speaking === null
       ? 'untouched'
-      : classifyFrame({ chapter: entry.n, quote: anchor.quote, blockIndex, blockText: text, blockCount });
+      : classifyFrame({ chapter: entry.n, quote: speaking.quote, blockIndex, blockText: text, blockCount });
   /**
    * Both layers name the same frozen surface: the canon sentence — the paragraph *is* it, or the
    * selection touches it — is `рамка книги`. `основание книги` is page 2, which has no seam yet
@@ -163,51 +176,8 @@ export function ProseParagraph({
   if (revising !== null) classes.push('is-revising');
   if (revised) classes.push('is-revised');
 
-  const openRevision = useCallback((comment: CommentDto, origin: HTMLElement): void => {
-    // BOOK-111: one panel at a time — the store closes the filing card (see `useRevision`).
-    showRevision({ comment, origin });
-  }, []);
-
-  const closeRevision = useCallback((): void => {
-    const origin = revision?.origin ?? null;
-    hideRevision();
-    // The trigger comes back when the object leaves; a note that was replaced has left the
-    // page, and the paragraph is the next honest target (BOOK-90 §3.3).
-    if (origin !== null && origin.isConnected) origin.focus();
-    else hostRef.current?.focus();
-  }, [revision]);
-
-  /** BOOK-111: one way into a filing card — the page's store, owned by this paragraph. */
-  const openFiling = useCallback(
-    (comment: CommentDto, origin: HTMLElement): void => {
-      showFiling({
-        kind: 'filing',
-        owner: blockId,
-        comment,
-        origin,
-        rect: origin.getBoundingClientRect(),
-        // BOOK-111 (owner, 2026-10-27): the tap landed in the strip, so the strip is the same
-        // place as the panel — it collapses to one line instead of vanishing behind it.
-        fromSeam: origin.closest('.seam') !== null,
-      });
-    },
-    [blockId],
-  );
-
-  /**
-   * §7: the trigger comes back when the panel leaves, never nowhere. The word's line 3 is a door
-   * that lives *inside* the body the card replaces (BOOK-128 #3815), so a detached origin hands
-   * focus to the strip's own door instead of dropping the reader on `<body>`.
-   */
-  const closePanel = useCallback((): void => {
-    const origin = panel?.origin ?? null;
-    hideFiling();
-    if (origin !== null && origin.isConnected) origin.focus();
-    else hostRef.current?.querySelector<HTMLElement>('.seam-prov')?.focus();
-  }, [panel]);
-
   const openAt = useCallback(
-    (origin: HTMLElement, offset: number, target: HTMLElement): void => {
+    (offset: number, target: HTMLElement): void => {
       const anchor = anchorFor({ text, blockId, baseRev, offset });
       if (anchor === null) return;
       openSeam({
@@ -217,7 +187,24 @@ export function ProseParagraph({
         anchor,
         origin: target,
       });
-      origin.scrollIntoView?.({ block: 'nearest' });
+    },
+    [baseRev, blockId, entry.n, text],
+  );
+
+  /**
+   * BOOK-128 comment #3852 — a tap opens the block on the **exact range**: the word under the
+   * caret, or the whole sentence when there is no word under it. Nothing is scrolled: the line
+   * the reader touched is already on screen, and `openAt`'s old `scrollIntoView` was the jump.
+   */
+  const openTouch = useCallback(
+    (
+      range: { start: number; end: number },
+      origin: HTMLElement | null,
+      word: { start: number; end: number } | null = null,
+    ): void => {
+      const anchor = anchorFor({ text, blockId, baseRev, offset: range.start });
+      if (anchor === null) return;
+      openRecord({ chapter: entry.n, blockId, start: range.start, end: range.end, word, anchor, origin, surface: 'text' });
     },
     [baseRev, blockId, entry.n, text],
   );
@@ -241,17 +228,33 @@ export function ProseParagraph({
     // A tap on the mark, the rail, «⋯» or the strip is that control's own act: the paragraph
     // must not also open a seam (BOOK-33 — the numeral is the button the reader sees).
     const control = (event.target as HTMLElement | null)?.closest(
-      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision',
+      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision, .phone-strip-row, .rec',
     );
     if (control !== null && control !== undefined) return;
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-s]');
     if (target === null || target === undefined) return;
     const start = Number(target.getAttribute('data-s') ?? '0');
     const offset = wordOffsetIn(target, event.clientX, event.clientY) ?? start;
-    // The paragraph is the focus target: closing the seam returns the reader to the sentence
-    // they touched, not to the top of the page (§7).
+    // ADR-044 / BOOK-128 #3863 — **the sentence is the unit**: a tap anywhere in one opens that
+    // sentence's record, and the word under the caret only underlines itself inside the quote.
+    const sentenceRange = sentenceAt(text, offset);
+    if (sentenceRange === null) return;
+    // The sentence is the toggle: a second tap on the open one closes the record.
+    if (recordHere && record !== null && record.start === sentenceRange.start) {
+      closeRecord();
+      // The sentence is the door both ways: closing hands focus back to it, never to `<body>`.
+      const door = target.querySelector<HTMLElement>('.sentence-door') ?? target;
+      door.focus({ preventScroll: true });
+      return;
+    }
+    const word = wordAt(text, offset);
+    const inside = word !== null && word.start >= sentenceRange.start && word.end <= sentenceRange.end ? word : null;
     const host = (event.currentTarget as HTMLElement | null) ?? target;
-    openAt(host, offset, host);
+    openTouch(
+      { start: sentenceRange.start, end: sentenceRange.end },
+      host,
+      inside === null ? null : { start: inside.start, end: inside.end },
+    );
   };
 
   // The phrase's facts (the word's own line 3) and the strip's body are read by one hook.
@@ -292,63 +295,32 @@ export function ProseParagraph({
   }, [filingKey, seam?.key ?? null, text, revision?.comment.id ?? null]);
 
   /**
-   * BOOK-68 — the paragraph is rendered as slices of its own text, never re-assembled.
-   *
-   * `splitSentences` covers the prose, not every character: the whitespace between two
-   * sentences, a closing quote that follows a space, the leading indent and the tail after
-   * the last recognised sentence all used to be dropped. Here every character between `from`
-   * and `to` reaches the page: a raw gap is a text node, a sentence is one span holding
-   * exactly `text.slice(start, end)`, and the tail after the last sentence is raw text.
-   * Nothing is invented, so the paragraph reads the same closed, open and closed again.
+   * BOOK-128 #3852 — the prose is the sentences' own runs (`SentenceRuns`), with the touched
+   * range marked inside its sentence. The paragraph renders no geometry and holds no text.
    */
-  const renderRange = (from: number, to: number): ReactNode => {
-    const nodes: ReactNode[] = [];
-    let cursor = from;
-    sentences.forEach((sentence, index) => {
-      if (sentence.start < from || sentence.end > to) return;
-      // The gap the splitter did not claim — double spaces, a stray quote, an indent.
-      if (sentence.start > cursor) nodes.push(text.slice(cursor, sentence.start));
-      const filings = marks.get(sentence.start);
-      const cited = citedClass(filings);
-      // BOOK-68: the seam's own sentence wears one extra class, whose whole effect is the
-      // cited rule's underline — text decoration sets no box, so no line moves.
-      const marked = [cited, sentence.start === anchoredStart ? 'is-anchored' : null]
-        .filter((name): name is string => name !== null && name !== undefined)
-        .join(' ');
-      nodes.push(
-        <span
-          key={`${sentence.start}-${index}`}
-          className={marked === '' ? undefined : marked}
-          data-s={sentence.start}
-          data-quote={sentence.text}
-        >
-          {text.slice(sentence.start, sentence.end)}
-          {filings === undefined || filings.stale ? null : (
-            <>
-              <FilingMark
-                filings={filings}
-                onOpen={openFiling}
-                onOpenRevision={openRevision}
-              />
-              {filings.all
-                .filter(isAlive)
-                .filter((comment) => revision?.comment.id !== comment.id)
-                .map((comment) => (
-                  <MarginNote key={comment.id} comment={comment} onOpen={openRevision} />
-                ))}
-              {revision !== null && filings.all.some((comment) => comment.id === revision.comment.id) ? (
-                <RevisionObject comment={revision.comment} text={text} onClose={closeRevision} />
-              ) : null}
-            </>
-          )}
-        </span>,
-      );
-      cursor = sentence.end;
-    });
-    // The tail after the last sentence — a paragraph need not end with a full stop.
-    if (cursor < to) nodes.push(text.slice(cursor, to));
-    return nodes;
-  };
+  const whole = (): ReactNode => (
+    <SentenceRuns
+      text={text}
+      sentences={sentences}
+      marks={marks}
+      anchoredStart={anchoredStart}
+      touched={touched}
+      recordHere={recordHere}
+      roving={history}
+      frozen={frozenOf === 'frame'}
+      controls={`rec-${entry.n}-${blockId}`}
+      onToggle={(range) => {
+        // The sentence is the toggle **for its own record**: pressing another sentence while a
+        // record is open swaps it, it does not close the block (pointer and keyboard alike).
+        if (recordHere && record !== null && record.start === range.start) closeRecord();
+        else openTouch(range, null);
+      }}
+      onOpenFiling={openFiling}
+      onOpenRevision={openRevision}
+      onCloseRevision={closeRevision}
+      revision={revision}
+    />
+  );
 
   const strip = here ? (
     <Seam
@@ -416,62 +388,47 @@ export function ProseParagraph({
             onClick={(event) => {
               const first = sentences[0];
               if (first === undefined) return;
-              openAt(event.currentTarget, first.start, event.currentTarget);
+              openAt(first.start, event.currentTarget);
             }}
           >
             вмешаться
           </button>
         )}
-        {renderRange(0, Number.POSITIVE_INFINITY)}
+        {whole()}
         {caret === null ? null : (
           <span
             className={`caret-inline${caret.live && !caret.printing ? ' blink' : ''}${caret.printing ? '' : ' resting'}`}
             aria-hidden="true"
           />
         )}
-        {sentence === undefined || !history ? null : (
-          <button
-            type="button"
-            className="prov"
-            aria-label="откуда эта фраза"
-            aria-expanded={sentence.openId === blockId}
-            onClick={(event) => {
-              const door = event.currentTarget;
-              // BOOK-128 comment #3815 — the door is the toggle and the only close this layer
-              // has: pressing it again puts the block away and keeps focus on the door.
-              if (sentence.openId === blockId) {
-                sentence.close();
-                door.focus();
-                return;
-              }
-              sentence.open(blockId, door.getBoundingClientRect());
-            }}
-          >
-            ⋯
-          </button>
-        )}
+        {/* ADR-044 — the paragraph's keyboard door is its first sentence (`SentenceRuns`
+            roving tabindex), so no separate glyph or hidden control stands at the end. */}
         {phone}
       </p>
-      {strip}
-      {/* BOOK-128 #3815 — the phrase's facts: a zero-height seat at ≥1024, a block in flow at ≤1023. */}
-      {/* `basis: false` is the decision: this paragraph **is** the basis sentence, so `frameOnly`
-          names it `frame` («основание книги» would contradict the word's `рамка книги`). */}
-      {sentence === undefined || sentence.openId !== blockId ? null : (
-        <SentenceBlock
-          chain={sentence.chain}
-          loading={sentence.loading}
-          failed={sentence.failed}
-          quote={anchor?.quote ?? sentences[0]?.text ?? text}
-          frame={sentenceBlockFrame({ basis: false, touched: frozenOf === 'frame' })}
-          place="margin"
-          onRetry={sentence.retry}
-          onClose={() => {
-            sentence.close();
-            // The door is the one close this layer has: focus never lands on `<body>`.
-            hostRef.current?.querySelector<HTMLElement>('.prov')?.focus();
-          }}
+      {/*
+        BOOK-128 comment #3852 — the block is a sibling **after** the paragraph, never inside it:
+        the paragraph's line boxes, its width and its last line are untouched, and only what
+        stands below the block moves, by the block's height, once, and back on close.
+      */}
+      {recordHere && record !== null ? (
+        <RecordSlot
+          record={record}
+          entry={entry}
+          blockId={blockId}
+          blockIndex={blockIndex}
+          baseRev={baseRev}
+          frozen={frozenOf}
+          writing={revising !== null}
+          filings={seamFilings?.all ?? null}
+          composer={composer}
+          viewer={viewer}
+          history={history}
+          hostRef={hostRef}
+          onPosted={onPosted}
+          {...(onReanchor === undefined ? {} : { onReanchor })}
         />
-      )}
+      ) : null}
+      {strip}
       {stale === null ? null : (
         <button
           type="button"

@@ -1,21 +1,17 @@
-import { useEffect, useLayoutEffect, type MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
 
 import { CHAIN_FAILED_LINE } from '../lib/history.ts';
-import { scheduleMarginPass } from '../lib/marginPass.ts';
 import type { WordFacts } from '../lib/provenance.ts';
 
-/** Measure before paint in the browser; do nothing during a server render (tests). */
-const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
-
 /**
- * BOOK-128 comment #3815 — «откуда это слово», as a **margin item**, not a panel.
+ * BOOK-128 #3815 / #3863, review M6 — «откуда это слово» as the **legacy strip's body**.
  *
- * One block, one place in the tree: at ≥1024 it is `position: absolute` in the strip's own
- * box (`left: calc(100% + var(--note-gap))` from the prose's edge, one `--rule-2` hairline,
- * no fill, no shadow, no scroll, no close, no `z-index`); at ≤1023 the same node is in flow
- * under the strip's 44 px row, full measure, with a `--rule` hairline. The margin pass places
- * it and writes `data-placed` before paint; a static node is skipped by the pass, so the phone
- * body is never given a channel `top`.
+ * The margin placement this file was written for is gone: `record.css` carries the word's
+ * record on the reading path, and this component is reachable only through the shipped strip's
+ * own store (`Seam.tsx` `prov` prop) — the re-anchor path and the empty-chapter machinery. It
+ * is therefore a plain flow block inside that strip: one `--rule-2` hairline, the note's 6/0/8,
+ * no fill, no shadow, no scroll, no close, no `z-index`, and **no `data-margin-item`** — the
+ * page's margin pass no longer has a claim on this node.
  *
  * What it prints is three facts and, under `печатник` alone, one sentence (`lib/provenance.ts`).
  * There is no CTA here: the strip's `вмешаться` is the only door, and it is already in the row
@@ -39,10 +35,8 @@ export function ProvenanceBlock({
   /** The filing the trace line opens, in the site's one panel. */
   onFiling: (origin: HTMLElement) => void;
 }) {
-  // The block is a change of the page's margin: the pass runs before paint, once per answer.
-  useMeasuredLayout(() => {
-    scheduleMarginPass();
-  }, [view, failed]);
+  // The block no longer enters the page's margin ledger (review M6): it is in the strip's own
+  // flow, so the pass has nothing to place and is never scheduled.
 
   // Nothing is claimed before the log answers: the block mounts with the answer, not with a
   // default (`…` would be a fourth state the design does not have).
@@ -50,7 +44,7 @@ export function ProvenanceBlock({
 
   if (view === null) {
     return (
-      <div className={PROV_BLOCK_CLASS} data-margin-item="prov">
+      <div className={PROV_BLOCK_CLASS}>
         <p className="prov-loss">{CHAIN_FAILED_LINE}</p>
       </div>
     );
@@ -66,7 +60,7 @@ export function ProvenanceBlock({
   };
 
   return (
-    <div className={PROV_BLOCK_CLASS} data-margin-item="prov">
+    <div className={PROV_BLOCK_CLASS}>
       <div className="prov-facts">
         <p className="prov-hand">{view.hand}</p>
         <p className="prov-when">{view.when}</p>

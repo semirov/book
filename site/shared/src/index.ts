@@ -10,12 +10,15 @@ export * from './cost.ts';
 export * from './publicChange.ts';
 export * from './captcha.ts';
 export * from './comment.ts';
+export * from './disposition.ts';
 export * from './terms.ts';
 export * from './intervention.ts';
 export * from './decisions.ts';
 export * from './injection.ts';
 export * from './intent.ts';
 export * from './stage.ts';
+export * from './sentences.ts';
+export * from './push.ts';
 
 /**
  * The validator is used by the site's integrity panel and by the commit gate, so the parts

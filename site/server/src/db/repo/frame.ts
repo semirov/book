@@ -1,7 +1,7 @@
 /**
  * `book_frame` — the two canon sentences, as the volume holds them (BOOK-187, ADR-043 G6).
  *
- * The table is seeded by migration v23 from the constants the image compiles in, so a reader of
+ * The table is seeded by migration v28 from the constants the image compiles in, so a reader of
  * this module never types a sentence and never reads a file: the row is what the site serves, and
  * the constant is the witness the frame check compares it with. `position` says which end of
  * which chapter the row belongs to — `ch01/first` opens the book, `ch42/last` closes it.

@@ -2,15 +2,15 @@
  * BOOK-109 / BOOK-187 — `FRAME_DRIFT`: the served frame against the row the volume holds.
  *
  * The frozen frame has one witness (`FRAME_FIRST_SENTENCE` / `FRAME_LAST_SENTENCE`, BOOK-107) and
- * the book keeps its own copy in `book_frame` (v23, ADR-043 G6). The owner twice read text in
+ * the book keeps its own copy in `book_frame` (v28, ADR-043 G6). The owner twice read text in
  * ch01/ch42 that no source contained, and neither `/healthz` nor the frame smoke check could say
  * *which* side a request had just served. This comparison answers that, per request, for the only
- * two chapters whose text is the frame — and since v23 it reads no file: the served block is
+ * two chapters whose text is the frame — and since v28 it reads no file: the served block is
  * compared with the seeded row, because the volume is the book (ADR-043 G2).
  *
  * It is deliberately cheap: one indexed row and nothing for the other chapters. A drift is logged
  * by the route (the same strings, both of them); a database with no row at all is reported once per
- * process, because a pre-v23 volume must not become a log flood.
+ * process, because a pre-v28 volume must not become a log flood.
  */
 
 import { TOTAL_CHAPTERS, OPENING_CHAPTER } from '@book/shared';
@@ -29,7 +29,7 @@ export type FrameDrift = {
   stored: string;
 };
 
-/** The row is not there (a pre-v23 volume, a wiped table): not drift, an unanswerable check. */
+/** The row is not there (a pre-v28 volume, a wiped table): not drift, an unanswerable check. */
 export type FrameUnreadable = { source: string; unreadable: string };
 
 /** `null` — the two agree, or the chapter carries no frame (the other 40). */
@@ -73,7 +73,7 @@ export function checkFrameDrift(options: FrameDriftOptions, n: number, blocks: r
   const source = frameSource(n, position);
   const stored = options.frameOf(n, position);
   if (stored === null) {
-    return { source, unreadable: `no book_frame row for ${String(n)}/${position} (the v23 seed never ran)` };
+    return { source, unreadable: `no book_frame row for ${String(n)}/${position} (the v28 seed never ran)` };
   }
 
   const served = flatten(position === 'first' ? (blocks[0]?.text ?? '') : (blocks[blocks.length - 1]?.text ?? ''));

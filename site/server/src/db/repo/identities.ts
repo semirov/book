@@ -21,6 +21,12 @@ export type IdentityRow = {
    * The comment budget is untouched by this flag.
    */
   edit_exempt: number;
+  /**
+   * Owner's decision (2026-10-28) — 1 = this identity is the imprint's author. The author is
+   * still a reader (filings, discussion, his own trace), but is never a contributor row, a
+   * listed share or a `+N`: the byline already names him.
+   */
+  is_author: number;
   created_at: string;
   last_seen_at: string;
 };
@@ -64,6 +70,8 @@ export function upsertIdentity(
   const id = newIdentityId(Date.parse(input.at));
   const name = normalizeDisplayName(input.displayName);
   try {
+    // `is_author` is left to its default (0): a sign-in creates a reader, and the marker is set
+    // by the v23 backfill or by the operator's admin route, never by arriving.
     db.prepare(
       `INSERT INTO identities (id, yandex_sub, display_name, hide_from_authors, blocked, created_at, last_seen_at)
        VALUES (?, ?, ?, 0, 0, ?, ?)`,
