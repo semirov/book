@@ -71,7 +71,7 @@ describe('the filing panel’s state line (BOOK-90)', () => {
     expect(accepted).toContain('<p class="filing-state ink-live">идёт</p>');
     expect(accepted).toContain('<p class="filing-fact">правка в очереди на запись</p>');
     const expired = render(comment({ status: 'expired' }));
-    expect(expired).toContain('<p class="filing-fact">проход не состоялся</p>');
+    expect(expired).toContain('<p class="filing-fact">правка не состоялась</p>');
     for (const html of [superseded, accepted, expired]) {
       expect(html).not.toContain('class="filing-sentence');
       expect(html).not.toContain('состояние:');

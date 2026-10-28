@@ -206,13 +206,23 @@ function passSpan(db: Db, changeId: string | null, own: string | null): HistoryR
   return spanOf(row?.span ?? null);
 }
 
-/** The entry's one id and its one door: the change's, or the bare pass's. */
+/**
+ * The entry's one id and its one door: the change's, or the bare pass's.
+ *
+ * A change knows its chapter through its own row, so the door is `#проход-<changeId>` and the
+ * page reads the chapter with `GET /api/changes/:id`. A landed pass with no change row has no
+ * such row: the chapter is part of its key (`#проход-<chapter>-<passId>`), because the pass id
+ * alone cannot be looked up by a reader's page.
+ */
 function identityOf(row: RecordRow): { id: string; recordHref: string } {
-  const key = row.id ?? row.pass_id ?? '';
-  const prefix = row.cause === 'reader' ? CHANGE_RECORD_PREFIX : PASS_RECORD_PREFIX;
+  if (row.id !== null) {
+    const prefix = row.cause === 'reader' ? CHANGE_RECORD_PREFIX : PASS_RECORD_PREFIX;
+    return { id: row.id, recordHref: `#${prefix}${row.id}` };
+  }
+  const passId = row.pass_id ?? '';
   return {
-    id: row.id ?? passEntryId(key),
-    recordHref: `#${prefix}${key}`,
+    id: passEntryId(passId),
+    recordHref: `#${PASS_RECORD_PREFIX}${row.chapter}-${passId}`,
   };
 }
 

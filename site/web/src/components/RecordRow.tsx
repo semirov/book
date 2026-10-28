@@ -1,16 +1,7 @@
 import type { HistoryRecordDto } from '@book/shared';
 
-import { recordReason, recordStateWord } from '../lib/changeStatus.ts';
+import { CAUSE_WORDS, recordReason, recordStateWord } from '../lib/changeStatus.ts';
 import { momentText, recordHeading, spanText } from '../lib/history.ts';
-
-/**
- * The one word each cause gets: whose act the entry is, in a word.
- *
- * «правка читателя» is a person's filing the book accepted; «проход» is a pass over the book,
- * a machine change or a landed stage with no change row. Neither names a model, a role or a
- * stage — the chronicle prints the change, not the machinery that produced it.
- */
-export const CAUSE_WORDS = { reader: 'правка читателя', pass: 'проход' } as const;
 
 /**
  * BOOK-65 — one public record entry: **one change to the book**, once, and one way in.
@@ -23,9 +14,9 @@ export const CAUSE_WORDS = { reader: 'правка читателя', pass: 'п�
  * past, not the workshop's logbook.
  *
  * The door is an **anchor**, built by the server from the same id the record behind it uses
- * (`#правка-<changeId>` · `#проход-<changeId | passId>`), so a row and its record cannot name
- * one entry two ways. Clicking the row does not move the moment either; the moment moves only
- * through `MomentControl`.
+ * (`#правка-<changeId>` · `#проход-<changeId>` · `#проход-<chapter>-<passId>`), so a row and
+ * its record cannot name one entry two ways. Clicking the row does not move the moment either;
+ * the moment moves only through `MomentControl`.
  */
 export type RecordRowProps = {
   record: HistoryRecordDto;
@@ -54,7 +45,7 @@ export function RecordRow({ record }: RecordRowProps) {
       <a
         className="chr-change"
         href={record.recordHref}
-        aria-label={`${label} — открыть ${reader ? 'прицел правки' : 'запись прохода'}`}
+        aria-label={`${label} — открыть ${reader ? 'прицел правки' : 'запись'}`}
       >
         {face}
       </a>

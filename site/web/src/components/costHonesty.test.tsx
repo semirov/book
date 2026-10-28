@@ -106,9 +106,9 @@ function surfaces(cost: ChangeCostDto | null, costRub: number | null): string {
 const tokensAndModel: ChangeCostDto = { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: null };
 
 describe('the change surfaces never print a price that was not measured', () => {
-  it('shows the model and the tokens, and no ₽ figure at all', () => {
+  it('shows the tokens and never the model id, and no ₽ figure at all', () => {
     const markup = surfaces(tokensAndModel, null);
-    expect(markup).toContain('deepseek-flash');
+    expect(markup).not.toContain('deepseek');
     expect(markup).toContain(`150${NBSP}572${NBSP}токена`);
     expect(markup).not.toContain('₽');
     expect(markup).not.toContain('0,00');

@@ -101,9 +101,10 @@ export type HistoryRecordCause = 'reader' | 'pass';
 export const CHANGE_RECORD_PREFIX = 'правка-';
 
 /**
- * The one door of a pass: `#проход-<changeId | passId>`. The row emits it and the pass record
- * behind it keys on the same id and the same heading; the record component itself is a
- * separate ticket, so this constant is what keeps the two from inventing different links.
+ * The one door of a pass: `#проход-<changeId>` when the pass carries a change row, and
+ * `#проход-<chapter>-<passId>` when it does not (the chapter is part of the key because a bare
+ * pass knows its chapter and nothing else can find it). The record behind it parses the same
+ * id, so the chronicle row, the foot's door and the page cannot invent different links.
  */
 export const PASS_RECORD_PREFIX = 'проход-';
 
@@ -182,7 +183,8 @@ export type HistoryRecordDto = {
   changeId: string | null;
   /**
    * The one way in, built from the same id the record behind the door uses:
-   * `#правка-<changeId>` for a reader's change, `#проход-<changeId | passId>` for a pass.
+   * `#правка-<changeId>` for a reader's change, `#проход-<changeId>` for a pass that carries a
+   * change row, `#проход-<chapter>-<passId>` for a landed pass that has none.
    */
   recordHref: string;
   /** `«было» → «стало»`; `null` when the book holds no honest pair behind this entry. */

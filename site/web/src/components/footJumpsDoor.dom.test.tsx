@@ -137,7 +137,7 @@ describe('the door into the carets', () => {
     await act(async () => {
       vi.advanceTimersByTime(600);
     });
-    expect(door.textContent).toBe('каретки');
+    expect(door.querySelector('.foot-jump-word')?.textContent).toBe('каретки');
 
     await act(async () => {
       door.click();
@@ -233,7 +233,7 @@ describe('the door into the carets', () => {
     expect(nav().getAttribute('data-pass')).toBe('record');
     expect(nav().getAttribute('data-watch')).toBe('on');
     const record = passItem() as HTMLAnchorElement;
-    expect(record.getAttribute('href')).toBe('#правка-chg_7');
+    expect(record.getAttribute('href')).toBe('#проход-chg_7');
 
     // … and it is still the way back, not a second door (#156 M2).
     await act(async () => {

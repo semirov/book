@@ -226,6 +226,15 @@ export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outc
  */
 export const RECORD_NOT_LANDED = 'не внесено';
 
+/**
+ * The one word each cause gets on the chronicle's row (owner, 2026-10-28).
+ *
+ * «правка читателя» is a person's filing the book accepted; «писалась» is a pass over the
+ * book — a machine change or a landed stage with no change row. The record never prints the
+ * internal noun for a pass: the word names whose act it was, not the workshop's vocabulary.
+ */
+export const CAUSE_WORDS = { reader: 'правка читателя', pass: 'писалась' } as const;
+
 export function recordStateWord(
   record: Pick<HistoryRecordDto, 'status' | 'premise' | 'premiseLanded'>,
 ): string | null {

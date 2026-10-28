@@ -99,7 +99,7 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       // HELD: the word «проверяется» and the hold's own line, never the guard's taxonomy.
       return lineOf(word, filingConsequence(comment), 'stopped');
     case 'expired':
-      return lineOf(word, joinDetail('проход не состоялся', comment.reason), 'stopped');
+      return lineOf(word, joinDetail('правка не состоялась', comment.reason), 'stopped');
     case 'hidden':
       return lineOf(word, joinDetail('скрыто', comment.reason), 'stopped');
     default:

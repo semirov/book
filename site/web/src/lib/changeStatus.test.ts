@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   boundaryLabel,
+  CAUSE_WORDS,
   changeHeading,
   changeLines,
   changeNumber,
@@ -372,5 +373,13 @@ describe('a landed premise on the change surfaces', () => {
     expect(changeLines(waiting)).toMatchObject({ first: 'ждёт', second: 'принято в основу, до первой редакции' });
     expect(progressLine(waiting)).toBe('принято в основу → ждёт');
     expect(premiseOutcomeCopy(waiting)).toBe('в основе главы');
+  });
+});
+
+describe('the record’s two cause words (owner, 2026-10-28)', () => {
+  it('names a reader’s filing and a pass, and never prints the internal noun', () => {
+    expect(CAUSE_WORDS.reader).toBe('правка читателя');
+    expect(CAUSE_WORDS.pass).toBe('писалась');
+    expect(JSON.stringify(CAUSE_WORDS)).not.toMatch(/проход/u);
   });
 });

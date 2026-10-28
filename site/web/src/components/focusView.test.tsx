@@ -169,7 +169,7 @@ describe('the focus view', () => {
     // and a second wave reads as the decision that opened it.
     expect(html).not.toContain('итерация');
     expect(html).toContain('волна 2 · решением · этап: готово');
-    expect(html).toContain('deepseek-flash');
+    expect(html).not.toContain('deepseek-flash');
     expect(html).toContain('0,04');
     expect(html).toContain('07 · 08 · 09 (проверена)');
     expect(html).toContain('к главе 8');

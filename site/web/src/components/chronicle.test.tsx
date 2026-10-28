@@ -105,7 +105,7 @@ const ITEMS: HistoryRecordDto[] = [
     outcome: null,
     reason: null,
     changeId: null,
-    recordHref: '#проход-stp_7',
+    recordHref: '#проход-9-stp_7',
     span: { before: 'первый абзац', after: 'первый абзац, переписанный' },
   },
   {

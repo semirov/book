@@ -56,7 +56,7 @@ const PASS: HistoryRecordDto = {
   outcome: null,
   reason: null,
   changeId: null,
-  recordHref: '#проход-stp_7',
+  recordHref: '#проход-9-stp_7',
   span: null,
 };
 
@@ -120,9 +120,9 @@ describe('one public record entry (BOOK-65)', () => {
 
   it('says a pass by its own word, with no alias and its own door', () => {
     const html = renderToStaticMarkup(<RecordRow record={PASS} />);
-    expect(html).toContain('<span class="chr-cause">проход</span>');
+    expect(html).toContain('<span class="chr-cause">писалась</span>');
     expect(html).toContain('<span class="chr-place">глава 9</span>');
-    expect(html).toContain('href="#проход-stp_7"');
+    expect(html).toContain('href="#проход-9-stp_7"');
     expect(html).toContain('>запись</a>');
     expect(html).not.toContain('правка читателя');
   });

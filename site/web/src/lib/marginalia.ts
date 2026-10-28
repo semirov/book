@@ -221,7 +221,7 @@ export function filingConsequence(comment: FilingFacts): string {
       // A hold's line, never the guard's taxonomy: the rule an operator reads is `held_rule`.
       return `${GATE_WORDS.held}: ${HELD_LINE}`;
     case 'expired':
-      return 'проход не состоялся';
+      return 'правка не состоялась';
     case 'hidden':
       return 'скрыто';
     default:

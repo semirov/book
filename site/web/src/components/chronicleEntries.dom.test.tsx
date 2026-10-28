@@ -42,7 +42,7 @@ const ENTRIES: HistoryRecordDto[] = [
     outcome: null,
     reason: null,
     changeId: null,
-    recordHref: `#${PASS_RECORD_PREFIX}stp_bare`,
+    recordHref: `#${PASS_RECORD_PREFIX}4-stp_bare`,
     span: { before: 'было так', after: 'стало иначе' },
   },
   {
@@ -157,8 +157,8 @@ describe('one row per change to the book, whoever caused it', () => {
     const rows = [...container.querySelectorAll('li.chr-row')];
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => row.querySelector('.chr-cause')?.textContent)).toEqual([
-      'проход',
-      'проход',
+      'писалась',
+      'писалась',
       'правка читателя',
     ]);
     // The place is the entry's heading — the same function the record behind the door reads.
@@ -178,13 +178,14 @@ describe('one row per change to the book, whoever caused it', () => {
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li.chr-row .chr-change')];
 
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      `#${PASS_RECORD_PREFIX}stp_bare`,
+      `#${PASS_RECORD_PREFIX}4-stp_bare`,
       `#${PASS_RECORD_PREFIX}chg_m`,
       `#правка-chg_9`,
     ]);
-    // The bare pass's door is the pass; the pass with a change row is keyed by that change —
-    // exactly the id the entry carries, so row and record cannot name one entry two ways.
-    expect(links[0]?.getAttribute('href')).toBe(`#${PASS_RECORD_PREFIX}${ENTRIES[0]!.id.replace('pass:', '')}`);
+    // The bare pass's door carries its chapter, because the pass id alone cannot be found; the
+    // pass with a change row is keyed by that change — exactly the id the entry carries, so row
+    // and record cannot name one entry two ways.
+    expect(links[0]?.getAttribute('href')).toBe(`#${PASS_RECORD_PREFIX}${ENTRIES[0]!.chapter}-stp_bare`);
     expect(links[1]?.getAttribute('href')).toBe(`#${PASS_RECORD_PREFIX}${ENTRIES[1]!.changeId}`);
     expect(ENTRIES[2]!.id).toBe(ENTRIES[2]!.changeId);
   });

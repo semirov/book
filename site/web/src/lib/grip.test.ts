@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatTime } from './format.ts';
+import { formatDayMonth } from './format.ts';
 import {
   GRIP,
   PASS_LABEL,
@@ -220,34 +220,36 @@ describe('the fling gate', () => {
 });
 
 describe('the third item’s three states', () => {
-  it('is live while a pass runs, pointed at #pass and with no meta', () => {
+  it('is live while a pass runs, pointed at #pass and saying «пишется»', () => {
     const door = passDoor(facts({ processing: true, change: CHANGE }));
     expect(door.state).toBe('live');
     expect(door.href).toBe('#pass');
-    expect(door.meta).toBeNull();
+    expect(door.meta).toBe('пишется');
     expect(door.name).toContain(PASS_LABEL);
     // The live block's own ochre rule counts as a pass too.
     expect(passStateOf(facts({ revising: true, change: CHANGE }))).toBe('live');
   });
 
-  it('is a record when nothing runs and a change is behind: #правка-<id> and its time', () => {
+  it('is a record when nothing runs and a change is behind: #проход-<id> and its day', () => {
     const door = passDoor(facts({ change: CHANGE }));
     expect(door.state).toBe('record');
-    expect(door.href).toBe('#правка-chg_7');
-    // The site's one clock (Europe/Moscow), never a relative phrase.
-    expect(door.meta).toBe('проход был 14:21');
-    expect(door.meta).toBe(`проход был ${formatTime(CHANGE.decidedAt)}`);
+    // The door opens the pass's own page, never the change card (owner, 2026-10-28).
+    expect(door.href).toBe('#проход-chg_7');
+    // The day, not a bare time: `писалась · 25.10`.
+    expect(door.meta).toBe('писалась · 25.10');
+    expect(door.meta).toBe(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);
     expect(door.name).toContain(PASS_LABEL);
-    // `decidedAt ?? enqueuedAt`: a change still in the queue points at its own filing time.
+    // `decidedAt ?? enqueuedAt`: a change still in the queue points at its own filing day.
     const queued = passDoor(facts({ change: { ...CHANGE, decidedAt: null } }));
-    expect(queued.meta).toBe('проход был 13:40');
+    expect(queued.meta).toBe('писалась · 25.10');
   });
 
-  it('is silent with no target and «не пишется» — a word, not a disabled button', () => {
+  it('is silent with no target and «пока не писалась» — a word, not a disabled button', () => {
     const door = passDoor(facts());
     expect(door.state).toBe('silent');
     expect(door.href).toBeNull();
     expect(door.meta).toBe(PASS_SILENT);
+    expect(PASS_SILENT).toBe('пока не писалась');
     expect(door.name).toContain(PASS_LABEL);
     expect(door.name).toContain(PASS_SILENT);
   });

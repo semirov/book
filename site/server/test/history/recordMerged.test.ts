@@ -197,7 +197,9 @@ describe('the record is the union of changes and landed passes (the fix)', () =>
       at: '2026-10-25T09:02:00Z',
       chapter: 4,
       cause: 'pass',
-      recordHref: `#${PASS_RECORD_PREFIX}${seeded.bare}`,
+      // The bare pass has no change row, so its chapter is part of the door's key: the page has
+      // nothing else to find it by.
+      recordHref: `#${PASS_RECORD_PREFIX}4-${seeded.bare}`,
     });
   });
 
