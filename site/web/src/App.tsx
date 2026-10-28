@@ -285,9 +285,10 @@ export function App() {
             break;
           }
           case 'history:event': {
-            // The chronicle's ticker; the payload is one summary line, never a body.
-            const entry = frame.data as HistoryEventFrame;
-            if (entry.hseq > 0) setHistoryTick((current) => current + 1);
+            // BOOK-102: the frame is a bare tick, `{ hseq, at }` — no narration. The page says
+            // «the log moved» and re-reads the record it prints.
+            const tick = frame.data as HistoryEventFrame;
+            if (tick.hseq > 0) setHistoryTick((current) => current + 1);
             break;
           }
           case 'comment:added':

@@ -12,10 +12,11 @@ import type { BlockDto } from './types.ts';
 /**
  * BOOK-56 — the one fact that decides whether the book has a past to show.
  *
- * It is derived on the server from `changes.source_comment IS NOT NULL`: a change exists
- * because a reader filed it. A machine revision (`source_comment IS NULL`) is not a
- * reader's history, and the first reader change turns every history surface on with no
- * code change and no deploy. The DTO is additive; `PROTOCOL_VERSION` stays valid.
+ * It is derived on the server from the changes a reader filed through the interface: a change
+ * exists because a reader asked for it, and a filing the operator hid (BOOK-101) counts for
+ * nothing. A machine revision (`source_comment IS NULL`) is not a reader's history, and the
+ * first visible reader change turns every history surface on with no code change and no
+ * deploy. The DTO is additive; `PROTOCOL_VERSION` stays valid.
  */
 export type HistoryStateDto = {
   /** True once the log holds at least one change caused by a reader's filing. */
@@ -61,6 +62,14 @@ export type HistoryAuthor = {
   label: string;
 };
 
+/**
+ * One log row described in full — the machine's own sentence included.
+ *
+ * No production surface sends this any more: BOOK-65 removed the event list from the REST
+ * side and BOOK-102 narrowed the socket to a bare `HistoryEventFrame`. It is kept as the log's
+ * own vocabulary — the shape `toHistoryEvent` produces and the log's tests read a row
+ * through — and the public record prints `HistoryRecordDto`. Dropping it is a separate ticket.
+ */
 export type HistoryEventDto = {
   hseq: number;
   /** ISO-8601 UTC, display only. Ordering is `hseq`, never this (§6F.1 rule 2). */
@@ -86,11 +95,11 @@ export type HistoryEventDto = {
  * the comment a reader filed: a change exists because a person asked for it, so one change is
  * exactly one entry, and a machine-only pass has nothing to show.
  *
- * `events` still feeds the change card, the diff, the paragraph chain, the authors' series and
- * the `history:event` frame. It appears here only as the moment: `hseq` is the change's last
- * log entry, because the scrubber and `GET /api/history/at/:hseq` already speak in `hseq`.
- * There is no `kind`, no cascade, no step and no event summary in this DTO — the public record
- * must have no event vocabulary to print.
+ * `events` still feeds the change card, the diff, the paragraph chain and the authors' series;
+ * the `history:event` frame carries no event at all any more (BOOK-102). It appears here only
+ * as the moment: `hseq` is the change's last log entry, because the scrubber and
+ * `GET /api/history/at/:hseq` already speak in `hseq`. There is no `kind`, no cascade, no step
+ * and no event summary in this DTO — the public record must have no event vocabulary to print.
  */
 export type HistoryRecordDto = {
   /** The moment key: the `hseq` of the change's last log entry. */
@@ -267,5 +276,23 @@ export type ContributorsDto = {
   items: ContributorDto[];
 };
 
-/** The `history:event` frame: one tick of the chronicle, no bodies (§10.3, §6F.1). */
-export type HistoryEventFrame = HistoryEventDto;
+/**
+ * The `history:event` frame: **a bare tick** — the log moved, refetch what you show (BOOK-102).
+ *
+ * The record is the public narration (BOOK-65), and it is read over REST. This frame used to
+ * carry the whole `HistoryEventDto` — kind, chapter, rev, cascade, step, author, summary — so
+ * every open client received the machine's own sentences even though the SPA only ticked on
+ * it. The owner's rule («the reader never sees a step, a wave or a verdict name») now holds on
+ * the wire too: the frame says only *when* the clock moved, and the page asks the record what
+ * is there to read. `HistoryEventDto` stays as the log's own vocabulary (see its comment); it
+ * simply no longer travels on this socket.
+ *
+ * `PROTOCOL_VERSION` stays 3: the old client read `hseq` from this frame and ignored the rest,
+ * so dropping the fields is compatible — no frame it relied on changed shape.
+ */
+export type HistoryEventFrame = {
+  /** The moment key the client ticks on; ordering is the log's, never a clock (§6F.1). */
+  hseq: number;
+  /** ISO-8601 UTC of that moment, display only — no narrative travels with it. */
+  at: string;
+};

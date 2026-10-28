@@ -51,9 +51,9 @@ export type DeriveInput = {
   /** Engine facts (queue, ripple, unresolved seams, live lease); absent in degraded mode. */
   overlay?: EngineOverlay;
   /**
-   * BOOK-56 — how many changes the log holds that a reader caused
-   * (`changes.source_comment IS NOT NULL`). Zero keeps every history surface off; machine
-   * revisions do not raise it.
+   * BOOK-56 — how many changes the log holds that a reader caused through a filing the
+   * operator has not hidden (BOOK-101; `history/live.ts` owns the query). Zero keeps every
+   * history surface off; machine revisions do not raise it.
    */
   readerChanges?: number;
   /**

@@ -26,7 +26,7 @@ import {
   readRelevance,
   readStepRow,
 } from './changes.ts';
-import { toHistoryFrame, type EventRow } from '../history/events.ts';
+import { toHistoryFrame } from '../history/events.ts';
 import { readEngineHealth, readQueue, stepsOfCascade } from './reader.ts';
 import { boundaryOf, chapterOfStep, countRows, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
 import { wingsOf, wingSteps } from './wings.ts';
@@ -259,15 +259,14 @@ export class EngineBridge {
     };
   }
 
-  // ── history:event — every fact, as the chronicle's ticker (§11.10) ────────
+  // ── history:event — a bare tick: the log moved, the client refetches ─────
 
   private drainHistory(): number {
+    // BOOK-102: the frame's whole payload is `{ hseq, at }` — an event's kind, change number
+    // and summary are the machine narrating, so nothing but the moment is selected here.
     const rows = this.db
-      .prepare(
-        `SELECT e.*, (SELECT c.seq FROM changes c WHERE c.id = e.change_id) AS change_seq
-           FROM events e WHERE e.hseq > ? ORDER BY e.hseq LIMIT 200`,
-      )
-      .all(this.historyCursor) as EventRow[];
+      .prepare('SELECT hseq, at FROM events WHERE hseq > ? ORDER BY hseq LIMIT 200')
+      .all(this.historyCursor) as Array<{ hseq: number; at: string }>;
     for (const row of rows) {
       this.historyCursor = row.hseq;
       this.emit('history:event', toHistoryFrame(row));

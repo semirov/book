@@ -3,8 +3,8 @@ import type { HistoryStateDto, StateSnapshot } from '@book/shared';
 /**
  * BOOK-56 — the single reader of `state.history`.
  *
- * The server derives one fact from the log (`changes.source_comment IS NOT NULL`) and
- * publishes it in the state DTO. This module is the only place in the SPA that reads it:
+ * The server derives one fact — the reader changes whose filing is not hidden (BOOK-101) —
+ * and publishes it in the state DTO. This module is the only place in the SPA that reads it:
  * every history surface receives the boolean from `App`, so no component recounts the log,
  * no CSS hides a block, and no environment flag can disagree with the book.
  */

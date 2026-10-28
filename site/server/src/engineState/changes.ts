@@ -56,10 +56,18 @@ export function publicIntent(text: string): string {
   return `${normalized.slice(0, PUBLIC_INTENT_MAX_CHARS - 1)}…`;
 }
 
-/** Public display name of a comment's author; `null` until M5 stores identities. */
+/**
+ * Public display name of a comment's author; `null` until M5 stores identities.
+ *
+ * BOOK-101 — a hidden filing has no public author: an operator withdrew it from the page, so
+ * no surface (the change card's `source`, the `change:queued` frame) prints its alias. The
+ * filter lives here, once, because every public surface reads the name through this function.
+ */
 export function readAuthor(db: Db, commentId: string | null): string | null {
   if (commentId === null) return null;
-  const row = db.prepare('SELECT author FROM comments WHERE id = ?').get(commentId) as { author: string } | undefined;
+  const row = db
+    .prepare("SELECT author FROM comments WHERE id = ? AND status <> 'hidden'")
+    .get(commentId) as { author: string } | undefined;
   return row?.author ?? null;
 }
 
