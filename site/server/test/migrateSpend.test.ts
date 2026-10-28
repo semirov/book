@@ -45,6 +45,8 @@ describe('migrate — the money ledger (BOOK-117)', () => {
       'tokens_out',
       'usd',
       'priced',
+      // BOOK-117: who ran the pass — the ledger keeps the same word the steps row does (v21).
+      'provenance',
     ]);
     // The day's sum is the index's job, and a re-close cannot charge the same pass twice.
     expect(
