@@ -4,8 +4,129 @@ import {
   budgetLine,
   draftKindLine,
   errorCopy,
+  refusalCopy,
   retryCopy,
+  signinCopy,
 } from './composer.ts';
+
+describe('a premise’s refusals are the premise’s words (BOOK-84)', () => {
+  const codes = [
+    'INVALID',
+    'TOO_LONG',
+    'DUPLICATE',
+    'STALE_ANCHOR',
+    'RATE_LIMITED',
+    'EDIT_DAILY_LIMIT',
+    'QUEUE_FULL',
+    'ENDING_FROZEN',
+    'FROZEN_FRAME',
+    'BLOCKED',
+    'UNAUTHENTICATED',
+    'CAPTCHA_UNAVAILABLE',
+    'CAPTCHA_FAILED',
+    'INTERNAL',
+    'ORIGIN',
+    'CONTENT_TYPE',
+    'TOO_SHORT',
+    'HTTP_500',
+    // BOOK-158's revise route answers here too: a premise's card offers «исправить», so a
+    // refusal to revise that filing lands under the same strip.
+    'REVISE_COOLDOWN',
+    'ATTEMPTS_EXHAUSTED',
+    'ATTEMPT_LIMIT',
+    'IDENTICAL',
+    'NOT_REVISABLE',
+    'NOT_FOUND',
+  ];
+
+  it('never calls an empty chapter’s filing a «замечание», on any code — line or detail', () => {
+    // The strip says «это замысел главы, а не замечание к тексту»; the refusal below it may not
+    // deny that sentence, whatever the server answered. The message here is the server’s own
+    // Russian sentence *with* the note word in it, so a leaking detail is caught too — a written
+    // chapter still prints that same message as its detail below.
+    for (const code of codes) {
+      const error = { code, message: 'замечание короче 3 символов' };
+      const copy = refusalCopy(error, 'premise');
+      expect(copy.line, code).not.toMatch(/замечани/iu);
+      expect(copy.line, code).toMatch(/\p{Script=Cyrillic}/u);
+      expect(copy.detail ?? '', code).not.toMatch(/замечани/iu);
+    }
+  });
+
+  it('keeps a written chapter’s wording exactly as it was', () => {
+    for (const code of codes) {
+      const error = { code, message: 'замечание короче 3 символов' };
+      expect(refusalCopy(error, 'chapter'), code).toEqual(errorCopy(error));
+    }
+    expect(refusalCopy({ code: 'DUPLICATE', message: '' }, 'chapter').line).toBe('такое замечание уже отправлено');
+    // The chapter keeps the server’s Russian sentence as its detail, note word and all.
+    expect(refusalCopy({ code: 'INVALID', message: 'замечание короче 3 символов' }, 'chapter').detail).toBe(
+      'замечание короче 3 символов',
+    );
+  });
+
+  it('names the premise the refusal itself points at — one row for the line and the door', () => {
+    // The prod 409: the reader’s own premise already exists. The number comes from the 409’s own
+    // `commentId`, the row the door opens, so a stale page cannot name one row and open another.
+    const error = { code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_1' };
+    expect(refusalCopy(error, 'premise')).toEqual({
+      line: 'у главы уже есть замысел',
+      detail: 'первый замысел — №MT1',
+      canRetry: false,
+    });
+    // A 409 with no id still says the chapter holds a premise; it just cannot name it.
+    expect(refusalCopy({ code: 'DUPLICATE', message: '' }, 'premise')).toMatchObject({
+      line: 'у главы уже есть замысел',
+      detail: null,
+    });
+  });
+
+  it('asks a signed-out reader for the act the form would perform', () => {
+    expect(signinCopy('premise')).toEqual({
+      line: 'войдите через Яндекс, чтобы заложить замысел',
+      fine: 'Читать можно без входа. Автор замысла виден другим читателям.',
+    });
+    expect(signinCopy('chapter').line).toBe('войдите через Яндекс, чтобы оставить замечание');
+    // The refusal code and the visible gate are one table, so they cannot drift.
+    expect(refusalCopy({ code: 'UNAUTHENTICATED', message: '' }, 'premise').line).toBe(signinCopy('premise').line);
+  });
+
+  it('keeps the lines that name no filing kind, and speaks of замыслы under the rate limit', () => {
+    expect(refusalCopy({ code: 'QUEUE_FULL', message: '', retryAfterMs: 60_000 }, 'premise')).toEqual(
+      errorCopy({ code: 'QUEUE_FULL', message: '', retryAfterMs: 60_000 }),
+    );
+    expect(refusalCopy({ code: 'RATE_LIMITED', message: '' }, 'premise').line).toBe(
+      'слишком много замыслов — попробуйте позже',
+    );
+    expect(refusalCopy({ code: 'INVALID', message: 'замысел короче 3 символов' }, 'premise')).toMatchObject({
+      line: 'замысел не отправлен — проверьте поля',
+      detail: 'замысел короче 3 символов',
+    });
+  });
+
+  /**
+   * BOOK-158 revisits a premise too: its own card offers «исправить», so the revise route's
+   * refusals can answer under an empty chapter. They keep their own truth — the wait is still a
+   * wait — and drop only the server's sentence when it calls the filing a «замечание».
+   */
+  it('keeps the revise route’s lines on a premise without its «замечание»', () => {
+    const server = 'замечание уже поправлено';
+    expect(refusalCopy({ code: 'REVISE_COOLDOWN', message: server }, 'premise')).toMatchObject({
+      line: 'слишком быстро — попробуйте ещё раз чуть позже',
+    });
+    expect(refusalCopy({ code: 'NOT_REVISABLE', message: server }, 'premise')).toMatchObject({
+      line: 'этот замысел уже поправлен',
+      detail: null,
+    });
+    expect(refusalCopy({ code: 'NOT_FOUND', message: server }, 'premise').line).toBe(
+      'замысел не найден — обновите страницу',
+    );
+    // A wait is still a wait on either surface; only the echoed sentence is dropped.
+    expect(refusalCopy({ code: 'ATTEMPT_LIMIT', message: server }, 'premise').line).toBe(
+      'слишком много попыток сегодня — попробуйте завтра',
+    );
+  });
+});
 
 describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
   it('maps every refusal code to one Russian line, never to a server internal', () => {

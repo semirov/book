@@ -357,6 +357,39 @@ describe('the premise strip in an empty chapter', () => {
     expect(rule).not.toContain('grid-template-rows');
   });
 
+  it('gives an empty chapter no note action in its open form (BOOK-84)', async () => {
+    // The strip says «это замысел главы, а не замечание к тексту»; the form below it must not
+    // offer the note action that the sentence denies. The hint is the strip's own line, so it
+    // stays — and the two agree instead of contradicting each other.
+    await act(async () => {
+      root?.render(
+        <ChapterArticle
+          entry={ENTRY}
+          revision={null}
+          revising={null}
+          caret={null}
+          fresh={false}
+          firstEmpty
+          history={false}
+          comments={[]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Аня' }}
+        />,
+      );
+    });
+    await act(async () => container.querySelector<HTMLElement>('#ch-7 .premise-row')?.click());
+    await act(async () => container.querySelector<HTMLElement>('#ch-7 .seam-cta')?.click());
+
+    const seam = container.querySelector<HTMLElement>('#ch-7 .seam');
+    const form = container.querySelector<HTMLElement>('#ch-7 .seam-form');
+    expect(form).not.toBeNull();
+    expect(seam?.textContent).toContain(PREMISE_HINT);
+    // The form's own words: no note action and not one «замечание», and the premise's act.
+    expect(form?.querySelector('button.note-action')).toBeNull();
+    expect(form?.textContent ?? '').not.toMatch(/замечани/iu);
+    expect(form?.querySelector('button.seam-submit')?.textContent).toBe('заложить замысел');
+  });
+
   it('opens the premise card from a duplicate refusal on an empty chapter (BOOK-111)', async () => {
     // The prod 409 on an unwritten chapter: the form says the filing exists, and its door reads
     // the row by id and opens it — the same card the premise row opens, not a second form.
@@ -405,7 +438,9 @@ describe('the premise strip in an empty chapter', () => {
       await Promise.resolve();
     });
 
-    expect(container.querySelector('#ch-7 .seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    // BOOK-84: the refusal under an empty chapter speaks of the premise it names, never of a
+    // remark the strip above it denies.
+    expect(container.querySelector('#ch-7 .seam-error')?.textContent).toContain('у главы уже есть замысел');
     const open = [...container.querySelectorAll<HTMLButtonElement>('#ch-7 button.seam-inline-action')].find(
       (button) => button.textContent?.trim() === 'открыть отправленное',
     );

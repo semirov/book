@@ -44,9 +44,17 @@ export function premiseAction(existing: CommentDto | null): { kind: 'card' | 'fo
   return existing === null ? { kind: 'form' } : { kind: 'card' };
 }
 
-/** What a second attempt is told, and where the first one is. */
-export function premiseRefusal(first: CommentDto): { line: string; detail: string } {
-  return { line: PREMISE_EXISTS, detail: `первый замысел — замечание ${filingNumber(first)}` };
+/**
+ * What a second attempt is told, and where the first one is.
+ *
+ * BOOK-84 — the whole line is the premise's: the strip above the form says «это замысел главы,
+ * а не замечание к тексту», so the refusal below it may not call the filing a «замечание». The
+ * first premise is named by its number, and the door beside the line opens it (BOOK-111). The
+ * number comes from the refusal's own `commentId` — the row the door opens — so a stale page can
+ * not name one row and open another; a refusal that carries no id simply omits the number.
+ */
+export function premiseRefusal(firstId: string | null): { line: string; detail: string | null } {
+  return { line: PREMISE_EXISTS, detail: firstId === null ? null : `первый замысел — ${filingNumber({ id: firstId })}` };
 }
 
 /**
