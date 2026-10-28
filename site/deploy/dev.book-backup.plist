@@ -3,7 +3,7 @@
 <!--
   dev.book-backup — daily consistent backup of the book data volume (BOOK-28, BOOK-183).
   Installed at ~/Library/LaunchAgents/dev.book-backup.plist; the script is
-  site/deploy/backup.sh in /Users/filipp/projects/book. See BOOK-DOC-2 / BOOK-DOC-67.
+  site/deploy/backup.sh in the deploy root /Users/filipp/book-deploy. See BOOK-DOC-2 / BOOK-DOC-67.
 
   The script DISPATCHES on ~/.local/state/book-deploy/runtime: under `compose` it runs
   `docker compose exec -T site node /app/bin/backup.mjs`, which writes into /backups (the container
@@ -21,7 +21,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/filipp/projects/book/site/deploy/backup.sh</string>
+		<string>/Users/filipp/book-deploy/site/deploy/backup.sh</string>
 	</array>
 	<key>EnvironmentVariables</key>
 	<dict>

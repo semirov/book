@@ -172,6 +172,23 @@ function manifestLines(dir: string): { head: string; hashes: Map<string, string>
   return { head, hashes };
 }
 
+/** The seven counts the CLI reports, read through one connection. */
+function countsOf(db: Database.Database): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const table of Object.keys(ROWS)) {
+    counts[table] = (db.prepare(`SELECT count(*) AS n FROM "${table}"`).get() as { n: number }).n;
+  }
+  return counts;
+}
+
+/**
+ * The bytes the database's own pages hold: `page_count × page_size`. This is the platform-neutral
+ * "every page is in the main file" proof; the on-disk size is not, because page and header details
+ * differ between the macOS build used locally and the Debian runner.
+ */
+const pageBytes = (db: Database.Database): number =>
+  Number(db.pragma('page_count', { simple: true })) * Number(db.pragma('page_size', { simple: true }));
+
 describe('bin/backup.mjs', () => {
   it('publishes a consistent, self-contained daily copy and proves it in the manifest', async () => {
     const fixture = createFixture();
@@ -191,13 +208,23 @@ describe('bin/backup.mjs', () => {
     expect(dir.startsWith(join(fixture.out, 'daily') + '/')).toBe(true);
     expect(readdirSync(join(fixture.out, 'daily'))).toEqual([dir.slice(dir.lastIndexOf('/') + 1)]);
 
-    // The copy is self-contained: DELETE journal mode, no -wal/-shm, integrity ok when read back.
+    // The copy is self-contained: DELETE journal mode, no -wal/-shm beside it, integrity ok, and every
+    // page the source holds is inside the copy's main file — `page_count × page_size` is the same on
+    // both sides, which the file's byte size is not (page/header layout differs by platform), and the
+    // row counts of the copy are the source's row-by-row.
     const copy = new Database(join(dir, 'book.db'), { readonly: true });
+    const source = new Database(join(fixture.data, 'book.db'), { readonly: true });
     try {
       expect(copy.pragma('journal_mode', { simple: true })).toBe('delete');
       expect(copy.pragma('integrity_check', { simple: true })).toBe('ok');
+      expect(statSync(join(dir, 'book.db')).size).toBeGreaterThan(0);
+      expect(pageBytes(copy)).toBeGreaterThan(0);
+      expect(pageBytes(copy)).toBe(pageBytes(source));
+      expect(countsOf(copy)).toEqual(countsOf(source));
+      expect(countsOf(copy)).toEqual(ROWS);
     } finally {
       copy.close();
+      source.close();
     }
     expect(existsSync(join(dir, 'book.db-wal'))).toBe(false);
     expect(existsSync(join(dir, 'book.db-shm'))).toBe(false);
@@ -229,7 +256,12 @@ describe('bin/backup.mjs', () => {
     expect(statSync(join(fixture.out, 'daily')).mode & 0o777).toBe(0o700);
     expect(statSync(join(dir, 'book.db')).mode & 0o777).toBe(0o600);
     expect(statSync(join(dir, 'manifest.txt')).mode & 0o777).toBe(0o600);
-    expect(statSync(join(dir, 'versions', 'ch01', 'rev1.md')).mode & 0o777).toBe(0o600);
+    // A copied snapshot's exact bits are Node's `fs.cp` behaviour, which differs between macOS and the
+    // Debian runner; what the copy must not do is come out MORE open than the file it came from.
+    const snapshot = statSync(join(dir, 'versions', 'ch01', 'rev1.md')).mode & 0o777;
+    const snapshotSource = statSync(join(fixture.data, 'versions', 'ch01', 'rev1.md')).mode & 0o777;
+    expect(snapshot & 0o022).toBe(0);
+    expect(snapshot & 0o044).toBeLessThanOrEqual(snapshotSource & 0o044);
 
     // The lock and the staging dir are gone; the token value never appeared anywhere.
     expect(existsSync(join(fixture.out, '.lock'))).toBe(false);
