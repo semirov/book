@@ -14,11 +14,8 @@
 /* BOOK-68: the seam never parts the paragraph. The strip is a block sibling laid after the
    `<p>` — normal flow, a plain top margin, no negative offset and no positioning, so it can
    neither split a line nor cover one, and the paragraph keeps its line breaking when the
-   seam opens and when it closes.
-   BOOK-128 comment #3815: the phrase's zero-height seat may stand between the two, so the same
-   margin is stated for it. */
-.p + .seam,
-.sentence-seat + .seam {
+   seam opens and when it closes. */
+.p + .seam {
   display: block;
   margin: 10px 0;
 }
@@ -55,9 +52,9 @@
 
 /* ---------- strip ---------- */
 .seam {
-  /* BOOK-128 comment #3815 — the strip is the containing block of the word's own margin item:
-     `left: calc(100% + var(--note-gap))` must mean the prose's right edge, and the pass writes
-     `top` against this box (the row the word stands on). */
+  /* The strip is an ordinary block in the flow: the word's record is not placed against it any
+     more (BOOK-128 #3863 — the record lives after the paragraph), so the strip states no
+     containing block, no `top` channel and no margin geometry of its own. */
   position: relative;
   border-top: 1px solid var(--rule-2);
   border-bottom: 1px solid var(--rule);

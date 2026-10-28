@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { placeFill, placePanel, reserveHeight, type PanelBox } from './cssom.ts';
+import { placeFill, reserveHeight } from './cssom.ts';
 
 /** BOOK-30 — the values a `style` attribute would carry, written through CSSOM instead. */
 
@@ -43,26 +43,5 @@ describe('placeFill (BOOK-DOC-50 §4)', () => {
 
   it('tolerates a missing node (the rail is not rendered under two records)', () => {
     expect(() => placeFill(null, 50)).not.toThrow();
-  });
-});
-
-describe('placePanel', () => {
-  function panel(): { style: { top: string; left: string; width: string; maxHeight: string } } {
-    return { style: { top: '', left: '', width: '', maxHeight: '' } };
-  }
-
-  it('writes the measured box onto the panel style', () => {
-    const aside = panel();
-    const box: PanelBox = { top: 120, left: 10, width: 320, maxHeight: 476 };
-    placePanel(aside, box);
-    expect(aside.style).toEqual({ top: '120px', left: '10px', width: '320px', maxHeight: '476px' });
-  });
-
-  it('clears the box when the panel is not anchored, and tolerates a missing node', () => {
-    const aside = panel();
-    placePanel(aside, { top: 1, left: 2, width: 3, maxHeight: 4 });
-    placePanel(aside, null);
-    expect(aside.style).toEqual({ top: '', left: '', width: '', maxHeight: '' });
-    expect(() => placePanel(null, null)).not.toThrow();
   });
 });

@@ -1,34 +1,36 @@
 /**
- * BOOK-DOC-34 §2.7 — the filing card, the page's one floating frame.
+ * BOOK-128 #3863 (review) — the filing card, a **block after the row** that raised it.
  *
- * BOOK-128 comment #3815 removed the provenance from this file: a word's record is marginalia
- * (`marginalia.css`, `.prov-block`), so this sheet carries one surface only. The placement is
- * the site's (`placePopover`/`placePanel`): fixed over the phrase, own scroll at 62 dvh, no
- * scrim, the page keeps scrolling underneath. Radii are 0 and the shadow is not used.
+ * The floating layer is gone: no `position: fixed`, no `z-index`, no 62 dvh cap, no own scroll,
+ * no fade. `PlaceLink` portals the card into a `.place-seat` inserted after the nearest `p`/`li`,
+ * so the card is a sibling in the flow (a discussion quote, the reader's own decision, a
+ * chronicle row) — the one surface that cannot be a sentence record. It keeps its flat list of
+ * facts and a 12/16 px box.
  */
 
 .filing-panel {
   /*
-   * BOOK-168 (owner, 2026-10-28) — **out of the page's flow from the first paint.** The card is
-   * portaled to `document.body`; while it was static an unplaced card stood at the document's
-   * end, and its own focus scrolled the page to the colophon right after a place door's landing.
-   * The placement (`placePanel`) writes top/left/width/maxHeight over this box, and
-   * `.filing-panel-anchored` marks that a measured box has landed — it frames nothing itself.
+   * BOOK-128 comment #3852 — **the card is a block in the flow, not a layer over the page.**
+   * `position: fixed`, `z-index: 40`, `max-height: 62dvh`, `overflow: auto` and the fade are
+   * deleted with the placement engine (`placePopover`/`placePanel`): the card stands after the
+   * paragraph or the discussion row that raised it, full column, with the accordion's rules.
+   * Its own box keeps the card's 12 px padding and its flat list of facts.
    */
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 40;
+  position: static;
+  box-sizing: border-box;
   display: grid;
   gap: 10px;
-  box-sizing: border-box;
-  width: 100%;
-  max-height: 62dvh;
-  overflow: auto;
-  padding: 12px;
-  border: 1px solid var(--rule);
-  background: var(--paper-2);
-  animation: seam-fade 120ms var(--ease-out);
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  border-top: 1px solid var(--rule-2);
+  border-left: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  animation: none;
 }
 .filing-head {
   display: flex;
@@ -129,12 +131,4 @@
   font-size: var(--fs-meta);
   line-height: 1.45;
   color: var(--ink-3);
-}
-@keyframes seam-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }

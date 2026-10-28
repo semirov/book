@@ -163,7 +163,8 @@ async function tapBlock(container: HTMLElement, blockId: string): Promise<void> 
  * `caretRangeFromPoint`, the second API the component reads, so both paths are proved.
  */
 function stubCaret(span: HTMLElement, offset: number, fallback = false): void {
-  const node = span.firstChild;
+  // The sentence's text lives in its own door span (the numerals are siblings).
+  const node = span.querySelector('.sentence-door')?.firstChild ?? span.firstChild;
   if (node === null) throw new Error('the sentence span has no text node');
   // jsdom's own `Document` type carries neither API, and the browser's `CaretPosition` carries
   // more than the component reads — the stub supplies exactly the two fields it uses.
@@ -202,19 +203,22 @@ describe('the canon sentence is frozen, chapter 1 is not (BOOK-137)', () => {
     // The pointer lands **inside** «столе», the sentence's last word: the strip must name the
     // word that was tapped, not the sentence's first one.
     await tapWord(container, 'ch01#b3', 'столе');
-    const seam = container.querySelector('.seam');
-    expect(seam).not.toBeNull();
-    expect(seam?.querySelector('.seam-word')?.textContent).toBe('«столе»');
-    expect(seam?.textContent).not.toContain('«Записку»');
-    expect(seam?.textContent).toContain('вмешаться');
-    expect(seam?.textContent).not.toContain('закреплено');
-    expect(seam?.textContent).not.toContain('рамка книги');
-    expect(seam?.getAttribute('data-frozen')).toBeNull();
-    expect(seam?.querySelector('.seam-frame')).toBeNull();
+    // BOOK-128 #3852 — the block names the very word the tap landed in, in the prose and in
+    // its own accessible name, and it is an ordinary (unfrozen) record.
+    const block = container.querySelector('.rec');
+    expect(block).not.toBeNull();
+    // ADR-044 — the mark is the sentence; the word under the tap is underlined in the quote.
+    expect(container.querySelector('[data-touch]')?.textContent).toBe('Записку оставили на столе.');
+    expect(container.querySelector('.rec-word')?.textContent).toBe('столе');
+    expect(block?.getAttribute('aria-label')).toContain('столе');
+    expect(block?.textContent).toContain('вмешаться');
+    expect(block?.textContent).not.toContain('закреплено');
+    expect(block?.textContent).not.toContain('рамка книги');
+    expect(block?.querySelector('.rec-frame-note')).toBeNull();
 
-    // The form grows in the strip, and only the draft decides whether it can be sent.
+    // The form is a state of the same block, and only the draft decides whether it can be sent.
     await act(async () => {
-      (container.querySelector('.seam-cta') as HTMLElement).click();
+      (container.querySelector('.rec-cta') as HTMLElement).click();
     });
     const submit = (): HTMLButtonElement | null => container.querySelector<HTMLButtonElement>('.seam-submit');
     expect(submit()).not.toBeNull();
@@ -231,18 +235,17 @@ describe('the canon sentence is frozen, chapter 1 is not (BOOK-137)', () => {
     expect(container.querySelector('[data-block-id="ch01#b0"] .seam-rail')).toBeNull();
 
     await tapBlock(container, 'ch01#b0');
-    const seam = container.querySelector('.seam');
-    expect(seam?.querySelector('.seam-prov')?.textContent).toBe('рамка книги · не меняется');
-    expect(seam?.querySelector('.seam-frozen')?.getAttribute('href')).toBe('/rules#рамка');
-    expect(seam?.getAttribute('data-frozen')).toBe('true');
-    // The warning line is in the strip before the reader types, and the form is not open yet.
-    expect(seam?.getAttribute('data-state')).toBe('strip');
-    expect(seam?.querySelector('.seam-note.seam-frame')?.textContent).toBe(FRAME_WARNING);
-    expect(seam?.querySelector('.seam-form')).toBeNull();
+    const block = container.querySelector('.rec');
+    expect(block).not.toBeNull();
+    // The frame's line and link are the record's, printed before the reader types.
+    expect(block?.querySelector('.rec-frame-note')?.textContent).toContain('рамка книги →');
+    expect(block?.querySelector('.rec-frozen')?.getAttribute('href')).toBe('/rules#рамка');
+    expect(block?.querySelector('.rec-frame-note')?.textContent).toContain(FRAME_WARNING);
+    expect(block?.querySelector('.seam-form')).toBeNull();
     // «вмешаться» is offered here too: the filing is taken and filed as paperwork.
-    expect(seam?.querySelector('.seam-cta')?.textContent).toBe('вмешаться');
+    expect(block?.querySelector('.rec-cta')?.textContent).toBe('вмешаться');
     await act(async () => {
-      (container.querySelector('.seam-cta') as HTMLElement).click();
+      (container.querySelector('.rec-cta') as HTMLElement).click();
     });
     expect(container.querySelector('.seam-form')).not.toBeNull();
   });
@@ -255,12 +258,12 @@ describe('the canon sentence is frozen, chapter 1 is not (BOOK-137)', () => {
     );
     // The second caret API (`caretRangeFromPoint`) is the one this browser has: same word.
     await tapWord(container, 'ch65#b1', 'стене', true);
-    const seam = container.querySelector('.seam');
-    expect(seam?.querySelector('.seam-word')?.textContent).toBe('«стене»');
-    expect(seam?.textContent).toContain('вмешаться');
-    expect(seam?.getAttribute('data-frozen')).toBeNull();
-    expect(seam?.querySelector('.seam-frame')).toBeNull();
-    expect(seam?.querySelector('.seam-frozen')).toBeNull();
-    expect(seam?.querySelector('.seam-prov')?.textContent).toBe('откуда это слово');
+    const block = container.querySelector('.rec');
+    expect(container.querySelector('[data-touch]')?.textContent).toBe('Часы на стене шли.');
+    expect(container.querySelector('.rec-word')?.textContent).toBe('стене');
+    expect(block?.getAttribute('aria-label')).toContain('стене');
+    expect(block?.textContent).toContain('вмешаться');
+    expect(block?.querySelector('.rec-frame-note')).toBeNull();
+    expect(block?.querySelector('.rec-frozen')).toBeNull();
   });
 });

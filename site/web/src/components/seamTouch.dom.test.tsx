@@ -174,8 +174,10 @@ async function mountParagraph(blockId: string, comments: readonly CommentDto[] =
 }
 
 const seam = (): HTMLElement | null => document.querySelector<HTMLElement>('.seam');
+/** BOOK-128 #3852 — one block of either surface: the record is the strip's successor. */
+const anyBlock = (): Element[] => [...document.querySelectorAll('.seam, .rec')];
 const openForm = async (): Promise<void> => {
-  await act(async () => (document.querySelector('.seam-cta') as HTMLElement).click());
+  await act(async () => (document.querySelector('.seam-cta, .rec-cta') as HTMLElement).click());
 };
 
 describe('a thumb on the page (BOOK-111)', () => {
@@ -263,12 +265,12 @@ describe('a thumb on the page (BOOK-111)', () => {
     const second = [...document.querySelectorAll<HTMLElement>('.p span[data-s]')].at(-1);
     expect(second).not.toBeUndefined();
     await act(async () => pointer('pointerup', second as HTMLElement, 5, 5));
-    // One strip, and it is anchored in the second sentence — the first draft did not travel.
-    expect(document.querySelectorAll('.seam')).toHaveLength(1);
-    expect(document.querySelector('.p span.is-anchored')?.getAttribute('data-quote')).toBe('Её освещал яркий свет.');
+    // One block, and it is the record of the second sentence — the first draft did not travel.
+    expect(anyBlock()).toHaveLength(1);
+    expect(document.querySelector('.rec')).not.toBeNull();
+    expect(document.querySelector('[data-touch]')?.getAttribute('aria-expanded')).toBe('true');
     await openForm();
-    expect(document.querySelectorAll('.seam[data-open="true"]')).toHaveLength(1);
-    expect(document.querySelector('.p span.is-anchored')?.getAttribute('data-quote')).toBe('Её освещал яркий свет.');
+    expect(document.querySelectorAll('.rec')).toHaveLength(1);
     expect(document.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe('');
   });
 
@@ -282,7 +284,9 @@ describe('a thumb on the page (BOOK-111)', () => {
     const second = [...document.querySelectorAll<HTMLElement>('.p span[data-s]')].at(-1) as HTMLElement;
     await act(async () => pointer('pointerup', second, 5, 5));
     expect(document.querySelector('.filing-panel')).toBeNull();
-    expect(document.querySelectorAll('.seam')).toHaveLength(1);
+    // The tap is an explicit act: the record replaces the card and the strip in one commit.
+    expect(anyBlock()).toHaveLength(1);
+    expect(document.querySelector('.rec')).not.toBeNull();
   });
 
   it('a pointerdown inside a filing panel closes nothing', async () => {
