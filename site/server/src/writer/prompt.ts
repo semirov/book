@@ -29,17 +29,23 @@ import {
   isChapterNumber,
   partOf,
 } from '@book/shared';
+import type { Untrusted } from '@book/shared';
 
 import { isWrittenChapter, readChapter } from '../engine/text.ts';
 import { sha256Hex } from '../util/hash.ts';
 
-/** The assignment as the engine returns it, narrowed to the fields the prompt may quote. */
+/**
+ * The assignment as the engine returns it, narrowed to the fields the prompt may quote.
+ *
+ * BOOK-44 — `intent` and `premise.intent` are reader-written sentences and keep their
+ * `untrusted` mark all the way into the payload, next to the words.
+ */
 export type WriterAssignmentData = {
   chapter: number;
   pass: string;
-  intent: string | null;
+  intent: Untrusted<string> | null;
   interventionKind: string | null;
-  premise: { intent: string; kind: string | null } | null;
+  premise: { intent: Untrusted<string>; kind: string | null } | null;
   expectation: null | { chars: { min: number; max: number } };
 };
 

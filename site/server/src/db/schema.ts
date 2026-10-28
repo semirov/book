@@ -142,7 +142,7 @@ CREATE TABLE changes (
   intervention_kind TEXT CHECK (intervention_kind IN ('document','decision','testimony','erasure')),
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   anchor       TEXT,                               -- JSON {blockIds,quote,prefix,suffix}
-  intent       TEXT NOT NULL,                      -- ≤600 chars, what must become true
+  intent       TEXT NOT NULL,                      -- ≤200 chars, what must become true
   intent_original TEXT,                            -- set when relevance adapted it
   proposed_text TEXT,                              -- reader_edit only, never applied verbatim
   source_comment TEXT REFERENCES comments(id),

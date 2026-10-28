@@ -110,9 +110,9 @@ export function dryRunPlan(input: { bookRoot: string; chapter: number }): DryRun
   const assignment: WriterAssignmentData = {
     chapter: input.chapter,
     pass: 'draft',
-    intent: 'пробный прогон (dryRun): без модели, без записи',
+    intent: { value: 'пробный прогон (dryRun): без модели, без записи', untrusted: true },
     interventionKind: null,
-    premise: { intent: 'пробный прогон (dryRun): замысел не читается', kind: null },
+    premise: { intent: { value: 'пробный прогон (dryRun): замысел не читается', untrusted: true }, kind: null },
     expectation: { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } },
   };
   const prompt = buildWriterPrompt({ bookRoot: input.bookRoot, assignment });
@@ -275,7 +275,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       chapter,
       passId: job.stepId,
       changeId: job.changeId,
-      summary: stageSummary.queued({ chapter, pass: job.pass, premise: job.premise?.intent ?? null, intent: job.intent }),
+      summary: stageSummary.queued({ chapter, pass: job.pass, premise: job.premise?.intent.value ?? null, intent: job.intent?.value ?? null }),
       model: null,
       at: now(),
     });

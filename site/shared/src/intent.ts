@@ -11,6 +11,10 @@
  * BOOK-16 makes the intervention's kind part of the judgement: a goal that declares a kind
  * must be a world-fact, not a correction of the writing (`proseCorrectionViolation`).
  *
+ * BOOK-44 adds the second half of that: a second-person order about *how to write* («пиши
+ * короче», «не упоминай», «сократи», «перепиши») is refused unconditionally, with or without
+ * a kind, and the intent itself is capped at 200 characters — one goal, not a paragraph.
+ *
  * The same function runs in four places — `feedback.mjs decide`, the decisions tailer on the
  * site, the engine's `/internal/changes` route, and the tests — so there is exactly one
  * definition of a valid intent. Each of them passes the kind it read from the stored comment.
@@ -26,6 +30,7 @@ export type IntentFailureCode =
   | 'INTENT_TOO_LONG'
   | 'INTENT_OTHER_CHAPTER'
   | 'INTENT_SHAPE'
+  | 'INTENT_WRITING_ORDER'
   | 'INTENT_NEW_ENTITY'
   | 'INTENT_PROSE_CORRECTION'
   | 'INTENT_UNVERIFIABLE';
@@ -234,6 +239,38 @@ export function proseCorrectionViolation(intent: string): string | null {
 }
 
 /**
+ * BOOK-44 — an order about *how to write* is not a goal about the world, and it does not need
+ * a declared kind to be refused: `«Пиши короче все реплики смотрителя»` addresses the writer's
+ * hand whatever the filing claims to be.
+ *
+ * The list is closed and consists of **anchored word forms, not stems** — the same lesson as
+ * `PROSE_MECHANICS`: exactly the four families the issue names (`пиши`, `упоминай` — including
+ * after «не» — `сократи`, `перепиши`) plus their polite `-те` forms. A stem would refuse an
+ * infinitive (`сократить`, `переписать`), a noun (`упоминание`) or a third person
+ * (`смотритель не упоминает`), and each of those is a legitimate goal, not an order.
+ *
+ * The tokeniser keeps a hyphen inside the word, so «Пиши-ка» arrives as one token: the enclitic
+ * `-ка` is stripped before the lookup, or the same order would pass spelled slightly softer.
+ */
+const WRITING_ORDER: ReadonlySet<string> = new Set([
+  'пиши',
+  'пишите',
+  'упоминай',
+  'упоминайте',
+  'сократи',
+  'сократите',
+  'перепиши',
+  'перепишите',
+]);
+
+export function writingOrderViolation(intent: string): string | null {
+  for (const word of words(intent)) {
+    if (WRITING_ORDER.has(word.replace(/-ка$/u, ''))) return word;
+  }
+  return null;
+}
+
+/**
  * BOOK-137: a chapter is no longer refused for being the last one. ch67 used to be closed here
  * («финал заморожен»), which made a filing on the finale undecidable — the reader's paperwork
  * could never be recorded. The ending is protected where text is: a ripple never rewrites it
@@ -271,6 +308,18 @@ export function validateIntent(raw: string, chapter: number, context: IntentCont
       ok: false,
       code: 'INTENT_OTHER_CHAPTER',
       reason: `интент называет другую главу (${foreign.join(', ')})`,
+    };
+  }
+
+  // BOOK-44: a second-person order about the prose itself — «пиши короче», «не упоминай»,
+  // «сократи», «перепиши» — is refused here, before it reaches a writer prompt, and without
+  // waiting for a declared kind. Placed before the new-entity rule so a sentence that is both
+  // meta and an order keeps reporting the meta verdict above.
+  if (writingOrderViolation(intent) !== null) {
+    return {
+      ok: false,
+      code: 'INTENT_WRITING_ORDER',
+      reason: 'интент указывает, как писать: назовите, что меняется в мире',
     };
   }
 

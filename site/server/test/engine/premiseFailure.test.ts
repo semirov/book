@@ -68,7 +68,7 @@ describe('BOOK-7 — a broken pass settles the premise by cause, never by accide
       // Nor is it refused: the next first pass still carries it.
       const next = fixture.engine.next({ for: 'fwd', session: 'writer-fwd-2' }) as WriterAssignment;
       expect(next.chapter).toBe(5);
-      expect(next.premise?.intent).toBe('в главе 5 появляется документ о допуске');
+      expect(next.premise?.intent.value).toBe('в главе 5 появляется документ о допуске');
       expect(change(fixture.db, changeId)).toMatchObject({ status: 'pending' });
     } finally {
       fixture.close();

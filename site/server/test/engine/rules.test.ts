@@ -104,6 +104,8 @@ describe('the reaper gives up only after three attempts (§6A.11)', () => {
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда' });
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
       expect(assignment.pass).toBe('change');
+      // BOOK-44: the reader's goal sentence reaches the writer marked, not as bare prose.
+      expect(assignment.intent).toEqual({ value: 'среда', untrusted: true });
       for (let attempt = 0; attempt < 3; attempt += 1) {
         if (attempt > 0) fixture.engine.next({ for: 'fwd', session: `fwd-${attempt}` });
         fixture.clock.advance(fixture.config.leaseTtlMs + 1_000);

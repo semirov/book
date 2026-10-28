@@ -98,7 +98,10 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(assignment.pass).toBe('draft');
       expect(assignment.chapter).toBe(5);
-      expect(assignment.premise).toEqual({ intent: 'в главе 5 появляется документ о допуске', kind: 'document' });
+      expect(assignment.premise).toEqual({
+        intent: { value: 'в главе 5 появляется документ о допуске', untrusted: true },
+        kind: 'document',
+      });
 
       const run = driveStub(fixture, assignment, {
         title: 'Глава 5',
@@ -145,7 +148,11 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       });
 
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
-      expect(assignment.premise?.intent).toBe('в главе 5 появляется документ о допуске');
+      // BOOK-44: the premise's sentence is a reader's, and the mark travels inside the value.
+      expect(assignment.premise?.intent).toEqual({
+        value: 'в главе 5 появляется документ о допуске',
+        untrusted: true,
+      });
       driveStub(fixture, assignment, { title: 'Глава 5', blocks: ['Пятая глава.', 'Служебный абзац.'] });
 
       expect(change(fixture.db, first.changeId)).toMatchObject({ status: 'done', outcome: 'applied' });
@@ -210,7 +217,7 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       // The draft for chapter 5 opens and takes its premise; then the owner hand-writes the
       // chapter while the step is still open — that premise is owned, not stranded.
       const draft = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
-      expect(draft.premise?.intent).toBe('в главе 5 появляется документ');
+      expect(draft.premise?.intent.value).toBe('в главе 5 появляется документ');
       fixture.writeChapterBlocks(5, 'Глава 5', ['Пятая глава, написанная рукой автора.', 'Служебный абзац.']);
 
       // Chapter 9 was written with no step at all: its premise can never enter an edition.
@@ -304,7 +311,7 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
 
       const resumed = fixture.engine.next({ for: 'fwd', session: 'writer-fwd-2' }) as WriterAssignment;
       expect(resumed.stepId).toBe(first.stepId);
-      expect(resumed.premise?.intent).toBe('в главе 5 появляется документ о допуске');
+      expect(resumed.premise?.intent.value).toBe('в главе 5 появляется документ о допуске');
       expect(change(fixture.db, accepted.changeId)).toMatchObject({ status: 'pending' });
     } finally {
       fixture.close();

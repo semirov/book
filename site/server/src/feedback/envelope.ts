@@ -15,6 +15,7 @@
  */
 
 import { FRAMING_SENTENCE, fenceLine, foldForMatch } from '@book/shared';
+import type { Untrusted } from '@book/shared';
 
 import { spaceInvisible } from '../comments/sanitize.ts';
 
@@ -33,7 +34,7 @@ export type EnvelopeField = 'author' | 'quote' | 'text' | 'proposed';
 export const ENVELOPE_FIELDS: readonly EnvelopeField[] = ['author', 'quote', 'text', 'proposed'];
 
 /** Every untrusted value travels with its own mark, so a nested read cannot lose it. */
-export type UntrustedValue = { value: string | null; untrusted: true };
+export type UntrustedValue = Untrusted<string | null>;
 
 export type FilingEnvelope = {
   envelope: typeof FILING_ENVELOPE;

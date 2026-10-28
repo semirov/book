@@ -13,6 +13,7 @@
 import {
   CHAPTER_CHARS,
   FRONT_ANNOTATION_FROZEN,
+  INTENT_MAX_CHARS,
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
   type Relevance,
@@ -146,6 +147,11 @@ export function createWriteOps(deps: EngineDeps) {
       if (options.decision === 'adapt') {
         const intent = (options.intent ?? '').trim();
         if (intent.length === 0) refuse('INVALID_INTENT', 422, 'an adapted change carries its narrowed intent');
+        // BOOK-44: the bound holds on this path too — an adapted intent is the goal the next pass
+        // receives, so it is refused, never truncated: a shortened goal is a different goal.
+        if (intent.length > INTENT_MAX_CHARS) {
+          refuse('INVALID_INTENT', 422, `intent is ${intent.length} characters, limit is ${INTENT_MAX_CHARS}`);
+        }
         store.updateChange(db, change.id, {
           intent,
           intent_original: change.intent_original ?? change.intent,

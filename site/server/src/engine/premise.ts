@@ -165,7 +165,7 @@ export function premiseOfStep(db: Db, step: store.StepRow): PremiseAssignment | 
   if (step.premise_change === null) return null;
   const change = store.getChange(db, step.premise_change);
   if (change === undefined || change.premise !== 1) return null;
-  return { intent: change.intent, kind: normalizeInterventionKind(change.intervention_kind) };
+  return { intent: { value: change.intent, untrusted: true }, kind: normalizeInterventionKind(change.intervention_kind) };
 }
 
 export type PremiseSettlement = 'applied' | 'rejected' | null;

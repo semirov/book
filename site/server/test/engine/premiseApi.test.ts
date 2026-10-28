@@ -79,11 +79,12 @@ describe('BOOK-7 — premise links and the driver surface', () => {
       });
       expect(nextResponse.statusCode).toBe(200);
       const assignment = nextResponse.json().data as Record<string, unknown>;
-      // The same assignment shape, with one additive field: the premise.
+      // The same assignment shape, with one additive field: the premise — and BOOK-44 marks the
+      // reader's sentence `untrusted` inside it, so a nested read keeps the mark.
       expect(assignment).toMatchObject({
         pass: 'draft',
         chapter: 5,
-        premise: { intent: 'в главе 5 появляется документ о допуске', kind: 'document' },
+        premise: { intent: { value: 'в главе 5 появляется документ о допуске', untrusted: true }, kind: 'document' },
       });
       expect(typeof assignment.stepId).toBe('string');
       expect(typeof assignment.leaseId).toBe('string');
