@@ -117,7 +117,11 @@ describe('the history fact has one reader in the SPA (BOOK-56)', () => {
     expect(app.match(/historyStarted\(state\)/gu)).toHaveLength(1);
     // The chronicle's presence follows `started`; every history surface inside it follows
     // `live`. Both facts reach the page from this one place.
-    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(7);
+    // BOOK-128 comment #3815 — the word's record and the phrase's facts are the paragraph's own
+    // margin items, not two page-root surfaces reading `live` for themselves: two surfaces that
+    // took `live={history}` at the root are gone, and the paragraphs get it through the same
+    // `history` prop the chapter list carries.
+    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(6);
     expect(app.match(/live=\{chronicle\}/gu)).toHaveLength(1);
     expect(app.match(/started=\{chronicle\}/gu)).toHaveLength(1);
     // The chronicle's own fact reaches two places: the page's view switch and the surface

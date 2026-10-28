@@ -12,8 +12,8 @@ import { Chronicle } from './Chronicle.tsx';
 import { FocusView } from './FocusView.tsx';
 import { InterventionForm } from './InterventionForm.tsx';
 import { LegalPage } from './LegalPage.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
 import { RecordRow } from './RecordRow.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
 
 /**
  * The copy guard (BOOK-15, BOOK-19): reader-facing words the book may not say.
@@ -31,7 +31,8 @@ import { RecordRow } from './RecordRow.tsx';
  *
  * BOOK-DOC-43 §6 (BOOK-66): a placeholder may not promise progress it does not measure, so
  * the skeleton's own vocabulary is banned too. The surfaces this pass touched (the chronicle
- * and the paragraph chain) are printed here as well, so the guard is not vacuous for them.
+ * and the phrase's three facts — BOOK-128 comment #3815) are printed here as well, so the guard
+ * is not vacuous for them.
  *
  * BOOK-58: the terms a reader accepts moved from a licence to an assignment, and the words of
  * the old promise are banned on every surface that prints the terms — /rules and the line under
@@ -194,13 +195,15 @@ function surfaces(): string {
     renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
     renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />),
     renderToStaticMarkup(
-      <ParagraphChain
+      <SentenceBlock
         chain={null}
         loading={false}
         failed
-        onClose={() => undefined}
+        quote="у двери стоял фонарь"
+        frame="none"
+        place="flow"
         onRetry={() => undefined}
-        live
+        onClose={() => undefined}
       />,
     ),
   ].join('\n');

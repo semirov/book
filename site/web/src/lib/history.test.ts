@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import { NBSP } from './format.ts';
 import {
-  chainHead,
   compareToNow,
   momentLabel,
   momentParts,
@@ -213,9 +212,3 @@ describe('what changed since a past moment (§6F.2)', () => {
   });
 });
 
-describe('the paragraph chain panel (§6F.3)', () => {
-  it('says whether the line is still in the text', () => {
-    expect(chainHead({ alive: true, chapter: 8 })).toBe('эта строка сейчас в тексте · глава 8');
-    expect(chainHead({ alive: false, chapter: 8 })).toBe('эта строка убрана · глава 8');
-  });
-});

@@ -14,8 +14,11 @@
 /* BOOK-68: the seam never parts the paragraph. The strip is a block sibling laid after the
    `<p>` — normal flow, a plain top margin, no negative offset and no positioning, so it can
    neither split a line nor cover one, and the paragraph keeps its line breaking when the
-   seam opens and when it closes. */
-.p + .seam {
+   seam opens and when it closes.
+   BOOK-128 comment #3815: the phrase's zero-height seat may stand between the two, so the same
+   margin is stated for it. */
+.p + .seam,
+.sentence-seat + .seam {
   display: block;
   margin: 10px 0;
 }
@@ -52,6 +55,10 @@
 
 /* ---------- strip ---------- */
 .seam {
+  /* BOOK-128 comment #3815 — the strip is the containing block of the word's own margin item:
+     `left: calc(100% + var(--note-gap))` must mean the prose's right edge, and the pass writes
+     `top` against this box (the row the word stands on). */
+  position: relative;
   border-top: 1px solid var(--rule-2);
   border-bottom: 1px solid var(--rule);
   background: var(--paper-2);
@@ -92,6 +99,11 @@
   color: var(--ink-3);
   text-align: left;
   cursor: pointer;
+}
+/* BOOK-128 comment #3815 — the door is a state of the strip's own row: `aria-expanded` says the
+   body under it is open, and the one thing that changes is the door's ink. */
+.seam-prov[aria-expanded='true'] {
+  color: var(--live);
 }
 .seam-draft {
   font-family: var(--mono);
@@ -298,9 +310,7 @@
 .phone-strip-row:focus-visible,
 .revision-close:focus-visible,
 .revision-door:focus-visible,
-.revision:focus-visible,
-.prov-filing:focus-visible,
-.filing-prov:focus-visible {
+.revision:focus-visible {
   /* BOOK-90: one ring, one offset — the margin's objects included. */
   outline: 2px solid var(--live);
   outline-offset: 2px;
@@ -418,49 +428,22 @@
   white-space: nowrap;
 }
 
-/* ---------- below 768: the strip is a small stack, not one crowded row ----------
-   The owner, on the phone: «better several lines than glued together with a line break».
-   One line per role — the state word (12 px register) alone, the quote whole, then the
-   actions. The quote wraps at word boundaries and is never clamped: an ellipsis on a quote
-   is a lie about the text. The action and ✕ share the last line while the label fits; at
-   360 the ✕ drops to its own line, right-aligned, rather than the label shrinking or
-   breaking mid-phrase. ≥768 keeps the one row as it is. */
+/* ---------- below 768: one 44 px row, and the body grows under it ----------
+   BOOK-128 comment #3815 — the strip is the word's whole row at the phone too: `слово · откуда
+   это слово · вмешаться · ✕`, 44 px, with the word ellipsised when the space runs out. The body
+   the door opens is a **sibling** of this row, so nothing below can stretch it or re-flow it.
+
+   The frozen strip is the one exception, and it is BOOK-111's stack, kept deliberately: its
+   door is a phrase («рамка книги · не меняется») and its link is another («рамка книги →»), so
+   four items would not fit 366 px and the owner's own rule stands — «better several lines than
+   glued together with a line break». One line per role, the quote whole, then the actions. */
 @media (max-width: 767px) {
   .seam-row {
-    flex-wrap: wrap;
-  }
-  .seam-prov {
-    order: 1;
-    flex: 0 0 100%;
+    flex-wrap: nowrap;
   }
   /* A premise's state word is not a control: it is one line, not a 44 px target. */
   span.seam-prov {
     min-height: 0;
-  }
-  .seam-word {
-    order: 2;
-    flex: 0 0 100%;
-    min-width: 0;
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
-  }
-  .seam-draft {
-    order: 3;
-    flex: 0 0 100%;
-    white-space: normal;
-  }
-  .seam-cta,
-  .seam-frozen {
-    order: 4;
-    flex: 0 1 auto;
-    margin-left: 0;
-    padding-left: 0;
-    white-space: nowrap;
-  }
-  .seam-close {
-    order: 5;
-    margin-left: auto;
   }
   /* Every tappable line is a 44 px target, and the filing's facts wrap instead of clipping. */
   .seam-filing {
@@ -476,5 +459,38 @@
   }
   .seam-inline-action {
     white-space: nowrap;
+  }
+
+  .seam[data-frozen='true'] .seam-row {
+    flex-wrap: wrap;
+  }
+  .seam[data-frozen='true'] .seam-prov {
+    order: 1;
+    flex: 0 0 100%;
+  }
+  .seam[data-frozen='true'] .seam-word {
+    order: 2;
+    flex: 0 0 100%;
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .seam[data-frozen='true'] .seam-draft {
+    order: 3;
+    flex: 0 0 100%;
+    white-space: normal;
+  }
+  .seam[data-frozen='true'] .seam-cta,
+  .seam[data-frozen='true'] .seam-frozen {
+    order: 4;
+    flex: 0 1 auto;
+    margin-left: 0;
+    padding-left: 0;
+    white-space: nowrap;
+  }
+  .seam[data-frozen='true'] .seam-close {
+    order: 5;
+    margin-left: auto;
   }
 }

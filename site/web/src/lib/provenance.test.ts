@@ -1,96 +1,134 @@
-import type { ParagraphChainDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { frozenActionHref, paragraphLine, provenanceView, rewriteLine, shareFor, shareLine, type TraceShare } from './provenance.ts';
+import {
+  BASIS_HAND,
+  FRAME_HAND,
+  PASS_GLOSS,
+  PASS_HAND,
+  UNATTRIBUTED_HAND,
+  shareFor,
+  traceLine,
+  variantOf,
+  wordFacts,
+  type TraceShare,
+  type WordInput,
+} from './provenance.ts';
 
-const CHAIN: ParagraphChainDto = {
-  blockUid: 'blk_1',
-  blockId: 'ch08#aa11bb22',
-  chapter: 8,
-  alive: true,
-  line: 'переписано в 12:04 правкой 7 · было: правка 3 (Аня)',
-  versions: [
-    {
-      blockUid: 'blk_1',
-      ver: 1,
-      blockId: 'ch08#aa11bb22',
-      chapter: 8,
-      rev: 3,
-      at: '2026-10-20T09:00:00Z',
-      op: 'introduced',
-      textHash: 'aa11bb22',
-      chars: 120,
-      changeId: 'chg_3',
-      changeSeq: 3,
-      stepId: 'stp_3',
-      actor: { kind: 'reader', identityId: 'id_1', label: 'Аня' },
-      replacedBy: null,
-    },
-    {
-      blockUid: 'blk_1',
-      ver: 2,
-      blockId: 'ch08#aa11bb22',
-      chapter: 8,
-      rev: 4,
-      at: '2026-10-21T12:04:00Z',
-      op: 'revised',
-      textHash: 'cc33dd44',
-      chars: 118,
-      changeId: 'chg_7',
-      changeSeq: 7,
-      stepId: 'stp_7',
-      actor: { kind: 'writer', identityId: null, label: 'автор' },
-      replacedBy: null,
-    },
-  ],
-};
+/**
+ * BOOK-128 comment #3815 — «откуда это слово» is three facts and one sentence.
+ *
+ * One case per hand the book can print, in the book's own words: `печатник` for a pass (never
+ * «автор» — false on a book a shift wrote), `рамка книги` and `основание книги` for the two
+ * frozen surfaces, a reader's name for their own version, `правка вне процесса` for a version
+ * the log cannot assign, and `правка · №…` when a reader's filing stands on the word.
+ */
 
-describe('shareLine', () => {
-  it('prints the viewer’s own trace exactly as the end matter does', () => {
-    expect(shareLine({ kind: 'own', share: 0.004, survivedRevisions: 4 })).toBe('пережила 4 ревизии, сейчас 0,4 %');
-    expect(shareLine({ kind: 'own', share: 0.004, survivedRevisions: 1 })).toBe('пережила 1 ревизию, сейчас 0,4 %');
+const FILING = { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b3' };
+/** The same filing once its attempt is in the page's window: the change number is its number. */
+const ATTEMPT = { ...FILING, seq: 12 };
+
+function facts(overrides: Partial<WordInput> = {}): ReturnType<typeof wordFacts> {
+  return wordFacts({
+    variant: 'machine',
+    actor: null,
+    at: '2026-10-28T09:08:00Z',
+    share: { kind: 'none' },
+    filing: null,
+    ...overrides,
+  });
+}
+
+describe('the word’s hand — one row per thing the log can say', () => {
+  it('a pass wrote it: «печатник», the moment, no trace, and the one gloss', () => {
+    const view = facts();
+    expect(view.hand).toBe(PASS_HAND);
+    expect(view.hand).toBe('печатник');
+    expect(view.when).toBe('с 28.10.2026, 12:08');
+    expect(view.trace).toBe('следа нет');
+    expect(view.gloss).toBe('печатник — смена, которая пишет книгу; рамку держит автор.');
+    expect(view.filing).toBeNull();
   });
 
-  it('prints a public share without any survival curve', () => {
-    expect(shareLine({ kind: 'public', share: 0.004, edits: 3 })).toBe('доля в книге 0,4 % · правок 3');
+  it('the frozen frame of the canon sentence: «рамка книги», «вне правок», no gloss', () => {
+    const view = facts({ variant: 'frozen', frozenOf: 'frame' });
+    expect(view.hand).toBe(FRAME_HAND);
+    expect(view.when).toBe('вне правок');
+    expect(view.trace).toBe('следа нет');
+    expect(view.gloss).toBeNull();
   });
 
-  it('never invents a share for a word with no history', () => {
-    expect(shareLine({ kind: 'none' })).toBe('читательского следа нет');
+  it('page 2 is the basis, not the frame: «основание книги»', () => {
+    const view = facts({ variant: 'frozen', frozenOf: 'basis' });
+    expect(view.hand).toBe(BASIS_HAND);
+    expect(view.when).toBe('вне правок');
+    expect(view.gloss).toBeNull();
+  });
+
+  it('a reader’s version carries their own name, and no gloss to explain them', () => {
+    const view = facts({ variant: 'reader', actor: 'Аня', share: { kind: 'own', share: 0.004, survivedRevisions: 4 } });
+    expect(view.hand).toBe('Аня');
+    expect(view.trace).toBe('пережила 4 ревизии');
+    expect(view.gloss).toBeNull();
+  });
+
+  it('a version nobody claims says «правка вне процесса»', () => {
+    const view = facts({ variant: 'unattributed', at: null });
+    expect(view.hand).toBe(UNATTRIBUTED_HAND);
+    expect(view.when).toBe('вне правок');
+    expect(view.trace).toBe('следа нет');
+    expect(view.gloss).toBeNull();
+  });
+
+  it('a filing standing on the word names the record and states where it stands', () => {
+    const view = facts({ variant: 'reader', actor: 'Аня', filing: FILING });
+    expect(view.hand).toBe('правка · №A7K');
+    expect(view.trace).toBe('№A7K · ждёт');
+    expect(view.filing).toEqual(FILING);
+    // A record that stands on the word is not the pass's word: the gloss is not printed.
+    expect(view.gloss).toBeNull();
+  });
+
+  it('a filing that became a change prints that change’s number, unpadded, in hand and trace', () => {
+    // The owner's spec: `правка · №12` beside the word, `№12 · ждёт` on its trace. The number is
+    // the change's (the schema has no filing sequence) and it is never padded to `012`.
+    const view = facts({ variant: 'reader', actor: 'Аня', filing: ATTEMPT });
+    expect(view.hand).toBe('правка · №12');
+    expect(view.trace).toBe('№12 · ждёт');
+    expect(view.trace).not.toContain('012');
+    expect(facts({ filing: { ...ATTEMPT, state: 'рассмотрено' } }).trace).toBe('№12 · рассмотрено');
+    // The same filing with no attempt in the window keeps the record's own suffix.
+    expect(facts({ filing: FILING }).trace).toBe('№A7K · ждёт');
+  });
+
+  it('says no moment rather than inventing one when the date cannot be read', () => {
+    expect(facts({ at: 'not-a-moment' }).when).toBe('вне правок');
+  });
+
+  it('falls back to the pass’s hand for a reader the log does not name', () => {
+    expect(facts({ variant: 'reader', actor: null }).hand).toBe(PASS_HAND);
+  });
+
+  it('a decided filing says so in the same line', () => {
+    expect(facts({ filing: { ...FILING, state: 'рассмотрено' } }).trace).toBe('№A7K · рассмотрено');
   });
 });
 
-describe('rewriteLine', () => {
-  it('counts the rewrites of the paragraph, not its versions', () => {
-    expect(rewriteLine(CHAIN)).toBe('переписан 1 раз после неё');
-    expect(rewriteLine(null)).toBe('написан целиком; читательских правок в нём не было');
-  });
-});
-
-describe('the абзац row without a chain (BOOK-68)', () => {
-  it('says a missing history is a fact, not a revisions claim', () => {
-    expect(paragraphLine('none', null)).toBe('у этой строки нет истории');
-    expect(paragraphLine('none', null)).not.toContain('написан целиком');
+describe('the trace — three statements that must never swap', () => {
+  it('says the log holds no reader trace', () => {
+    expect(traceLine({ kind: 'none' })).toBe('следа нет');
   });
 
-  it('says a request is still being read while it is', () => {
-    expect(paragraphLine('loading', null)).toBe('цепочка читается…');
+  it('prints the viewer’s own curve, and only the viewer’s', () => {
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 4 })).toBe('пережила 4 ревизии');
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 1 })).toBe('пережила 1 ревизию');
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 5 })).toBe('пережила 5 ревизий');
   });
 
-  it('says a failed read failed instead of claiming anything about the text', () => {
-    expect(paragraphLine('failed', null)).toBe('история не прочиталась');
-    expect(paragraphLine('failed', null)).not.toContain('нет истории');
-  });
-
-  it('counts rewrites only when the chain is really there', () => {
-    expect(paragraphLine('ready', CHAIN)).toBe('переписан 1 раз после неё');
-  });
-
-  it('reaches the panel through provenanceView', () => {
-    const none = provenanceView({ word: 'свет', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: null, history: 'none', at: null });
-    expect(none.rows.find((row) => row.label === 'абзац')?.value).toBe('у этой строки нет истории');
-    const loading = provenanceView({ word: 'свет', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: null, history: 'loading', at: null });
-    expect(loading.rows.find((row) => row.label === 'абзац')?.value).toBe('цепочка читается…');
+  it('says a foreign curve is not measured for this reader, not that it is absent', () => {
+    const share: TraceShare = { kind: 'public', share: 0.12, edits: 3 };
+    expect(traceLine(share)).toBe('след не измерен');
+    expect(JSON.stringify(share)).not.toContain('survived');
+    expect(traceLine({ kind: 'unknown' })).toBe('след не измерен');
   });
 });
 
@@ -108,7 +146,7 @@ describe('which share a word may print (BOOK-33)', () => {
     ).toEqual({ kind: 'own', share: 0.004, survivedRevisions: 4 });
   });
 
-  it('gives another reader the public numbers only, never the survival curve', () => {
+  it('gives another reader no numbers at all, never the survival curve', () => {
     const share = shareFor({
       actor: { kind: 'reader', label: 'Аня' },
       viewerName: 'Филипп',
@@ -125,88 +163,49 @@ describe('which share a word may print (BOOK-33)', () => {
     });
   });
 
-  it('has no trace for a word the author wrote', () => {
+  it('has no trace for a word the pass wrote', () => {
     expect(shareFor({ actor: { kind: 'author', label: 'автор' }, viewerName: 'Филипп', own, publicShares: [] })).toEqual({
       kind: 'none',
     });
   });
 });
 
-describe('provenanceView', () => {
-  const own: TraceShare = { kind: 'own', share: 0.004, survivedRevisions: 4 };
-
-  it('says plainly that a machine word has no reader lineage', () => {
-    const view = provenanceView({ word: 'пустую', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: null, history: 'none', at: null });
-    expect(view.rows.map((row) => row.label)).toEqual(['кто внёс', 'когда', 'след', 'абзац', 'точность']);
-    expect(view.rows.find((row) => row.label === 'кто внёс')?.value).toBe('автор');
-    expect(view.copy).toBe('у этого слова нет читательской родословной: его написал автор.');
-    expect(view.action).toEqual({ kind: 'form', label: 'вмешаться здесь' });
-    expect(view.chapterLine).toBe('глава 08');
+describe('the variant both layers read from one chain', () => {
+  it('frozen wins over everything — the frame is not a writer’s version', () => {
+    expect(variantOf({ frozen: true, actorKind: 'reader' })).toBe('frozen');
   });
 
-  it('offers no form on a frozen word and says why it does not change', () => {
-    const view = provenanceView({ word: 'свет', chapter: 1, variant: 'frozen', share: { kind: 'none' }, chain: null, history: 'none', at: null, frozenOf: 'frame' });
-    expect(view.rows.find((row) => row.label === 'след')?.value).toBe('закреплено; не меняется');
-    expect(view.action).toEqual({ kind: 'rules', label: 'что это значит →' });
-    expect(view.copy).toBeNull();
-    expect(frozenActionHref()).toBe('/rules#рамка');
+  it('names the reader, the pass, and the version nobody claims', () => {
+    expect(variantOf({ frozen: false, actorKind: 'reader' })).toBe('reader');
+    expect(variantOf({ frozen: false, actorKind: 'writer' })).toBe('machine');
+    expect(variantOf({ frozen: false, actorKind: 'author' })).toBe('machine');
+    expect(variantOf({ frozen: false, actorKind: undefined })).toBe('machine');
+    expect(variantOf({ frozen: false, actorKind: 'system' })).toBe('unattributed');
+  });
+});
 
-    const page = provenanceView({ word: 'материя', chapter: 0, variant: 'frozen', share: { kind: 'none' }, chain: null, history: 'none', at: null, frozenOf: 'basis' });
-    expect(page.rows.find((row) => row.label === 'след')?.value).toBe('основание; страница не редактируется');
+describe('no machine copy comes back', () => {
+  it('no hand but «печатник» may print the gloss', () => {
+    const hands = [
+      facts({ variant: 'frozen', frozenOf: 'frame' }),
+      facts({ variant: 'frozen', frozenOf: 'basis' }),
+      facts({ variant: 'reader', actor: 'Аня' }),
+      facts({ variant: 'unattributed' }),
+      facts({ filing: FILING }),
+    ];
+    for (const view of hands) {
+      expect(view.gloss, view.hand).toBeNull();
+      expect(JSON.stringify(view)).not.toContain('родословн');
+      expect(JSON.stringify(view)).not.toContain('автор');
+    }
+    expect(PASS_GLOSS).toContain('рамку держит автор');
   });
 
-  it('coarsens precision to the paragraph, in the quiet tone', () => {
-    const view = provenanceView({ word: 'свет', chapter: 8, variant: 'machine', share: own, chain: CHAIN, history: 'ready', at: null });
-    expect(view.rows.find((row) => row.label === 'точность')).toMatchObject({ value: 'слово в пределах абзаца', quiet: true });
-    expect(view.rows.find((row) => row.label === 'когда')?.value).toContain('2026');
-  });
-
-  it('never publishes another reader’s survivedRevisions', () => {
-    const publicView = provenanceView({
-      word: 'свет',
-      chapter: 8,
-      variant: 'unattributed',
-      share: { kind: 'public', share: 0.004, edits: 3 },
-      chain: CHAIN,
-      history: 'ready',
-      at: null,
-    });
-    const text = JSON.stringify(publicView);
-    expect(text).not.toContain('пережила');
-    expect(text).toContain('доля в книге 0,4 % · правок 3');
-    expect(publicView.rows.find((row) => row.label === 'кто внёс')?.value).toBe('автор');
-  });
-
-  it('names the change by its number, never by a raw id (BOOK-59)', () => {
-    const view = provenanceView({ word: 'свет', chapter: 8, variant: 'machine', share: own, chain: CHAIN, history: 'ready', at: null });
-    expect(view.chain.find((row) => row.label === 'правка')?.value).toBe('правка 007');
-    expect(JSON.stringify(view)).not.toContain('chg_');
-  });
-
-  it('names the unattributed version the way the log does', () => {
-    const view = provenanceView({ word: 'свет', chapter: 8, variant: 'unattributed', share: { kind: 'none' }, chain: null, history: 'none', at: null });
-    expect(view.rows.find((row) => row.label === 'кто внёс')?.value).toBe('правка вне процесса');
-  });
-
-  it('renders the record without the DNA block while history is off (BOOK-56)', () => {
-    const view = provenanceView({
-      word: 'пустую',
-      chapter: 8,
-      variant: 'machine',
-      share: { kind: 'none' },
-      chain: CHAIN,
-      at: null,
-      history: 'ready',
-      live: false,
-    });
-    // The word, its place and «вмешаться» stay; the DNA rows, the chain rows («кто»,
-    // «правка», «эта страница») and the lineage copy are absent — the panel no longer fetches
-    // a chain it cannot show.
-    expect(view.rows).toEqual([]);
-    expect(view.chain).toEqual([]);
-    expect(view.copy).toBeNull();
-    expect(view.word).toBe('пустую');
-    expect(view.chapterLine).toBe('глава 08');
-    expect(view.action).toEqual({ kind: 'form', label: 'вмешаться здесь' });
+  it('prints no id and no uppercase word in any fact', () => {
+    for (const view of [facts(), facts({ variant: 'reader', actor: 'Аня' }), facts({ filing: FILING })]) {
+      const text = [view.hand, view.when, view.trace, view.gloss ?? ''].join(' ');
+      expect(text).not.toMatch(/[0-9a-f]{8}/u);
+      expect(text).not.toBe(text.toUpperCase());
+    }
   });
 });

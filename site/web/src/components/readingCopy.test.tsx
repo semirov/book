@@ -19,6 +19,8 @@ import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
 import { ChapterList } from './ChapterList.tsx';
 import { Header } from './Header.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
+
 
 /**
  * The reading surface prints the book, not the product.
@@ -258,7 +260,7 @@ function page(): ReactElement {
         changes={[]}
         onRead={() => undefined}
         onPosted={() => undefined}
-        onProvenance={() => undefined}
+        sentence={SENTENCE_MODE}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}
         history={false}
@@ -345,6 +347,18 @@ afterEach(async () => {
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
 });
+
+const SENTENCE_MODE: ParagraphChainMode = {
+  chain: null,
+  loading: false,
+  failed: false,
+  active: false,
+  openId: null,
+  anchor: null,
+  open: () => undefined,
+  retry: () => undefined,
+  close: () => undefined,
+};
 
 describe('the reading surface prints the book, not the product', () => {
   it('prints no status, count or explanation in the running head', async () => {

@@ -219,10 +219,12 @@ describe('premiseRow', () => {
     expect(premiseRow({ n: 7, written: false, basis: false }, premise, [attempt])?.attempt).toEqual({
       id: 'chg_7',
       number: '001',
+      // The same attempt as the log's raw sequence: a filing prints «№1», never «001».
+      seq: 1,
     });
     // The comment's own `changeId` is the fallback link when the window misses the attempt.
     const linked = { ...premise, changeId: 'chg_7' };
-    expect(premiseRow({ n: 7, written: false, basis: false }, linked)?.attempt).toEqual({ id: 'chg_7', number: null });
+    expect(premiseRow({ n: 7, written: false, basis: false }, linked)?.attempt).toEqual({ id: 'chg_7', number: null, seq: null });
   });
 
   it('shortens a long premise to its first line, written or not (BOOK-77)', () => {

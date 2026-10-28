@@ -55,7 +55,9 @@ describe('a refusal survives the panel that its own door opens (BOOK-111)', () =
       for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
     });
     expect(document.querySelector('.filing-panel')).not.toBeNull();
-    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('prov');
+    // BOOK-128 comment #3815 — the strip under a card is its one line (`card` was `prov` while a
+    // word's panel could own the frame; there is no such panel any more).
+    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('card');
     expect(document.querySelector('.seam-form')).toBeNull();
 
     // Closing the panel rebuilds the strip — with the refusal and its door, not a clean form.
@@ -108,44 +110,43 @@ describe('a sentence longer than the anchor bound keeps its mark (major 9)', () 
 });
 
 /**
- * BOOK-56 — the provenance panel with history off.
- *
- * The panel keeps the word, its place and «вмешаться»; the chain rows and the DNA rows are
- * the log's answers, so the component must not ask the log for them at all. A fetch that is
- * not made is proven by the stub, not by the markup.
+ * BOOK-56 with BOOK-128 comment #3815 — with history off there are no facts behind the word's
+ * door, so the door is not drawn at all: the strip keeps its word, «вмешаться» and its one ✕.
+ * A fetch that is not made is proven by the stub, not by the markup.
  */
-describe('the provenance door asks nothing while history is off (BOOK-56)', () => {
+describe('the word’s door is not drawn while history is off (BOOK-56, BOOK-128 §8)', () => {
   function stubFetch(): ReturnType<typeof vi.fn> {
     const fetchStub = vi.fn(async () => new Response('{}', { status: 404 }));
     vi.stubGlobal('fetch', fetchStub);
     return fetchStub;
   }
 
-  it('opens the record without a history fetch', async () => {
+  it('draws no door and asks nothing', async () => {
     const fetchStub = stubFetch();
     await mountParagraph({ entry: { ...ENTRY, n: 8, basis: false }, blockId: 'ch08#aa11bb22', history: false });
-    const button = document.querySelector<HTMLElement>('.seam-prov');
-    expect(button).not.toBeNull();
-    await act(async () => {
-      button?.click();
-      // The handler is async: flush it inside act, so its state update is not a warning.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(document.querySelector('.prov-panel')).not.toBeNull();
-    expect(document.querySelector('.prov-panel')?.textContent).toContain('откуда это слово');
-    expect(document.querySelector('.prov-panel')?.textContent).toContain('вмешаться здесь');
-    expect(document.querySelector('.prov-chain')).toBeNull();
+    expect(document.querySelector('.seam-prov')).toBeNull();
+    expect(document.querySelector('.seam-prov-line')).toBeNull();
+    expect(document.querySelector('.prov-block')).toBeNull();
+    expect(document.querySelector('.prov-panel')).toBeNull();
+    // The strip is still the place: its word, its action and its one close.
+    expect(document.querySelector('.seam-word')).not.toBeNull();
+    expect(document.querySelector('.seam-cta')).not.toBeNull();
+    expect(document.querySelector('.seam-close')).not.toBeNull();
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it('asks the log once when history is on', async () => {
+  it('asks the log once when history is on, and only when the reader asks', async () => {
     const fetchStub = stubFetch();
     await mountParagraph({ entry: { ...ENTRY, n: 8, basis: false }, blockId: 'ch08#aa11bb22', history: true });
+    expect(fetchStub).not.toHaveBeenCalled();
+
     await act(async () => {
       document.querySelector<HTMLElement>('.seam-prov')?.click();
       // The handler is async: flush the fetch inside act too.
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(fetchStub.mock.calls.map(([url]) => String(url))).toContain('/api/history/paragraphs/ch08%23aa11bb22');
+    const calls = fetchStub.mock.calls.filter(([url]) => String(url).startsWith('/api/history/paragraphs/'));
+    expect(calls).toHaveLength(1);
   });
 });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CatalogEntry } from '@book/shared';
+import type { CatalogEntry, ChangeSummaryDto, CommentDto, ParagraphChainDto } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,12 +11,13 @@ import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
- * BOOK-68 — the word's `абзац` row may not claim a paragraph's history it does not have.
+ * BOOK-68, as BOOK-128 comment #3815 re-sites it — the word's margin may not claim a paragraph's
+ * history it does not have.
  *
- * The panel opened from the seam used to print «написан целиком; читательских правок в нём не
- * было» whenever the chain was still missing or had failed. Now a 404 is an answer («у этой
- * строки нет истории»), the wait says the chain is being read, and only a real DTO may count
- * rewrites. The block is also not asked about twice once its answer is known.
+ * The old panel printed «написан целиком; читательских правок в нём не было» whenever the chain
+ * was missing or had failed; the facts are read once, the block mounts only with the answer, and
+ * a failure is one line — «история не прочиталась» — never three invented facts. A block whose
+ * answer the client already holds is not asked about twice.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -79,7 +80,7 @@ async function actAndSettle(action: () => void): Promise<void> {
   });
 }
 
-/** The paragraph with its seam open inside the first sentence — the strip and its panels. */
+/** The paragraph with its seam open inside the first sentence — the strip and its body. */
 async function openParagraph(): Promise<void> {
   const anchor = anchorFor({ text: TEXT, blockId: BLOCK_ID, baseRev: ENTRY.rev, offset: 3 });
   await act(async () => {
@@ -108,13 +109,10 @@ const openWord = async (): Promise<void> => {
   await actAndSettle(() => (document.querySelector('.seam-prov') as HTMLElement).click());
 };
 
-const paragraphRow = (): string | null =>
-  [...document.querySelectorAll('.prov-row')]
-    .find((row) => row.querySelector('dt')?.textContent === 'абзац')
-    ?.querySelector('dd')?.textContent ?? null;
+const block = (): string => document.querySelector('.prov-block')?.textContent ?? '';
 
-describe('the word panel and a missing paragraph history (BOOK-68)', () => {
-  it('says the chain is being read, then that the line has no history — never a rewrite claim', async () => {
+describe('the word’s margin and a missing paragraph history (BOOK-68)', () => {
+  it('prints nothing while the chain is read, then the pass’s facts — never a rewrite claim', async () => {
     let release: (response: Response) => void = () => undefined;
     const pending = new Promise<Response>((resolve) => {
       release = resolve;
@@ -128,17 +126,21 @@ describe('the word panel and a missing paragraph history (BOOK-68)', () => {
     await openParagraph();
 
     await openWord();
-    expect(document.querySelector('.prov-panel')).not.toBeNull();
-    expect(paragraphRow()).toBe('цепочка читается…');
-    expect(document.querySelector('.prov-panel')?.textContent).not.toContain('написан целиком');
+    // No answer yet: the block does not exist, and nothing is guessed in its place.
+    expect(document.querySelector('.prov-block')).toBeNull();
 
     await actAndSettle(() => release(notFound()));
-    expect(paragraphRow()).toBe('у этой строки нет истории');
-    expect(document.querySelector('.prov-panel')?.textContent).not.toContain('написан целиком');
-    expect(document.querySelector('.prov-panel')?.textContent).not.toContain('читательских правок');
+    // A 404 is an answer: the pass wrote the chapter, and the log holds no change on it.
+    expect(block()).toContain('печатник');
+    expect(block()).toContain('вне правок');
+    expect(block()).toContain('следа нет');
+    expect(block()).not.toContain('написан целиком');
+    expect(block()).not.toContain('читательских правок');
+    // The one sentence is the gloss of the hand, and it is the owner's, word for word.
+    expect(block()).toContain('печатник — смена, которая пишет книгу; рамку держит автор.');
   });
 
-  it('asks once when the reader reopens the panel on the same historyless block', async () => {
+  it('asks once when the reader reopens the block on the same historyless block', async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL) => Promise.resolve(notFound()));
     vi.stubGlobal('fetch', fetchMock);
     const chainCalls = (): number =>
@@ -146,14 +148,156 @@ describe('the word panel and a missing paragraph history (BOOK-68)', () => {
     await openParagraph();
 
     await openWord();
-    expect(paragraphRow()).toBe('у этой строки нет истории');
+    expect(block()).toContain('печатник');
     expect(chainCalls()).toBe(1);
 
-    await actAndSettle(() => (document.querySelector('.prov-close') as HTMLElement).click());
-    expect(document.querySelector('.prov-panel')).toBeNull();
+    await actAndSettle(() => (document.querySelector('.seam-prov') as HTMLElement).click());
+    expect(document.querySelector('.prov-block')).toBeNull();
 
     await openWord();
-    expect(paragraphRow()).toBe('у этой строки нет истории');
+    expect(block()).toContain('печатник');
     expect(chainCalls()).toBe(1);
+  });
+
+  it('says the read failed — one line, no facts — and the door asks again', async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (!String(input).startsWith('/api/history/paragraphs/')) return Promise.resolve(notFound());
+      attempts += 1;
+      return Promise.resolve(attempts === 1 ? answer({ code: 'BOOM' }, 500) : notFound());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await openParagraph();
+
+    await openWord();
+    expect(block()).toBe('история не прочиталась');
+    expect(block()).not.toContain('печатник');
+
+    // A failure is not memoised: closing and reopening asks again and prints the answer.
+    await actAndSettle(() => (document.querySelector('.seam-prov') as HTMLElement).click());
+    await openWord();
+    expect(attempts).toBe(2);
+    expect(block()).toContain('печатник');
+  });
+
+  it('a filing standing on the word carries the number of the change it became, unpadded', async () => {
+    // The filing's own number is its latest attempt's change number (the schema has no filing
+    // sequence), printed `№12` — the owner's spec, never the record's suffix and never `012`.
+    const filing: CommentDto = {
+      id: 'cmt_01J9Z8K4Q7',
+      chapter: 8,
+      anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Я вошёл в пустую комнату.', prefix: null, suffix: null, resolved: false },
+      author: 'Аня',
+      authorColor: '#6f9bb5',
+      body: 'в комнате должен быть свет, но не от лампы',
+      proposedText: null,
+      interventionKind: 'testimony',
+      status: 'new',
+      frame: 'untouched',
+      premise: false,
+      reason: null,
+      decidedAt: null,
+      changeId: null,
+      applied: null,
+      refusal: null,
+      attempt: null,
+      createdAt: '2026-10-28T09:20:00Z',
+    };
+    const change: ChangeSummaryDto = {
+      id: 'chg_12',
+      seq: 12,
+      chapter: 8,
+      intent: 'свет',
+      premise: false,
+      premiseLanded: false,
+      sourceCommentId: filing.id,
+      status: 'done',
+      outcome: 'applied',
+      reason: null,
+      position: null,
+      enqueuedAt: '2026-10-28T09:20:00Z',
+      decidedAt: '2026-10-28T10:40:00Z',
+      chapters: [8],
+      rewritten: [8],
+      steps: 1,
+      frame: 'untouched',
+      frameMode: null,
+      modes: [],
+      cascade: null,
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => notFound()));
+    const anchor = anchorFor({ text: TEXT, blockId: BLOCK_ID, baseRev: ENTRY.rev, offset: 3 });
+    await act(async () => {
+      root?.render(
+        <ProseParagraph
+          entry={ENTRY}
+          blockId={BLOCK_ID}
+          blockIndex={0}
+          baseRev={ENTRY.rev}
+          text={TEXT}
+          blockCount={1}
+          comments={[filing]}
+          changes={[change]}
+          composer={EMPTY_COMPOSER}
+          viewer={{ signedIn: true, displayName: 'Филипп' }}
+          onPosted={() => undefined}
+          history
+        />,
+      );
+    });
+    await act(async () => {
+      openSeam({ chapter: ENTRY.n, blockId: BLOCK_ID, key: seamKey(ENTRY.n, BLOCK_ID, anchor!.sentence, ENTRY.rev), anchor, origin: document.body });
+    });
+
+    await openWord();
+    expect(block()).toContain('правка · №12');
+    expect(block()).toContain('№12 · ждёт');
+    expect(block()).not.toContain('012');
+    expect(block()).not.toContain('4Q7');
+  });
+
+  it('a real chain names the hand by the log, not by the pass’s default', async () => {
+    const chain: ParagraphChainDto = {
+      blockUid: 'blk_1',
+      blockId: BLOCK_ID,
+      chapter: 8,
+      alive: true,
+      line: '',
+      versions: [
+        {
+          blockUid: 'blk_1',
+          ver: 1,
+          blockId: BLOCK_ID,
+          chapter: 8,
+          rev: 5,
+          at: '2026-10-28T09:08:00Z',
+          op: 'revised',
+          textHash: 'aa11bb22',
+          chars: 112,
+          changeId: 'chg_12',
+          changeSeq: 12,
+          stepId: 'stp_12',
+          actor: { kind: 'reader', identityId: 'idt_1', label: 'Аня' },
+          replacedBy: null,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).startsWith('/api/history/paragraphs/')) return answer(chain, 200);
+        return notFound();
+      }),
+    );
+    await openParagraph();
+
+    await openWord();
+    expect(block()).toContain('Аня');
+    expect(block()).toContain('с 28.10.2026, 12:08');
+    // No public number and no borrowed curve: the viewer is not this reader's own page.
+    expect(block()).not.toContain('доля в книге');
+    expect(block()).not.toContain('пережила');
+    // And no gloss: only the pass's own hand is explained.
+    expect(block()).not.toContain('смена, которая пишет книгу');
   });
 });

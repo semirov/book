@@ -118,11 +118,6 @@ export function stepMoment(items: HistoryRecordDto[], value: number, direction: 
   return higher ?? hseqs.at(-1) ?? value;
 }
 
-/** The paragraph chain's copy the server sends; this is the panel's fallback head. */
-export function chainHead(chain: { alive: boolean; chapter: number }): string {
-  return chain.alive ? `эта строка сейчас в тексте · глава ${chain.chapter}` : `эта строка убрана · глава ${chain.chapter}`;
-}
-
 /**
  * BOOK-68 — the two answers a paragraph's history may speak of, in one place.
  *

@@ -37,6 +37,7 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 import { Seam } from './Seam.tsx';
 import { TitleSheet } from './TitleSheet.tsx';
 
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const ENTRY: CatalogEntry = {
@@ -164,6 +165,7 @@ function seam(): ReactNode {
       onPosted={() => undefined}
       onClose={() => undefined}
       onProvenance={() => undefined}
+      prov={{ view: null, failed: false, onFiling: () => undefined, onClose: () => undefined }}
       onOpenFiling={() => undefined}
     />
   );

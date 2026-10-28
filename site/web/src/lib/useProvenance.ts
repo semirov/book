@@ -3,53 +3,62 @@ import { useState } from 'react';
 import { getAuthors, getMyTrace } from '../api.ts';
 import type { ChainHistory } from './history.ts';
 import { knownParagraphChain, loadParagraphChain } from './paragraphChainCache.ts';
-import { provenanceView, shareFor, type ProvenanceVariant, type ProvenanceView, type TraceShare } from './provenance.ts';
+import {
+  shareFor,
+  variantOf,
+  wordFacts,
+  type TraceShare,
+  type WordFacts,
+  type WordFiling,
+} from './provenance.ts';
 
 /**
- * BOOK-DOC-34 §2.6, BOOK-56, BOOK-68 — everything one word's DNA panel reads from the log.
+ * BOOK-128 comment #3815 — everything one word's margin reads from the log.
  *
- * Extracted from the paragraph so the panel's two doors — the strip's «откуда это слово» and a
- * filing card's footer — ask the log through **one** function: the same chain, the same «свой
- * след» read, the same public list, and nothing at all with `history` off. The paragraph keeps
- * only its own prose; the answer is a value it renders.
+ * The strip's door is the only door: the facts are read when the reader asks, never by a
+ * render. `view` is `null` while the log has not answered — the block does not exist yet, and
+ * nothing is guessed in the meantime. `failed` prints one line instead of three facts.
  *
- * `load` is called by the opener, never by an effect: a panel that is merely rendered must not
- * fetch, and the caller decides when the reader actually asked.
+ * Both layers read the same chain (`paragraphChainCache`), so the word and the phrase beside it
+ * are answers to one question, not two.
  */
 export type ProvenanceState = {
-  /** What the panel may print now; `null` when no word's panel is open. */
-  view: ProvenanceView | null;
-  /** Read every row the panel can show. Idempotent per open: the memo answers the second call. */
+  /** What the margin may print now; `null` until the log answers. */
+  view: WordFacts | null;
+  /** The read failed: one line, no facts, no invented trace. */
+  failed: boolean;
+  /** Read every fact the block can show. Idempotent per open: the memo answers a second call. */
   load: () => Promise<void>;
 };
 
 export function useProvenance(input: {
   blockId: string;
-  chapter: number;
-  /** The word the open panel speaks of; `null` when no provenance panel is open. */
+  /** The word the open block speaks of; `null` when the strip's body is closed. */
   word: string | null;
-  /** The chapter's frame: the frozen variant says so instead of a trace. */
-  frozen: boolean;
-  /** BOOK-56: `state.history.live`; off means no chain, no rows and no fetch at all. */
+  /** The paragraph's frozen surface: `frame` (canon sentence) or `basis` (page 2). */
+  frozenOf: 'frame' | 'basis' | null;
+  /** BOOK-56: `state.history.live`; off means no chain, no facts and no fetch at all. */
   history: boolean;
   signedIn: boolean;
   viewerName: string | null;
+  /** The filing standing on this word, when the strip's sentence holds one. */
+  filing: WordFiling | null;
 }): ProvenanceState {
-  const { blockId, chapter, word, frozen, history, signedIn, viewerName } = input;
+  const { blockId, word, frozenOf, history, signedIn, viewerName, filing } = input;
   // BOOK-68: no chain yet is «still reading», never «no history» — and a 404 is an answer.
-  const [chainHistory, setChainHistory] = useState<{ state: ChainHistory; chain: Awaited<ReturnType<typeof loadParagraphChain>> }>({
-    state: 'loading',
-    chain: null,
-  });
+  const [chainHistory, setChainHistory] = useState<{
+    state: ChainHistory;
+    chain: Awaited<ReturnType<typeof loadParagraphChain>>;
+  }>({ state: 'loading', chain: null });
   const [own, setOwn] = useState<{ share: number; survivedRevisions: number } | null>(null);
   const [publicShares, setPublicShares] = useState<Array<{ label: string; share: number; edits: number }>>([]);
 
   const load = async (): Promise<void> => {
-    // BOOK-56: the chain and both share rows are history; with history off the panel keeps
-    // only the word, its place and «вмешаться», so nothing is fetched for rows not rendered.
+    // BOOK-56: the chain and both share rows are history; with history off the door is not
+    // rendered at all, so nothing is fetched for facts nobody will print.
     if (!history) return;
     // BOOK-68: a chain the client already holds (a 404, or a DTO with no versions) is not
-    // asked for again; a failure is not an answer, so the row says the read failed.
+    // asked for again; a failure is not an answer, so the read failed and says so.
     const memo = knownParagraphChain(blockId);
     if (memo.known) {
       setChainHistory({ state: memo.chain === null ? 'none' : 'ready', chain: memo.chain });
@@ -62,60 +71,56 @@ export function useProvenance(input: {
         setChainHistory({ state: 'failed', chain: null });
       }
     }
-    // BOOK-33: the viewer's own curve is the one the panel may print for their own word, and
+    // BOOK-33: the viewer's own curve is the one the block may print for their own word, and
     // the authors list carries the public numbers for somebody else's. Own-only, always.
     if (signedIn && own === null) {
       try {
         const trace = await getMyTrace();
         setOwn({ share: trace.share, survivedRevisions: trace.survivedRevisions });
       } catch {
-        /* a signed-out session that expired: the row falls back to the public shape */
+        /* a signed-out session that expired: the line falls back to the public shape */
       }
     }
     if (publicShares.length === 0) {
       try {
         const authors = await getAuthors();
-        setPublicShares(authors.contributors.map((row) => ({ label: row.label, share: row.share, edits: row.edits })));
+        setPublicShares(
+          authors.contributors.map((row) => ({ label: row.label, share: row.share, edits: row.edits })),
+        );
       } catch {
         /* no public list: a foreign word says «след не измерен», never a borrowed number */
       }
     }
   };
 
-  if (word === null) return { view: null, load };
+  if (word === null || !history) return { view: null, failed: false, load };
 
-  // Who wrote this version, from the log's own vocabulary: a reader, the author, or a version
-  // the log cannot assign. A chain that has not arrived yet is not a claim — it is the machine
-  // default, and the panel re-renders when the chain answers.
+  // Who wrote this version, from the log's own vocabulary: a reader, the pass, or a version
+  // the log cannot assign. A chain that has not arrived yet is not a claim — the block waits.
   const chain = chainHistory.chain;
-  const actorKind = chain?.versions.at(-1)?.actor?.kind;
-  const variant: ProvenanceVariant = frozen
-    ? 'frozen'
-    : actorKind === 'reader'
-      ? 'reader'
-      : actorKind === undefined || actorKind === 'author' || actorKind === 'writer'
-        ? 'machine'
-        : 'unattributed';
-  const lastActor = chain?.versions.at(-1)?.actor ?? null;
+  const last = chain?.versions.at(-1) ?? null;
+  const variant = variantOf({ frozen: frozenOf !== null, actorKind: last?.actor?.kind });
   const share: TraceShare = shareFor({
-    actor: lastActor === null ? null : { kind: lastActor.kind, label: lastActor.label },
+    actor: last?.actor == null ? null : { kind: last.actor.kind, label: last.actor.label },
     viewerName,
     own,
     publicShares,
   });
 
+  if (chainHistory.state === 'failed') return { view: null, failed: true, load };
+  // The answer is not in yet: no block, no guess, no `…`.
+  if (chainHistory.state === 'loading') return { view: null, failed: false, load };
+
   return {
-    view: provenanceView({
-      word,
-      chapter,
+    view: wordFacts({
       variant,
+      actor: last?.actor?.label ?? null,
+      ...(frozenOf === null ? {} : { frozenOf }),
+      at: last?.at ?? null,
       share,
-      chain,
-      history: chainHistory.state,
-      at: chain?.versions.at(-1)?.at ?? null,
-      frozenOf: 'frame',
-      live: history,
+      filing,
     }),
+    failed: false,
     load,
   };
 }

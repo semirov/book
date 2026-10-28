@@ -98,12 +98,6 @@ export const OVERLAYS = [
     value: '590px',
     why: 'the прицел’s lit sheet is its own narrower paper over the page (BOOK-DOC-35 §7)',
   },
-  {
-    selector: '.chain',
-    property: 'width',
-    value: 'min(calc(var(--measure) + 2 * var(--gut)), 100%)',
-    why: 'the paragraph-chain popover is anchored to a tapped phrase, not laid out in the page',
-  },
 ] as const;
 
 /** The only rules allowed to centre themselves with a horizontal `auto` margin: the canvas
@@ -119,9 +113,10 @@ const CENTRED = [
 /** What may legitimately narrow a `ch` line: one cap, or one against the parent's width. A
  *  `percentage`/`none` cap is a media cap too (`img { max-width: 100% }`), never a page width. */
 const COPY_CAP = /^(?:none|100%|min\(\s*100%\s*,\s*[1-9]\d*ch\s*\)|[1-9]\d*ch)$/u;
-/** The measure plus two gutters: the canvas's own bound, the no-JS fallback's box, and the
- *  chain overlay's. It is the canvas now (BOOK-91) — a register inside the canvas is the
- *  measure, never this box. */
+/** The measure plus two gutters: the canvas's own bound and the no-JS fallback's box. It is the
+ *  canvas now (BOOK-91) — a register inside the canvas is the measure, never this box.
+ *  BOOK-128 comment #3815: the paragraph-chain popover is gone (the phrase's facts are a margin
+ *  item of the column, not an overlay), so no overlay states this box any more. */
 const OUTSIDE_TEXT_BOX = 'calc(var(--measure)+2*var(--gut))';
 const MEASURE_VALUE = 'var(--measure)';
 const CENTRING = 'only the canvas, the no-JS box and the overlays may centre themselves; the registers stay flush left inside the canvas';
@@ -247,7 +242,8 @@ function boxProblems(rules: Rule[]): string[] {
 
 /** 4 — the measure is the column: only `.page`, `.ribbon` and the prose rule state it, only as
  *  a `max-width`; the measure-plus-two-gutters box is the canvas's own bound (BOOK-91), and
- *  belongs elsewhere only to the chain overlay and the box outside the canvas. */
+ *  belongs elsewhere only to the box outside the canvas (BOOK-128 #3815 removed the overlay
+ *  exception the phrase's floating panel used to need). */
 function measureBoxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {

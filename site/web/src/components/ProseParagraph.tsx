@@ -1,20 +1,22 @@
 import { classifyFrame } from '@book/shared';
-import type { CatalogEntry, CommentDto, ComposerInfo, FrameMark, ViewerDto } from '@book/shared';
+import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, FrameMark, ViewerDto } from '@book/shared';
 import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { wordOffsetIn } from '../dom.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { FILING_PANEL_CLASS } from './FilingPanel.tsx';
-import { PROV_PANEL_CLASS } from './ProvenancePanel.tsx';
 import { Seam } from './Seam.tsx';
 import { SeamPanel } from './SeamPanel.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrameParagraph } from '../lib/freeze.ts';
-import { filingNumber, isAlive, staleLine } from '../lib/filings.ts';
+import { isAlive, staleLine, wordFilingOf } from '../lib/filings.ts';
 import { blockElementId } from '../lib/place.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
-import { anchorFor, firstWord, seamKey } from '../lib/seam.ts';
+import type { WordFiling } from '../lib/provenance.ts';
+import { sentenceBlockFrame } from '../lib/sentence.ts';
+import { anchorFor, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
@@ -23,6 +25,7 @@ import { useProvenance } from '../lib/useProvenance.ts';
 import { MarginNote } from './MarginNote.tsx';
 import { PhoneStrip } from './PhoneStrip.tsx';
 import { RevisionObject } from './RevisionObject.tsx';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -52,13 +55,23 @@ export type ProseParagraphProps = {
   /** BOOK-137 — the chapter's paragraph count: the shared rule reads the frame's place from it. */
   blockCount: number;
   comments: readonly CommentDto[];
+  /**
+   * The page's window of changes: a filing's number is the number of the change its latest
+   * attempt became (`filingAttempt`), never a filing ordinal the schema does not have.
+   */
+  changes?: readonly ChangeSummaryDto[];
   /** BOOK-158: the page's revise clock, so the card's cooldown line counts down. */
   nowMs?: number;
   composer: ComposerInfo;
   viewer: ViewerDto;
   /** BOOK-111: the posted DTO, so the page shows the reader's own row at once. */
   onPosted: (comment: CommentDto) => void;
-  onBlockProvenance?: (blockId: string, anchor: HTMLElement) => void;
+  /**
+   * BOOK-128 comment #3815 — the phrase's facts, as the page's one chain mode. The `⋯` door is
+   * the toggle; the block it opens is this paragraph's margin item, so the state has to reach
+   * the paragraph rather than a floating box at the page root.
+   */
+  sentence?: ParagraphChainMode;
   /** STALE_ANCHOR: the chapter reloads, then the draft is re-keyed onto the new text. */
   onReanchor?: (draft: SeamDraft) => void;
   /** The reveal's caret rests after this block (§11.3); printing is the lane's own state. */
@@ -68,9 +81,8 @@ export type ProseParagraphProps = {
   /** A step is rewriting this block: the ochre label and rule (§11.5). */
   revising?: string | null;
   /**
-   * BOOK-56: `state.history.live`. Off removes the paragraph-chain door («⋯»), the DNA rows
-   * in the panel and the trace fetches behind them. The word, its place and «вмешаться»
-   * stay; a filing's own mark stays too.
+   * BOOK-56: `state.history.live`. Off removes both doors («⋯» and the word's) and the fetches
+   * behind them. The word, its place and «вмешаться» stay; a filing's own mark stays too.
    */
   history: boolean;
 };
@@ -83,11 +95,12 @@ export function ProseParagraph({
   text,
   blockCount,
   comments,
+  changes = [],
   nowMs,
   composer,
   viewer,
   onPosted,
-  onBlockProvenance,
+  sentence,
   onReanchor,
   caret = null,
   revised = false,
@@ -103,6 +116,7 @@ export function ProseParagraph({
    * BOOK-111: the page's one panel, not this paragraph's state — a card and a word's panel are
    * the same slot, and only the surface that opened it draws it.
    */
+  /** BOOK-128 #3815 — the `prov` entry means «the word's body is open» in the strip. */
   const filing = useOpenFiling();
   const panel = filing !== null && filing.owner === blockId ? filing : null;
   const filingPanel = panel !== null && panel.kind === 'filing' ? panel : null;
@@ -113,7 +127,7 @@ export function ProseParagraph({
   const anchor = here ? (seam?.anchor ?? null) : null;
   /**
    * BOOK-137 — the shared rule on the selection: only `touched` is the canon sentence itself.
-   * The word panel's «закреплено» variant follows this mark (or a paragraph that *is* the basis
+   * The word's «закреплено» variant follows this mark (or a paragraph that *is* the basis
    * sentence), never the chapter number.
    */
   const frame: FrameMark =
@@ -121,19 +135,28 @@ export function ProseParagraph({
       ? 'untouched'
       : classifyFrame({ chapter: entry.n, quote: anchor.quote, blockIndex, blockText: text, blockCount });
   /**
-   * BOOK-DOC-34 §2.6 — the word panel's facts are read by one hook, the same one a filing
-   * card's footer goes through: one chain read, one «свой след», and nothing with history off.
+   * Both layers name the same frozen surface: the canon sentence — the paragraph *is* it, or the
+   * selection touches it — is `рамка книги`. `основание книги` is page 2, which has no seam yet
+   * (`Annotation.tsx` states that gap): a vocabulary both libs keep, not a call.
    */
+  const frozenOf: 'frame' | 'basis' | null = frameOnly || frame === 'touched' ? 'frame' : null;
+  const { sentences, groups: blockFilings, marks, alive, key: filingKey } = proseMarks(text, comments, blockId);
+  /** The filing standing on the strip's sentence: the word's line 3 and its door. */
+  const seamFilings =
+    blockFilings.find((item) => anchor !== null && item.quote === anchor.quote) ??
+    (blockFilings.length === 1 ? (blockFilings[0] ?? null) : null);
+  const seamFiling = seamFilings?.all[0] ?? null;
+  const wordFiling: WordFiling | null = seamFiling === null ? null : wordFilingOf(seamFiling, changes);
+  /** One hook reads the word's facts: one chain, one «свой след», nothing with history off. */
   const provenance = useProvenance({
     blockId,
-    chapter: entry.n,
     word: provenancePanel?.word ?? null,
-    frozen: frame === 'touched' || frameOnly,
+    frozenOf,
     history,
     signedIn: viewer.signedIn,
     viewerName: viewer.displayName,
+    filing: wordFiling,
   });
-  const { sentences, groups: blockFilings, marks, alive, key: filingKey } = proseMarks(text, comments, blockId);
   const stale = staleLine(comments.filter((comment) => comment.anchor.blockId === blockId));
   const classes = ['p'];
   if (caret?.printing === true) classes.push('is-printing');
@@ -171,11 +194,16 @@ export function ProseParagraph({
     [blockId],
   );
 
-  /** §7: the trigger comes back when the panel leaves, never nowhere. */
+  /**
+   * §7: the trigger comes back when the panel leaves, never nowhere. The word's line 3 is a door
+   * that lives *inside* the body the card replaces (BOOK-128 #3815), so a detached origin hands
+   * focus to the strip's own door instead of dropping the reader on `<body>`.
+   */
   const closePanel = useCallback((): void => {
     const origin = panel?.origin ?? null;
     hideFiling();
-    origin?.focus();
+    if (origin !== null && origin.isConnected) origin.focus();
+    else hostRef.current?.querySelector<HTMLElement>('.seam-prov')?.focus();
   }, [panel]);
 
   const openAt = useCallback(
@@ -226,60 +254,39 @@ export function ProseParagraph({
     openAt(host, offset, host);
   };
 
-  // The paragraph's chain answers «кто внёс» and «переписан N раз» for the panel; the hook is
-  // the one reader of those facts, and both of the panel's doors go through its `load`.
-  const openProvenance = async (at: HTMLElement, word: string): Promise<void> => {
+  // The phrase's facts (the word's own line 3) and the strip's body are read by one hook.
+  const openProvenance = async (at: HTMLElement): Promise<void> => {
+    // BOOK-128 comment #3815 — the door toggles: a second press puts the body away and hands
+    // focus back to the door, which is the whole of the strip's dismissal contract.
+    if (provenancePanel !== null) {
+      hideFiling();
+      at.focus();
+      return;
+    }
     showFiling({
       kind: 'provenance',
       owner: blockId,
       comment: null,
       origin: at,
       rect: at.getBoundingClientRect(),
-      word,
-      fromSeam: at.closest('.seam') !== null,
+      word: anchor?.word ?? anchor?.quote ?? '',
+      // The body is the strip's own: the strip stays, and stays the one place.
+      fromSeam: true,
     });
     await provenance.load();
   };
 
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
-  /**
-   * BOOK-111 (owner, 2026-10-27) — the strip's sentence and its filing are the two halves of
-   * one popover. The strip's own resolution decides which group belongs to this sentence
-   * (exact quote first, a single moved group second), so the switch and the strip's rows can
-   * never point at different records.
-   */
-  const seamFilings =
-    blockFilings.find((item) => anchor !== null && item.quote === anchor.quote) ??
-    (blockFilings.length === 1 ? (blockFilings[0] ?? null) : null);
-  const seamFiling = seamFilings?.all[0] ?? null;
-  /** The word a filing card may explain: the first of the sentence it quotes. */
-  const filingWord = filingPanel === null || filingPanel.comment === null ? null : firstWord(filingPanel.comment.anchor.quote);
   const view = provenance.view;
 
-  /**
-   * The provenance panel turns into the sentence's card in the same box: the anchor rect, the
-   * origin and `fromSeam` travel unchanged, so the strip stays collapsed and closing the card
-   * still returns focus to the button that opened the word.
-   */
-  const switchToFiling = (comment: CommentDto): void => {
-    if (panel === null) return;
-    showFiling({ ...panel, kind: 'filing', comment, word: undefined });
+  /** Line 3 opens the filing standing on the word, in the site's one panel. */
+  const openWordFiling = (origin: HTMLElement): void => {
+    if (seamFiling === null) return;
+    openFiling(seamFiling, origin);
   };
 
-  /**
-   * The card turns into the provenance of the first word it quotes, in the same box. The chain
-   * is read through the same hook the strip's own door uses: same fetches, and with history off
-   * nothing is asked at all.
-   */
-  const switchToProvenance = (word: string): void => {
-    if (panel === null) return;
-    showFiling({ ...panel, kind: 'provenance', comment: null, word });
-    void provenance.load();
-  };
-
-  // BOOK-90: the margin is page-wide; this paragraph only tells it that its anchors may have
-  // moved (a seam opened, a revision arrived, the text changed).
+  // BOOK-90: the margin is page-wide; this paragraph only says its anchors may have moved.
   useMeasuredLayout(() => {
     scheduleMarginPass();
   }, [filingKey, seam?.key ?? null, text, revision?.comment.id ?? null]);
@@ -364,8 +371,11 @@ export function ProseParagraph({
       }}
       onClosePanel={closePanel}
       onReanchor={onReanchor}
-      onProvenance={(origin) => void openProvenance(origin, anchor?.word ?? anchor?.quote ?? '')}
+      onProvenance={(origin) => void openProvenance(origin)}
       onOpenFiling={openFiling}
+      // The door exists while history is live (BOOK-128 §8: no door to an empty room); the body
+      // under it is opened by that door, and drawn only once the log has answered.
+      prov={history ? { view, failed: provenance.failed, onFiling: openWordFiling, onClose: closePanel } : null}
     />
   ) : null;
 
@@ -419,12 +429,23 @@ export function ProseParagraph({
             aria-hidden="true"
           />
         )}
-        {onBlockProvenance === undefined || !history ? null : (
+        {sentence === undefined || !history ? null : (
           <button
             type="button"
             className="prov"
             aria-label="откуда эта фраза"
-            onClick={(event) => onBlockProvenance(blockId, event.currentTarget)}
+            aria-expanded={sentence.openId === blockId}
+            onClick={(event) => {
+              const door = event.currentTarget;
+              // BOOK-128 comment #3815 — the door is the toggle and the only close this layer
+              // has: pressing it again puts the block away and keeps focus on the door.
+              if (sentence.openId === blockId) {
+                sentence.close();
+                door.focus();
+                return;
+              }
+              sentence.open(blockId, door.getBoundingClientRect());
+            }}
           >
             ⋯
           </button>
@@ -432,6 +453,23 @@ export function ProseParagraph({
         {phone}
       </p>
       {strip}
+      {/* BOOK-128 #3815 — the phrase's facts: a zero-height seat at ≥1024, a block in flow at ≤1023. */}
+      {sentence === undefined || sentence.openId !== blockId ? null : (
+        <SentenceBlock
+          chain={sentence.chain}
+          loading={sentence.loading}
+          failed={sentence.failed}
+          quote={anchor?.quote ?? sentences[0]?.text ?? text}
+          frame={sentenceBlockFrame({ basis: false, touched: frozenOf === 'frame' })}
+          place="margin"
+          onRetry={sentence.retry}
+          onClose={() => {
+            sentence.close();
+            // The door is the one close this layer has: focus never lands on `<body>`.
+            hostRef.current?.querySelector<HTMLElement>('.prov')?.focus();
+          }}
+        />
+      )}
       {stale === null ? null : (
         <button
           type="button"
@@ -444,34 +482,14 @@ export function ProseParagraph({
           {stale}
         </button>
       )}
-      {/*
-        BOOK-111 (owner, 2026-10-27): one box, two contexts — one slot in the tree, so a turn
-        from the word's record to the sentence's card keeps the very same `<aside>` (and the
-        reader's place in it). Two sibling slots would remount the box and hand back a new node.
-      */}
-      {view !== null && provenancePanel !== null ? (
+      {/* BOOK-111: one box, one ✕ — and since #3815 the card is the only floating frame here. */}
+      {filingPanel === null || filingPanel.comment === null ? null : (
         <SeamPanel
-          context="provenance"
-          rootClass={PROV_PANEL_CLASS}
-          view={view}
-          anchor={provenancePanel.rect}
-          onClose={closePanel}
-          onForm={hideFiling}
-          onFiling={
-            provenancePanel.fromSeam && seamFiling !== null ? () => switchToFiling(seamFiling) : undefined
-          }
-          filingLabel={provenancePanel.fromSeam && seamFiling !== null ? `замечание ${filingNumber(seamFiling)} →` : undefined}
-        />
-      ) : filingPanel === null || filingPanel.comment === null ? null : (
-        // Same contract as the word's panel: same shell, one close, focus back to the mark or row.
-        <SeamPanel
-          context="filing"
           rootClass={FILING_PANEL_CLASS}
           comment={filingPanel.comment}
           anchor={filingPanel.rect}
           nowMs={nowMs}
           onClose={closePanel}
-          onProvenance={filingWord === null ? undefined : () => switchToProvenance(filingWord)}
         />
       )}
     </>

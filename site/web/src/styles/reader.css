@@ -1,0 +1,176 @@
+/**
+ * BOOK-128 comment #3815 — the margin's reader blocks: a word's record and a phrase's facts.
+ *
+ * They are not panels and they do not live in `panels.css`: nothing here is filled, raised or
+ * closed. Both are notes of the ledger `marginalia.css` already runs — the same 40 px tie from
+ * the prose's right edge, the same `--note-fit` width, the same 6/0/8 padding — so the page has
+ * one margin geometry, not two.
+ *
+ * **The one rule every reader panel obeys from here on** (BOOK-128 comment #3815): a panel that
+ * grows in this margin **never scrolls** (`overflow: visible`, no `max-height`), **never casts a
+ * shadow**, **never prints an id**, **never uppercases a word**, and **never covers the prose**.
+ * Its content is cut by the copy — three facts and one sentence — never by a scrollbar, and its
+ * height is whatever the text is: the page's pass measures it, nothing is assumed.
+ *
+ * Both blocks share the note's geometry: the tie starts 40 px right of the prose's right edge,
+ * the width is `--note-fit`, the padding is the note's 6/0/8, and the one hairline is the top
+ * border. `--rule-2` (the seam's own ink) marks the seam's body; `--rule` marks a block that is
+ * its own place. No fill, no border box, no `z-index`.
+ */
+.prov-block,
+.sentence-block {
+  position: absolute;
+  left: calc(100% + var(--note-gap));
+  width: var(--note-fit);
+  margin: 0;
+  padding: 6px 0 8px;
+  border: 0;
+  border-top: 1px solid var(--rule-2);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+  text-align: left;
+  white-space: normal;
+  hyphens: manual;
+  opacity: 0;
+  transition: opacity var(--dur-tick) var(--ease-out);
+}
+.prov-block[data-placed='true'],
+.sentence-block[data-placed='true'] {
+  opacity: 1;
+}
+/* The seat is the phrase block's coordinate space: zero height, so the paragraph below it does
+   not move when the block mounts, and `left: 100%` still means the prose's right edge. */
+.sentence-seat {
+  position: relative;
+  height: 0;
+  margin: 0;
+}
+
+/* The word's three facts: 12 px mono, lowercase, one per line, 2 px apart (no labels, no
+   table, no uppercase). The first line is the hand and takes the book's ink; the rest are the
+   quiet facts. The gloss is the label register in `--ink-3`, 6 px above the block's own end. */
+.prov-facts {
+  display: grid;
+  gap: 2px;
+}
+.prov-hand,
+.prov-when,
+.prov-trace,
+.prov-loss {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  hyphens: manual;
+}
+.prov-hand {
+  color: var(--ink);
+}
+.prov-when,
+.prov-trace,
+.prov-loss {
+  color: var(--ink-3);
+}
+.prov-gloss {
+  margin: 6px 0 0;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+/* The filing standing on the word: a text action, no background and no rule until the pointer
+   is on it. The 44 px hit is the layer's own target; a modified click keeps the browser's act
+   (the `<a>`'s href is the filing's place). */
+.prov-door {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: none;
+}
+.prov-door:hover {
+  text-decoration: underline 1px;
+  text-underline-offset: 3px;
+}
+.prov-door:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+
+/* The phrase's block: the one word `фраза`, the sentence quoted in the site's quote style,
+   then the same three facts in the same register. */
+.sentence-label {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  text-transform: none;
+}
+.sentence-quote {
+  margin: 6px 0 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.4;
+  color: var(--ink-2);
+  text-transform: none;
+}
+.sentence-facts {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+.sentence-fact {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  color: var(--ink-3);
+}
+/* The hand + moment line is the fact the reader came for: the book's ink, not the quiet one. */
+.sentence-hand {
+  color: var(--ink);
+}
+
+
+/* ---------- below 1024: the same nodes, in flow ---------- */
+@media (max-width: 1023px) {
+  /* BOOK-128 comment #3815 — below 1024 there is no margin, so the same node is in flow: the
+     word's body grows under the strip's 44 px row, the phrase's under the paragraph. Full
+     measure, the `--rule` hairline, the note's 6/0/8, `padding-inline: 0` (the row's 0 8px
+     breaks the paragraph's one vertical edge and must not be inherited). No height animation:
+     geometry does not move in this book. */
+  .prov-block,
+  .sentence-block {
+    position: static;
+    width: auto;
+    border-top: 1px solid var(--rule);
+    opacity: 1;
+    transition: none;
+  }
+  .sentence-seat {
+    position: static;
+    height: auto;
+  }
+  /* The phrase's 44 px row: the block's own head, so the body opens under a target the thumb
+     can hit and the paragraph above it never re-flows. Its own padding is the row's, not the
+     note's: 44 px exactly, then the quote and the facts. */
+  .sentence-block {
+    padding: 0 0 8px;
+  }
+  .sentence-label {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

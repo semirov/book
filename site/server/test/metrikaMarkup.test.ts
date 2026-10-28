@@ -66,11 +66,13 @@ describe('the reader’s fields are never recorded', () => {
       ['components/MarginNote.tsx', 'className="margin-note ym-hide-content"'],
       ['components/PhoneStrip.tsx', 'className="phone-strip ym-hide-content"'],
       ['components/RevisionObject.tsx', 'className="revision ym-hide-content"'],
-      ['components/ProvenancePanel.tsx', 'prov-panel ym-hide-content'],
+      // BOOK-128 comment #3815: the word's record and the phrase's facts are marginalia now,
+      // and both still carry the mask (the word's hand may be a reader's name).
+      ['components/ProvenanceBlock.tsx', 'prov-block ym-hide-content'],
       ['components/Chronicle.tsx', 'className="chronicle page sheet ym-hide-content"'],
       // BOOK-65: the record row renders a reader's alias; it is the surface, not the section.
       ['components/RecordRow.tsx', 'className="chr-row ym-hide-content"'],
-      ['components/ParagraphChain.tsx', 'chain ym-hide-content'],
+      ['components/SentenceBlock.tsx', 'sentence-block ym-hide-content'],
       ['components/PremiseRow.tsx', 'className="premise ym-hide-content"'],
       ['components/FocusView.tsx', 'className="focus-note ym-hide-content"'],
     ];
