@@ -55,7 +55,9 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
 };
 
 /** State → the ink, the rule shape and the word; unknown states fall to the quiet row. */
-export function filingInk(comment: Pick<CommentDto, 'status'> & { premise?: boolean }): FilingInk {
+export function filingInk(
+  comment: Pick<CommentDto, 'status'> & { premise?: boolean; changeStatus?: CommentDto['changeStatus'] },
+): FilingInk {
   const shape = SHAPES[comment.status] ?? SHAPES.new!;
   return { word: filingMarginalia(comment).word, ...shape };
 }

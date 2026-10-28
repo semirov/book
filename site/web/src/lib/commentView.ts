@@ -1,18 +1,26 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
-import { failedAttempt, filingConsequence, filingMarginalia, landingReceipt } from './marginalia.ts';
+import {
+  failedAttempt,
+  filingConsequence,
+  filingMarginalia,
+  landedReceiptLine,
+  refusalDetail,
+} from './marginalia.ts';
 
 /**
  * How a reader's own note is told apart from a decision (§11.6, §12.6).
  *
- * BOOK-90 — the **state** is one of the three words («ждёт» · «идёт» · «внесено»), read from
- * `lib/marginalia.ts`; the **detail** carries the fact that word cannot: a refusal, a
- * superseded anchor, a held check, an expired pass, the receipt of a landed change.
+ * BOOK-90 — the **state** is one of the deck's words («ждёт» · «идёт» · «внесено», plus
+ * «рассмотрено» and «отклонено»), read from `lib/marginalia.ts`; the **detail** carries the
+ * fact that word cannot: a refusal's reason, a superseded anchor, a held check, an expired
+ * pass, the receipt of a landed change.
  *
  * BOOK-70 — the state is printed once, in the form its own text asks for: a chip (12 px,
  * uppercase, one line) when the text fits one, a sentence (14 px, the book's voice, may wrap)
- * when it is a receipt or a clause. The three words always fit a chip; a clause lives in the
- * detail line, so a state never has to overflow to say what happened.
+ * when it is a clause. Every state word fits a chip; the fact — a receipt («глава 3 · ревизия
+ * 4»), a clause, a refusal's reason — lives in the detail line, so a state never has to
+ * overflow to say what happened.
  */
 
 /** The line a filing panel prints as a one-line chip; past it, the line is a sentence. */
@@ -24,11 +32,10 @@ export type CommentLine = {
   tone: 'quiet' | 'live' | 'done' | 'stopped';
   /**
    * BOOK-70: a chip states one fact on one line and may not hold a clause, so the form is a
-   * property of the text, decided once here. A `sentence` — a receipt («внесено в главу 07 ·
-   * право на ваш текст перешло автору книги») or a clause («снято: текст успел измениться») —
-   * is printed at 14 px in the book's own voice and may wrap; a `chip` is 12 px, uppercase,
-   * one line. The cap is the line: over 24 characters, or a ` · ` / `: ` in the text, and the
-   * line is a sentence.
+   * property of the text, decided once here. A `sentence` — a clause («снято: текст успел
+   * измениться») — is printed at 14 px in the book's own voice and may wrap; a `chip` is 12 px,
+   * uppercase, one line. The cap is the line: over 24 characters, or a ` · ` / `: ` in the text,
+   * and the line is a sentence.
    */
   form: 'chip' | 'sentence';
 };
@@ -36,6 +43,11 @@ export type CommentLine = {
 /** The deck's fact, and the reader's own reason beside it when the record has one. */
 function joinDetail(fact: string, reason: string | null): string {
   return reason === null || reason.length === 0 ? fact : `${fact} · ${reason}`;
+}
+
+/** `''` is the deck's own «no line»: the detail slot takes `null`, never an empty string. */
+function nullIfEmpty(text: string): string | null {
+  return text.length === 0 ? null : text;
 }
 
 /** The form, decided in one place: the cap, the clause's punctuation, or an explicit receipt. */
@@ -71,30 +83,33 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       // attempt. Nothing else is owed here — a batch is not a receipt.
       return lineOf(word, failedAttempt(comment) ? filingConsequence(comment) : null, 'live');
     case 'accepted':
-      return lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'live');
+      // BOOK-189: the accepted row has no reason of its own to add — the stale acceptance
+      // sentence («входит в книгу») is not a fact about the writer's lane. One explanatory line
+      // only: «пишется» while the writer is at it, «в очереди на запись» while the lane holds
+      // it, or the failed-attempt sentence when the attempt behind it came back empty.
+      return lineOf(word, filingConsequence(comment), 'live');
     case 'registered':
       // BOOK-137 — the paperwork's own line: «рассмотрено · оформление · фраза не изменилась»,
       // and nothing else. The reason is that same sentence on the row, so printing it too would
       // say «фраза не меняется» twice.
       return lineOf(word, filingConsequence(comment), 'done');
     case 'applied': {
-      // BOOK-58: the receipt of an entered variant names the chapter and the right that moved
-      // with it — the state is the word «внесено», the receipt is its detail. A note moved no
-      // right: its own terminal is «замечание сохранено».
-      const receipt =
-        comment.applied === null || comment.interventionKind === null
-          ? filingConsequence(comment)
-          : landingReceipt(comment.applied.chapter, comment.applied.rev);
-      return lineOf(word, joinDetail(receipt, comment.reason), 'done');
+      // BOOK-189 — the owner's row for a landing is one state word and one line: «внесено ·
+      // глава 3 · ревизия 4», the same shape the margin note and the record print. No second
+      // «внесено», no rights clause (the reader signed that when filing) and no stored reason.
+      const receipt = landedReceiptLine(comment.applied);
+      if (receipt !== null) return lineOf(word, receipt, 'done');
+      // A legacy row with no receipt of its own: the note's own terminal, or the word alone. The
+      // stored reason («входит в книгу») is not a fact about a landing, and never joined here.
+      return lineOf(word, nullIfEmpty(filingConsequence(comment)), 'done');
     }
     case 'superseded':
       return lineOf(word, joinDetail('снято: текст успел измениться', comment.reason), 'stopped');
     case 'rejected':
-      // BOOK-61: each refusal heads its line with the gate's own word. B's line is the fixed
-      // sentence alone (nothing else — a model never writes it); C's keeps the auditor's reason.
-      return comment.refusal === 'rights'
-        ? lineOf(word, filingConsequence(comment), 'stopped')
-        : lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'stopped');
+      // BOOK-61, BOOK-189: the gate's own word is the state, and the public reason is the whole
+      // line — a refusal is a decision, not a queue place, so «ждёт» never heads it. B's word is
+      // stripped from its own sentence (`refusalDetail`), so the row never repeats it.
+      return lineOf(word, refusalDetail(comment), 'stopped');
     case 'escalated':
       // BOOK-174: decided, not refused — the word «ждёт решения автора» and the question the
       // filing now asks, which is its own stored line.

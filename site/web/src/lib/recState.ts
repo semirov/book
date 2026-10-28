@@ -3,7 +3,13 @@ import type { CommentDto, ParagraphChainDto } from '@book/shared';
 import { formatDate, formatTime } from './format.ts';
 import { PASS_HAND } from './provenance.ts';
 import { filingNumber } from './filings.ts';
-import { filingConsequence, GATE_WORDS, STATE_WORDS } from './marginalia.ts';
+import {
+  filingConsequence,
+  filingState,
+  GATE_WORDS,
+  landedReceiptLine,
+  STATE_WORDS,
+} from './marginalia.ts';
 
 /**
  * BOOK-128 comment #3863 / #3862 — the sentence's record, as data.
@@ -121,7 +127,6 @@ export function recordStateOf(input: {
         };
       case 'batched':
       case 'delivered':
-      case 'accepted':
         return {
           situation: 'working',
           word: STATE_WORDS.working,
@@ -129,21 +134,45 @@ export function recordStateOf(input: {
           line: 'в очереди на запись',
           empty: false,
         };
+      case 'accepted':
+        // BOOK-189: the row's word stops at triage. Only the linked change says whether the
+        // writer is at this filing now (`processing` → «идёт» · «пишется») or the lane holds it
+        // («ждёт», and the reader's own line says whose it is).
+        if (filing.changeStatus === 'processing') {
+          return {
+            situation: 'working',
+            word: STATE_WORDS.working,
+            ink: 'live',
+            line: 'пишется',
+            empty: false,
+          };
+        }
+        return {
+          situation: mine ? 'waitingOwn' : 'waiting',
+          word: STATE_WORDS.waiting,
+          ink: 'live',
+          line: mine ? 'ваша — в очереди' : 'в очереди на запись',
+          empty: false,
+        };
       case 'quarantined':
         return { situation: 'held', word: STATE_WORDS.waiting, ink: 'live', line: 'ждёт человека', empty: false };
-      case 'applied':
+      case 'applied': {
+        // BOOK-189 — the one receipt shape of every surface: «глава 7 · ревизия 4». The word
+        // above is «внесено», so the line never repeats it and never carries the rights clause
+        // (where the text went, not what a reader signed away — #3862 §2).
+        const receipt = landedReceiptLine(filing.applied);
+        if (receipt !== null) {
+          return { situation: 'landed', word: STATE_WORDS.landed, ink: 'ink', line: receipt, empty: false };
+        }
+        const fallback = filingConsequence(filing);
         return {
           situation: 'landed',
           word: STATE_WORDS.landed,
           ink: 'ink',
-          line:
-            filing.applied === null
-              ? filingConsequence(filing)
-              : // The receipt's shape, without the rights clause: where the text went, not
-                // what a reader signed away (#3862 §2).
-                `в главу ${String(filing.applied.chapter)}${filing.applied.rev === null ? '' : ` · ревизия ${String(filing.applied.rev)}`}`,
+          line: fallback.length === 0 ? null : fallback,
           empty: false,
         };
+      }
       case 'rejected':
         // The gate's own word and the reason **whole** — a refusal is a decision, not an error.
         return {
@@ -236,15 +265,11 @@ export function interventionRows(input: {
 
 /** The word a filing's row prints: the deck's state word, or the gate's when it refused. */
 function stateWordOf(comment: CommentDto): string {
-  if (comment.status === 'rejected') {
-    return comment.refusal === 'rights' ? GATE_WORDS.rights : GATE_WORDS.auditor;
-  }
+  if (comment.status === 'rejected') return comment.refusal === 'rights' ? GATE_WORDS.rights : GATE_WORDS.auditor;
   if (comment.status === 'quarantined') return GATE_WORDS.held;
-  if (comment.status === 'applied') return STATE_WORDS.landed;
-  if (comment.status === 'accepted' || comment.status === 'batched' || comment.status === 'delivered') {
-    return STATE_WORDS.working;
-  }
-  return STATE_WORDS.waiting;
+  // BOOK-189: the deck's own table, so a row's word cannot disagree with the state block above
+  // (an `accepted` filing the writer has not reached is «ждёт», not «идёт»).
+  return STATE_WORDS[filingState(comment)];
 }
 
 export type HistoryRow = {

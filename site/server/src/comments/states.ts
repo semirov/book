@@ -45,7 +45,7 @@ export function refusalOf(row: CommentRow): CommentRefusal | null {
 }
 
 /** Filing states the linked change may never upgrade: the row's own word is the last one. */
-const OWN_STATES = new Set<CommentStatus>(['rejected', 'quarantined', 'superseded', 'hidden']);
+export const OWN_STATES = new Set<CommentStatus>(['rejected', 'quarantined', 'superseded', 'hidden']);
 
 /** Change states that are an attempt, not a landing — a `void` here is a failed try. */
 const ATTEMPT_STATES = new Set<string>(['void', 'failed', 'escalated']);
@@ -56,7 +56,7 @@ const ATTEMPT_STATES = new Set<string>(['void', 'failed', 'escalated']);
  * that came back empty, and one with **no** reason at all decides nothing — the chapter's
  * text is the answer in both of those cases.
  */
-function decided(reason: string | null): boolean {
+export function decided(reason: string | null): boolean {
   return !holdsInternalCode(reason) && readerReason(reason) !== null;
 }
 

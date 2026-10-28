@@ -122,9 +122,12 @@ describe('queueView', () => {
     premise,
   });
 
-  it('counts the entries the page presents as queued, never zero over a waiting one', () => {
+  it('counts the writer’s lane only: a filing waiting for a decision is not in it', () => {
+    // BOOK-189: the count is the writer's own pending changes. A `new` filing is a row here,
+    // never a queue place — the prod defect counted two stale `accepted` filings over a lane
+    // the writer said was empty.
     const view = queueView(0, [filing('cmt_9', 'new'), filing('cmt_8', 'applied')]);
-    expect(view.count).toBe(1);
+    expect(view.count).toBe(0);
     expect(view.rows).toEqual([{ kind: 'filing', id: 'cmt_9' }]);
   });
 
@@ -139,29 +142,35 @@ describe('queueView', () => {
   });
 
   it('counts one filing with an attempt once: the attempt is not a second row', () => {
-    // The filing is accepted and its change is pending: before BOOK-137 that pair printed
-    // «в очереди 2 правки» over one entry.
-    const view = queueView(0, [filing('cmt_a', 'accepted')]);
+    // One accepted filing whose change is pending is one entry and one lane place: the count
+    // comes from the writer, the rows from the page, and neither doubles the other.
+    const view = queueView(1, [filing('cmt_a', 'accepted')]);
     expect(view.rows).toHaveLength(1);
     expect(view.count).toBe(1);
   });
 
-  it('counts a filing in triage: the word «в очереди» covers it', () => {
-    // The rule `QUEUED_FILING` states: the line counts what the page presents as waiting or
-    // working. A `batched`/`delivered` filing is being read by triage — on its way into the
-    // lane, not out of the book — so it counts, and the line never reads «пусто» above it.
-    const view = queueView(0, [filing('cmt_t', 'batched'), filing('cmt_d', 'delivered')]);
-    expect(view.count).toBe(2);
+  it('lists a filing in triage as a row, and counts it only when the writer holds it', () => {
+    // The rows are what the page presents as on its way; the line is the writer's lane.
+    const view = queueView(2, [filing('cmt_t', 'batched'), filing('cmt_d', 'delivered')]);
     expect(view.rows).toEqual([
       { kind: 'filing', id: 'cmt_t' },
       { kind: 'filing', id: 'cmt_d' },
     ]);
+    expect(view.count).toBe(2);
   });
 
-  it('keeps the server’s own depth when the page shows fewer rows than the lane holds', () => {
-    // The API pages the thread; the line is about the lane, so a bigger depth still prints.
+  it('prints the writer’s depth and nothing else, whatever the thread shows', () => {
+    // The API pages the thread; the line is about the lane. A bigger depth still prints, and a
+    // page full of waiting rows never talks the writer's count up.
     expect(queueView(5, []).count).toBe(5);
     expect(queueView(1, [filing('cmt_a', 'new')]).count).toBe(1);
-    expect(queueView(3, [filing('cmt_a', 'new'), filing('cmt_b', 'new')]).count).toBe(3);
+    expect(queueView(0, [filing('cmt_a', 'new'), filing('cmt_b', 'accepted')]).count).toBe(0);
+  });
+
+  it('counts one pending change over an applied and a refused filing (BOOK-189)', () => {
+    // The owner's prod page in one fixture: one landing, one filing the lane holds, one refusal.
+    const rows = [filing('cmt_applied', 'applied'), filing('cmt_pending', 'accepted'), filing('cmt_refused', 'rejected')];
+    expect(queueView(1, rows)).toMatchObject({ count: 1, rows: [{ kind: 'filing', id: 'cmt_pending' }] });
+    expect(queueView(0, rows).count).toBe(0);
   });
 });
