@@ -9,10 +9,10 @@
  * sides), instead of leaving every pixel of slack on the right.
  *
  * This module is the file side: it globs the cascade and the register components as text and
- * exposes the entry points the test needs. The six sheet checks are in `measure.rules.ts` and
- * `measure.tokens.ts`, the CSS parser in `measure.css.ts`; the markup checks live here because
- * they need the component glob. The four-viewport arithmetic, on `tokenPx`, is check 7, in the
- * test.
+ * exposes the entry points the test needs. The sheet checks (1–6 and 8, the `rem` refusal) are
+ * in `measure.rules.ts` and `measure.tokens.ts`, the CSS parser in `measure.css.ts`; the markup
+ * checks live here because they need the component glob. The four-viewport arithmetic, on
+ * `tokenPx`, is check 7, in the test.
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row, 26ch the
  * legal page's pull quote) bound a sentence, not the page — and the overlays, which are laid
@@ -30,7 +30,7 @@ import { layoutProblemsOf, tokenPxOf } from './measure.rules.ts';
 
 export { BASE, TOKENS } from './measure.css.ts';
 export { CANVAS, CANVAS_BOUND, FOLIO_INSET } from './measure.tokens.ts';
-export { COLUMN_BOXES, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS } from './measure.rules.ts';
+export { COLUMN_BOXES, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS, rootScaleProblems } from './measure.rules.ts';
 
 /** The sheets as text, and the entry point they are derived from. */
 const OUTER = import.meta.glob<string>(['../main.tsx', '../styles/*.css'], {

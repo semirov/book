@@ -55,20 +55,20 @@ export function tokenProblems(rules: Rule[]): string[] {
   const narrow = measure.filter((entry) => entry.rule.at.length > 0);
   if (measure.length !== 2 || base.length !== 1 || narrow.length !== 1) {
     problems.push(
-      `--measure is declared ${measure.length} time(s) (${list(measure)}) — exactly two steps: 40rem at the root and 38.9rem inside @media (max-width: 1023px)`,
+      `--measure is declared ${measure.length} time(s) (${list(measure)}) — exactly two steps: 640px at the root and 622px inside @media (max-width: 1023px)`,
     );
   }
   for (const entry of measure.filter((item) => item.rule.file !== TOKENS)) {
     problems.push(`${where(entry.rule, '--measure', entry.value)} — the text column has one home, ${TOKENS}`);
   }
   const [baseMeasure] = base;
-  if (baseMeasure !== undefined && squash(baseMeasure.value) !== '40rem') {
-    problems.push(`--measure: ${baseMeasure.value} — 40rem = 640px = 71.1 ch at 18px`);
+  if (baseMeasure !== undefined && squash(baseMeasure.value) !== '640px') {
+    problems.push(`--measure: ${baseMeasure.value} — 640px = 71.1 ch at 18px; a rem would follow the reader’s root font size`);
   }
   const [narrowMeasure] = narrow;
   if (narrowMeasure !== undefined) {
-    if (squash(narrowMeasure.value) !== '38.9rem') {
-      problems.push(`--measure: ${narrowMeasure.value} in ${narrowMeasure.rule.at.join(' ')} — 38.9rem = 622.4px = 71.1 ch at 17.5px`);
+    if (squash(narrowMeasure.value) !== '622px') {
+      problems.push(`--measure: ${narrowMeasure.value} in ${narrowMeasure.rule.at.join(' ')} — 622px = 71.1 ch at 17.5px; a rem would follow the reader’s root font size`);
     }
     if (!narrowMeasure.rule.at.some((query) => squash(query).includes('max-width:1023px'))) {
       problems.push(`${where(narrowMeasure.rule, '--measure', narrowMeasure.value)} — the narrow step belongs to @media (max-width: 1023px)`);

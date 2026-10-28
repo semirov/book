@@ -24,6 +24,7 @@
     "test:coverage": "vitest run --coverage",
     "check:orphans": "node scripts/orphan-check.mjs",
     "frame:check": "node scripts/frame-check.mjs",
+    "type:stability": "node scripts/type-stability.mjs",
     "validate": "node bin/validate.mjs",
     "start": "node server/dist/index.js",
     "engine": "node server/dist/engine.js",

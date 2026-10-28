@@ -237,7 +237,7 @@
 }
 .past-toc-row {
   display: grid;
-  grid-template-columns: 2.2rem 1fr auto;
+  grid-template-columns: 35px 1fr auto;
   gap: 8px;
   align-items: baseline;
   padding: 4px 0;

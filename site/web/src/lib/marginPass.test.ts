@@ -37,10 +37,11 @@ describe('noteWidth — the note narrows with the channel, it is never clipped (
   });
 
   it('gives the channel itself at the 1024 step, and never a negative width', () => {
-    // (1024 − 640) / 2 = 192 of channel, minus the 40 px mark and 8 px of air.
+    // (1024 − 640) / 2 = 192 of channel, minus the 40 px mark and 8 px of air. The narrower
+    // 622 px column leaves 201 of channel, and at 390 the channel is gone.
     expect(noteWidth(1024, 640)).toBe(144);
-    expect(noteWidth(1024, 622.4)).toBeCloseTo(152.8, 6);
-    expect(noteWidth(390, 622.4)).toBe(0);
+    expect(noteWidth(1024, 622)).toBeCloseTo(153, 6);
+    expect(noteWidth(390, 622)).toBe(0);
   });
 
   it('keeps the note a margin at 1024 — the narrowed width is what lets it fit', () => {

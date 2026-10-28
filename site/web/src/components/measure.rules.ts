@@ -1,13 +1,15 @@
 /**
- * BOOK-88/BOOK-91 — the six checks behind `measure.test.ts`: one column, one canvas, equal margins.
+ * BOOK-88/BOOK-91/BOOK-170 — the sheet checks behind `measure.test.ts`: one column, one canvas,
+ * equal margins, one root size.
  *
- * The rule (owner, 2026-10-27, final; BOOK-91): the column is the reading measure — 640 px at
- * ≥1024, 622.4 px below, 342 px at 390 — and *every* text block is exactly that box: the TOC,
- * the colophon, the header's rows, the cover, page 2, the discussion, the legal documents and
- * the prose. There is no second frame: the canvas is the column plus its two gutters and
- * centres it, so the same slack sits on both sides (400..1040 in a 368..1072 canvas at 1440;
- * 192..832 in 160..864 at 1024; 73..695 in 41..727 at 768; 24..366 at 390). The prose is not
- * narrower than the column: it *is* the column, so no two blocks can read as two documents.
+ * The rule (owner, 2026-10-27, final; BOOK-91; BOOK-170): the column is the reading measure —
+ * 640 px at ≥1024, 622 px below, 342 px at 390 — and *every* text block is exactly that box:
+ * the TOC, the colophon, the header's rows, the cover, page 2, the discussion, the legal
+ * documents and the prose. There is no second frame: the canvas is the column plus its two
+ * gutters and centres it, so the same slack sits on both sides (400..1040 in a 368..1072 canvas
+ * at 1440; 192..832 in 160..864 at 1024; 73..695 in 41..727 at 768; 24..366 at 390). The prose
+ * is not narrower than the column: it *is* the column, so no two blocks can read as two
+ * documents.
  *
  * The defect this is built for is a class, not a number: a text block stating a width of its
  * own. Rules are read as text and checked for: the measure and its two steps, the retired
@@ -16,7 +18,9 @@
  * measure, and no other `max-width` but a copy cap, a listed overlay or the one box outside
  * the canvas (3, 4); no register stating an inline padding or a horizontal margin — the canvas
  * owns both (5); every prose selector still named by the one prose rule, which is what pins a
- * future child (6). The four-viewport arithmetic, on `tokenPx`, is check 7, in the test.
+ * future child (6); no declaration value carrying a `rem` length (8), because `rem` follows the
+ * reader's root font size and the reading geometry must not. The four-viewport arithmetic, on
+ * `tokenPx`, is check 7, in the test.
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row) bound a
  * sentence, not the page — and the overlays, which are laid over the page and keep their own
@@ -333,6 +337,27 @@ function proseProblems(rules: Rule[]): string[] {
   return problems;
 }
 
+/** A `rem` length in a declaration value: `40rem`, `1.6rem`, `2REM`, `1e2rem`. The unit is
+ *  case-insensitive and a number may carry an exponent; `premise` and `1rem2` are not units. */
+const REM_LENGTH = /(?<![\w.])(?:[+-]?(?:\d*\.\d+|\d+)(?:e[+-]?\d+)?)rem\b/iu;
+
+/** 8 — no declaration value carries a `rem` length. The design's lengths are absolute: the
+ *  column, the gutters and the type are px, and the only relative cap is a `ch` copy cap; a
+ *  `rem` would follow the reader's root font size and move the reading geometry under them. */
+export function rootScaleProblems(rules: Rule[]): string[] {
+  const problems: string[] = [];
+  for (const rule of rules) {
+    for (const [property, value] of rule.declarations) {
+      if (REM_LENGTH.test(value)) {
+        problems.push(
+          `${where(rule, property, value)} — a rem follows the reader's root font size; the reading geometry is px and a copy cap is ch`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
 /** Every way one parsed sheet set fails to hold the one column. */
 export function layoutProblemsOf(rules: Rule[]): string[] {
   return [
@@ -342,6 +367,7 @@ export function layoutProblemsOf(rules: Rule[]): string[] {
     ...measureBoxProblems(rules),
     ...frameProblems(rules),
     ...proseProblems(rules),
+    ...rootScaleProblems(rules),
   ];
 }
 
