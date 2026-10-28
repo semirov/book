@@ -90,6 +90,48 @@ describe('--intent validation (§12.3)', () => {
     }
   });
 
+  it('refuses a second-person order about how to write, with no kind declared (BOOK-44)', () => {
+    // The audit's C1, C2 and C7 verbatim. Each is an order about the prose, and the intent is
+    // the one reader-derived sentence that reaches a writer prompt. No `kind` is passed: this
+    // rule is unconditional, unlike the prose-correction rule that waits for one.
+    for (const intent of [
+      'Пиши короче все реплики смотрителя в этой главе.',
+      'Не упоминай смотрителя в этой главе больше.',
+      'Акт: смотритель уходит, и в тексте больше не упоминай его.',
+    ]) {
+      const verdict = validateIntent(intent, 8);
+      expect(verdict.ok, intent).toBe(false);
+      if (verdict.ok) continue;
+      expect(verdict.code, intent).toBe('INTENT_WRITING_ORDER');
+      // A public reason: one plain line, and it never quotes the order back.
+      expect(verdict.reason).toBe('интент указывает, как писать: назовите, что меняется в мире');
+    }
+  });
+
+  it('refuses the polite forms and keeps an infinitive, a noun and a third person (BOOK-44)', () => {
+    for (const intent of [
+      'Пишите короче эту главу',
+      'Не упоминайте смотрителя в этой главе',
+      'Сократите абзац про акт',
+      'Перепишите последний абзац',
+      // The enclitic stays inside the token; the same order is still the same order.
+      'Пиши-ка короче все реплики смотрителя в этой главе.',
+      'Не упоминай-ка смотрителя в этой главе больше.',
+    ]) {
+      expect(validateIntent(intent, 8), intent).toMatchObject({ ok: false, code: 'INTENT_WRITING_ORDER' });
+    }
+    // The false-positive floor: the same four families as a goal rather than an order to the
+    // writer — an infinitive, a noun, a third person, and the accepted sentences of this file.
+    for (const intent of [
+      'сократить второй абзац',
+      'переписать сцену в тамбуре',
+      'в абзаце дважды «слово» — оставить одно упоминание',
+      'смотритель не упоминает акт в разговоре',
+    ]) {
+      expect(validateIntent(intent, 8).ok, intent).toBe(true);
+    }
+  });
+
   it('refuses a request for a new entity, and keeps the chapter’s own words (M4)', () => {
     const vocabulary = [
       'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.',
@@ -129,7 +171,9 @@ describe('--intent validation (§12.3)', () => {
   it('refuses an empty, too short, too long or three-clause intent', () => {
     expect(validateIntent('', 8)).toMatchObject({ ok: false, code: 'INTENT_TOO_SHORT' });
     expect(validateIntent('ок', 8)).toMatchObject({ ok: false, code: 'INTENT_TOO_SHORT' });
-    expect(validateIntent('а'.repeat(601), 8)).toMatchObject({ ok: false, code: 'INTENT_TOO_LONG' });
+    // BOOK-44: one goal is bounded like a public reason — 200 characters, not a paragraph.
+    expect(validateIntent('а'.repeat(200), 8)).toMatchObject({ ok: true });
+    expect(validateIntent('а'.repeat(201), 8)).toMatchObject({ ok: false, code: 'INTENT_TOO_LONG' });
     expect(validateIntent('Убрать повтор. Оставить одно. Больше ничего.', 8)).toMatchObject({
       ok: false,
       code: 'INTENT_SHAPE',

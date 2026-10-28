@@ -94,7 +94,7 @@ describe('POST /internal/pass — a first pass for one named chapter (BOOK-117 �
       expect(assignment).toMatchObject({
         pass: 'draft',
         chapter: 65,
-        premise: { intent: 'в главе 65 появляется документ о допуске', kind: 'document' },
+        premise: { intent: { value: 'в главе 65 появляется документ о допуске', untrusted: true }, kind: 'document' },
         intent: null,
       });
       // A real lease, held by the session that asked for the pass.
@@ -299,7 +299,7 @@ describe('POST /internal/pass — the route', () => {
       expect(response.json().data).toMatchObject({
         pass: 'draft',
         chapter: 65,
-        premise: { intent: 'в главе 65 появляется документ о допуске', kind: 'document' },
+        premise: { intent: { value: 'в главе 65 появляется документ о допуске', untrusted: true }, kind: 'document' },
       });
       // Chapter 1 is written, so the forward lane's next slot is 2 — and it was not opened here.
       expect(fixture.db.prepare('SELECT chapter FROM steps').all()).toEqual([{ chapter: 65 }]);

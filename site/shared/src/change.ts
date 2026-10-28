@@ -80,7 +80,7 @@ export type ChangeEvent = {
   kind: ChangeKind;
   chapter: number; // 1..67 — the point of change
   anchor: null | { blockIds: string[]; quote: string; prefix: string; suffix: string };
-  intent: string; // ≤600 chars, what must become true
+  intent: string; // ≤200 chars, what must become true
   proposedText: string | null;
   source: { commentId: string | null; sessionId: string | null };
   base: { rev: number; sha256: string; blockHashes: string[] };
@@ -240,14 +240,23 @@ export type Cascade = {
 };
 
 /**
+ * BOOK-44 — a reader-written value travels marked. The mark sits *inside* the value, so a
+ * nested read cannot lose it and a model sees `"untrusted": true` next to the words.
+ * A copy that is not evidence for a model (a stage line, a summary) is unwrapped with `.value`
+ * at its own call site.
+ */
+export type Untrusted<T> = { value: T; untrusted: true };
+
+/**
  * BOOK-7 — a chapter's premise: a reader's intervention on a slot that has no text yet.
  *
  * It is not prose and not a rewrite of a paragraph: it is one goal for the chapter's first
  * edition. `intent` is the change's validated public sentence (no author label, no comment
- * body); `kind` is the world-fact the reader brought, when they declared one.
+ * body) — a reader's sentence, marked so a nested read cannot lose the mark; `kind` is the
+ * world-fact the reader brought, when they declared one.
  */
 export type PremiseAssignment = {
-  intent: string;
+  intent: Untrusted<string>;
   kind: InterventionKind | null;
 };
 
@@ -265,7 +274,11 @@ export type WriterAssignment = {
   chapter: number | 'front';
   neighbours: { before: number | null; after: number | null };
   expectation: null | { chars: { min: number; max: number } };
-  intent: string | null;
+  /**
+   * BOOK-44 — the reader's own goal sentence, marked `untrusted` where it travels: it is data
+   * for the writer, never an instruction. Null when the step has no change behind it.
+   */
+  intent: Untrusted<string> | null;
   /** BOOK-16 — which of the four world-facts the intervention brought; null when unknown. */
   interventionKind: InterventionKind | null;
   /**
@@ -480,6 +493,7 @@ export function parseSeams(raw: unknown): SeamRef[] {
   return out;
 }
 
-export const INTENT_MAX_CHARS = 600;
+/** BOOK-44 — one goal, not a paragraph: the bound of a public reason (`COMMENT_REASON_MAX_CHARS`). */
+export const INTENT_MAX_CHARS = 200;
 export const NOTE_MAX_CHARS = 200;
 export const REASON_MAX_CHARS = 200;

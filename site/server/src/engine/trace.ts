@@ -199,7 +199,7 @@ export function writerAssignment(
             after: step.chapter < 67 ? step.chapter + 1 : null,
           },
     expectation: step.pass === 'draft' ? { chars: { min: 20_000, max: 30_000 } } : null,
-    intent: change?.intent ?? null,
+    intent: change ? { value: change.intent, untrusted: true } : null,
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.
     interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),

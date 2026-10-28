@@ -202,4 +202,43 @@ describe('relevance at dequeue — the service records what it saw', () => {
       fixture.close();
     }
   });
+
+  it('refuses an adapted intent over the bound and keeps the stored goal (BOOK-44)', () => {
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.', 'Это служебный текст.']) },
+    });
+    try {
+      const change = fixture.engine.enqueue({
+        kind: 'accepted_comment',
+        chapter: 1,
+        intent: 'убрать абзац из главы и из разговора',
+      });
+      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
+      const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
+      const stored = () =>
+        fixture.db.prepare('SELECT intent FROM changes WHERE id = ?').get(change.id) as { intent: string };
+      const adapt = (intent: string) =>
+        fixture.engine.start(assignment.leaseId, {
+          decision: 'adapt',
+          reason: 'в главе остался только один абзац',
+          intent,
+        });
+
+      // 201 characters is a paragraph again: refused with the path's own code, never truncated —
+      // a shortened goal is a different goal — and the row keeps the intent it had.
+      try {
+        adapt('я'.repeat(201));
+        expect.unreachable('a 201-character adapted intent must be refused');
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'INVALID_INTENT', status: 422 });
+      }
+      expect(stored().intent).toBe('убрать абзац из главы и из разговора');
+
+      // The bound itself is accepted, and it is what the next pass receives.
+      adapt('я'.repeat(200));
+      expect(stored().intent).toBe('я'.repeat(200));
+    } finally {
+      fixture.close();
+    }
+  });
 });
