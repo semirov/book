@@ -18,6 +18,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { readBookCost } from '../../src/cost/book.ts';
 import { runFeedback } from '../../src/feedback/cli.ts';
 import { AUDIT_FALLBACK } from '../../src/feedback/audit.ts';
 import { DECISION_FALLBACK, publicDecisionReason } from '../../src/feedback/decisions.ts';
@@ -240,5 +241,57 @@ describe('a refusal does not spend the daily edit budget, an accepted filing doe
     expect(await accept(h, exempted)).toBe(0);
     expect(editKeys(h)).toHaveLength(2);
     expect(attempt(h, exempted)).toMatchObject({ outcome: 'accepted' });
+  });
+});
+
+describe('the footer’s aggregate counts triage money, not triage steps (BOOK-158 review m4)', () => {
+  it('keeps a model-less triage row out of the null-model step group', async () => {
+    const h = await boot();
+    // One writer pass that really wrote prose: the only `steps` row in the book.
+    h.db
+      .prepare(
+        `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced)
+         VALUES ('2026-10-25T10:00:00Z', '2026-10-25', 'stp_a', 8, 'draft', NULL, 'deepseek-flash', 1000000, 0, 0.15, 1)`,
+      )
+      .run();
+
+    // A plain refusal: no model ran, so the ledger row has no model and no amount.
+    const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    expect(cli(h, 'decide', id, 'rejected', ...REJECT).code).toBe(0);
+    expect(spend(h)).toHaveLength(2);
+
+    const cost = readBookCost(h.db);
+    // The triage pass is money (zero here) but not a writing step: `model IS NULL` stays empty.
+    expect(cost.steps).toBe(1);
+    expect(cost.tokens).toBe(1_000_000);
+    expect(cost.usd).toBe(0.15);
+    expect(cost.unpriced).toEqual([]);
+  });
+
+  it('still adds a priced triage pass to the total without counting it as a step', async () => {
+    const h = await boot();
+    const id = await filing(h, 'В абзаце дважды «абзац» — оставить одно упоминание.');
+    expect(
+      cli(
+        h,
+        'decide',
+        id,
+        'rejected',
+        ...REJECT,
+        '--model',
+        'deepseek/deepseek-v4-pro',
+        '--tokens-in',
+        '1000',
+        '--tokens-out',
+        '200',
+        '--usd',
+        '0.02',
+      ).code,
+    ).toBe(0);
+
+    const cost = readBookCost(h.db);
+    expect(cost.steps).toBe(0);
+    expect(cost.tokens).toBe(1_200);
+    expect(cost.usd).toBe(0.02);
   });
 });

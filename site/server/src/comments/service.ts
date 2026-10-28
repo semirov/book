@@ -55,11 +55,13 @@ import {
   recordAttempt,
   setAttemptOutcome,
   identicalAttempt,
+  utcDayEnd,
 } from './attempts.ts';
 import { resolveAnchor } from './anchor.ts';
 import { readBudget } from './budget.ts';
 import { fail, isPresent, type ServiceFailure } from './failure.ts';
 import { readFilingText } from './filing.ts';
+import { commentAddedPayload } from './frame.ts';
 import { classifyComment } from './guard.ts';
 import {
   appendCommentEvent,
@@ -227,12 +229,15 @@ export class CommentService {
     const networkToday = networkAttemptsToday(this.db, this.ipHash(context.ipKey), nowMs);
     if (identityToday >= ATTEMPTS_PER_IDENTITY_DAY || networkToday >= ATTEMPTS_PER_NETWORK_DAY) {
       // One public line for both caps: the reader is told the day, never which counter ran out.
+      // BOOK-158: the answer names when the tries come back (the next 00:00 UTC), as the
+      // revision path's `ATTEMPTS_EXHAUSTED` does, so the form can print the return.
       return {
         ok: false,
         status: 429,
         code: 'ATTEMPT_LIMIT',
         message: 'слишком много попыток сегодня — попробуйте завтра',
         budget: identityToday >= ATTEMPTS_PER_IDENTITY_DAY ? 'identity' : 'ip',
+        reopenAt: new Date(utcDayEnd(nowMs)).toISOString(),
       };
     }
     if (
@@ -325,18 +330,7 @@ export class CommentService {
     else if (row.status === 'quarantined') setAttemptOutcome(this.db, id, n, 'held', at);
 
     const dto = toCommentDto(this.db, row, nowMs);
-    this.emit?.('comment:added', {
-      id: dto.id,
-      chapter: dto.chapter,
-      anchor: dto.anchor,
-      author: dto.author,
-      authorColor: dto.authorColor,
-      body: dto.body,
-      interventionKind: dto.interventionKind,
-      status: dto.status,
-      reason: dto.reason,
-      createdAt: dto.createdAt,
-    });
+    this.emit?.('comment:added', commentAddedPayload(dto));
     return { ok: true, status: 201, body: { comment: dto, remaining: this.budget(context.identity.id, context.ipKey), queue: { depth: this.queueState().depth } } };
   }
 

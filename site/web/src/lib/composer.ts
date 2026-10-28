@@ -35,7 +35,7 @@ export type ComposerError = {
   resetAt?: string;
   /** BOOK-111: the filing a duplicate refusal names, for the «открыть отправленное» door. */
   commentId?: string;
-  /** BOOK-158: when the day's attempts come back (the next 00:00 UTC), with `ATTEMPTS_EXHAUSTED`. */
+  /** BOOK-158: when the day's attempts come back (the next 00:00 UTC), with either cap. */
   reopenAt?: string;
 };
 

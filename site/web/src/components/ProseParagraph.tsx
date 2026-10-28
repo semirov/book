@@ -51,6 +51,8 @@ export type ProseParagraphProps = {
   /** BOOK-137 — the chapter's paragraph count: the shared rule reads the frame's place from it. */
   blockCount: number;
   comments: readonly CommentDto[];
+  /** BOOK-158: the page's revise clock, so the card's cooldown line counts down. */
+  nowMs?: number;
   composer: ComposerInfo;
   viewer: ViewerDto;
   /** BOOK-111: the posted DTO, so the page shows the reader's own row at once. */
@@ -80,6 +82,7 @@ export function ProseParagraph({
   text,
   blockCount,
   comments,
+  nowMs,
   composer,
   viewer,
   onPosted,
@@ -464,6 +467,7 @@ export function ProseParagraph({
           rootClass={FILING_PANEL_CLASS}
           comment={filingPanel.comment}
           anchor={filingPanel.rect}
+          nowMs={nowMs}
           onClose={closePanel}
           onProvenance={filingWord === null ? undefined : () => switchToProvenance(filingWord)}
         />

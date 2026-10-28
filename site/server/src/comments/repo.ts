@@ -24,7 +24,7 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
-import { refusalHint, reviseState } from './attempts.ts';
+import { refusalHint, reviseState, unrevisedState } from './attempts.ts';
 
 export type CommentRow = {
   id: string;
@@ -290,6 +290,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // BOOK-158: the gate's word, the actionable line and the way back. All three are derived
   // once, here, from the stored verdicts and the attempt ledger, so no surface can disagree.
   const refusal = refusalOf(row);
+  // The attempt counts are read only for a row a revision could reopen: a settling row on a
+  // public list owes no ledger question (three COUNTs per row otherwise).
+  const revise = status === 'rejected' ? reviseState(db, row, nowMs) : unrevisedState();
   return {
     id: row.id,
     chapter: row.chapter,
@@ -317,7 +320,7 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     attempt,
     // BOOK-158: the actionable line beside a refusal, and the way back to another try.
     hint: refusalHint({ status, refusal, rights_rule: row.rights_rule }),
-    revise: reviseState(db, row, nowMs),
+    revise,
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     changeId: row.change_id,

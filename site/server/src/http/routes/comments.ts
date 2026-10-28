@@ -133,9 +133,13 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const parsed = parseReviseBody(request);
     if ('error' in parsed) return reply.code(400).send({ code: 'INVALID', message: parsed.error });
     const result = reviseComment(
-      { db: deps.db, now: deps.now },
+      {
+        db: deps.db,
+        now: deps.now,
+        ...(deps.emit === undefined ? {} : { emit: (type, data) => deps.emit?.(type, data) }),
+      },
       row,
-      session.identity.id,
+      session.identity,
       parsed.input,
     );
     if (result.ok === false) {
@@ -184,6 +188,7 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
         code: result.code,
         message: result.message,
         ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
+        ...(result.reopenAt === undefined ? {} : { reopenAt: result.reopenAt }),
         ...(result.resetAt === undefined ? {} : { resetAt: result.resetAt }),
         ...(result.currentText === undefined ? {} : { currentText: result.currentText }),
         ...(result.commentId === undefined ? {} : { commentId: result.commentId }),

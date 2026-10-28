@@ -53,7 +53,7 @@ describe('readerReason', () => {
     for (const line of raw) expect(readerReason(line) ?? '').not.toMatch(/[A-Z]{2,}_[A-Z]/u);
   });
 
-  it('recognises an internal code by shape, not by a list of today’s codes', () => {
+  it('recognises an internal code by shape, and a lowercase handle by its known name', () => {
     expect(holdsInternalCode('PROVIDER_SHAPE')).toBe(true);
     expect(holdsInternalCode('модель не ответила: PROVIDER_SHAPE')).toBe(true);
     // The engine stores its handles in both registers; the lowercase snake spelling is still a
@@ -67,5 +67,15 @@ describe('readerReason', () => {
     expect(holdsInternalCode('Gate-Timeout')).toBe(false);
     expect(holdsInternalCode('глава 65 уже написана')).toBe(false);
     expect(holdsInternalCode(null)).toBe(false);
+  });
+
+  it('keeps a human reason that happens to hold an underscore word', () => {
+    // BOOK-158 review m3: only the known handles are codes. A writer's own sentence about an
+    // accepted decision must reach the reader verbatim, underscore and all.
+    const human = 'принято: имя west_wing остаётся как есть — это название корабля';
+    expect(holdsInternalCode(human)).toBe(false);
+    expect(readerReason(human)).toBe(human);
+    // Another snake word is not a code either — the list is the engine's handles, not a shape.
+    expect(holdsInternalCode('правка прошла: second_pass')).toBe(false);
   });
 });

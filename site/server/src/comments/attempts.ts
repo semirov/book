@@ -140,6 +140,11 @@ export function utcDayStart(nowMs: number): number {
   return start.getTime();
 }
 
+/** 00:00 UTC of the next day: when a filing's, an identity's and a network's tries reset. */
+export function utcDayEnd(nowMs: number): number {
+  return utcDayStart(nowMs) + DAY_MS;
+}
+
 function count(db: Db, sql: string, ...args: Array<string | number>): number {
   return (db.prepare(sql).get(...args) as { n: number }).n;
 }
@@ -191,7 +196,7 @@ export function attemptState(db: Db, comment: AttemptComment, nowMs: number): At
   const networkToday = networkAttemptsToday(db, comment.ip_hash, nowMs);
   const attemptsLeft = Math.max(0, ATTEMPTS_PER_FILING_DAY - attemptsToday);
   const closedToday = attemptsLeft === 0;
-  const reopenAt = new Date(start + DAY_MS).toISOString();
+  const reopenAt = new Date(utcDayEnd(nowMs)).toISOString();
 
   const decidedMs = comment.decided_at === null ? Number.NaN : Date.parse(comment.decided_at);
   const cooldownUntil =
@@ -230,6 +235,16 @@ export function reviseState(db: Db, comment: AttemptComment, nowMs: number): Com
     closed: state.closedToday,
     blocked: state.blocked,
   };
+}
+
+/**
+ * The `revise` a filing that no gate refused carries: the door was never open, so there is
+ * nothing to count. Returning it without touching the ledger is what keeps a public list of
+ * accepted rows at one query per row instead of four — the counts are read only for a row a
+ * revision could actually reopen.
+ */
+export function unrevisedState(): CommentRevise {
+  return { allowed: false, at: null, attemptsLeft: ATTEMPTS_PER_FILING_DAY, closed: false, blocked: null };
 }
 
 /**

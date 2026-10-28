@@ -19,6 +19,7 @@
 import type { CommentDto, ReviseCommentInput } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import type { IdentityRow } from '../db/repo/identities.ts';
 import {
   anchorSha,
   attemptState,
@@ -28,11 +29,20 @@ import {
 } from './attempts.ts';
 import { fail, type ServiceFailure } from './failure.ts';
 import { readFilingText } from './filing.ts';
+import { commentAddedPayload } from './frame.ts';
 import { classifyComment } from './guard.ts';
 import { appendCommentEvent, readCommentRow, toCommentDto, type CommentRow } from './repo.ts';
 import { applyRights, scanFiling } from '../rights/apply.ts';
 
-export type ReviseDeps = { db: Db; now: () => Date };
+export type ReviseDeps = {
+  db: Db;
+  now: () => Date;
+  /** The broadcast a post makes, made by a revision too: a second tab re-reads the chapter. */
+  emit?: (type: 'comment:added', data: unknown) => void;
+};
+
+/** The author a revision is judged against: the session's identity, never the request's. */
+export type ReviseAuthor = Pick<IdentityRow, 'id' | 'blocked'>;
 
 export type ReviseResult = { ok: true; status: number; body: { comment: CommentDto } } | ServiceFailure;
 
@@ -40,11 +50,16 @@ export type ReviseResult = { ok: true; status: number; body: { comment: CommentD
 export function reviseComment(
   deps: ReviseDeps,
   comment: CommentRow,
-  identityId: string,
+  author: ReviseAuthor,
   input: ReviseCommentInput,
 ): ReviseResult {
+  // The posting path's first line, and for the same reason: a blocked author may not reach a
+  // model through a revision any more than through a new filing (same sentence, same code).
+  if (author.blocked !== 0) {
+    return fail(403, 'BLOCKED', 'замечания от этого автора не принимаются');
+  }
   // Another reader's row is not found — a 403 would tell them the filing exists.
-  if (comment.identity_id !== identityId) return fail(404, 'NOT_FOUND', 'нет такого замечания');
+  if (comment.identity_id !== author.id) return fail(404, 'NOT_FOUND', 'нет такого замечания');
   if (comment.status !== 'rejected') {
     return fail(409, 'NOT_REVISABLE', 'поправить можно только отклонённое замечание');
   }
@@ -78,7 +93,7 @@ export function reviseComment(
   if (text.ok === false) return text;
 
   const anchor = anchorSha(comment);
-  if (identicalAttempt(deps.db, identityId, text.body.hash, anchor, nowMs)) {
+  if (identicalAttempt(deps.db, author.id, text.body.hash, anchor, nowMs)) {
     return fail(409, 'IDENTICAL', 'это уже было — поправьте формулировку');
   }
 
@@ -136,5 +151,9 @@ export function reviseComment(
   }
   const row = readCommentRow(deps.db, comment.id);
   if (row === undefined) return fail(500, 'INTERNAL', 'замечание не сохранилось');
-  return { ok: true, status: 200, body: { comment: toCommentDto(deps.db, row, nowMs) } };
+  const dto = toCommentDto(deps.db, row, nowMs);
+  // The same broadcast a post makes: a second tab reloads this chapter instead of keeping the
+  // frozen cooldown it was told at the last read.
+  deps.emit?.('comment:added', commentAddedPayload(dto));
+  return { ok: true, status: 200, body: { comment: dto } };
 }

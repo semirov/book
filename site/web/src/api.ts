@@ -41,8 +41,8 @@ export class ApiError extends Error {
     readonly commentId?: string,
     /**
      * BOOK-158: the day's attempts are spent, and this is when they come back (the next 00:00
-     * UTC). It travels only with `ATTEMPTS_EXHAUSTED`; the page says «в следующий раз» and
-     * names the hour when it has one.
+     * UTC). It travels with `ATTEMPTS_EXHAUSTED` and with `ATTEMPT_LIMIT`; the page says «в
+     * следующий раз» and names the hour when it has one.
      */
     readonly reopenAt?: string,
   ) {

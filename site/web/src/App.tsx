@@ -60,6 +60,7 @@ import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { useChangeCard } from './useChangeCard.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
+import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { usePending } from './usePending.ts';
 import { useFocusMode } from './useFocus.ts';
@@ -125,6 +126,8 @@ export function App() {
    */
   const { changes, comments, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord } =
     useReaderFeed();
+  // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
+  const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
   /** §4 — the thread waits until both feeds settle; a later frame never re-arms it. */
   const stage = usePending(!threadSettled);
 
@@ -463,6 +466,7 @@ export function App() {
         passes={passes}
         chapterFeed={chapterFeed}
         changes={changes}
+        nowMs={nowMs}
         onRead={loadChapter}
         onPosted={onPosted}
         onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
@@ -480,7 +484,7 @@ export function App() {
         live={history}
         exportBytes={front.exportBytes ?? null}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} live={history} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
       {chainActive ? (

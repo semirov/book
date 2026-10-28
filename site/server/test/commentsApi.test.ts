@@ -189,11 +189,12 @@ describe('POST /api/comments — identity, the write gate and rate limits', () =
       commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
     );
     expect(first.statusCode).toBe(201);
-    // Every filing carries its way back, even one nobody refused: the page needs no second call.
-    // The attempt just made counts, so two of the three tries are left.
+    // Every filing carries the shape the page reads, but the ledger is read only for a refused
+    // row: a filing nobody refused is not revisable, so `revise` is the closed shape (BOOK-158
+    // review m5) and the attempt it just made is not counted here.
     expect(first.json().comment).toMatchObject({
       hint: null,
-      revise: { allowed: false, at: null, attemptsLeft: 2, closed: false, blocked: null },
+      revise: { allowed: false, at: null, attemptsLeft: 3, closed: false, blocked: null },
     });
     expect(first.json().remaining.editsRemaining).toBe(h.config.editSubmissionsPerDay);
     expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });

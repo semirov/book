@@ -55,7 +55,11 @@ function revise(overrides: Partial<CommentRevise> = {}): CommentRevise {
   return { allowed: true, at: null, attemptsLeft: 2, closed: false, blocked: null, ...overrides };
 }
 
-/** A premise the rights gate refused: the exact shape BOOK-158 exists for. */
+/**
+ * A premise the rights gate refused: the exact shape BOOK-158 exists for, and one a POST could
+ * store — a chapter-level filing is a note, so it carries no kind without a proposed wording
+ * (BOOK-16; a kind with `proposedText: null` is a row the posting path refuses).
+ */
 function refusedPremise(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
@@ -65,7 +69,7 @@ function refusedPremise(overrides: Partial<CommentDto> = {}): CommentDto {
     authorColor: '#6f9bb5',
     body: 'смена переходит на ночь',
     proposedText: null,
-    interventionKind: 'document',
+    interventionKind: null,
     premise: true,
     status: 'rejected',
     frame: 'untouched',
@@ -259,11 +263,8 @@ describe('a refused premise (BOOK-158)', () => {
     const { url, method, payload } = reviseCall(fetchSpy);
     expect(url).toBe(`/api/comments/${refused.id}/revise`);
     expect(method).toBe('POST');
-    expect(payload).toEqual({
-      body: 'смена переходит на вечер',
-      proposedText: 'смена переходит на вечер',
-      interventionKind: 'document',
-    });
+    // A note sends one text: the wording the reader typed, and no kind (BOOK-16).
+    expect(payload).toEqual({ body: 'смена переходит на вечер' });
     expect(payload).not.toHaveProperty('blockId');
     expect(payload).not.toHaveProperty('quote');
     expect(payload).not.toHaveProperty('baseRev');

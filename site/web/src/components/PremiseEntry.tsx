@@ -36,6 +36,7 @@ export function PremiseEntry({
   firstEmpty,
   form = false,
   onPosted,
+  nowMs,
 }: {
   entry: CatalogEntry;
   comments: readonly CommentDto[];
@@ -49,6 +50,8 @@ export function PremiseEntry({
   form?: boolean;
   /** BOOK-111: the posted DTO reaches the page, which shows the row without a reload. */
   onPosted?: (comment: CommentDto) => void;
+  /** BOOK-158: the page's revise clock, so a premise's cooldown line counts down. */
+  nowMs?: number;
 }) {
   const seam = useOpenSeam();
   /** BOOK-111: the page's one panel; this chapter's premise owns only its own slot in it. */
@@ -59,7 +62,7 @@ export function PremiseEntry({
       ? { comment: filing.comment, rect: filing.rect }
       : null;
   const premise = premiseFiling(comments, entry.n);
-  const row = premiseRow(entry, premise, changes);
+  const row = premiseRow(entry, premise, changes, nowMs);
   const draftKey = `ch${entry.n}:premise`;
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
   /**
@@ -150,6 +153,7 @@ export function PremiseEntry({
           anchor={panel.rect}
           earlierAttempts={earlier}
           premiseIntent={intent}
+          nowMs={nowMs}
           onClose={hideFiling}
           // BOOK-158: the card's «исправить» closes the card and opens this chapter's strip,
           // and the strip is the chapter's own — its state says so, so it outlives the row it

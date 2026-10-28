@@ -42,6 +42,7 @@ export function Discussion({
   busy,
   changes = [],
   comments = [],
+  nowMs,
   live,
 }: {
   depth: number;
@@ -57,6 +58,11 @@ export function Discussion({
   /** The thread's changes: attempts, folded into the filing they were made from. */
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
+  /**
+   * BOOK-158: the page's revise clock (`useReviseTick`). The register's cooldown line is read
+   * against it, so the countdown moves while the page is open; absent means this render.
+   */
+  nowMs?: number;
   /** BOOK-56: `state.history.live`; with no reader change the register is not on the page. */
   live: boolean;
 }) {
@@ -66,8 +72,8 @@ export function Discussion({
   const pending = busy ?? stage !== 'quiet';
   // BOOK-137: a premise's home is the chapter's row; the thread lists every other filing.
   const filings = threadFilings(comments);
-  /** BOOK-158: a cooldown is counted from the moment the register renders, never frozen. */
-  const nowMs = Date.now();
+  /** BOOK-158: a cooldown is counted from the page's clock, never frozen in the DTO. */
+  const clock = nowMs ?? Date.now();
   // The queue line and the list come from one fact, so «в очереди пусто» can never stand
   // above an entry the page presents as waiting.
   const queue = queueView(depth, filings);
@@ -130,7 +136,7 @@ export function Discussion({
              * things the chapter's row does: the reason (the state line above), the hint, and
              * the way back. Computed once per render so a cooldown counts from *now*.
              */
-            const revise = reviseView(comment, nowMs);
+            const revise = reviseView(comment, clock);
             return (
               <li
                 className={`comment tone-${line.tone}`}

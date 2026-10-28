@@ -14,7 +14,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { HINT_MAX_CHARS, refusalHint } from '../../src/comments/attempts.ts';
-import { insertComment, readCommentRow, toCommentDto } from '../../src/comments/repo.ts';
+import { insertComment, listCommentRows, readCommentRow, toCommentDto } from '../../src/comments/repo.ts';
 import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import { upsertIdentity } from '../../src/db/repo/identities.ts';
@@ -229,5 +229,64 @@ describe('the revise state a refusal carries', () => {
 
     const after = toCommentDto(database, row!, T0 + 11 * 60_000);
     expect(after.revise).toMatchObject({ allowed: true, blocked: null, attemptsLeft: 3 });
+  });
+});
+
+/**
+ * The driver, wrapped so a test can see the statements a read issued while the real connection
+ * still answers them. `prepare` is the one door every query goes through.
+ */
+function counting(database: Db): { db: Db; statements: () => string[] } {
+  const statements: string[] = [];
+  const proxy = new Proxy(database, {
+    get(target, prop) {
+      if (prop === 'prepare') {
+        return (sql: string) => {
+          statements.push(sql);
+          return target.prepare(sql);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
+  return { db: proxy, statements: () => statements };
+}
+
+describe('a public list asks the attempt ledger only about a refused row', () => {
+  it('does not run the three counts for every accepted filing', () => {
+    const database = boot();
+    for (let index = 0; index < 5; index += 1) seed(database, `cmt_ok_${String(index)}`, { status: 'new' });
+    const refused = seed(database, 'cmt_refused', {
+      status: 'rejected',
+      auditVerdict: 'OFF',
+      decidedAt: ISO(T0),
+      reason: AUDITOR_LINE,
+    });
+
+    const counted = counting(database);
+    const rows = listCommentRows(counted.db, { chapter: 8, limit: 50 });
+    expect(rows).toHaveLength(6);
+    const dtos = rows.map((row) => toCommentDto(counted.db, row, T0));
+
+    // Three counts (filing, identity, network) for the one row a revision could reopen.
+    const attemptReads = counted.statements().filter((sql) => sql.includes('comment_attempts'));
+    expect(attemptReads).toHaveLength(3);
+
+    // The accepted rows still carry the shape the page reads, and the refused one keeps the
+    // exact state the ledger gives it.
+    const accepted = dtos.find((row) => row.id === 'cmt_ok_0');
+    expect(accepted?.revise).toEqual({
+      allowed: false,
+      at: null,
+      attemptsLeft: 3,
+      closed: false,
+      blocked: null,
+    });
+    expect(dtos.find((row) => row.id === refused)?.revise).toMatchObject({
+      allowed: false,
+      at: ISO(T0 + 10 * 60_000),
+      blocked: 'cooldown',
+    });
   });
 });

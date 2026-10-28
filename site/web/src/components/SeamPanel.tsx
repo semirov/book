@@ -28,6 +28,11 @@ type Shell = {
   rootClass: string;
   /** The anchor the panel is placed against; a context change keeps it. */
   anchor: AnchorRect | null;
+  /**
+   * BOOK-158: the page's revise clock (`useReviseTick`). The card's cooldown line counts down
+   * from this value; a caller that does not know it falls back to its own render time.
+   */
+  nowMs?: number;
   /** The one close on screen — and, with `Escape`, the box's only way out. */
   onClose: () => void;
 };
@@ -238,6 +243,7 @@ function FilingBody({
   onProvenance,
   earlierAttempts = [],
   premiseIntent = null,
+  nowMs,
   onRevise,
 }: FilingContext) {
   const line = commentStatusLine(comment);
@@ -256,7 +262,7 @@ function FilingBody({
    * hint, the door and the reason the door is shut. The refusal's own sentence is already the
    * card's fact line, so only the hint and the action are printed here.
    */
-  const revise = reviseView(comment);
+  const revise = reviseView(comment, nowMs);
   const openRevise = (origin: HTMLElement): void => {
     if (onRevise !== undefined) {
       onRevise(comment, origin);

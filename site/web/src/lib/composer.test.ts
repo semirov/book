@@ -104,10 +104,19 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
     // No hour named, no hour invented.
     expect(errorCopy({ code: 'ATTEMPTS_EXHAUSTED', message: '' }).detail).toBeNull();
 
-    // The cap across a reader's filings says «завтра», never a countdown to one filing's day.
+    // The cap across a reader's filings says «завтра», never a countdown to one filing's day —
+    // and, since BOOK-158 review m1, the post names the hour the tries come back, as the
+    // filing's own `ATTEMPTS_EXHAUSTED` does.
     expect(errorCopy({ code: 'ATTEMPT_LIMIT', message: '' }).line).toBe(
       'слишком много попыток сегодня — попробуйте завтра',
     );
+    const capped = errorCopy({
+      code: 'ATTEMPT_LIMIT',
+      message: 'слишком много попыток сегодня — попробуйте завтра',
+      reopenAt: '2026-10-29T00:00:00Z',
+    });
+    expect(capped.detail).toMatch(/^попытки вернутся в \d{2}:\d{2}$/u);
+    expect(capped.canRetry).toBe(false);
     expect(errorCopy({ code: 'IDENTICAL', message: '' }).line).toBe('это уже было — поправьте формулировку');
     expect(errorCopy({ code: 'NOT_REVISABLE', message: '' }).canRetry).toBe(false);
     expect(errorCopy({ code: 'NOT_FOUND', message: '' }).line).toContain('не найдено');

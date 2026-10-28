@@ -125,8 +125,9 @@ describe('a revise inside the cooldown is refused with the remaining time', () =
     expect(dto.id).toBe(id);
     expect(dto).toMatchObject({ status: 'new', reason: null });
     expect(dto.body).toBe('Переписал: абзац начинается с действия.');
-    // Two of the three tries are spent: the post and this revision.
-    expect(dto.revise).toMatchObject({ allowed: false, blocked: null, attemptsLeft: 1 });
+    // A reopened row is not a refusal, so it carries no attempt arithmetic: the counts are read
+    // only for a row a revision could actually reopen (BOOK-158 review m5).
+    expect(dto.revise).toEqual({ allowed: false, at: null, attemptsLeft: 3, closed: false, blocked: null });
     // The anchor and the revision are the filing's, not the request's.
     expect(h.db.prepare('SELECT block_id, quote, base_rev FROM comments WHERE id = ?').get(id)).toEqual(anchorBefore);
     expect(attempts(h, id)).toEqual([
@@ -348,6 +349,8 @@ describe('the per-identity and per-network attempt caps both bite', () => {
     expect(sixth.json()).toMatchObject({
       code: 'ATTEMPT_LIMIT',
       message: 'слишком много попыток сегодня — попробуйте завтра',
+      // BOOK-158 review m1: the post names the return, as `ATTEMPTS_EXHAUSTED` does.
+      reopenAt: NEXT_UTC_DAY,
     });
     // The counter that refused stays internal — an operator's log, never the reader's page.
     expect(sixth.json()).not.toHaveProperty('budget');
@@ -387,5 +390,69 @@ describe('the per-identity and per-network attempt caps both bite', () => {
     const elsewhere = await post(h, commentBody({ body: 'Замечание от другой сети.' }), fourth.headers('198.51.100.5'));
     expect(elsewhere.statusCode).toBe(201);
     expect(ipKey('198.51.100.5')).not.toBe(ipKey(address));
+  });
+});
+
+describe('the revise route is gated like the post route', () => {
+  it('answers 401 to a request with no session, and stores nothing', async () => {
+    const h = await boot();
+    const id = await refusedFiling(h, 'Первый абзац лучше начать иначе.');
+    const before = row(h, id);
+    h.clock.advance(11 * MINUTE);
+
+    const anonymous = await revise(
+      h,
+      id,
+      { body: 'Переписал: абзац начинается с действия.' },
+      { origin: h.config.publicOrigin, 'content-type': 'application/json' },
+    );
+    expect(anonymous.statusCode).toBe(401);
+    expect(anonymous.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(row(h, id)).toEqual(before);
+    expect(attempts(h, id)).toHaveLength(1);
+  });
+
+  it('answers a blocked identity 403 BLOCKED with the post path’s sentence', async () => {
+    const h = await boot();
+    const id = await refusedFiling(h, 'Первый абзац лучше начать иначе.');
+    const before = row(h, id);
+    // The block lands after the refusal: the filing exists and its cooldown has passed, so
+    // the *author* is the only thing standing between the reader and a model.
+    h.db.prepare('UPDATE identities SET blocked = 1 WHERE id = ?').run(h.identity.id);
+    h.clock.advance(11 * MINUTE);
+
+    const response = await revise(h, id, { body: 'Переписал: абзац начинается с действия.' });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: 'BLOCKED',
+      message: 'замечания от этого автора не принимаются',
+    });
+    // No silent no-op that still spends: the row, the ledger and the text are untouched.
+    expect(row(h, id)).toEqual(before);
+    expect(attempts(h, id)).toEqual([{ n: 1, outcome: 'refused' }]);
+  });
+
+  it('broadcasts the same comment:added frame a post does, with the refreshed row', async () => {
+    const h = await boot();
+    const id = await refusedFiling(h, 'Первый абзац лучше начать иначе.');
+    h.clock.advance(11 * MINUTE);
+    h.emitted.length = 0;
+
+    const body = 'Переписал: абзац начинается с действия.';
+    expect((await revise(h, id, { body })).statusCode).toBe(200);
+
+    const frame = h.emitted.find((event) => event.type === 'comment:added');
+    expect(frame, 'a revision must reach a second tab').toBeDefined();
+    expect(frame?.data).toMatchObject({
+      id,
+      chapter: 8,
+      status: 'new',
+      body,
+      reason: null,
+      author: h.identity.display_name,
+    });
+    // The frame carries the DTO's public fields, never the stored verdicts or an identity id.
+    expect(frame?.data).not.toHaveProperty('identity_id');
+    expect(frame?.data).not.toHaveProperty('rights_verdict');
   });
 });
