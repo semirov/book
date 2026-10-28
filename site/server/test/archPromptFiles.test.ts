@@ -184,11 +184,11 @@ describe('F023 — the guard survives a reflow (BOOK-46)', () => {
   });
 
   it('treats the frozen frame as public text, not as a leak (M2)', () => {
-    const [ch01, ch67] = PUBLIC_TEXT;
-    if (ch01 === undefined || ch67 === undefined) throw new Error('PUBLIC_TEXT lost a frozen-frame sentence');
+    const [ch01, ch42] = PUBLIC_TEXT;
+    if (ch01 === undefined || ch42 === undefined) throw new Error('PUBLIC_TEXT lost a frozen-frame sentence');
     // (a) the allowlist cannot drift away from the book it excuses.
     expect(readFileSync(join(BOOK_ROOT, 'manuscript', 'ch01.md'), 'utf8')).toContain(ch01);
-    expect(readFileSync(join(BOOK_ROOT, 'manuscript', 'ch67.md'), 'utf8')).toContain(ch67);
+    expect(readFileSync(join(BOOK_ROOT, 'manuscript', 'ch42.md'), 'utf8')).toContain(ch42);
 
     const extra = 'the sentence after it is the part the site must never print, on any page.';
     const root = mkdtempSync(join(tmpdir(), 'book-f023-frame-'));
@@ -201,14 +201,14 @@ describe('F023 — the guard survives a reflow (BOOK-46)', () => {
       const bundle = join(distDir, 'app.js');
 
       // (b) a note-style line whose only content is the frame is collected, yet cannot match it.
-      writeFileSync(support, `# canon\n\n- chapter 67: «${ch67}»\n`, 'utf8');
+      writeFileSync(support, `# canon\n\n- chapter 42: «${ch42}»\n`, 'utf8');
       expect(collectCanaries(root), 'the note line is long enough to be a canary').toHaveLength(1);
-      writeFileSync(bundle, `<p>${ch67}</p>`, 'utf8');
+      writeFileSync(bundle, `<p>${ch42}</p>`, 'utf8');
       expect(f023Problems({ bookRoot: root, distDir }), 'the frame is printed by design').toEqual([]);
 
       // (c) the same line with words of its own still has to match — even shipped as HTML.
-      writeFileSync(support, `# canon\n\n- chapter 67: «${ch67}» — ${extra}\n`, 'utf8');
-      writeFileSync(bundle, `<p>chapter 67: &laquo;${ch67}&raquo; &mdash; ${extra}</p>`, 'utf8');
+      writeFileSync(support, `# canon\n\n- chapter 42: «${ch42}» — ${extra}\n`, 'utf8');
+      writeFileSync(bundle, `<p>chapter 42: &laquo;${ch42}&raquo; &mdash; ${extra}</p>`, 'utf8');
       expect(f023Problems({ bookRoot: root, distDir })).toEqual([
         { file: bundle, message: 'F023: ships a line of the support file notes/canon.md' },
       ]);

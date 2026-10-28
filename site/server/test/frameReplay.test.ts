@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { readCommentRow } from '../src/comments/repo.ts';
@@ -20,14 +20,14 @@ import { longProse } from './helpers.ts';
  * tell the reader «рассмотрено» twice for one filing.
  *
  * Split from `feedback.test.ts` and `framePaperwork.test.ts` (their 500-line budgets): the case
- * needs a written ch67, a filing on its canon finale, and the operator's own CLI.
+ * needs a written finale, a filing on its canon close, and the operator's own CLI.
  */
 
 let harness: Harness | null = null;
 let dir: string | null = null;
 
 beforeEach(async () => {
-  harness = await bootComments({ chapters: { 'ch67.md': longProse(['Служебный текст для проверки.']) } });
+  harness = await bootComments({ chapters: { 'ch42.md': longProse(['Служебный текст для проверки.']) } });
   dir = mkdtempSync(join(tmpdir(), 'book-frame-replay-'));
 });
 
@@ -47,14 +47,19 @@ function cli(h: Harness, ...argv: string[]): { code: number; out: string[] } {
 describe('the paperwork is accepted once (BOOK-137)', () => {
   it('writes no second row and no second thread event when the same change id arrives again', async () => {
     const h = harness!;
-    const block = h.db.prepare('SELECT id FROM blocks WHERE chapter = 67 ORDER BY idx DESC LIMIT 1').get() as {
+    const block = h.db.prepare('SELECT id FROM blocks WHERE chapter = ? ORDER BY idx DESC LIMIT 1').get(TOTAL_CHAPTERS) as {
       id: string;
     };
     const posted = await h.app.inject({
       method: 'POST',
       url: '/api/comments',
       headers: h.headers(),
-      payload: commentBody({ chapter: 67, blockId: block.id, quote: FRAME_LAST_SENTENCE, body: 'Финал держит всё.' }),
+      payload: commentBody({
+        chapter: TOTAL_CHAPTERS,
+        blockId: block.id,
+        quote: FRAME_LAST_SENTENCE,
+        body: 'Финал держит всё.',
+      }),
     });
     const id = posted.json().comment.id as string;
     expect(posted.json().comment.frame).toBe('touched');

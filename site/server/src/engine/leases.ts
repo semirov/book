@@ -7,6 +7,8 @@
  * write the same chapter" a database fact rather than a convention.
  */
 
+import { TOTAL_CHAPTERS } from '@book/shared';
+
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { newLeaseId } from '../util/ulid.ts';
@@ -58,9 +60,9 @@ export function acquireLease(deps: EngineDeps, input: AcquireInput): LeaseRow {
     if (existing) refuse('LEASE_HELD', 409, `step ${step.step_id} is leased by ${existing.session}`);
   }
 
-  if (step.pass === 'cascade' && step.chapter === 67) {
+  if (step.pass === 'cascade' && step.chapter === TOTAL_CHAPTERS) {
     // C3 / ADR-024: the ending is never rewritten by a ripple.
-    refuse('ENDING_FROZEN', 409, 'chapter 67 is never rewritten by a cascade');
+    refuse('ENDING_FROZEN', 409, `chapter ${String(TOTAL_CHAPTERS)} is never rewritten by a cascade`);
   }
   if (step.pass === 'cascade' && step.chapter !== null && !isWritten(deps.bookRoot, step.chapter)) {
     // C1: a ripple may not walk into an empty slot.

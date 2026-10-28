@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -17,7 +17,7 @@ import { boundaryLabel } from '../../../web/src/lib/changeStatus.ts';
 import { createFixture, longProse, type Fixture } from '../helpers.ts';
 
 /**
- * BOOK-60 / BOOK-DOC-41 — the file itself: schema order, the annotation, 67 sections, total
+ * BOOK-60 / BOOK-DOC-41 — the file itself: schema order, the annotation, every section, total
  * escaping, and the empty book. BOOK-133 adds the cover: the `coverpage` reference and the
  * one `binary` that closes the document, bound to the real asset in `web/public/cover`.
  * The assertions run on a real `GET /book.fb2` parsed as XML (jsdom), not on serializer
@@ -108,12 +108,12 @@ const BASE: Fb2Input = {
 };
 
 describe('the FB2 file (BOOK-60)', () => {
-  it('AC1 — a valid file: description in schema order, the nine-paragraph annotation, 67 chapter sections in order', async () => {
+  it('AC1 — a valid file: description in schema order, the nine-paragraph annotation, every section in order', async () => {
     await boot({
       '00-front.md': FRONT,
       'ch01.md': FRAME_FIRST_SENTENCE,
       'ch07.md': CHAPTER_SEVEN,
-      'ch67.md': FRAME_LAST_SENTENCE,
+      'ch42.md': FRAME_LAST_SENTENCE,
     });
     const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
@@ -148,9 +148,9 @@ describe('the FB2 file (BOOK-60)', () => {
     expect(documentInfo.getElementsByTagName('date')[0]!.getAttribute('value')).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
 
     const sections = [...root.getElementsByTagName('body')[0]!.children];
-    expect(sections).toHaveLength(67);
+    expect(sections).toHaveLength(TOTAL_CHAPTERS);
     expect(sections.map((section) => section.getAttribute('id'))).toEqual(
-      Array.from({ length: 67 }, (_, index) => `ch${String(index + 1).padStart(2, '0')}`),
+      Array.from({ length: TOTAL_CHAPTERS }, (_, index) => `ch${String(index + 1).padStart(2, '0')}`),
     );
     sections.forEach((section, index) => {
       const titleParagraphs = [...section.getElementsByTagName('title')[0]!.children];
@@ -219,7 +219,7 @@ describe('the FB2 file (BOOK-60)', () => {
     }
   });
 
-  it('AC6 — an empty book exports a readable description and 67 titled empty sections', async () => {
+  it('AC6 — an empty book exports a readable description and every section titled and empty', async () => {
     await boot();
     const response = await app!.inject({ method: 'GET', url: '/book.fb2' });
     expect(response.statusCode).toBe(200);
@@ -230,7 +230,7 @@ describe('the FB2 file (BOOK-60)', () => {
     expect(titleInfo.getElementsByTagName('annotation')).toHaveLength(0);
 
     const sections = [...doc.getElementsByTagName('body')[0]!.children];
-    expect(sections).toHaveLength(67);
+    expect(sections).toHaveLength(TOTAL_CHAPTERS);
     sections.forEach((section, index) => {
       const paragraphs = [...section.getElementsByTagName('p')].map((p) => p.textContent);
       expect(paragraphs).toEqual([`Глава ${index + 1}`]);

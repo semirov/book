@@ -8,7 +8,7 @@
  * tests exercise the protocol end to end — the same calls the CLI makes — not the helpers.
  */
 
-import type { WriterAssignment } from '@book/shared';
+import { TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { insertRevision } from '../../src/db/repo/revisions.ts';
@@ -103,11 +103,11 @@ function seedCascadeRevisionOfTheEnding(fixture: Fixture): void {
   fixture.db
     .prepare(
       `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
-       VALUES (67, 1, 'Конец', 'sha-67', 100, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+       VALUES (?, 1, 'Конец', 'sha-last', 100, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
     )
-    .run();
+    .run(TOTAL_CHAPTERS);
   insertRevision(fixture.db, {
-    chapter: 67,
+    chapter: TOTAL_CHAPTERS,
     rev: 2,
     at: '2026-10-25T09:30:00Z',
     kind: 'rewrite',
@@ -118,7 +118,7 @@ function seedCascadeRevisionOfTheEnding(fixture: Fixture): void {
     added: 0,
     changed: 1,
     removed: 0,
-    snapshot: 'versions/ch67/sha-67.md',
+    snapshot: 'versions/ch42/sha-last.md',
     attributed: true,
     logNote: null,
   });

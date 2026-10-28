@@ -1,5 +1,13 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, FrontDto, HistoryTimelineDto, StateSnapshot } from '@book/shared';
+import {
+  directionOf,
+  partOf,
+  TOTAL_CHAPTERS,
+  type CatalogEntry,
+  type FrontDto,
+  type HistoryTimelineDto,
+  type StateSnapshot,
+} from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,20 +27,21 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const NOW = '2026-10-27T12:00:00Z';
 
-const catalog: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
+const catalog: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => {
   const n = index + 1;
   return {
     n,
-    part: (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'],
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 0,
     written: false,
-    basis: n === 1 || n === 67,
+    basis: n === 1 || n === TOTAL_CHAPTERS,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: directionOf(n),
   };
 });
 
@@ -43,10 +52,10 @@ const STATE: StateSnapshot = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: 'Бланк', about: 'О чём эта книга.', rev: 1, updatedAt: NOW },
-  chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [1, 67] },
+  chapters: { total: TOTAL_CHAPTERS, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [1, TOTAL_CHAPTERS] },
   cursors: {} as StateSnapshot['cursors'],
   toc: catalog.map((row) => ({ part: row.part, n: row.n, title: null, written: false, rev: 0 })),
-  meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: null, backwardFront: null, gap: TOTAL_CHAPTERS, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,

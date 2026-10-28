@@ -77,7 +77,7 @@ describe('POST /api/admin/reset/book — the guard and the dry run', () => {
       { key: 'sessions', rows: 1 },
       { key: 'front_matter', rows: 1 },
     ]);
-    expect(body.frame).toEqual([1, 67]);
+    expect(body.frame).toEqual([1, 42]);
     expect(body.engine).toEqual({ openSteps: 0, liveLeases: 0 });
     expect(body.manuscript).toEqual({ proseChapters: 0 });
     expect(body.backup).toBeNull();
@@ -165,12 +165,12 @@ describe('POST /api/admin/reset/book — the wipe', () => {
       .all() as Array<{ n: number; basis: number; chars: number; block_count: number; rev: number }>;
     expect(basis).toEqual([
       { n: 1, basis: 1, chars: 0, block_count: 1, rev: 0 },
-      { n: 67, basis: 1, chars: 0, block_count: 1, rev: 0 },
+      { n: 42, basis: 1, chars: 0, block_count: 1, rev: 0 },
     ]);
     expect((db.prepare('SELECT text FROM blocks WHERE chapter = 1').get() as { text: string }).text).toBe(
       FRAME_FIRST_SENTENCE,
     );
-    expect((db.prepare('SELECT text FROM blocks WHERE chapter = 67').get() as { text: string }).text).toBe(
+    expect((db.prepare('SELECT text FROM blocks WHERE chapter = 42').get() as { text: string }).text).toBe(
       FRAME_LAST_SENTENCE,
     );
     // No dangling reference, and the log's append-only promise is back.
@@ -270,7 +270,7 @@ describe('the book the API serves after a reset', () => {
     const state = (await h.get('/api/state')).json();
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.count).toBe(0);
-    expect(state.chapters.basis).toEqual([1, 67]);
+    expect(state.chapters.basis).toEqual([1, 42]);
     expect(state.history.live).toBe(false);
 
     const comments = (await h.get('/api/comments')).json();
@@ -278,7 +278,7 @@ describe('the book the API serves after a reset', () => {
 
     for (const [n, sentence] of [
       [1, FRAME_FIRST_SENTENCE],
-      [67, FRAME_LAST_SENTENCE],
+      [42, FRAME_LAST_SENTENCE],
     ] as const) {
       const chapter = await h.get(`/api/chapters/${String(n)}`);
       expect(chapter.statusCode, String(n)).toBe(200);
@@ -303,7 +303,7 @@ describe('the reset refuses rather than destroying', () => {
     const response = await h.call({ dryRun: false });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'FRAME_MISSING' });
-    expect(response.json().message).toContain('ch67.md');
+    expect(response.json().message).toContain('ch42.md');
     expect(expectedCounts(target)).toEqual(before);
     expect(backups(target.dataDir)).toEqual([]);
   });

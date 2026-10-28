@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { validateAnswer, type AnswerCode, type AnswerRefusal, type ValidateInput } from '../../src/writer/validate.ts';
@@ -110,8 +110,9 @@ describe('validateAnswer — the refusal codes', () => {
     expect(codeOf('  \n\n\t ')).toBe('ANSWER_EMPTY');
   });
 
-  it('refuses a chapter outside 1..67 instead of guessing a frame rule', () => {
-    expect(() => validateAnswer(good(), input(0))).toThrowError(/not 1\.\.67/u);
+  it('refuses a chapter outside 1..42 instead of guessing a frame rule', () => {
+    expect(() => validateAnswer(good(), input(0))).toThrowError(/not 1\.\.42/u);
+    expect(() => validateAnswer(good(), input(TOTAL_CHAPTERS + 1))).toThrowError(/not 1\.\.42/u);
   });
 
   it('ANSWER_REFUSAL — an apology, a refusal, an English preamble, «Вот глава»', () => {
@@ -147,11 +148,11 @@ describe('validateAnswer — the refusal codes', () => {
 
   it('FRAME_RETYPED — a middle chapter that retypes the opening sentence', () => {
     const raw = answer([prose(700, 0), `${prose(500, 1)} ${FRAME_FIRST_SENTENCE}`, prose(700, 2)]);
-    expect(codeOf(raw, 65)).toBe('FRAME_RETYPED');
+    expect(codeOf(raw, 41)).toBe('FRAME_RETYPED');
   });
 
-  it('FRAME_RETYPED — chapter 67 that does not end on the closing sentence', () => {
-    expect(codeOf(good(), 67)).toBe('FRAME_RETYPED');
+  it('FRAME_RETYPED — the last chapter that does not end on the closing sentence', () => {
+    expect(codeOf(good(), TOTAL_CHAPTERS)).toBe('FRAME_RETYPED');
   });
 
   it('CANON_ECHO', () => {
@@ -276,7 +277,7 @@ describe('validateAnswer — the frozen frame', () => {
     expect(codeOf(raw, 1)).toBe('FRAME_RETYPED');
   });
 
-  it('accepts chapter 67 whose last paragraph ends with the closing sentence', () => {
+  it('accepts the last chapter whose last paragraph ends with the closing sentence', () => {
     const raw = [
       TITLE,
       '',
@@ -286,13 +287,13 @@ describe('validateAnswer — the frozen frame', () => {
       '',
       `${prose(650, 2)} ${FRAME_LAST_SENTENCE}`,
     ].join('\n');
-    const outcome = validateAnswer(raw, input(67));
+    const outcome = validateAnswer(raw, input(TOTAL_CHAPTERS));
     expect(outcome.ok).toBe(true);
   });
 
-  it('refuses chapter 67 that opens on the closing sentence: the frame ends that chapter', () => {
+  it('refuses the last chapter that opens on the closing sentence: the frame ends that chapter', () => {
     // `parseChapterTitle` reads a line that is the frame as prose, not a title (BOOK-32), so the
-    // answer has no title line — and 67 is not the chapter that may be untitled.
+    // answer has no title line — and the last chapter is not a chapter that may be untitled.
     const raw = [
       `${FRAME_LAST_SENTENCE} ${prose(700, 0)}`,
       '',
@@ -300,6 +301,6 @@ describe('validateAnswer — the frozen frame', () => {
       '',
       prose(700, 2),
     ].join('\n');
-    expect(codeOf(raw, 67)).toBe('TITLE_INVALID');
+    expect(codeOf(raw, TOTAL_CHAPTERS)).toBe('TITLE_INVALID');
   });
 });

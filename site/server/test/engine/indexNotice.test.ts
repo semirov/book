@@ -115,14 +115,14 @@ describe('a closed change speaks once about a moved document (BOOK-18 §3)', () 
       chapters: {
         12: chapterText('Глава 12', [ISSUED]),
         19: chapterText('Глава 19', [ISSUED]),
-        44: chapterText('Глава 44', [ISSUED]),
+        40: chapterText('Глава 40', [ISSUED]),
       },
     });
     try {
       publishSources(fixture);
       const change = fixture.engine.enqueue({ kind: 'operator', chapter: 12, intent: 'три главы' });
       const at = new Date(fixture.clock.now()).toISOString();
-      for (const chapter of [12, 19, 44]) {
+      for (const chapter of [12, 19, 40]) {
         const stepId = `stp_book18_${chapter}`;
         store.insertStep(fixture.db, {
           stepId,
@@ -154,9 +154,9 @@ describe('a closed change speaks once about a moved document (BOOK-18 §3)', () 
       expect(JSON.parse(rows[0]?.payload ?? '{}')).toEqual({
         document: 'приказ № 4',
         surface: 'Приказ № 4',
-        chapters: [12, 19, 44],
+        chapters: [12, 19, 40],
       });
-      expect(summaryOf(fixture, rows[0]?.hseq ?? 0)).toBe('статус документа Приказ № 4 изменён в главах 12, 19, 44');
+      expect(summaryOf(fixture, rows[0]?.hseq ?? 0)).toBe('статус документа Приказ № 4 изменён в главах 12, 19, 40');
       // The close does not rebuild the artifact; the next editor dispatch does (BOOK-18 §2).
       expect(readIndex(fixture.dataDir)).toBeNull();
     } finally {

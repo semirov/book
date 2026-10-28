@@ -1,3 +1,4 @@
+import { TOTAL_CHAPTERS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { bookAt, chapterAt, resolveMoment } from '../../src/history/book.ts';
@@ -9,15 +10,15 @@ import { appendEvent } from '../../src/history/log.ts';
 import { chapterFile, fullBook, historyFixture, ingest } from './helpers.ts';
 
 describe('T-time — the book at any moment (§6F.2)', () => {
-  it('bookAt(lastHseq) equals the served state on all 67 chapters and the front matter', () => {
+  it('bookAt(lastHseq) equals the served state on every chapter and the front matter', () => {
     const fixture = historyFixture(fullBook());
     try {
       ingest(fixture, '00-front.md', fullBook()['00-front.md'] ?? '');
       const hseq = lastHseq(fixture.db);
       const at = bookAt(fixture.db, hseq);
       const chapters = listChapterRows(fixture.db);
-      expect(chapters).toHaveLength(67);
-      expect(at.chapters).toHaveLength(67);
+      expect(chapters).toHaveLength(TOTAL_CHAPTERS);
+      expect(at.chapters).toHaveLength(TOTAL_CHAPTERS);
 
       for (const row of chapters) {
         const historical = at.chapters.find((entry) => entry.n === row.n);

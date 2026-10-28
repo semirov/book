@@ -396,9 +396,13 @@
 }
 
 /* ---------- the margin's tail (§1.10): below everything, in flow ---------- */
+/* It is also the page's last room: it keeps the measured bottom offset (`--offset-bottom`, the
+   band over the viewport's bottom edge plus the breathing space) so the book's final line can
+   always rise above that band — a scroll margin alone cannot create room past the last box. */
 .margin-tail {
   display: block;
   width: 100%;
+  min-height: var(--offset-bottom);
 }
 
 /* ---------- one breakpoint, one rule: <1024 is the strip and the sheet ---------- */

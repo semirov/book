@@ -5,8 +5,8 @@
  * is total, and the serializer's only inputs are the field list below — the site's web copy,
  * the seam's numerals and the history annotations have no path into the file.
  *
- * The body is all 67 slots, in numeric order, `id="chNN"`. An empty slot is a titled section
- * with `<empty-line/>`; a basis-only slot (ch01/ch67) carries its one paragraph because the
+ * The body is every slot, in numeric order, `id="chNN"`. An empty slot is a titled section
+ * with `<empty-line/>`; a basis-only slot (ch01/ch42) carries its one paragraph because the
  * site shows it. The front matter does not repeat in the body: page 2 is `title-info`.
  *
  * BOOK-133: `title-info/coverpage` names the one `binary` that closes the document. Both are

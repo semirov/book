@@ -295,7 +295,7 @@ function printResetResult(body) {
   console.log(`  ${tables.length} entries, ${body.total ?? 0} rows${dryRun ? '' : ' removed'}`);
   const kept = Array.isArray(body.kept) ? body.kept : [];
   console.log(`kept: ${kept.map((entry) => `${entry.key} ${entry.rows ?? 0}`).join(' · ')}`);
-  console.log('frame: ch01, ch67 re-read from the manuscript');
+  console.log('frame: ch01, ch42 re-read from the manuscript');
   if (dryRun) {
     // The two refusals a dry run can see coming. They are the operator's next action, and both
     // are invisible in the counts — a manuscript file is not a row, and a live engine refuses

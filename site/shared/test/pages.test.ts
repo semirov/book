@@ -11,7 +11,7 @@ import {
   type ChapterLength,
 } from '../src/pages.ts';
 
-/** 67 slots with no prose: the state a book with only its frame chapters is in. */
+/** The book's slots with no prose: the state a book with only its frame chapters is in. */
 const emptyBook = (): ChapterLength[] => Array.from({ length: TOTAL_CHAPTERS }, (_, index) => ({ n: index + 1, chars: 0 }));
 
 /** A book where one chapter has grown to `chars`. */
@@ -26,8 +26,9 @@ describe('PAGE_CHARS', () => {
   });
 
   it('reads the book’s length bands in pages', () => {
-    expect(Math.round(BOOK_CHARS.min / PAGE_CHARS)).toBe(60);
-    expect(Math.round(BOOK_CHARS.max / PAGE_CHARS)).toBe(931);
+    // 42 × 1 600 = 67 200 characters → 37 pages; 42 × 30 000 = 1 260 000 → 700 pages.
+    expect(Math.round(BOOK_CHARS.min / PAGE_CHARS)).toBe(37);
+    expect(Math.round(BOOK_CHARS.max / PAGE_CHARS)).toBe(700);
   });
 });
 
@@ -48,22 +49,26 @@ describe('pagesInChapter', () => {
 });
 
 describe('chapterStartPages', () => {
-  it('gives 67 empty slots the pages 1…67, so ch01 is page 1', () => {
+  it('gives every empty slot one page, so ch01 is page 1', () => {
     const starts = chapterStartPages(emptyBook());
     expect(starts.size).toBe(TOTAL_CHAPTERS);
     for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) expect(starts.get(n)).toBe(n);
   });
 
-  it('still yields all 67 rows for a sparse catalog: an absent chapter is one page', () => {
+  it('still yields every row for a sparse catalog: an absent chapter is one page', () => {
     const starts = chapterStartPages([{ n: 1, chars: 1801 }]);
     expect(starts.size).toBe(TOTAL_CHAPTERS);
     expect(starts.get(1)).toBe(1);
     expect(starts.get(2)).toBe(3);
-    expect(starts.get(67)).toBe(68);
+    expect(starts.get(TOTAL_CHAPTERS)).toBe(TOTAL_CHAPTERS + 1);
   });
 
   it('ignores an entry that is not a chapter of this book', () => {
-    const starts = chapterStartPages([{ n: 0, chars: 90_000 }, { n: 68, chars: 90_000 }, { n: 2, chars: 1 }]);
+    const starts = chapterStartPages([
+      { n: 0, chars: 90_000 },
+      { n: TOTAL_CHAPTERS + 1, chars: 90_000 },
+      { n: 2, chars: 1 },
+    ]);
     expect(starts.size).toBe(TOTAL_CHAPTERS);
     expect(starts.get(1)).toBe(1);
     expect(starts.get(2)).toBe(2);
@@ -99,7 +104,7 @@ describe('pageInChapter', () => {
 describe('totalPages', () => {
   it('is the last start plus the last chapter’s pages, minus one', () => {
     expect(totalPages(emptyBook())).toBe(TOTAL_CHAPTERS);
-    expect(totalPages(bookWith(67, 1801))).toBe(TOTAL_CHAPTERS + 1);
+    expect(totalPages(bookWith(TOTAL_CHAPTERS, 1801))).toBe(TOTAL_CHAPTERS + 1);
     expect(totalPages(bookWith(1, 1801))).toBe(TOTAL_CHAPTERS + 1);
   });
 
@@ -114,7 +119,7 @@ describe('totalPages', () => {
 });
 
 describe('pageAt', () => {
-  it('returns the chapter’s start page at its first character, for all 67', () => {
+  it('returns the chapter’s start page at its first character, for every chapter', () => {
     const book = bookWith(3, 5000);
     const starts = chapterStartPages(book);
     for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) expect(pageAt(book, n, 0)).toBe(starts.get(n));

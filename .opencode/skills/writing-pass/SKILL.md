@@ -23,8 +23,8 @@ The assignment is the unit of work: `stepId`, `leaseId`, `pass`, `chapter`, `nei
 ## 2. Write inside the lease
 
 `manuscript/chNN.md`, one chapter per step, no other file. A `front` pass touches the title line of
-`manuscript/00-front.md` only; that annotation is basis like the frozen sentences of ch01 and ch67
-(ch67 is evaluated, never rewritten). Length: `expectation.chars`, `concept/CONCEPT.md`.
+`manuscript/00-front.md` only; that annotation is basis like the frozen sentences of ch01 and ch42
+(ch42 is evaluated, never rewritten). Length: `expectation.chars`, `concept/CONCEPT.md`.
 
 If `relevance` says the base moved (`anchor: moved|gone`), answer before touching the text — that is
 where a change on a moved paragraph arrives; `STALE_ANCHOR` belongs to the reader's composer, not here:
@@ -67,7 +67,7 @@ node bin/engine.mjs done <leaseId> --seams '[{"boundary":"ch13","reason":"ch12 e
 (`site/config/pipeline.json`): the engine refuses anything else with `MODEL_REQUIRED` or
 `MODEL_NOT_PIPELINE`, so «prod is Pro» is a fact on the row, not a hope. `--seams` is inline JSON
 `[{boundary, reason}]` (a path still reads, for an operator session): a step claims only its own lower
-edge or the one above it (`ch` / `ch+1`, `front` at ch01, `ending` at ch67); anything else is
+edge or the one above it (`ch` / `ch+1`, `front` at ch01, `ending` at ch42); anything else is
 `INVALID_SEAM`. The note is ≤200 chars and carries the **real** tokens of this pass at the memo rate
 ($0.0000020 per output token, `process/ROLE_PROMPTS.md` §4) — estimate from the session, never invent.
 The result `{outcome: holds|rewritten|evaluated|published_with_finding|escalated}` closes the step;

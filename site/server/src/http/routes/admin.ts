@@ -33,7 +33,7 @@
 
 import { resolve } from 'node:path';
 
-import type { AdminHealthDto } from '@book/shared';
+import { TOTAL_CHAPTERS, type AdminHealthDto } from '@book/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { SITE_ROOT } from '../../config.ts';
@@ -132,7 +132,11 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
    */
   app.get('/api/admin/health', async (request, reply) => {
     if (!guard(deps, request, reply)) return reply;
-    const chapters = deps.db.prepare('SELECT COUNT(*) AS n FROM chapters').get() as { n: number };
+    // BOOK-155 — the panel counts the book, not the storage: a chapter-65 row kept by the
+    // `chapters` CHECK is not one of the 42 chapters the reader can see.
+    const chapters = deps.db
+      .prepare('SELECT COUNT(*) AS n FROM chapters WHERE n BETWEEN 1 AND ?')
+      .get(TOTAL_CHAPTERS) as { n: number };
     const comments = deps.db.prepare('SELECT COUNT(*) AS n FROM comments').get() as { n: number };
     const front = deps.db.prepare('SELECT COUNT(*) AS n FROM front_matter').get() as { n: number };
     const engine = readEngineHealth(deps.db, deps.now().getTime());

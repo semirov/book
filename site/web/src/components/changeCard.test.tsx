@@ -222,26 +222,26 @@ describe('ChangeCard', () => {
   it('names the finale a финал, not the wing that never walks into it', () => {
     const ended: ChangeDto = {
       ...change,
-      chapter: 66,
+      chapter: 41,
       cascade: {
         ...change.cascade!,
-        chaptersRewritten: [66],
+        chaptersRewritten: [41],
         wings: {
-          down: { frontier: 65, wave: 1, state: 'settled', reached: [65] },
-          up: { frontier: 66, wave: 0, state: 'settled', reached: [] },
+          down: { frontier: 40, wave: 1, state: 'settled', reached: [40] },
+          up: { frontier: 41, wave: 0, state: 'settled', reached: [] },
         },
       },
       steps: [
         {
           ...change.steps[0]!,
-          chapter: 66,
-          boundary: 67,
+          chapter: 41,
+          boundary: 42,
           seamsOut: [{ boundary: 'ending', reason: 'финал держится' }],
         },
         {
           ...change.steps[1]!,
           seq: 4,
-          chapter: 67,
+          chapter: 42,
           wing: null,
           pass: 'ending',
           boundary: 'ending',

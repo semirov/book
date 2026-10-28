@@ -21,7 +21,7 @@ function frontEtag(frontRev: number, count: number, revision: number): string {
 
 /**
  * `GET /api/front` — the live title + annotation + TOC + imprint in one call (§9). The
- * TOC is a projection of the 67 catalog rows, never stored; `about` is null when the
+ * TOC is a projection of the catalog rows, never stored; `about` is null when the
  * annotation is malformed, and page 2 then renders nothing (§11.8). `aboutSha256` is the
  * hash of the published page 2 — the basis an owner edit replaces and a pass may not (BOOK-7).
  *

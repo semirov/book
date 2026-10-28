@@ -2,6 +2,7 @@ import type { ParagraphChainDto } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { placePanel } from '../lib/cssom.ts';
+import { applyStickyOffsets } from '../lib/headerOffset.ts';
 import { CHAIN_FAILED_LINE, chainHead, NO_HISTORY_LINE } from '../lib/history.ts';
 import { formatTime } from '../lib/format.ts';
 import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
@@ -72,6 +73,16 @@ export function ParagraphChain({
   useMeasuredLayout(() => {
     placePanel(panel.current, placement);
   }, [placement]);
+
+  // The chain is a band over the viewport's bottom edge too, so it owns the anchor's bottom
+  // offset while it is mounted. Measured when it opens **and when it closes**: a panel that
+  // closes without a resize would otherwise leave the footer's room reserved for it.
+  useEffect(() => {
+    applyStickyOffsets(document);
+    return () => {
+      applyStickyOffsets(document);
+    };
+  }, []);
 
   // After every hook: the flag may turn on while the panel is mounted (a reader change just
   // landed), and the hook order must not depend on it.

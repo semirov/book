@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { AuthorsCountDto } from '@book/shared';
+import { TOTAL_CHAPTERS, type AuthorsCountDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,9 +99,16 @@ describe('GET /api/front', () => {
       // BOOK-126: no DONATE_URL in this boot, so the footer's gift row has nothing to print.
       donateUrl: null,
     });
-    expect(body.toc).toHaveLength(67);
-    expect(body.toc[0]).toMatchObject({ part: 1, n: 1, title: 'Заголовок главы', written: true, rev: 1 });
-    expect(body.toc[66]).toMatchObject({ part: 4, n: 67, title: null, written: false, rev: 0 });
+    expect(body.toc).toHaveLength(TOTAL_CHAPTERS);
+    // The opening and the finale stand outside the parts (BOOK-155).
+    expect(body.toc[0]).toMatchObject({ part: null, n: 1, title: 'Заголовок главы', written: true, rev: 1 });
+    expect(body.toc[TOTAL_CHAPTERS - 1]).toMatchObject({
+      part: null,
+      n: TOTAL_CHAPTERS,
+      title: null,
+      written: false,
+      rev: 0,
+    });
   });
 
   // BOOK-109: the tag is a name, not a licence to reuse — the answer is always a 200 with the
@@ -212,7 +219,7 @@ describe('GET /api/front', () => {
     const response = await app!.inject({ method: 'GET', url: '/api/front' });
     const body = response.json();
     expect(body).toMatchObject({ title: null, about: null, rev: 0 });
-    expect(body.toc).toHaveLength(67);
+    expect(body.toc).toHaveLength(TOTAL_CHAPTERS);
     expect(body.toc.every((entry: { written: boolean }) => !entry.written)).toBe(true);
   });
 });

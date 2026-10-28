@@ -6,7 +6,7 @@
  * composer must be told (`STALE_ANCHOR`) rather than attach the note to the wrong place.
  *
  * BOOK-137: the frozen frame is not a closed door any more. A reader may file on ch01's opening
- * or ch67's finale; the sentence's letters are protected where a landing touches them
+ * or ch42's finale; the sentence's letters are protected where a landing touches them
  * (`engine/write.ts`), and an accepted filing that touches them becomes paperwork
  * (`feedback/accept.ts`). So a block anchor resolves like prose on every chapter — the basis
  * slot's own paragraph included — and only a **chapter-level** anchor of an unwritten slot takes
@@ -47,7 +47,7 @@ export function resolveAnchor(db: Db, input: PostCommentInput): AnchorResult {
   const baseRev = typeof input.baseRev === 'number' ? input.baseRev : null;
   const blockCount = base?.blockCount ?? 0;
 
-  // A block anchor is prose on every chapter (BOOK-137): ch01's and ch67's own paragraphs are
+  // A block anchor is prose on every chapter (BOOK-137): ch01's and ch42's own paragraphs are
   // told apart by the frame mark the caller takes, never refused here. Even a basis slot has its
   // paragraph as a block, so the reader may attach to the canon sentence itself.
   if (blockId !== null) {

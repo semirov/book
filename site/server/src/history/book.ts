@@ -5,10 +5,10 @@
  * bookAt(h) = { front: max(rev) where hseq <= h, n: max(rev) where chapter = n and hseq <= h }
  * ```
  *
- * 67 indexed lookups for metadata and one for the first sheet; a body is fetched lazily per
- * chapter with its own `ETag` (`ch09@h1043`), so scrubbing the timeline never transfers a
- * book. A chapter that did not exist at `h` is reported as absent — absence is shown as
- * absence, never as an empty chapter.
+ * One indexed lookup per chapter for metadata and one for the first sheet; a body is fetched
+ * lazily per chapter with its own `ETag` (`ch09@h1043`), so scrubbing the timeline never
+ * transfers a book. A chapter that did not exist at `h` is reported as absent — absence is
+ * shown as absence, never as an empty chapter.
  */
 
 import { allChapterNumbers } from '@book/shared';

@@ -1,7 +1,7 @@
 /**
  * The basis sentence a slot shows before (or without) its chapter request (BOOK-6).
  *
- * Chapter 1 opens with the frozen frame and chapter 67 closes with it, and in the owner's
+ * Chapter 1 opens with the frozen frame and chapter 42 closes with it, and in the owner's
  * empty-book state each of those files *is* that sentence. The catalog says `basis: true` for
  * such a slot — it is not a written chapter — but the reader must see the sentence, so the
  * client prints it from the one shared constant the validator and the ingest already use

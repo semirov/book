@@ -330,7 +330,7 @@ describe('one «©» on the page (BOOK-137)', () => {
       querySelector: () => null,
     });
     const state = {
-      chapters: { total: 67, written: [], empty: [], count: 3, totalChars: 12_000 },
+      chapters: { total: 42, written: [], empty: [], count: 3, totalChars: 12_000 },
     } as unknown as StateSnapshot;
     const html = renderToStaticMarkup(
       <>

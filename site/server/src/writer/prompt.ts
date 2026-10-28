@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import {
   CHAPTER_CHARS,
+  FORWARD_LAST,
   FRAME_FIRST_SENTENCE,
   FRAME_LAST_SENTENCE,
   PART_RANGES,
@@ -149,27 +150,38 @@ function canonSections(bookRoot: string): Part[] {
 }
 
 export function laneOf(chapter: number): string {
-  return chapter <= 34 ? 'вперёд' : 'назад';
+  return chapter <= FORWARD_LAST ? 'вперёд' : 'назад';
 }
 
+/**
+ * The chapter's place in the book. Chapter 1 (the opening) and the last chapter (the finale)
+ * stand outside the four numbered parts, so they get the place without a part range line and
+ * never a part invented for them.
+ */
 function placeSection(chapter: number): Part {
   const partNumber = partOf(chapter);
-  const range = PART_RANGES.find((item) => item.part === partNumber);
-  if (range === undefined) {
-    throw new PromptError('PROMPT_INPUT_INVALID', `no part range for chapter ${String(chapter)}`);
+  let line: string;
+  if (partNumber === null) {
+    line =
+      chapter === 1
+        ? `Глава 1 из ${String(TOTAL_CHAPTERS)} — открытие книги, вне частей.`
+        : `Глава ${String(TOTAL_CHAPTERS)} из ${String(TOTAL_CHAPTERS)} — финал, вне частей.`;
+  } else {
+    const range = PART_RANGES.find((item) => item.part === partNumber);
+    if (range === undefined) {
+      throw new PromptError('PROMPT_INPUT_INVALID', `no part range for chapter ${String(chapter)}`);
+    }
+    line = `Глава ${String(chapter)} из ${String(TOTAL_CHAPTERS)}. Часть ${String(partNumber)} (главы ${String(range.from)}–${String(range.to)}).`;
   }
-  const body = [
-    '## Место',
-    `Глава ${String(chapter)} из ${String(TOTAL_CHAPTERS)}. Часть ${String(partNumber)} (главы ${String(range.from)}–${String(range.to)}).`,
-    `Полоса: ${laneOf(chapter)}.`,
-  ].join('\n');
+  const body = ['## Место', line, `Полоса: ${laneOf(chapter)}.`].join('\n');
   return part('place', body);
 }
 
 /**
  * The frame as quoted canon with the rule for *this* chapter: 01 opens on the first sentence and
- * writes on, 67 ends on the last, every other chapter retypes neither. Both sentences are quoted
- * once, so a model cannot mistake which sentence is its own and which belongs to the ends.
+ * writes on, the last chapter ends on the last, every other chapter retypes neither. Both
+ * sentences are quoted once, so a model cannot mistake which sentence is its own and which
+ * belongs to the ends.
  */
 function frameSection(chapter: number): Part {
   let rule: string;

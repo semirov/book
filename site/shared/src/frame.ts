@@ -2,7 +2,7 @@
  * The frozen frame seen from a filing (BOOK-137, F029, BOOK-DOC-4).
  *
  * The two canon sentences are the one piece of text the owner fixed: ch01 opens with them,
- * ch67 closes with them (`book.ts`). A reader may file an intervention anywhere, including on
+ * ch42 closes with them (`book.ts`). A reader may file an intervention anywhere, including on
  * those words — but an accepted filing that **touches** the sentence becomes paperwork, never
  * text: the change is recorded with this mark and a paperwork mode, and the letters stay.
  *
@@ -78,7 +78,7 @@ export function classifyFrame(input: FrameInput): FrameMark {
 
   // `adjacent` is about where the filing sat, not what it proposed: the frame's own paragraph,
   // or the block beside the frame's inside the chapter — the paragraph after ch01's sentence,
-  // the paragraph before ch67's. A filing 50 blocks away is `untouched`, and the record can
+  // the paragraph before ch42's. A filing 50 blocks away is `untouched`, and the record can
   // tell the two apart.
   if (flat(input.blockText).includes(expected)) return 'adjacent';
   if (input.blockIndex === null) return 'untouched';
@@ -87,7 +87,7 @@ export function classifyFrame(input: FrameInput): FrameMark {
 
 /**
  * The frame's paragraph and the one beside it, inside the chapter. A written chapter opens
- * (ch01) or closes (ch67) on the frame, so its own block is the first or the last one and the
+ * (ch01) or closes (ch42) on the frame, so its own block is the first or the last one and the
  * neighbour is the block after it or before it — index 1 and `last - 1`. The frame's own block
  * is already recognised by `blockText` above; naming it here costs nothing and keeps the rule
  * readable as stated, so a chapter that ever holds the frame elsewhere needs no second rule.

@@ -208,13 +208,16 @@ describe('POST /api/comments — identity, the write gate and rate limits', () =
     expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });
   });
 
-  it('accepts a reader edit on chapter 67 as a filing (BOOK-137)', async () => {
-    const h = await boot({ chapters: { 'ch67.md': longProse(['Служебный текст финала.']) } });
-    const response = await post(h, commentBody({ chapter: 67, body: 'Финал стоит переписать иначе.', proposedText: 'Иначе.' }));
+  it('accepts a reader edit on the finale as a filing (BOOK-137)', async () => {
+    const h = await boot({ chapters: { 'ch42.md': longProse(['Служебный текст финала.']) } });
+    const response = await post(
+      h,
+      commentBody({ chapter: 42, body: 'Финал стоит переписать иначе.', proposedText: 'Иначе.' }),
+    );
     // BOOK-137: the door is open. Whether the sentence changes is the land guard's question,
     // and an accepted filing on it becomes paperwork — never a refusal at the composer.
     expect(response.statusCode).toBe(201);
-    expect(response.json().comment).toMatchObject({ chapter: 67, status: 'new' });
+    expect(response.json().comment).toMatchObject({ chapter: 42, status: 'new' });
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 1 });
   });
 

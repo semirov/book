@@ -25,7 +25,7 @@ const UP_STEP = (chapter: number, wave: number, outcome: string | null, seams: n
 const ORIGIN = { pass: 'change', lane: null, chapter: 10, wave: 0, outcome: 'rewritten', seams_out: null };
 
 describe('the two wings of a ripple', () => {
-  it('runs down toward chapter 1 and up toward chapter 67, each with its own wave', () => {
+  it('runs down toward chapter 1 and up toward the last chapter, each with its own wave', () => {
     const steps = wingSteps([
       ORIGIN,
       DOWN_STEP(9, 1, 'rewritten', [9]),

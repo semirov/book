@@ -118,10 +118,10 @@ describe('one line per fact (§11.10)', () => {
           changeSeq: null,
           authorKind: 'writer',
           authorLabel: 'автор',
-          payload: { document: 'приказ № 4', surface: 'Приказ № 4', chapters: [12, 19, 44] },
+          payload: { document: 'приказ № 4', surface: 'Приказ № 4', chapters: [12, 19, 34] },
         }),
       ),
-    ).toBe('статус документа Приказ № 4 изменён в главах 12, 19, 44');
+    ).toBe('статус документа Приказ № 4 изменён в главах 12, 19, 34');
     expect(
       summarize(
         subject({ kind: 'document.status', chapter: null, payload: { document: 'справка', surface: 'Справка', chapters: [9] } }),
@@ -133,7 +133,7 @@ describe('one line per fact (§11.10)', () => {
         subject({
           kind: 'document.status',
           chapter: null,
-          payload: { document: '  приказ  № 4 ', chapters: [0, 68, 'x'] },
+          payload: { document: '  приказ  № 4 ', chapters: [0, 43, 'x'] },
         }),
       ),
     ).toBe('статус документа приказ № 4 изменён');

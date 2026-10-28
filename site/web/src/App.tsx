@@ -73,7 +73,7 @@ import { useFrontRevision } from './useFrontRevision.ts';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
- * instrument strip → live TOC → 67 chapter slots (empty ones are slim, designed slots) →
+ * instrument strip → live TOC → 42 chapter slots (empty ones are slim, designed slots) →
  * discussion → colophon. Every catalog slot exists from the first paint; prose is fetched
  * when a chapter comes within 1.5 viewports.
  *
@@ -388,7 +388,7 @@ export function App() {
     scrollToChapter(target.n);
   };
   /** Reaching a chapter from a card: the card closes, the chapter is opened. */
-  const toChapter = (n: number): void => (card.close(), scrollToChapter(n));
+  const toChapter = (n: number): void => void (card.close(), scrollToChapter(n));
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
    * so the mark and the strip are there with no reload; the chapter's feed and the register

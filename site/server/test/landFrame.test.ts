@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type WriterAssignment } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { EngineError } from '../src/engine/types.ts';
@@ -34,7 +34,7 @@ vi.mock('../src/engine/text.ts', async (importOriginal) => {
  * BOOK-137 — the frame check on a landing (F029).
  *
  * A landing is the only way a file becomes a fact, so it is where the sentence's letters are
- * defended: ch01 must open with the canon sentence and ch67 must close with it, character for
+ * defended: ch01 must open with the canon sentence and the finale must close with it, character for
  * character. The boot scan and the watcher keep applying files (§18: files win); a landing that
  * would move a letter is refused with `FRAME_CHANGED` and publishes nothing. The files here are
  * written raw (`fixture.writeChapter`), because a test of the guard must control every byte.
@@ -110,25 +110,25 @@ describe('land — the frozen frame is character-exact (F029, BOOK-137)', () => 
     }
   });
 
-  it('refuses a landing on ch67 whose closing sentence moved, and accepts the canon closer', () => {
+  it('refuses a landing on the finale whose closing sentence moved, and accepts the canon closer', () => {
     const fixture = createEngineFixture({ front: null });
     try {
       const assignment = draftOf(fixture, 'bwd');
-      expect(assignment.chapter).toBe(67);
+      expect(assignment.chapter).toBe(TOTAL_CHAPTERS);
 
-      fixture.writeChapter(67, `Финал\n\n${FILLER}\n\n${WEAKENED_LAST}\n`);
+      fixture.writeChapter(TOTAL_CHAPTERS, `Финал\n\n${FILLER}\n\n${WEAKENED_LAST}\n`);
       expect(refusal(() => fixture.engine.land(assignment.leaseId))).toMatchObject({
         code: 'FRAME_CHANGED',
         status: 409,
       });
-      expect(revisionsOf(fixture, 67)).toEqual([]);
+      expect(revisionsOf(fixture, TOTAL_CHAPTERS)).toEqual([]);
 
       // The same file with its last sentence put back: it lands.
-      fixture.writeChapter(67, `Финал\n\n${FILLER}\n\n${FRAME_LAST_SENTENCE}\n`);
+      fixture.writeChapter(TOTAL_CHAPTERS, `Финал\n\n${FILLER}\n\n${FRAME_LAST_SENTENCE}\n`);
       expect(fixture.engine.land(assignment.leaseId)).toMatchObject({ changed: true, revAfter: 1 });
       const block = fixture.db
-        .prepare('SELECT text FROM blocks WHERE chapter = 67 ORDER BY idx DESC LIMIT 1')
-        .get() as { text: string };
+        .prepare('SELECT text FROM blocks WHERE chapter = ? ORDER BY idx DESC LIMIT 1')
+        .get(TOTAL_CHAPTERS) as { text: string };
       expect(block.text.endsWith(FRAME_LAST_SENTENCE)).toBe(true);
     } finally {
       fixture.close();

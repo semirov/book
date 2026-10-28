@@ -10,11 +10,8 @@ import { CHAPTER_BOX_PX } from '../lib/skeleton.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
 /**
- * BOOK-30 — the skeleton's height is a real CSSOM write.
- *
- * The server-render tests can only prove the markup has no style attribute; they would stay
- * green if the ref were dropped and the slot collapsed. This mounts the component in jsdom
- * and reads the inline style the browser actually gets.
+ * BOOK-30 — the skeleton's height is a real CSSOM write: the server-render tests can only
+ * prove the markup has no style attribute, and would stay green if the ref were dropped.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -44,13 +41,14 @@ class EagerObserver {
 
 const ENTRY: CatalogEntry = {
   n: 1,
-  part: 1,
+  part: null,
   title: 'Тестовая глава',
   rev: 1,
   chars: 22_628,
   blocks: 180,
   written: true,
   basis: false,
+  opening: null,
   writtenAt: '2026-10-25T09:20:00Z',
   updatedAt: '2026-10-25T09:20:00Z',
   direction: 'forward',
@@ -238,7 +236,7 @@ describe('the chapter wait under a browser', () => {
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 67, written: false, basis: true, chars: 0, blocks: 1 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
+      root?.render(<ChapterArticle entry={{ ...ENTRY, n: 42, written: false, basis: true, chars: 0, blocks: 1 }} revision={null} revising={null} caret={null} fresh={false} composer={EMPTY_COMPOSER} viewer={{ signedIn: false, displayName: null }} history />);
     });
     await act(async () => {
       vi.advanceTimersByTime(2_500);
@@ -249,7 +247,7 @@ describe('the chapter wait under a browser', () => {
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector('article')?.hasAttribute('aria-busy')).toBe(false);
     await act(async () => {
-      wait.resolve(chapter(67));
+      wait.resolve(chapter(42));
     });
     await flush();
   });

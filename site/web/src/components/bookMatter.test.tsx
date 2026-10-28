@@ -1,4 +1,4 @@
-import { chapterStartPages, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, pageAt, type CatalogEntry, type FrontDto, type StateSnapshot } from '@book/shared';
+import { chapterStartPages, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, pageAt, partOf, TOTAL_CHAPTERS, type CatalogEntry, type FrontDto, type StateSnapshot } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -25,26 +25,26 @@ const front: FrontDto = {
 };
 
 function slot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
-  const part = (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'];
   return {
     n,
-    part,
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 0,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: n <= 21 ? 'forward' : 'backward',
     ...overrides,
   };
 }
 
-/** The live empty book: 67 slots, `written: []`, basis-only tables at 1 and 67. */
-const catalog: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => slot(index + 1)).map((row) => {
-  if (row.n === 1 || row.n === 67) return { ...row, basis: true };
+/** The live empty book: 42 slots, `written: []`, basis-only tables at the opening and the finale. */
+const catalog: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => slot(index + 1)).map((row) => {
+  if (row.n === 1 || row.n === TOTAL_CHAPTERS) return { ...row, basis: true };
   return row;
 });
 
@@ -54,10 +54,10 @@ const state = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: front.title, about: null, rev: 1, updatedAt: null },
-  chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0 },
+  chapters: { total: TOTAL_CHAPTERS, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0 },
   cursors: {} as StateSnapshot['cursors'],
   toc: catalog.map((row) => ({ part: row.part, n: row.n, title: row.title, written: false, rev: 0 })),
-  meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: null, backwardFront: null, gap: TOTAL_CHAPTERS, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,
@@ -74,7 +74,8 @@ const state = {
 
 const writtenCatalog: CatalogEntry[] = catalog.map((row) => {
   if (row.n === 1) return { ...row, basis: false, title: 'Тестовая глава', written: true, rev: 2, chars: 12 };
-  if (row.n === 2) return { ...row, title: null, written: true, rev: 1, chars: 20 };
+  // A written chapter with no title line: the contents print its first five words.
+  if (row.n === 2) return { ...row, title: null, written: true, rev: 1, chars: 20, opening: 'Он вошёл в комнату и…' };
   return row;
 });
 
@@ -197,12 +198,13 @@ describe('cover', () => {
     const html = coverHtml();
     for (const gone of [
       'роман',
-      'в шестидесяти семи главах',
+      'в сорока двух главах',
       'написано',
       'знаков',
       'открытую',
       '©',
-      '67',
+      'из 42',
+      'сорока двух',
       'Восемь',
       'линий',
       'kicker',
@@ -306,34 +308,36 @@ const visibleText = (row: string): string => textOf(row.replace(/<span class="sr
 describe('the live table of contents', () => {
   const html = renderToStaticMarkup(<TableOfContents catalog={catalog} state={state} currentChapter={null} />);
 
-  it('has one row per slot: 2 frame sentences, 65 rows with no text at all, 0 invented labels', () => {
+  it('has one row per slot: 2 frame sentences, 40 rows that say «Пусто», 0 invented labels', () => {
     const rows = tocRows(html);
-    expect(rows).toHaveLength(67);
-    expect(rows.filter((row) => row.includes('toc-text'))).toHaveLength(2);
-    const empty = rows.filter((row) => !row.includes('toc-text'));
-    expect(empty).toHaveLength(65);
-    // BOOK-112: an empty slot is its numeral and its page — no state word, nothing else.
-    for (const row of empty) expect(visibleText(row).trim()).toMatch(/^\d{2}\d+$/u);
+    expect(rows).toHaveLength(TOTAL_CHAPTERS);
+    // Every row carries a text slot now (owner, 2026-10-28): «Пусто» for an empty chapter.
+    expect(rows.filter((row) => row.includes('toc-text'))).toHaveLength(TOTAL_CHAPTERS);
+    const empty = rows.filter((row) => row.includes('toc-row-empty'));
+    expect(empty).toHaveLength(TOTAL_CHAPTERS - 2);
+    for (const row of empty) expect(visibleText(row).trim()).toMatch(/^\d{2}Пусто\d+$/u);
     expect(html).not.toContain('toc-state');
     expect(html).not.toContain('замысел');
+    expect(html).not.toContain('написана');
   });
 
-  it('opens only the rows that carry prose; the other 65 stay inert but are exposed', () => {
+  it('opens every row, the 40 empty ones included (owner, 2026-10-28)', () => {
     const rows = tocRows(html);
     const links = rows.filter((row) => row.includes('<a '));
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(TOTAL_CHAPTERS);
     expect(links[0]).toContain('href="#ch-1"');
-    expect(links[1]).toContain('href="#ch-67"');
-    // A basis row is its numeral, the frozen sentence and its page (no arrow, no dot).
+    expect(links[TOTAL_CHAPTERS - 1]).toContain(`href="#ch-${TOTAL_CHAPTERS}"`);
     expect(visibleText(links[0] ?? '')).toBe(`01${FRAME_FIRST_SENTENCE}1`);
-    expect(visibleText(links[1] ?? '')).toBe(`67${FRAME_LAST_SENTENCE}67`);
+    expect(visibleText(links[TOTAL_CHAPTERS - 1] ?? '')).toBe(`${TOTAL_CHAPTERS}${FRAME_LAST_SENTENCE}${TOTAL_CHAPTERS}`);
     expect(rowPage(links[0] ?? '')).toBe(1);
-    expect(rowPage(links[1] ?? '')).toBe(67);
-
-    // BOOK-89: a state-word row says something, so it is exposed — and still no link.
-    for (const row of rows.filter((item) => !item.includes('<a '))) {
-      expect(row).not.toMatch(/href|tabindex|^<li[^>]*aria-hidden/u);
-      expect(row).toContain('sr-only');
+    expect(rowPage(links[TOTAL_CHAPTERS - 1] ?? '')).toBe(TOTAL_CHAPTERS);
+    // An empty slot is an anchor to its own place in the flow, and it is still exposed.
+    const empty = links.filter((row) => row.includes('toc-row-empty'));
+    expect(empty).toHaveLength(TOTAL_CHAPTERS - 2);
+    for (const row of empty) {
+      expect(row).toMatch(/href="#ch-\d+"/u);
+      expect(row).toContain('<span class="toc-text">Пусто</span>');
+      expect(row).not.toMatch(/^<li[^>]*aria-hidden/u);
     }
   });
 
@@ -342,7 +346,7 @@ describe('the live table of contents', () => {
       'Глава',
       'leader',
       'toc-part-range',
-      '0 / 67',
+      '0 / 42',
       'названия берутся',
       'toc-heading',
       'toc-label-muted',
@@ -355,13 +359,27 @@ describe('the live table of contents', () => {
     expect(html).not.toContain('border');
   });
 
-  it('labels its four parts and puts the closing sentence alone under «часть IV»', () => {
+  it('labels its four parts, with the opening row before part I and the finale row after part IV', () => {
     expect(html.match(/class="toc-part-h"/gu)).toHaveLength(4);
     expect(html).toContain('часть I');
     expect(html).toContain('часть IV');
-    const fourth = html.slice(html.indexOf('часть IV'));
-    expect(textOf(fourth)).toContain('67');
-    expect(fourth).toContain(FRAME_LAST_SENTENCE);
+    const rows = tocRows(html);
+    expect(rows).toHaveLength(TOTAL_CHAPTERS);
+    // The two frames stand outside the parts: four part lists of ten plus the two frame lists.
+    expect(html.match(/class="slots"/gu)).toHaveLength(6);
+    // ch01 opens the contents, above the first part heading.
+    expect(rows[0]).toContain('href="#ch-1"');
+    expect(html.indexOf('href="#ch-1"')).toBeLessThan(html.indexOf('часть I'));
+    // ch42 closes it, after part IV's own rows: nothing follows the finale row.
+    const last = rows.at(-1) ?? '';
+    expect(last).toContain(`href="#ch-${TOTAL_CHAPTERS}"`);
+    expect(last).toContain(FRAME_LAST_SENTENCE);
+    expect(html.indexOf('часть IV')).toBeLessThan(html.lastIndexOf(`href="#ch-${TOTAL_CHAPTERS}"`));
+    // Stripped of the four part blocks, exactly the two frame rows remain.
+    const outside = html.replace(/<div class="toc-part">[\s\S]*?<\/div>/gu, '');
+    expect(tocRows(outside)).toHaveLength(2);
+    expect(tocRows(outside)[0]).toContain('href="#ch-1"');
+    expect(tocRows(outside)[1]).toContain(`href="#ch-${TOTAL_CHAPTERS}"`);
   });
 
   it('marks the current row for assistive tech but draws no caret or arrow', () => {
@@ -374,9 +392,9 @@ describe('the live table of contents', () => {
     expect(row).not.toContain('←');
     expect(row).not.toContain('→');
     expect(row).not.toMatch(/^<li[^>]*aria-hidden/u);
-    expect(row).not.toContain('<a ');
-    // The row still carries its numeral and its own page — and no invented title or state word.
-    expect(visibleText(row).trim()).toBe('055');
+    // Its numeral, its own page, no invented title — and a link, like every row now.
+    expect(row).toContain('<a ');
+    expect(visibleText(row).trim()).toBe('05Пусто5');
     expect(rowPage(row)).toBe(5);
   });
 
@@ -388,10 +406,11 @@ describe('the live table of contents', () => {
     expect(written).not.toContain('toc-dot');
     expect(written).not.toContain('пишется сейчас');
     expect(written).not.toContain('←');
-    // Row 2 is written but has no title line: it still opens its chapter, and states the truth word (BOOK-137).
-    expect(tocRows(written).filter((row) => row.includes('<a '))).toHaveLength(3);
+    // Row 2 is written but untitled: it shows its first five words, not a state word.
+    expect(tocRows(written).filter((row) => row.includes('<a '))).toHaveLength(TOTAL_CHAPTERS);
     expect(tocRows(written)[1]).toContain('class="toc-link"');
-    expect(tocRows(written)[1]).toContain('<span class="toc-text">написана</span>');
+    expect(tocRows(written)[1]).toContain('<span class="toc-text">Он вошёл в комнату и…</span>');
+    expect(written).not.toContain('написана');
   });
 
   it('prints the start page of every row from one chapterStartPages count — the folio’s digits (AC3)', () => {
@@ -402,7 +421,7 @@ describe('the live table of contents', () => {
     });
   });
 
-  it('sets the row as numeral, text, page — and an empty slot is its numeral and page alone', () => {
+  it('sets the row as numeral, text, page — and an empty slot says «Пусто» in the text slot', () => {
     const titled = catalog.map((item) =>
       item.n === 7 ? { ...item, written: true, title: 'Начало смены', rev: 1, chars: 50 } : item,
     );
@@ -413,9 +432,11 @@ describe('the live table of contents', () => {
     expect(row).not.toContain('·');
     const empty = tocRows(markup)[7] ?? '';
     expect(empty).toContain('toc-row-empty');
-    expect(empty).not.toContain('toc-text');
-    expect(visibleText(empty).trim()).toBe('088');
+    expect(empty).toContain('<span class="toc-text">Пусто</span>');
+    expect(visibleText(empty).trim()).toBe('08Пусто8');
     expect(rowPage(empty)).toBe(8);
+    // One word and nothing else in the text slot: not a dash, not a second mark-up.
+    expect(empty.match(/class="toc-text"/gu)).toHaveLength(1);
   });
 
   it('speaks the page once per row: the drawn digit is aria-hidden, «страница N» is not', () => {
@@ -460,9 +481,9 @@ describe('the opening screen', () => {
     expect(views).toBeGreaterThan(header);
   });
 
-  it('has no 0/67 band and no status strip above the title', () => {
+  it('has no 0/42 band and no status strip above the title', () => {
     expect(html).not.toContain('id="start"');
-    expect(html).not.toContain('0 / 67');
+    expect(html).not.toContain('0 / 42');
     expect(html).not.toContain('class="start');
     expect(html).not.toContain('её пишут в открытую');
     expect(html).not.toContain('facts');
@@ -470,8 +491,7 @@ describe('the opening screen', () => {
   });
 
   it('carries no page number in the server render: the folio is a projection of the scroll', () => {
-    // The header's folio slot is mounted, but a page with no scroll is no page: the server
-    // render must not guess one. The leaf appends itself on the client after the first frame.
+    // The folio slot is mounted, but a page with no scroll is no page: no guess on the server.
     expect(html).toContain('class="top-row"');
     expect(html).not.toContain('class="folio"');
     expect(html).not.toContain('data-page');

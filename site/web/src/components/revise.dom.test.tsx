@@ -34,8 +34,8 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const ENTRY: CatalogEntry = {
-  n: 65,
-  part: 3,
+  n: 40,
+  part: 4,
   title: 'Перевод смены',
   rev: 7,
   chars: 1_200,
@@ -63,7 +63,7 @@ function revise(overrides: Partial<CommentRevise> = {}): CommentRevise {
 function refusedPremise(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
-    chapter: 65,
+    chapter: 40,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
     authorColor: '#6f9bb5',
@@ -86,7 +86,7 @@ function refusedPremise(overrides: Partial<CommentDto> = {}): CommentDto {
   };
 }
 
-const BLOCK_ID = 'ch65#aa11bb22';
+const BLOCK_ID = 'ch40#aa11bb22';
 const TEXT = 'Я вошёл в пустую комнату. Её освещал яркий свет.';
 
 /** A filing about a line of prose: the register's own kind of entry. */
@@ -221,14 +221,14 @@ describe('a refused premise (BOOK-158)', () => {
     await act(async () => root?.render(<ChapterPage initial={[refused]} />));
 
     // The row: the chapter's own line, the reason, the hint and the one door.
-    expect(container.querySelector('#ch-65 .premise-note')?.textContent).toBe(REASON);
-    expect(container.querySelector('#ch-65 .revise-hint')?.textContent).toBe(HINT);
-    const door = container.querySelector<HTMLButtonElement>('#ch-65 .revise .seam-inline-action');
+    expect(container.querySelector('#ch-40 .premise-note')?.textContent).toBe(REASON);
+    expect(container.querySelector('#ch-40 .revise-hint')?.textContent).toBe(HINT);
+    const door = container.querySelector<HTMLButtonElement>('#ch-40 .revise .seam-inline-action');
     expect(door?.textContent).toBe('исправить');
     expect(door?.disabled).toBe(false);
 
     // The card is the second surface the owner named: the same hint and the same door.
-    await act(async () => container.querySelector<HTMLElement>('#ch-65 .premise-row')?.click());
+    await act(async () => container.querySelector<HTMLElement>('#ch-40 .premise-row')?.click());
     const panel = container.querySelector<HTMLElement>('.filing-panel');
     expect(panel?.querySelector('.revise-hint')?.textContent).toBe(HINT);
     expect(panel?.querySelector('.revise .seam-inline-action')?.textContent).toBe('исправить');
@@ -248,11 +248,11 @@ describe('a refused premise (BOOK-158)', () => {
     await act(async () => cardDoor?.click());
 
     expect(container.querySelector('.filing-panel')).toBeNull();
-    const form = container.querySelector<HTMLFormElement>('#ch-65 .seam-form');
+    const form = container.querySelector<HTMLFormElement>('#ch-40 .seam-form');
     expect(form).not.toBeNull();
     // No retyping: the premise's own text sits in its one field, and the reader edits it there.
-    expect(container.querySelector<HTMLTextAreaElement>('#seam-text-65')?.value).toBe('смена переходит на ночь');
-    typeInto('#seam-text-65', 'смена переходит на вечер');
+    expect(container.querySelector<HTMLTextAreaElement>('#seam-text-40')?.value).toBe('смена переходит на ночь');
+    typeInto('#seam-text-40', 'смена переходит на вечер');
 
     await act(async () => {
       form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -270,10 +270,10 @@ describe('a refused premise (BOOK-158)', () => {
     expect(payload).not.toHaveProperty('baseRev');
 
     // The same row, updated in place: new words, and the refusal's line and door are gone.
-    expect(container.querySelector('#ch-65 .premise-quote')?.textContent).toBe('«смена переходит на вечер»');
-    expect(container.querySelector('#ch-65 .premise-note')).toBeNull();
-    expect(container.querySelector('#ch-65 .revise')).toBeNull();
-    expect(container.querySelectorAll(`#ch-65 [data-comment-id="${refused.id}"]`)).toHaveLength(1);
+    expect(container.querySelector('#ch-40 .premise-quote')?.textContent).toBe('«смена переходит на вечер»');
+    expect(container.querySelector('#ch-40 .premise-note')).toBeNull();
+    expect(container.querySelector('#ch-40 .revise')).toBeNull();
+    expect(container.querySelectorAll(`#ch-40 [data-comment-id="${refused.id}"]`)).toHaveLength(1);
   });
 
   it('a cooldown disables revise and says how long', async () => {
@@ -284,11 +284,11 @@ describe('a refused premise (BOOK-158)', () => {
       ),
     );
 
-    const door = container.querySelector<HTMLButtonElement>('#ch-65 .revise .seam-inline-action');
+    const door = container.querySelector<HTMLButtonElement>('#ch-40 .revise .seam-inline-action');
     expect(door?.disabled).toBe(true);
-    expect(container.querySelector('#ch-65 .revise-why')?.textContent).toBe('можно повторить через 7 минут');
+    expect(container.querySelector('#ch-40 .revise-why')?.textContent).toBe('можно повторить через 7 минут');
     // The hint stays: the reader still knows what would make it pass.
-    expect(container.querySelector('#ch-65 .revise-hint')?.textContent).toBe(HINT);
+    expect(container.querySelector('#ch-40 .revise-hint')?.textContent).toBe(HINT);
   });
 
   it('an exhausted filing says so', async () => {
@@ -301,8 +301,8 @@ describe('a refused premise (BOOK-158)', () => {
         />,
       ),
     );
-    expect(container.querySelector<HTMLButtonElement>('#ch-65 .revise .seam-inline-action')?.disabled).toBe(true);
-    expect(container.querySelector('#ch-65 .revise-why')?.textContent).toBe(EXHAUSTED);
+    expect(container.querySelector<HTMLButtonElement>('#ch-40 .revise .seam-inline-action')?.disabled).toBe(true);
+    expect(container.querySelector('#ch-40 .revise-why')?.textContent).toBe(EXHAUSTED);
   });
 });
 

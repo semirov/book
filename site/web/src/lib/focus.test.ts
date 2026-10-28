@@ -433,7 +433,7 @@ describe('the ring field and the exit', () => {
   it('keeps a local window around the ripple and clamps it to the book', () => {
     expect(focusScale([8, 7, 9])).toEqual({ from: 5, to: 11 });
     expect(focusScale([1])).toEqual({ from: 1, to: 3 });
-    expect(focusScale([67])).toEqual({ from: 65, to: 67 });
+    expect(focusScale([42])).toEqual({ from: 40, to: 42 });
     expect(focusScale([])).toEqual({ from: 1, to: 5 });
     expect(scaleTicks(5, 11)).toEqual([5, 6, 7, 8, 9, 10, 11]);
     expect(scaleTicks(1, 30)).toEqual([]);

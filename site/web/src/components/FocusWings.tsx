@@ -10,7 +10,7 @@ import { scaleTicks } from '../lib/focus.ts';
  * Both directions of one consequence are printed at once: each wing says its direction, its
  * own wave, its state and the chapters it reached. A wing that never opened prints nothing and
  * is skipped (BOOK-137): a diagnostic is not reading. The window is a plain grid of chapters
- * around the ripple, so a 7–9 ripple does not collapse into one pixel of a 67-chapter scale —
+ * around the ripple, so a 7–9 ripple does not collapse into one pixel of a 42-chapter scale —
  * and the grid needs no inline style (CSP forbids them): the column count is a precomputed
  * class, the marks are classes, and a frame arriving changes a class, never the layout height.
  */

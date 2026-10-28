@@ -1,5 +1,5 @@
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
+import { directionOf, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, partOf, type CatalogEntry } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -8,16 +8,17 @@ import { ChapterArticle } from './ChapterArticle.tsx';
 function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
     n,
-    part: (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'],
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 0,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: directionOf(n),
     ...overrides,
   };
 }
@@ -43,10 +44,10 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
   });
 
   it('closes the book with the last sentence in the same way', () => {
-    const html = render(entry(67, { basis: true, blocks: 1 }));
+    const html = render(entry(42, { basis: true, blocks: 1 }));
     expect(prose(html)).toContain(FRAME_LAST_SENTENCE);
     expect(html).not.toContain('не написана');
-    // Chapter 67 is drafted backwards; its slot shows the same header as any other, no arrow.
+    // Chapter 42 is drafted backwards; its slot shows the same header as any other, no arrow.
     expect(html).not.toContain('←');
     expect(html).toContain('data-basis="true"');
   });

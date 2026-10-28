@@ -35,7 +35,7 @@ export const CANARY_MIN_CHARS = 60;
 export const CANARY_MIN_NORMALISED = 40;
 
 /**
- * The frozen frame (F029), printed by the site by design: chapter 1 and chapter 67. A support file
+ * The frozen frame (F029), printed by the site by design: chapter 1 and chapter 42. A support file
  * may quote it — `notes/canon-constraints.md` does — so it is public text, not evidence of a leak,
  * and the guard subtracts it from both sides. The line still has to carry its own words to count.
  *

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '../../src/book.ts';
 import {
   ABOUT_MAX_CHARS,
   ABOUT_MIN_CHARS,
@@ -77,7 +77,7 @@ describe('lineAt', () => {
 describe('manuscriptChapterFile', () => {
   it('accepts chNN.md inside the range', () => {
     expect(manuscriptChapterFile('ch08.md')).toEqual({ n: 8 });
-    expect(manuscriptChapterFile('ch67.md')).toEqual({ n: 67 });
+    expect(manuscriptChapterFile('ch42.md')).toEqual({ n: 42 });
   });
 
   it('reports a malformed chapter name', () => {
@@ -181,10 +181,10 @@ describe('parseChapterTitle — the frame line is prose, not a title (BOOK-32)',
     }
   });
 
-  it('is per chapter: the same sentence is a title in ch67 and in a chapter without a frame', () => {
-    expect(parseChapterTitle(67, `${FRAME_FIRST_SENTENCE}\n\nТекст.`).title).toBe(FRAME_FIRST_SENTENCE);
+  it('is per chapter: the same sentence is a title in the finale and in a chapter without a frame', () => {
+    expect(parseChapterTitle(TOTAL_CHAPTERS, `${FRAME_FIRST_SENTENCE}\n\nТекст.`).title).toBe(FRAME_FIRST_SENTENCE);
     expect(parseChapterTitle(8, `${FRAME_FIRST_SENTENCE}\n\nТекст.`).title).toBe(FRAME_FIRST_SENTENCE);
-    expect(parseChapterTitle(67, `${FRAME_LAST_SENTENCE}\n\nТекст.`).title).toBeNull();
+    expect(parseChapterTitle(TOTAL_CHAPTERS, `${FRAME_LAST_SENTENCE}\n\nТекст.`).title).toBeNull();
   });
 
   it('leaves every other file to parseTitleLine', () => {

@@ -187,11 +187,13 @@ describe('ungated until reconcile (§13.3, §20 M7)', () => {
     }
   });
 
-  it('refuses a chapter outside 1..67 before touching anything', () => {
+  it('refuses a chapter outside the book before touching anything', () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
-      for (const chapter of [0, 68, 1.5]) {
-        expect(() => reconcileRestore(deps(fixture), { chapter, because: 'x' })).toThrowError(/between 1 and 67/u);
+      // The bound itself belongs to the engine (`engine/reconcile.ts`, its own pass); this checks
+      // that the wrapper refuses a number no book could hold, whatever the bound reads.
+      for (const chapter of [0, 1000, 1.5]) {
+        expect(() => reconcileRestore(deps(fixture), { chapter, because: 'x' })).toThrowError(/between 1 and \d+/u);
       }
       expect(listReconciles(fixture.db)).toEqual([]);
     } finally {
@@ -364,6 +366,11 @@ describe('bin/restore.mjs — the operator rolls back a snapshot (§13.3)', () =
       const noChapter = await cli([root, data]);
       expect(noChapter.code).toBe(1);
       expect(noChapter.out).toContain('--chapter N is required');
+
+      // BOOK-155: the CLI's own bound is the book's last chapter.
+      const tooFar = await cli(['--chapter', '43', '--list', root, data]);
+      expect(tooFar.code).toBe(1);
+      expect(tooFar.out).toContain('between 1 and 42');
 
       const same = await cli(['--chapter', '1', '--rev', '1', root, data]);
       expect(same.code).toBe(0);

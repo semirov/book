@@ -1,7 +1,7 @@
 /**
  * F029 — the frozen frame (BOOK-6, and the owner's canon page).
  *
- * The owner fixed the first sentence of chapter 1 and the last sentence of chapter 67, and
+ * The owner fixed the first sentence of chapter 1 and the last sentence of chapter 42, and
  * nobody edits them: not the writer, not a ripple, not a reader's change. The sentences live
  * once, in `../book.ts`, so the validator and the engine cannot disagree about what "the
  * frame" is.

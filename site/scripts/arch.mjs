@@ -7,7 +7,7 @@
  *   2. layers: shared is platform-neutral, the server never imports the SPA, the SPA
  *      never imports the server or Node built-ins;
  *   3. the site never writes to the book repository (text is read-only for the site);
- *   4. the book's invariants are where the UI expects them (67 chapters, engine tables,
+ *   4. the book's invariants are where the UI expects them (42 chapters, engine tables,
  *      the rule ids covered by tests);
  *   5. the engine calls no model and no network: it is a deterministic state machine;
  *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`), the prompt
@@ -127,8 +127,8 @@ for (const file of files.filter((path) => path.startsWith(ENGINE_DIR) && isTs(pa
 }
 /** 4 — invariants the UI and the DB depend on */
 const bookModel = readFileSync(join(ROOT, 'shared/src/book.ts'), 'utf8');
-if (!/export const TOTAL_CHAPTERS = 67;/u.test(bookModel)) {
-  report(join(ROOT, 'shared/src/book.ts'), 'TOTAL_CHAPTERS must be 67');
+if (!/export const TOTAL_CHAPTERS = 42;/u.test(bookModel)) {
+  report(join(ROOT, 'shared/src/book.ts'), 'TOTAL_CHAPTERS must be 42');
 }
 if (!/export const PART_RANGES/u.test(bookModel)) {
   report(join(ROOT, 'shared/src/book.ts'), 'PART_RANGES must live next to TOTAL_CHAPTERS');

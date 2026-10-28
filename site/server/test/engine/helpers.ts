@@ -126,7 +126,7 @@ export function createEngineFixture(options: {
     writeFileSync(join(manuscript, `ch${String(n).padStart(2, '0')}.md`), text, 'utf8');
   };
   /**
-   * BOOK-137: the canon frame opens ch01 and closes ch67, so a chapter written by paragraph
+   * BOOK-137: the canon frame opens ch01 and closes ch42, so a chapter written by paragraph
    * carries it — the land guard refuses a landing that lets the sentence move, exactly as in
    * production. A test that needs a byte-exact file (a basis-only slot, a broken frame) writes
    * it with `writeChapter`, which stays raw.
@@ -223,7 +223,7 @@ function defaultBlocks(pass: StepPass, chapter: number | 'front'): string[] {
 }
 
 /**
- * BOOK-137: a session that lands on ch01 or ch67 must keep the canon sentence — the land guard
+ * BOOK-137: a session that lands on ch01 or ch42 must keep the canon sentence — the land guard
  * refuses a landing whose frame is not character-identical, exactly as production does. The
  * scripted writer is a session, so it keeps the frame the way a live one has to.
  */
@@ -243,7 +243,7 @@ function writeFor(fixture: Fixture, assignment: WriterAssignment, script: StubSc
     fixture.writeFront(script.title ?? 'Без названия', blocks.join('\n\n'));
     return;
   }
-  // `writeChapterBlocks` keeps the frame of ch01/ch67 itself, so every scripted writer does.
+  // `writeChapterBlocks` keeps the frame of ch01/ch42 itself, so every scripted writer does.
   fixture.writeChapterBlocks(assignment.chapter, script.title ?? `Глава ${assignment.chapter}`, blocks);
 }
 

@@ -42,7 +42,7 @@ describe('POST /internal/pass — the money bound at the door', () => {
         method: 'POST',
         url: '/internal/pass',
         headers: { authorization: `Bearer ${TOKEN}` },
-        payload: { chapter: 65, session: 'writer-seed' },
+        payload: { chapter: 20, session: 'writer-seed' },
       });
       expect(paused.statusCode).toBe(409);
       expect(paused.json()).toMatchObject({ code: 'BUDGET_PAUSED', message: PAUSE_LINE });
@@ -56,10 +56,10 @@ describe('POST /internal/pass — the money bound at the door', () => {
         method: 'POST',
         url: '/internal/pass',
         headers: { authorization: `Bearer ${TOKEN}` },
-        payload: { chapter: 65, session: 'writer-seed' },
+        payload: { chapter: 20, session: 'writer-seed' },
       });
       expect(resumed.statusCode).toBe(200);
-      expect(resumed.json().data).toMatchObject({ pass: 'draft', chapter: 65 });
+      expect(resumed.json().data).toMatchObject({ pass: 'draft', chapter: 20 });
       expect(stepCount(fixture)).toEqual({ n: 1 });
     } finally {
       await app.close();
@@ -78,7 +78,7 @@ describe('POST /internal/pass — the money bound at the door', () => {
         method: 'POST',
         url: '/internal/pass',
         headers: { authorization: `Bearer ${TOKEN}` },
-        payload: { chapter: 65, session: 'writer-seed' },
+        payload: { chapter: 20, session: 'writer-seed' },
       });
       expect(pass.statusCode).toBe(409);
       expect(pass.json()).toMatchObject({ code: 'BUDGET_STOPPED', message: STOP_LINE });

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { chapterStartPages, type CatalogEntry, type StateSnapshot } from '@book/shared';
+import { chapterStartPages, partOf, TOTAL_CHAPTERS, type CatalogEntry, type StateSnapshot } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { BREATHING_PX } from '../lib/headerOffset.ts';
 import { Header } from './Header.tsx';
 import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
 
@@ -11,7 +12,7 @@ import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarati
  * BOOK-104 — the running head's chapter, the folio's page and the contents' page are one
  * model, and one line decides it: `--offset-top` plus 2 px, at the top of the reading area.
  *
- * jsdom has no layout, so every rect comes from a table: 67 slots laid end to end below the
+ * jsdom has no layout, so every rect comes from a table: 42 slots laid end to end below the
  * cover and the contents. A browser lands an anchor at `top − offset-top` (`scroll-margin-top`)
  * — that is what `anchorTo` reproduces — so the head must name the anchored chapter at once
  * and the folio must print the number the contents prints for it.
@@ -29,7 +30,7 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   eager: true,
 });
 
-/** `--offset-top` in jsdom: the token cannot be read, so the hook keeps its 64 px fallback. */
+/** `--offset-top` in jsdom: no stylesheet, so the page publishes the token a 56 px head measures. */
 const HEAD = 64;
 /** The measured defect's slot: an empty chapter is a ~90 px row. */
 const SLOT = 90;
@@ -42,13 +43,13 @@ const STATE: StateSnapshot = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: 'Бланк', about: null, rev: 1, updatedAt: '2026-10-27T10:00:00Z' },
-  chapters: { total: 67, written: [1], empty: [2, 21, 67], count: 1, totalChars: 12_000, basis: [] },
+  chapters: { total: TOTAL_CHAPTERS, written: [1], empty: [2, 21, TOTAL_CHAPTERS], count: 1, totalChars: 12_000, basis: [] },
   cursors: {
-    forward: { lane: 'forward', from: 1, to: 67, cursor: 1, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
-    backward: { lane: 'backward', from: 67, to: 1, cursor: 67, next: 66, status: 'idle', lastPassAt: null, lastPass: null },
+    forward: { lane: 'forward', from: 1, to: 21, cursor: 1, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
+    backward: { lane: 'backward', from: TOTAL_CHAPTERS, to: 22, cursor: TOTAL_CHAPTERS, next: TOTAL_CHAPTERS - 1, status: 'idle', lastPassAt: null, lastPass: null },
   },
   toc: [],
-  meeting: { forwardFront: 1, backwardFront: 67, gap: 0, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: 1, backwardFront: TOTAL_CHAPTERS, gap: 0, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,
@@ -66,20 +67,20 @@ const STATE: StateSnapshot = {
 
 type Box = { top: number; height: number };
 
-/** ch01 and ch67 are the frozen basis slots: no premise row, so no state word either. */
+/** ch01 and the finale are the frozen basis slots: no premise row, so no state word either. */
 function catalogOf(overrides: Partial<CatalogEntry>[] = []): CatalogEntry[] {
   const byNumber = new Map(overrides.map((entry) => [entry.n, entry]));
-  return Array.from({ length: 67 }, (_, index) => {
+  return Array.from({ length: TOTAL_CHAPTERS }, (_, index) => {
     const n = index + 1;
     return {
       n,
-      part: 1,
+      part: partOf(n),
       title: null,
       rev: 1,
       chars: 0,
       blocks: 0,
       written: false,
-      basis: n === 1 || n === 67,
+      basis: n === 1 || n === TOTAL_CHAPTERS,
       writtenAt: null,
       updatedAt: null,
       direction: 'forward',
@@ -200,7 +201,17 @@ function folio(): string | null {
   return container.querySelector<HTMLElement>('.folio')?.getAttribute('data-page') ?? null;
 }
 
+/** The prototype's own measurement, restored after each test (the head's stub shadows it). */
+let nativeRect: typeof Element.prototype.getBoundingClientRect;
+
 beforeEach(() => {
+  // The page's anchor contract in jsdom: no stylesheet, so the token is written here, and
+  // `.top` (which carries no own stub) answers from the prototype with a real 56 px head.
+  document.documentElement.style.setProperty('--offset-top', `${String(HEAD)}px`);
+  nativeRect = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+    return this.classList.contains('top') ? rectOf({ top: 0, height: HEAD - BREATHING_PX }) : nativeRect.call(this);
+  };
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 900 });
   Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
@@ -216,6 +227,7 @@ beforeEach(() => {
 afterEach(async () => {
   if (root !== null) await act(async () => root?.unmount());
   root = null;
+  Element.prototype.getBoundingClientRect = nativeRect;
   document.body.innerHTML = '';
   // The document's end is stubbed per test; zero is a page that cannot be scrolled to its end.
   Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 0 });
@@ -224,12 +236,12 @@ afterEach(async () => {
 });
 
 describe('the running head and the folio on one line', () => {
-  it('names the anchored chapter and prints the contents page for it: 1, 21, 34, 50, 67', async () => {
+  it('names the anchored chapter and prints the contents page for it: 1, 21, 34, 40, 42', async () => {
     const catalog = catalogOf();
     buildBook(catalog);
     await mount(catalog);
     const starts = chapterStartPages(catalog);
-    for (const n of [1, 21, 34, 50, 67]) {
+    for (const n of [1, 21, 34, 40, TOTAL_CHAPTERS]) {
       await anchorTo(n);
       expect(chip().getAttribute('data-n')).toBe(String(n));
       expect(chip().querySelector('.top-chapter-n')?.textContent).toBe(String(n));
@@ -238,7 +250,7 @@ describe('the running head and the folio on one line', () => {
     // An untitled empty slot prints the number alone; so does the frozen last one.
     await anchorTo(21);
     expect(chip().querySelector('.top-chapter-w')).toBeNull();
-    await anchorTo(67);
+    await anchorTo(TOTAL_CHAPTERS);
     expect(chip().querySelector('.top-chapter-w')).toBeNull();
   });
 
@@ -296,26 +308,26 @@ describe('the running head and the folio on one line', () => {
     buildBook(catalog);
     await mount(catalog);
     const starts = chapterStartPages(catalog);
-    const last = rects.get(articles.get(67) as Element);
-    if (last === undefined) throw new Error('no slot 67');
-    const height = last.top + last.height; // nothing below it: the page ends with ch67
+    const last = rects.get(articles.get(TOTAL_CHAPTERS) as Element);
+    if (last === undefined) throw new Error(`no slot ${TOTAL_CHAPTERS}`);
+    const height = last.top + last.height; // nothing below it: the page ends with the finale
     const scrollHeight = () => height;
-    // Scrolled to the end: the line is still inside ch58 (nothing can push ch67 up to it) —
+    // Scrolled to the end: the line is still inside ch33 (nothing can push the finale up to it) —
     // the reported defect, reproduced: the head named the chapter the line was in.
     await scrollTo(height - 900);
-    expect(chip().getAttribute('data-n')).toBe('58');
+    expect(chip().getAttribute('data-n')).toBe('33');
     // With the document's own end, the last chapter owns the reader and prints its last page —
     // for an empty slot that is the page the contents calls its own.
     Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, get: scrollHeight });
     await act(async () => {
       window.dispatchEvent(new Event('resize')); // re-measure at the same scroll
     });
-    expect(chip().getAttribute('data-n')).toBe('67');
-    expect(folio()).toBe(String(starts.get(67)));
+    expect(chip().getAttribute('data-n')).toBe(String(TOTAL_CHAPTERS));
+    expect(folio()).toBe(String(starts.get(TOTAL_CHAPTERS)));
     // One viewport above the end the ordinary rule holds: the line's chapter, not the last.
     await scrollTo(height - 900 - 900);
-    expect(chip().getAttribute('data-n')).toBe('48');
-    expect(folio()).toBe(String(starts.get(48)));
+    expect(chip().getAttribute('data-n')).toBe('23');
+    expect(folio()).toBe(String(starts.get(23)));
   });
 });
 

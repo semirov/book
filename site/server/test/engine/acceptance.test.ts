@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import type { GateVerdict, StepTrace, WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -157,16 +157,20 @@ describe('M3 acceptance — the scripted session', () => {
     }
   });
 
-  it('admits an ordinary change on a written ch67 (BOOK-137)', () => {
+  it('admits an ordinary change on a written last chapter (BOOK-137)', () => {
+    const last = TOTAL_CHAPTERS;
     const fixture = createEngineFixture({
-      chapters: { 66: chapterText('Пролог', ['Служебная строка.']), 67: chapterText('Финал', ['Свет погас.']) },
+      chapters: {
+        [last - 1]: chapterText('Пролог', ['Служебная строка.']),
+        [last]: chapterText('Финал', ['Свет погас.']),
+      },
     });
     try {
       // The ending is prose like any other chapter: the frame is guarded at the landing, not by
-      // refusing a reader's change merely because its chapter number is 67.
-      const reader = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 67, intent: 'пусть кто-то спасётся' });
+      // refusing a reader's change merely because it names the last chapter.
+      const reader = fixture.engine.enqueue({ kind: 'reader_edit', chapter: last, intent: 'пусть кто-то спасётся' });
       expect(reader.status).toBe('pending');
-      const continuity = fixture.engine.enqueue({ kind: 'operator', chapter: 67, intent: 'поправить пунктуацию' });
+      const continuity = fixture.engine.enqueue({ kind: 'operator', chapter: last, intent: 'поправить пунктуацию' });
       expect(continuity.status).toBe('pending');
     } finally {
       fixture.close();

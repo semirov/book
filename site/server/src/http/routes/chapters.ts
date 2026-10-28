@@ -9,14 +9,14 @@ import type { RouteDeps } from '../deps.ts';
 const paramsSchema = {
   type: 'object',
   required: ['n'],
-  properties: { n: { type: 'integer', minimum: 1, maximum: 67 } },
+  properties: { n: { type: 'integer', minimum: 1, maximum: TOTAL_CHAPTERS } },
   additionalProperties: false,
 } as const;
 
 /**
  * The frame files already reported as unreadable in this process. A mount that is gone answers
  * every request the same way, so the line is written once — an operator reads one reason, not
- * a log flood; `ch01` and `ch67` are separate files and report separately.
+ * a log flood; `ch01` and `ch42` are separate files and report separately.
  */
 const unreadableReported = new Set<string>();
 
@@ -61,7 +61,7 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
     };
 
     // BOOK-109: the frame the reader is about to see against the one the file holds. Only
-    // ch01/ch67 cost a read, and only a real disagreement is logged — with both strings, so
+    // ch01/ch42 cost a read, and only a real disagreement is logged — with both strings, so
     // the line says which side is wrong without a second request. Each distinct drift is one
     // line: a page view is not news (see `loggedDrift`).
     const check = checkFrameDrift({ bookRoot: deps.config.bookRoot }, n, blocks);

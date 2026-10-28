@@ -100,7 +100,7 @@ export type HelloPayload = {
     /** BOOK-126: the footer's gift link, already validated at boot; absent/null = no row. */
     donateUrl?: string | null;
   };
-  /** All 67 slots, written or not: an empty slot is the normal state, not a 404. */
+  /** All `TOTAL_CHAPTERS` slots, written or not: an empty slot is the normal state, not a 404. */
   catalog: CatalogEntry[];
   state: StateSnapshot;
   /** Metadata only, and only when a chapter is in flight; the text is fetched over REST. */
@@ -131,7 +131,8 @@ export type ChapterCreatedPayload = {
   title: string | null;
   rev: number;
   chars: number;
-  part: Part;
+  /** Part 1..4, or null for the opening and the finale, which stand outside the parts. */
+  part: Part | null;
   direction: Direction;
   cause: ChapterCause;
   fetch: { path: string; etag: string };

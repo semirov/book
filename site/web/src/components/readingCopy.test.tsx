@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import {
   FRAME_LAST_SENTENCE,
+  partOf,
+  TOTAL_CHAPTERS,
   type CatalogEntry,
   type ChapterDto,
   type CommentDto,
@@ -13,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { spineMarkers } from '../lib/spine.ts';
+import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
 import { ChapterList } from './ChapterList.tsx';
 import { Header } from './Header.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
@@ -44,13 +47,13 @@ const STATE: StateSnapshot = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: 'Бланк', about: null, rev: 1, updatedAt: '2026-10-27T10:00:00Z' },
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0, basis: [67] },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0, basis: [42] },
   cursors: {
-    forward: { lane: 'forward', from: 1, to: 67, cursor: 1, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
-    backward: { lane: 'backward', from: 67, to: 1, cursor: 67, next: 66, status: 'idle', lastPassAt: null, lastPass: null },
+    forward: { lane: 'forward', from: 1, to: 21, cursor: 1, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
+    backward: { lane: 'backward', from: 42, to: 22, cursor: 42, next: 41, status: 'idle', lastPassAt: null, lastPass: null },
   },
   toc: [],
-  meeting: { forwardFront: 1, backwardFront: 67, gap: 0, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: 1, backwardFront: 42, gap: 0, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,
@@ -67,19 +70,19 @@ const STATE: StateSnapshot = {
 };
 
 function slot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
-  const part = (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'];
   return {
     n,
-    part,
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 0,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: n <= 21 ? 'forward' : 'backward',
     ...overrides,
   };
 }
@@ -89,7 +92,7 @@ function slot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
  * the frozen last slot — the whole reading surface, including the case BOOK-137 fixed: a
  * written chapter's contents row is never a bare number.
  */
-const CATALOG: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
+const CATALOG: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => {
   const n = index + 1;
   if (n === 1) {
     return slot(n, {
@@ -108,11 +111,13 @@ const CATALOG: CatalogEntry[] = Array.from({ length: 67 }, (_, index) => {
       chars: SENTENCE.length,
       blocks: 1,
       written: true,
+      // No title line: the contents print the first five words of the prose (owner, 2026-10-28).
+      opening: 'Он вошёл в комнату и…',
       writtenAt: '2026-10-27T09:30:00Z',
       updatedAt: '2026-10-27T09:30:00Z',
     });
   }
-  if (n === 67) return slot(n, { basis: true, blocks: 1 });
+  if (n === TOTAL_CHAPTERS) return slot(n, { basis: true, blocks: 1 });
   return slot(n);
 });
 
@@ -187,9 +192,19 @@ const BANNED = [
   '— · —',
   // BOOK-137: a wing that never opened prints nothing at all — no diagnostic on the page.
   'не открылось',
+  // Owner, 2026-10-28 — «a status word is not a title». The contents put this one where a
+  // chapter's title belongs; it is banned on the whole surface now, and the row shows prose.
+  'написана',
 ];
 
-/** A count of chapters is a count: `67 глав`, `3 главы с текстом`, `написано 2 из 67`. */
+/**
+ * The one deliberate exception (owner, 2026-10-28): «Пусто» is the word the owner chose for an
+ * empty chapter's row, so the contents may print exactly that word — and nothing else of the
+ * interface's vocabulary. It is a *contents label*, not a state line: it never leaves `#toc`.
+ */
+const EMPTY_ROW_WORD = 'Пусто';
+
+/** A count of chapters is a count: `42 главы`, `3 главы с текстом`, `написано 2 из 42`. */
 const CHAPTER_COUNT = /\d+\s*глав/u;
 
 /** A row's state slot: the numeral followed by the word «замысел» (`02замысел`) — BOOK-112. */
@@ -342,9 +357,16 @@ describe('the reading surface prints the book, not the product', () => {
     expectNoInterfaceCopy('main');
   });
 
-  it('prints no status, count or explanation in the contents', async () => {
+  it('prints no status, count or explanation in the contents — «Пусто» is the only label', async () => {
     await mount();
     expectNoInterfaceCopy('#toc');
+    // The exception is one exact word, in one place, and it is not a sentence: a row's text
+    // slot holds the title, the prose's first words, a frame sentence, or this word.
+    const texts = [...container.querySelectorAll('#toc .toc-text')].map((node) => node.textContent ?? '');
+    expect(texts).toContain(EMPTY_ROW_WORD);
+    for (const text of texts) expect(text).not.toContain('написана');
+    // ...and it never reaches the reading surface: the empty slot's flow prints no such word.
+    expect(surface('main')).not.toContain(EMPTY_ROW_WORD);
   });
 
   it('keeps no interface state word in any slot, except a held premise’s own waiting word', async () => {
@@ -391,19 +413,20 @@ describe('the reading surface prints the book, not the product', () => {
     expect(container.querySelector('.folio')?.textContent).toBe('1');
   });
 
-  it('gives a written chapter its own row text and leaves the empty slot bare (BOOK-137)', async () => {
+  it('gives a written chapter its own row text and one word to the empty slot (owner, 2026-10-28)', async () => {
     await mount();
     const row = (n: string): HTMLElement | null =>
       [...container.querySelectorAll<HTMLElement>('#toc .toc-row')].find(
         (element) => element.querySelector('.toc-num')?.textContent === n,
       ) ?? null;
-    // A written chapter with no title line states the truth word, not a bare number.
-    expect(row('02')?.querySelector('.toc-text')?.textContent).toBe('написана');
-    // A written chapter with its own title line keeps the title, never the word beside it.
+    // A written chapter with no title line shows the book's own first five words, never a state.
+    expect(row('02')?.querySelector('.toc-text')?.textContent).toBe('Он вошёл в комнату и…');
+    // A written chapter with its own title line keeps the title, never the excerpt beside it.
     expect(row('01')?.querySelector('.toc-text')?.textContent).toBe(TITLE);
-    // An empty slot still prints no text at all: its number and page are the row.
-    expect(row('03')?.querySelector('.toc-text')).toBeNull();
+    // An empty slot says the one word the owner chose for it — «Пусто» — and nothing else.
+    // The deliberate exception to this gate: the label is the contents', not the book's.
+    expect(row('03')?.querySelector('.toc-text')?.textContent).toBe(EMPTY_SLOT_TEXT);
     // The frozen slot keeps its frame sentence.
-    expect(row('67')?.querySelector('.toc-text')?.textContent).toBe(FRAME_LAST_SENTENCE);
+    expect(row('42')?.querySelector('.toc-text')?.textContent).toBe(FRAME_LAST_SENTENCE);
   });
 });

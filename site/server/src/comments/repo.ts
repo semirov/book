@@ -8,6 +8,7 @@
 
 import {
   PUBLIC_COMMENT_STATUSES,
+  TOTAL_CHAPTERS,
   authorColor,
   holdsInternalCode,
   normalizeFrameMark,
@@ -169,11 +170,18 @@ export type ListCommentsOptions = {
   before?: string;
 };
 
-/** Newest first in SQL, then reversed: the API promises an ascending thread (§9). */
+/**
+ * Newest first in SQL, then reversed: the API promises an ascending thread (§9).
+ *
+ * BOOK-155 — a filing aimed at a number the book no longer has (chapter 65, storage kept by
+ * the `chapters` CHECK) is not a statement about this book, so it never enters a public page.
+ * The range is the rule `isChapterNumber` states, applied in SQL: a post-filter would leave a
+ * page one row short and the cursor would then claim the thread had ended.
+ */
 export function listCommentRows(db: Db, options: ListCommentsOptions): CommentRow[] {
   const placeholders = PUBLIC_COMMENT_STATUSES.map(() => '?').join(', ');
-  const filters: string[] = [`status IN (${placeholders})`];
-  const args: Array<string | number> = [...PUBLIC_COMMENT_STATUSES];
+  const filters: string[] = [`status IN (${placeholders})`, 'chapter BETWEEN 1 AND ?'];
+  const args: Array<string | number> = [...PUBLIC_COMMENT_STATUSES, TOTAL_CHAPTERS];
   if (options.chapter !== undefined) {
     filters.push('chapter = ?');
     args.push(options.chapter);

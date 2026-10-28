@@ -9,7 +9,7 @@ import { OwnTrace } from './OwnTrace.tsx';
 import { Skeleton } from './Skeleton.tsx';
 
 /**
- * «Авторы» — the end matter, after chapter 67 (§6C.5, §11.8).
+ * «Авторы» — the end matter, after chapter 42 (§6C.5, §11.8).
  *
  * The author is listed first with the remainder of the text (`1 − Σ shares`), because the
  * imprint names one person and the site must not imply the book is co-authored in law. A

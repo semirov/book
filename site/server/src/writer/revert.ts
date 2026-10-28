@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { chapterLabel, isChapterNumber } from '@book/shared';
+import { TOTAL_CHAPTERS, chapterLabel, isChapterNumber } from '@book/shared';
 
 import { databaseFile, openDatabase } from '../db/db.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
@@ -153,7 +153,7 @@ export async function revertChapter(input: RevertInput): Promise<RevertOutcome> 
     reconciled: false,
   };
   if (!isChapterNumber(chapter)) {
-    return { ...base, reason: `главы ${String(chapter)} нет: глава — число от 1 до 67` };
+    return { ...base, reason: `главы ${String(chapter)} нет: глава — число от 1 до ${String(TOTAL_CHAPTERS)}` };
   }
 
   const target = chapterPath(input.bookRoot, chapter);

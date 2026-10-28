@@ -15,7 +15,13 @@
  * listed — `record.test.ts` proves the interface path satisfies the invariant.
  */
 
-import { readerReason, type ChangeOutcome, type ChangeStatus, type HistoryRecordDto } from '@book/shared';
+import {
+  TOTAL_CHAPTERS,
+  readerReason,
+  type ChangeOutcome,
+  type ChangeStatus,
+  type HistoryRecordDto,
+} from '@book/shared';
 
 import { chapterWritten, premiseLanded } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
@@ -49,13 +55,18 @@ export type RecordFilter = {
  * BOOK-101 — a hidden comment is a filing the operator withdrew from the page, so its change
  * has no public line, and the author's alias never reaches this DTO through it. The record
  * prints a person's act only while that person's words are still on the page.
+ *
+ * BOOK-155 — the chapter range is part of the public record: a change filed against a number
+ * the book no longer has (chapter 65, storage kept by the `chapters` CHECK) is not a line of
+ * this book's chronicle. The rule is the one `isChapterNumber` states, applied in SQL, so a
+ * full page stays full and `nextBefore` keeps meaning "the oldest row served".
  */
 const SELECT_RECORD = `SELECT c.id AS change_id, c.seq, c.chapter, c.premise, c.status, c.outcome, c.reason,
        co.author AS alias, e.hseq, e.at
   FROM changes c
   JOIN comments co ON co.id = c.source_comment
   JOIN events e ON e.hseq = (SELECT MAX(inner_e.hseq) FROM events inner_e WHERE inner_e.change_id = c.id)
-  WHERE c.source_comment IS NOT NULL AND co.status <> 'hidden'`;
+  WHERE c.source_comment IS NOT NULL AND co.status <> 'hidden' AND c.chapter BETWEEN 1 AND ?`;
 
 /**
  * The public reason, bounded and normalised once; an empty string is no reason at all.
@@ -113,7 +124,7 @@ export function readRecord(
     params.push(filter.before);
   }
   const sql = `${SELECT_RECORD}${clause} ORDER BY e.hseq DESC LIMIT ?`;
-  const rows = db.prepare(sql).all(...params, pageLimit(filter.limit)) as RecordRow[];
+  const rows = db.prepare(sql).all(TOTAL_CHAPTERS, ...params, pageLimit(filter.limit)) as RecordRow[];
   // A premise's landing is the chapter's text, read the way the thread and the card read it
   // (`comments/repo.ts`): the change row alone cannot tell a refusal from an attempt, so the
   // record asks the book. One read per chapter on the page, and only a premise asks.

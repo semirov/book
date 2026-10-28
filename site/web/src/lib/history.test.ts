@@ -38,6 +38,7 @@ function catalog(rows: Array<{ n: number; rev: number; title?: string }>): Catal
     blocks: 1,
     written: row.rev > 0,
     basis: false,
+    opening: null,
     writtenAt: row.rev > 0 ? '2026-10-25T09:00:00Z' : null,
     updatedAt: row.rev > 0 ? '2026-10-25T10:00:00Z' : null,
     direction: 'forward',

@@ -10,7 +10,7 @@
  * (`http/cache.ts`) answers `no-store` for every `/api/` path (BOOK-109).
  */
 
-import type { ChangeStatus } from '@book/shared';
+import { TOTAL_CHAPTERS, isChapterNumber, type ChangeStatus } from '@book/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import { listChanges, readChange } from '../../engineState/changes.ts';
@@ -43,7 +43,7 @@ export function registerChangeRoutes(app: FastifyInstance, deps: RouteDeps): voi
     let chapter: number | undefined;
     if (query.chapter !== undefined) {
       const parsed = integer(query.chapter);
-      if (parsed === null || parsed < 1 || parsed > 67) return invalid(reply, 'chapter must be 1..67');
+      if (parsed === null || parsed < 1 || parsed > TOTAL_CHAPTERS) return invalid(reply, `chapter must be 1..${TOTAL_CHAPTERS}`);
       chapter = parsed;
     }
     let limit: number | undefined;
@@ -66,7 +66,13 @@ export function registerChangeRoutes(app: FastifyInstance, deps: RouteDeps): voi
   app.get('/api/changes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const change = readChange(deps.db, id, Date.now());
-    if (change === null) return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such change' });
+    // BOOK-155 — a change filed at a number the book no longer has has no card either: the row
+    // is storage, and its `chapter` would print «глава 65» and link to an `#ch-65` that is not
+    // there. The same 404 the unknown id gets, and no deletion: the listing filter already keeps
+    // such a row out of `/api/changes`.
+    if (change === null || !isChapterNumber(change.chapter)) {
+      return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such change' });
+    }
     return reply.send(change);
   });
 }

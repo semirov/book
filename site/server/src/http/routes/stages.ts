@@ -8,7 +8,7 @@
  * chapter's cached list without a per-chapter counter.
  */
 
-import { isChapterNumber } from '@book/shared';
+import { TOTAL_CHAPTERS, isChapterNumber } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { listStages, maxStageSeq } from '../../stages/repo.ts';
@@ -17,7 +17,7 @@ import type { RouteDeps } from '../deps.ts';
 const paramsSchema = {
   type: 'object',
   required: ['n'],
-  properties: { n: { type: 'integer', minimum: 1, maximum: 67 } },
+  properties: { n: { type: 'integer', minimum: 1, maximum: TOTAL_CHAPTERS } },
   additionalProperties: false,
 } as const;
 

@@ -10,13 +10,13 @@ function state(overrides: Record<string, unknown> = {}): StateSnapshot {
     engine: { status: 'unknown', heartbeatAt: null, laneId: null },
     phase: 'draft',
     front: { title: null, about: null, rev: 0, updatedAt: null },
-    chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+    chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
     cursors: {
-      forward: { lane: 'forward', from: 1, to: 34, cursor: null, next: 1, status: 'idle', lastPassAt: null, lastPass: null },
-      backward: { lane: 'backward', from: 67, to: 35, cursor: null, next: 67, status: 'idle', lastPassAt: null, lastPass: null },
+      forward: { lane: 'forward', from: 1, to: 21, cursor: null, next: 1, status: 'idle', lastPassAt: null, lastPass: null },
+      backward: { lane: 'backward', from: 42, to: 22, cursor: null, next: 42, status: 'idle', lastPassAt: null, lastPass: null },
     },
     toc: [],
-    meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+    meeting: { forwardFront: null, backwardFront: null, gap: 42, converged: false, seam: 'not_reached' },
     cascade: null,
     queue: {
       depth: 0,
@@ -34,37 +34,37 @@ function state(overrides: Record<string, unknown> = {}): StateSnapshot {
 }
 
 describe('spineMarkers', () => {
-  it('is a hollow line with two carets at 0/67', () => {
+  it('is a hollow line with two carets at 0/42', () => {
     const markers = spineMarkers(state());
     expect(markers.empty).toBe(true);
     expect(markers.forwardFill).toBe(0);
     expect(markers.backwardFill).toBe(0);
     expect(markers.carets).toEqual({ forward: null, backward: null });
     expect(markers.live).toEqual({ forward: false, backward: false });
-    expect(markers.seamPercent).toBeCloseTo(51.49, 1);
+    expect(markers.seamPercent).toBeCloseTo(51.19, 1);
   });
 
   it('fills from each end and places the resting carets at the fronts', () => {
     const markers = spineMarkers(
       state({
-        chapters: { total: 67, written: [1, 2, 3, 66, 67], empty: [], count: 5, totalChars: 100 },
-        meeting: { forwardFront: 3, backwardFront: 66, gap: 62, converged: false, seam: 'not_reached' },
+        chapters: { total: 42, written: [1, 2, 3, 41, 42], empty: [], count: 5, totalChars: 100 },
+        meeting: { forwardFront: 3, backwardFront: 41, gap: 37, converged: false, seam: 'not_reached' },
         cursors: {
-          forward: { lane: 'forward', from: 1, to: 34, cursor: 3, next: 4, status: 'resting', lastPassAt: null, lastPass: null },
-          backward: { lane: 'backward', from: 67, to: 35, cursor: 66, next: 65, status: 'resting', lastPassAt: null, lastPass: null },
+          forward: { lane: 'forward', from: 1, to: 21, cursor: 3, next: 4, status: 'resting', lastPassAt: null, lastPass: null },
+          backward: { lane: 'backward', from: 42, to: 22, cursor: 41, next: 40, status: 'resting', lastPassAt: null, lastPass: null },
         },
       }),
     );
-    expect(markers.forwardFill).toBeCloseTo((3 / 67) * 100, 5);
-    expect(markers.backwardFill).toBeCloseTo((2 / 67) * 100, 5);
-    expect(markers.carets).toEqual({ forward: 3, backward: 66 });
+    expect(markers.forwardFill).toBeCloseTo((3 / 42) * 100, 5);
+    expect(markers.backwardFill).toBeCloseTo((2 / 42) * 100, 5);
+    expect(markers.carets).toEqual({ forward: 3, backward: 41 });
     expect(markers.live).toEqual({ forward: false, backward: false });
   });
 
   it('blinks only the caret of the lane that is drafting', () => {
     const markers = spineMarkers(
       state({
-        chapters: { total: 67, written: [1, 2], empty: [], count: 2, totalChars: 100 },
+        chapters: { total: 42, written: [1, 2], empty: [], count: 2, totalChars: 100 },
         current: { lane: 'forward', chapter: 2, kind: 'draft', blockId: null, blockIndex: null, since: '' },
       }),
     );
@@ -98,8 +98,8 @@ describe('spineMarkers', () => {
 
 describe('book geometry', () => {
   it('puts a chapter centre on the column', () => {
-    expect(chapterPercent(1)).toBeCloseTo((0.5 / 67) * 100, 5);
-    expect(chapterPercent(67)).toBeCloseTo((66.5 / 67) * 100, 5);
+    expect(chapterPercent(1)).toBeCloseTo((0.5 / 42) * 100, 5);
+    expect(chapterPercent(42)).toBeCloseTo((41.5 / 42) * 100, 5);
   });
 
   it('builds a band over the touched chapters', () => {

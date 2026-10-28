@@ -26,14 +26,15 @@ import { Discussion } from './Discussion.tsx';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const ENTRY: CatalogEntry = {
-  n: 65,
-  part: 3,
+  n: 40,
+  part: 4,
   title: 'Перевод смены',
   rev: 7,
   chars: 1_200,
   blocks: 3,
   written: true,
   basis: false,
+  opening: null,
   writtenAt: '2026-10-26T09:00:00Z',
   updatedAt: '2026-10-26T09:00:00Z',
   direction: 'backward',
@@ -42,7 +43,7 @@ const ENTRY: CatalogEntry = {
 const PREMISE: CommentDto = {
   attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
-  chapter: 65,
+  chapter: 40,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
   authorColor: '#6f9bb5',
@@ -59,7 +60,7 @@ const PREMISE: CommentDto = {
   createdAt: '2026-10-27T18:04:17Z',
   decidedAt: null,
   changeId: 'chg_premise',
-  applied: { chapter: 65, rev: 7 },
+  applied: { chapter: 40, rev: 7 },
 };
 
 const ATTEMPT: ChangeSummaryDto = {
@@ -67,7 +68,7 @@ const ATTEMPT: ChangeSummaryDto = {
   sourceCommentId: PREMISE.id,
   id: 'chg_premise',
   seq: 1,
-  chapter: 65,
+  chapter: 40,
   intent: 'смена переходит на ночь, а не на утро',
   premise: true,
   status: 'done',
@@ -78,8 +79,8 @@ const ATTEMPT: ChangeSummaryDto = {
   position: null,
   enqueuedAt: '2026-10-27T18:04:20Z',
   decidedAt: '2026-10-27T18:20:00Z',
-  chapters: [65],
-  rewritten: [65],
+  chapters: [40],
+  rewritten: [40],
   steps: 1,
   modes: [],
   cascade: null,
@@ -205,7 +206,7 @@ describe('one filing, one entry (BOOK-137)', () => {
       sourceCommentId: PREMISE.id,
       id: 'chg_1',
       seq: 1,
-      chapter: 65,
+      chapter: 40,
       intent: 'смена переходит на ночь',
       premise: true,
       status: 'pending',
@@ -216,7 +217,7 @@ describe('one filing, one entry (BOOK-137)', () => {
       position: null,
       enqueuedAt: '2026-10-27T18:05:00Z',
       decidedAt: null,
-      chapters: [65],
+      chapters: [40],
       rewritten: [],
       steps: 0,
       modes: [],
@@ -250,10 +251,10 @@ describe('one filing, one entry (BOOK-137)', () => {
       );
     });
 
-    const row = container.querySelector<HTMLElement>('#ch-65 .premise-row');
+    const row = container.querySelector<HTMLElement>('#ch-40 .premise-row');
     expect(row?.getAttribute('data-comment-id')).toBe(waiting.id);
     expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
-    const meta = container.querySelector('#ch-65 .premise-meta');
+    const meta = container.querySelector('#ch-40 .premise-meta');
     expect(meta?.querySelector('.premise-attempt')?.textContent).toBe('002');
     expect(meta?.querySelectorAll('.premise-open')).toHaveLength(1);
     expect(meta?.querySelector('.premise-open')?.getAttribute('href')).toBe('#правка-chg_2');
@@ -316,11 +317,11 @@ describe('one filing, one entry (BOOK-137)', () => {
     // One state word, one human sentence — and the engine's own code never on the page.
     expect(count(text, 'ждёт')).toBe(1);
     expect(count(text, FAILED_ATTEMPT_LINE)).toBe(1);
-    expect(container.querySelector('#ch-65 .premise-note')?.textContent).toBe(FAILED_ATTEMPT_LINE);
+    expect(container.querySelector('#ch-40 .premise-note')?.textContent).toBe(FAILED_ATTEMPT_LINE);
     expect(container.querySelector('.premise-row .premise-note')).toBeNull();
     expect(text).not.toContain('PROVIDER_SHAPE');
 
-    const row = container.querySelector<HTMLElement>('#ch-65 .premise-row');
+    const row = container.querySelector<HTMLElement>('#ch-40 .premise-row');
     await act(async () => row?.click());
     const panel = container.querySelector<HTMLElement>('.filing-panel');
     // The card says the same sentence, beside the derived reading of what was accepted.

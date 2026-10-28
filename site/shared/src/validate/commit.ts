@@ -12,8 +12,8 @@
 
 import type { Finding } from './text.ts';
 
-/** `manuscript/chNN.md` for 01..67, or the first sheet; nothing else is a book file. */
-const BOOK_FILE = /^manuscript\/(?:ch(?:0[1-9]|[1-5][0-9]|6[0-7])\.md|00-front\.md)$/u;
+/** `manuscript/chNN.md` for 01..42, or the first sheet; nothing else is a book file. */
+const BOOK_FILE = /^manuscript\/(?:ch(?:0[1-9]|[1-3][0-9]|4[0-2])\.md|00-front\.md)$/u;
 
 export const SWEEP_PREFIX = 'sweep:';
 

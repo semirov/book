@@ -10,6 +10,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildGatePrompt, parseGateAnswer } from '../../src/writer/gates.ts';
@@ -201,6 +202,34 @@ describe('buildGatePrompt', () => {
     expect(prompt.system).toContain('# SCIENCE CONSULTANT');
     expect(prompt.user).not.toContain('## Указатель');
     expect(prompt.sections.map((section) => section.id)).not.toContain('index');
+  });
+
+  it('quotes only neighbours inside 1..42 (BOOK-155)', () => {
+    const root = book();
+    writeFileSync(join(root, 'manuscript', `ch${String(TOTAL_CHAPTERS)}.md`), 'Финал\n\nПоследняя глава.\n');
+    writeFileSync(join(root, 'manuscript', 'ch01.md'), 'Начало\n\nПервая глава.\n');
+
+    const last = buildGatePrompt({
+      bookRoot: root,
+      role: 'editor',
+      chapter: TOTAL_CHAPTERS,
+      assignment: { chapter: TOTAL_CHAPTERS },
+      landedText: 'Финал\n\nПоследняя глава.',
+      indexSlice: null,
+    });
+    // There is no chapter after the last one, and none before the first.
+    expect(last.user).not.toContain(`### Глава ${String(TOTAL_CHAPTERS + 1)}`);
+
+    const first = buildGatePrompt({
+      bookRoot: root,
+      role: 'editor',
+      chapter: 1,
+      assignment: { chapter: 1 },
+      landedText: 'Начало\n\nПервая глава.',
+      indexSlice: null,
+    });
+    expect(first.user).not.toContain('### Глава 0');
+    expect(first.user).toContain('соседних глав ещё нет');
   });
 
   it('says so when the assignment’s intent could close its own fence', () => {

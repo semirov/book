@@ -30,6 +30,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { TOTAL_CHAPTERS } from '../shared/src/book.ts';
+
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const USAGE = 'usage: engine.mjs <next|pass|start|land|verdict|done|seen|escalate|beat|trace|reconcile> [args]';
 
@@ -220,10 +222,11 @@ async function main() {
     }
     case 'pass': {
       // BOOK-117 §4: open the first pass of one named chapter instead of the lane's own next
-      // slot — the owner's premise waits in chapter 65, and a lane would reach it in ~60 passes.
+      // slot — the owner's premise may wait in a chapter a lane would reach only after many passes.
       const chapter = numberFlag(flags, 'chapter');
-      if (chapter === undefined || !Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
-        throw new Error('--chapter 1..67 is required');
+      // The book's last chapter (`TOTAL_CHAPTERS`), never a copy of the number.
+      if (chapter === undefined || !Number.isInteger(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) {
+        throw new Error(`--chapter 1..${String(TOTAL_CHAPTERS)} is required`);
       }
       const assignment = await call('/internal/pass', {
         chapter,
@@ -345,7 +348,9 @@ async function main() {
         console.log(JSON.stringify(report, null, 2));
         return;
       }
-      if (!Number.isInteger(Number(chapter))) throw new Error('chapter must be an integer 1..67');
+      if (!Number.isInteger(Number(chapter))) {
+        throw new Error(`chapter must be an integer 1..${String(TOTAL_CHAPTERS)}`);
+      }
       const because = flags.get('because');
       if (!because) throw new Error('--because "…" is required with a chapter: say why the restore stands');
       const report = await call('/internal/reconcile', {

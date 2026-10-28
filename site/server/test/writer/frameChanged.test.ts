@@ -6,7 +6,7 @@
  * a sentence a reader can read, and leaves the stage trail intact — a broken frame must not cost
  * the reader the record of what happened.
  *
- * The frame is the canonical sentence of ch01/ch67 (`@book/shared` `frameSentenceOf`), so the
+ * The frame is the canonical sentence of ch01/ch42 (`@book/shared` `frameSentenceOf`), so the
  * scripted answer here is *valid prose* that opens or closes with the sentence moved by a letter:
  * nothing but the frame guard can refuse it.
  */

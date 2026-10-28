@@ -1,4 +1,4 @@
-import type { CascadeBudget, SeamRef, StepOutcome, StepPass } from '@book/shared';
+import { TOTAL_CHAPTERS, type CascadeBudget, type SeamRef, type StepOutcome, type StepPass } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { planCascade, type CascadeFacts, type CascadePlan, type CascadeStepFact } from '../../src/engine/cascade.ts';
@@ -14,7 +14,7 @@ const BUDGET: CascadeBudget = {
   maxDeltaRatio: 0.35,
 };
 
-const ALL = new Set(Array.from({ length: 67 }, (_, index) => index + 1));
+const ALL = new Set(Array.from({ length: TOTAL_CHAPTERS }, (_, index) => index + 1));
 
 function seam(boundary: number | 'front' | 'ending', reason = 'r'): SeamRef {
   return { boundary, reason };
@@ -168,20 +168,22 @@ describe('planCascade — the ripple geometry', () => {
   });
 
   it('reaches the end: an ending evaluation, never a rewrite (ADR-024)', () => {
+    const last = TOTAL_CHAPTERS;
     const plan = planCascade(
-      facts([origin(66), repair(65, 'backward', 1, []), repair(67, 'forward', 2, [])], { origin: 66 }),
-      ctx(new Set([65, 66, 67])),
+      facts([origin(last - 1), repair(last - 2, 'backward', 1, []), repair(last, 'forward', 2, [])], { origin: last - 1 }),
+      ctx(new Set([last - 2, last - 1, last])),
     );
     expect(plan.kind).toBe('open');
     if (plan.kind !== 'open') return;
-    expect(plan.steps[0]).toMatchObject({ pass: 'ending', chapter: 67, boundary: 'ending' });
+    expect(plan.steps[0]).toMatchObject({ pass: 'ending', chapter: last, boundary: 'ending' });
   });
 
-  it('evaluates the ending instead of rewriting chapter 67 when the ripple reaches it', () => {
-    const plan = planCascade(facts([origin(66), repair(65, 'backward', 1, [])], { origin: 66 }), ctx());
+  it('evaluates the ending instead of rewriting the last chapter when the ripple reaches it', () => {
+    const last = TOTAL_CHAPTERS;
+    const plan = planCascade(facts([origin(last - 1), repair(last - 2, 'backward', 1, [])], { origin: last - 1 }), ctx());
     expect(plan.kind).toBe('open');
     if (plan.kind !== 'open') return;
-    expect(plan.steps[0]).toMatchObject({ pass: 'ending', chapter: 67, boundary: 'ending' });
+    expect(plan.steps[0]).toMatchObject({ pass: 'ending', chapter: last, boundary: 'ending' });
     expect(plan.steps).toHaveLength(1);
   });
 
@@ -281,7 +283,8 @@ function walkRipple(options: { origin?: number; budget?: Partial<CascadeBudget> 
   steps: CascadeStepFact[];
   plan: CascadePlan;
 } {
-  const originChapter = options.origin ?? 40;
+  // A middle chapter: both wings have room for five waves inside the book.
+  const originChapter = options.origin ?? 20;
   const steps: CascadeStepFact[] = [origin(originChapter, [seam(originChapter + 1)])];
   for (let guard = 0; guard < 40; guard += 1) {
     const plan = planCascade(facts(steps, { origin: originChapter, budget: options.budget }), ctx());
@@ -360,14 +363,15 @@ describe('planCascade — the five-wave promise (BOOK-DOC-4 rule 3)', () => {
     if (atBeginning.kind !== 'open') return;
     expect(atBeginning.steps[0]).toMatchObject({ pass: 'front', wave: 5 });
 
-    // The same at the end of the book: down through five waves, chapter 67 only evaluated.
+    // The same at the end of the book: down through five waves, the last chapter only evaluated.
+    const last = TOTAL_CHAPTERS;
     const steps = [
-      origin(66, [seam(67)]),
-      ...[65, 64, 63, 62, 61].map((chapter, index) =>
+      origin(last - 1, [seam(last)]),
+      ...[last - 2, last - 3, last - 4, last - 5, last - 6].map((chapter, index) =>
         repair(chapter, 'backward', index + 1, index === 4 ? [] : [seam(chapter)]),
       ),
     ];
-    const atEnding = planCascade(facts(steps, { origin: 66 }), ctx());
+    const atEnding = planCascade(facts(steps, { origin: last - 1 }), ctx());
     expect(atEnding.kind).toBe('open');
     if (atEnding.kind !== 'open') return;
     expect(atEnding.steps[0]).toMatchObject({ pass: 'ending', wave: 5 });
@@ -402,13 +406,13 @@ describe('planCascade — termination over a fixed seam graph (property)', () =>
   it('always terminates, never revisits a chapter, and never plans past a bound', () => {
     for (let seed = 1; seed <= 120; seed += 1) {
       const random = mulberry32(seed);
-      const originChapter = 2 + Math.floor(random() * 64);
+      const originChapter = 2 + Math.floor(random() * (TOTAL_CHAPTERS - 3));
       const written = new Set<number>();
       const half = Math.floor(random() * 4) + 1;
-      for (let n = Math.max(1, originChapter - half); n <= Math.min(67, originChapter + half + 2); n += 1) {
+      for (let n = Math.max(1, originChapter - half); n <= Math.min(TOTAL_CHAPTERS, originChapter + half + 2); n += 1) {
         written.add(n);
       }
-      if (random() < 0.5) written.delete(Math.min(67, originChapter + 2));
+      if (random() < 0.5) written.delete(Math.min(TOTAL_CHAPTERS, originChapter + 2));
 
       const budget: CascadeBudget = {
         ...BUDGET,
@@ -437,7 +441,7 @@ describe('planCascade — termination over a fixed seam graph (property)', () =>
           if (planned.chapter !== null && planned.pass === 'cascade') {
             expect(visited.has(planned.chapter)).toBe(false);
             expect(planned.chapter).toBeGreaterThanOrEqual(1);
-            expect(planned.chapter).toBeLessThanOrEqual(67);
+            expect(planned.chapter).toBeLessThanOrEqual(TOTAL_CHAPTERS);
             visited.add(planned.chapter);
           }
           const continues = plan.steps[0] === planned ? random() < 0.6 : random() < 0.5;

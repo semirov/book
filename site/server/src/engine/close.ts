@@ -9,6 +9,7 @@
  */
 
 import {
+  TOTAL_CHAPTERS,
   parseSeams,
   type CascadeOutcome,
   type CascadeStatus,
@@ -254,7 +255,7 @@ export function advanceCascade(deps: EngineDeps, cascadeId: string, now: number)
     steps: steps.map(stepFacts),
   };
   const written = new Set<number>();
-  for (let n = 1; n <= 67; n += 1) if (isWritten(deps.bookRoot, n)) written.add(n);
+  for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) if (isWritten(deps.bookRoot, n)) written.add(n);
 
   const plan = planCascade(facts, { nowMs: now, written });
   if (plan.kind === 'wait') return;

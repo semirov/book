@@ -16,7 +16,7 @@ import { AT, accept, change, fixtureOf, fourWritten, seed } from './premiseHelpe
  * The product loop must start from an empty book: the reader's change becomes the chapter's
  * **premise** (base revision 0, no anchor), waits for that chapter's first draft pass outside
  * the FIFO lane, rides on the writer's assignment, and closes into the first edition — or is
- * refused with a public reason. The frozen frame (ch01, ch67) is not a closed door (BOOK-137):
+ * refused with a public reason. The frozen frame (ch01, ch42) is not a closed door (BOOK-137):
  * a chapter-level filing on it is that slot's premise, and its sentence is kept at a landing.
  */
 

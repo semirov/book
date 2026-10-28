@@ -32,7 +32,9 @@ const scroll = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('matchMedia', () => ({ matches: false, media: '', addEventListener: () => undefined, removeEventListener: () => undefined }));
-  Object.defineProperty(Element.prototype, 'scrollIntoView', { value: scroll, configurable: true });
+  // The jump is one `window.scrollTo` at the measured offset (`dom.ts` `scrollToChapter`): the
+  // page, not the element, owns the arithmetic now.
+  Object.defineProperty(window, 'scrollTo', { value: scroll, configurable: true });
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);

@@ -167,10 +167,44 @@ describe('parseChapter — a slot that is exactly its basis sentence (BOOK-6)', 
     expect(parsed.blocks[0]?.text).toBe(`${FRAME_FIRST_SENTENCE} Я постоял и вышел.`);
   });
 
-  it('reads a ch67 that opens with its frame as prose too: F029 reports the missing ending', () => {
+  it('reads a finale that opens with its frame as prose too: F029 reports the missing ending', () => {
     const parsed = parseChapter(TOTAL_CHAPTERS, `${FRAME_LAST_SENTENCE}\n\nОн сел у окна.`);
     expect(parsed.title).toBeNull();
     expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE, 'Он сел у окна.']);
+  });
+
+  /**
+   * Owner, 2026-10-28 — «a status word is not a title». A slot may carry its own heading above
+   * the frozen sentence (ch01's «Замечаний нет»), and it is still a basis slot: line 1 is a
+   * title, the sentence stays the first prose block, and the title adds no characters, so
+   * neither F007's floor nor F022's missing title can fire.
+   */
+  it('keeps a heading above the sentence as the title, and the slot as a basis slot', () => {
+    const parsed = parseChapter(1, `Замечаний нет\n\n${FRAME_FIRST_SENTENCE}`);
+    expect(parsed.title).toBe('Замечаний нет');
+    expect(parsed.titleProblems).toEqual([]);
+    expect(parsed.basis).toBe(true);
+    expect(parsed.chars).toBe(0);
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0]).toMatchObject({ i: 0, text: FRAME_FIRST_SENTENCE });
+    // The basis projection ignores the heading: the same sentence, the same block id.
+    expect(parsed.blocks).toEqual(parseChapter(1, FRAME_FIRST_SENTENCE).blocks);
+  });
+
+  it('is not a basis slot when prose follows the frame under a heading — «starts with» is not the rule', () => {
+    const parsed = parseChapter(1, `Замечаний нет\n\n${FRAME_FIRST_SENTENCE}\n\nСвет был не для меня.`);
+    expect(parsed.basis).toBe(false);
+    expect(parsed.title).toBe('Замечаний нет');
+    expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE, 'Свет был не для меня.']);
+    expect(parsed.chars).toBe(FRAME_FIRST_SENTENCE.length + 'Свет был не для меня.'.length);
+  });
+
+  it('takes a heading on the finale too: the closing sentence stays its one block', () => {
+    const parsed = parseChapter(TOTAL_CHAPTERS, `Конец учёта\n\n${FRAME_LAST_SENTENCE}`);
+    expect(parsed.title).toBe('Конец учёта');
+    expect(parsed.basis).toBe(true);
+    expect(parsed.chars).toBe(0);
+    expect(parsed.blocks.map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
   });
 
   it('treats a whitespace-only re-save as the same projection: no new sha, no new block', () => {
@@ -187,7 +221,7 @@ describe('parseChapter — a slot that is exactly its basis sentence (BOOK-6)', 
 describe('blockId', () => {
   it('pads the chapter number to two digits', () => {
     expect(blockId(7, 'x', 0)).toMatch(/^ch07#/u);
-    expect(blockId(67, 'x', 0)).toMatch(/^ch67#/u);
+    expect(blockId(42, 'x', 0)).toMatch(/^ch42#/u);
   });
 
   it('adds a one-based duplicate suffix', () => {

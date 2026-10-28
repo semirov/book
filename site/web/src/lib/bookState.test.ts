@@ -1,9 +1,12 @@
-import type {
-  CatalogEntry,
-  ChapterCreatedPayload,
-  ChapterRevisionPayload,
-  HelloPayload,
-  StateSnapshot,
+import {
+  directionOf,
+  partOf,
+  TOTAL_CHAPTERS,
+  type CatalogEntry,
+  type ChapterCreatedPayload,
+  type ChapterRevisionPayload,
+  type HelloPayload,
+  type StateSnapshot,
 } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -26,21 +29,22 @@ import {
 function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
     n,
-    part: (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'],
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 0,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: directionOf(n),
     ...overrides,
   };
 }
 
-const catalog = Array.from({ length: 67 }, (_, index) => entry(index + 1));
+const catalog = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => entry(index + 1));
 
 function state(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
   return {
@@ -49,10 +53,10 @@ function state(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
     engine: { status: 'unknown', heartbeatAt: null, laneId: null },
     phase: 'draft',
     front: { title: 'Название', about: 'О чём.', rev: 1, updatedAt: '' },
-    chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [] },
+    chapters: { total: TOTAL_CHAPTERS, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [] },
     cursors: {} as StateSnapshot['cursors'],
     toc: catalog.map((row) => ({ part: row.part, n: row.n, title: row.title, written: row.written, rev: row.rev })),
-    meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+    meeting: { forwardFront: null, backwardFront: null, gap: TOTAL_CHAPTERS, converged: false, seam: 'not_reached' },
     cascade: null,
     queue: {
       depth: 0,
@@ -99,7 +103,7 @@ const hello: HelloPayload = {
   front: { title: 'Название', about: 'О чём.', rev: 2, imprint: { author: 'А', copyright: '© А' }, authors: { count: 3, measuredAt: '2026-10-25T12:00:01Z' } },
   catalog: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', rev: 1, written: true } : row)),
   state: state({
-    chapters: { total: 67, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
+    chapters: { total: TOTAL_CHAPTERS, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
     toc: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', written: true, rev: 1 } : row)),
   }),
   currentChapter: null,
@@ -113,7 +117,7 @@ describe('bookFromHello', () => {
     expect(book.front.imprint.copyright).toBe('© А');
     // The byline count arrives with the first sheet, so page 1 never flashes «+ 0».
     expect(book.front.authors).toEqual({ count: 3, measuredAt: '2026-10-25T12:00:01Z' });
-    expect(book.catalog).toHaveLength(67);
+    expect(book.catalog).toHaveLength(TOTAL_CHAPTERS);
     expect(book.state.toc[0]).toMatchObject({ n: 1, title: 'Начало' });
   });
 
@@ -266,7 +270,7 @@ describe('state merges', () => {
   it('flags a catalog that disagrees with the snapshot TOC', () => {
     expect(catalogOutOfSync(state(), catalog)).toBe(false);
     const written = state({
-      chapters: { total: 67, written: [1], empty: [], count: 1, totalChars: 10, basis: [] },
+      chapters: { total: TOTAL_CHAPTERS, written: [1], empty: [], count: 1, totalChars: 10, basis: [] },
       toc: catalog.map((row) => (row.n === 1 ? { ...row, written: true, rev: 1, title: 'Глава' } : row)),
     });
     expect(catalogOutOfSync(written, catalog)).toBe(true);
@@ -276,7 +280,7 @@ describe('state merges', () => {
   it('follows the basis flag of an unwritten slot (BOOK-6)', () => {
     const withBasis = withCatalogEntry(catalog, entry(1, { basis: true, blocks: 1, rev: 4 }));
     const basisState = state({
-      chapters: { total: 67, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [1] },
+      chapters: { total: TOTAL_CHAPTERS, written: [], empty: catalog.map((row) => row.n), count: 0, totalChars: 0, basis: [1] },
     });
 
     // Agreement: the slot is unwritten in both, and a former chapter's retained rev is not
@@ -306,7 +310,7 @@ describe('chapter events', () => {
   it('inserts a created chapter into the catalog in order', () => {
     const next = withChapterCreated(data(), created);
     expect(next.catalog[1]).toMatchObject({ n: 2, title: 'Вторая', rev: 1, written: true, updatedAt: created.createdAt });
-    expect(next.catalog).toHaveLength(67);
+    expect(next.catalog).toHaveLength(TOTAL_CHAPTERS);
   });
 
   it('updates an existing row when a chapter is created over a previous failed load', () => {
@@ -341,6 +345,43 @@ describe('chapter events', () => {
     };
     const next = withChapterRevision(existing, revision);
     expect(next.catalog[1]).toMatchObject({ title: 'Новая', rev: 2, chars: 130 });
+  });
+
+  /**
+   * Owner, 2026-10-28 — a written chapter with no title line shows its first five words, and
+   * that excerpt must survive a live revision: the patch carries the new first block.
+   */
+  it('keeps the contents’ excerpt true through a live revision', () => {
+    const previous = entry(2, { written: true, rev: 1, opening: 'Старое начало главы…' });
+    const existing = data({ catalog: withCatalogEntry(catalog, previous) });
+    const revision = (patch: ChapterRevisionPayload['patch']): ChapterRevisionPayload => ({
+      n: 2,
+      rev: 2,
+      title: null,
+      chars: 400,
+      delta: 0,
+      kind: 'edit',
+      cause: { changeId: null, cascadeId: null, wave: null, lane: 'forward', direction: 'forward', stepId: null, seamsIn: [], seamsOut: [] },
+      patch,
+      patchTruncated: false,
+      attributed: false,
+      updatedAt: '2026-10-25T12:05:00Z',
+    });
+
+    // A rewritten first block is the new excerpt.
+    const rewritten = withChapterRevision(
+      existing,
+      revision([{ op: 'replace', id: 'ch02#aa', i: 0, newId: 'ch02#bb', text: 'Свет был не для меня. Он был для камеры.' }]),
+    );
+    expect(rewritten.catalog[1]?.opening).toBe('Свет был не для меня.…');
+
+    // A patch that leaves the first block alone keeps the excerpt it already had.
+    const untouched = withChapterRevision(existing, revision([{ op: 'replace', id: 'ch02#cd', i: 3, newId: 'ch02#ef', text: 'Дальше.' }]));
+    expect(untouched.catalog[1]?.opening).toBe('Старое начало главы…');
+
+    // A removed first block leaves nothing to trust: no invented excerpt, and no state word.
+    const removed = withChapterRevision(existing, revision([{ op: 'remove', id: 'ch02#aa', i: 0 }]));
+    expect(removed.catalog[1]?.opening).toBeNull();
   });
 
   it('ignores a revision for a chapter the catalog does not know', () => {

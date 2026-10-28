@@ -2,7 +2,7 @@
 /**
  * scripts/build-info.mjs — the stamp every build carries (BOOK-109).
  *
- * The owner's phone kept printing the old ch01/ch67 while this host served the canon, and
+ * The owner's phone kept printing the old ch01/ch42 while this host served the canon, and
  * nothing on the page said which build it was: a client cache, a second host and an unbuilt
  * bundle all looked the same. So each build bakes its identity in — `commit`, the moment, and a
  * short Moscow stamp — and the colophon prints it under the imprint line.

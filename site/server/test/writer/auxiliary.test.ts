@@ -1,5 +1,5 @@
 /**
- * The owner's two rules from the second real pass (chapter 65, 2026-10-28):
+ * The owner's two rules from the second real pass (chapter 40, 2026-10-28):
  *
  *  · «a failed auxiliary call must not escalate a step whose text already landed and passed the
  *    gates» — the chapter was written, published and printed, and a `land`/gate call that timed
@@ -30,7 +30,7 @@ import {
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
-const CHAPTER = 65;
+const CHAPTER = 40;
 
 /** A machine token no note may carry: `ENGINE_TIMEOUT`, `PROVIDER_HTTP_429`, `ANSWER_REFUSAL`. */
 const CODE_TOKEN = /[A-Z]{2,}_[A-Z0-9_]+/u;
@@ -89,7 +89,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
   it('closes when the stage emitter throws on every call', async () => {
     const harness = await createHarness();
     try {
-      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const calls: string[] = [];
       // Every stage of the pass fails: the store is gone, and the pass must not care.
@@ -130,7 +130,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
   it('closes when the transcript cannot be written', async () => {
     const harness = await createHarness();
     try {
-      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       // `writer/transcripts` is a file, so the directory cannot be made: a full disk, in one line.
       mkdirSync(join(harness.dataDir, 'writer'), { recursive: true });
@@ -149,7 +149,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
   it('parks a landed step only because the engine refuses to close it, and says so in words', async () => {
     const harness = await createHarness();
     try {
-      const changeId = harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS');
       let dispatches = 0;
       harness.hooks.beforeCall = (name) => {
@@ -187,7 +187,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
   it('reports `closed` when `done` answers STEP_CLOSED: the step is closed either way', async () => {
     const harness = await createHarness();
     try {
-      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       harness.hooks.beforeCall = (name) => {
         // The reaper got there first: the close the pass asks for has already happened.

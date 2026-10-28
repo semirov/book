@@ -234,7 +234,7 @@ describe('/rules', () => {
   it('keeps the frozen ending and the promise that a refusal has a public reason', () => {
     expect(text).toContain('реальные люди');
     expect(text).toContain('указания модели');
-    expect(text).toContain('глава 67 заморожена');
+    expect(text).toContain('глава 42 заморожена');
     expect(text).toContain('публичной причиной');
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/"');

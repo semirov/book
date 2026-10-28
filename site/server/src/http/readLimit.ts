@@ -3,7 +3,7 @@
  *
  * The expensive reads are the history projections, the reader's own record, the end matter and
  * the two whole-book aggregates page views ask for on every load: `/api/history/at/:hseq` alone
- * is 67 indexed lookups, `/diff` recomputes a span on every call, `/api/me/decisions` and
+ * is one indexed lookup per chapter, `/diff` recomputes a span on every call, `/api/me/decisions` and
  * `/api/authors` measure the whole book for every request (`/api/authors` also reads every
  * identity, the projection and each contributor's first change; `/api/authors/me` adds the
  * survival join), `/api/front` carries the contributor count, and `/api/cost` sums every step's

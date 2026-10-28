@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { bootComments, commentBody, type Harness } from './helpers.ts';
@@ -6,7 +6,7 @@ import { bootComments, commentBody, type Harness } from './helpers.ts';
 /**
  * BOOK-7 — the door to an intervention on a chapter with no text.
  *
- * BOOK-137 amends the old rule: the frozen frame (ch01's opening, ch67's finale) is no longer
+ * BOOK-137 amends the old rule: the frozen frame (ch01's opening, the finale's close) is no longer
  * a closed door. A filing may anchor on the canon sentence's own paragraph — the letters are
  * kept by the land guard, and an accepted filing on it becomes paperwork. A basis slot is
  * projected with a row (rev 0, one block), so the anchor is resolved against the slot's own
@@ -20,7 +20,7 @@ async function boot(): Promise<Harness> {
   harness = await bootComments({
     chapters: {
       'ch01.md': FRAME_FIRST_SENTENCE,
-      'ch67.md': FRAME_LAST_SENTENCE,
+      'ch42.md': FRAME_LAST_SENTENCE,
       'ch08.md': 'Заголовок\n\nСлужебный абзац восьмой главы.',
     },
   });
@@ -39,9 +39,11 @@ function post(h: Harness, body: unknown) {
 describe('POST /api/comments on an empty chapter', () => {
   it('has real basis rows to be refused — a row, not missing text', async () => {
     const h = await boot();
-    expect(h.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all()).toEqual([
+    expect(
+      h.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, ?) ORDER BY n').all(TOTAL_CHAPTERS),
+    ).toEqual([
       { n: 1, rev: 0, basis: 1, block_count: 1 },
-      { n: 67, rev: 0, basis: 1, block_count: 1 },
+      { n: TOTAL_CHAPTERS, rev: 0, basis: 1, block_count: 1 },
     ]);
   });
 
@@ -60,7 +62,7 @@ describe('POST /api/comments on an empty chapter', () => {
     const h = await boot();
     // BOOK-137: trying is allowed. The sentence's letters are kept by the land guard, and an
     // accepted filing on it becomes paperwork — so the door is open and the thread says so.
-    for (const chapter of [1, 67]) {
+    for (const chapter of [1, TOTAL_CHAPTERS]) {
       const note = await post(h, commentBody({ chapter, body: `К главе ${chapter} есть замысел.` }));
       expect(note.statusCode, `note ch${chapter}`).toBe(201);
       expect(note.json().comment, `note ch${chapter}`).toMatchObject({ status: 'new' });
@@ -74,9 +76,11 @@ describe('POST /api/comments on an empty chapter', () => {
     expect(first.json().comment.frame).toBe('untouched');
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 3 });
     // Nothing was written: the slot is still the slot.
-    expect(h.db.prepare('SELECT n, rev, basis FROM chapters WHERE n IN (1, 67) ORDER BY n').all()).toEqual([
+    expect(
+      h.db.prepare('SELECT n, rev, basis FROM chapters WHERE n IN (1, ?) ORDER BY n').all(TOTAL_CHAPTERS),
+    ).toEqual([
       { n: 1, rev: 0, basis: 1 },
-      { n: 67, rev: 0, basis: 1 },
+      { n: TOTAL_CHAPTERS, rev: 0, basis: 1 },
     ]);
   });
 

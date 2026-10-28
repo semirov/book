@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { TOTAL_CHAPTERS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { buildIndex, indexChapterText } from '../../src/index/build.ts';
@@ -35,12 +36,12 @@ const CH12 = 'Глава двенадцатая\n\nИнженер Ковалёв
 const CH13 = 'Глава тринадцатая\n\nКовалёв обещал вернуться через два дня.\n';
 
 describe('building the derived index (BOOK-18 §1)', () => {
-  it('covers all 67 slots in order and hashes only text and version', () => {
+  it('covers every slot in order and hashes only text and version', () => {
     const book = fixture({ 'ch12.md': CH12, 'ch13.md': CH13 });
     try {
       const index = buildIndex(book.root);
-      expect(index.chapters).toHaveLength(67);
-      expect(index.chapters.map((chapter) => chapter.n)).toEqual([...Array(67)].map((_, i) => i + 1));
+      expect(index.chapters).toHaveLength(TOTAL_CHAPTERS);
+      expect(index.chapters.map((chapter) => chapter.n)).toEqual([...Array(TOTAL_CHAPTERS)].map((_, i) => i + 1));
       expect(index.chapters.find((chapter) => chapter.n === 12)?.documents).toHaveLength(1);
       expect(index.chapters.find((chapter) => chapter.n === 11)).toMatchObject({ written: false, entities: [] });
       expect(index.manuscriptHash).toMatch(/^[0-9a-f]{64}$/u);
@@ -138,7 +139,10 @@ describe('storing the index (BOOK-18 §1, §2)', () => {
       expect(slice.chapters.map((chapter) => chapter.n)).toEqual([11, 12, 13]);
       // The edges are clamped: chapter 1 has no chapter 0.
       expect(sliceOf(index, 1).chapters.map((chapter) => chapter.n)).toEqual([1, 2]);
-      expect(sliceOf(index, 67).chapters.map((chapter) => chapter.n)).toEqual([66, 67]);
+      expect(sliceOf(index, TOTAL_CHAPTERS).chapters.map((chapter) => chapter.n)).toEqual([
+        TOTAL_CHAPTERS - 1,
+        TOTAL_CHAPTERS,
+      ]);
     } finally {
       book.close();
     }

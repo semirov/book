@@ -230,9 +230,9 @@ export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now
       .prepare(`SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`)
       .get(premise.chapter);
     if (open !== undefined) continue;
-    // BOOK-137: the freeze is the slot's shape, not the number. Before, a premise on ch01/ch67
+    // BOOK-137: the freeze is the slot's shape, not the number. Before, a premise on ch01/ch42
     // was rejected by number alone; now a **basis-only** slot is rejected the same way, and a
-    // written ch01/ch67 falls to the stale branch like any other written chapter.
+    // written ch01/ch42 falls to the stale branch like any other written chapter.
     if (isBasisSlot(getChapterRow(deps.db, premise.chapter))) {
       if (settle(deps, premise, 'rejected', PREMISE_FROZEN_REASON, now) !== null) settled += 1;
       continue;

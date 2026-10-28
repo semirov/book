@@ -1,7 +1,7 @@
 /**
  * BOOK-137 — the frame is the one text a file may not move.
  *
- * The check is character-exact: ch01 must open with the canon sentence and ch67 must close
+ * The check is character-exact: ch01 must open with the canon sentence and ch42 must close
  * with it. It compares with `startsWith`/`endsWith` and **no** whitespace collapsing — a
  * reader's filing may be examined, the sentence's letters may not move by a hair. The blank
  * line that separates a title line from the prose is a line break, not text, so it is

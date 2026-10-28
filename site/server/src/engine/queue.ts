@@ -11,8 +11,10 @@
  */
 
 import {
+  FORWARD_LAST,
   INTENT_MAX_CHARS,
   PREMISE_FROZEN_REASON,
+  TOTAL_CHAPTERS,
   normalizeInterventionKind,
   type ChangeStatus,
   type InterventionKind,
@@ -72,8 +74,8 @@ export function createQueue(deps: EngineDeps) {
 
   function enqueue(input: EnqueueInput): { id: string; seq: number; status: ChangeStatus } {
     const chapter = Math.trunc(input.chapter);
-    if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
-      refuse('INVALID_CHAPTER', 422, 'a change belongs to a chapter in 1..67');
+    if (!Number.isInteger(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) {
+      refuse('INVALID_CHAPTER', 422, `a change belongs to a chapter in 1..${String(TOTAL_CHAPTERS)}`);
     }
     // BOOK-9: a change that names a comment is the comment's intervention — it exists only
     // if the auditor recorded `FITS` on that row. This is the second creator of `changes`
@@ -113,10 +115,10 @@ export function createQueue(deps: EngineDeps) {
     const text = readChapter(bookRoot, chapter);
     // Read the slot's shape before the predicate narrows the chapter to "written".
     const basisOnly = isBasisSlot(text);
-    // BOOK-137: a basis-only slot (ch01/ch67) is its frame sentence and nothing else — no prose
+    // BOOK-137: a basis-only slot (ch01/ch42) is its frame sentence and nothing else — no prose
     // to write against and no anchor to place — so the site's own answer is the honest one: the
     // frame is the whole text. Any other empty slot is that chapter's premise (BOOK-7), whichever
-    // its number; a written chapter, ch67 included, takes an ordinary change.
+    // its number; a written chapter, the finale included, takes an ordinary change.
     if (!isWrittenChapter(text)) {
       if (basisOnly) {
         refuse('FROZEN_FRAME', 422, PREMISE_FROZEN_REASON);
@@ -236,7 +238,7 @@ export function createQueue(deps: EngineDeps) {
   function laneOf(step: store.StepRow): DraftLane | null {
     if (step.lane === 'backward') return 'bwd';
     if (step.lane === 'forward') return 'fwd';
-    if (step.pass === 'draft' && step.chapter !== null) return step.chapter <= 34 ? 'fwd' : 'bwd';
+    if (step.pass === 'draft' && step.chapter !== null) return step.chapter <= FORWARD_LAST ? 'fwd' : 'bwd';
     return null;
   }
 
@@ -246,7 +248,7 @@ export function createQueue(deps: EngineDeps) {
     const candidates = store
       .listOpenSteps(db)
       .filter((step) => store.liveLeaseForStep(db, step.step_id) === undefined)
-      .filter((step) => !(step.pass === 'cascade' && step.chapter === 67))
+      .filter((step) => !(step.pass === 'cascade' && step.chapter === TOTAL_CHAPTERS))
       .filter((step) => {
         const expected = laneOf(step);
         return expected === null || expected === lane;
@@ -348,8 +350,8 @@ export function createQueue(deps: EngineDeps) {
    * from `acquireLease`).
    */
   function openPass(session: string, chapter: number, at: number): WriterAssignment | null {
-    if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
-      refuse('INVALID_CHAPTER', 422, 'a draft pass belongs to a chapter in 1..67');
+    if (!Number.isInteger(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) {
+      refuse('INVALID_CHAPTER', 422, `a draft pass belongs to a chapter in 1..${String(TOTAL_CHAPTERS)}`);
     }
     // Writing is the owner's switch (§6A.9, BOOK-6): no pass opens while it is off.
     if (config.drafting !== 'on') refuse('NOT_DRAFTING', 409, 'drafting is off — writing is the owner’s switch');
@@ -384,7 +386,7 @@ export function createQueue(deps: EngineDeps) {
     // BOOK-7: the chapter's premise rides on the step that opens its first pass, so a
     // resumed step carries it again and a close can settle exactly that premise.
     const premise = queuedPremise(db, chapter);
-    const lane: DraftLane = chapter <= 34 ? 'fwd' : 'bwd';
+    const lane: DraftLane = chapter <= FORWARD_LAST ? 'fwd' : 'bwd';
     const stepId = newStepId(at);
     store.insertStep(db, {
       stepId,

@@ -1,4 +1,11 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type WriterAssignment } from '@book/shared';
+import {
+  BACKWARD_FIRST,
+  FORWARD_LAST,
+  FRAME_FIRST_SENTENCE,
+  FRAME_LAST_SENTENCE,
+  TOTAL_CHAPTERS,
+  type WriterAssignment,
+} from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { dailyTokens, nextDraftChapter } from '../../src/engine/draft.ts';
@@ -11,28 +18,49 @@ const range = (from: number, to: number): number[] =>
 describe('nextDraftChapter — two fronts, one meeting point (§6A.9, §6A.10)', () => {
   it('starts at the two fixed points', () => {
     expect(nextDraftChapter(set(), 'fwd')).toBe(1);
-    expect(nextDraftChapter(set(), 'bwd')).toBe(67);
+    expect(nextDraftChapter(set(), 'bwd')).toBe(TOTAL_CHAPTERS);
   });
 
   it('writes contiguously away from its fixed point', () => {
     expect(nextDraftChapter(set(1, 2), 'fwd')).toBe(3);
-    expect(nextDraftChapter(set(67, 66), 'bwd')).toBe(65);
+    expect(nextDraftChapter(set(TOTAL_CHAPTERS, TOTAL_CHAPTERS - 1), 'bwd')).toBe(TOTAL_CHAPTERS - 2);
     // A hole is not skipped: the lane fills the first missing slot.
     expect(nextDraftChapter(set(1, 2, 4), 'fwd')).toBe(3);
   });
 
   it('stops a lane at its half of the book', () => {
-    expect(nextDraftChapter(new Set(range(1, 34)), 'fwd')).toBeNull();
-    expect(nextDraftChapter(new Set(range(35, 67)), 'bwd')).toBeNull();
+    expect(nextDraftChapter(new Set(range(1, FORWARD_LAST)), 'fwd')).toBeNull();
+    expect(nextDraftChapter(new Set(range(FORWARD_LAST + 1, TOTAL_CHAPTERS)), 'bwd')).toBeNull();
   });
 
   it('never lets the fronts cross', () => {
-    const all = new Set(range(1, 67));
+    const all = new Set(range(1, TOTAL_CHAPTERS));
     expect(nextDraftChapter(all, 'fwd')).toBeNull();
     expect(nextDraftChapter(all, 'bwd')).toBeNull();
-    // The backward lane has run to 35: the forward lane may not take 34 or below 35.
-    expect(nextDraftChapter(new Set(range(35, 67)), 'bwd')).toBeNull();
-    expect(nextDraftChapter(new Set([...range(1, 30), ...range(35, 67)]), 'fwd')).toBe(31);
+    // The backward lane has run down to its first chapter: the forward lane takes the last
+    // slot of its own half and never steps over the meeting point (BOOK-DOC-4).
+    const meeting = new Set([...range(1, FORWARD_LAST - 1), ...range(BACKWARD_FIRST, TOTAL_CHAPTERS)]);
+    expect(nextDraftChapter(meeting, 'fwd')).toBe(FORWARD_LAST);
+    expect(nextDraftChapter(new Set([...meeting, FORWARD_LAST]), 'fwd')).toBeNull();
+    expect(nextDraftChapter(meeting, 'bwd')).toBeNull();
+  });
+});
+
+describe('the forward lane walks away from the opening (BOOK-155)', () => {
+  it('offers chapter 8 once chapters 1–7 are written', () => {
+    expect(nextDraftChapter(new Set(range(1, 7)), 'fwd')).toBe(8);
+  });
+
+  it('hands chapter 8 out as the next pass of a book with 1–7 written', () => {
+    const chapters = Object.fromEntries(
+      range(1, 7).map((n) => [n, chapterText(`Глава ${String(n)}`, [`Тестовый абзац главы ${String(n)}.`])]),
+    );
+    const fixture = createEngineFixture({ chapters });
+    try {
+      expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toMatchObject({ pass: 'draft', chapter: 8 });
+    } finally {
+      fixture.close();
+    }
   });
 });
 
@@ -40,9 +68,9 @@ describe('the owner’s writing switch (§6A.9, BOOK-6)', () => {
   it('hands out no step for an empty book while drafting is off', () => {
     const fixture = createEngineFixture({ env: { DRAFTING: 'off' } });
     try {
-      // The owner's state: ch01 and ch67 hold only their basis sentence, 65 slots are absent.
+      // The owner's state: ch01 and the last chapter hold only their basis sentence.
       fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
+      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
 
       expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toBeNull();
       expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toBeNull();
@@ -59,7 +87,10 @@ describe('the owner’s writing switch (§6A.9, BOOK-6)', () => {
     const fixture = createEngineFixture({ env: { DRAFTING: 'on' } });
     try {
       expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toMatchObject({ pass: 'draft', chapter: 1 });
-      expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toMatchObject({ pass: 'draft', chapter: 67 });
+      expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toMatchObject({
+        pass: 'draft',
+        chapter: TOTAL_CHAPTERS,
+      });
     } finally {
       fixture.close();
     }

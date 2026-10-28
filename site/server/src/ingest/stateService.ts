@@ -9,7 +9,7 @@
  * behind a cached snapshot.
  */
 
-import type { StateSnapshot } from '@book/shared';
+import type { CatalogEntry, StateSnapshot } from '@book/shared';
 
 import { DEFAULT_BUDGET_CAPS, budgetSnapshot, type BudgetCaps } from '../budget.ts';
 import type { Db } from '../db/db.ts';
@@ -30,8 +30,13 @@ export class StateService {
     private readonly caps: BudgetCaps = DEFAULT_BUDGET_CAPS,
   ) {}
 
-  facts(): ChapterFact[] {
-    return listCatalog(this.db)
+  /**
+   * The written chapters as facts. `catalog` is the caller's snapshot when it already read one:
+   * `snapshot()` reads the catalogue once and derives both lists from that one answer, so a
+   * request never pays two scans for the same page.
+   */
+  facts(catalog: readonly CatalogEntry[] = listCatalog(this.db)): ChapterFact[] {
+    return catalog
       .filter((entry) => entry.written && entry.updatedAt !== null && entry.writtenAt !== null)
       .map((entry) => ({
         n: entry.n,
@@ -44,11 +49,9 @@ export class StateService {
       }));
   }
 
-  /** Slots that hold only their basis sentence (ch01/ch67): empty of prose, readable (BOOK-6). */
-  basis(): number[] {
-    return listCatalog(this.db)
-      .filter((entry) => entry.basis)
-      .map((entry) => entry.n);
+  /** Slots that hold only their basis sentence (ch01/ch42): empty of prose, readable (BOOK-6). */
+  basis(catalog: readonly CatalogEntry[] = listCatalog(this.db)): number[] {
+    return catalog.filter((entry) => entry.basis).map((entry) => entry.n);
   }
 
   front(): FrontFact {
@@ -78,8 +81,11 @@ export class StateService {
   }
 
   snapshot(): StateSnapshot {
-    const facts = this.facts();
-    const basis = this.basis();
+    // One catalogue for both lists: `facts` and `basis` are two projections of the same answer
+    // (`listFirstBlockTexts` is a query, not a per-chapter loop), so the page pays it once.
+    const catalog = listCatalog(this.db);
+    const facts = this.facts(catalog);
+    const basis = this.basis(catalog);
     const front = this.front();
     const readerChanges = this.readerChanges();
     const started = this.started();

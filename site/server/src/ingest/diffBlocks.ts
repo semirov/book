@@ -10,7 +10,7 @@ export type BlockDiff = {
   removed: number;
 };
 
-/** Longest common subsequence of two hash arrays; 67 chapters × ~150 blocks is tiny. */
+/** Longest common subsequence of two hash arrays; one chapter × ~150 blocks is tiny. */
 function lcsMatrix(left: string[], right: string[]): number[][] {
   const rows = left.length + 1;
   const cols = right.length + 1;

@@ -67,6 +67,7 @@ const ENTRY: CatalogEntry = {
   blocks: 2,
   written: true,
   basis: false,
+  opening: 'Первая фраза главы.',
   writtenAt: '2026-10-25T09:20:00Z',
   updatedAt: '2026-10-25T09:20:00Z',
   direction: 'forward',

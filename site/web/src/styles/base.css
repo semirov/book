@@ -83,7 +83,7 @@ h3 {
    cap is nearly a no-op — it is kept because it is what pins a future child: a prose block
    may never be wider than the column it stands in, whoever its parent is. Flush left, always:
    no `margin-inline: auto` on any of these selectors, in any sheet, or the text drifts to a
-   third left edge. `.toc-row` / `.toc-link` / `.toc-line` are deliberately absent — the TOC
+   third left edge. `.toc-row` / `.toc-link` are deliberately absent — the TOC
    is column furniture, not prose. `.ch-placeholder` is the form of the prose (its bars must
    stand where the text will) and `.ch-fail` is the chapter's own `.state-line`, whose retry
    belongs on the same right edge as the page's. `.consent-body` is the consent strip's
@@ -199,20 +199,12 @@ h3 {
 /* BOOK-DOC-35 §3 — the adaptive regime: the desktop is the base, the tablet and the phone
    are down-queries. Nothing here starts at 320 px and grows. */
 /* The type scale's narrow steps live in tokens.css, where the ladder has one home; this file
-   only narrows the space the layout is made of. */
-@media (max-width: 1023px) {
-  :root {
-    --offset-top: 72px;
-  }
-}
+   only narrows the space the layout is made of.
+   The two narrow `--offset-top` steps (72 and 80) are gone: they were the head's height
+   tabulated by hand, and the head is measured now (`lib/headerOffset.ts`). */
 @media (max-width: 599px) {
   :root {
     --gut: 24px;
-    /* Measured at 390: the head is 76.6px (row 17.5 + chip row 35.1) because the old recency
-       chip («последняя запись · N минут назад») wrapped at 342px; 59.1px is the same head with
-       a one-line chip (measured at 768). BOOK-70 makes every chip one line that never wraps,
-       so the wrapped case is gone; 72 would do again and 80 leaves 3.4px of extra air. */
-    --offset-top: 80px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

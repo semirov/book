@@ -62,6 +62,7 @@ const CATALOG: CatalogEntry[] = [
     blocks: 120,
     written: true,
     basis: false,
+    opening: null,
     writtenAt: '2026-10-25T11:00:00Z',
     updatedAt: '2026-10-25T11:20:00Z',
     direction: 'forward',
@@ -431,8 +432,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 });
 
 /**
- * BOOK-56 — a begun book's chronicle holds exactly one record, its beginning. The row is not
- * a change: no number, author, card or scrub target. The empty-log sentence is another fact.
+ * BOOK-56 — a begun book's chronicle holds one record, its beginning, and it is not a change.
  */
 describe('the one starting record of a begun book (BOOK-56)', () => {
   // The log's first moment and no reader change: the one record is where the book began.

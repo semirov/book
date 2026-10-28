@@ -49,7 +49,7 @@ export const FAKE_KEY = 'sk-writer-harness-never-print-2b91';
 const FILLER = 'служебный абзац для проверки объёма страницы, он не является текстом книги. ';
 
 /** A valid chapter answer for any chapter: a title line, four paragraphs, ~2 400 characters. */
-export function chapterAnswer(title = 'Глава шестьдесят пять', marker = ''): string {
+export function chapterAnswer(title = 'Глава сорок', marker = ''): string {
   const paragraph = `${FILLER.repeat(4).trim()} ${FILLER.repeat(4).trim()}`;
   const blocks = [0, 1, 2, 3].map(() => (marker.length === 0 ? paragraph : `${paragraph} ${marker}`.trim()));
   return `${title}\n\n${blocks.join('\n\n')}\n`;

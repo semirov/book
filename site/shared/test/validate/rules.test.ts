@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Imprint, LegalDenylist } from '../../src/book.ts';
-import { ABOUT_MAX_CHARS, ABOUT_MIN_CHARS, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '../../src/book.ts';
+import {
+  ABOUT_MAX_CHARS,
+  ABOUT_MIN_CHARS,
+  FRAME_FIRST_SENTENCE,
+  FRAME_LAST_SENTENCE,
+  TOTAL_CHAPTERS,
+} from '../../src/book.ts';
 import type { ManuscriptFile, ValidateOptions } from '../../src/validate/index.ts';
 import { runValidation } from '../../src/validate/index.ts';
 
@@ -46,11 +52,11 @@ describe('the clean sheet', () => {
     expect(result.chapters[0]).toMatchObject({ n: 5, title: 'Тестовая глава', blocks: 1 });
   });
 
-  it('accepts an empty manuscript with only 00-front.md: 67 empty slots', () => {
+  it('accepts an empty manuscript with only 00-front.md: every slot empty', () => {
     const result = run({ files: [FRONT] });
     expect(result.findings).toEqual([]);
     expect(result.chapters).toEqual([]);
-    expect(result.totalChapters).toBe(67);
+    expect(result.totalChapters).toBe(TOTAL_CHAPTERS);
   });
 
   it('rejects a manuscript with no front matter: F021 is an error, not a warning', () => {
@@ -75,12 +81,12 @@ describe('F002 — stray files, range, duplicates', () => {
   });
 
   it('no longer allows manuscript/PLAN.md — the plan lives in outline/', () => {
-    const result = run({ files: [FRONT, chapter(), { name: 'PLAN.md', text: '# План 67 глав' }] });
+    const result = run({ files: [FRONT, chapter(), { name: 'PLAN.md', text: '# План 42 глав' }] });
     expect(withRule(result, 'F002')[0]).toMatchObject({ file: 'PLAN.md' });
   });
 
-  it('rejects a chapter above 67', () => {
-    const result = run({ files: [FRONT, { name: 'ch68.md', text: chapter().text }] });
+  it('rejects a chapter above the book’s last', () => {
+    const result = run({ files: [FRONT, { name: 'ch43.md', text: chapter().text }] });
     expect(rules(result)).toContain('F002');
     expect(result.chapters).toHaveLength(0);
   });
@@ -192,14 +198,14 @@ describe('F005 — the legal denylist', () => {
   });
 });
 
-describe('F006 — 67 chapters', () => {
+describe('F006 — chapter count', () => {
   it('rejects a plan that asserts another total', () => {
-    const result = run({ planning: [{ name: 'outline/PLAN.md', text: '# План 66 глав (строго)' }] });
+    const result = run({ planning: [{ name: 'outline/PLAN.md', text: '# План 41 глав (строго)' }] });
     expect(result.findings[0]).toMatchObject({ rule: 'F006', severity: 'error' });
   });
 
   it('accepts the real plan shape', () => {
-    const plan = ['# План 67 глав (строго)', '', '| 44 главы = 4 линии × 11 |'].join('\n');
+    const plan = ['# План 42 глав (строго)', '', '| 4 части по 10 глав |'].join('\n');
     expect(rules(run({ planning: [{ name: 'outline/PLAN.md', text: plan }] }))).not.toContain('F006');
   });
 });
@@ -357,16 +363,39 @@ describe('an empty slot is a valid state (§BOOK-6)', () => {
     expect(result.chapters[0]).toMatchObject({ n: 5, title: null, chars: 0, blocks: 0 });
   });
 
-  it('accepts a basis-only ch01 and ch67 without thin or title findings', () => {
+  it('accepts a basis-only ch01 and ch42 without thin or title findings', () => {
     const result = run({
       files: [
         FRONT,
         { name: 'ch01.md', text: FRAME_FIRST_SENTENCE },
-        { name: 'ch67.md', text: FRAME_LAST_SENTENCE },
+        { name: 'ch42.md', text: FRAME_LAST_SENTENCE },
       ],
     });
     expect(result.findings).toEqual([]);
     expect(result.chapters.map((item) => item.chars)).toEqual([0, 0]);
+  });
+
+  /**
+   * Owner, 2026-10-28 — a slot may carry a heading above its frozen sentence (ch01's
+   * «Замечаний нет»). It is still a basis slot: no length band and no title rule touch it,
+   * because the heading is a title and the sentence is not written prose.
+   */
+  it('accepts a basis slot with its own heading, without F007 or F022', () => {
+    const result = run({
+      files: [
+        FRONT,
+        { name: 'ch01.md', text: `Замечаний нет\n\n${FRAME_FIRST_SENTENCE}` },
+        { name: 'ch42.md', text: `Конец учёта\n\n${FRAME_LAST_SENTENCE}` },
+      ],
+    });
+    expect(rules(result)).not.toContain('F007');
+    expect(rules(result)).not.toContain('F022');
+    expect(result.findings).toEqual([]);
+    // No characters: the heading is a title and the frozen sentence is not written prose.
+    expect(result.chapters.map((item) => item.chars)).toEqual([0, 0]);
+    // The heading is reported as the slot's title, the way the ingest projects it — the
+    // validator and `parseChapter` read one title decision (owner, 2026-10-28).
+    expect(result.chapters.map((item) => item.title)).toEqual(['Замечаний нет', 'Конец учёта']);
   });
 
   it('keeps F007 and F022 for a written chapter', () => {

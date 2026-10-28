@@ -39,10 +39,10 @@ const state = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: front.title, about: front.about, rev: 1, updatedAt: null },
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
   cursors: {},
   toc: [],
-  meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: null, backwardFront: null, gap: 42, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,

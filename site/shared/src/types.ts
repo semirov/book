@@ -54,7 +54,7 @@ export type CascadeWingDto = {
   reached: number[];
 };
 
-/** `down` runs toward chapter 1, `up` toward chapter 67. */
+/** `down` runs toward chapter 1, `up` toward the finale (`TOTAL_CHAPTERS`). */
 export type CascadeWingsDto = { down: CascadeWingDto; up: CascadeWingDto };
 
 export type DraftCursor = {
@@ -91,7 +91,7 @@ export type StateSnapshot = {
     updatedAt: string | null;
   };
   chapters: {
-    /** Always 67 — the book's invariant, served explicitly so the UI never hardcodes it silently. */
+    /** Always `TOTAL_CHAPTERS` — the book's invariant, served explicitly so the UI never hardcodes it silently. */
     total: number;
     /** Ascending chapter numbers with at least one block. */
     written: number[];
@@ -100,7 +100,7 @@ export type StateSnapshot = {
     count: number;
     totalChars: number;
     /**
-     * Slots that hold only their basis sentence (ch01 opens with the frozen frame, ch67 closes
+     * Slots that hold only their basis sentence (ch01 opens with the frozen frame, ch42 closes
      * with it): they are not written, count no characters, and the reader still sees that one
      * paragraph (BOOK-6). A subset of `empty`, never of `written`.
      */
@@ -108,7 +108,7 @@ export type StateSnapshot = {
   };
   cursors: { forward: DraftCursor; backward: DraftCursor };
   /**
-   * The live table of contents (§6C.7): derived on every change, exactly 67 entries.
+   * The live table of contents (§6C.7): derived on every change, exactly `TOTAL_CHAPTERS` entries.
    * `title: null` is an empty slot or an untitled chapter — the UI labels it «Глава N».
    */
   toc: TocEntry[];
@@ -193,11 +193,11 @@ export type StateSnapshot = {
   budget?: BudgetDto;
 };
 
-/** One row of `GET /api/chapters` — all 67 slots, always. */
+/** One row of `GET /api/chapters` — all `TOTAL_CHAPTERS` slots, always. */
 export type CatalogEntry = {
   n: number;
-  /** TOC volume 1..4 — pure numbering, no narrative meaning (§6C.1). */
-  part: Part;
+  /** Part 1..4, or null for the opening and the finale, which stand outside the parts (§6C.1). */
+  part: Part | null;
   /** Line 1 of the file; null for an empty slot or an untitled chapter (§6C.3). */
   title: string | null;
   rev: number;
@@ -205,11 +205,19 @@ export type CatalogEntry = {
   blocks: number;
   written: boolean;
   /**
-   * The slot holds only its basis sentence (ch01/ch67, BOOK-6): one paragraph of the frozen
+   * The slot holds only its basis sentence (ch01/ch42, BOOK-6): one paragraph of the frozen
    * frame, served like prose but never written prose. `basis` is true exactly when the
    * reader must see that paragraph while `written` stays false and `chars` stays 0.
    */
   basis: boolean;
+  /**
+   * The first five words of the chapter's first block, `…` when the prose goes on — what the
+   * contents print for a written chapter that has no title line. Derived from the block,
+   * never stored; `null` for a slot with no text at all. The server always sends it; it is
+   * optional only because a snapshot assembled by hand (a web fixture) predates the field,
+   * and a client renders what it has.
+   */
+  opening?: string | null;
   writtenAt: string | null;
   updatedAt: string | null;
   /** Which lane drafted the chapter; says nothing about who may revise it (§9). */
@@ -218,7 +226,7 @@ export type CatalogEntry = {
 
 /** One TOC entry; the TOC is derived on every state change and never stored (§6C.7). */
 export type TocEntry = {
-  part: Part;
+  part: Part | null;
   n: number;
   title: string | null;
   written: boolean;

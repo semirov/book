@@ -22,9 +22,9 @@ const CHAPTER_FILE = /^ch(\d{2})\.md$/u;
 
 /**
  * BOOK-137 — a fixture's chapter file is a manuscript file, and the two that carry the frame
- * open (ch01) and close (ch67) on the canon sentence. The ingest refuses to publish any other
+ * open (ch01) and close (ch42) on the canon sentence. The ingest refuses to publish any other
  * shape (`frame-rejected`), so the frame rides the file's first paragraph on ch01 and its last
- * one on ch67: the title line, the paragraph count and the paragraph indices stay as written.
+ * one on ch42: the title line, the paragraph count and the paragraph indices stay as written.
  * An already-intact file is returned untouched, so a test that writes the frame itself is not
  * quietly rewritten.
  */

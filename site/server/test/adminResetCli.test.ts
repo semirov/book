@@ -57,7 +57,7 @@ afterEach(async () => {
 function bookFiles(): Record<string, string> {
   return {
     'ch01.md': FRAME_FIRST_SENTENCE,
-    'ch67.md': FRAME_LAST_SENTENCE,
+    'ch42.md': FRAME_LAST_SENTENCE,
     'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
   };
 }
@@ -249,7 +249,7 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — dry run, nothing is written');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, true));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch67 re-read from the manuscript');
+    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 re-read from the manuscript');
     // No backup line on a dry run: nothing is written, so nothing is backed up. And no warning:
     // the manuscript holds no prose and the engine is idle.
     expect(stdout).not.toContain('backup:');
@@ -269,7 +269,7 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — done');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, false));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch67 re-read from the manuscript');
+    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 re-read from the manuscript');
     expect(lines[3 + body.tables.length + 1]).toMatch(
       /^backup: .*book-reset-\d{8}T\d{6}Z\.db \(0600, integrity ok, counts match\)$/u,
     );

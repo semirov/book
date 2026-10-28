@@ -3,7 +3,7 @@
  *
  * One page is `PAGE_CHARS` characters of prose — `book.ts` owns the constant and the
  * arithmetic behind it. Every chapter opens a page, and a slot with nothing written yet is
- * one page rather than zero: otherwise a 67-chapter book would print «1» sixty-seven times.
+ * one page rather than zero: otherwise a 42-chapter book would print «1» forty-two times.
  * So `ch01` is always page 1 (the cover, page 2 and the contents are unnumbered) and a
  * chapter that grows past a page pushes every following start by exactly one.
  *
@@ -50,8 +50,8 @@ type Pagination = { chars: number[]; starts: number[] };
 
 /**
  * The book's two tables, indexed by chapter number. A chapter absent from the catalog counts
- * as an empty chapter — one page — because every number the book has is 1..67
- * (`TOTAL_CHAPTERS`), written or not; an entry outside that range is not a chapter.
+ * as an empty chapter — one page — because every number the book has is 1..TOTAL_CHAPTERS,
+ * written or not; an entry outside that range is not a chapter.
  */
 function paginate(lengths: readonly ChapterLength[]): Pagination {
   const chars = new Array<number>(TOTAL_CHAPTERS + 1).fill(0);
@@ -70,7 +70,7 @@ function paginate(lengths: readonly ChapterLength[]): Pagination {
 
 /**
  * The start page of every chapter: ch01 is 1, and each following start is the previous one
- * plus the pages the previous chapter occupies. A sparse catalog still yields all 67 rows.
+ * plus the pages the previous chapter occupies. A sparse catalog still yields every row.
  */
 export function chapterStartPages(lengths: readonly ChapterLength[]): ReadonlyMap<number, number> {
   const { starts } = paginate(lengths);

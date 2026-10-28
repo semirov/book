@@ -21,7 +21,7 @@ import type {
   WriterAssignment,
 } from '@book/shared';
 import {
-  CHAPTER_CHARS, normalizeInterventionKind, parseSeams } from '@book/shared';
+  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, parseSeams } from '@book/shared';
 
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
@@ -197,7 +197,7 @@ export function writerAssignment(
         ? { before: null, after: null }
         : {
             before: step.chapter > 1 ? step.chapter - 1 : null,
-            after: step.chapter < 67 ? step.chapter + 1 : null,
+            after: step.chapter < TOTAL_CHAPTERS ? step.chapter + 1 : null,
           },
     expectation: step.pass === 'draft' ? { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } } : null,
     intent: change ? { value: change.intent, untrusted: true } : null,

@@ -112,7 +112,9 @@ describe('a revision of a block filing (BOOK-158)', () => {
   it('brings a chapter the page has not loaded into view, and leaves a loaded one alone', () => {
     const scrolled = document.createElement('div');
     const spy = vi.fn();
-    scrolled.scrollIntoView = spy;
+    // The jump is one `window.scrollTo` at the measured offset (`dom.ts` `scrollToChapter`):
+    // the page, not the element, owns the arithmetic now.
+    Object.defineProperty(window, 'scrollTo', { value: spy, configurable: true });
     scrolled.id = 'ch-8';
     document.body.append(scrolled);
 

@@ -10,7 +10,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { validateIntent, validateInterventionKind } from '@book/shared';
+import { TOTAL_CHAPTERS, validateIntent, validateInterventionKind } from '@book/shared';
 
 import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
@@ -59,7 +59,7 @@ const startBody = z.object({
 });
 
 /** BOOK-117 §4: a first pass for one named chapter, because a lane only offers its own next slot. */
-const passBody = z.object({ chapter: z.number().int().min(1).max(67), session });
+const passBody = z.object({ chapter: z.number().int().min(1).max(TOTAL_CHAPTERS), session });
 
 const landBody = z.object({
   leaseId: id,
@@ -123,14 +123,14 @@ const traceBody = z.object({ id });
 const nothing = z.object({}).optional();
 
 const reconcileBody = z.object({
-  chapter: z.number().int().min(1).max(67).optional(),
+  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS).optional(),
   because: z.string().max(200).optional(),
   actor: z.string().max(40).optional(),
 });
 
 const enqueueBody = z.object({
   kind: z.enum(['reader_edit', 'accepted_comment', 'continuity', 'operator']),
-  chapter: z.number().int().min(1).max(67),
+  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
   intent: z.string().min(1).max(600),
   anchor: z
     .object({

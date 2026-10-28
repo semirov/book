@@ -3,10 +3,10 @@ import { frameSentenceOf } from '@book/shared';
 /**
  * BOOK-137 — the frame is **two sentences**, not two chapters.
  *
- * ch01 opens with the canon sentence and ch67 closes with it (`book.ts`, F029), and those
+ * ch01 opens with the canon sentence and ch42 closes with it (`book.ts`, F029), and those
  * sentences are the only text the owner fixed. Everything else in a written chapter is ordinary
  * prose: a reader taps it, the strip opens on that word, «вмешаться» works and the filing goes
- * to the auditor. The old predicate froze whole chapters by identity (`n === 1 || n === 67`),
+ * to the auditor. The old predicate froze whole chapters by identity (`n === 1 || n === 42`),
  * which is why the owner could not intervene anywhere in chapter one.
  *
  * So the page asks two questions and neither of them is a chapter number:

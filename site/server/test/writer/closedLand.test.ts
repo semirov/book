@@ -18,7 +18,7 @@ import { listStages } from '../../src/stages/repo.ts';
 import { sha256Hex } from '../../src/util/hash.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
-const CHAPTER = 65;
+const CHAPTER = 40;
 const SENTENCE = 'шаг закрылся, пока текст писался — текст возвращён к прежнему';
 
 function chapterFile(harness: Harness): string {
@@ -48,12 +48,12 @@ function closeStepBeforeLand(harness: Harness): void {
 
 describe('the writer takes its text back when the step closed under it', () => {
   it('restores the pre-pass snapshot byte for byte and parks with the sentence', async () => {
-    const original = chapterAnswer('Глава шестьдесят пять', 'исходный');
+    const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
       harness.ingest(CHAPTER);
-      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 65 появляется документ о допуске' });
-      harness.script.push(chapterAnswer('Глава шестьдесят пять', 'новый'));
+      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 40 появляется документ о допуске' });
+      harness.script.push(chapterAnswer('Глава сорок', 'новый'));
       closeStepBeforeLand(harness);
 
       const result = await harness.run({ lanes: ['fwd'] });
@@ -82,8 +82,8 @@ describe('the writer takes its text back when the step closed under it', () => {
   it('removes the file when the slot was empty before the pass', async () => {
     const harness = await createHarness();
     try {
-      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
-      harness.script.push(chapterAnswer('Глава шестьдесят пять', 'новый'));
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
+      harness.script.push(chapterAnswer('Глава сорок', 'новый'));
       closeStepBeforeLand(harness);
 
       const result = await harness.run({ chapter: CHAPTER });

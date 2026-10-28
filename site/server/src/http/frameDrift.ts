@@ -3,11 +3,11 @@
  *
  * The frozen frame has one owner (`FRAME_FIRST_SENTENCE` / `FRAME_LAST_SENTENCE`, BOOK-107) and
  * two places that can disagree with it: the file, and the projection the database holds from
- * the last scan. The owner twice read text in ch01/ch67 that no file contained, and neither
+ * the last scan. The owner twice read text in ch01/ch42 that no file contained, and neither
  * `/healthz` nor the frame smoke check could say *which* of the two a request had just served.
  * This comparison answers that, per request, for the only two chapters whose text is the frame.
  *
- * It is deliberately cheap: two small files, read synchronously, and nothing for the other 65
+ * It is deliberately cheap: two small files, read synchronously, and nothing for the other
  * chapters. A drift is logged by the route (the same strings, both of them); a file that cannot
  * be read is reported once per process, because a missing mount must not become a log flood.
  */
@@ -56,7 +56,7 @@ function reasonOf(error: unknown): string {
 }
 
 /**
- * Compare ch01's first paragraph and ch67's last one with the file the chapter was read from.
+ * Compare ch01's first paragraph and ch42's last one with the file the chapter was read from.
  *
  * The file is parsed with the same two decisions the ingest makes — `parseChapterTitle` (a
  * chapter that opens on its frame is untitled prose) and `splitParagraphs` (blank line, trim,
@@ -64,7 +64,7 @@ function reasonOf(error: unknown): string {
  * two ideas of what a paragraph is.
  */
 export function checkFrameDrift(options: FrameDriftOptions, n: number, blocks: readonly ServedBlock[]): FrameCheck {
-  // Only the two chapters that carry the frame: the other 65 are guarded by `rev` alone.
+  // Only the two chapters that carry the frame: the others are guarded by `rev` alone.
   if (n !== 1 && n !== TOTAL_CHAPTERS) return null;
 
   const file = frameFile(options.bookRoot, n);

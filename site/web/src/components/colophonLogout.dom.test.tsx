@@ -20,7 +20,7 @@ import { LOGOUT_FAILED } from './LogoutRow.tsx';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const state = {
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
 } as unknown as StateSnapshot;
 
 let root: Root | null = null;

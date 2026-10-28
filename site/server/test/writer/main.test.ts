@@ -30,8 +30,8 @@ describe('parseArgs', () => {
   });
 
   it('takes a chapter by value and by inline form', () => {
-    expect(cliOf(['--chapter', '65']).chapter).toBe(65);
-    expect(cliOf(['--chapter=65']).chapter).toBe(65);
+    expect(cliOf(['--chapter', '20']).chapter).toBe(20);
+    expect(cliOf(['--chapter=20']).chapter).toBe(20);
     expect(cliOf(['--dry-run', '--chapter', '1'])).toMatchObject({ dryRun: true, chapter: 1 });
   });
 
@@ -42,9 +42,9 @@ describe('parseArgs', () => {
   });
 
   it('refuses what it cannot run', () => {
-    expect(errorOf(['--chapter', '68'])).toContain('between 1 and 67');
-    expect(errorOf(['--chapter', '0'])).toContain('between 1 and 67');
-    expect(errorOf(['--chapter', 'nine'])).toContain('between 1 and 67');
+    expect(errorOf(['--chapter', '43'])).toContain('between 1 and 42');
+    expect(errorOf(['--chapter', '0'])).toContain('between 1 and 42');
+    expect(errorOf(['--chapter', 'nine'])).toContain('between 1 and 42');
     expect(errorOf(['--chapter'])).toContain('needs a value');
     expect(errorOf(['--revert'])).toContain('--revert needs --chapter');
     expect(errorOf(['--once', '--loop'])).toContain('two different shapes');
@@ -93,14 +93,14 @@ describe('main', () => {
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const lines: string[] = [];
       const code = await main({
-        argv: ['--once', '--chapter', '65'],
+        argv: ['--once', '--chapter', '20'],
         env: harness.env,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(true);
+      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch20.md'))).toBe(true);
       expect(lines.some((line) => line.includes('queued'))).toBe(true);
       const state = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'state.json'), 'utf8')) as {
         date: string;
@@ -149,19 +149,19 @@ describe('main — --revert and --dry-run', () => {
     try {
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const first = await main({
-        argv: ['--once', '--chapter', '65'],
+        argv: ['--once', '--chapter', '20'],
         env: harness.env,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
         log: () => undefined,
       });
       expect(first).toBe(0);
-      const target = join(harness.bookRoot, 'manuscript', 'ch65.md');
+      const target = join(harness.bookRoot, 'manuscript', 'ch20.md');
       expect(existsSync(target)).toBe(true);
 
       const lines: string[] = [];
       const code = await main({
-        argv: ['--revert', '--chapter', '65'],
+        argv: ['--revert', '--chapter', '20'],
         env: harness.env,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),

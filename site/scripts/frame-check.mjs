@@ -2,7 +2,7 @@
 /**
  * scripts/frame-check.mjs — the frozen frame (F029) must be what the site serves (BOOK-107).
  *
- * The canon lives once, in `shared/src/book.ts`. The owner twice saw ch01 and ch67 serve text
+ * The canon lives once, in `shared/src/book.ts`. The owner twice saw ch01 and the finale serve text
  * that is not the canon while the manuscript, the data dir and the backups held only the canon;
  * this check answers "what does each of those places actually say now" in one read-only pass,
  * so a deploy can refuse to call a site healthy on trust of `/healthz` alone.
@@ -125,8 +125,8 @@ function printReadout(readout) {
   // Discoverable with grep: one line per fact, values never truncated.
   const lines = [
     ['ch01 first block:', readout.ch01First ?? 'none'],
-    ['ch67 first block:', readout.ch67First ?? 'none'],
-    ['ch67 last block:', readout.ch67Last ?? 'none'],
+    ['ch42 first block:', readout.lastFirst ?? 'none'],
+    ['ch42 last block:', readout.lastLast ?? 'none'],
     ['last ingest:', readout.lastScanAt ?? 'none'],
   ];
   for (const [label, value] of lines) console.log(`frame:   ${label.padEnd(17)} ${value}`);

@@ -22,6 +22,13 @@
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
+ *
+ * **The `chapter` CHECKs below stay `BETWEEN 1 AND 67` although the book is 42 chapters
+ * (BOOK-155).** A row written before the cut (chapter 65) is real prose and must survive;
+ * SQLite cannot narrow a CHECK without rebuilding the table, and a rebuild would reject that
+ * row. The columns are therefore a **storage** bound, and the book's range (`TOTAL_CHAPTERS`)
+ * is enforced at ingest, in the routes and in the engine — see `tables.ts` for the same note
+ * next to `CHAPTERS_TABLE_SQL`.
  */
 
 export const SCHEMA_VERSION = 20;

@@ -16,6 +16,8 @@
 
 import {
   PUBLIC_INTENT_MAX_CHARS,
+  TOTAL_CHAPTERS,
+  isChapterNumber,
   measuredRub,
   normalizeFrameMark,
   normalizeInterventionKind,
@@ -149,8 +151,10 @@ function publicCascadeOf(
   if (cascade === undefined) return null;
   const rewritten = new Set<number>();
   const checked = new Set<number>();
+  // BOOK-155 — a step recorded at a number the book no longer has (chapter 65) is storage, not a
+  // chapter this ripple reached: the card must not name one (the same rule `wingsOf` applies).
   for (const step of steps) {
-    if (step.chapter === null) continue;
+    if (step.chapter === null || !isChapterNumber(step.chapter)) continue;
     if (step.outcome === 'rewritten' || step.outcome === 'published_with_finding') rewritten.add(step.chapter);
     else if (step.outcome === 'holds' || step.outcome === 'evaluated') checked.add(step.chapter);
   }
@@ -348,10 +352,17 @@ function summaryOf(db: Db, change: ChangeRow): ChangeSummaryDto {
   };
 }
 
-/** `GET /api/changes` — newest first, cursor by `seq` (§9). */
+/**
+ * `GET /api/changes` — newest first, cursor by `seq` (§9).
+ *
+ * BOOK-155 — a change filed against a number the book no longer has (chapter 65, storage kept
+ * by the `chapters` CHECK) is storage, not a statement about this book: the range is the rule
+ * `isChapterNumber` states, applied in SQL, so a page stays full and the `seq` cursor keeps
+ * pointing at the last row that was actually served.
+ */
 export function listChanges(db: Db, filter: ChangeFilter = {}): ChangeSummaryDto[] {
-  const where: string[] = [];
-  const params: Array<string | number> = [];
+  const where: string[] = ['chapter BETWEEN 1 AND ?'];
+  const params: Array<string | number> = [TOTAL_CHAPTERS];
   if (filter.status !== undefined) {
     where.push('status = ?');
     params.push(filter.status);

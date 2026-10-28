@@ -2,11 +2,11 @@
  * The spine geometry (ARCHITECTURE.md §11.2, §11.3, §11.7; DESIGN §5.3, §7.2).
  *
  * The two-front shape of the book: a fill from each end, a hollow middle, a hairline at
- * 34|35 where the halves meet, and — only while a cascade runs — a faint band over the
+ * 21|22 where the halves meet, and — only while a cascade runs — a faint band over the
  * chapters it touches. It is not a percentage of progress; the middle is the unfinished book.
  *
  * The ribbon itself was withdrawn from the front (BOOK-DOC-5 §5): no bar, no seam, no carets
- * at 0/67. What remains here is the geometry the chapter carets and the cascade band read.
+ * at 0/42. What remains here is the geometry the chapter carets and the cascade band read.
  */
 
 import { FORWARD_LAST, TOTAL_CHAPTERS, type Lane, type StateSnapshot } from '@book/shared';
@@ -18,16 +18,16 @@ export type SpineCascade = {
 };
 
 export type SpineMarkers = {
-  /** Percent of the column filled from the left (1..F) and from the right (B..67). */
+  /** Percent of the column filled from the left (1..F) and from the right (B..42). */
   forwardFill: number;
   backwardFill: number;
-  /** The 34|35 seam, a hairline mark only. */
+  /** The 21|22 seam, a hairline mark only. */
   seamPercent: number;
   empty: boolean;
   forward: number | null;
   backward: number | null;
   cascade: SpineCascade | null;
-  /** The chapter whose end carries each lane's caret; `null` at 0/67 or before a draft. */
+  /** The chapter whose end carries each lane's caret; `null` at 0/42 or before a draft. */
   carets: { forward: number | null; backward: number | null };
   /** A caret blinks only while its lane is writing; otherwise it rests. */
   live: { forward: boolean; backward: boolean };

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -72,41 +72,42 @@ afterEach(async () => {
 });
 
 describe('GET /api/state', () => {
-  it('serves the empty book as 67 explicit slots', async () => {
+  it('serves the empty book as explicit slots', async () => {
     await boot();
     const response = await app!.inject({ method: 'GET', url: '/api/state' });
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.chapters.total).toBe(67);
+    expect(body.chapters.total).toBe(TOTAL_CHAPTERS);
     expect(body.chapters.written).toEqual([]);
-    expect(body.chapters.empty).toHaveLength(67);
+    expect(body.chapters.empty).toHaveLength(TOTAL_CHAPTERS);
     expect(body.engine.status).toBe('unknown');
     expect(body.front).toEqual({ title: null, about: null, rev: 0, updatedAt: null });
-    expect(body.toc).toHaveLength(67);
-    expect(body.toc[0]).toEqual({ part: 1, n: 1, title: null, written: false, rev: 0 });
+    expect(body.toc).toHaveLength(TOTAL_CHAPTERS);
+    // The opening stands outside the parts (BOOK-155).
+    expect(body.toc[0]).toEqual({ part: null, n: 1, title: null, written: false, rev: 0 });
   });
 
-  it('serves the empty book with the two basis sentences as 67 unwritten slots (BOOK-6)', async () => {
-    // The owner's state: ch01 and ch67 carry one sentence each, no titles, no prose.
-    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE } });
+  it('serves the empty book with the two basis sentences as unwritten slots (BOOK-6)', async () => {
+    // The owner's state: ch01 and the finale carry one sentence each, no titles, no prose.
+    await boot({ chapters: { '00-front.md': FRONT, 'ch01.md': FRAME_FIRST_SENTENCE, 'ch42.md': FRAME_LAST_SENTENCE } });
     const state = (await app!.inject({ method: 'GET', url: '/api/state' })).json();
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
-    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.chapters.empty).toHaveLength(TOTAL_CHAPTERS);
     expect(state.toc[0]).toMatchObject({ n: 1, title: null, written: false });
-    expect(state.toc[66]).toMatchObject({ n: 67, title: null, written: false });
+    expect(state.toc[TOTAL_CHAPTERS - 1]).toMatchObject({ n: TOTAL_CHAPTERS, title: null, written: false });
     // The two sentences are named explicitly: they are readable and still not chapters.
-    expect(state.chapters.basis).toEqual([1, 67]);
+    expect(state.chapters.basis).toEqual([1, TOTAL_CHAPTERS]);
   });
 
   it('projects a basis-only slot as one paragraph while keeping it unwritten (BOOK-6)', async () => {
-    await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE } });
+    await boot({ chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch42.md': FRAME_LAST_SENTENCE } });
 
     // The reader sees the opening and the closing sentence: one block each, no title.
     for (const [n, sentence] of [
       [1, FRAME_FIRST_SENTENCE],
-      [67, FRAME_LAST_SENTENCE],
+      [TOTAL_CHAPTERS, FRAME_LAST_SENTENCE],
     ] as const) {
       const response = await app!.inject({ method: 'GET', url: `/api/chapters/${n}` });
       expect(response.statusCode).toBe(200);
@@ -117,37 +118,36 @@ describe('GET /api/state', () => {
     }
 
     // The catalog names the slot as basis, and the state counts no chapter and no character.
-    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
-      Record<string, unknown>
-    >;
-    expect(catalog).toHaveLength(67);
-    expect(catalog[0]).toMatchObject({ n: 1, title: null, chars: 0, blocks: 1, written: false, basis: true });
-    expect(catalog[66]).toMatchObject({ n: 67, chars: 0, blocks: 1, written: false, basis: true });
-    expect(catalog[1]).toMatchObject({ n: 2, chars: 0, blocks: 0, written: false, basis: false });
+    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as { n: number }[];
+    expect(catalog).toHaveLength(TOTAL_CHAPTERS);
+    // The excerpt is derived from the first block: a basis slot's own words, `null` for no text.
+    expect(catalog[0]).toMatchObject({ n: 1, title: null, chars: 0, blocks: 1, written: false, basis: true, opening: 'Я вошёл в пустую комнату.…' });
+    expect(catalog[TOTAL_CHAPTERS - 1]).toMatchObject({ n: TOTAL_CHAPTERS, chars: 0, blocks: 1, basis: true });
+    expect(catalog[1]).toMatchObject({ n: 2, chars: 0, blocks: 0, written: false, basis: false, opening: null });
 
     const state = (await app!.inject({ method: 'GET', url: '/api/state' })).json();
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
-    expect(state.chapters.basis).toEqual([1, 67]);
+    expect(state.chapters.basis).toEqual([1, TOTAL_CHAPTERS]);
   });
 
   it('keeps one block across a rescan: a basis slot is idempotent (BOOK-6)', async () => {
     const fixture = await boot({
-      chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch67.md': FRAME_LAST_SENTENCE },
+      chapters: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch42.md': FRAME_LAST_SENTENCE },
     });
     const again = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(again.emptied).toEqual([]);
     expect(again.created).toEqual([]);
     expect(again.revised).toEqual([]);
-    expect(again.unchanged).toEqual([1, 67]);
+    expect(again.unchanged).toEqual([1, TOTAL_CHAPTERS]);
 
     const rows = fixture.db
       .prepare('SELECT n, rev, block_count, chars, basis FROM chapters ORDER BY n')
       .all() as Array<Record<string, number>>;
     expect(rows).toEqual([
       { n: 1, rev: 0, block_count: 1, chars: 0, basis: 1 },
-      { n: 67, rev: 0, block_count: 1, chars: 0, basis: 1 },
+      { n: TOTAL_CHAPTERS, rev: 0, block_count: 1, chars: 0, basis: 1 },
     ]);
 
     const chapter = (await app!.inject({ method: 'GET', url: '/api/chapters/1' })).json();
@@ -161,8 +161,8 @@ describe('GET /api/state', () => {
     const body = response.json();
     expect(body.front).toMatchObject({ title: 'Без названия', rev: 1 });
     expect(body.front.about).toContain('Тестовая аннотация');
-    expect(body.toc).toHaveLength(67);
-    expect(body.toc[0]).toMatchObject({ n: 1, part: 1, title: 'Заголовок главы', written: true, rev: 1 });
+    expect(body.toc).toHaveLength(TOTAL_CHAPTERS);
+    expect(body.toc[0]).toMatchObject({ n: 1, part: null, title: 'Заголовок главы', written: true, rev: 1 });
   });
 
   it('keeps page 2 while a title-only revision lands, and lets an owner edit replace it (BOOK-7)', async () => {
@@ -251,15 +251,16 @@ describe('GET /api/chapters/:n — the ETag names the projection (BOOK-6)', () =
 });
 
 describe('GET /api/chapters', () => {
-  it('lists all 67 slots with rev 0 for the unwritten ones', async () => {
+  it('lists every slot with rev 0 for the unwritten ones', async () => {
     await boot();
     const response = await app!.inject({ method: 'GET', url: '/api/chapters' });
     expect(response.statusCode).toBe(200);
     const catalog = response.json() as Array<Record<string, unknown>>;
-    expect(catalog).toHaveLength(67);
-    expect(catalog[0]).toMatchObject({ n: 1, part: 1, title: null, rev: 0, written: false, direction: 'forward' });
-    expect(catalog[66]).toMatchObject({ n: 67, part: 4, direction: 'backward' });
-    expect(catalog[22]).toMatchObject({ n: 23, part: 2 });
+    expect(catalog).toHaveLength(TOTAL_CHAPTERS);
+    // ch1 is the opening and the finale: both stand outside the parts (BOOK-155).
+    expect(catalog[0]).toMatchObject({ n: 1, part: null, title: null, rev: 0, written: false, direction: 'forward' });
+    expect(catalog[TOTAL_CHAPTERS - 1]).toMatchObject({ n: TOTAL_CHAPTERS, part: null, direction: 'backward' });
+    expect(catalog[11]).toMatchObject({ n: 12, part: 2 });
   });
 });
 
@@ -299,10 +300,9 @@ describe('GET /api/chapters/:n', () => {
     // The frame rides the first paragraph (BOOK-137); no title line is still a published chapter.
     expect(body.blocks[0].text.startsWith(`${FRAME_FIRST_SENTENCE} Тестовый абзац номер один`)).toBe(true);
 
-    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<
-      Record<string, unknown>
-    >;
-    expect(catalog[0]).toMatchObject({ n: 1, written: true, title: null });
+    const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<Record<string, unknown>>;
+    expect(catalog[0]).toMatchObject({ n: 1, written: true, title: null, opening: 'Я вошёл в пустую комнату.…' });
+    expect(catalog[1]).toMatchObject({ n: 2, written: false, opening: null });
   });
 
   it('answers 404 for an unwritten slot — the normal case at launch', async () => {
@@ -312,9 +312,9 @@ describe('GET /api/chapters/:n', () => {
     expect(response.json()).toMatchObject({ code: 'NOT_WRITTEN' });
   });
 
-  it('answers 400 for a number outside 01..67 and for a non-number', async () => {
+  it('answers 400 for a number outside the book and for a non-number', async () => {
     await boot();
-    expect((await app!.inject({ method: 'GET', url: '/api/chapters/68' })).statusCode).toBe(400);
+    expect((await app!.inject({ method: 'GET', url: '/api/chapters/43' })).statusCode).toBe(400);
     expect((await app!.inject({ method: 'GET', url: '/api/chapters/abc' })).statusCode).toBe(400);
   });
 });

@@ -1,7 +1,7 @@
 /**
  * BOOK-109 — `FRAME_DRIFT`: the served frame against the manuscript's.
  *
- * The owner read ch01/ch67 as text no file held, and neither the pages nor the probe could say
+ * The owner read ch01/ch42 as text no file held, and neither the pages nor the probe could say
  * which side of the projection was wrong. The check compares the block a request is about to
  * serve with the paragraph the file holds, so the log line names both strings — and it speaks
  * only for the two chapters that carry the frame.
@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -76,7 +76,7 @@ async function bootLogged(): Promise<{ lines: string[]; records: () => Array<Rec
   };
 }
 
-describe('checkFrameDrift — ch01 opens the frame, ch67 closes it (BOOK-109)', () => {
+describe('checkFrameDrift — ch01 opens the frame, the finale closes it (BOOK-109)', () => {
   it('says nothing when the served first paragraph is the file’s first paragraph', () => {
     const root = bookRoot({ 'ch01.md': `${FRAME_FIRST_SENTENCE}\n` });
     expect(checkFrameDrift({ bookRoot: root }, 1, [{ text: FRAME_FIRST_SENTENCE }])).toBeNull();
@@ -93,17 +93,19 @@ describe('checkFrameDrift — ch01 opens the frame, ch67 closes it (BOOK-109)', 
     });
   });
 
-  it('compares the last paragraph of ch67, not its first', () => {
-    const root = bookRoot({ 'ch67.md': `Последняя глава\n\nОткрывающий абзац.\n\n${FRAME_LAST_SENTENCE}` });
+  it('compares the last paragraph of the finale, not its first', () => {
+    const root = bookRoot({ 'ch42.md': `Последняя глава\n\nОткрывающий абзац.\n\n${FRAME_LAST_SENTENCE}` });
     const blocks = [{ text: 'Открывающий абзац.' }, { text: 'И никого не стало.' }];
-    const check = checkFrameDrift({ bookRoot: root }, 67, blocks);
+    const check = checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, blocks);
     expect(check).toEqual({
-      file: frameFile(root, 67),
+      file: frameFile(root, TOTAL_CHAPTERS),
       served: 'И никого не стало.',
       manuscript: FRAME_LAST_SENTENCE,
     });
     // The opening paragraph agrees, so the same file aligned at the other end is silence.
-    expect(checkFrameDrift({ bookRoot: root }, 67, [{ text: 'Открывающий абзац.' }, { text: FRAME_LAST_SENTENCE }])).toBeNull();
+    expect(
+      checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, [{ text: 'Открывающий абзац.' }, { text: FRAME_LAST_SENTENCE }]),
+    ).toBeNull();
   });
 
   it('does not read whitespace as drift: a re-wrapped paragraph is the same paragraph', () => {
@@ -113,15 +115,15 @@ describe('checkFrameDrift — ch01 opens the frame, ch67 closes it (BOOK-109)', 
   });
 
   it('reports a readable but empty body as drift rather than as agreement', () => {
-    const root = bookRoot({ 'ch67.md': '' });
-    expect(checkFrameDrift({ bookRoot: root }, 67, [{ text: FRAME_LAST_SENTENCE }])).toEqual({
-      file: frameFile(root, 67),
+    const root = bookRoot({ 'ch42.md': '' });
+    expect(checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, [{ text: FRAME_LAST_SENTENCE }])).toEqual({
+      file: frameFile(root, TOTAL_CHAPTERS),
       served: FRAME_LAST_SENTENCE,
       manuscript: '',
     });
   });
 
-  it('does not throw on a missing file, and asks nothing of the other 65 chapters', () => {
+  it('does not throw on a missing file, and asks nothing of the other chapters', () => {
     const root = bookRoot({});
     const missing = checkFrameDrift({ bookRoot: root }, 1, [{ text: FRAME_FIRST_SENTENCE }]);
     expect(missing).not.toBeNull();

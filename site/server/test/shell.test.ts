@@ -112,10 +112,11 @@ describe('the empty table of contents', () => {
     expect(empty).not.toContain('var(--ink-3)');
   });
 
-  it('keeps the void at 26 px rows and 32 px part headers, taps at 44 px', () => {
-    // BOOK-DOC-35 §5: a 12px numeral needs a 26px row to keep the column quiet, and each part
-    // head keeps its 32px of air — BOOK-73 removed the spread, so there is no layout to fit.
-    expect(rule('.toc-row-empty')).toContain('height: 26px');
+  it('keeps the empty row quiet and tappable: one word, a 44 px target, 32 px part headers', () => {
+    // Owner, 2026-10-28 — an empty row is a link with the one word «Пусто» on it, so the 26 px
+    // void it used to be is gone: a target under 44 px is not a target (WCAG 2.5.8). The word
+    // is read in the quiet ink, the numeral keeps the full one, and the part heads keep 32 px.
+    expect(rule('.toc-row-empty .toc-text')).toContain('color: var(--ink-3)');
     expect(rule('.toc-part-h')).toContain('padding: 32px 0 10px');
     expect(rule('.toc-link')).toContain('min-height: 44px');
   });

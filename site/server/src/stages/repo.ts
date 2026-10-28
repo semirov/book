@@ -10,6 +10,7 @@
  */
 
 import {
+  TOTAL_CHAPTERS,
   normalizeStageEvent,
   type PassStage,
   type PassStageEvent,
@@ -113,8 +114,8 @@ const INSERT_SQL = `INSERT INTO pass_stages
  * same event as the first call, so a retried lane request cannot duplicate a stage.
  */
 export function appendStage(db: Db, input: StageAppendInput): PassStageEvent {
-  if (!Number.isInteger(input.chapter) || input.chapter < 1 || input.chapter > 67) {
-    throw new StageInputError('INVALID_CHAPTER', 'chapter must be 1..67');
+  if (!Number.isInteger(input.chapter) || input.chapter < 1 || input.chapter > TOTAL_CHAPTERS) {
+    throw new StageInputError('INVALID_CHAPTER', `chapter must be 1..${TOTAL_CHAPTERS}`);
   }
   const normalized = normalizeStageEvent(input);
   if (!normalized.ok) throw new StageInputError(normalized.code, normalized.reason);

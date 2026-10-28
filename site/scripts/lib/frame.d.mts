@@ -12,8 +12,8 @@ export type FrameCheck = {
 export type DataDirFrame = {
   dataDir: string;
   ch01First: string | null;
-  ch67First: string | null;
-  ch67Last: string | null;
+  lastFirst: string | null;
+  lastLast: string | null;
   lastScanAt: string | null;
   check: FrameCheck;
 };

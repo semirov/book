@@ -18,7 +18,7 @@ import * as titleSheet from './TitleSheet.tsx';
  */
 
 const OWNER_PARAGRAPHS = [
-  'Мы пишем книгу без готового плана. Есть начало, конец и шестьдесят семь пустых глав между ними. Читатель предлагает вмешательство; аудитор решает, может ли оно существовать в этом мире; писатель вплетает его в текст. Принятая фраза расходится волной по соседним главам — вперёд и назад, пока история снова не сойдётся.',
+  'Мы пишем книгу без готового плана. Есть начало, конец и сорок пустых глав между ними. Читатель предлагает вмешательство; аудитор решает, может ли оно существовать в этом мире; писатель вплетает его в текст. Принятая фраза расходится волной по соседним главам — вперёд и назад, пока история снова не сойдётся.',
   'Прошлое при этом не маскируется, а оформляется: у всякой причины появляется бланк. Иногда документ и сцена совпадают. Иногда — нет.',
   'Авторство здесь не измеряется числом написанных слов. Оно измеряется тем, что дожило.',
 ];
@@ -39,10 +39,10 @@ const state = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: front.title, about: front.about, rev: 1, updatedAt: null },
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
   cursors: {},
   toc: [],
-  meeting: { forwardFront: null, backwardFront: null, gap: 67, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: null, backwardFront: null, gap: 42, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,
