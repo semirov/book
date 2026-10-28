@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { closePassStrip, currentPassStrip, openPassStrip } from '../lib/usePassStrip.ts';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 import { FootJumps } from './FootJumps.tsx';
 
@@ -178,17 +179,34 @@ async function flush(): Promise<void> {
   });
 }
 
+/**
+ * One chain mode, as the page hands it down (`App` → `ChapterList` → `ChapterArticle`). The
+ * paragraph's `⋯` door is the mode's, so the live pass paints the same inline door whenever the
+ * page carries one — `history` alone is not the decision (`ProseParagraph` reads both).
+ */
+const SENTENCE_MODE: ParagraphChainMode = {
+  chain: null,
+  loading: false,
+  failed: false,
+  active: false,
+  openId: null,
+  anchor: null,
+  open: () => undefined,
+  retry: () => undefined,
+  close: () => undefined,
+};
+
 async function draw({
   stages,
   revising = livePass(),
   chapter = LOADED,
-  onProvenance,
+  sentence,
   history = true,
 }: {
   stages?: readonly PassStageEvent[];
   revising?: BlockRevisingPayload | null;
   chapter?: ChapterDto;
-  onProvenance?: (blockId: string, anchor: HTMLElement) => void;
+  sentence?: ParagraphChainMode;
   history?: boolean;
 } = {}): Promise<HTMLDivElement> {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -207,7 +225,7 @@ async function draw({
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}
         history={history}
-        onProvenance={onProvenance}
+        sentence={sentence}
         stages={stages}
       />,
     );
@@ -250,7 +268,7 @@ describe('a typing stage paints its block and opens the strip', () => {
 
 describe('the live paragraph’s provenance door', () => {
   it('paints the page’s door inside the pass, hidden and unreachable, when the page has one', async () => {
-    const view = await draw({ stages: LEAD, onProvenance: () => undefined });
+    const view = await draw({ stages: LEAD, sentence: SENTENCE_MODE });
     const pass = view.querySelector('.p-pass') as HTMLElement;
     const door = pass.querySelector('.prov');
     expect(door).not.toBeNull();
@@ -262,7 +280,12 @@ describe('the live paragraph’s provenance door', () => {
   });
 
   it('paints no door when the page has no paragraph chain (history off)', async () => {
-    const view = await draw({ stages: LEAD, onProvenance: () => undefined, history: false });
+    const view = await draw({ stages: LEAD, sentence: SENTENCE_MODE, history: false });
+    expect(view.querySelector('.p-pass .prov')).toBeNull();
+  });
+
+  it('paints no door when the page carries no chain mode at all', async () => {
+    const view = await draw({ stages: LEAD });
     expect(view.querySelector('.p-pass .prov')).toBeNull();
   });
 });

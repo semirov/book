@@ -291,8 +291,8 @@ describe('the guard fires on every class of violation it names', () => {
     expect(measureBox.some((problem) => problem.includes('var(--measure) is the column: .page, .ribbon and the prose rule state it'))).toBe(true);
 
     // `.legal` and `.state-line` used to re-declare this box and centre themselves: the third
-    // edge. BOOK-91: the box is the canvas's own, and elsewhere only the no-JS fallback's and
-    // the chain overlay's.
+    // edge. BOOK-91: the box is the canvas's own, and elsewhere only the no-JS fallback's —
+    // BOOK-128 comment #3815 removed the phrase's floating panel, so no overlay states it.
     const oldBox = layoutProblems(seeded('../styles/legal.css', '.legal { max-width: calc(var(--measure) + 2 * var(--gut)); }'));
     expect(oldBox.some((problem) => problem.includes("is the canvas's own box (and the no-JS fallback's)"))).toBe(true);
 
@@ -404,7 +404,6 @@ describe('the guard fires on every class of violation it names', () => {
         '.ribbon { max-width: var(--measure); }',
         '.page { max-width: var(--measure); }',
         '.focus-stage { max-width: 590px; margin-inline: auto; }',
-        '.chain { width: min(calc(var(--measure) + 2 * var(--gut)), 100%); }',
       ].join('\n'),
     );
     expect(layoutProblems(legitimate)).toEqual([]);

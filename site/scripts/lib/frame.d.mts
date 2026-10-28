@@ -38,6 +38,7 @@ export function checkServer(options: {
   baseUrl: string;
   fetchImpl?: (url: string, init: { signal?: AbortSignal }) => Promise<Response>;
   budgetMs?: number;
+  now?: () => number;
 }): Promise<FrameCheck[]>;
 
 export function readDataDirFrame(options: { dataDir: string }): DataDirFrame;

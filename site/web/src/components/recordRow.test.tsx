@@ -14,6 +14,10 @@ import { firstDeclarations, hasRule } from './cssRules.ts';
  * it was and the door to its record. It prints no number, no alias, no event kind, no stage, no
  * model and no price: the chronicle is the book's past, not the workshop's logbook.
  *
+ * BOOK-168 adds the second door: the place cell is a `PlaceLink` (the filing by id, else the
+ * chapter), so a row that names a place can take the reader there. Its landing and its
+ * change-card fallback are proved in `placeDoor.dom.test.tsx`.
+ *
  * The sibling list cases (the control, the surface, the starting record) live in
  * `chronicle.test.tsx`, which is at the 500-line arch limit.
  */
@@ -61,18 +65,20 @@ const PASS: HistoryRecordDto = {
 };
 
 describe('one public record entry (BOOK-65)', () => {
-  it('carries the moment, the place, the pair, the cause and exactly one way in', () => {
+  it('carries the moment, the place, the pair, the cause and one way into the record', () => {
     const html = renderToStaticMarkup(<RecordRow record={READER} />);
 
     expect(html).toContain(`<span class="chr-date">27.10.2026${MID}15:40</span>`);
-    // The place is the chapter and its title line, both read from the server's own `chapters`.
-    expect(html).toContain('<span class="chr-place">глава 9 · Тестовая глава</span>');
+    // The place is the chapter and its title line, both read from the server's own `chapters`,
+    // and it is a door of its own (BOOK-168): this change holds no filing, so the chapter.
+    expect(html).toContain('<a class="place-link chr-place" href="#ch-9">глава 9 · Тестовая глава</a>');
     // The pair the book wrote, in typographic quotes, one arrow, no doubled punctuation.
     expect(html).toContain('<span class="chr-span">«старый фонарь» → «новый фонарь»</span>');
     expect(html).toContain('<span class="chr-cause">правка читателя</span>');
-    // One control, and it is a link to the record — not a button and not a second door.
+    // The row's two anchors are the place and the record, and no third control exists: not a
+    // button, not a card door beside the record's own.
     expect(html.match(/<button/gu)).toBeNull();
-    expect(html.match(/<a /gu)).toHaveLength(1);
+    expect(html.match(/<a /gu)).toHaveLength(2);
     expect(html).toContain('href="#правка-chg_9"');
     expect(html).not.toContain('chr-deed');
   });
@@ -121,7 +127,7 @@ describe('one public record entry (BOOK-65)', () => {
   it('says a pass by its own word, with no alias and its own door', () => {
     const html = renderToStaticMarkup(<RecordRow record={PASS} />);
     expect(html).toContain('<span class="chr-cause">писалась</span>');
-    expect(html).toContain('<span class="chr-place">глава 9</span>');
+    expect(html).toContain('<a class="place-link chr-place" href="#ch-9">глава 9</a>');
     expect(html).toContain('href="#проход-9-stp_7"');
     expect(html).toContain('>запись</a>');
     expect(html).not.toContain('правка читателя');

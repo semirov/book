@@ -20,6 +20,7 @@ import { estimateChapterHeight } from '../lib/layout.ts';
 import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
 import { applyPatch, refetchPrints, revisedBlockIds } from '../lib/patch.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { usePending } from '../usePending.ts';
@@ -52,8 +53,11 @@ export type ChapterArticleProps = {
   caret: { show: boolean; live: boolean } | null;
   /** This chapter arrived while the reader was here: print its opening. */
   fresh: boolean;
-  /** «⋯ откуда эта фраза» (§11.10): the paragraph's lineage chain, anchored on the button. */
-  onProvenance?: (blockId: string, anchor: HTMLElement) => void;
+  /**
+   * «⋯ откуда эта фраза» (§11.10) — BOOK-128 comment #3815: the chain is the paragraph's own
+   * margin item, so the mode travels to every paragraph instead of a floating page-root box.
+   */
+  sentence?: ParagraphChainMode;
   /** BOOK-DOC-34: this chapter's filings, loaded lazily on the same trigger as the prose. */
   comments?: readonly CommentDto[];
   /**
@@ -92,7 +96,7 @@ export function ChapterArticle({
   revising,
   caret,
   fresh,
-  onProvenance,
+  sentence,
   comments = [],
   changes = [],
   nowMs,
@@ -375,13 +379,14 @@ export function ChapterArticle({
           caret={caret}
           printing={printing}
           comments={comments}
+          changes={changes}
+          sentence={sentence}
           nowMs={nowMs}
           composer={composer}
           viewer={viewer}
           history={history}
           stages={stages}
           onPosted={onPosted}
-          onProvenance={onProvenance}
           onReanchor={(draft) => {
             setReanchor({ draft, blockGone: false });
             void load();
@@ -401,10 +406,12 @@ export function ChapterArticle({
           text={basisSentence}
           blockCount={1}
           comments={comments}
+          changes={changes}
           nowMs={nowMs}
           composer={composer}
           viewer={viewer}
           onPosted={(comment) => onPosted?.(comment)}
+          sentence={sentence}
           history={history}
         />
       ) : null}

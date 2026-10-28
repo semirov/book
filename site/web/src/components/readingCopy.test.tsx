@@ -22,6 +22,7 @@ import { inFlightOf, type Stages, type StagesLog } from '../lib/useStages.ts';
 import { ChapterList } from './ChapterList.tsx';
 import { Header } from './Header.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 
 /**
  * The reading surface prints the book, not the product.
@@ -30,17 +31,16 @@ import { TableOfContents } from './TableOfContents.tsx';
  * the contents (`.toc`) — only the book's own text, chapter numbers, the folio and the running
  * head's chapter number and a real chapter title may appear. State words, statuses, counts,
  * explanations of the interface and waits/failures belong to panels, the chronicle and the end
- * matter. This guard renders all three surfaces against a fixture in which **every chip variant
- * would fire** (engine `unknown`, chapter count 0), so a state line cannot slip back in unseen.
+ * matter. This guard renders all three surfaces against a fixture where **every chip variant
+ * would fire** (engine `unknown`, chapter count 0), so no state line slips back in unseen.
  *
- * The fixture's premise quote and prose deliberately avoid the banned vocabulary: the quote is
- * the reader's own words and must never be mistaken for a label. The negative assertions are
- * paired with positive ones — a fix that deletes the book is not a fix.
+ * The fixture's quote and prose avoid the banned vocabulary: the quote is the reader's own
+ * words, never a label. Negative assertions pair with positive ones — deleting the book is no fix.
  *
  * ONE exception (BOOK-156 #3814, owner 2026-10-28): while a pass is in flight the head prints
  * `книга пишется · глава N · HH:MM` in its free space — the book's state, in the owner's words,
- * and nothing else. It is asserted literally below, and the idle head is asserted to print no
- * such line at all: the exception is a state, not a status row that is always there.
+ * and nothing else. It is asserted literally below, and the idle head prints no such line: the
+ * exception is a state, not a status row that is always there.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -268,7 +268,7 @@ function page(stages?: Stages, nowMs?: number): ReactElement {
         changes={[]}
         onRead={() => undefined}
         onPosted={() => undefined}
-        onProvenance={() => undefined}
+        sentence={SENTENCE_MODE}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}
         history={false}
@@ -385,6 +385,18 @@ function liveStages(): Stages {
   const typed: StagesLog = log;
   return { log: typed, passes: inFlightOf(typed), note: () => undefined, reset: () => undefined };
 }
+
+const SENTENCE_MODE: ParagraphChainMode = {
+  chain: null,
+  loading: false,
+  failed: false,
+  active: false,
+  openId: null,
+  anchor: null,
+  open: () => undefined,
+  retry: () => undefined,
+  close: () => undefined,
+};
 
 describe('the reading surface prints the book, not the product', () => {
   it('prints no status, count or explanation in the running head', async () => {

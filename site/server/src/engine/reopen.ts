@@ -40,6 +40,13 @@ export function reopenStep(
     }
   }
   store.updateStep(db, stepId, { outcome: null, closed_at: null, note: because.slice(0, NOTE_MAX_CHARS) });
+  // A reopen is a fresh window, not the fourth attempt of the closed one: the reaper counts
+  // expired leases per change, and a step escalated after three of them would be escalated on
+  // the next tick instead of being asked anything (`gate_timeout`, seen in prod 2026-10-28).
+  const change = db
+    .prepare('SELECT change_id FROM leases WHERE step_id = ? AND change_id IS NOT NULL ORDER BY acquired_at DESC LIMIT 1')
+    .get(stepId) as { change_id: string } | undefined;
+  if (change !== undefined) store.updateChange(db, change.change_id, { attempts: 0 });
   appendEvent(
     db,
     // A reopen is an opening with a reason: the events table's vocabulary is closed, and a

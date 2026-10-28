@@ -48,7 +48,7 @@ type DrawOptions = {
   /** What the injected `now` answers; the pass's own clock is `startAt` = `START`. */
   nowAt?: number;
   reduced?: boolean;
-  /** The page's provenance door, as `ChapterProse` hands it over (`history && onProvenance`). */
+  /** The page's provenance door, as `ChapterProse` hands it over (`history && sentence`). */
   prov?: boolean;
   onSettled?: () => void;
   onMeasure?: (layout: PassLayout) => void;

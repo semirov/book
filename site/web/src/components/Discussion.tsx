@@ -5,9 +5,11 @@ import { focusHash } from '../lib/focus.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
+import { PlaceLink } from './PlaceLink.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import { ReviseNote } from './ReviseNote.tsx';
 
@@ -44,6 +46,7 @@ export function Discussion({
   comments = [],
   nowMs,
   live,
+  onLoadChapter,
 }: {
   depth: number;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the two feeds' settle. */
@@ -65,6 +68,8 @@ export function Discussion({
   nowMs?: number;
   /** BOOK-56: `state.history.live`; with no reader change the register is not on the page. */
   live: boolean;
+  /** BOOK-168: the page's chapter read, so a quote's door can ask for the chapter it names. */
+  onLoadChapter?: ChapterLoader;
 }) {
   if (!live) return null;
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
@@ -151,7 +156,13 @@ export function Discussion({
                   <span>глава {comment.chapter}</span>
                   <span className="stamp-time">{commentStamp(comment.createdAt)}</span>
                 </div>
-                {quote === null ? null : <p className="comment-quote">«{quote}»</p>}
+                {quote === null ? null : (
+                  // BOOK-168 — the quote is the door: the row's words, and the paragraph they
+                  // were filed on. The row itself is not a second click target (one tap, one card).
+                  <p className="comment-quote">
+                    <PlaceLink place={comment} onLoadChapter={onLoadChapter}>«{quote}»</PlaceLink>
+                  </p>
+                )}
                 <p className="comment-body">{comment.body}</p>
                 <p className="comment-line">
                   {kindWord === null ? null : <span className="comment-kind">{kindWord} · </span>}

@@ -179,6 +179,13 @@ export type HistoryRecordDto = {
   outcome: ChangeOutcome | null;
   /** The public one-liner of a refused or stopped change; null otherwise. */
   reason: string | null;
+  /**
+   * BOOK-168 — the comment the change was filed from. The record's place is a door: the page
+   * reads that filing by id and lands on the paragraph it quotes. Declared optional the way a
+   * new wire field is (`CommentDto.hint`): the server always sends it, an older row or fixture
+   * simply has none, and a reader that does not use it keeps typechecking.
+   */
+  sourceCommentId?: string | null;
   /** The change behind the entry — the door's key; null for a pass that has no change row. */
   changeId: string | null;
   /**

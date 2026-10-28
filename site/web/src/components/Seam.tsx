@@ -13,12 +13,17 @@ import type { SeamAnchor } from '../lib/seam.ts';
 import { useOpenFiling } from '../lib/useFiling.ts';
 import { useOpenRevision } from '../lib/useRevision.ts';
 import type { ComposerError } from '../lib/composer.ts';
+import type { WordFacts } from '../lib/provenance.ts';
 import { InterventionForm } from './InterventionForm.tsx';
+import { ProvenanceBlock } from './ProvenanceBlock.tsx';
 
 /**
  * BOOK-DOC-34 §2.2–§2.3 — the strip laid into the seam, and the form that grows in it.
  *
  * One 44 px row carries the two facts and the one action: whose word this is and «вмешаться».
+ * BOOK-128 comment #3815 — the word's record is this strip's **body**: the door opens three
+ * facts (and one sentence) under the row, at ≥1024 in the margin beside it. The body is never a
+ * frame: no fill, no shadow, no scroll, no second ✕ and no CTA of its own.
  *
  * BOOK-137: the freeze is the canon **sentence**, not its chapter — a `touched` seam says
  * «рамка книги · не меняется», keeps the link to the rules, prints the warning line before the
@@ -70,6 +75,19 @@ export type SeamProps = {
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
   onOpenFiling: (comment: CommentDto, origin: HTMLElement) => void;
+  /**
+   * BOOK-128 comment #3815 — the word's facts are the strip's **body**, not a panel. `null`
+   * means there are no facts behind the door (history off), so no door is drawn at all; when it
+   * is not `null`, the door toggles a block that is marginalia at ≥1024 and in flow at ≤1023.
+   */
+  prov: {
+    view: WordFacts | null;
+    failed: boolean;
+    /** The filing standing on the word, opened in the site's one panel. */
+    onFiling: (origin: HTMLElement) => void;
+    /** `Escape` and an outside tap put the body away — the strip's own ✕ stays the one close. */
+    onClose: () => void;
+  } | null;
   /** The premise explanation line; the first empty row carries it instead while closed. */
   premiseHint?: boolean;
 };
@@ -90,6 +108,7 @@ export function Seam({
   onReanchor,
   onProvenance,
   onOpenFiling,
+  prov,
   premiseHint = true,
 }: SeamProps) {
   const premise = anchor === null;
@@ -112,11 +131,15 @@ export function Seam({
   const revision = useOpenRevision();
   /**
    * BOOK-111 (owner, 2026-10-27) — «Два поповера, нужно чтобы был один или поменялся контекст
-   * в существующем». A panel opened **from this strip** is not a second box beside it: the
-   * strip collapses to one line and the floating panel is the only full frame. `fromSeam` is
-   * the caller's answer (the tap landed inside `.seam`), so the store never guesses about DOM.
+   * в существующем». A **filing card** opened from this strip is not a second box beside it: the
+   * strip collapses to one line and the floating card is the only full frame.
+   *
+   * BOOK-128 comment #3815 — the word's provenance is not a card at all: it is this strip's own
+   * body (`prov-block`, marginalia at ≥1024, in flow under the row at ≤1023), so it never
+   * collapses the strip and never takes the ✕ away from it.
    */
-  const prov = panel !== null && panel.fromSeam ? panel : null;
+  const wordOpen = panel !== null && panel.kind === 'provenance';
+  const collapsed = panel !== null && panel.kind === 'filing' && panel.fromSeam;
   /**
    * BOOK-158 — a strip opened by «исправить» is a revision of the filing this chapter's row
    * already holds. «У главы уже есть замысел» would be the wrong thing to say above a form
@@ -138,38 +161,49 @@ export function Seam({
     seamDrafts.keep(draftKey, next);
   };
 
-  // Esc closes; a click outside the strip (and outside the panels) closes on a fine pointer;
-  // a tap on a touch surface does not — a scroll or a thumb graze must not eat the form.
-  // Closing returns focus to the trigger, which the caller keeps in `origin`. While the strip
-  // is collapsed under a panel, the panel is the overlay the outside click lands out of, so
-  // that click closes the panel (and the strip comes back with its rows).
+  // Esc closes the strip's body first (focus on the door), then the strip itself; a click
+  // outside the strip (and outside the card) closes on a fine pointer, and a tap on a touch
+  // surface closes nothing — a scroll or a thumb graze must not eat the form.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
-      if (document.querySelector('.prov-panel, .filing-panel') !== null) return;
+      if (document.querySelector('.filing-panel') !== null) return;
+      // BOOK-128 comment #3815 — the phrase's block is its own layer beside the same prose: it
+      // owns the first Escape, and a strip is closed by its own ✕ only after that.
+      if (document.querySelector('.sentence-block') !== null) return;
+      if (prov !== null && wordOpen) {
+        prov.onClose();
+        return;
+      }
       onClose();
     };
     const detach = attachOutsideClose({
-      isInside: (target) => target.closest('.seam, .prov-panel, .filing-panel') !== null,
-      onOutside: prov === null ? onClose : (onClosePanel ?? onClose),
+      isInside: (target) => target.closest('.seam, .filing-panel') !== null,
+      onOutside: () => {
+        // The phrase's block is its own layer: a tap outside it is its own close, not ours.
+        if (document.querySelector('.sentence-block') !== null) return;
+        if (collapsed) (onClosePanel ?? onClose)();
+        else if (prov !== null && wordOpen) prov.onClose();
+        else onClose();
+      },
     });
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
       detach();
     };
-  }, [onClose, onClosePanel, prov]);
+  }, [collapsed, onClose, onClosePanel, prov, wordOpen]);
 
   /**
-   * BOOK-111 (owner, 2026-10-27) — the door the panel came from. It is a *new* node when the
-   * strip rebuilds its rows out of the collapsed line, so the key is written on the door (not
-   * the node kept) and focus is handed back here, after the rows exist again.
+   * BOOK-111 (owner, 2026-10-27) — the door a collapsed card came from. It is a *new* node when
+   * the strip rebuilds its rows out of the collapsed line, so the key is written on the door
+   * (not the node kept) and focus is handed back here, after the rows exist again.
    */
   const door = useRef<string | null>(null);
 
   useEffect(() => {
-    if (prov !== null) {
-      door.current = prov.origin?.getAttribute('data-door') ?? null;
+    if (collapsed) {
+      door.current = panel?.origin?.getAttribute('data-door') ?? null;
       return;
     }
     const key = door.current;
@@ -182,22 +216,19 @@ export function Seam({
     if (target === null || target === undefined) {
       node.current?.querySelector<HTMLElement>('.seam-cta, .seam-prov, .seam-filing')?.focus();
     }
-  }, [prov]);
+  }, [collapsed, panel]);
 
   /**
    * BOOK-111 — one overlay at a time. A filing card or a revision object the reader opens
-   * collapses this form; the strip stays, so the panel still has the row it came from behind
-   * it.
+   * collapses this form; the strip stays, so the card still has the row it came from behind it.
    *
-   * BOOK-111 (owner, 2026-10-27): a panel opened **from** this strip is not a second surface —
-   * the strip collapses to its one line instead, and the form is not discarded by it. The
-   * draft stays exactly as it was left and the form comes back with it when the panel closes,
-   * carrying the refusal it was showing (BOOK-63: a refusal spends nothing — its own duplicate
-   * door is this case, and `refusal` above is what the rebuilt form prints again).
+   * BOOK-128 comment #3815: the word's body is not a panel — it is this strip's own second
+   * section — so opening it closes the form too (two half-written surfaces never coexist), and
+   * the body goes with the form when anything else on the page takes the reader's attention.
    */
   useEffect(() => {
     if (panel === null && revision === null) return;
-    if (panel !== null && panel.fromSeam) return;
+    if (panel !== null && panel.kind === 'filing' && panel.fromSeam) return;
     setOpen(false);
   }, [panel, revision]);
 
@@ -222,24 +253,19 @@ export function Seam({
   };
 
   /**
-   * BOOK-111 (owner, 2026-10-27) — the strip under a panel is a **state of the same place**,
-   * not a second box: one line, no ✕, no action. The floating panel is the only full frame on
-   * screen, and closing it hands these rows back exactly as they were (`open` and `receipt`
-   * are untouched by the collapse, so the form and the receipt return with the draft).
+   * BOOK-111 (owner, 2026-10-27) — the strip under a **card** is a state of the same place,
+   * not a second box: one line, no ✕, no action. The floating card is the only full frame on
+   * screen, and closing it hands these rows back exactly as they were (`open` and `receipt` are
+   * untouched by the collapse, so the form and the receipt return with the draft).
    */
-  if (prov !== null) {
-    const label =
-      prov.kind === 'provenance'
-        ? 'откуда это слово'
-        : prov.comment === null
-          ? 'замечание'
-          : `замечание ${filingNumber(prov.comment)}`;
+  if (collapsed && panel !== null) {
+    const label = panel.comment === null ? 'замечание' : `замечание ${filingNumber(panel.comment)}`;
     return (
       <div
         className="seam ym-hide-content"
         role="group"
         aria-label={`место вмешательства · глава ${String(entry.n).padStart(2, '0')}`}
-        data-state="prov"
+        data-state="card"
         data-open="false"
         data-frozen={frameTouched ? 'true' : undefined}
         data-premise={premise ? 'true' : undefined}
@@ -279,7 +305,9 @@ export function Seam({
         <span className="seam-word">{word}</span>
         {premise ? (
           <span className="seam-prov">замысел</span>
-        ) : (
+        ) : prov === null ? null : (
+          // BOOK-128 §8 / the brief: with history off there are no facts behind the door, so no
+          // door is drawn — a door to an empty room is worse than no door.
           <button
             type="button"
             className="seam-prov"
@@ -287,6 +315,7 @@ export function Seam({
             onClick={(event) => onProvenance(event.currentTarget)}
             // The accessible name is the visible label, so the two can never disagree.
             aria-label={frameTouched ? FRAME_LABEL : 'откуда это слово'}
+            aria-expanded={wordOpen}
           >
             {frameTouched ? FRAME_LABEL : 'откуда это слово'}
           </button>
@@ -330,6 +359,16 @@ export function Seam({
       */}
       {frameTouched ? <p className="seam-note seam-frame">{FRAME_WARNING}</p> : null}
       {premise && premiseHint ? <p className="seam-note">{PREMISE_HINT}</p> : null}
+
+      {/*
+        BOOK-128 comment #3815 — the word's facts are this strip's body, never a floating box:
+        marginalia beside the row at ≥1024, in flow under it at ≤1023. No fill, no shadow, no
+        scroll, no close, no CTA — the strip's own ✕ is the one close and «вмешаться» the one
+        door. It sits above the filing rows because it speaks about the word they quote.
+      */}
+      {prov === null || !wordOpen ? null : (
+        <ProvenanceBlock view={prov.view} failed={prov.failed} onFiling={prov.onFiling} />
+      )}
 
       {rows.shown.map((comment) => (
         // BOOK-70, amended by BOOK-111 (owner, 2026-10-27): the row prints the numeral, the

@@ -17,7 +17,9 @@ import {
   stripFilings,
   threadFilings,
   upsertFiling,
+  wordFilingOf,
 } from './filings.ts';
+import { placeHref } from './place.ts';
 
 function comment(overrides: Partial<CommentDto> & { id: string; createdAt: string }): CommentDto {
   return {
@@ -218,6 +220,20 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(threadFilings([])).toEqual([]);
   });
 
+  it('the word’s filing carries its change number, and the record’s own when the window misses it', () => {
+    // `№12` is the change's number, unpadded; with no attempt in the window the record keeps
+    // its own suffix (`№A7K`) — the schema has no filing sequence to print instead.
+    const attempt = summary({ id: 'chg_12', seq: 12 });
+    expect(wordFilingOf(NEW, [attempt])).toEqual({
+      number: filingNumber(NEW),
+      seq: 12,
+      state: 'ждёт',
+      href: placeHref(NEW),
+    });
+    expect(wordFilingOf(NEW).seq).toBeNull();
+    expect(wordFilingOf({ ...NEW, changeId: 'chg_old' }).seq).toBeNull();
+  });
+
   it('keeps the attempts of one filing in order, and only its own', () => {
     const changes = [
       summary({ id: 'chg_2', seq: 2 }),
@@ -228,7 +244,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(attemptsOf(changes, NEW.id).map((row) => row.id)).toEqual(['chg_1', 'chg_2']);
     // An author's own change has no filing and is never an attempt of one.
     expect(attemptsOf(changes, 'cmt_elsewhere').map((row) => row.id)).toEqual(['chg_other']);
-    expect(filingAttempt(NEW, changes)).toEqual({ id: 'chg_2', number: '002' });
+    expect(filingAttempt(NEW, changes)).toEqual({ id: 'chg_2', number: '002', seq: 2 });
     expect(earlierAttempts(NEW, changes).map((row) => row.id)).toEqual(['chg_1']);
     // One attempt has nothing earlier, and no change at all is no link.
     expect(earlierAttempts(NEW, [summary({})])).toEqual([]);
@@ -239,7 +255,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     // The thread reads the newest page of the lane: an older attempt is not in it, and the row
     // still opens the change — without inventing a number it cannot read.
     const linked = { ...NEW, changeId: 'chg_old' };
-    expect(filingAttempt(linked, [])).toEqual({ id: 'chg_old', number: null });
+    expect(filingAttempt(linked, [])).toEqual({ id: 'chg_old', number: null, seq: null });
     expect(linked.changeId).not.toBeNull();
   });
 });

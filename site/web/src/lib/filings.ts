@@ -2,6 +2,8 @@ import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import { changeNumber } from './changeStatus.ts';
 import { filingMarginalia } from './marginalia.ts';
+import { placeHref } from './place.ts';
+import type { WordFiling } from './provenance.ts';
 
 /**
  * BOOK-DOC-34 §2.5 — the two persistent marks a filing leaves in the text.
@@ -207,7 +209,32 @@ export type FilingAttempt = {
   id: string;
   /** The attempt's own number (`001`), or null when the page's window does not carry it. */
   number: string | null;
+  /**
+   * The same attempt as the log's raw sequence (`1`). The number is a *change's*, not a
+   * filing's — the schema has no filing sequence — so a caller that prints «№12» reads this.
+   */
+  seq: number | null;
 };
+
+/**
+ * The word's filing as the margin prints it (`lib/provenance.ts`): the record's numeral, the
+ * number of the change its latest attempt became, its state word, and its place as a door.
+ *
+ * The schema has **no filing sequence** — the number the owner's spec prints (`правка · №12`) is
+ * the change's — so a filing whose attempt the page's window does not carry keeps `seq: null`
+ * and is named by its own suffix (`№A7K`) alone.
+ */
+export function wordFilingOf(
+  comment: CommentDto,
+  changes: readonly ChangeSummaryDto[] = [],
+): WordFiling {
+  return {
+    number: filingNumber(comment),
+    seq: filingAttempt(comment, changes)?.seq ?? null,
+    state: filingMarginalia(comment).word,
+    href: placeHref(comment),
+  };
+}
 
 /**
  * BOOK-137 — **an attempt is not a row**: a change is inside the entry of the filing that
@@ -230,8 +257,8 @@ export function filingAttempt(
   changes: readonly ChangeSummaryDto[] = [],
 ): FilingAttempt | null {
   const latest = attemptsOf(changes, comment.id).at(-1);
-  if (latest !== undefined) return { id: latest.id, number: changeNumber(latest.seq) };
-  return comment.changeId === null ? null : { id: comment.changeId, number: null };
+  if (latest !== undefined) return { id: latest.id, number: changeNumber(latest.seq), seq: latest.seq };
+  return comment.changeId === null ? null : { id: comment.changeId, number: null, seq: null };
 }
 
 /**

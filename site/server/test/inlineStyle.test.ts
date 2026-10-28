@@ -41,7 +41,7 @@ describe('no inline style attributes in the SPA (BOOK-30)', () => {
     expect(files).toContain(join(WEB_SRC, 'components', 'Discussion.tsx'));
     expect(files).toContain(join(WEB_SRC, 'components', 'Chronicle.tsx'));
     expect(files).toContain(join(WEB_SRC, 'components', 'ChapterArticle.tsx'));
-    expect(files).toContain(join(WEB_SRC, 'components', 'ParagraphChain.tsx'));
+    expect(files).toContain(join(WEB_SRC, 'components', 'SentenceBlock.tsx'));
     for (const file of files) {
       const source = readFileSync(file, 'utf8');
       expect(source, `${file} carries an inline style attribute`).not.toMatch(/style=\{/u);

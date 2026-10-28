@@ -51,8 +51,11 @@ export type RecordRow = {
   status: ChangeStatus | null;
   outcome: ChangeOutcome | null;
   reason: string | null;
+  /** The filing's author on the change arm; `null` on the pass arm and for a machine change. */
   alias: string | null;
   cause: HistoryRecordCause;
+  /** `changes.source_comment` — BOOK-168's place door reads the filing by this id. */
+  source_comment: string | null;
   hseq: number;
   at: string;
   /** The landed stage's `span` JSON on the pass arm; resolved per row on the change arm. */
@@ -106,6 +109,7 @@ const SELECT_RECORD = `WITH landed AS MATERIALIZED (
          c.premise, c.status, c.outcome, c.reason,
          CASE WHEN c.source_comment IS NULL THEN NULL ELSE co.author END AS alias,
          CASE WHEN c.source_comment IS NULL THEN 'pass' ELSE 'reader' END AS cause,
+         c.source_comment AS source_comment,
          e.hseq, e.at, NULL AS span, c.anchor
     FROM changes c
     LEFT JOIN comments co ON co.id = c.source_comment
@@ -114,7 +118,7 @@ const SELECT_RECORD = `WITH landed AS MATERIALIZED (
    WHERE (co.status IS NULL OR co.status <> 'hidden') AND c.chapter BETWEEN 1 AND ?
   UNION ALL
   SELECT NULL, l.pass_id, NULL, l.chapter, ch.title,
-         0, NULL, NULL, NULL, NULL, 'pass',
+         0, NULL, NULL, NULL, NULL, 'pass', NULL,
          COALESCE(pe.hseq, 0), l.at, l.span, NULL
     FROM landed l
     LEFT JOIN pass_events pe ON pe.pass_id = l.pass_id
@@ -241,6 +245,7 @@ function toHistoryRecord(row: RecordRow, landed: boolean, span: HistoryRecordSpa
     status: row.status,
     outcome: row.outcome,
     reason: publicReason(row.reason),
+    sourceCommentId: row.source_comment,
     changeId: row.id,
     span,
   };

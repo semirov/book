@@ -52,7 +52,7 @@ import {
   sameSequence,
 } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
-import { requirePipelineModel } from './model.ts';
+import { normalizeProvenance, requirePipelineModel, type Provenance } from './model.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
@@ -77,15 +77,13 @@ export type DoneOptions = {
   tokensIn?: number;
   tokensOut?: number;
   now?: number;
+  /** BOOK-117: `pipeline` (the lane, ADR-038 applies) or `operator` (a repair, its own model). */
+  provenance?: Provenance;
 };
 /** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
 export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
 
-/**
- * ADR-038 §2: a stop reports the same triple, and a model is never *required* of it — a caller
- * that burned tokens reports them, one that claims nothing keeps the null/0 default.
- * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
- */
+/** ADR-038 §2: a stop reports the same triple; BOOK-117 adds `cause` (broken ≠ refused). */
 export type EscalateOptions = {
   model?: string | null;
   tokensIn?: number;
@@ -239,8 +237,9 @@ export function createEngine(deps: EngineDeps) {
   function closeWithGates(
     leaseId: string, seams: SeamRef[], note: string | null, options: SeenOptions & { where: 'done' | 'seen' },
   ): DoneResult {
-    // ADR-038: the model is refused **first** — before the lease opens — so nothing is consumed.
-    const model = requirePipelineModel(config, options.model, options.where);
+    // ADR-038: the model is refused first, before the lease opens; an operator pass keeps its own.
+    const provenance = normalizeProvenance(options.provenance);
+    const model = requirePipelineModel(config, options.model, options.where, provenance);
     const at = options.now ?? deps.clock.now();
     const { lease, step, expired } = leaseStep(leaseId);
     if (step.landed_at === null) {
@@ -354,7 +353,8 @@ export function createEngine(deps: EngineDeps) {
         outcome,
         seamsOut: seams,
         note: note ? note.slice(0, NOTE_MAX_CHARS) : null,
-        model: options.model ?? null,
+        model,
+        provenance,
         // The writer's own tokens: each gate's verdict row is added once, by `closeStep`.
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,

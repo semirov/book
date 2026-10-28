@@ -93,7 +93,16 @@ export type Harness = {
   ingest(chapter: number): void;
   assignment(chapter: number, session?: string): WriterAssignment;
   premised(chapter: number, intent: string): string;
-  run(options?: { chapter?: number | null; lanes?: Array<'fwd' | 'bwd'>; dryRun?: boolean }): Promise<PassResult>;
+  /**
+   * BOOK-166: a pass exists only to serve a filing. `filed: false` is the no-filing case a test
+   * asks for explicitly; anything else gets the reader's premise on the chapter it writes.
+   */
+  run(options?: {
+    chapter?: number | null;
+    lanes?: Array<'fwd' | 'bwd'>;
+    dryRun?: boolean;
+    filed?: boolean;
+  }): Promise<PassResult>;
   close(): Promise<void>;
 };
 
@@ -178,7 +187,7 @@ export async function createHarness(options: { chapters?: Record<number, string>
     },
   }) as EngineClient;
 
-  return {
+  const harness: Harness = {
     fixture,
     config,
     client,
@@ -220,8 +229,19 @@ export async function createHarness(options: { chapters?: Record<number, string>
       });
       return id;
     },
-    run: (runOptions = {}) =>
-      runPass({
+    run: (runOptions = {}) => {
+      // BOOK-166: the default is a real filing on the chapter the pass writes — a pass without
+      // one is exactly what the lane now refuses, so a test that wants it says `filed: false`.
+      if (runOptions.filed !== false && runOptions.dryRun !== true && runOptions.chapter != null) {
+        const chapter = runOptions.chapter;
+        const existing = fixture.db
+          .prepare(`SELECT COUNT(*) AS n FROM changes WHERE premise = 1 AND chapter = ? AND status = 'pending'`)
+          .get(chapter) as { n: number };
+        if (existing.n === 0) {
+          harness.premised(chapter, `замысел главы ${String(chapter)}: читатель просит начать с документа`);
+        }
+      }
+      return runPass({
         config,
         bookRoot: fixture.root,
         dataDir: fixture.dataDir,
@@ -232,11 +252,13 @@ export async function createHarness(options: { chapters?: Record<number, string>
         chapter: runOptions.chapter ?? null,
         lanes: runOptions.lanes ?? ['fwd', 'bwd'],
         dryRun: runOptions.dryRun ?? false,
-      }),
+      });
+    },
     close: async () => {
       await app.close();
       fixture.close();
       rmSync(secrets, { recursive: true, force: true });
     },
   };
+  return harness;
 }

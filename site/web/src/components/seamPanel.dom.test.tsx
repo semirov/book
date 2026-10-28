@@ -14,13 +14,12 @@ import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
  * BOOK-111 (owner, 2026-10-27) — «Два поповера, нужно чтобы был один или поменялся контекст в
- * существующем».
+ * существующем», and BOOK-128 comment #3815 — the word's record is **marginalia**, not a panel.
  *
- * On a frozen word the owner saw the strip and the provenance panel as two boxes with two ✕.
- * The strip and the panel are the same place: a panel opened **from** the strip collapses it to
- * one line, the panel keeps the only close, and closing it gives the rows (and focus) back. One
- * `<aside>` then carries whichever context the reader is reading, so provenance ↔ filing is a
- * turn of the same box, never a third surface.
+ * What stands after both: the page has one floating frame, and it is a **filing card**. The
+ * word's facts are the strip's own body (no close, no CTA, no z-index), so the strip cannot be
+ * collapsed by them; a card opened from the strip still takes the strip to its one line, so
+ * exactly one ✕ stands on the page whatever the reader opened.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -82,6 +81,7 @@ beforeEach(() => {
     unobserve(): void {}
     disconnect(): void {}
   });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
   container = document.body.appendChild(document.createElement('div'));
   root = createRoot(container);
 });
@@ -121,7 +121,7 @@ async function renderParagraph(comments: readonly CommentDto[], history: boolean
 
 async function mount({
   comments = [] as readonly CommentDto[],
-  history = false,
+  history = true,
 }: { comments?: readonly CommentDto[]; history?: boolean } = {}): Promise<void> {
   const anchor = anchorFor({ text: TEXT, blockId: BLOCK_ID, baseRev: ENTRY.rev, offset: 0 });
   await renderParagraph(comments, history);
@@ -136,55 +136,52 @@ async function click(selector: string): Promise<void> {
   if (element === null) throw new Error(`no ${selector}`);
   await act(async () => {
     element.click();
-    for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
   });
 }
 
 const seam = (): HTMLElement => document.querySelector<HTMLElement>('.seam') as HTMLElement;
 
-describe('a panel opened from the strip makes the strip its one line', () => {
-  it('a provenance panel collapses its strip to one line with a single close', async () => {
+describe('the word’s record is the strip’s body, never a second box', () => {
+  it('opens under the row and keeps the strip, its ✕ and its action exactly where they were', async () => {
     await mount();
     expect(seam().getAttribute('data-state')).toBe('strip');
+    const row = seam().querySelector('.seam-row');
+    const beforeText = row?.textContent ?? '';
+    const beforeControls = row?.querySelectorAll('button, a').length ?? 0;
 
     await click('.seam-prov');
 
-    const panel = document.querySelector<HTMLElement>('.prov-panel');
-    expect(panel, 'the word’s DNA is the one floating frame').not.toBeNull();
-    expect(panel?.className).toContain('prov-panel-anchored');
-    expect(seam().getAttribute('data-state')).toBe('prov');
-    // One line, and it is the whole strip: the word, the chapter, the fact the panel carries.
-    expect(seam().textContent).toBe('«Я» · глава 08 · откуда это слово');
-    expect(seam().querySelectorAll('.seam-prov-line')).toHaveLength(1);
-    expect(seam().children).toHaveLength(2); // the polite live region + the one line
-    // No ✕ and no other action in the strip: the panel has the only close on the page.
-    expect(seam().querySelector('.seam-close')).toBeNull();
-    for (const gone of ['.seam-cta', '.seam-filing', '.seam-more', '.seam-frozen', '.seam-form']) {
-      expect(seam().querySelector(gone), gone).toBeNull();
-    }
+    // The one floating frame count is 0: the block is in the page's flow / margin, not above it.
+    expect(document.querySelectorAll('.prov-panel, .filing-panel')).toHaveLength(0);
+    const block = document.querySelector<HTMLElement>('.prov-block');
+    expect(block, 'the facts are the strip’s own body').not.toBeNull();
+    expect(seam().contains(block)).toBe(true);
+    // The row is untouched: the same node, the same words, the same controls — only the door's
+    // `aria-expanded` (and its ink, in CSS) says the body under it is open.
+    expect(seam().querySelector('.seam-row')).toBe(row);
+    expect(seam().querySelector('.seam-row')?.textContent).toBe(beforeText);
+    expect(seam().querySelector('.seam-row')?.querySelectorAll('button, a')).toHaveLength(beforeControls);
     expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
-    expect(document.querySelector(CLOSES)?.className).toBe('prov-close');
-
+    expect(document.querySelector(CLOSES)?.className).toBe('seam-close');
     // The paragraph behind is untouched and the strip is still its block sibling (§2.1, BOOK-68).
-    const paragraph = document.querySelector<HTMLElement>('.p');
-    expect(paragraph?.textContent).toContain(TEXT);
-    expect(paragraph?.nextElementSibling).toBe(seam());
+    expect(document.querySelector<HTMLElement>('.p')?.textContent).toContain(TEXT);
+    expect(document.querySelector<HTMLElement>('.p')?.nextElementSibling).toBe(seam());
 
-    // Closing gives the rows back as they were, and focus returns to the door that asked.
-    await click('.prov-close');
-    expect(document.querySelector('.prov-panel')).toBeNull();
-    expect(seam().getAttribute('data-state')).toBe('strip');
-    expect(seam().querySelector('.seam-row')).not.toBeNull();
-    expect(seam().querySelector('.seam-cta')).not.toBeNull();
+    // Closing it gives focus to the door, and the strip's own rows are still there.
+    await click('.seam-prov');
+    expect(document.querySelector('.prov-block')).toBeNull();
     expect(document.activeElement).toBe(seam().querySelector('.seam-prov'));
+    expect(seam().querySelector('.seam-cta')).not.toBeNull();
   });
 
-  it('a filing opened from the strip collapses the strip too', async () => {
+  it('a filing card opened from the strip collapses the strip to one line — one close stays', async () => {
     await mount({ comments: [comment()] });
     await click('.seam-filing');
 
     expect(document.querySelector('.filing-panel')).not.toBeNull();
-    expect(seam().getAttribute('data-state')).toBe('prov');
+    // BOOK-128 §1 survives for the card: the strip is the same place, one line, no ✕ of its own.
+    expect(seam().getAttribute('data-state')).toBe('card');
     expect(seam().textContent).toBe('«Я» · глава 08 · замечание №4Q7');
     expect(seam().querySelector('.seam-close')).toBeNull();
     expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
@@ -192,9 +189,28 @@ describe('a panel opened from the strip makes the strip its one line', () => {
 
     await click('.filing-close');
     expect(document.querySelector('.filing-panel')).toBeNull();
-    expect(seam().getAttribute('data-state')).toBe('strip');
     expect(seam().querySelector('.seam-filing')).not.toBeNull();
     expect(document.activeElement).toBe(seam().querySelector('.seam-filing'));
+  });
+
+  it('the card raised by the word’s own line three keeps the strip and floats alone', async () => {
+    await mount({ comments: [comment()] });
+    await click('.seam-prov');
+
+    const door = document.querySelector<HTMLAnchorElement>('.prov-door');
+    expect(door?.textContent).toBe('№4Q7 · ждёт');
+    await act(async () => {
+      door?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+      for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+    });
+
+    const card = document.querySelector<HTMLElement>('.filing-panel');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('в комнате должен быть свет, но не от лампы');
+    // The strip is the collapsed line (a card opened from it), and the card is the one close.
+    expect(seam().getAttribute('data-state')).toBe('card');
+    expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
+    expect(document.querySelector(CLOSES)?.className).toBe('filing-close');
   });
 
   it('a panel opened from a mark closes the seam', async () => {
@@ -210,96 +226,16 @@ describe('a panel opened from the strip makes the strip its one line', () => {
   });
 });
 
-describe('one box, two contexts (BOOK-DOC-34 §2.6–§2.7)', () => {
-  it('switching context reuses the same panel node and keeps one close', async () => {
-    await mount({ comments: [comment()] });
-    await click('.seam-prov');
-
-    const before = document.querySelector<HTMLElement>('.prov-panel');
-    expect(before).not.toBeNull();
-    const placed = before?.style.top ?? '';
-    await click('.prov-filing');
-
-    const after = document.querySelector<HTMLElement>('.filing-panel');
-    expect(after, 'the filing card is the same box').not.toBeNull();
-    // The same DOM node, the same anchor and the same placement: the reader keeps their place.
-    expect(after).toBe(before);
-    expect(after?.getAttribute('data-context')).toBe('filing');
-    expect(after?.style.top).toBe(placed);
-    expect(document.querySelector('.prov-panel')).toBeNull();
-    expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
-    expect(document.querySelectorAll('.filing-close')).toHaveLength(1);
-    expect(after?.contains(document.activeElement)).toBe(true);
-
-    // And the way back is the same box again.
-    await click('.filing-prov');
-    const again = document.querySelector<HTMLElement>('.prov-panel');
-    expect(again).toBe(before);
-    expect(again?.getAttribute('data-context')).toBe('provenance');
-    expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
-    expect(again?.contains(document.activeElement)).toBe(true);
-    // The strip stayed collapsed through both turns.
-    expect(seam().getAttribute('data-state')).toBe('prov');
-  });
-
-  it('the provenance panel offers the sentence’s filing in the same box', async () => {
-    // The filing is grouped at the seam's own quote: the strip row and the door name one record.
-    await mount({ comments: [comment()] });
-    await click('.seam-prov');
-
-    const door = document.querySelector<HTMLElement>('.prov-filing');
-    expect(door?.textContent).toBe('замечание №4Q7 →');
-
-    await click('.prov-filing');
-    const card = document.querySelector<HTMLElement>('.filing-panel');
-    expect(card).not.toBeNull();
-    expect(card?.textContent).toContain('в комнате должен быть свет, но не от лампы');
-    expect(card?.textContent).toContain('ждёт');
-    expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
-  });
-
-  it('the filing card offers its word’s provenance in the same box', async () => {
-    // Opened from the mark, so the word can only come from the filing's own sentence.
-    await mount({ comments: [comment({ anchor: { ...comment().anchor, quote: 'Её освещал яркий свет.' } })] });
-    await click('.filing-mark');
-
-    const door = document.querySelector<HTMLElement>('.filing-prov');
-    expect(door?.textContent).toBe('откуда это слово →');
-
-    await click('.filing-prov');
-    const panel = document.querySelector<HTMLElement>('.prov-panel');
-    expect(panel).not.toBeNull();
-    expect(panel?.querySelector('.prov-word')?.textContent?.startsWith('Её')).toBe(true);
-    expect(panel?.querySelector('.prov-chapter')?.textContent).toBe('глава 08');
-    expect(panel?.querySelector('.prov-action')?.textContent).toBe('вмешаться здесь');
-    expect(document.querySelectorAll(CLOSES)).toHaveLength(1);
-  });
-
-  it('Escape closes the panel and restores the strip', async () => {
-    await mount();
-    await click('.seam-prov');
-    expect(document.querySelector('.prov-panel')).not.toBeNull();
-
-    await act(async () => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-
-    expect(document.querySelector('.prov-panel')).toBeNull();
-    expect(seam().getAttribute('data-state')).toBe('strip');
-    expect(document.activeElement).toBe(seam().querySelector('.seam-prov'));
-  });
-});
-
 describe('the strip gets its rows and its focus back', () => {
   it('hands focus to its own action when the door is gone', async () => {
-    // The row that opened the panel can leave the feed while the panel is open (a refresh, a
+    // The row that opened the card can leave the feed while the card is open (a refresh, a
     // hidden filing). Its door cannot receive focus then — and the reader must not land on
     // `<body>`, so the strip's own action takes it.
     await mount({ comments: [comment()] });
     await click('.seam-filing');
     expect(document.querySelector('.filing-panel')).not.toBeNull();
 
-    await renderParagraph([], false);
+    await renderParagraph([], true);
     await click('.filing-close');
 
     expect(document.querySelector('.filing-panel')).toBeNull();
@@ -310,53 +246,10 @@ describe('the strip gets its rows and its focus back', () => {
   });
 });
 
-describe('the box is measured again when its body grows (BOOK-111)', () => {
-  it('re-places the panel when the chain rows arrive after its first paint', async () => {
-    // jsdom has no layout: the panel's height is whatever `scrollHeight` says. It says 0 on the
-    // first paint (the chain is still loading) and the truthful height once the rows are in —
-    // the effect must run again on that change, or the box keeps a `maxHeight` for an empty body
-    // and scrolls its own text.
-    const gates: Array<() => void> = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        await new Promise<void>((resolve) => {
-          gates.push(resolve);
-        });
-        return new Response('{}', { status: 404 });
-      }),
-    );
-
-    await mount({ history: true });
-    await act(async () => {
-      document.querySelector<HTMLElement>('.seam-prov')?.click();
-      for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
-    });
-
-    const panel = document.querySelector<HTMLElement>('.prov-panel');
-    expect(panel).not.toBeNull();
-    // The first paint: an empty body, placed at the height it had then.
-    expect(panel?.className).toContain('prov-panel-anchored');
-    expect(panel?.style.maxHeight).toBe('0px');
-
-    Object.defineProperty(panel, 'scrollHeight', { configurable: true, value: 900 });
-    await act(async () => {
-      for (const answer of gates) answer();
-      for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
-    });
-
-    // The same `<aside>`, re-measured: the grown body now caps at what the viewport allows.
-    expect(document.querySelector('.prov-panel')).toBe(panel);
-    const cap = Math.floor(window.innerHeight * 0.62);
-    expect(panel?.style.maxHeight).toBe(`${cap}px`);
-  });
-});
-
 describe('the card is placed inside the visual viewport (BOOK-137)', () => {
   it('applies the visual viewport’s offsets, not the layout window’s zeros', async () => {
     // A phone with the URL bar showing: the visible box starts 120 px down and is 640 tall,
-    // while `window.innerHeight` still reports the whole layout viewport. A panel clamped to
-    // the layout box opened where the reader could not see it.
+    // while `window.innerHeight` still reports the whole layout viewport.
     vi.stubGlobal('visualViewport', { width: 390, height: 640, offsetLeft: 0, offsetTop: 120 });
 
     await mount({ comments: [comment()] });
@@ -364,41 +257,39 @@ describe('the card is placed inside the visual viewport (BOOK-137)', () => {
 
     const panel = document.querySelector<HTMLElement>('.filing-panel');
     expect(panel).not.toBeNull();
-    // jsdom's ink has no layout: the anchor is at 0 and the panel is empty, so its own height
-    // is 0 — the placement is the box's margin, counted from the visible viewport's top.
+    // jsdom's ink has no layout: the anchor is at 0 and the card is empty, so its own height is
+    // 0 — the placement is the box's margin, counted from the visible viewport's top.
     expect(panel?.style.top).toBe('132px');
     expect(panel?.style.left).toBe('12px');
     expect(panel?.style.width).toBe('366px');
-    // And it never claims a box taller than the visible viewport allows.
     expect(Number.parseFloat(panel?.style.maxHeight ?? '0')).toBeLessThanOrEqual(640 - 2 * 12);
   });
 });
 
-describe('the card’s way into provenance asks the log the same question', () => {
-  function notFound(): ReturnType<typeof vi.fn> {
-    const fetchMock = vi.fn(async () => new Response('{}', { status: 404 }));
-    vi.stubGlobal('fetch', fetchMock);
-    return fetchMock;
-  }
+describe('nothing in the word’s layer owns a close, an action or a frame', () => {
+  it('renders no button and no close inside the block', async () => {
+    await mount();
+    await click('.seam-prov');
 
-  it('loads the chain from the card exactly as the strip’s own door does', async () => {
-    const fetchMock = notFound();
-    await mount({ comments: [comment({ anchor: { ...comment().anchor, quote: 'Её освещал яркий свет.' } })], history: true });
-    await click('.filing-mark');
-    fetchMock.mockClear();
-
-    await click('.filing-prov');
-
-    expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`/api/history/paragraphs/${encodeURIComponent(BLOCK_ID)}`);
+    const block = document.querySelector<HTMLElement>('.prov-block');
+    expect(block).not.toBeNull();
+    for (const gone of ['.prov-close', 'button', '[role="dialog"]', '.prov-action', '.prov-rules']) {
+      expect(block?.querySelector(gone), gone).toBeNull();
+    }
+    // And the CTA the panel used to carry is not anywhere in the strip either.
+    expect(seam().textContent).not.toContain('вмешаться здесь');
+    expect(seam().textContent).not.toContain('что это значит');
+    expect(document.body.textContent).not.toContain('вмешаться здесь');
   });
 
-  it('asks nothing at all with history off', async () => {
-    const fetchMock = notFound();
-    await mount({ comments: [comment()] });
-    await click('.seam-filing');
-    await click('.filing-prov');
+  it('asks nothing at all with history off, and renders no door to the empty room', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await mount({ history: false });
 
-    expect(document.querySelector('.prov-panel')).not.toBeNull();
+    // No door to an empty room: neither the word's side of the strip nor the phrase's `⋯`.
+    expect(seam().querySelector('.seam-prov')).toBeNull();
+    expect(document.querySelector('.prov')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

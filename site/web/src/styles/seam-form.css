@@ -302,7 +302,6 @@
   .seam-grow {
     transition: none;
   }
-  .prov-panel,
   .filing-panel {
     animation: none;
   }

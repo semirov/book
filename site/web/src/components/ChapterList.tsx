@@ -8,6 +8,7 @@ import type {
   ViewerDto,
 } from '@book/shared';
 import type { ChapterFeed } from '../useReaderFeed.ts';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 
 import type { SpineMarkers } from '../lib/spine.ts';
 import type { Stages } from '../lib/useStages.ts';
@@ -36,7 +37,7 @@ export function ChapterList({
   nowMs,
   onRead,
   onPosted,
-  onProvenance,
+  sentence,
   composer,
   viewer,
   history,
@@ -55,7 +56,8 @@ export function ChapterList({
   nowMs?: number;
   onRead: (chapter: number) => void;
   onPosted: (comment: CommentDto) => void;
-  onProvenance: (blockId: string, anchor: HTMLElement) => void;
+  /** BOOK-128 comment #3815 — the phrase's mode, handed to every paragraph's own margin item. */
+  sentence: ParagraphChainMode;
   composer: ComposerInfo;
   viewer: ViewerDto;
   /** BOOK-56: `state.history.live` — off drops the chain door and the DNA rows, not the text. */
@@ -80,7 +82,7 @@ export function ChapterList({
             passActive={stages?.passes[entry.n] !== undefined}
             stages={stages?.log[entry.n]}
             firstEmpty={firstEmpty === entry.n}
-            onProvenance={onProvenance}
+            sentence={sentence}
             comments={chapterFeed[entry.n]?.items ?? []}
             changes={changes}
             nowMs={nowMs}

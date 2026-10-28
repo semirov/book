@@ -420,9 +420,10 @@ describe('the premise strip in an empty chapter', () => {
     expect(panel, 'the refusal opens the filing that already exists').not.toBeNull();
     expect(panel?.textContent).toContain('а как это работает');
     // BOOK-111 (owner, 2026-10-27) — «Два поповера»: the refusal's door is inside the strip, so
-    // the panel is the only full frame and the strip collapses to its one line. BOOK-63 still
-    // holds: the draft was not spent — closing the panel gives the form back with its text.
-    expect(container.querySelector('#ch-7 .seam')?.getAttribute('data-state')).toBe('prov');
+    // the panel is the only full frame and the strip collapses to its one line. BOOK-128 #3815
+    // renamed that state `card` (the word's provenance is no longer a panel that collapses it).
+    // BOOK-63 still holds: the draft was not spent — closing the panel gives the form back.
+    expect(container.querySelector('#ch-7 .seam')?.getAttribute('data-state')).toBe('card');
     expect(container.querySelector('#ch-7 .seam-form')).toBeNull();
     expect(container.querySelector('#ch-7 .seam-close')).toBeNull();
     await act(async () => container.querySelector<HTMLElement>('.filing-close')?.click());

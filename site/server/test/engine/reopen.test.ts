@@ -21,6 +21,10 @@ function draftChapter(fixture: ReturnType<typeof createEngineFixture>, blocks: s
   return assignment;
 }
 
+function attempts(fixture: ReturnType<typeof createEngineFixture>, changeId: string): number {
+  return (fixture.db.prepare('SELECT attempts FROM changes WHERE id = ?').get(changeId) as { attempts: number }).attempts;
+}
+
 function stepRow(fixture: ReturnType<typeof createEngineFixture>, stepId: string): Record<string, unknown> | undefined {
   return fixture.db.prepare('SELECT * FROM steps WHERE step_id = ?').get(stepId) as Record<string, unknown> | undefined;
 }
@@ -43,6 +47,33 @@ describe('reopen — an escalated, landed step', () => {
       // The gates are offered again, and the editor comes first.
       const editor = fixture.engine.next({ role: 'editor', session: 'editor-again' });
       expect(editor).not.toBeNull();
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('resets the attempt counter, so the reaper does not escalate the fresh window on the next tick', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = draftChapter(fixture, ['Тестовый абзац главы.', 'Второй абзац.']);
+      fixture.engine.land(assignment.leaseId);
+      fixture.engine.escalate(assignment.leaseId, 'гейт прав не ответил');
+      // A repair pass always belongs to a change; three expired leases put it at the reaper's
+      // limit, and a reopen is a fresh window, not the fourth attempt of the closed one.
+      fixture.db
+        .prepare(
+          `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, status, enqueued_at, attempts)
+           VALUES ('chg_reopen_fix', 'operator', 1, 'починить главу', 0, '', '[]', 'chapter', 'pending', '2026-10-28T00:00:00Z', 3)`,
+        )
+        .run();
+      fixture.db.prepare('UPDATE leases SET change_id = ? WHERE step_id = ?').run('chg_reopen_fix', assignment.stepId);
+
+      fixture.engine.reopen(assignment.stepId, 'BOOK-61: Gate B теперь есть');
+      expect(attempts(fixture, 'chg_reopen_fix')).toBe(0);
+      // And the next tick leaves the step open for the gates instead of escalating it again.
+      const report = fixture.engine.reap();
+      expect(report.gateTimeouts).not.toContain(assignment.stepId);
+      expect((stepRow(fixture, assignment.stepId) as { outcome: string | null }).outcome).toBeNull();
     } finally {
       fixture.close();
     }

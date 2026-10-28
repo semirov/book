@@ -35,6 +35,7 @@ import './styles/pass-record.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
+import './styles/reader.css';
 // BOOK-156 — the grip's band, its reserve and its veil; after the registers it sits over.
 import './styles/foot-jumps.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's

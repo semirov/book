@@ -69,11 +69,11 @@ describe('runPass — one pass, end to end', () => {
       expect(step?.tokens_in).toBe(3_000);
       expect(step?.tokens_out).toBe(600);
 
-      // 2b. The ledger row is priced on the pin, equal to the cost of the usage the step summed.
       const spend = spendRow(harness, result.stepId ?? '');
       expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
       expect(Number(spend?.usd)).toBeGreaterThan(0);
-      expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
+      // 2b. The ledger is priced on the pin: writer (3 000/600) + two prose gates (1 000/200 each).
+      expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 5_000, out: 1_000, cachedIn: 0 }));
 
       // 3. The premise settles as applied — the change is not a cascade.
       expect(harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId)).toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 40' });
@@ -271,13 +271,13 @@ describe('runPass — one pass, end to end', () => {
   it('resumes a landed step at the gates instead of writing it again', async () => {
     const harness = await createHarness();
     try {
-      // The writer that opened this pass is gone after the landing: the text is on disk and the step is open, so the next pass must close it, not rewrite it.
+      // The writer that opened this pass is gone after the landing: the text is on disk and the step is open, so the next pass must close it, not rewrite it. BOOK-166: the step exists only because a reader filed it.
+      harness.premised(CHAPTER, 'замысел главы 65: читатель просит начать с документа');
       const assignment = harness.assignment(CHAPTER);
       harness.fixture.engine.start(assignment.leaseId);
       harness.fixture.writeChapter(CHAPTER, chapterAnswer());
       harness.fixture.engine.land(assignment.leaseId);
       const onDisk = readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8');
-
       harness.script.push('HOLDS', 'HOLDS');
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
@@ -308,7 +308,7 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle for a day whose cap the estimate would cross, and opens nothing', async () => {
     const harness = await createHarness();
     try {
-      // $9.99 of $10 spent: a pass costs ≈ $0.20 before the prompt is built, so it does not fit.
+      // $9.99 of $10 spent: a pass costs ≈ $0.18 before the prompt is built, so it does not fit.
       harness.hooks.budget = budgetOf({ daySpent: 9.99 });
       const result = await harness.run({ chapter: CHAPTER });
 

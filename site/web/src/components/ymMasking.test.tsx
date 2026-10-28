@@ -15,13 +15,13 @@ import { ChangeCard } from './ChangeCard.tsx';
 import { Chronicle } from './Chronicle.tsx';
 import { FilingPanel } from './FilingPanel.tsx';
 import { MarginNote } from './MarginNote.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
-import { ProvenancePanel } from './ProvenancePanel.tsx';
+import { ProvenanceBlock } from './ProvenanceBlock.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { MIDDOT } from '../lib/format.ts';
 import { RevisionObject } from './RevisionObject.tsx';
-import type { ProvenanceView } from '../lib/provenance.ts';
+import type { WordFacts } from '../lib/provenance.ts';
 
 /**
  * BOOK-77 (audit F1) — the consent line says «Текст и имя в неё не попадают».
@@ -133,14 +133,13 @@ const CHANGE: ChangeDto = {
   decidedAt: '2026-10-25T12:05:00Z',
 };
 
-const VIEW: ProvenanceView = {
-  title: 'откуда это слово',
-  word: 'фонарь',
-  chapterLine: 'глава 08',
-  chain: [{ label: 'написано', value: `правка 3 · ${SENTINEL.name}` }],
-  rows: [{ label: 'след', value: `доля ${SENTINEL.name}` }],
-  copy: null,
-  action: { kind: 'rules', label: 'правила' },
+/** BOOK-128 comment #3815 — the word's block prints the hand, which may be a reader's name. */
+const FACTS: WordFacts = {
+  hand: SENTINEL.name,
+  when: 'с 25.10.2026, 15:05',
+  trace: 'пережила 4 ревизии',
+  gloss: null,
+  filing: null,
 };
 
 const RECORD: HistoryRecordDto = {
@@ -229,10 +228,9 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expectMasked(html, SENTINEL.body, '.revision');
   });
 
-  it('masks the provenance panel’s chain and rows', () => {
-    const html = renderToStaticMarkup(<ProvenancePanel view={VIEW} anchor={null} onClose={() => undefined} />);
-    expectMasked(html, `правка 3 · ${SENTINEL.name}`, '.prov-panel');
-    expectMasked(html, `доля ${SENTINEL.name}`, '.prov-panel');
+  it('masks the word’s margin block, whose hand may be a reader’s name', () => {
+    const html = renderToStaticMarkup(<ProvenanceBlock view={FACTS} failed={false} onFiling={() => undefined} />);
+    expectMasked(html, SENTINEL.name, '.prov-block');
   });
 
   it('masks the chronicle and refuses to name a reader on a record row', () => {
@@ -253,19 +251,25 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     );
   });
 
-  it('masks the paragraph chain, which names the reader who wrote each version', () => {
+  it('masks the phrase’s block, and names the record rather than the reader in it', () => {
     const html = renderToStaticMarkup(
-      <ParagraphChain
+      <SentenceBlock
         chain={CHAIN}
         loading={false}
         failed={false}
-        onClose={() => undefined}
+        quote={SENTINEL.quote}
+        frame="none"
+        place="flow"
         onRetry={() => undefined}
-        live
+        onClose={() => undefined}
       />,
     );
-    expectMasked(html, SENTINEL.name, '.chain');
-    expectMasked(html, `правкой 7 (${SENTINEL.name})`, '.chain');
+    // The layer prints the change's number, never the reader who made it — the name cannot leak
+    // from a fact the block does not print, and the root is masked all the same.
+    expect(html).toContain('правка · №7');
+    expect(html).not.toContain(SENTINEL.name);
+    expect(html).toContain('ym-hide-content');
+    expectMasked(html, SENTINEL.quote, '.sentence-block');
   });
 
   it('masks a filled premise slot, which shows the premise’s own first line', () => {

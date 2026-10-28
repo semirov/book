@@ -17,6 +17,7 @@
 import type {
   BlockRevisingPayload,
   CatalogEntry,
+  ChangeSummaryDto,
   ChapterDto,
   CommentDto,
   ComposerInfo,
@@ -30,6 +31,7 @@ import type { SeamDraft } from '../lib/draft.ts';
 import { livePassOf, liveRunOf, type LivePassSpec } from '../lib/passRail.ts';
 import { activeBlockId, blockText, type RevealState } from '../lib/reveal.ts';
 import { usePassStrip } from '../lib/usePassStrip.ts';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { LivePass } from './LivePass.tsx';
 import { PassStripSlot } from './PassStrip.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
@@ -45,6 +47,13 @@ export type ChapterProseProps = {
   caret: { show: boolean; live: boolean } | null;
   printing: boolean;
   comments: readonly CommentDto[];
+  /** BOOK-137: the thread's changes — a filing's number comes from its latest attempt. */
+  changes?: readonly ChangeSummaryDto[];
+  /**
+   * BOOK-128 #3815 — the phrase's facts as the page's one chain mode: the `⋯` door and its
+   * margin item belong to the paragraph, so the mode travels down rather than a page-root box.
+   */
+  sentence?: ParagraphChainMode;
   nowMs?: number;
   composer: ComposerInfo;
   viewer: ViewerDto;
@@ -52,7 +61,6 @@ export type ChapterProseProps = {
   /** The page's stage log for this chapter: what a running pass has written so far. */
   stages?: readonly PassStageEvent[];
   onPosted?: (comment: CommentDto) => void;
-  onProvenance?: (blockId: string, anchor: HTMLElement) => void;
   onReanchor: (draft: SeamDraft) => void;
 };
 
@@ -78,13 +86,14 @@ export function ChapterProse({
   caret,
   printing,
   comments,
+  changes,
+  sentence,
   nowMs,
   composer,
   viewer,
   history,
   stages,
   onPosted,
-  onProvenance,
   onReanchor,
 }: ChapterProseProps) {
   /** The pass whose renderer has already settled: its block is an ordinary paragraph again. */
@@ -129,11 +138,12 @@ export function ChapterProse({
                 text={text}
                 blockCount={chapter.blocks.length}
                 comments={comments}
+                changes={changes}
                 nowMs={nowMs}
                 composer={composer}
                 viewer={viewer}
                 onPosted={(comment) => onPosted?.(comment)}
-                onBlockProvenance={onProvenance}
+                sentence={sentence}
                 history={history}
                 onReanchor={onReanchor}
                 caret={caretBlockId === block.id ? { printing, live: caret?.live === true && !printing } : null}
@@ -148,7 +158,9 @@ export function ChapterProse({
                 span={run.span}
                 startAt={spec.startAt}
                 reduced={reduced}
-                prov={history && onProvenance !== undefined}
+                // The pass paints the same `⋯` door the ordinary paragraph paints — hidden and
+                // unreachable, so handing the block back moves no line (the door is inline).
+                prov={history && sentence !== undefined}
                 onSettled={() => setSettled(spec.key)}
               />
             )}

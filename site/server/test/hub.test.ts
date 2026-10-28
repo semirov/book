@@ -1,6 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig } from '../src/config.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
@@ -113,6 +113,11 @@ async function flush(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+// A `rig()` that throws inside a fake-timer case must not leave the rest of the file on them.
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('hello and connections', () => {
   it('sends hello once, after the upgrade, with the state version', async () => {
     const { hub, socket, close } = rig();
@@ -180,19 +185,35 @@ describe('backpressure', () => {
 
 describe('state throttling', () => {
   it('coalesces state:updated to the last payload in the window', async () => {
-    const { hub, socket, close } = rig({ stateThrottleMs: 30 });
-    await flush();
-    socket.sent = [];
+    // Only the throttle's own timer is faked: the hello still rides a real setImmediate, and the
+    // heartbeat interval stays real and is cleared by the real close path. The clock is frozen, so
+    // the window is `stateThrottleMs` by arithmetic, not by how long the publishes took.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { hub, socket, close } = rig({ stateThrottleMs: 30, now: () => new Date(0) });
+    try {
+      await flush();
+      socket.sent = [];
 
-    hub.publish('state:updated', { version: 2, reason: 'file' });
-    hub.publish('state:updated', { version: 3, reason: 'file' });
-    expect(socket.sent).toHaveLength(0);
+      hub.publish('state:updated', { version: 2, reason: 'file' });
+      hub.publish('state:updated', { version: 3, reason: 'file' });
+      expect(socket.sent).toHaveLength(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    const frames = socket.frames();
-    expect(frames).toHaveLength(1);
-    expect(frames[0]).toMatchObject({ type: 'state:updated', data: { version: 3 } });
-    close();
+      await vi.advanceTimersByTimeAsync(30);
+      const frames = socket.frames();
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({ type: 'state:updated', data: { version: 3 } });
+
+      // The window is the throttle itself: 29 ms after the send is too early, the 30th ms is not.
+      hub.publish('state:updated', { version: 4, reason: 'file' });
+      await vi.advanceTimersByTimeAsync(29);
+      expect(socket.frames()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(socket.frames()).toHaveLength(2);
+      expect(socket.frames()[1]).toMatchObject({ type: 'state:updated', data: { version: 4 } });
+    } finally {
+      close();
+      vi.useRealTimers();
+    }
   });
 });
 

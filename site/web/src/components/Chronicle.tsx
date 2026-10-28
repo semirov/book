@@ -1,17 +1,13 @@
-import type {
-  BookAtDto,
-  CatalogEntry,
-  HistoryChapterDto,
-  HistoryTimelineDto,
-} from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryTimelineDto } from '@book/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
+import { getHistoryAt, getHistoryTimeline } from '../api.ts';
 import { formatChars } from '../lib/format.ts';
 import { compareToNow, momentText } from '../lib/history.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
+import { PastChapter } from './ChroniclePast.tsx';
 import { MomentControl } from './MomentControl.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import { useParagraphChain } from '../useParagraphChain.ts';
@@ -58,20 +54,23 @@ export type ChronicleProps = {
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
   /**
-   * BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
+   * BOOK-168 — the record row's door: the chronicle holds no прицел, so a change the row names
+   * opens in this page's card. Optional: a surface that draws no card still lists rows.
+   */
+  onOpenChange?: (changeId: string) => void;
+  /** BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
    * exists from the book's start. Its one starting row is not a history surface and needs
-   * no reader change.
-   */
+   * no reader change. */
   started: boolean;
-  /**
-   * BOOK-56: `state.history.live` — the **reader-driven** flag. It gates the reader's
+  /** BOOK-56: `state.history.live` — the **reader-driven** flag. It gates the reader's
    * apparatus (here: the paragraph chain's reader names), never the record list: the
-   * chronicle lists every change to the book, a reader's filing and a pass alike.
-   */
+   * chronicle lists every change to the book, a reader's filing and a pass alike. */
   live: boolean;
+  /** BOOK-168 — the page's chapter read for the record's place door; a place it cannot show opens the card. */
+  onLoadChapter?: ChapterLoader;
 };
 
-export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live, onLoadChapter }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -80,16 +79,9 @@ export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleP
   const requested = useRef<number | null>(null);
   const requestId = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const {
-    chain,
-    loading: chainLoading,
-    failed: chainFailed,
-    active: chainActive,
-    anchor: chainAnchor,
-    open: openChain,
-    retry: retryChain,
-    close: closeChain,
-  } = useParagraphChain();
+  // BOOK-128 #3815 — the phrase's facts are the paragraph's own block, in flow: this surface has
+  // no margin channel, and a floating box over a past chapter would be a second surface.
+  const sentence = useParagraphChain();
 
   const refresh = useCallback(async () => {
     // A retry is a wait again (§4, §10): the failure block goes when the request starts, not
@@ -302,7 +294,8 @@ export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleP
                       n={chapter.n}
                       hseq={past.hseq}
                       title={chapter.title}
-                      onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
+                      sentence={sentence}
+                      live={live}
                     />
                   ))}
               </div>
@@ -324,7 +317,7 @@ export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleP
           </>
         )
       ) : (
-        <ChronicleRecords timeline={timeline} failed={failed} />
+        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
       )}
       {failed ? (
         <div className="state-line">
@@ -333,19 +326,6 @@ export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleP
             повторить
           </button>
         </div>
-      ) : null}
-
-      {/* The panel stays mounted for the whole open cycle: a failure must keep its retry. */}
-      {chainActive ? (
-        <ParagraphChain
-          chain={chain}
-          loading={chainLoading}
-          failed={chainFailed}
-          onClose={closeChain}
-          onRetry={retryChain}
-          anchor={chainAnchor}
-          live={live}
-        />
       ) : null}
     </section>
   );
@@ -365,10 +345,15 @@ export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleP
 export function ChronicleRecords({
   timeline,
   failed,
+  onOpenChange,
+  onLoadChapter,
 }: {
   timeline: HistoryTimelineDto;
   /** The last read failed: an absence is not claimed on top of it. */
   failed: boolean;
+  /** BOOK-168: the record's own door (the card), and the page's chapter read for its place. */
+  onOpenChange?: (changeId: string) => void;
+  onLoadChapter?: ChapterLoader;
 }) {
   if (timeline.items.length > 0) {
     return (
@@ -376,7 +361,7 @@ export function ChronicleRecords({
         {timeline.items.map((record) => (
           // BOOK-65: the key is the entry, not its moment — `hseq` moves when any event
           // lands for that change, and a remount would drop keyboard focus on a live tick.
-          <RecordRow key={record.id} record={record} />
+          <RecordRow key={record.id} record={record} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
         ))}
       </ol>
     );
@@ -401,63 +386,5 @@ export function ChronicleRecords({
         </ol>
       ) : null}
     </>
-  );
-}
-
-function PastChapter({
-  n,
-  hseq,
-  title,
-  onProvenance,
-}: {
-  n: number;
-  hseq: number;
-  title: string | null;
-  onProvenance: (blockId: string, anchor: HTMLElement) => void;
-}) {
-  const [chapter, setChapter] = useState<HistoryChapterDto | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [opened, setOpened] = useState(false);
-
-  useEffect(() => {
-    if (!opened) return;
-    let cancelled = false;
-    void getHistoryChapter(n, hseq)
-      .then((loaded) => {
-        if (!cancelled) setChapter(loaded);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [opened, n, hseq]);
-
-  return (
-    <details
-      className="past-ch"
-      onToggle={(event) => setOpened((event.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>
-        <span className="past-ch-n">{String(n).padStart(2, '0')}</span>
-        <span className="past-ch-title">{title ?? `глава ${n}`}</span>
-      </summary>
-      {failed ? <p className="chr-empty">глава не прочиталась</p> : null}
-      {chapter === null && !failed ? <p className="chr-empty">глава читается…</p> : null}
-      {chapter?.blocks.map((block) => (
-        <p className="p past-p" key={block.id} data-block-id={block.id}>
-          {block.text}
-          <button
-            type="button"
-            className="prov"
-            aria-label="откуда эта фраза"
-            onClick={(event) => onProvenance(block.id, event.currentTarget)}
-          >
-            ⋯
-          </button>
-        </p>
-      ))}
-    </details>
   );
 }

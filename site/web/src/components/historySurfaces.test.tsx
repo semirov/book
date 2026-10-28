@@ -17,16 +17,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { NBSP } from '../lib/format.ts';
 import { historyLive, historyStarted } from '../lib/historyState.ts';
-import { provenanceView } from '../lib/provenance.ts';
+import { wordFacts } from '../lib/provenance.ts';
 import type { Ribbon } from '../lib/cascade.ts';
 import { Chronicle } from './Chronicle.tsx';
 import { Discussion } from './Discussion.tsx';
 import { EndMatter } from './EndMatter.tsx';
 import { FocusWings } from './FocusWings.tsx';
 import { Opening } from './Opening.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
+import { ProvenanceBlock } from './ProvenanceBlock.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
+import type { ParagraphChainMode } from '../useParagraphChain.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
-import { ProvenancePanel } from './ProvenancePanel.tsx';
 
 /**
  * BOOK-56 — one fact, every history surface, and the book's own beginning.
@@ -167,6 +168,19 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 const noop = (): void => undefined;
 
+/** The page's one chain mode, as `App` hands it down (BOOK-128 comment #3815). */
+const SENTENCE_MODE: ParagraphChainMode = {
+  chain: null,
+  loading: false,
+  failed: false,
+  active: false,
+  openId: null,
+  anchor: null,
+  open: noop,
+  retry: noop,
+  close: noop,
+};
+
 /** The same page in every state; only the fixture's two facts differ. */
 function page(current: StateSnapshot): string {
   const live = historyLive(current);
@@ -195,14 +209,17 @@ function page(current: StateSnapshot): string {
       {chronicle ? (
         <Chronicle catalog={catalog} frontRev={1} tick={0} started={chronicle} live={live} />
       ) : null}
-      <ProvenancePanel
-        view={provenanceView({ word: 'пустую', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: CHAIN, at: null, history: 'ready', live })}
-        anchor={null}
-        onClose={noop}
-        onForm={noop}
-      />
+      {live ? (
+        <ProvenanceBlock
+          view={wordFacts({ variant: 'machine', actor: null, at: null, share: { kind: 'none' }, filing: null })}
+          failed={false}
+          onFiling={noop}
+        />
+      ) : null}
       <FocusWings wings={ribbon.wings} live={live} />
-      <ParagraphChain chain={CHAIN} loading={false} failed={false} onClose={noop} onRetry={noop} live={live} />
+      {live ? (
+        <SentenceBlock chain={CHAIN} loading={false} failed={false} quote={TEXT} frame="none" place="flow" onRetry={noop} onClose={noop} />
+      ) : null}
       <ProseParagraph
         entry={{ ...catalog[7]!, written: true, blocks: 1 }}
         blockId="ch08#aa11bb22"
@@ -214,7 +231,7 @@ function page(current: StateSnapshot): string {
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}
         onPosted={noop}
-        onBlockProvenance={noop}
+        sentence={SENTENCE_MODE}
         history={live}
       />
       <EndMatter
@@ -238,11 +255,10 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
       'class="chron',
       'class="ribbon',
       'волна',
-      'class="prov-rows"',
+      'class="prov-block"',
       'class="prov"',
-      '<dt>след</dt>',
-      'переписан',
-      'class="chain',
+      'class="sentence-block"',
+      'печатник',
       'authors-list',
       'authors-note',
       'Авторы',
@@ -267,11 +283,13 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
     expect(html).toContain('class="seam-rail"');
     // A filing's mark is the current state, not the log: it stays when history is off.
     expect(html).toContain('class="filing-mark');
-    // The provenance record keeps its word, its place and the way in — only what the log
-    // answers (the DNA rows and the chain) goes.
-    expect(html).toContain('откуда это слово');
-    expect(html).not.toContain('class="prov-chain"');
-    expect(html).toContain('вмешаться здесь');
+    // BOOK-128 comment #3815 — both layers are marginalia behind a door, and with history off
+    // the door is not rendered at all (a door to an empty room is worse than no door). What
+    // stays is the text's own way in: the rail.
+    expect(html).not.toContain('откуда это слово');
+    expect(html).not.toContain('откуда эта фраза');
+    expect(html).not.toContain('class="prov-block"');
+    expect(html).toContain('class="seam-rail"');
   });
 });
 
@@ -298,8 +316,8 @@ describe('a pending filing is visible at its anchor while history stays off (BOO
       'class="chronicle',
       'class="ribbon',
       'волна',
-      'class="prov-rows"',
-      'class="chain',
+      'class="prov-block"',
+      'class="sentence-block"',
       'authors-list',
       'authors-note',
       'Авторы',
@@ -319,7 +337,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
   it('renders the chronicle and its way in, and keeps every other history surface off', () => {
     expect(html).toContain('class="chronicle');
     expect(html).toContain('class="views');
-    for (const gone of ['class="ribbon', 'волна', 'class="prov-rows"', '<dt>след</dt>', 'class="chain', 'authors-list', 'authors-note', 'Авторы', 'class="page talks', 'focus-wings']) {
+    for (const gone of ['class="ribbon', 'волна', 'class="prov-block"', 'class="sentence-block"', 'authors-list', 'authors-note', 'Авторы', 'class="page talks', 'focus-wings']) {
       expect(html, `before the first reader change the page must not render «${gone}»`).not.toContain(gone);
     }
     // BOOK-60/BOOK-138: the download is book matter and survives the history gate.
@@ -387,16 +405,21 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
 describe('the first reader change turns every surface on (AC3)', () => {
   const html = page(state({ live: true, started: true }));
 
-  it('renders the chronicle, the cascade, the provenance rows and the revision apparatus', () => {
+  it('renders the chronicle, the cascade, the word’s facts and the phrase’s facts', () => {
     expect(html).toContain('class="chronicle');
     expect(html).toContain('class="ribbon');
     expect(html).toContain('волна 2');
     expect(html).toContain('class="focus-wings"');
-    expect(html).toContain('class="prov-rows"');
-    expect(html).toContain('<dt>след</dt>');
-    expect(html).toContain('переписан 1 раз после неё');
+    // BOOK-128 comment #3815 — the two layers are marginalia with three facts each, and their
+    // words are the book's own, not the panel's: no rows, no table, no uppercase label.
+    expect(html).toContain('class="prov-block');
+    expect(html).toContain('печатник');
+    expect(html).toContain('следа нет');
+    expect(html).toContain('class="sentence-block');
+    expect(html).toContain('правка · №7');
+    expect(html).not.toContain('class="prov-rows"');
+    expect(html).not.toContain('class="chain');
     expect(html).toContain('class="prov"');
-    expect(html).toContain('class="chain');
   });
 
   it('renders the authors list and the discussion, and no second door into the chronicle', () => {

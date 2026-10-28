@@ -102,6 +102,7 @@ describe('one entry per reader change (AC1)', () => {
       status: 'processing',
       outcome: null,
       reason: null,
+      sourceCommentId: seeded.commentId,
       changeId: seeded.changeId,
       recordHref: `#правка-${seeded.changeId}`,
       span: null,

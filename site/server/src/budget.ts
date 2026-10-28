@@ -162,6 +162,8 @@ export type PassSpendInput = {
   chapter: number | null;
   pass: 'draft' | 'change' | 'cascade' | 'front' | 'ending' | 'sweep';
   changeId: string | null;
+  /** Who ran the pass; the ledger and the steps row carry the same word (BOOK-117). */
+  provenance?: 'pipeline' | 'operator';
   /** The model the step closed with; null when no model ran (then the pass is not priced). */
   model: string | null;
   tokensIn: number;
@@ -175,7 +177,7 @@ export type PassSpendInput = {
  */
 export function passSpendOf(
   step: { step_id: string; chapter: number | null; pass: PassSpendInput['pass'] },
-  close: { model: string | null; tokensIn: number; tokensOut: number },
+  close: { model: string | null; tokensIn: number; tokensOut: number; provenance?: 'pipeline' | 'operator' },
   changeId: string | null,
   now: number,
 ): PassSpendInput {
@@ -185,6 +187,7 @@ export function passSpendOf(
     chapter: step.chapter,
     pass: step.pass,
     changeId,
+    provenance: close.provenance ?? 'pipeline',
     model: close.model,
     tokensIn: close.tokensIn,
     tokensOut: close.tokensOut,
@@ -221,8 +224,8 @@ export function usdOfModel(
 export function spendOfClose(
   db: Db,
   stepId: string,
-  reported: { model: string | null; tokensIn: number; tokensOut: number },
-): { model: string | null; tokensIn: number; tokensOut: number } {
+  reported: { model: string | null; tokensIn: number; tokensOut: number; provenance?: 'pipeline' | 'operator' },
+): { model: string | null; tokensIn: number; tokensOut: number; provenance: 'pipeline' | 'operator' } {
   const stages = db
     .prepare(
       `SELECT COALESCE(SUM(tokens_in), 0) AS tokensIn, COALESCE(SUM(tokens_out), 0) AS tokensOut,
@@ -242,6 +245,7 @@ export function spendOfClose(
     model: reported.model ?? stages.model ?? null,
     tokensIn: Math.max(reported.tokensIn, stages.tokensIn) + gates.tokensIn,
     tokensOut: Math.max(reported.tokensOut, stages.tokensOut) + gates.tokensOut,
+    provenance: reported.provenance ?? 'pipeline',
   };
 }
 
@@ -260,12 +264,14 @@ export function recordCloseSpend(
     model: string | null;
     tokensIn?: number;
     tokensOut?: number;
+    provenance?: 'pipeline' | 'operator';
   },
 ): boolean {
   const spend = spendOfClose(db, input.step.step_id, {
     model: input.model,
     tokensIn: input.tokensIn ?? 0,
     tokensOut: input.tokensOut ?? 0,
+    provenance: input.provenance ?? 'pipeline',
   });
   return recordPassSpend(db, passSpendOf(input.step, spend, input.changeId, input.now));
 }
@@ -284,8 +290,8 @@ export function recordPassSpend(db: Db, input: PassSpendInput): boolean {
   const result = db
     .prepare(
       `INSERT OR IGNORE INTO pass_spend
-         (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced)
-       VALUES (@at, @day, @passId, @chapter, @pass, @changeId, @model, @tokensIn, @tokensOut, @usd, @priced)`,
+         (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced, provenance)
+       VALUES (@at, @day, @passId, @chapter, @pass, @changeId, @model, @tokensIn, @tokensOut, @usd, @priced, @provenance)`,
     )
     .run({
       at: input.at,
@@ -299,6 +305,7 @@ export function recordPassSpend(db: Db, input: PassSpendInput): boolean {
       tokensOut: input.tokensOut,
       usd,
       priced: priced ? 1 : 0,
+      provenance: input.provenance ?? 'pipeline',
     });
   return result.changes === 1;
 }

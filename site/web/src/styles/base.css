@@ -32,6 +32,19 @@ body {
 a {
   color: inherit;
 }
+/* BOOK-168 — a place link wears the row's own words and ink: it is the door to the paragraph
+   the row talks about, so it is underlined like every other way in, never a second colour
+   competing with the quote it carries. */
+.place-link {
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.place-link:hover,
+.place-link:focus-visible {
+  text-decoration-color: var(--ink);
+}
 button {
   font: inherit;
   color: inherit;
@@ -116,6 +129,13 @@ h3 {
 .talks,
 .plate {
   scroll-margin-top: var(--offset-top);
+}
+/* BOOK-168 — a paragraph carries its own anchor (`#ch-N-bI`) beside `data-block-id`, so a
+   copied link to one paragraph lands as a tap on its quote does: at the reading line, and
+   never under the band the footer fixes over the bottom edge. */
+.p[id] {
+  scroll-margin-top: var(--offset-top);
+  scroll-margin-bottom: var(--offset-bottom);
 }
 
 /* labels: the voice of the form, never the voice of the book */

@@ -2,6 +2,7 @@ import type { CommentDto } from '@book/shared';
 import { useSyncExternalStore } from 'react';
 
 import { closeOverlay, registerOverlay } from './overlayRegistry.ts';
+import type { AnchorRect } from './popover.ts';
 
 /**
  * BOOK-111 (owner, 2026-10-27) — one panel at a time, page-wide.
@@ -33,10 +34,19 @@ export type OpenFiling = {
   comment: CommentDto | null;
   /** The element the tap came from, so focus can return there when the panel closes. */
   origin: HTMLElement | null;
-  /** The anchor the panel is placed against (the popover's own geometry). */
-  rect: DOMRect;
+  /**
+   * The anchor the panel is placed against (the popover's own geometry). A landing computes
+   * this rect **after** the scroll (`lib/place.ts`), so it is the four numbers the popover
+   * reads and not a live `DOMRect`.
+   */
+  rect: AnchorRect;
   /** A provenance panel's word; the rest of its view is computed by the paragraph. */
   word?: string;
+  /**
+   * BOOK-168 — the card's honesty line when the landing fell back to the chapter because the
+   * filing's paragraph is gone (`lib/place.ts`, `PLACE_NOTE`). Absent everywhere else.
+   */
+  note?: string | null;
   /**
    * The opener was inside `.seam` — computed by the caller from the element the tap landed in,
    * never guessed here: the store has no way to know what the DOM looks like.

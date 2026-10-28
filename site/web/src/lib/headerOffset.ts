@@ -10,7 +10,7 @@
  * tap and the reading line all land on the same edge.
  *
  * The bottom of the viewport has the same problem in reverse: a band the page fixes over the
- * bottom edge (the capacity plate, an open change card, the provenance chain, the notice
+ * bottom edge (the capacity plate, an open change card, the notice
  * ticket) covers the end of the book. `applyStickyOffsets` measures the tallest band that is
  * on the page and writes `--offset-bottom`, which the footer's `scroll-margin-bottom` reads and
  * the margin tail reserves as room, so a jump never lands under the band.
@@ -41,10 +41,12 @@ export const HEADER_SELECTOR = '.top';
 
 /**
  * The bands the page can fix over the viewport's bottom edge. The grip is the tallest one on
- * the page: the capacity plate (BOOK-75) is the one a reader normally meets, the change card
- * and the provenance chain are open over it, and the ticket is the smallest.
+ * the page: the capacity plate (BOOK-75) is the one a reader normally meets, the change card is
+ * open over it, and the ticket is the smallest. The provenance chain is not a band any more —
+ * BOOK-128 comment #3815 moved the word's and the phrase's records into the margin, where they
+ * scroll with the text.
  */
-export const BOTTOM_BANDS: readonly string[] = ['.capacity-plate', '.change-card', '.chain', '.ticket'];
+export const BOTTOM_BANDS: readonly string[] = ['.capacity-plate', '.change-card', '.ticket'];
 
 export const OFFSET_TOP_PROPERTY = '--offset-top';
 export const OFFSET_BOTTOM_PROPERTY = '--offset-bottom';
