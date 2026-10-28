@@ -96,7 +96,9 @@ function desktopDevice(): void {
 }
 
 function pointer(type: string, target: EventTarget, x: number, y: number, pointerId = 1): void {
-  target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId }));
+  target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId, isPrimary: true }),
+  );
 }
 
 /** One press, one release, no travel: a tap. */
@@ -264,7 +266,7 @@ describe('a thumb on the page (BOOK-111)', () => {
     // The reader taps another sentence: that is an explicit act, so the page moves the seam.
     const second = [...document.querySelectorAll<HTMLElement>('.p span[data-s]')].at(-1);
     expect(second).not.toBeUndefined();
-    await act(async () => pointer('pointerup', second as HTMLElement, 5, 5));
+    await act(async () => tap(second as HTMLElement, 5, 5));
     // One block, and it is the record of the second sentence — the first draft did not travel.
     expect(anyBlock()).toHaveLength(1);
     expect(document.querySelector('.rec')).not.toBeNull();
@@ -282,7 +284,7 @@ describe('a thumb on the page (BOOK-111)', () => {
 
     // A tap on another sentence is the reader's own act: the strip moves, the panel goes.
     const second = [...document.querySelectorAll<HTMLElement>('.p span[data-s]')].at(-1) as HTMLElement;
-    await act(async () => pointer('pointerup', second, 5, 5));
+    await act(async () => tap(second, 5, 5));
     expect(document.querySelector('.filing-panel')).toBeNull();
     // The tap is an explicit act: the record replaces the card and the strip in one commit.
     expect(anyBlock()).toHaveLength(1);

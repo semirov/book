@@ -11,6 +11,7 @@ import { closeSeam } from '../lib/useSeam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
 import { hideRevision } from '../lib/useRevision.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
+import { tapAt } from './tap.fixture.ts';
 
 /**
  * BOOK-128 #3863 / #3862 — the sentence's record.
@@ -18,8 +19,7 @@ import { ProseParagraph } from './ProseParagraph.tsx';
  * The jsdom claims are the contract the browser cannot make: one block, one close, one open
  * section, the sentence as the door (no `…` anywhere), the untouched record's single line, the
  * form and the receipt as states of the same body, a draft that survives, and the keyboard
- * shape (one tab stop, arrows, Enter as the toggle). Heights and the scroll policy are the
- * CDP harness's, because a transition is a browser's fact.
+ * shape (one tab stop, arrows, Enter as the toggle). The browser's facts are the CDP harness's.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -176,12 +176,12 @@ async function mount(comments: readonly CommentDto[] = []): Promise<void> {
   await frames();
 }
 
-/** A tap on the nth sentence: the sentence **is** the unit (ADR-044). */
+/** A tap on the nth sentence: the sentence **is** the unit (ADR-044); the whole gesture is sent. */
 async function tapSentence(index = 1): Promise<HTMLElement> {
   const span = [...document.querySelectorAll<HTMLElement>('.p [data-s]')][index];
   if (span === undefined) throw new Error('no sentence span');
   await act(async () => {
-    span.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4 }));
+    tapAt(span);
     for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
   });
   await frames();
@@ -255,7 +255,7 @@ describe('the record: the sentence is the door', () => {
     };
     doc.caretPositionFromPoint = () => ({ offsetNode: node, offset: at + 1 });
     await act(async () => {
-      span?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4 }));
+      tapAt(span as HTMLElement);
       for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
     });
     await frames();

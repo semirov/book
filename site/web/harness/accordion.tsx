@@ -16,7 +16,9 @@ import '../src/styles/panels.css';
 import '../src/styles/marginalia.css';
 import '../src/styles/reader.css';
 import '../src/styles/record.css';
+import '../src/styles/record-notice.css';
 import '../src/styles/focus.css';
+import '../src/styles/foot-jumps.css';
 
 /**
  * BOOK-128 comment #3852 — the CDP harness entry.
@@ -58,6 +60,8 @@ const params = new URLSearchParams(location.search);
 const WANTED = params.get('len') === null ? null : Number(params.get('len'));
 const TEXT = paragraphOf(Number.isFinite(WANTED) ? WANTED : null);
 const ROWS = Math.max(0, Math.min(8, Number(params.get('rows') ?? '0') || 0));
+/** The signed-out viewer: the record's `вмешаться` prints the product's own sign-in copy. */
+const SIGNED_OUT = params.get('out') === '1';
 
 /** The filings of sentence 1 — the reader's own first, then older others, for the fold. */
 const COMMENTS = Array.from({ length: ROWS }, (_, index) => ({
@@ -150,10 +154,58 @@ const CHAIN = {
   line: 'переписано правкой 12',
 };
 
-globalThis.fetch = async (input) =>
+/** The answer a submit gets: one filing, whatever `rows` the page mounted. */
+const POSTED = {
+  id: 'cmt_harness_posted',
+  chapter: 1,
+  anchor: {
+    blockId: 'ch01#harness',
+    blockIndex: 0,
+    quote: 'Её освещал яркий свет, и на столе лежал лист бумаги, на нём не было ни строки.',
+    prefix: null,
+    suffix: null,
+    resolved: true,
+  },
+  author: 'Филипп',
+  authorColor: '#6f9bb5',
+  body: 'в комнате должен быть свет, но не от лампы',
+  proposedText: null,
+  interventionKind: null,
+  status: 'new',
+  refusal: null,
+  attempt: null,
+  frame: null,
+  premise: false,
+  reason: null,
+  createdAt: '2026-10-28T12:00:00Z',
+  decidedAt: null,
+  changeId: null,
+  applied: null,
+};
+
+globalThis.fetch = async (input, init) =>
   String(input).includes('/api/history/paragraphs/')
     ? new Response(JSON.stringify(CHAIN), { status: 200, headers: { 'content-type': 'application/json' } })
-    : new Response('{}', { status: 404 });
+    : String(input).includes('/api/comments') && init?.method === 'POST'
+      ? // The submit is a page that answers late: the matrix presses the record while the
+        // request is still in flight, and a dead state must not be what the reader gets.
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve(
+                new Response(
+                  JSON.stringify({
+                    comment: POSTED,
+                    remaining: { perHour: 5, remaining: 2, resetAt: null, editsPerDay: 3, editsRemaining: 2 },
+                    queue: { depth: 1 },
+                  }),
+                  { status: 201, headers: { 'content-type': 'application/json' } },
+                ),
+              ),
+            1500,
+          ),
+        )
+      : new Response('{}', { status: 404 });
 
 const mount = document.getElementById('mount');
 if (mount === null) throw new Error('#mount is missing');
@@ -168,7 +220,7 @@ createRoot(mount).render(
     blockCount={1}
     comments={COMMENTS}
     composer={EMPTY_COMPOSER}
-    viewer={{ signedIn: true, displayName: 'Филипп' }}
+    viewer={{ signedIn: !SIGNED_OUT, displayName: SIGNED_OUT ? null : 'Филипп' }}
     onPosted={() => undefined}
     history
   />,
@@ -244,6 +296,8 @@ function tapSentence(index: number, word = false): { sentence: string; word: str
     clientY: rect.top + rect.height / 2,
     pointerId: 1,
     pointerType: 'mouse',
+    // The paragraph opens on the **primary** pointer's own release; the DOM's default is false.
+    isPrimary: true,
   };
   span.dispatchEvent(new PointerEvent('pointerdown', options));
   span.dispatchEvent(new PointerEvent('pointerup', options));
@@ -441,3 +495,190 @@ window.__accordion = {
   },
   wait: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
+
+/* ---------- the tap matrix (scripts/record-tap.mjs) ---------- */
+
+type Point = { x: number; y: number };
+
+/** How many times the block entered and left the page: one tap must be one mount, no ghost. */
+const mounts = { added: 0, removed: 0 };
+new MutationObserver((records) => {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (node instanceof Element && (node.matches('.rec') || node.querySelector('.rec') !== null)) mounts.added += 1;
+    }
+    for (const node of record.removedNodes) {
+      if (node instanceof Element && (node.matches('.rec') || node.querySelector('.rec') !== null)) mounts.removed += 1;
+    }
+  }
+}).observe(document.body, { childList: true, subtree: true });
+
+function sentenceSpans(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('p.p [data-s]')];
+}
+
+/** The first line's text box of a sentence: the point a finger lands on the prose itself. */
+function textRectOf(span: HTMLElement, chars = 10): DOMRect | null {
+  const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+  const node = walker.nextNode();
+  if (!(node instanceof Text)) return null;
+  const length = Math.min(chars, (node.nodeValue ?? '').length);
+  if (length === 0) return null;
+  const range = document.createRange();
+  range.setStart(node, 0);
+  range.setEnd(node, length);
+  return range.getClientRects()[0] ?? null;
+}
+
+function pointOnSentence(index: number, fraction = 0.5): Point {
+  const span = sentenceSpans()[index];
+  if (span === undefined) throw new Error(`no sentence ${String(index)}`);
+  const rect = textRectOf(span);
+  if (rect === null) throw new Error(`sentence ${String(index)} has no text box`);
+  return { x: Math.round(rect.left + Math.max(4, rect.width * fraction)), y: Math.round(rect.top + rect.height / 2) };
+}
+
+function centerOf(element: Element): Point {
+  const rect = element.getBoundingClientRect();
+  return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+}
+
+function gripHeight(): number {
+  const nav = document.querySelector<HTMLElement>('nav.foot-jumps');
+  if (nav === null) return 0;
+  return Math.round(Number.parseFloat(getComputedStyle(nav).getPropertyValue('--grip-h')) || 0);
+}
+
+window.__recordTap = {
+  ready: () => sentenceSpans().length > 1,
+  sentences: () => sentenceSpans().map((span) => ({ start: Number(span.dataset.s), text: span.textContent ?? '' })),
+  mounts: () => ({ ...mounts }),
+  pointOnSentence,
+  pointOf: (selector: string) => {
+    const element = document.querySelector(selector);
+    if (element === null) throw new Error(`no ${selector}`);
+    return centerOf(element);
+  },
+  count: (selector: string) => document.querySelectorAll(selector).length,
+  text: (selector: string) => document.querySelector(selector)?.textContent ?? null,
+  topOf: (selector: string) => {
+    const element = document.querySelector(selector);
+    return element === null ? null : Math.round(element.getBoundingClientRect().top * 100) / 100;
+  },
+  topOfText: (label: string) => {
+    const element = [...document.querySelectorAll<HTMLElement>('.rec-section')].find((node) =>
+      (node.textContent ?? '').includes(label),
+    );
+    return element === undefined ? null : Math.round(element.getBoundingClientRect().top * 100) / 100;
+  },
+  scan: (point?: Point) => {
+    const block = document.querySelector<HTMLElement>('.rec');
+    const form = document.querySelector<HTMLElement>('form[data-form]');
+    const field =
+      form?.querySelector<HTMLElement>(
+        'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), textarea',
+      ) ?? null;
+    const paragraph = document.querySelector<HTMLElement>('p.p');
+    let at: string | null = null;
+    if (point !== undefined) {
+      const hit = document.elementFromPoint(point.x, point.y);
+      if (hit === null) at = null;
+      else if (hit.closest('nav.foot-jumps') !== null) at = 'grip';
+      else at = hit.closest('[data-s]')?.getAttribute('data-s') ?? (hit.className || hit.tagName);
+    }
+    return {
+      rec: document.querySelectorAll('.rec').length,
+      acc: block?.getAttribute('data-acc') ?? null,
+      body: block?.getAttribute('data-body') ?? null,
+      form: form !== null,
+      firstField: field?.id ?? null,
+      focused: document.activeElement instanceof HTMLElement ? document.activeElement.id || document.activeElement.tagName : null,
+      firstFieldFocused: field !== null && document.activeElement === field,
+      draft: document.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value ?? null,
+      signin: document.querySelector('.seam-signin')?.textContent ?? null,
+      stateWord: document.querySelector('.rec-state')?.textContent ?? null,
+      submit: document.querySelector<HTMLElement>('.seam-submit')?.textContent ?? null,
+      touchAction: paragraph === null ? null : getComputedStyle(paragraph).touchAction,
+      scale: window.visualViewport?.scale ?? 1,
+      at,
+      scrollY: Math.round(window.scrollY),
+      innerHeight: window.innerHeight,
+      grip: gripHeight(),
+      recordTop: block === null ? null : Math.round(block.getBoundingClientRect().top),
+    };
+  },
+  /** Bring a sentence back on screen (the form scrolls the page under it). */
+  sentenceInto: (index: number) => {
+    sentenceSpans()[index]?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  },
+  /** Park a sentence's first line at the viewport's bottom edge, `gap` px above the grip. */
+  sentenceAtBottom: (index: number, gap = 4) => {
+    const span = sentenceSpans()[index];
+    if (span === undefined) throw new Error(`no sentence ${String(index)}`);
+    const rect = textRectOf(span);
+    if (rect === null) throw new Error('no text box');
+    const target = window.innerHeight - gripHeight() - gap;
+    window.scrollBy({ top: rect.top - target, behavior: 'auto' });
+  },
+  /** Scroll so the record's top sits at `top` (negative: partly above the viewport). */
+  recordTopAt: (top: number) => {
+    const block = document.querySelector<HTMLElement>('.rec');
+    if (block === null) throw new Error('no record');
+    window.scrollBy({ top: block.getBoundingClientRect().top - top, behavior: 'auto' });
+  },
+  scrollTop: () => window.scrollTo({ top: 0, behavior: 'auto' }),
+  scrollInto: (selector: string) => {
+    document.querySelector(selector)?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  },
+  typeInto: (selector: string, value: string) => {
+    const element = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
+    if (element === null) throw new Error(`no ${selector}`);
+    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(element, value);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  wait: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+declare global {
+  interface Window {
+    __recordTap: {
+      ready: () => boolean;
+      sentences: () => { start: number; text: string }[];
+      mounts: () => { added: number; removed: number };
+      pointOnSentence: (index: number, fraction?: number) => Point;
+      pointOf: (selector: string) => Point;
+      count: (selector: string) => number;
+      text: (selector: string) => string | null;
+      topOf: (selector: string) => number | null;
+      topOfText: (label: string) => number | null;
+      scan: (point?: Point) => {
+        rec: number;
+        acc: string | null;
+        body: string | null;
+        form: boolean;
+        firstField: string | null;
+        focused: string | null;
+        firstFieldFocused: boolean;
+        draft: string | null;
+        signin: string | null;
+        stateWord: string | null;
+        submit: string | null;
+        touchAction: string | null;
+        scale: number;
+        at: string | null;
+        scrollY: number;
+        innerHeight: number;
+        grip: number;
+        recordTop: number | null;
+      };
+      sentenceAtBottom: (index: number, gap?: number) => void;
+      sentenceInto: (index: number) => void;
+      recordTopAt: (top: number) => void;
+      scrollTop: () => void;
+      scrollInto: (selector: string) => void;
+      typeInto: (selector: string, value: string) => void;
+      wait: (ms: number) => Promise<void>;
+    };
+  }
+}

@@ -38,7 +38,8 @@
     "test:model": "node model-lane/run.mjs",
     "test:model:pass": "node model-lane/pass.mjs",
     "accordion:cdp": "node scripts/accordion-cdp.mjs",
-    "line:fonts": "node scripts/line-fonts-cdp.mjs"
+    "line:fonts": "node scripts/line-fonts-cdp.mjs",
+    "record:tap": "node scripts/record-tap.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -5,6 +5,7 @@ import { ApiError, postAnchoredComment, reviseComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, type SeamDraft } from '../lib/draft.ts';
+import { keepPlace } from '../lib/keepPlace.ts';
 import {
   NOTE_ACTION_LABEL,
   NOTE_BUDGET_LINE,
@@ -80,6 +81,21 @@ export function InterventionForm({
   const noteOnly = draft.noteOnly;
   /** BOOK-158: the form is correcting a refused filing, not making a new one. */
   const revise = draft.revisesId !== null;
+  /** BOOK-128 #3862 — the note's own button: the control the switch must not move. */
+  const noteRef = useRef<HTMLButtonElement>(null);
+  /**
+   * BOOK-128 #3862 — the form is the act the reader asked for: the first field takes the focus
+   * the moment it exists, so `вмешаться` is one tap and typing, never a second tap to find the
+   * caret. `preventScroll` keeps the browser from moving the block the compensation placed.
+   */
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    // The first **editable** field: the kind's radios are a choice, not the reader's text.
+    const field = formRef.current?.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), textarea',
+    );
+    field?.focus({ preventScroll: true });
+  }, []);
 
   /**
    * BOOK-63: `form_open` is the form the reader sees, once per mount. It carries nothing —
@@ -105,12 +121,17 @@ export function InterventionForm({
    * no kind, and the field is hidden while the note is open, so nothing leaks).
    */
   const toggleNote = (): void => {
-    if (noteOnly) {
-      onChange({ ...draft, noteOnly: false });
-      return;
-    }
-    onChange({ ...draft, noteOnly: true });
-    track('kind_pick', { kind: 'note' });
+    // BOOK-128 #3862 — the note takes the kind grid and «что это меняет» away above this very
+    // button: measure its place before and after the commit, and give the difference back to
+    // the page. The draft is the reader's, so nothing they typed is touched.
+    keepPlace(noteRef.current, () => {
+      if (noteOnly) {
+        onChange({ ...draft, noteOnly: false });
+        return;
+      }
+      onChange({ ...draft, noteOnly: true });
+      track('kind_pick', { kind: 'note' });
+    });
   };
 
   /**
@@ -183,7 +204,7 @@ export function InterventionForm({
 
   if (!viewer.signedIn) {
     return (
-      <div className="seam-signin">
+      <div className="seam-signin" data-signin>
         <p>войдите через Яндекс, чтобы оставить замечание</p>
         <a className="seam-cta" href="/auth/yandex/start">
           войти через Яндекс →
@@ -195,7 +216,9 @@ export function InterventionForm({
 
   return (
     <form
+      ref={formRef}
       className="seam-form ym-hide-content"
+      data-form=""
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -297,6 +320,7 @@ export function InterventionForm({
         {sending ? (revise ? 'исправляется' : 'передаётся') : revise ? REVISE_LABEL : submitLabel(draft)}
       </button>
       <button
+        ref={noteRef}
         type="button"
         className="note-action"
         aria-pressed={noteOnly}

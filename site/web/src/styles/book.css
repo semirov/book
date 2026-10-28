@@ -75,6 +75,7 @@
   text-wrap: pretty;
   overflow-wrap: break-word;
   white-space: pre-line;
+  touch-action: manipulation; /* BOOK-128 #3862 — the sentence is the tap: no double-tap zoom. */
 }
 /* The phone reads ragged-right: a justified 342px column with auto hyphenation opens rivers
    («Доста- / точно,   чтобы система»). The desktop keeps the justified measure; BOOK-DOC-35 §3
