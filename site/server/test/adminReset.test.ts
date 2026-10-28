@@ -154,6 +154,9 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     const keptMeta = db.prepare('SELECT k FROM meta ORDER BY k').all() as Array<{ k: string }>;
     expect(keptMeta.map((row) => row.k)).toEqual([
       'engine.heartbeat',
+      // The author marker is a fact about a person, not about the book: a launch reset keeps it,
+      // or the owner would silently become his own contributor again (owner, 2026-10-28).
+      'identities.is_author',
       'last_scan_at',
       'rights.backfill',
       'state_version',

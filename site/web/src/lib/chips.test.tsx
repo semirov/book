@@ -252,7 +252,7 @@ describe('the removed chips are gone from their surfaces', () => {
     authors: { count: 0, measuredAt: '2026-10-27T08:00:00Z' },
   };
 
-  const trace: MyTraceDto = { label: 'Аня', edits: 0, chars: 0, share: 0, series: [], hidden: false, survivedRevisions: 0 };
+  const trace: MyTraceDto = { label: 'Аня', edits: 0, chars: 0, share: 0, series: [], hidden: false, isAuthor: false, survivedRevisions: 0 };
 
   beforeAll(() => {
     // The theme is read from the document at first paint, as `colophon.test.tsx` does.

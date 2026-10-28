@@ -271,16 +271,25 @@ export function readDiff(db: Db, from: number, to: number, chapter?: number): Hi
  * The chronicle's contributor aggregate (§6C.5, §6F.4): the current share only. A day-by-day
  * curve is one reader's own behaviour, so it is served only to them (`MyTraceDto`), never in
  * a public list.
+ *
+ * The list is the end matter's list with the same shape of exclusion: an opt-out is not named,
+ * and neither is the imprint's own reader identity (`is_author = 1`, owner 2026-10-28) — the
+ * byline already names him, and two public answers about one measurement must not disagree.
+ * Neither exclusion touches `totalChars` or the shares: the author takes the remainder.
  */
 export function readContributors(db: Db): ContributorsDto {
   const { totalChars, items } = computeShares(db);
   const out: ContributorDto[] = [];
   for (const item of items) {
     const identity = db
-      .prepare('SELECT display_name, hide_from_authors FROM identities WHERE id = ?')
-      .get(item.identityId) as { display_name: string; hide_from_authors: number } | undefined;
+      .prepare('SELECT display_name, hide_from_authors, is_author FROM identities WHERE id = ?')
+      .get(item.identityId) as
+      | { display_name: string; hide_from_authors: number; is_author: number }
+      | undefined;
     // §6C.5: an opt-out keeps the contribution out of the list, not out of the measurement.
     if (identity?.hide_from_authors === 1) continue;
+    // The author's own identity: he is a reader, but the byline already names him (owner, 2026-10-28).
+    if (identity?.is_author === 1) continue;
     out.push({
       // Audit m3: the identity key joins a session and a rate bucket, so the public list
       // publishes its truncated hash instead (the same alias the end matter uses).
