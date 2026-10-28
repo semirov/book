@@ -90,6 +90,8 @@ describe('main', () => {
   it('runs one pass, exits 0, and counts the pass for the day', async () => {
     const harness = await createHarness();
     try {
+      // BOOK-166: the book is written only on a filing — the CLI asks for a chapter a reader filed.
+      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const lines: string[] = [];
       const code = await main({
@@ -122,6 +124,8 @@ describe('main', () => {
       writeFileSync(statePath, `${JSON.stringify({ date: today, passes: 1 })}\n`, 'utf8');
       expect(readPassState(harness.dataDir, today).passes).toBe(1);
 
+      // BOOK-166: the book is written only on a filing — the CLI asks for a chapter a reader filed.
+      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const lines: string[] = [];
       const code = await main({
@@ -147,6 +151,7 @@ describe('main — --revert and --dry-run', () => {
   it('reverts a landed chapter and exits 0', async () => {
     const harness = await createHarness();
     try {
+      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const first = await main({
         argv: ['--once', '--chapter', '20'],

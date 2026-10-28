@@ -31,6 +31,7 @@
  * this file only guards, maps refusals to statuses and answers with counts.
  */
 
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { TOTAL_CHAPTERS, type AdminHealthDto } from '@book/shared';
@@ -73,6 +74,54 @@ function guard(deps: RouteDeps, request: FastifyRequest, reply: FastifyReply): b
     return false;
   }
   return true;
+}
+
+/** The chapter a pass is asked for; anything but a whole number inside the book is refused. */
+function chapterOf(body: unknown): number | null {
+  if (body === null || typeof body !== 'object') return null;
+  const value = (body as { chapter?: unknown }).chapter;
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  if (value < 1 || value > TOTAL_CHAPTERS) return null;
+  return value;
+}
+
+/** A refusal the admin route maps to a status, carrying the engine's own code. */
+type EngineRefusalLike = Error & { code?: string };
+
+/**
+ * The production seam: the site asks the engine's loopback API with the engine's own token.
+ * The engine is the only writer of a step, so the admin surface opens nothing itself.
+ */
+function enginePassOf(deps: RouteDeps): (chapter: number) => Promise<{ stepId: string; chapter: number }> {
+  return async (chapter) => {
+    const token = deps.config.engineToken.length > 0 ? deps.config.engineToken : readTokenFile(deps);
+    const url = `http://127.0.0.1:${String(deps.config.enginePort)}/internal/pass`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ chapter, session: 'admin' }),
+    });
+    const body = (await response.json().catch(() => null)) as
+      | { code?: string; message?: string; data?: { stepId?: string; chapter?: number } }
+      | null;
+    if (!response.ok || body?.data?.stepId === undefined) {
+      const error = new Error(body?.message ?? `engine answered ${String(response.status)}`) as EngineRefusalLike;
+      error.code = body?.code ?? `ENGINE_HTTP_${String(response.status)}`;
+      throw error;
+    }
+    return { stepId: body.data.stepId, chapter: body.data.chapter ?? chapter };
+  };
+}
+
+/** The token file is read per call: an operator can rotate it without restarting the site. */
+function readTokenFile(deps: RouteDeps): string {
+  try {
+    return readFileSync(deps.config.engineTokenFile, 'utf8').trim();
+  } catch {
+    const error = new Error('движок недоступен: токен не прочитан — проверьте ENGINE_TOKEN_FILE') as EngineRefusalLike;
+    error.code = 'ENGINE_UNREACHABLE';
+    throw error;
+  }
 }
 
 /** The identity a body names, or the line the operator must fix. */
@@ -290,6 +339,41 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
         return reply.code(500).send({ code: error.code, message: error.message });
       }
       throw error;
+    }
+  });
+
+  /**
+   * BOOK-145: the owner can start a pass on demand instead of waiting for the loop — the show
+   * has to be startable («как посмотреть, как книга печатается»). Same token, same surface as
+   * `reset book`; the engine does the opening, so the guards are the engine's own.
+   */
+  app.post('/api/admin/pass/start', async (request, reply) => {
+    if (!guard(deps, request, reply)) return reply;
+    const chapter = chapterOf(request.body);
+    if (chapter === null) {
+      return reply.code(422).send({
+        code: 'INVALID_CHAPTER',
+        message: `chapter must be an integer 1..${String(TOTAL_CHAPTERS)}`,
+      });
+    }
+    const live = deps.db.prepare('SELECT COUNT(*) AS n FROM leases WHERE released_at IS NULL').get() as {
+      n: number;
+    };
+    if (live.n > 0) {
+      return reply.code(409).send({
+        code: 'PASS_RUNNING',
+        message: 'проход уже идёт — дождитесь закрытия или посмотрите его в /api/chapters/:n/stages',
+      });
+    }
+    try {
+      const opened = await (deps.enginePass ?? enginePassOf(deps))(chapter);
+      return reply.header('cache-control', 'no-store').send(opened);
+    } catch (error) {
+      const refusal = error as { code?: unknown; message?: unknown };
+      const code = typeof refusal.code === 'string' ? refusal.code : 'ENGINE_REFUSED';
+      const message = typeof refusal.message === 'string' ? refusal.message : 'движок отказал';
+      request.log.error({ err: error }, 'admin pass start refused');
+      return reply.code(code === 'ENGINE_UNREACHABLE' ? 502 : 409).send({ code, message });
     }
   });
 }

@@ -26,20 +26,20 @@
 
 import { readFileSync } from 'node:fs';
 
-import { CHAPTER_CHARS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
-import { createLane, finalize, mergeContinuation, charsOf, assignmentData, type Answer, type GateRun, type Lane, type PassResult, type ProviderCall } from './passLane.ts';
+import { createLane, finalize, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
-import { buildContinuePrompt, buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
 import { dryRunPlan } from './dryRun.ts';
+import { continueDraft, draftAnswer } from './answer.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import type { WriterMessage } from './provider.ts';
-import { failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
+import { codeOf, failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
@@ -86,6 +86,15 @@ function estimateLine(estimate: PassEstimate, budget: BudgetDto): string {
   return `[writer] оценка прохода $${usd4(estimate.usd)} (день ${day}, книга ${book})`;
 }
 
+/**
+ * BOOK-145: a step the engine already took away is not a failure of this pass.
+ *
+ * A step wall, a released lease, a step the engine closed itself: the text may be landed and the
+ * step is simply not ours any more. The lane says so in one line, asks `next` again immediately
+ * and never tries to close the dead step — a park there would be a second, false story.
+ */
+const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
+
 export type PassDeps = {
   config: WriterConfig;
   bookRoot: string;
@@ -101,49 +110,6 @@ export type PassDeps = {
   /** Lanes to ask for the next job, in order. Forward first: the book is written forward. */
   lanes?: Array<'fwd' | 'bwd'>;
 };
-
-/** The model's first answer, with one retry that carries the reason it was refused. */
-async function draftAnswer(lane: Lane, built: BuiltPrompt): Promise<Answer> {
-  const request: WriterMessage[] = [
-    { role: 'system', content: built.system },
-    { role: 'user', content: built.user },
-  ];
-  const first = await lane.ask('draft', request, 'draft');
-  const checked = lane.check(first.text, first.finishReason);
-  if (checked.ok) return checked;
-  const second = await lane.ask('repair', [
-    ...request,
-    { role: 'assistant', content: first.text.slice(0, 1_500) },
-    {
-      role: 'user',
-      content: `## Отказ\n\nПредыдущий ответ не прошёл проверку: ${checked.reason}.\nВерни главу заново, целиком: первая строка — название, вторая — пустая, дальше проза. Причину отказа учти.`,
-    },
-  ]);
-  return lane.check(second.text, second.finishReason);
-}
-
-/** Continuations keep writing until the chapter reaches the thin line or the budget stops it. */
-async function continueDraft(lane: Lane, input: { bookRoot: string; chapter: number; text: string; max: number }): Promise<string> {
-  let text = input.text;
-  let continuations = 0;
-  while (continuations < input.max && charsOf(input.chapter, text) < CHAPTER_CHARS.min) {
-    const continuation = buildContinuePrompt({ bookRoot: input.bookRoot, written: text });
-    const more = await lane.ask(
-      'continue',
-      [
-        { role: 'system', content: continuation.system },
-        { role: 'user', content: continuation.user },
-      ],
-      'continue',
-    );
-    const next = lane.check(mergeContinuation(input.chapter, text, more.text), more.finishReason);
-    // A continuation that breaks a rule is dropped: the chapter that validates already stands.
-    if (!next.ok || next.text.length <= text.length) break;
-    text = finalize(next.text);
-    continuations += 1;
-  }
-  return text;
-}
 
 /** Run one pass. Returns a typed result and never throws. */
 export async function runPass(deps: PassDeps): Promise<PassResult> {
@@ -211,7 +177,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     // A refusal before the lease is a fact about the day, not a parked pass.
     return { status: 'refused', reason: reasonOf(error) };
   }
-  if (picked === null) return { status: 'idle', reason: 'в полосе нет работы' };
+  if (picked === null) return { status: 'idle', reason: 'пока нечего писать: заявок нет' };
+  // BOOK-166: a pass exists only to serve a filing. A draft step the engine still hands out
+  // without one is refused here, never written: the lane does not invent work.
+  const filed = picked.changeId !== null && picked.changeId !== undefined
+    ? true
+    : (picked as { premise?: unknown }).premise !== null && (picked as { premise?: unknown }).premise !== undefined;
+  // A resumed landed step continues at the gates (BOOK-117): it writes nothing, so the
+  // filing rule does not refuse it — only the opening of a new draft does.
+  if (picked.pass === 'draft' && !filed && picked.landed !== true) {
+    deps.log('[writer] NO_FILING_FOR_CHAPTER: проход без заявки — не пишу');
+    return { status: 'refused', reason: 'глава не заказана заявкой — книга пишется только при воздействиях' };
+  }
 
   const job: WriterAssignment = picked;
   if (typeof job.chapter !== 'number') {
@@ -236,14 +213,30 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   if (estimate !== null) lane.setEstimate(estimate);
   let beforeText = '';
 
+  function goneOf(code: string | null, detail: string): PassResult | null {
+    if (code === null || !GONE_CODES.has(code)) return null;
+    deps.log(`[writer] шаг снят движком ${code}: ${detail.slice(0, 200)} — беру следующее задание`);
+    return {
+      status: 'gone',
+      stepId: job.stepId,
+      changeId: job.changeId,
+      reason: 'шаг снят движком — беру следующее задание',
+    };
+  }
+
+  /** The same check for a thrown engine refusal. */
+  function gone(error: unknown): PassResult | null {
+    return goneOf(codeOf(error), reasonOf(error));
+  }
+
   /** One gate round: the editor, then the consultant when the editor asks for no revision. */
-  async function gateRound(): Promise<
+  async function gateRound(refusal?: string | null): Promise<
     | { ok: true; editor: GateRun; consultant: GateRun | null; rightsClosed: boolean }
     | { ok: false; failure: Failure }
   > {
     try {
-      const editor = await lane.runGate('editor');
-      const consultant = editor.revise ? null : await lane.runGate('consultant');
+      const editor = await lane.runGate('editor', refusal ?? null);
+      const consultant = editor.revise ? null : await lane.runGate('consultant', refusal ?? null);
       // BOOK-61: Gate B last, and it may close the step itself — a refusal is a decision about
       // the text, so there is nothing left for this pass to finish.
       const rights = await lane.runRightsGate();
@@ -275,7 +268,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         started = await engine.start(job.leaseId);
       } catch (error) {
-        return await lane.park(failureOf(error));
+        return gone(error) ?? (await lane.park(failureOf(error)));
       }
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
       try {
@@ -336,7 +329,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       }
 
       // 7. The model: one answer, one retry with the reason, then the continuation calls.
-      const checked = await draftAnswer(lane, built);
+      const checked = await draftAnswer(lane, built, deps.log);
       if (!checked.ok) {
         // Only the model's own refusal of the work refuses the premise; a failed call, a cut
         // answer or a broken shape is a pass that broke, never the reader's intervention declined.
@@ -348,7 +341,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         });
       }
       text = finalize(checked.text);
-      text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax });
+      text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax }, deps.log);
 
       // 8. The write, and the landing that makes it a revision.
       try {
@@ -359,7 +352,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         await lane.land();
       } catch (error) {
-        return await lane.park(failureOf(error));
+        return gone(error) ?? (await lane.park(failureOf(error)));
       }
       // A landing drops the verdicts of the previous revision: every gate is asked again.
       answered.editor = false;
@@ -381,11 +374,15 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     let failed: Failure | null = null;
     for (;;) {
       let round = await gateRound();
-      if (!round.ok && isTransportFailure(round.failure)) {
-        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail} — повтор`);
-        round = await gateRound();
+      // A transport failure and a refused answer both get one retry; the parse failure carries
+      // its own reason back to the model, so the second answer can be the one that parses.
+      if (!round.ok && (isTransportFailure(round.failure) || round.failure.code === 'GATE_UNPARSED')) {
+        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail.slice(0, 200)} — повтор`);
+        round = await gateRound(round.failure.detail);
       }
       if (!round.ok) {
+        const stepped = goneOf(round.failure.code ?? null, round.failure.detail);
+        if (stepped !== null) return stepped;
         // A rights failure is not auxiliary: the step cannot close without an answer, so the
         // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
         const code = round.failure.code ?? '';
@@ -490,6 +487,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     );
     return result;
   } catch (error) {
+    const stepped = gone(error);
+    if (stepped !== null) return stepped;
     const parked = await lane.park(failureOf(error));
     lane.transcript(parked);
     return parked;

@@ -24,6 +24,9 @@ import { loadConfig, type Config } from '../../src/config.ts';
 import { databaseFile, openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
+import { admitPremise } from '../../src/engine/premise.ts';
+import { nextDraftChapter } from '../../src/engine/draft.ts';
+import { writtenChapters } from '../../src/engine/text.ts';
 import { createEngine, type DoneResult } from '../../src/engine/service.ts';
 import type { Clock, EngineAlert, EngineDeps } from '../../src/engine/types.ts';
 
@@ -94,6 +97,12 @@ export function createEngineFixture(options: {
   chapters?: Record<number, string>;
   front?: { title: string; about: string } | null;
   env?: Record<string, string>;
+  /**
+   * BOOK-166: the production rule is «no pass without a filing». Legacy engine tests were written
+   * before it and ask for a chapter directly, so the fixture plays the reader who filed on that
+   * chapter (`auto`, the default). A test about the rule itself says `manual` and files by hand.
+   */
+  filings?: 'auto' | 'manual';
 } = {}): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'book-engine-root-'));
   const manuscript = join(root, 'manuscript');
@@ -121,6 +130,29 @@ export function createEngineFixture(options: {
     alert: (alert) => alerts.push(alert),
   };
   const engine = createEngine(deps);
+  if ((options.filings ?? 'auto') === 'auto') {
+    // The fixture's reader: a filing on the chapter a legacy test asks to write.
+    const fileIfEmpty = (chapter: number): void => {
+      try {
+        fileOn({ db }, chapter);
+      } catch {
+        // A pending premise already exists (the partial unique index): nothing to do.
+      }
+    };
+    const nextRaw = engine.next.bind(engine);
+    engine.next = (input) => {
+      if (input.for === 'fwd' || input.for === 'bwd') {
+        const slot = nextDraftChapter(writtenChapters(root), input.for);
+        if (slot !== null) fileIfEmpty(slot);
+      }
+      return nextRaw(input);
+    };
+    const passRaw = engine.openChapterPass.bind(engine);
+    engine.openChapterPass = (chapter, session) => {
+      fileIfEmpty(chapter);
+      return passRaw(chapter, session);
+    };
+  }
 
   const writeChapter = (n: number, text: string): void => {
     writeFileSync(join(manuscript, `ch${String(n).padStart(2, '0')}.md`), text, 'utf8');
@@ -352,3 +384,18 @@ export function driveStub(fixture: Fixture, assignment: WriterAssignment, script
   });
   return { assignment, stepId: assignment.stepId, revisions, result };
 }
+
+/** BOOK-166: the book is written only on a filing — a draft step needs the reader's premise. */
+export function fileOn(fixture: { db: Db }, chapter: number): void {
+  admitPremise(fixture.db, {
+    id: `chg_filing_${String(chapter)}`,
+    kind: 'operator',
+    chapter,
+    intent: `замысел главы ${String(chapter)}: читатель просит начать с документа`,
+    interventionKind: 'document',
+    sourceComment: null,
+    sourceSession: null,
+    at: '2026-10-25T09:00:00Z',
+  });
+}
+

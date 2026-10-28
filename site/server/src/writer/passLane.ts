@@ -16,7 +16,7 @@ import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
-import { buildGatePrompt, parseGateAnswer, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
+import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
@@ -27,15 +27,11 @@ import { rightsRunner } from './rightsGate.ts';
 import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
+import { askGateAnswer } from './gateAnswer.ts';
+import { reviseAnswer } from './answer.ts';
 import type { WriterConfig } from './config.ts';
 
-/** The findings that reach a revision prompt: the prompt is not a transcript. */
-const MAX_FINDINGS_IN_PROMPT = 20;
-const MAX_FINDINGS_CHARS = 4_000;
-/** What of a rejected answer a retry is shown: enough to fix, not a second chapter. */
-const REJECTED_HEAD_CHARS = 1_500;
-
-export type PassStatus = 'closed' | 'idle' | 'parked' | 'refused';
+export type PassStatus = 'closed' | 'idle' | 'parked' | 'refused' | 'gone';
 
 export type PassResult = {
   status: PassStatus;
@@ -132,7 +128,8 @@ export type Lane = {
   transcript(result: PassResult): void;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
   check(value: string, finishReason?: string | null): Answer;
-  runGate(role: GateRoleName): Promise<GateRun>;
+  /** One gate; `refusal` is the reason a previous answer was not parsed, shown to the model once. */
+  runGate(role: GateRoleName, refusal?: string | null): Promise<GateRun>;
   runRightsGate(): Promise<RightsGateRun>;
   reviseText(findings: GateFinding[]): Promise<string | null>;
   usage(): PipelineUsage;
@@ -275,8 +272,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     try {
       await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
-      // The lease may already be gone (an expired pass): the refusal stays in the log, not the note.
-      input.log(`[writer] escalate refused: ${reasonOf(error)}`);
+      // The step may already be gone (an expired pass, a step wall): the escalate is a no-op
+      // with its own line, never a second park (BOOK-145).
+      const code = codeOf(error);
+      if (code === 'LEASE_RELEASED' || code === 'STEP_WALL' || code === 'STEP_CLOSED') {
+        input.log(`[writer] escalate пропущен (${code}): шаг уже закрыт движком`);
+      } else {
+        input.log(`[writer] escalate refused: ${reasonOf(error)}`);
+      }
     }
     await emit({
       stage: 'refused',
@@ -356,7 +359,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   }
 
   /** One gate: the dispatch, the prompt, the answer, the verdict. */
-  async function runGate(role: GateRoleName): Promise<GateRun> {
+  async function runGate(role: GateRoleName, refusal?: string | null): Promise<GateRun> {
     if (answered[role]) return { revise: false, findings: [] };
     let gate: GateAssignmentView | null;
     try {
@@ -365,29 +368,32 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
-    const gatePrompt = buildGatePrompt({
-      bookRoot,
-      role,
+    const gateAssignment = {
       chapter,
-      // The assignment as data, with the pass's cycle and the writer's own note.
-      assignment: {
-        chapter,
-        pass: job.pass,
-        intent: job.intent,
-        premise: job.premise,
-        cycle: gate.cycle,
-        role,
-        note: gate.note,
-      },
-      landedText: readChapter(bookRoot, chapter).text,
-      indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
+      pass: job.pass,
+      intent: job.intent,
+      premise: job.premise,
+      cycle: gate.cycle,
+      role,
+      note: gate.note,
+    };
+    const gateAnswer = await askGateAnswer({
+      role,
+      build: (hint) =>
+        buildGatePrompt({
+          bookRoot,
+          role,
+          chapter,
+          assignment: gateAssignment,
+          landedText: readChapter(bookRoot, chapter).text,
+          indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
+          refusal: hint,
+        }),
+      ask: (messages) => ask(role === 'editor' ? 'gate:editor' : 'gate:consultant', messages),
+      log: input.log,
+      refusal: refusal ?? null,
     });
-    const answer = await ask(role === 'editor' ? 'gate:editor' : 'gate:consultant', [
-      { role: 'system', content: gatePrompt.system },
-      { role: 'user', content: gatePrompt.user },
-    ]);
-    const parsed = parseGateAnswer(answer.text, role);
-    if (!parsed.ok) throw new PassRefusal(`${parsed.code}: ${parsed.reason}`.slice(0, 300), parsed.code);
+    const parsed = gateAnswer.parsed;
     let action: string;
     try {
       const verdict = await engine.verdict({
@@ -398,8 +404,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         findings: parsed.findings,
         // The pin, never the wire id: the verdict row is read by the ledger's arithmetic.
         model: config.model,
-        tokensIn: answer.usage.in,
-        tokensOut: answer.usage.out,
+        tokensIn: gateAnswer.usage.in,
+        tokensOut: gateAnswer.usage.out,
       });
       action = verdict.action;
     } catch (error) {
@@ -426,31 +432,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
     const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
-    const rows = findings
-      .slice(0, MAX_FINDINGS_IN_PROMPT)
-      .map((finding) => `${finding.severity} · ${finding.location} · ${finding.defect} · ${finding.fix}`)
-      .join('\n')
-      .slice(0, MAX_FINDINGS_CHARS);
-    const request: WriterMessage[] = [
-      { role: 'system', content: rebuilt.system },
-      {
-        role: 'user',
-        content: `${rebuilt.user}\n\n## Замечания гейтов\n\nВерни главу заново с учётом замечаний; готового текста не цитируй.\n\n${rows}`,
-      },
-    ];
-    const first = await ask('repair', request, 'repair');
-    let validated = check(first.text, first.finishReason);
-    if (!validated.ok) {
-      const reason = validated.reason;
-      const second = await ask('repair', [
-        ...request,
-        { role: 'assistant', content: first.text.slice(0, REJECTED_HEAD_CHARS) },
-        { role: 'user', content: `## Отказ\n\nПредыдущий ответ не прошёл проверку: ${reason}.\nВерни главу заново, целиком.` },
-      ]);
-      validated = check(second.text, second.finishReason);
-      if (!validated.ok) return null;
-    }
-    const revised = finalize(validated.text);
+    const revised = await reviseAnswer({
+      rebuilt,
+      findings,
+      ask: (messages) => ask('repair', messages, 'repair'),
+      check,
+      log: input.log,
+    });
+    if (revised === null) return null;
     writeText(revised);
     await land();
     return revised;

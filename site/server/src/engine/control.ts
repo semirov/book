@@ -18,6 +18,19 @@ import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
+/** `DB_BUSY` | `SCHEMA_MISMATCH` for a `better-sqlite3` error, `null` for anything else. */
+function databaseFailure(error: unknown): { code: string; status: number; message: string } | null {
+  const message = error instanceof Error ? error.message : '';
+  const code = error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : '';
+  if (code === 'SQLITE_BUSY' || /database is locked|database table is locked/u.test(message)) {
+    return { code: 'DB_BUSY', status: 503, message: 'база занята другим запросом — повторите' };
+  }
+  if (code.startsWith('SQLITE_') || /no such column|no such table/u.test(message)) {
+    return { code: 'SCHEMA_MISMATCH', status: 500, message: 'схема базы не совпадает с кодом — нужна миграция' };
+  }
+  return null;
+}
+
 export type ControlOptions = {
   engine: Engine;
   token: string;
@@ -409,7 +422,13 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     if (isEngineError(error)) {
       return reply.code(error.status).send({ code: error.code, message: error.message, detail: error.detail });
     }
+    // BOOK-145: a database error is not a caller's mistake, and a bare INTERNAL hid two real
+    // faults in prod («database is locked» on a stage, «no such column» on a close). Each gets a
+    // code an operator can act on: `DB_BUSY` is retryable, `SCHEMA_MISMATCH` means the binary and
+    // the file disagree and a migration is owed.
     request.log.error({ err: error }, 'engine request failed');
+    const db = databaseFailure(error);
+    if (db !== null) return reply.code(db.status).send({ code: db.code, message: db.message });
     return reply.code(500).send({ code: 'INTERNAL', message: 'internal error' });
   });
 

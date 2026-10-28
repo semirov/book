@@ -48,6 +48,11 @@ export type RouteDeps = {
   /** Empty means the admin surface does not exist (404), never an open panel (§17). */
   adminToken: string;
   /**
+   * BOOK-145: the admin trigger opens one pass on demand. Injected by a test; in production the
+   * route asks the engine's loopback API, which is the only writer of a step.
+   */
+  enginePass?: (chapter: number) => Promise<{ stepId: string; chapter: number }>;
+  /**
    * BOOK-137 (M1): called after a completed launch reset. The engine bridge holds in-memory
    * cursors over ids the wipe restarted, so it has to be re-primed, or the live chronicle goes
    * silent. Absent in tests and in a boot that has no bridge.

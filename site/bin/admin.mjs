@@ -5,6 +5,7 @@
  *   node bin/admin.mjs budget reset --identity <id|display-name|alias>
  *   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
  *   node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
+  node bin/admin.mjs pass start --chapter <n> [--url <url>]
  *
  * Why a CLI: the owner has to see the effect of a change *now*, while the product's rule is
  * one edit a day. The budget commands change budget state (the `rate_events` rows, the
@@ -46,14 +47,19 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_URL = 'http://127.0.0.1:8091';
+import { parsePassArgs, runPassStart } from './adminPass.mjs';
+import { post } from './adminPost.mjs';
+
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 
 const USAGE = `usage:
   node bin/admin.mjs budget reset --identity <id|display-name|alias>
   node bin/admin.mjs budget exempt <id|display-name|alias> on|off
   node bin/admin.mjs reset book [--dry-run | --yes] [--backup-ok] [--url <url>]
+  node bin/admin.mjs pass start --chapter <n> [--url <url>]
 
 flags:
+  --chapter <n>        pass start: which chapter to open now (1..the book's last)
   --identity <value>   budget: who (also accepted positionally)
   --yes                reset book: perform the wipe (without it the command is a dry run)
   --dry-run            reset book: counts only; the default, and refused together with --yes
@@ -67,6 +73,7 @@ token: ADMIN_TOKEN, else the file at ADMIN_TOKEN_FILE (when set), else <DATA_DIR
 exit: 0 done · 2 usage or config · 3 no admin token · 4 non-local target
       5 the server refused the command (MANUSCRIPT_WRITTEN, FRAME_MISSING, FRAME_NOT_BASIS,
         ENGINE_BUSY, INVALID, a refused token)
+        PASS_RUNNING, INVALID_CHAPTER, ENGINE_UNREACHABLE)
       6 DATA_DIR inside the checkout · 7 the backup failed and --backup-ok was not given
       (budget keeps 0/2/5)`;
 
@@ -210,13 +217,15 @@ export function parseResetArgs(argv) {
   return { kind: 'reset-book', dryRun: !yes, backupOk, ...(url === null ? {} : { url }) };
 }
 
-/** The one command parser: `--help`, the two budget forms, and the reset. */
+
+/** The one command parser: `--help`, the two budget forms, the reset, and the pass trigger. */
 export function parseCommand(argv) {
   const first = argv[0];
   if (first === undefined) throw new Error('no command given');
   if (first === '--help' || first === '-h' || first === 'help') return { kind: 'help' };
   if (first === 'budget') return parseBudgetArgs(argv);
   if (first === 'reset') return parseResetArgs(argv);
+  if (first === 'pass') return parsePassArgs(argv);
   throw new Error(`unknown command: ${first}`);
 }
 
@@ -327,28 +336,6 @@ function printResetResult(body) {
 }
 
 /** The one request both commands make: JSON in, JSON out, both halves of a refusal visible. */
-async function post(target, path, token, payload) {
-  const url = new URL(path, target);
-  let response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    return { error: `admin: cannot reach ${url.origin}: ${error.cause?.code ?? error.message}` };
-  }
-  const text = await response.text();
-  let body = null;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = null;
-  }
-  return { response, body };
-}
-
 async function runBudget(parsed, target, token) {
   const path = `/api/admin/budget/${parsed.kind === 'reset' ? 'reset' : 'exempt'}`;
   const result = await post(target, path, token, requestBody(parsed));
@@ -429,7 +416,7 @@ async function main(argv) {
 
   // BOOK-137: the reset distinguishes «no token» (3) from «not my machine» (4); the budget
   // contract keeps one code (2) for both, and that stays as it was.
-  const reset = parsed.kind === 'reset-book';
+  const reset = parsed.kind === 'reset-book' || parsed.kind === 'pass-start';
   let target;
   try {
     target = assertLocalTarget(parsed.url ?? process.env.BOOK_ADMIN_URL ?? DEFAULT_URL);
@@ -445,6 +432,7 @@ async function main(argv) {
     return reset ? 3 : 2;
   }
 
+  if (parsed.kind === 'pass-start') return runPassStart(parsed, target, token);
   return reset ? runReset(parsed, target, token) : runBudget(parsed, target, token);
 }
 
