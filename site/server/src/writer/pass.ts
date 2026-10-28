@@ -218,12 +218,12 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
   function goneOf(code: string | null, detail: string): PassResult | null {
     if (code === null || !GONE_CODES.has(code)) return null;
-    deps.log(`[writer] шаг снят движком ${code}: ${detail.slice(0, 200)} — беру следующее задание`);
+    deps.log(`lease released by the engine — taking the next filing (${code}: ${detail.slice(0, 120)})`);
     return {
       status: 'gone',
       stepId: job.stepId,
       changeId: job.changeId,
-      reason: 'шаг снят движком — беру следующее задание',
+      reason: 'lease released by the engine — taking the next filing',
     };
   }
 

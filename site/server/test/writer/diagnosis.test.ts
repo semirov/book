@@ -36,6 +36,21 @@ describe('a refused answer is a diagnosis, not a park', () => {
     }
   });
 
+  it('marks a refusal of the work itself as the filing’s, so the queue moves on at once', async () => {
+    const harness = await createHarness();
+    try {
+      harness.hooks.budget = null;
+      // Both answers refuse the task: the premise is the filing, and it is what was refused.
+      harness.script.push('Я не могу написать эту главу: это не моя задача.', 'Я не могу написать эту главу.');
+      const result = await harness.run({ chapter: CHAPTER });
+
+      expect(result.status).toBe('parked');
+      expect(result.filingRefused).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it('parks with the reason when the retry is refused too', async () => {
     const harness = await createHarness();
     try {

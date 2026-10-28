@@ -40,7 +40,12 @@ export type PassResult = {
   reason?: string;
   tokens?: { in: number; out: number };
   costUsd?: number;
+  /** BOOK-166: the *filing* was refused (auditor said no, frozen chapter) — the queue moves on. */
+  filingRefused?: boolean;
 };
+
+/** A step the engine already took away: a scheduling event, never a prose event. */
+export const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
 export type ProviderCall = (request: ProviderRequest) => Promise<ProviderResult>;
 
@@ -260,6 +265,16 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   async function park(why: ParkInput): Promise<PassResult> {
     // A coded failure the table does not know still owes the reader a sentence, not a code word.
     const code = why.code ?? null;
+    // BOOK-166: a released lease is not a failure — the step closed under us; one line, then next.
+    if (code !== null && GONE_CODES.has(code)) {
+      input.log('lease released by the engine — taking the next filing');
+      return {
+        status: 'gone',
+        stepId: job.stepId,
+        changeId: job.changeId,
+        reason: 'lease released by the engine — taking the next filing',
+      };
+    }
     const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };
     note = sentence;
@@ -272,8 +287,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     try {
       await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
-      // The step may already be gone (an expired pass, a step wall): the escalate is a no-op
-      // with its own line, never a second park (BOOK-145).
+      // A step already gone (expired pass, wall): the escalate is a no-op line, never a park.
       const code = codeOf(error);
       if (code === 'LEASE_RELEASED' || code === 'STEP_WALL' || code === 'STEP_CLOSED') {
         input.log(`[writer] escalate пропущен (${code}): шаг уже закрыт движком`);
@@ -294,6 +308,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
+      ...(why.cause === 'refused' ? { filingRefused: true } : {}),
       // The reader's sentence, not the code word (the code lives in the log and transcript).
       reason: sentence,
       tokens: { ...written },
