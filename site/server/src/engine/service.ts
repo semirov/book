@@ -247,8 +247,7 @@ export function createEngine(deps: EngineDeps) {
     if (step.landed_at === null) {
       refuse('NOT_LANDED', 409, 'a step closes on a landed file — call land first (§6A.11)');
     }
-    // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
-    // is asked now, on the way out, so no step closes without B having been offered the step.
+    // BOOK-61: a step that landed before Gate B existed carries no scan; it is asked now.
     const closing = ensureRightsScan(deps, step);
     const missing = missingVerdicts(db, closing);
     if (missing.length > 0) {
@@ -295,11 +294,14 @@ export function createEngine(deps: EngineDeps) {
 
     const change = changeForStep(db, step);
     const gates = store.listVerdicts(db, step.step_id);
-    // BOOK-76: a blocking consultant verdict below the cap must not close the step — revise and land again, or escalate. The ending escalates at close instead (ADR-024).
+    // BOOK-76: a blocking consultant GAP below the cap cannot close the step (ADR-024).
     if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'consultant')) {
       refuse('BLOCKER_UNRESOLVED', 409, 'the physics pass named a blocker on this text: revise it and land again, or escalate');
     }
-    // BOOK-76: an editor blocker publishes with its finding; a consultant blocker stops the step.
+    // BOOK-179: a major is not a taste either — an editor GAP below the cap cannot close it.
+    if (step.pass !== 'ending' && step.cycle < config.gateCycles && blockingVerdict(db, step.step_id, 'editor')) {
+      refuse('GAP_UNRESOLVED', 409, 'the editor named majors: revise it and land again, or escalate');
+    }
     const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
     const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');
 
@@ -309,8 +311,6 @@ export function createEngine(deps: EngineDeps) {
       step.pass === 'front'
         ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
         : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
-
-    // ADR-024: a GAP on the ending escalates — the fix is never another rewrite of the last chapter.
     const endingGap =
       step.pass === 'ending' &&
       gates.some(

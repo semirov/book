@@ -98,8 +98,14 @@ export function normalizeFindings(raw: unknown): Finding[] {
   return findings;
 }
 
+/** A blocker stops the step outright; a major demands a repair pass before any close. */
 export function hasBlocker(findings: readonly Finding[]): boolean {
   return findings.some((finding) => finding.severity === 'blocker');
+}
+
+/** BOOK-179: a major is not a taste. `HOLDS` means no majors and no blockers; minors are notes. */
+export function hasMajorOrBlocker(findings: readonly Finding[]): boolean {
+  return findings.some((finding) => finding.severity === 'blocker' || finding.severity === 'major');
 }
 
 /** Hand the step to a gate session, or resume the session that already holds it. */
@@ -153,7 +159,7 @@ export type RecordedVerdict = {
   verdict: VerdictRow;
   /** What the writer must do next. */
   action: 'close' | 'revise' | 'publish_with_finding';
-  /** 1 = the engine downgraded a blockerless GAP to HOLDS. */
+  /** 1 = the engine downgraded a minors-only GAP to HOLDS. */
   downgraded: boolean;
   late: boolean;
 };
@@ -190,9 +196,11 @@ export function recordVerdict(
   }
 
   const findings = normalizeFindings(answer.findings);
-  const downgraded = answer.verdict === 'GAP' && !hasBlocker(findings);
+  // BOOK-179 (the editor's finding, 2026-10-28): a GAP is downgraded only when **all** its
+  // findings are minors. A major survives: the chapter is not healthy, and the pass must repair.
+  const downgraded = answer.verdict === 'GAP' && !hasMajorOrBlocker(findings);
   const verdict: 'HOLDS' | 'GAP' = downgraded ? 'HOLDS' : answer.verdict;
-  const blocking = verdict === 'GAP' && hasBlocker(findings);
+  const blocking = verdict === 'GAP';
   const cycles = step.cycle;
   const late = dispatch.expires_at <= at;
 
@@ -262,7 +270,8 @@ export function missingVerdicts(db: Db, step: StepRow): MissingVerdict[] {
 export function blockingVerdict(db: Db, stepId: string, role: GateRole): boolean {
   const verdict = getVerdict(db, stepId, role);
   if (!verdict || verdict.verdict !== 'GAP') return false;
-  return hasBlocker(normalizeFindings(JSON.parse(verdict.findings) as unknown));
+  // After the downgrade rule a GAP always carries a major or a blocker: it blocks the close.
+  return hasMajorOrBlocker(normalizeFindings(JSON.parse(verdict.findings) as unknown));
 }
 
 /**

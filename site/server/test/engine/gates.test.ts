@@ -116,18 +116,35 @@ describe('the required-verdict rule (§6B.4)', () => {
     }
   });
 
-  it('downgrades a GAP without a blocker to HOLDS (a matter of taste cannot stall a step)', () => {
+  it('downgrades a minors-only GAP to HOLDS (a matter of taste cannot stall a step)', () => {
     const fixture = createEngineFixture();
     try {
       const assignment = draftOnce(fixture);
       const editor = answer(fixture, 'editor', 'GAP', [
-        { severity: 'major', location: 'глава 1', defect: 'would read better shorter', fix: 'cut' },
+        { severity: 'minor', location: 'глава 1', defect: 'would read better shorter', fix: 'cut' },
       ]);
       expect(editor).toMatchObject({ action: 'close', verdict: 'HOLDS', downgraded: true });
       const row = fixture.db
         .prepare(`SELECT verdict FROM gate_verdicts WHERE step_id = ? AND role = 'editor'`)
         .get(assignment.stepId) as { verdict: string };
       expect(row.verdict).toBe('HOLDS');
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('keeps a major a GAP and sends the writer back (BOOK-179)', () => {
+    const fixture = createEngineFixture();
+    try {
+      const assignment = draftOnce(fixture);
+      const editor = answer(fixture, 'editor', 'GAP', [
+        { severity: 'major', location: 'глава 1', defect: 'пять объяснений одного образа', fix: 'оставить одно' },
+      ]);
+      expect(editor).toMatchObject({ action: 'revise', verdict: 'GAP', downgraded: false });
+      const row = fixture.db
+        .prepare(`SELECT verdict FROM gate_verdicts WHERE step_id = ? AND role = 'editor'`)
+        .get(assignment.stepId) as { verdict: string };
+      expect(row.verdict).toBe('GAP');
     } finally {
       fixture.close();
     }

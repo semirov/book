@@ -1,9 +1,7 @@
 /**
- * What the pass needs from the outside world, per chapter: the model calls, the stages, the
- * pre-image, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
- *
- * `pass.ts` decides *what happens and in which order*; this file does the talking. Everything is
- * injected, so a test drives a real pass through a fixture engine and a scripted provider.
+ * What the pass needs from the outside world, per chapter: calls, stages, pre-image, transcript,
+ * gates (`docs/writer-lane.md` §1–§2, §5). `pass.ts` decides the order; this file does the
+ * talking, and everything is injected so a test drives it through a fixture engine.
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -28,6 +26,7 @@ import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import { askGateAnswer } from './gateAnswer.ts';
+
 import { reviseAnswer } from './answer.ts';
 import type { WriterConfig } from './config.ts';
 
@@ -161,8 +160,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let failure: Failure | null = null;
   let note: string | null = null;
 
-  /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
-   *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
+  /** Observability, not a fact: a sink that throws is logged, never fatal (owner, 2026-10-28). */
   async function emit(stage: StageEmitInput): Promise<void> {
     try {
       input.log(stageLogLine(stage.at, stage.stage, stage.summary));
@@ -263,7 +261,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** Park the pass: the note is a sentence, the log line and the transcript carry the code. */
   async function park(why: ParkInput): Promise<PassResult> {
-    // A coded failure the table does not know still owes the reader a sentence, not a code word.
     const code = why.code ?? null;
     // BOOK-166: a released lease is not a failure — the step closed under us; one line, then next.
     if (code !== null && GONE_CODES.has(code)) {
@@ -279,8 +276,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     failure = { code, detail: why.detail };
     note = sentence;
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
-    // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
-    // each gate's verdict row is added by the close. A park before the first call claims neither.
     const spent = calls.length === 0
       ? { tokensIn: 0, tokensOut: 0 }
       : { model: config.model, tokensIn: written.in, tokensOut: written.out };
@@ -316,7 +311,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     };
   }
 
-  /** `land`: a `STEP_CLOSED` or `FRAME_CHANGED` answer takes the text back (BOOK-137). */
+  /** `STEP_CLOSED` / `FRAME_CHANGED` takes the text back (BOOK-137). */
   async function land(): Promise<void> {
     try {
       await engine.land(job.leaseId);
@@ -331,7 +326,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
   }
 
-  /** Atomic: a reader never sees half a chapter, and `land` reads a whole file. */
+  /** Atomic: `land` always reads a whole file. */
   function writeText(value: string): void {
     const target = chapterPath(bookRoot, chapter);
     const staging = `${target}.tmp`;
@@ -339,7 +334,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     renameSync(staging, target);
   }
 
-  /** The pre-image, before the writer touches anything: what a revert puts back. */
+  /** The pre-image: what a revert puts back. */
   function preSnapshot(at: number): void {
     const dir = join(input.dataDir, 'writer', 'pre');
     mkdirSync(dir, { recursive: true });
@@ -354,7 +349,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     writeFileSync(join(dir, `ch${chapterLabel(chapter)}.json`), `${JSON.stringify(stamp, null, 2)}\n`, 'utf8');
   }
 
-  /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
+  /** Evidence, not the pass: requests, answers and hashes of the canon. */
   function transcript(result: PassResult): void {
     try {
       writeTranscript(input.dataDir, job.stepId, {
@@ -373,7 +368,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     return validateAnswer(value, { chapter, finishReason: finishReason ?? null });
   }
 
-  /** One gate: the dispatch, the prompt, the answer, the verdict. */
+  /** One gate: dispatch, prompt, answer, verdict. */
   async function runGate(role: GateRoleName, refusal?: string | null): Promise<GateRun> {
     if (answered[role]) return { revise: false, findings: [] };
     let gate: GateAssignmentView | null;
@@ -444,7 +439,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     return { revise: action === 'revise', findings: parsed.findings };
   }
 
-  /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
+  /** One revision of the landed text; throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
     const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
     const revised = await reviseAnswer({
