@@ -172,7 +172,8 @@ describe('feedback.mjs release — HELD back to new, and into the next batch', (
     const released = cli('release', id, '--by', 'operator-1', '--reason', 'это описание акта, не указание');
     expect(released.code).toBe(0);
     const row = readCommentRow(fixture.db, id);
-    expect(row).toMatchObject({ status: 'new', held_by: 'operator', guard: 'instruction' });
+    // BOOK-43: the audit trail keeps the rule that stopped the row, not only the flags.
+    expect(row).toMatchObject({ status: 'new', held_by: 'operator', held_rule: 'INJ-IMPERATIVE', guard: 'instruction' });
     expect(JSON.parse(row?.flags ?? '[]')).toEqual(['possible-instruction']);
     const releasedEvent = events(id).find((event) => event.type === 'released');
     expect(releasedEvent?.meta).toContain('это описание акта, не указание');
@@ -186,12 +187,46 @@ describe('feedback.mjs release — HELD back to new, and into the next batch', (
     expect(readCommentRow(fixture.db, id)?.status).toBe('batched');
   });
 
+  it('keeps a held row out of the batch, and it is the only item once released', () => {
+    const { fixture } = boot();
+    const id = seed('quarantined');
+
+    // BOOK-43: before the release the row is not in any batch — the hold is what keeps it out.
+    const empty = createBatch({ db: fixture.db, dir: dir ?? '', now: () => new Date('2026-10-27T12:05:00Z') });
+    expect(empty).toMatchObject({ code: 'EMPTY' });
+
+    expect(cli('release', id, '--reason', 'это описание акта, не указание').code).toBe(0);
+
+    const batch = createBatch({ db: fixture.db, dir: dir ?? '', now: () => new Date('2026-10-27T12:05:00Z') });
+    if ('error' in batch) throw new Error(`the batch was refused: ${batch.error}`);
+    expect(readBatchLines(dir ?? '', batch.batchId).map((item) => item.itemId)).toEqual([id]);
+  });
+
   it('refuses a row that is not held, a missing reason and a missing comment', () => {
     boot();
     const id = seed('new');
     expect(cli('release', id, '--reason', 'нечего снимать').code).toBe(1);
     expect(cli('release', id).code).toBe(2);
     expect(cli('release', 'cmt_absent', '--reason', 'нет такой строки').code).toBe(1);
+  });
+
+  it('refuses a rejected row that no rights gate refused, and keeps it closed', () => {
+    const { fixture } = boot();
+    const id = seed('new');
+    // BOOK-43: a posting-time shape/canon refusal — `rejected` with `decided_at` still null, no
+    // guard and no Gate B verdict — is not the operator's to lift; only the two releasable
+    // rights refusals are.
+    fixture.db.prepare(`UPDATE comments SET status = 'rejected' WHERE id = ?`).run(id);
+
+    const refused = cli('release', id, '--reason', 'мне кажется, это ошибка');
+    expect(refused.code).toBe(1);
+    expect(refused.out.join('\n')).toContain('status rejected');
+    expect(readCommentRow(fixture.db, id)).toMatchObject({
+      status: 'rejected',
+      decided_at: null,
+      rights_verdict: null,
+    });
+    expect(events(id).map((event) => event.type)).not.toContain('released');
   });
 
   it('reports an empty held inbox without an error', () => {
