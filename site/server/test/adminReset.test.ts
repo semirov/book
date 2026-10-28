@@ -64,6 +64,7 @@ describe('POST /api/admin/reset/book — the guard and the dry run', () => {
     expect(before.blocks).toBeGreaterThan(0);
     expect(before.block_versions).toBeGreaterThan(0);
     expect(before.block_lineage).toBeGreaterThan(0);
+    expect(before.sentences).toBeGreaterThan(0);
 
     const response = await h.call({ dryRun: true });
     expect(response.statusCode).toBe(200);
@@ -143,6 +144,8 @@ describe('POST /api/admin/reset/book — the wipe', () => {
       'revisions',
       'block_versions',
       'block_lineage',
+      'sentences',
+      'sentence_touches',
     ]) {
       expect(count(db, `SELECT COUNT(*) AS n FROM ${table}`), table).toBe(0);
     }

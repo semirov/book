@@ -8,10 +8,11 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, splitSentences } from '@book/shared';
 
 import type { Db } from '../src/db/db.ts';
 import { upsertIdentity } from '../src/db/repo/identities.ts';
+import { insertImportedSentences, touchSentence } from '../src/sentences/store.ts';
 import { longProse, type Fixture } from './helpers.ts';
 
 export const AT = '2026-10-25T12:00:00Z';
@@ -36,6 +37,17 @@ export function bookFiles(): Record<string, string> {
 /** Drop the written chapter's file, keeping its rows: the state after the operator cleaned it. */
 export function clearProse(target: Fixture): void {
   rmSync(join(target.manuscript, 'ch08.md'), { force: true });
+}
+
+/**
+ * The sentence count the seed wrote, recomputed with the shared segmenter rather than read from
+ * the store: the dry run's answer and the fixture's own number must not be the same SQL.
+ */
+function seededSentences(db: Db): number {
+  const block = db.prepare('SELECT text FROM blocks ORDER BY chapter, idx LIMIT 1').get() as
+    | { text: string }
+    | undefined;
+  return block === undefined ? 0 : splitSentences(block.text).length;
 }
 
 export function count(db: Db, sql: string): number {
@@ -142,6 +154,17 @@ export function seedBook(target: Fixture): string {
     `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, start, end)
      VALUES ('2065-09-14', '14.09.2065', 'ch08#seed0001', 'bkd_seed:1:0', 8, 'date', 0, 10)`,
   ).run();
+  // ADR-044: one segmented block and one touch, so the sentence counters are not zero by accident
+  // and the wipe has rows to remove.
+  const first = db.prepare('SELECT id, text FROM blocks ORDER BY chapter, idx LIMIT 1').get() as
+    | { id: string; text: string }
+    | undefined;
+  if (first !== undefined) {
+    const sentence = insertImportedSentences(db, { blockId: first.id, text: first.text, at: AT }).rows[0];
+    if (sentence !== undefined) {
+      touchSentence(db, { sentenceId: sentence.id, changeId: 'chg_one', kind: 'born', at: AT });
+    }
+  }
   const rate = db.prepare('INSERT INTO rate_events (key, ts) VALUES (?, ?)');
   rate.run(`edit:id:${owner}`, 1_760_000_000_000);
   rate.run('edit:ip:hash-one', 1_760_000_000_000);
@@ -187,6 +210,10 @@ export const CONTENT_KEYS = [
   'thread_events',
   'mentions',
   'literals',
+  // ADR-044: sentences are content, not a projection — a surviving row would name a span of text
+  // the reset deleted.
+  'sentences',
+  'sentence_touches',
   'overwrites',
   'contributions',
   'contribution_history',
@@ -228,6 +255,8 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     thread_events: 1,
     mentions: 1,
     literals: 1,
+    sentences: seededSentences(db),
+    sentence_touches: 1,
     overwrites: 0,
     contributions: 1,
     contribution_history: 1,

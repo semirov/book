@@ -6,9 +6,12 @@
  * they run entirely **before** the transaction, so a refusal costs no writes, no file and no
  * revision. What an accepted patch does, in one `db.transaction`: it rewrites the edited blocks
  * (`id`, `text`, `hash`; the id is content-derived, so a paragraph may hand it to another one and
- * the rename goes through a temporary prefix in two passes); it bumps the chapter's `rev`, sha,
- * chars, block count and `updated_at`; it drops and re-binds the mentions and literals of every
- * edited block (they are live-only, ADR-043 D3); it records whether the new text left a
+ * the rename goes through a temporary prefix in two passes); it transforms the sentence partition
+ * of every edited block with the same replacement (ADR-044, `sentences/transform.ts` — the ids
+ * survive a word fix, and a split, a merge and an erase are read off the boundaries); it bumps the
+ * chapter's `rev`, sha, chars, block count and `updated_at`; it drops and re-binds the mentions and
+ * literals of every edited block (they are live-only, ADR-043 D3) against the sentences just
+ * written; it records whether the new text left a
  * fact-shaped carrier unbound (L8 warning, never a refusal in this stage) and republishes the
  * chapter's gap (D9); it writes one `block_versions` row per edited block carrying **one span** and
  * a checkpoint text every eighth version (D5); and it appends the `chapter.revised` event and the
@@ -22,6 +25,7 @@ import { insertRevision } from '../db/repo/revisions.ts';
 import { checkpointText, newBlockUid, readLiveUids, recordPatchedBlock } from '../history/blocks.ts';
 import { appendEvent } from '../history/log.ts';
 import { blockId, normalizeForHash } from '../ingest/parseChapter.ts';
+import { applySentencePatch } from '../sentences/transform.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
 import { countUnboundFactShaped, unboundFactShaped } from './factShaped.ts';
@@ -155,6 +159,26 @@ export function applyPatch(input: ApplyPatchInput): ApplyPatchResult {
       dropLiterals.run(edit.block.id);
       dropLiterals.run(newId);
     }
+
+    // ADR-044 §2.2 (BOOK-182): the sentence partition is a derivative of the text, so the same
+    // replacement that moved the paragraph transforms it. Before the binding below, because a
+    // mention hangs on a sentence; after the rename above, because a block id is content-derived
+    // and a paragraph may hand its own to its neighbour.
+    applySentencePatch({
+      db,
+      chapter,
+      changeId,
+      at,
+      edits: resolved.map((edit) => ({
+        blockId: edit.block.id,
+        newBlockId: idOf.get(edit.block.id) ?? edit.block.id,
+        oldText: edit.block.text,
+        newText: edit.newText,
+        from: edit.from,
+        oldFragment: edit.edit.oldText,
+        newFragment: edit.edit.newText,
+      })),
+    });
 
     // The spans are built before the rows that name them: `span_id` is `uid:ver:0`, and the
     // mentions of the inserted text are written against it.

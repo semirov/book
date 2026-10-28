@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS facts (
   kind                  TEXT NOT NULL CHECK (kind IN ('document','decision','testimony','erasure','state')),
   statement             TEXT NOT NULL,
   term                  TEXT,                       -- canonical surface form used for mention binding
+  -- ADR-044: the sentence that carries this statement. Null for a row written before v25; no
+  -- REFERENCES clause (SQLite cannot add one by ALTER, and fresh and migrated installs must match).
+  sentence_id           TEXT,
   valid_from_chapter    INTEGER NOT NULL CHECK (valid_from_chapter BETWEEN 1 AND 67),
   invalidated_at        TEXT,                       -- ISO time; null while valid
   invalidated_by_change TEXT REFERENCES changes(id),
@@ -72,6 +75,8 @@ CREATE TABLE IF NOT EXISTS mentions (
   fact_id            TEXT REFERENCES facts(id),
   thread_id          TEXT REFERENCES threads(id),
   resolved_by_change TEXT,
+  -- ADR-044: the sentence that carries this mention; null for a row written before v25.
+  sentence_id        TEXT,
   -- ADR-043 D3: an asserted fact and a consumed one are different records. Stage 2 sets 'use'.
   role               TEXT CHECK (role IN ('assert','use')),
   witness            TEXT NOT NULL DEFAULT '',   -- the exact text at [start,end)
@@ -95,6 +100,8 @@ CREATE TABLE IF NOT EXISTS literals (
   span_id      TEXT,
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   mention_kind TEXT NOT NULL CHECK (mention_kind IN ('document','date')),
+  -- ADR-044: the sentence that carries this literal; null for a row written before v25.
+  sentence_id  TEXT,
   start        INTEGER NOT NULL,
   end          INTEGER NOT NULL
 );

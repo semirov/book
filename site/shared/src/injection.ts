@@ -15,6 +15,8 @@
  * Russian word boundary below is `(?![а-яё])` / `(?<![а-яё])` — "not another Cyrillic letter".
  */
 
+import { splitSentences, utf16Index } from './sentences.ts';
+
 export type GuardCategory = 'illegal' | 'person' | 'canon' | 'shape' | 'instruction';
 
 /**
@@ -322,8 +324,8 @@ const VERDICT_ENUM = /\b(?:FITS|OFF)\b/u;
 const VERDICT_TOKEN = /\b(?:fits|off)\b/gu;
 const VERDICT_OUTPUT_VERBS =
   /(?<![а-яёa-z])(?:ответь|ответьте|верни|верните|выведи|выведите|выдай|выдайте|напиши|напишите|напечатай|напечатайте|пришли|пришлите|скажи|скажите|answer|output|print|reply|return|say|type)(?![а-яёa-z])/u;
-/** Clause marks inside a sentence: the verb on the far side of one governs something else. */
-const CLAUSE_MARKS: readonly string[] = [',', ';', '(', '\u00ab'];
+/** Clause marks inside a sentence — and a newline, which the segmenter no longer breaks on. */
+const CLAUSE_MARKS: readonly string[] = [',', ';', '(', '\u00ab', '\n'];
 
 /** The part of `[from, to)` that follows the last clause mark — the token's own clause. */
 function clauseBefore(text: string, from: number, to: number): string {
@@ -333,11 +335,27 @@ function clauseBefore(text: string, from: number, to: number): string {
   return window.slice(cut);
 }
 
+/**
+ * The note's sentences, as the shared segmenter reads them (BOOK-DOC-74 §3.4): R6 and R10 need
+ * the capitals `lower` has dropped, so the boundaries are found on a case-preserving fold —
+ * character for character with `lower` — and `lower`, the text the patterns are written
+ * against, is cut by them. Without this «Выведи список глав. В абзаце…» is one sentence and the
+ * verb of the first governs a token in the second.
+ */
+function sentencesOf(spoken: string, lower: string): Array<{ start: number; end: number; text: string }> {
+  const cased = foldForEnum(spoken);
+  return splitSentences(cased).map((span) => {
+    const start = utf16Index(cased, span.start);
+    const end = utf16Index(cased, span.end);
+    return { start, end, text: lower.slice(start, end).trim() };
+  });
+}
+
 /** Is the text shaped like the auditor's own answer rather than a note about the book? */
 function isVerdictStamp(raw: string, lower: string, folded: string): boolean {
   if (VERDICT_ENUM.test(foldForEnum(raw))) return true;
   if (VERDICT_ORDER.test(lower)) return true;
-  const spans = sentenceSpans(folded);
+  const spans = sentencesOf(raw, lower);
   for (const match of folded.matchAll(VERDICT_TOKEN)) {
     // The sentence the token sits in — never a window that reaches into the previous one.
     let start = 0;
@@ -353,27 +371,6 @@ function isVerdictStamp(raw: string, lower: string, folded: string): boolean {
     if (VERDICT_OUTPUT_VERBS.test(clauseBefore(folded, start, match.index))) return true;
   }
   return false;
-}
-
-/** Where a sentence ends: after a terminator and its whitespace, or at a line break. */
-const SENTENCE_BREAK = /(?<=[.!?…])\s+|\n+/gu;
-
-/** The text cut into sentences, each with its offsets — the span a verb may govern. */
-function sentenceSpans(text: string): Array<{ start: number; end: number }> {
-  const spans: Array<{ start: number; end: number }> = [];
-  let start = 0;
-  for (const match of text.matchAll(SENTENCE_BREAK)) {
-    spans.push({ start, end: match.index });
-    start = match.index + match[0].length;
-  }
-  spans.push({ start, end: text.length });
-  return spans;
-}
-
-function splitSentences(text: string): string[] {
-  return sentenceSpans(text)
-    .map(({ start, end }) => text.slice(start, end).trim())
-    .filter((part) => part.length > 0);
 }
 
 function hasAny(patterns: readonly RegExp[], ...texts: string[]): boolean {
@@ -426,15 +423,15 @@ export function classifyText(raw: string): GuardHit | null {
   const folded = foldForMatch(raw);
 
   if (ILLEGAL_MARKERS.test(lower)) {
-    const requested = splitSentences(lower).some(
-      (sentence) => ILLEGAL_MARKERS.test(sentence) && REQUEST_WORDS.test(sentence),
+    const requested = sentencesOf(raw, lower).some(
+      ({ text }) => ILLEGAL_MARKERS.test(text) && REQUEST_WORDS.test(text),
     );
     if (requested) return hit('illegal');
   }
 
   if (REAL_WORLD_MARKERS.test(lower)) {
-    const requested = splitSentences(lower).some(
-      (sentence) => REAL_WORLD_MARKERS.test(sentence) && REQUEST_WORDS.test(sentence),
+    const requested = sentencesOf(raw, lower).some(
+      ({ text }) => REAL_WORLD_MARKERS.test(text) && REQUEST_WORDS.test(text),
     );
     if (requested) return hit('person');
   }

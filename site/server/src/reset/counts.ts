@@ -55,6 +55,10 @@ const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
   { key: 'thread_events', label: 'thread_events', sql: 'SELECT COUNT(*) AS n FROM thread_events' },
   { key: 'mentions', label: 'mentions', sql: 'SELECT COUNT(*) AS n FROM mentions' },
   { key: 'literals', label: 'literals', sql: 'SELECT COUNT(*) AS n FROM literals' },
+  // ADR-044: sentences are content, not a projection of the files — a reset that kept them would
+  // publish ids that name spans of blocks nobody can read any more.
+  { key: 'sentences', label: 'sentences', sql: 'SELECT COUNT(*) AS n FROM sentences' },
+  { key: 'sentence_touches', label: 'sentence_touches', sql: 'SELECT COUNT(*) AS n FROM sentence_touches' },
   { key: 'overwrites', label: 'overwrites', sql: 'SELECT COUNT(*) AS n FROM overwrites' },
   { key: 'contributions', label: 'contributions', sql: 'SELECT COUNT(*) AS n FROM contributions' },
   {
