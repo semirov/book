@@ -92,29 +92,134 @@ what tells two hosts (and a stale client) apart after a deploy. Counts, the vers
 and integrity live behind the admin token at `/api/admin/*`, which Caddy answers 404 for; reach it
 through `docker compose exec` or an SSH tunnel.
 
-## Deploy shape
+## Deploy shape (BOOK-172: one image, three services)
 
-One image, two entries (`server/dist/index.js`, `server/dist/engine.js`), one SQLite file in WAL, one
-Caddy in front. The repository is mounted read-only; only the data volume is writable. Secrets are files:
-the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`, `YANDEX_CLIENT_ID_FILE`,
-`YANDEX_CLIENT_SECRET_FILE`, and `CAPTCHA_SECRET_FILE` only when a captcha provider is chosen) and
-the values live in `0600` files. In
-`NODE_ENV=production` a secret supplied as a plain environment value is refused at boot (invariant 30),
-with no opt-out; development and tests may still pass the plain variable, and a mounted file wins over it.
+One image (`book:<40-char sha>`, never `latest`), three services from it — `site`
+(`server/dist/index.js`, published on the Mac's LAN address for Caddy on the home-server), `engine`
+(`server/dist/engine.js`, no published port) and `writer` (`server/dist/writer/main.js --loop`, no
+port). The data dir is the **host path** `/Users/filipp/book-site-data` bind-mounted at `/data`; the
+manuscript is read-only into `site` and `engine`, and only `manuscript/` is writable into `writer`.
+Secrets are files: the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`,
+`YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`, `CAPTCHA_SECRET_FILE` only when a captcha is
+chosen) and the values live in `0600` files mounted at `/run/secrets/…`. `site` and `engine` both get
+the session secret and the IP salt — the engine boots through the same `loadConfig()`, which refuses
+production without them. In `NODE_ENV=production` a secret supplied as a plain environment value is
+refused at boot (invariant 30), with no opt-out.
 
 Sign-in is optional (ADR-021). To enable it, put the client id in `secrets/yandex_client_id` and the
-client secret in `secrets/yandex_client_secret` (both `0600`), and point `YANDEX_CLIENT_ID_FILE` /
-`YANDEX_CLIENT_SECRET_FILE` at them — `./secrets/…` in `.env` for the launchd shape, `/run/secrets/…` in
-the compose service. To run without OAuth, mount neither and leave the variables out: the site stays
-readable and sign-in answers `503 OAUTH_UNCONFIGURED`.
+client secret in `secrets/yandex_client_secret` (both `0600`) and point `YANDEX_CLIENT_ID_FILE` /
+`YANDEX_CLIENT_SECRET_FILE` at them (`/run/secrets/…` for the compose services, `./secrets/…` in
+`.env` for the launchd fallback). To run without OAuth, mount neither: the site stays readable and
+sign-in answers `503 OAUTH_UNCONFIGURED`. Text rollback is unchanged (`bin/restore.mjs` for a chapter,
+then `bin/engine.mjs reconcile`); the paragraphs below are about code.
+
+| service | command | published | cpu / mem / pids | grace | healthcheck |
+| --- | --- | --- | --- | --- | --- |
+| site | `node server/dist/index.js` | `192.168.1.76:8091` → 8080 | 1.0 / 768 MiB / 256 | 20 s | `/healthz` 200, `ok:true` **and** the commit in `/app/build-info.json` |
+| engine | `node server/dist/engine.js` | none (compose network) | 1.0 / 768 MiB / 256 | 60 s | `/internal/health` with the bearer read from `/data/engine.token` |
+| writer | `node server/dist/writer/main.js --loop` | none | 2.0 / 1 GiB / 128 | 30 s | none — a portless lane that idles for 15 min between passes would flap |
+
+Caps are ceilings, not reservations: 4 of the VM's 10 CPUs and 2.5 of its 12 GiB, leaving the rest
+for `docker build` and the agents. Every service runs as `501:20` (the host data dir's owner), with a
+read-only root filesystem, `tmpfs /tmp`, `cap_drop: ALL` and `no-new-privileges`; logs are `json-file`
+rotated at 10 MiB × 3 files (the writer 20 MiB × 5). Measured on this box (bookworm-slim +
+better-sqlite3 as uid 501): WAL set, 300 inserts 4 ms, `wal_checkpoint(TRUNCATE)` busy=0, two
+concurrent writer containers × 400 rows → 800 rows, `integrity_check ok`, identical under
+`--read-only --tmpfs /tmp`.
+
+**Single instance.** Compose cannot create a second `book-<role>-1` in its project; `deploy/entrypoint.sh`
+adds the guard that covers everything else (another project, a stray `docker run`, a leftover launchd
+job): `flock -n /locks/<role>.lock`, and a refusal is exit 75 naming the holder. The lock dir is
+`~/.local/state/book-locks` — outside the data dir, so backups and the isolation guard never see it —
+and **it must exist before the first `up`, created by the invoking user (0755)**: Docker would create
+the bind source as root, uid 501 could not write its lock file, and every service would exit 75.
+`flip.sh` and `compose-release.sh` both do this and refuse a root-owned dir with the exact `sudo rm -rf`
+to run. A container left holding a lease is not a lock problem: `ENGINE_REAPER_MS=15000` expires a
+`LEASE_TTL_MS=120000` lease, `STEP_WALL_MS` (45 min) escalates a step, and `deploy/lane-check.sh` reads
+the engine's own state before anything is restarted. `docker compose restart writer` is the recovery.
+
+**Deploy and rollback** (the only way; `deploy.yml` runs it, a human runs the same script):
 
 ```sh
-docker compose build
-docker compose up -d book engine
-curl -fsS http://192.168.1.76:8090/healthz | jq '{commit,startedAt,watcher,engine}'   # the published LAN port
+site/deploy/compose-release.sh --ref main            # build book:<sha>, up -d --wait, health gate
+site/deploy/compose-release.sh --rollback            # one command back to the previous image
+site/deploy/compose-release.sh --status              # what runs, what it reports, which tags are kept
 ```
 
-Rollback: `bin/restore.mjs` for text, the previous image tag for code, then `engine.mjs reconcile`.
+Exit codes: `0` the new image serves its own commit and every service is healthy; `1` the run failed
+and the stack is back on the previous image (or could not be); `2` usage; `3` another deploy holds
+`$STATE_DIR/deploy.lock` — nothing was built, started or rolled back. Budget: `BOOK_HEALTH_TIMEOUT`
+180 s with a 60 s grace window, 200 ms polls; a rollback needs two independent negatives **for a
+health-window red** (the window spent its budget **and** a plain read does not name the built commit),
+while a service that is not running/healthy is decisive on its own. The build
+is bounded by `BOOK_BUILD_TIMEOUT` (1200 s). Images are pruned to the running one plus the 5 newest;
+`$STATE_DIR/previous-image` names the rollback target and `$STATE_DIR/last-good-image` the last image
+whose gate passed. **The gate runs no host `node`/`npm` and never mounts the data dir** — the full
+suite is CI's (`gate.yml`), which also ends the BOOK-159 race with the writer lane.
+
+**The flip** (documented once; `flip.sh` prints the same plan with `--dry-run`):
+
+```sh
+site/deploy/backup.sh                                        # a fresh consistent backup is required
+site/deploy/flip.sh --to compose --ref main --confirm        # launchd -> containers
+site/deploy/flip.sh --to launchd --confirm                   # back to the fallback
+```
+
+`--to compose` checks the backup is younger than an hour, stops the writer lane, then the site and the
+engine, removes the stale pre-BOOK-172 `book-site` container (8090 and its named volume; the volume
+stays until the cycle closes), runs `compose-release.sh`, and only after a green gate writes
+`$STATE_DIR/runtime=compose` and `launchctl disable`s the three jobs. A failed flip re-bootstraps
+launchd and leaves `runtime` alone, so the workflow keeps deploying the launchd way. The one host
+dependency that remains: **OrbStack must start at login** (`orb config set app.start_at_login true`),
+or a reboot leaves 8091 down until someone signs in.
+
+Two host facts worth knowing. OrbStack can leave the LAN publish of a *recreated* container dead while
+the container itself is healthy (measured here); `compose-release.sh` re-registers it with one
+`docker restart site` — only after two refused reads ~400 ms apart, never to "fix" a 200 naming the
+wrong commit. And if OrbStack rewrites the peer address of a LAN client to its own bridge gateway,
+every reader lands in one per-IP bucket: the read/comment/edit caps collapse to a single client.
+That cannot be measured from the host (a host-originated request to the published port is SNAT'd by
+design), and it cannot be read off the address either — the request log carries **no address**, only
+`peerTrusted: true|false`: whether the socket peer matched `TRUSTED_PROXIES` (i.e. whether
+`X-Forwarded-For` was believed). One boolean, no PII, and no secret — it says a bucket is real, not
+who is in it. So this is a **post-flip check that can fail**:
+
+```sh
+# one request through the real public path (Caddy -> the container), then read what the site recorded
+curl -fsS https://book.semirov.dev/healthz >/dev/null
+docker logs book-site-1 --since 5m 2>&1 | grep -c '"peerTrusted":false'
+```
+
+`0` — the proxy's peer is trusted, `X-Forwarded-For` is believed, per-IP buckets are real: nothing to
+do. `>0` — OrbStack rewrote the peer to the bridge gateway and every reader shares one bucket: add
+exactly `192.168.215.1/32` to `BOOK_TRUSTED_PROXIES` (never a /24, which would let every LAN machine
+forge its own address), redeploy, and run the same two commands again — it must read `0`.
+
+**Rehearsal (before any flip, prod untouched).** The same file, a spare port, a *copy* of the data dir
+and a *copy* of the manuscript:
+
+```sh
+R=$HOME/.local/state/book-172-rehearsal; mkdir -p "$R/data" "$R/secrets" "$R/locks"
+BACKUP_ROOT=$R/backups site/deploy/backup.sh                      # consistent snapshot (WAL)
+cp -a "$R/backups/daily/$(ls "$R/backups/daily" | tail -1)/." "$R/data/"
+cp -p "$HOME/book-site-data/engine.token" "$HOME/book-site-data/admin.token" "$R/data/"   # 0600
+cp -p site/secrets/session_secret site/secrets/ip_salt "$R/secrets/"; chmod 0700 "$R/secrets"
+rsync -a --exclude .git "$HOME/projects/book/" "$R/book/"         # a copy: the writer writes here
+
+export BOOK_SITE_PUBLISH=192.168.1.76:8092 BOOK_DATA_DIR="$R/data" BOOK_MANUSCRIPT="$R/book" \
+       BOOK_SECRETS_DIR="$R/secrets" BOOK_LOCKS_DIR="$R/locks" BOOK_PROJECT=book-rehearsal \
+       BOOK_STATE_DIR="$R/state" BOOK_IMAGE_REPO=book-rehearsal
+# BOOK_STATE_DIR and BOOK_IMAGE_REPO are not optional: with the prod state dir a rehearsal writes
+# phantom last-good-image/audit lines into it, and with the default image repo it rebuilds `book:<sha>`
+# — the very tag the next prod deploy builds from.
+# The locks dir must be rehearsal-private: pointed at the prod one, the running prod containers hold
+# the flock and every rehearsal service exits 75.
+# --root must be a git clone at the ref the image is built from; BOOK_COMPOSE_FILE may instead pin
+# the working tree under test (then the build context is that tree, not the clone).
+site/deploy/compose-release.sh --ref <sha> --root <a clone checked out at that ref>
+site/deploy/compose-release.sh --rollback                          # previous image, no rebuild
+docker compose --env-file /dev/null -f site/docker-compose.yml -p book-rehearsal down   # teardown
+```
 
 ## Configuration
 

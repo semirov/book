@@ -1,107 +1,205 @@
-# book.semirov.dev on the Mac mini (192.168.1.76); Caddy on the home-server (192.168.1.44)
-# proxies to it (ARCHITECTURE.md §14 Deployment shape). The port is published on the Mac's LAN
-# address as 192.168.1.76:8090 — explicitly not loopback (Caddy runs on another host, which
-# cannot reach this host's 127.0.0.1) and never 0.0.0.0 (the site is not reachable directly
-# from the internet) — and Caddy passes X-Forwarded-For.
+# book.semirov.dev on the Mac mini (192.168.1.76) — one image, three services (BOOK-172).
+#
+# This file is driven by `site/deploy/compose-release.sh` / `flip.sh`, NOT by a hand-typed
+# `docker compose up`: the release script always passes `--env-file /dev/null`, so the host's
+# `site/.env` (which carries launchd paths and, in a different shape, plain values) can never leak
+# into a service. Every value below is either a container path or an explicit `${BOOK_*}` override;
+# secrets are file paths only (invariant 30).
+#
+#   site       Fastify + the built SPA, published on the Mac's LAN address for Caddy on the
+#              home-server (192.168.1.44) — never 0.0.0.0, never loopback (Caddy is another host).
+#   engine     the internal writing API; no published port, reachable only on the compose network
+#              with a bearer token read from the data dir.
+#   writer     the writing lane (`--loop`); no port, no healthcheck (see below).
+#
+# State: the data dir is the HOST path, bind-mounted at /data. Measured on this box (bookworm-slim +
+# better-sqlite3 as uid 501): WAL set, 300 inserts 4 ms, `wal_checkpoint(TRUNCATE)` busy=0, two
+# concurrent writer containers × 400 rows → 800 rows, `integrity_check ok`, and the same under
+# `--read-only --tmpfs /tmp`. The host path keeps `deploy/backup.sh`, the launchd fallback and the
+# rollback free of any data migration. The manuscript is read-only into site and engine; the writer
+# gets one rw mount of `manuscript/` only.
+name: book
+
+x-book: &book
+  image: ${BOOK_IMAGE_TAG:-book:dev}
+  restart: unless-stopped
+  # The host data dir is owned by uid 501 (filipp): the process runs as its owner, so the 0600
+  # files stay readable by the launchd fallback and nothing is ever created as root.
+  user: "501:20"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  # The root filesystem is read-only; node's HOME and any scratch need a writable /tmp.
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=32m
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
-  book:
+  site:
+    <<: *book
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        # BOOK-109: the sha the image reports in `build-info.json` and on `/healthz`. The build
-        # context has no `.git`, so this is the only way an image names a commit; unset is
-        # honest — the image then says `dev` and is identified by its build stamp.
+        # BOOK-109/BOOK-172: the commit the image reports on `/healthz`. Passed by
+        # compose-release.sh as `<sha7>`; unset is honest (`dev`) and never happens in a release.
         BOOK_BUILD_COMMIT: ${BOOK_BUILD_COMMIT:-}
-    image: book-site:local
-    container_name: book-site
-    restart: unless-stopped
-    env_file: .env
+    command: ["node", "server/dist/index.js"]
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 256
+    stop_grace_period: 20s
+    ports:
+      # Caddy runs on 192.168.1.44 and cannot reach this host's loopback; the site is never
+      # published on 0.0.0.0 and never reachable from the internet directly.
+      - "${BOOK_SITE_PUBLISH:-192.168.1.76:8091}:8080"
+    volumes:
+      # The manuscript is read-only here: only the writer writes prose (§6.2).
+      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
+      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      # The single-instance lock files: deliberately OUTSIDE the data dir, so the BOOK-107 isolation
+      # guard, the backup snapshots and the launchd fallback never see a file that changes.
+      - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
+      # Secrets: per-file, 0600 on the host, mode preserved (compose `secrets:` would mount 0444).
+      - ${BOOK_SECRETS_DIR:-./secrets}/session_secret:/run/secrets/session_secret:ro
+      - ${BOOK_SECRETS_DIR:-./secrets}/ip_salt:/run/secrets/ip_salt:ro
     environment:
+      BOOK_ROLE: site
       NODE_ENV: production
       BOOK_ROOT: /book
       DATA_DIR: /data
       EXCHANGE_DIR: /data/exchange
+      ADMIN_TOKEN_FILE: /data/admin.token
+      # No FEEDBACK_DIR on purpose: the triage inbox is derived from EXCHANGE_DIR
+      # (`<data>/exchange/feedback`), the same place the launchd jobs and `bin/feedback.mjs` on the
+      # host already read and write. Pinning it to `/data/feedback` would move the inbox out from
+      # under that CLI.
+      WEB_DIST: /app/web/dist
+      IMPRINT_PATH: /app/config/imprint.json
       PORT: "8080"
       HOST: 0.0.0.0
-      WEB_DIST: /app/web/dist
-      IMPRINT_PATH: ./config/imprint.json
-      # BOOK-126: the gift link is PUBLIC — it is printed on the page, so it is a plain value,
-      # not a `_FILE` mount. Allowlisted at boot (https, host exactly t.tb.ru, no port, no
-      # credentials); an empty or refused value renders no row at all.
-      DONATE_URL: "https://t.tb.ru/pm_short/11T50nT6AL"
+      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://book.semirov.dev}
+      # A proxy is a host, not a subnet (audit m1). OrbStack *may* rewrite the peer address of a LAN
+      # client (then every reader looks like the bridge gateway and the per-IP caps collapse); that
+      # can only be measured from a second LAN host AFTER the flip — the check and the one-line fix
+      # (this variable gains `192.168.215.1/32`, never a /24) are in BOOK-DOC-67 § 7.
+      TRUSTED_PROXIES: ${BOOK_TRUSTED_PROXIES:-127.0.0.1/32,::1/128,192.168.1.44/32}
       WATCH_POLL_MS: "700"
-      # A proxy is a host, not a subnet (audit m1): a /24 would let every LAN machine name
-      # its own address inside X-Forwarded-For and dodge the per-IP limits.
-      TRUSTED_PROXIES: "127.0.0.1/32,::1/128,192.168.1.44/32"
-      # Secrets: paths in the environment, values in 0600 files (invariant 30, audit M2). A
-      # plain value in `.env` is refused at boot in production — it is visible in
-      # `docker inspect` and /proc/1/environ; the mounted file wins over it. There is no
-      # opt-out, so every secret this deployment uses needs a mount here.
+      # BOOK-126: the gift link is PUBLIC — printed on the page, so a plain value is correct here.
+      DONATE_URL: ${BOOK_DONATE_URL:-https://t.tb.ru/pm_short/11T50nT6AL}
+      METRIKA_ID: ${BOOK_METRIKA_ID:-113820311}
+      LOG_LEVEL: ${BOOK_LOG_LEVEL:-info}
+      BOOK_TZ: ${BOOK_TZ:-Europe/Moscow}
+      # Secrets: PATHS only. `/run/secrets/…` is the mount above; the value never enters the env,
+      # `docker inspect` or /proc/1/environ.
       SESSION_SECRET_FILE: /run/secrets/session_secret
       IP_SALT_FILE: /run/secrets/ip_salt
-      # BOOK-64: no challenge runs, so no captcha secret is mounted. A captcha that
-      # returns needs both CAPTCHA_SITE_KEY and a mounted CAPTCHA_SECRET_FILE — half of
-      # the pair is refused at boot.
+      # BOOK-64: no challenge runs, so no captcha secret is mounted.
       CAPTCHA_SECRET_FILE: ""
-      # Sign-in (ADR-021) is optional, so this template ships without it: empty means "no
-      # file", and the empty overrides also stop the host paths in `.env` from leaking into
-      # the image. To enable it, create both 0600 files, add `yandex_client_id` and
-      # `yandex_client_secret` under `secrets:` below, and point these two lines at
-      # /run/secrets/…; a site without OAuth keeps them empty — no mount, sign-in answers 503.
-      YANDEX_CLIENT_ID_FILE: ""
-      YANDEX_CLIENT_SECRET_FILE: ""
-    secrets:
-      - session_secret
-      - ip_salt
-    # Hardening (audit m7): drop capabilities and forbid privilege gain. The data volume is
-    # writable, the manuscript mount is read-only. (read_only on the root FS broke SQLite WAL —
-    # re-enable once the DB runs from a tmpfs or the WAL mmap is sorted.)
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      - "192.168.1.76:8090:8080"
-    volumes:
-      # manuscript: read-only, straight from the repository (outside ~/Documents: macOS TCC
-      # makes every non-approved process hang on that folder, container or launchd alike).
-      - /Users/filipp/projects/book:/book:ro
-      # SQLite lives on a Docker volume, NOT on a host bind mount: SQLite's WAL needs a
-      # shared-memory mmap, and virtiofs (OrbStack bind mounts) makes the WAL pragma hang.
-      # Backups are manual today (a scheduled job is BOOK-28):
-      # `docker run --rm -v book_book-data:/data -v $PWD:/out alpine tar czf /out/book-data.tgz -C /data .`
-      - book-data:/data
+      # Sign-in is optional (ADR-021): empty means "no file", and an empty value also stops a host
+      # path from arriving this way. To enable it, mount both 0600 files and point these at
+      # /run/secrets/{yandex_client_id,yandex_client_secret}.
+      YANDEX_CLIENT_ID_FILE: ${BOOK_YANDEX_CLIENT_ID_FILE:-}
+      YANDEX_CLIENT_SECRET_FILE: ${BOOK_YANDEX_CLIENT_SECRET_FILE:-}
     healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      # `ok:true` AND the commit this image carries (read from /app/build-info.json inside the
+      # image, not from a runtime env value).
+      test: ["CMD", "node", "/app/deploy/healthcheck.mjs", "site"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
+
+  engine:
+    <<: *book
+    command: ["node", "server/dist/engine.js"]
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 256
+    stop_grace_period: 60s
+    # No `ports:` on purpose: the internal API is never proxied and never reachable from the LAN.
+    volumes:
+      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
+      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
+      # BOOK-172: the engine boots through `loadConfig()`, which in production refuses to start
+      # without a session secret and an IP salt. Same two 0600 files as the site.
+      - ${BOOK_SECRETS_DIR:-./secrets}/session_secret:/run/secrets/session_secret:ro
+      - ${BOOK_SECRETS_DIR:-./secrets}/ip_salt:/run/secrets/ip_salt:ro
+    environment:
+      BOOK_ROLE: engine
+      NODE_ENV: production
+      BOOK_ROOT: /book
+      DATA_DIR: /data
+      ENGINE_TOKEN_FILE: /data/engine.token
+      HOST: 0.0.0.0
+      PORT: "8081"
+      # The owner's writing switch: `off` hands out no writer assignment.
+      DRAFTING: ${BOOK_DRAFTING:-on}
+      PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://book.semirov.dev}
+      LOG_LEVEL: ${BOOK_LOG_LEVEL:-info}
+      BOOK_TZ: ${BOOK_TZ:-Europe/Moscow}
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      IP_SALT_FILE: /run/secrets/ip_salt
+      CAPTCHA_SECRET_FILE: ""
+    healthcheck:
+      # The token-guarded endpoint, read with the same 0600 file the engine itself reads.
+      test: ["CMD", "node", "/app/deploy/healthcheck.mjs", "engine"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  writer:
+    <<: *book
+    command: ["node", "server/dist/writer/main.js", "--loop"]
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 128
+    stop_grace_period: 30s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    # The lane's own rotation: a pass logs every stage for up to 45 minutes, so it keeps more history
+    # than the two request-serving services (10 MiB x 3). Still `docker compose logs writer | grep`.
     logging:
       driver: json-file
-      options: { max-size: "10m", max-file: "3" }
-
-# Each file is 0600, owned by the operator, and lives outside the repository (`secrets/` is
-# gitignored). `docker compose up` fails on a missing file instead of booting without a
-# secret — the same fail-closed rule the config already enforces.
-secrets:
-  session_secret:
-    file: ./secrets/session_secret
-  ip_salt:
-    file: ./secrets/ip_salt
-  # Only when a captcha provider is chosen (BOOK-64: none by default):
-  # captcha_secret:
-  #   file: ./secrets/captcha_secret
-  # Sign-in only (optional): add these two when OAuth is enabled in the container.
-  # yandex_client_id:
-  #   file: ./secrets/yandex_client_id
-  # yandex_client_secret:
-  #   file: ./secrets/yandex_client_secret
-
-volumes:
-  book-data:
+      options:
+        max-size: "20m"
+        max-file: "5"
+    volumes:
+      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
+      # The one rw mount into the manuscript: the writer's own output. A nested mount wins over the
+      # read-only parent, so the rest of the tree stays unreadable-for-write.
+      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}/manuscript:/book/manuscript:rw
+      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
+      - ${BOOK_DEEPSEEK_KEY_FILE:-/Users/filipp/.config/book/deepseek.key}:/run/secrets/deepseek_key:ro
+    environment:
+      BOOK_ROLE: writer
+      NODE_ENV: production
+      BOOK_ROOT: /book
+      DATA_DIR: /data
+      ENGINE_TOKEN_FILE: /data/engine.token
+      WRITER_ENGINE_URL: http://engine:8081
+      WRITER_SESSION: writer
+      # Must restate `config/pipeline.json` (ADR-038); a different value is refused as
+      # MODEL_NOT_PIPELINE rather than silently pricing a model the pin does not know.
+      WRITER_MODEL: deepseek/deepseek-v4-pro
+      PIPELINE_PATH: /app/config/pipeline.json
+      DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_key
+      WRITER_DAILY_TOKENS: ${BOOK_WRITER_DAILY_TOKENS:-1500000}
+      WRITER_MAX_TOKENS_PER_CALL: ${BOOK_WRITER_MAX_TOKENS_PER_CALL:-32000}
+      BOOK_BUDGET_DAY_USD: ${BOOK_BUDGET_DAY_USD:-10}
+      BOOK_BUDGET_BOOK_USD: ${BOOK_BUDGET_BOOK_USD:-1000}
+      WRITER_MAX_PASSES_PER_DAY: ${BOOK_WRITER_MAX_PASSES_PER_DAY:-4}
+      WRITER_PAUSE_MS: ${BOOK_WRITER_PAUSE_MS:-900000}
+    # No healthcheck: the writer holds no port, and an idle lane is healthy while writing nothing
+    # for WRITER_PAUSE_MS (15 min) — an mtime probe would mark it unhealthy and `up -d` would then
+    # recreate a healthy process. Its liveness is the container state plus the engine's lease
+    # (LEASE_TTL_MS 120 s) and step wall (STEP_WALL_MS 45 min); see the runbook in BOOK-172.

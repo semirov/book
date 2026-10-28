@@ -90,15 +90,30 @@ jobs:
           fi
           # The library it sources ships beside it; a ref that predates the split has none.
           git -C "$root" show "${sha}:site/deploy/lib.sh" > "$dir/lib.sh" 2>/dev/null || rm -f "$dir/lib.sh"
+          # BOOK-172: the container runtime's driver, when the deployed ref has one. The runtime is a
+          # file the flip writes (`$STATE_DIR/runtime`), not a workflow input: a flip changes prod
+          # without a workflow edit, and a failed flip leaves it on `launchd`.
+          git -C "$root" show "${sha}:site/deploy/compose-release.sh" > "$dir/compose-release.sh" 2>/dev/null || rm -f "$dir/compose-release.sh"
+          state="${BOOK_STATE_DIR:-$HOME/.local/state/book-deploy}"
+          runtime="$(cat "$state/runtime" 2>/dev/null || echo launchd)"
+          driver="$dir/deploy.sh"
+          if [ "$runtime" = "compose" ]; then
+            driver="$dir/compose-release.sh"
+            if [ ! -s "$driver" ]; then
+              echo "::error::$state/runtime says compose, but ${sha:0:7} has no site/deploy/compose-release.sh — deploy a ref that does, or flip back to launchd"
+              exit 2
+            fi
+          fi
+          echo "runtime: $runtime (driver: $(basename "$driver"))"
 
           # No `exec`: exit 3 is a refusal, not a product failure. It means another deploy holds the
           # lock — nothing was checked out, built, published or restarted — so this run is green
           # with a notice, and the holder's own result stays the one that speaks about prod.
           set +e
           if [ "$ACTION" = "rollback" ]; then
-            /bin/bash "$dir/deploy.sh" --rollback --root "$root"
+            /bin/bash "$driver" --rollback --root "$root"
           else
-            /bin/bash "$dir/deploy.sh" --ref "$TARGET_REF" --root "$root"
+            /bin/bash "$driver" --ref "$TARGET_REF" --root "$root"
           fi
           code=$?
           set -e
