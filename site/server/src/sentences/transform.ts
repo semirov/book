@@ -11,6 +11,8 @@
  * The rule, one line per outcome (§2.3):
  *
  *   · a word fix inside a sentence — the id survives, `text_hash` moves, touch `text`;
+ *   · a sentence whose text survives whole keeps its id even when it changed order (touch
+ *     `moved`), which is the one outcome positional matching cannot see;
  *   · text inserted between two sentences — the new segment is born, the neighbours keep their
  *     ids and only their `start`/`end`/`idx` shift, no touch;
  *   · a terminator inserted inside a sentence — the **left** keeps the id (touch `split`), the
@@ -22,9 +24,12 @@
  *     re-attached, `erased_at` cleared, touch `moved`. That is how «deleted here, pasted there»
  *     reads as a move rather than as a death followed by a birth.
  *
- * How the old boundaries meet the new ones: every old row's `[start, end)` is **transformed** by
+ * How the old boundaries meet the new ones: a new segment whose words match an old sentence
+ * **exactly** takes that sentence's id first (a reorder, a move inside the block, a rewrite that
+ * kept a sentence) — identity is about the words, never about the slot they sit in. Only what is
+ * left is then matched positionally: every remaining old row's `[start, end)` is **transformed** by
  * the replacement (`end <= from` keeps its place, `start >= from + len(old)` shifts by the net
- * delta, an overlap is stretched over the new fragment), and every fresh segment of
+ * delta, an overlap is stretched over the new fragment), and every remaining fresh segment of
  * `splitSentences(newText)` is matched to the old rows it overlaps. That is why an insertion
  * before sentence 3 does not re-key sentences 3–6: their mapped intervals are the same intervals,
  * moved.
@@ -96,7 +101,14 @@ type Interval = { start: number; end: number };
 
 type Mapped = { row: SentenceRow; interval: Interval };
 
-type PairPlan = { row: SentenceRow; index: number; interval: Interval; textHash: string; touch: 'text' | 'split' | null };
+type PairPlan = {
+  row: SentenceRow;
+  index: number;
+  interval: Interval;
+  textHash: string;
+  /** `moved` for an unchanged sentence that changed order; null when its place did not change. */
+  touch: 'text' | 'split' | 'moved' | null;
+};
 
 type ClosePlan = { row: SentenceRow; into: string | null; place: number };
 
@@ -233,10 +245,50 @@ function transformBlock(
 
   // The block's text did not move, so no boundary moved either: the rows stand as they are.
   if (window === null) return;
-  const mapped: Mapped[] = live.map((row) => ({
-    row,
-    interval: mapInterval(row, window, cpLength(edit.oldText)),
-  }));
+
+  // **Exact content first.** A sentence whose words are still there, whole, keeps its id wherever
+  // it now stands — a reorder, a move inside the block, a rewritten block that kept some of its
+  // sentences. Positional overlap cannot see this: after a reorder the third sentence's slot
+  // holds the first sentence's words, and an id handed to a slot would follow the slot. Ties (the
+  // same sentence twice) go to the earliest old row and the earliest new segment — stable for a
+  // duplicate that simply stays put.
+  const pools = new Map<string, SentenceRow[]>();
+  for (const row of live) {
+    const pool = pools.get(row.text_hash);
+    if (pool === undefined) pools.set(row.text_hash, [row]);
+    else pool.push(row);
+  }
+  const exact = new Map<number, SentenceRow>();
+  segments.forEach((segment, index) => {
+    const row = pools.get(sentenceHash(segment.text))?.shift();
+    if (row !== undefined) exact.set(index, row);
+  });
+  // Their **relative order** is what `moved` means: a sentence pushed down by a neighbour's
+  // insertion, split or erase did not move, and one that jumped over a neighbour did. Ranks are
+  // taken over the surviving unchanged sentences only, so a sentence born or closed between two of
+  // them cannot make its neighbours look moved.
+  const rank = new Map([...exact.values()].sort((a, b) => a.idx - b.idx).map((row, position) => [row.id, position]));
+  const keepPlans: PairPlan[] = [...exact.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .flatMap(([index, row], position) => {
+      const segment = segments[index];
+      if (segment === undefined) return [];
+      return [
+        {
+          row,
+          index,
+          interval: { start: segment.start, end: segment.end },
+          textHash: row.text_hash,
+          touch: rank.get(row.id) === position ? null : ('moved' as const),
+        },
+      ];
+    });
+
+  // Only what is left goes through the positional rules below.
+  const taken = new Set([...exact.values()].map((row) => row.id));
+  const mapped: Mapped[] = live
+    .filter((row) => !taken.has(row.id))
+    .map((row) => ({ row, interval: mapInterval(row, window, cpLength(edit.oldText)) }));
   const byId = new Map(mapped.map((entry) => [entry.row.id, entry]));
 
   // The overlap graph, then its components: a component is one stretch of the old text and the
@@ -245,16 +297,18 @@ function transformBlock(
   const oldsByNew = new Map<number, string[]>();
   for (const entry of mapped) {
     segments.forEach((segment, index) => {
+      if (exact.has(index)) return;
       if (!overlaps(entry.interval, segment)) return;
       newsByOld.set(entry.row.id, [...(newsByOld.get(entry.row.id) ?? []), index]);
       oldsByNew.set(index, [...(oldsByNew.get(index) ?? []), entry.row.id]);
     });
   }
 
-  const pairPlans: PairPlan[] = [];
   const closePlans: ClosePlan[] = [];
   const bornPlans: BornPlan[] = [];
-  const visited = new Set<string>();
+  // The exact pairs are settled: marking their segments visited keeps the birth loop below from
+  // bringing them a second identity.
+  const visited = new Set<string>([...exact.keys()].map((index) => `n:${String(index)}`));
 
   for (const entry of mapped) {
     if (visited.has(`o:${entry.row.id}`)) continue;
@@ -308,7 +362,7 @@ function transformBlock(
       if (segment === undefined) continue;
       const textHash = sentenceHash(segment.text);
       const changed = textHash !== old.row.text_hash;
-      pairPlans.push({
+      keepPlans.push({
         row: old.row,
         index,
         interval: { start: segment.start, end: segment.end },
@@ -371,7 +425,7 @@ function transformBlock(
       LIMIT 1`,
   );
 
-  for (const plan of pairPlans) {
+  for (const plan of keepPlans) {
     updateLive.run(
       edit.newBlockId,
       plan.index,
@@ -384,7 +438,8 @@ function transformBlock(
     if (plan.touch === null) continue;
     touchSentence(db, { sentenceId: plan.row.id, changeId: input.changeId, kind: plan.touch, at: input.at });
     if (plan.touch === 'text') result.texts += 1;
-    else result.splits += 1;
+    else if (plan.touch === 'split') result.splits += 1;
+    else result.moved += 1;
   }
   // Closes are written before the births, so a sentence deleted and pasted back inside one patch
   // is found by the re-attachment below instead of being born a second time (ADR-044 T6).

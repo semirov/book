@@ -68,6 +68,17 @@ describe('the shared segmenter (BOOK-DOC-74 §3.2)', () => {
     ]);
     // An opener with no closer keeps the rest of the block inside it rather than guessing.
     expect(texts('Он начал: «первое. второе и всё.')).toEqual(['Он начал: «первое. второе и всё.']);
+    // A closer that stands one space after the terminator still closes the quotation there: the
+    // sentence ends at the terminal and the closer opens the next one (BOOK-68's fixture).
+    expect(texts('Он сказал: «Уходи. » Потом закрыл дверь.')).toEqual([
+      'Он сказал: «Уходи.',
+      '» Потом закрыл дверь.',
+    ]);
+    // Prose after an internal full stop is not a closing quote: the quotation stays one sentence.
+    expect(texts('Он прочёл: «Дело № 44/17. При себе иметь документ.» Дальше тишина.')).toEqual([
+      'Он прочёл: «Дело № 44/17. При себе иметь документ.»',
+      'Дальше тишина.',
+    ]);
   });
 
   it('R3 keeps the closer with the sentence it closes, and splits after it', () => {

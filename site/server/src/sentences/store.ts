@@ -62,10 +62,13 @@ export type ImportedSentences = { rows: SentenceRow[]; inserted: number };
  * Segment one block's text and store the rows — the migration's one-shot import, and the only
  * place a sentence is ever born without a patch (ADR-044 §5 step 2).
  *
- * Idempotent by block: a block that already has any sentence row is left untouched and its live
- * rows are returned with `inserted: 0`. The spans come from the shared segmenter, so the migration
- * and the client cannot disagree about where a sentence ends; `seg_version` records which rule set
- * cut them, and `text_hash` is the content attribute a later re-attachment compares.
+ * Idempotent by block: a block that already has **live** rows is left untouched and those rows are
+ * returned with `inserted: 0`. A block with only closed rows is a paragraph that came back after it
+ * left the chapter — a new life, so it is segmented afresh (the closed rows stay as history).
+ *
+ * The spans come from the shared segmenter, so the ingest and the client cannot disagree about
+ * where a sentence ends; `seg_version` records which rule set cut them, and `text_hash` is the
+ * content attribute a later re-attachment compares.
  *
  * `at` is accepted for the call site's symmetry with `touchSentence` and is deliberately not
  * stored: the sentence rows carry no timestamp of their own, and the migration writes no touch —
@@ -76,7 +79,7 @@ export function insertImportedSentences(
   input: { blockId: string; text: string; at?: string },
 ): ImportedSentences {
   const existing = listLiveSentences(db, input.blockId);
-  if (blockHasSentences(db, input.blockId)) return { rows: existing, inserted: 0 };
+  if (existing.length > 0) return { rows: existing, inserted: 0 };
 
   const insert = db.prepare(
     `INSERT INTO sentences (id, block_id, idx, start, end, text_hash, seg_version, split_from, merged_into, erased_at)

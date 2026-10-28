@@ -88,15 +88,16 @@ const DIGIT = /\p{N}/u;
 const isSpace = (char: string | undefined): boolean => char !== undefined && /\s/u.test(char);
 
 /**
- * R2 — the quote depth *before* each code point, from a scan of the whole text (a local regex
- * cannot see that a terminator is four full stops deep inside a notice). A `"` toggles, so a
- * lone `"` still opens and closes; an unmatched opener keeps the rest of the block inside it.
+ * R2 — for every code point, the closer its innermost open quote waits for (absent outside a
+ * quote), from a scan of the whole text: a local regex cannot see that a terminator is four
+ * full stops deep inside a notice. A `"` toggles, so a lone `"` still opens and closes; an
+ * unmatched opener keeps the rest of the block inside it.
  */
-function quoteDepths(cps: readonly string[]): number[] {
-  const depth: number[] = new Array<number>(cps.length + 1).fill(0);
+function quoteTops(cps: readonly string[]): Array<string | undefined> {
+  const tops: Array<string | undefined> = new Array<string | undefined>(cps.length + 1).fill(undefined);
   const stack: string[] = [];
   for (let index = 0; index < cps.length; index += 1) {
-    depth[index] = stack.length;
+    tops[index] = stack[stack.length - 1];
     const char = cps[index] as string;
     if (stack[stack.length - 1] === char) {
       stack.pop();
@@ -105,8 +106,15 @@ function quoteDepths(cps: readonly string[]): number[] {
     const closer = QUOTES[char];
     if (closer !== undefined) stack.push(closer);
   }
-  depth[cps.length] = stack.length;
-  return depth;
+  tops[cps.length] = stack[stack.length - 1];
+  return tops;
+}
+
+/** The first character that is not whitespace at or after `from`; '' at the end of the text. */
+function firstNonSpace(cps: readonly string[], from: number): string {
+  let index = from;
+  while (index < cps.length && isSpace(cps[index] as string)) index += 1;
+  return cps[index] ?? '';
 }
 
 /**
@@ -181,14 +189,22 @@ function insideToken(cps: readonly string[], at: number): boolean {
 
 /**
  * R1–R12 — is the run of terminals at `at`, plus the closers that follow it, the end of a
- * sentence? `end` is the index after the run and its closers.
+ * sentence? `end` is the index after the run and its closers, `tops` the closer each open quote
+ * waits for.
  */
-function endsSentence(cps: readonly string[], depth: readonly number[], at: number, end: number): boolean {
+function endsSentence(
+  cps: readonly string[],
+  tops: ReadonlyArray<string | undefined>,
+  at: number,
+  end: number,
+): boolean {
   // R1 — a terminator is only a candidate when whitespace or the end of the block follows it.
   if (end < cps.length && !isSpace(cps[end])) return false;
-  // R2/R3 — still inside a quote after the terminator and its closers: the quote holds a
-  // sentence of its own, and only its own closer (a terminator written after it) is a boundary.
-  if ((depth[end] ?? 0) > 0) return false;
+  // R2/R3 — inside a quotation, only the terminator the quotation closes at is a boundary: the
+  // closer may stand right after the terminator or one space later («Уходи. »). An internal
+  // full stop with prose after it stays inside the sentence («…дела № 44/17. При себе…»).
+  const expected = tops[end];
+  if (expected !== undefined && firstNonSpace(cps, end) !== expected) return false;
   // R4/R10 — lower-case prose continues the sentence, also when a dialogue dash stands between
   // them: «он спросил: „кто здесь?“ — и сел» is one sentence, «…конец. — Слушаю» is two.
   if (LOWER.test(firstMeaningful(cps, end))) return false;
@@ -214,7 +230,7 @@ function pushSpan(out: SentenceSpan[], cps: readonly string[], from: number, to:
 export function splitSentences(text: string): SentenceSpan[] {
   if (text.trim().length === 0) return [];
   const cps = Array.from(text);
-  const depth = quoteDepths(cps);
+  const tops = quoteTops(cps);
   const out: SentenceSpan[] = [];
   let start = 0;
   let index = 0;
@@ -227,7 +243,7 @@ export function splitSentences(text: string): SentenceSpan[] {
     // «?!», «...» and «…» are one terminator, however many marks were typed.
     while (end < cps.length && TERMINALS.has(cps[end] as string)) end += 1;
     while (end < cps.length && CLOSERS.has(cps[end] as string)) end += 1;
-    if (endsSentence(cps, depth, index, end)) {
+    if (endsSentence(cps, tops, index, end)) {
       pushSpan(out, cps, start, end);
       start = end;
     }

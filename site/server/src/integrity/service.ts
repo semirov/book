@@ -20,6 +20,7 @@ import { CHAPTER_CHARS, TOTAL_CHAPTERS, runValidation, type ValidateResult } fro
 
 import type { Db } from '../db/db.ts';
 import { scanManuscript } from '../ingest/scanManuscript.ts';
+import { scanSegmentDrift } from '../sentences/drift.ts';
 import { toIso } from '../util/time.ts';
 import { loadDenylist } from './config.ts';
 import {
@@ -84,6 +85,12 @@ export type IntegrityReport = {
     recent: IntegrityRestoreRow[];
   };
   reconciles: ReconcileRow[];
+  /**
+   * ADR-044 — the stored sentence boundaries checked against the one segmenter. `drifted` is the
+   * number of live blocks whose table disagrees with a fresh split; each of them also gets one
+   * line in `meta` (`sentences.drift:<block_id>`), so a boot on a healthy book adds none.
+   */
+  segmentDrift: { blocks: number; drifted: number };
 };
 
 export type IntegrityOptions = {
@@ -182,5 +189,8 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
       })),
     },
     reconciles: listReconciles(db),
+    // The check is the report's own record: it writes one `meta` line per drifted block and never
+    // touches the rows it read.
+    segmentDrift: scanSegmentDrift(db, at),
   };
 }

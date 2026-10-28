@@ -38,6 +38,21 @@ function places(rows: readonly SentencePlace[]): SentencePlace[] {
 }
 
 /**
+ * Walk every live block and check it. The operator report calls this on each `GET
+ * /api/admin/integrity`; a block that disagrees with its stored rows gets one line in `meta`
+ * (`sentences.drift:<block_id>`, `INSERT OR IGNORE`) and is counted here — the check never
+ * repairs anything (see the module note), so the report is the only way a drift reaches a human.
+ */
+export function scanSegmentDrift(db: Db, at: string = new Date().toISOString()): { blocks: number; drifted: number } {
+  const blocks = db.prepare('SELECT id FROM blocks ORDER BY chapter, idx').all() as Array<{ id: string }>;
+  let drifted = 0;
+  for (const block of blocks) {
+    if (readBlockSentences(db, block.id, at).drift) drifted += 1;
+  }
+  return { blocks: blocks.length, drifted };
+}
+
+/**
  * Read a block's live sentences and check them against a fresh segmentation of its current text.
  *
  * A block that no longer exists has no text to check: its rows are returned with `drift: false` —

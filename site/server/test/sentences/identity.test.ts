@@ -413,6 +413,36 @@ describe('applyPatch — sentence identity (ADR-044 §2.3)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM sentences WHERE erased_at IS NULL').get()).toEqual({ n: 4 });
   });
 
+  it('keeps ids on the words when a block is reordered, not on the positions', () => {
+    const { db, dataDir, blockId, ids } = seed('Первое. Второе. Третье.');
+
+    edit({ db, dataDir, blockId, oldText: 'Первое. Второе. Третье.', newText: 'Третье. Первое. Второе.' });
+
+    // The words moved, so the ids moved with them: no sentence inherits its slot's identity.
+    expect(reads(db)).toEqual(['Третье.', 'Первое.', 'Второе.']);
+    expect(live(db).map((row) => row.id)).toEqual([ids[2], ids[0], ids[1]]);
+    // All three changed order in a three-cycle, and none of them is a text edit.
+    expect(touches(db)).toEqual([
+      { sentence_id: ids[2] ?? '', kind: 'moved', change_id: null, at: AT },
+      { sentence_id: ids[0] ?? '', kind: 'moved', change_id: null, at: AT },
+      { sentence_id: ids[1] ?? '', kind: 'moved', change_id: null, at: AT },
+    ]);
+  });
+
+  it('touches only the sentences a reorder actually moved', () => {
+    const { db, dataDir, blockId, ids } = seed('Первое. Второе. Третье.');
+
+    // Второе and Первое swap; Третье keeps its place and is not touched at all.
+    edit({ db, dataDir, blockId, oldText: 'Первое. Второе.', newText: 'Второе. Первое.' });
+
+    expect(reads(db)).toEqual(['Второе.', 'Первое.', 'Третье.']);
+    expect(live(db).map((row) => row.id)).toEqual([ids[1], ids[0], ids[2]]);
+    expect(touches(db)).toEqual([
+      { sentence_id: ids[1] ?? '', kind: 'moved', change_id: null, at: AT },
+      { sentence_id: ids[0] ?? '', kind: 'moved', change_id: null, at: AT },
+    ]);
+  });
+
   it('keeps a filing on its sentence when a neighbour is inserted before it', () => {
     const { db, dataDir, blockId } = seed();
     const reader = upsertIdentity(db, { yandexSub: 'test-reader', displayName: 'Читатель', at: AT });
