@@ -322,9 +322,9 @@ describe('the premise strip in an empty chapter', () => {
     expect(container.querySelector('#ch-7 .seam')).toBeNull();
   });
 
-  it('keeps the state word on the row’s own line: three siblings, three tracks', async () => {
-    // The regression this pins: with a two-track template the word auto-placed into row 2 and
-    // the 44 px row printed two lines. The word is the row's third child in the third track.
+  it('keeps the marks on one line and the premise’s words under them', async () => {
+    // BOOK-128 #3900 §1: the row is two lines — the numeral, the leader and the state word in
+    // mono 12, then the premise's own «…» in serif 15. The button is still one full-width target.
     await act(async () => {
       root?.render(
         <ChapterArticle
@@ -345,15 +345,20 @@ describe('the premise strip in an empty chapter', () => {
     const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
     expect(row).not.toBeNull();
     const cells = [...(row?.children ?? [])].map((child) => child.getAttribute('class'));
-    expect(cells).toEqual(['premise-n', 'premise-field premise-quote', 'premise-label']);
-    // A nested word could still wrap under the numeral: every cell is a direct child.
-    for (const cell of [...(row?.children ?? [])]) expect(cell.parentElement).toBe(row);
+    expect(cells).toEqual(['premise-facts', 'premise-quote']);
+    // The marks line keeps the word on its own line: three cells, three tracks, one line.
+    const facts = row?.querySelector('.premise-facts');
+    expect([...(facts?.children ?? [])].map((cell) => cell.getAttribute('class'))).toEqual([
+      'premise-n',
+      'premise-field premise-leader',
+      'premise-label',
+    ]);
 
-    const rule = /(?:^|\n)\s*\.premise-row\s*\{([^}]*)\}/u.exec(sheets['../styles/seam-form.css'] ?? '')?.[1] ?? '';
+    const rule = /(?:^|\n)\s*\.premise-facts\s*\{([^}]*)\}/u.exec(sheets['../styles/seam-form.css'] ?? '')?.[1] ?? '';
     const template = /grid-template-columns:\s*([^;]*)/u.exec(rule)?.[1]?.trim() ?? '';
     // Three tracks: one per cell. `minmax(0, 1fr)` is one track, not three.
     expect(template.replace(/minmax\([^)]*\)/gu, 'M').split(/\s+/u)).toHaveLength(3);
-    // No template row count: the row stays one line whatever the word's width.
+    // No template row count: the marks stay one line whatever the word's width.
     expect(rule).not.toContain('grid-template-rows');
   });
 

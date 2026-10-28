@@ -1,6 +1,9 @@
 /* ============================================================================
    TOKENS — the design system's palette and scale (BOOK-DOC-3, palette and scale).
    Self-hosted PT superfamily: Cyrillic + Latin by unicode-range, no CDN.
+   TWO faces and no third (owner, 2026-10-28; BOOK-128 #3900): PT Serif for what a
+   reader reads, PT Mono for every mark. `--label` (PT Sans Narrow) and `--ui` (PT Sans)
+   are retired — `faces.test.ts` fails if a third family enters this file or any sheet.
    ============================================================================ */
 
 @font-face {
@@ -55,40 +58,6 @@
     U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 @font-face {
-  font-family: 'PT Sans Narrow';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/ptsansnarrow-400-cyrillic.woff2') format('woff2');
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
-}
-@font-face {
-  font-family: 'PT Sans Narrow';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/ptsansnarrow-400-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-  font-family: 'PT Sans Narrow';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/ptsansnarrow-700-cyrillic.woff2') format('woff2');
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
-}
-@font-face {
-  font-family: 'PT Sans Narrow';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/ptsansnarrow-700-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
   font-family: 'PT Mono';
   font-style: normal;
   font-weight: 400;
@@ -102,24 +71,6 @@
   font-weight: 400;
   font-display: swap;
   src: url('/fonts/ptmono-400-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-
-@font-face {
-  font-family: 'PT Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/ptsans-400-cyrillic.woff2') format('woff2');
-  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
-}
-@font-face {
-  font-family: 'PT Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/ptsans-400-latin.woff2') format('woff2');
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
     U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
@@ -154,16 +105,18 @@
   --scrim: rgba(20, 23, 26, 0.46);
   --shadow: 0 30px 60px -44px rgba(20, 23, 26, 0.55);
 
-  /* type */
+  /* type — two faces, and no third (BOOK-128 #3900): serif for what a reader reads, mono
+     for every mark (a word of state, action or apparatus, a number, a time, an id). */
   --serif: 'PT Serif', Literata, Georgia, 'Times New Roman', serif;
-  --ui: 'PT Sans', 'Helvetica Neue', Arial, sans-serif;
-  --label: 'PT Sans Narrow', 'PT Sans', 'Helvetica Neue', Arial, sans-serif;
   --mono: 'PT Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* BOOK-DOC-35 §4.1 — a ladder with a floor: 12 / 13 / 14 / 15 → 18 / 19.
-     `--fs-micro` is the floor: data marks only (numerals, times, counters, states), never a
-     sentence. A PT Sans Narrow stem at 12px is ≈1.5 device pixels at 1×; at 11 it is not. */
+     `--fs-micro` is the floor: marks only (numerals, times, counters, states), never a
+     sentence. A PT Mono stem at 12px is ≈1.5 device pixels at 1×; at 11 it is not. */
   --fs-micro: 12px;
+  /* A SIZE, not a family (BOOK-128 #3900): `--fs-label` is the 13 px rung and has nothing to do
+     with the retired `--label` face. It survives on the cover's byline (a name at 13 px) and on
+     the few prose lines that were already 13 px serif. */
   --fs-label: 13px;
   --fs-meta: 14px;
   --fs-note: 15px;

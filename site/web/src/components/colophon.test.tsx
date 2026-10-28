@@ -249,12 +249,13 @@ describe('the source link in the end matter (BOOK-78)', () => {
   });
 
   // BOOK-78 AC2 — the label is the owner's sentence, character for character and lowercase;
-  // the colophon's shared uppercase transform is presentation, so the source says lowercase.
+  // the register is the colophon's own (no case transform anywhere, BOOK-128 #3900), so the
+  // source and the page agree.
   it('carries the truthful label in the owner\'s words, and nothing beside it', () => {
     const html = renderColophon();
     const { attrs, label } = sourceAnchor(html);
     expect(label).toBe('исходный код сайта открыт');
-    // The words in the source, before CSS uppercases the register.
+    // The words in the source, in the case the page prints.
     expect(webSources['./Colophon.tsx']).toContain('исходный код сайта открыт');
     // One fact and nothing more: no trademark, no count, no star, no cheer, no tooltip. The
     // claim is about the link — its attributes and its label — not about every byte of the page.

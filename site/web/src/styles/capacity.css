@@ -31,13 +31,13 @@
   overflow-wrap: break-word;
 }
 
-/* The state line is apparatus: the label register, one quiet line. */
+/* The state line is a sentence: serif 15, not the retired label face (§2). */
 .capacity-plate-state {
   margin-block-start: 6px;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.45;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--ink-3);
   text-wrap: pretty;
   overflow-wrap: break-word;

@@ -232,7 +232,8 @@ describe('the block obeys the margin’s one rule', () => {
       );
     });
     const upper = uppercaseSelectors();
-    expect(upper.length).toBeGreaterThan(0);
+    // Zero, not "some other register": the canon has no uppercase anywhere (BOOK-128 #3900).
+    expect(upper, 'the sheets still uppercase a word').toEqual([]);
     for (const name of blockClasses()) {
       for (const selector of upper) expect(selector.includes(`.${name}`), `${selector} uppercases .${name}`).toBe(false);
     }

@@ -2,7 +2,7 @@
 import type { CommentDto } from '@book/shared';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useReaderFeed } from './useReaderFeed.ts';
 
@@ -57,6 +57,46 @@ afterEach(async () => {
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
+});
+
+describe('the register’s completeness (BOOK-128 #3900 §1)', () => {
+  /**
+   * The API has no total: `nextBefore === null` is the only proof that the 20 loaded rows are
+   * all of the thread. The hook carries that fact to the page, and it fails closed — a read
+   * that never answered cannot make the feed complete.
+   */
+  function answer(page: { items: CommentDto[]; nextBefore: string | null }): void {
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify(page), { status: 200, headers: { 'content-type': 'application/json' } }));
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('starts incomplete, before any read has answered', () => {
+    expect(feed.commentsComplete).toBe(false);
+  });
+
+  it('is complete only when the page has no next cursor', async () => {
+    answer({ items: [], nextBefore: null });
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsComplete).toBe(true);
+
+    answer({ items: [POSTED], nextBefore: '2026-10-27T18:04:17Z' });
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsComplete).toBe(false);
+    expect(feed.comments).toHaveLength(1);
+  });
+
+  it('stays incomplete after a failed read, even once it was complete', async () => {
+    answer({ items: [], nextBefore: null });
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsComplete).toBe(true);
+
+    vi.stubGlobal('fetch', async () => new Response('{"code":"x","message":"x"}', { status: 500 }));
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsComplete).toBe(false);
+  });
 });
 
 describe('acceptComment (BOOK-111)', () => {

@@ -33,26 +33,26 @@
   grid-template-columns: 1fr;
   align-items: start;
 }
+/* The contents label and the part headings are marks, not documents (audit #6): mono 12,
+   lowercase, no tracking — a part shouts in size only if it must shout at all. */
 .toc-label {
   grid-column: 1 / -1;
   margin: 0 0 26px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 1.35;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
 .toc-part-h {
   margin: 0;
   /* 32px of air above a part: the four headings are the only structure the void has left. */
   padding: 32px 0 10px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-weight: 400;
   font-size: var(--fs-micro);
   line-height: 1.2;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 /* BOOK-155: with a single column the label is child 1, the opening row (ch01) is child 2 and
@@ -66,11 +66,13 @@
 .toc-row-empty .toc-text {
   color: var(--ink-3);
 }
+/* BOOK-128 #3900 §1 — a list of numbers reads in one type: numeral, title and page are the
+   same serif at the same 15 px rung, and the column of numerals is the mark. */
 .toc-num {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.45;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -125,7 +127,7 @@
   border-block-start: 1px dotted var(--ink-3);
 }
 
-/* BOOK-89 — the starting page of the chapter: a bare numeral in the apparatus register,
+/* BOOK-89 — the starting page of the chapter: a bare numeral in the row's own type,
    right-aligned in its fixed track, on the same baseline as the numeral (D4/D5). */
 .toc-page {
   grid-column: 3;
@@ -133,10 +135,11 @@
   text-align: right;
   inline-size: 3ch;
   white-space: nowrap;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.45;
   letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
 
@@ -186,10 +189,9 @@
   align-items: center;
   min-height: 44px;
   margin-top: 6px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
   border-bottom: 1px solid var(--rule-2);
 }
@@ -204,10 +206,9 @@
 .revising-label {
   display: block;
   margin-bottom: 3px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--revise);
 }
 .p.is-revised {
@@ -238,15 +239,14 @@
 .ticket-x {
   min-height: 44px;
   padding: 0 12px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--paper);
 }
 .ticket-x {
   border-left: 1px solid rgba(207, 211, 210, 0.28);
-  font-size: 15px;
+  font-size: var(--fs-micro);
   letter-spacing: 0;
 }
 

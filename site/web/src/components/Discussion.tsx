@@ -42,6 +42,7 @@ export function Discussion({
   depth,
   stage = 'quiet',
   busy,
+  complete = false,
   changes = [],
   comments = [],
   nowMs,
@@ -58,6 +59,12 @@ export function Discussion({
    * behaviour (and the existing tests keep their markup).
    */
   busy?: boolean;
+  /**
+   * BOOK-128 #3900 §1 — the thread's page is **all** of the thread (`nextBefore === null`).
+   * The API has no total, so a partial page may print no number at all; the default is the
+   * safe answer, because a count over 20 rows claims a total the page never read.
+   */
+  complete?: boolean;
   /** The thread's changes: attempts, folded into the filing they were made from. */
   changes?: readonly ChangeSummaryDto[];
   comments?: readonly CommentDto[];
@@ -103,7 +110,7 @@ export function Discussion({
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
-          ) : filings.length === 0 ? (
+          ) : !complete ? null : filings.length === 0 ? (
             'замечаний нет'
           ) : (
             `${filings.length} ${plural(filings.length, 'замечание', 'замечания', 'замечаний')}`

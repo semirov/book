@@ -124,7 +124,7 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
+  const { changes, comments, commentsComplete, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
     useReaderFeed();
   // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
   const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
@@ -487,7 +487,7 @@ export function App() {
         exportBytes={front.exportBytes ?? null}
         onLoadChapter={loadChapter}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />

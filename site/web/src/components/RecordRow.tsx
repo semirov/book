@@ -67,23 +67,31 @@ export function RecordRow({ record, onOpenChange, onLoadChapter }: RecordRowProp
 
   return (
     // BOOK-77 (audit F1): the reader's words may sit in a span, so the row is masked on its own.
+    // BOOK-128 #3900 §1 — two lines: the facts (mono 12) and the prose (serif 14). The door
+    // closes the facts line; the span and the reason read under them.
     <li className="chr-row ym-hide-content">
-      <span className="chr-date">{date}</span>
-      <PlaceLink className="chr-place" place={target} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter}>
-        {heading}
-      </PlaceLink>
-      {span === null ? null : <span className="chr-span">{span}</span>}
-      {state === null ? null : <span className="chr-state">{state}</span>}
-      {reason === null ? null : <span className="chr-reason">{reason}</span>}
-      <span className="chr-cause">{cause}</span>
-      <a
-        className="chr-change"
-        href={record.recordHref}
-        aria-label={`${label} — открыть ${reader ? 'прицел правки' : 'запись'}`}
-        onClick={openRecord}
-      >
-        {face}
-      </a>
+      <span className="chr-facts">
+        <span className="chr-date">{date}</span>
+        <PlaceLink className="chr-place" place={target} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter}>
+          {heading}
+        </PlaceLink>
+        {state === null ? null : <span className="chr-state">{state}</span>}
+        <span className="chr-cause">{cause}</span>
+        <a
+          className="chr-change"
+          href={record.recordHref}
+          aria-label={`${label} — открыть ${reader ? 'прицел правки' : 'запись'}`}
+          onClick={openRecord}
+        >
+          {face}
+        </a>
+      </span>
+      {span === null && reason === null ? null : (
+        <span className="chr-prose">
+          {span === null ? null : <span className="chr-span">{span}</span>}
+          {reason === null ? null : <span className="chr-reason">{reason}</span>}
+        </span>
+      )}
     </li>
   );
 }

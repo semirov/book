@@ -15,11 +15,10 @@
   /* No fixed measure and no clipping: the chip either fits, or the title is dropped for the
      number alone (the Header measures it) — the head never shows an ellipsis. */
   white-space: nowrap;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 1.35;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }

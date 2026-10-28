@@ -18,7 +18,9 @@
   margin: 0;
   padding: 4px 0 6px;
   border-top: 1px solid var(--rule);
-  font-family: var(--label);
+  /* Every ribbon line is apparatus: the mark face and rung (§2). */
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
 }
 .ribbon.is-quiet {
   border-top: 0;
@@ -45,8 +47,7 @@
   min-height: 22px;
   font-size: var(--fs-micro);
   line-height: 1.35;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   overflow-wrap: anywhere;
   color: var(--ink-3);
 }
@@ -100,10 +101,9 @@
 .ribbon-open {
   min-height: 44px;
   padding: 0 6px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .ribbon-open:hover,
@@ -160,10 +160,9 @@
   gap: 6px;
   padding: 0;
   background: transparent;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--revise);
 }
 .ribbon-seam-label {

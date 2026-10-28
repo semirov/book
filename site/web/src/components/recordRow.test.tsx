@@ -187,8 +187,12 @@ describe('the record row is dated (BOOK-DOC-50 §5)', () => {
     const chronicle = sheets['../styles/chronicle.css'] ?? '';
     expect(hasRule(chronicle, '.chr-date')).toBe(true);
     expect(firstDeclarations(chronicle, '.chr-date')).toContain('white-space: nowrap');
-    // …and the row wraps between facts, so a phone reads it as a list, not a cut date.
+    // …and the row is two lines: the facts wrap between items, so a phone reads the list of
+    // facts and never a cut date (BOOK-128 #3900 §1).
     expect(hasRule(chronicle, '.chr-row')).toBe(true);
-    expect(firstDeclarations(chronicle, '.chr-row')).toContain('flex-wrap: wrap');
+    expect(firstDeclarations(chronicle, '.chr-row')).toContain('display: block');
+    expect(firstDeclarations(chronicle, '.chr-facts')).toContain('flex-wrap: wrap');
+    expect(firstDeclarations(chronicle, '.chr-facts')).toContain('font-family: var(--mono)');
+    expect(firstDeclarations(chronicle, '.chr-prose')).toContain('font-family: var(--serif)');
   });
 });

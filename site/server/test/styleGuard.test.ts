@@ -129,7 +129,8 @@ describe('BOOK-DOC-35 — the styles guard', () => {
         '.lead { font-size: calc(var(--fs-lead) + 4px); }',
         '.rem { font-size: 0.75rem; }',
         '.clamp { font-size: clamp(12px, 4vw, 40px); }',
-        '.shorthand { font: 700 13px/1.4 var(--label); }',
+        '.inherit { font-size: inherit; }',
+        '.shorthand { font: 700 13px/1.4 var(--mono); }',
         '@media (max-width: 1023px) { .mark { font-size: 15px; } }',
         '.row { min-width: 0; }',
         '',
@@ -237,7 +238,7 @@ describe('BOOK-70 — the chips', () => {
     '.ch-print': 'font-size: 12px; color: var(--live); white-space: nowrap',
     '.sec-meta': 'font-size: 12px; color: var(--ink-3); white-space: nowrap',
     '.seam-filing-n': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
-    '.author-plus': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
+    '.author-plus': 'font-family: var(--mono); font-size: 13px; letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.seam-filing-stamp': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.stamp-time': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
     '.ch-data': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap',
@@ -334,8 +335,19 @@ describe('BOOK-70 — the chips', () => {
 
     const voice = seeded({ 'chips.css': sheet({ '.author-plus': 'font-size: 12px; letter-spacing: .12em; white-space: nowrap' }) });
     expect(messages(voice)).toContain('.author-plus: a reference chip is mono — font-family: var(--mono)');
-    expect(messages(voice)).toContain('.author-plus: a reference chip is set at .02em, not .12em');
+    expect(messages(voice)).toContain(".author-plus: a reference chip's spacing is 0, not .12em");
     expect(messages(voice)).toContain('.author-plus: a reference chip is tabular');
+  });
+
+  it('lets a reference ride its row’s own rung when the registry says so (the cover byline)', () => {
+    // BOOK-128 §1 (audit 3): «+ 3» is part of the byline's 13 px line, and the entry states it,
+    // so the guard proves *that* size and spacing instead of the default 12 px.
+    expect(seeded({ 'chips.css': sheet() })).toEqual([]);
+    const twelve = seeded({
+      'chips.css': sheet({ '.author-plus': 'font-family: var(--mono); font-size: 12px; letter-spacing: .02em; font-variant-numeric: tabular-nums; white-space: nowrap' }),
+    });
+    expect(messages(twelve)).toContain('.author-plus: font-size: 12px resolves to 12px, but a ref chip is 13px');
+    expect(messages(twelve)).toContain(".author-plus: a reference chip's spacing is 0, not .02em");
   });
 
   it('fails a sentence set at chip size, and a registered chip with no rule at all', () => {

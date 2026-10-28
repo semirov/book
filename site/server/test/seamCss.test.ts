@@ -13,6 +13,10 @@ import { describe, expect, it } from 'vitest';
  * BOOK-90 moved the mark out of `seam-form.css` into `marginalia.css`: the numeral is no
  * longer a 24 px box in the phone gutter, but a 40 × 44 target at the prose's right edge
  * (24 × 44 below 1024, where the numeral leaves the text for the strip).
+ *
+ * BOOK-128 #3900 §1 — the strip's own shape is asserted here too: every `.seam-row` stacks (the
+ * quote on its own line, the acts under it in the mark face), and the collapsed `.seam-prov-line`
+ * stays one line in one face (BOOK-111). A stylesheet is text, so the shape is read, not drawn.
  */
 
 const ROOT = join(import.meta.dirname, '../..');
@@ -113,56 +117,74 @@ describe('the tap target at 390 is the word, not an overlay (BOOK-137)', () => {
   });
 });
 
-describe('below 768 the strip is one 44 px row, and the frozen strip is the one stack', () => {
-  /* BOOK-128 comment #3815 — the word's record is the strip's own body now, so the row must stay
-     one row at the phone: the reader tapped it, the body grows *under* it, and a row that
-     re-flowed when the facts opened would move the page under their thumb. The word ellipsises
-     instead. The frozen strip keeps BOOK-90's stack — its door («рамка книги · не меняется») and
-     its link («рамка книги →») are two long phrases that cannot share 366 px with the action and
-     the ✕, and the owner's rule stands: «better several lines than glued together». */
-  const narrow = seam.slice(seam.indexOf('@media (max-width: 767px)'));
+describe('the strip is two lines at every width: the quote, then the acts (BOOK-128 #3900 §1)', () => {
+  /* #3900 §1 — one line carries one face and one size. The word (serif italic 15) takes the
+     full width on its own line; the door, the draft, the action and the ✕ stand under it in the
+     mark face (mono 12). `flex-wrap: wrap` on the base row is the whole mechanism, and every act
+     keeps its own 44 px target, so the second line is still a touch row.
 
-  it('targets the phone range and keeps the ordinary row on one line', () => {
+     The frozen strip has no stack of its own any more: its longer acts simply wrap onto a second
+     marks line, which is the owner's own rule («better several lines than glued together with a
+     line break»). The phone block only narrows what is a target there. */
+  const narrow = seam.slice(seam.indexOf('@media (max-width: 767px)'));
+  const row = rule(seam, '.seam-row');
+  const word = rule(seam, '.seam-word');
+
+  it('stacks the base row: the quote on its own line, the acts under it', () => {
+    expect(row).toContain('flex-wrap: wrap');
+    expect(row).toContain('min-height: 44px');
+    // The quote takes the whole first line and is printed whole: it wraps inside its own line
+    // rather than growing an ellipsis.
+    expect(word).toContain('flex: 1 1 100%');
+    expect(word).toContain('font-family: var(--serif)');
+    expect(word).toContain('font-style: italic');
+    expect(word).toContain('font-size: var(--fs-note)');
+    expect(word).not.toContain('text-overflow');
+    expect(word).not.toContain('white-space: nowrap');
+  });
+
+  it('keeps every act in the mark register, each a 44 px target', () => {
+    for (const selector of ['.seam-prov', '.seam-cta', '.seam-close']) {
+      expect(rule(seam, selector), selector).toContain('font-family: var(--mono)');
+      expect(rule(seam, selector), selector).toContain('font-size: var(--fs-micro)');
+    }
+    expect(rule(seam, '.seam-prov')).toContain('min-height: 44px');
+    expect(rule(seam, '.seam-cta')).toContain('min-height: 44px');
+    // The strip's one close keeps the touch target it always had.
+    expect(rule(seam, '.seam-close')).toContain('width: 44px');
+    expect(rule(seam, '.seam-close')).toContain('height: 44px');
+  });
+
+  it('has no frozen-only stack: the phone block narrows targets and touches no row', () => {
     expect(narrow).not.toBe('');
     expect(narrow).toContain('@media (max-width: 767px)');
-    expect(rule(narrow, '.seam-row')).toContain('flex-wrap: nowrap');
-    expect(rule(seam, '.seam-row')).toContain('min-height: 44px');
-  });
-
-  it('stacks only the frozen strip, where two long phrases cannot share the row', () => {
-    expect(narrow).toContain(".seam[data-frozen='true'] .seam-row {");
-    const frozen = narrow.slice(narrow.indexOf(".seam[data-frozen='true'] .seam-row {"));
-    expect(frozen).toContain('flex-wrap: wrap');
-    const prov = rule(frozen, ".seam[data-frozen='true'] .seam-prov");
-    expect(prov).toContain('order: 1');
-    expect(prov).toContain('flex: 0 0 100%');
-    const word = rule(frozen, ".seam[data-frozen='true'] .seam-word");
-    expect(word).toContain('order: 2');
-    expect(word).toContain('flex: 0 0 100%');
-    // The quote is whole: no clamp, no ellipsis, no forced single line where it stacks.
-    expect(word).toContain('white-space: normal');
-    expect(word).toContain('text-overflow: clip');
-    expect(word).not.toContain('ellipsis');
-    const close = rule(frozen, ".seam[data-frozen='true'] .seam-close");
-    expect(close).toContain('order: 5');
-    expect(close).toContain('margin-left: auto');
-    // A premise's state word is not a control.
+    // The frozen re-ordering is gone: the base stack is the one shape, at every width.
+    expect(narrow).not.toContain("[data-frozen='true']");
+    expect(rule(narrow, '.seam-row')).toBe('');
+    // A premise's state word is not a control: it is one line, not a 44 px target.
     expect(rule(narrow, 'span.seam-prov')).toContain('min-height: 0');
-  });
-
-  it('keeps every action label on one line, and never clips a filing quote', () => {
-    expect(narrow).toMatch(/white-space: nowrap/u);
+    // Every tappable line is a 44 px target, and the filing's facts wrap instead of clipping.
     expect(rule(narrow, '.seam-filing')).toContain('min-height: 44px');
     expect(rule(narrow, '.seam-filing-line')).toContain('flex-wrap: wrap');
     const quote = rule(narrow, '.seam-filing-quote');
     expect(quote).toContain('overflow: visible');
     expect(quote).toContain('-webkit-line-clamp: unset');
+    // An action label is a word, never a wrapped phrase.
+    expect(rule(narrow, '.seam-inline-action')).toContain('white-space: nowrap');
   });
 
-  it('leaves the one-row strip above 768 exactly as it was', () => {
-    // The desktop row still truncates its quote rather than growing: the phone rule is a
-    // separate block, not a change to the base.
-    expect(rule(seam, '.seam-word')).toContain('text-overflow: ellipsis');
-    expect(rule(seam, '.seam-word')).toContain('white-space: nowrap');
+  it('keeps the collapsed line one line, one face (BOOK-111)', () => {
+    // `.seam-prov-line` is the strip while a panel speaks for it: one row, and it never stacks
+    // on a phone. (Its word keeps BOOK-111's own ellipsis for a phrase that truly cannot fit;
+    // what this test holds is that the line stays one line in one face.)
+    const line = rule(seam, '.seam-prov-line');
+    expect(line).toContain('display: flex');
+    expect(line).toContain('min-height: 44px');
+    expect(line).toContain('white-space: nowrap');
+    expect(line).not.toContain('flex-wrap: wrap');
+    expect(rule(seam, '.seam-prov-word')).toContain('font-family: var(--mono)');
+    expect(rule(seam, '.seam-prov-word')).toContain('font-size: var(--fs-micro)');
+    expect(rule(seam, '.seam-prov-trail')).toContain('font-family: var(--mono)');
+    expect(rule(seam, '.seam-prov-trail')).toContain('font-size: var(--fs-micro)');
   });
 });

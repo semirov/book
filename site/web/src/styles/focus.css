@@ -43,10 +43,9 @@ body.is-focus {
 }
 .focus-tag,
 .focus-n {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
 }
 .focus-tag {
   color: #8b8f8c;
@@ -59,10 +58,9 @@ body.is-focus {
   min-width: 44px;
   min-height: 44px;
   margin: -10px -6px -10px 0;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: #b0b2ae;
 }
 
@@ -77,8 +75,7 @@ body.is-focus {
   margin-bottom: 10px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: #8b8f8c;
 }
 
@@ -123,10 +120,9 @@ body.is-focus {
   margin: 0.9em 0 0;
   padding-top: 0.5em;
   border-top: 1px dashed var(--rule-2, #8b9291);
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .focus-sheet-note {
@@ -201,8 +197,7 @@ body.is-focus {
   margin: 14px 0 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: #b0b2ae;
 }
 .focus-readout span + span::before {
@@ -233,10 +228,9 @@ body.is-focus {
   border-top-color: #c8a06a;
 }
 .focus-wing-h {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: #b0b2ae;
 }
 .focus-wing-r {
@@ -337,10 +331,9 @@ body.is-focus {
   gap: 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(207, 211, 210, 0.17);
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: #b0b2ae;
 }
 .focus-note-h > span:first-child {
@@ -369,10 +362,9 @@ body.is-focus {
   border-top: 0;
 }
 .focus-rows dt {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: #8b8f8c;
 }
 .focus-rows dd {
@@ -417,11 +409,13 @@ body.is-focus {
   color: #cfd3d2;
   border-bottom-color: #6f9bb5;
 }
+/* The case in the five public words (`deed.ts`: «зарегистрировано · заведено дело · …») — a line
+   of state words, so a mark: mono 12. */
 .focus-deed {
-  font-family: var(--label);
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 1.5;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: #b0b2ae;
 }
 .focus-reason {
@@ -448,10 +442,9 @@ body.is-focus {
   flex: 1;
   min-height: 44px;
   border: 1px solid rgba(207, 211, 210, 0.35);
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: #cfd3d2;
 }
 .focus-action.is-on {
