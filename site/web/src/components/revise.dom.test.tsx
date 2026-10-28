@@ -306,13 +306,18 @@ describe('a refused premise (BOOK-158)', () => {
   });
 });
 
+/**
+ * BOOK-156 renamed the register's section to `id="discussion"` and kept a zero-height `#talks`
+ * span for the old deep link, so the header's own `#talks` no longer wraps an entry: the
+ * register's filings are reached through `#discussion`. The assertions are unchanged.
+ */
 describe('a refused filing in the register (BOOK-158)', () => {
   it('a non-premise refusal gets the same hint and revise in the register', async () => {
     const refused = refusedBlock();
     const fetchSpy = respondWith({ ...refused, status: 'new', reason: null, hint: null, revise: revise({ attemptsLeft: 1 }) });
     await act(async () => root?.render(<ProsePage initial={[refused]} />));
 
-    const entry = container.querySelector('#talks .comment');
+    const entry = container.querySelector('#discussion .comment');
     expect(entry?.getAttribute('data-comment-id')).toBe(refused.id);
     // The register's state line keeps the reason; the block under it adds the hint and the door.
     expect(entry?.querySelector('.comment-reason')?.textContent).toContain(REASON);
@@ -342,8 +347,8 @@ describe('a refused filing in the register (BOOK-158)', () => {
     });
 
     // The answer is the same entry, updated where it stood — one filing, one history.
-    expect(container.querySelectorAll('#talks .comment')).toHaveLength(1);
-    expect(container.querySelector('#talks .comment-revise')).toBeNull();
+    expect(container.querySelectorAll('#discussion .comment')).toHaveLength(1);
+    expect(container.querySelector('#discussion .comment-revise')).toBeNull();
   });
 });
 
@@ -399,7 +404,7 @@ describe('the revise form (BOOK-158)', () => {
     });
     await act(async () => root?.render(<ProsePage initial={[held]} />));
 
-    const entry = container.querySelector('#talks .comment');
+    const entry = container.querySelector('#discussion .comment');
     expect(entry?.querySelector('.comment-revise .revise-hint')?.textContent).toBe(
       'уберите из текста указания в адрес модели',
     );
