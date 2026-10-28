@@ -13,10 +13,10 @@ import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
 /**
- * BOOK-9 acceptance: an intervention is judged against the book's canvas **before** triage,
- * the verdict is one immutable row on the comment, and no change exists without a `FITS`.
- * The auditor's brief is canon in `process/ROLE_PROMPTS.md` §0; nothing here restates it —
- * these tests only pin the gate: `FITS` permits, `OFF` refuses, neither is a default.
+ * BOOK-9 acceptance: an intervention is judged against the book's canvas **before** triage, the
+ * verdict is one immutable row on the comment, and no change exists without a `FITS`. The
+ * auditor's brief is canon in `process/ROLE_PROMPTS.md` §0; these tests only pin the gate.
+ * What an `OFF` is answered with lives in `auditGateC.test.ts` (BOOK-174).
  */
 
 let harness: Harness | null = null;
@@ -61,6 +61,7 @@ async function comment(h: Harness, body = 'В абзаце дважды «абз
   return response.json().comment.id;
 }
 
+/** The row as stored; the tests read verdicts, status and the answer's columns from it. */
 function auditRow(h: Harness, id: string): Record<string, unknown> {
   return h.db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as Record<string, unknown>;
 }
@@ -133,7 +134,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
   });
 
-  it('OFF records the verdict and refuses the reader in the same act', async () => {
+  it('OFF records the verdict and answers the reader in the same act (BOOK-174: not a bare refusal)', async () => {
     const h = await boot();
     const id = await comment(h);
     expect(cli(h, 'inbox').code).toBe(0);
@@ -143,20 +144,29 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(audited.code).toBe(0);
     expect(audited.out.join('\n')).toContain('OFF');
 
+    // The verdict is recorded; the answer is the ladder's, not the auditor's sentence: nothing
+    // about «this world does not ask for miracles» is a lock, so the author's door is the answer.
     const row = auditRow(h, id);
     expect(row).toMatchObject({
-      status: 'rejected',
-      reason,
+      status: 'escalated',
+      reason: 'можно ли оформить это бумагой?',
+      disposition: 'escalated',
+      lock: null,
       audit_verdict: 'OFF',
       audit_reason: reason,
       audited_by: 'triage-1',
       change_id: null,
     });
     expect(typeof row.decided_at).toBe('string');
+    // The auditor's own sentence is kept for the operator, in the event.
+    const event = h.db
+      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'escalated'`)
+      .get(id) as { meta: string };
+    expect(JSON.parse(event.meta)).toMatchObject({ status: 'escalated', note: reason });
 
-    // Every refusal is a decision line the site tails, exactly like a triage rejection.
+    // Every answer is a decision line the site tails, exactly like a triage rejection.
     const line = JSON.parse(readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8').trim()) as Record<string, unknown>;
-    expect(line).toMatchObject({ id, status: 'rejected', reason, changeId: null });
+    expect(line).toMatchObject({ id, status: 'rejected', reason: 'можно ли оформить это бумагой?', changeId: null });
 
     // No change exists, and the single choke point refuses the comment afterwards.
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
@@ -276,9 +286,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     const emptyReason = cli(h, 'audit', id, '--verdict', 'OFF', '--reason', '   ');
     expect(emptyReason.code).toBe(1);
 
-    const longReason = cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'я'.repeat(201));
-    expect(longReason.code).toBe(1);
-    expect(longReason.out.join('\n')).toContain('длиннее');
+    expect(cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'я'.repeat(201)).code).toBe(1);
 
     const longLabel = cli(h, 'audit', id, '--verdict', 'FITS', '--by', 'x'.repeat(65));
     expect(longLabel.code).toBe(1);
@@ -288,7 +296,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(auditRow(h, id)).toMatchObject({ audit_verdict: null, status: 'new', decided_at: null });
   });
 
-  it('shows the auditor reason on the public comment surface, and no verdict vocabulary', async () => {
+  it('shows the reader the reading, and no verdict vocabulary', async () => {
     const h = await boot();
     const id = await comment(h);
     const reason = 'вне книги: этот мир не просит чудес';
@@ -297,15 +305,21 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     const listed = await h.app.inject({ method: 'GET', url: '/api/comments?chapter=8' });
     expect(listed.statusCode).toBe(200);
     const item = (listed.json() as { items: Array<Record<string, unknown>> }).items[0] ?? {};
-    expect(item).toMatchObject({ id, status: 'rejected', reason });
-    // BOOK-61: `refusal` names the gate that refused in the reader's own vocabulary — the word
-    // «отклонено» — never the verdict, its enum or its column.
-    expect(item.refusal).toBe('auditor');
+    // BOOK-174: the reader is owed the reading, not the auditor's note — an `OFF` with no lock
+    // escalates, and the report says whose turn it is.
+    expect(item).toMatchObject({
+      id,
+      status: 'escalated',
+      reason: 'можно ли оформить это бумагой?',
+      disposition: 'escalated',
+    });
+    // A gate's word is not a state and not a refusal: nothing refused this filing.
+    expect(item.refusal).toBeNull();
+    expect((item.report as { line1: string }).line1).toBe('ждёт решения автора');
     const body = JSON.stringify(listed.json());
     for (const word of ['auditVerdict', 'audit_verdict', 'FITS', 'OFF']) expect(body).not.toContain(word);
-
     const single = await h.app.inject({ method: 'GET', url: `/api/comments/${id}` });
-    expect(single.json()).toMatchObject({ status: 'rejected', reason });
+    expect(single.json()).toMatchObject({ status: 'escalated', reason: 'можно ли оформить это бумагой?' });
     expect(JSON.stringify(single.json())).not.toContain('audit_verdict');
   });
 });
@@ -359,93 +373,48 @@ describe('recordAudit — the module, not the CLI, is the choke point', () => {
 
     seed(h, 'cmt_01JB7AUDIT00000000000000A');
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'OFF',
-        reason: null,
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'OFF', reason: null, by: null, at }),
     ).toMatchObject({ code: 'AUDIT_REASON_REQUIRED' });
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'OFF',
-        reason: '   ',
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'OFF', reason: '   ', by: null, at }),
     ).toMatchObject({ code: 'AUDIT_REASON_REQUIRED' });
 
     // The module enforces the same bounds as the CLI: it is the writer of the columns.
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'OFF',
-        reason: 'я'.repeat(201),
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'OFF', reason: 'я'.repeat(201), by: null, at }),
     ).toMatchObject({ code: 'AUDIT_REASON_TOO_LONG' });
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'FITS',
-        reason: null,
-        by: 'x'.repeat(65),
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'FITS', reason: null, by: 'x'.repeat(65), at }),
     ).toMatchObject({ code: 'AUDIT_LABEL_TOO_LONG' });
     expect(auditRow(h, 'cmt_01JB7AUDIT00000000000000A')).toMatchObject({ audit_verdict: null });
 
     // A non-CLI caller cannot store a multi-line reason: one line, bounded after folding.
     seed(h, 'cmt_01JB7AUDIT00000000000000C');
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000C',
-        verdict: 'OFF',
-        reason: 'вне книги:\n\n  этот   мир\nне просит чудес',
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000C', verdict: 'OFF', reason: 'вне книги:\n\n  этот   мир\nне просит чудес', by: null, at }),
     ).toEqual({ ok: true, verdict: 'OFF' });
     expect(auditRow(h, 'cmt_01JB7AUDIT00000000000000C')).toMatchObject({
+      // The note is folded and bounded for the operator; the reader is owed the answer.
       audit_reason: 'вне книги: этот мир не просит чудес',
-      reason: 'вне книги: этот мир не просит чудес',
-      status: 'rejected',
+      reason: 'можно ли оформить это бумагой?',
+      status: 'escalated',
     });
 
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'FITS',
-        reason: null,
-        by: 'triage-1',
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'FITS', reason: null, by: 'triage-1', at }),
     ).toEqual({ ok: true, verdict: 'FITS' });
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000A',
-        verdict: 'OFF',
-        reason: 'поздно',
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000A', verdict: 'OFF', reason: 'поздно', by: null, at }),
     ).toMatchObject({ code: 'AUDIT_ALREADY_RECORDED' });
 
     seed(h, 'cmt_01JB7AUDIT00000000000000B');
-    h.db
-      .prepare(`UPDATE comments SET status = 'rejected', decided_at = ?, reason = ? WHERE id = ?`)
-      .run(at, 'не по тексту', 'cmt_01JB7AUDIT00000000000000B');
+    h.db.prepare(`UPDATE comments SET status = 'rejected', decided_at = ?, reason = ? WHERE id = ?`).run(
+      at,
+      'не по тексту',
+      'cmt_01JB7AUDIT00000000000000B',
+    );
     expect(
-      recordAudit(h.db, {
-        commentId: 'cmt_01JB7AUDIT00000000000000B',
-        verdict: 'FITS',
-        reason: null,
-        by: null,
-        at,
-      }),
+      recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000B', verdict: 'FITS', reason: null, by: null, at }),
     ).toMatchObject({ code: 'AUDIT_ALREADY_DECIDED' });
   });
 

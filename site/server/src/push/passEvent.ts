@@ -46,6 +46,8 @@
  * sender logs counts, the engine logs nothing about push.
  */
 
+import type { DispositionReport } from '@book/shared';
+
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { hasSubscription } from './repo.ts';
@@ -53,7 +55,13 @@ import { hasSubscription } from './repo.ts';
 export type PassEvent =
   | { kind: 'landed'; chapter: number; changeId: string }
   | { kind: 'decision'; changeId: string }
-  | { kind: 'commentDecision'; commentId: string; rejected: true };
+  /**
+   * A filing that will never become a change, so its decision is its only answer (BOOK-189).
+   * BOOK-174: the answer is the **reading**, and the reading is three closed lines — they carry
+   * no identity, no comment id and no token, and the refusing stamp is the chapter's own formula,
+   * so they are the one thing a lock screen may say about it.
+   */
+  | { kind: 'commentDecision'; commentId: string; report: DispositionReport | null };
 
 export type PassEventResult =
   | { queued: false; reason: 'no-recipient' | 'no-device' | 'duplicate' | 'throttled' | 'error' }
@@ -61,6 +69,9 @@ export type PassEventResult =
 
 /** The book's own title, used as the notification's body: a push says «Бланк» and the chapter. */
 const BODY = 'Бланк';
+
+/** The loudest word a notification may use about a filing, and only when nothing read it. */
+const REFUSED_TITLE = 'правка по главе {n} отклонена';
 
 /** How many push claims one reader may take in one UTC day. */
 export const PUSH_DAILY_LIMIT = 3;
@@ -71,7 +82,7 @@ const OUTBOX_TTL_MS = DAY_MS;
 
 type Recipient = { identityId: string; chapter: number; status: string | null; outcome: string | null };
 
-type OutboxCopy = { title: string; chapter: number };
+type OutboxCopy = { title: string; chapter: number; body: string };
 
 export function sendPassEvent(db: Db, event: PassEvent, nowMs: number): PassEventResult {
   try {
@@ -116,7 +127,7 @@ function run(db: Db, event: PassEvent, nowMs: number): PassEventResult {
     recipient.identityId,
     copy.chapter,
     copy.title,
-    BODY,
+    copy.body,
     `/ch/${String(copy.chapter)}`,
     `ch${String(copy.chapter)}`,
     at,
@@ -173,19 +184,28 @@ function recipientOf(db: Db, event: PassEvent): Recipient | null {
  */
 function copyOf(event: PassEvent, recipient: Recipient): OutboxCopy | null {
   const n = recipient.chapter;
-  if (event.kind === 'landed') return { title: `глава ${String(n)} написана`, chapter: n };
-  if (event.kind === 'commentDecision') return { title: `правка по главе ${String(n)} отклонена`, chapter: n };
+  if (event.kind === 'landed') return { title: `глава ${String(n)} написана`, chapter: n, body: BODY };
+  if (event.kind === 'commentDecision') {
+    // BOOK-174: the book's own word leads — «не принято» for a lock, «ждёт решения автора» for an
+    // escalation — and «отклонена» is kept for a row nobody read this way at all (a gate's hold or
+    // a legacy row). A disposition that is not a lock must never read as a refusal.
+    return event.report === null
+      ? { title: REFUSED_TITLE.replace('{n}', String(n)), chapter: n, body: BODY }
+      : { title: event.report.line1, chapter: n, body: event.report.line3 };
+  }
 
   if (recipient.status === 'done') {
     if (recipient.outcome === 'applied' || recipient.outcome === 'adapted') {
-      return { title: `глава ${String(n)} написана`, chapter: n };
+      return { title: `глава ${String(n)} написана`, chapter: n, body: BODY };
     }
     if (recipient.outcome === 'registered') {
-      return { title: `правка по главе ${String(n)} принята`, chapter: n };
+      return { title: `правка по главе ${String(n)} принята`, chapter: n, body: BODY };
     }
     return null;
   }
-  if (recipient.status === 'void') return { title: `правка по главе ${String(n)} отклонена`, chapter: n };
+  if (recipient.status === 'void') {
+    return { title: REFUSED_TITLE.replace('{n}', String(n)), chapter: n, body: BODY };
+  }
   // escalated, failed, stale, processing, pending — the engine has not finished answering.
   return null;
 }

@@ -58,13 +58,24 @@ function cli(h: Harness, ...argv: string[]): { code: number; out: string[] } {
   return { code, out };
 }
 
-/** A filing the reader made, then refused by triage — the state a revision starts from. */
+/**
+ * A filing the reader made, then stopped by triage — the state a revision starts from.
+ *
+ * BOOK-174: a content decision no longer refuses anything; it escalates to the author, and an
+ * escalated filing is still the reader's to rework (a revision withdraws it from the author's
+ * desk). So the fixture is Gate C's `OFF`, which is exactly the stop this door has answered.
+ */
 async function refusedFiling(h: Harness, body: string): Promise<string> {
   const response = await post(h, commentBody({ body }));
   expect(response.statusCode).toBe(201);
   const id = response.json().comment.id as string;
-  expect(cli(h, 'decide', id, 'rejected', '--reason', REASON).code).toBe(0);
+  expect(refuse(h, id).code).toBe(0);
   return id;
+}
+
+/** Refuse a filing the way triage does now: Gate C's verdict, in one act with its sentence. */
+function refuse(h: Harness, id: string): { code: number; out: string[] } {
+  return cli(h, 'audit', id, '--verdict', 'OFF', '--reason', REASON);
 }
 
 function attempts(h: Harness, id: string): Array<{ n: number; outcome: string | null }> {
@@ -91,9 +102,9 @@ describe('a revise inside the cooldown is refused with the remaining time', () =
     const h = await boot();
     const id = await refusedFiling(h, 'Первый абзац лучше начать иначе.');
     const before = row(h, id);
-    expect(before.status).toBe('rejected');
+    expect(before.status).toBe('escalated');
     // The attempt the refusal answered is closed; its cooldown starts at that answer.
-    expect(attempts(h, id)).toEqual([{ n: 1, outcome: 'refused' }]);
+    expect(attempts(h, id)).toEqual([{ n: 1, outcome: 'held' }]);
 
     h.clock.advance(5 * MINUTE);
     const early = await revise(h, id, { body: 'Переписал: абзац начинается с действия.' });
@@ -130,8 +141,15 @@ describe('a revise inside the cooldown is refused with the remaining time', () =
     expect(dto.revise).toEqual({ allowed: false, at: null, attemptsLeft: 3, closed: false, blocked: null });
     // The anchor and the revision are the filing's, not the request's.
     expect(h.db.prepare('SELECT block_id, quote, base_rev FROM comments WHERE id = ?').get(id)).toEqual(anchorBefore);
+    // BOOK-174: the reading of the old words is gone with them — a reopened row has not been read
+    // yet, and keeping the chain would re-refuse the new text under a lock nobody re-judged.
+    expect(
+      h.db
+        .prepare('SELECT disposition, lock, carrier_kind, quote_kept FROM comments WHERE id = ?')
+        .get(id),
+    ).toEqual({ disposition: null, lock: null, carrier_kind: null, quote_kept: null });
     expect(attempts(h, id)).toEqual([
-      { n: 1, outcome: 'refused' },
+      { n: 1, outcome: 'held' },
       { n: 2, outcome: 'submitted' },
     ]);
     const event = h.db
@@ -178,7 +196,7 @@ describe('a revision is judged by the same gates as a new filing', () => {
     expect(dto).toMatchObject({ status: 'quarantined', refusal: 'held' });
     expect(dto.hint).toBe('уберите из текста указания в адрес модели');
     expect(attempts(h, id)).toEqual([
-      { n: 1, outcome: 'refused' },
+      { n: 1, outcome: 'held' },
       { n: 2, outcome: 'held' },
     ]);
     // A held row is not revisable: nothing to wait out, nothing to reopen.
@@ -211,7 +229,7 @@ describe('a revision is judged by the same gates as a new filing', () => {
     });
     expect(dto.revise.blocked).toBe('cooldown');
     expect(attempts(h, id)).toEqual([
-      { n: 1, outcome: 'refused' },
+      { n: 1, outcome: 'held' },
       { n: 2, outcome: 'refused' },
     ]);
     expect(createBatch({ db: h.db, dir: join(dir ?? '', 'feedback') })).toMatchObject({ code: 'EMPTY' });
@@ -288,7 +306,7 @@ describe('identical text within 24 hours never reaches the model', () => {
     expect(repeat.statusCode).toBe(409);
     expect(repeat.json()).toMatchObject({ code: 'IDENTICAL' });
     expect(attempts(h, id)).toHaveLength(1);
-    expect(row(h, id).status).toBe('rejected');
+    expect(row(h, id).status).toBe('escalated');
   });
 });
 
@@ -302,7 +320,7 @@ describe('the fourth attempt closes the filing until the next UTC day', () => {
       h.clock.advance(11 * MINUTE);
       const response = await revise(h, id, { body: `Переписал в ${String(turn)}-й раз: начинается с действия.` });
       expect(response.statusCode, `revision ${String(turn)}`).toBe(200);
-      expect(cli(h, 'decide', id, 'rejected', '--reason', REASON).code).toBe(0);
+      expect(refuse(h, id).code).toBe(0);
     }
     expect(attempts(h, id).map((attempt) => attempt.n)).toEqual([1, 2, 3]);
 
@@ -429,7 +447,7 @@ describe('the revise route is gated like the post route', () => {
     });
     // No silent no-op that still spends: the row, the ledger and the text are untouched.
     expect(row(h, id)).toEqual(before);
-    expect(attempts(h, id)).toEqual([{ n: 1, outcome: 'refused' }]);
+    expect(attempts(h, id)).toEqual([{ n: 1, outcome: 'held' }]);
   });
 
   it('broadcasts the same comment:added frame a post does, with the refreshed row', async () => {

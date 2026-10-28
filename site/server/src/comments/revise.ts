@@ -60,7 +60,10 @@ export function reviseComment(
   }
   // Another reader's row is not found — a 403 would tell them the filing exists.
   if (comment.identity_id !== author.id) return fail(404, 'NOT_FOUND', 'нет такого замечания');
-  if (comment.status !== 'rejected') {
+  // BOOK-174: two states are still the reader's to rework — a refusal under a lock, and a filing
+  // that waits for the author. An escalated filing is not a verdict about the words; a revision
+  // withdraws it from the author's desk and puts the new words back in the queue.
+  if (comment.status !== 'rejected' && comment.status !== 'escalated') {
     return fail(409, 'NOT_REVISABLE', 'поправить можно только отклонённое замечание');
   }
 
@@ -108,6 +111,10 @@ export function reviseComment(
   const written = deps.db.transaction((): number | null => {
     // Conditional on the row still being the refused filing this call read: a second revision
     // that raced us here lost, and says so instead of overwriting the winner's text.
+    //
+    // BOOK-174: the four disposition columns are cleared with every other verdict. A reading is
+    // a decision about the words that were refused; the revised words have not been read yet, and
+    // keeping the old chain would re-refuse them under a lock nobody re-judged.
     const changed = deps.db
       .prepare(
         `UPDATE comments
@@ -116,8 +123,9 @@ export function reviseComment(
                 batch_id = NULL, change_id = NULL, applied_chapter = NULL, applied_rev = NULL,
                 audit_verdict = NULL, audit_reason = NULL, audited_at = NULL, audited_by = NULL,
                 rights_verdict = NULL, rights_rule = NULL, rights_at = NULL, rights_by = NULL,
-                rights_source = NULL, held_rule = NULL, held_by = NULL, held_at = NULL
-          WHERE id = ? AND status = 'rejected'`,
+                rights_source = NULL, held_rule = NULL, held_by = NULL, held_at = NULL,
+                disposition = NULL, lock = NULL, carrier_kind = NULL, quote_kept = NULL
+          WHERE id = ? AND status IN ('rejected','escalated')`,
       )
       .run(
         text.body.text,

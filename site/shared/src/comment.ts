@@ -7,6 +7,7 @@
  * into a sentence: every reader-authored value is a separate, bounded string.
  */
 
+import type { Disposition, DispositionReport } from './disposition.ts';
 import type { FrameMark } from './frame.ts';
 import type { InterventionKind } from './intervention.ts';
 
@@ -92,6 +93,12 @@ export type CommentStatus =
   | 'registered'
   | 'superseded'
   | 'rejected'
+  /**
+   * BOOK-174 §4 — the ladder could not place the filing and no lock applies, so it waits for
+   * the author's decision. It is decided (nobody else will decide it) and it is not a refusal:
+   * the reader sees «ждёт решения автора», never «не принято».
+   */
+  | 'escalated'
   | 'quarantined'
   | 'expired'
   | 'hidden';
@@ -229,6 +236,18 @@ export type CommentDto = {
   decidedAt: string | null;
   changeId: string | null;
   applied: null | { chapter: number; rev: number };
+  /**
+   * BOOK-174 §5 — how this filing was read (`as_said`, `through_paper`, `refused_in_world`,
+   * `inadmissible`, `escalated`); `null` for a row stored before v27, which was never read
+   * this way. Declared optional so a page that does not render it yet still typechecks.
+   */
+  disposition?: Disposition | null;
+  /**
+   * BOOK-174 §5 — the three lines the reader is owed: what was read, because why, and where it
+   * stands in the book. Derived server-side from the stored chain (`dispositionReport`), so no
+   * surface can spell its own version of the words. `null` when nothing was read this way.
+   */
+  report?: DispositionReport | null;
 };
 
 export type CommentPage = {
@@ -324,13 +343,19 @@ export type CommentDecisionPayload = {
    * page to stop printing «ждёт рассмотрения» on a decided filing.
    */
   chapter: number;
-  status: 'accepted' | 'rejected' | 'expired' | 'quarantined';
+  /**
+   * BOOK-174 §4 — `escalated` is a decision too: the filing waits for the author, and the
+   * frame says so instead of announcing a refusal nobody made.
+   */
+  status: 'accepted' | 'rejected' | 'escalated' | 'expired' | 'quarantined';
   reason: string;
   decidedAt: string;
   batchId: string | null;
   changeId: string | null;
   queue: { depth: number; ahead: number };
   source: 'llm';
+  /** BOOK-174 §5 — the three lines of the reading, carried with the frame itself. */
+  report?: DispositionReport | null;
 };
 
 export type FeedbackBatchPayload = {
@@ -404,6 +429,7 @@ export const PUBLIC_COMMENT_STATUSES: readonly CommentStatus[] = [
   'registered',
   'superseded',
   'rejected',
+  'escalated',
   'quarantined',
   'expired',
 ];

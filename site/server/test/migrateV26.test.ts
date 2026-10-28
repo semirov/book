@@ -44,7 +44,7 @@ describe('migration v26 — the push tables', () => {
   it('creates all three on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(26);
+    expect(SCHEMA_VERSION).toBe(27);
 
     for (const table of ['push_subscriptions', 'push_log', 'push_outbox']) {
       expect(tableExists(db, table), table).toBe(true);
@@ -70,7 +70,7 @@ describe('migration v26 — the push tables', () => {
     shapeAsV25(db);
     expect(tableExists(db, 'push_subscriptions')).toBe(false);
 
-    expect(migrate(db)).toEqual({ from: 25, to: 26 });
+    expect(migrate(db)).toEqual({ from: 25, to: SCHEMA_VERSION });
     for (const table of ['push_subscriptions', 'push_log', 'push_outbox']) {
       expect(tableExists(db, table), table).toBe(true);
     }
@@ -92,7 +92,7 @@ describe('migration v26 — the push tables', () => {
     migrateV26(db);
     migrateV26(db);
     expect(db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions').get()).toEqual({ n: 1 });
-    expect(migrate(db)).toEqual({ from: 26, to: 26 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     db.close();
   });
 

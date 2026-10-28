@@ -160,10 +160,11 @@ describe('comment thread copy (§11.6)', () => {
 });
 
 describe('the three refusals, told apart by their own words (BOOK-61)', () => {
-  it('keeps the book’s four state words and adds no fifth', () => {
-    // BOOK-90 is untouched, and BOOK-137 adds the paperwork's own word («рассмотрено»): a gate's
-    // word is not a state, it heads the detail line.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
+  it('keeps the book’s state words and adds no gate word to them', () => {
+    // BOOK-90 is untouched, BOOK-137 adds the paperwork's own word («рассмотрено») and BOOK-174
+    // the escalated one («ждёт решения автора»): a gate's word is not a state, it heads the
+    // detail line.
+    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено', 'ждёт решения автора']);
     const gate = Object.values(GATE_WORDS);
     expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
     expect(new Set(gate).size).toBe(3);
@@ -188,6 +189,14 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
       comment({ status: 'rejected', refusal: 'auditor', reason: 'вне книги: этот мир не просит чудес' }),
     );
     expect(off.detail).toBe('отклонено · вне книги: этот мир не просит чудес');
+  });
+
+  it('prints an escalated filing as the author’s turn, never as a refusal', () => {
+    const line = commentStatusLine(
+      comment({ status: 'escalated', reason: 'можно ли оформить это бумагой?' }),
+    );
+    expect(line).toMatchObject({ state: 'ждёт решения автора', tone: 'live', form: 'chip' });
+    expect(line.detail).toBe('можно ли оформить это бумагой?');
   });
 
   it('reads the gate from the stored verdict, never from the reason text', () => {

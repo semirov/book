@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
-import { migrateV22 } from '../../src/db/migrateV22.ts';
 import { SCHEMA_VERSION } from '../../src/db/schema.ts';
+import { migrateV22 } from '../../src/db/migrateV22.ts';
 import { searchBlocks } from '../../src/ledger/search.ts';
 import { blockHashOf, seedChapter } from './helpers.ts';
 
@@ -154,7 +154,7 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     );
 
     // The cursor goes to the head of the build, not to 22: v23 (the author marker), v25 (the
-    // sentence) and v26 (the push tables) run on the same upgrade.
+    // sentence), v26 (the push tables) and v27 (the disposition chain) run on the same upgrade.
     expect(migrate(db)).toEqual({ from: 21, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect((db.pragma('table_info(block_versions)') as Array<{ name: string }>).map((c) => c.name)).toEqual(
