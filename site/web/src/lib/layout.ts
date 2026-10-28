@@ -7,9 +7,10 @@
  * only has to be within a screen or two, and it keeps the reader's position stable while
  * the prose arrives.
  *
- * BOOK-88/BOOK-91: the numbers follow the one prose block in `styles/base.css` — width
- * `min(640, viewport − 2 × gutter)` at ≥1024, `min(622.4, …)` at ≤1023 (38.9rem, the same
- * 71 ch at 17.5 px as 640 at 18), at 18 / 17.5 / 17 px, with a 32 px gutter (24 px below 600).
+ * BOOK-88/BOOK-91/BOOK-170: the numbers follow the measure, the gutters and the type rungs of
+ * `styles/tokens.css` — width `min(640, viewport − 2 × gutter)` at ≥1024, `min(622, …)` at
+ * ≤1023 (the same 71 ch at 17.5 px as 640 at 18), at 18 / 17.5 / 17 px, with a 32 px gutter
+ * (24 px below 600); `base.css` only applies that measure to the prose.
  * The line count is rounded down and then padded:
  * an over-estimate of characters per line under-reserves the placeholder, and the chapter
  * open then shifts the text below it.
@@ -26,9 +27,10 @@ const SAFETY = 0.94;
 
 const WIDE_GUTTER = 32;
 const PHONE_GUTTER = 24;
-/** `--measure: 40rem` and `38.9rem` of `styles/tokens.css`, at the 16 px root. */
+/** `--measure: 640px` and `622px` of `styles/tokens.css` — px, not rem: `rem` follows the
+ *  reader's root font size while the type is px, so a rem column would widen the line. */
 const WIDE_MEASURE = 640;
-const NARROW_MEASURE = 622.4;
+const NARROW_MEASURE = 622;
 
 /** The prose block of `styles/tokens.css`, at a viewport: the CSS `min()` of the measure and
  *  the column's content width, with the type size of the same breakpoint. */

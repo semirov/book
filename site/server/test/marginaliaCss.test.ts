@@ -52,9 +52,10 @@ describe('the four tokens, and where they live', () => {
   });
 
   it('keeps the column frame as it is: a centred measure, no second frame', () => {
-    // BOOK-88/BOOK-91: the one column is `--measure` (40rem), and the canvas is the column plus
-    // its two gutters — the 1000 px `--column` frame is retired with it.
-    expect(tokens).toContain('--measure: 40rem;');
+    // BOOK-88/BOOK-91/BOOK-170: the one column is `--measure` (640px — px, not rem, so it does
+    // not follow the reader's root font size), and the canvas is the column plus its two
+    // gutters — the 1000 px `--column` frame is retired with it.
+    expect(tokens).toContain('--measure: 640px;');
     expect(tokens).not.toContain('--column');
     expect(base).toContain('max-width: calc(var(--measure) + 2 * var(--gut));');
     for (const forbidden of ['--shell', '--column', '--measure']) expect(sheet).not.toContain(forbidden);
