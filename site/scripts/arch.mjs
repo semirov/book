@@ -10,9 +10,11 @@
  *   4. the book's invariants are where the UI expects them (67 chapters, engine tables,
  *      the rule ids covered by tests);
  *   5. the engine calls no model and no network: it is a deterministic state machine;
- *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`) and the
- *      prompt tree (`.opencode/skills/`, BOOK-5) stay internal: no line of them appears in the
- *      built bundle;
+ *   6. F023 — support files (`bible/`, `outline/`, `process/`, `concept/`, `style/`), the prompt
+ *      tree (`.opencode/skills/`, BOOK-5) and `notes/` stay internal: no line of them appears in
+ *      the built bundle. A dev/test run passes with no bundle on disk; a release run
+ *      (`--require-dist`, the CI step after the build) fails without one. An unrecognised
+ *      argument is an error, not a silent dev-mode run;
  *   7. the type floor and the adaptive regime (BOOK-DOC-35): no `font-size` below 12px and no
  *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again;
  *   8. the chip copy (BOOK-70): the words the two audits removed are not printed again, and
@@ -22,7 +24,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
-import { f023Problems } from './containment.mjs';
+import { f023Problems, missingDistProblem } from './containment.mjs';
 import { copyProblems } from './chips.mjs';
 import { styleProblems } from './styles.mjs';
 
@@ -32,6 +34,18 @@ const BOOK_ROOT = resolve(ROOT, '..');
 const MAX_LINES = 500;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.data', 'fonts', 'shots', '.git']);
 const SOURCE_EXT = /\.(ts|tsx|mjs|js|css|sql)$/u;
+
+/**
+ * `--require-dist` is the release mode (BOOK-46). Any other argument is refused: a typo such as
+ * `--require-dsit` used to run dev mode and exit 0, a green gate that proved nothing.
+ */
+const ARGS = process.argv.slice(2);
+const REQUIRE_DIST = ARGS.includes('--require-dist');
+const UNKNOWN_ARG = ARGS.find((arg) => arg !== '--require-dist');
+if (UNKNOWN_ARG !== undefined) {
+  console.error(`arch: unknown argument "${UNKNOWN_ARG}" — the only accepted flag is --require-dist`);
+  process.exit(1);
+}
 
 const problems = [];
 const report = (file, message) => problems.push(`${relative(ROOT, file)}: ${message}`);
@@ -207,8 +221,9 @@ for (const included of ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib
 /**
  * 6 — F023, support-file containment. The guard is a canary: every long line of every support
  * file is a string that must not appear in what the site ships. `web/dist` is skipped by
- * `walk`, so it is read directly; a missing build is not a failure here — the build gate runs
- * after this one.
+ * `walk`, so it is read directly. A missing build is not a failure in a dev/test run — the build
+ * gate runs after this one — but a release run (`--require-dist`) fails, because a bundle that is
+ * not there proves nothing.
  *
  * BOOK-5: a skill is a prompt, so `.opencode/skills/**` (`PROMPT_FILES` in `containment.mjs`)
  * is guarded exactly like `process/` — the procedure an agent follows never ships as text.
@@ -217,7 +232,13 @@ for (const included of ['shared/src/**/*.ts', 'server/src/**/*.ts', 'web/src/lib
 // serves. The canary walks the tree `current` names (the flat `dist` on a tree without a
 // publish yet), so a pruned or older release cannot make the scan either miss or lie.
 const currentDir = join(ROOT, 'web', 'dist', 'current');
-const distDir = existsSync(currentDir) ? currentDir : join(ROOT, 'web', 'dist');
+// `BOOK_DIST_DIR` overrides that path: a test seam, and the deploy's release check (BOOK-46).
+// `||`, not `??`: an empty variable means "unset", never "scan the empty path".
+const distDir = process.env.BOOK_DIST_DIR || (existsSync(currentDir) ? currentDir : join(ROOT, 'web', 'dist'));
+// Say what was scanned: a redirected `BOOK_DIST_DIR` must never silently vouch for another tree.
+if (REQUIRE_DIST) console.log(`arch: F023 release mode — scanning ${relative(ROOT, distDir) || '.'}`);
+const missingDist = missingDistProblem({ distDir, requireDist: REQUIRE_DIST });
+if (missingDist !== null) report(missingDist.file, missingDist.message);
 for (const problem of f023Problems({ bookRoot: BOOK_ROOT, distDir })) {
   report(problem.file, problem.message);
 }
