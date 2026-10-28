@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Annotation } from './Annotation.tsx';
+import { firstDeclarations, mediaBlocks, unionDeclarations } from './cssRules.ts';
 import { Opening } from './Opening.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
 import { TITLE_GENRE, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
@@ -13,29 +14,6 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   import: 'default',
   eager: true,
 });
-
-/** The declarations of the first rule whose selector is exactly `selector`. */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u'));
-  return match?.[1] ?? '';
-}
-
-/** The body of `@media (<query>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, query: string): string {
-  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
-  if (start < 0) return '';
-  const open = css.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, index);
-    }
-  }
-  return '';
-}
 
 const front: FrontDto = {
   title: 'Бланк',
@@ -188,8 +166,8 @@ describe('cover', () => {
     // for both is copy-independent — a `ch` cap sized to a line count is what BOOK-DOC-39 forbids.
     const book = sheets['../styles/book.css'] ?? '';
     const chrome = sheets['../styles/chrome.css'] ?? '';
-    expect(declarations(book, '.title-genre')).toContain('max-width: min(100%, 58ch)');
-    expect(declarations(chrome, '.title-promise')).toContain('max-width: min(100%, 58ch)');
+    expect(firstDeclarations(book, '.title-genre')).toContain('max-width: min(100%, 58ch)');
+    expect(firstDeclarations(chrome, '.title-promise')).toContain('max-width: min(100%, 58ch)');
     const caps = Object.keys(sheets)
       .sort()
       .filter((file) => (sheets[file] ?? '').includes('min(100%, 58ch)'));
@@ -203,14 +181,14 @@ describe('cover', () => {
   it('keeps the cover rhythm explicit: 24 / 32 / 24 px between the lines, 64 px after the promise', () => {
     const book = sheets['../styles/book.css'] ?? '';
     const chrome = sheets['../styles/chrome.css'] ?? '';
-    expect(declarations(chrome, '.author')).toContain('margin: 24px 0 0');
-    expect(declarations(book, '.title-genre')).toContain('margin: 32px 0 0');
-    expect(declarations(chrome, '.title-promise')).toContain('margin: 24px 0 0');
-    expect(declarations(book, '.how-made')).toContain('padding-top: 64px');
+    expect(firstDeclarations(chrome, '.author')).toContain('margin: 24px 0 0');
+    expect(firstDeclarations(book, '.title-genre')).toContain('margin: 32px 0 0');
+    expect(firstDeclarations(chrome, '.title-promise')).toContain('margin: 24px 0 0');
+    expect(firstDeclarations(book, '.how-made')).toContain('padding-top: 64px');
   });
 
   it('stops the cover field growing at 720 px, so a tall window leaves no void above the title', () => {
-    const titul = declarations(sheets['../styles/chrome.css'] ?? '', '.titul');
+    const titul = firstDeclarations(sheets['../styles/chrome.css'] ?? '', '.titul');
     expect(titul).toContain('min-height: min(67.5vh, 720px)');
     expect(titul).toContain('min-height: min(67.5svh, 720px)');
   });
@@ -290,10 +268,12 @@ describe('page 2', () => {
     // page 2 on top of the shared rule, so page 2 kept rivers at 342px. BOOK-DOC-35 §3 keeps
     // that fix but states it the adaptive way: the desktop is the base, the phone is the query.
     const book = sheets['../styles/book.css'] ?? '';
-    expect(declarations(book, '.p')).toContain('text-align: justify');
+    expect(firstDeclarations(book, '.p')).toContain('text-align: justify');
     // The threshold is pinned: 599px (the 600 step), the same breakpoint as the gutters.
     expect(book).toMatch(/@media \(max-width:\s*599px\)/u);
-    expect(declarations(mediaBody(book, 'max-width: 599px'), '.p')).toContain('text-align: left');
+    // Every block of the query, not the first: the phone rule is read where `book.css` writes it.
+    const phone = mediaBlocks(book, 'max-width: 599px').join('\n');
+    expect(unionDeclarations(phone, '.p')).toContain('text-align: left');
     // Exactly one justification in the whole sheet set, and it is that block.
     const justified = Object.keys(sheets).filter((file) => (sheets[file] ?? '').includes('text-align: justify'));
     expect(justified).toEqual(['../styles/book.css']);
@@ -304,7 +284,7 @@ describe('page 2', () => {
       expect(css, file).not.toMatch(/\.p\s*\{[^}]*text-align/u);
     }
     // The annotation still keeps its own type: the measure is not all it says.
-    expect(declarations(sheets['../styles/chrome.css'] ?? '', '.annotation .p')).toContain(
+    expect(firstDeclarations(sheets['../styles/chrome.css'] ?? '', '.annotation .p')).toContain(
       'white-space: normal',
     );
   });
