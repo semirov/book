@@ -206,6 +206,15 @@ export type CommentDto = {
    */
   premise: boolean;
   /**
+   * BOOK-189 — the linked change's **own** status, when it is one the page can name: the writer
+   * has the filing in hand (`processing`) or the lane holds it (`pending`). It is the fact
+   * `status` alone cannot carry: an `accepted` filing whose change already landed reads
+   * `applied` here, while one the writer has not reached yet stays `accepted` and says
+   * `pending`. `null` for a premise (its state is the chapter's first pass), for a filing that
+   * landed or was refused, for a failed attempt and for a row no change ever held.
+   */
+  changeStatus?: 'pending' | 'processing' | null;
+  /**
    * Public one-liner when the guard stopped it or triage decided (≤200 chars, Russian).
    * The guard's own category and flags stay internal (audit m5): a public `flags` array
    * would let a stranger bisect the detector one probe at a time.

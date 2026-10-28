@@ -302,10 +302,11 @@ describe('one state per filing: the row plus one fact', () => {
     });
   });
 
-  it('keeps a note’s own stored receipt: only a premise reads its receipt from the chapter', async () => {
+  it('reads an ordinary filing’s receipt from its change, and the row’s own columns as the fallback', async () => {
+    // BOOK-189 — a landing has no receipt columns of its own: the change names the chapter it
+    // entered and that chapter's live revision is the receipt (the row's stored `applied_*` is
+    // the second source, never the first).
     const h = await boot();
-    // A change attached with no premise makes the row an ordinary filing, so the receipt comes
-    // from the row's own `applied_*` columns — the branch a premise must never take.
     seedFiling(h, { id: 'cmt_note', chapter: 8, status: 'applied', reason: null });
     seedChange(h, { id: 'chg_note', chapter: 8, status: 'done', outcome: 'applied', commentId: 'cmt_note' });
     h.db.prepare('UPDATE comments SET applied_chapter = 8, applied_rev = 3 WHERE id = ?').run('cmt_note');
@@ -313,7 +314,18 @@ describe('one state per filing: the row plus one fact', () => {
       id: 'cmt_note',
       premise: false,
       status: 'applied',
-      applied: { chapter: 8, rev: 3 },
+      applied: { chapter: 8, rev: chapterRev(h, 8) },
+    });
+
+    // Chapter 9 has no chapter row at all, so nothing is invented: the stored columns stand.
+    seedFiling(h, { id: 'cmt_09note', chapter: 9, status: 'applied', reason: null });
+    seedChange(h, { id: 'chg_09note', chapter: 9, status: 'done', outcome: 'applied', commentId: 'cmt_09note' });
+    h.db.prepare('UPDATE comments SET applied_chapter = 9, applied_rev = 3 WHERE id = ?').run('cmt_09note');
+    expect(first(await listComments(h, 9))).toMatchObject({
+      id: 'cmt_09note',
+      premise: false,
+      status: 'applied',
+      applied: { chapter: 9, rev: 3 },
     });
   });
 });

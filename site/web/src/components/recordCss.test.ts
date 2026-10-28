@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import shell from '../../index.html?raw';
 import { firstDeclarations, hasRule, mediaBlockList, rules, unionDeclarations } from './cssRules.ts';
 
 /**
@@ -20,6 +21,7 @@ const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', impo
 const record = sheets['../styles/record.css'] ?? '';
 const panels = sheets['../styles/panels.css'] ?? '';
 const reader = sheets['../styles/reader.css'] ?? '';
+const book = sheets['../styles/book.css'] ?? '';
 
 describe('the block is a block, never a layer', () => {
   it('has no position, no shadow, no overflow and no max-height', () => {
@@ -121,6 +123,20 @@ describe('the deleted floating layer', () => {
     const sentence = firstDeclarations(reader, '.sentence-block');
     expect(sentence).not.toContain('position: absolute');
     expect(sentence).not.toContain('opacity: 0');
+  });
+});
+
+describe('the prose owns its tap', () => {
+  it('declares `touch-action: manipulation`, so a second tap is a toggle and never a zoom', () => {
+    expect(firstDeclarations(book, '.p')).toContain('touch-action: manipulation');
+  });
+
+  it('does not buy that with the viewport: the shell leaves zoom to the reader', () => {
+    const viewport = /<meta\s+name="viewport"\s+content="([^"]+)"/u.exec(shell)?.[1] ?? '';
+    expect(viewport).toContain('width=device-width');
+    expect(viewport).toContain('initial-scale=1');
+    // Double-tap zoom is disabled by `touch-action`, not by locking the page's scale.
+    expect(viewport).not.toMatch(/maximum-scale|user-scalable\s*=\s*no/u);
   });
 });
 

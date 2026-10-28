@@ -1,4 +1,5 @@
 import type { CommentDto } from '@book/shared';
+import type { ReactNode } from 'react';
 
 import { filingNumber } from '../lib/filings.ts';
 import { filingConsequence } from '../lib/marginalia.ts';
@@ -20,10 +21,17 @@ export function SectionHeader({
   label: string;
   count: string | null;
   open: boolean;
-  onPress: () => void;
+  /** The pressed header itself: the record keeps it under the finger across the switch. */
+  onPress: (control: HTMLElement) => void;
 }) {
   return (
-    <button type="button" className="rec-section" aria-expanded={open} data-open={open ? 'true' : 'false'} onClick={onPress}>
+    <button
+      type="button"
+      className="rec-section"
+      aria-expanded={open}
+      data-open={open ? 'true' : 'false'}
+      onClick={(event) => onPress(event.currentTarget)}
+    >
       <span className="rec-section-label">{label}</span>
       <span className="rec-section-side">
         {count === null ? null : <span className="rec-section-count">{count}</span>}
@@ -95,6 +103,57 @@ export function RowsList({
           свернуть
         </button>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * BOOK-128 #3863 — the quote with the touched word underlined: decoration only, no box, no
+ * second node. The word is a paragraph offset; the anchor's sentence start turns it into an
+ * index inside the quote. A word outside its own sentence is not underlined, and the sentence
+ * reads whole.
+ */
+export function QuoteBody({
+  quote,
+  word,
+  sentenceStart,
+}: {
+  quote: string;
+  word: { start: number; end: number } | null;
+  sentenceStart: number | null;
+}): ReactNode {
+  if (word === null || sentenceStart === null) return quote;
+  const from = word.start - sentenceStart;
+  const to = word.end - sentenceStart;
+  if (from < 0 || to > quote.length || to <= from) return quote;
+  return (
+    <>
+      {quote.slice(0, from)}
+      <span className="rec-word">{quote.slice(from, to)}</span>
+      {quote.slice(to)}
+    </>
+  );
+}
+
+/** The words `вмешаться` says when the sentence already carries a live filing. */
+export const EXISTING_FILING_LINE = 'у этой фразы уже есть заявка — открыть её?';
+
+/**
+ * BOOK-128 #3862 — that notice, in the same body: the filing is offered, and a new one stays
+ * possible. Two targets, each 44 px; the record's `keepPlace` wraps both.
+ */
+export function ExistingFilingNotice({ onOpen, onNew }: { onOpen: () => void; onNew: () => void }) {
+  return (
+    <div className="rec-notice">
+      <p className="rec-notice-line">{EXISTING_FILING_LINE}</p>
+      <div className="rec-notice-acts">
+        <button type="button" className="rec-notice-open" onClick={onOpen}>
+          открыть заявку →
+        </button>
+        <button type="button" className="rec-notice-new" onClick={onNew}>
+          всё равно написать
+        </button>
+      </div>
     </div>
   );
 }

@@ -319,8 +319,10 @@ describe('a refused filing in the register (BOOK-158)', () => {
 
     const entry = container.querySelector('#discussion .comment');
     expect(entry?.getAttribute('data-comment-id')).toBe(refused.id);
-    // The register's state line keeps the reason; the block under it adds the hint and the door.
-    expect(entry?.querySelector('.comment-reason')?.textContent).toContain(REASON);
+    // The register's state line keeps the rule's sentence; the block under it adds the hint and
+    // the door. BOOK-189: the gate's word heads that line, so it is stripped from the reason and
+    // printed once — the sentence itself stays whole.
+    expect(entry?.querySelector('.comment-reason')?.textContent).toContain('цитата без источника');
     expect(entry?.querySelector('.comment-revise .revise-hint')?.textContent).toBe(HINT);
     const door = entry?.querySelector<HTMLButtonElement>('.comment-revise .seam-inline-action');
     expect(door?.textContent).toBe('исправить');

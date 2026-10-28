@@ -1,6 +1,6 @@
 import { classifyFrame } from '@book/shared';
 import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, FrameMark, ViewerDto } from '@book/shared';
-import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { wordOffsetIn } from '../dom.ts';
 import { FILING_PANEL_CLASS } from './FilingPanel.tsx';
@@ -15,6 +15,7 @@ import { proseMarks } from '../lib/proseMarks.ts';
 import type { WordFiling } from '../lib/provenance.ts';
 import { closeRecord, lastTouchOf, openRecord, useOpenRecord } from '../lib/record.ts';
 import { anchorFor, seamKey, sentenceAt, wordAt } from '../lib/seam.ts';
+import { beginPress, endsAsTap, movePress, type TapPress } from '../lib/tap.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
@@ -218,9 +219,8 @@ export function ProseParagraph({
   };
 
   /**
-   * A tap on a sentence. `pointerup` enforces the tap's own rule (a drag or a long press is
-   * not a tap); `click` is the same act arriving from a keyboard or an assistive technology,
-   * and it opens the same seam — the two never disagree about the sentence.
+   * A tap on a sentence: `pointerup` decides the gesture (a drag is not a tap), and `click`
+   * is the same act for a keyboard or an assistive technology.
    */
   const pick = (event: ReactPointerEvent<HTMLElement> | { target: EventTarget | null; clientX: number; clientY: number; currentTarget?: EventTarget | null }): void => {
     const selection = typeof window === 'undefined' ? '' : (window.getSelection()?.toString() ?? '');
@@ -228,7 +228,7 @@ export function ProseParagraph({
     // A tap on the mark, the rail, «⋯» or the strip is that control's own act: the paragraph
     // must not also open a seam (BOOK-33 — the numeral is the button the reader sees).
     const control = (event.target as HTMLElement | null)?.closest(
-      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision, .phone-strip-row, .rec',
+      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision, .phone-strip-row, .rec, .foot-jumps',
     );
     if (control !== null && control !== undefined) return;
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-s]');
@@ -255,6 +255,46 @@ export function ProseParagraph({
       host,
       inside === null ? null : { start: inside.start, end: inside.end },
     );
+  };
+
+  /**
+   * BOOK-128 comment #3862, the owner's phone: a browser sends one tap as `pointerdown` →
+   * `pointerup` → `click`. Binding the opening to both the pointer's release **and** the click
+   * made one tap two toggles — the block mounted and unmounted in the same gesture, which is
+   * the flash that left the record closed (and put `вмешаться` out of reach). The press is
+   * tracked from its `pointerdown`: the release opens, and the click that follows it is the
+   * same gesture and does nothing. A click with `detail === 0` is a keyboard's or an assistive
+   * technology's own act, and it takes the same path.
+   */
+  const press = useRef<TapPress | null>(null);
+
+  const pressDown = (event: ReactPointerEvent<HTMLElement>): void => {
+    // A right or middle mouse button is not the reader's tap; a second finger is not either.
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    press.current = beginPress(event, !event.isPrimary);
+  };
+
+  const pressMove = (event: ReactPointerEvent<HTMLElement>): void => {
+    movePress(press.current, { x: event.clientX, y: event.clientY });
+  };
+
+  const pressUp = (event: ReactPointerEvent<HTMLElement>): void => {
+    const started = press.current;
+    press.current = null;
+    if (!endsAsTap(started, event)) return;
+    pick(event);
+  };
+
+  /** A cancelled pointer (a scroll took over) is never a tap. */
+  const pressCancel = (): void => {
+    press.current = null;
+  };
+
+  const pressClick = (event: ReactMouseEvent<HTMLElement>): void => {
+    // The click a browser synthesizes from the pointer gesture: `pick` already ran on its
+    // release. Only a keyboard/AT click (`detail === 0`) replays the act here.
+    if (event.detail !== 0) return;
+    pick(event);
   };
 
   // The phrase's facts (the word's own line 3) and the strip's body are read by one hook.
@@ -375,8 +415,11 @@ export function ProseParagraph({
         data-chars={text.length}
         tabIndex={-1}
         data-revising={revising ?? undefined}
-        onPointerUp={pick}
-        onClick={pick}
+        onPointerDown={pressDown}
+        onPointerMove={pressMove}
+        onPointerUp={pressUp}
+        onPointerCancel={pressCancel}
+        onClick={pressClick}
         onPointerEnter={hint}
       >
         {revising === null ? null : <span className="revising-label">{revising}</span>}

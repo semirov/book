@@ -217,7 +217,9 @@ describe('a tap on a sentence (BOOK-68)', () => {
     expect(span?.getAttribute('data-quote')).toBe('Он сказал: «Уходи.');
 
     await act(async () => {
-      span?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      span?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, isPrimary: true }));
+      span?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, isPrimary: true }));
+      span?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     });
 
     const paragraph = document.querySelector('p.p');

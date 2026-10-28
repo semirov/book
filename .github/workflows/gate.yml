@@ -1,8 +1,36 @@
 name: Gate
 
-# The one gate every change passes: the same commands CONTRIBUTING.md asks a person to run,
-# on the same Node as prod. Red here means the branch does not land — main is protected and
-# requires this check (BOOK-74).
+# The one check every change passes. Red here means the branch does not land — `main` is
+# protected and requires exactly this check name (`gate`, BOOK-74), which is why the six jobs
+# below are folded into one verdict by `site/scripts/gate-verdict.mjs` instead of renaming it.
+#
+# BOOK-198 — the suite used to run twice (verify ran `vitest`, then coverage ran it again): 5–7
+# minutes per PR for the same 440 files. It now runs once, and only where it is needed:
+#
+#   changes   which set this run needs: `full` (push to main, or a PR that touches gate
+#             infrastructure — `site/shared/**` included, server and web import it) or `affected`
+#             (a PR: changed packages + the fixed core set).
+#   static    `npm run verify` (typecheck, arch, frame:check — no tests) + manuscript validation.
+#             Always runs, both events.
+#   tests     only in `full` mode: the whole suite as 4 shards, each writing a blob report; the
+#             shard collects coverage but does not judge it (a quarter of a suite cannot meet the
+#             floors, so its threshold flags are zeroed for this run only). A shard builds
+#             `@book/shared` first: it no longer runs `typecheck`, and the CLIs some tests spawn
+#             import that package through its `dist` entry.
+#   coverage  only in `full` mode: merges the 4 blobs into ONE run and applies the floors from
+#             `site/vitest.config.ts` (lines/functions/statements 80, branches 75) to it.
+#   affected  only in `affected` mode (pull requests): `npm run test:affected` on the selection.
+#   build     build + proof + `arch --require-dist`, on the built bundle; both events.
+#
+# Verdict rule: a needed job that failed, was cancelled or timed out is red; a *required* job
+# that was skipped is red; a job this mode skips by design is fine. Per mode:
+#   full      → changes, static, tests, coverage, build green (affected skipped)
+#   affected  → changes, static, affected, build green (tests, coverage skipped)
+#
+# The blob reporter's default output is `.vitest-reports/blob-<index>-<count>.json` under
+# `site/` (checked against vitest ^3.2.4, verified on the installed 3.2.7: passing `--outputFile`
+# instead writes one *file*, which every shard would overwrite), so each shard uploads the
+# directory — hidden, hence `include-hidden-files: true` — and `npm run test:merge` reads it.
 
 on:
   pull_request:
@@ -14,14 +42,46 @@ permissions:
 
 concurrency:
   # A PR branch only needs its newest head; main is never cancelled mid-run (a deploy may follow).
-  group: gate-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  # The PR is keyed by number, not by `head_ref`: a fork can push a branch called `main`, and two
+  # such PRs must not cancel each other's gate.
+  group: gate-${{ github.event_name }}-${{ github.event.pull_request.number || github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  gate:
-    name: gate
+  changes:
+    name: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.select.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # `git merge-base <base> HEAD` needs the history the base commit lives in.
+          fetch-depth: 0
+
+      # Pure git + node: no `npm ci` here, so the selection costs seconds. On a push the answer
+      # is fixed (`main` always gets the whole suite); on a PR `affected-tests.mjs` computes it
+      # from the diff against the base commit, and fails towards `full` if git cannot answer.
+      - name: Select the test set
+        id: select
+        working-directory: site
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          json="$(node scripts/affected-tests.mjs --base="$BASE_SHA" --json)"
+          echo "selection: $json"
+          mode="$(printf '%s' "$json" | node -e "let s='';process.stdin.on('data',(c)=>{s+=c}).on('end',()=>process.stdout.write(JSON.parse(s).mode))")"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
@@ -37,13 +97,171 @@ jobs:
         working-directory: site
         run: npm ci
 
-      - name: Verify (typecheck, arch, tests)
+      # BOOK-198: no tests in `verify` any more — the suite runs in `tests`/`affected`, once.
+      - name: Verify (typecheck, arch, frame:check)
         working-directory: site
         run: npm run verify
 
-      - name: Coverage (floor from vitest.config.ts, a red run is a red gate)
+      # Manuscript and canon must not drift from the site: runs from the repo root, no build needed.
+      - name: Validate manuscript (structure and law rules)
+        run: node site/bin/validate.mjs --strict
+
+  tests:
+    name: tests (${{ matrix.shard }}/4)
+    needs: [changes]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # One slow shard must not hide the report of the other three: all of them finish, and the
+      # merged run (or the verdict) is what turns red.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install (npm ci, lockfile is the contract)
         working-directory: site
-        run: npm run test:coverage
+        run: npm ci
+
+      # `@book/shared` resolves through its `dist` entry; `npm run typecheck` used to build it
+      # before the suite ran. The shards do not typecheck, so they build it themselves — without
+      # this the CLIs a few tests spawn die on `ERR_MODULE_NOT_FOUND` for `@book/shared`.
+      - name: Build @book/shared
+        working-directory: site
+        run: npm run build -w @book/shared
+
+      # `--coverage` so the shard's coverage travels in the blob; the floors are zeroed for this
+      # run only, because a shard sees a quarter of the suite and would fail every one of them.
+      # The real floors are applied once, by `coverage`, to the merged run. `--reporter=default`
+      # sits beside the blob so a red shard's log names the failing test, not just its blob.
+      - name: Shard ${{ matrix.shard }}/4
+        working-directory: site
+        run: >-
+          npx vitest run
+          --shard=${{ matrix.shard }}/4
+          --reporter=blob
+          --reporter=default
+          --coverage
+          --coverage.reporter=text-summary
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.statements=0
+          --coverage.thresholds.branches=0
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blob-${{ matrix.shard }}
+          path: site/.vitest-reports
+          # `.vitest-reports` starts with a dot: upload-artifact@v4 ignores hidden files by
+          # default (it matches the path itself), which would upload nothing and fail the step.
+          include-hidden-files: true
+          # A re-run of the same run leaves attempt 1's artifacts in place; without `overwrite`
+          # the upload fails with a 409 and a flake can only be cleared by pushing a commit.
+          overwrite: true
+          retention-days: 1
+          # `always()` + warn: a red shard must still publish its blob, so the failure can be read
+          # out of the report; a blob that never appeared is caught by the count check in `coverage`.
+          if-no-files-found: warn
+
+  coverage:
+    name: coverage
+    needs: [changes, tests]
+    if: needs.changes.outputs.mode == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install (npm ci, lockfile is the contract)
+        working-directory: site
+        run: npm ci
+
+      - name: Collect the shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-*
+          merge-multiple: true
+          path: site/.vitest-reports
+
+      # Four blobs or nothing: a missing artifact would otherwise merge quietly into a lower
+      # coverage number and blame the last shard's tests instead of the upload that never came.
+      - name: All four shards reported
+        working-directory: site
+        run: |
+          # `ls` exits non-zero when nothing matches and `run:` is `bash -e`; without `|| true`
+          # the step dies on that line instead of naming the count.
+          count="$(ls -1 .vitest-reports/blob-*.json 2>/dev/null | wc -l | tr -d ' ')" || true
+          test "$count" -eq 4 || { echo "coverage: expected 4 blob reports, found $count"; exit 1; }
+
+      # One merged run, the same floors: `test:merge` runs no tests, it replays the blobs and
+      # computes coverage over all four shards.
+      - name: Coverage (floors from vitest.config.ts, a red run is a red gate)
+        working-directory: site
+        run: npm run test:merge
+
+  affected:
+    name: affected
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.mode == 'affected'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # `test:affected` resolves the merge-base against the PR base commit itself.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install (npm ci, lockfile is the contract)
+        working-directory: site
+        run: npm ci
+
+      # Same reason as the shards: the CLIs a few server tests spawn import `@book/shared`,
+      # which resolves through `shared/dist`.
+      - name: Build @book/shared
+        working-directory: site
+        run: npm run build -w @book/shared
+
+      - name: Affected tests (changed packages + the core set)
+        working-directory: site
+        run: npm run test:affected -- --base=${{ github.event.pull_request.base.sha }}
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install (npm ci, lockfile is the contract)
+        working-directory: site
+        run: npm ci
 
       - name: Build
         working-directory: site
@@ -61,6 +279,24 @@ jobs:
         working-directory: site
         run: npm run arch -- --require-dist
 
-      # Manuscript and canon must not drift from the site: runs from the repo root, no build needed.
-      - name: Validate manuscript (structure and law rules)
-        run: node site/bin/validate.mjs --strict
+  gate:
+    name: gate
+    # `always()`: a verdict has to be printed even when a job it needs was skipped or failed —
+    # otherwise the required check never reports and the PR waits forever.
+    if: always()
+    needs: [changes, static, tests, coverage, affected, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # Same Node as the rest of the gate; no `npm ci`, this job only reads `needs`.
+          node-version: '22.23.3'
+
+      - name: Verdict
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: node site/scripts/gate-verdict.mjs

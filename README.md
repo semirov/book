@@ -48,7 +48,9 @@ cd site
 npm install
 npm run dev                       # API :8080 + Vite :5173
 npm run build && npm start        # один процесс на :8080
-npm run verify                    # typecheck + arch + тесты + рамка (frame-check)
+npm run verify                    # typecheck + arch + рамка (frame-check), без тестов
+npm run test                      # 462 файла, ~4 440 тестов
+node bin/validate.mjs --strict    # канон и импринт (текст книги лежит в базе)
 node bin/validate.mjs --from-db "$DATA_DIR"   # текст как он лежит в базе: 0 ошибок
 ```
 

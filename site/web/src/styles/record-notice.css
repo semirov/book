@@ -1,0 +1,50 @@
+/**
+ * BOOK-128 comment #3862 — the record's notice: `вмешаться` on a sentence that already carries
+ * a live filing says so, in the same body, and offers both roads (the filing, a new one).
+ *
+ * A sheet of its own because `record.css` is at the 500-line limit the architecture gate holds;
+ * it is loaded with the record and styled by the same tokens, so it reads as one surface.
+ */
+
+/* BOOK-128 #3862 — `вмешаться` on a sentence that already has a live filing says so, in the
+   same body: the filing is offered, and a new one stays possible. Two targets, each 44 px. */
+.rec-notice {
+  margin-top: 8px;
+}
+.rec-notice-line {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: var(--ink-2);
+}
+.rec-notice-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+.rec-notice-open,
+.rec-notice-new {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.rec-notice-open {
+  color: var(--live);
+}
+.rec-notice-new {
+  color: var(--ink-3);
+}
+.rec-notice-open:focus-visible,
+.rec-notice-new:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+

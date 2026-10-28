@@ -309,10 +309,12 @@ function text(html: string): string {
  * a filing and as the chapter's row.
  */
 describe('one state per filing on the register', () => {
-  it('lists the thread’s filings only, and counts the queue from the same rows', () => {
+  it('lists the thread’s filings only; the queue is the writer’s, never the rows', () => {
+    // BOOK-189 — the line counts the writer's pending changes (`depth`), and the rows are what
+    // the page lists. The premise here is a row of the chapter's own, never a queue place.
     const html = renderToStaticMarkup(
       <Discussion
-        depth={0}
+        depth={1}
         complete
         comments={[
           // A premise whose chapter 65 has text: it entered the first edition, and its home is
@@ -351,13 +353,75 @@ describe('one state per filing on the register', () => {
   it('shows a failed attempt as the deck’s sentence, never as the engine’s code', () => {
     const html = renderToStaticMarkup(
       <Discussion
-        depth={0}
+        depth={1}
         comments={[comment({ id: 'cmt_9', chapter: 9, status: 'new', attempt: 'failed' })]}
         live
       />,
     );
     expect(text(html)).toContain(FAILED_ATTEMPT_LINE);
     expect(text(html)).toContain('в очереди 1 правка');
+    expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
+  });
+
+  it('prints one state per filing: landed over an older attempt, pending, refused (BOOK-189)', () => {
+    // The owner's rows: one filing whose `change_id` pointed at an older `escalated` attempt while
+    // a later `done applied` landed it, one the lane still holds, one refused. The queue line is
+    // the writer's (`depth`), so one pending change reads «в очереди 1 правка» over three rows.
+    const html = renderToStaticMarkup(
+      <Discussion
+        depth={1}
+        complete
+        comments={[
+          comment({
+            id: 'cmt_applied',
+            status: 'applied',
+            chapter: 3,
+            applied: { chapter: 3, rev: 4 },
+            changeId: 'chg_applied',
+            reason: null,
+            attempt: null,
+          }),
+          comment({ id: 'cmt_pending', status: 'accepted', changeStatus: 'pending', changeId: 'chg_pending' }),
+          comment({
+            id: 'cmt_refused',
+            status: 'rejected',
+            refusal: 'auditor',
+            reason: 'вне книги: этот мир не просит чудес',
+          }),
+        ]}
+        changes={[
+          change({
+            id: 'chg_escalated',
+            seq: 1,
+            status: 'escalated',
+            outcome: 'gate_timeout',
+            reason: 'движок отказал: ENGINE_TIMEOUT',
+            sourceCommentId: 'cmt_applied',
+          }),
+          change({
+            id: 'chg_applied',
+            seq: 2,
+            status: 'done',
+            outcome: 'applied',
+            sourceCommentId: 'cmt_applied',
+            decidedAt: '2026-10-25T12:30:00Z',
+          }),
+        ]}
+        live
+      />,
+    );
+    const plain = text(html);
+    expect(plain).toContain('внесено');
+    expect(plain).toContain('глава 3 · ревизия 4');
+    expect(plain).toContain('ждёт');
+    expect(plain).toContain('в очереди на запись');
+    expect(plain).toContain('отклонено');
+    expect(plain).toContain('вне книги: этот мир не просит чудес');
+    expect(plain).toContain('в очереди 1 правка');
+    // The failed attempt is history, not the state: no queue word, no second landing claim.
+    expect(plain).not.toContain('идёт');
+    expect(plain).not.toContain('правка в очереди');
+    expect(plain).not.toContain('входит в книгу');
     expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
   });
 

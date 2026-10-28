@@ -125,7 +125,11 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(comments: CommentDto[], changes: ChangeSummaryDto[]): Promise<void> {
+/**
+ * BOOK-189 — `depth` is the writer's lane, never the rows: a page full of waiting filings prints
+ * «в очереди пусто» until the writer actually holds a change.
+ */
+async function mount(comments: CommentDto[], changes: ChangeSummaryDto[], depth = 0): Promise<void> {
   const page: ReactElement = (
     <>
       <ChapterArticle
@@ -140,7 +144,7 @@ async function mount(comments: CommentDto[], changes: ChangeSummaryDto[]): Promi
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: true, displayName: 'Аня' }}
       />
-      <Discussion depth={0} comments={comments} changes={changes} live />
+      <Discussion depth={depth} comments={comments} changes={changes} live />
     </>
   );
   await act(async () => root?.render(page));
@@ -181,7 +185,7 @@ describe('one filing, one entry (BOOK-137)', () => {
   });
 
   it('renders a premise and an unrelated filing as two entries, each once', async () => {
-    await mount([PREMISE, NOTE], [ATTEMPT]);
+    await mount([PREMISE, NOTE], [ATTEMPT], 1);
     const text = container.textContent ?? '';
 
     expect(container.querySelectorAll(`[data-comment-id="${PREMISE.id}"]`)).toHaveLength(1);
@@ -193,7 +197,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(count(text, '001')).toBe(1);
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
     expect(count(text, 'прицел')).toBe(1);
-    // One queued filing, and the line counts exactly it.
+    // The line counts the writer's lane (one change the writer holds), never the rows.
     expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди 1 правка');
   });
 
