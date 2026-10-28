@@ -2,7 +2,7 @@ import type { ChangeSummaryDto, CommentDto, MyDecisionsDto } from '@book/shared'
 import { useCallback, useRef, useState } from 'react';
 
 import { getChanges, getChapterComments, getComments, getMyDecisions } from './api.ts';
-import { insertFiling } from './lib/filings.ts';
+import { upsertFiling } from './lib/filings.ts';
 import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib/ownDecisions.ts';
 
 /**
@@ -115,16 +115,19 @@ export function useReaderFeed() {
   /**
    * BOOK-111 — the posted DTO enters the feed in the same frame, before any request settles.
    *
-   * The 201 answer is the row the reader just made: it is inserted (never appended twice) into
-   * the thread's feed and into its chapter's, and the chapter is marked loaded — its marks are
-   * now settled from this row. A later `refreshComments` is the durable truth and replaces the
-   * list wholesale, so a row that survived here cannot appear twice.
+   * The answer is the row the reader just made: it is inserted (never appended twice) into the
+   * thread's feed and into its chapter's, and the chapter is marked loaded — its marks are
+   * now settled from this row. BOOK-158: a **revision** comes back under the id of the row it
+   * revised, so the same acceptance replaces that row in place instead of being dropped as a
+   * duplicate — the state line and the hint move with it, with no reload. A later
+   * `refreshComments` is the durable truth and replaces the list wholesale, so a row that
+   * survived here cannot appear twice.
    */
   const acceptComment = useCallback((comment: CommentDto) => {
-    setComments((current) => insertFiling(current, comment) ?? current);
+    setComments((current) => upsertFiling(current, comment) ?? current);
     setChapterFeed((current) => {
       const feed = current[comment.chapter] ?? { items: [], loaded: true };
-      const items = insertFiling(feed.items, comment);
+      const items = upsertFiling(feed.items, comment);
       if (items === null && feed.loaded) return current;
       return { ...current, [comment.chapter]: { items: items ?? feed.items, loaded: true } };
     });

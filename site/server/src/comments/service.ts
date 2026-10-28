@@ -3,13 +3,19 @@
  *
  * The order is the security design and must not be rearranged:
  *   identity → idempotent replay → queue backpressure → CAPTCHA (only when a provider is
- *   configured) → sanitize → dedupe → anchor → guard (A) → rights scan (B) → budget/rate
- *   slots → store → rights write (B) → broadcast.
+ *   configured) → sanitize → dedupe → anchor → guard (A) → rights scan (B) → attempts →
+ *   budget/rate slots → store → rights write (B) → broadcast.
  *
  * Gate B's **scan** runs before the budget and its refusal spends no slot (BOOK-61 review m2);
  * its **write** is after the insert, because a verdict is a column on the row and not a field
- * of the request. The budget itself is `budget.ts` (BOOK-113): an exempt identity spends no
- * edit slot, while the comment budget still applies to everyone.
+ * of the request. The comment budget is `budget.ts` (BOOK-113).
+ *
+ * BOOK-158: the daily edit budget left this path. It is spent by an **accepted** filing only
+ * (`feedback/cli.ts`, BOOK-DOC-4 rule 5), so a refusal costs the reader nothing; what bounds a
+ * submission here is the attempt ledger (`attempts.ts`) — three tries a filing a UTC day, five
+ * an identity and fifteen a network, and not one of them on the same words about the same place
+ * twice in twenty-four hours. A refused submission counts there, because that is the model's
+ * attention; an identical resubmission does not, because it never reaches a model at all.
  *
  * BOOK-64 (2026-10-27): the shipped gate is the authenticated identity plus the comment and
  * edit rate limits, so with `captchaProvider: 'none'` the verification step is skipped and the
@@ -25,10 +31,6 @@
 
 import {
   COMMENT_DEDUPE_WINDOW_MS,
-  COMMENT_MAX_CHARS,
-  COMMENT_RAW_MAX_BYTES,
-  EDIT_MAX_CHARS,
-  EDIT_RAW_MAX_BYTES,
   TERMS_VERSION,
   acceptedTermsText,
   classifyFrame,
@@ -44,11 +46,20 @@ import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
+import {
+  ATTEMPTS_PER_IDENTITY_DAY,
+  ATTEMPTS_PER_NETWORK_DAY,
+  anchorSha,
+  identityAttemptsToday,
+  networkAttemptsToday,
+  recordAttempt,
+  setAttemptOutcome,
+  identicalAttempt,
+} from './attempts.ts';
 import { resolveAnchor } from './anchor.ts';
 import { readBudget } from './budget.ts';
-import { editDailyMessage } from './dailyLimit.ts';
 import { fail, isPresent, type ServiceFailure } from './failure.ts';
-import { checkInterventionKind } from './intervention.ts';
+import { readFilingText } from './filing.ts';
 import { classifyComment } from './guard.ts';
 import {
   appendCommentEvent,
@@ -59,9 +70,9 @@ import {
   toCommentDto,
   type CommentRow,
 } from './repo.ts';
-import { sanitizeAuthor, sanitizeBody, sanitizeProposed } from './sanitize.ts';
+import { sanitizeAuthor } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
-import { commentSpecs, editSpecs } from '../rate/policy.ts';
+import { commentSpecs } from '../rate/policy.ts';
 import { applyRights, scanFiling } from '../rights/apply.ts';
 
 export type CommentServiceDeps = {
@@ -162,32 +173,16 @@ export class CommentService {
     // request with the same key can land while this one waits: the checks below re-read the
     // store instead of trusting the snapshot taken above.
 
-    if (typeof input.body !== 'string') return fail(422, 'INVALID', 'нужен текст замечания');
-    if (Buffer.byteLength(input.body, 'utf8') > COMMENT_RAW_MAX_BYTES) {
-      return fail(422, 'TOO_LONG', `замечание длиннее ${COMMENT_MAX_CHARS} символов`);
-    }
-    const body = sanitizeBody(input.body);
-    if (!body.ok) return fail(422, body.code, body.message);
-
-    let proposedText: string | null = null;
-    if (isPresent(input.proposedText)) {
-      // Bytes first: a 10 000-character intervention in Cyrillic is 20 000 B, and the raw
-      // bound is sized so the promise the composer shows is the one the server keeps.
-      if (Buffer.byteLength(input.proposedText, 'utf8') > EDIT_RAW_MAX_BYTES) {
-        return fail(422, 'TOO_LONG', `правка длиннее ${EDIT_MAX_CHARS} символов`);
-      }
-      const proposed = sanitizeProposed(input.proposedText);
-      if (proposed === null || !proposed.ok) {
-        return fail(422, proposed === null ? 'INVALID' : proposed.code, proposed?.message ?? 'предложенная правка пустая');
-      }
-      proposedText = proposed.text;
-    }
-
-    // BOOK-16: a new intervention carries exactly one of the four kinds (BOOK-DOC-4 rule 1).
-    // Checked after the CAPTCHA and before anything is stored, so a refusal costs no slot.
-    const kind = checkInterventionKind(input.interventionKind, proposedText !== null);
-    if (kind.ok === false) return fail(422, kind.code, kind.message);
-    const interventionKind: InterventionKind | null = kind.kind;
+    // BOOK-158: one reader's submission is read by the same rules as a revision of it.
+    const text = readFilingText({
+      body: input.body,
+      proposedText: input.proposedText,
+      interventionKind: input.interventionKind,
+    });
+    if (text.ok === false) return text;
+    const body = { text: text.body.text, hash: text.body.hash };
+    const proposedText = text.proposedText;
+    const interventionKind: InterventionKind | null = text.kind;
 
     const duplicate = findDuplicate(
       this.db,
@@ -223,33 +218,46 @@ export class CommentService {
     // filing costs the reader no slot. The answer is written to the row after the insert —
     // a verdict is a column, and the row must exist first.
     const rights = scanFiling(this.db, input.chapter, filing);
-    const specs = [
-      ...commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id),
-      // BOOK-113: an exempt identity spends no edit slot — both the identity and the network
-      // key are skipped, otherwise the network cap would still refuse the owner's second edit
-      // in a day. The comment budget above still applies to them. Fail closed: only an
-      // explicit `1` exempts, so a missing or unknown value is never a hole.
-      ...(proposedText === null || context.identity.edit_exempt === 1
-        ? []
-        : editSpecs(this.config, this.ipHash, context.ipKey, context.identity.id)),
-    ];
+
+    // BOOK-158: a submission that may reach a model is an attempt, and the counters are the
+    // model's attention — not the reader's daily edit, which is spent by an accepted filing
+    // alone (`feedback/cli.ts`). A refusal spends here, an identical resubmission does not.
+    const nowMs = now.getTime();
+    const identityToday = identityAttemptsToday(this.db, context.identity.id, nowMs);
+    const networkToday = networkAttemptsToday(this.db, this.ipHash(context.ipKey), nowMs);
+    if (identityToday >= ATTEMPTS_PER_IDENTITY_DAY || networkToday >= ATTEMPTS_PER_NETWORK_DAY) {
+      // One public line for both caps: the reader is told the day, never which counter ran out.
+      return {
+        ok: false,
+        status: 429,
+        code: 'ATTEMPT_LIMIT',
+        message: 'слишком много попыток сегодня — попробуйте завтра',
+        budget: identityToday >= ATTEMPTS_PER_IDENTITY_DAY ? 'identity' : 'ip',
+      };
+    }
+    if (
+      identicalAttempt(
+        this.db,
+        context.identity.id,
+        body.hash,
+        anchorSha({
+          chapter: input.chapter,
+          block_id: anchor.anchor.blockId,
+          quote: anchor.anchor.quote,
+          prefix: anchor.anchor.prefix,
+          suffix: anchor.anchor.suffix,
+        }),
+        nowMs,
+      )
+    ) {
+      return fail(409, 'IDENTICAL', 'это уже было — поправьте формулировку');
+    }
+
+    const specs = commentSpecs(this.config, this.ipHash, context.ipKey, context.identity.id);
     const consumed = rights.verdict === 'refused' ? { allowed: true as const } : this.limiter.consume(specs);
     if (!consumed.allowed) {
       const blocked = consumed.blocked;
       const resetAt = blocked.resetAtMs === null ? undefined : new Date(blocked.resetAtMs).toISOString();
-      if (blocked.key.startsWith('edit:id:') || blocked.key.startsWith('edit:ip:')) {
-        // One public line for both budgets (BOOK-DOC-4 rule 5): the reader is told the day
-        // window and when it resets, never which counter refused them.
-        return {
-          ok: false,
-          status: 429,
-          code: 'EDIT_DAILY_LIMIT',
-          message: editDailyMessage(blocked.resetAtMs, this.config.tz, now.getTime()),
-          retryAfterMs: blocked.retryAfterMs,
-          ...(resetAt === undefined ? {} : { resetAt }),
-          budget: blocked.key.startsWith('edit:id:') ? 'identity' : 'ip',
-        };
-      }
       return {
         ok: false,
         status: 429,
@@ -310,7 +318,13 @@ export class CommentService {
 
     const row = readCommentRow(this.db, id);
     if (row === undefined) return fail(500, 'INTERNAL', 'замечание не сохранилось');
-    const dto = toCommentDto(this.db, row);
+    // BOOK-158: every stored filing is attempt `n = 1`; a row a gate refused here is already
+    // decided, so its attempt is closed with the same answer instead of waiting for triage.
+    const n = recordAttempt(this.db, row, at);
+    if (row.status === 'rejected') setAttemptOutcome(this.db, id, n, 'refused', at);
+    else if (row.status === 'quarantined') setAttemptOutcome(this.db, id, n, 'held', at);
+
+    const dto = toCommentDto(this.db, row, nowMs);
     this.emit?.('comment:added', {
       id: dto.id,
       chapter: dto.chapter,
@@ -356,7 +370,7 @@ export class CommentService {
 
   private response(row: CommentRow, ipKey: string): PostCommentResponse {
     return {
-      comment: toCommentDto(this.db, row),
+      comment: toCommentDto(this.db, row, this.now().getTime()),
       remaining: this.budget(row.identity_id, ipKey),
       queue: { depth: this.queueState().depth },
     };

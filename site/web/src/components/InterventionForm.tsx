@@ -1,7 +1,7 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, postAnchoredComment } from '../api.ts';
+import { ApiError, postAnchoredComment, reviseComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, type SeamDraft } from '../lib/draft.ts';
@@ -12,6 +12,7 @@ import {
   wordingLabel,
   wordingPlaceholder,
 } from '../lib/kindChoices.ts';
+import { revisePayload, REVISE_BUDGET_LINE, REVISE_LABEL } from '../lib/revise.ts';
 import { SUBMIT_LINE } from '../lib/terms.ts';
 import { InterventionKinds } from './InterventionKinds.tsx';
 
@@ -28,6 +29,12 @@ import { InterventionKinds } from './InterventionKinds.tsx';
  * BOOK-57: the note is not a fifth kind. It is a quiet action under the submit, and while it
  * is open the four-kind grid, «что это меняет» and the kind's wording field are gone: a note
  * is one field, it sends no kind and no wording, and it spends no edit of the day.
+ *
+ * BOOK-158: a draft that names a refused filing (`revisesId`) is a **revision**, not a new
+ * filing. The form sends the reader's edited words to `POST /api/comments/:id/revise` — the
+ * anchor is not sent at all, because the server keeps the row's own place — and the answer is
+ * the same row reopened, which is what the caller's `onPosted` puts back on the page. Nothing
+ * about the retry is hidden from the reader: the form states where the day's edit is spent.
  */
 export type FormProps = {
   entry: CatalogEntry;
@@ -71,6 +78,8 @@ export function InterventionForm({
   const [budget, setBudget] = useState<{ line: string } | null>(null);
 
   const noteOnly = draft.noteOnly;
+  /** BOOK-158: the form is correcting a refused filing, not making a new one. */
+  const revise = draft.revisesId !== null;
 
   /**
    * BOOK-63: `form_open` is the form the reader sees, once per mount. It carries nothing —
@@ -122,6 +131,18 @@ export function InterventionForm({
     }
     setSending(true);
     try {
+      // BOOK-158 — a draft opened by «исправить» revises that filing: the words travel, the
+      // anchor does not (the server keeps the row's chapter, block, quote and revision). The
+      // answer is the same id, so the page replaces the row instead of adding one.
+      if (draft.revisesId !== null) {
+        const revised = await reviseComment(draft.revisesId, revisePayload(draft));
+        setBudget(null);
+        refuse(null);
+        // No `submit_*` here: the taxonomy names a filing being made, and a revision is the
+        // same filing corrected — the receipt the strip prints is the act the reader sees.
+        onPosted(revised.comment);
+        return;
+      }
       // The revision the paragraph was rendered from (BOOK-33): a mismatch is exactly what
       // STALE_ANCHOR reports, and the re-anchored draft carries the fresh one.
       const response = await postAnchoredComment(
@@ -144,6 +165,7 @@ export function InterventionForm({
           ...(caught.retryAfterMs === undefined ? {} : { retryAfterMs: caught.retryAfterMs }),
           ...(caught.resetAt === undefined ? {} : { resetAt: caught.resetAt }),
           ...(caught.commentId === undefined ? {} : { commentId: caught.commentId }),
+          ...(caught.reopenAt === undefined ? {} : { reopenAt: caught.reopenAt }),
         });
         // The refusal is the server's; only its code leaves the page.
         track('submit_refused', { code: caught.code });
@@ -272,7 +294,7 @@ export function InterventionForm({
       )}
 
       <button className="seam-submit" type="submit" disabled={sending || !ready}>
-        {sending ? 'передаётся' : submitLabel(draft)}
+        {sending ? (revise ? 'исправляется' : 'передаётся') : revise ? REVISE_LABEL : submitLabel(draft)}
       </button>
       <button
         type="button"
@@ -283,6 +305,8 @@ export function InterventionForm({
       >
         {NOTE_ACTION_LABEL}
       </button>
+      {/* BOOK-158 — a revision says where the day's edit goes, before the reader sends it. */}
+      {revise ? <p className="fine seam-revise">{REVISE_BUDGET_LINE}</p> : null}
       <p className="fine seam-licence">
         {SUBMIT_LINE} <a className="seam-link" href="/rules">правила →</a>
       </p>

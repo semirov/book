@@ -43,7 +43,7 @@ export function readBudget(deps: BudgetDeps, identityId: string, ipKey: string):
     remaining: comments.remaining,
     resetAt: comments.resetAtMs === null ? null : new Date(comments.resetAtMs).toISOString(),
   } as const;
-  if (isExempt(deps.db, identityId)) {
+  if (isEditExempt(deps.db, identityId)) {
     return {
       ...base,
       editsPerDay: deps.config.editSubmissionsPerDay,
@@ -74,8 +74,10 @@ export function readBudget(deps: BudgetDeps, identityId: string, ipKey: string):
 /**
  * BOOK-113: the flag is read from the store, not from the caller's snapshot, so an idempotent
  * replay — which has only the row's `identity_id` — reports the same budget as a fresh post.
+ * BOOK-158: the triage CLI spends the day's edit on an accepted filing and must skip an exempt
+ * identity, so the one predicate is exported rather than copied.
  */
-function isExempt(db: Db, identityId: string): boolean {
+export function isEditExempt(db: Db, identityId: string): boolean {
   const identity = readIdentity(db, identityId);
   // Fail closed: only an explicit `1` is an exemption. `!== 0` read a missing or unknown
   // value as the owner's exemption — the one direction a flag like this must never take.

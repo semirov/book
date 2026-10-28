@@ -136,9 +136,9 @@ export const PASS_SPEND_TABLE_SQL = `CREATE TABLE pass_spend (                 -
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   at         TEXT NOT NULL,                        -- ISO UTC, when the pass closed
   day        TEXT NOT NULL,                        -- 'YYYY-MM-DD' (UTC), taken from 'at'
-  pass_id    TEXT NOT NULL UNIQUE,                 -- the engine's step id
+  pass_id    TEXT NOT NULL UNIQUE,                 -- the engine's step id, or 'triage:<commentId>:<n>'
   chapter    INTEGER,
-  pass       TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep')),
+  pass       TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep','triage')),
   change_id  TEXT,
   model      TEXT,                                 -- the model the step closed with (null: none)
   tokens_in  INTEGER NOT NULL,
@@ -147,6 +147,37 @@ export const PASS_SPEND_TABLE_SQL = `CREATE TABLE pass_spend (                 -
   priced     INTEGER NOT NULL CHECK (priced IN (0,1))  -- 1 = usd is a measurement
 );
 CREATE INDEX pass_spend_day ON pass_spend(day);`;
+
+/**
+ * BOOK-158 — the attempt ledger: one row per submission a model may be asked to judge.
+ *
+ * A **filing** is the comment row and keeps its id through every revision; an **attempt** is
+ * one submission of it, numbered `n` from 1 in submission order. The ledger is the only place
+ * the model's attention is counted: a refusal spends a day's edit budget nowhere (that budget
+ * belongs to an accepted filing, BOOK-DOC-4 rule 5), but it does spend an attempt here, so a
+ * refused reader can be told how many tries are left, when the cooldown ends and whether the
+ * same words already reached a model. `day` is the UTC date of `at`, which is what makes the
+ * filing's three tries and the identity/network caps lift at 00:00 UTC by themselves.
+ *
+ * It lives here because both the full schema and migration v20 build the same table.
+ */
+export const COMMENT_ATTEMPTS_TABLE_SQL = `CREATE TABLE comment_attempts (          -- BOOK-158: submissions a model may judge
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  comment_id  TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+  n           INTEGER NOT NULL,                   -- 1.. per filing, in submission order
+  at          TEXT NOT NULL,                      -- ISO UTC of the submission that will be evaluated
+  day         TEXT NOT NULL,                      -- UTC date of 'at'
+  body_sha    TEXT NOT NULL,                      -- normalised body hash at submission time
+  anchor_sha  TEXT NOT NULL,                      -- hash of block_id|quote|prefix|suffix (or the premise)
+  quote       TEXT,
+  outcome     TEXT CHECK (outcome IN ('submitted','accepted','refused','held','expired')),
+  decided_at  TEXT,
+  model       TEXT, tokens_in INTEGER, tokens_out INTEGER, usd REAL, priced INTEGER,
+  UNIQUE (comment_id, n)
+);
+CREATE INDEX comment_attempts_day ON comment_attempts(day);
+CREATE INDEX comment_attempts_comment ON comment_attempts(comment_id, at);
+CREATE INDEX comment_attempts_body ON comment_attempts(body_sha, anchor_sha, day);`;
 
 /**
  * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the

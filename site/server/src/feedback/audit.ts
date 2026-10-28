@@ -13,7 +13,12 @@
  * The verdict's name never leaves the operator surface: the reader sees `reason` and `status`.
  */
 
-import { COMMENT_AUDITED_BY_MAX_CHARS, COMMENT_REASON_MAX_CHARS, type CommentAuditVerdict } from '@book/shared';
+import {
+  COMMENT_AUDITED_BY_MAX_CHARS,
+  COMMENT_REASON_MAX_CHARS,
+  holdsInternalCode,
+  type CommentAuditVerdict,
+} from '@book/shared';
 
 import { appendCommentEvent } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
@@ -42,6 +47,19 @@ export type AuditFailureCode =
 export type RecordAuditResult =
   | { ok: true; verdict: AuditVerdict }
   | { ok: false; code: AuditFailureCode; message: string };
+
+/** The sentence the reader is owed when the auditor's answer carried a handle, not words. */
+export const AUDIT_FALLBACK = 'вне книги: замечание не про текст этой главы';
+
+/**
+ * BOOK-158: `comments.reason` is read by the reader, so it is a sentence. The auditor's own
+ * words are stored on the verdict (`audit_reason`, operator surface); when they are an engine's
+ * handle or empty, the public column takes the book's line instead of the code.
+ */
+function publicAuditReason(reason: string | null): string | null {
+  if (reason === null) return null;
+  return holdsInternalCode(reason) ? AUDIT_FALLBACK : reason;
+}
 
 type CommentAuditRow = { audit_verdict: string | null; decided_at: string | null };
 
@@ -129,7 +147,7 @@ export function recordAudit(db: Db, input: RecordAuditInput): RecordAuditResult 
       // the reason the reader is owed.
       db.prepare(`UPDATE comments SET status = 'rejected', decided_at = ?, reason = ? WHERE id = ?`).run(
         input.at,
-        reason,
+        publicAuditReason(reason),
         input.commentId,
       );
       appendCommentEvent(db, input.commentId, 'decided', input.at, { status: 'rejected' });

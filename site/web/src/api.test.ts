@@ -16,6 +16,7 @@ import {
   getState,
   postAuthorsHide,
   postComment,
+  reviseComment,
 } from './api.ts';
 
 const realFetch = globalThis.fetch;
@@ -249,5 +250,35 @@ describe('one filing by id, and the refusal that names it (BOOK-111)', () => {
     respond({ code: 'INVALID', message: 'body must be a string' }, 400);
     const error = (await postComment({ chapter: 9, body: '' }).catch((caught: unknown) => caught)) as ApiError;
     expect(error.commentId).toBeUndefined();
+  });
+});
+
+describe('the revision of a refused filing (BOOK-158)', () => {
+  it('posts the words to the filing’s own revise path, with no anchor in the body', async () => {
+    const spy = vi.fn(async () => new Response('{"comment":{"id":"cmt_1","status":"new"}}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await expect(
+      reviseComment('cmt_1', { body: 'Переписал: абзац начинается с действия.', proposedText: null }),
+    ).resolves.toMatchObject({ comment: { id: 'cmt_1', status: 'new' } });
+
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/comments/cmt_1/revise');
+    expect(init.method).toBe('POST');
+    const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(payload).toEqual({ body: 'Переписал: абзац начинается с действия.', proposedText: null });
+    expect(payload).not.toHaveProperty('blockId');
+    expect(payload).not.toHaveProperty('baseRev');
+  });
+
+  it('keeps the wait and the day a refusal names', async () => {
+    respond({ code: 'ATTEMPTS_EXHAUSTED', message: 'исчерпаны попытки — в следующий раз', reopenAt: '2026-10-29T00:00:00Z' }, 429);
+    const exhausted = (await reviseComment('cmt_1', { body: 'Ещё раз.' }).catch((caught: unknown) => caught)) as ApiError;
+    expect(exhausted).toMatchObject({ status: 429, code: 'ATTEMPTS_EXHAUSTED' });
+    expect(exhausted.reopenAt).toBe('2026-10-29T00:00:00Z');
+
+    respond({ code: 'REVISE_COOLDOWN', message: 'слишком быстро — попробуйте ещё раз чуть позже', retryAfterMs: 300_000 }, 429);
+    const cooling = (await reviseComment('cmt_1', { body: 'Ещё раз.' }).catch((caught: unknown) => caught)) as ApiError;
+    expect(cooling).toMatchObject({ code: 'REVISE_COOLDOWN', retryAfterMs: 300_000 });
+    expect(cooling.reopenAt).toBeUndefined();
   });
 });

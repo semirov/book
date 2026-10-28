@@ -287,9 +287,10 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     expect(cli(h, 'decide', 'cmt_missing', 'rejected', '--reason', 'нет такого').code).toBe(1);
   });
 
-  it('shares one edit budget between a proposed edit and an accepted comment', async () => {
+  it('spends one edit budget per accepted filing, a note and an intervention alike (BOOK-158)', async () => {
     const h = await boot();
-    // A reader's proposed edit took the day's single slot at POST time.
+    // BOOK-158: posting spends nothing, so the intervention's slot is still there to spend —
+    // and it is spent by the acceptance, not by the POST.
     const proposed = await h.app.inject({
       method: 'POST',
       url: '/api/comments',
@@ -297,8 +298,17 @@ describe('feedback.mjs decide — the intent is the gate', () => {
       payload: commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
     });
     expect(proposed.statusCode).toBe(201);
-    const plainId = await comment(h, 'Второй абзац стоит сократить.');
+    const proposedId = proposed.json().comment.id as string;
+    expect(cli(h, 'inbox').code).toBe(0);
+    expect(cli(h, 'audit', proposedId, '--verdict', 'FITS').code).toBe(0);
+    expect(
+      cli(h, 'decide', proposedId, 'accepted', '--reason', 'начать первый абзац иначе', '--intent', 'начать первый абзац иначе').code,
+    ).toBe(0);
 
+    // The day is spent now, so the plain note's acceptance is the one refused.
+    const plainId = await comment(h, 'Второй абзац стоит сократить.');
+    expect(cli(h, 'inbox').code).toBe(0);
+    expect(cli(h, 'audit', plainId, '--verdict', 'FITS').code).toBe(0);
     const refused = cli(
       h,
       'decide',

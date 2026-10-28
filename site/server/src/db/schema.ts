@@ -16,23 +16,26 @@
  * that touched the canon sentence is recorded as paperwork instead of disappearing; BOOK-58 adds
  * the terms a reader accepted (`comments.terms_version`, `comments.terms_sha`) and the moment a
  * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
- * «which terms did the reader accept?» has an answer years later).
+ * «which terms did the reader accept?» has an answer years later; BOOK-158 adds the attempt
+ * ledger (`comment_attempts`) and `triage` to the ledger's pass vocabulary, so a refusal can be
+ * explained, revised and charged without spending the reader's daily edit).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
  * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
  * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
+  COMMENT_ATTEMPTS_TABLE_SQL,
   PASS_STAGES_TABLE_SQL,
   PASS_SPEND_TABLE_SQL,
   CHAPTERS_COLUMNS,
@@ -390,6 +393,8 @@ ${PASS_STAGES_TABLE_SQL}
 
 ${PASS_SPEND_TABLE_SQL}
 
+${COMMENT_ATTEMPTS_TABLE_SQL}
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -457,6 +462,7 @@ export const REQUIRED_TABLES = [
   'lane',
   'comments',
   'comment_events',
+  'comment_attempts',
   'feedback_batches',
   'identities',
   'sessions',

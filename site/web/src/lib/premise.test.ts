@@ -71,6 +71,8 @@ describe('premiseRow', () => {
       quote: null,
       word: null,
       note: null,
+      reason: null,
+      revise: null,
       attempt: null,
       actionable: true,
     });
@@ -134,6 +136,32 @@ describe('premiseRow', () => {
       attempt: 'failed',
     });
     expect(premiseRow({ n: 65, written: false, basis: false }, refused)?.note).toBeNull();
+  });
+
+  it('gives a refused premise its reason and its way back (BOOK-158)', () => {
+    const NOW = Date.parse('2026-10-28T12:00:00Z');
+    const refused = comment({
+      id: 'cmt_refused',
+      chapter: 65,
+      createdAt: '2026-10-27T18:04:17Z',
+      status: 'rejected',
+      reason: 'не беру: не из этой сцены',
+      hint: 'сформулируйте одно событие этой главы, которого ещё нет в тексте',
+      revise: { allowed: true, at: null, attemptsLeft: 2, closed: false, blocked: null },
+    });
+    const row = premiseRow({ n: 65, written: false, basis: false }, refused, [], NOW);
+    // The row is where the premise lives, so it owes the refusal's own sentence.
+    expect(row?.reason).toBe('не беру: не из этой сцены');
+    expect(row?.revise).toEqual({
+      hint: 'сформулируйте одно событие этой главы, которого ещё нет в тексте',
+      allowed: true,
+      blocked: null,
+    });
+
+    // A premise that merely waits says nothing about a refusal.
+    const waiting = comment({ id: 'cmt_wait', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
+    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.reason).toBeNull();
+    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.revise).toBeNull();
   });
 
   it('has no row for a written chapter without a premise, and none for a frozen slot', () => {

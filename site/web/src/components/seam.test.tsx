@@ -171,7 +171,7 @@ describe('the mark on a sentence', () => {
 describe('the empty slot row', () => {
   it('is a dotted field with the number and no word, not a call to action', () => {
     const row = premiseRow(entry(7, { written: false, title: null }), null);
-    const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
+    const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} onRevise={() => undefined} />);
     expect(html).toContain('class="premise-row"');
     expect(html).toContain('07');
     // BOOK-112: the row is the number and the field — no state word, no explanation.
@@ -184,7 +184,7 @@ describe('the empty slot row', () => {
   it('shows the premise a chapter already holds, with its own words and its state word', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, premise: true, status: 'accepted', anchor: { ...comment().anchor, blockId: null, quote: null } });
     const row = premiseRow(entry(7, { written: false, title: null }), premise);
-    const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} />);
+    const html = renderToStaticMarkup(<PremiseRow row={row!} onOpen={() => undefined} onRevise={() => undefined} />);
     expect(html).toContain('«в комнате должен быть свет, но не от лампы»');
     // BOOK-111 (owner, 2026-10-27): a held premise says it waits — one word, after the field.
     expect(html).toContain('<span class="premise-label">ждёт</span>');

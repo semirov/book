@@ -5,8 +5,11 @@ import { focusHash } from '../lib/focus.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
+import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
+import { reviseFiling } from '../lib/useRevise.ts';
 import { Skeleton } from './Skeleton.tsx';
+import { ReviseNote } from './ReviseNote.tsx';
 
 /**
  * The register (BOOK-DOC-34 §8): what a reader wrote and what became of it.
@@ -63,6 +66,8 @@ export function Discussion({
   const pending = busy ?? stage !== 'quiet';
   // BOOK-137: a premise's home is the chapter's row; the thread lists every other filing.
   const filings = threadFilings(comments);
+  /** BOOK-158: a cooldown is counted from the moment the register renders, never frozen. */
+  const nowMs = Date.now();
   // The queue line and the list come from one fact, so «в очереди пусто» can never stand
   // above an entry the page presents as waiting.
   const queue = queueView(depth, filings);
@@ -120,6 +125,12 @@ export function Discussion({
              * carries `changeId`) and no number is claimed.
              */
             const attempt = filingAttempt(comment, changes);
+            /**
+             * BOOK-158 — a refused filing in the register owes the reader the same three
+             * things the chapter's row does: the reason (the state line above), the hint, and
+             * the way back. Computed once per render so a cooldown counts from *now*.
+             */
+            const revise = reviseView(comment, nowMs);
             return (
               <li
                 className={`comment tone-${line.tone}`}
@@ -148,6 +159,13 @@ export function Discussion({
                       прицел →
                     </a>
                   </p>
+                )}
+                {revise === null ? null : (
+                  <ReviseNote
+                    view={revise}
+                    onRevise={(origin) => reviseFiling(comment, origin)}
+                    className="comment-revise"
+                  />
                 )}
               </li>
             );

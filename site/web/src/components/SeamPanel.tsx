@@ -8,6 +8,9 @@ import { filingNumber } from '../lib/filings.ts';
 import { failedAttempt } from '../lib/marginalia.ts';
 import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { frozenActionHref, type ProvenanceView } from '../lib/provenance.ts';
+import { reviseView } from '../lib/revise.ts';
+import { reviseFiling } from '../lib/useRevise.ts';
+import { ReviseNote } from './ReviseNote.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
 const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
@@ -48,6 +51,12 @@ export type FilingContext = Shell & {
   earlierAttempts?: readonly ChangeSummaryDto[];
   /** BOOK-137: the premise's derived reading — its change's intent, or null. */
   premiseIntent?: string | null;
+  /**
+   * BOOK-158 — «исправить» on the card. The surface that raised the card knows how to put it
+   * away and open the strip (the chapter's row keeps its own state); without one, the card
+   * closes itself and hands the page to the one shared act (`reviseFiling`).
+   */
+  onRevise?: (comment: CommentDto, origin: HTMLElement) => void;
 };
 
 export type SeamPanelProps = ProvenanceContext | FilingContext;
@@ -223,7 +232,14 @@ function ProvenanceBody({ view, onClose, onForm, onFiling, filingLabel }: Proven
  * with it — is a `.filing-sentence`: 14 px, the book's voice, and it may wrap, because a clause
  * cut to one line at 320 px either overflows the panel or lies about its length.
  */
-function FilingBody({ comment, onClose, onProvenance, earlierAttempts = [], premiseIntent = null }: FilingContext) {
+function FilingBody({
+  comment,
+  onClose,
+  onProvenance,
+  earlierAttempts = [],
+  premiseIntent = null,
+  onRevise,
+}: FilingContext) {
   const line = commentStatusLine(comment);
   const quote = anchorCopy(comment);
   /** A chip has two inks: `--live` for work in flight, `--ink-3` for everything settled. */
@@ -235,6 +251,21 @@ function FilingBody({ comment, onClose, onProvenance, earlierAttempts = [], prem
    * a fact about the book and not a restatement of the reader.
    */
   const reading = premiseReading(comment, premiseIntent, line.detail);
+  /**
+   * BOOK-158 — a refused filing's card is the second place the reader looks after the row: the
+   * hint, the door and the reason the door is shut. The refusal's own sentence is already the
+   * card's fact line, so only the hint and the action are printed here.
+   */
+  const revise = reviseView(comment);
+  const openRevise = (origin: HTMLElement): void => {
+    if (onRevise !== undefined) {
+      onRevise(comment, origin);
+      return;
+    }
+    // The card gives the strip the page; the reader is done reading this box.
+    onClose();
+    reviseFiling(comment, origin);
+  };
 
   return (
     <>
@@ -260,6 +291,9 @@ function FilingBody({ comment, onClose, onProvenance, earlierAttempts = [], prem
         BOOK-70); the word now stands alone and this line keeps the fact whole.
       */}
       {reading === null ? null : <p className="filing-fact">{reading}</p>}
+      {revise === null ? null : (
+        <ReviseNote view={revise} className="filing-revise" onRevise={openRevise} />
+      )}
       {/*
         BOOK-137 — the attempts before the latest one, inside the entry they belong to and
         without a number or a link of their own: the entry's quiet line above the card carries

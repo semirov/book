@@ -12,7 +12,7 @@
  * one salt for the process, one hash for every surface.
  */
 
-import { COMMENT_HOUR_MS, EDIT_DAY_MS } from '@book/shared';
+import { COMMENT_HOUR_MS } from '@book/shared';
 
 import type { Config } from '../config.ts';
 import type { LimitSpec } from './limiter.ts';
@@ -83,24 +83,6 @@ export function commentSpecs(
     { key: commentIdentityKey(identityId), limit: config.commentsPerHourIdentity, windowMs: COMMENT_HOUR_MS },
     { key: 'cmt:all:min', limit: GLOBAL_MINUTE_LIMIT, windowMs: 60_000 },
     { key: 'cmt:all:hour', limit: GLOBAL_HOUR_LIMIT, windowMs: COMMENT_HOUR_MS },
-  ];
-}
-
-/**
- * One budget for both paths: a proposed edit and an accepted comment share `edit:id:`, and
- * neither may be spent without the network key. The identity key is first so a reader whose
- * own day is spent is refused by their own budget; the network key then stops a second
- * account behind the same address.
- */
-export function editSpecs(
-  config: Config,
-  ipHash: IpHasher,
-  ipKey: string,
-  identityId: string,
-): LimitSpec[] {
-  return [
-    { key: editIdentityKey(identityId), limit: config.editSubmissionsPerDay, windowMs: EDIT_DAY_MS },
-    { key: editIpKey(ipHash, ipKey), limit: config.editSubmissionsPerDay, windowMs: EDIT_DAY_MS },
   ];
 }
 

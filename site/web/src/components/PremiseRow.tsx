@@ -1,5 +1,6 @@
 import { focusHash } from '../lib/focus.ts';
 import type { PremiseRow as PremiseRowData } from '../lib/premise.ts';
+import { ReviseNote } from './ReviseNote.tsx';
 
 /**
  * BOOK-90 A — the chapter's one row, and BOOK-137 — the premise filing's only entry.
@@ -25,9 +26,12 @@ import type { PremiseRow as PremiseRowData } from '../lib/premise.ts';
 export function PremiseRow({
   row,
   onOpen,
+  onRevise,
 }: {
   row: PremiseRowData;
   onOpen: (origin: HTMLElement) => void;
+  /** BOOK-158: «исправить» reopens the strip on the refused premise. */
+  onRevise: (origin: HTMLElement) => void;
 }) {
   return (
     // BOOK-77 (audit F1): a filled slot shows the premise's own first line — a reader's words.
@@ -48,10 +52,18 @@ export function PremiseRow({
         )}
         {row.word === null ? null : <span className="premise-label">{row.word}</span>}
       </button>
+      {row.reason === null ? null : (
+        // BOOK-158: a refused premise says why, under the row: the word «ждёт» alone would read
+        // as an ordinary wait and the reader would not know what to change.
+        <p className="premise-note">{row.reason}</p>
+      )}
       {row.note === null ? null : (
         // BOOK-136: the attempt came back empty — the deck's one sentence, under the row and
         // never inside it (the row is the book; this line is the record's own fact).
         <p className="premise-note">{row.note}</p>
+      )}
+      {row.revise === null ? null : (
+        <ReviseNote view={row.revise} onRevise={onRevise} className="premise-revise" />
       )}
       {row.attempt === null ? null : (
         <p className="premise-meta">

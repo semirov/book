@@ -108,6 +108,20 @@ export function insertFiling(comments: readonly CommentDto[], comment: CommentDt
   return next;
 }
 
+/**
+ * BOOK-158 — a filing that came back different under the same id (a revision replaces the row
+ * it revises) keeps its place in the feed. Returns `null` when nothing changed: the very same
+ * DTO accepted twice costs no render, which is what makes a posted row idempotent.
+ */
+export function upsertFiling(comments: readonly CommentDto[], comment: CommentDto): CommentDto[] | null {
+  const at = comments.findIndex((row) => row.id === comment.id);
+  if (at === -1) return insertFiling(comments, comment);
+  if (comments[at] === comment) return null;
+  const next = [...comments];
+  next[at] = comment;
+  return next;
+}
+
 /** `№A7K` — the record's own suffix, stable across reloads and never an invented ordinal. */
 export function filingNumber(comment: Pick<CommentDto, 'id'>): string {
   const tail = comment.id.replace(/[^A-Za-z0-9]/gu, '').slice(-3).toUpperCase();

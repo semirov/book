@@ -1,22 +1,28 @@
 /**
- * `GET /api/comments`, `GET /api/comments/:id`, `POST /api/comments` (ARCHITECTURE.md §9,
- * §12.1, §12.8, §14).
+ * `GET /api/comments`, `GET /api/comments/:id`, `POST /api/comments`,
+ * `POST /api/comments/:id/revise` (ARCHITECTURE.md §9, §12.1, §12.8, §14).
  *
  * Reading is public; writing needs a Yandex session. The author is taken from the session,
  * never from the body, so nobody can post under another reader's name. Every failure has the
  * uniform `{code, message, retryAfterMs?, commentId?}` shape, with a Russian message the
  * composer can show as-is. `commentId` travels only on a duplicate: it is the reader's own
  * filing, so the refused form can open the one that already exists (BOOK-111).
+ *
+ * BOOK-158: a refused filing is **revised in place** rather than posted again, so the route
+ * takes only the new words — chapter, anchor and base revision stay the stored row's and are
+ * never read from the request. The refusal that says «not now» carries `retryAfterMs` (the
+ * cooldown) or `reopenAt` (the next UTC day), so the page prints the wait the server means.
  */
 
-import type { CommentPage, PostCommentInput } from '@book/shared';
+import type { CommentPage, PostCommentInput, ReviseCommentInput } from '@book/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { CommentService } from '../../comments/service.ts';
+import { reviseComment } from '../../comments/revise.ts';
 import { listCommentRows, readCommentRow, toCommentDto } from '../../comments/repo.ts';
 import { parseCookies } from '../../util/cookies.ts';
 import { clientIp, ipKey } from '../../util/ip.ts';
-import { SESSION_COOKIE } from '../../identity/session.ts';
+import { SESSION_COOKIE, type SessionLookup } from '../../identity/session.ts';
 import { checkMutation } from '../origin.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -40,6 +46,31 @@ function queryInteger(value: unknown, min: number, max: number): number | null {
 
 /** A cursor is a comment id: `cmt_` then 26 characters of the ULID alphabet (no I, L, O, U). */
 const COMMENT_ID = /^cmt_[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/u;
+
+/**
+ * The two lines every write passes first: the origin and content type (§14 CSRF), then the
+ * session. Returns the session, or `null` after answering — the callers must stop on `null`.
+ */
+function authorize(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  deps: RouteDeps,
+): SessionLookup | null {
+  const guard = checkMutation(request, deps.config.publicOrigin);
+  if (guard !== 'ok') {
+    reply.code(403).send({
+      code: guard,
+      message: guard === 'ORIGIN' ? 'запрос с чужого источника отклонён' : 'нужен application/json',
+    });
+    return null;
+  }
+  const session = deps.sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
+  if (session === null) {
+    reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'войдите через Яндекс, чтобы оставить замечание' });
+    return null;
+  }
+  return session;
+}
 
 export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): void {
   const service = new CommentService({
@@ -75,7 +106,7 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
     }
     const rows = listCommentRows(deps.db, { limit, ...(chapter === undefined ? {} : { chapter }), ...(before === undefined ? {} : { before }) });
     const page: CommentPage = {
-      items: rows.map((row) => toCommentDto(deps.db, row)),
+      items: rows.map((row) => toCommentDto(deps.db, row, deps.now().getTime())),
       nextBefore: rows.length === limit && rows[0] !== undefined ? rows[0].id : null,
     };
     return reply.header('cache-control', 'no-store').send(page);
@@ -87,22 +118,46 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
     if (row === undefined || row.status === 'hidden') {
       return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such comment' });
     }
-    return reply.header('cache-control', 'no-store').send(toCommentDto(deps.db, row));
+    return reply.header('cache-control', 'no-store').send(toCommentDto(deps.db, row, deps.now().getTime()));
+  });
+
+  app.post('/api/comments/:id/revise', async (request, reply) => {
+    const session = authorize(request, reply, deps);
+    if (session === null) return reply;
+    const { id } = request.params as { id: string };
+    const row = readCommentRow(deps.db, id);
+    // A foreign row and a missing one answer alike: the page may not learn whose filing exists.
+    if (row === undefined || row.status === 'hidden') {
+      return reply.code(404).send({ code: 'NOT_FOUND', message: 'нет такого замечания' });
+    }
+    const parsed = parseReviseBody(request);
+    if ('error' in parsed) return reply.code(400).send({ code: 'INVALID', message: parsed.error });
+    const result = reviseComment(
+      { db: deps.db, now: deps.now },
+      row,
+      session.identity.id,
+      parsed.input,
+    );
+    if (result.ok === false) {
+      if (result.budget !== undefined) {
+        request.log.info({ code: result.code, budget: result.budget }, 'attempt cap refused');
+      }
+      if (result.retryAfterMs !== undefined) {
+        reply.header('retry-after', String(Math.max(1, Math.ceil(result.retryAfterMs / 1000))));
+      }
+      return reply.code(result.status).send({
+        code: result.code,
+        message: result.message,
+        ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
+        ...(result.reopenAt === undefined ? {} : { reopenAt: result.reopenAt }),
+      });
+    }
+    return reply.code(result.status).header('cache-control', 'no-store').send(result.body);
   });
 
   app.post('/api/comments', async (request, reply) => {
-    const guard = checkMutation(request, deps.config.publicOrigin);
-    if (guard !== 'ok') {
-      return reply.code(403).send({
-        code: guard,
-        message: guard === 'ORIGIN' ? 'запрос с чужого источника отклонён' : 'нужен application/json',
-      });
-    }
-
-    const session = deps.sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
-    if (session === null) {
-      return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'войдите через Яндекс, чтобы оставить замечание' });
-    }
+    const session = authorize(request, reply, deps);
+    if (session === null) return reply;
 
     const parsed = parsePostBody(request);
     if ('error' in parsed) return reply.code(400).send({ code: 'INVALID', message: parsed.error });
@@ -118,9 +173,9 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
     });
     if (result.ok === false) {
       if (result.budget !== undefined) {
-        // BOOK-DOC-4 rule 5: an operator can tell the two edit budgets apart, the reader
+        // BOOK-158: an operator can tell the identity cap from the network one, the reader
         // cannot. The line carries the counter's name — never an address, never a hash.
-        request.log.info({ code: result.code, budget: result.budget }, 'edit budget refused');
+        request.log.info({ code: result.code, budget: result.budget }, 'attempt cap refused');
       }
       if (result.retryAfterMs !== undefined) {
         reply.header('retry-after', String(Math.max(1, Math.ceil(result.retryAfterMs / 1000))));
@@ -171,5 +226,23 @@ function parsePostBody(
   if (typeof value.idempotencyKey === 'string' && value.idempotencyKey.length <= 100) {
     input.idempotencyKey = value.idempotencyKey;
   }
+  return { input };
+}
+
+/**
+ * BOOK-158 — a revision's body is only the words. There is deliberately no field for the
+ * chapter, the anchor or the base revision: those are the stored filing's, and a client cannot
+ * move its own refused remark to another paragraph — or onto a revision the gates never saw.
+ */
+function parseReviseBody(
+  request: FastifyRequest,
+): { input: ReviseCommentInput } | { error: string } {
+  const body = request.body;
+  if (body === null || typeof body !== 'object') return { error: 'body must be a JSON object' };
+  const value = body as Record<string, unknown>;
+  if (typeof value.body !== 'string') return { error: 'body must be a string' };
+  const input: ReviseCommentInput = { body: value.body };
+  if (typeof value.proposedText === 'string') input.proposedText = value.proposedText;
+  if (typeof value.interventionKind === 'string') input.interventionKind = value.interventionKind;
   return { input };
 }

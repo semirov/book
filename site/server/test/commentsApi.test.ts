@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { upsertIdentity } from '../src/db/repo/identities.ts';
+import { SESSION_COOKIE } from '../src/identity/session.ts';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
 /**
- * M5 acceptance (§20 M5, adjusted to 1 edit/day): anonymous writes are refused, the shipped
- * gate (identity + rate limits, BOOK-64) needs no token, a challenge that a deployment chose
- * to configure still stores nothing when it fails, the 11th comment is 429 with `resetAt`,
- * the second edit is `EDIT_DAILY_LIMIT` with the budget's own line, an injection fixture is
- * quarantined and XSS fixtures are stored as text.
+ * M5 acceptance (§20 M5): anonymous writes are refused, the shipped gate (identity + rate
+ * limits, BOOK-64) needs no token, a challenge that a deployment chose to configure still
+ * stores nothing when it fails, the 11th comment in an hour is 429 with `resetAt`, an injection
+ * fixture is quarantined and XSS fixtures are stored as text.
+ *
+ * BOOK-158 moved the daily edit to acceptance (`EDIT_DAILY_LIMIT` now comes from the triage CLI,
+ * not from posting), and bounded one identity at five attempts a UTC day — so the hourly comment
+ * budget is reached by several identities on one network, which is exactly the farm it stops.
  */
 
 let harness: Harness | null = null;
@@ -137,11 +142,37 @@ describe('POST /api/comments — identity, the write gate and rate limits', () =
 
   it('answers the 11th comment in an hour with 429 and resetAt', async () => {
     const h = await boot();
-    for (let index = 1; index <= 10; index += 1) {
-      const response = await post(h, commentBody({ body: `Замечание номер ${index}` }));
-      expect(response.statusCode, `comment ${index}`).toBe(201);
+    // Five a reader (BOOK-158's attempt cap), so the hourly network budget is what the eleventh
+    // meets — two readers fill it, the third is refused before a row is stored.
+    const readers = [
+      { cookie: h.sessionCookieHeader, sub: 'yandex-1001', name: 'Аня' },
+      { cookie: '', sub: 'yandex-2002', name: 'Борис' },
+      { cookie: '', sub: 'yandex-3003', name: 'Вера' },
+    ];
+    for (const reader of readers.slice(1)) {
+      const identity = upsertIdentity(h.db, {
+        yandexSub: reader.sub,
+        displayName: reader.name,
+        at: h.clock.now().toISOString(),
+      });
+      reader.cookie = `${SESSION_COOKIE}=${h.sessions.issue(identity.id, { ipKey: '127.0.0.1' }).cookie}`;
     }
-    const eleventh = await post(h, commentBody({ body: 'Замечание номер 11' }));
+    const postAs = (cookie: string, body: string) =>
+      post(h, commentBody({ body }), {
+        origin: h.config.publicOrigin,
+        'content-type': 'application/json',
+        cookie,
+      });
+
+    let index = 0;
+    for (const reader of readers.slice(0, 2)) {
+      for (let turn = 0; turn < 5; turn += 1) {
+        index += 1;
+        const response = await postAs(reader.cookie, `Замечание номер ${String(index)}`);
+        expect(response.statusCode, `comment ${String(index)}`).toBe(201);
+      }
+    }
+    const eleventh = await postAs(readers[2]!.cookie, 'Замечание номер 11');
     expect(eleventh.statusCode).toBe(429);
     const body = eleventh.json();
     expect(body.code).toBe('RATE_LIMITED');
@@ -151,24 +182,29 @@ describe('POST /api/comments — identity, the write gate and rate limits', () =
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 10 });
   });
 
-  it('allows one edit per day and refuses the second with EDIT_DAILY_LIMIT', async () => {
+  it('spends no daily edit at posting: the day belongs to the acceptance (BOOK-158)', async () => {
     const h = await boot();
     const first = await post(
       h,
       commentBody({ body: 'Первый абзац лучше начать иначе.', proposedText: 'Тестовый абзац.' }),
     );
     expect(first.statusCode).toBe(201);
-    expect(first.json().remaining.editsRemaining).toBe(0);
+    // Every filing carries its way back, even one nobody refused: the page needs no second call.
+    // The attempt just made counts, so two of the three tries are left.
+    expect(first.json().comment).toMatchObject({
+      hint: null,
+      revise: { allowed: false, at: null, attemptsLeft: 2, closed: false, blocked: null },
+    });
+    expect(first.json().remaining.editsRemaining).toBe(h.config.editSubmissionsPerDay);
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });
 
     const second = await post(
       h,
       commentBody({ body: 'Второй абзац тоже стоит сократить.', proposedText: 'Тестовый абзац номер два.' }),
     );
-    expect(second.statusCode).toBe(429);
-    expect(second.json()).toMatchObject({ code: 'EDIT_DAILY_LIMIT' });
-    // The budget's own copy, not a generic rate line: the day is the product's instrument.
-    expect(second.json().message).toContain('одна правка в сутки');
-    expect(typeof second.json().resetAt).toBe('string');
+    expect(second.statusCode).toBe(201);
+    expect(second.json().remaining.editsRemaining).toBe(h.config.editSubmissionsPerDay);
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });
   });
 
   it('accepts a reader edit on chapter 67 as a filing (BOOK-137)', async () => {

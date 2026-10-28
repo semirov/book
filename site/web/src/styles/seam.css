@@ -347,6 +347,40 @@
   background: var(--live);
 }
 
+/* ---------- BOOK-158: the refusal's own block ---------- */
+/* One block on every surface that owns a refused filing (the chapter's row, the register's
+   entry, the card): the hint spans the line, the door sits under it, and the sentence that
+   closes the door stands beside the disabled control. No new ink and no new size — it is the
+   same micro register as the record's other quiet lines. */
+.revise {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+.revise-hint,
+.revise-why {
+  flex-basis: 100%;
+  margin: 0;
+  font-family: var(--label);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.revise .seam-inline-action {
+  margin-left: 0;
+}
+.revise .seam-inline-action:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+.premise-revise {
+  margin-top: 2px;
+}
+.filing-revise {
+  margin-top: 4px;
+}
+
 /* ---------- the strip while a panel speaks for it ---------- */
 /* BOOK-111 (owner, 2026-10-27) — «Два поповера»: a panel opened from the strip is not a second
    box beside it, so the strip itself becomes one line and the floating panel is the only full

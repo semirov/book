@@ -13,6 +13,8 @@ export type ServiceFailure = {
   retryAfterMs?: number;
   resetAt?: string;
   currentText?: string;
+  /** BOOK-158: the next UTC midnight, when a filing's day's tries come back. */
+  reopenAt?: string;
   /** BOOK-111: the filing a refusal names — a duplicate's own row, so the reader can open it. */
   commentId?: string;
   /**

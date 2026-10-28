@@ -47,6 +47,13 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
       'INTERNAL',
       'ORIGIN',
       'CONTENT_TYPE',
+      // BOOK-158 — the revise route's refusals are the same strip's line.
+      'REVISE_COOLDOWN',
+      'ATTEMPTS_EXHAUSTED',
+      'ATTEMPT_LIMIT',
+      'IDENTICAL',
+      'NOT_REVISABLE',
+      'NOT_FOUND',
     ];
     for (const code of codes) {
       const copy = errorCopy({ code, message: 'internal detail that must not be shown first' });
@@ -73,6 +80,37 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
     expect(retryCopy(90_000)).toBe('примерно через 2 мин');
     expect(retryCopy(3_600_000)).toBe('примерно через 1 ч');
     expect(retryCopy(undefined)).toBeNull();
+  });
+
+  it('prints the revise route’s own sentence, with the wait it names (BOOK-158)', () => {
+    const cooling = errorCopy({
+      code: 'REVISE_COOLDOWN',
+      message: 'слишком быстро — попробуйте ещё раз чуть позже',
+      retryAfterMs: 300_000,
+    });
+    // The server's sentence is the line; the wait is the detail beside it.
+    expect(cooling.line).toBe('слишком быстро — попробуйте ещё раз чуть позже');
+    expect(cooling.detail).toBe('примерно через 5 мин');
+    expect(cooling.canRetry).toBe(true);
+
+    const exhausted = errorCopy({
+      code: 'ATTEMPTS_EXHAUSTED',
+      message: 'исчерпаны попытки — в следующий раз',
+      reopenAt: '2026-10-29T00:00:00Z',
+    });
+    expect(exhausted.line).toBe('исчерпаны попытки — в следующий раз');
+    expect(exhausted.detail).toMatch(/^попытки вернутся в \d{2}:\d{2}$/u);
+    expect(exhausted.canRetry).toBe(false);
+    // No hour named, no hour invented.
+    expect(errorCopy({ code: 'ATTEMPTS_EXHAUSTED', message: '' }).detail).toBeNull();
+
+    // The cap across a reader's filings says «завтра», never a countdown to one filing's day.
+    expect(errorCopy({ code: 'ATTEMPT_LIMIT', message: '' }).line).toBe(
+      'слишком много попыток сегодня — попробуйте завтра',
+    );
+    expect(errorCopy({ code: 'IDENTICAL', message: '' }).line).toBe('это уже было — поправьте формулировку');
+    expect(errorCopy({ code: 'NOT_REVISABLE', message: '' }).canRetry).toBe(false);
+    expect(errorCopy({ code: 'NOT_FOUND', message: '' }).line).toContain('не найдено');
   });
 
   it('says in the draft state what is being brought, and that nothing is chosen yet', () => {

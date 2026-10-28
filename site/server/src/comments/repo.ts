@@ -24,6 +24,7 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
+import { refusalHint, reviseState } from './attempts.ts';
 
 export type CommentRow = {
   id: string;
@@ -251,7 +252,7 @@ export function resolveAnchor(db: Db, row: CommentRow): CommentAnchor {
   };
 }
 
-export function toCommentDto(db: Db, row: CommentRow): CommentDto {
+export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()): CommentDto {
   const flags = safeJson<string[]>(row.flags) ?? [];
   // Illegal content is stored for the operator and never republished: the thread shows a
   // placeholder and the public reason, because «quarantined» is not a licence to publish it.
@@ -286,6 +287,9 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
   // revision are the receipt. Never invented: no chapter row, no `applied`.
   const landedReceipt =
     premise && status === 'applied' && base !== undefined ? { chapter: row.chapter, rev: base.rev } : null;
+  // BOOK-158: the gate's word, the actionable line and the way back. All three are derived
+  // once, here, from the stored verdicts and the attempt ledger, so no surface can disagree.
+  const refusal = refusalOf(row);
   return {
     id: row.id,
     chapter: row.chapter,
@@ -300,7 +304,7 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     status,
     // BOOK-61: the gate that refused, derived here from the stored verdicts — one place, so no
     // surface can guess it from the reason text.
-    refusal: refusalOf(row),
+    refusal,
     // BOOK-137: a stored word this build does not know is dropped, never printed; `null` is an
     // old row (before v16), whose mark the decision re-derives when it is accepted.
     frame: normalizeFrameMark(row.frame),
@@ -311,6 +315,9 @@ export function toCommentDto(db: Db, row: CommentRow): CommentDto {
     // an `OFF` reaches the reader only as this `reason`.
     reason,
     attempt,
+    // BOOK-158: the actionable line beside a refusal, and the way back to another try.
+    hint: refusalHint({ status, refusal, rights_rule: row.rights_rule }),
+    revise: reviseState(db, row, nowMs),
     createdAt: row.created_at,
     decidedAt: row.decided_at,
     changeId: row.change_id,

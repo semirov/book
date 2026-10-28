@@ -85,4 +85,27 @@ describe('acceptComment (BOOK-111)', () => {
     expect(feed.chapterFeed[65]?.items.map((row) => row.id)).toEqual(['cmt_older', POSTED.id]);
     expect(feed.chapterFeed[65]?.loaded).toBe(true);
   });
+
+  it('replaces a revised filing in place: same id, same place, no second entry (BOOK-158)', () => {
+    const older: CommentDto = { ...POSTED, id: 'cmt_older', createdAt: '2026-10-26T09:00:00Z' };
+    act(() => {
+      feed.acceptComment(older);
+      feed.acceptComment(POSTED);
+    });
+    // The revise answer is the same row, reopened: same id, the reader's new words, the
+    // refusal's line gone.
+    const revised: CommentDto = {
+      ...POSTED,
+      status: 'new',
+      body: 'смена переходит на ночь, а не на утро',
+      hint: null,
+      reason: null,
+    };
+    act(() => feed.acceptComment(revised));
+
+    expect(feed.comments.map((row) => row.id)).toEqual(['cmt_older', POSTED.id]);
+    expect(feed.comments[1]).toBe(revised);
+    expect(feed.chapterFeed[65]?.items.map((row) => row.id)).toEqual(['cmt_older', POSTED.id]);
+    expect(feed.chapterFeed[65]?.items[1]).toBe(revised);
+  });
 });

@@ -75,6 +75,7 @@ describe('a re-anchored draft (major 1)', () => {
     noteOnly: false,
     body: 'свет не от лампы',
     proposed: 'Свет был включён до меня.',
+    revisesId: null,
   };
 
   it('keeps what the reader wrote and takes the fresh block, sentence and revision', () => {

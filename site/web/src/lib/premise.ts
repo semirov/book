@@ -2,6 +2,7 @@ import { TOTAL_CHAPTERS, type CatalogEntry, type ChangeSummaryDto, type CommentD
 
 import { filingAttempt, filingNumber, type FilingAttempt } from './filings.ts';
 import { failedAttempt, filingMarginalia } from './marginalia.ts';
+import { reviseView, type ReviseView } from './revise.ts';
 
 /**
  * BOOK-7 / BOOK-DOC-34 §2.4 — the chapter's premise, and the one place it is entered.
@@ -77,6 +78,14 @@ export type PremiseRow = {
    * premise waits normally (its word is the whole fact) and for one that has landed.
    */
   note: string | null;
+  /**
+   * BOOK-158 — why a refused premise was refused, in the server's own sentence. The row prints
+   * it under the state word: «ждёт» alone would read as an ordinary wait, and the reader would
+   * have no idea what to change. `null` for a premise no gate refused.
+   */
+  reason: string | null;
+  /** BOOK-158 — the hint, the door and the limit that closes it, or null when nothing was refused. */
+  revise: ReviseView | null;
   /** The latest attempt: the entry's one number and its one `прицел`; null with no change. */
   attempt: FilingAttempt | null;
   actionable: boolean;
@@ -86,6 +95,7 @@ export function premiseRow(
   entry: Pick<CatalogEntry, 'n' | 'written' | 'basis'>,
   premise: CommentDto | null,
   changes: readonly ChangeSummaryDto[] = [],
+  nowMs: number = Date.now(),
 ): PremiseRow | null {
   if (entry.basis || entry.n < 2 || entry.n > TOTAL_CHAPTERS - 1) return null;
   if (entry.written && premise === null) return null;
@@ -95,6 +105,8 @@ export function premiseRow(
     quote: premise === null ? null : firstLine(premise.body),
     word: premise === null ? null : filingMarginalia(premise).word,
     note: premise === null ? null : rowNote(premise),
+    reason: premise === null ? null : rowReason(premise),
+    revise: premise === null ? null : reviseView(premise, nowMs),
     attempt: premise === null ? null : filingAttempt(premise, changes),
     actionable: true,
   };
@@ -112,4 +124,12 @@ function firstLine(body: string): string {
  */
 function rowNote(premise: CommentDto): string | null {
   return failedAttempt(premise) ? filingMarginalia(premise).consequence : null;
+}
+
+/**
+ * BOOK-158 — why a refused premise was refused, in the server's sentence. The row prints it
+ * under the state word; a premise that waits, lands or was never refused owes nothing here.
+ */
+function rowReason(premise: CommentDto): string | null {
+  return premise.status === 'rejected' ? premise.reason : null;
 }
