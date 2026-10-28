@@ -452,8 +452,8 @@ export function App() {
         view={view}
         onViewChange={setView}
         motion={titleMotion}
-        live={history}
-        chronicle={chronicle}
+        live={history} chronicle={chronicle}
+        stages={stages}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />

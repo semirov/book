@@ -6,6 +6,7 @@ import {
   type CatalogEntry,
   type ChapterDto,
   type CommentDto,
+  type PassStageEvent,
   type StateSnapshot,
 } from '@book/shared';
 import { act, type ReactElement } from 'react';
@@ -14,8 +15,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { MIDDOT } from '../lib/format.ts';
 import { spineMarkers } from '../lib/spine.ts';
 import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
+import { inFlightOf, type Stages, type StagesLog } from '../lib/useStages.ts';
 import { ChapterList } from './ChapterList.tsx';
 import { Header } from './Header.tsx';
 import { TableOfContents } from './TableOfContents.tsx';
@@ -33,6 +36,11 @@ import { TableOfContents } from './TableOfContents.tsx';
  * The fixture's premise quote and prose deliberately avoid the banned vocabulary: the quote is
  * the reader's own words and must never be mistaken for a label. The negative assertions are
  * paired with positive ones — a fix that deletes the book is not a fix.
+ *
+ * ONE exception (BOOK-156 #3814, owner 2026-10-28): while a pass is in flight the head prints
+ * `книга пишется · глава N · HH:MM` in its free space — the book's state, in the owner's words,
+ * and nothing else. It is asserted literally below, and the idle head is asserted to print no
+ * such line at all: the exception is a state, not a status row that is always there.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -236,7 +244,7 @@ let root: Root | null = null;
 let container: HTMLDivElement;
 
 /** One reading page: the head, the contents and the flow, exactly as `App` stacks them. */
-function page(): ReactElement {
+function page(stages?: Stages, nowMs?: number): ReactElement {
   return (
     <>
       <Header
@@ -246,6 +254,8 @@ function page(): ReactElement {
         markers={[]}
         onOpenChange={() => undefined}
         live
+        stages={stages}
+        nowMs={nowMs}
       />
       <TableOfContents catalog={CATALOG} state={STATE} currentChapter={null} />
       <ChapterList
@@ -276,10 +286,10 @@ function stackSlots(): void {
   }
 }
 
-async function mount(): Promise<void> {
+async function mount(stages?: Stages, nowMs?: number): Promise<void> {
   container = document.body.appendChild(document.createElement('div'));
   root = createRoot(container);
-  await act(async () => root?.render(page()));
+  await act(async () => root?.render(page(stages, nowMs)));
   await act(async () => {
     await Promise.resolve();
   });
@@ -346,10 +356,55 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+/** 14:21 in Moscow: the stage's own moment, and a clock 20 s after it — a live pass, not a wait. */
+const LIVE_AT = Date.parse('2026-10-27T11:21:00Z');
+const LIVE_NOW = LIVE_AT + 20_000;
+
+/**
+ * A pass in flight, built the way the page builds it: the frames folded by `inFlightOf`. The
+ * head's own line is the one thing a fixture must never invent, so the log is the real shape.
+ */
+function liveStages(): Stages {
+  const log: Record<number, PassStageEvent[]> = {
+    1: [
+      {
+        passId: 'stp_01J9Z8K4Q7',
+        chapter: 1,
+        stageSeq: 1,
+        stage: 'drafting',
+        at: LIVE_AT,
+        actor: { process: 'writer', model: 'deepseek/deepseek-flash' },
+        changeId: null,
+        summary: 'глава пишется',
+        span: null,
+        tokens: null,
+        costUsd: null,
+      },
+    ],
+  };
+  const typed: StagesLog = log;
+  return { log: typed, passes: inFlightOf(typed), note: () => undefined, reset: () => undefined };
+}
+
 describe('the reading surface prints the book, not the product', () => {
   it('prints no status, count or explanation in the running head', async () => {
     await mount();
     expectNoInterfaceCopy('.top');
+    // No pass in flight, so no status line at all: the foot's grip carries that fact.
+    expect(container.querySelector('.head-status')).toBeNull();
+  });
+
+  it('prints the one permitted status — the book is being written — and nothing else', async () => {
+    await mount(liveStages(), LIVE_NOW);
+    // The exception, literally: the owner's words, the chapter the pass is writing and the
+    // stage's own time in Moscow. It is a state line, not a chip: it exists only while a pass
+    // runs, and the idle case above proves it is not a permanent row.
+    expect(surface('.top')).toContain(`книга пишется${MIDDOT}глава 1${MIDDOT}14:21`);
+    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('live');
+    // The rest of the rule stands under the exception: no count, no row's state word, none of
+    // the chips the audits removed — the book, the chapter and the folio are still the head.
+    expectNoInterfaceCopy('.top');
+    expect(container.querySelector('.brand')?.textContent).toBe(STATE.front.title);
   });
 
   it('prints no status, count or explanation in the flow of chapters', async () => {

@@ -2,6 +2,7 @@ import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
+import type { Stages } from '../lib/useStages.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
 import { Header } from './Header.tsx';
@@ -42,6 +43,7 @@ export function Opening({
   motion,
   live,
   chronicle,
+  stages,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -60,6 +62,8 @@ export function Opening({
    * the chronicle too.
    */
   chronicle?: boolean;
+  /** BOOK-156 #3814: the page's stage log — the running head says the book is being written. */
+  stages?: Stages;
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -74,7 +78,15 @@ export function Opening({
         <hr className="front-rule" data-seq={seq ? 'rule' : undefined} />
       </div>
       <Annotation front={front} seq={seq} />
-      <Header state={state} ribbon={ribbon} catalog={catalog} markers={escalation} onOpenChange={onOpenChange} live={live} />
+      <Header
+        state={state}
+        ribbon={ribbon}
+        catalog={catalog}
+        markers={escalation}
+        onOpenChange={onOpenChange}
+        live={live}
+        stages={stages}
+      />
       <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
     </>
   );

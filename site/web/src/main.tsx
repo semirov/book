@@ -12,6 +12,8 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
 import './styles/running-head.css';
+// BOOK-156 #3814 — the book's state in the running head's free space; after the head it sits in.
+import './styles/head-status.css';
 import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';

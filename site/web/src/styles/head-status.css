@@ -1,0 +1,74 @@
+/**
+ * BOOK-156 #3814 — the book's state in the running head's free space.
+ *
+ * One line, 12 px mono, sentence case, the quiet ink: `книга пишется · глава 12 · 14:21` while a
+ * pass is in flight, `движок остановлен · 14:21` when the engine stopped with a pass still open.
+ * The nib before the live line is the only ink of the pass (`--live`), and it is a drawn mark —
+ * five pixels on the baseline, no pulse, no fade, no transition: a state is not an animation.
+ *
+ * **Its cost in height is zero.** The box is one 12 px label line (16.2 px), and the row's
+ * tallest item is the brand at 17.55 px (13 px × 1.35, `base.css`'s `.top-row`), so the row
+ * cannot grow; `flex: none` keeps the auto margin from shrinking it. Measured in Chromium:
+ * `.top-in` 41.55 px at 1440 and 36.55 px at 390, the folio's y at 15.59 / 11.67 — identical
+ * with and without the line.
+ *
+ * The phrase is never wrapped and never ellipsized: both variants live in the markup and the
+ * phone step below prints the short one, so the row chooses the words instead of cutting them.
+ */
+.head-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  /* The free space after the chapter cluster is the only room it takes: the auto margin is what
+     pushes it to the row's right end, where the folio is a fixed box above 768. */
+  margin-inline-start: auto;
+  min-width: 0;
+  flex: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  /* The row's own 12 px label line — 1.35, exactly what `.folio` and the chapter slot carry, so
+     the three share one baseline; 12 × 1.35 = 16.2 px is under the brand's 17.55 px, so the row
+     cannot grow. */
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+/* The pass's own mark, before the line: five pixels resting on the baseline, in --live. */
+.head-nib {
+  flex: none;
+  align-self: baseline;
+  width: 5px;
+  height: 5px;
+  background: var(--live);
+}
+.head-status-full {
+  display: inline;
+}
+.head-status-short {
+  display: none;
+}
+/* The row is the column's width, not a shrink-to-fit line: above 1024 `.top-row` is a flex item
+   of `.top-in` (`justify-content: space-between`), so without this its free space sits *outside*
+   the row and `margin-inline-start: auto` would have nothing to take. Its items are unchanged —
+   the folio is a fixed box up there — so no line moves; below 1024 the row is already the
+   column, and this declaration changes nothing. */
+.top-in .top-row:first-child {
+  flex: 1;
+}
+@media (max-width: 767px) {
+  /* The phone prints the short line: the full one is 32 characters, and the row has ~200 px. */
+  .head-status-full {
+    display: none;
+  }
+  .head-status-short {
+    display: inline;
+  }
+  /* The status owns the void on the phone: the folio keeps the row's right end beside it
+     instead of splitting the free space in two. */
+  .top-in .top-row:first-child:has(.head-status) .folio {
+    margin-inline-start: 0;
+  }
+}
