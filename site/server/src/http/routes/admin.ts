@@ -41,6 +41,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { SITE_ROOT } from '../../config.ts';
 import { assertDataDirOutsideRepo } from '../../dataDirGuard.ts';
 import { readIdentity } from '../../db/repo/identities.ts';
+import { inspectDataDir, inspectDumps, inspectFrame, inspectGraph, inspectSchema } from '../../doctor/inspect.ts';
 import { readEngineHealth } from '../../engineState/reader.ts';
 import { resolveIdentity } from '../../identity/resolve.ts';
 import { readIntegrity } from '../../integrity/service.ts';
@@ -210,6 +211,26 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
       imprint: deps.imprint,
       nowMs: deps.now().getTime(),
     });
+    return reply.header('cache-control', 'no-store').send(report);
+  });
+
+  /**
+   * BOOK-188 — the DB half of the launch preflight: the facts `bin/admin.mjs doctor` cannot read
+   * from the host. Read-only, and counts, paths, booleans and sha256 only — never a row, a text, a
+   * token value or an address. The DB is opened by *this* process and never by the host CLI
+   * (BOOK-183, two kernels on one WAL file); the dump and data-dir facts are read here because
+   * they live in the same volume. The verdicts are the CLI's: this route answers, it does not judge.
+   */
+  app.get('/api/admin/doctor', async (request, reply) => {
+    if (!guard(deps, request, reply)) return reply;
+    const report = {
+      build: { commit: deps.commit, version: deps.version },
+      schema: inspectSchema(deps.db),
+      dumps: inspectDumps(deps.config.dataDir),
+      dataDir: inspectDataDir(deps.config.dataDir),
+      frame: inspectFrame(deps.db),
+      graph: inspectGraph(deps.db),
+    };
     return reply.header('cache-control', 'no-store').send(report);
   });
 
