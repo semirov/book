@@ -12,6 +12,7 @@ import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrameParagraph } from '../lib/freeze.ts';
 import { filingNumber, isAlive, staleLine } from '../lib/filings.ts';
+import { blockElementId } from '../lib/place.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
 import { anchorFor, firstWord, seamKey } from '../lib/seam.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
@@ -387,6 +388,7 @@ export function ProseParagraph({
           hostRef.current = node;
         }}
         className={classes.join(' ')}
+        id={blockElementId(entry.n, blockIndex)}
         data-block-id={blockId}
         data-chars={text.length}
         tabIndex={-1}

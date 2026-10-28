@@ -158,6 +158,16 @@
   font-size: var(--fs-note);
   color: var(--ink-2);
 }
+/* BOOK-168 — the one line a card owes the reader when its landing fell back to the chapter:
+   the paragraph the filing quotes is gone, so the card says what changed instead of pointing
+   at a neighbour that was never filed on. */
+.filing-place-note {
+  margin: 0;
+  font-family: var(--ui);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--ink-3);
+}
 .filing-body {
   margin: 0;
   font-family: var(--serif);

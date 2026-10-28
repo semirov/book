@@ -37,6 +37,7 @@ export type RecordRow = {
   outcome: ChangeOutcome | null;
   reason: string | null;
   alias: string;
+  source_comment: string;
   hseq: number;
   at: string;
 };
@@ -62,7 +63,7 @@ export type RecordFilter = {
  * full page stays full and `nextBefore` keeps meaning "the oldest row served".
  */
 const SELECT_RECORD = `SELECT c.id AS change_id, c.seq, c.chapter, c.premise, c.status, c.outcome, c.reason,
-       co.author AS alias, e.hseq, e.at
+       co.author AS alias, c.source_comment, e.hseq, e.at
   FROM changes c
   JOIN comments co ON co.id = c.source_comment
   JOIN events e ON e.hseq = (SELECT MAX(inner_e.hseq) FROM events inner_e WHERE inner_e.change_id = c.id)
@@ -88,6 +89,7 @@ function toHistoryRecord(row: RecordRow, landed: boolean): HistoryRecordDto {
     status: row.status,
     outcome: row.outcome,
     reason: publicReason(row.reason),
+    sourceCommentId: row.source_comment,
     changeId: row.change_id,
   };
 }

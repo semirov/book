@@ -27,6 +27,7 @@ export function FilingPanel({
   onProvenance,
   earlierAttempts = [],
   premiseIntent = null,
+  placeNote = null,
   nowMs,
   onRevise,
 }: {
@@ -39,6 +40,11 @@ export function FilingPanel({
   earlierAttempts?: readonly ChangeSummaryDto[];
   /** BOOK-137: the premise's derived reading, from its change's intent. */
   premiseIntent?: string | null;
+  /**
+   * BOOK-168: the one line a card owes when its landing fell back to the chapter — the
+   * filing's paragraph is gone (`lib/place.ts`, `PLACE_NOTE`), never a guessed neighbour.
+   */
+  placeNote?: string | null;
   /** BOOK-158: the page's revise clock, so the card's cooldown line counts down. */
   nowMs?: number;
   /** BOOK-158: the card's way back from a refusal, owned by the surface that opened it. */
@@ -54,6 +60,7 @@ export function FilingPanel({
       onProvenance={onProvenance}
       earlierAttempts={earlierAttempts}
       premiseIntent={premiseIntent}
+      placeNote={placeNote}
       nowMs={nowMs}
       {...(onRevise === undefined ? {} : { onRevise })}
     />

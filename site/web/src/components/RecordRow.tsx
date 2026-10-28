@@ -2,6 +2,8 @@ import type { HistoryRecordDto } from '@book/shared';
 
 import { recordReason, recordWord } from '../lib/changeStatus.ts';
 import { momentText } from '../lib/history.ts';
+import type { Place } from '../lib/place.ts';
+import { PlaceLink } from './PlaceLink.tsx';
 
 /**
  * BOOK-65 — one public record entry: **one change, one line**, and one way in.
@@ -11,6 +13,11 @@ import { momentText } from '../lib/history.ts';
  * is printed: no event summary, no event kind, no five-word deed chain, no second «прицел»
  * control. Clicking the row does not move the moment either; the moment moves only through
  * `MomentControl`, so a tap on the entry always means the card.
+ *
+ * BOOK-168 — the place is a door as well: «глава N» takes the reader to the paragraph the
+ * change was filed on (its filing, read by id — `sourceCommentId`), and when the record holds
+ * no filing only the chapter moves and the change card opens through this page's own path.
+ * The «карточка» button stays exactly what it was: the second door is the card, not a place.
  *
  * The final wording of the number and the outcome belongs to BOOK-59's copy pass.
  */
@@ -30,13 +37,21 @@ export function RecordRow({ record, onOpenChange }: RecordRowProps) {
   const label = `${date}, ${number}, ${place}, ${record.alias}, ${word}${
     reason === null ? '' : `, ${reason}`
   } — открыть карточку правки`;
+  // BOOK-168 — the place cell. With a filing the tap lands on its paragraph and opens the
+  // filing's card; without one it is the chapter and the change card is this page's.
+  const target: Place =
+    record.sourceCommentId === undefined || record.sourceCommentId === null
+      ? { chapter: record.chapter, changeId: record.changeId }
+      : { commentId: record.sourceCommentId, chapter: record.chapter };
 
   return (
     // BOOK-77 (audit F1): the alias is a reader's display name, so the row is masked on its own.
     <li className="chr-row ym-hide-content">
       <span className="chr-date">{date}</span>
       <span className="chr-seq">{number}</span>
-      <span className="chr-place">{place}</span>
+      <PlaceLink className="chr-place" place={target} onOpenChange={onOpenChange}>
+        {place}
+      </PlaceLink>
       <span className="chr-alias">{record.alias}</span>
       <span className="chr-outcome">
         {word}

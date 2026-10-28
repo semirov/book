@@ -8,6 +8,7 @@ import type { PendingStage } from '../lib/pending.ts';
 import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
+import { PlaceLink } from './PlaceLink.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import { ReviseNote } from './ReviseNote.tsx';
 
@@ -151,7 +152,13 @@ export function Discussion({
                   <span>глава {comment.chapter}</span>
                   <span className="stamp-time">{commentStamp(comment.createdAt)}</span>
                 </div>
-                {quote === null ? null : <p className="comment-quote">«{quote}»</p>}
+                {quote === null ? null : (
+                  // BOOK-168 — the quote is the door: the row's words, and the paragraph they
+                  // were filed on. The row itself is not a second click target (one tap, one card).
+                  <p className="comment-quote">
+                    <PlaceLink place={comment}>«{quote}»</PlaceLink>
+                  </p>
+                )}
                 <p className="comment-body">{comment.body}</p>
                 <p className="comment-line">
                   {kindWord === null ? null : <span className="comment-kind">{kindWord} · </span>}

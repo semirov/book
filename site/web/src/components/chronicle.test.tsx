@@ -120,16 +120,16 @@ const MID = `${NBSP}·${NBSP}`;
 const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', import: 'default', eager: true });
 
 describe('one public record entry (BOOK-65)', () => {
-  it('carries the six facts of the change and exactly one way into the card', () => {
+  it('carries the six facts of the change, one way into the card and one door to the place', () => {
     const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
 
     expect(html).toContain('правка 7');
     expect(html).toContain(`26.10.2026${MID}09:00`);
-    expect(html).toContain('глава 9');
     expect(html).toContain('Марк');
     expect(html).toContain('идёт');
-    // One control, and the only link is the card — no «прицел», no second door.
+    // One control for the card, one link for the place (BOOK-168; no filing in this fixture).
     expect(html.match(/<button/gu)).toHaveLength(1);
+    expect(html).toContain('<a class="place-link chr-place" href="#ch-9">глава 9</a>');
     expect(html).not.toContain('прицел');
     expect(html).not.toContain('chr-deed');
     expect(html).toContain('карточка');

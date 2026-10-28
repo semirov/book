@@ -62,6 +62,11 @@ export type FilingContext = Shell & {
    * closes itself and hands the page to the one shared act (`reviseFiling`).
    */
   onRevise?: (comment: CommentDto, origin: HTMLElement) => void;
+  /**
+   * BOOK-168 — one quiet line under the quote when the landing fell back to the chapter: the
+   * filing's paragraph is gone, and the card says so instead of inventing a neighbour.
+   */
+  placeNote?: string | null;
 };
 
 export type SeamPanelProps = ProvenanceContext | FilingContext;
@@ -243,6 +248,7 @@ function FilingBody({
   onProvenance,
   earlierAttempts = [],
   premiseIntent = null,
+  placeNote = null,
   nowMs,
   onRevise,
 }: FilingContext) {
@@ -285,6 +291,9 @@ function FilingBody({
         {comment.author} · {commentStamp(comment.createdAt)} · глава {String(comment.chapter).padStart(2, '0')}
       </p>
       {quote === null ? null : <p className="filing-quote">«{quote}»</p>}
+      {/* BOOK-168 — the landing fell back to the chapter: the card states it once, under the
+          quote it kept, and never points at a paragraph that is no longer the one filed on. */}
+      {placeNote === null ? null : <p className="filing-place-note">{placeNote}</p>}
       <p className="filing-body">{comment.body}</p>
       {line.form === 'sentence' ? (
         <p className="filing-sentence">{line.state}</p>
