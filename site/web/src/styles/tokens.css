@@ -201,6 +201,17 @@
   --dur-fade: 400ms;
   --ease-out: cubic-bezier(0.22, 0.68, 0.24, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+  /* BOOK-156 — it leaves without hesitating (`--ease-out` is the arrival's curve). */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* BOOK-156 — the grip's geometry. The band is the painted paper, and its painted height is
+     the owner's floor: 24 px (WCAG 2.2 SC 2.5.8, owner's override #3802 §1). `--grip-hit` is
+     the cap on the item's own box, which is the band plus the bottom inset and can never be
+     taller — nothing hangs past the screen's edge. Neither is a breakpoint: the grip is the
+     same object at 390 and at 1440. */
+  --grip-h: 24px;
+  --grip-row: 44px;
+  --grip-hit: 44px;
 
   /* skeleton widths — BOOK-DOC-43 §3. Geometry, not ink, so there is no day/night pair:
      eight ragged line endings, never 100 %, selected by `data-w` on a `.skel-line`. */

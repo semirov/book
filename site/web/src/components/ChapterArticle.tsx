@@ -293,6 +293,12 @@ export function ChapterArticle({
   const showCaret = caret?.show === true && chapter !== null && entry.written;
   const caretBlockId = reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter?.blocks.at(-1)?.id ?? null : null)) : null;
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
+  /**
+   * BOOK-156 (#3802 §4) — `#pass` is the live pass's first line, a real element with a
+   * `scroll-margin-top` of `--offset-top + 16` (foot-jumps.css). Only a live revising block
+   * carries it: no pass, no anchor, so the grip's third item can never point at a promise.
+   */
+  const passBlockId = revising !== null && revising.active ? (revising.blockIds[0] ?? null) : null;
   /** §6: `null` while the wait is quiet — the header then prints what it prints today. */
   const status = statusLine('chapter', stage, entry.n);
 
@@ -367,6 +373,7 @@ export function ChapterArticle({
             const revisingCause = revisingIds.has(block.id) ? (revising?.cause ?? 'draft') : null;
             return (
               <Fragment key={block.id}>
+                {passBlockId === block.id ? <span id="pass" aria-hidden="true" /> : null}
                 <ProseParagraph
                   entry={entry}
                   blockId={block.id}
