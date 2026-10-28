@@ -31,9 +31,15 @@ describe('a dead step', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('gone');
-      expect(harness.logs.some((line) => line.includes('шаг снят движком LEASE_RELEASED'))).toBe(true);
+      // The owner's line, verbatim: a scheduling event, not a prose event.
+      expect(harness.logs.some((line) => line.includes('lease released by the engine — taking the next filing'))).toBe(
+        true,
+      );
+      // No park, no escalate: the engine already closed the step.
+      expect(harness.engineCalls).not.toContain('escalate');
+      expect(harness.logs.some((line) => line.startsWith('[writer] parked'))).toBe(false);
       // No park sentence reached the record: the pass never claimed a failure.
-      expect(result.reason).toBe('шаг снят движком — беру следующее задание');
+      expect(result.reason).toBe('lease released by the engine — taking the next filing');
     } finally {
       await harness.close();
     }

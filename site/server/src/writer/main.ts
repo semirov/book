@@ -335,9 +335,9 @@ export async function main(deps: MainDeps = {}): Promise<number> {
       const result = await pass();
       if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
       if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
-      // BOOK-145: a step the engine took away is a normal event — the next assignment is asked
-      // for at once, without the pacing pause and without counting as a pass.
-      if (result.status === 'gone') continue;
+      // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
+      // the next filing is asked for in the same cycle, without the pacing pause.
+      if (result.status === 'gone' || result.filingRefused === true) continue;
     }
     // An idle pass sleeps too: the lane is supervised, not a busy loop.
     await pause(config.pauseMs);
