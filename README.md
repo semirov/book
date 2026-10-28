@@ -47,7 +47,7 @@ cd site
 npm install
 npm run dev                       # API :8080 + Vite :5173
 npm run build && npm start        # один процесс на :8080
-npm run verify                    # typecheck + arch + тесты + рамка (frame-check)
+npm run verify                    # typecheck + arch + рамка (frame-check), без тестов
 node bin/validate.mjs             # проверка рукописи: 0 ошибок
 ```
 

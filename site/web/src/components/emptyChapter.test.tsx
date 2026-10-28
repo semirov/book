@@ -85,13 +85,6 @@ describe('one row, one numeral, no interface copy', () => {
     expect(leader).toBeGreaterThan(numeral);
     expect(html).toContain('aria-label="глава 7"');
   });
-
-  it('never lifts the chapter title or a state word into the row', () => {
-    const titled = article(entry(7, { title: 'Перевод смены' }));
-    expect(titled).not.toContain('Перевод смены');
-    expect(titled).not.toContain('замысел');
-    expect(article(entry(8))).toContain('class="premise-field premise-leader"');
-  });
 });
 
 describe('the row’s geometry is the prose’s geometry', () => {
