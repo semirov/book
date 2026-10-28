@@ -346,7 +346,7 @@ describe('the panel’s lines', () => {
   });
 
   it('shows actual tokens and rubles, from the cost or from the impact', () => {
-    expect(costLine(change, impact)).toBe('deepseek-flash · 150\u00a0572\u00a0токена · 0,04\u00a0₽');
+    expect(costLine(change, impact)).toBe('150\u00a0572\u00a0токена · 0,04\u00a0₽');
     expect(costLine({ ...change, cost: null }, impact)).toBe('150\u00a0572\u00a0токена · 0,04\u00a0₽');
     expect(costLine({ ...change, cost: null }, null)).toBeNull();
   });
@@ -357,7 +357,7 @@ describe('the panel’s lines', () => {
       ...change,
       cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: null },
     };
-    expect(costLine(unmeasured, null)).toBe('deepseek-flash · 150\u00a0572\u00a0токена');
+    expect(costLine(unmeasured, null)).toBe('150\u00a0572\u00a0токена');
     expect(costLine(unmeasured, null)).not.toContain('₽');
     // The impact projection obeys the same rule: its own zero-sum is not a measurement.
     expect(costLine({ ...change, cost: null }, { ...impact, costRub: null })).toBe('150\u00a0572\u00a0токена');
@@ -367,7 +367,7 @@ describe('the panel’s lines', () => {
     // This exact DTO is what `GET /api/changes/:id` emits for a row with `cost_priced = 1`
     // and `cost_rub = 0` (`server/test/engineState.test.ts` proves the wire value).
     const free = { ...change, cost: { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: 0 } };
-    expect(costLine(free, null)).toBe('deepseek-flash · 150\u00a0572\u00a0токена · 0,00\u00a0₽');
+    expect(costLine(free, null)).toBe('150\u00a0572\u00a0токена · 0,00\u00a0₽');
   });
 
   it('never prints a number that cannot be a price', () => {

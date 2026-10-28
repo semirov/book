@@ -27,6 +27,12 @@ const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
   timeZone: SITE_TIMEZONE,
 });
 
+const dayMonthFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  timeZone: SITE_TIMEZONE,
+});
+
 /** `99410` → `99 410` with non-breaking spaces. */
 export function formatNumber(value: number): string {
   return String(Math.trunc(value)).replace(/\B(?=(\d{3})+(?!\d))/gu, NBSP);
@@ -73,6 +79,14 @@ export function formatFileSize(bytes: number): string {
   // is printed as such by the branch below.
   if (kb < 1_000) return `${kb} КБ`;
   return `${String(Math.round(safe / 100_000) / 10).replace('.', ',')} МБ`;
+}
+
+/** `25.10` — the foot's meta line carries the day, never a bare time (owner, 2026-10-28). */
+export function formatDayMonth(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dayMonthFormatter.format(date);
 }
 
 export function formatTime(iso: string | null | undefined): string {

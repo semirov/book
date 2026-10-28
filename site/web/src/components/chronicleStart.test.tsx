@@ -14,8 +14,6 @@ import { ChronicleRecords } from './Chronicle.tsx';
  * live in `chronicle.test.tsx`, which is at the 500-line arch limit.
  */
 
-const noop = (): void => undefined;
-
 const begun = {
   lastHseq: 3,
   lastAt: '2026-10-21T06:12:00Z',
@@ -31,7 +29,7 @@ describe('a timeline whose answer has no `firstAt` at all (BOOK-56)', () => {
     delete absent.firstAt;
 
     const html = renderToStaticMarkup(
-      <ChronicleRecords timeline={absent as HistoryTimelineDto} failed={false} onOpenChange={noop} />,
+      <ChronicleRecords timeline={absent as HistoryTimelineDto} failed={false} />,
     );
 
     expect(html).toContain('перематывать пока нечего: книга ещё не правила читателем');
@@ -45,7 +43,7 @@ describe('a timeline whose answer has no `firstAt` at all (BOOK-56)', () => {
 
   it('keeps the dated row when the field is there', () => {
     const html = renderToStaticMarkup(
-      <ChronicleRecords timeline={begun} failed={false} onOpenChange={noop} />,
+      <ChronicleRecords timeline={begun} failed={false} />,
     );
     expect(html).toContain('<span class="chr-seq">начало книги</span>');
     expect(html).toContain('class="chr-timeline"');

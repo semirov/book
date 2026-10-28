@@ -292,10 +292,11 @@
   margin-top: 10px;
 }
 
-/* ── the record: one change, one line (BOOK-65) ───────────────────────────── */
-/* A row is the six facts of one change and nothing else: its number, its date and time, the
-   reader's alias, the place, one outcome word and the way into the card. It wraps between
-   facts rather than between the digits of a date, so a phone never cuts a moment in half. */
+/* ── the record: one change to the book, one line (BOOK-65) ────────────────── */
+/* A row is the change's moment, its place, the pair the book wrote, the word it entered the
+   text with (when it did not), whose act it was and the door to its record — and nothing
+   else. It wraps between facts rather than between the digits of a date, so a phone never
+   cuts a moment in half. */
 .chr-timeline {
   list-style: none;
   margin: 18px 0 0;
@@ -319,27 +320,27 @@
   white-space: nowrap;
 }
 .chr-seq,
-.chr-place {
+.chr-place,
+.chr-cause {
   font-family: var(--label);
   font-size: var(--fs-label);
   letter-spacing: 0.05em;
   color: var(--ink-3);
   white-space: nowrap;
 }
-.chr-alias {
+.chr-span {
+  min-width: 0;
   max-width: 62ch;
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
   color: var(--ink);
 }
-.chr-outcome {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
+.chr-state {
   font-family: var(--label);
   font-size: var(--fs-label);
   letter-spacing: 0.04em;
   color: var(--ink-2);
+  white-space: nowrap;
 }
 .chr-reason {
   min-width: 0;

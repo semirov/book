@@ -203,9 +203,11 @@ describe('the FB2 file (BOOK-60)', () => {
     // The seam's states and the chronicle's lines have no path into the serializer's input.
     // Every ban below is a string the app really prints, taken from its own source or its own
     // function — a ban on a phrase nothing can produce would be decoration, not a gate.
-    const chapterArticle = webSource('ChapterArticle.tsx');
+    // BOOK-167: the chapter's prose moved into `ChapterProse.tsx`; the seam's copy lives there
+    // now, so the ban reads both files and still names a string the app really prints.
+    const chapterArticle = `${webSource('ChapterArticle.tsx')}\n${webSource('ChapterProse.tsx')}`;
     const seamCopy = [...chapterArticle.matchAll(/'(правится[^']*)'/gu)].map((match) => match[1] ?? '');
-    expect(seamCopy.length, 'the seam copy is still in ChapterArticle').toBeGreaterThan(0);
+    expect(seamCopy.length, 'the seam copy is still in the chapter’s prose').toBeGreaterThan(0);
     for (const banned of [
       boundaryLabel(35),
       boundaryLabel('front'),

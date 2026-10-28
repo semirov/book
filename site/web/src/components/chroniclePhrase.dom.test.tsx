@@ -21,17 +21,22 @@ const TEXT = 'Он вошёл в комнату.';
 
 function record(hseq: number, at: string): HistoryRecordDto {
   return {
+    id: `chg_${String(hseq)}`,
     hseq,
     at,
     seq: hseq,
     chapter: 1,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Филипп',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
     changeId: 'chg_9',
+    recordHref: '#правка-chg_9',
+    span: null,
   };
 }
 

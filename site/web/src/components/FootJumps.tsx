@@ -9,6 +9,7 @@ import {
   type GripState,
   type PassFacts,
 } from '../lib/grip.ts';
+import { openPassStrip } from '../lib/usePassStrip.ts';
 
 /**
  * The door's chapter is resolved by the grip's pure module (`liveChapter`); it is re-exported
@@ -259,6 +260,10 @@ export function FootJumps({
       }
       return;
     }
+    // BOOK-167: the strip opens on the block the page names, before the cut — the reader
+    // arrives at a live row, not at a paragraph that starts being explained afterwards.
+    const owner = block.getAttribute('data-pass-block');
+    if (chapter !== null && owner !== null) openPassStrip({ chapter, blockId: owner });
     saved.current = { y: window.scrollY, blockId: 'pass', dy: window.scrollY - topOf(block) };
     locked.current = true;
     if (reduced) {

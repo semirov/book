@@ -27,11 +27,16 @@ export function costTokens(cost: BookCostDto): string {
 }
 
 /** The money fragment: `12,34 $`, or `цена не задана` when no rate could price the book. */
-export function costMoney(cost: BookCostDto): string {
+export function usdText(usd: number | null): string {
   // Anything that is not a finite non-negative number is not a price either: printing `NaN $`
   // or `-12,34 $` would be a figure nobody measured.
-  if (cost.usd === null || !Number.isFinite(cost.usd) || cost.usd < 0) return COST_UNPRICED;
-  return `${cost.usd.toFixed(2).replace('.', ',')}${NBSP}$`;
+  if (usd === null || !Number.isFinite(usd) || usd < 0) return COST_UNPRICED;
+  return `${usd.toFixed(2).replace('.', ',')}${NBSP}$`;
+}
+
+/** The book's money as the colophon prints it. */
+export function costMoney(cost: BookCostDto): string {
+  return usdText(cost.usd);
 }
 
 /** The footer's one line: `израсходовано 1 234 567 токенов · 12,34 $`. */

@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
 import { useReading } from '../lib/pageTrack.ts';
+import type { Stages } from '../lib/useStages.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
+import { HeadStatus } from './HeadStatus.tsx';
 import { PageNumber } from './PageNumber.tsx';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
@@ -32,6 +34,11 @@ function titleOf(catalog: readonly CatalogEntry[], n: number | null): string | n
  * panels, the chronicle and the end matter: the chip that used to stand here («пишется
  * глава N», «правка приостановлена», «последняя запись · 25.10», «глав ещё нет») is gone.
  *
+ * One fact is the exception (BOOK-156 #3814, owner 2026-10-28): **whether the book is being
+ * written now**. It is not a chip in the row — it is one 12 px line in the row's free space,
+ * present only while a pass is in flight, so the reading surface says the one thing a reader
+ * looking up from the prose needs and nothing else.
+ *
  * BOOK-104: the head names the chapter at the reading line and the folio prints its page —
  * one `useReading`, one model, both from the same commit.
  */
@@ -42,6 +49,8 @@ export function Header({
   markers: escalation,
   onOpenChange,
   live,
+  stages,
+  nowMs,
 }: {
   state: StateSnapshot;
   ribbon: Ribbon | null;
@@ -50,6 +59,10 @@ export function Header({
   onOpenChange: (changeId: string) => void;
   /** BOOK-56: the ribbon is history; off means it is not on the page at all. */
   live: boolean;
+  /** BOOK-156 #3814: the page's stage log — the head says the book is being written. */
+  stages?: Stages;
+  /** A fixed clock for a test; a page hands none in. */
+  nowMs?: number;
 }) {
   // BOOK-104: the chapter the reader is in and the page it opens — one resolution, two slots.
   const { n, page } = useReading(catalog);
@@ -93,6 +106,10 @@ export function Header({
               </>
             )}
           </span>
+          {/* BOOK-156 #3814: the book's state, in the row's free space — after the chapter
+              cluster and before the folio, which stays the row's right end. Idle prints nothing:
+              the foot's grip already says `писалась · 25.10`, and a second print is a chip. */}
+          <HeadStatus state={state} stages={stages} nowMs={nowMs} />
           {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />

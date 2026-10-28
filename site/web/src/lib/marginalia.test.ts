@@ -137,7 +137,7 @@ describe('the deck’s second line', () => {
     expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(
       'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
     );
-    expect(filingConsequence(comment({ status: 'expired' }))).toBe('проход не состоялся');
+    expect(filingConsequence(comment({ status: 'expired' }))).toBe('правка не состоялась');
     expect(filingConsequence(comment({ status: 'hidden' }))).toBe('скрыто');
     expect(filingConsequence(comment({ status: 'unknown' as CommentDto['status'] }))).toBe('попадёт в триаж');
   });

@@ -12,7 +12,7 @@
  * be on the page either.
  */
 
-export type OverlayName = 'seam' | 'filing' | 'revision';
+export type OverlayName = 'seam' | 'filing' | 'revision' | 'pass';
 
 const closers = new Map<OverlayName, () => void>();
 

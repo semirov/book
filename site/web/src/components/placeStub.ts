@@ -123,18 +123,23 @@ export function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 export function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecordDto {
   return {
+    id: 'chg_9',
     hseq: 10,
     at: '2026-10-27T12:40:00Z',
     seq: 9,
     chapter: 3,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Аня',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
     sourceCommentId: 'cmt_9',
     changeId: 'chg_9',
+    recordHref: '#правка-chg_9',
+    span: null,
     ...overrides,
   };
 }

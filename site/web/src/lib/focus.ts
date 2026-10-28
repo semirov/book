@@ -12,6 +12,7 @@
  */
 
 import {
+  CHANGE_RECORD_PREFIX,
   TOTAL_CHAPTERS,
   chapterLabel,
   type BlockDto,
@@ -28,7 +29,7 @@ import { changeNumber, relevanceCopy, stampCopy } from './changeStatus.ts';
 import { NBSP, formatNumber, formatTime, plural } from './format.ts';
 
 /** The only deep link the focus view needs; Cyrillic is part of the URL on purpose. */
-export const FOCUS_PREFIX = 'правка-';
+export const FOCUS_PREFIX = CHANGE_RECORD_PREFIX;
 
 export function focusHash(changeId: string): string {
   return `#${FOCUS_PREFIX}${changeId}`;
@@ -301,10 +302,14 @@ export function touchedChaptersCopy(
 }
 
 /**
- * The honest money line: the model and the tokens, and the rubles **only when they were
- * measured** (BOOK-DOC-4 «Honesty about cost», BOOK-23). `rub: null` is «not measured» and
- * prints no ₽ figure at all; the number `0` is a measured price of zero and prints «0,00 ₽».
- * One rule for the card and the focus view, so neither can invent a zero of its own.
+ * The honest money line: the tokens, and the rubles **only when they were measured**
+ * (BOOK-DOC-4 «Honesty about cost», BOOK-23). `rub: null` is «not measured» and prints no ₽
+ * figure at all; the number `0` is a measured price of zero and prints «0,00 ₽». One rule for
+ * the card and the focus view, so neither can invent a zero of its own.
+ *
+ * The model id is **not** printed (owner, 2026-10-28): the reader's surface never names the
+ * writer. The DTO still carries `cost.model` — the wire is the workshop's — and that field is
+ * what the change card and the pass record must not print.
  */
 export function costLine(
   change: Pick<ChangeDto, 'cost'>,
@@ -314,7 +319,6 @@ export function costLine(
   const tokens = cost === null ? (impact === null ? null : impact.tokens) : cost.tokensIn + cost.tokensOut;
   const rub = cost === null ? (impact === null ? null : impact.costRub) : cost.rub;
   const parts: string[] = [];
-  if (cost?.model !== null && cost?.model !== undefined) parts.push(cost.model);
   if (tokens !== null && tokens > 0) parts.push(`${formatNumber(tokens)}${NBSP}${plural(tokens, 'токен', 'токена', 'токенов')}`);
   if (typeof rub === 'number' && Number.isFinite(rub) && rub >= 0) {
     parts.push(`${rub.toFixed(2).replace('.', ',')}${NBSP}₽`);

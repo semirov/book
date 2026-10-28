@@ -1,0 +1,1196 @@
+{
+  "capturedAt": "2026-10-28T12:53:27.641Z",
+  "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-carets-live",
+  "widths": [
+    1440,
+    390
+  ],
+  "framesPerWidth": 7,
+  "browser": "ws://127.0.0.1:9334/devtools/browser/8874fb4b-aae0-4104-b79a-526f8887f799",
+  "build": {
+    "rebuilt": false,
+    "servedFrom": "web/dist/staging by node server/dist/index.js"
+  },
+  "replay": {
+    "note": "the two pass_stages rows were inserted into a temp copy of the store; no model call ran, no money moved, prod was never written",
+    "tempBook": "removed after the run",
+    "schema": "the copy is v21 pinned to v20 (v21 added two nullable columns); this branch understands v20"
+  },
+  "runs": [
+    {
+      "width": 1440,
+      "height": 900,
+      "chapter": 3,
+      "blockIndex": 79,
+      "blockId": "ch03#d5a0055c",
+      "blockHeight": 243,
+      "fonts": "loaded",
+      "passId": "stp_carets_3_1440",
+      "mountDelayMs": 292,
+      "settleMs": 3692,
+      "animationsAtSettle": 0,
+      "phrase": "Я представил человека, который через неделю встанет в очередь, и подумал, что он, наверное, ещё не знает.",
+      "replacement": "Я представил человека, который как-нибудь через неделю встанет в очередь, и подумал: он, скорее всего, ещё не знает.",
+      "span": {
+        "before": "через неделю встанет в очередь, и подумал, что он, наверное",
+        "after": "как-нибудь через неделю встанет в очередь, и подумал: он, скорее всего",
+        "kind": "replacement",
+        "offset": 276
+      },
+      "offsets": {
+        "grapheme": 276,
+        "charStart": 276,
+        "charEnd": 335,
+        "phraseCharStart": 245,
+        "phraseLength": 105,
+        "runGraphemes": 70
+      },
+      "runGraphemes": 70,
+      "frames": [
+        {
+          "atMs": 0,
+          "file": "site/artifacts/pass-live/1440-3-0.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 68,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 0.271,
+              "transform": "translate3d(603.75px, 241.78px, 0px)",
+              "left": 1003.75,
+              "top": 559.12,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 0.271,
+              "transform": "translate3d(622.59px, 90.72px, 0px)",
+              "left": 1022.59,
+              "top": 408.06,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 250,
+          "file": "site/artifacts/pass-live/1440-3-250.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 58,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(603.75px, 227.65px, 0px)",
+              "left": 1003.75,
+              "top": 544.99,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(76.38px, 120.96px, 0px)",
+              "left": 476.38,
+              "top": 438.3,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 600,
+          "file": "site/artifacts/pass-live/1440-3-600.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 44,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(603.75px, 142.24px, 0px)",
+              "left": 1003.75,
+              "top": 459.58,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(206.77px, 120.96px, 0px)",
+              "left": 606.77,
+              "top": 438.3,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 1000,
+          "file": "site/artifacts/pass-live/1440-3-1000.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 28,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(603.75px, 49.47px, 0px)",
+              "left": 1003.75,
+              "top": 366.81,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(348.02px, 120.96px, 0px)",
+              "left": 748.02,
+              "top": 438.3,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 1500,
+          "file": "site/artifacts/pass-live/1440-3-1500.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 13,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(603.75px, 8.16px, 0px)",
+              "left": 1003.75,
+              "top": 325.5,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(482.05px, 120.96px, 0px)",
+              "left": 882.05,
+              "top": 438.3,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 2200,
+          "file": "site/artifacts/pass-live/1440-3-2200.jpg",
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 0.072,
+              "transform": "translate3d(603.75px, 0px, 0px)",
+              "left": 1003.75,
+              "top": 317.34,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(595.77px, 144.82px, 0px)",
+              "left": 995.77,
+              "top": 462.16,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        },
+        {
+          "atMs": 3000,
+          "file": "site/artifacts/pass-live/1440-3-3000.jpg",
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 70,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 0.072,
+              "transform": "translate3d(603.75px, 0px, 0px)",
+              "left": 1003.75,
+              "top": 317.34,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(595.77px, 202.81px, 0px)",
+              "left": 995.77,
+              "top": 520.15,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 8,
+            "tops": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ]
+          },
+          "rect": {
+            "top": 317.34,
+            "height": 242.88
+          },
+          "head": null
+        }
+      ],
+      "bothCaretsIn": [
+        0,
+        250,
+        600,
+        1000,
+        1500,
+        2200,
+        3000
+      ],
+      "noReflow": {
+        "matches": true,
+        "ink": {
+          "mountVsMid": {
+            "same": true,
+            "count": {
+              "left": 8,
+              "right": 8
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "mountVsInkedTail": {
+            "same": true,
+            "count": {
+              "left": 8,
+              "right": 8
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "inkedFrameMs": 3000
+        },
+        "swap": {
+          "raw": {
+            "same": true,
+            "count": {
+              "left": 8,
+              "right": 8
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "door": {
+          "present": true,
+          "shown": {
+            "height": 23.52,
+            "verticalAlign": "super",
+            "display": "inline-block"
+          },
+          "withoutDoorOnSettledSide": {
+            "same": false,
+            "count": {
+              "left": 8,
+              "right": 8
+            },
+            "maxDeltaPx": 1,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1
+            ]
+          },
+          "boxIsLoadBearing": true,
+          "tops": {
+            "inked": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ],
+            "afterSwap": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              215.64
+            ],
+            "afterSwapDoorHidden": [
+              3,
+              33.23,
+              63.47,
+              93.7,
+              123.94,
+              154.17,
+              184.41,
+              214.64
+            ]
+          }
+        },
+        "lines": {
+          "mount": 8,
+          "mid": 8,
+          "inked": 8,
+          "afterSwap": 8
+        },
+        "metric": "each line top relative to the block top, Range.getClientRects(), rounded to 0.01 px"
+      },
+      "strip": {
+        "open": false,
+        "text": null,
+        "note": "the strip stays closed: its live state needs queue.processing/revising, which this replay does not set"
+      },
+      "head": {
+        "atMount": null,
+        "atSettle": null
+      },
+      "paragraph": {
+        "atMount": {
+          "blockId": "ch03#d5a0055c",
+          "pass": true,
+          "beat": "hold",
+          "prose": "Смена шла тяжело, блоки ползли, как вагоны с углём. В сводке появились новые позиции, и одна из них, четыре тысячи тридцать второй год рождения, коэффициент ноль девяносто один, статус «назначено», дата подачи — первое ноября шестьдесят пят"
+        },
+        "atSettle": {
+          "blockId": "ch03#df2bf7a9",
+          "pass": false,
+          "prose": "Смена шла тяжело, блоки ползли, как вагоны с углём. В сводке появились новые позиции, и одна из них, четыре тысячи тридцать второй год рождения, коэффициент ноль девяносто один, статус «назначено», дата подачи — первое ноября шестьдесят пят"
+        },
+        "showsTheEdit": true,
+        "textIsTheWholeParagraph": true
+      },
+      "stored": [
+        {
+          "stage": "landed",
+          "stageSeq": 1,
+          "at": "2026-10-28T12:53:17.332Z",
+          "summary": "внесено: 1 абзац",
+          "span": [
+            {
+              "blockId": "ch03#d5a0055c",
+              "before": "Смена шла тяжело, блоки ползли, как вагоны с углём. В сводке появились новые позиции, и одна из них, четыре тысячи тридцать второй год рождения, коэффициент ноль девяносто один, статус «назначено», дата подачи — первое ноября шестьдесят пятого. Я представил человека, который через неделю встанет в очередь, и подумал, что он, наверное, ещё не знает. Потом подумал, что я тоже не знал, пока не прочитал свою строку. Разница в том, что я теперь знаю, а он ещё нет. Это несправедливо, но справедливости в очередях не выдают, её только обещают в бланках.",
+              "after": "Смена шла тяжело, блоки ползли, как вагоны с углём. В сводке появились новые позиции, и одна из них, четыре тысячи тридцать второй год рождения, коэффициент ноль девяносто один, статус «назначено», дата подачи — первое ноября шестьдесят пятого. Я представил человека, который как-нибудь через неделю встанет в очередь, и подумал: он, скорее всего, ещё не знает. Потом подумал, что я тоже не знал, пока не прочитал свою строку. Разница в том, что я теперь знаю, а он ещё нет. Это несправедливо, но справедливости в очередях не выдают, её только обещают в бланках.",
+              "truncated": false
+            }
+          ]
+        },
+        {
+          "stage": "typing",
+          "stageSeq": 2,
+          "at": "2026-10-28T12:53:17.382Z",
+          "summary": "правка на странице: текст печатается",
+          "span": null
+        }
+      ],
+      "console": []
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "chapter": 5,
+      "blockIndex": 202,
+      "blockId": "ch05#19b4735c",
+      "blockHeight": 431,
+      "fonts": "loaded",
+      "passId": "stp_carets_5_390",
+      "mountDelayMs": 236,
+      "settleMs": 4427,
+      "animationsAtSettle": 0,
+      "phrase": "Одиннадцать минут — это опоздание. Опоздание — это запись в журнале смен.",
+      "replacement": "Одиннадцать минут — это уже опоздание. Опоздание — это отметка в журнале смен.",
+      "span": {
+        "before": "опоздание. Опоздание — это запись",
+        "after": "уже опоздание. Опоздание — это отметка",
+        "kind": "replacement",
+        "offset": 343
+      },
+      "offsets": {
+        "grapheme": 343,
+        "charStart": 343,
+        "charEnd": 376,
+        "phraseCharStart": 319,
+        "phraseLength": 73,
+        "runGraphemes": 38
+      },
+      "runGraphemes": 38,
+      "frames": [
+        {
+          "atMs": 0,
+          "file": "site/artifacts/pass-live/390-5-0.jpg",
+          "pass": true,
+          "beat": "hold",
+          "pending": 38,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 0,
+              "transform": null,
+              "left": 24,
+              "top": 195.52,
+              "visible": false
+            },
+            "write": {
+              "count": 1,
+              "opacity": 0,
+              "transform": null,
+              "left": 24,
+              "top": 195.52,
+              "visible": false
+            }
+          },
+          "bothCarets": false,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 250,
+          "file": "site/artifacts/pass-live/390-5-250.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 30,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 424.65px, 0px)",
+              "left": 24,
+              "top": 620.17,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(70.64px, 257.04px, 0px)",
+              "left": 94.64,
+              "top": 452.56,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 600,
+          "file": "site/artifacts/pass-live/390-5-600.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 23,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 398.57px, 0px)",
+              "left": 24,
+              "top": 594.09,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(126.58px, 257.04px, 0px)",
+              "left": 150.58,
+              "top": 452.56,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 1000,
+          "file": "site/artifacts/pass-live/390-5-1000.jpg",
+          "pass": true,
+          "beat": "type",
+          "pending": 11,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 316.51px, 0px)",
+              "left": 24,
+              "top": 512.03,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(236.73px, 257.04px, 0px)",
+              "left": 260.73,
+              "top": 452.56,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 1500,
+          "file": "site/artifacts/pass-live/390-5-1500.jpg",
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 170.08px, 0px)",
+              "left": 24,
+              "top": 365.6,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(331.61px, 270.23px, 0px)",
+              "left": 355.61,
+              "top": 465.75,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 2200,
+          "file": "site/artifacts/pass-live/390-5-2200.jpg",
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 60.05px, 0px)",
+              "left": 24,
+              "top": 255.57,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(331.61px, 317.92px, 0px)",
+              "left": 355.61,
+              "top": 513.44,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        },
+        {
+          "atMs": 3000,
+          "file": "site/artifacts/pass-live/390-5-3000.jpg",
+          "pass": true,
+          "beat": "tail",
+          "pending": 0,
+          "clusters": 38,
+          "carets": {
+            "read": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(0px, 11.34px, 0px)",
+              "left": 24,
+              "top": 206.86,
+              "visible": true
+            },
+            "write": {
+              "count": 1,
+              "opacity": 1,
+              "transform": "translate3d(331.61px, 372.77px, 0px)",
+              "left": 355.61,
+              "top": 568.29,
+              "visible": true
+            }
+          },
+          "bothCarets": true,
+          "lines": {
+            "count": 15,
+            "tops": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ]
+          },
+          "rect": {
+            "top": 195.52,
+            "height": 430.86
+          },
+          "head": null
+        }
+      ],
+      "bothCaretsIn": [
+        250,
+        600,
+        1000,
+        1500,
+        2200,
+        3000
+      ],
+      "noReflow": {
+        "matches": true,
+        "ink": {
+          "mountVsMid": {
+            "same": true,
+            "count": {
+              "left": 15,
+              "right": 15
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "mountVsInkedTail": {
+            "same": true,
+            "count": {
+              "left": 15,
+              "right": 15
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "inkedFrameMs": 3000
+        },
+        "swap": {
+          "raw": {
+            "same": true,
+            "count": {
+              "left": 15,
+              "right": 15
+            },
+            "maxDeltaPx": 0,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "door": {
+          "present": true,
+          "shown": {
+            "height": 23.52,
+            "verticalAlign": "super",
+            "display": "inline-block"
+          },
+          "withoutDoorOnSettledSide": {
+            "same": false,
+            "count": {
+              "left": 15,
+              "right": 15
+            },
+            "maxDeltaPx": 2.65,
+            "deltaPx": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              2.65
+            ]
+          },
+          "boxIsLoadBearing": true,
+          "tops": {
+            "inked": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ],
+            "afterSwap": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              404.31
+            ],
+            "afterSwapDoorHidden": [
+              2,
+              30.55,
+              59.09,
+              87.64,
+              116.19,
+              144.73,
+              173.28,
+              201.83,
+              230.38,
+              258.92,
+              287.47,
+              316.02,
+              344.56,
+              373.11,
+              401.66
+            ]
+          }
+        },
+        "lines": {
+          "mount": 15,
+          "mid": 15,
+          "inked": 15,
+          "afterSwap": 15
+        },
+        "metric": "each line top relative to the block top, Range.getClientRects(), rounded to 0.01 px"
+      },
+      "strip": {
+        "open": false,
+        "text": null,
+        "note": "the strip stays closed: its live state needs queue.processing/revising, which this replay does not set"
+      },
+      "head": {
+        "atMount": null,
+        "atSettle": null
+      },
+      "paragraph": {
+        "atMount": {
+          "blockId": "ch05#19b4735c",
+          "pass": true,
+          "beat": "paint",
+          "prose": "Во вторник у меня смена с двенадцати. От канцелярии до регистратуры тридцать одна минута: семь до остановки, семнадцать в трамвае, четыре от трамвая и три внутри, вместе с отметкой на проходной. Значит, выйти надо в одиннадцать двадцать дев"
+        },
+        "atSettle": {
+          "blockId": "ch05#fdfd18c8",
+          "pass": false,
+          "prose": "Во вторник у меня смена с двенадцати. От канцелярии до регистратуры тридцать одна минута: семь до остановки, семнадцать в трамвае, четыре от трамвая и три внутри, вместе с отметкой на проходной. Значит, выйти надо в одиннадцать двадцать дев"
+        },
+        "showsTheEdit": true,
+        "textIsTheWholeParagraph": true
+      },
+      "stored": [
+        {
+          "stage": "landed",
+          "stageSeq": 1,
+          "at": "2026-10-28T12:53:22.912Z",
+          "summary": "внесено: 1 абзац",
+          "span": [
+            {
+              "blockId": "ch05#19b4735c",
+              "before": "Во вторник у меня смена с двенадцати. От канцелярии до регистратуры тридцать одна минута: семь до остановки, семнадцать в трамвае, четыре от трамвая и три внутри, вместе с отметкой на проходной. Значит, выйти надо в одиннадцать двадцать девять. Если жалобу примут в одиннадцать сорок, я приду в двенадцать одиннадцать. Одиннадцать минут — это опоздание. Опоздание — это запись в журнале смен. Три записи — это разговор с начальником смены. Разговор — это характеристика. Характеристика — это то, что читают, когда решают, оставить оператора на окне или нет.",
+              "after": "Во вторник у меня смена с двенадцати. От канцелярии до регистратуры тридцать одна минута: семь до остановки, семнадцать в трамвае, четыре от трамвая и три внутри, вместе с отметкой на проходной. Значит, выйти надо в одиннадцать двадцать девять. Если жалобу примут в одиннадцать сорок, я приду в двенадцать одиннадцать. Одиннадцать минут — это уже опоздание. Опоздание — это отметка в журнале смен. Три записи — это разговор с начальником смены. Разговор — это характеристика. Характеристика — это то, что читают, когда решают, оставить оператора на окне или нет.",
+              "truncated": false
+            }
+          ]
+        },
+        {
+          "stage": "typing",
+          "stageSeq": 2,
+          "at": "2026-10-28T12:53:22.962Z",
+          "summary": "правка на странице: текст печатается",
+          "span": null
+        }
+      ],
+      "console": []
+    }
+  ],
+  "console": {
+    "errors": [],
+    "messages": []
+  },
+  "verdict": {
+    "frames": 14,
+    "bothCaretsSomewhere": true,
+    "inkNoReflow": true,
+    "swapNoReflow": true,
+    "doorBoxIsLoadBearing": true,
+    "noConsoleErrors": true,
+    "frameCountInRange": true,
+    "ok": true
+  }
+}

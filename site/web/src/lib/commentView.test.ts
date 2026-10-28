@@ -112,7 +112,7 @@ describe('comment thread copy (§11.6)', () => {
       'правка в очереди на запись',
     );
     expect(commentStatusLine(comment({ status: 'superseded' })).detail).toContain('снято: текст успел измениться');
-    expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('проход не состоялся');
+    expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('правка не состоялась');
     // Every state — the whole matrix — is a chip, and the form is computed here, nowhere else.
     for (const status of ['new', 'batched', 'delivered', 'accepted', 'applied', 'superseded', 'rejected', 'quarantined', 'expired', 'hidden'] as const) {
       const line = commentStatusLine(comment({ status }));
@@ -125,7 +125,7 @@ describe('comment thread copy (§11.6)', () => {
   it('says "not considered" instead of pretending', () => {
     expect(commentStatusLine(comment({ status: 'expired' }))).toMatchObject({
       state: 'ждёт',
-      detail: 'проход не состоялся',
+      detail: 'правка не состоялась',
     });
     expect(commentStatusLine(comment({ status: 'rejected', reason: 'вне рамок: форма книги' }))).toMatchObject({
       state: 'ждёт',

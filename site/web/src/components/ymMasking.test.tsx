@@ -143,17 +143,22 @@ const FACTS: WordFacts = {
 };
 
 const RECORD: HistoryRecordDto = {
+  id: 'chg_1',
   hseq: 42,
   at: '2026-10-25T12:05:00Z',
   seq: 7,
   chapter: 8,
+  chapterTitle: null,
   premise: false,
   premiseLanded: false,
   alias: SENTINEL.name,
+  cause: 'reader',
   status: 'done',
   outcome: 'applied',
   reason: null,
   changeId: 'chg_1',
+  recordHref: '#правка-chg_1',
+  span: null,
 };
 
 const CHAIN: ParagraphChainDto = {
@@ -228,18 +233,22 @@ describe('the reader’s name and words are masked from Webvisor', () => {
     expectMasked(html, SENTINEL.name, '.prov-block');
   });
 
-  it('masks the chronicle and every record row, aria-label included', () => {
+  it('masks the chronicle and refuses to name a reader on a record row', () => {
     const section = renderToStaticMarkup(
-      <Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />,
+      <Chronicle catalog={[]} frontRev={1} tick={0} started live />,
     );
     expect(section).toContain('chronicle');
     expect(section).toContain('ym-hide-content');
 
-    const row = renderToStaticMarkup(<RecordRow record={RECORD} onOpenChange={() => undefined} />);
-    // The alias is a reader's display name and the row is reader-facing copy; BOOK-DOC-50 dates
-    // the label, so the accessible name opens with the record's own moment.
-    expectMasked(row, SENTINEL.name, '.chr-row');
-    expect(row).toContain(`aria-label="25.10.2026${MIDDOT}15:05, правка 7, глава 8, ${SENTINEL.name}, внесено — открыть карточку правки"`);
+    const row = renderToStaticMarkup(<RecordRow record={RECORD} />);
+    // The row prints the cause, the place and the book's own pair — never a reader's name, so
+    // the promise holds by absence here: there is no alias on a record entry to mask.
+    expect(row).toContain('class="chr-row ym-hide-content"');
+    expect(row).not.toContain(SENTINEL.name);
+    // BOOK-DOC-50 dates the label, so the accessible name opens with the record's own moment.
+    expect(row).toContain(
+      `aria-label="25.10.2026${MIDDOT}15:05, глава 8, правка читателя — открыть прицел правки"`,
+    );
   });
 
   it('masks the phrase’s block, and names the record rather than the reader in it', () => {

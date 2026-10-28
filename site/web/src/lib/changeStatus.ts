@@ -20,7 +20,7 @@ import {
 } from '@book/shared';
 
 import { plural } from './format.ts';
-import { changeState, changeWord, PREMISE_PENDING, registrationLine, STATE_WORDS } from './marginalia.ts';
+import { changeWord, PREMISE_PENDING, registrationLine, STATE_WORDS } from './marginalia.ts';
 
 export type ChangeLines = {
   first: string;
@@ -213,34 +213,36 @@ export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outc
 }
 
 /**
- * BOOK-65 — the one word a public record entry prints for a change, and the only function
- * allowed to choose it. The record is one change, one line, and the line carries one outcome:
- * for a change still on its way (or already landed) it delegates to the card's own rule,
- * `changeState`, so the list and the card can never say two different states one click apart.
- * A refusal keeps its word — «снято» · «перекрыто» — from `outcomeCopy`, and a stopped change
- * says «остановлено». A premise speaks of «замысел», so its word agrees with that noun instead
- * («учтён» · «снят» · «ждёт»); «учтён» follows the chapter's own text (`premiseLanded`), so a
- * premise the writer landed and a failed attempt left behind cannot read «снят».
+ * The one word a public record entry prints when the book did not take the change, else `null`.
  *
- * Nothing here invents a register: every word already exists in `STATE_WORDS`,
- * `outcomeCopy` or the premise's own card copy. The final wording belongs to BOOK-59's copy
- * pass; this function is where that pass changes it.
+ * BOOK-65 kept two vocabularies — the queue's and the card's — on the list; the record is now
+ * the book's changes, so the list says one thing where the book refused: «не внесено», with no
+ * invented span beside it. A change still on its way carries no word (the queue's place belongs
+ * to the door), and a landed change has the span for its fact. A premise whose chapter has text
+ * is in the first edition and has landed; a pass with no change row has landed by definition
+ * (its landed stage is the row).
+ *
+ * The word names the fact, never the machinery: no status code, no role, no verdict.
  */
-export function recordWord(
-  record: Pick<HistoryRecordDto, 'status' | 'outcome' | 'premise' | 'premiseLanded'>,
-): string {
-  if (record.premise) {
-    // The chapter's text is the landing — the same fact the card's stamp reads. A premise whose
-    // chapter has an edition is «учтён» whatever the attempt behind it went on to say.
-    if (record.premiseLanded || record.status === 'done') return 'учтён';
-    if (record.status === 'void') return 'снят';
-    return STATE_WORDS.waiting;
+export const RECORD_NOT_LANDED = 'не внесено';
+
+/**
+ * The one word each cause gets on the chronicle's row (owner, 2026-10-28).
+ *
+ * «правка читателя» is a person's filing the book accepted; «писалась» is a pass over the
+ * book — a machine change or a landed stage with no change row. The record never prints the
+ * internal noun for a pass: the word names whose act it was, not the workshop's vocabulary.
+ */
+export const CAUSE_WORDS = { reader: 'правка читателя', pass: 'писалась' } as const;
+
+export function recordStateWord(
+  record: Pick<HistoryRecordDto, 'status' | 'premise' | 'premiseLanded'>,
+): string | null {
+  if (record.premise) return record.premiseLanded ? null : RECORD_NOT_LANDED;
+  if (record.status === 'void' || record.status === 'escalated' || record.status === 'failed') {
+    return RECORD_NOT_LANDED;
   }
-  if (record.status === 'void') return outcomeCopy(record.outcome === 'superseded' ? 'superseded' : 'dropped');
-  if (record.status === 'escalated' || record.status === 'failed') return 'остановлено';
-  // One mapping for all surfaces: «идёт» is a queue place (`pending`/`processing`), «ждёт» is
-  // `stale`, «внесено» is `done` — exactly what `changeState` says on the card.
-  return STATE_WORDS[changeState(record)];
+  return null;
 }
 
 /**

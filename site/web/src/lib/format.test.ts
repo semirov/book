@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatChars,
   formatDate,
+  formatDayMonth,
   formatFileSize,
   formatNumber,
   formatTime,
@@ -48,6 +49,12 @@ describe('times and dates', () => {
   it('renders in the site timezone', () => {
     expect(formatTime('2026-10-25T09:52:00Z')).toBe('12:52');
     expect(formatDate('2026-10-25T09:52:00Z')).toBe('25.10.2026');
+  });
+
+  it('prints the foot’s day without a year', () => {
+    expect(formatDayMonth('2026-10-25T09:52:00Z')).toBe('25.10');
+    expect(formatDayMonth(null)).toBe('—');
+    expect(formatDayMonth('not-a-date')).toBe('—');
   });
 
   it('returns an em dash instead of pretending', () => {

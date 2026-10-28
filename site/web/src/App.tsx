@@ -38,8 +38,8 @@ import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
-import { applyStage, type Passes } from './lib/passes.ts';
 import { applyRevisingMark } from './lib/revisingMark.ts';
+import { useStages } from './lib/useStages.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -69,16 +69,14 @@ import { useDeepLink } from './lib/useDeepLink.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
 import { useBookCost } from './useBookCost.ts';
 import { useFrontRevision } from './useFrontRevision.ts';
+import { usePassRecord } from './lib/usePassRecord.ts';
+import { PassRecordPage } from './components/PassRecordPage.tsx';
 
 /**
- * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → the
- * instrument strip → live TOC → 42 chapter slots (empty ones are slim, designed slots) →
- * discussion → colophon. Every catalog slot exists from the first paint; prose is fetched
- * when a chapter comes within 1.5 viewports.
- *
- * Live updates arrive on `/ws` and are merged by `rev`, never by arrival order. A reconnect
- * is healed by `hello`, which carries the catalog, the first sheet and the snapshot in one
- * frame; a gap in `seq` triggers one REST resync.
+ * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → live TOC →
+ * 42 chapter slots → discussion → colophon. The chronicle and a pass's record are modes of the
+ * same page, chosen by the hash. Every slot exists from the first paint; prose is fetched when
+ * a chapter comes within 1.5 viewports. Frames merge by `rev`; a reconnect heals by `hello`.
  */
 export function App() {
   const [data, setData] = useState<BookData | null>(null);
@@ -86,8 +84,8 @@ export function App() {
   const [connection, setConnection] = useState<SocketStatus>('connecting');
   const [revisions, setRevisions] = useState<Record<number, ChapterRevisionPayload>>({});
   const [revising, setRevising] = useState<Record<number, BlockRevisingPayload>>({});
-  /** The writer lanes' passes in flight, by chapter — the page's only notice a text is coming. */
-  const [passes, setPasses] = useState<Passes>({});
+  /** BOOK-167: the stage log — the passes in flight, and the story the strip prints. */
+  const stages = useStages();
   const [fresh, setFresh] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
@@ -115,6 +113,8 @@ export function App() {
     closeOverlays();
   }, [card.close]);
   const focus = useFocusMode(enterFocus);
+  /** BOOK-166: `#проход-…` is a mode of this page, beside the прицел — its own read and state. */
+  const passRecord = usePassRecord();
   usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
@@ -188,7 +188,7 @@ export function App() {
             setNotice(null);
             setRevisions({});
             setRevising({});
-            setPasses({});
+            stages.reset();
             setFresh(null);
             setFailed(false);
             noteRecord({ kind: 'hello', signedIn: hello.viewer.signedIn });
@@ -279,7 +279,7 @@ export function App() {
           case 'pass:stage':
             // A pass is the only notice a page gets that a chapter's text is being written:
             // `landed` is the engine's, and the site's watcher then publishes no revision.
-            setPasses((current) => applyStage(current, frame.data as PassStageEvent));
+            stages.note(frame.data as PassStageEvent);
             break;
           case 'history:event': {
             // BOOK-102: the frame is a bare tick, `{ hseq, at }` — no narration. The page says
@@ -387,8 +387,8 @@ export function App() {
     }
     scrollToChapter(target.n);
   };
-  /** Reaching a chapter from a card: the card closes, the chapter is opened. */
-  const toChapter = (n: number): void => void (card.close(), scrollToChapter(n));
+  /** Reaching a chapter (a card's step, a record's link): the card closes, the book view is on. */
+  const toChapter = (n: number): void => void (card.close(), setView('book'), scrollToChapter(n));
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
    * so the mark and the strip are there with no reload; the chapter's feed and the register
@@ -400,7 +400,8 @@ export function App() {
     noteRecord({ kind: 'posted', signedIn: viewer.signedIn });
   };
 
-  const views = <ViewSwitch view={view} onChange={setView} live={chronicle} />;
+  // BOOK-166 — the record is a mode of the same page: the head, the record, the colophon.
+  if (passRecord.phase !== 'idle') return <PassRecordPage record={passRecord} chrome={{ state, front, ribbon, catalog, escalation: escalationMarkers(state.unresolved), viewer, cost, donateUrl: front.donateUrl ?? null, exportBytes: front.exportBytes ?? null, capacity: connection === 'capacity', live: history }} card={card.change} onCloseCard={card.close} onOpenChange={card.open} onOpenChapter={toChapter} />;
   const focusView =
     focus.id === null ? null : (
       <FocusView
@@ -418,7 +419,7 @@ export function App() {
   if (view === 'chronicle' && chronicle) {
     return (
       <>
-        {views}
+        <ViewSwitch view={view} onChange={setView} live={chronicle} />
         <ConsentBanner />
         <Chronicle
           catalog={catalog}
@@ -450,8 +451,8 @@ export function App() {
         view={view}
         onViewChange={setView}
         motion={titleMotion}
-        live={history}
-        chronicle={chronicle}
+        live={history} chronicle={chronicle}
+        stages={stages}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
@@ -461,7 +462,7 @@ export function App() {
         revising={revising}
         markers={markers}
         fresh={fresh}
-        passes={passes}
+        stages={stages}
         chapterFeed={chapterFeed}
         changes={changes}
         nowMs={nowMs}

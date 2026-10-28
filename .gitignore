@@ -20,3 +20,5 @@ concept/_drafts/
 notes/
 .DS_Store
 *.log
+
+/node_modules/

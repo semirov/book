@@ -18,6 +18,7 @@ import type {
   MyDecisionsDto,
   MyTraceDto,
   ParagraphChainDto,
+  PassStageEvent,
   PostCommentInput,
   PostCommentResponse,
   QueueDto,
@@ -157,6 +158,24 @@ export async function getChapter(n: number): Promise<ChapterDto | null> {
  */
 export function getChapterComments(chapter: number, limit = 50): Promise<CommentPage> {
   return getComments({ chapter, limit });
+}
+
+/**
+ * `GET /api/chapters/:n/stages` — what already happened to one chapter's passes
+ * (docs/writer-lane.md §3). `pass` narrows the answer to one pass; a reader who was not
+ * connected when it ran reads the same stored moments it would have seen.
+ */
+export function getStages(
+  n: number,
+  options: { pass?: string; limit?: number } = {},
+): Promise<PassStageEvent[]> {
+  const params = new URLSearchParams();
+  if (options.pass !== undefined) params.set('pass', options.pass);
+  if (options.limit !== undefined) params.set('limit', String(Math.min(200, Math.max(1, options.limit))));
+  const query = params.toString();
+  return readJson<{ stages: PassStageEvent[] }>(
+    `/api/chapters/${String(n)}/stages${query === '' ? '' : `?${query}`}`,
+  ).then((answer) => answer.stages);
 }
 
 export function getComments(options: { chapter?: number; limit?: number; before?: string } = {}): Promise<CommentPage> {

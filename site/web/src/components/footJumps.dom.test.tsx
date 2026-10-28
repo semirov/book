@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { formatTime } from '../lib/format.ts';
+import { formatDayMonth } from '../lib/format.ts';
 import { FootJumps, type FootJumpsProps } from './FootJumps.tsx';
 
 /**
@@ -92,7 +92,12 @@ describe('the grip is a landmark with real anchors', () => {
     expect(landmark.getAttribute('tabindex')).toBe('-1');
     const links = [...container.querySelectorAll<HTMLAnchorElement>('a.foot-jump')];
     expect(links.map((link) => link.getAttribute('href'))).toEqual(['#toc', '#discussion', '#pass']);
-    expect(links.map((link) => link.textContent)).toEqual(['оглавление', 'обсуждение', 'каретки']);
+    // The visible word is the item's own; the meta line under it is the state, not a second name.
+    expect(links.map((link) => link.querySelector('.foot-jump-word')?.textContent)).toEqual([
+      'оглавление',
+      'обсуждение',
+      'каретки',
+    ]);
     // The words are the whole of the nav: no number, no colour word, no state word beside it.
     for (const word of ['лайв', 'онлайн', 'эфир', 'синяя', 'красная']) {
       expect(landmark.textContent ?? '').not.toContain(word);
@@ -121,33 +126,33 @@ describe('the grip is a landmark with real anchors', () => {
 });
 
 describe('the third item tells the truth', () => {
-  it('is an inert word — no href, not focusable — with «не пишется» when no pass is running', async () => {
+  it('is an inert word — no href, not focusable — with «пока не писалась» when no pass is running', async () => {
     await render();
     const item = passItem();
     expect(item.tagName).toBe('SPAN');
     expect(item.hasAttribute('href')).toBe(false);
     expect(item.hasAttribute('tabindex')).toBe(false);
-    expect(item.textContent).toBe('кареткине пишется');
+    expect(item.textContent).toBe('кареткипока не писалась');
     expect(nav().getAttribute('data-pass')).toBe('silent');
     expect(errorCount()).toBe(0);
   });
 
-  it('points at the record and prints the pass’s time when nothing runs', async () => {
+  it('points at the record and prints the pass’s day when nothing runs', async () => {
     await render({ change: CHANGE });
     const item = passItem();
     expect(item.tagName).toBe('A');
-    expect(item.getAttribute('href')).toBe('#правка-chg_7');
-    expect(item.textContent).toBe('кареткипроход был 14:21');
-    expect(item.textContent).toContain(`проход был ${formatTime(CHANGE.decidedAt)}`);
+    expect(item.getAttribute('href')).toBe('#проход-chg_7');
+    expect(item.textContent).toBe('кареткиписалась · 25.10');
+    expect(item.textContent).toContain(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);
     expect(nav().getAttribute('data-pass')).toBe('record');
     expect(errorCount()).toBe(0);
   });
 
   it('speaks the state in its accessible name, and the visible word is inside it', async () => {
     await render({ change: CHANGE });
-    expect(passItem().getAttribute('aria-label')).toBe('каретки · проход был 14:21');
+    expect(passItem().getAttribute('aria-label')).toBe('каретки · писалась · 25.10');
     await render({ change: null });
-    expect(passItem().getAttribute('aria-label')).toBe('каретки · не пишется');
+    expect(passItem().getAttribute('aria-label')).toBe('каретки · пока не писалась');
     expect(errorCount()).toBe(0);
   });
 });

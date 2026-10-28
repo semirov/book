@@ -142,9 +142,11 @@ describe('ChangeCard', () => {
     expect(html).toContain('внесено');
     // BOOK-70: a state is a chip in the label's voice, and the status modifier names which one.
     expect(html).toContain('class="stamp-state stamp-done"');
-    // BOOK-23: the card prints the model and the tokens, and the price only because this
-    // fixture's cost was measured.
-    expect(html).toContain('deepseek-flash · 150\u00a0572\u00a0токена · 0,04\u00a0₽');
+    // BOOK-23: the card prints the tokens, and the price only because this fixture's cost was
+    // measured. The model is the wire's, never the page's (owner, 2026-10-28).
+    expect(html).toContain('150\u00a0572\u00a0токена · 0,04\u00a0₽');
+    // BOOK-166: the model id never reaches a reader's surface.
+    expect(html).not.toContain('deepseek');
     expect(html).toContain('href="#правка-chg_1"');
   });
 
