@@ -12,8 +12,8 @@
 #   site/deploy/deploy.sh --rollback              # one command back to the last known good
 #
 # What it guarantees:
-#   * the gate runs here too (typecheck, arch, tests, coverage floor, build, manuscript) — a red
-#     gate deploys nothing;
+#   * the gate runs here too (typecheck, arch, tests, coverage floor, build, manuscript, and the
+#     F023 release check on the built bundle) — a red gate deploys nothing;
 #   * the prod launchd job must already be pointed at this root, otherwise it refuses: silently
 #     updating a clone that prod does not run would report a green deploy of nothing;
 #   * BOOK-119: two real-artifact proofs run after the build. A red one publishes nothing and
@@ -391,6 +391,13 @@ node "$ROOT/site/bin/validate.mjs" --strict || die "manuscript validation is red
 STEP="gate: proof"
 say "gate: proof (old asset survives a publish; the guard speaks without a bundle)"
 npm run proof || die "proof is red — nothing was published or restarted"
+
+# BOOK-46: the F023 release check on the bytes this deploy is about to publish. `verify` above ran
+# arch in dev mode, before any build existed; `web/dist` is a release store whose `current` still
+# names the previous release, so the guard has to be pointed at the fresh build itself.
+STEP="gate: arch release"
+say "gate: arch --require-dist (F023 on web/dist/staging)"
+BOOK_DIST_DIR="$ROOT/site/web/dist/staging" npm run arch -- --require-dist || die "F023 release check is red — the built bundle carries a support line; nothing was published or restarted"
 
 GOOD="$(git -C "$ROOT" rev-parse HEAD)"
 BUILT_COMMIT="$(built_commit)"

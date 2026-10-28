@@ -55,6 +55,12 @@ jobs:
         working-directory: site
         run: npm run proof
 
+      # F023 against the built bundle (BOOK-46): the pre-build `verify` run is dev mode and passes
+      # without a bundle; this release-mode run proves the canaries find nothing in the real dist.
+      - name: F023 against the built bundle
+        working-directory: site
+        run: npm run arch -- --require-dist
+
       # Manuscript and canon must not drift from the site: runs from the repo root, no build needed.
       - name: Validate manuscript (structure and law rules)
         run: node site/bin/validate.mjs --strict
