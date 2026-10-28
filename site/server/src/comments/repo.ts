@@ -70,6 +70,12 @@ export type CommentRow = {
   rights_at: string | null;
   rights_by: string | null;
   rights_source: string | null;
+  /** BOOK-58 — the terms this filing accepted (null for a row stored before v19). */
+  terms_version: string | null;
+  terms_sha: string | null;
+  /** BOOK-58 — the moment a landed variant was entered, and the version it accepted. */
+  accepted_at: string | null;
+  accepted_terms_version: string | null;
   idem_key: string | null;
 };
 
@@ -102,6 +108,13 @@ export type NewCommentRow = {
   reason: string | null;
   createdAt: string;
   idemKey: string | null;
+  /**
+   * BOOK-58 — the terms the submission accepted. The posting service always names both; a test
+   * seed or a backfill that predates the record omits them and the row keeps `null`, which
+   * reads as «no terms were recorded», never as a default.
+   */
+  termsVersion?: string | null;
+  termsSha?: string | null;
 };
 
 export function insertComment(db: Db, comment: NewCommentRow): void {
@@ -109,12 +122,20 @@ export function insertComment(db: Db, comment: NewCommentRow): void {
     `INSERT INTO comments
        (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, author,
         body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status, frame, guard, created_at, reason,
-        idem_key)
+        idem_key, terms_version, terms_sha)
      VALUES
        (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix, @author,
         @body, @proposedText, @interventionKind, @bodySha, @flags, @ipHash, @status, @frame, @guard, @createdAt,
-        @reason, @idemKey)`,
-  ).run({ ...comment, frame: comment.frame ?? null, flags: JSON.stringify(comment.flags) });
+        @reason, @idemKey, @termsVersion, @termsSha)`,
+  ).run({
+    ...comment,
+    frame: comment.frame ?? null,
+    // BOOK-58: a caller that does not know the terms (a seed, a backfill) stores none, rather
+    // than a default that would read as an accepted version.
+    termsVersion: comment.termsVersion ?? null,
+    termsSha: comment.termsSha ?? null,
+    flags: JSON.stringify(comment.flags),
+  });
 }
 
 export function readCommentRow(db: Db, id: string): CommentRow | undefined {

@@ -274,6 +274,20 @@ const MIGRATIONS: Migration[] = [
       if (!tableExists(db, 'pass_spend')) db.exec(PASS_SPEND_TABLE_SQL);
     },
   },
+  {
+    // BOOK-58: the record of what a reader accepted. Four nullable columns — the terms of the
+    // submission (version and hash of the exact text) and, once a variant lands, the moment it
+    // was entered with the version that moment accepted. Null is the honest answer for a row
+    // written before this step: no terms were recorded, and none are invented now. Additive,
+    // so a migrated install and a fresh one have the same shape.
+    to: 19,
+    up(db) {
+      addColumn(db, 'comments', 'terms_version', 'TEXT');
+      addColumn(db, 'comments', 'terms_sha', 'TEXT');
+      addColumn(db, 'comments', 'accepted_at', 'TEXT');
+      addColumn(db, 'comments', 'accepted_terms_version', 'TEXT');
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

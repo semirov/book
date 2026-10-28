@@ -10,6 +10,7 @@ import {
   SUBMIT_LINE,
   TERMS_VERSION,
   TOOL_CLAUSE,
+  acceptedTermsText,
   receiptLine,
 } from './terms.ts';
 
@@ -115,6 +116,21 @@ describe('the terms a reader accepts (BOOK-58)', () => {
     expect(receiptLine('07')).toBe('внесено в главу 07 · право на ваш текст перешло автору книги');
     // The phrase carries its own noun and claims no day, no wave and no audit.
     expect(RECEIPT_RIGHTS).not.toMatch(/волн|аудит|сегодня/u);
+  });
+
+  /**
+   * BOOK-58 §10 — the record's other half. The server stores `sha256(acceptedTermsText())`, so
+   * this string is not prose: it is the exact input of the hash an acceptance row carries. A
+   * blank line, a changed sentence or an added clause moves the hash of every later row, and it
+   * must move the version with it (the pin above is what makes that fail loudly).
+   */
+  it('pins the text a submission accepts: the assignment, a blank line, the submit line', () => {
+    expect(acceptedTermsText()).toBe(`${RIGHTS_ASSIGNMENT}\n\n${SUBMIT_LINE}`);
+    // The offer the button makes is the assignment plus that one line: the fallback, the tool
+    // clause and the receipt are the page's and the record's, never part of what is accepted.
+    expect(acceptedTermsText()).not.toContain(RIGHTS_FALLBACK);
+    expect(acceptedTermsText()).not.toContain(TOOL_CLAUSE);
+    expect(acceptedTermsText()).not.toContain(RECEIPT_RIGHTS);
   });
 });
 

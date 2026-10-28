@@ -29,6 +29,8 @@ import {
   COMMENT_RAW_MAX_BYTES,
   EDIT_MAX_CHARS,
   EDIT_RAW_MAX_BYTES,
+  TERMS_VERSION,
+  acceptedTermsText,
   classifyFrame,
   type CommentBudget,
   type InterventionKind,
@@ -285,6 +287,11 @@ export class CommentService {
         reason: guard.reason,
         createdAt: at,
         idemKey: input.idempotencyKey ?? null,
+        // BOOK-58: the record of what this reader accepted. The server is the authority on
+        // which terms are in force — the request carries no version — and the hash is of the
+        // exact text the page printed, recomputable from `TERMS_VERSION` years later.
+        termsVersion: TERMS_VERSION,
+        termsSha: sha256Hex(acceptedTermsText()),
       });
     } catch (error) {
       // Backstop for a replay that still raced us: the UNIQUE index on `idem_key` is the

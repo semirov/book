@@ -213,10 +213,16 @@ describe('the claim helper is not vacuous', () => {
     const wrappedHonest =
       "const C =\n  'Машина — инструмент: она пишет по заданию автора и прав не ' +\n  'получает.';";
     expect(machineRightsClaims(wrappedHonest)).toEqual([]);
-    // The same proof on the real file, wrapped the way the repo actually writes it.
-    const terms = readFileSync(join(SITE, 'web/src/lib/terms.ts'), 'utf8');
+    // The same proof on the real file, wrapped the way the repo actually writes it. BOOK-58
+    // moved the copy into `shared` (the server hashes the same text the page prints), so the
+    // scan reads the module the copy lives in — and the web barrel is checked to be a re-export.
+    const terms = readFileSync(join(SITE, 'shared/src/terms.ts'), 'utf8');
     expect(terms).toContain('Машина — инструмент, не автор и не правообладатель');
     expect(machineRightsClaims(terms)).toEqual([]);
+    // The move must not leave a second copy behind: a barrel that held the sentence again would
+    // be the very drift this net exists to catch.
+    const barrel = readFileSync(join(SITE, 'web/src/lib/terms.ts'), 'utf8');
+    expect(barrel).not.toContain('Машина — инструмент, не автор и не правообладатель');
   });
 
   it('reads the claim in the clause it is written in, not in the next one', () => {
@@ -255,7 +261,14 @@ describe('no reader-facing line gives the machine the book (BOOK-69 AC3)', () =>
     for (const surface of ['README.md', 'site/README.md', 'site/web/index.html']) {
       expect(files, surface).toContain(surface);
     }
-    for (const surface of ['site/web/src/lib/terms.ts', 'site/server/src/index.ts', 'site/shared/src/index.ts']) {
+    // BOOK-58: the terms copy lives in `shared` now, and the web module is its re-export barrel.
+    // Both are scanned, so the walk cannot be silently narrowed to a file that holds no copy.
+    for (const surface of [
+      'site/shared/src/terms.ts',
+      'site/web/src/lib/terms.ts',
+      'site/server/src/index.ts',
+      'site/shared/src/index.ts',
+    ]) {
       expect(roots, surface).toContain(surface);
     }
     const all = [...files, ...roots];

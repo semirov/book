@@ -17,6 +17,7 @@ import {
 } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
+import { recordAcceptance } from '../comments/acceptance.ts';
 import { recordImpact } from '../history/impact.ts';
 import { recordCloseSpend, spendOfClose } from '../budget.ts';
 import { budgetFromConfig } from './budget.ts';
@@ -131,6 +132,10 @@ export function closeChange(
     tokens_out: tokensOut,
     model: writerModel,
   });
+  // BOOK-58 §10: a reader's variant that landed is entered into the book — the acceptance
+  // record is written here, once, from the change's own outcome (`recordAcceptance` is silent
+  // for anything that did not land, and for a change that is not a reader's).
+  recordAcceptance(deps.db, change.id, toIso(now));
   appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome, reason }, now);
   appendEvent(
     deps.db,

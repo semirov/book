@@ -19,6 +19,7 @@ import {
   WORDING_LABEL_NEUTRAL,
   WORDING_PLACEHOLDER_NEUTRAL,
 } from '../lib/kindChoices.ts';
+import { SUBMIT_LINE } from '../lib/terms.ts';
 import { InterventionForm } from './InterventionForm.tsx';
 
 /**
@@ -191,6 +192,23 @@ describe('the intervention form without a challenge (BOOK-64)', () => {
     expect(body).not.toHaveProperty('captchaToken');
     // BOOK-111: the form hands the caller the posted DTO itself, not its id.
     expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 'cmt_1' }));
+  });
+
+  /**
+   * BOOK-58 — the one line under the submit button. It is the exact text a submission accepts
+   * (the server hashes `acceptedTermsText()`), and it is an offer to assign the right, never a
+   * licence: no licence word may appear under the button, in any state of the form.
+   */
+  it('prints exactly the submit line under the button, with no licence promise (BOOK-58)', () => {
+    for (const noteOnly of [false, true]) {
+      mount(draftOf(PARAGRAPH, { body: 'свет не от лампы', noteOnly }));
+      const line = container.querySelector('p.fine.seam-licence');
+      expect(line, `licence line, noteOnly=${String(noteOnly)}`).not.toBeNull();
+      const text = line?.textContent ?? '';
+      // The sentence first, then the door to the rules and nothing else.
+      expect(text.replace(SUBMIT_LINE, '').trim()).toBe('правила →');
+      expect(text).not.toMatch(/лиценз/iu);
+    }
   });
 });
 
