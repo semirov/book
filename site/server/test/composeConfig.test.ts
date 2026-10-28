@@ -59,6 +59,7 @@ type Service = {
   environment?: Record<string, string>;
   healthcheck?: { test: string[] };
   logging?: { driver: string; options?: Record<string, string> };
+  depends_on?: Record<string, { condition?: string; required?: boolean }>;
   env_file?: unknown;
 };
 
@@ -217,5 +218,15 @@ describe.skipIf(skip)('the compose topology', () => {
     for (const name of ['site', 'engine', 'writer']) {
       expect((config.services[name]?.environment ?? {}).BOOK_ROLE, name).toBe(name);
     }
+  });
+
+  it('starts the writer only after a healthy engine, and holds no other service behind another', () => {
+    const config = loaded(REHEARSAL);
+    // The writer's first request needs the internal API on 8081 to answer; `compose config` states
+    // the implicit `required: true` beside the condition the file chose.
+    expect(config.services.writer?.depends_on).toEqual({ engine: { condition: 'service_healthy', required: true } });
+    // An engine restart must not become a site outage: the site serves readers without the engine.
+    expect(config.services.site?.depends_on).toBeUndefined();
+    expect(config.services.engine?.depends_on).toBeUndefined();
   });
 });

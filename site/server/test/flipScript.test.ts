@@ -21,14 +21,18 @@
  * port, or `$HOME/Library/LaunchAgents`: `BOOK_*` overrides and a temp `HOME` decide every path.
  */
 
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Every case spawns the real script, and a loaded box stretches the clock: a spawn is not a hang, so
+// the timeout is about a wedged child, not about the work.
+vi.setConfig({ testTimeout: 60_000 });
 
 const SITE = resolve(import.meta.dirname, '..', '..');
 const DEPLOY = join(SITE, 'deploy');
@@ -70,6 +74,8 @@ type Fixture = {
   bin: string;
   calls: string;
   serving: string;
+  /** What `/healthz` names once something serves — the tree's commit, in the launchd cases. */
+  commit: string;
   url: string;
 };
 
@@ -88,7 +94,14 @@ async function fixture(): Promise<Fixture> {
   const backupRoot = join(dir, 'backups');
   const calls = join(dir, 'calls.log');
   const serving = join(dir, 'serving');
+  const commit = join(dir, 'serving-commit');
   for (const path of [script, root, stateDir, home, join(backupRoot, 'daily', '2026-10-28')]) mkdirSync(path, { recursive: true });
+  // The deploy root is a git clone with two commits: the flip's `--to launchd` aligns it to the sha
+  // `last-good-image` names, and the two must be distinguishable commits for that to mean anything.
+  execFileSync('git', ['-C', root, 'init', '-q']);
+  for (const message of ['packaging', 'deployed']) {
+    execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', message]);
+  }
   writeFileSync(calls, '', 'utf8');
 
   symlinkSync(join(DEPLOY, 'flip.sh'), join(script, 'flip.sh'));
@@ -136,16 +149,18 @@ exit 0
   // wall clock would cost a minute to prove one branch. The loops themselves still run.
   writeFileSync(join(fakes, 'sleep'), '#!/bin/bash\nexit 0\n', { encoding: 'utf8', mode: 0o755 });
 
-  const url = await serveHealth(serving);
-  return { script: join(script, 'flip.sh'), root, stateDir, home, backupRoot, bin: fakes, calls, serving, url };
+  const url = await serveHealth(serving, commit);
+  return { script: join(script, 'flip.sh'), root, stateDir, home, backupRoot, bin: fakes, calls, serving, commit, url };
 }
 
 /**
  * `/healthz` on a temp port: 503 until `$SERVING` exists, 200 after. That one file is how a case says
  * "something took the bind" — set by the release stub (containers) or by the launchctl fake
- * (`bootstrap`), never by the test between two reads.
+ * (`bootstrap`), never by the test between two reads. The `commit` it names is a second file: the
+ * flip's launchd path compares it with the deploy root's HEAD, so a case has to say which build
+ * launchd is really serving.
  */
-async function serveHealth(serving: string): Promise<string> {
+async function serveHealth(serving: string, commitPath: string): Promise<string> {
   const server = createServer((request, response) => {
     if ((request.url ?? '/') !== '/healthz') {
       response.writeHead(404);
@@ -153,8 +168,9 @@ async function serveHealth(serving: string): Promise<string> {
       return;
     }
     if (existsSync(serving)) {
+      const commit = existsSync(commitPath) ? readFileSync(commitPath, 'utf8').trim() : '';
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ ok: true, commit: 'abc1234' }));
+      response.end(JSON.stringify({ ok: true, commit }));
       return;
     }
     response.writeHead(503, { 'content-type': 'application/json' });
@@ -221,6 +237,15 @@ const callsOf = (f: Fixture): string[] =>
     .filter((line) => line !== '');
 
 const indexOfLine = (calls: string[], match: RegExp): number => calls.findIndex((line) => match.test(line));
+
+/** The commit the deploy root is on, read the way `flip.sh` reads it. */
+const headOf = (root: string, ref = 'HEAD'): string =>
+  execFileSync('git', ['-C', root, 'rev-parse', ref], { encoding: 'utf8' }).trim();
+
+/** What the served `/healthz` names: the short sha launchd is really running. */
+const served = (f: Fixture, sha: string): void => {
+  writeFileSync(f.commit, `${sha.slice(0, 7)}\n`, 'utf8');
+};
 
 describe('the flip to compose', () => {
   it('stops the writer first with the launchctl grammar, hands the lock over, and records runtime=compose', async () => {
@@ -335,6 +360,7 @@ describe('the flip to launchd', () => {
     writeFileSync(join(f.stateDir, 'runtime'), 'compose\n', 'utf8');
     // launchd is what will answer here: the stack is already down and its bind comes back on bootstrap.
     writeFileSync(f.serving, '', 'utf8');
+    served(f, headOf(f.root));
     const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
     expect(code, out).toBe(0);
 
@@ -346,9 +372,59 @@ describe('the flip to launchd', () => {
       `launchctl bootstrap ${DOMAIN} ${join(f.home, 'Library/LaunchAgents/dev.book-site.plist')}`,
       `launchctl bootstrap ${DOMAIN} ${join(f.home, 'Library/LaunchAgents/dev.book-writer.plist')}`,
     ]);
-    expect(readFileSync(join(f.stateDir, 'runtime'), 'utf8').trim()).toBe('launchd');
+    // No last good image is recorded, so the tree is left alone — and the flip says so, once.
+    expect(out).toContain('tree: no last-good-image recorded — the deploy root stays where it is');
     expect(out).toContain('flip back complete');
     expect(existsSync(join(f.stateDir, 'deploy.lock'))).toBe(false);
+  });
+
+  it('refuses to claim launchd when what answers is not the tree it runs', async () => {
+    const f = await fixture();
+    const stranger = 'beeffff';
+    writeFileSync(f.serving, '', 'utf8');
+    served(f, `${stranger}000`); // a build this root never checked out
+    const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
+    expect(code, out).toBe(1);
+    expect(out).toContain(`launchd answers ${stranger}, but the deploy root is at ${headOf(f.root).slice(0, 7)}`);
+    expect(out).toContain('the plist runs a different build');
+    // Prod may look healthy while running the wrong code: nothing is recorded, a human is told.
+    expect(existsSync(join(f.stateDir, 'runtime'))).toBe(false);
+  });
+
+  it('aligns the deploy root to the last good image before launchd serves the tree', async () => {
+    const f = await fixture();
+    const deployed = headOf(f.root);
+    const packaged = headOf(f.root, 'HEAD~1'); // the image that gets served: an older commit
+    expect(packaged).not.toBe(deployed);
+    writeFileSync(join(f.stateDir, 'last-good-image'), `book:${packaged}\n`, 'utf8');
+    writeFileSync(f.serving, '', 'utf8');
+    served(f, packaged); // launchd runs the aligned tree, so this is what it answers with
+
+    const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
+    expect(code, out).toBe(0);
+    // launchd runs the tree, so the tree is moved to the code that was serving — before the bootstrap.
+    expect(out).toContain(`tree: deploy root at ${packaged.slice(0, 7)} (the last good image)`);
+    expect(out.indexOf('tree: deploy root at')).toBeLessThan(out.indexOf('bootstrapping the launchd fallback'));
+    expect(headOf(f.root)).toBe(packaged);
+    expect(readFileSync(join(f.stateDir, 'runtime'), 'utf8').trim()).toBe('launchd');
+  });
+
+  it('bootstraps launchd anyway when the last good image is not in the tree', async () => {
+    const f = await fixture();
+    const deployed = headOf(f.root);
+    const stranger = 'ab'.repeat(20); // 40 hex characters that this clone never had
+    writeFileSync(join(f.stateDir, 'last-good-image'), `book:${stranger}\n`, 'utf8');
+    writeFileSync(f.serving, '', 'utf8');
+    served(f, deployed); // the tree stays put, so launchd answers the commit it is on
+
+    const { code, out } = await flip(f, ['--to', 'launchd', '--confirm']);
+    // A guarded alignment: one log line, no abort, and launchd still comes up.
+    expect(code, out).toBe(0);
+    const tree = out.split('\n').filter((line) => line.includes('flip: tree:'));
+    expect(tree, out).toEqual([expect.stringContaining(`${stranger.slice(0, 7)} from last-good-image is not in ${f.root} — the deploy root stays where it is`)]);
+    expect(headOf(f.root)).toBe(deployed);
+    expect(callsOf(f).filter((line) => line.startsWith('launchctl bootstrap'))).toHaveLength(3);
+    expect(readFileSync(join(f.stateDir, 'runtime'), 'utf8').trim()).toBe('launchd');
   });
 
   it('does not record runtime=launchd when compose down leaves a container behind', async () => {

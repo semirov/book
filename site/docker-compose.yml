@@ -159,6 +159,15 @@ services:
   writer:
     <<: *book
     command: ["node", "server/dist/writer/main.js", "--loop"]
+    # The writer's first act at boot is a request to the engine; on a cold start all three containers
+    # come up together, the engine is still binding, and the lane recorded `ENGINE_UNREACHABLE` and
+    # then slept WRITER_PAUSE_MS (15 min) — a real 15-minute hole measured on this box. Waiting for the
+    # engine's own healthcheck closes it. `site` deliberately has no such dependency: it tolerates an
+    # absent engine (it reports `engine.status: down` and serves the book anyway), so coupling its
+    # start to the engine would only make a site outage out of an engine restart.
+    depends_on:
+      engine:
+        condition: service_healthy
     cpus: 2.0
     mem_limit: 1g
     pids_limit: 128

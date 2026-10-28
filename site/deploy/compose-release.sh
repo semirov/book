@@ -16,6 +16,11 @@
 #     exit 1 — the run failed and the stack is back on the previous image (or could not be): red,
 #              a human must look; exit 2 — usage; exit 3 — another deploy holds the lock and nothing
 #              was built, started or rolled back (the driver must not read it as a red deploy);
+#   * a rollback swaps the IMAGE, not the tree: the compose file is packaging and always comes from
+#     the deployed release, so `--rollback`/`red()` never check the deploy root out at the image's sha
+#     (measured: a pre-container commit makes `docker compose` read the old single-service file and
+#     the rollback never runs). `flip.sh --to launchd` is the only place that moves the tree, because
+#     launchd serves the tree;
 #   * images are immutable and commit-tagged (`book:<40-char sha>`), never `latest`; the image that
 #     served before the last release is kept on disk and its tag is recorded in
 #     `$STATE_DIR/previous-image` (`$STATE_DIR/last-good-image` records the last image whose gate
@@ -339,7 +344,22 @@ up_and_gate() { # (image tag, expected commit)
   return 0
 }
 
-# The rollback: swap the tag, same gate, no rebuild.
+# What answers right now, for a failure line. A failed rollback does not imply a dead prod: the stack
+# may still be serving the image that was already running (the rollback `up` can fail before it
+# touches anything), and the difference decides what a human does next.
+serving_now() {
+  health_read "${SITE_URL}/healthz"
+  if [ "$R_OK" = 1 ]; then
+    printf 'prod still answers %s at %s' "${R_COMMIT:-no commit}" "${SITE_URL}"
+  else
+    printf 'prod answers nothing at %s (curl exit %s, status %s)' "${SITE_URL}" "${R_CODE}" "${R_STATUS}"
+  fi
+}
+
+# The rollback: swap the tag, same gate, no rebuild — and a rollback swaps the IMAGE, not the tree.
+# The compose file is packaging and must come from the deployed release; checking the root out at a
+# pre-BOOK-172 commit would make `docker compose` read the old single-service file (measured: an
+# `env_file: .env` the clone does not have) and the rollback would never happen.
 rollback_to() { # (image tag, expected commit)
   local tag="$1" expect="$2"
   "$DOCKER" image inspect "$tag" >/dev/null 2>&1 || { say "rollback: ${tag} is not on disk"; return 1; }
@@ -355,21 +375,12 @@ red() { # (why)
   if [ -n "$target" ] && [ "$target" != "$IMAGE_TAG" ]; then
     if rollback_to "$target" "$target_commit"; then
       printf '%s\n' "$target" >"$LAST_GOOD_IMAGE"
-      # `--rollback` checks the tree out at its target, so a red deploy must too: after it,
-      # `git -C $ROOT HEAD` names the image that serves, not the commit this run failed on. A refused
-      # checkout is a log line — never a reason to start another rollback.
-      local target_sha="${target##*:}"
-      if [ -d "$ROOT/.git" ] && git -C "$ROOT" rev-parse --verify --quiet "${target_sha}^{commit}" >/dev/null 2>&1; then
-        git -C "$ROOT" checkout --quiet --detach "$target_sha" || say "checkout: refused after the rollback — the tree still names the failed commit; the previous image serves"
-      else
-        say "checkout: ${target_sha:0:7} is not in $ROOT — the tree still names the failed commit; the previous image serves"
-      fi
       audit "rollback ok runtime=compose image=${target} commit=${target_commit} health=${HEALTH} health_ms=${HEALTH_MS} from=${from} cause=$1"
       REASON_PRINTED=1
       say "FAILED at ${STEP}: $1 — back on ${target}, which answers ${target_commit}; the new image is red"
       exit 1
     fi
-    die "$1 — and the rollback to ${target} did not come up either; prod is NOT healthy, a human must look"
+    die "$1 — and the rollback to ${target} did not come up either; $(serving_now) — a human must look"
   fi
   die "$1 — there is no previous image to roll back to; prod is NOT healthy, a human must look"
 }
@@ -446,14 +457,6 @@ if [ "$MODE" = "rollback" ]; then
   ensure_locks_dir
   # The tree must match the image a flip-back would serve: an operator reading `git -C $ROOT HEAD`
   # after a rollback must see the code that answers, not the commit the rollback moved away from.
-  STEP="checkout"
-  ROLLBACK_SHA="${PREV_IMAGE##*:}"
-  if [ -d "$ROOT/.git" ] && git -C "$ROOT" rev-parse --verify --quiet "${ROLLBACK_SHA}^{commit}" >/dev/null 2>&1; then
-    git -C "$ROOT" checkout --quiet --detach "$ROLLBACK_SHA" || say "checkout: refused — the tree stays where it is; the image still serves"
-    say "checkout: deploy root at $(sha7 "$ROLLBACK_SHA") (same code as the image)"
-  else
-    say "checkout: $(sha7 "$ROLLBACK_SHA") is not in $ROOT — the image still serves; the tree may be newer"
-  fi
   STEP="rollback"
   # A rollback has no "previous build" of its own to classify as stale: the only identity that
   # matters is the one the target image carries.
@@ -467,7 +470,7 @@ if [ "$MODE" = "rollback" ]; then
     audit "rollback ok mode=rollback runtime=compose image=${PREV_IMAGE} commit=${ROLLBACK_SHA7} health=${HEALTH} health_ms=${HEALTH_MS} budget_ms=${BUDGET_MS} lock=${LOCK}"
     exit 0
   fi
-  die "the rollback to ${PREV_IMAGE} did not come up (health=${HEALTH}, ${HEALTH_MS} ms, ${WINDOW_READS} reads${GATE_REFUSED:+, refused: ${GATE_REFUSED}}); prod is NOT healthy, a human must look"
+  die "the rollback to ${PREV_IMAGE} did not come up (health=${HEALTH}, ${HEALTH_MS} ms, ${WINDOW_READS} reads${GATE_REFUSED:+, refused: ${GATE_REFUSED}}); $(serving_now) — a human must look"
 fi
 
 STEP="dry run"

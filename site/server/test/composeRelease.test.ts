@@ -18,7 +18,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -381,5 +381,39 @@ describe('the container release: lock, exit codes, rollback', () => {
     expect(result.out).toContain('service engine: running healthy');
     expect(result.out).toContain('service writer: running (container id-writer');
     expect(result.out).toContain(`healthy: book:${sha(root)}`);
+  });
+
+  it('i) --rollback swaps the image and leaves the deploy root where it is', async () => {
+    // The rehearsal defect: a rollback used to `git checkout` the image's commit, so the tree lost the
+    // packaging the deployed image was built from. A rollback is an image swap, not a tree move.
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const packaged = sha(root); // the commit the tree is on: newer packaging, older image
+    execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'packaging']);
+    const head = sha(root);
+    expect(head).not.toBe(packaged);
+    const previous = `book:${packaged}`;
+    const siteUrl = await serveSite(stateDir, {
+      healthz: (current) => ({ status: 200, body: { ok: true, commit: current.split(':')[1]?.slice(0, 7) ?? 'none' } }),
+    });
+    const env = envFor(root, stateDir, bin, siteUrl);
+    env.FAKE_RUNNING_IMAGE = `book:${head}`;
+    writeFileSync(join(stateDir, 'current'), `book:${head}`, 'utf8');
+    writeFileSync(join(stateDir, 'previous-image'), `${previous}\n`, 'utf8');
+
+    const result = await release(['--rollback'], env);
+    expect(result.code, result.out).toBe(0);
+    expect(result.out).toContain(`rollback healthy: ${previous}`);
+    // The running image moved...
+    const ups = readFileSync(join(stateDir, 'docker.log'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('up -d'));
+    expect(ups).toHaveLength(1);
+    expect(ups[0]).toContain(`BOOK_IMAGE_TAG=${previous}`);
+    // ...and the tree did not: HEAD is still the commit the deployed packaging lives on.
+    expect(sha(root), result.out).toBe(head);
+    expect(readFileSync(join(stateDir, 'last-good-image'), 'utf8').trim()).toBe(previous);
+    expect(existsSync(join(stateDir, 'previous-image'))).toBe(false);
   });
 });

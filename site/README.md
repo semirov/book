@@ -119,6 +119,12 @@ then `bin/engine.mjs reconcile`); the paragraphs below are about code.
 | engine | `node server/dist/engine.js` | none (compose network) | 1.0 / 768 MiB / 256 | 60 s | `/internal/health` with the bearer read from `/data/engine.token` |
 | writer | `node server/dist/writer/main.js --loop` | none | 2.0 / 1 GiB / 128 | 30 s | none — a portless lane that idles for 15 min between passes would flap |
 
+`writer` declares `depends_on: engine: {condition: service_healthy}`: its first act at boot is a
+request to the engine, and on a cold start the engine is still binding — the lane then logged
+`ENGINE_UNREACHABLE` and slept its full 15-minute pause (measured, a real hole in the morning). `site`
+has no such dependency on purpose: it tolerates an absent engine (it reports `engine.status: down` and
+serves the book), so coupling its start would turn an engine restart into a site outage.
+
 Caps are ceilings, not reservations: 4 of the VM's 10 CPUs and 2.5 of its 12 GiB, leaving the rest
 for `docker build` and the agents. Every service runs as `501:20` (the host data dir's owner), with a
 read-only root filesystem, `tmpfs /tmp`, `cap_drop: ALL` and `no-new-privileges`; logs are `json-file`
@@ -146,9 +152,17 @@ site/deploy/compose-release.sh --rollback            # one command back to the p
 site/deploy/compose-release.sh --status              # what runs, what it reports, which tags are kept
 ```
 
+A rollback swaps the **image**, not the tree: the compose file is packaging and always comes from the
+deployed release, so `--rollback` (and the red path) never check the deploy root out at the image's
+sha — measured: a pre-container commit makes `docker compose` read the old single-service file and the
+rollback never happens. `flip.sh --to launchd` is the one place that moves the tree, because launchd
+serves the tree; it aligns the root to `last-good-image` first.
+
 Exit codes: `0` the new image serves its own commit and every service is healthy; `1` the run failed
 and the stack is back on the previous image (or could not be); `2` usage; `3` another deploy holds
-`$STATE_DIR/deploy.lock` — nothing was built, started or rolled back. Budget: `BOOK_HEALTH_TIMEOUT`
+`$STATE_DIR/deploy.lock` — nothing was built, started or rolled back. A failed rollback says what is
+actually serving (`prod still answers <commit>` or `prod answers nothing`); it does not assume a dead
+prod. Budget: `BOOK_HEALTH_TIMEOUT`
 180 s with a 60 s grace window, 200 ms polls; a rollback needs two independent negatives **for a
 health-window red** (the window spent its budget **and** a plain read does not name the built commit),
 while a service that is not running/healthy is decisive on its own. The build

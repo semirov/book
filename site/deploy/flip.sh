@@ -24,7 +24,9 @@
 # a second time and refuse itself); a flip that finds the lock held exits 3 and touches nothing.
 #
 # `--to launchd` is the documented fallback for one deploy cycle: `compose down` (images and the data
-# dir stay), the three plists come back with `launchctl enable` + `bootstrap`, and `/healthz` on 8091
+# dir stay), the deploy root is aligned to the commit of `$STATE_DIR/last-good-image` (launchd serves
+# the TREE, the containers serve the IMAGE — a rollback never moves the tree, so this is the one place
+# that does), the three plists come back with `launchctl enable` + `bootstrap`, and `/healthz` on 8091
 # must answer AND name the commit the deploy root is checked out at — a 200 from a stale launchd build
 # is not the fallback working, so the two are compared and a disagreement is a failure.
 #
@@ -261,7 +263,7 @@ launchd_up() {
 }
 
 to_launchd() {
-  local serving="" root_commit=""
+  local serving="" root_commit="" last_good="" lg_sha=""
   if [ "$DRY_RUN" -eq 1 ]; then
     say "dry run: would 'compose down' project ${PROJECT} (images and the data dir stay), then enable+bootstrap ${JOBS},"
     say "dry run: then wait for ${SITE_URL}/healthz to name the deploy root's sha, then write runtime=launchd"
@@ -276,6 +278,22 @@ to_launchd() {
   # container's 200 and wrongly record runtime=launchd.
   if ! containers_gone 10; then
     die "the compose stack (project ${PROJECT}) still has containers after 'compose down' — runtime untouched; a human must look at 'docker compose -p ${PROJECT} ps'"
+  fi
+  # launchd runs the tree, so the tree has to be the code that was running: align it to the last good
+  # image's commit. Guarded — a refused or missing commit is one log line, and the check after
+  # `wait_up` then either compares like with like or says the root is not readable.
+  last_good="$(cat "$STATE_DIR/last-good-image" 2>/dev/null || true)"
+  lg_sha="${last_good##*:}"
+  if [ -n "$last_good" ] && [ -d "$ROOT/.git" ] && git -C "$ROOT" rev-parse --verify --quiet "${lg_sha}^{commit}" >/dev/null 2>&1; then
+    if git -C "$ROOT" checkout --quiet --detach "$lg_sha"; then
+      say "tree: deploy root at ${lg_sha:0:7} (the last good image)"
+    else
+      say "tree: checkout of ${lg_sha:0:7} refused — the deploy root stays at $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    fi
+  elif [ -n "$last_good" ]; then
+    say "tree: ${lg_sha:0:7} from last-good-image is not in $ROOT — the deploy root stays where it is"
+  else
+    say "tree: no last-good-image recorded — the deploy root stays where it is"
   fi
   say "bootstrapping the launchd fallback"
   launchd_up
