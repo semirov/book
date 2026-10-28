@@ -14,7 +14,16 @@ import { join } from 'node:path';
 import type { PipelineUsage } from './pipeline.ts';
 
 /** One model call of a pass, as the receipt records it. */
-export type CallKind = 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant' | 'gate:rights' | 'judge';
+export type CallKind =
+  | 'draft'
+  | 'repair'
+  | 'continue'
+  | 'gate:editor'
+  | 'gate:consultant'
+  | 'gate:rights'
+  | 'judge'
+  /** BOOK-DOC-80: the local judge — a bounded question about the changed span, not a writing turn. */
+  | 'tier1';
 
 export type CallRecord = {
   kind: CallKind;

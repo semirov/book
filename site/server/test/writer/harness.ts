@@ -25,6 +25,7 @@ import type { PipelineUsage } from '../../src/writer/pipeline.ts';
 import { runPass, type PassDeps, type PassResult } from '../../src/writer/pass.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from '../../src/writer/provider.ts';
 import { createEngineFixture, type Fixture } from '../engine/helpers.ts';
+import { inertProse } from './inert.ts';
 
 export const SITE_ROOT = resolve(import.meta.dirname, '..', '..', '..');
 /** The book's own root: the canon is read from here, never written. */
@@ -45,13 +46,12 @@ function copyCanon(root: string): void {
 export const TOKEN = 'writer-harness-token';
 export const FAKE_KEY = 'sk-writer-harness-never-print-2b91';
 
-/** Inert Russian prose: long enough for the floor, plain enough for every shape rule. */
-const FILLER = 'служебный абзац для проверки объёма страницы, он не является текстом книги. ';
-
 /** A valid chapter answer for any chapter: a title line, four paragraphs, ~2 400 characters. */
 export function chapterAnswer(title = 'Глава сорок', marker = ''): string {
-  const paragraph = `${FILLER.repeat(4).trim()} ${FILLER.repeat(4).trim()}`;
-  const blocks = [0, 1, 2, 3].map(() => (marker.length === 0 ? paragraph : `${paragraph} ${marker}`.trim()));
+  const blocks = [0, 1, 2, 3].map((index) => {
+    const paragraph = inertProse(520, index * 41);
+    return marker.length === 0 ? paragraph : `${paragraph} ${marker}`.trim();
+  });
   return `${title}\n\n${blocks.join('\n\n')}\n`;
 }
 

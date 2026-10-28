@@ -181,6 +181,13 @@ export type DoneInput = {
   seams?: unknown[];
   /** BOOK-173 §4/§5: how the pass wrote — `rewrite` on an unchanged text is a `no-op`. */
   mode?: 'patch' | 'rewrite';
+  /** BOOK-DOC-80: which tiers judged this pass — the close records it on the change. */
+  verification?: {
+    gatesMode: 'local only' | 'full';
+    why: string | null;
+    tier1Verdict: string | null;
+    tier1Usd: number | null;
+  };
 };
 
 /** What a landing may say beyond the lease (BOOK-173 §2, §4). */

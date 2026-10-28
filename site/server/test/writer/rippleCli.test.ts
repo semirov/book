@@ -160,7 +160,8 @@ describe('main --ripple drains a real plan through the door and releases the cla
     try {
       rippleGraph(harness);
       // The origin pass: the patch lands, the plan is frozen, the change closes `ripple`.
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
 
       // ch12: the paragraph is rewritten and the claim's wording stays — the repair the loop used
@@ -176,12 +177,14 @@ describe('main --ripple drains a real plan through the door and releases the cla
         }),
         'HOLDS',
         'HOLDS',
+        'HOLDS',
         JSON.stringify({
           mode: 'patch',
           edits: [{ blockId: payment.id, oldText: 'Второй абзац девятнадцатой главы.', newText: 'Второй абзац девятнадцатой главы, сказали ему.' }],
           facts: [],
           note: 'ripple chapter',
         }),
+        'HOLDS',
         'HOLDS',
         'HOLDS',
       );

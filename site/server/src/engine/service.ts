@@ -229,7 +229,14 @@ export function createEngine(deps: EngineDeps) {
     // BOOK-61 review B3: a step that landed before Gate B existed carries no scan. The question
     // is asked now, on the way out, so no step closes without B having been offered the step.
     const closing = ensureRightsScan(deps, step);
-    const missing = missingVerdicts(db, closing);
+    // BOOK-173, BOOK-DOC-80: a `local only` close is one the full pair never read. The local
+    // judge's `HOLDS` stands in for the two prose verdicts — the policy has already made sure that
+    // verdict exists and that the change was not at an edge or over a closure — and Gate B is
+    // **not** waived: a flagged scan still needs its answer.
+    // Only a `HOLDS` from the local judge stands in for the pair; anything else keeps the rule.
+    const localOnly =
+      options.verification?.gatesMode === 'local only' && options.verification.tier1Verdict === 'HOLDS';
+    const missing = missingVerdicts(db, closing).filter((role) => !(localOnly && role !== 'rights'));
     if (missing.length > 0) {
       // BOOK-61: Gate B's requirement has its own code — the operator must be able to tell a
       // prose gate that has not spoken from a law question that has not been answered.
@@ -344,6 +351,9 @@ export function createEngine(deps: EngineDeps) {
         // A step without a plan (a draft) says how it wrote here; a change with a plan keeps it
         // on `change_plans.mode`.
         ...(options.mode === undefined ? {} : { mode: options.mode }),
+        // BOOK-DOC-80: the gates record travels with the close, so `change_plans` learns which
+        // tiers judged the change in the same transaction that closes it.
+        ...(options.verification === undefined ? {} : { verification: options.verification }),
         // The writer's own tokens: each gate's verdict row is added once, by `closeStep`.
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,

@@ -114,6 +114,12 @@ export const readerSentences = {
   irreversibleLost: 'глава изменилась и не держит необратимого — нужен автор',
   laneLost: 'полоса потеряна, пока писалась глава — правка остаётся в очереди',
   judgeVeto: 'судья причин не подтвердил замыкание — волна остановлена, нужен автор',
+  /**
+   * BOOK-DOC-80: the countable checks refused the patch before it was written. The sentence names
+   * the fact, not the code: the codes (`TIER0_REPEAT`, `TIER0_NUMBER`, …) live in the log and the
+   * transcript, where an operator reads them.
+   */
+  tier0Failed: 'правка не прошла счётные проверки — текст не тронут, правка остаётся в очереди',
 } as const;
 
 /**
@@ -157,6 +163,8 @@ function sentenceFor(code: string): string | null {
   if (code === 'IRREVERSIBLE_LOST') return readerSentences.irreversibleLost;
   if (code === 'LANE_LOST') return readerSentences.laneLost;
   if (code === 'JUDGE_VETO') return readerSentences.judgeVeto;
+  // BOOK-DOC-80: the countable tier refused the patch; no model was asked after it.
+  if (code === 'TIER0_FAILED') return readerSentences.tier0Failed;
   return null;
 }
 

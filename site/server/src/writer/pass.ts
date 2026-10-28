@@ -25,9 +25,9 @@ import { isChapterNumber, type BudgetDto, type WriteMode, type WriterAssignment 
 
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
-import type { DoneView, EngineClient, EngineStateView, LandView, StartView } from './client.ts';
+import type { EngineClient, EngineStateView, LandView, StartView } from './client.ts';
 import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
-import { createLane, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
+import { createLane, assignmentData, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
 import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
@@ -36,15 +36,16 @@ import { afterPatch } from './ripple/afterPatch.ts';
 import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import { codeOf, failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
+import { codeOf, failureOf, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { NO_OP_LINE, stageSummary } from './stages.ts';
+import { closeTick } from './closeTick.ts';
+import { runGates } from './gatesPass.ts';
+import { tier0Detail, tier0Of, verifyChange, type GatesRecord } from './verify/run.ts';
+import type { Tier0Result } from './verify/tier0.ts';
 import type { WriterConfig } from './config.ts';
 
 export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
-
-/** One gate's revision in a pass, whatever the engine's cycle cap allows. */
-const MAX_REVISIONS = 1;
 
 /**
  * BOOK-145: a step the engine already took away is not a failure of this pass — a step wall, a
@@ -166,7 +167,12 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     return { status: 'parked', stepId: job.stepId, changeId: job.changeId, reason };
   }
   const chapter: number = job.chapter;
-  const answered = { ...job.verdicts };
+  // The engine's own per-role record: a role it already holds a verdict for is not asked again.
+  const answered: Record<'editor' | 'consultant' | 'rights', boolean> = {
+    editor: job.verdicts.editor,
+    consultant: job.verdicts.consultant,
+    rights: job.verdicts.rights === true,
+  };
   const lane = createLane(
     { config, bookRoot, dataDir: deps.dataDir, engine, provider: deps.provider, now, log: deps.log },
     job,
@@ -193,23 +199,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     return goneOf(codeOf(error), reasonOf(error));
   }
 
-  /** One gate round: the editor, then the consultant when the editor asks for no revision. */
-  async function gateRound(refusal?: string | null): Promise<
-    | { ok: true; editor: GateRun; consultant: GateRun | null; rightsClosed: boolean }
-    | { ok: false; failure: Failure }
-  > {
-    try {
-      const editor = await lane.runGate('editor', refusal ?? null);
-      const consultant = editor.revise ? null : await lane.runGate('consultant', refusal ?? null);
-      // BOOK-61: Gate B last, and it may close the step itself — a refusal is a decision about
-      // the text, so there is nothing left for this pass to finish.
-      const rights = await lane.runRightsGate();
-      return { ok: true, editor, consultant, rightsClosed: rights.closed };
-    } catch (error) {
-      return { ok: false, failure: failureOf(error) };
-    }
-  }
-
   try {
     // 3. `queued`: the engine opened the step — the writer is the one that says so.
     await lane.emit({
@@ -225,6 +214,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     // A resumed step already has its text on disk: the lane continues at the gates, not at the pen.
     const resume = job.landed === true;
     let text = '';
+    /** BOOK-DOC-80: Tier 0's verdict (always run before the write) and the gates record. */
+    let tier0: Tier0Result = { ok: true, findings: [], notes: [] };
+    let gates: GatesRecord | null = null;
     // What the writing phase needs from above: the mode and the rewrite prompt it falls back to.
     const modeInput: ModeInput = { pass: job.pass, scopeHint: job.scopeHint, sentenceAnchor: job.sentenceAnchor };
     let choice: ModeChoice = chooseMode(modeInput, false);
@@ -336,6 +328,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // BOOK-173 §2: the patch's characters edits travel to `land`, which is what keeps ids.
       lane.setMode(written.mode, written.patch, written.sentences);
 
+      // 7b. BOOK-DOC-80, Tier 0 — the countable invariants, **before** a byte is written: the
+      //     bytes the applier proved are the bytes the book would hold, so a broken invariant
+      //     costs nothing but the writing call that produced it. Only a patch names a span to
+      //     check; a rewrite is judged by the pair, which it always takes (`chapter_edge`).
+      if (lane.mode() === 'patch') {
+        tier0 = tier0Of({ bookRoot, chapter, before: beforeText, after: text });
+        if (!tier0.ok) {
+          deps.log(`[writer] tier 0 отказал: ${tier0Detail(tier0)}`);
+          return await lane.park({ code: 'TIER0_FAILED', detail: tier0Detail(tier0), fallback: readerFallbacks.gate });
+        }
+      }
+
       // 8. The write, and the landing that makes it a revision.
       try {
         lane.writeText(text);
@@ -353,6 +357,25 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       if (lane.mode() === 'rewrite' && text === beforeText) deps.log(`[writer] ${NO_OP_LINE}, глава ${String(chapter)}`);
       const reaction = await afterPatch({ plan: landing.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
       if (reaction.kind === 'park') return await lane.park({ detail: reaction.sentence, ...(reaction.cause === undefined ? {} : { cause: reaction.cause }) });
+
+      // 8b. BOOK-DOC-80, Tier 1 and the table: the local judge reads the changed span and the
+      //     policy says whether the full pair is still needed. A `GAP` here goes to the pair —
+      //     the pair is the judge of the judge — never straight to the reader.
+      const verified = await verifyChange({
+        config,
+        bookRoot,
+        chapter,
+        before: beforeText,
+        after: text,
+        plan: landing.plan ?? null,
+        mode: lane.mode(),
+        tier0,
+        lane,
+        log: deps.log,
+      });
+      gates = verified.record;
+      lane.setGates(gates);
+
       // A landing drops the verdicts of the previous revision: every gate is asked again.
       answered.editor = false;
       answered.consultant = false;
@@ -367,53 +390,26 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       lane.preSnapshot(now());
     }
 
-    // 9. The gates: editor, then consultant; at most one revision cycle for the whole pass.
-    //    Past the first landing these are *auxiliary*: a failure is remembered and `done` still runs.
-    let revisions = 0;
-    let failed: Failure | null = null;
-    for (;;) {
-      let round = await gateRound();
-      // A transport failure and a refused answer both get one retry; the parse failure carries
-      // its own reason back to the model, so the second answer can be the one that parses.
-      if (!round.ok && (isTransportFailure(round.failure) || round.failure.code === 'GATE_UNPARSED')) {
-        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail.slice(0, 200)} — повтор`);
-        round = await gateRound(round.failure.detail);
-      }
-      if (!round.ok) {
-        const stepped = goneOf(round.failure.code ?? null, round.failure.detail);
-        if (stepped !== null) return stepped;
-        // A rights failure is not auxiliary: the step cannot close without an answer, so the
-        // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
-        const code = round.failure.code ?? '';
-        if (code.startsWith('RIGHTS') || code === 'GATE_UNPARSED') {
-          return await lane.park({ ...round.failure, fallback: readerFallbacks.gate });
-        }
-        failed = round.failure;
-        break;
-      }
-      const { editor, consultant, rightsClosed } = round;
-      if (rightsClosed) {
-        // The rights gate refused the text and the engine closed the step: no `done`, no revision.
-        deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
-        return rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
-      }
-      if (!editor.revise && consultant?.revise !== true) break;
-      if (revisions >= MAX_REVISIONS) break;
-      revisions += 1;
-      const revised = await lane.reviseText([...editor.findings, ...(consultant?.findings ?? [])]);
-      if (revised === null) {
-        return await lane.park({ detail: 'правка после замечаний гейта не прошла проверку' });
-      }
-      text = revised;
-      answered.editor = false;
-      answered.consultant = false;
-      answered.rights = false;
+    // 9. The gates (`gatesPass.ts`, BOOK-DOC-80): the full pair only on a trigger, Gate B always.
+    //    A `local only` change closes on the local judge's word; a resumed step has no verification
+    //    record, so it takes the pair exactly as it always did.
+    const gateOutcome = await runGates({
+      lane,
+      log: deps.log,
+      full: gates === null || gates.gatesMode !== 'local only',
+      answered,
+    });
+    if (gateOutcome.kind === 'rights') {
+      // The rights gate refused the text and the engine closed the step: no `done`, no revision.
+      deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
+      return rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
     }
-    if (failed !== null) {
-      // Remembered, not fatal: the transcript is where a survived failure is proved.
-      deps.log(`[writer] гейт не ответил (${failed.code ?? 'без кода'}): ${failed.detail} — шаг закрывается`);
-      lane.remember(failed);
+    if (gateOutcome.kind === 'park') {
+      const stepped = goneOf(gateOutcome.failure.code ?? null, gateOutcome.failure.detail);
+      if (stepped !== null) return stepped;
+      return await lane.park({ ...gateOutcome.failure, fallback: gateOutcome.fallback });
     }
+    const survived: Failure | null = gateOutcome.survived;
 
     // 10. `landed`: the span, the tokens, the money — a stage, so it can never throw.
     const usage = lane.usage();
@@ -431,6 +427,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         tokensIn: usage.in,
         tokensOut: usage.out,
         tokensCachedIn: usage.cachedIn,
+        gates: gates === null ? null : gates.word,
         costUsd: passCost,
       }),
       model: config.model,
@@ -441,40 +438,41 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     });
 
     // 11. `done`: the writer's tokens only (the engine adds each gate's). `STEP_CLOSED` is the
-    //     close this pass asked for; a transport failure gets one more try.
-    let closed: DoneView | null = null;
-    let closeFailure: Failure | null = null;
+    //     close this pass asked for; a transport failure gets one more try (`closeTick.ts`).
     const passMode: WriteMode | null = lane.mode();
-    for (let attempt = 0; attempt < 2 && closed === null; attempt += 1) {
-      try {
-        closed = await engine.done({
-          leaseId: job.leaseId,
-          note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
-          model: config.model,
-          tokensIn: lane.writerTokens().in,
-          tokensOut: lane.writerTokens().out,
-          seams: [],
-          // BOOK-173 §4: how this pass wrote — the one thing the engine cannot state itself.
-          ...(passMode === null ? {} : { mode: passMode }),
-        });
-      } catch (error) {
-        closeFailure = failureOf(error);
-        // The step is closed either way; `done` on it is a no-op, and the pass says what it did.
-        if (closeFailure.code === 'STEP_CLOSED') {
-          closed = { stepId: job.stepId, outcome: 'already-closed', cascadeId: null, changeStatus: null };
-          break;
-        }
-        if (!isTransportFailure(closeFailure) || attempt > 0) break;
-        deps.log(`[writer] done не прошёл (${closeFailure.code ?? 'транспорт'}): ${closeFailure.detail} — повтор`);
-      }
-    }
+    const { closed, failure: closeFailure } = await closeTick({
+      engine,
+      stepId: job.stepId,
+      log: deps.log,
+      body: {
+        leaseId: job.leaseId,
+        note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
+        model: config.model,
+        tokensIn: lane.writerTokens().in,
+        tokensOut: lane.writerTokens().out,
+        seams: [],
+        // BOOK-173 §4: how this pass wrote — the one thing the engine cannot state itself.
+        ...(passMode === null ? {} : { mode: passMode }),
+        // BOOK-DOC-80: which tiers judged it, so `change_plans` and the sample queue learn it.
+        ...(gates === null
+          ? {}
+          : {
+              verification: {
+                gatesMode: gates.gatesMode,
+                why: gates.why,
+                tier1Verdict: gates.tier1Verdict,
+                tier1Usd: gates.tier1Usd,
+              },
+            }),
+      },
+    });
     if (closed === null) {
       // The gate's own failure is why the verdicts never arrived; the close's refusal is its own.
       const why: Failure =
-        closeFailure?.code === 'VERDICTS_REQUIRED' && failed !== null
-          ? failed
-          : (closeFailure ?? failed ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
-      return await lane.park({ ...why, fallback: why === failed ? readerFallbacks.gate : readerFallbacks.stopped });
+        closeFailure?.code === 'VERDICTS_REQUIRED' && survived !== null
+          ? survived
+          : (closeFailure ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
+      return await lane.park({ ...why, fallback: why === survived ? readerFallbacks.gate : readerFallbacks.stopped });
     }
 
     const result: PassResult = {

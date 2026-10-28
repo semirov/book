@@ -37,6 +37,7 @@ import {
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { settleDraftPremise } from './premise.ts';
 import { pricePlanAfterPass } from '../ledger/graph/plan.ts';
+import { closeVerification } from '../ledger/graph/verification.ts';
 import { rippleOutcomeFor } from './ripple.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
@@ -396,13 +397,15 @@ export function closeStep(
       fromHseq: number | null;
     };
     const cascadeRow = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
+    const closedChangeId = cascadeRow?.change_id ?? lease?.change_id ?? null;
+    const verificationRefused = closeVerification(db, closedChangeId, step.chapter, step.step_id, input.verification, toIso(now));
     const hseq = appendEvent(
       db,
       {
         kind: 'step.closed',
         stepId: step.step_id,
         cascadeId: step.cascade_id,
-        changeId: cascadeRow?.change_id ?? lease?.change_id ?? null,
+        changeId: closedChangeId,
         chapter: step.chapter,
         isFront: step.pass === 'front',
         payload: {
@@ -412,16 +415,15 @@ export function closeStep(
           // BOOK-173 §4: how the pass wrote — the word a draft step has no plan to carry.
           ...(input.mode == null ? {} : { mode: input.mode }),
           ...(input.expiredLeaseId ? { expiredClose: true } : {}),
+          ...(verificationRefused === null ? {} : { verificationRefused }),
         },
       },
       now,
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
     // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
-    const closedChangeId = cascadeRow?.change_id ?? lease?.change_id ?? null;
     recordCloseSpend(db, { step, changeId: closedChangeId, now, model: spend.model, tokensIn: spend.tokensIn, tokensOut: spend.tokensOut, provenance: spend.provenance });
-    // BOOK-173 §4: the plan froze an estimate; the pass that spent the money has just closed, so
-    // this same transaction replaces it with the actual. A change with no plan keeps nothing here.
+    // BOOK-173 §4: the plan froze an estimate; this same transaction replaces it with the actual.
     const actualUsd = closedChangeId === null ? null : passUsdOf(db, step.step_id);
     if (closedChangeId !== null && actualUsd !== null) pricePlanAfterPass(db, closedChangeId, actualUsd);
 

@@ -60,7 +60,9 @@ export type EngineAlert = {
     | 'rights'
     | 'gate_timeout'
     /** BOOK-18: the derived index could not be built or written at a gate dispatch. */
-    | 'index';
+    | 'index'
+    /** BOOK-DOC-80: a sampled `local only` change disagreed with the editor, or the judge drifts. */
+    | 'local_only';
   at: string;
   changeId: string | null;
   cascadeId: string | null;

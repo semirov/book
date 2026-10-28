@@ -14,6 +14,10 @@
  *     `price_usd`: the estimate frozen with the plan, replaced by the actual when the pass
  *     closes, so a change carries how it was written and what it cost rather than leaving both
  *     to a log line.
+ *   · the verification record of that plan (BOOK-DOC-80): `tier1_verdict`, `tier1_usd`,
+ *     `gates_mode`, and the safeguard's queue — `sample_requested`, `sampled_at`,
+ *     `sample_verdict`. All nullable (or defaulted to 0) because every plan written before this
+ *     step was verified by the full pair and has nothing to say here.
  *
  * Both statements live in `ledgerTables.ts` next to the tables v22 created, so a fresh install
  * (which reads them from `SCHEMA_SQL`) and an upgraded one (which reads them from here) build the
@@ -37,6 +41,13 @@ import { CHANGE_PLANS_SQL, LEDGER_GRAPH_SQL } from './ledgerTables.ts';
 const COLUMN_ADDITIONS: ReadonlyArray<readonly [column: string, definition: string]> = [
   ['mode', "TEXT CHECK (mode IN ('patch','rewrite'))"],
   ['price_usd', 'REAL'],
+  // BOOK-DOC-80: the verification record and the sample queue of a `local only` change.
+  ['tier1_verdict', "TEXT CHECK (tier1_verdict IN ('HOLDS','GAP','UNSURE','TIER1_UNPARSED'))"],
+  ['tier1_usd', 'REAL'],
+  ['gates_mode', "TEXT CHECK (gates_mode IN ('local only','full','local_only_rechecked'))"],
+  ['sample_requested', 'INTEGER NOT NULL DEFAULT 0'],
+  ['sampled_at', 'TEXT'],
+  ['sample_verdict', "TEXT CHECK (sample_verdict IN ('ok','gap','error'))"],
 ];
 
 function addColumn(db: Db, table: string, column: string, definition: string): void {

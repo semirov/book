@@ -66,6 +66,11 @@ export function callRecords(): CallRecord[] {
 
     const calls: Array<ReturnType<typeof usage>> = [];
     if (kind === 'cache') calls.push(usage(record(artifact.metrics)?.usage));
+    else if (kind === 'tier1') {
+      // Every call of the tier-1 measurement is a row of its own, each with its own usage.
+      const rows = artifact.rows;
+      if (Array.isArray(rows)) for (const row of rows) calls.push(usage(row));
+    }
     else if (kind === 'gates' || kind === 'smoke' || kind === 'wide') calls.push(usage(artifact.response));
     else if (kind === 'ab' || kind === 'control') {
       calls.push(usage(artifact.response));

@@ -58,6 +58,30 @@ describe('the required-verdict rule (§6B.4)', () => {
     }
   });
 
+  it('closes a `local only` step on the local judge’s HOLDS, and only on a HOLDS', () => {
+    // BOOK-DOC-80: the pair did not run, so the close is the one place that can say the change was
+    // read locally. A `GAP` or an unparsed answer never waives the verdicts — the policy sends it
+    // to the pair, and an engine that trusted it would close a chapter nobody read.
+    const fixture = createEngineFixture();
+    try {
+      const assignment = draftOnce(fixture);
+      const record = (tier1Verdict: 'HOLDS' | 'GAP' | 'UNSURE' | 'TIER1_UNPARSED') =>
+        ({ gatesMode: 'local only' as const, why: null, tier1Verdict, tier1Usd: 0.003 });
+      expect(() =>
+        fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL, verification: record('GAP') }),
+      ).toThrow(/cannot close without both verdicts/u);
+
+      const done = fixture.engine.done(assignment.leaseId, {
+        seams: [],
+        model: PIPELINE_MODEL,
+        verification: record('HOLDS'),
+      });
+      expect(done.outcome).toBe('rewritten');
+    } finally {
+      fixture.close();
+    }
+  });
+
   it('refuses a verdict for a file that has not landed', () => {
     const fixture = createEngineFixture();
     try {

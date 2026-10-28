@@ -7,6 +7,7 @@
  *   cache  the four-variant cache matrix, plus C's wide row when a plan is `wide`
  *   all    ab → gates → cache
  *   smoke  one ~$0.0001 call: the key, the stream and the usage reader, end to end
+ *   tier1  one Tier-1 judge, asked twice: the local tier's own price and its cache hit
  *
  * Flags: `--only=ch01,ch03,ch06`, `--force` (re-run a complete artifact), `--dry` (build the
  * prompts and the closures, print sizes and hashes, make **zero** calls), `--control` (the seeded
@@ -26,6 +27,7 @@ import { apiModelOf, loadPipeline } from '../../server/src/writer/pipeline.ts';
 import { SpendCapError, createMeter, estimateUsd, type Rates } from './metrics.ts';
 import { blockedArtifact, runA, runB, type CallModel, type ModeCtx } from './modes.ts';
 import { runControl } from './controlRun.ts';
+import { runTier1, TIER1_BUDGET_USD } from './tier1run.ts';
 import { controlFixture, wideFixture } from './control.ts';
 import { loadPatchModules } from './patch.ts';
 import { runGatesFor } from './gatesRun.ts';
@@ -40,9 +42,9 @@ import { dryRun } from './dry.ts';
 import { callOnce, pipelineUsage, requestChars, WireError, type ChatMessage } from './wire.ts';
 import { BOOK_ROOT, CAP_USD, CACHE_MAX_TOKENS, PEAK_MULTIPLIER, SMOKE_MAX_TOKENS, readKey, selectFilings } from './spec.ts';
 
-type Command = 'ab' | 'gates' | 'cache' | 'all' | 'smoke';
+type Command = 'ab' | 'gates' | 'cache' | 'all' | 'smoke' | 'tier1';
 
-const COMMANDS: readonly Command[] = ['ab', 'gates', 'cache', 'all', 'smoke'];
+const COMMANDS: readonly Command[] = ['ab', 'gates', 'cache', 'all', 'smoke', 'tier1'];
 
 type Ctx = {
   pin: { model: string; apiModel: string; endpoint: string };
@@ -404,6 +406,19 @@ async function main(): Promise<void> {
         return;
       }
 
+      if (command === 'tier1') {
+        const measured = await runTier1({ bookRoot: ctx.bookRoot, rates, call, ledger: ctx.ledger, pin });
+        for (const row of measured.rows) {
+          log(
+            `[tier1 #${String(row.call)}] in ${String(row.in)} (cache ${String(row.cachedIn)}) · out ${String(row.out)} · ${
+              row.verdict ?? row.refusal ?? '—'
+            } · ${String(row.findings)} findings · $${(row.usdPeak ?? 0).toFixed(5)} peak · ${String(row.wallMs)} ms`,
+          );
+        }
+        if (measured.missing !== null) log(`[tier1] ${measured.missing}`);
+        log(`[tier1] spent $${measured.spent.usdPeak.toFixed(5)} peak of the $${TIER1_BUDGET_USD.toFixed(2)} allowance`);
+        return;
+      }
       if (command === 'ab' || command === 'all') await runAb(ctx, call, control);
       if (command === 'gates' || command === 'all') await runGates(ctx, call, control);
       if (command === 'cache' || command === 'all') await runCache(ctx, call, control);

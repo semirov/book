@@ -136,7 +136,8 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
       const db = harness.fixture.db;
       const before = blockOf(db, CH12, 0);
       // The origin pass runs first: the change closes `ripple` and the plan names ch12.
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
       const changeId = (
         db.prepare(`SELECT id FROM changes WHERE chapter = ? AND status = 'done'`).get(ORIGIN) as { id: string }
@@ -187,7 +188,8 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
     try {
       const graph = rippleGraph(harness);
       const db = harness.fixture.db;
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
       const changeId = (
         db.prepare(`SELECT id FROM changes WHERE chapter = ? AND status = 'done'`).get(ORIGIN) as { id: string }
@@ -236,7 +238,8 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
            (span_id, block_id, chapter, start, end, kind, fact_id, thread_id, resolved_by_change, role, witness, edge_path)
          VALUES ('span_ch19:claim', ?, 19, 0, 22, 'fact', ?, NULL, NULL, 'assert', 'По выданному допуску', '[]')`,
       ).run(blockOf(db, 19, 0).id, graph.deadline);
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
       const changeId = (
         db.prepare(`SELECT id FROM changes WHERE chapter = ? AND status = 'done'`).get(ORIGIN) as { id: string }
@@ -272,7 +275,8 @@ describe('a revision the watcher published first still gets its plan', () => {
       harness.hooks.beforeCall = (name) => {
         if (name === 'land') harness.ingest(ORIGIN);
       };
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
 
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
 

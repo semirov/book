@@ -154,6 +154,8 @@ export const stageSummary = {
     tokensOut: number;
     /** BOOK-173: the share of the input the provider served from its cache. */
     tokensCachedIn?: number;
+    /** BOOK-DOC-80: which gates judged the chapter — `local only` is a fact, not a silence. */
+    gates?: string | null;
     costUsd: number;
   }): string =>
     line([
@@ -162,6 +164,7 @@ export const stageSummary = {
       input.tokensCachedIn === undefined || input.tokensCachedIn === 0
         ? null
         : `кэш ${grouped(input.tokensCachedIn)}`,
+      input.gates === undefined || input.gates === null ? null : input.gates,
       money(input.costUsd),
     ]),
 

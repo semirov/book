@@ -20,6 +20,7 @@ import { artifactPath, listArtifacts, saveArtifact, type Artifact } from './stor
 import { renderControl, renderPerChapter } from './reportChapters.ts';
 import { callRecords, spendOf } from './usage.ts';
 import { cacheRows } from './reportCache.ts';
+import { tier1Section } from './reportTier1.ts';
 import { frameOk } from './ledger.ts';
 import { CAP_USD, DATA_DIR, LABELS, PEAK_MULTIPLIER } from './spec.ts';
 
@@ -314,6 +315,7 @@ export function writeSummary(input: {
     ...listArtifacts('wide'),
     ...listArtifacts('control'),
     ...listArtifacts('plancheck'),
+    ...listArtifacts('tier1'),
     ...listArtifacts('smoke'),
   ];
   const byName = new Map(all.map((artifact) => [artifact.artifact, artifact]));
@@ -379,7 +381,6 @@ export function writeSummary(input: {
       'untouched hash = sha256 over the untouched blocks\' ids+hashes, pre vs post; the count is in the artifact.',
       '% of ch = changedChars / before.chars; changedChars = Σ max(|before|,|after|) over unaligned blocks.',
       'The C prefix is canon + role + protocol as this book has them; its real size is the `prompt` column of call (i)/1.',
-      'A wide row measures ONE rewritten chapter and projects it: wideProjectionUsd = perChapter × chapters.',
     ],
     blocked: rows.filter((row) => row.blocked !== null).map((row) => `${row.run}: ${String(row.blocked)}`),
     artifacts: all.map((artifact) => artifact.artifact),
@@ -429,6 +430,7 @@ export function writeSummary(input: {
     '(`proven: false`), the ledger\'s failure, never evidence of independence. `plan` = the closure at estimate',
     'against the one recomputed after the patches.',
     '',
+    ...tier1Section(byName),
     '## C — the cache matrix',
     '',
     'One baseline is warmed once (W1); every later call is measured **against it**. `hit / ref` =',
@@ -476,10 +478,9 @@ export function writeSummary(input: {
             )} | ${usd(entry.wideProjectionUsd)} | ${entry.refusal ?? '—'} |`,
         )),
     '',
-    'One chapter is measured; the projection is `perChapter × chapters` — arithmetic over a measured number.',
+    'One chapter measured; the projection is `perChapter × chapters` (computed).',
     '',
     '## verdict',
-    '',
     '> Placeholders on purpose: the orchestrator writes this after reading the tables above.',
     '',
     '- **default mode:** `<!-- TODO -->`',
@@ -487,7 +488,6 @@ export function writeSummary(input: {
     '- **the one risk not to take:** `<!-- TODO -->`',
     '',
     '## What this run does not say',
-    '',
     '- gates read the chapter without the engine\'s index slice, and each mode got one attempt: no retry, no repair;',
     `- artifacts under \`${DATA_DIR.replace(/^.*\/site\//u, 'site/')}\` are git-ignored evidence, not shipped files.`,
   ];

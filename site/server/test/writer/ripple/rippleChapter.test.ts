@@ -39,13 +39,14 @@ describe('a ripple chapter', () => {
           id: string;
         }
       ).id;
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
 
       // The ripple's own door: one chapter, its own step, the change it serves.
       const engine = createEngineClient({ baseUrl: harness.config.engineUrl, tokenFile: harness.tokenFile });
       const block = blockOf(harness.fixture.db, RIPPLE_CHAPTER, 0);
-      harness.script.push(consequencePatch().replace('BLOCK', block.id), 'HOLDS', 'HOLDS');
+      harness.script.push(consequencePatch().replace('BLOCK', block.id), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       const result = await runPass({
         config: harness.config,
         bookRoot: harness.bookRoot,
@@ -101,7 +102,8 @@ describe('a ripple chapter', () => {
           id: string;
         }
       ).id;
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
       const stored = latestPlan(harness.fixture.db, changeId);
       expect(stored?.plan.outcome).toBe('ripple');

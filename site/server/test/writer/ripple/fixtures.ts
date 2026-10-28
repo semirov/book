@@ -12,6 +12,7 @@
 import type { Db } from '../../../src/db/db.ts';
 import { AT } from '../../ledger/helpers.ts';
 import { createHarness, type Harness } from '../harness.ts';
+import { inertParagraph } from '../inert.ts';
 
 export type BlockRef = { id: string; text: string; hash: string; uid: string };
 
@@ -156,11 +157,8 @@ export function retire(db: Db, factIds: readonly string[], changeId: string): vo
   }
 }
 
-/** Inert prose: long enough for the floor, plain enough for every shape rule. */
-const FILLER = 'Служебный текст для проверки объёма страницы, он не является текстом книги. ';
-
 function para(marker: string, chars = 600): string {
-  return `${marker} ${FILLER.repeat(Math.ceil(chars / FILLER.length) + 1)}`.slice(0, chars);
+  return inertParagraph(marker, chars);
 }
 
 /** A chapter's file: a title line, then the paragraphs. */

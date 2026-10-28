@@ -6,6 +6,7 @@
 
 import type { CascadeOutcome, ChangeOutcome, ChangeStatus, SeamRef, StepOutcome, WriteMode } from '@book/shared';
 
+import type { VerificationRecord } from '../ledger/graph/verification.ts';
 import type { Provenance } from './model.ts';
 import type { PremiseCause } from './types.ts';
 
@@ -26,6 +27,13 @@ export type DoneOptions = {
    * close, because `change_plans.mode` only exists where a plan does.
    */
   mode?: WriteMode;
+  /**
+   * BOOK-173, BOOK-DOC-80: which gates judged this pass. `local only` is a close the full pair
+   * never read — the local judge's `HOLDS` is the verdict the two prose gates would otherwise
+   * have written, and the close is the one place that can say so atomically. Absent for every
+   * caller that ran both gates (the operator, a re-run of an old step), and then nothing changes.
+   */
+  verification?: VerificationRecord;
 };
 
 /** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
@@ -58,6 +66,12 @@ export type CloseStepInput = {
   escalation?: CascadeOutcome | null;
   /** BOOK-173 §4: how the pass wrote, recorded on the close for a step that has no plan (a draft). */
   mode?: WriteMode | null;
+  /**
+   * BOOK-DOC-80: which gates judged the pass — written to `change_plans` in this transaction,
+   * keyed by `(change_id, chapter)`: a ripple chapter's close writes nothing and carries the
+   * refusal code on `step.closed` (`verificationRefused`).
+   */
+  verification?: VerificationRecord;
   /** A broken pass is not a refusal; `failed` settles a written premise and queues an unwritten one. */
   premiseCause?: PremiseCause;
   /**

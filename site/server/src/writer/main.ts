@@ -28,11 +28,12 @@ import { revertChapter } from './revert.ts';
 import { openDatabase, databaseFile } from '../db/db.ts';
 import { runBackfillCli } from './backfillRun.ts';
 import { runPlanCli, runRippleCli } from './rippleCli.ts';
+import { markWriterBootAt, runAuditCli } from './verify/cli.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 export const USAGE = [
-  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--backfill-ledger]',
+  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--backfill-ledger] [--audit-samples [N]]',
   '',
   '  --once            one pass, then exit (default)',
   '  --chapter N       open the first pass for chapter N instead of the lane’s next slot',
@@ -42,23 +43,28 @@ export const USAGE = [
   '  --ripple          drain the oldest ripple still owed work (BOOK-173), then exit',
   '  --plan ID         print the reviewable table of change ID’s ripple plan; nothing is written',
   '  --backfill-ledger read the written chapters into the ledger graph (facts, mentions, edges)',
+  '  --audit-samples [N]  re-read the queued local-only samples with the editor (default 3)',
   '  --help            this text',
 ].join('\n');
 
 export type Cli = {
-  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'backfill';
+  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'backfill' | 'audit';
   once: boolean;
   loop: boolean;
   dryRun: boolean;
   chapter: number | null;
   /** `--plan <changeId>`: the change whose frozen ripple plan is printed. */
   changeId: string | null;
+  /** `--audit-samples [N]`: how many queued samples to re-read (`null` = the default). */
+  audit: number | null;
 };
 
 export type ParsedArgs = { ok: true; cli: Cli } | { ok: false; error: string };
 
 const VALUE_FLAGS = new Set(['chapter', 'plan']);
 const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help', 'ripple', 'backfill-ledger']);
+/** A flag whose value is optional: `--audit-samples` alone takes the default, `=N` names a count. */
+const OPTIONAL_VALUE_FLAGS = new Set(['audit-samples']);
 
 /**
  * Arguments as data, so the one thing a CLI test can prove without a process is that an unknown
@@ -71,14 +77,21 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     if (!arg.startsWith('--')) return { ok: false, error: `unexpected argument: ${arg}` };
     const [rawName, inline] = arg.slice(2).split('=', 2) as [string, string | undefined];
     const name = rawName.trim();
-    if (!VALUE_FLAGS.has(name) && !BOOLEAN_FLAGS.has(name)) return { ok: false, error: `unknown flag: --${name}` };
+    if (!VALUE_FLAGS.has(name) && !BOOLEAN_FLAGS.has(name) && !OPTIONAL_VALUE_FLAGS.has(name)) {
+      return { ok: false, error: `unknown flag: --${name}` };
+    }
     if (flags.has(name)) return { ok: false, error: `duplicate flag: --${name}` };
     if (BOOLEAN_FLAGS.has(name)) {
       if (inline !== undefined) return { ok: false, error: `flag --${name} takes no value` };
       flags.set(name, true);
       continue;
     }
-    const value = inline ?? argv[index + 1];
+    const next = argv[index + 1];
+    if (OPTIONAL_VALUE_FLAGS.has(name) && inline === undefined && (next === undefined || next.startsWith('--'))) {
+      flags.set(name, true);
+      continue;
+    }
+    const value = inline ?? next;
     if (value === undefined || (inline === undefined && value.startsWith('--'))) {
       return { ok: false, error: `flag --${name} needs a value` };
     }
@@ -87,7 +100,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   }
 
   if (flags.has('help')) {
-    return { ok: true, cli: { mode: 'help', once: true, loop: false, dryRun: false, chapter: null, changeId: null } };
+    return { ok: true, cli: { mode: 'help', once: true, loop: false, dryRun: false, chapter: null, changeId: null, audit: null } };
   }
 
   let chapter: number | null = null;
@@ -104,11 +117,26 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (plan !== undefined && typeof plan !== 'string') return { ok: false, error: '--plan needs a change id' };
   const changeId = typeof plan === 'string' ? plan : null;
 
+  const auditFlag = flags.has('audit-samples');
+  let audit: number | null = null;
+  if (auditFlag) {
+    const raw = flags.get('audit-samples');
+    if (raw !== true) {
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value < 1) return { ok: false, error: '--audit-samples takes a positive integer' };
+      audit = value;
+    }
+  }
+
   const revert = flags.has('revert');
   const ripple = flags.has('ripple');
   const backfill = flags.has('backfill-ledger');
   const loop = flags.has('loop');
   const once = flags.has('once');
+  // The sample audit reads chapters and calls the editor: it is one command, not a pass.
+  if (auditFlag && (revert || ripple || loop || backfill || chapter !== null || changeId !== null || once)) {
+    return { ok: false, error: '--audit-samples runs alone: no chapter, no pass, no drain' };
+  }
   if (revert && chapter === null) return { ok: false, error: '--revert needs --chapter N' };
   if (loop && once) return { ok: false, error: '--once and --loop are two different shapes' };
   if (loop && revert) return { ok: false, error: '--loop cannot revert' };
@@ -123,18 +151,20 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     return { ok: false, error: '--backfill-ledger runs alone: no chapter, no pass, no drain' };
   }
 
-  const mode = backfill
-    ? 'backfill'
-    : changeId !== null
-      ? 'plan'
-      : ripple
-        ? 'ripple'
-        : revert
-          ? 'revert'
-          : 'run';
+  const mode = auditFlag
+    ? 'audit'
+    : backfill
+      ? 'backfill'
+      : changeId !== null
+        ? 'plan'
+        : ripple
+          ? 'ripple'
+          : revert
+            ? 'revert'
+            : 'run';
   return {
     ok: true,
-    cli: { mode, once: !loop, loop, dryRun: flags.has('dry-run'), chapter, changeId },
+    cli: { mode, once: !loop, loop, dryRun: flags.has('dry-run'), chapter, changeId, audit },
   };
 }
 
@@ -275,6 +305,11 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   // The process's own line about tokens: printed once, information only (§6).
   log(tokenLine(config));
 
+  // BOOK-DOC-80: the boot marker the sample queue consumes — the first `local only` change of this
+  // process is always re-read by the editor. Written once, and only when none is standing (a marker
+  // left by a process that filed nothing is still owed its one sample).
+  if (cli.mode === 'run' || cli.mode === 'ripple') markWriterBootAt(dataDir, log);
+
   // The engine client is built where it is used: a dry run must not need a token to exist.
   const engineOf = (): ReturnType<typeof createEngineClient> => {
     try {
@@ -327,6 +362,12 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   const provider =
     deps.provider ??
     ((request) => callProvider(request));
+
+  // BOOK-DOC-80: the sample drain. It reads chapters, calls the editor and compares the answer
+  // with the word the change was closed on; its interface (0 / 1 / 2) is in `verify/audit.ts`.
+  if (cli.mode === 'audit') {
+    return await runAuditCli({ dataDir, config, bookRoot, provider, log, now, limit: cli.audit });
+  }
 
   let engine: ReturnType<typeof createEngineClient>;
   try {

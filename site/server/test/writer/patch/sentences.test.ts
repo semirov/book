@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { parseChapter } from '../../../src/ingest/parseChapter.ts';
 import { sentenceEditsOf } from '../../../src/writer/patch/sentences.ts';
 import { createHarness, type Harness } from '../harness.ts';
+import { inertParagraph } from '../inert.ts';
 
 const CHAPTER = 12;
 const TITLE = 'Глава двенадцатая';
@@ -36,9 +37,7 @@ const S2 = 'Потом стало тихо.';
 
 /** Inert filler: long enough for the chapter floor, and it is never the block under test. */
 function filler(marker: string, chars: number): string {
-  const head = `${marker} `;
-  const text = 'Служебный текст для проверки объёма страницы, он не является текстом книги. ';
-  return `${head}${text.repeat(Math.ceil(chars / text.length) + 1)}`.slice(0, chars);
+  return inertParagraph(marker, chars);
 }
 
 function chapterText(first: string): string {
@@ -106,7 +105,9 @@ async function runPatch(
   edit: { oldText: string; newText: string },
 ): Promise<{ blockId: string; before: Row[]; after: Row[] }> {
   const start = before(harness);
-  harness.script.push(answer(start.blockId, edit.oldText, edit.newText), 'HOLDS', 'HOLDS');
+  // A patch of the chapter's first block is at an edge (BOOK-DOC-80), so the full pair runs:
+  // the patch, the local judge, the editor, the consultant.
+  harness.script.push(answer(start.blockId, edit.oldText, edit.newText), 'HOLDS', 'HOLDS', 'HOLDS');
   const result = await harness.run({ lanes: ['fwd'] });
   expect(result.status).toBe('closed');
   const parsed = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
@@ -143,9 +144,11 @@ describe('a block patch is a character edit; sentence ids follow', () => {
   it('a period inserted inside a sentence: the left keeps the id, the right is born with split_from', async () => {
     const harness = await written();
     try {
+      // Both halves are three words or more: BOOK-DOC-80's Tier 0 refuses a **new** sentence
+      // under three words, and a split that mints a fragment is exactly what it refuses.
       const { before: rows, after } = await runPatch(harness, {
         oldText: 'Потом стало тихо.',
-        newText: 'Потом. Стало тихо.',
+        newText: 'Потом стало совсем. Тихо и пусто.',
       });
       const left = after.find((row) => row.idx === 1);
       const born = after.find((row) => row.idx === 2);

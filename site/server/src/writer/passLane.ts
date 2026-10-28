@@ -24,6 +24,7 @@ import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { createLaneIo } from './laneIo.ts';
 import type { CallKind, CallRecord } from './transcript.ts';
+import type { GatesRecord } from './verify/run.ts';
 import { rightsRunner } from './rightsGate.ts';
 import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
@@ -95,10 +96,13 @@ export type LaneInput = {
 
 export type GateRun = { revise: boolean; findings: GateFinding[] };
 
+/** A call's own bound: Tier 1 is a small question and says so (`TIER1_MAX_TOKENS`). */
+export type AskOptions = { maxTokens?: number };
+
 
 export type Lane = {
   emit(input: StageEmitInput): Promise<void>;
-  ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue'): Promise<ProviderResult>;
+  ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue', options?: AskOptions): Promise<ProviderResult>;
   /** Park the pass: one reader's sentence, one `refused` stage; `cause` defaults to `failed`. */
   park(why: ParkInput): Promise<PassResult>;
   /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
@@ -127,6 +131,8 @@ export type Lane = {
   /** BOOK-173 §4: the mode this pass wrote in; null before `setMode` and on a resume. */
   mode(): WriteMode | null;
   setEstimate(value: PassEstimate): void;
+  /** BOOK-DOC-80: the gates record — the transcript carries it and the close writes it down. */
+  setGates(value: GatesRecord): void;
 };
 
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
@@ -145,6 +151,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let patch: PatchReceipt | null = null;
   let sentences: ReadonlyArray<SentencePatchEdit> | null = null;
   let estimate: PassEstimate | null = null;
+  // BOOK-DOC-80: which tiers judged the pass — recorded so `change_plans` and the transcript agree.
+  let gates: GatesRecord | null = null;
   // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
   let failure: Failure | null = null;
   let note: string | null = null;
@@ -178,6 +186,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     kind: CallKind,
     messages: WriterMessage[],
     purpose?: 'draft' | 'repair' | 'continue',
+    options?: AskOptions,
   ): Promise<ProviderResult> {
     await beat();
     if (purpose !== undefined) {
@@ -206,7 +215,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiModel: config.apiModel,
         messages,
         // The causality judge is a bounded question, not a writing turn: it gets the gate's cap.
-        maxTokens: Math.min(kind.startsWith('gate:') || kind === 'judge' ? config.gateTokens : config.maxTokensPerCall, remaining),
+        maxTokens: Math.min(
+          options?.maxTokens ?? (kind.startsWith('gate:') || kind === 'judge' ? config.gateTokens : config.maxTokensPerCall),
+          remaining,
+        ),
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
@@ -322,7 +334,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       writeTranscript(input.dataDir, job.stepId, {
         chapter, at: now(), model: config.model, apiModel: config.apiModel,
         reportedModel: reported, modelMismatch: mismatch, promptSha256,
-        cachePrefix: promptPrefix, mode, patch,
+        cachePrefix: promptPrefix, mode, patch, gates,
         sections: promptSections, estimate, note, failure,
         result: { status: result.status, reason: result.reason ?? null },
         calls,
@@ -468,6 +480,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     },
     setEstimate: (value) => {
       estimate = value;
+    },
+    setGates: (value) => {
+      gates = value;
     },
   };
 }

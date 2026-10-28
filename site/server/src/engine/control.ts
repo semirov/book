@@ -15,6 +15,7 @@ import { TOTAL_CHAPTERS, validateIntent, validateInterventionKind } from '@book/
 import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
+import { normalizeVerification, verificationSchema } from '../ledger/graph/verification.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -141,6 +142,8 @@ const doneBody = z.object({
    * success. A step with no plan (a draft) records the mode here, on its close.
    */
   mode: z.enum(['patch', 'rewrite']).optional(),
+  /** BOOK-DOC-80: which tiers judged the pass — the shape is the ledger's (`verification.ts`). */
+  verification: verificationSchema.optional(),
 });
 
 /** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
@@ -332,6 +335,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         tokensOut: body.tokensOut,
         provenance: body.provenance,
         mode: body.mode,
+        verification: normalizeVerification(body.verification),
       }),
     };
   });

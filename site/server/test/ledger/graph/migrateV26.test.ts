@@ -84,7 +84,7 @@ function shapeAsV25(db: Db): void {
   db.pragma('user_version = 25');
 }
 
-const PLAN_COLUMNS = ['mode', 'price_usd'] as const;
+const PLAN_COLUMNS = ['mode', 'price_usd', 'tier1_verdict', 'tier1_usd', 'gates_mode', 'sample_requested', 'sampled_at', 'sample_verdict'] as const;
 
 function planColumns(db: Db): string[] {
   const names = (db.pragma('table_info(change_plans)') as Array<{ name: string }>).map((row) => row.name);
@@ -144,7 +144,7 @@ describe('migration v26 — the ripple graph on a fresh install', () => {
       },
     ]);
     // BOOK-173 §4: the plan of a change carries the mode it ran and the money it was priced at.
-    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
+    expect(planColumns(db)).toEqual([...PLAN_COLUMNS]);
     // ADR-044: the edge may name the sentence the claim was read from — on a fresh install too.
     expect((db.pragma('table_info(edges)') as Array<{ name: string }>).map((row) => row.name)).toContain(
       'sentence_id',
@@ -223,7 +223,7 @@ describe('migration v26 — the same shape on an upgraded install', () => {
     // Row for row: no id re-derived, no hash moved, no span re-cut, no touch invented by v26.
     expect(db.prepare('SELECT * FROM sentences ORDER BY id').all()).toEqual(sentencesBefore);
     expect(db.prepare('SELECT COUNT(*) AS n FROM sentence_touches').get()).toEqual({ n: 0 });
-    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
+    expect(planColumns(db)).toEqual([...PLAN_COLUMNS]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 
@@ -259,10 +259,26 @@ describe('migration v26 — the same shape on an upgraded install', () => {
 
     expect(migrate(db)).toEqual({ from: 25, to: SCHEMA_VERSION });
     // The row is history — the plan a change was priced with — and it keeps its id and its closure.
-    expect(db.prepare('SELECT id, change_id, outcome, mode, price_usd FROM change_plans').all()).toEqual([
-      { id: 'pln_old', change_id: 'chg_plan', outcome: 'local', mode: null, price_usd: null },
+    expect(
+      db
+        .prepare(
+          'SELECT id, change_id, outcome, mode, price_usd, tier1_verdict, gates_mode, sample_requested FROM change_plans',
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: 'pln_old',
+        change_id: 'chg_plan',
+        outcome: 'local',
+        mode: null,
+        price_usd: null,
+        tier1_verdict: null,
+        gates_mode: null,
+        // BOOK-DOC-80: a plan written before the verification record was never sampled.
+        sample_requested: 0,
+      },
     ]);
-    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
+    expect(planColumns(db)).toEqual([...PLAN_COLUMNS]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 });

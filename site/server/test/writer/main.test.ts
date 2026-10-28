@@ -25,7 +25,7 @@ function errorOf(argv: string[]): string {
 
 describe('parseArgs', () => {
   it('runs once by default', () => {
-    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null, changeId: null });
+    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null, changeId: null, audit: null });
     expect(cliOf(['--once'])).toMatchObject({ mode: 'run', once: true, loop: false });
   });
 
@@ -33,6 +33,15 @@ describe('parseArgs', () => {
     expect(cliOf(['--chapter', '20']).chapter).toBe(20);
     expect(cliOf(['--chapter=20']).chapter).toBe(20);
     expect(cliOf(['--dry-run', '--chapter', '1'])).toMatchObject({ dryRun: true, chapter: 1 });
+  });
+
+  it('takes the sample audit with an optional count, and runs nothing else beside it', () => {
+    // BOOK-DOC-80: `--audit-samples` alone takes the default (3), and `=N` names a count.
+    expect(cliOf(['--audit-samples'])).toMatchObject({ mode: 'audit', audit: null });
+    expect(cliOf(['--audit-samples=5'])).toMatchObject({ mode: 'audit', audit: 5 });
+    expect(cliOf(['--audit-samples', '7'])).toMatchObject({ mode: 'audit', audit: 7 });
+    expect(errorOf(['--audit-samples=0'])).toContain('positive integer');
+    expect(errorOf(['--audit-samples', '--chapter', '9'])).toContain('runs alone');
   });
 
   it('knows the revert and the loop', () => {

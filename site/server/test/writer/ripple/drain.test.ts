@@ -42,7 +42,8 @@ async function landed(before?: (harness: Harness) => void): Promise<Landed> {
       id: string;
     }
   ).id;
-  harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+  // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+  harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
   const result = await harness.run({ lanes: ['fwd'] });
   expect(result.status).toBe('closed');
   const stored = latestPlan(harness.fixture.db, changeId);

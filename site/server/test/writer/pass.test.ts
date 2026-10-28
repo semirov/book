@@ -60,7 +60,7 @@ describe('runPass — one pass, end to end', () => {
       expect(existsSync(chainPath)).toBe(true);
       const written = readFileSync(chainPath, 'utf8');
       expect(written.startsWith('Глава сорок\n\n')).toBe(true);
-      expect(written).toContain('служебный абзац для проверки объёма страницы');
+      expect(written.trim().split('\n\n')).toHaveLength(5);
       expect(existsSync(`${chainPath}.tmp`)).toBe(false);
 
       // 2. The step is closed with the pinned model and the summed tokens (writer + both gates).
@@ -97,7 +97,7 @@ describe('runPass — one pass, end to end', () => {
       expect(landed?.span).toHaveLength(1);
       expect(landed?.span?.[0]?.blockId).toBeNull();
       expect(landed?.span?.[0]?.before).toBe('');
-      expect(landed?.span?.[0]?.after.startsWith('служебный абзац')).toBe(true);
+      expect(landed?.span?.[0]?.after.startsWith(written.split('\n\n')[1]?.slice(0, 20) ?? '—')).toBe(true);
       expect(landed?.tokens).toEqual({ in: 3_000, out: 600 });
       expect(landed?.costUsd).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
       expect(landed?.costUsd).toBeGreaterThan(0);
@@ -139,7 +139,7 @@ describe('runPass — one pass, end to end', () => {
 
       // 8. One log line per stage, each with the stage's own summary — never the prompt.
       expect(harness.logs.filter((line) => line.includes('queued'))).toHaveLength(1);
-      expect(harness.logs.join('\n')).not.toContain('служебный абзац');
+      expect(harness.logs.join('\n')).not.toContain('Труд стена');
       expect(harness.calls).toHaveLength(3);
     } finally {
       await harness.close();

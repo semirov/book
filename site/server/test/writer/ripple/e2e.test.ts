@@ -82,7 +82,8 @@ describe('one ripple end to end', () => {
 
       // 1. The filing and the point patch: the change closes `ripple`, and the frozen plan names
       //    exactly one consequence chapter.
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair (a non-empty closure).
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
       expect((await harness.run({ lanes: ['fwd'] })).status).toBe('closed');
       const stored = latestPlan(db, changeId);
       if (stored === null) throw new Error('the origin landing froze no plan');
@@ -111,6 +112,7 @@ describe('one ripple end to end', () => {
           facts: [],
           note: 'the premise moved',
         }),
+        'HOLDS',
         'HOLDS',
         'HOLDS',
       );

@@ -38,7 +38,9 @@ describe('the plan the engine computes at land', () => {
           id: string;
         }
       ).id;
-      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS');
+      // The patch, the causality judge, the local judge, then the pair: a non-empty closure is a
+      // Tier 2 trigger (BOOK-DOC-80), and the judge of the ripple is asked before either.
+      harness.script.push(statusPatch(harness), 'HOLDS', 'HOLDS', 'HOLDS', 'HOLDS');
 
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
@@ -86,8 +88,10 @@ describe('the plan the engine computes at land', () => {
       expect(changeOf(harness.fixture.db, changeId)).toMatchObject({ status: 'done', outcome: 'applied' });
       const stages = listStages(harness.fixture.db, ORIGIN);
       expect(stages.some((stage) => stage.summary.includes('правка задела'))).toBe(false);
-      // Two gate answers, and no judge call: a local change buys no causality question.
-      expect(harness.calls).toHaveLength(3);
+      // BOOK-DOC-80: an empty closure buys no causality question and no full pair — one local
+      // judge call after the patch, and the record says the change was read locally.
+      expect(harness.calls).toHaveLength(2);
+      expect(harness.engineCalls.filter((call) => call === 'nextGate')).toHaveLength(0);
     } finally {
       await harness.close();
     }

@@ -18,13 +18,12 @@ import { parseChapter } from '../../src/ingest/parseChapter.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { sha256Hex } from '../../src/util/hash.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
+import { inertParagraph } from './inert.ts';
 
 const CHAPTER = 12;
 
 function para(marker: string, chars = 600): string {
-  const head = `${marker} `;
-  const filler = 'Служебный текст для проверки объёма страницы, он не является текстом книги. ';
-  return `${head}${filler.repeat(Math.ceil(chars / filler.length) + 1)}`.slice(0, chars);
+  return inertParagraph(marker, chars);
 }
 
 function chapterFile(harness: Harness): string {
@@ -74,19 +73,13 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       }
       expect(after.title).toBe(before.title);
 
-      // 2. The stages: the read line names the mode, one fact, no new stage name.
+      // 2. The stages: the read line names the mode, and the landed line says which gates judged
+      //    the change — BOOK-DOC-80: an isolated clean patch is read locally, so the pair never
+      //    speaks and Gate B is the one verdict (a clean scan, no model call).
       const stages = listStages(harness.fixture.db, CHAPTER);
-      expect(stages.map((stage) => stage.stage)).toEqual([
-        'queued',
-        'read',
-        'drafting',
-        'drafting',
-        'verdict',
-        'verdict',
-        'verdict',
-        'landed',
-      ]);
+      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict', 'landed']);
       expect(stages[1]?.summary).toContain('режим: правка (заявка про фразу)');
+      expect(stages.at(-1)?.summary).toContain('гейты: локально');
 
       // 3. The transcript: the mode, the prefix every call was sent under, the patch's numbers.
       const transcript = JSON.parse(
@@ -95,9 +88,15 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
         mode: string;
         cachePrefix: string;
         patch: { edits: number; changedChars: number; fraction: number; facts: number };
+        gates: { gatesMode: string; why: string | null; tier1Verdict: string | null; tier1Usd: number | null; line: string };
         calls: Array<{ kind: string; system: string; prefixSha256: string; cachedIn: number }>;
       };
       expect(transcript.mode).toBe('patch');
+      // BOOK-DOC-80: the record is not silent about the gates it did not run.
+      expect(transcript.gates.gatesMode).toBe('local only');
+      expect(transcript.gates.tier1Verdict).toBe('HOLDS');
+      expect(transcript.gates.line).toBe('gates: local only');
+      expect(transcript.gates.tier1Usd).toBeGreaterThan(0);
       expect(transcript.cachePrefix).toMatch(/^[0-9a-f]{64}$/u);
       expect(transcript.patch.edits).toBe(1);
       expect(transcript.patch.facts).toBe(1);
@@ -109,9 +108,18 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       expect(draft?.prefixSha256).toBe(transcript.cachePrefix);
       for (const call of transcript.calls) expect(call.prefixSha256).toBe(sha256Hex(call.system));
 
-      // 4. The close: the change settled as applied, and only one writer call was made.
+      // 4. The close: the change settled as applied, and exactly one model call was made after
+      //    the patch — the local judge. No editor, no consultant (BOOK-DOC-80).
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('rewritten');
-      expect(harness.calls.map((call) => call.messages.length)).toEqual([2, 2, 2]);
+      expect(harness.calls.map((call) => call.messages.length)).toEqual([2, 2]);
+      expect(transcript.calls.map((call) => call.kind)).toEqual(['draft', 'tier1']);
+      const record = harness.fixture.db
+        .prepare('SELECT gates_mode, tier1_verdict, tier1_usd, sample_requested FROM change_plans')
+        .get() as { gates_mode: string; tier1_verdict: string; tier1_usd: number; sample_requested: number };
+      expect(record.gates_mode).toBe('local only');
+      expect(record.tier1_verdict).toBe('HOLDS');
+      expect(record.tier1_usd).toBe(transcript.gates.tier1Usd);
+      expect(record.sample_requested).toBe(0);
     } finally {
       await harness.close();
     }

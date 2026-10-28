@@ -115,6 +115,17 @@ CREATE TABLE IF NOT EXISTS change_plans (
   -- BOOK-173 §4: the estimate frozen at planning, replaced by the pass's actual at close. Null
   -- means «never priced», never «free» — the same rule cost_priced follows (BOOK-23).
   price_usd    REAL,
+  -- BOOK-173, BOOK-DOC-80: the record of the verification a «local only» change got. gates_mode
+  -- says whether the full pair read the chapter («full») or only the local judge did — and the
+  -- sample's own word changes it to «local_only_rechecked» when the editor later disagreed, so the
+  -- row never keeps claiming a clean read it no longer has. tier1_usd is the judge's own price
+  -- (null = not priced); sample_requested / sampled_at / sample_verdict are the safeguard's queue.
+  tier1_verdict    TEXT CHECK (tier1_verdict IN ('HOLDS','GAP','UNSURE','TIER1_UNPARSED')),
+  tier1_usd        REAL,
+  gates_mode       TEXT CHECK (gates_mode IN ('local only','full','local_only_rechecked')),
+  sample_requested INTEGER NOT NULL DEFAULT 0,
+  sampled_at       TEXT,
+  sample_verdict   TEXT CHECK (sample_verdict IN ('ok','gap','error')),
   closure      TEXT NOT NULL,
   patches      TEXT NOT NULL,
   bounds       TEXT NOT NULL,

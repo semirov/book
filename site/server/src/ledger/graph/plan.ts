@@ -40,7 +40,19 @@ export const RIPPLE_MAX_ITERATIONS = 4;
 
 export type PlanOutcome = 'local' | 'ripple' | 'wide';
 
-export type PlanSeed = { factId: string; chapter: number; blockId: string | null; changed: Component[] };
+export type PlanSeed = {
+  factId: string;
+  chapter: number;
+  blockId: string | null;
+  changed: Component[];
+  /**
+   * The fact's own claim, verbatim — the same `statement` a node carries. The local judge
+   * (`writer/verify/tier1.ts`) needs the claims of the facts **inside** the changed paragraphs, and
+   * a seed is one of them; without the quote it would be shown an id and asked whether the prose
+   * keeps it. Optional because a plan frozen before this field has none.
+   */
+  quote?: string;
+};
 
 export type PlanNode = {
   factId: string;
@@ -201,6 +213,7 @@ export function buildPlan(input: BuildPlanInput): RipplePlan {
       chapter: fact.chapter,
       blockId: blocks.get(fact.id) ?? null,
       changed: [...(wanted.changed ?? measured)].sort(),
+      quote: statements.get(fact.id) ?? '',
     });
   }
   seeds.sort((left, right) => compare(left.factId, right.factId));
