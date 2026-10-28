@@ -19,7 +19,7 @@ import type { Db } from '../db/db.ts';
 import { computeShares } from '../history/erosion.ts';
 import { publicAlias } from '../util/alias.ts';
 
-type IdentityRow = { id: string; display_name: string; hide_from_authors: number };
+type IdentityRow = { id: string; display_name: string; hide_from_authors: number; is_author: number };
 
 /** The oldest queued change of a reader, used when the nightly projection has no row yet. */
 function firstChangeAt(db: Db, identityId: string): string | null {
@@ -63,7 +63,7 @@ function firstAt(db: Db, identityId: string, projected: Map<string, string>): st
 export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
   const { totalChars, items } = computeShares(db);
   const identities = db
-    .prepare('SELECT id, display_name, hide_from_authors FROM identities')
+    .prepare('SELECT id, display_name, hide_from_authors, is_author FROM identities')
     .all() as IdentityRow[];
   const byId = new Map(identities.map((row) => [row.id, row]));
 
@@ -83,6 +83,10 @@ export function readAuthors(db: Db, authorLabel: string): AuthorsDto {
     // §6C.5 rule 5: an opt-out is neither listed nor named. The edits stay attributed to an
     // anonymous id in the log; the list simply does not publish the reader.
     if (identity === undefined || identity.hide_from_authors === 1) continue;
+    // The author's own identity is a reader, but the byline already names him: listing it would
+    // print the same person twice («Филипп Семиров + 1» with the +1 being him). His edits still
+    // count — he is the remainder, so his characters fold into `author.chars` below.
+    if (identity.is_author === 1) continue;
     contributors.push({
       identityId: item.identityId,
       label: identity.display_name,

@@ -83,6 +83,11 @@ export type MyTraceDto = {
   /** The measured days, not a curve drawn between two numbers. */
   series: ContributorPointDto[];
   hidden: boolean;
+  /**
+   * 1 = this reader is the imprint's author (owner, 2026-10-28). He keeps his trace and his
+   * filings, but no opt-out control: the marker is structural, and a toggle would be a lie.
+   */
+  isAuthor: boolean;
   survivedRevisions: number;
 };
 

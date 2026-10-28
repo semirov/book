@@ -49,6 +49,7 @@ export function readMyTrace(db: Db, identityId: string): MyTraceDto {
     share: totalChars === 0 ? 0 : floorShare(chars / totalChars),
     series: readSeries(db, identityId),
     hidden: identity?.hide_from_authors === 1,
+    isAuthor: identity?.is_author === 1,
     survivedRevisions: survivedRevisions(db, identityId),
   };
 }

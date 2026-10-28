@@ -12,6 +12,7 @@ function trace(overrides: Partial<MyTraceDto> = {}): MyTraceDto {
     share: 0.004,
     series: [],
     hidden: false,
+    isAuthor: false,
     survivedRevisions: 4,
     ...overrides,
   };
@@ -59,6 +60,26 @@ describe('the reader’s own trace (BOOK-DOC-4)', () => {
     expect(hidden).toContain('вернуть в список');
     expect(hidden).toContain('вас нет в списке авторов');
     expect(hidden).toContain('история и доля сохранены');
+  });
+
+  it('gives the author no opt-out: the marker is structural, not a preference', () => {
+    const author = renderToStaticMarkup(
+      <OwnTrace trace={trace({ isAuthor: true })} onToggleHidden={() => undefined} />,
+    );
+    // He keeps his line, his edits and his share — he is a reader for everything but the name.
+    expect(author).toContain('пережила 4 ревизии, сейчас 0,4 %');
+    expect(author).toContain('правок: 3');
+    expect(author).not.toContain('скрыть из списка авторов');
+    expect(author).not.toContain('вернуть в список');
+    // Whatever his own opt-out says, the end matter offers no way to «return» him.
+    const hiddenAuthor = renderToStaticMarkup(
+      <OwnTrace trace={trace({ isAuthor: true, hidden: true })} onToggleHidden={() => undefined} />,
+    );
+    expect(hiddenAuthor).not.toContain('вернуть в список');
+
+    // A non-author keeps the toggle exactly as today.
+    const reader = renderToStaticMarkup(<OwnTrace trace={trace()} onToggleHidden={() => undefined} />);
+    expect(reader).toContain('скрыть из списка авторов');
   });
 
   it('has one sentence for the line, so the page and the test cannot drift', () => {

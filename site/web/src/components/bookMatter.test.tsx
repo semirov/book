@@ -111,8 +111,8 @@ describe('cover', () => {
     // A count of nothing is not a count: on the empty book the author stands alone, and «+ 0»
     // — a chip that counts nothing — is gone.
     expect(coverHtml()).not.toContain('+ 0');
-    expect(coverHtml()).toContain('<p class="author">Филипп Семиров</p>');
-    expect(textOf(coverHtml())).not.toContain('+');
+    // The author alone: the byline is the name and nothing after it (the uppercase is CSS).
+    expect(coverHtml().match(/<p class="author">[^<]*<\/p>/u)?.[0]).toBe('<p class="author">Филипп Семиров</p>');
 
     const three = renderToStaticMarkup(
       <TitleSheet front={{ ...front, authors: { count: 3, measuredAt: '2026-10-25T12:00:05Z' } }} />,

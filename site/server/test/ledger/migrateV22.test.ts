@@ -152,8 +152,8 @@ describe('migration v22 — the ledger on an upgraded install', () => {
       'ledger_gap',
     );
 
-    expect(migrate(db)).toEqual({ from: 21, to: 22 });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(22);
+    expect(migrate(db)).toEqual({ from: 21, to: 23 });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(23);
     expect((db.pragma('table_info(block_versions)') as Array<{ name: string }>).map((c) => c.name)).toEqual(
       expect.arrayContaining(['spans', 'text']),
     );
@@ -217,7 +217,7 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     expect(db.pragma('foreign_key_check')).toEqual([]);
 
     // A second boot has nothing to do: no new version, no rewritten span.
-    expect(migrate(db)).toEqual({ from: 22, to: 22 });
+    expect(migrate(db)).toEqual({ from: 23, to: 23 });
     expect(db.prepare('SELECT COUNT(*) AS n FROM blocks').get()).toEqual(counts.blocks);
     expect(db.prepare('SELECT COUNT(*) AS n FROM block_versions').get()).toEqual(counts.versions);
     expect(latestSpans(db).map((row) => row.spans)).toEqual(counts.spans);
