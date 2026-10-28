@@ -122,7 +122,14 @@ require_fresh_backup() {
     newest="$(find "$BACKUP_ROOT/daily" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort | tail -n 1 || true)"
   fi
   [ -n "$newest" ] || die "no backup under $BACKUP_ROOT/daily — run site/deploy/backup.sh first"
-  mtime="$(stat -f %m "$newest" 2>/dev/null || stat -c %Y "$newest" 2>/dev/null || echo 0)"
+  # GNU first, BSD second. The order is not cosmetic: on GNU coreutils `stat -f` means "filesystem
+  # status", so `%m` is taken as a FILE NAME and the directory's filesystem report goes to stdout —
+  # `$(( ))` then read `File:` as an arithmetic variable and the script died with `File: unbound
+  # variable` before every flip assertion (the Gate runner, Debian). BSD `stat -c` fails with no
+  # stdout, so the other order is quiet on macOS. Whatever comes back is validated as digits, so no
+  # future tool output can reach the arithmetic at all.
+  mtime="$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest" 2>/dev/null || echo 0)"
+  case "$mtime" in ''|*[!0-9]*) mtime=0 ;; esac
   age=$(( now - mtime ))
   [ "$age" -le "$BACKUP_MAX_AGE" ] || die "the newest backup ($(basename "$newest")) is ${age}s old (limit ${BACKUP_MAX_AGE}s) — run site/deploy/backup.sh first"
   say "backup: $(basename "$newest") is ${age}s old (limit ${BACKUP_MAX_AGE}s)"
@@ -184,7 +191,7 @@ write_runtime() { mkdir -p "$STATE_DIR"; printf '%s\n' "$1" >"$RUNTIME_FILE"; sa
 to_compose() {
   local before="" code=0
   before="$(health_commit)"
-  say "current prod answers commit ${before:-none} at ${SITE_URL}"
+  say "current prod answers ${before:+commit }${before:-no commit reported by the endpoint} at ${SITE_URL}"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     say "dry run: would check the backup, create $LOCKS_DIR, take $LOCK_DIR (exit 3 if a deploy holds it),"
