@@ -194,7 +194,8 @@ describe('M3 acceptance — a killed engine', () => {
       fixture.engine.start(assignment.leaseId);
       fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.', 'Это служебный текст.']);
       const landed = fixture.engine.land(assignment.leaseId);
-      expect(landed.revAfter).toBe(1);
+      // The seeded chapter is revision 1; the landing publishes 2.
+      expect(landed.revAfter).toBe(2);
 
       const editor = fixture.engine.next({ role: 'editor', session: 'editor-1' }) as GateAssignment;
       fixture.engine.verdict(editor.stepId, {
@@ -258,23 +259,29 @@ describe('M3 acceptance — a killed engine', () => {
     }
   });
 
-  it('takes a write that landed before the session died as landed, and re-issues one that did not', () => {
+  it('invents nothing for a session that died before `land`, and re-issues the job', () => {
     const fixture = createEngineFixture({
       chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
     });
     try {
-      // A session writes and dies before `land`; the lease expires.
+      // A session dies holding its answer in memory: since BOOK-187 the text reaches the DB
+      // only through `land`, so there is nothing on disk to recover and nothing to invent.
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'среда вместо четверга' });
       const a = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       fixture.engine.start(a.leaseId);
       fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
+      const revisionsBefore = fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get() as { n: number };
       fixture.clock.advance(fixture.config.leaseTtlMs + 1_000);
       const report = fixture.engine.reap();
-      expect(report.recovered).toEqual([a.stepId]);
+      expect(report.recovered).toEqual([]);
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get()).toEqual(revisionsBefore);
 
       const after = fixture.engine.next({ for: 'fwd', session: 'writer-2' }) as WriterAssignment;
       expect(after.stepId).toBe(a.stepId);
-      expect(after.landed).toBe(true);
+      expect(after.landed).toBe(false);
+      // The second session brings its own text and lands it.
+      fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
+      expect(fixture.engine.land(after.leaseId).changed).toBe(true);
 
       // A second change whose session dies *before* writing: the job is re-issued, not lost.
       const editor = fixture.engine.next({ role: 'editor', session: 'editor-1' }) as GateAssignment;

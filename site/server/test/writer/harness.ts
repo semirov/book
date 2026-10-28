@@ -2,8 +2,9 @@
  * The writer lane's harness: a real engine, a real control API on a loopback port, a real engine
  * client, and a **scripted provider** — no network, no model, no key beyond a temp file.
  *
- * The engine fixture writes nothing to `manuscript/` except through a scripted session, exactly
- * as the engine does; here it is the writer lane that writes, which is what the tests check.
+ * Since BOOK-187 nobody writes a manuscript: the engine fixture seeds chapters as rows, and the
+ * writer lane sends its answer to `land`. A test that finds a `manuscript/` under the fixture root
+ * is a regression, and several of them assert exactly that.
  */
 
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,6 @@ import type { AddressInfo } from 'node:net';
 
 import type { BudgetDto, WriterAssignment } from '@book/shared';
 
-import { applyChapterFile } from '../../src/ingest/applyChapter.ts';
 import { buildControl } from '../../src/engine/control.ts';
 import { admitPremise } from '../../src/engine/premise.ts';
 import { newChangeId } from '../../src/util/ulid.ts';
@@ -89,8 +89,6 @@ export type Harness = {
   env: NodeJS.ProcessEnv;
   tokenFile: string;
   provider: PassDeps['provider'];
-  /** The watcher's half: publish a chapter file that is already on disk as a revision. */
-  ingest(chapter: number): void;
   assignment(chapter: number, session?: string): WriterAssignment;
   premised(chapter: number, intent: string): string;
   /**
@@ -201,18 +199,6 @@ export async function createHarness(options: { chapters?: Record<number, string>
     env: writerEnv,
     tokenFile,
     provider,
-    ingest: (chapter) => {
-      const raw = fixture.readChapter(chapter);
-      if (raw === null) throw new Error(`no chapter ${String(chapter)} on disk to ingest`);
-      applyChapterFile({
-        db: fixture.db,
-        dataDir: fixture.dataDir,
-        n: chapter,
-        raw,
-        mtimeMs: fixture.clock.now(),
-        nowMs: fixture.clock.now(),
-      });
-    },
     assignment: (chapter, session = 'writer-test') => fixture.engine.openChapterPass(chapter, session) as WriterAssignment,
     premised: (chapter, intent) => {
       // The owner's intervention on an empty slot: base_rev 0, no anchor, no FIFO lane (BOOK-7).

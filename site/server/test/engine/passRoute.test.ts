@@ -114,7 +114,7 @@ describe('POST /internal/pass — a first pass for one named chapter (BOOK-117 �
   it('refuses CHAPTER_WRITTEN for a chapter that already has prose', () => {
     const fixture = createEngineFixture();
     try {
-      fixture.writeChapterBlocks(40, 'Глава 40', ['Пятая глава уже написана.', 'Служебный абзац.']);
+      fixture.seedChapterBlocks(40, 'Глава 40', ['Пятая глава уже написана.', 'Служебный абзац.']);
       expect(codeOf(() => fixture.engine.openChapterPass(40, 'writer-seed'))).toBe('CHAPTER_WRITTEN');
       expect(stepCount(fixture)).toEqual({ n: 0 });
     } finally {

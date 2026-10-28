@@ -1,13 +1,18 @@
 /**
- * `start` and `land` — the two calls that touch a file (ARCHITECTURE.md §6A.4 steps 2–4,
- * §6A.11, §6B.2).
+ * `start` and `land` — the two calls that touch the book's text (ARCHITECTURE.md §6A.4 steps
+ * 2–4, §6A.11, §6B.2).
  *
  * `start` is where the writer answers relevance (adapt/drop/void) and where the engine
  * captures the pre-image: the sha it must see change, and the block hashes the delta check
- * compares against. `land` is the only way a write becomes a fact: the engine reads the file
- * itself, refuses an empty chapter, refuses a malformed first sheet, and drops gate verdicts
- * that were given about the previous revision. A re-land of the same content is a no-op, so a
- * retried call cannot duplicate a revision.
+ * compares against. Both come from rows.
+ *
+ * `land` is the only way a write becomes a fact, and since BOOK-187 the text travels **in the
+ * request**: the writer holds the chapter in memory and sends it, so nothing is read from or
+ * written to `manuscript/`. The engine still refuses an empty chapter, a malformed first sheet
+ * and a moved frame, still drops gate verdicts given about the previous revision, and a re-land
+ * of the same content is still a no-op — the ingest is idempotent by sha, so a retried call
+ * cannot duplicate a revision. Without a `text` the call re-lands the rows the site already
+ * serves; it never falls back to a file.
  */
 
 import {
@@ -23,6 +28,8 @@ import {
 import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
 import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
 import { frameIntact } from '../ingest/frameGuard.ts';
+import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
+import { parseFront } from '../ingest/parseFront.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
@@ -33,7 +40,7 @@ import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
-import { isWrittenChapter, readChapter, readFront } from './text.ts';
+import { isWrittenChapter, readChapterRows, readFrontRows, type ChapterText, type FrontText } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export type StartOptions = {
@@ -45,7 +52,18 @@ export type StartOptions = {
   now?: number;
 };
 
-export type LandOptions = { noWrite?: boolean; rev?: number; now?: number };
+export type LandOptions = {
+  /**
+   * The writer's own text, held in memory and sent with the request (BOOK-187). Absent means
+   * «re-land the rows»: the same call without a body text, never a file read.
+   */
+  text?: string;
+  /** The first sheet's whole text, for a `front` step — the same rule as `text`. */
+  frontRaw?: string;
+  noWrite?: boolean;
+  rev?: number;
+  now?: number;
+};
 
 export type LandResult = {
   landed: true;
@@ -67,41 +85,39 @@ type IngestOutcome = { rev: number | null; changed: boolean; frameRejected: bool
 
 /**
  * §6F.1: a landing is a revision, and a revision exists in the same transaction as its log
- * entry. `land` therefore publishes the file it just validated through the same ingest the
- * watcher uses — one choke point, so an engine run and an observed write cannot disagree.
- * The ingest is idempotent by sha: if the watcher got there first, it returns `unchanged`.
+ * entry. `land` therefore publishes the text it validated through the same applier the
+ * one-shot import uses — one choke point, so a writer's landing and an observed write cannot
+ * disagree. The ingest is idempotent by sha: a second landing of the same text returns
+ * `unchanged` and publishes nothing.
  */
 function ingestLanding(
   deps: EngineDeps,
   step: store.StepRow,
   at: number,
+  raw: string,
 ): IngestOutcome {
   const dataDir = deps.config.dataDir;
   if (step.pass === 'front') {
-    const front = readFront(deps.bookRoot);
-    if (!front.exists) return { rev: null, changed: false, frameRejected: false };
     const result: ApplyFrontResult = applyFrontFile({
       db: deps.db,
       dataDir,
-      raw: front.raw,
+      raw,
       mtimeMs: at,
       nowMs: at,
     });
     return { rev: result.rev, changed: result.status !== 'unchanged', frameRejected: false };
   }
   if (step.chapter === null) return { rev: null, changed: false, frameRejected: false };
-  const chapter = readChapter(deps.bookRoot, step.chapter);
-  if (!chapter.exists) return { rev: null, changed: false, frameRejected: false };
   const result: ApplyChapterResult = applyChapterFile({
     db: deps.db,
     dataDir,
     n: step.chapter,
-    raw: chapter.raw,
+    raw,
     mtimeMs: at,
     nowMs: at,
   });
-  // BOOK-137: the second read is weaker than the guard's. Nothing was published, and the caller
-  // must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
+  // BOOK-137: the applier's own read is weaker than the guard's. Nothing was published, and the
+  // caller must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
   if (result.status === 'frame-rejected') return { rev: null, changed: false, frameRejected: true };
   if (result.status === 'created' || result.status === 'revised') {
     return { rev: result.rev, changed: true, frameRejected: false };
@@ -110,8 +126,27 @@ function ingestLanding(
   return { rev: null, changed: false, frameRejected: false };
 }
 
+/**
+ * The target of a landing. With a text in the request it is that text, parsed exactly as the
+ * applier will parse it; without one it is the rows, so a repeated call re-lands what the site
+ * already serves. `exists: false` only when neither holds anything.
+ */
+function chapterTarget(db: EngineDeps['db'], n: number, supplied: string | undefined): ChapterText {
+  if (supplied === undefined) return readChapterRows(db, n);
+  const raw = normalizeChapterText(supplied);
+  // A supplied (even empty) text is a target: an empty one fails `isWrittenChapter` as
+  // `NOT_WRITTEN`, which is the answer an empty file gave before BOOK-187.
+  return { ...parseChapter(n, raw), exists: true, raw };
+}
+
+function frontTarget(db: EngineDeps['db'], supplied: string | undefined): FrontText {
+  if (supplied === undefined) return readFrontRows(db);
+  const raw = normalizeChapterText(supplied);
+  return { ...parseFront(raw), exists: true, raw };
+}
+
 export function createWriteOps(deps: EngineDeps) {
-  const { db, bookRoot } = deps;
+  const { db } = deps;
   const iso = (ms: number): string => toIso(ms);
 
   const leaseStep = (leaseId: string): { lease: store.LeaseRow; step: store.StepRow } => {
@@ -197,8 +232,8 @@ export function createWriteOps(deps: EngineDeps) {
       return { leaseId, landed: true, revAfter: step.rev_after, sha: step.landed_sha, changed: false };
     }
 
-    const front = step.pass === 'front' ? readFront(bookRoot) : null;
-    const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
+    const front = step.pass === 'front' ? readFrontRows(db) : null;
+    const chapter = step.pass === 'front' || step.chapter === null ? null : readChapterRows(db, step.chapter);
     if (step.pass === 'front' && !front?.exists) refuse('FRONT_MISSING', 409, 'the first sheet does not exist yet');
     // A draft starts from nothing; every other pass revises text that must already exist.
     // A basis-only slot (ch01/ch42) is that same nothing — its frozen sentence is not prose.
@@ -243,10 +278,14 @@ export function createWriteOps(deps: EngineDeps) {
       refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
     }
 
-    const front = step.pass === 'front' ? readFront(bookRoot) : null;
-    const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
+    const supplied = step.pass === 'front' ? options.frontRaw : options.text;
+    const front = step.pass === 'front' ? frontTarget(db, supplied) : null;
+    const chapter =
+      step.pass === 'front' || step.chapter === null ? null : chapterTarget(db, step.chapter, supplied);
     const target = step.pass === 'front' ? front : chapter;
-    if (target === null || target.sha256 === '') refuse('TARGET_MISSING', 409, 'the step has no file to land');
+    if (target === null || target.sha256 === '') {
+      refuse('TARGET_MISSING', 409, 'the step has no text to land');
+    }
 
     if (options.noWrite === true) {
       if (step.pass === 'draft') refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
@@ -301,7 +340,7 @@ export function createWriteOps(deps: EngineDeps) {
         });
       }
     } else if (chapter === null || !isWrittenChapter(chapter)) {
-      refuse('NOT_WRITTEN', 409, 'the file was not written (or holds no paragraphs)');
+      refuse('NOT_WRITTEN', 409, 'the chapter was not written (or holds no paragraphs)');
     } else if (chapter.chars < CHAPTER_CHARS.floor) {
       // Canon: the floor is a limit, not a hint, and this is the second choke point (the
       // validator is the first). A basis-only slot never reaches this branch — it is not a
@@ -316,7 +355,7 @@ export function createWriteOps(deps: EngineDeps) {
       refuse('CHAPTER_TOO_LONG', 409, `chapter is ${chapter.chars} characters; the maximum is ${CHAPTER_CHARS.max} (F007)`);
     }
 
-    // BOOK-137: before the file becomes a revision, the frame must be the frame. The refusal
+    // BOOK-137: before the text becomes a revision, the frame must be the frame. The refusal
     // names the rule and says what happens instead — the filing stays paperwork.
     if (step.pass !== 'front' && step.chapter !== null && chapter !== null && !frameIntact(step.chapter, chapter.raw)) {
       refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE);
@@ -353,17 +392,20 @@ export function createWriteOps(deps: EngineDeps) {
     }
     const measured = measureDelta(step, chapter?.blocks ?? []);
     const changedFromStart = step.start_sha === null || sha !== step.start_sha;
-    // The revision is published here, with its `hseq` and its cause (§6F.1, §6F.2).
-    const ingested: IngestOutcome = changedFromStart
-      ? ingestLanding(deps, step, at)
-      : { rev: null, changed: false, frameRejected: false };
-    // BOOK-137, second read: the guard above read the file once and the ingest reads it again,
-    // so a file that moved in between publishes nothing. The guard's question is asked of the
-    // file as it stands now — the detail says whether it already flipped back — and the step
+    // The revision is published here, with its `hseq` and its cause (§6F.1, §6F.2). Only a text
+    // the step brought is published: without one the rows already hold their revision, and
+    // re-applying the rows' own canonical text would invent a second one for the same prose.
+    const ingested: IngestOutcome =
+      supplied !== undefined && changedFromStart
+        ? ingestLanding(deps, step, at, target.raw)
+        : { rev: null, changed: false, frameRejected: false };
+    // BOOK-137, second read: the guard above read the text once and the applier reads it again,
+    // so a text that moved in between publishes nothing. The guard's question is asked of the
+    // target as it stands now — the detail says whether it already flipped back — and the step
     // records no revision at all: inventing a `revAfter` here would call a landing a revision
     // the site never served.
     if (ingested.frameRejected && step.chapter !== null) {
-      const fresh = readChapter(bookRoot, step.chapter);
+      const fresh = chapterTarget(db, step.chapter, supplied);
       refuse('FRAME_CHANGED', 409, FRAME_CHANGED_MESSAGE, {
         intact: frameIntact(step.chapter, fresh.raw),
       });

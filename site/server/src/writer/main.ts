@@ -228,8 +228,6 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     try {
       outcome = await revertChapter({
         chapter: cli.chapter ?? 0,
-        bookRoot,
-        dataDir,
         engine: engineOf(),
         dryRun: cli.dryRun,
         log,
@@ -249,6 +247,8 @@ export async function main(deps: MainDeps = {}): Promise<number> {
       log(`[writer] dry-run: книга ${bookRoot}, данные ${dataDir}`);
       return 0;
     }
+    // A dry run has no engine of its own (the usage line below promises no engine call), so the
+    // prompt is built as if nothing had been written yet: it shows the shape, not the rows.
     const plan = dryRunPlan({ bookRoot, chapter: cli.chapter });
     log(JSON.stringify({ dryRun: true, assignment: plan.assignment }, null, 2));
     log(`[writer] dry-run ${plan.summary}; модель не звана, файлы не тронуты`);

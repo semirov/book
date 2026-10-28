@@ -83,17 +83,8 @@ describe('a closed change speaks once about a moved document (BOOK-18 §3)', () 
   });
 
   it('emits nothing when the pre-image is unavailable: a lost snapshot is not «everything appeared»', () => {
-    // (a) The chapter was never projected: rev_before is 0, so there is nothing to compare.
-    const never = createEngineFixture({ chapters: { 2: chapterText('Глава 2', [ISSUED]) } });
-    try {
-      never.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'изменить статус' });
-      runStubStep(never, { title: 'Глава 2', blocks: [ANNULLED] });
-      expect(statementRows(never.db)).toHaveLength(0);
-    } finally {
-      never.close();
-    }
-
-    // (b) The projection says rev 1 but the snapshot file is gone: same silence.
+    // BOOK-187: a chapter the site has never served cannot carry a change at all (the filing
+    // becomes a premise), so the only «no pre-image» left is a row whose snapshot is gone.
     const lostSnapshot = createEngineFixture({ chapters: { 2: chapterText('Глава 2', [ISSUED]) } });
     try {
       publishSources(lostSnapshot);
@@ -145,7 +136,7 @@ describe('a closed change speaks once about a moved document (BOOK-18 §3)', () 
              VALUES (?, ?, ?, 'forward', ?, 0, 'cascade', 'w', 1, ?, ?, ?, ?)`,
           )
           .run(`lea_book18_${chapter}`, stepId, change.id, chapter, at, at, at, at);
-        fixture.writeChapterBlocks(chapter, `Глава ${chapter}`, ['Приказ № 4 отозван утром.']);
+        fixture.seedChapterBlocks(chapter, `Глава ${chapter}`, ['Приказ № 4 отозван утром.']);
       }
       publishIndexNotices(fixture.deps, changeOf(fixture, change.id), fixture.clock.now());
 

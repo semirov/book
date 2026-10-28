@@ -2,11 +2,15 @@
  * One writer pass, end to end (`docs/writer-lane.md` §1, §5–§6).
  *
  * ```
- * state → money guard (estimate vs the caps) → assignment → queued → start → pre-snapshot
- *   → prompt → read → belt (re-estimate the real prompt) → model call(s) → validate (one retry
- *   with the reason) → continuation calls → atomic write → land → gates (verdict ×2, at most one
- *   revision cycle) → landed → done
+ * state → money guard (estimate vs the caps) → assignment → queued → start → prompt (rows)
+ *   → read → belt (re-estimate the real prompt) → model call(s) → validate (one retry with the
+ *   reason) → continuation calls → land (the text travels in the request) → gates (verdict ×2, at
+ *   most one revision cycle) → landed → done
  * ```
+ *
+ * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
+ * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
+ * and no pre-image to keep.
  *
  * Everything the pass touches is injected: the engine client, the model transport, the clock and
  * the logger. The pass holds no database, no socket and no key of its own; the talking lives in
@@ -24,18 +28,16 @@
  * writer's own tokens only, because the engine adds each gate's from its verdict rows.
  */
 
-import { readFileSync } from 'node:fs';
-
 import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
-import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
+import { isWrittenView } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, finalize, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
-import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { continueDraft, draftAnswer } from './answer.ts';
 import { rightsRefusal } from './rightsGate.ts';
@@ -121,7 +123,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       return { status: 'refused', reason: 'dry-run нужен --chapter: слот полосы известен только после вызова движка' };
     }
     try {
-      deps.log(`[writer] dry-run ${dryRunPlan({ bookRoot, chapter }).summary}: ничего не открыто, модель не звана, файлы не тронуты`);
+      deps.log(`[writer] dry-run ${dryRunPlan({ bookRoot, chapter }).summary}: ничего не открыто, модель не звана, текст не тронут`);
       return { status: 'refused', reason: 'dry-run: проход не запускался' };
     } catch (error) {
       return { status: 'refused', reason: reasonOf(error) };
@@ -274,23 +276,20 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
-      try {
-        lane.preSnapshot(now());
-      } catch {
-        return await lane.park({ detail: 'не удалось сохранить снимок главы перед проходом' });
-      }
-      beforeText = readChapter(bookRoot, chapter).exists ? readFileSync(chapterPath(bookRoot, chapter), 'utf8') : '';
 
-      // 5. The prompt, and the stage that says it was assembled.
+      // 5. The prompt, and the stage that says it was assembled. The text is read from rows, in
+      //    one call: the target and its two neighbours are everything a prompt may quote.
       let built: BuiltPrompt;
       try {
-        built = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
+        await lane.loadText([chapter - 1, chapter, chapter + 1]);
+        beforeText = chapterQuote(lane.textOf(chapter));
+        built = buildWriterPrompt({ bookRoot, assignment: assignmentData(job), chapterText: lane.textOf });
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
       lane.setPrompt(built.sections.length, built.promptSha256);
       const neighbours = [chapter - 1, chapter + 1].filter(
-        (n) => isChapterNumber(n) && isWrittenChapter(readChapter(bookRoot, n)),
+        (n) => isChapterNumber(n) && isWrittenView(lane.textOf(n)),
       );
       await lane.emit({
         stage: 'read',
@@ -346,14 +345,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       text = finalize(checked.text);
       text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax }, deps.log);
 
-      // 8. The write, and the landing that makes it a revision.
+      // 8. The landing that makes the answer a revision — the text travels, no file is touched.
       try {
-        lane.writeText(text);
-      } catch {
-        return await lane.park({ detail: 'не удалось записать главу' });
-      }
-      try {
-        await lane.land();
+        await lane.land(text);
       } catch (error) {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
@@ -362,13 +356,17 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       answered.consultant = false;
       answered.rights = false;
     } else {
-      // A resumed step: this file is the pre-image of a revision the gates may ask for below.
-      if (!readChapter(bookRoot, chapter).exists) {
-        return await lane.park({ detail: 'текста главы нет на диске — проход не возобновить' });
+      // A resumed step: the rows hold the landed text the gates may ask for below.
+      try {
+        await lane.loadText([chapter]);
+      } catch (error) {
+        return await lane.park(failureOf(error));
       }
-      text = readFileSync(chapterPath(bookRoot, chapter), 'utf8');
+      if (!lane.textOf(chapter).exists) {
+        return await lane.park({ detail: 'текста главы нет в базе — проход не возобновить' });
+      }
+      text = chapterQuote(lane.textOf(chapter));
       beforeText = text;
-      lane.preSnapshot(now());
     }
 
     // 9. The gates: editor, then consultant; at most one revision cycle for the whole pass.

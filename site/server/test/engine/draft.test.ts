@@ -69,8 +69,8 @@ describe('the owner’s writing switch (§6A.9, BOOK-6)', () => {
     const fixture = createEngineFixture({ env: { DRAFTING: 'off' } });
     try {
       // The owner's state: ch01 and the last chapter hold only their basis sentence.
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
 
       expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toBeNull();
       expect(fixture.engine.next({ for: 'bwd', session: 'bwd-1' })).toBeNull();

@@ -102,7 +102,8 @@ describe('main', () => {
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch20.md'))).toBe(true);
+      expect(harness.fixture.readChapter(20)).not.toBeNull();
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
       expect(lines.some((line) => line.includes('queued'))).toBe(true);
       const state = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'state.json'), 'utf8')) as {
         date: string;
@@ -149,20 +150,22 @@ describe('main', () => {
 
 describe('main — --revert and --dry-run', () => {
   it('reverts a landed chapter and exits 0', async () => {
-    const harness = await createHarness();
+    const base = chapterAnswer('Глава двадцать', 'исходный');
+    const harness = await createHarness({ chapters: { 20: base } });
     try {
-      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
-      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // A change over a chapter that already exists: the pass publishes revision 2, the revert
+      // brings revision 1 back as revision 3 (BOOK-187).
+      harness.fixture.engine.enqueue({ kind: 'operator', chapter: 20, intent: 'в главе 20 появляется документ' });
+      harness.script.push(chapterAnswer('Глава двадцать', 'новый'), 'HOLDS', 'HOLDS');
       const first = await main({
-        argv: ['--once', '--chapter', '20'],
+        argv: ['--once'],
         env: harness.env,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
         log: () => undefined,
       });
       expect(first).toBe(0);
-      const target = join(harness.bookRoot, 'manuscript', 'ch20.md');
-      expect(existsSync(target)).toBe(true);
+      expect(harness.fixture.readChapter(20)).toContain('новый');
 
       const lines: string[] = [];
       const code = await main({
@@ -173,8 +176,9 @@ describe('main — --revert and --dry-run', () => {
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
-      expect(existsSync(target)).toBe(false);
-      expect(lines.join('\n')).toContain('удалён');
+      expect(harness.fixture.readChapter(20)).toBe(base);
+      expect(lines.join('\n')).toContain('новая ревизия 3 (было 2)');
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
     } finally {
       await harness.close();
     }

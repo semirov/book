@@ -11,7 +11,7 @@
  *   engine.mjs pass --chapter N [--session S] → a first pass for that chapter (BOOK-117 §4)
  *   engine.mjs next --role rights            → Gate B's assignment, for a flagged step (or null)
  *   engine.mjs start <leaseId> [--decision adapt|drop|void --reason … [--intent …]]
- *   engine.mjs land <leaseId> [--rev N] [--no-write]
+ *   engine.mjs land <leaseId> [--text <file>] [--front-raw <file>] [--rev N] [--no-write]
  *   engine.mjs verdict <stepId> --role editor|consultant --session S --verdict HOLDS|GAP --model M
  *                              [--findings findings.json] [--tokens-in N] [--tokens-out N]
  *   engine.mjs verdict <stepId> --role rights [--session S] --verdict CLEAR|REFUSED [--rule <id>]
@@ -248,8 +248,14 @@ async function main() {
     }
     case 'land': {
       const leaseId = need(0, 'leaseId');
+      // BOOK-187: the book's text lives in the DB, so the session sends its own text — a file it
+      // wrote itself, never a manuscript path. Omitted: the rows the site already serves.
+      const textFile = flags.get('text');
+      const frontFile = flags.get('front-raw');
       const result = await call('/internal/land', {
         leaseId,
+        ...(textFile === undefined ? {} : { text: readFileSync(resolve(textFile), 'utf8') }),
+        ...(frontFile === undefined ? {} : { frontRaw: readFileSync(resolve(frontFile), 'utf8') }),
         noWrite: flags.get('no-write') === true,
         rev: numberFlag(flags, 'rev'),
       });

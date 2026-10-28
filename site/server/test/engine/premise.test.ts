@@ -69,7 +69,7 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       if ('error' in accepted) throw new Error(accepted.error);
 
       // A written chapter takes an ordinary change through the same lane, after the premise.
-      fixture.writeChapterBlocks(10, 'Глава 10', ['Служебный абзац десятой главы. Он не служит текстом книги.']);
+      fixture.seedChapterBlocks(10, 'Глава 10', ['Служебный абзац десятой главы. Он не служит текстом книги.']);
       const normal = fixture.engine.enqueue({ kind: 'reader_edit', chapter: 10, intent: 'уточнить абзац' });
       expect(normal.status).toBe('pending');
 
@@ -179,7 +179,7 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
   it('leaves a written chapter’s ordinary change exactly as before', () => {
     const fixture = fixtureOf();
     try {
-      fixture.writeChapterBlocks(8, 'Глава 8', ['Служебный абзац восьмой главы. Он не является текстом книги.']);
+      fixture.seedChapterBlocks(8, 'Глава 8', ['Служебный абзац восьмой главы. Он не является текстом книги.']);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       const id = seed(fixture.db, { chapter: 8, proposedText: 'Уточнить абзац.', kind: 'testimony' });
       const accepted = accept(fixture.db, id, 'в главе 8 уточнить абзац');
@@ -218,10 +218,10 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
       // chapter while the step is still open — that premise is owned, not stranded.
       const draft = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment;
       expect(draft.premise?.intent.value).toBe('в главе 5 появляется документ');
-      fixture.writeChapterBlocks(5, 'Глава 5', ['Пятая глава, написанная рукой автора.', 'Служебный абзац.']);
+      fixture.seedChapterBlocks(5, 'Глава 5', ['Пятая глава, написанная рукой автора.', 'Служебный абзац.']);
 
       // Chapter 9 was written with no step at all: its premise can never enter an edition.
-      fixture.writeChapterBlocks(9, 'Глава 9', ['Девятая глава написана рукой автора.', 'Служебный абзац.']);
+      fixture.seedChapterBlocks(9, 'Глава 9', ['Девятая глава написана рукой автора.', 'Служебный абзац.']);
       // A written ch01 can no more take a premise than any other written chapter — the freeze is
       // the basis-only slot's shape, so a hand-inserted row here is closed as stale (BOOK-137).
       fixture.db

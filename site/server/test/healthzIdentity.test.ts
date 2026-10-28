@@ -1,5 +1,6 @@
 /**
- * BOOK-109 — `/healthz` says *which* build answered, and which two roots it read.
+ * BOOK-109 / BOOK-187 — `/healthz` says *which* build answered, which two roots it read, and what
+ * shape the volume it serves is in.
  *
  * The probe used to carry only the watcher and the engine, so "the phone shows old prose" could
  * not be answered: a second host, a stale container and a cache all looked identical. The body
@@ -13,6 +14,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -20,6 +22,8 @@ import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
+import { SCHEMA_VERSION } from '../src/db/schema.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 let fixture: Fixture | null = null;
@@ -93,6 +97,39 @@ describe('GET /healthz — the identity of the answering process (BOOK-109)', ()
     expect(JSON.stringify(body)).not.toContain('holder');
     // The identity is about the build and the roots — not about the text.
     expect(JSON.stringify(body)).not.toContain('blocks');
+  });
+
+  it('names the schema the volume was migrated to and the two frame hashes it holds (BOOK-187)', async () => {
+    await boot({ commit: '5558449' });
+    const body = (await app!.inject({ method: 'GET', url: '/healthz' })).json() as {
+      schema_version: number;
+      frame: { first: string | null; last: string | null };
+      prompt_drift: string | null;
+    };
+    // The fixture migrated without a boot, so no `schema_version` stamp exists yet: 0 is the
+    // honest answer ("never stamped"), and the two frame hashes come from the rows themselves.
+    expect(body.schema_version).toBe(0);
+    expect(body.frame).toEqual({
+      first: sha256Hex(FRAME_FIRST_SENTENCE),
+      last: sha256Hex(FRAME_LAST_SENTENCE),
+    });
+    expect(body.prompt_drift).toBeNull();
+  });
+
+  it('prints the schema stamp the boot wrote, and the drift it recorded', async () => {
+    await boot({ commit: '5558449' });
+    // What `bootDatabase` writes, and the fingerprint of a rollback that changed the bundle.
+    fixture!.db.prepare(`INSERT INTO meta (k, v) VALUES ('schema_version', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v`).run(
+      String(SCHEMA_VERSION),
+    );
+    fixture!.db.prepare(`INSERT INTO meta (k, v) VALUES ('prompt_drift', 'b') ON CONFLICT(k) DO UPDATE SET v = excluded.v`).run();
+
+    const body = (await app!.inject({ method: 'GET', url: '/healthz' })).json() as {
+      schema_version: number;
+      prompt_drift: string | null;
+    };
+    expect(body.schema_version).toBe(SCHEMA_VERSION);
+    expect(body.prompt_drift).toBe('b');
   });
 
   it('falls back to a placeholder rather than an empty string when no stamp is shipped', async () => {

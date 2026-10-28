@@ -36,7 +36,7 @@ function written(fixture: Fixture): void {
     'Второй абзац продолжает сцену: человек входит в комнату, садится и молчит дольше, чем нужно.',
     'Третий абзац закрывает эпизод репликой, после которой никто не добавляет ни слова.',
   ];
-  for (let n = 1; n <= 4; n += 1) fixture.writeChapterBlocks(n, `Глава ${n}`, body);
+  for (let n = 1; n <= 4; n += 1) fixture.seedChapterBlocks(n, `Глава ${n}`, body);
 }
 
 /** One admitted filing: the fixture records the audit and rights verdicts, so this always lands. */
@@ -111,7 +111,7 @@ describe('the engine writes only on a filing', () => {
           )
           .run();
         for (let n = 1; n <= 4; n += 1) {
-          fixture.writeChapterBlocks(n, `Глава ${n}`, [
+          fixture.seedChapterBlocks(n, `Глава ${n}`, [
             'Первый абзац достаточно длинный, чтобы считаться прозой.',
             'Второй абзац продолжает сцену.',
             'Третий закрывает эпизод.',
@@ -181,7 +181,7 @@ describe('the engine writes only on a filing', () => {
       written(fixture);
       // ch67 is the book's last sentence, the frame slot no reader writes.
       // ch67 as the book's last sentence: a basis-only slot, never prose (BOOK-6).
-      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(67, FRAME_LAST_SENTENCE);
       const frozen = filing(fixture, 67, 'перепиши последнюю главу');
       const later = filing(fixture, 5, 'глава 5 начинается с документа');
 

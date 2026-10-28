@@ -152,7 +152,7 @@ describe('relevance at dequeue — the service records what it saw', () => {
         anchor: { blockIds: [], quote: 'Тестовый абзац.', prefix: '', suffix: '' },
       });
       // Someone else rewrote the chapter before its turn came: the base moved.
-      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
+      fixture.seedChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       expect(assignment.relevance?.grade).toBe('unknown');
       expect(() => fixture.engine.start(assignment.leaseId)).toThrow(/decide adapt\/drop\/void/u);
@@ -185,7 +185,7 @@ describe('relevance at dequeue — the service records what it saw', () => {
         chapter: 1,
         intent: 'убрать абзац из главы и из разговора',
       });
-      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
+      fixture.seedChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       fixture.engine.start(assignment.leaseId, {
         decision: 'adapt',
@@ -213,7 +213,7 @@ describe('relevance at dequeue — the service records what it saw', () => {
         chapter: 1,
         intent: 'убрать абзац из главы и из разговора',
       });
-      fixture.writeChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
+      fixture.seedChapterBlocks(1, 'Начало', ['Служебная строка.', 'Доска на кирпичах.']);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       const stored = () =>
         fixture.db.prepare('SELECT intent FROM changes WHERE id = ?').get(change.id) as { intent: string };

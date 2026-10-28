@@ -2,8 +2,9 @@ import { TOTAL_CHAPTERS, isChapterNumber, type ChapterDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { getChapterRow, listBlocks } from '../../db/repo/chapters.ts';
+import { frameOf } from '../../db/repo/frame.ts';
 import { chapterEtag } from '../../util/etag.ts';
-import { checkFrameDrift, frameFile } from '../frameDrift.ts';
+import { checkFrameDrift, framePositionOf, frameSource } from '../frameDrift.ts';
 import type { RouteDeps } from '../deps.ts';
 
 const paramsSchema = {
@@ -14,17 +15,17 @@ const paramsSchema = {
 } as const;
 
 /**
- * The frame files already reported as unreadable in this process. A mount that is gone answers
- * every request the same way, so the line is written once — an operator reads one reason, not
- * a log flood; `ch01` and `ch42` are separate files and report separately.
+ * The frame rows already reported as unreadable in this process. A volume that lost its row
+ * answers every request the same way, so the line is written once — an operator reads one reason,
+ * not a log flood; `1/first` and `42/last` are separate rows and report separately.
  */
 const unreadableReported = new Set<string>();
 
 /**
- * The drift already reported, per frame file: the pair of texts, not a flag. A projection that
- * stays wrong would otherwise write both paragraphs into the log on every reader's page view;
- * one line per *distinct* drift is news, a repeat is not. Agreement clears the entry, so the
- * same drift coming back later is reported again.
+ * The drift already reported, per frame row: the pair of texts, not a flag. A row that stays
+ * wrong would otherwise write both paragraphs into the log on every reader's page view; one line
+ * per *distinct* drift is news, a repeat is not. Agreement clears the entry, so the same drift
+ * coming back later is reported again.
  */
 const loggedDrift = new Map<string, string>();
 
@@ -60,25 +61,26 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
       })),
     };
 
-    // BOOK-109: the frame the reader is about to see against the one the file holds. Only
-    // ch01/ch42 cost a read, and only a real disagreement is logged — with both strings, so
-    // the line says which side is wrong without a second request. Each distinct drift is one
-    // line: a page view is not news (see `loggedDrift`).
-    const check = checkFrameDrift({ bookRoot: deps.config.bookRoot }, n, blocks);
+    // BOOK-109 / BOOK-187: the frame the reader is about to see against the row `book_frame`
+    // holds. Only ch01/ch42 cost a row, and only a real disagreement is logged — with both
+    // strings, so the line says which side is wrong without a second request. Each distinct drift
+    // is one line: a page view is not news (see `loggedDrift`).
+    const check = checkFrameDrift({ frameOf: (chapter, position) => frameOf(deps.db, chapter, position) }, n, blocks);
     if (check === null) {
       // Back in agreement: forget the drift, so a recurrence is reported again.
-      if (n === 1 || n === TOTAL_CHAPTERS) loggedDrift.delete(frameFile(deps.config.bookRoot, n));
+      const position = framePositionOf(n);
+      if (position !== null) loggedDrift.delete(frameSource(n, position));
     } else if ('unreadable' in check) {
-      if (!unreadableReported.has(check.file)) {
-        unreadableReported.add(check.file);
-        request.log.error({ chapter: n, file: check.file, reason: check.unreadable }, 'FRAME_DRIFT unreadable');
+      if (!unreadableReported.has(check.source)) {
+        unreadableReported.add(check.source);
+        request.log.error({ chapter: n, source: check.source, reason: check.unreadable }, 'FRAME_DRIFT unreadable');
       }
     } else {
-      const signature = `${check.served}\n${check.manuscript}`;
-      if (loggedDrift.get(check.file) !== signature) {
-        loggedDrift.set(check.file, signature);
+      const signature = `${check.served}\n${check.stored}`;
+      if (loggedDrift.get(check.source) !== signature) {
+        loggedDrift.set(check.source, signature);
         request.log.error(
-          { chapter: n, file: check.file, served: check.served, manuscript: check.manuscript },
+          { chapter: n, source: check.source, served: check.served, stored: check.stored },
           'FRAME_DRIFT',
         );
       }

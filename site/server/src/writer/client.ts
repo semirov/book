@@ -25,7 +25,10 @@ import { readFileSync } from 'node:fs';
 
 import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
+import type { ChapterTextView } from '../engine/text.ts';
 import type { PremiseCause } from '../engine/types.ts';
+
+export type { ChapterTextView };
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -104,6 +107,17 @@ export type GateAssignmentView = {
   indexSlice: string | null;
   expiresAt: string;
 };
+
+/** What `land` sends: the writer's text, held in memory and never written to a file (BOOK-187). */
+export type LandInput = {
+  text?: string;
+  frontRaw?: string;
+  noWrite?: boolean;
+  rev?: number;
+};
+
+/** `--revert` as a restore revision: what the engine published, and what it replaced. */
+export type RestoreView = { rev: number; sha: string; previousRev: number };
 
 export type StartView = {
   leaseId: string;
@@ -193,7 +207,11 @@ export type EngineClient = {
   nextRightsGate(session: string): Promise<RightsAssignmentView | null>;
   pass(chapter: number, session: string): Promise<WriterAssignment>;
   start(leaseId: string): Promise<StartView>;
-  land(leaseId: string): Promise<LandView>;
+  land(leaseId: string, input?: LandInput): Promise<LandView>;
+  /** The text a prompt may quote, from rows only: `{ n, title, exists, basis, chars, text }`. */
+  text(chapters: number[]): Promise<{ chapters: ChapterTextView[] }>;
+  /** Bring back a revision as a **new** revision (`cause_kind = 'restore'`), never a file. */
+  restore(chapter: number, rev?: number): Promise<RestoreView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
   verdictRights(body: RightsVerdictInput): Promise<{ verdict: 'CLEAR' | 'REFUSED'; action: 'close' | 'escalate'; closed: boolean }>;
   done(body: DoneInput): Promise<DoneView>;
@@ -310,7 +328,18 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       (await post('/internal/next', { role, session })) as GateAssignmentView | null,
     pass: async (chapter, session) => (await post('/internal/pass', { chapter, session })) as WriterAssignment,
     start: async (leaseId) => (await post('/internal/start', { leaseId })) as StartView,
-    land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
+    land: async (leaseId, input) =>
+      (await post('/internal/land', {
+        leaseId,
+        ...(input?.text === undefined ? {} : { text: input.text }),
+        ...(input?.frontRaw === undefined ? {} : { frontRaw: input.frontRaw }),
+        ...(input?.noWrite === undefined ? {} : { noWrite: input.noWrite }),
+        ...(input?.rev === undefined ? {} : { rev: input.rev }),
+      })) as LandView,
+    text: async (chapters) =>
+      (await post('/internal/text', { chapters })) as { chapters: ChapterTextView[] },
+    restore: async (chapter, rev) =>
+      (await post('/internal/restore', { chapter, ...(rev === undefined ? {} : { rev }) })) as RestoreView,
     nextRightsGate: async (session) =>
       (await post('/internal/next', { role: 'rights', session })) as RightsAssignmentView | null,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,

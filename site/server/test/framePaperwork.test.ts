@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { listChanges } from '../src/engineState/changes.ts';
 import { acceptComment } from '../src/feedback/accept.ts';
 import { runFeedback } from '../src/feedback/cli.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
-import { checkManuscript } from '../../scripts/lib/frame.mjs';
+import { checkFrame } from '../../scripts/lib/frame.mjs';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 
 /**
@@ -485,15 +485,13 @@ describe('the change record tells the truth about the paperwork', () => {
 });
 
 describe('the deploy gate’s own frame check', () => {
-  it('passes on the real repository after the whole scenario', () => {
-    // `npm run frame:check` in test form: the same module `deploy.sh` runs reads the real
-    // manuscript and answers one object per source — ch01's line, ch01's heading, the finale's.
-    const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
-    const checks = checkManuscript({ repoRoot }) as Array<{ label: string; ok: boolean; parts: unknown[] }>;
-    expect(checks).toHaveLength(3);
-    for (const check of checks) {
-      expect(check.parts, check.label).toEqual([]);
-      expect(check.ok, check.label).toBe(true);
-    }
+  it('passes on the volume the scenario wrote, after every filing', async () => {
+    // `npm run frame:check` in test form: the two rows, the row count and each chapter's span.
+    // The paperwork rounds above must not have moved a letter of the canon.
+    const h = await boot();
+    const result = checkFrame({ dataDir: h.fixture.dataDir }) as { absent: boolean; checks: Array<{ parts: unknown[] }> };
+    expect(result.absent).toBe(false);
+    expect(result.checks).toHaveLength(5);
+    for (const check of result.checks) expect(check.parts).toEqual([]);
   });
 });

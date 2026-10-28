@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
+import { migrateV23 } from './migrateV23.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -322,6 +323,12 @@ const MIGRATIONS: Migration[] = [
     up(db) {
       migrateV22(db);
     },
+  },
+  {
+    // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the redacted
+    // transcripts and the block deltas. Additive; a fresh install runs this step too.
+    to: 23,
+    up: migrateV23,
   },
 ];
 

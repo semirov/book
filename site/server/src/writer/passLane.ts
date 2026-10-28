@@ -1,27 +1,34 @@
 /**
  * What the pass needs from the outside world, per chapter: the model calls, the stages, the
- * pre-image, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
+ * text, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
  *
  * `pass.ts` decides *what happens and in which order*; this file does the talking. Everything is
  * injected, so a test drives a real pass through a fixture engine and a scripted provider.
+ *
+ * **The writer writes nowhere** (BOOK-187, ADR-043 §3 row 4): the answer is held in memory and
+ * one `land` call carries it. There is no pre-image, because nothing was touched before the
+ * landing — a refusal leaves the rows exactly as they were, which is the pre-image.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
-import { chapterLabel, type WriterAssignment } from '@book/shared';
+import { type WriterAssignment } from '@book/shared';
 
-import { chapterPath, readChapter } from '../engine/text.ts';
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
-import { sha256Hex } from '../util/hash.ts';
+import type { ChapterTextView } from '../engine/text.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
 import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
-import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
+import {
+  buildWriterPrompt,
+  chapterQuote,
+  noChapterText,
+  type ChapterTextLookup,
+  type WriterAssignmentData,
+} from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
-import { restorePreSnapshot } from './revert.ts';
 import type { CallKind, CallRecord } from './transcript.ts';
 import { rightsRunner } from './rightsGate.ts';
 import { writeTranscript } from './transcript.ts';
@@ -127,9 +134,12 @@ export type Lane = {
   park(why: ParkInput): Promise<PassResult>;
   /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
   remember(failure: Failure | null): void;
-  writeText(value: string): void;
-  land(): Promise<void>;
-  preSnapshot(at: number): void;
+  /** Load the rows a prompt will quote; a failed read is the caller's `park`, never a silent empty. */
+  loadText(chapters: number[]): Promise<void>;
+  /** The cached view of one chapter — `noChapterText` for anything not loaded. */
+  textOf: ChapterTextLookup;
+  /** The one way the pass's text becomes a fact: the request body carries it, no file (BOOK-187). */
+  land(value: string): Promise<void>;
   transcript(result: PassResult): void;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
   check(value: string, finishReason?: string | null): Answer;
@@ -160,6 +170,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
   let failure: Failure | null = null;
   let note: string | null = null;
+  /** The rows the prompt quotes, loaded per call: the engine answers, the writer caches. */
+  const views = new Map<number, ChapterTextView>();
 
   /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
    *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
@@ -316,43 +328,27 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     };
   }
 
-  /** `land`: a `STEP_CLOSED` or `FRAME_CHANGED` answer takes the text back (BOOK-137). */
-  async function land(): Promise<void> {
+  /**
+   * `land`: the text travels in the request. A refusal touches nothing — the rows keep the text
+   * the site serves — so there is no image to put back (BOOK-187).
+   */
+  async function land(value: string): Promise<void> {
     try {
-      await engine.land(job.leaseId);
+      await engine.land(job.leaseId, { text: value });
     } catch (error) {
-      const code = codeOf(error);
-      const back =
-        code === 'STEP_CLOSED' || code === 'FRAME_CHANGED'
-          ? restorePreSnapshot(input.dataDir, bookRoot, chapter)
-          : null;
-      if (back) input.log(`[writer] land ${code ?? 'refused'}: снимок до прохода ${back.restored ? 'возвращён' : 'не найден'}`);
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
   }
 
-  /** Atomic: a reader never sees half a chapter, and `land` reads a whole file. */
-  function writeText(value: string): void {
-    const target = chapterPath(bookRoot, chapter);
-    const staging = `${target}.tmp`;
-    writeFileSync(staging, value, 'utf8');
-    renameSync(staging, target);
+  /** Read the rows a prompt needs in one call; the pass decides what to do with a failure. */
+  async function loadText(chapters: number[]): Promise<void> {
+    const wanted = [...new Set(chapters.filter((n) => Number.isInteger(n) && n >= 1))];
+    if (wanted.length === 0) return;
+    const answer = await engine.text(wanted);
+    for (const view of answer.chapters) views.set(view.n, view);
   }
 
-  /** The pre-image, before the writer touches anything: what a revert puts back. */
-  function preSnapshot(at: number): void {
-    const dir = join(input.dataDir, 'writer', 'pre');
-    mkdirSync(dir, { recursive: true });
-    const current = readChapter(bookRoot, chapter);
-    const stamp = {
-      chapter,
-      state: current.exists ? 'present' : 'absent',
-      sha: current.exists ? sha256Hex(current.raw) : null,
-      at,
-    };
-    if (current.exists) writeFileSync(join(dir, `ch${chapterLabel(chapter)}.md`), current.raw, 'utf8');
-    writeFileSync(join(dir, `ch${chapterLabel(chapter)}.json`), `${JSON.stringify(stamp, null, 2)}\n`, 'utf8');
-  }
+  const textOf: ChapterTextLookup = (n) => views.get(n) ?? noChapterText(n);
 
   /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
   function transcript(result: PassResult): void {
@@ -383,6 +379,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
+    await loadText([chapter]);
     const gateAssignment = {
       chapter,
       pass: job.pass,
@@ -400,7 +397,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
           role,
           chapter,
           assignment: gateAssignment,
-          landedText: readChapter(bookRoot, chapter).text,
+          landedText: chapterQuote(textOf(chapter)),
+          chapterText: textOf,
           indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
           refusal: hint,
         }),
@@ -446,7 +444,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
-    const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
+    await loadText([chapter - 1, chapter, chapter + 1]);
+    const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job), chapterText: textOf });
     const revised = await reviseAnswer({
       rebuilt,
       findings,
@@ -455,8 +454,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       log: input.log,
     });
     if (revised === null) return null;
-    writeText(revised);
-    await land();
+    await land(revised);
     return revised;
   }
 
@@ -467,9 +465,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     remember: (value) => {
       if (value !== null) failure = value;
     },
-    writeText,
+    loadText,
+    textOf,
     land,
-    preSnapshot,
     transcript,
     check,
     runGate: (role) => runGate(role),
@@ -478,6 +476,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       engine,
       bookRoot,
       chapter,
+      chapterText: textOf,
       passId: job.stepId,
       changeId: job.changeId,
       now,

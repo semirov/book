@@ -53,6 +53,16 @@ export type ControlOptions = {
 const session = z.string().min(1).max(64);
 const id = z.string().min(1).max(80);
 
+/**
+ * BOOK-187: the text now travels in the body, so one route needs more room than Fastify's 64 KB
+ * default. A chapter is at most `CHAPTER_CHARS.max` (30 000) characters and 60 000 is the door's
+ * own bound; in UTF-8 that is under 240 KB, and a quarter of a megabyte is the whole envelope.
+ */
+const TEXT_CHARS_MAX = 60_000;
+const LAND_BODY_LIMIT = 512 * 1024;
+/** The most chapters one `/internal/text` call may ask for: the chapter, its two neighbours, and room. */
+const TEXT_CHAPTERS_MAX = 8;
+
 const nextBody = z
   .object({
     for: z.enum(['fwd', 'bwd', 'filing']).optional(),
@@ -76,7 +86,22 @@ const passBody = z.object({ chapter: z.number().int().min(1).max(TOTAL_CHAPTERS)
 
 const landBody = z.object({
   leaseId: id,
+  /** The writer's own text: the engine never reads a manuscript file (BOOK-187). */
+  text: z.string().max(TEXT_CHARS_MAX).optional(),
+  /** The first sheet's whole text, for a `front` step. */
+  frontRaw: z.string().max(TEXT_CHARS_MAX).optional(),
   noWrite: z.boolean().optional(),
+  rev: z.number().int().min(0).max(1_000_000).optional(),
+});
+
+/** The chapters a prompt may quote, by number: 1..8 of them, each a real chapter. */
+const textBody = z.object({
+  chapters: z.array(z.number().int().min(1).max(TOTAL_CHAPTERS)).min(1).max(TEXT_CHAPTERS_MAX),
+});
+
+/** `--revert`: the revision to bring back; omitted means the one before the current. */
+const restoreBody = z.object({
+  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
   rev: z.number().int().min(0).max(1_000_000).optional(),
 });
 
@@ -229,9 +254,34 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     const body = startBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.start(body.leaseId, { decision: body.decision, reason: body.reason, intent: body.intent }) };
   });
-  app.post('/internal/land', async (request) => {
+  app.post('/internal/land', { bodyLimit: LAND_BODY_LIMIT }, async (request) => {
     const body = landBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.land(body.leaseId, { noWrite: body.noWrite, rev: body.rev }) };
+    return {
+      ok: true,
+      data: options.engine.land(body.leaseId, {
+        text: body.text,
+        frontRaw: body.frontRaw,
+        noWrite: body.noWrite,
+        rev: body.rev,
+      }),
+    };
+  });
+  /**
+   * BOOK-187: the text a prompt may quote, **from rows only** — the chapter the writer is on, its
+   * neighbours, and the landed text a gate judges. The body is canonical and carries no title
+   * line; the prompt prints the title itself.
+   */
+  app.post('/internal/text', async (request) => {
+    const body = textBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.text(body.chapters) };
+  });
+  /**
+   * BOOK-187 / ADR-043 §3 row 9: `--revert` is a **new** revision (`cause_kind = 'restore'`)
+   * published through the applier, never a file put back.
+   */
+  app.post('/internal/restore', async (request) => {
+    const body = restoreBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.restore({ chapter: body.chapter, rev: body.rev }) };
   });
   app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});

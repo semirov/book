@@ -24,7 +24,7 @@ import {
   updateLease,
   type LeaseRow,
 } from './store.ts';
-import { isWritten } from './text.ts';
+import { isWrittenIn } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export type AcquireInput = {
@@ -64,7 +64,7 @@ export function acquireLease(deps: EngineDeps, input: AcquireInput): LeaseRow {
     // C3 / ADR-024: the ending is never rewritten by a ripple.
     refuse('ENDING_FROZEN', 409, `chapter ${String(TOTAL_CHAPTERS)} is never rewritten by a cascade`);
   }
-  if (step.pass === 'cascade' && step.chapter !== null && !isWritten(deps.bookRoot, step.chapter)) {
+  if (step.pass === 'cascade' && step.chapter !== null && !isWrittenIn(deps.db, step.chapter)) {
     // C1: a ripple may not walk into an empty slot.
     refuse('NEIGHBOUR_MISSING', 409, `глава ${step.chapter} ещё не написана`);
   }

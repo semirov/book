@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { reconcile } from '../../src/ingest/reconcile.ts';
+import type { WriterAssignment } from '@book/shared';
+
 import { createEngineFixture, runStubStep } from './helpers.ts';
 
 type RevisionRow = {
@@ -51,9 +52,10 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
         blocks: ['Ещё один служебный абзац для проверки, он не является текстом книги и не содержит литературных образов.', 'Добавленный абзац номер два.'],
       });
       runStubStep(fixture, {
-        title: 'Без названия',
-        // A real rewrite of page 2, so the first sheet gets a revision of its own (§6C.2).
-        blocks: [`${fixture.readFrontBlocks()} Тестовый абзац номер два. Это служебный текст, он не является текстом книги.`],
+        title: 'Название после волны',
+        // A wave may retitle the book, never rewrite page 2 (BOOK-DOC-6): the annotation is
+        // quoted back byte for byte, and the revision is the title's (§6C.2).
+        blocks: [fixture.readFrontBlocks()],
         seams: [],
       });
 
@@ -107,7 +109,9 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
         cascade_id: string | null;
       };
       expect(frontEvent).toMatchObject({ kind: 'front.revised', is_front: 1, rev: front.rev });
-      expect(front.title).toBe('Без названия');
+      // The seeded sheet is revision 1; the wave retitled it, page 2 untouched.
+      expect(front.rev).toBe(2);
+      expect(front.title).toBe('Название после волны');
 
       // The step's history span is filled from the log (§6F.1: `hseq_from`/`hseq_to`).
       const spans = fixture.db
@@ -126,10 +130,19 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
   it('a re-land of the same text never duplicates a revision', () => {
     const fixture = createEngineFixture();
     try {
-      runStubStep(fixture, { title: 'Тестовая глава', blocks: ['Тестовый абзац.'] });
+      const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
+      fixture.engine.start(assignment.leaseId);
+      fixture.writeChapterBlocks(1, 'Тестовая глава', ['Тестовый абзац.']);
+      const first = fixture.engine.land(assignment.leaseId);
+      expect(first.changed).toBe(true);
       const before = fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get() as { n: number };
-      // A second ingest of the same file (the watcher would do exactly this) is a no-op.
-      reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+      // A second landing of the same text (a retried call, a recovered session) is a no-op:
+      // the applier compares the sha and publishes nothing (BOOK-187).
+      const again = fixture.engine.land(assignment.leaseId);
+      expect(again.changed).toBe(false);
+      expect(again.sha).toBe(first.sha);
+      expect(again.revAfter).toBe(first.revAfter);
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions').get()).toEqual(before);
     } finally {
       fixture.close();

@@ -320,6 +320,14 @@ export type HealthDto = {
   startedAt: string;
   watcher: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
   engine: { status: EngineStatus };
+  /**
+   * BOOK-187: the schema version the volume was migrated to (0 = never stamped), the two hashes of
+   * the frame rows it holds (null when a row is absent), and the image's prompt-bundle hash when it
+   * differs from the one the volume recorded — a rollback's fingerprint, null while they agree.
+   */
+  schema_version: number;
+  frame: { first: string | null; last: string | null };
+  prompt_drift: string | null;
 };
 
 /** `GET /api/admin/health` — the operator's half of the health, token-guarded (§17). */

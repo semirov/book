@@ -12,7 +12,7 @@ import { NOTE_MAX_CHARS } from '@book/shared';
 
 import { appendEvent } from '../history/log.ts';
 import * as store from './store.ts';
-import { readChapter } from './text.ts';
+import { readChapterRows } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 export function reopenStep(
@@ -22,7 +22,7 @@ export function reopenStep(
   options: { now?: number } = {},
 ): { stepId: string; reopened: true } {
   const at = options.now ?? deps.clock.now();
-  const { db, bookRoot } = deps;
+  const { db } = deps;
   const step = store.getStep(db, stepId);
   if (!step) refuse('STEP_NOT_FOUND', 404, `no step ${stepId}`);
   if (step.outcome !== 'escalated') {
@@ -30,7 +30,7 @@ export function reopenStep(
   }
   if (step.landed_at === null) refuse('NOT_LANDED', 409, `step ${stepId} has no landed text to close`);
   if (step.chapter !== null) {
-    const chapter = readChapter(bookRoot, step.chapter);
+    const chapter = readChapterRows(db, step.chapter);
     if (!chapter.exists || chapter.sha256 !== step.landed_sha) {
       refuse(
         'STEP_TEXT_MOVED',

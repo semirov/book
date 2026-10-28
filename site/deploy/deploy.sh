@@ -268,10 +268,11 @@ resolve_ref() {
 
 frame_check() {
   # BOOK-107: /healthz says the process is alive, not that it serves the canon. The check is
-  # read-only, makes one attempt per chapter inside one 25 s budget, and writes nothing. A
-  # checkout that predates the check has no script — skip it loudly, never fail on absence.
+  # read-only, makes one attempt per chapter inside one 25 s budget, and writes nothing. Since
+  # BOOK-187 it reads the frame from the volume (`book_frame`), never from the manuscript, so the
+  # data dir is what it needs; the script's own default is $DATA_DIR, then ~/book-site-data.
   [ -f "$ROOT/site/scripts/frame-check.mjs" ] || { say "this checkout predates the frame check (BOOK-107) — skipping"; return 0; }
-  local args=(--repo-root "$ROOT" --server "$(site_url)") data_dir
+  local args=(--server "$(site_url)") data_dir
   if data_dir="$(plist_field EnvironmentVariables.DATA_DIR)" && [ -n "$data_dir" ]; then
     args+=(--data-dir "$data_dir")
   fi

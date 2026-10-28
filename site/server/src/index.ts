@@ -15,8 +15,8 @@ import { buildApp } from './app.ts';
 import { createAuthorsCount } from './authors/count.ts';
 import { readBuildCommit } from './build.ts';
 import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
-import { databaseFile, openDatabase } from './db/db.ts';
-import { migrate } from './db/migrate.ts';
+import { bootDatabase, bootFailureLine } from './db/boot.ts';
+import { SCHEMA_VERSION } from './db/schema.ts';
 import { listCatalog } from './db/repo/chapters.ts';
 import { EngineBridge } from './engineState/bridge.ts';
 import { startErosionJob } from './history/erosion.ts';
@@ -50,8 +50,10 @@ async function main(): Promise<void> {
   // deployment stays quiet here and logs its provider with the scan below.
   const gate = gateAnnouncement(config);
   if (gate !== null) console.log(gate);
-  const db = openDatabase(databaseFile(config.dataDir));
-  const migration = migrate(db);
+  // BOOK-187 / ADR-043 §5: schema read → verified dump → migrate → stamps → prompt drift. A
+  // refusal (a newer schema on the volume, a dump that cannot be verified) throws `BootRefusal`,
+  // and the supervisor — not this process — owns the restart.
+  const db = await bootDatabase({ dataDir: config.dataDir });
   const report = reconcile(db, { bookRoot: config.bookRoot, dataDir: config.dataDir });
   rememberScan(db, report);
 
@@ -172,7 +174,7 @@ async function main(): Promise<void> {
       bookRoot: config.bookRoot,
       dataDir: config.dataDir,
       feedbackDir: config.feedbackDir,
-      migration,
+      schema: SCHEMA_VERSION,
       oauth: config.yandexClientId.length > 0 ? 'configured' : 'unconfigured',
       captcha: config.captchaProvider,
       written: catalog.filter((entry) => entry.written).map((entry) => entry.n),
@@ -202,6 +204,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // One line, naming the refusal code and the numbers (ADR-043 §5): the supervisor reads it.
+  console.error(bootFailureLine(error) ?? (error instanceof Error ? error.message : String(error)));
   process.exit(1);
 });

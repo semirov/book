@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import { migrateV22 } from '../../src/db/migrateV22.ts';
+import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 import { searchBlocks } from '../../src/ledger/search.ts';
 import { blockHashOf, seedChapter } from './helpers.ts';
 
@@ -152,8 +153,9 @@ describe('migration v22 — the ledger on an upgraded install', () => {
       'ledger_gap',
     );
 
-    expect(migrate(db)).toEqual({ from: 21, to: 22 });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(22);
+    // The step is v22, but `migrate` walks to the head of the chain: v23 is additive and follows.
+    expect(migrate(db)).toEqual({ from: 21, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect((db.pragma('table_info(block_versions)') as Array<{ name: string }>).map((c) => c.name)).toEqual(
       expect.arrayContaining(['spans', 'text']),
     );
@@ -217,7 +219,7 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     expect(db.pragma('foreign_key_check')).toEqual([]);
 
     // A second boot has nothing to do: no new version, no rewritten span.
-    expect(migrate(db)).toEqual({ from: 22, to: 22 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect(db.prepare('SELECT COUNT(*) AS n FROM blocks').get()).toEqual(counts.blocks);
     expect(db.prepare('SELECT COUNT(*) AS n FROM block_versions').get()).toEqual(counts.versions);
     expect(latestSpans(db).map((row) => row.spans)).toEqual(counts.spans);

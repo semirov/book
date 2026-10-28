@@ -1,28 +1,48 @@
 /**
- * scripts/lib/frame.mjs — the frozen frame (F029) read where the reader meets it (BOOK-107).
+ * scripts/lib/frame.mjs — the frozen frame (F029) checked against the three places it now lives
+ * (BOOK-107, BOOK-187 / ADR-043 G6).
  *
- * The canon lives once, in `shared/src/book.ts`; this module imports those two sentences and
- * never restates them. Three sources are checked, each on the text the reader actually gets:
- * the manuscript file, the running site's `/api/chapters/:n` answer, and the data dir's
- * `blocks` table. Every check is a plain object `{label, ok, parts}`, so the CLI and the tests
- * print the same words and no reader of the output has to know which source failed.
+ * The canon lives once, in `shared/src/book.ts`; this module imports those two sentences and never
+ * restates them. Since v23 there is no file in the chain — the manuscript leg is deleted with the
+ * prose, because the volume is the book (ADR-043 G2):
  *
- * Read-only by construction: `readFileSync`, `fetch` and a sqlite connection opened
- * `{readonly: true, fileMustExist: true}` — nothing here writes, creates or migrates.
+ *   1. **the letters** — the sentence the image compiles in, against the `book_frame` row the
+ *      volume holds, by `text` *and* by `sha256`. Exact: no whitespace flattening, the letters are
+ *      the letters;
+ *   2. **that both rows are there** — `book_frame` holds exactly `1/first` and `42/last`;
+ *   3. **that it is where it belongs** — ch01's first block opens with `1/first` and ch42's last
+ *      block closes with `42/last`, offsets counted in code points, plus the frame's mention span
+ *      when a row marks it (the block's text at those offsets must be the row's text);
+ *   4. **what a reader gets** — `checkServer` asks the running site the same two questions.
+ *
+ * A fresh database has the two rows before it has prose, so legs 3 and 4 have nothing to say about
+ * an empty chapter and must not fail: an empty slot is a basis slot, not a broken frame.
+ *
+ * Every check is a plain object `{label, ok, parts}`, so the CLI and the tests print the same words
+ * and no reader of the output has to know which source failed. Read-only by construction: the
+ * connection is opened `{readonly: true, fileMustExist: true}` — nothing here writes, creates or
+ * migrates.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, OPENING_CHAPTER, TOTAL_CHAPTERS, parseChapterTitle } from '../../shared/src/book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, OPENING_CHAPTER, TOTAL_CHAPTERS } from '../../shared/src/book.ts';
 
 /** The two sentences, under the names the checks use. */
 export const FRAME = {
   first: FRAME_FIRST_SENTENCE,
   last: FRAME_LAST_SENTENCE,
 };
+
+/** The two rows the frame is, in the order the checks report them. */
+const FRAME_ROWS = [
+  { chapter: OPENING_CHAPTER, position: 'first', text: FRAME_FIRST_SENTENCE },
+  { chapter: TOTAL_CHAPTERS, position: 'last', text: FRAME_LAST_SENTENCE },
+];
 
 /** One attempt per request: a health check has no retry loop (deploy.sh runs this once). */
 export const CHAPTER_TIMEOUT_MS = 10_000;
@@ -33,116 +53,182 @@ export const CHAPTER_TIMEOUT_MS = 10_000;
  */
 export const TOTAL_TIMEOUT_MS = 25_000;
 
-/** Whitespace is not text: a rewrapped line and the frozen sentence compare as one string. */
-export function flat(value) {
-  return String(value ?? '')
-    .replace(/\s+/gu, ' ')
-    .trim();
+/** `sha256` in hex, the same digest the migration writes into `book_frame.sha256`. */
+export function sha256(value) {
+  return createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 }
 
-/** The prose starts with the frame — the same rule `isFrameLine` applies to a title line. */
-export function startsWithFrame(text, frame = FRAME.first) {
-  const actual = flat(text);
-  const expected = flat(frame);
-  return actual === expected || actual.startsWith(`${expected} `);
+/** A string's length and slices in **code points**, the unit `book_frame` offsets are written in. */
+function codePoints(text) {
+  return Array.from(String(text ?? ''));
 }
 
-/** The prose ends with the frame. The finale closes the book on these words. */
-export function endsWithFrame(text, frame = FRAME.last) {
-  const actual = flat(text);
-  const expected = flat(frame);
-  return actual === expected || actual.endsWith(` ${expected}`);
+function sliceCp(text, start, end) {
+  return codePoints(text).slice(start, end).join('');
 }
 
-/** Paragraphs the way the ingest splits them: blank line, trimmed, empties dropped. */
-function paragraphsOf(text) {
-  return String(text ?? '')
-    .split(/\n\s*\n/u)
-    .map((block) => block.trim())
-    .filter((block) => block.length > 0);
-}
-
+/** `ch01`/`ch42` — the chapter names the labels print. */
 function chapterName(n) {
   return `ch${String(n).padStart(2, '0')}`;
 }
 
-function matched(label, kind, frame, text, fallback) {
-  if (text.length === 0) return { label, ok: false, parts: [{ expected: frame, actual: fallback }] };
-  const ok = kind === 'first' ? startsWithFrame(text, frame) : endsWithFrame(text, frame);
-  return { label, ok, parts: ok ? [] : [{ expected: frame, actual: text }] };
+function mismatch(label, expected, actual) {
+  return { label, ok: false, parts: [{ expected, actual }] };
+}
+
+function rowName(chapter, position) {
+  return `${String(chapter)}/${position}`;
 }
 
 /**
- * `manuscript/ch01.md` must open with the frame and the finale (`ch42.md`) must close with it.
- * The title line is stripped by `parseChapterTitle`, so a written chapter with a title above
- * the frame still passes; a missing file is a mismatch, never a crash.
+ * Leg 1 and 2: the compiled sentence against the row the volume holds, and both rows present.
+ * A row is compared exactly — text first, then its hash — because a row that carries the same
+ * hash and different text (or the reverse) is a row nobody wrote from this image.
  */
-export function checkManuscript({ repoRoot, readFile = readFileSync, fileExists = existsSync }) {
+function frameRowChecks(rows, dbFile) {
+  const byKey = new Map(rows.map((row) => [`${String(row.chapter)}/${row.position}`, row]));
   const checks = [];
-  for (const { label, n, kind } of [
-    { label: `manuscript ${chapterName(OPENING_CHAPTER)} first line`, n: OPENING_CHAPTER, kind: 'first' },
-    { label: `manuscript ${chapterName(TOTAL_CHAPTERS)} last line`, n: TOTAL_CHAPTERS, kind: 'last' },
-  ]) {
-    const name = `manuscript/${chapterName(n)}.md`;
-    const frame = kind === 'first' ? FRAME.first : FRAME.last;
-    const path = join(repoRoot, name);
-    if (!fileExists(path)) {
-      checks.push({ label, ok: false, parts: [{ expected: frame, actual: `no such file: ${name}` }] });
+  for (const wanted of FRAME_ROWS) {
+    const key = rowName(wanted.chapter, wanted.position);
+    const label = `book_frame ${key}`;
+    const row = byKey.get(key);
+    if (row === undefined) {
+      checks.push(mismatch(label, wanted.text, `no book_frame row for ${key} in ${dbFile}`));
       continue;
     }
-    const raw = readFile(path, 'utf8');
-    const prose = paragraphsOf(parseChapterTitle(n, raw).body);
-    // A file whose only line was read as its title has no prose body: then the file's own text
-    // is what a mismatch must report, so the operator sees the real words, not "no prose".
-    const blocks = prose.length > 0 ? prose : paragraphsOf(raw);
-    const block = kind === 'first' ? blocks[0] : blocks[blocks.length - 1];
-    checks.push(matched(label, kind, frame, block ?? '', `empty file: ${name}`));
+    const parts = [];
+    if (row.text !== wanted.text) parts.push({ expected: wanted.text, actual: row.text });
+    const expectedSha = sha256(wanted.text);
+    // The hash is compared only when the letters agree: a row that differs in text is already
+    // one mismatch, and its stored hash answers a question this check did not ask.
+    if (row.text === wanted.text && row.sha256 !== expectedSha) {
+      parts.push({ expected: expectedSha, actual: String(row.sha256) });
+    }
+    checks.push({ label, ok: parts.length === 0, parts });
   }
-  checks.push(checkChapterOneTitle({ repoRoot, readFile, fileExists }));
+  const expected = FRAME_ROWS.map((row) => rowName(row.chapter, row.position)).join(', ');
+  const actual = rows.length === 0 ? 'no rows' : rows.map((row) => rowName(row.chapter, row.position)).join(', ');
+  checks.push(
+    rows.length === FRAME_ROWS.length
+      ? { label: 'book_frame rows', ok: true, parts: [] }
+      : mismatch('book_frame rows', `${expected} (2 rows)`, `${actual} (${String(rows.length)} rows)`),
+  );
   return checks;
 }
 
 /**
- * The owner's contract for ch01, checked on the file itself: **the frozen sentence must remain
- * the chapter's first prose line, and the heading above it must be read as the chapter's title**.
- *
- * `checkManuscript` strips line 1 with `parseChapterTitle`, so a frame check alone passes with or
- * without the heading — it cannot tell a titled chapter from a headless file that merely reads
- * well. This check reads the heading from the manuscript (line 1, never an invented copy) and
- * asserts two facts:
- *
- *   - line 1 is a title: `parseChapterTitle(...).title` is not `null` and equals that line — a
- *     file whose heading was deleted fails here, because the frame line is prose (BOOK-32);
- *   - the first paragraph under it is still the frozen sentence — the frame stays prose.
+ * The frame's mention, when one marks it: a row on the frame block whose interval is the frame's
+ * interval, or whose `witness` is the canon sentence. Its `start`/`end` must select exactly the
+ * row's text from the **live** block — offsets written against other text are how a mention
+ * survives an edit and starts pointing at the wrong words.
  */
-function checkChapterOneTitle({ repoRoot, readFile, fileExists }) {
-  const label = `manuscript ${chapterName(OPENING_CHAPTER)} title line`;
-  const name = `manuscript/${chapterName(OPENING_CHAPTER)}.md`;
-  const path = join(repoRoot, name);
-  if (!fileExists(path)) {
-    return { label, ok: false, parts: [{ expected: FRAME.first, actual: `no such file: ${name}` }] };
+function mentionChecks(db, chapter, position, block, interval, expectedText) {
+  const rows = db.prepare('SELECT id, start, end, witness FROM mentions WHERE block_id = ? ORDER BY start').all(block.id);
+  const candidates = rows.filter(
+    (row) =>
+      (row.start === interval.start && row.end === interval.end) || String(row.witness ?? '') === expectedText,
+  );
+  const checks = [];
+  for (const row of candidates) {
+    const selected = sliceCp(block.text, Number(row.start), Number(row.end));
+    if (selected !== expectedText) {
+      checks.push(
+        mismatch(
+          `mention ${rowName(chapter, position)} (mention ${String(row.id)})`,
+          expectedText,
+          `${selected} @ [${String(row.start)}, ${String(row.end)})`,
+        ),
+      );
+    }
   }
-  const raw = readFile(path, 'utf8');
-  // The heading the file carries: line 1, read the way a reader reads it.
-  const heading = String(raw ?? '').split('\n')[0].trim();
-  const parsed = parseChapterTitle(OPENING_CHAPTER, raw);
-  const firstProse = paragraphsOf(parsed.body)[0] ?? '';
-  const parts = [];
-  if (parsed.title === null) {
-    parts.push({
-      expected: heading.length > 0 ? heading : 'a heading line above the frozen sentence',
-      actual: 'line 1 is not read as a title (the parser read it as prose)',
-    });
-  } else if (parsed.title !== heading) {
-    parts.push({ expected: heading, actual: parsed.title });
+  return checks;
+}
+
+/**
+ * Leg 3: the frame where a reader meets it. ch01's first live block must open with `1/first` and
+ * ch42's last block must close with `42/last`; a chapter with no blocks has no span to check and
+ * says nothing. The expected words are the **compiled constant**, not the row: the row is leg 1's
+ * business, and a check that compared the block with a tampered row would agree with the tampering.
+ */
+function spanChecks(db) {
+  const checks = [];
+  for (const wanted of FRAME_ROWS) {
+    const hasBlocks = db.prepare('SELECT COUNT(*) AS n FROM blocks WHERE chapter = ?').get(wanted.chapter);
+    if (Number(hasBlocks?.n ?? 0) === 0) continue;
+    const order = wanted.position === 'first' ? 'ASC' : 'DESC';
+    const block = db
+      .prepare(`SELECT id, text FROM blocks WHERE chapter = ? ORDER BY idx ${order} LIMIT 1`)
+      .get(wanted.chapter);
+    if (block === undefined) continue;
+    const expected = wanted.text;
+    const label = `frame span ${chapterName(wanted.chapter)} ${wanted.position} block`;
+    const text = String(block.text ?? '');
+    const expectedLength = codePoints(expected).length;
+    const start = wanted.position === 'first' ? 0 : codePoints(text).length - expectedLength;
+    const interval = { start, end: start + expectedLength };
+    const edge =
+      wanted.position === 'first'
+        ? text.startsWith(expected)
+        : text.endsWith(expected);
+    checks.push({ label, ok: edge, parts: edge ? [] : [{ expected, actual: text }] });
+    // Offsets are only meaningful when the edge is: a block that does not carry the sentence at
+    // its edge is already one mismatch, not two.
+    if (edge) checks.push(...mentionChecks(db, wanted.chapter, wanted.position, block, interval, expected));
   }
-  if (!startsWithFrame(firstProse, FRAME.first)) {
-    parts.push({
-      expected: FRAME.first,
-      actual: firstProse.length > 0 ? firstProse : `no prose under the heading: ${name}`,
-    });
+  return checks;
+}
+
+function readReadout(db) {
+  const first = (chapter, order) => {
+    const row = db.prepare(`SELECT text FROM blocks WHERE chapter = ? ORDER BY idx ${order} LIMIT 1`).get(chapter);
+    return typeof row?.text === 'string' ? row.text : null;
+  };
+  const scan = db.prepare(`SELECT v FROM meta WHERE k = 'last_scan_at'`).get();
+  return {
+    ch01First: first(OPENING_CHAPTER, 'ASC'),
+    lastFirst: first(TOTAL_CHAPTERS, 'ASC'),
+    lastLast: first(TOTAL_CHAPTERS, 'DESC'),
+    lastScanAt: typeof scan?.v === 'string' ? scan.v : null,
+  };
+}
+
+/**
+ * The three DB legs against `<dataDir>/book.db`, opened read-only. Returns the checks, the three
+ * blocks the readout prints and `absent: true` when there is no database at all — a checkout, or
+ * CI, has no volume, and "no book here" is a fact to print rather than a frame mismatch.
+ */
+export function checkFrame({ dataDir, DatabaseImpl = Database }) {
+  const dir = String(dataDir);
+  const file = join(dir, 'book.db');
+  if (!existsSync(file)) return { dataDir: dir, checks: [], readout: null, absent: true };
+  const fail = (reason) => ({
+    dataDir: dir,
+    absent: false,
+    readout: null,
+    checks: [mismatch(`frame database ${file}`, 'a book.db this check can read', reason)],
+  });
+  let db;
+  try {
+    db = new DatabaseImpl(file, { readonly: true, fileMustExist: true });
+  } catch (error) {
+    return fail(`cannot open ${file} read-only: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return { label, ok: parts.length === 0, parts };
+  try {
+    const table = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'book_frame'`).get();
+    if (table === undefined) {
+      return fail(`${file} has no book_frame table (schema v22 or older): the frame rows arrive with v23`);
+    }
+    const rows = db
+      .prepare('SELECT chapter, position, text, sha256 FROM book_frame ORDER BY chapter')
+      .all();
+    const checks = [...frameRowChecks(rows, file), ...spanChecks(db)];
+    return { dataDir: dir, absent: false, readout: readReadout(db), checks };
+  } catch (error) {
+    // A file that is not this book's database is a mismatch with a reason, never a stack trace.
+    return fail(`cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    db.close();
+  }
 }
 
 /** One chapter answer: its blocks, or the reason the site did not give any. */
@@ -178,10 +264,12 @@ async function fetchChapter(baseUrl, n, fetchImpl, deadline, now) {
 }
 
 function answerCheck(label, kind, frame, answer) {
-  if (answer.error !== undefined) return { label, ok: false, parts: [{ expected: frame, actual: answer.error }] };
+  if (answer.error !== undefined) return mismatch(label, frame, answer.error);
   const block = kind === 'first' ? answer.blocks[0] : answer.blocks[answer.blocks.length - 1];
   const text = typeof block?.text === 'string' ? block.text : '';
-  return matched(label, kind, frame, text, 'no blocks in the answer');
+  if (text.length === 0) return mismatch(label, frame, 'no blocks in the answer');
+  const ok = kind === 'first' ? text.startsWith(frame) : text.endsWith(frame);
+  return { label, ok, parts: ok ? [] : [{ expected: frame, actual: text }] };
 }
 
 /**
@@ -191,73 +279,10 @@ function answerCheck(label, kind, frame, answer) {
  */
 export async function checkServer({ baseUrl, fetchImpl = fetch, budgetMs = TOTAL_TIMEOUT_MS, now = () => Date.now() }) {
   const deadline = now() + budgetMs;
-  const first = await fetchChapter(baseUrl, 1, fetchImpl, deadline, now);
+  const first = await fetchChapter(baseUrl, OPENING_CHAPTER, fetchImpl, deadline, now);
   const last = await fetchChapter(baseUrl, TOTAL_CHAPTERS, fetchImpl, deadline, now);
   return [
-    answerCheck('site /api/chapters/1', 'first', FRAME.first, first),
+    answerCheck(`site /api/chapters/${String(OPENING_CHAPTER)}`, 'first', FRAME.first, first),
     answerCheck(`site /api/chapters/${String(TOTAL_CHAPTERS)}`, 'last', FRAME.last, last),
   ];
-}
-
-function blockText(db, chapter, order) {
-  const row = db.prepare(`SELECT text FROM blocks WHERE chapter = ? ORDER BY idx ${order} LIMIT 1`).get(chapter);
-  return typeof row?.text === 'string' ? row.text : null;
-}
-
-/**
- * The data dir the service reads: `book.db` opened read-only (never created, never written).
- * Returns the three blocks the readout prints, `meta.last_scan_at` (null when absent) and the
- * one combined check the CLI reports as `data dir <dir>`.
- */
-export function readDataDirFrame({ dataDir, DatabaseImpl = Database }) {
-  const dir = String(dataDir);
-  const file = join(dir, 'book.db');
-  const failed = (reason) => ({
-    dataDir: dir,
-    ch01First: null,
-    lastFirst: null,
-    lastLast: null,
-    lastScanAt: null,
-    check: { label: `data dir ${dir}`, ok: false, parts: [{ expected: FRAME.first, actual: reason }] },
-  });
-  let db;
-  try {
-    db = new DatabaseImpl(file, { readonly: true, fileMustExist: true });
-  } catch (error) {
-    return failed(`cannot open ${file} read-only: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  try {
-    const ch01First = blockText(db, 1, 'ASC');
-    const lastFirst = blockText(db, TOTAL_CHAPTERS, 'ASC');
-    const lastLast = blockText(db, TOTAL_CHAPTERS, 'DESC');
-    const scan = db.prepare(`SELECT v FROM meta WHERE k = 'last_scan_at'`).get();
-    const lastScanAt = typeof scan?.v === 'string' ? scan.v : null;
-
-    const parts = [];
-    if (!startsWithFrame(ch01First ?? '')) {
-      parts.push({ label: 'ch01 first block', expected: FRAME.first, actual: ch01First ?? 'no block for chapter 1' });
-    }
-    if (!endsWithFrame(lastLast ?? '')) {
-      parts.push({
-        label: `ch${String(TOTAL_CHAPTERS)} last block`,
-        expected: FRAME.last,
-        actual: lastLast ?? `no block for chapter ${String(TOTAL_CHAPTERS)}`,
-      });
-    }
-    // A single failure prints exactly one `expected`/`actual` pair; the label only disambiguates.
-    const partList = parts.length > 1 ? parts : parts.map(({ expected, actual }) => ({ expected, actual }));
-    return {
-      dataDir: dir,
-      ch01First,
-      lastFirst,
-      lastLast,
-      lastScanAt,
-      check: { label: `data dir ${dir}`, ok: parts.length === 0, parts: partList },
-    };
-  } catch (error) {
-    // A file that is not this book's database is a mismatch with a reason, never a stack trace.
-    return failed(`cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    db.close();
-  }
 }

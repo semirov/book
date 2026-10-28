@@ -1,49 +1,55 @@
 /**
- * BOOK-109 — `FRAME_DRIFT`: the served frame against the manuscript's, at request time.
+ * BOOK-109 / BOOK-187 — `FRAME_DRIFT`: the served frame against the row the volume holds.
  *
- * The frozen frame has one owner (`FRAME_FIRST_SENTENCE` / `FRAME_LAST_SENTENCE`, BOOK-107) and
- * two places that can disagree with it: the file, and the projection the database holds from
- * the last scan. The owner twice read text in ch01/ch42 that no file contained, and neither
- * `/healthz` nor the frame smoke check could say *which* of the two a request had just served.
- * This comparison answers that, per request, for the only two chapters whose text is the frame.
+ * The frozen frame has one witness (`FRAME_FIRST_SENTENCE` / `FRAME_LAST_SENTENCE`, BOOK-107) and
+ * the book keeps its own copy in `book_frame` (v23, ADR-043 G6). The owner twice read text in
+ * ch01/ch42 that no source contained, and neither `/healthz` nor the frame smoke check could say
+ * *which* side a request had just served. This comparison answers that, per request, for the only
+ * two chapters whose text is the frame — and since v23 it reads no file: the served block is
+ * compared with the seeded row, because the volume is the book (ADR-043 G2).
  *
- * It is deliberately cheap: two small files, read synchronously, and nothing for the other
- * chapters. A drift is logged by the route (the same strings, both of them); a file that cannot
- * be read is reported once per process, because a missing mount must not become a log flood.
+ * It is deliberately cheap: one indexed row and nothing for the other chapters. A drift is logged
+ * by the route (the same strings, both of them); a database with no row at all is reported once per
+ * process, because a pre-v23 volume must not become a log flood.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { TOTAL_CHAPTERS, OPENING_CHAPTER } from '@book/shared';
 
-import { TOTAL_CHAPTERS, chapterLabel, parseChapterTitle, splitParagraphs } from '@book/shared';
+import type { FramePosition } from '../db/repo/frame.ts';
 
 /** The served block, as much of it as the comparison needs. */
 export type ServedBlock = { text: string };
 
 export type FrameDrift = {
-  /** The manuscript file the comparison read. */
-  file: string;
+  /** The row the comparison read: `book_frame/1/first`. */
+  source: string;
   /** The block the request served, whitespace flattened — a log line is one line. */
   served: string;
-  /** The paragraph the file holds in the same position, flattened the same way. */
-  manuscript: string;
+  /** The sentence the volume holds for the same position, flattened the same way. */
+  stored: string;
 };
 
-/** The file exists but cannot be read (or the mount is gone): not drift, an unanswerable check. */
-export type FrameUnreadable = { file: string; unreadable: string };
+/** The row is not there (a pre-v23 volume, a wiped table): not drift, an unanswerable check. */
+export type FrameUnreadable = { source: string; unreadable: string };
 
-/** `null` — the two agree, or the chapter carries no frame (the other 65). */
+/** `null` — the two agree, or the chapter carries no frame (the other 40). */
 export type FrameCheck = FrameDrift | FrameUnreadable | null;
 
-export type FrameDriftOptions = {
-  bookRoot: string;
-  /** Test seam; the default reads `manuscript/chNN.md` synchronously. */
-  readFile?: (file: string) => string;
-};
+/** The one reader the route hands over: `(chapter, position) => the stored sentence or null`. */
+export type FrameReader = (chapter: number, position: FramePosition) => string | null;
 
-/** `manuscript/chNN.md` — the file the ingest would have projected this chapter from. */
-export function frameFile(bookRoot: string, n: number): string {
-  return join(bookRoot, 'manuscript', `ch${chapterLabel(n)}.md`);
+export type FrameDriftOptions = { frameOf: FrameReader };
+
+/** `book_frame/1/first` — the row this comparison is about, for the log line and the dedupe key. */
+export function frameSource(chapter: number, position: FramePosition): string {
+  return `book_frame/${String(chapter)}/${position}`;
+}
+
+/** `first` for ch01, `last` for the finale, null for the chapters no frame belongs to. */
+export function framePositionOf(n: number): FramePosition | null {
+  if (n === OPENING_CHAPTER) return 'first';
+  if (n === TOTAL_CHAPTERS) return 'last';
+  return null;
 }
 
 /** Whitespace is not identity: a re-wrapped paragraph is the same paragraph (the ingest agrees). */
@@ -51,36 +57,29 @@ function flatten(text: string): string {
   return text.replace(/\s+/gu, ' ').trim();
 }
 
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
- * Compare ch01's first paragraph and ch42's last one with the file the chapter was read from.
+ * Compare ch01's first served block and ch42's last one with the sentence `book_frame` holds.
  *
- * The file is parsed with the same two decisions the ingest makes — `parseChapterTitle` (a
- * chapter that opens on its frame is untitled prose) and `splitParagraphs` (blank line, trim,
- * drop empties) — so the comparison is between the projection and its own source, not between
- * two ideas of what a paragraph is.
+ * The row is the sentence, the block is the paragraph that carries it: ch01's first block must
+ * **open** with it and ch42's last block must **close** with it, whitespace flattened on both
+ * sides. A block that lost the sentence — the owner's report — is drift, and both strings travel
+ * in one log line so the line itself says which side is wrong.
  */
 export function checkFrameDrift(options: FrameDriftOptions, n: number, blocks: readonly ServedBlock[]): FrameCheck {
-  // Only the two chapters that carry the frame: the others are guarded by `rev` alone.
-  if (n !== 1 && n !== TOTAL_CHAPTERS) return null;
+  const position = framePositionOf(n);
+  // Not a frame chapter: no row is read at all.
+  if (position === null) return null;
 
-  const file = frameFile(options.bookRoot, n);
-  const read = options.readFile ?? ((path: string): string => readFileSync(path, 'utf8'));
-  let raw: string;
-  try {
-    raw = read(file);
-  } catch (error) {
-    return { file, unreadable: reasonOf(error) };
+  const source = frameSource(n, position);
+  const stored = options.frameOf(n, position);
+  if (stored === null) {
+    return { source, unreadable: `no book_frame row for ${String(n)}/${position} (the v23 seed never ran)` };
   }
 
-  const paragraphs = splitParagraphs(parseChapterTitle(n, raw).body);
-  const first = n === 1;
-  const served = flatten(first ? (blocks[0]?.text ?? '') : (blocks[blocks.length - 1]?.text ?? ''));
-  const manuscript = flatten(first ? (paragraphs[0] ?? '') : (paragraphs[paragraphs.length - 1] ?? ''));
-  // A readable but empty body is drift too: the slot claims the frame and holds nothing.
-  if (manuscript.length > 0 && served === manuscript) return null;
-  return { file, served, manuscript };
+  const served = flatten(position === 'first' ? (blocks[0]?.text ?? '') : (blocks[blocks.length - 1]?.text ?? ''));
+  const expected = flatten(stored);
+  const carries = position === 'first' ? served.startsWith(expected) : served.endsWith(expected);
+  // A readable but empty slot is drift too: the chapter claims the frame and holds nothing.
+  if (expected.length > 0 && carries) return null;
+  return { source, served, stored };
 }

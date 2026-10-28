@@ -25,12 +25,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v22', () => {
+describe('migrate — schema v23', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(22);
+    expect(SCHEMA_VERSION).toBe(23);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -73,6 +73,8 @@ describe('migrate — schema v22', () => {
     // BOOK-176 / BOOK-DOC-69: the ledger tables, the version's span list and the full-text mirror.
     expect(columns(db, 'block_versions')).toContain('spans');
     expect(present).toEqual(expect.arrayContaining(['facts', 'threads', 'thread_events', 'mentions', 'literals', 'blocks_fts']));
+    // BOOK-187 (v23): the book's own state, from the one constant a fresh install also reads.
+    expect(present).toEqual(expect.arrayContaining(['book_frame', 'writer_state', 'pass_transcripts', 'block_deltas']));
     db.close();
   });
 

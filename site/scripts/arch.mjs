@@ -18,7 +18,10 @@
  *   7. the type floor and the adaptive regime (BOOK-DOC-35): no `font-size` below 12px and no
  *      `@media (min-width:)` in `web/src/styles` — the floor cannot silently rot again;
  *   8. the chip copy (BOOK-70): the words the two audits removed are not printed again, and
- *      every registered chip keeps its one size, its voice and its two inks.
+ *      every registered chip keeps its one size, its voice and its two inks;
+ *   9. the text's home (BOOK-187, ADR-043 §3 row 4): no engine or writer module imports a
+ *      manuscript reader — the book's prose is read from rows, and the one-shot import is the
+ *      only door a file may come through.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -27,6 +30,7 @@ import { join, relative, resolve } from 'node:path';
 import { f023Problems, missingDistProblem } from './containment.mjs';
 import { copyProblems } from './chips.mjs';
 import { styleProblems } from './styles.mjs';
+import { textHomeProblems } from './lib/textHome.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 /** The book repository: `site/` lives inside it (§21.1). */
@@ -257,6 +261,11 @@ for (const problem of styleProblems(join(ROOT, 'web', 'src', 'styles'), { requir
 /** 8 — the chip copy of BOOK-70: a chip states one provable fact, or it does not exist. */
 for (const problem of copyProblems(join(ROOT, 'web', 'src'))) {
   report(problem.file, `line ${problem.line}: ${problem.message}`);
+}
+
+/** 9 — the text's home (BOOK-187): a file path cannot creep back into the engine or the writer. */
+for (const problem of textHomeProblems(ROOT)) {
+  report(join(ROOT, problem.file), problem.message);
 }
 
 if (problems.length > 0) {
