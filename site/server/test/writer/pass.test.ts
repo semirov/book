@@ -308,7 +308,7 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle for a day whose cap the estimate would cross, and opens nothing', async () => {
     const harness = await createHarness();
     try {
-      // $9.99 of $10 spent: a pass costs ≈ $0.18 before the prompt is built, so it does not fit.
+      // $9.99 of $10 spent: a pass costs a few cents before the prompt is built, so it does not fit.
       harness.hooks.budget = budgetOf({ daySpent: 9.99 });
       const result = await harness.run({ chapter: CHAPTER });
 
@@ -319,8 +319,8 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.calls).toHaveLength(0);
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
-      // The estimate is printed, with the day and the book it was measured against.
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'))).toBe(true);
+      // The estimate is printed with the day and the book; the cents follow the prompt's size.
+      expect(harness.logs.some((line) => /оценка прохода \$0,[1-9]\d{3} \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u.test(line))).toBe(true);
     } finally {
       await harness.close();
     }
@@ -371,7 +371,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.engineCalls.slice(0, 2)).toEqual(['state', 'pass']);
       expect(harness.engineCalls.filter((name) => name === 'state')).toHaveLength(2);
       expect(harness.engineCalls.indexOf('state', 1)).toBeGreaterThan(harness.engineCalls.indexOf('start'));
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800'))).toBe(true);
+      expect(harness.logs.some((line) => /оценка прохода \$0,[1-9]\d{3}/u.test(line))).toBe(true);
     } finally {
       await harness.close();
     }
