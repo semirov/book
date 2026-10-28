@@ -154,7 +154,8 @@ export const PASS_SPEND_TABLE_SQL = `CREATE TABLE pass_spend (                 -
   tokens_in  INTEGER NOT NULL,
   tokens_out INTEGER NOT NULL,
   usd        REAL NOT NULL,                        -- costUsd of the step's tokens, 6 dp
-  priced     INTEGER NOT NULL CHECK (priced IN (0,1))  -- 1 = usd is a measurement
+  priced     INTEGER NOT NULL CHECK (priced IN (0,1)), -- 1 = usd is a measurement
+  provenance TEXT CHECK (provenance IN ('pipeline','operator')) -- who ran the pass (BOOK-117)
 );
 CREATE INDEX pass_spend_day ON pass_spend(day);`;
 
@@ -304,4 +305,5 @@ export const STEPS_COLUMNS = [
   'pre_blocks',
   'rights_scan',
   'closed_at',
+  'provenance',
 ] as const;

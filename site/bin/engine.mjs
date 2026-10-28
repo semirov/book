@@ -15,7 +15,7 @@
  *   engine.mjs verdict <stepId> --role editor|consultant --session S --verdict HOLDS|GAP --model M
  *                              [--findings findings.json] [--tokens-in N] [--tokens-out N]
  *   engine.mjs verdict <stepId> --role rights [--session S] --verdict CLEAR|REFUSED [--rule <id>]
- *   engine.mjs done <leaseId> --model M [--seams seams.json] [--note "…"] [--tokens-in N] [--tokens-out N]
+ *   engine.mjs done <leaseId> --model M [--provenance pipeline|operator] [--seams seams.json] [--note "…"] [--tokens-in N] [--tokens-out N]
  *   engine.mjs seen <leaseId> --model M [--note "…"] [--tokens-in N] [--tokens-out N]
  *   engine.mjs escalate <leaseId> --because "…"
  *   engine.mjs beat <leaseId>
@@ -304,6 +304,9 @@ async function main() {
         model,
         tokensIn: numberFlag(flags, 'tokens-in'),
         tokensOut: numberFlag(flags, 'tokens-out'),
+        // BOOK-117: a repair run by a person closes on the model that answered; the default
+        // stays the pipeline's own pass.
+        provenance: flags.get('provenance'),
       });
       console.log(JSON.stringify(result, null, 2));
       return;

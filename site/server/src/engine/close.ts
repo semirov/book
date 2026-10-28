@@ -354,7 +354,7 @@ export function closeStep(
   // since the session last looked, and the close is refused (`LEASE_HELD`), not mis-booked.
   const { lease, live } = leaseForClose(db, step.step_id, input.expiredLeaseId);
   const gateRows = store.listVerdicts(db, step.step_id);
-  const spend = spendOfClose(db, step.step_id, { model: input.model, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
+  const spend = spendOfClose(db, step.step_id, { model: input.model, tokensIn: input.tokensIn, tokensOut: input.tokensOut, provenance: input.provenance ?? 'pipeline' });
   const ms = Math.max(0, now - Date.parse(step.at));
 
   const close = db.transaction((): CloseStepResult => {
@@ -365,6 +365,7 @@ export function closeStep(
       model: spend.model,
       tokens_in: spend.tokensIn,
       tokens_out: spend.tokensOut,
+      provenance: input.provenance ?? 'pipeline',
       closed_at: toIso(now),
       ms,
       lease_id: lease?.id ?? step.lease_id,
@@ -404,7 +405,7 @@ export function closeStep(
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
     // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
-    recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: input.model ?? null, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
+    recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: spend.model, tokensIn: spend.tokensIn, tokensOut: spend.tokensOut, provenance: spend.provenance });
 
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;

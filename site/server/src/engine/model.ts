@@ -23,6 +23,19 @@ import { refuse } from './types.ts';
 export type ModelWhere = 'done' | 'seen' | 'verdict';
 
 /**
+ * Who ran the pass (owner, 2026-10-28). A **pipeline** pass is the writer lane on the pinned
+ * model — ADR-038's check applies and is not weakened. An **operator** pass is a repair run by
+ * a person: it may use any model the operator actually ran, because the rule is honesty about
+ * who answered, not a relabelled pin — the record says `provenance: operator` and the model it
+ * names is the model whose tokens the ledger charges.
+ */
+export type Provenance = 'pipeline' | 'operator';
+
+export function normalizeProvenance(raw: unknown): Provenance {
+  return raw === 'operator' ? 'operator' : 'pipeline';
+}
+
+/**
  * The canonical model string, or a refusal: `MODEL_REQUIRED` for nothing to check,
  * `MODEL_NOT_PIPELINE` for a model that is not the pinned one. Both are 422 and both carry
  * `where`, so the session loop can tell a close from a verdict without parsing a message.
@@ -31,11 +44,15 @@ export function requirePipelineModel(
   config: Pick<Config, 'pipeline'>,
   declared: string | null | undefined,
   where: ModelWhere,
+  provenance: Provenance = 'pipeline',
 ): string {
   const value = typeof declared === 'string' ? declared.trim() : '';
   if (value.length === 0) {
     refuse('MODEL_REQUIRED', 422, `a ${where} must declare --model: name the model that answered`, { where });
   }
+  // An operator pass closes on the model it actually used; the pipeline check stays for the
+  // pipeline's own passes (owner, 2026-10-28).
+  if (provenance === 'operator') return value;
   const expected = config.pipeline.model;
   if (value !== expected) {
     refuse('MODEL_NOT_PIPELINE', 422, `the ${where} declares "${value}"; the pipeline runs on "${expected}"`, {
