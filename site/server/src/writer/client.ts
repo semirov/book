@@ -34,7 +34,8 @@ const TRANSPORT_ATTEMPTS = 2;
 
 /** The two codes this client owns: the engine did not answer, which is not a refusal. */
 export function isEngineTransportCode(code: string | null | undefined): boolean {
-  return code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE';
+  // BOOK-145: a busy database is a fact about the moment, like a timeout — retried once.
+  return code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE' || code === 'DB_BUSY';
 }
 
 /** `fetch` (or a test double): the only seam this client has to the outside. */

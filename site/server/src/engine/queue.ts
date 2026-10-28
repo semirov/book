@@ -26,7 +26,7 @@ import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { assertBudgetAllowsPass, budgetCapsOf } from '../budget.ts';
 import { toIso } from '../util/time.ts';
 import { newChangeId, newStepId } from '../util/ulid.ts';
-import { nextDraftChapter, type DraftLane } from './draft.ts';
+import type { DraftLane } from './draft.ts';
 import {
   boundaryFor,
   changeForStep,
@@ -38,7 +38,7 @@ import { admitPremise, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
-import { isBasisSlot, isWrittenChapter, readChapter, writtenChapters } from './text.ts';
+import { isBasisSlot, isWrittenChapter, readChapter } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -363,6 +363,17 @@ export function createQueue(deps: EngineDeps) {
     // book are the owner's numbers, and they are the same line on every surface.
     budgetGuard(at);
 
+    // BOOK-166 (owner, 2026-10-28): the book is written only on interventions. A draft pass
+    // exists only when a filing asks for this chapter; with none there is no work at all.
+    const premise = queuedPremise(db, chapter);
+    if (premise === undefined) {
+      refuse(
+        'NO_FILING_FOR_CHAPTER',
+        409,
+        `глава ${chapter} не заказана заявкой — книга пишется только при воздействиях`,
+      );
+    }
+
     // One pass per chapter: an open draft step of this chapter *is* the pass, whoever holds it.
     const open = store.listOpenSteps(db).find((step) => step.pass === 'draft' && step.chapter === chapter);
     if (open) {
@@ -385,7 +396,7 @@ export function createQueue(deps: EngineDeps) {
 
     // BOOK-7: the chapter's premise rides on the step that opens its first pass, so a
     // resumed step carries it again and a close can settle exactly that premise.
-    const premise = queuedPremise(db, chapter);
+    // The premise is already resolved above (BOOK-166): the step carries the filing it serves.
     const lane: DraftLane = chapter <= FORWARD_LAST ? 'fwd' : 'bwd';
     const stepId = newStepId(at);
     store.insertStep(db, {
@@ -435,18 +446,40 @@ export function createQueue(deps: EngineDeps) {
    * A lane that finds no work answers `null` — a paused day is "no pass today", not a refusal a
    * polling session has to parse — while a named pass (`openPass`) speaks the code.
    */
-  function startDraft(session: string, lane: DraftLane, at: number): WriterAssignment | null {
-    try {
-      budgetGuard(at);
-    } catch (error) {
-      const code = refusalCode(error);
-      if (code === 'BUDGET_PAUSED' || code === 'BUDGET_STOPPED') return null;
-      throw error;
+  function startDraft(session: string, _lane: DraftLane, at: number): WriterAssignment | null {
+    // BOOK-166: the work is the filings' own order, oldest first — not the lane's next slot.
+    // With no filing the lane has nothing to do and spends nothing: no assignment, no estimate.
+    const filings = db
+      .prepare(`SELECT * FROM changes WHERE premise = 1 AND status = 'pending' ORDER BY seq`)
+      .all() as store.ChangeRow[];
+    for (const filing of filings) {
+      const chapter = filing.chapter;
+      // A basis-only slot (the book's own two sentences) can never take prose: the filing is
+      // closed with its reason and the queue moves on.
+      if (chapter < 1 || chapter > TOTAL_CHAPTERS || isBasisSlot(readChapter(bookRoot, chapter))) {
+        // A filing on a frozen slot can never be written: it is closed with its reason and the
+        // queue moves on — refusing here would block every later filing behind it.
+        store.updateChange(db, filing.id, {
+          status: 'void',
+          outcome: 'dropped',
+          reason: PREMISE_FROZEN_REASON,
+        });
+        appendChangeEvent(db, filing.id, 'cancelled', { reason: PREMISE_FROZEN_REASON }, at);
+        continue;
+      }
+      // A written chapter changes through the FIFO lane (`claimHead`), not through a draft.
+      if (isWrittenChapter(readChapter(bookRoot, chapter))) continue;
+      if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) continue;
+      try {
+        budgetGuard(at);
+      } catch (error) {
+        const code = refusalCode(error);
+        if (code === 'BUDGET_PAUSED' || code === 'BUDGET_STOPPED') return null;
+        throw error;
+      }
+      return openPass(session, chapter, at);
     }
-    const chapter = nextDraftChapter(writtenChapters(bookRoot), lane);
-    if (chapter === null) return null;
-    if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) return null;
-    return openPass(session, chapter, at);
+    return null;
   }
 
   return { enqueue, relevanceOf, claimOpenStep, claimHead, startDraft, openPass };

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
-import { PIPELINE_MODEL, createEngineFixture, runStubStep } from './helpers.ts';
+import { PIPELINE_MODEL, createEngineFixture, fileOn, runStubStep } from './helpers.ts';
 
 const FLASH = 'deepseek/deepseek-flash';
 const TOKEN = 'test-token';
@@ -161,6 +161,7 @@ describe('T2 — a prose step declares the pipeline model', () => {
   it('keeps escalate model-less on purpose: it claims no text was produced', () => {
     const fixture = createEngineFixture();
     try {
+      fileOn(fixture, 1);
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-1' }) as WriterAssignment;
       fixture.engine.start(assignment.leaseId);
       const escalated = fixture.engine.escalate(assignment.leaseId, 'budget: нет бюджета на пасс');
@@ -174,6 +175,7 @@ describe('T2 — a prose step declares the pipeline model', () => {
   it('leaves the pinned model on a full stub pass: the step and all three gates carry it', () => {
     const fixture = createEngineFixture();
     try {
+      fileOn(fixture, 1);
       const run = runStubStep(fixture, { title: 'Глава', blocks: ['Тестовый абзац.'] });
       expect(run).not.toBeNull();
       expect(stepRow(fixture, run?.stepId ?? '').model).toBe(PIPELINE_MODEL);

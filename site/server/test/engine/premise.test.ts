@@ -283,11 +283,9 @@ describe('BOOK-7 — an intervention becomes the chapter’s premise', () => {
         reason: 'не беру: документ не из этой сцены',
       });
 
-      // The refusal is final: the next first pass writes the chapter without a premise.
-      const second = fixture.engine.next({ for: 'fwd', session: 'writer-fwd-2' }) as WriterAssignment;
-      expect(second.pass).toBe('draft');
-      expect(second.chapter).toBe(5);
-      expect(second.premise).toBeNull();
+      // BOOK-166 (owner, 2026-10-28): the refusal is final, and with no filing left there is no
+      // pass at all — the book waits for the next reader instead of writing an unasked chapter.
+      expect(fixture.engine.next({ for: 'fwd', session: 'writer-fwd-2' })).toBeNull();
       expect(change(fixture.db, accepted.changeId)).toMatchObject({ status: 'void', outcome: 'dropped' });
     } finally {
       fixture.close();

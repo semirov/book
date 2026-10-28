@@ -9,11 +9,9 @@ import { SITE_ROOT } from '../../src/config.ts';
 import { buildControl } from '../../src/engine/control.ts';
 import { insertComment } from '../../src/comments/repo.ts';
 import { upsertIdentity } from '../../src/db/repo/identities.ts';
-import { PIPELINE_MODEL, chapterText, createEngineFixture } from './helpers.ts';
-
+import { fileOn, PIPELINE_MODEL, chapterText, createEngineFixture } from './helpers.ts';
 const exec = promisify(execFile);
 const TOKEN = 'test-token';
-
 async function cli(url: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
     const { stdout, stderr } = await exec('node', ['bin/engine.mjs', ...args], {
@@ -208,6 +206,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
     try {
       const change = (await post('/internal/changes', { kind: 'reader_edit', chapter: 1, intent: 'среда' })).body
         .data as { id: string };
+      fileOn(fixture, 2);
       const job = (await post('/internal/next', { for: 'fwd', session: 'w1' })).body.data as WriterAssignment;
       expect((await post('/internal/start', { leaseId: job.leaseId })).status).toBe(200);
 
@@ -278,6 +277,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
       const port = (app.server.address() as AddressInfo).port;
       const url = `http://127.0.0.1:${port}`;
 
+      fileOn(fixture, 3);
       const job = await cli(url, ['next', '--for', 'fwd']);
       expect(job.code).toBe(0);
       const assignment = JSON.parse(job.stdout) as WriterAssignment;

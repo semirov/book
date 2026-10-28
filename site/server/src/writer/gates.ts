@@ -48,6 +48,8 @@ export type GatePromptInput = {
   /** The text that landed: the gate reads what is on disk, not a summary of it. */
   landedText: string;
   indexSlice: string | null;
+  /** BOOK-145: why the previous answer was not parsed — one retry carries it back to the model. */
+  refusal?: string | null;
 };
 
 export type BuiltGatePrompt = {
@@ -165,6 +167,14 @@ export function buildGatePrompt(input: GatePromptInput): BuiltGatePrompt {
             '## Указатель',
             input.indexSlice.trim(),
             'Производный указатель этой главы и соседей: эвристика, а не канон; расхождение — повод для замечания, не приговор.',
+          ),
+        ]),
+    ...(input.refusal === null || input.refusal === undefined
+      ? []
+      : [
+          part(
+            'refusal',
+            ['## Отказ', `Предыдущий ответ не разобран: ${input.refusal.slice(0, 300)}.`, 'Верни только JSON по форме из задания — без пояснений, без markdown.'].join('\n'),
           ),
         ]),
     contractPart(input.role),

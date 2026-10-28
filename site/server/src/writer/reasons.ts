@@ -117,6 +117,7 @@ function sentenceFor(code: string): string | null {
   if (code === 'ANSWER_REFUSAL') return readerSentences.refusal;
   if (code.startsWith('ANSWER_')) return readerSentences.answerRejected;
   if (code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE') return readerSentences.engineDown;
+  if (code === 'DB_BUSY') return readerSentences.engineDown;
   if (code === 'RIGHTS_REQUIRED' || code === 'RIGHTS_NOT_REQUIRED') return readerSentences.rightsMissing;
   if (code === 'FRAME_CHANGED') return readerSentences.frameChanged;
   if (code === 'STEP_CLOSED') return readerSentences.stepClosed;

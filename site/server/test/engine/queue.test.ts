@@ -37,7 +37,12 @@ describe('the FIFO lane (§6A.3)', () => {
   // 50 sequential polls through the public control route; the default 5 s is tight under a
   // fully parallel suite (the loop takes ~3.5 s on an idle machine).
   it('keeps the admission order under 50 concurrent enqueues and hands heads out by seq', async () => {
-    const fixture = createEngineFixture({ chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) }, env: { QUEUE_SOFT_CAP: '100' } });
+    // The FIFO lane only: the fixture files no premise of its own here (BOOK-166).
+    const fixture = createEngineFixture({
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']) },
+      env: { QUEUE_SOFT_CAP: '100' },
+      filings: 'manual',
+    });
     const app = await buildControl({ engine: fixture.engine, token: 'test-token', logger: false });
     try {
       const responses = await Promise.all(

@@ -106,11 +106,18 @@ describe('T-impact — what a change did, materialized at close (§6F.5)', () =>
       const first = computeImpact(fixture.db, change.id, Date.parse('2026-10-25T10:05:00Z'));
       expect(first).not.toBeNull();
       fixture.db.prepare('DELETE FROM change_impact').run();
-      expect(rebuildImpacts(fixture.db, Date.parse('2026-10-25T10:05:00Z'))).toBe(1);
+      // BOOK-166: the draft pass exists only to serve a filing, so the fixture's reader left a
+      // premise on ch01 — settled `done` when the chapter was written. A settled premise is a
+      // finished change like any other and earns its own impact row: the rebuild materializes
+      // one row per finished change, and no change twice.
+      const finished = fixture.db.prepare('SELECT COUNT(*) AS n FROM changes WHERE finished_at IS NOT NULL').get() as {
+        n: number;
+      };
+      expect(rebuildImpacts(fixture.db, Date.parse('2026-10-25T10:05:00Z'))).toBe(finished.n);
       const rebuilt = readImpact(fixture.db, change.id);
       expect(rebuilt).toEqual(first);
       // The projection is stable across a second rebuild too.
-      expect(rebuildImpacts(fixture.db, Date.parse('2026-10-25T10:05:00Z'))).toBe(1);
+      expect(rebuildImpacts(fixture.db, Date.parse('2026-10-25T10:05:00Z'))).toBe(finished.n);
       expect(readImpact(fixture.db, change.id)).toEqual(first);
     } finally {
       fixture.close();

@@ -271,13 +271,13 @@ describe('runPass — one pass, end to end', () => {
   it('resumes a landed step at the gates instead of writing it again', async () => {
     const harness = await createHarness();
     try {
-      // The writer that opened this pass is gone after the landing: the text is on disk and the step is open, so the next pass must close it, not rewrite it.
+      // The writer that opened this pass is gone after the landing: the text is on disk and the step is open, so the next pass must close it, not rewrite it. BOOK-166: the step exists only because a reader filed it.
+      harness.premised(CHAPTER, 'замысел главы 65: читатель просит начать с документа');
       const assignment = harness.assignment(CHAPTER);
       harness.fixture.engine.start(assignment.leaseId);
       harness.fixture.writeChapter(CHAPTER, chapterAnswer());
       harness.fixture.engine.land(assignment.leaseId);
       const onDisk = readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8');
-
       harness.script.push('HOLDS', 'HOLDS');
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
