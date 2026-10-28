@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
 import { formatChars } from '../lib/format.ts';
 import { compareToNow, momentText } from '../lib/history.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { MomentControl } from './MomentControl.tsx';
 import { SentenceBlock } from './SentenceBlock.tsx';
@@ -66,9 +67,11 @@ export type ChronicleProps = {
   started: boolean;
   /** BOOK-56: `state.history.live`; without a reader change the record list stays empty and the chain off. */
   live: boolean;
+  /** BOOK-168 — the page's chapter read for the record's place door; a place it cannot show opens the card. */
+  onLoadChapter?: ChapterLoader;
 };
 
-export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live, onLoadChapter }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -77,11 +80,8 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
   const requested = useRef<number | null>(null);
   const requestId = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /**
-   * BOOK-128 comment #3815 — the phrase's facts are the paragraph's own block, in flow here:
-   * the chronicle has no margin channel, and a floating box over a past chapter would be the
-   * second surface the owner asked us to remove.
-   */
+  // BOOK-128 #3815 — the phrase's facts are the paragraph's own block, in flow: this surface has
+  // no margin channel, and a floating box over a past chapter would be a second surface.
   const sentence = useParagraphChain();
 
   const refresh = useCallback(async () => {
@@ -318,7 +318,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
           </>
         )
       ) : (
-        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} />
+        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
       )}
       {failed ? (
         <div className="state-line">
@@ -345,11 +345,14 @@ export function ChronicleRecords({
   timeline,
   failed,
   onOpenChange,
+  onLoadChapter,
 }: {
   timeline: HistoryTimelineDto;
   /** The last read failed: an absence is not claimed on top of it. */
   failed: boolean;
   onOpenChange: (changeId: string) => void;
+  /** BOOK-168: the page's chapter read, handed to every record's place door. */
+  onLoadChapter?: ChapterLoader;
 }) {
   if (timeline.items.length > 0) {
     return (
@@ -357,7 +360,7 @@ export function ChronicleRecords({
         {timeline.items.map((record) => (
           // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
           // lands for that change, and a remount would drop keyboard focus on a live tick.
-          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
+          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
         ))}
       </ol>
     );

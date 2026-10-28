@@ -6,6 +6,7 @@ import {
   landingScroll,
   placeBlockId,
   placeBlockIndex,
+  placeChangeId,
   placeHref,
   placeNote,
   type Place,
@@ -76,9 +77,18 @@ describe('the fragment a place prints', () => {
 });
 
 describe('the card’s one honesty line', () => {
-  it('is printed only for a filing whose block is gone', () => {
-    expect(placeNote(comment(), true)).toBe(PLACE_NOTE);
-    expect(placeNote(comment(), false)).toBeNull();
+  it('is printed only for a filing the log says is no longer there', () => {
+    const stale = comment({
+      anchor: { blockId: 'ch03#b12', blockIndex: 12, quote: 'Я посмотрел на часы.', prefix: null, suffix: null, resolved: false },
+    });
+    expect(placeNote(stale, true)).toBe(PLACE_NOTE);
+    expect(placeNote(stale, false)).toBeNull();
+  });
+
+  it('is silent for a live anchor whose paragraph the page has not read', () => {
+    // A resolved anchor and an absent block are two different facts: the chapter may simply not
+    // have been fetched yet, and «место изменилось после правки» would be a claim nobody made.
+    expect(placeNote(comment(), true)).toBeNull();
   });
 
   it('never contradicts a premise: the chapter is its own place', () => {
@@ -89,6 +99,16 @@ describe('the card’s one honesty line', () => {
   it('is silent for a change with no filing on the page', () => {
     expect(placeNote(CHAPTER, true)).toBeNull();
     expect(placeNote({ commentId: 'cmt_9', chapter: 7 }, true)).toBeNull();
+  });
+});
+
+describe('the card a place hands over to', () => {
+  it('is the filing’s own change, the row’s, or none at all', () => {
+    expect(placeChangeId(comment({ changeId: 'chg_1' }))).toBe('chg_1');
+    expect(placeChangeId(comment({ changeId: null }))).toBeNull();
+    expect(placeChangeId({ commentId: 'cmt_9', chapter: 7, changeId: 'chg_9' })).toBe('chg_9');
+    expect(placeChangeId({ commentId: 'cmt_9', chapter: 7 })).toBeNull();
+    expect(placeChangeId(CHAPTER)).toBeNull();
   });
 });
 

@@ -69,7 +69,12 @@ function handOf(last: ParagraphVersionDto | null, frame: SentenceFrame): string 
   if (last === null) return PASS_HAND;
   // A reader's filing produced this version: the record's own change number stands in for the
   // hand — unpadded, exactly as the owner reads it (`правка · №12`).
-  if (last.changeSeq !== null && last.actor?.kind === 'reader') return `правка · №${last.changeSeq}`;
+  if (last.actor?.kind === 'reader') {
+    if (last.changeSeq !== null) return `правка · №${last.changeSeq}`;
+    // A reader's version the log numbers with no change: their own label is the hand, and the
+    // pass that printed the paragraph must not take it (`provenance.ts` `handOf` says the same).
+    return last.actor.label;
+  }
   // Nothing claims it: no actor and no change behind it.
   if (last.actor === null && last.changeSeq === null) return UNATTRIBUTED_HAND;
   const moment = shortMoment(last.at);

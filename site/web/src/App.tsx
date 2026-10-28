@@ -427,6 +427,7 @@ export function App() {
           onOpenChange={card.open}
           started={chronicle}
           live={history}
+          onLoadChapter={loadChapter}
         />
         {card.change === null ? null : (
           <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
@@ -480,8 +481,9 @@ export function App() {
         onAuthorsCount={applyAuthorsCount}
         live={history}
         exportBytes={front.exportBytes ?? null}
+        onLoadChapter={loadChapter}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />

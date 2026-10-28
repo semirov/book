@@ -48,6 +48,20 @@
   margin: 0;
 }
 
+/* BOOK-128 comment #3815 — the flow variant: the same block where there is **no margin
+   channel** (a past chapter on the chronicle, any page without the pass). It keeps the note's
+   padding and hairline but none of the margin's geometry: it stands in the flow after its
+   paragraph, full measure, already opaque. This must not depend on a query: a chronicle reads
+   a past chapter at any width, and the margin's `position: absolute; opacity: 0` would open a
+   transparent block past the right edge, waiting for a pass that never runs there. */
+.sentence-flow {
+  position: static;
+  width: auto;
+  border-top: 1px solid var(--rule);
+  opacity: 1;
+  transition: none;
+}
+
 /* The word's three facts: 12 px mono, lowercase, one per line, 2 px apart (no labels, no
    table, no uppercase). The first line is the hand and takes the book's ink; the rest are the
    quiet facts. The gloss is the label register in `--ink-3`, 6 px above the block's own end. */
@@ -84,12 +98,13 @@
   color: var(--ink-3);
 }
 /* The filing standing on the word: a text action, no background and no rule until the pointer
-   is on it. The 44 px hit is the layer's own target; a modified click keeps the browser's act
-   (the `<a>`'s href is the filing's place). */
+   is on it. A modified click keeps the browser's act (the `<a>`'s href is the filing's place).
+   No 44 px box here: in the margin this is one 12 px trace line inside the note, and a target
+   that tall would break the note's rhythm. The target is a thumb's size on the phone only
+   (the ≤1023 block below). */
 .prov-door {
   display: inline-flex;
   align-items: center;
-  min-height: 44px;
   color: var(--ink);
   text-decoration: none;
 }
@@ -171,6 +186,12 @@
   .sentence-label {
     display: flex;
     align-items: center;
+    min-height: 44px;
+  }
+  /* The filing's door on the word is a thumb's target here: it is the note's one action, and
+     the ≤1023 body is the only place a finger meets it. At ≥1024 it stays a 12 px trace line
+     inside the margin note (the base rule above). */
+  .prov-door {
     min-height: 44px;
   }
 }

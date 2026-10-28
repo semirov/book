@@ -17,8 +17,10 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
  * At ≥1024 the block is a margin item (`data-margin-item="sentence"`) anchored on the line the
  * `⋯` door sits on: the seat is a zero-height block after the paragraph, so the prose cannot
  * move while the answer is read, and the pass places the block against the very line that asked
- * the question. At ≤1023 the same node is in flow under the paragraph — a 44 px row carrying
- * the one word `фраза`, the sentence quoted, then its three facts, full measure, `--rule` tie.
+ * the question. At ≤1023 — and on any surface with no margin channel at all, a past chapter on
+ * the chronicle — the same node is in flow under the paragraph (`.sentence-flow`): a 44 px row
+ * carrying the one word `фраза`, the sentence quoted, then its three facts, full measure, `--rule`
+ * tie. The flow variant is never an item of the pass's ledger: its geometry is the document's.
  *
  * The block owns no close and no CTA: the `⋯` door that opened it is the toggle, `Escape` and an
  * outside tap put it away, and focus goes back to the door. Its visible label is `фраза`; the
@@ -60,7 +62,9 @@ export function SentenceBlock({
 
   // The block owns no ✕ (§ the design's one-close rule): it is put away by `Escape`, by a tap
   // on a fine pointer outside it, or by pressing its own door again — and the caller hands focus
-  // back to that door.
+  // back to that door. The door is **part of the layer**: a press on it is not an outside press,
+  // or the close would fire on `pointerup` (before the door's own `click`) and the second press
+  // would put the block away and raise it again in the same gesture.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       // The card over this layer owns Escape while it is open (one box, one way out).
@@ -68,7 +72,7 @@ export function SentenceBlock({
       onClose();
     };
     const detach = attachOutsideClose({
-      isInside: (target) => target.closest('.sentence-block') !== null,
+      isInside: (target) => target.closest('.sentence-block, .prov') !== null,
       onOutside: onClose,
     });
     document.addEventListener('keydown', onKey);
@@ -85,7 +89,10 @@ export function SentenceBlock({
   const block = (
     <div
       className={place === 'margin' ? SENTENCE_BLOCK_CLASS : `${SENTENCE_BLOCK_CLASS} sentence-flow`}
-      data-margin-item="sentence"
+      // Only the margin variant is an item of the page's pass. The flow variant is in the
+      // document's own layout: entering the ledger would hand it a channel `top` it must never
+      // have, and the pass would then position a block that is already where it belongs.
+      data-margin-item={place === 'margin' ? 'sentence' : undefined}
       role="group"
       aria-label="откуда эта фраза"
       aria-busy={loading ? 'true' : undefined}

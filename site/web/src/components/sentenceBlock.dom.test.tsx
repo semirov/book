@@ -223,7 +223,7 @@ describe('the block obeys the margin’s one rule', () => {
   it('never uppercases a word, never scrolls, never shadows, never prints an id', async () => {
     await act(async () => {
       root?.render(
-        <SentenceBlock chain={REVISED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={() => undefined} onClose={() => undefined} />,
+        <SentenceBlock chain={REVISED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="margin" onRetry={() => undefined} onClose={() => undefined} />,
       );
     });
     const upper = uppercaseSelectors();
@@ -240,7 +240,22 @@ describe('the block obeys the margin’s one rule', () => {
     expect(rule).toContain('width: var(--note-fit)');
     expect(rule).not.toContain('z-index');
     expect(rule).not.toContain('max-height');
+    // Only the margin variant enters the page's ledger (BOOK-128 #3815).
     expect(block()?.getAttribute('data-margin-item')).toBe('sentence');
+  });
+
+  it('keeps the flow variant out of the ledger and out of the margin’s geometry', async () => {
+    await act(async () => {
+      root?.render(
+        <SentenceBlock chain={REVISED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={() => undefined} onClose={() => undefined} />,
+      );
+    });
+    // A chronicle reads a past chapter at any width: nothing places the block there, so nothing
+    // may hide it until a pass says so — and no pass runs on that page at all.
+    expect(block()?.classList.contains('sentence-flow')).toBe(true);
+    expect(block()?.hasAttribute('data-margin-item')).toBe(false);
+    expect(block()?.getAttribute('data-placed')).toBeNull();
+    expect(block()?.getAttribute('style')).toBeNull();
   });
 
   it('is a margin item at ≥1024 over a zero-height seat, and a 44 px row at ≤1023', () => {
@@ -340,6 +355,43 @@ describe('the door in the prose opens the block, and takes it away', () => {
     expect(block()).toBeNull();
     expect(document.querySelector('p.p')?.textContent).toContain('Её освещал яркий свет.');
     expect(document.activeElement).toBe(document.querySelector('.prov'));
+  });
+
+  it('treats its own door as part of the layer: a press on it closes nothing by itself', async () => {
+    // A fine pointer at a desktop's width: `outsideCloseAllowed` is true here, so this is the one
+    // place the gesture order can go wrong. The door is the page's own `.prov` — the same class
+    // the prose and the chronicle render — and it is the layer's toggle, not an outside press.
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query }));
+    const onClose = vi.fn();
+    /** One press, one release: what `attachOutsideClose` reads. The click is the door's own. */
+    const press = async (target: Element): Promise<void> => {
+      await act(async () => {
+        for (const type of ['pointerdown', 'pointerup']) {
+          target.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: 5, clientY: 5, pointerId: 1 }));
+        }
+        for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+      });
+    };
+
+    // The page's own nodes, beside the root: a door as the prose draws it and an outside line.
+    const door = document.body.appendChild(document.createElement('button'));
+    door.className = 'prov';
+    const paragraph = document.body.appendChild(document.createElement('p'));
+    paragraph.className = 'p';
+    await act(async () => {
+      root?.render(
+        <SentenceBlock chain={REVISED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="margin" onRetry={() => undefined} onClose={onClose} />,
+      );
+    });
+
+    // The press on the door is inside the layer: nothing closes on `pointerup`, so the door's own
+    // click is the only act of the gesture — one press, one close, never close-then-reopen.
+    await press(door);
+    expect(onClose).not.toHaveBeenCalled();
+    // …and a press anywhere else still closes it: the layer keeps the behaviour it had.
+    await press(paragraph);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('is not rendered at all with history off', async () => {

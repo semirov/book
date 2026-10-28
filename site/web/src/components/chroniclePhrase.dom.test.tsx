@@ -153,8 +153,14 @@ describe('a past chapter’s phrase, in flow', () => {
     // BOOK-68 keeps its absence line for a 404 in this layer: the log holds no row for the
     // paragraph, and the phrase does not print a hand it cannot back with one.
     expect(block?.textContent).toContain('у этой строки нет истории');
-    // A past chapter has no margin: the block is not an item of the pass's ledger at all.
-    expect(block?.getAttribute('data-margin-item')).toBe('sentence');
+    // A past chapter has no margin: the block is not an item of the pass's ledger at all, so
+    // the pass cannot place it against a line that is not there, and it is already opaque.
+    expect(block?.hasAttribute('data-margin-item')).toBe(false);
+    expect(block?.getAttribute('data-placed')).toBeNull();
+    expect(block?.getAttribute('style')).toBeNull();
+    // The sheet that keeps the block on the page is `reader.css`, and its contract — `.sentence-flow`
+    // undoes the margin's absolute, transparent box outside every query — is proved in
+    // `readerSheet.test.ts`. Here the claim is the block itself: it is not a ledger item.
     expect(door?.getAttribute('aria-expanded')).toBe('true');
     expect(container.querySelector('.filing-panel, .prov-panel')).toBeNull();
 

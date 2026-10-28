@@ -5,6 +5,7 @@ import { focusHash } from '../lib/focus.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
@@ -45,6 +46,7 @@ export function Discussion({
   comments = [],
   nowMs,
   live,
+  onLoadChapter,
 }: {
   depth: number;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the two feeds' settle. */
@@ -66,6 +68,8 @@ export function Discussion({
   nowMs?: number;
   /** BOOK-56: `state.history.live`; with no reader change the register is not on the page. */
   live: boolean;
+  /** BOOK-168: the page's chapter read, so a quote's door can ask for the chapter it names. */
+  onLoadChapter?: ChapterLoader;
 }) {
   if (!live) return null;
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
@@ -156,7 +160,7 @@ export function Discussion({
                   // BOOK-168 — the quote is the door: the row's words, and the paragraph they
                   // were filed on. The row itself is not a second click target (one tap, one card).
                   <p className="comment-quote">
-                    <PlaceLink place={comment}>«{quote}»</PlaceLink>
+                    <PlaceLink place={comment} onLoadChapter={onLoadChapter}>«{quote}»</PlaceLink>
                   </p>
                 )}
                 <p className="comment-body">{comment.body}</p>

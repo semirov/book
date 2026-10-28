@@ -63,6 +63,21 @@ describe('the phrase’s three facts', () => {
     expect(facts.trail).toBe('правка №12 · внесена 12:08');
   });
 
+  it('a reader’s version with no change behind it keeps their name, never the pass', () => {
+    // The log numbers no change here, so there is no «правка · №…» to print — but the hand is
+    // still the reader's: `печатник` would credit the shift with a reader's sentence, which is
+    // the one thing `provenance.ts` `handOf` refuses to do for a word.
+    const facts = sentenceFacts({
+      chain: chain([
+        version({ actor: { kind: 'reader', identityId: 'idt_1', label: 'Аня' }, changeSeq: null, changeId: null }),
+      ]),
+      frame: 'none',
+    });
+    expect(facts.hand).toBe('Аня');
+    expect(facts.hand).not.toContain(PASS_HAND);
+    expect(facts.trail).toBe(NO_REWRITES);
+  });
+
   it('the canon sentence: «рамка книги», fixed, and its filing when one stands', () => {
     const facts = sentenceFacts({ chain: chain([version()]), frame: 'frame' });
     expect(facts.hand).toBe(FRAME_HAND);

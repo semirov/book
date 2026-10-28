@@ -33,8 +33,28 @@ export function staticPageHref(page: StaticPage): string {
  * chapter link, and the page must not scroll for it.
  */
 export function chapterFromHash(hash: string, totalChapters: number): number | null {
-  const match = /^#ch-(\d{1,3})$/u.exec(hash);
+  return chapterLinkFromHash(hash, totalChapters)?.chapter ?? null;
+}
+
+/** A fragment that names a paragraph as well as its chapter: `#ch-3-b12`. */
+export type ChapterLink = {
+  chapter: number;
+  /** The paragraph's index inside the chapter, or `null` for the chapter's own mouth. */
+  blockIndex: number | null;
+};
+
+/**
+ * BOOK-168 — a place copied from a door can name the paragraph, not only the chapter: `#ch-3`
+ * is the chapter's mouth and `#ch-3-b12` is its twelfth block (`placeHref`). The reading surface
+ * parses both, so a link carried out of the register lands on the sentence it quotes — with the
+ * script off, the browser's own fragment jump does the same on the element id the paragraph has.
+ * A number outside the book, a bad index and any other hash are not a link: `null`, no scroll.
+ */
+export function chapterLinkFromHash(hash: string, totalChapters: number): ChapterLink | null {
+  const match = /^#ch-(\d{1,3})(?:-b(\d{1,4}))?$/u.exec(hash);
   if (match === null) return null;
-  const n = Number(match[1]);
-  return Number.isInteger(n) && n >= 1 && n <= totalChapters ? n : null;
+  const chapter = Number(match[1]);
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > totalChapters) return null;
+  const blockIndex = match[2] === undefined ? null : Number(match[2]);
+  return { chapter, blockIndex };
 }

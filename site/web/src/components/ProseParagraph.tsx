@@ -454,6 +454,8 @@ export function ProseParagraph({
       </p>
       {strip}
       {/* BOOK-128 #3815 — the phrase's facts: a zero-height seat at ≥1024, a block in flow at ≤1023. */}
+      {/* `basis: false` is the decision: this paragraph **is** the basis sentence, so `frameOnly`
+          names it `frame` («основание книги» would contradict the word's `рамка книги`). */}
       {sentence === undefined || sentence.openId !== blockId ? null : (
         <SentenceBlock
           chain={sentence.chain}

@@ -7,9 +7,11 @@ import {
   isCommentIdPlace,
   isCommentPlace,
   landAt,
+  placeChangeId,
   placeHref,
   placeNote,
-  resolvePlaceTarget,
+  resolvePlaceAfterLoad,
+  type ChapterLoader,
   type Place,
   type PlaceTarget,
 } from '../lib/place.ts';
@@ -38,6 +40,13 @@ import { FilingPanel } from './FilingPanel.tsx';
  *
  * Closing returns focus to the link itself: the page's strip was never touched, so the door is
  * the only thing to hand back to the reader.
+ *
+ * A block that is **not in the DOM** is not a lost anchor: the chapter may not have been read
+ * yet, so the door asks the page for it (`onLoadChapter`, `App`'s own read) and re-resolves the
+ * paragraph for a bounded number of frames before it settles for the chapter's mouth and — with
+ * `anchor.resolved === false` alone — the one honesty line. A place the page cannot show at all
+ * (the chronicle holds records, not chapters) falls back to the change card, because a door that
+ * silently sets a fragment to nothing is not a door.
  */
 export type PlaceLinkProps = {
   place: Place;
@@ -46,9 +55,15 @@ export type PlaceLinkProps = {
   /** A change with no filing: the landing moves the page, the page opens its own card. */
   onOpenChange?: (changeId: string) => void;
   className?: string;
+  /**
+   * The page's own chapter read: a door asks for the chapter it names before it lands, so a
+   * paragraph that arrives with the read is landed on instead of the chapter's mouth. Absent
+   * where nothing can be loaded, and the wait is then the frames alone.
+   */
+  onLoadChapter?: ChapterLoader;
 };
 
-export function PlaceLink({ place, children, onOpenChange, className }: PlaceLinkProps) {
+export function PlaceLink({ place, children, onOpenChange, className, onLoadChapter }: PlaceLinkProps) {
   /** One owner per link: only the door that was opened draws the card. */
   const owner = `place:${useId()}`;
   const filing = useOpenFiling();
@@ -74,21 +89,54 @@ export function PlaceLink({ place, children, onOpenChange, className }: PlaceLin
     });
   };
 
+  /**
+   * The page cannot show this place: the change card is the one act still true. Without a card
+   * to open, the copied fragment is left to the browser's own jump — a real href, so the link
+   * keeps its promise off this page too.
+   */
+  const handOver = (at: Place): void => {
+    const changeId = placeChangeId(at);
+    if (changeId !== null && onOpenChange !== undefined) {
+      onOpenChange(changeId);
+      return;
+    }
+    window.location.hash = placeHref(at);
+  };
+
+  /** Land the place once the page has had its chance to hold it, or hand over to the card. */
+  const settle = async (at: Place, comment: CommentDto | null, fallback: Place = at): Promise<void> => {
+    const target = await resolvePlaceAfterLoad({
+      place: at,
+      load: onLoadChapter === undefined ? undefined : () => onLoadChapter(at.chapter),
+    });
+    if (target === null) {
+      handOver(fallback);
+      return;
+    }
+    if (comment !== null) {
+      openAt(comment, target);
+      return;
+    }
+    landAt(target.element);
+    const changeId = placeChangeId(at);
+    if (changeId !== null) onOpenChange?.(changeId);
+  };
+
   /** A filing the page does not hold yet: one read, then the same landing. */
-  const openById = async (commentId: string): Promise<void> => {
+  const openById = async (at: Place & { commentId: string }): Promise<void> => {
     let comment: CommentDto | null = null;
     try {
-      comment = await getComment(commentId);
+      comment = await getComment(at.commentId);
     } catch {
       comment = null;
     }
-    const target = comment === null ? null : resolvePlaceTarget(comment);
-    if (comment === null || target === null) {
-      // The fragment is still a truthful place: let the browser make its own, measured jump.
-      window.location.hash = placeHref(place);
+    if (comment === null) {
+      handOver(at);
       return;
     }
-    openAt(comment, target);
+    // The filing's own anchor is what the landing resolves; the row's change is what a page
+    // that cannot show it opens.
+    await settle(comment, comment, at);
   };
 
   const activate = (event: MouseEvent<HTMLAnchorElement>): void => {
@@ -103,25 +151,18 @@ export function PlaceLink({ place, children, onOpenChange, className }: PlaceLin
     ) {
       return;
     }
+    // The landing is measured and asynchronous: the browser's own jump would move the page
+    // twice, so the door always takes the click and keeps its own href for a copy.
+    event.preventDefault();
     if (isCommentIdPlace(place)) {
-      event.preventDefault();
-      void openById(place.commentId);
+      void openById(place);
       return;
     }
     if (isCommentPlace(place)) {
-      // Nothing to land on this page: the fragment already names the chapter, and the browser's
-      // own `scroll-margin-top` jump keeps the promise without help.
-      const target = resolvePlaceTarget(place);
-      if (target === null) return;
-      event.preventDefault();
-      openAt(place, target);
+      void settle(place, place);
       return;
     }
-    const chapter = resolvePlaceTarget(place);
-    if (chapter === null) return;
-    event.preventDefault();
-    landAt(chapter.element);
-    if (place.changeId !== undefined) onOpenChange?.(place.changeId);
+    void settle(place, null);
   };
 
   return (

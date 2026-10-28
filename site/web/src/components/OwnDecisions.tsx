@@ -3,6 +3,7 @@ import type { MyDecisionsDto } from '@book/shared';
 import { commentStamp } from '../lib/commentView.ts';
 import { focusHash } from '../lib/focus.ts';
 import { decisionLine } from '../lib/ownDecisions.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { PlaceLink } from './PlaceLink.tsx';
 
 /**
@@ -19,7 +20,14 @@ import { PlaceLink } from './PlaceLink.tsx';
  * paragraphs it changed, and the share the end matter already prints. A refusal has none of
  * them and shows its public reason instead, so a line can never claim more than was measured.
  */
-export function OwnDecisions({ decisions }: { decisions: MyDecisionsDto | null }) {
+export function OwnDecisions({
+  decisions,
+  onLoadChapter,
+}: {
+  decisions: MyDecisionsDto | null;
+  /** BOOK-168: the page's chapter read, handed to the row's place door. */
+  onLoadChapter?: ChapterLoader;
+}) {
   if (decisions === null || decisions.items.length === 0) return null;
 
   return (
@@ -37,12 +45,12 @@ export function OwnDecisions({ decisions }: { decisions: MyDecisionsDto | null }
               <p className="own-decision-line">{line.text}</p>
               {decision.intent === null ? null : (
                 <p className="own-decision-intent">
-                  <PlaceLink place={place}>«{decision.intent}»</PlaceLink>
+                  <PlaceLink place={place} onLoadChapter={onLoadChapter}>«{decision.intent}»</PlaceLink>
                 </p>
               )}
               <p className="own-decision-meta">
                 {decision.intent === null ? (
-                  <PlaceLink place={place}>глава {decision.chapter}</PlaceLink>
+                  <PlaceLink place={place} onLoadChapter={onLoadChapter}>глава {decision.chapter}</PlaceLink>
                 ) : (
                   <span>глава {decision.chapter}</span>
                 )}
