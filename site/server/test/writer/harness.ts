@@ -12,7 +12,7 @@ import { join, resolve } from 'node:path';
 
 import type { AddressInfo } from 'node:net';
 
-import type { BudgetDto, WriterAssignment } from '@book/shared';
+import type { BudgetDto, ChapterPlan, WriterAssignment } from '@book/shared';
 
 import { applyChapterFile } from '../../src/ingest/applyChapter.ts';
 import { buildControl } from '../../src/engine/control.ts';
@@ -92,6 +92,8 @@ export type Harness = {
   /** The watcher's half: publish a chapter file that is already on disk as a revision. */
   ingest(chapter: number): void;
   assignment(chapter: number, session?: string): WriterAssignment;
+  /** BOOK-181: the plan the pass promises; `null` is the blind gate a test asks for. */
+  plan?: ChapterPlan | null;
   premised(chapter: number, intent: string): string;
   /**
    * BOOK-166: a pass exists only to serve a filing. `filed: false` is the no-filing case a test
@@ -140,6 +142,14 @@ export async function createHarness(options: { chapters?: Record<number, string>
     WRITER_SESSION: 'writer-test',
     // A test that wants continuations sets WRITER_CONTINUE_MAX itself.
     WRITER_CONTINUE_MAX: '0',
+    // BOOK-181: the plan the pass promises (the real lane will take it from the model's answer).
+    WRITER_PLAN_JSON: JSON.stringify({
+      act: { what: 'сорвала пломбу', cost: 'её смена', payer: 'она' },
+      friction: { kind: 'physical', object: 'пломба', move: 'попытка' },
+      metaphor: { image: 'пасть', glosses: 0 },
+      want: 'Она',
+      register_intent: 'с процедуры на телесное',
+    }),
     ...options.env,
   };
   const config = loadWriterConfig(writerEnv);
@@ -186,8 +196,23 @@ export async function createHarness(options: { chapters?: Record<number, string>
       };
     },
   }) as EngineClient;
+  // BOOK-181: every assignment this fixture hands out carries the plan the pass promised.
+  const nextWithPlan = engine.next.bind(engine);
+  const passWithPlan = engine.pass.bind(engine);
+  engine.next = async (lane, session) => {
+    const picked = await nextWithPlan(lane, session);
+    return picked === null ? null : { ...picked, plan: harness.plan ?? null };
+  };
+  engine.pass = async (chapter, session) => ({ ...(await passWithPlan(chapter, session)), plan: harness.plan ?? null });
 
   const harness: Harness = {
+    plan: {
+      act: { what: 'сорвала пломбу', cost: 'её смена', payer: 'она' },
+      friction: { kind: 'physical', object: 'пломба', move: 'попытка' },
+      metaphor: { image: 'пасть', glosses: 0 },
+      want: 'Она',
+      register_intent: 'с процедуры на телесное',
+    },
     fixture,
     config,
     client,
@@ -213,7 +238,10 @@ export async function createHarness(options: { chapters?: Record<number, string>
         nowMs: fixture.clock.now(),
       });
     },
-    assignment: (chapter, session = 'writer-test') => fixture.engine.openChapterPass(chapter, session) as WriterAssignment,
+    assignment: (chapter, session = 'writer-test') => {
+      const opened = fixture.engine.openChapterPass(chapter, session) as WriterAssignment;
+      return { ...opened, plan: harness.plan ?? null };
+    },
     premised: (chapter, intent) => {
       // The owner's intervention on an empty slot: base_rev 0, no anchor, no FIFO lane (BOOK-7).
       const id = newChangeId(fixture.clock.now());

@@ -378,6 +378,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
+    const plan = job.plan;
+    if (plan === null || plan === undefined) {
+      throw new PassRefusal('PLAN_MISSING: у прохода нет плана', 'PLAN_MISSING');
+    }
     const gateAssignment = {
       chapter,
       pass: job.pass,
@@ -398,6 +402,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
           landedText: readChapter(bookRoot, chapter).text,
           indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
           refusal: hint,
+          plan,
         }),
       ask: (messages) => ask(role === 'editor' ? 'gate:editor' : 'gate:consultant', messages),
       log: input.log,

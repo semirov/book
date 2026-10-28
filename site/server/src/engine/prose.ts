@@ -91,9 +91,8 @@ function finding(severity: FindingSeverity, rule: string, location: string, defe
  * The chapter explains the same image twice or more: that is a glossed metaphor, a major.
  * One explanation is a sentence; the second is the author not trusting the first.
  */
-export function metaphorGloss(text: string): Finding[] {
-  // The editor's measure was five explanations of one image inside 1 400 characters: the check
-  // is about proximity, not about a word repeated across a whole chapter.
+/** How many times each image is explained inside the proximity window. */
+export function glossCounts(text: string): Map<string, number> {
   const WINDOW = 2_000;
   const marks: Array<{ image: string; at: number }> = [];
   let offset = 0;
@@ -109,6 +108,13 @@ export function metaphorGloss(text: string): Finding[] {
     const near = marks.filter((other) => other.image === entry.image && Math.abs(other.at - entry.at) <= WINDOW);
     counts.set(entry.image, Math.max(counts.get(entry.image) ?? 0, near.length));
   }
+  return counts;
+}
+
+export function metaphorGloss(text: string): Finding[] {
+  // The editor's measure was five explanations of one image inside 1 400 characters: the check
+  // is about proximity, not about a word repeated across a whole chapter.
+  const counts = glossCounts(text);
   const glossed = [...counts.entries()].filter(([, count]) => count >= 2);
   if (glossed.length === 0) return [];
   const [image, count] = glossed.sort((a, b) => b[1] - a[1])[0] as [string, number];
@@ -144,6 +150,12 @@ export function actWithCost(text: string): Finding[] {
       'дать герою одно телесное действие с ценой — не предусмотренное формой и не отменяемое ею',
     ),
   ];
+}
+
+/** How many times the chapter explains an image (the judge's count, BOOK-181). */
+export function countGlosses(text: string): number {
+  const counts = glossCounts(text);
+  return counts.size === 0 ? 0 : Math.max(...counts.values());
 }
 
 /** Both checks, in one answer `done` can refuse on. */

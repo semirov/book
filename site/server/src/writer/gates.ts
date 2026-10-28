@@ -50,6 +50,8 @@ export type GatePromptInput = {
   indexSlice: string | null;
   /** BOOK-145: why the previous answer was not parsed — one retry carries it back to the model. */
   refusal?: string | null;
+  /** BOOK-181: the plan the chapter promised; the editor judges the text against it. */
+  plan?: unknown;
 };
 
 export type BuiltGatePrompt = {
@@ -175,6 +177,28 @@ export function buildGatePrompt(input: GatePromptInput): BuiltGatePrompt {
           part(
             'refusal',
             ['## Отказ', `Предыдущий ответ не разобран: ${input.refusal.slice(0, 300)}.`, 'Верни только JSON по форме из задания — без пояснений, без markdown.'].join('\n'),
+          ),
+        ]),
+    ...(input.plan === null || input.plan === undefined
+      ? []
+      : [
+          dataBlock(
+            'plan',
+            '## План главы',
+            JSON.stringify(input.plan, null, 2),
+            'Данные плана, который обещала глава: проверяй текст против них, а не против вкуса.',
+          ),
+          part(
+            'planQuestions',
+            [
+              '## Пять вопросов к тексту',
+              '1. act: есть ли физический поступок, которого регламент не требовал, и оплачена ли цена тем, кем названо?',
+              '2. friction: привязано ли трение к названному предмету — через попытку, сомнение или потерю?',
+              '3. metaphor: ровно один образ и **ноль** объяснений? Второе объяснение — цитируй.',
+              '4. want: желание героя стоит на странице, своими словами?',
+              '5. register: глава исполнила register_intent, и можно ли сказать, что заслужило поворот?',
+              'Если глава объявлена статичной (документ, тишина) с причиной и плательщиком — поступка не требуй: проверь, что тишина оплачена.',
+            ].join('\n'),
           ),
         ]),
     contractPart(input.role),

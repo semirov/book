@@ -6,6 +6,7 @@
  */
 
 import { TOTAL_CHAPTERS } from './book.ts';
+import type { ChapterPlan } from './plan.ts';
 import type { InterventionKind } from './intervention.ts';
 import type { Lane } from './types.ts';
 
@@ -274,10 +275,7 @@ export type WriterAssignment = {
   chapter: number | 'front';
   neighbours: { before: number | null; after: number | null };
   expectation: null | { chars: { min: number; max: number } };
-  /**
-   * BOOK-44 — the reader's own goal sentence, marked `untrusted` where it travels: it is data
-   * for the writer, never an instruction. Null when the step has no change behind it.
-   */
+  /** BOOK-44 — the reader's goal sentence, `untrusted` where it travels; null without a change. */
   intent: Untrusted<string> | null;
   /** BOOK-16 — which of the four world-facts the intervention brought; null when unknown. */
   interventionKind: InterventionKind | null;
@@ -286,6 +284,8 @@ export type WriterAssignment = {
    * takes it or refuses it with one plain reason, never silently ignores it. Null otherwise.
    */
   premise: PremiseAssignment | null;
+  /** BOOK-181 — the plan carried to the editor's gate; absent → `PLAN_MISSING`, never blind. */
+  plan?: ChapterPlan | null;
   seamsIn: SeamRef[];
   cycle: number;
   findings: Finding[] | null;

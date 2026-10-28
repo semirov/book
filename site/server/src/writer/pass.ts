@@ -26,7 +26,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { isChapterNumber, type BudgetDto, type ChapterPlan, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
@@ -103,15 +103,17 @@ export type PassDeps = {
   provider: ProviderCall;
   now: () => number;
   log: (line: string) => void;
-  /** A dry run builds the plan and stops: no engine call, no model call, no write. */
+  /** A dry run builds the plan and stops: no engine, no model, no write. */
   dryRun?: boolean;
   /** `--chapter N`: open that chapter's first pass instead of the lane's next slot. */
   chapter?: number | null;
+  /** BOOK-181: the plan the pass promises; a caller may hold it outside the job. */
+  plan?: ChapterPlan | null;
   /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
   lanes?: Array<'fwd' | 'bwd' | 'filing'>;
 };
 
-/** Run one pass. Returns a typed result and never throws. */
+/* One pass: a typed result, never a throw. */
 export async function runPass(deps: PassDeps): Promise<PassResult> {
   const { config, engine, bookRoot, now } = deps;
 
@@ -182,7 +184,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   const filed = picked.changeId !== null && picked.changeId !== undefined
     ? true
     : (picked as { premise?: unknown }).premise !== null && (picked as { premise?: unknown }).premise !== undefined;
-  // A resumed landed step continues at the gates (BOOK-117): it writes nothing.
   if (picked.pass === 'draft' && !filed && picked.landed !== true) {
     // A step without a filing is skipped, not spun on: ask the door once (BOOK-166).
     deps.log(`[writer] NO_FILING_FOR_CHAPTER: глава ${String(picked.chapter)} без заявки — пропускаю, спрашиваю дверь`);
@@ -193,7 +194,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     picked = filedAgain;
   }
 
-  const job: WriterAssignment = picked;
+  const job: WriterAssignment = { ...picked, plan: picked.plan ?? deps.plan ?? null };
   if (typeof job.chapter !== 'number') {
     // A `front` step has no chapter, so there is nowhere to put a `refused` stage: the sentence stands.
     const reason = 'этот проход не про главу — его ведёт другая полоса, а не писатель';
@@ -212,7 +213,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     chapter,
     answered,
   );
-  // The estimate that let the pass open travels with it: the transcript is where money is proved.
   if (estimate !== null) lane.setEstimate(estimate);
   let beforeText = '';
 

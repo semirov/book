@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TOTAL_CHAPTERS } from '@book/shared';
+import { TOTAL_CHAPTERS, type ChapterPlan } from '@book/shared';
 
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
@@ -275,8 +275,11 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     return 2;
   }
 
+  // BOOK-181: the plan the pass promises. Until a producer fills it, the gate refuses blind.
+  const rawPlan = (env.WRITER_PLAN_JSON ?? '').trim();
   const pass = (): Promise<PassResult> =>
     runPass({
+      plan: rawPlan.length === 0 ? null : (JSON.parse(rawPlan) as ChapterPlan),
       config,
       bookRoot,
       dataDir,

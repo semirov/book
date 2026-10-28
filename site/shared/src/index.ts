@@ -37,3 +37,4 @@ export type {
   ValidateOptions,
   ValidateResult,
 } from './validate/text.ts';
+export * from './plan.ts';
