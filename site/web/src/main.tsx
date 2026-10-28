@@ -23,6 +23,9 @@ import './styles/ribbon.css';
 import './styles/chronicle.css';
 import './styles/focus.css';
 import './styles/seam.css';
+// BOOK-121 — the pass's box, its two carets and the ink gate; after the seam, before the
+// panels, because the pass paints prose and never a panel.
+import './styles/pass-live.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
