@@ -7,8 +7,9 @@
  *   · one image, three services, one published port (site on the Mac's LAN address);
  *   · every service non-root, read-only rootfs, `cap_drop: ALL`, no privilege gain, tmpfs /tmp,
  *     and a stated CPU/memory/pids ceiling;
- *   · the data dir is a host bind mount, the manuscript is read-only into site and engine and only
- *     `manuscript/` is writable into the writer;
+ *   · the data dir is a NAMED VOLUME (BOOK-183 — a host bind mount of SQLite is two kernels), the
+ *     manuscript is read-only into site and engine and only `manuscript/` is writable into the writer;
+ *     `/backups` is the one host bind for state, on `site` only;
  *   · secrets are PATHS (`*_FILE`), never values, and the site and engine both get the session
  *     secret and IP salt the engine's boot refuses to start without;
  *   · healthchecks mean something: `/healthz` AND the image's own commit (site), the token-guarded
@@ -63,23 +64,22 @@ type Service = {
   env_file?: unknown;
 };
 
-type Config = { name?: string; services: Record<string, Service> };
+type Config = { name?: string; services: Record<string, Service>; volumes?: Record<string, { name?: string }> };
 
-/** The rehearsal overrides: the same file, no prod path anywhere. */
+/** The rehearsal overrides: the same file, no prod path anywhere, a volume of its own. */
 const REHEARSAL: Record<string, string> = {
   BOOK_SITE_PUBLISH: '192.168.1.76:8092',
-  BOOK_DATA_DIR: '/tmp/book-172/data',
+  BOOK_DATA_VOLUME: 'book-172-rehearsal-data',
+  BOOK_BACKUPS_DIR: '/tmp/book-172/backups',
   BOOK_MANUSCRIPT: '/tmp/book-172/book',
   BOOK_SECRETS_DIR: '/tmp/book-172/secrets',
   BOOK_LOCKS_DIR: '/tmp/book-172/locks',
   BOOK_IMAGE_TAG: 'book:test',
 };
 
-/**
- * The production bind source, assembled from parts for the same reason `dataIsolation.test.ts`
- * assembles its needles: no test file may contain that literal, even to assert on it.
- */
-const PROD_DATA_DIR = ['/Users/filipp/book', 'site', 'data'].join('-');
+/** The volume the release serves from, and the only host bind for state. */
+const PROD_VOLUME = 'book-data';
+const PROD_BACKUPS_DIR = ['/Users/filipp/book', 'site', 'backups'].join('-');
 
 function loaded(overrides: Record<string, string> = {}): Config {
   const result = compose(['compose', '--env-file', '/dev/null', '-f', FILE, 'config', '--format', 'json'], overrides);
@@ -132,11 +132,16 @@ describe.skipIf(skip)('the compose topology', () => {
     expect(mem).toBe(2560 * 1024 * 1024);
   });
 
-  it('mounts the host data dir and keeps the manuscript read-only where prose is not written', () => {
+  it('mounts the data VOLUME, never a host directory, and keeps the manuscript read-only', () => {
     const config = loaded(REHEARSAL);
     for (const name of ['site', 'engine', 'writer']) {
       const data = mount(config.services[name] as Service, '/data');
-      expect(data?.source, name).toBe('/tmp/book-172/data');
+      // BOOK-183: a bind here is the two-kernel write that produced SQLITE_IOERR_SHORT_READ. The type
+      // is the assertion — a path in `source` would mean someone re-introduced it. `config` keeps the
+      // compose KEY as the mount source; the docker-side name is the top-level `volumes:` entry.
+      expect(data?.type, name).toBe('volume');
+      expect(data?.source, name).toBe('book-data');
+      expect(config.volumes?.['book-data']?.name, name).toBe('book-172-rehearsal-data');
       expect(data?.read_only, name).toBeFalsy();
       expect(mount(config.services[name] as Service, '/locks')?.source, name).toBe('/tmp/book-172/locks');
     }
@@ -146,8 +151,21 @@ describe.skipIf(skip)('the compose topology', () => {
     const writer = config.services.writer as Service;
     expect(mount(writer, '/book')?.read_only).toBe(true);
     expect(mount(writer, '/book/manuscript')?.read_only).toBeFalsy();
-    // The production default is the host path the launchd jobs and backup.sh already use.
-    expect(mount(loaded().services.site as Service, '/data')?.source).toBe(PROD_DATA_DIR);
+    // The production defaults: the named volume the migration seeds, and a backups dir on the host.
+    const production = loaded();
+    expect(mount(production.services.site as Service, '/data')?.source).toBe('book-data');
+    expect(production.volumes?.['book-data']?.name).toBe(PROD_VOLUME);
+    // `/backups` is the only host bind for state, and only `site` writes a backup.
+    for (const name of ['site', 'engine', 'writer']) {
+      const backups = mount(config.services[name] as Service, '/backups');
+      if (name === 'site') {
+        expect(backups?.type, name).toBe('bind');
+        expect(backups?.read_only, name).toBeFalsy();
+      } else {
+        expect(backups, name).toBeUndefined();
+      }
+    }
+    expect(mount(loaded().services.site as Service, '/backups')?.source).toBe(PROD_BACKUPS_DIR);
   });
 
   it('carries secret PATHS only, and gives site and engine the two the boot requires', () => {

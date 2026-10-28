@@ -8,6 +8,5 @@ coverage
 node_modules
 **/node_modules
 **/dist
-!web/dist
 *.log
 .git

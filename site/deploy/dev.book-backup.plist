@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  dev.book-backup — daily consistent backup of the book data volume (BOOK-28).
+  dev.book-backup — daily consistent backup of the book data volume (BOOK-28, BOOK-183).
   Installed at ~/Library/LaunchAgents/dev.book-backup.plist; the script is
-  site/deploy/backup.sh in /Users/filipp/projects/book. See BOOK-DOC-2.
+  site/deploy/backup.sh in /Users/filipp/projects/book. See BOOK-DOC-2 / BOOK-DOC-67.
 
-  Rollback: launchctl bootout gui/$(id -u)/dev.book-backup && \
+  The script DISPATCHES on ~/.local/state/book-deploy/runtime: under `compose` it runs
+  `docker compose exec -T site node /app/bin/backup.mjs`, which writes into /backups (the container
+  owns the database; the host never opens it), under `launchd` it runs deploy/backup-host.sh over the
+  host data dir. No DATA_DIR here on purpose: the host path is only the launchd fallback's, and naming it
+  in this file would make the job depend on the runtime the flip is about to change.
+
+  Rollback: launchctl bootout gui/$(id -u)/dev.book-backup &amp;&amp; \
             rm ~/Library/LaunchAgents/dev.book-backup.plist
 -->
 <plist version="1.0">
@@ -21,10 +27,10 @@
 	<dict>
 		<key>HOME</key>
 		<string>/Users/filipp</string>
+		<!-- /usr/local/bin is where OrbStack installs `docker`: without it a launchd job does not
+		     find it, and the compose runtime's backup fails with exit 127 (measured). -->
 		<key>PATH</key>
-		<string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
-		<key>DATA_DIR</key>
-		<string>/Users/filipp/book-site-data</string>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin</string>
 		<key>BACKUP_ROOT</key>
 		<string>/Users/filipp/book-site-backups</string>
 		<key>LOG_FILE</key>

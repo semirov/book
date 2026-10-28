@@ -38,7 +38,9 @@ npm run test:coverage
 npm run typecheck
 npm run arch                 # file-size limit, layer boundaries, F023, no model in the engine
 npm run frame:check          # F029: ch01 opens and ch67 closes on the canon; deploy.sh checks the live site
-npm run frame:check -- --url=http://127.0.0.1:8091 --data="$HOME/book-site-data"   # «what does the site actually serve»
+npm run frame:check -- --url=http://127.0.0.1:8091   # «what does the site actually serve» (HTTP, no DB)
+# `--data <dir>` opens a LOCAL data dir. The live store is the `book-data` volume (BOOK-183): copy it out
+# with `site/deploy/backup.sh` and point `--data` at that copy — never at a host path of the volume.
 npm run validate             # F001–F009 + F020–F022 + F029 over manuscript/; exit 1 on errors
 node bin/validate.mjs --staged   # what the git hook runs on the index
 ```
@@ -49,10 +51,12 @@ Environments: dev, test, prod — what may touch what — https://wiki.semirov.d
 
 The three data dirs, and the wall between them: **dev** is `site/.data` (API `:8080`, SPA `:5173`,
 `scripts/dev.mjs`); **test** is a fresh `mkdtemp` per test file, forced by `test/setup.ts` (which also
-drops an ambient `NODE_ENV`/`PRODUCTION_DATA_DIR`); **prod** is `$HOME/book-site-data` on `:8091` with
-`NODE_ENV=production`. The boot refuses a non-production run against a production data dir and a
-production run with `DATA_DIR` inside the checkout; `bin/feedback.mjs` and `bin/restore.mjs` use the
-same guard before they open `book.db`.
+drops an ambient `NODE_ENV`/`PRODUCTION_DATA_DIR`); **prod** is the `book-data` volume mounted at
+`/data` in the containers on `:8091` with `NODE_ENV=production` (the host path `$HOME/book-site-data` is
+only the launchd fallback's, and only while a flip back is in progress — BOOK-183). The boot refuses a
+non-production run against a production data dir and a production run with `DATA_DIR` inside the
+checkout; `bin/feedback.mjs` and `bin/restore.mjs` use the same guard before they open `book.db`, and
+under `runtime=compose` they are run through `site/deploy/admin.sh`, i.e. inside the container.
 
 `npm test` snapshots both dirs (`test/globalSetup.ts`). **Fatal** is a structural change — any entry
 added or removed, a dir that appears or vanishes, a non-database file whose size or mtime moved: a
@@ -71,8 +75,16 @@ node bin/engine.mjs done <leaseId> --seams seams.json --note "…"   # requires 
 node bin/engine.mjs trace <changeId|stepId>       # the ripple, step by step
 node bin/engine.mjs reconcile                     # boot check: lane, leases, stranded steps
 node bin/index.mjs show|rebuild                   # the derived index: paths, hash, counts; rebuild
-node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile
+node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile (in the container:
+                                                  #   site/deploy/admin.sh restore --chapter 9 --rev 3 --dry-run)
 ```
+
+These CLIs open the database, which since BOOK-183 lives in the `book-data` volume: run them through
+`site/deploy/admin.sh <tool> …`, i.e. inside the `site` container — never with the host's `node` against
+a host path. `site/deploy/backup.sh` is the same rule for backups (it dispatches on
+`$STATE_DIR/runtime`), and `site/deploy/restore-drill.sh` proves a backup against the live store by
+reading the live side **inside a container on the volume** (the drill refuses under `runtime=launchd`,
+where there is no container to read it from — it will not open `book.db` from the host).
 
 Beats are automatic: the engine's own tick (`ENGINE_REAPER_MS`) refreshes the lease of every open step,
 so a real pass longer than `LEASE_TTL_MS` is normal and a session never has to keep its lease alive by
@@ -97,8 +109,9 @@ through `docker compose exec` or an SSH tunnel.
 One image (`book:<40-char sha>`, never `latest`), three services from it — `site`
 (`server/dist/index.js`, published on the Mac's LAN address for Caddy on the home-server), `engine`
 (`server/dist/engine.js`, no published port) and `writer` (`server/dist/writer/main.js --loop`, no
-port). The data dir is the **host path** `/Users/filipp/book-site-data` bind-mounted at `/data`; the
-manuscript is read-only into `site` and `engine`, and only `manuscript/` is writable into `writer`.
+port). The data dir is the **named volume** `book-data` mounted at `/data` in all three services, never
+a host bind (BOOK-183 — see "State is a volume" below); the manuscript is read-only into `site` and
+`engine`, and only `manuscript/` is writable into `writer`.
 Secrets are files: the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`,
 `YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`, `CAPTCHA_SECRET_FILE` only when a captcha is
 chosen) and the values live in `0600` files mounted at `/run/secrets/…`. `site` and `engine` both get
@@ -144,6 +157,120 @@ to run. A container left holding a lease is not a lock problem: `ENGINE_REAPER_M
 `LEASE_TTL_MS=120000` lease, `STEP_WALL_MS` (45 min) escalates a step, and `deploy/lane-check.sh` reads
 the engine's own state before anything is restarted. `docker compose restart writer` is the recovery.
 
+**State is a volume (BOOK-183).** SQLite in WAL mode shares its `-shm` through the OS, and a macOS
+host bind mount into the OrbStack VM is two kernels: on 2026-10-28 a host `sqlite3` write while `site`
+held the same file left `/api/state`, `/api/front` and `/api/authors` answering 500
+`SQLITE_IOERR_SHORT_READ` until the container was restarted. So `/data` is a named volume
+(`${BOOK_DATA_VOLUME:-book-data}`), measured inside the VM as `btrfs /dev/vdb1`, root
+`/docker/volumes/<name>/_data`; `stat -f -c %T` says `btrfs`, where the old bind said `fuseblk` and
+mountinfo said `virtiofs mac`.
+
+* **The guard.** `deploy/entrypoint.sh` reads `$DATA_DIR` (default `/data`) out of
+  `${BOOK_MOUNTINFO_FILE:-/proc/self/mountinfo}`, takes the longest mountpoint prefix, and refuses to
+  start a role with **exit 78** when the fstype is `virtiofs`, `fuseblk`, `fuse*`, `9p`, `nfs*`,
+  `cifs`, `smb*`, or the mount root starts with `/Users/`, `/Volumes/`, `/private/`, `/host_mnt/`. The
+  message names the role, `DATA_DIR`, the fstype/source/root, the reason, the volume and this runbook:
+  ```
+  book: refusing to start site: DATA_DIR=/data is a host bind mount (virtiofs, root /Users/filipp/book-site-data, source "mac").
+  SQLite in WAL mode shares its -shm through the OS; across the macOS/OrbStack boundary that is two kernels and the file stops being coherent (BOOK-183).
+  Use the named volume ${BOOK_DATA_VOLUME:-book-data}, and run stateful commands inside the container (docker compose exec site …).
+  ```
+  A volume and a container-local dir pass; `BOOK_ROLE` unset (a one-off `compose run/exec`) skips both
+  guards. `compose-release.sh` refuses to start the stack at all when the volume is missing or has no
+  `book.db` (exit 1, named reason, nothing built/started/rolled back), and `--status` prints the volume
+  name plus the `/data` fstype/source read from the running container.
+
+* **Backups.** One command, both runtimes: `site/deploy/backup.sh` reads `$STATE_DIR/runtime` and either
+  runs `docker compose exec -T site node /app/bin/backup.mjs --out /backups` (compose) or
+  `deploy/backup-host.sh` (launchd). The container writes into the only host bind for state,
+  `${BOOK_BACKUPS_DIR:-~/book-site-backups}` mounted at `/backups`, so copies land in
+  `~/book-site-backups/daily/<YYYYmmddTHHMMSS>/` exactly as before, and `site/deploy/backup.sh --verify
+  <that dir>` checks an existing copy (integrity + row counts, no writes). `dev.book-backup.plist`
+  stays the nightly job and carries no `DATA_DIR`: the dispatcher decides. Exit codes pass through
+  (0 ok · 1 failure · 75 another run holds the lock).
+
+* **Admin, reset, restore.** All stateful CLIs go through `site/deploy/admin.sh`, which runs them inside
+  the `site` container (and falls back to the host `node bin/<tool>.mjs` under `runtime=launchd`):
+  ```sh
+  site/deploy/admin.sh admin reset book             # the reset, in the container that owns the DB
+  site/deploy/admin.sh admin --help
+  site/deploy/admin.sh restore --chapter 9 --rev 3 --dry-run
+  site/deploy/admin.sh feedback --list
+  ```
+
+* **The one-way migration** (once, with the stack stopped — the host copy is the source, the volume the
+  target, and no host process touches the DB while a container holds it):
+  ```sh
+  site/deploy/migrate-to-volume.sh --dry-run                        # the plan, touches nothing
+  site/deploy/migrate-to-volume.sh --from /Users/filipp/book-site-data --confirm
+  ```
+  Full mode, in this order: refuse if a running container mounts `--from`; refuse if the volume already
+  holds `book.db` unless `--force`, which refuses the **serving** volume by name, needs `--confirm` as
+  well (a bare `--seed-only --force` does not pass the gate either), and compares the whole counts line
+  before overwriting — **any** difference is a refusal, because counting cannot tell extra rows from a
+  partial seed: a partial copy is a fresh volume, so remove it and re-run without `--force`; stop the project (volumes kept; `STOPPED` is set only after a
+  successful `down`, a failed one says "stack state is UNKNOWN — check `compose -p <p> ps`"); one-shot
+  `cp -a` into the volume (+ `chown -R 501:20`, the destination's `-wal`/`-shm`/`-journal` deleted before
+  the copy); verify `PRAGMA integrity_check` **and** the row counts inside a container on the volume
+  against the host DB read by the host's `sqlite3` (stack down, so that read is safe); `compose-release.sh
+  --ref <ref>` behind the health gate; **record `runtime=compose` and `launchctl disable` the three jobs**
+  (a refused `disable` is exit 4 with the exact commands, runtime already recorded — without this the
+  wrappers keep dispatching to the host path that just moved away); compare `/api/state` with the DB;
+  prove the `versions/` file count; then **move** the host dir to
+  `~/book-site-backups/pre-volume-<ts>/book-site-data` — kept as a backup, never deleted. `--seed-only`
+  is stop → seed → verify and returns (that is what a first `flip.sh --to compose` calls); `--dry-run`
+  needs no `--confirm` and touches nothing. Exit codes: `0` seeded/verified (and, in full mode, prod
+  healthy + runtime recorded + host copy moved); `1` refused or failed, with the host copy untouched;
+  `2` usage; `3` lock held; `4` prod is up on the volume but a launchd job could not be disabled. An
+  exit `1` names **which of three states prod is in**, because the advice differs: *nothing stopped* →
+  prod is as it was; *stopped, not released* → the stack is DOWN and `flip.sh --to launchd --confirm`
+  brings it back (the only case that prints a `recovery:` line); *released* → **prod is UP on volume …,
+  do NOT restart the stack** — it says what answers, points at `compose-release.sh --status` and
+  `/api/state`, and offers no recovery command.
+
+* **The flip back is an export, not a second store.** `flip.sh --to launchd` first proves no launchd job
+  is serving the host dir, then runs `compose down`, copies the volume into
+  `/Users/filipp/book-site-data` with a one-shot container, converts the export to a self-contained
+  `journal_mode=DELETE` copy and reads its row counts **on the host** (`sqlite3`) — a container-side read
+  cannot tell a real bind from a shadow, measured on this box — comparing them with the volume's. Only
+  then does it bootstrap launchd; a failed export or a count mismatch is exit 1 with nothing
+  bootstrapped. This one-way sync keeps the fallback data-compatible, and **a non-empty volume is not
+  proof of anything**: after a fallback cycle the host dir has moved on while the volume stood still, so
+  the next `--to compose` compares the two sides whenever both hold a `book.db` — host counts with the
+  host `sqlite3` (launchd already stopped), volume counts in a one-shot container — and a difference is
+  a refusal with **both counts printed** and the fresh-volume command
+  (`migrate-to-volume.sh --from <host> --volume <fresh> --confirm`), launchd restored. There is no merge;
+  only equal counts reach `compose-release.sh`, and the flip seeds from the host dir only when the volume
+  has no `book.db` at all. Rehearse the pair, do not mix them.
+
+* **Measured (2026-10-28): `~/OrbStack/docker/volumes/<v>/` is writable, and still must not be opened.**
+  OrbStack mirrors a volume's contents on the host at that path (the VM sees the same directory as
+  `/var/lib/docker/volumes/<v>/_data`). Measured with a rehearsal volume and a container holding the
+  database open in WAL:
+
+  ```
+  touch  ~/OrbStack/docker/volumes/<v>/.probe        → ok, and rm ok
+  sqlite3 …/<v>/new.db 'create table t(x)'            → ok (a brand-new database can be created there)
+  sqlite3 …/<v>/book.db 'select count(*) from chapters'  → Error: unable to open database file (14)
+  sqlite3 'file:…/<v>/book.db?immutable=1' 'select count(*) …'  → ok, 18 chapters
+  ```
+
+  So the directory is a real, writable window onto the volume — not a boundary. A normal second open of
+  the live WAL database does fail (the `-shm` belongs to the VM's kernel), and `?immutable=1` reads a
+  snapshot of whatever bytes were on disk rather than a consistent live view; but a byte-level write
+  through that path is physically possible. The rule is therefore the same as for a bind mount: never
+  open it, and take copies with `site/deploy/backup.sh`.
+
+* **`journal_mode=DELETE` is a legitimate *format*, not a supported runtime over a bind mount.** It
+  removes the exact failure of 2026-10-28 — no `-shm`, no shared-memory mapping, the journal is a
+  plain file — so the `SQLITE_IOERR_SHORT_READ` class would disappear. It does not remove the class
+  below it: `fcntl` locks taken inside the container are not guaranteed to be seen by the macOS side
+  over virtiofs, and neither kernel's page cache is invalidated by the other, so a writer can still be
+  handed a stale page. What it costs: no readers during a write (WAL's whole point), an fsync per
+  commit, and the same lock-coherence risk. Use `DELETE` where it is already used — backup copies and
+  one-way exports, which must be self-contained — and do not read it as permission to mount a live
+  database from the host. The volume is one kernel and keeps WAL.
+
 **Deploy and rollback** (the only way; `deploy.yml` runs it, a human runs the same script):
 
 ```sh
@@ -160,7 +287,9 @@ serves the tree; it aligns the root to `last-good-image` first.
 
 Exit codes: `0` the new image serves its own commit and every service is healthy; `1` the run failed
 and the stack is back on the previous image (or could not be); `2` usage; `3` another deploy holds
-`$STATE_DIR/deploy.lock` — nothing was built, started or rolled back. A failed rollback says what is
+`$STATE_DIR/deploy.lock` — nothing was built, started or rolled back. A run also exits `1` with a named
+reason when the data volume is missing or holds no `book.db`: a stack on an empty volume serves 500s,
+and rolling a good image back for that would be a lie. A failed rollback says what is
 actually serving (`prod still answers <commit>` or `prod answers nothing`); it does not assume a dead
 prod. Budget: `BOOK_HEALTH_TIMEOUT`
 180 s with a 60 s grace window, 200 ms polls; a rollback needs two independent negatives **for a
@@ -181,7 +310,9 @@ site/deploy/flip.sh --to launchd --confirm                   # back to the fallb
 
 `--to compose` checks the backup is younger than an hour, stops the writer lane, then the site and the
 engine, removes the stale pre-BOOK-172 `book-site` container (8090 and its named volume; the volume
-stays until the cycle closes), runs `compose-release.sh`, and only after a green gate writes
+stays until the cycle closes), **seeds `${BOOK_DATA_VOLUME:-book-data}` from the host dir when it holds
+no `book.db`** (`migrate-to-volume.sh --seed-only`) and refuses to start containers on an empty volume,
+runs `compose-release.sh`, and only after a green gate writes
 `$STATE_DIR/runtime=compose` and `launchctl disable`s the three jobs. A failed flip re-bootstraps
 launchd and leaves `runtime` alone, so the workflow keeps deploying the launchd way. The one host
 dependency that remains: **OrbStack must start at login** (`orb config set app.start_at_login true`),
@@ -209,27 +340,35 @@ do. `>0` — OrbStack rewrote the peer to the bridge gateway and every reader sh
 exactly `192.168.215.1/32` to `BOOK_TRUSTED_PROXIES` (never a /24, which would let every LAN machine
 forge its own address), redeploy, and run the same two commands again — it must read `0`.
 
-**Rehearsal (before any flip, prod untouched).** The same file, a spare port, a *copy* of the data dir
-and a *copy* of the manuscript:
+**Rehearsal (before any flip, prod untouched).** The same file, a spare port, its **own volume** and a
+*copy* of the manuscript. The snapshot comes from the container, never from the host (a host `sqlite3`
+over the live bind is the incident) — `bin/backup.mjs`, or the online backup API through
+`docker exec … node -e`, then `docker cp` it out:
 
 ```sh
-R=$HOME/.local/state/book-172-rehearsal; mkdir -p "$R/data" "$R/secrets" "$R/locks"
-BACKUP_ROOT=$R/backups site/deploy/backup.sh                      # consistent snapshot (WAL)
-cp -a "$R/backups/daily/$(ls "$R/backups/daily" | tail -1)/." "$R/data/"
-cp -p "$HOME/book-site-data/engine.token" "$HOME/book-site-data/admin.token" "$R/data/"   # 0600
-cp -p site/secrets/session_secret site/secrets/ip_salt "$R/secrets/"; chmod 0700 "$R/secrets"
+R=$HOME/.local/state/book-183-rehearsal; mkdir -p "$R/host-data" "$R/locks" "$R/backups"
+site/deploy/backup.sh                                             # a consistent snapshot, from the container
+cp -a "$HOME/book-site-backups/daily/$(ls "$HOME/book-site-backups/daily" | tail -1)/." "$R/host-data/"
+# The backup copy already carries versions/ (content-addressed snapshots) — no host data dir is read.
+# The two tokens live in the volume: copy them out of the container, never out of a host path.
+docker compose -p book cp site:/data/engine.token "$R/host-data/engine.token" 2>/dev/null || true
+docker compose -p book cp site:/data/admin.token  "$R/host-data/admin.token"  2>/dev/null || true
+chmod 0600 "$R/host-data/engine.token" "$R/host-data/admin.token" 2>/dev/null || true
 rsync -a --exclude .git "$HOME/projects/book/" "$R/book/"         # a copy: the writer writes here
 
-export BOOK_SITE_PUBLISH=192.168.1.76:8092 BOOK_DATA_DIR="$R/data" BOOK_MANUSCRIPT="$R/book" \
-       BOOK_SECRETS_DIR="$R/secrets" BOOK_LOCKS_DIR="$R/locks" BOOK_PROJECT=book-rehearsal \
-       BOOK_STATE_DIR="$R/state" BOOK_IMAGE_REPO=book-rehearsal
-# BOOK_STATE_DIR and BOOK_IMAGE_REPO are not optional: with the prod state dir a rehearsal writes
-# phantom last-good-image/audit lines into it, and with the default image repo it rebuilds `book:<sha>`
-# — the very tag the next prod deploy builds from.
-# The locks dir must be rehearsal-private: pointed at the prod one, the running prod containers hold
-# the flock and every rehearsal service exits 75.
+export BOOK_SITE_PUBLISH=127.0.0.1:18095 BOOK_DATA_VOLUME=book-183-data BOOK_BACKUPS_DIR="$R/backups" \
+       BOOK_MANUSCRIPT="$R/book" BOOK_SECRETS_DIR="$HOME/projects/book/site/secrets" \
+       BOOK_LOCKS_DIR="$R/locks" BOOK_PROJECT=book-183-rehearsal BOOK_STATE_DIR="$R/state" \
+       BOOK_IMAGE_TAG=book-183:<sha> BOOK_HOST_DATA_DIR="$R/host-data"
+# BOOK_DATA_VOLUME names a volume of the rehearsal's own: pointed at `book-data` it would seed — or
+# read — prod's store, and the guard cannot tell the two stacks apart.
+# BOOK_STATE_DIR must be rehearsal-private: with the prod state dir a rehearsal writes phantom
+# last-good-image/audit lines into it, and `runtime` would point the wrappers at the wrong project.
+# The locks dir must be rehearsal-private too: pointed at the prod one, the running prod containers
+# hold the flock and every rehearsal service exits 75.
 # --root must be a git clone at the ref the image is built from; BOOK_COMPOSE_FILE may instead pin
 # the working tree under test (then the build context is that tree, not the clone).
+site/deploy/migrate-to-volume.sh --from "$R/host-data" --volume book-183-data --seed-only
 site/deploy/compose-release.sh --ref <sha> --root <a clone checked out at that ref>
 site/deploy/compose-release.sh --rollback                          # previous image, no rebuild
 docker compose --env-file /dev/null -f site/docker-compose.yml -p book-rehearsal down   # teardown
