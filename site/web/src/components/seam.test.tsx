@@ -58,6 +58,9 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 const FILINGS = filingsForBlock([comment()], 'ch08#aa11bb22');
 
+/** The door exists while history is live; its body is opened by the reader (BOOK-128 #3815). */
+const PROV = { view: null, failed: false, onFiling: () => undefined, onClose: () => undefined };
+
 function strip(overrides: { frame?: FrameMark; premise?: boolean; signedIn?: boolean; withFilings?: boolean } = {}): string {
   const anchor = overrides.premise === true ? null : anchorFor({ text: TEXT, blockId: 'ch08#aa11bb22', baseRev: 3, offset: 2 });
   return renderToStaticMarkup(
@@ -72,6 +75,7 @@ function strip(overrides: { frame?: FrameMark; premise?: boolean; signedIn?: boo
       onPosted={() => undefined}
       onClose={() => undefined}
       onProvenance={() => undefined}
+      prov={PROV}
       onOpenFiling={() => undefined}
     />,
   );

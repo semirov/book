@@ -2,6 +2,7 @@ import type { AuthorsCountDto, AuthorsDto, MyDecisionsDto, MyTraceDto } from '@b
 import { useCallback, useEffect, useState } from 'react';
 
 import { getAuthors, getMyTrace, postAuthorsHide } from '../api.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { usePending } from '../usePending.ts';
 import { Authors } from './Authors.tsx';
 
@@ -28,6 +29,7 @@ export function EndMatter({
   decisions = null,
   live,
   exportBytes = null,
+  onLoadChapter,
 }: {
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
@@ -43,6 +45,8 @@ export function EndMatter({
   live: boolean;
   /** BOOK-138: the size of the export, printed beside the download link. */
   exportBytes?: number | null;
+  /** BOOK-168: the page's chapter read, handed down to the reader's own decisions. */
+  onLoadChapter?: ChapterLoader;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
   /**
@@ -134,6 +138,7 @@ export function EndMatter({
       onToggleHidden={(hidden) => void toggleHidden(hidden)}
       live={live}
       exportBytes={exportBytes}
+      onLoadChapter={onLoadChapter}
     />
   );
 }

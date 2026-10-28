@@ -110,12 +110,17 @@ type Item = { element: HTMLElement; anchorTop: number; height: number; originTop
 function measure(doc: Document): Item[] {
   const out: Item[] = [];
   for (const element of doc.querySelectorAll<HTMLElement>(`[${MARGIN_ITEM}]`)) {
+    const positioned = typeof getComputedStyle === 'undefined' ? '' : getComputedStyle(element).position;
     // The phone sheet is `position: fixed`: it is not an item of the pass, and a `top` left
     // from the channel placement must not survive the breakpoint.
-    if (typeof getComputedStyle !== 'undefined' && getComputedStyle(element).position === 'fixed') {
+    if (positioned === 'fixed') {
       element.style.top = '';
       continue;
     }
+    // BOOK-128 comment #3815 — a reader block in flow (the phone's body under the strip, the
+    // chronicle's) wears the same attribute and is not an item either: it has no channel to be
+    // placed in, and a `top` written here would lift it out of the paragraph it belongs to.
+    if (positioned === 'static') continue;
     if (element.offsetParent === null) continue; // not laid out: the margin is not shown
     const box = element.getBoundingClientRect();
     const anchor = element.parentElement;

@@ -1,13 +1,12 @@
 /**
- * BOOK-DOC-34 §2.6–§2.7 — the provenance panel and the filing panel.
+ * BOOK-DOC-34 §2.7 — the filing card, the page's one floating frame.
  *
- * The same skeleton, the same placement (`placePopover`/`placePanel`): fixed over the phrase,
- * own scroll at 62 dvh, no scrim, the page keeps scrolling underneath. Radii are 0 and the
- * shadow is not used.
+ * BOOK-128 comment #3815 removed the provenance from this file: a word's record is marginalia
+ * (`marginalia.css`, `.prov-block`), so this sheet carries one surface only. The placement is
+ * the site's (`placePopover`/`placePanel`): fixed over the phrase, own scroll at 62 dvh, no
+ * scrim, the page keeps scrolling underneath. Radii are 0 and the shadow is not used.
  */
 
-
-.prov-panel,
 .filing-panel {
   z-index: 40;
   display: grid;
@@ -21,17 +20,14 @@
   background: var(--paper-2);
   animation: seam-fade 120ms var(--ease-out);
 }
-.prov-panel-anchored,
 .filing-panel-anchored {
   position: fixed;
 }
-.prov-head,
 .filing-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.prov-label,
 .filing-title {
   font-family: var(--label);
   font-size: var(--fs-label);
@@ -39,7 +35,6 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
-.prov-close,
 .filing-close {
   margin-left: auto;
   width: 44px;
@@ -48,102 +43,6 @@
   background: none;
   color: var(--ink-3);
   cursor: pointer;
-}
-.prov-word {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-body);
-  color: var(--ink);
-}
-.prov-chapter {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--ink-3);
-}
-.prov-chain {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.prov-node {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-  padding-top: 6px;
-  border-top: 1px solid var(--rule);
-}
-.prov-node-label {
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-}
-.prov-node-value {
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  line-height: 1.45;
-  color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.prov-rows {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-}
-.prov-row {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 8px;
-}
-.prov-row dt {
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  padding-top: 2px;
-}
-.prov-row dd {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  line-height: 1.45;
-  color: var(--ink-2);
-}
-.prov-row[data-quiet='true'] dd {
-  border-bottom: 1px dotted var(--rule);
-  color: var(--ink-3);
-}
-.prov-copy {
-  margin: 0;
-  font-family: var(--ui);
-  font-size: var(--fs-meta);
-  line-height: 1.45;
-  color: var(--ink-3);
-}
-.prov-action {
-  min-height: 44px;
-  border: 0;
-  border-radius: 0;
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  cursor: pointer;
-}
-.prov-rules {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  color: var(--ink-3);
-  text-decoration: none;
 }
 .filing-meta {
   margin: 0;
@@ -157,6 +56,16 @@
   font-style: italic;
   font-size: var(--fs-note);
   color: var(--ink-2);
+}
+/* BOOK-168 — the one line a card owes the reader when its landing fell back to the chapter:
+   the paragraph the filing quotes is gone, so the card says what changed instead of pointing
+   at a neighbour that was never filed on. */
+.filing-place-note {
+  margin: 0;
+  font-family: var(--ui);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--ink-3);
 }
 .filing-body {
   margin: 0;
@@ -214,27 +123,6 @@
   line-height: 1.45;
   color: var(--ink-3);
 }
-/* BOOK-111 (owner, 2026-10-27) — the quiet door between the two halves of the one box: the
-   provenance of the sentence a card quotes, or the sentence's own filing from the word's
-   record. One line in the panel's micro register; the close stays the head's and only the
-   head's. */
-.prov-filing,
-.filing-prov {
-  justify-self: start;
-  min-height: 44px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
-  letter-spacing: 0.02em;
-  color: var(--live);
-  text-align: left;
-  cursor: pointer;
-}
-
 @keyframes seam-fade {
   from {
     opacity: 0;

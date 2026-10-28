@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { NBSP } from '../lib/format.ts';
 import { Chronicle, ChronicleRecords } from './Chronicle.tsx';
 import { MomentControl } from './MomentControl.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { ViewSwitch } from './ViewSwitch.tsx';
 import { firstDeclarations, hasRule, mediaBlockList, unionDeclarations } from './cssRules.ts';
@@ -120,16 +120,16 @@ const MID = `${NBSP}·${NBSP}`;
 const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', import: 'default', eager: true });
 
 describe('one public record entry (BOOK-65)', () => {
-  it('carries the six facts of the change and exactly one way into the card', () => {
+  it('carries the six facts of the change, one way into the card and one door to the place', () => {
     const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
 
     expect(html).toContain('правка 7');
     expect(html).toContain(`26.10.2026${MID}09:00`);
-    expect(html).toContain('глава 9');
     expect(html).toContain('Марк');
     expect(html).toContain('идёт');
-    // One control, and the only link is the card — no «прицел», no second door.
+    // One control for the card, one link for the place (BOOK-168; no filing in this fixture).
     expect(html.match(/<button/gu)).toHaveLength(1);
+    expect(html).toContain('<a class="place-link chr-place" href="#ch-9">глава 9</a>');
     expect(html).not.toContain('прицел');
     expect(html).not.toContain('chr-deed');
     expect(html).toContain('карточка');
@@ -388,46 +388,45 @@ describe('the chronicle’s surface (§11.10)', () => {
     expect(html).not.toMatch(/style=/u);
   });
 
-  it('renders a paragraph chain with the SPEC’s copy and every version', () => {
+  it('renders a phrase’s three facts and no version table (#3815)', () => {
     const html = renderToStaticMarkup(
-      <ParagraphChain chain={CHAIN} loading={false} failed={false} onClose={noop} onRetry={noop} live />,
+      <SentenceBlock chain={CHAIN} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={noop} onClose={noop} />,
     );
-    expect(html).toContain('откуда эта фраза');
-    expect(html).toContain('переписано в 14:20 правкой 7 (Марк) · было: правка 3 (Аня)');
-    expect(html).toContain('эта строка сейчас в тексте · глава 8');
-    expect(html).toContain('написано');
-    expect(html).toContain('ch08#0b7e9c31');
-    // The chain never shows the text of any version — it is metadata and ids only.
+    expect(html).toContain('aria-label="откуда эта фраза"');
+    expect(html).toContain('<p class="sentence-label">фраза</p>');
+    expect(html).toContain('«Её освещал яркий свет.»');
+    expect(html).toContain('правка · №7');
+    expect(html).toContain('меняется');
+    expect(html).toContain('правка №7 · внесена 14:20');
+    expect(html).not.toContain('ch08#');
+    expect(html).not.toContain('эта строка сейчас в тексте');
+    expect(html).not.toContain('chapter-chain');
+    expect(html).not.toContain('закрыть');
     expect(html).not.toContain('Тестовая глава');
   });
 
   it('says so when a paragraph has no history — and only then', () => {
     const empty = renderToStaticMarkup(
-      <ParagraphChain chain={null} loading={false} failed={false} onClose={noop} onRetry={noop} live />,
+      <SentenceBlock chain={null} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={noop} onClose={noop} />,
     );
     expect(empty).toContain('у этой строки нет истории');
-    // BOOK-DOC-43 §4 (BOOK-66): before 150 ms the panel shows only its head. The threshold
-    // itself is proven in `paragraphChain.dom.test.tsx`; here the first render is quiet.
     const loading = renderToStaticMarkup(
-      <ParagraphChain chain={null} loading failed={false} onClose={noop} onRetry={noop} live />,
+      <SentenceBlock chain={null} loading failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={noop} onClose={noop} />,
     );
     expect(loading).not.toContain('у этой строки нет истории');
-    expect(loading).not.toContain('цепочка читается');
     expect(loading).not.toContain('role="status"');
     expect(loading).toContain('aria-busy="true"');
   });
 
   it('separates a failed read from an absence (BOOK-70)', () => {
-    // A request that never answered is not a paragraph without history: the panel says which
-    // fact it has, and offers the chronicle's own retry — same class, same shape.
+    // A request that never answered is not a paragraph without history: same class, same retry.
     const failed = renderToStaticMarkup(
-      <ParagraphChain chain={null} loading={false} failed onRetry={noop} onClose={noop} live />,
+      <SentenceBlock chain={null} loading={false} failed quote="Её освещал яркий свет." frame="none" place="flow" onRetry={noop} onClose={noop} />,
     );
     expect(failed).toContain('история не прочиталась');
     expect(failed).toContain('class="state-line"');
     expect(failed).toContain('повторить');
     expect(failed).not.toContain('нет истории');
-    expect(failed).not.toContain('цепочка читается');
   });
 });
 

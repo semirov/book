@@ -2,6 +2,8 @@ import type { HistoryRecordDto } from '@book/shared';
 
 import { recordReason, recordWord } from '../lib/changeStatus.ts';
 import { momentText } from '../lib/history.ts';
+import type { ChapterLoader, Place } from '../lib/place.ts';
+import { PlaceLink } from './PlaceLink.tsx';
 
 /**
  * BOOK-65 — one public record entry: **one change, one line**, and one way in.
@@ -12,14 +14,25 @@ import { momentText } from '../lib/history.ts';
  * control. Clicking the row does not move the moment either; the moment moves only through
  * `MomentControl`, so a tap on the entry always means the card.
  *
+ * BOOK-168 — the place is a door as well: «глава N» takes the reader to the paragraph the
+ * change was filed on (its filing, read by id — `sourceCommentId`), and when the record holds
+ * no filing only the chapter moves and the change card opens through this page's own path.
+ * The «карточка» button stays exactly what it was: the second door is the card, not a place.
+ *
+ * A record is a row of the chronicle, and the chronicle holds no chapter of its own: the door
+ * carries the record's `changeId` so a place this page cannot show still opens the card instead
+ * of setting a fragment that lands nowhere.
+ *
  * The final wording of the number and the outcome belongs to BOOK-59's copy pass.
  */
 export type RecordRowProps = {
   record: HistoryRecordDto;
   onOpenChange: (changeId: string) => void;
+  /** The page's chapter read, handed to the door (`PlaceLink`). */
+  onLoadChapter?: ChapterLoader;
 };
 
-export function RecordRow({ record, onOpenChange }: RecordRowProps) {
+export function RecordRow({ record, onOpenChange, onLoadChapter }: RecordRowProps) {
   const word = recordWord(record);
   const reason = recordReason(record);
   // BOOK-7 + BOOK-65: a premise is the chapter's starting point, so its noun is «замысел», not
@@ -30,13 +43,21 @@ export function RecordRow({ record, onOpenChange }: RecordRowProps) {
   const label = `${date}, ${number}, ${place}, ${record.alias}, ${word}${
     reason === null ? '' : `, ${reason}`
   } — открыть карточку правки`;
+  // BOOK-168 — the place cell. With a filing the tap lands on its paragraph and opens the
+  // filing's card; without one it is the chapter and the change card is this page's.
+  const target: Place =
+    record.sourceCommentId === undefined || record.sourceCommentId === null
+      ? { chapter: record.chapter, changeId: record.changeId }
+      : { commentId: record.sourceCommentId, chapter: record.chapter, changeId: record.changeId };
 
   return (
     // BOOK-77 (audit F1): the alias is a reader's display name, so the row is masked on its own.
     <li className="chr-row ym-hide-content">
       <span className="chr-date">{date}</span>
       <span className="chr-seq">{number}</span>
-      <span className="chr-place">{place}</span>
+      <PlaceLink className="chr-place" place={target} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter}>
+        {place}
+      </PlaceLink>
       <span className="chr-alias">{record.alias}</span>
       <span className="chr-outcome">
         {word}

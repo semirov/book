@@ -11,6 +11,11 @@ import { attachMarginPass, runMarginPass, scheduleMarginPass } from './marginPas
  * is what the browser would do with those numbers — the top written through CSSOM (never a
  * `style` attribute in React markup), `data-placed` only after the top is written, and the
  * tail growing by the residual.
+ *
+ * BOOK-128 comment #3815 — the margin now also carries the word's record and the phrase's
+ * facts. Both are ordinary items of the ledger when they are positioned, and neither is an item
+ * at all when it is in flow (the phone's body under the strip): a `top` there would lift the
+ * block out of the paragraph it belongs to.
  */
 
 function box(top: number, height: number): DOMRect {
@@ -28,6 +33,9 @@ function fixture(anchorTop: number, height: number, id: string): Fixture {
   note.className = 'margin-note';
   note.setAttribute('data-margin-item', 'note');
   note.setAttribute('data-id', id);
+  // The sheet makes a margin item absolute at ≥1024; jsdom loads no sheet, so the fixture says
+  // what the browser computes — anything else is in flow and is not an item of the pass.
+  note.style.position = 'absolute';
   sentence.append(note);
   paragraph.append(sentence);
   document.body.append(paragraph);
@@ -89,6 +97,42 @@ describe('runMarginPass', () => {
     runMarginPass(document);
     expect(note.style.top).toBe('');
     expect(note.getAttribute('data-placed')).toBeNull();
+  });
+
+  it('skips a block in flow: the phone body keeps no channel top and no placement', () => {
+    const { note } = fixture(100, 96, 'a');
+    note.style.position = 'static';
+    note.style.top = '40px';
+    const placed = runMarginPass(document);
+    expect(note.style.top).toBe('40px');
+    expect(note.getAttribute('data-placed')).toBeNull();
+    expect(placed.tops).toEqual([]);
+  });
+
+  it('stacks the word’s record 12 px under the note on the same line and never moves the note', () => {
+    // One line, two items: a note and the word's record, at the same anchor (BOOK-128 §3).
+    const { note, paragraph } = fixture(100, 96, 'a');
+    const word = document.createElement('div');
+    word.className = 'prov-block';
+    word.setAttribute('data-margin-item', 'prov');
+    word.style.position = 'absolute';
+    // The record is the strip's child: its anchor is the strip's own top, just under the line.
+    const strip = document.createElement('div');
+    strip.className = 'seam';
+    Object.defineProperty(strip, 'getBoundingClientRect', { configurable: true, value: () => box(100, 44) });
+    strip.append(word);
+    paragraph.after(strip);
+    Object.defineProperty(word, 'offsetParent', { configurable: true, get: () => strip });
+    Object.defineProperty(word, 'getBoundingClientRect', { configurable: true, value: () => box(100, 60) });
+
+    runMarginPass(document);
+
+    // The note keeps the line it belongs to: 100. The record starts 12 px under its bottom.
+    expect(note.style.top).toBe('50px'); // 100 − the paragraph's top (50)
+    expect(note.getAttribute('data-placed')).toBe('true');
+    expect(word.style.top).toBe(`${100 + 96 + 12 - 100}px`); // 12 px under the note, in the strip
+    expect(word.getAttribute('data-placed')).toBe('true');
+    expect(Number.parseFloat(word.style.top)).toBeGreaterThan(96);
   });
 });
 

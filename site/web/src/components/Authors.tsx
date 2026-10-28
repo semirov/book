@@ -2,6 +2,7 @@ import { formatShare, type AuthorsDto, type MyDecisionsDto, type MyTraceDto } fr
 
 import { formatDate } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { ExportLink } from './ExportLink.tsx';
 import { OwnDecisions } from './OwnDecisions.tsx';
@@ -41,6 +42,7 @@ export function Authors({
   decisions = null,
   live,
   exportBytes = null,
+  onLoadChapter,
 }: {
   authors: AuthorsDto | null;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
@@ -78,6 +80,8 @@ export function Authors({
    * payload, and then the link prints the verb alone.
    */
   exportBytes?: number | null;
+  /** BOOK-168: the page's chapter read, so a row's place door can ask for its chapter. */
+  onLoadChapter?: ChapterLoader;
 }) {
   // BOOK-56: the list is the book's past; the reader's own decisions are their present state,
   // so they render on their own rather than with the list they used to sit under.
@@ -87,7 +91,7 @@ export function Authors({
     const hasDecisions = decisions !== null && decisions.items.length > 0;
     return (
       <section className="page authors" aria-label={hasDecisions ? 'ваши правки и выгрузка книги' : 'выгрузка книги'}>
-        {hasDecisions ? <OwnDecisions decisions={decisions} /> : null}
+        {hasDecisions ? <OwnDecisions decisions={decisions} onLoadChapter={onLoadChapter} /> : null}
         <div className="authors-export">
           <ExportLink exportBytes={exportBytes} />
         </div>
@@ -162,7 +166,7 @@ export function Authors({
           {...(onToggleHidden === undefined ? {} : { onToggleHidden })}
         />
       )}
-      <OwnDecisions decisions={decisions} />
+      <OwnDecisions decisions={decisions} onLoadChapter={onLoadChapter} />
       {/*
         BOOK-138 — the download keeps the end matter's own spacing (`chrome.css`,
         `.authors-export`); the link itself states no box, here or in the footer. The label

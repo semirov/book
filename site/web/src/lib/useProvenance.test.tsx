@@ -5,15 +5,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetParagraphChainCache } from './paragraphChainCache.ts';
+import type { WordFiling } from './provenance.ts';
 import { useProvenance } from './useProvenance.ts';
 
 /**
- * BOOK-DOC-34 §2.6 (BOOK-56, BOOK-68) — the one reader behind both of the panel's doors.
+ * BOOK-128 comment #3815 (BOOK-33, BOOK-56, BOOK-68) — the one reader behind the word's margin.
  *
- * The hook is the whole answer to «what may the DNA panel print now»: the chain's state, the
- * viewer's own trace and the public shares. The strip's «откуда это слово» and a filing card's
- * footer both call it, so the two can never ask the log different questions — and with history
- * off neither asks anything at all.
+ * The hook is the whole answer to «what may the word's block print now»: the chain's state, the
+ * viewer's own trace and the hand. Nothing is printed before the log answers, a failure says so
+ * in one line, and with history off nothing is asked at all (the door is not rendered either).
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -78,7 +78,16 @@ function stub(routes: Record<string, () => Response>): ReturnType<typeof vi.fn> 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-function probe(props: { word?: string | null; history?: boolean; signedIn?: boolean; viewerName?: string | null } = {}): void {
+type ProbeProps = {
+  word: string | null;
+  history: boolean;
+  signedIn: boolean;
+  viewerName: string | null;
+  frozenOf?: 'frame' | 'basis' | null;
+  filing?: WordFiling | null;
+};
+
+function probe(props: Partial<ProbeProps> = {}): void {
   act(() => {
     root?.render(
       <Probe
@@ -86,33 +95,22 @@ function probe(props: { word?: string | null; history?: boolean; signedIn?: bool
         history={props.history ?? true}
         signedIn={props.signedIn ?? false}
         viewerName={props.viewerName ?? null}
+        frozenOf={props.frozenOf ?? null}
+        filing={props.filing ?? null}
       />,
     );
   });
 }
 
-function Probe({
-  word,
-  history,
-  signedIn,
-  viewerName,
-}: {
-  word: string | null;
-  history: boolean;
-  signedIn: boolean;
-  viewerName: string | null;
-}) {
-  const state = useProvenance({ blockId: BLOCK_ID, chapter: 8, word, frozen: false, history, signedIn, viewerName });
+function Probe({ word, history, signedIn, viewerName, frozenOf = null, filing = null }: ProbeProps) {
+  const state = useProvenance({ blockId: BLOCK_ID, word, frozenOf, history, signedIn, viewerName, filing });
   return (
     <div>
-      <span data-role="word">{state.view?.word ?? '—'}</span>
-      <span data-role="action">{state.view?.action.label ?? ''}</span>
-      <span data-role="chain">{state.view?.chain.map((node) => node.label).join(',') ?? ''}</span>
-      {state.view?.rows.map((row) => (
-        <span key={row.label} data-row={row.label}>
-          {row.value}
-        </span>
-      ))}
+      <span data-role="hand">{state.view?.hand ?? '—'}</span>
+      <span data-role="when">{state.view?.when ?? ''}</span>
+      <span data-role="trace">{state.view?.trace ?? ''}</span>
+      <span data-role="gloss">{state.view?.gloss ?? ''}</span>
+      <span data-role="failed">{state.failed ? 'failed' : ''}</span>
       <button type="button" onClick={() => void state.load()}>
         load
       </button>
@@ -129,44 +127,47 @@ async function load(): Promise<void> {
   });
 }
 
-const row = (label: string): string => document.querySelector(`[data-row="${label}"]`)?.textContent ?? '';
+const cell = (role: string): string => document.querySelector(`[data-role="${role}"]`)?.textContent ?? '';
 
 describe('the word panel’s one reader (BOOK-56)', () => {
-  it('asks nothing with history off, and keeps only the word, its place and «вмешаться»', async () => {
+  it('asks nothing with history off — the door is not rendered either', async () => {
     const fetchMock = stub({});
     probe({ history: false });
 
     await load();
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-role="word"]')?.textContent).toBe('фонарь');
-    expect(document.querySelector('[data-role="action"]')?.textContent).toBe('вмешаться здесь');
-    expect(document.querySelector('[data-role="chain"]')?.textContent).toBe('');
-    expect(document.querySelectorAll('[data-row]')).toHaveLength(0);
+    expect(cell('hand')).toBe('—');
+    expect(cell('trace')).toBe('');
   });
 
-  it('says a 404 is «нет истории», and asks the block only once', async () => {
+  it('prints no facts until the log answers, and a 404 is an answer', async () => {
     const fetchMock = stub({});
     probe();
 
+    expect(cell('hand')).toBe('—');
     await load();
-    expect(row('абзац')).toBe('у этой строки нет истории');
+    expect(cell('hand')).toBe('печатник');
+    expect(cell('when')).toBe('вне правок');
+    expect(cell('trace')).toBe('следа нет');
+    expect(cell('gloss')).toBe('печатник — смена, которая пишет книгу; рамку держит автор.');
 
     await load();
     const chainCalls = fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/history/paragraphs/')).length;
     expect(chainCalls).toBe(1);
   });
 
-  it('says the read failed when the chain answers with an error', async () => {
+  it('says the read failed when the chain answers with an error — and prints no fact', async () => {
     stub({ '/api/history/paragraphs/': () => json({ code: 'BOOM' }, 500) });
     probe();
 
     await load();
 
-    expect(row('абзац')).toBe('история не прочиталась');
+    expect(cell('failed')).toBe('failed');
+    expect(cell('hand')).toBe('—');
   });
 
-  it('prints the viewer’s own curve for their own word, and no public number beside it', async () => {
+  it('prints the viewer’s own curve for their own word, and the reader’s name as the hand', async () => {
     stub({
       '/api/history/paragraphs/': () => json(CHAIN),
       '/api/authors/me': () => json({ label: 'Аня', edits: 2, chars: 40, share: 0.002, series: [], hidden: false, survivedRevisions: 4 }),
@@ -176,12 +177,12 @@ describe('the word panel’s one reader (BOOK-56)', () => {
     await load();
 
     // The viewer's own curve only: no public number is ever printed for their own word.
-    expect(row('след')).toBe('пережила 4 ревизии, сейчас 0,2 %');
-    expect(row('кто внёс')).toBe('Аня');
-    expect(document.querySelector('[data-role="chain"]')?.textContent).toBe('кто,правка,эта страница');
+    expect(cell('hand')).toBe('Аня');
+    expect(cell('trace')).toBe('пережила 4 ревизии');
+    expect(cell('gloss')).toBe('');
   });
 
-  it('prints the published share for somebody else’s word', async () => {
+  it('prints «след не измерен» for somebody else’s word', async () => {
     stub({
       '/api/history/paragraphs/': () => json(CHAIN),
       '/api/authors': () => json({ contributors: [{ label: 'Аня', share: 0.12, edits: 3 }] }),
@@ -190,22 +191,35 @@ describe('the word panel’s one reader (BOOK-56)', () => {
 
     await load();
 
-    expect(row('след')).toBe('доля в книге 12,0 % · правок 3');
+    expect(cell('hand')).toBe('Аня');
+    expect(cell('trace')).toBe('след не измерен');
   });
 
-  it('falls back to «след не измерен» when neither list answers', async () => {
+  it('names the frozen surface the paragraph is, not the version behind it', async () => {
     stub({ '/api/history/paragraphs/': () => json(CHAIN) });
-    probe({ signedIn: true, viewerName: 'Филипп' });
+    probe({ frozenOf: 'basis' });
 
     await load();
 
-    expect(row('след')).toBe('след не измерен для этой строки');
+    expect(cell('hand')).toBe('основание книги');
+    expect(cell('when')).toBe('вне правок');
   });
 
-  it('reads nothing when no word’s panel is open', () => {
+  it('names the filing standing on the word, and its state, in line 3', async () => {
+    stub({ '/api/history/paragraphs/': () => json(CHAIN) });
+    probe({ filing: { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b3' } });
+
+    await load();
+
+    expect(cell('hand')).toBe('правка · №A7K');
+    expect(cell('trace')).toBe('№A7K · ждёт');
+    expect(cell('gloss')).toBe('');
+  });
+
+  it('reads nothing when no word’s block is open', () => {
     probe({ word: null });
 
-    expect(document.querySelector('[data-role="word"]')?.textContent).toBe('—');
-    expect(document.querySelectorAll('[data-row]')).toHaveLength(0);
+    expect(cell('hand')).toBe('—');
+    expect(cell('trace')).toBe('');
   });
 });

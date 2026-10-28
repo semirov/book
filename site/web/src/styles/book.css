@@ -83,7 +83,11 @@
   overflow-wrap: break-word;
   white-space: pre-line;
 }
-.p:last-child {
+.p:last-child,
+/* BOOK-128 comment #3815 — the phrase's zero-height seat may follow the last paragraph; the
+   paragraph is still the page's last line, and its bottom air must not come back with a
+   margin item that paints in the margin. */
+.p:has(+ .sentence-seat:last-child) {
   margin-bottom: 0;
 }
 /* The phone reads ragged-right: a justified 342px column with auto hyphenation opens rivers

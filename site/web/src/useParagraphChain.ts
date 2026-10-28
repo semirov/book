@@ -32,6 +32,11 @@ export type ParagraphChainMode = {
   failed: boolean;
   /** The panel is open (loading, failed, or the chain itself): it stays mounted. */
   active: boolean;
+  /**
+   * BOOK-128 comment #3815 — the block whose phrase is open. The block is now that paragraph's
+   * margin item, so the paragraph, not a floating box at the page root, has to know.
+   */
+  openId: string | null;
   anchor: AnchorRect | null;
   open: (blockId: string, anchor: AnchorRect) => void;
   retry: () => void;
@@ -43,6 +48,7 @@ export function useParagraphChain(): ParagraphChainMode {
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [anchor, setAnchor] = useState<AnchorRect | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const generation = useRef(0);
   const requested = useRef<string | null>(null);
 
@@ -78,6 +84,7 @@ export function useParagraphChain(): ParagraphChainMode {
   const open = useCallback(
     (blockId: string, rect: AnchorRect) => {
       requested.current = blockId;
+      setOpenId(blockId);
       setAnchor(rect);
       load(blockId);
     },
@@ -93,11 +100,12 @@ export function useParagraphChain(): ParagraphChainMode {
   const close = useCallback(() => {
     generation.current += 1;
     requested.current = null;
+    setOpenId(null);
     setChain(null);
     setAnchor(null);
     setLoading(false);
     setFailed(false);
   }, []);
 
-  return { chain, loading, failed, active: anchor !== null, anchor, open, retry, close };
+  return { chain, loading, failed, active: anchor !== null, openId, anchor, open, retry, close };
 }

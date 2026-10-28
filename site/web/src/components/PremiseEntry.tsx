@@ -143,6 +143,8 @@ export function PremiseEntry({
           onClose={closeSeam}
           onClosePanel={hideFiling}
           onProvenance={() => undefined}
+          // A premise has no word behind a door: the strip prints «замысел», not a record.
+          prov={null}
           onOpenFiling={openFiling}
           premiseHint={firstEmpty && open}
         />

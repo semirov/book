@@ -1,22 +1,25 @@
-import { formatShare, type ParagraphChainDto } from '@book/shared';
-
-import { changeNumber } from './changeStatus.ts';
-import { plural } from './format.ts';
-import { CHAIN_FAILED_LINE, NO_HISTORY_LINE, type ChainHistory } from './history.ts';
-import { statusLine } from './skeleton.ts';
+import { formatDate, formatTime, plural } from './format.ts';
 
 /**
- * BOOK-DOC-34 §2.6 — the DNA panel: one word's provenance, said honestly.
+ * BOOK-128 (designer, 2026-10-28, comment #3815) — «откуда это слово» is **marginalia**.
  *
- * Three variants share one skeleton: a **machine** word (the majority — the author wrote it
- * and no reader touched the paragraph), a **frozen** word (the frame of ch01/ch67 and page 2)
- * and an **unattributed** word (a version the log cannot assign to anybody).
+ * A word's provenance is not a dialog: at ≥1024 it is a note beside the line the word stands
+ * on, at ≤1023 it is the body of the strip that opened it. The panel's box, its scroll, its
+ * uppercase table, its CTA and its own ✕ are gone with the panel. What is left is what a
+ * margin can carry: **three facts and, for one hand only, one sentence.**
  *
- * The honesty rules are encoded in the types, not in a comment: a **public** share can only
- * carry the numbers the server publishes for other readers (`share`, `edits`); the viewer's
- * own `survivedRevisions` lives on the `own` variant alone, so no rendering path can print
- * another reader's curve. Word-level precision does not exist in the log, so the panel says
- * «слово в пределах абзаца» in the quiet tone instead of guessing a span.
+ * The hand is the book's, not the web's: a pass wrote the prose (`печатник` — never «автор»,
+ * which is false on a book a shift wrote), the frame holds the canon sentence (`рамка книги`),
+ * page 2 is the basis (`основание книги`), a reader lent their name, and a version the log
+ * cannot assign is `правка вне процесса`. When a reader's filing stands on the word, the hand
+ * names the record the version came from.
+ *
+ * Two honesty rules are encoded here, not in a comment:
+ *   - a **public** share can only print the numbers the server publishes for other readers;
+ *     `survivedRevisions` lives on the `own` variant alone, so no path can print another
+ *     reader's curve;
+ *   - `следа нет` (the log holds no reader trace) and `след не измерен` (a reader wrote it and
+ *     the curve is not ours to print) are different facts and never swap.
  */
 
 export type TraceShare =
@@ -33,46 +36,78 @@ export type TraceShare =
  */
 export type ProvenanceVariant = 'machine' | 'frozen' | 'reader' | 'unattributed';
 
-export type ProvenanceInput = {
-  word: string;
-  chapter: number;
-  variant: ProvenanceVariant;
-  /** What the panel may say about the trace; the caller decides what it legitimately holds. */
-  share: TraceShare;
-  chain: ParagraphChainDto | null;
-  /** BOOK-68: the paragraph's history as the panel may speak of it — never a claim without data. */
-  history: ChainHistory;
-  /** The moment of the block's last version, for «когда». */
-  at: string | null;
-  /** The frozen variants say why: the book's frame, or the page 2 basis. */
-  frozenOf?: 'frame' | 'basis';
+/** THE hand of a pass-written book: one word, everywhere a word is attributed. */
+export const PASS_HAND = 'печатник';
+export const FRAME_HAND = 'рамка книги';
+export const BASIS_HAND = 'основание книги';
+export const UNATTRIBUTED_HAND = 'правка вне процесса';
+
+/**
+ * The one sentence the layer may print, and only under `печатник`: a reader cannot know what
+ * a shift is. It never repeats a fact above it, never says what will happen (the strip says
+ * that before typing) and never speaks for the machine.
+ */
+export const PASS_GLOSS = 'печатник — смена, которая пишет книгу; рамку держит автор.';
+
+/** A filing standing on the word: its own numeral, its state word, and the place it stands on. */
+export type WordFiling = {
+  /** The record's own numeral (`№A7K`); `lib/filings.ts` forbids an invented ordinal. */
+  number: string;
   /**
-   * BOOK-56: `state.history.live`. With no reader change the DNA block («кто внёс», «след»,
-   * «абзац», «точность») and the chain rows («кто», «правка», «эта страница») are not
-   * rendered; the word, its place and «вмешаться» still are.
+   * The number of the change this filing's latest attempt became (`12`), read from the page's
+   * window of changes (`filingAttempt`). The schema has **no filing sequence**: the number the
+   * owner's spec prints (`правка · №12`) is the *change* the filing turned into, so a filing
+   * that never became one has no number at all and `null` says exactly that.
    */
-  live?: boolean;
-};
-
-export type ProvenanceRow = { label: string; value: string; quiet?: boolean };
-
-export type ProvenanceView = {
-  title: string;
-  word: string;
-  chapterLine: string;
-  chain: Array<{ label: string; value: string }>;
-  rows: ProvenanceRow[];
-  copy: string | null;
-  action: { kind: 'form' | 'rules'; label: string };
+  seq: number | null;
+  /** The state word from `lib/marginalia.ts` («ждёт» / «рассмотрено»). */
+  state: string;
+  /** The fragment the door opens — a real href, so a modified click keeps the browser's act. */
+  href: string;
 };
 
 /**
- * BOOK-33 — which trace the `след` row may print for a word.
+ * The numeral a filing prints: its change's number (`№12`) when the window carries the attempt,
+ * the record's own suffix (`№A7K`) when it does not — never a padded `012`, which the owner
+ * reads as a book ordinal the row no longer claims.
+ */
+export function filingNumeral(filing: WordFiling): string {
+  return filing.seq === null ? filing.number : `№${filing.seq}`;
+}
+
+/** What the margin prints for one word: three facts, one sentence, one door. */
+export type WordFacts = {
+  /** Line 1 — the hand, in the book's vocabulary. */
+  hand: string;
+  /** Line 2 — «с 28.10.2026, 12:08», or «вне правок» for the frame and the basis. */
+  when: string;
+  /** Line 3 — the trace, or the filing standing on the word. */
+  trace: string;
+  /** The gloss; `null` for every hand but `печатник`. */
+  gloss: string | null;
+  /** The filing the trace line opens, when one stands on this word. */
+  filing: WordFiling | null;
+};
+
+export type WordInput = {
+  variant: ProvenanceVariant;
+  /** The last version's actor label — the reader's name when `variant` is `reader`. */
+  actor: string | null;
+  /** Which frozen surface the word sits on; absent for a writable paragraph. */
+  frozenOf?: 'frame' | 'basis';
+  /** The moment of the block's last version; `null` when the log has none. */
+  at: string | null;
+  share: TraceShare;
+  filing: WordFiling | null;
+};
+
+/**
+ * BOOK-33 — which trace the `след` line may print for a word.
  *
  * A reader's own paragraph shows their own line (`пережила N ревизий`), because the reader
- * owns that curve. Somebody else's paragraph shows the public numbers the authors list
- * publishes — never `survivedRevisions`, which is served to its owner alone. A paragraph with
- * no reader attribution has no trace at all, and a reader word we cannot name says so.
+ * owns that curve. Somebody else's paragraph shows nothing measured — never
+ * `survivedRevisions`, which is served to its owner alone. A paragraph with no reader
+ * attribution has no trace at all, and a reader word we cannot name says so.
  */
 export function shareFor(input: {
   actor: { kind: string; label: string } | null;
@@ -90,109 +125,64 @@ export function shareFor(input: {
   return { kind: 'unknown' };
 }
 
-/** «пережила 4 ревизии, сейчас 0,4 %» — the viewer's own trace, never anybody else's. */
-export function shareLine(share: TraceShare): string {
+/**
+ * The trace line, in three shapes and no fourth: the viewer's own survival curve, the fact
+ * that somebody else's curve is not ours to print, and the fact that there is none.
+ */
+export function traceLine(share: TraceShare): string {
   switch (share.kind) {
     case 'own':
-      return `пережила ${share.survivedRevisions} ${plural(share.survivedRevisions, 'ревизию', 'ревизии', 'ревизий')}, сейчас ${formatShare(share.share)}`;
+      return `пережила ${share.survivedRevisions} ${plural(share.survivedRevisions, 'ревизию', 'ревизии', 'ревизий')}`;
     case 'public':
-      return `доля в книге ${formatShare(share.share)} · правок ${share.edits}`;
     case 'unknown':
-      return 'след не измерен для этой строки';
+      return 'след не измерен';
     default:
-      return 'читательского следа нет';
+      return 'следа нет';
   }
 }
 
-/** «переписан 3 раза после неё» — public, per block, from the paragraph's own chain. */
-export function rewriteLine(chain: ParagraphChainDto | null): string {
-  const rewrites = chain === null ? 0 : chain.versions.filter((version) => version.op === 'revised').length;
-  if (rewrites === 0) return 'написан целиком; читательских правок в нём не было';
-  return `переписан ${rewrites} ${plural(rewrites, 'раз', 'раза', 'раз')} после неё`;
+/** `2026-10-21T12:04:11Z` → «28.10.2026, 12:08» (Moscow, the site's one clock). */
+function moment(iso: string | null): string {
+  if (iso === null) return 'вне правок';
+  const date = formatDate(iso);
+  const time = formatTime(iso);
+  if (date === '—' || time === '—') return 'вне правок';
+  return `с ${date}, ${time}`;
 }
 
 /**
- * BOOK-68 — the `абзац` row. A rewrite count is a claim, so it needs the chain: a missing
- * history says «у этой строки нет истории», a request still in flight says the chain is being
- * read, and a request that failed says so. `rewriteLine(null)` is never printed for a live
- * panel.
+ * The variant both layers read from one chain: one rule for the word and the phrase beside it,
+ * so they can never disagree about who wrote the paragraph.
  */
-export function paragraphLine(history: ChainHistory, chain: ParagraphChainDto | null): string {
-  if (chain !== null) return rewriteLine(chain);
-  switch (history) {
-    case 'loading':
-      // The wait's one sentence lives in the loading register (BOOK-66, §6). The row itself
-      // has no quiet stage — it is only asked while the panel is open — so it prints the
-      // sentence the form's stage carries, at once.
-      return statusLine('chain', 'skeleton') ?? '';
-    case 'failed':
-      return CHAIN_FAILED_LINE;
-    default:
-      return NO_HISTORY_LINE;
-  }
+export function variantOf(input: { frozen: boolean; actorKind: string | null | undefined }): ProvenanceVariant {
+  if (input.frozen) return 'frozen';
+  if (input.actorKind === 'reader') return 'reader';
+  if (input.actorKind === undefined || input.actorKind === 'author' || input.actorKind === 'writer') return 'machine';
+  return 'unattributed';
 }
 
-/** `2026-10-21T12:04:11Z` → «21.10.2026, 12:04»; the site prints Moscow time. */
-function moment(iso: string | null): string {
-  if (iso === null) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${day}.${month}.${date.getFullYear()}, ${time}`;
+/** The hand a word's line 1 prints. Never a machine noun and never «автор». */
+function handOf(input: WordInput): string {
+  if (input.filing !== null) return `правка · ${filingNumeral(input.filing)}`;
+  if (input.variant === 'frozen') return input.frozenOf === 'basis' ? BASIS_HAND : FRAME_HAND;
+  if (input.variant === 'unattributed') return UNATTRIBUTED_HAND;
+  if (input.variant === 'reader') return input.actor ?? PASS_HAND;
+  return PASS_HAND;
 }
 
-const MACHINE_COPY = 'у этого слова нет читательской родословной: его написал автор.';
-
-export function provenanceView(input: ProvenanceInput): ProvenanceView {
-  const live = input.live !== false;
-  const last = input.chain?.versions.at(-1) ?? null;
-  const actor = last?.actor?.label ?? (input.variant === 'unattributed' ? 'правка вне процесса' : 'автор');
-  const where = input.variant === 'frozen' ? 'вне правок' : last === null ? 'в тексте' : `в тексте с ${moment(last.at)}`;
-
-  // The record (the word, its place, «вмешаться») is not history; the DNA rows are. With
-  // history off they are absent, never an empty panel or a row of «следа нет».
-  const rows: ProvenanceRow[] = live
-    ? [
-        { label: 'кто внёс', value: actor },
-        { label: 'когда', value: moment(input.at ?? last?.at ?? null) },
-        { label: 'след', value: input.variant === 'frozen' ? frozenTrace(input.frozenOf) : shareLine(input.share) },
-        { label: 'абзац', value: paragraphLine(input.history, input.chain) },
-      ]
-    : [];
-  if (live && input.variant !== 'frozen') rows.push({ label: 'точность', value: 'слово в пределах абзаца', quiet: true });
-
+/**
+ * The word's three facts. The block is the answer, so a caller may only render it once the
+ * log answered — a provenance printed from a default is a claim nobody made.
+ */
+export function wordFacts(input: WordInput): WordFacts {
+  const hand = handOf(input);
+  const frozen = input.variant === 'frozen';
+  const filing = input.filing;
   return {
-    title: 'откуда это слово',
-    word: input.word,
-    chapterLine: `глава ${String(input.chapter).padStart(2, '0')}`,
-    // BOOK-56: «кто», «правка» and «эта страница» are read off the log — the same past the DNA
-    // rows narrate — so with history off they are absent with them, not printed from a chain
-    // the component no longer fetches.
-    chain: live
-      ? [
-          { label: 'кто', value: actor },
-          // BOOK-59: the book speaks in numbers — «правка 014», never `chg_01J…`.
-          { label: 'правка', value: last?.changeSeq == null ? 'вне правок' : `правка ${changeNumber(last.changeSeq)}` },
-          { label: 'эта страница', value: where },
-        ]
-      : [],
-    rows,
-    copy: live && input.variant === 'machine' ? MACHINE_COPY : null,
-    action:
-      input.variant === 'frozen'
-        ? { kind: 'rules', label: 'что это значит →' }
-        : { kind: 'form', label: 'вмешаться здесь' },
+    hand,
+    when: frozen ? 'вне правок' : moment(input.at),
+    trace: filing === null ? (frozen ? 'следа нет' : traceLine(input.share)) : `${filingNumeral(filing)} · ${filing.state}`,
+    gloss: hand === PASS_HAND ? PASS_GLOSS : null,
+    filing,
   };
-}
-
-/** The frozen variants: the frame says «закреплено», page 2 says «основание». */
-function frozenTrace(frozenOf: ProvenanceInput['frozenOf']): string {
-  return frozenOf === 'basis' ? 'основание; страница не редактируется' : 'закреплено; не меняется';
-}
-
-/** The word a tap on a frozen chapter may still explain: no form, only what it means. */
-export function frozenActionHref(): string {
-  return '/rules#рамка';
 }

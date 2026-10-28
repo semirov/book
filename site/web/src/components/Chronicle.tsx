@@ -9,12 +9,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
 import { formatChars } from '../lib/format.ts';
 import { compareToNow, momentText } from '../lib/history.ts';
+import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { MomentControl } from './MomentControl.tsx';
-import { ParagraphChain } from './ParagraphChain.tsx';
+import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { Skeleton } from './Skeleton.tsx';
-import { useParagraphChain } from '../useParagraphChain.ts';
+import { useParagraphChain, type ParagraphChainMode } from '../useParagraphChain.ts';
 import { usePending } from '../usePending.ts';
 
 /** A drag idles before it asks (BOOK-DOC-50 §6); a release asks at once. */
@@ -66,9 +67,11 @@ export type ChronicleProps = {
   started: boolean;
   /** BOOK-56: `state.history.live`; without a reader change the record list stays empty and the chain off. */
   live: boolean;
+  /** BOOK-168 — the page's chapter read for the record's place door; a place it cannot show opens the card. */
+  onLoadChapter?: ChapterLoader;
 };
 
-export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live, onLoadChapter }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -77,16 +80,9 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
   const requested = useRef<number | null>(null);
   const requestId = useRef(0);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const {
-    chain,
-    loading: chainLoading,
-    failed: chainFailed,
-    active: chainActive,
-    anchor: chainAnchor,
-    open: openChain,
-    retry: retryChain,
-    close: closeChain,
-  } = useParagraphChain();
+  // BOOK-128 #3815 — the phrase's facts are the paragraph's own block, in flow: this surface has
+  // no margin channel, and a floating box over a past chapter would be a second surface.
+  const sentence = useParagraphChain();
 
   const refresh = useCallback(async () => {
     // A retry is a wait again (§4, §10): the failure block goes when the request starts, not
@@ -299,7 +295,8 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
                       n={chapter.n}
                       hseq={past.hseq}
                       title={chapter.title}
-                      onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
+                      sentence={sentence}
+                      live={live}
                     />
                   ))}
               </div>
@@ -321,7 +318,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
           </>
         )
       ) : (
-        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} />
+        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
       )}
       {failed ? (
         <div className="state-line">
@@ -332,18 +329,6 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
         </div>
       ) : null}
 
-      {/* The panel stays mounted for the whole open cycle: a failure must keep its retry. */}
-      {chainActive ? (
-        <ParagraphChain
-          chain={chain}
-          loading={chainLoading}
-          failed={chainFailed}
-          onClose={closeChain}
-          onRetry={retryChain}
-          anchor={chainAnchor}
-          live={live}
-        />
-      ) : null}
     </section>
   );
 }
@@ -360,11 +345,14 @@ export function ChronicleRecords({
   timeline,
   failed,
   onOpenChange,
+  onLoadChapter,
 }: {
   timeline: HistoryTimelineDto;
   /** The last read failed: an absence is not claimed on top of it. */
   failed: boolean;
   onOpenChange: (changeId: string) => void;
+  /** BOOK-168: the page's chapter read, handed to every record's place door. */
+  onLoadChapter?: ChapterLoader;
 }) {
   if (timeline.items.length > 0) {
     return (
@@ -372,7 +360,7 @@ export function ChronicleRecords({
         {timeline.items.map((record) => (
           // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
           // lands for that change, and a remount would drop keyboard focus on a live tick.
-          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
+          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
         ))}
       </ol>
     );
@@ -404,12 +392,14 @@ function PastChapter({
   n,
   hseq,
   title,
-  onProvenance,
+  sentence,
+  live,
 }: {
   n: number;
   hseq: number;
   title: string | null;
-  onProvenance: (blockId: string, anchor: HTMLElement) => void;
+  sentence: ParagraphChainMode;
+  live: boolean;
 }) {
   const [chapter, setChapter] = useState<HistoryChapterDto | null>(null);
   const [failed, setFailed] = useState(false);
@@ -442,18 +432,68 @@ function PastChapter({
       {failed ? <p className="chr-empty">глава не прочиталась</p> : null}
       {chapter === null && !failed ? <p className="chr-empty">глава читается…</p> : null}
       {chapter?.blocks.map((block) => (
-        <p className="p past-p" key={block.id} data-block-id={block.id}>
-          {block.text}
+        <PastBlock key={block.id} block={block} sentence={sentence} live={live} />
+      ))}
+    </details>
+  );
+}
+
+/**
+ * One paragraph of a past chapter, with the phrase's own `⋯` — BOOK-128 comment #3815: the facts
+ * open in flow under the paragraph (a past chapter has no margin channel), and the door that
+ * opened them is where focus comes back.
+ */
+function PastBlock({
+  block,
+  sentence,
+  live,
+}: {
+  block: { id: string; text: string };
+  sentence: ParagraphChainMode;
+  live: boolean;
+}) {
+  const door = useRef<HTMLButtonElement>(null);
+  const open = live && sentence.openId === block.id;
+  return (
+    <div>
+      <p className="p past-p" data-block-id={block.id}>
+        {block.text}
+        {live ? (
           <button
             type="button"
             className="prov"
             aria-label="откуда эта фраза"
-            onClick={(event) => onProvenance(block.id, event.currentTarget)}
+            aria-expanded={open}
+            ref={door}
+            onClick={() => {
+              // The door is the toggle and the only close this layer has.
+              if (sentence.openId === block.id) {
+                sentence.close();
+                door.current?.focus();
+                return;
+              }
+              sentence.open(block.id, door.current?.getBoundingClientRect() ?? new DOMRect());
+            }}
           >
             ⋯
           </button>
-        </p>
-      ))}
-    </details>
+        ) : null}
+      </p>
+      {open ? (
+        <SentenceBlock
+          chain={sentence.chain}
+          loading={sentence.loading}
+          failed={sentence.failed}
+          quote={block.text}
+          frame="none"
+          place="flow"
+          onRetry={sentence.retry}
+          onClose={() => {
+            sentence.close();
+            door.current?.focus();
+          }}
+        />
+      ) : null}
+    </div>
   );
 }

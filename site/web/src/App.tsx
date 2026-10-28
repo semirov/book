@@ -27,7 +27,6 @@ import { ChangeCard } from './components/ChangeCard.tsx';
 import { CapacityPlate } from './components/CapacityPlate.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
-import { ParagraphChain } from './components/ParagraphChain.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
 import { FocusView } from './components/FocusView.tsx';
@@ -100,10 +99,11 @@ export function App() {
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
   const [historyTick, setHistoryTick] = useState(0);
-  const {
-    chain, loading: chainLoading, failed: chainFailed, active: chainActive, anchor: chainAnchor,
-    open: openChain, retry: retryChain, close: closeChain,
-  } = useParagraphChain();
+  /**
+   * BOOK-128 comment #3815 — the phrase's facts are the paragraph's own margin item now, so the
+   * page hands the whole mode down to the article instead of drawing a floating box at its root.
+   */
+  const sentence = useParagraphChain();
   /**
    * The card and the focus view («прицел», §11.9). The focus view is a mode of this page,
    * selected by `#правка-<id>`; its session (hash, change, impact) lives in `useFocusMode`.
@@ -427,13 +427,11 @@ export function App() {
           onOpenChange={card.open}
           started={chronicle}
           live={history}
+          onLoadChapter={loadChapter}
         />
         {card.change === null ? null : (
           <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
         )}
-        {chainActive ? (
-          <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
-        ) : null}
         <CapacityPlate active={connection === 'capacity'} />
         {focusView}
       </>
@@ -469,7 +467,7 @@ export function App() {
         nowMs={nowMs}
         onRead={loadChapter}
         onPosted={onPosted}
-        onProvenance={(blockId, button) => openChain(blockId, button.getBoundingClientRect())}
+        sentence={sentence}
         composer={composer}
         viewer={viewer}
         history={history}
@@ -483,13 +481,11 @@ export function App() {
         onAuthorsCount={applyAuthorsCount}
         live={history}
         exportBytes={front.exportBytes ?? null}
+        onLoadChapter={loadChapter}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} />
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
-      {chainActive ? (
-        <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
-      ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       <FootJumps live={history} processing={state.queue.processing !== null} revising={Object.values(revising).some((block) => block.active)} chapter={liveChapter(state.queue.processing?.chapter ?? null, revising)} change={changes[0] ?? null} plate={connection === 'capacity'} onLoad={loadChapter} />
       <CapacityPlate active={connection === 'capacity'} />
