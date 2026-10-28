@@ -22,6 +22,7 @@ import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { restorePreSnapshot } from './revert.ts';
+import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import type { WriterConfig } from './config.ts';
@@ -302,13 +303,21 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     };
   }
 
-  /** `land`: a `STEP_CLOSED` answer takes the text back — bytes no gate hashed must not stay. */
+  /**
+   * `land`: a `STEP_CLOSED` answer takes the text back — bytes no gate hashed must not stay —
+   * and so does `FRAME_CHANGED` (BOOK-137): a chapter whose canon sentence moved is not a
+   * revision, and the file must not keep a sentence the book froze.
+   */
   async function land(): Promise<void> {
     try {
       await engine.land(job.leaseId);
     } catch (error) {
-      const back = codeOf(error) === 'STEP_CLOSED' ? restorePreSnapshot(input.dataDir, bookRoot, chapter) : null;
-      if (back) input.log(`[writer] land STEP_CLOSED: снимок до прохода ${back.restored ? 'возвращён' : 'не найден'}`);
+      const code = codeOf(error);
+      const back =
+        code === 'STEP_CLOSED' || code === 'FRAME_CHANGED'
+          ? restorePreSnapshot(input.dataDir, bookRoot, chapter)
+          : null;
+      if (back) input.log(`[writer] land ${code ?? 'refused'}: снимок до прохода ${back.restored ? 'возвращён' : 'не найден'}`);
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
   }
@@ -339,28 +348,13 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
   function transcript(result: PassResult): void {
     try {
-      const dir = join(input.dataDir, 'writer', 'transcripts');
-      mkdirSync(dir, { recursive: true });
-      const body = {
-        runId: job.stepId,
-        passId: job.stepId,
-        chapter,
-        at: now(),
-        model: config.model,
-        apiModel: config.apiModel,
-        // The weights that answered, and the one line that says they differed from the pin.
-        reportedModel: reported,
-        modelMismatch: mismatch,
-        promptSha256,
-        sections: promptSections,
-        estimate,
-        // The reader's sentence, and beside it the code and the detail it was built from.
-        note,
-        failure,
+      writeTranscript(input.dataDir, job.stepId, {
+        chapter, at: now(), model: config.model, apiModel: config.apiModel,
+        reportedModel: reported, modelMismatch: mismatch, promptSha256,
+        sections: promptSections, estimate, note, failure,
         result: { status: result.status, reason: result.reason ?? null },
-        calls: calls.map((call) => ({ ...call })),
-      };
-      writeFileSync(join(dir, `${job.stepId}.json`), `${JSON.stringify(body, null, 2)}\n`, 'utf8');
+        calls,
+      });
     } catch {
       input.log('[writer] transcript not written');
     }

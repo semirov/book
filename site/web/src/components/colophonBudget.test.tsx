@@ -111,7 +111,7 @@ describe('the money bound in the colophon (BOOK-117)', () => {
     expect(row.end).toBe(imprintRowStart(html));
     // And the sentence BOOK-94 pins is untouched by the new row.
     expect(imprintText(html)).toBe(
-      '© Филипп Семиров — С любовью к научной фантастике и современным технологиям · приватность · правила',
+      '© Филипп Семиров — С любовью к научной фантастике и современным технологиям',
     );
   });
 
@@ -147,8 +147,10 @@ describe('the money bound in the colophon (BOOK-117)', () => {
     expect(absent).not.toContain('data-budget-state');
     expect(ok).not.toContain('data-budget-state');
     // The rest of the colophon is character-identical: the sentence and the register rows.
+    // BOOK-117/BOOK-138: the imprint's own span carries the © sentence; «приватность · правила»
+    // and the export live in their own rows since the FB2 link landed.
     expect(imprintText(absent)).toBe(
-      '© Филипп Семиров — С любовью к научной фантастике и современным технологиям · приватность · правила',
+      '© Филипп Семиров — С любовью к научной фантастике и современным технологиям',
     );
     expect(imprintText(ok)).toBe(imprintText(absent));
     expect(ok).toContain('печатается по ходу письма');
