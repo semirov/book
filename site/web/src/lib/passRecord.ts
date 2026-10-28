@@ -386,6 +386,14 @@ export function passRecordView(input: PassRecordInput): PassRecordView {
   const terminal = [...ordered].reverse().find((stage) => isTerminal(stage.stage)) ?? null;
   const span = ended ? firstSpan(landed) : null;
   const paragraph = paragraphOf(span, input.chapter, input.anchorIndex);
+  /**
+   * The reader's past is `читал · сверял · писал · внёс` (owner's words). `typing` is the print
+   * delay of the landing — the browser painting text the pass already stored — so it is no step
+   * of an ended pass and never stretches its duration. A live pass keeps it: the row is the
+   * present tense of what is happening now.
+   */
+  const steps = ended ? ordered.filter((stage) => stage.stage !== 'typing') : ordered;
+  const endAt = terminal?.at ?? last.at;
   // The pass's own tokens are the landed stage's; a change's cost covers every step it took,
   // so it is only read when no stage exists at all (`changeFallback`).
   const tokens = landed?.tokens === null || landed?.tokens === undefined
@@ -402,12 +410,12 @@ export function passRecordView(input: PassRecordInput): PassRecordView {
     stageWord: ended ? null : STAGE_WORDS[last.stage].present,
     finalWord: ended ? (terminal?.stage === 'landed' ? PASS_LANDED : PASS_REFUSED) : null,
     since: since === null ? null : `с начала ${since}`,
-    duration: ended ? durationText(last.at - first.at) : null,
+    duration: ended ? durationText(endAt - first.at) : null,
     paragraph,
-    timeline: ordered.map((stage, index) => ({
+    timeline: steps.map((stage, index) => ({
       word: ended ? STAGE_WORDS[stage.stage].past : STAGE_WORDS[stage.stage].present,
       time: timeOf(stage.at),
-      current: !ended && index === ordered.length - 1,
+      current: !ended && index === steps.length - 1,
     })),
     span,
     cost: costSentence(tokens, usd),

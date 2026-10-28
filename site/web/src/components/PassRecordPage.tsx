@@ -58,7 +58,7 @@ export function PassRecordPage({ record, chrome, card, onCloseCard, onOpenChange
         live={chrome.live}
       />
       <ConsentBanner />
-      <PassRecord key={record.hash ?? 'record'} state={record} />
+      <PassRecord key={record.hash ?? 'record'} state={record} onOpenChapter={onOpenChapter} />
       <Colophon
         state={chrome.state}
         imprint={chrome.front.imprint}

@@ -42,7 +42,7 @@ import {
   receiptTextOf,
   type RailRow,
 } from '../lib/passRail.ts';
-import { closePassStrip, usePassStrip } from '../lib/usePassStrip.ts';
+import { closePassStrip, type PassStripTarget } from '../lib/usePassStrip.ts';
 
 /** One pass's display time: `11:18`, from the stored moment, never from a clock. */
 const timeOf = (at: number): string => formatTime(new Date(at).toISOString());
@@ -65,6 +65,9 @@ export type PassStripProps = {
  * The strip's slot: rendered by the prose under every paragraph, alive only for the block the
  * reader opened. One store, one position — two blocks can never show two strips.
  *
+ * The open target is read once per chapter (`ChapterProse` subscribes, not every paragraph:
+ * ~1 600 subscribers would be one per paragraph of the book) and handed down here.
+ *
  * A refetch can replace the block that was opened (block ids are content-derived), so a target
  * the chapter no longer holds falls back to the last paragraph: the strip stays with the pass
  * it describes instead of vanishing mid-print.
@@ -75,6 +78,7 @@ export function PassStripSlot({
   events,
   blocks,
   last = false,
+  target,
 }: {
   chapter: number;
   blockId: string;
@@ -82,8 +86,9 @@ export function PassStripSlot({
   blocks?: readonly { id: string }[];
   /** The chapter's last paragraph: where a strip whose block is gone is placed. */
   last?: boolean;
+  /** The open slot, read once by the prose (`usePassStrip`). */
+  target: PassStripTarget | null;
 }) {
-  const target = usePassStrip();
   if (target === null || target.chapter !== chapter) return null;
   const held = blocks?.some((block) => block.id === target.blockId) ?? true;
   if (target.blockId !== blockId && (held || !last)) return null;

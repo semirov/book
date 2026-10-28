@@ -387,8 +387,8 @@ export function App() {
     }
     scrollToChapter(target.n);
   };
-  /** Reaching a chapter from a card: the card closes, the chapter is opened. */
-  const toChapter = (n: number): void => void (card.close(), scrollToChapter(n));
+  /** Reaching a chapter (a card's step, a record's link): the card closes, the book view is on. */
+  const toChapter = (n: number): void => void (card.close(), setView('book'), scrollToChapter(n));
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
    * so the mark and the strip are there with no reload; the chapter's feed and the register

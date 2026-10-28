@@ -39,9 +39,15 @@ function afterPaint(run: () => void): void {
 
 export type PassRecordProps = {
   state: PassRecordSession;
+  /**
+   * The page's own way into the book view (`App`'s `toChapter`). A record opened from the
+   * chronicle has no `#ch-<n>` node when its link is clicked — this is what brings that view
+   * back, so the scroll after paint has somewhere to land.
+   */
+  onOpenChapter?: (chapter: number) => void;
 };
 
-export function PassRecord({ state }: PassRecordProps) {
+export function PassRecord({ state, onOpenChapter }: PassRecordProps) {
   const view = state.phase === 'ready' ? state.view : null;
   const heading = useRef<HTMLHeadingElement | null>(null);
   const landed = useRef(false);
@@ -58,11 +64,14 @@ export function PassRecord({ state }: PassRecordProps) {
 
   /**
    * A click on the record's own way back: the hash changes, the page leaves this mode, and the
-   * chapter's own slot (or the contents) is brought into view once it exists.
+   * chapter's own slot (or the contents) is brought into view once it exists. A chapter link is
+   * also the page's book-view switch: the record may have been opened from the chronicle, where
+   * no `#ch-<n>` exists until that view comes back.
    */
   const leave = (href: string, chapter: number | null) => (event: MouseEvent<HTMLAnchorElement>): void => {
     event.preventDefault();
     window.location.hash = href;
+    if (chapter !== null && href === `#ch-${chapter}`) onOpenChapter?.(chapter);
     afterPaint(() => {
       const chapterNode = chapter === null ? null : document.getElementById(`ch-${chapter}`);
       const named = document.getElementById(href.slice(1));

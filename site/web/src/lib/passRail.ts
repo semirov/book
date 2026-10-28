@@ -366,7 +366,10 @@ export function mergeStages(
 
 /** What a running pass puts on the page: one block, replaced, from the moment of its event. */
 export type LivePassSpec = {
-  /** `passId@stageSeq` — the renderer's identity: a new stage is a new renderer. */
+  /**
+   * The pass's own id — the renderer's identity. One pass is one renderer: the stages that
+   * follow the landing (`typing`) say when the browser prints, never that a second pass began.
+   */
   key: string;
   before: string;
   after: string;
@@ -392,12 +395,18 @@ export function livePassOf(events: readonly PassStageEvent[]): LivePassSpec | nu
   const own = eventsOfPass(ordered, trigger.passId);
   const landed = [...own].reverse().find((event) => event.stage === 'landed' && (event.span?.length ?? 0) > 0);
   if (landed === undefined || landed.span === null) return null;
-  const entry = landed.span.find((item) => item.after.trim().length > 0);
+  // The words the pass wrote. An entry whose `after` is empty only removed text: the deletion
+  // is the span the renderer paints as a ghost, so it is the fallback, not a skip.
+  const entry =
+    landed.span.find((item) => item.after.trim().length > 0) ??
+    landed.span.find((item) => item.before.trim().length > 0);
   if (entry === undefined) return null;
   const typing = [...own].reverse().find((event) => event.stage === 'typing');
   const started = typing !== undefined && typing.at >= landed.at;
   return {
-    key: `${landed.passId}@${started ? typing!.stageSeq : landed.stageSeq}`,
+    // Keyed by the pass, never by a stage: `typing` arrives after `landed` (the tailer publishes
+    // in seq order), and a re-keyed renderer would blank and re-type a paragraph already inked.
+    key: landed.passId,
     before: entry.before,
     after: entry.after,
     startAt: started ? typing!.at : landed.at,

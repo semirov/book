@@ -7,8 +7,8 @@
  *     the seam's rails, the marks;
  *   - `LivePass` — the pass renderer, mounted for the block a `typing`/`landed` stage names,
  *     from the event's own `at`. Its spec is `passRail.ts`'s (`livePassOf` / `liveRunOf`), and
- *     it is mounted by the pass it belongs to: a new stage is a new renderer, and a settled one
- *     is never re-keyed into a replay.
+ *     it is mounted once per pass: a later stage of the same pass never re-keys it, and a
+ *     settled one is never re-keyed into a replay.
  *
  * After the paragraph, in the seam's place, sits the pass strip's slot — the same block
  * position, so opening the strip moves no line box and closes nothing it does not own.
@@ -27,8 +27,9 @@ import { Fragment, useMemo, useState } from 'react';
 
 import { reducedMotion } from '../dom.ts';
 import type { SeamDraft } from '../lib/draft.ts';
-import { livePassOf, liveRunOf } from '../lib/passRail.ts';
+import { livePassOf, liveRunOf, type LivePassSpec } from '../lib/passRail.ts';
 import { activeBlockId, blockText, type RevealState } from '../lib/reveal.ts';
+import { usePassStrip } from '../lib/usePassStrip.ts';
 import { LivePass } from './LivePass.tsx';
 import { PassStripSlot } from './PassStrip.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
@@ -57,6 +58,17 @@ export type ChapterProseProps = {
 
 const NO_EVENTS: readonly PassStageEvent[] = [];
 
+/**
+ * The block the live pass is painting: the one `LivePass` mounts for, which is the block
+ * `liveRunOf` answers with a run for. Before the chapter refetches that is the landed stage's
+ * own id; after it, the successor found by the words the span carried. `#pass` is this block —
+ * the foot's door has no other way in (the server emits no `block:revising` for a pass).
+ */
+function paintedBlockId(spec: LivePassSpec | null, blocks: readonly { id: string; text: string }[]): string | null {
+  if (spec === null) return null;
+  return blocks.find((block) => liveRunOf(spec, block) !== null)?.id ?? spec.blockId;
+}
+
 export function ChapterProse({
   entry,
   chapter,
@@ -84,8 +96,15 @@ export function ChapterProse({
   const caretBlockId =
     reveal !== null ? (activeBlockId(reveal) ?? (showCaret ? chapter.blocks.at(-1)?.id ?? null : null)) : null;
   const revisingIds = revising !== null && revising.active ? new Set(revising.blockIds) : new Set<string>();
-  /** BOOK-156: `#pass` is the live pass's first line; only a live revising block carries it. */
-  const passBlockId = revising !== null && revising.active ? (revising.blockIds[0] ?? null) : null;
+  /**
+   * BOOK-156/BOOK-167: `#pass` is the live pass's own block. The server emits no
+   * `block:revising` for a pass, so the anchor follows the block the renderer paints; the
+   * revising payload stays the fallback for a revision that has no stage of its own.
+   */
+  const strip = usePassStrip();
+  const passBlockId =
+    paintedBlockId(spec, chapter.blocks) ??
+    (revising !== null && revising.active ? (revising.blockIds[0] ?? null) : null);
   const section = stages ?? NO_EVENTS;
   /** One paint per pass: a second paragraph with the same words is not the one being written. */
   let painted = false;
@@ -138,6 +157,7 @@ export function ChapterProse({
               events={section}
               blocks={chapter.blocks}
               last={index === chapter.blocks.length - 1}
+              target={strip}
             />
           </Fragment>
         );

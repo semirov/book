@@ -5,8 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
-import { closePassStrip, openPassStrip } from '../lib/usePassStrip.ts';
+import { closePassStrip, currentPassStrip, openPassStrip } from '../lib/usePassStrip.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
+import { FootJumps } from './FootJumps.tsx';
 
 /**
  * BOOK-167 — a pass on the page: the block it writes and the strip under it.
@@ -164,6 +165,7 @@ afterEach(async () => {
   root = null;
   container = null;
   document.body.innerHTML = '';
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -291,5 +293,138 @@ describe('the late reader', () => {
     expect(view.querySelector('.caret-write')).toBeNull();
     const block = view.querySelector('[data-block-id="ch01#dddd4444"]');
     expect(block?.textContent).toContain(AFTER);
+  });
+});
+
+describe('a pass with no revising payload', () => {
+  it('carries #pass on the block it paints, and the foot’s door opens the strip through it', async () => {
+    vi.useFakeTimers();
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => 0 });
+    const view = await draw({ stages: LEAD, revising: null });
+
+    // The server emits no `block:revising` for a pass: the anchor follows the painted block.
+    const anchor = view.querySelector('#pass');
+    expect(anchor).not.toBeNull();
+    expect(anchor?.getAttribute('data-pass-block')).toBe('ch01#bbbb2222');
+    expect(anchor?.nextElementSibling).toBe(view.querySelector('[data-block-id="ch01#bbbb2222"]'));
+    expect(currentPassStrip()).toBeNull();
+
+    // The grip's third item is on the same page: `#pass` is the only way into the strip.
+    // `getComputedStyle` is the article harness's stub plus the token read the grip's own offset
+    // needs (`--offset-top`); the fallback of 64 px is what the assertion below reads.
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      lineHeight: `${LINE}px`,
+      getPropertyValue: () => '',
+    } as unknown as CSSStyleDeclaration);
+    const footContainer = document.body.appendChild(document.createElement('div'));
+    const footRoot = createRoot(footContainer);
+    try {
+      await act(async () => {
+        footRoot.render(<FootJumps live processing revising={false} chapter={1} change={null} plate={false} />);
+      });
+      const door = footContainer.querySelector('.foot-jump-pass') as HTMLAnchorElement;
+      expect(door.getAttribute('href')).toBe('#pass');
+
+      await act(async () => {
+        door.click();
+      });
+      // The strip opens on the block the page named, before any cut.
+      expect(currentPassStrip()).toEqual({ chapter: 1, blockId: 'ch01#bbbb2222' });
+      await flush();
+      expect(view.querySelector('.pass-strip')).not.toBeNull();
+      expect(view.querySelector('.pass-strip')?.textContent).toContain('печатается');
+
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(scrollTo).toHaveBeenCalled();
+    } finally {
+      await act(async () => {
+        footRoot.unmount();
+      });
+      footContainer.remove();
+    }
+  });
+});
+
+describe('a typing frame after the landing', () => {
+  let queue: FrameRequestCallback[] = [];
+  let clock = 0;
+
+  beforeEach(() => {
+    queue = [];
+    clock = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      queue.push(callback);
+      return queue.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  });
+
+  /** Pull the frame that is due `ms` after the previous one. */
+  async function step(ms: number): Promise<void> {
+    clock += ms;
+    const next = queue.shift();
+    await act(async () => {
+      next?.(clock);
+    });
+  }
+
+  /** Twelve frames: the pass is over, its ink on the page, its carets gone. */
+  async function settlePass(): Promise<void> {
+    for (let index = 0; index < 12; index += 1) await step(250);
+  }
+
+  it('does not re-type or remount a paragraph it already inked', async () => {
+    const started = Date.now();
+    const landedOnly = [
+      event('read', 1, { at: started - 2_000 }),
+      event('landed', 2, { at: started, span: SPAN }),
+    ];
+    const view = await draw({ stages: landedOnly, revising: null });
+    expect(view.querySelector('.p-pass')).not.toBeNull();
+
+    await settlePass();
+    expect(view.querySelector('.p-pass')).toBeNull();
+    expect(view.querySelector('.caret-read')).toBeNull();
+    expect(view.querySelector('.caret-write')).toBeNull();
+    expect(view.querySelector('.pg.is-pending')).toBeNull();
+    const settledNode = view.querySelector('[data-block-id="ch01#bbbb2222"]');
+    expect(settledNode).not.toBeNull();
+    expect(settledNode?.classList.contains('p-pass')).toBe(false);
+
+    // The real order: the tailer stores the landing, then `typing` above it (max seq + 1). The
+    // same pass must not be a new renderer — no caret, no pending ink, no second mount.
+    await draw({ stages: [...landedOnly, event('typing', 3, { at: started + 400 })], revising: null });
+    expect(view.querySelector('.p-pass')).toBeNull();
+    expect(view.querySelector('.caret-read')).toBeNull();
+    expect(view.querySelector('.caret-write')).toBeNull();
+    expect(view.querySelector('.pg.is-pending')).toBeNull();
+    expect(view.querySelector('[data-block-id="ch01#bbbb2222"]')).toBe(settledNode);
+  });
+
+  it('starts one renderer whichever of the two stages the page saw last', async () => {
+    const started = Date.now();
+    // `typing` with a lower seq: the pass is painted from the landing's own moment, once.
+    const typingFirst = [
+      event('typing', 1, { at: started - 5_000 }),
+      event('landed', 2, { at: started, span: SPAN }),
+    ];
+    const view = await draw({ stages: typingFirst, revising: null });
+    expect(view.querySelector('.p-pass')).not.toBeNull();
+    expect(view.querySelector('.pg.is-pending')).not.toBeNull();
+
+    await settlePass();
+    const settledNode = view.querySelector('[data-block-id="ch01#bbbb2222"]');
+    expect(view.querySelector('.p-pass')).toBeNull();
+
+    // A later typing on the same pass is a no-op, not a second animation.
+    await draw({ stages: [...typingFirst, event('typing', 3, { at: started + 400 })], revising: null });
+    expect(view.querySelector('.p-pass')).toBeNull();
+    expect(view.querySelector('.caret-read')).toBeNull();
+    expect(view.querySelector('[data-block-id="ch01#bbbb2222"]')).toBe(settledNode);
   });
 });

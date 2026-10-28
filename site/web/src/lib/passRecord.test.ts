@@ -26,6 +26,8 @@ const T1 = Date.parse('2026-10-25T08:19:00Z');
 const T2 = Date.parse('2026-10-25T08:20:00Z');
 /** 11:20:56 — 2 мин 56 с after the first stage. */
 const T3 = Date.parse('2026-10-25T08:20:56Z');
+/** 11:21:56 — the browser's own moment, one minute after the pass had already landed. */
+const T4 = Date.parse('2026-10-25T08:21:56Z');
 
 const stage = (over: Partial<PassStageEvent> & Pick<PassStageEvent, 'stage' | 'stageSeq' | 'at'>): PassStageEvent => ({
   passId: 'stp_1',
@@ -166,6 +168,22 @@ describe('ended: the pass is over', () => {
     expect(view.href).toBe('#ch-7');
     expect(view.link).toBe(`к главе 7${MIDDOT}абзац 12 →`);
     expect(view.chapterTitle).toBe('Дорога');
+  });
+
+  it('keeps the print delay out of the past: no «печатал», and the clock ends at the landing', () => {
+    // Every change-driven write stores `typing` above `landed`: the browser printing what the
+    // pass had already written. It is the landing's delay, not a step the pass took.
+    const printed = [...LANDED, stage({ stage: 'typing', stageSeq: 5, at: T4 })];
+    const view = passRecordView(input({ stages: printed }));
+
+    expect(view.timeline.map((step) => `${step.word} ${step.time}`)).toEqual([
+      'читал 11:18',
+      'сверял 11:19',
+      'писал 11:20',
+      'внёс 11:20',
+    ]);
+    // …and it does not stretch the duration: the pass was over when its words landed.
+    expect(view.duration).toBe(`2${NBSP}мин 56${NBSP}с`);
   });
 
   it('prints «не принято» for a refused pass and no span it never wrote', () => {

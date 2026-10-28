@@ -268,6 +268,38 @@ describe('the block a pass is writing', () => {
     expect(liveRunOf(spec, { id: 'ch07#bbbb2222', text: span[0]!.before })).toBeNull();
   });
 
+  it('is keyed by the pass: a later `typing` names the clock, never a second renderer', () => {
+    const landedOnly = livePassOf([landed])!;
+    expect(landedOnly.key).toBe(landed.passId);
+    // Either order in the log: `typing` usually arrives after `landed` (the tailer publishes in
+    // seq order), and the renderer must not be re-keyed by it — a re-keyed renderer re-types an
+    // inked block.
+    expect(livePassOf([landed, typing])?.key).toBe(landedOnly.key);
+    expect(livePassOf([typing, landed])?.key).toBe(landedOnly.key);
+    // The clock is still the typing moment when it exists, and the landing's own when it does not.
+    expect(landedOnly.startAt).toBe(landed.at);
+    expect(livePassOf([landed, typing])?.startAt).toBe(typing.at);
+    // A typing whose own seq comes first is not a clock that started before the words existed.
+    const earlyTyping = event('typing', 4, { at: T0 + 4 * MIN });
+    expect(livePassOf([earlyTyping, landed])?.key).toBe(landedOnly.key);
+    expect(livePassOf([earlyTyping, landed])?.startAt).toBe(landed.at);
+  });
+
+  it('paints a block the pass only shortened: the deletion, not a skip', () => {
+    const shortened = event('landed', 5, {
+      span: [{ blockId: 'ch07#bbbb2222', before: 'шум реки затих', after: '', truncated: false }],
+    });
+    const spec = livePassOf([shortened, typing]);
+    expect(spec).not.toBeNull();
+    // No entry carries words to write, so the one that carries words to remove is the span.
+    expect(spec?.before).toBe('шум реки затих');
+    expect(spec?.after).toBe('');
+    const run = liveRunOf(spec!, { id: 'ch07#bbbb2222', text: 'шум реки затих' });
+    expect(run?.span.kind).toBe('deletion');
+    expect(run?.span.before).toBe('шум реки затих');
+    expect(run?.text).toBe('');
+  });
+
   it('finds the last event of one stage', () => {
     expect(passStageAt([...READING, event('typing', 6)], 'typing')?.stageSeq).toBe(6);
     expect(passStageAt(READING, 'landed')).toBeNull();

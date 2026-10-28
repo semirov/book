@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import type { FrontDto, StateSnapshot } from '@book/shared';
+import type { FrontDto, PassStage, PassStageEvent, StageSpan, StateSnapshot } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MIDDOT } from '../lib/format.ts';
 import { passRecordView } from '../lib/passRecord.ts';
 import { PassRecordPage } from './PassRecordPage.tsx';
 
@@ -57,6 +58,57 @@ const VIEW = passRecordView({
   nowMs: Date.parse('2026-10-25T08:20:56Z'),
 });
 
+const T0 = Date.parse('2026-10-25T08:18:00Z');
+const T1 = Date.parse('2026-10-25T08:20:56Z');
+
+const stageOf = (stage: PassStage, stageSeq: number, at: number, span: StageSpan[] | null = null): PassStageEvent => ({
+  passId: 'stp_7',
+  chapter: 7,
+  stageSeq,
+  stage,
+  at,
+  actor: { process: 'writer', model: null },
+  changeId: 'chg_7',
+  summary: `строка ${String(stageSeq)}`,
+  span,
+  tokens: stage === 'landed' ? { in: 100_000, out: 26_099 } : null,
+  costUsd: stage === 'landed' ? 0.08 : null,
+});
+
+/** A pass that is over: its link is the chapter's own head, `#ch-7`. */
+const ENDED = passRecordView({
+  key: { kind: 'change', changeId: 'chg_7' },
+  stages: [
+    stageOf('read', 1, T0),
+    stageOf('landed', 2, T1, [{ blockId: 'ch07#b', before: 'старый фонарь', after: 'новый фонарь', truncated: false }]),
+    stageOf('typing', 3, T1 + 60_000),
+  ],
+  change: null,
+  chapter: {
+    title: 'Дорога',
+    blocks: [
+      { id: 'ch07#a', i: 0, text: 'абзац 1', hash: 'h' },
+      { id: 'ch07#b', i: 1, text: 'новый фонарь', hash: 'h' },
+    ],
+  },
+  anchorIndex: null,
+  nowMs: T1 + 120_000,
+});
+
+const CHROME = {
+  state: STATE,
+  front: FRONT,
+  ribbon: null,
+  catalog: [],
+  escalation: [],
+  viewer: { signedIn: false, displayName: null },
+  cost: null,
+  donateUrl: null,
+  exportBytes: null,
+  capacity: false,
+  live: true,
+};
+
 let root: Root | null = null;
 let container: HTMLDivElement;
 
@@ -86,24 +138,11 @@ afterEach(async () => {
 
 describe('the record page', () => {
   it('keeps the running head and the colophon around the record', async () => {
-    const chrome = {
-      state: STATE,
-      front: FRONT,
-      ribbon: null,
-      catalog: [],
-      escalation: [],
-      viewer: { signedIn: false, displayName: null },
-      cost: null,
-      donateUrl: null,
-      exportBytes: null,
-      capacity: false,
-      live: true,
-    };
     await act(async () => {
       root?.render(
         <PassRecordPage
           record={{ phase: 'ready', hash: '#проход-chg_gone', key: { kind: 'change', changeId: 'chg_gone' }, view: VIEW }}
-          chrome={chrome}
+          chrome={CHROME}
           card={null}
           onCloseCard={() => undefined}
           onOpenChange={() => undefined}
@@ -122,5 +161,33 @@ describe('the record page', () => {
     expect(head!.compareDocumentPosition(record!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(record!.compareDocumentPosition(colophon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(record!.querySelector('.pr-head')?.textContent).toBe('пока не писалась');
+  });
+
+  it('brings the book view back for the chapter link — the record may be opened from the chronicle', async () => {
+    const onOpenChapter = vi.fn();
+    await act(async () => {
+      root?.render(
+        <PassRecordPage
+          record={{ phase: 'ready', hash: '#проход-chg_7', key: { kind: 'change', changeId: 'chg_7' }, view: ENDED }}
+          chrome={CHROME}
+          card={null}
+          onCloseCard={() => undefined}
+          onOpenChange={() => undefined}
+          onOpenChapter={onOpenChapter}
+        />,
+      );
+    });
+
+    const link = container.querySelector('.pr-jump') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('#ch-7');
+    expect(link.textContent).toBe(`к главе 7${MIDDOT}абзац 2 →`);
+
+    // No `#ch-7` exists while the chronicle is the view: the page's own switch is the way back,
+    // and only then can the scroll after paint find the chapter's head.
+    await act(async () => {
+      link.click();
+    });
+    expect(onOpenChapter).toHaveBeenCalledWith(7);
+    expect(window.location.hash).toBe('#ch-7');
   });
 });
