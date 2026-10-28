@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { placePanel } from '../lib/cssom.ts';
 import { changeLines } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
-import { filingName, filingNumber } from '../lib/filings.ts';
+import { filingNumber } from '../lib/filings.ts';
 import { failedAttempt } from '../lib/marginalia.ts';
 import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
 import { frozenActionHref, type ProvenanceView } from '../lib/provenance.ts';
@@ -141,11 +141,7 @@ export function SeamPanel(props: SeamPanelProps) {
       className={`${rootClass}${placement === null ? '' : ` ${ANCHORED[context]}`}`}
       role="dialog"
       aria-modal="false"
-      aria-label={
-        props.context === 'provenance'
-          ? props.view.title
-          : `${filingName(props.comment)} ${filingNumber(props.comment)}`
-      }
+      aria-label={props.context === 'provenance' ? props.view.title : `замечание ${filingNumber(props.comment)}`}
       data-context={context}
       ref={panel}
       tabIndex={-1}
@@ -280,7 +276,7 @@ function FilingBody({
   return (
     <>
       <div className="filing-head">
-        <span className="filing-title">{`${filingName(comment)} ${filingNumber(comment)}`}</span>
+        <span className="filing-title">замечание {filingNumber(comment)}</span>
         <button type="button" className="filing-close" onClick={onClose} aria-label="закрыть">
           ✕
         </button>

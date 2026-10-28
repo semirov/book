@@ -7,8 +7,6 @@ import {
   PREMISE_FROZEN_REASON,
 } from '@book/shared';
 
-import { premiseRefusal } from './premise.ts';
-
 /**
  * BOOK-33 — the bounds, the refusal lines and the draft rules the seam's form still uses.
  *
@@ -27,36 +25,8 @@ export const EMPTY_COMPOSER: ComposerInfo = {
   editMaxChars: EDIT_MAX_CHARS,
 };
 
-/**
- * Which surface a refusal answers (BOOK-84): a written chapter's filing, or the **premise** of
- * a chapter with no text yet. An empty chapter's seam carries `blockId === null`, and that one
- * fact decides the words below it.
- */
-export type RefusalSurface = 'chapter' | 'premise';
-
-/** The words one refusal shows: the line, its detail, and whether the reader may try again. */
-export type RefusalCopy = { line: string; detail: string | null; canRetry: boolean };
-
-/**
- * The line a signed-out reader gets, and the fine print under it. BOOK-84: a premise's gate
- * asks for the act the form will really perform — «заложить замысел» — because the strip above
- * it says the two filings are different things. One table, so the gate and `errorCopy` cannot
- * drift apart on either surface.
- */
-const SIGNIN_LINES: Readonly<Record<RefusalSurface, string>> = {
-  chapter: 'войдите через Яндекс, чтобы оставить замечание',
-  premise: 'войдите через Яндекс, чтобы заложить замысел',
-};
-
-const SIGNIN_FINE_LINES: Readonly<Record<RefusalSurface, string>> = {
-  chapter: 'Читать можно без входа. Автор замечания виден другим читателям.',
-  premise: 'Читать можно без входа. Автор замысла виден другим читателям.',
-};
-
-/** The signed-out gate of one surface: its line and the sentence under it. */
-export function signinCopy(surface: RefusalSurface): { line: string; fine: string } {
-  return { line: SIGNIN_LINES[surface], fine: SIGNIN_FINE_LINES[surface] };
-}
+/** The line a signed-out form shows; `errorCopy` and the form share it. */
+const SIGNIN_LINE = 'войдите через Яндекс, чтобы оставить замечание';
 
 export type ComposerError = {
   code: string;
@@ -87,11 +57,11 @@ function russianDetail(message: string): string | null {
  * `ATTEMPTS_EXHAUSTED`, `ATTEMPT_LIMIT`, `IDENTICAL`, `NOT_REVISABLE`, `NOT_FOUND`): a refusal
  * to revise is the same strip's line as a refusal to post, with the wait it owes the reader.
  */
-export function errorCopy(error: ComposerError): RefusalCopy {
+export function errorCopy(error: ComposerError): { line: string; detail: string | null; canRetry: boolean } {
   const reset = error.resetAt === undefined ? null : `до ${formatReset(error.resetAt)}`;
   switch (error.code) {
     case 'UNAUTHENTICATED':
-      return { line: SIGNIN_LINES.chapter, detail: null, canRetry: false };
+      return { line: SIGNIN_LINE, detail: null, canRetry: false };
     case 'RATE_LIMITED':
       return { line: 'слишком много замечаний — попробуйте позже', detail: reset, canRetry: true };
     case 'EDIT_DAILY_LIMIT':
@@ -171,101 +141,6 @@ export function errorCopy(error: ComposerError): RefusalCopy {
         canRetry: true,
       };
   }
-}
-
-/**
- * The codes whose line names no filing kind at all — «очередь правок заполнена», «финал
- * заморожен» — so a premise keeps the chapter's own words instead of a second copy of them.
- */
-const SURFACE_NEUTRAL_CODES: ReadonlySet<string> = new Set([
-  'TOO_LONG',
-  'EDIT_DAILY_LIMIT',
-  'QUEUE_FULL',
-  'ENDING_FROZEN',
-  'FROZEN_FRAME',
-  'CAPTCHA_UNAVAILABLE',
-  'CAPTCHA_FAILED',
-  'ORIGIN',
-  'CONTENT_TYPE',
-  'INTERNAL',
-]);
-
-/**
- * BOOK-84 — the one place a refusal becomes words for the surface it answers, and the form's
- * only call: `errorCopy` stays the chapter's table, and a **premise** — an empty chapter, the
- * draft's `blockId === null` — replaces the lines that call the filing a «замечание». The strip
- * above the form says «это замысел главы, а не замечание к тексту»; a refusal that said
- * otherwise was the one place the page still contradicted itself.
- *
- * Every line holds its own truth: a duplicate is still a duplicate («у главы уже есть замысел»),
- * and its number is the one the refusal itself names — `commentId`, the row the door opens, never
- * a premise the page happens to hold — so the line and the door can not point at two rows. The
- * signed-out gate asks to sign in **for the act the form performs** — a premise, not a remark.
- * A written chapter keeps its own wording exactly.
- */
-export function refusalCopy(error: ComposerError, surface: RefusalSurface): RefusalCopy {
-  const copy = errorCopy(error);
-  if (surface === 'chapter') return copy;
-  const premise = premiseWords(error, copy);
-  // A premise's detail is the server's own sentence too: a message that calls the filing a
-  // «замечание» is dropped rather than printed under the word «замысел». The form's own
-  // too-short line already names the act, so nothing the reader needs is lost.
-  return { ...premise, detail: premiseDetail(premise.detail) };
-}
-
-/** The premise's wording, one case per line that names the filing; the rest are the chapter's. */
-function premiseWords(error: ComposerError, copy: RefusalCopy): RefusalCopy {
-  switch (error.code) {
-    case 'UNAUTHENTICATED':
-      return { ...copy, line: SIGNIN_LINES.premise };
-    case 'RATE_LIMITED':
-      return { ...copy, line: 'слишком много замыслов — попробуйте позже' };
-    case 'DUPLICATE': {
-      // The first premise is the filing the refusal names — one source for the number and the door.
-      const first = premiseRefusal(error.commentId ?? null);
-      return { ...copy, line: first.line, detail: first.detail };
-    }
-    case 'INVALID':
-      return { ...copy, line: 'замысел не отправлен — проверьте поля' };
-    case 'BLOCKED':
-      return { ...copy, line: 'замыслы от этого автора не принимаются' };
-    case 'STALE_ANCHOR':
-      // A premise carries no anchor, so this cannot reach one; the line is here so that no
-      // surface table can put a «замечание» under an empty chapter.
-      return { ...copy, line: 'абзац изменился — привяжите заново' };
-    // BOOK-158 revises a filing by its id, and a premise is such a filing: its own card offers
-    // «исправить», so these two codes can answer under an empty chapter. The chapter's lines say
-    // «замечание» — the premise's say «замысел», which is what its row is called.
-    case 'NOT_REVISABLE':
-      return { ...copy, line: 'этот замысел уже поправлен' };
-    case 'NOT_FOUND':
-      return { ...copy, line: 'замысел не найден — обновите страницу' };
-    // The revise route's waits are written by the server, and its sentence may call the filing a
-    // «замечание»: a premise prints the code's own fallback instead, which names no kind at all.
-    case 'REVISE_COOLDOWN':
-    case 'ATTEMPTS_EXHAUSTED':
-    case 'ATTEMPT_LIMIT':
-    case 'IDENTICAL':
-      return { ...copy, line: codeLine(error) };
-    default:
-      // A code this build does not know still owes the premise its own word.
-      return SURFACE_NEUTRAL_CODES.has(error.code)
-        ? copy
-        : { ...copy, line: 'не удалось отправить замысел — попробуйте ещё раз' };
-  }
-}
-
-/** A premise's detail may not call the filing what the strip denied it is. */
-function premiseDetail(detail: string | null): string | null {
-  return detail === null || /замечани/iu.test(detail) ? null : detail;
-}
-
-/**
- * A code's own sentence, with the server's message left out: `errorCopy` echoes a Russian
- * message into the line, and that echo is the one thing a premise may not print.
- */
-function codeLine(error: ComposerError): string {
-  return errorCopy({ ...error, message: '' }).line;
 }
 
 /** «осталось 7 из 10 за час · правок сегодня 0 из 1» — the limit is never a surprise. */
