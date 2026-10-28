@@ -52,7 +52,9 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const result = await runPass(deps);
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('PROVIDER_SHAPE');
+      // The reader's sentence, not the code (owner's rule, 2026-10-28); the code is in the log.
+      expect(result.reason).toContain('модель ответила не по форме');
+      expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
       // The chapter the broken pass wrote is the first edition the premise entered.
       expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(true);
       expect(changeRow(harness, changeId)).toEqual({
@@ -76,7 +78,7 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('ANSWER_REFUSAL');
+      expect(result.reason).toContain('модель отказалась писать');
       const row = changeRow(harness, changeId);
       expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });
       // The reader reads a sentence; the code it came from is in the log and the transcript.

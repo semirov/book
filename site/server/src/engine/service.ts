@@ -60,6 +60,7 @@ import * as store from './store.ts';
 import { readChapter, readFront } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
+import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
 import { createRightsGate } from './rightsGate.ts';
 import { ensureRightsScan } from './rightsScan.ts';
@@ -480,6 +481,7 @@ export function createEngine(deps: EngineDeps) {
     done,
     seen,
     escalate,
+    reopen: (stepId: string, because: string) => reopenStep(deps, stepId, because),
     beat,
     enqueue: queue.enqueue,
     commentKind: overview.commentKind,

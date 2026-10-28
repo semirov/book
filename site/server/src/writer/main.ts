@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
 import { createEngineClient } from './client.ts';
-import { dryRunPlan, runPass, type PassResult } from './pass.ts';
+import { runPass, type PassResult } from './pass.ts';
+import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
 import { revertChapter } from './revert.ts';
 

@@ -26,7 +26,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { CHAPTER_CHARS, TOTAL_CHAPTERS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { CHAPTER_CHARS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
@@ -35,7 +35,9 @@ import type { DoneView, EngineClient, EngineStateView, StartView } from './clien
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, finalize, mergeContinuation, charsOf, assignmentData, type Answer, type GateRun, type Lane, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
-import { buildContinuePrompt, buildWriterPrompt, type BuiltPrompt, type WriterAssignmentData } from './prompt.ts';
+import { buildContinuePrompt, buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { dryRunPlan } from './dryRun.ts';
+import { rightsRefusal } from './rightsGate.ts';
 import type { WriterMessage } from './provider.ts';
 import { failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
@@ -99,30 +101,6 @@ export type PassDeps = {
   /** Lanes to ask for the next job, in order. Forward first: the book is written forward. */
   lanes?: Array<'fwd' | 'bwd'>;
 };
-
-/** The synthetic assignment a dry run prints: no engine, no lease, clearly marked `dryRun`. */
-export type DryRunPlan = { dryRun: true; assignment: WriterAssignmentData; prompt: BuiltPrompt; summary: string };
-
-export function dryRunPlan(input: { bookRoot: string; chapter: number }): DryRunPlan {
-  if (!isChapterNumber(input.chapter)) {
-    throw new Error(`главы ${String(input.chapter)} нет: глава — число от 1 до ${String(TOTAL_CHAPTERS)}`);
-  }
-  const assignment: WriterAssignmentData = {
-    chapter: input.chapter,
-    pass: 'draft',
-    intent: { value: 'пробный прогон (dryRun): без модели, без записи', untrusted: true },
-    interventionKind: null,
-    premise: { intent: { value: 'пробный прогон (dryRun): замысел не читается', untrusted: true }, kind: null },
-    expectation: { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } },
-  };
-  const prompt = buildWriterPrompt({ bookRoot: input.bookRoot, assignment });
-  return {
-    dryRun: true,
-    assignment,
-    prompt,
-    summary: `глава ${String(input.chapter)}: ${String(prompt.sections.length)} разделов, ${String(prompt.system.length + prompt.user.length)} знаков`,
-  };
-}
 
 /** The model's first answer, with one retry that carries the reason it was refused. */
 async function draftAnswer(lane: Lane, built: BuiltPrompt): Promise<Answer> {
@@ -259,10 +237,17 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   let beforeText = '';
 
   /** One gate round: the editor, then the consultant when the editor asks for no revision. */
-  async function gateRound(): Promise<{ ok: true; editor: GateRun; consultant: GateRun | null } | { ok: false; failure: Failure }> {
+  async function gateRound(): Promise<
+    | { ok: true; editor: GateRun; consultant: GateRun | null; rightsClosed: boolean }
+    | { ok: false; failure: Failure }
+  > {
     try {
       const editor = await lane.runGate('editor');
-      return { ok: true, editor, consultant: editor.revise ? null : await lane.runGate('consultant') };
+      const consultant = editor.revise ? null : await lane.runGate('consultant');
+      // BOOK-61: Gate B last, and it may close the step itself — a refusal is a decision about
+      // the text, so there is nothing left for this pass to finish.
+      const rights = await lane.runRightsGate();
+      return { ok: true, editor, consultant, rightsClosed: rights.closed };
     } catch (error) {
       return { ok: false, failure: failureOf(error) };
     }
@@ -376,9 +361,10 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       } catch (error) {
         return await lane.park(failureOf(error));
       }
-      // A landing drops the verdicts of the previous revision: both gates are asked again.
+      // A landing drops the verdicts of the previous revision: every gate is asked again.
       answered.editor = false;
       answered.consultant = false;
+      answered.rights = false;
     } else {
       // A resumed step: this file is the pre-image of a revision the gates may ask for below.
       if (!readChapter(bookRoot, chapter).exists) {
@@ -400,10 +386,21 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         round = await gateRound();
       }
       if (!round.ok) {
+        // A rights failure is not auxiliary: the step cannot close without an answer, so the
+        // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
+        const code = round.failure.code ?? '';
+        if (code.startsWith('RIGHTS') || code === 'GATE_UNPARSED') {
+          return await lane.park({ ...round.failure, fallback: readerFallbacks.gate });
+        }
         failed = round.failure;
         break;
       }
-      const { editor, consultant } = round;
+      const { editor, consultant, rightsClosed } = round;
+      if (rightsClosed) {
+        // The rights gate refused the text and the engine closed the step: no `done`, no revision.
+        deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
+        return rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
+      }
       if (!editor.revise && consultant?.revise !== true) break;
       if (revisions >= MAX_REVISIONS) break;
       revisions += 1;
@@ -414,6 +411,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       text = revised;
       answered.editor = false;
       answered.consultant = false;
+      answered.rights = false;
     }
     if (failed !== null) {
       // Remembered, not fatal: the transcript is where a survived failure is proved.

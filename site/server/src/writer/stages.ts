@@ -107,6 +107,17 @@ export const stageSummary = {
       input.blockers === 0 ? null : `блокеров ${String(input.blockers)}`,
     ]),
 
+  /**
+   * Gate B's one line. A clean scan says so plainly («скан чистый, модель не звана»): the record
+   * must show that the rights question was answered, not that it was skipped.
+   */
+  rightsVerdict: (input: { verdict: 'CLEAR' | 'REFUSED'; rule: string | null; scanned: boolean }): string =>
+    line([
+      `права: ${input.verdict}`,
+      input.rule === null ? null : input.rule,
+      input.scanned ? 'скан нашёл фрагмент' : 'скан чистый, модель не звана',
+    ]),
+
   landed: (input: {
     chapter: number;
     chars: number;

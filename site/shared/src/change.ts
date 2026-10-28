@@ -292,7 +292,7 @@ export type WriterAssignment = {
   relevance: Relevance | null;
   /** The file this step must revise is already landed (a resumed step or a gate phase). */
   landed: boolean;
-  verdicts: { editor: boolean; consultant: boolean };
+  verdicts: { editor: boolean; consultant: boolean; rights?: boolean };
   budget: null | {
     wave: number;
     maxWave: number;

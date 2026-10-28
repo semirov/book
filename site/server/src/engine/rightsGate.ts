@@ -4,9 +4,10 @@
  * The engine does not judge prose and does not read law: it asks, code records, and the
  * sentence a reader sees is fixed per rule id in `rights/rules.ts`. Two acts live here:
  *
- *   • `next` — hand a **flagged** step to a rights session. A step whose scan came back
- *     `clear` (or that was never scanned, e.g. the first sheet) is never offered, so the
- *     common pass costs no model call and Gate B is not a second editor.
+ *   • `next` — hand a prose step that has no rights verdict to a rights session. A **flagged**
+ *     scan is the question this gate exists for; a **clean** one is offered too (owner,
+ *     2026-10-28) so the record says what was checked — the session answers it without a model
+ *     call, which keeps Gate B at no model cost when the scan is clean.
  *   • `verdict` — record `CLEAR` or `REFUSED`. `CLEAR` lifts the requirement and the step
  *     closes as usual; `REFUSED` closes it at once as `escalated:rights`, with the rule's
  *     own sentence as the change's public reason. A refusal is a decision about the text,
@@ -23,12 +24,12 @@ import { rightsRefusalLine } from '../rights/rules.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep } from './close.ts';
 import {
+  PROSE_PASSES,
   openRightsDispatch,
   recordRightsVerdict,
   type RightsAnswer,
   type RightsAssignment,
 } from './gates.ts';
-import { readRightsScan } from './helpers.ts';
 import * as store from './store.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -41,7 +42,9 @@ export function createRightsGate(deps: EngineDeps) {
   function next(session: string): RightsAssignment | null {
     for (const step of store.listOpenSteps(db)) {
       if (step.landed_at === null) continue;
-      if (readRightsScan(step)?.verdict !== 'flag') continue;
+      // BOOK-61 + the owner's rule of 2026-10-28: every prose pass carries a rights answer. A
+      // clean scan is offered too — the session answers it mechanically, without a model call.
+      if (!PROSE_PASSES.has(step.pass)) continue;
       if (store.getVerdict(db, step.step_id, 'rights')) continue;
       const existing = store.getDispatch(db, step.step_id, 'rights');
       if (existing && existing.session !== session && existing.expires_at > iso()) continue;

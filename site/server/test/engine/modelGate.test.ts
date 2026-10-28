@@ -171,7 +171,7 @@ describe('T2 — a prose step declares the pipeline model', () => {
     }
   });
 
-  it('leaves the pinned model on a full stub pass: the step and both gates carry it', () => {
+  it('leaves the pinned model on a full stub pass: the step and all three gates carry it', () => {
     const fixture = createEngineFixture();
     try {
       const run = runStubStep(fixture, { title: 'Глава', blocks: ['Тестовый абзац.'] });
@@ -180,7 +180,7 @@ describe('T2 — a prose step declares the pipeline model', () => {
       const gates = fixture.db
         .prepare('SELECT role, model FROM gate_verdicts ORDER BY role')
         .all() as Array<{ role: string; model: string }>;
-      expect(gates.map((row) => row.role)).toEqual(['consultant', 'editor']);
+      expect(gates.map((row) => row.role)).toEqual(['consultant', 'editor', 'rights']);
       expect(gates.every((row) => row.model === PIPELINE_MODEL)).toBe(true);
     } finally {
       fixture.close();

@@ -247,6 +247,26 @@ function writeFor(fixture: Fixture, assignment: WriterAssignment, script: StubSc
   fixture.writeChapterBlocks(assignment.chapter, script.title ?? `Глава ${assignment.chapter}`, blocks);
 }
 
+/**
+ * Gate B (BOOK-61): every prose pass carries a rights answer. A clean scan is answered
+ * mechanically here exactly as the lane does it — no model, no tokens, `CLEAR`.
+ */
+export function submitRights(fixture: Fixture): void {
+  const gate = fixture.engine.next({ role: 'rights', session: 'rights-stub' }) as
+    | { stepId: string; session: string; rule: string | null }
+    | null;
+  if (!gate) return;
+  fixture.engine.verdictRights(gate.stepId, {
+    role: 'rights',
+    session: gate.session,
+    verdict: 'CLEAR',
+    rule: null,
+    model: PIPELINE_MODEL,
+    tokensIn: 0,
+    tokensOut: 0,
+  });
+}
+
 function submitGate(fixture: Fixture, role: 'editor' | 'consultant', script: StubScript) {
   const gate = fixture.engine.next({ role, session: `${role}-stub` }) as GateAssignment | null;
   if (!gate) throw new Error(`no ${role} assignment for the landed step`);
@@ -322,6 +342,7 @@ export function driveStub(fixture: Fixture, assignment: WriterAssignment, script
     break;
   }
 
+  submitRights(fixture);
   const result = engine.done(assignment.leaseId, {
     seams: script.seams ?? [],
     note: script.note ?? 'scripted session',

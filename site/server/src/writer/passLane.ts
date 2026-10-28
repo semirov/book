@@ -16,12 +16,14 @@ import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
-import { buildGatePrompt, parseGateAnswer, type GateFinding, type GateRoleName } from './gates.ts';
+import { buildGatePrompt, parseGateAnswer, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { restorePreSnapshot } from './revert.ts';
+import type { CallKind, CallRecord } from './transcript.ts';
+import { rightsRunner } from './rightsGate.ts';
 import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
@@ -48,15 +50,6 @@ export type ProviderCall = (request: ProviderRequest) => Promise<ProviderResult>
 
 export type Answer = ReturnType<typeof validateAnswer>;
 
-export type CallKind = 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant';
-
-export type CallRecord = {
-  kind: CallKind;
-  system: string;
-  user: string;
-  answer: string;
-  usage: PipelineUsage;
-};
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
   return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
@@ -125,6 +118,7 @@ export type LaneInput = {
 
 export type GateRun = { revise: boolean; findings: GateFinding[] };
 
+
 export type Lane = {
   emit(input: StageEmitInput): Promise<void>;
   ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue'): Promise<ProviderResult>;
@@ -139,6 +133,7 @@ export type Lane = {
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
   check(value: string, finishReason?: string | null): Answer;
   runGate(role: GateRoleName): Promise<GateRun>;
+  runRightsGate(): Promise<RightsGateRun>;
   reviseText(findings: GateFinding[]): Promise<string | null>;
   usage(): PipelineUsage;
   writerTokens(): { in: number; out: number };
@@ -296,18 +291,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
-      // What the operator's line and the transcript read: the technical sentence, code included.
-      reason: why.detail,
+      // The reader's sentence, not the code word (the code lives in the log and transcript).
+      reason: sentence,
       tokens: { ...written },
       costUsd: costUsd(config.pipeline.pricing, all),
     };
   }
 
-  /**
-   * `land`: a `STEP_CLOSED` answer takes the text back — bytes no gate hashed must not stay —
-   * and so does `FRAME_CHANGED` (BOOK-137): a chapter whose canon sentence moved is not a
-   * revision, and the file must not keep a sentence the book froze.
-   */
+  /** `land`: a `STEP_CLOSED` or `FRAME_CHANGED` answer takes the text back (BOOK-137). */
   async function land(): Promise<void> {
     try {
       await engine.land(job.leaseId);
@@ -477,7 +468,18 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     preSnapshot,
     transcript,
     check,
-    runGate,
+    runGate: (role) => runGate(role),
+    runRightsGate: rightsRunner({
+      config,
+      engine,
+      bookRoot,
+      chapter,
+      passId: job.stepId,
+      changeId: job.changeId,
+      now,
+      ask,
+      emit: (event) => emit(event),
+    }),
     reviseText,
     usage: () => all,
     writerTokens: () => ({ ...written }),

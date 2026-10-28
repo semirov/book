@@ -41,6 +41,9 @@ export const GATE_ROLES: readonly GateRole[] = ['editor', 'consultant'];
  */
 export const RIGHTS_ROLE = 'rights' as const;
 
+/** The passes that write prose of their own — the ones Gate B always answers. */
+export const PROSE_PASSES: ReadonlySet<string> = new Set(['draft', 'change', 'cascade', 'sweep']);
+
 export type MissingVerdict = GateRole | typeof RIGHTS_ROLE;
 
 export type GateAssignment = {
@@ -245,8 +248,10 @@ export function recordVerdict(
 /** Both verdicts, in order, or a refusal that names what is missing. */
 export function missingVerdicts(db: Db, step: StepRow): MissingVerdict[] {
   const missing: MissingVerdict[] = GATE_ROLES.filter((role) => getVerdict(db, step.step_id, role) === undefined);
-  // BOOK-61: a flagged scan makes Gate B mandatory. A step that cannot close without its two
-  // prose verdicts cannot close without this one either — and a `clear` scan asks nothing.
+  // BOOK-61: a **flagged** scan makes Gate B mandatory — the law's question is answered before
+  // the step closes. A clean scan is answered too by this lane (the owner, 2026-10-28: a clean
+  // verdict, not a skip), but it is not a precondition of a close: a caller that never asks
+  // closes on the two prose verdicts, exactly as before this rule existed.
   if (readRightsScan(step)?.verdict === 'flag' && getVerdict(db, step.step_id, RIGHTS_ROLE) === undefined) {
     missing.push(RIGHTS_ROLE);
   }
@@ -309,8 +314,8 @@ export type RightsAssignment = {
   pass: string;
   chapter: number | null;
   landedSha: string | null;
-  /** The rule the scan flagged, so the session does not have to guess the question. */
-  rule: string;
+  /** The rule the scan flagged, so the session does not have to guess the question; `null` = clean. */
+  rule: string | null;
   block: number | null;
   expiresAt: string;
 };
@@ -323,8 +328,11 @@ export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: str
   if (step.landed_at === null) {
     refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
   }
+  // A `clear` scan is still answered (owner, 2026-10-28): the writer submits the clean verdict
+  // mechanically, so the record says what was checked instead of saying nothing. A `flag` is the
+  // question this gate exists for, and `rule` names it.
   const scan = readRightsScan(step);
-  if (scan?.verdict !== 'flag') refuse('RIGHTS_NOT_REQUIRED', 409, `step ${step.step_id} has no flagged rights scan`);
+  const rule = scan?.verdict === 'flag' ? scan.rule : null;
   if (getVerdict(deps.db, step.step_id, RIGHTS_ROLE)) {
     refuse('GATE_ANSWERED', 409, `the rights gate already answered step ${step.step_id}`);
   }
@@ -347,8 +355,8 @@ export function openRightsDispatch(deps: EngineDeps, step: StepRow, session: str
     pass: step.pass,
     chapter: step.chapter,
     landedSha: step.landed_sha,
-    rule: scan.rule,
-    block: scan.block ?? null,
+    rule,
+    block: scan !== null && scan.verdict === 'flag' ? (scan.block ?? null) : null,
     expiresAt,
   };
 }

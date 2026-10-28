@@ -146,12 +146,16 @@ describe('the conditional gate — a flag makes the rights verdict mandatory', (
     }
   });
 
-  it('offers nothing to a rights session when the scan was clear', () => {
+  it('offers a clear scan too, with no rule: a clean verdict is answered, not skipped (owner, 2026-10-28)', () => {
     const fixture = createEngineFixture();
     try {
       const assignment = draftChapter(fixture, [CLEAN]);
       fixture.engine.land(assignment.leaseId);
-      expect(fixture.engine.next({ role: 'rights', session: 'rights-1' })).toBeNull();
+      const gate = fixture.engine.next({ role: 'rights', session: 'rights-1' }) as { rule: string | null } | null;
+      // The lane answers this mechanically (no model call); the dispatch exists so the record
+      // says what was checked instead of saying nothing.
+      expect(gate).not.toBeNull();
+      expect(gate?.rule).toBeNull();
     } finally {
       fixture.close();
     }

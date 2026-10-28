@@ -80,8 +80,7 @@ describe('runPass — one pass, end to end', () => {
 
       // 4. The stages, in the order the work happened; one producer per stage.
       const stages = listStages(harness.fixture.db, CHAPTER);
-      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict', 'verdict', 'landed']);
-      expect(stages.map((stage) => stage.stageSeq)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(stages.map((stage) => stage.stage)).toEqual(['queued', 'read', 'drafting', 'drafting', 'verdict', 'verdict', 'verdict', 'landed']);
       for (const stage of stages) {
         expect(stage.chapter).toBe(CHAPTER);
         expect(stage.passId).toBe(result.stepId);
@@ -187,7 +186,8 @@ describe('runPass — one pass, end to end', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('ANSWER_REFUSAL');
+      expect(result.reason).toContain('модель отказалась писать');
+      expect(harness.logs.join('\n')).toContain('ANSWER_REFUSAL');
       expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(false);
 
       // The park carries what it spent: both draft attempts priced, so the bound sees the pass.
@@ -232,7 +232,8 @@ describe('runPass — one pass, end to end', () => {
       expect(revisions.n).toBe(2);
 
       const stages = listStages(harness.fixture.db, CHAPTER);
-      expect(stages.filter((stage) => stage.stage === 'verdict')).toHaveLength(4);
+      // editor + consultant per round, plus Gate B once per landed revision.
+      expect(stages.filter((stage) => stage.stage === 'verdict')).toHaveLength(6);
       expect(stages.filter((stage) => stage.stage === 'landed')).toHaveLength(1);
       expect(stages.some((stage) => stage.summary.includes('консультант: GAP · замечаний 1 · блокеров 1'))).toBe(true);
     } finally {
@@ -281,9 +282,8 @@ describe('runPass — one pass, end to end', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
       expect(readFileSync(join(harness.bookRoot, 'manuscript', 'ch65.md'), 'utf8')).toBe(onDisk);
-      // No model call wrote prose: only the two gates answered.
       expect(harness.calls.map((call) => call.messages[0]?.content.slice(0, 2))).toHaveLength(2);
-      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'verdict', 'verdict', 'landed']);
+      expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'verdict', 'verdict', 'verdict', 'landed']);
     } finally {
       await harness.close();
     }

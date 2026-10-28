@@ -91,6 +91,8 @@ export const readerSentences = {
   answerRejected: 'ответ модели не прошёл проверку — заявка остаётся в очереди',
   engineDown: 'движок не ответил — проход остановлен, заявка остаётся в очереди',
   /** `land` on a step the engine has already closed: the bytes go back to the pre-pass snapshot. */
+  rightsMissing:
+    'права на текст не подтверждены — заявка остаётся в очереди',
   frameChanged:
     'рамка книги — фраза этой главы не меняется, текст возвращён к прежнему',
   stepClosed: 'шаг закрылся, пока текст писался — текст возвращён к прежнему',
@@ -115,6 +117,7 @@ function sentenceFor(code: string): string | null {
   if (code === 'ANSWER_REFUSAL') return readerSentences.refusal;
   if (code.startsWith('ANSWER_')) return readerSentences.answerRejected;
   if (code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE') return readerSentences.engineDown;
+  if (code === 'RIGHTS_REQUIRED' || code === 'RIGHTS_NOT_REQUIRED') return readerSentences.rightsMissing;
   if (code === 'FRAME_CHANGED') return readerSentences.frameChanged;
   if (code === 'STEP_CLOSED') return readerSentences.stepClosed;
   return null;
