@@ -1,7 +1,7 @@
 /**
  * BOOK-34 — the beat and the wall.
  *
- * A real pass writes 20 000–30 000 characters and then waits for two model gates; that is
+ * A real pass writes 10 000–30 000 characters and then waits for the gates; that is
  * longer than `LEASE_TTL_MS` (120 s), so a lease that only the session may beat strands every
  * real step. The engine beats the leases of its open steps by itself and the **step wall**
  * (`STEP_WALL_MS`, from `steps.at`, the step's opening) is the only bound on growth. These

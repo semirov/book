@@ -179,7 +179,7 @@ describe('buildWriterPrompt — the reader is data', () => {
         intent: { value: 'в мире появляется новый бланк', untrusted: true },
         interventionKind: 'testimony',
         premise: { intent: { value: 'заявка на главу', untrusted: true }, kind: 'document' },
-        expectation: { chars: { min: 20_000, max: 30_000 } },
+        expectation: { chars: { min: 10_000, max: 30_000 } },
       }),
     });
     const block = prompt.user.slice(prompt.user.indexOf('```text', prompt.user.indexOf('## Задание')));
@@ -240,7 +240,7 @@ describe('buildWriterPrompt — the output contract and the hash', () => {
     const tail = prompt.user.slice(prompt.user.lastIndexOf('## Что вернуть'));
     expect(last?.sha256).toBe(sha256Hex(tail));
     expect(prompt.user.indexOf('## Что вернуть')).toBeGreaterThan(prompt.user.indexOf('## Задание'));
-    expect(tail).toContain('20 000');
+    expect(tail).toContain('10 000');
     expect(tail).toContain('30 000');
     expect(tail).toContain('без markdown');
   });

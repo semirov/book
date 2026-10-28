@@ -62,9 +62,10 @@ describe('estimatePassUsd — one pass, priced before it runs', () => {
     const raw = costUsd(pricing, { in: hand.tokensIn, out: hand.tokensOut, cachedIn: 0 });
     expect(estimate.usd).toBe(Math.ceil(raw * 100) / 100);
 
-    // And a hand-computed floor: the completion tokens alone are already $0.0824 at the pin.
+    // And a hand-computed floor: the completion tokens alone at the pin, from the band the
+    // estimate reads (`CHAPTER_CHARS.min`, 10 000 since BOOK-160) — never a second number.
     const outputOnly = (hand.tokensOut * pricing.output) / pricing.per;
-    expect(outputOnly).toBeCloseTo(0.0824, 4);
+    expect(outputOnly).toBeCloseTo(0.0428, 3);
     expect(estimate.usd).toBeGreaterThanOrEqual(outputOnly);
   });
 

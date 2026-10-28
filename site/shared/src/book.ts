@@ -33,8 +33,13 @@ export const PART_RANGES: ReadonlyArray<{ part: Part; from: number; to: number }
 export const CHAPTER_CHARS = {
   /** Shorter than a page is a slot, not a chapter. */
   floor: 1_600,
-  /** A chapter below this is `thin` — a warning while the book is being written. */
-  min: 20_000,
+  /**
+   * A chapter below this is `thin` — a warning while the book is being written (BOOK-160,
+   * owner 2026-10-28: «полоса 10–30к»). A permission, not a target: 10 000 is short for a
+   * novel chapter, and a short one is acceptable only where the chapter is a document, a
+   * report or a hard cut — never as the normal shape of prose.
+   */
+  min: 10_000,
   target: 25_000,
   /** Above this is an error: three roles cannot read it inside one step's budget. */
   max: 30_000,

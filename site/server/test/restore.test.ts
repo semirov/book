@@ -155,7 +155,7 @@ describe('ungated until reconcile (§13.3, §20 M7)', () => {
       // The gates were re-run, not assumed: the validator answered about the text on disk.
       expect(result.validation.errors).toBe(0);
       expect(result.validation.passed).toBe(true);
-      expect(result.validation.warnings).toBeGreaterThan(0); // a page under 20 000 is thin
+      expect(result.validation.warnings).toBeGreaterThan(0); // a page under the band's floor (10 000) is thin
 
       // The panel stops asking, and the mark is a row, not a flag.
       expect(listUngated(fixture.db)).toEqual([]);
