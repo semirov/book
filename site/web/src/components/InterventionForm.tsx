@@ -35,6 +35,11 @@ import { InterventionKinds } from './InterventionKinds.tsx';
  * anchor is not sent at all, because the server keeps the row's own place — and the answer is
  * the same row reopened, which is what the caller's `onPosted` puts back on the page. Nothing
  * about the retry is hidden from the reader: the form states where the day's edit is spent.
+ *
+ * BOOK-84: an empty chapter takes a premise, and the strip above the form says so («это
+ * замысел главы, а не замечание к тексту»). One fact carries that — no block — so the note
+ * action and the spent-day recovery are both absent there, and the form's buttons cannot offer
+ * a remark the strip denies.
  */
 export type FormProps = {
   entry: CatalogEntry;
@@ -275,7 +280,7 @@ export function InterventionForm({
               открыть отправленное
             </button>
           )}
-          {error.code === 'EDIT_DAILY_LIMIT' ? (
+          {error.code === 'EDIT_DAILY_LIMIT' && draft.blockId !== null ? (
             <button
               type="button"
               className="seam-inline-action"
@@ -283,6 +288,13 @@ export function InterventionForm({
                 // The day's edit is spent, not the reader's thought: the same text goes as a
                 // note — no kind, no wording — instead of being lost. The label is the note
                 // submit's own, so the recovery and the action cannot drift apart.
+                //
+                // BOOK-84: never on a premise. The server spends an edit slot only when a
+                // filing carries `proposedText` (`service.ts`, `editSpecs`), and the premise
+                // path never sends it — so a spent day cannot refuse a premise, and the one
+                // thing this button does (open the note path) is the one thing a premise does
+                // not have. Nothing is lost: the text stays in the field and «заложить
+                // замысел» still goes through, since no day counter stands in its way.
                 onChange({ ...draft, noteOnly: true });
                 refuse(null);
               }}
@@ -296,15 +308,22 @@ export function InterventionForm({
       <button className="seam-submit" type="submit" disabled={sending || !ready}>
         {sending ? (revise ? 'исправляется' : 'передаётся') : revise ? REVISE_LABEL : submitLabel(draft)}
       </button>
-      <button
-        type="button"
-        className="note-action"
-        aria-pressed={noteOnly}
-        disabled={sending}
-        onClick={toggleNote}
-      >
-        {NOTE_ACTION_LABEL}
-      </button>
+      {/*
+        BOOK-84: no note action on a premise. The way **out** of a note stays, though: a draft
+        that arrives `noteOnly: true` on a chapter with no block would otherwise have no button
+        that closes it — unreachable today, and still not a trap if it ever is reached.
+      */}
+      {draft.blockId === null && !noteOnly ? null : (
+        <button
+          type="button"
+          className="note-action"
+          aria-pressed={noteOnly}
+          disabled={sending}
+          onClick={toggleNote}
+        >
+          {NOTE_ACTION_LABEL}
+        </button>
+      )}
       {/* BOOK-158 — a revision says where the day's edit goes, before the reader sends it. */}
       {revise ? <p className="fine seam-revise">{REVISE_BUDGET_LINE}</p> : null}
       <p className="fine seam-licence">
