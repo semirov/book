@@ -18,7 +18,13 @@
  * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
  * «which terms did the reader accept?» has an answer years later; BOOK-158 adds the attempt
  * ledger (`comment_attempts`) and `triage` to the ledger's pass vocabulary, so a refusal can be
- * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span ledger (BOOK-DOC-69) and v23 adds `identities.is_author` — the imprint's own reader (owner, 2026-10-28).
+ * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span
+ * ledger (BOOK-DOC-69) and v23 adds `identities.is_author` — the imprint's own reader
+ * (owner, 2026-10-28). ADR-044 (BOOK-DOC-74) adds the sentence: `sentences` and `sentence_touches`
+ * live in `sentenceTables.ts`, and `comments`, `facts`, `literals` and `mentions` gain a nullable
+ * `sentence_id` carrier (plus the reader's selection offsets on a comment). Those carriers
+ * deliberately carry **no foreign key** — SQLite cannot add one by `ALTER TABLE`, so a migrated
+ * install would refuse what a fresh one accepts; the writer enforces the reference instead.
  * Text tables are a projection of the manuscript files; the engine tables are the only home of
  * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
  *
@@ -30,15 +36,16 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 25;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
  * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
  * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+import { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
@@ -52,52 +59,11 @@ export {
   GATE_TABLES_SQL,
   RECONCILES_TABLE_SQL,
   STEPS_COLUMNS,
+  STEPS_TABLE_SQL,
   chaptersTableSql,
 } from './tables.ts';
 export { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
-
-export const STEPS_TABLE_SQL = `CREATE TABLE steps (                             -- one step = one chapter edit + its two gates
-  step_id     TEXT PRIMARY KEY,                  -- 'stp_01JB7…'
-  cascade_id  TEXT REFERENCES cascades(id) ON DELETE CASCADE,   -- null for draft/front/sweep
-  seq         INTEGER NOT NULL,                  -- order within the cascade, assigned by the engine
-  wave        INTEGER NOT NULL,
-  lane        TEXT CHECK (lane IN ('forward','backward')),
-  pass        TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep')),
-  chapter     INTEGER CHECK (chapter BETWEEN 1 AND 67),          -- null for 'front'
-  boundary    TEXT NOT NULL,                     -- '5' (n = boundary n−1|n), 'front', 'ending'
-  premise_change TEXT REFERENCES changes(id),    -- BOOK-7: the chapter-level premise this draft consumes
-  outcome     TEXT CHECK (outcome IN              -- null while the step is open
-                ('rewritten','holds','published_with_finding','evaluated','escalated','interrupted')),
-  rev_before  INTEGER, rev_after INTEGER,
-  seams_in    TEXT,                              -- JSON [{boundary,reason}]
-  seams_out   TEXT,                              -- JSON [{boundary,reason}]
-  blocks_touched INTEGER, chars_delta INTEGER,
-  model       TEXT,                              -- the writer model used for this step
-  tokens_in   INTEGER NOT NULL DEFAULT 0,
-  tokens_out  INTEGER NOT NULL DEFAULT 0,
-  cost_rub    REAL    NOT NULL DEFAULT 0,        -- frozen at close (§6D.5); a placeholder zero unless cost_priced (BOOK-23)
-  cost_priced INTEGER NOT NULL DEFAULT 0,        -- BOOK-23: 1 = cost_rub is a measurement, 0 = never priced
-  hseq_from   INTEGER, hseq_to INTEGER,          -- the history span this step wrote (§6F.1)
-  lease_id    TEXT, session TEXT,
-  at          TEXT NOT NULL, ms INTEGER, note TEXT,
-  cycle       INTEGER NOT NULL DEFAULT 0,        -- writer revisions consumed (§6B.4)
-  last_findings TEXT,                            -- admin-only: what sent the writer back (§6B.2)
-  start_sha   TEXT,                              -- sha of the text the step started from (recovery)
-  landed_at   TEXT,                              -- the file was written (or "already true")
-  landed_sha  TEXT,                              -- sha of the landed text; a gate reads this
-  pre_blocks  TEXT,                              -- JSON block hashes before the write (delta ratio)
-  -- BOOK-61: Gate B's deterministic scan of the blocks this step wrote.
-  -- JSON {"verdict":"clear"|"flag","rule":…,"block":…,"detail":…}; cleared when landed_sha moves.
-  -- A refusal is never stored here: the law's own class refuses the land, a quote is a flag.
-  rights_scan TEXT,
-  closed_at   TEXT,
-  -- BOOK-117: who ran the pass — 'pipeline' (the lane on the pin) or 'operator' (a repair).
-  provenance  TEXT CHECK (provenance IN ('pipeline','operator')),
-  UNIQUE (cascade_id, seq)
-);
-CREATE INDEX steps_chapter ON steps(chapter, at);
-CREATE INDEX steps_open ON steps(outcome, at);
-`;
+export { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export const SCHEMA_SQL = `
 ${CHAPTERS_TABLE_SQL}
@@ -251,6 +217,12 @@ CREATE TABLE comments (
   quote        TEXT,                           -- exact text at posting time (≤280 chars)
   prefix       TEXT,                           -- ≤40 chars before the quote
   suffix       TEXT,                           -- ≤40 chars after
+  -- ADR-044: the sentence the quote sits in, and the reader's selection inside it. Null is the
+  -- legacy block anchor — a row written before v25, or a quote that straddles a boundary.
+  -- No REFERENCES clause: see the note at the top of this file.
+  sentence_id  TEXT,
+  sel_start    INTEGER,                        -- code points from the sentence's start
+  sel_end      INTEGER,                        -- exclusive; null/null = the whole sentence
   author       TEXT NOT NULL,                  -- display name snapshot at posting time, ≤32 chars
   body         TEXT NOT NULL,                  -- ≤1200 chars, normalized
   proposed_text TEXT,                          -- a reader's suggested wording; data, never applied verbatim
@@ -408,6 +380,8 @@ ${COMMENT_ATTEMPTS_TABLE_SQL}
 
 ${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger and its full-text mirror
 
+${SENTENCE_TABLES_SQL}                  -- ADR-044: the sentence rows and their touch ledger
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -493,6 +467,7 @@ export const REQUIRED_TABLES = [
   'rate_events',
   'meta',
   ...LEDGER_REQUIRED_TABLES,
+  ...SENTENCE_REQUIRED_TABLES,
 ] as const;
 
 /** §6F.1: the log is append-only; a missing trigger means the promise is not kept (F027). */

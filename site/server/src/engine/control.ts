@@ -150,6 +150,8 @@ const enqueueBody = z.object({
   anchor: z
     .object({
       blockIds: z.array(z.string()).max(8),
+      /** ADR-044 — the sentence rows the change is aimed at; optional for every older caller. */
+      sentenceIds: z.array(z.string()).max(8).optional(),
       quote: z.string().max(280),
       prefix: z.string().max(40),
       suffix: z.string().max(40),

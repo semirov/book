@@ -25,6 +25,8 @@ export type FactRow = {
   kind: FactKind;
   statement: string;
   term: string | null;
+  /** ADR-044 — the sentence that carries the statement; null for a row written before v25. */
+  sentence_id: string | null;
   valid_from_chapter: number;
   invalidated_at: string | null;
   invalidated_by_change: string | null;
@@ -37,6 +39,11 @@ export type AssertFactInput = {
   statement: string;
   /** The canonical surface form a mention binds to; null = the fact is never mentioned. */
   term?: string | null;
+  /**
+   * ADR-044 — the sentence the statement is told in (a `snt_` id from `sentences`). Optional:
+   * a fact with no live sentence is still a fact, it just cannot be quoted from the text.
+   */
+  sentenceId?: string | null;
   /** Defaults to `chapter`: a fact is true from the chapter that states it. */
   validFromChapter?: number;
   id?: string;
@@ -64,14 +71,16 @@ export function assertFact(db: Db, input: AssertFactInput): string {
   const id = input.id ?? `fct_${ulid()}`;
   db.prepare(
     `INSERT INTO facts
-       (id, chapter, kind, statement, term, valid_from_chapter, invalidated_at, invalidated_by_change, created_at)
-     VALUES (@id, @chapter, @kind, @statement, @term, @validFrom, NULL, NULL, @createdAt)`,
+       (id, chapter, kind, statement, term, sentence_id, valid_from_chapter, invalidated_at,
+        invalidated_by_change, created_at)
+     VALUES (@id, @chapter, @kind, @statement, @term, @sentenceId, @validFrom, NULL, NULL, @createdAt)`,
   ).run({
     id,
     chapter: input.chapter,
     kind: input.kind,
     statement: input.statement,
     term: input.term ?? null,
+    sentenceId: input.sentenceId ?? null,
     validFrom: input.validFromChapter ?? input.chapter,
     createdAt: input.at ?? toIso(Date.now()),
   });

@@ -5,6 +5,7 @@ import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
+import { migrateV25 } from './migrateV25.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -326,6 +327,9 @@ const MIGRATIONS: Migration[] = [
   },
   // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
   { to: 23, up: migrateV23 },
+  // The sentence (ADR-044, BOOK-DOC-74): `migrateV25.ts` segments the live book and re-anchors the
+  // filings. 25, not 24: v24 is ADR-043's, still to be written — a gap in the cursor is fine.
+  { to: 25, up: migrateV25 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

@@ -17,9 +17,14 @@
  * Mentions are **live-only** (ADR-043 D3): the applier deletes the rows of every block it edits
  * and binds them again from the new text, inside the same transaction. A mention is a statement
  * about the text that stands, never about a version that is gone.
+ *
+ * Each row also names the **sentence** that carries it (ADR-044 §4, `sentence_id`), and a literal
+ * takes the carrier of the mention it was cut from. A span that straddles a sentence boundary
+ * belongs to neither, and keeps `null`: never a guessed id.
  */
 
 import type { Db } from '../db/db.ts';
+import { resolveSentenceCovering } from '../sentences/store.ts';
 import { findFactShaped } from './factShaped.ts';
 import { factAsOf } from './facts.ts';
 import { cpOffsetOf, sliceCp } from './spans.ts';
@@ -128,13 +133,13 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
   const mention = db.prepare(
     `INSERT INTO mentions
        (span_id, block_id, chapter, start, end, kind, fact_id, thread_id, resolved_by_change,
-        role, witness, edge_path)
+        role, sentence_id, witness, edge_path)
      VALUES (@spanId, @blockId, @chapter, @start, @end, @kind, @factId, @threadId, @resolvedBy,
-             @role, @witness, @edgePath)`,
+             @role, @sentenceId, @witness, @edgePath)`,
   );
   const literal = db.prepare(
-    `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, start, end)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, sentence_id, start, end)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const seen = new Set<string>();
   let mentions = 0;
@@ -150,7 +155,15 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
     threadId: string | null;
     /** ADR-043 D3: only a fact span carries a role; stage 2 adds 'use'. */
     role: 'assert' | null;
-  }): void => {
+  }): string | null => {
+    // ADR-044 §4: the sentence that carries this span. A span that straddles a boundary belongs
+    // to neither sentence, and `null` is the honest answer — a guessed carrier is a fact filed
+    // against words the book never said in one breath.
+    const sentence = resolveSentenceCovering(db, {
+      blockId: input0.block.blockId,
+      start: input0.start,
+      end: input0.end,
+    });
     mention.run({
       spanId: input0.block.spanId,
       blockId: input0.block.blockId,
@@ -162,10 +175,12 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
       threadId: input0.threadId,
       resolvedBy: input.resolvedBy,
       role: input0.role,
+      sentenceId: sentence?.id ?? null,
       witness: sliceCp(input0.block.text, input0.start, input0.end),
       edgePath: '[]',
     });
     mentions += 1;
+    return sentence?.id ?? null;
   };
 
   for (const block of input.blocks) {
@@ -189,8 +204,27 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
       const key = `${block.spanId}|${String(found.start)}|${String(found.end)}|${found.kind}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      bind({ block, start: found.start, end: found.end, kind: found.kind, factId: null, threadId: null, role: null });
-      literal.run(found.literal, found.raw, block.blockId, block.spanId, input.chapter, found.kind, found.start, found.end);
+      // The literal rides the mention it was cut from, so the two cannot name different carriers.
+      const sentenceId = bind({
+        block,
+        start: found.start,
+        end: found.end,
+        kind: found.kind,
+        factId: null,
+        threadId: null,
+        role: null,
+      });
+      literal.run(
+        found.literal,
+        found.raw,
+        block.blockId,
+        block.spanId,
+        input.chapter,
+        found.kind,
+        sentenceId,
+        found.start,
+        found.end,
+      );
       literals += 1;
     }
   }

@@ -319,3 +319,51 @@ export const STEPS_COLUMNS = [
   'closed_at',
   'provenance',
 ] as const;
+
+/**
+ * `steps` — one step is one chapter edit plus its two gates. It lives here because two places
+ * build it: the full schema, and `ensureStepLifecycle` in `migrate.ts`, which rebuilds a pre-M3
+ * table from exactly these columns (a migrated install must equal a fresh one).
+ */
+export const STEPS_TABLE_SQL = `CREATE TABLE steps (                             -- one step = one chapter edit + its two gates
+  step_id     TEXT PRIMARY KEY,                  -- 'stp_01JB7…'
+  cascade_id  TEXT REFERENCES cascades(id) ON DELETE CASCADE,   -- null for draft/front/sweep
+  seq         INTEGER NOT NULL,                  -- order within the cascade, assigned by the engine
+  wave        INTEGER NOT NULL,
+  lane        TEXT CHECK (lane IN ('forward','backward')),
+  pass        TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep')),
+  chapter     INTEGER CHECK (chapter BETWEEN 1 AND 67),          -- null for 'front'
+  boundary    TEXT NOT NULL,                     -- '5' (n = boundary n−1|n), 'front', 'ending'
+  premise_change TEXT REFERENCES changes(id),    -- BOOK-7: the chapter-level premise this draft consumes
+  outcome     TEXT CHECK (outcome IN              -- null while the step is open
+                ('rewritten','holds','published_with_finding','evaluated','escalated','interrupted')),
+  rev_before  INTEGER, rev_after INTEGER,
+  seams_in    TEXT,                              -- JSON [{boundary,reason}]
+  seams_out   TEXT,                              -- JSON [{boundary,reason}]
+  blocks_touched INTEGER, chars_delta INTEGER,
+  model       TEXT,                              -- the writer model used for this step
+  tokens_in   INTEGER NOT NULL DEFAULT 0,
+  tokens_out  INTEGER NOT NULL DEFAULT 0,
+  cost_rub    REAL    NOT NULL DEFAULT 0,        -- frozen at close (§6D.5); a placeholder zero unless cost_priced (BOOK-23)
+  cost_priced INTEGER NOT NULL DEFAULT 0,        -- BOOK-23: 1 = cost_rub is a measurement, 0 = never priced
+  hseq_from   INTEGER, hseq_to INTEGER,          -- the history span this step wrote (§6F.1)
+  lease_id    TEXT, session TEXT,
+  at          TEXT NOT NULL, ms INTEGER, note TEXT,
+  cycle       INTEGER NOT NULL DEFAULT 0,        -- writer revisions consumed (§6B.4)
+  last_findings TEXT,                            -- admin-only: what sent the writer back (§6B.2)
+  start_sha   TEXT,                              -- sha of the text the step started from (recovery)
+  landed_at   TEXT,                              -- the file was written (or "already true")
+  landed_sha  TEXT,                              -- sha of the landed text; a gate reads this
+  pre_blocks  TEXT,                              -- JSON block hashes before the write (delta ratio)
+  -- BOOK-61: Gate B's deterministic scan of the blocks this step wrote.
+  -- JSON {"verdict":"clear"|"flag","rule":…,"block":…,"detail":…}; cleared when landed_sha moves.
+  -- A refusal is never stored here: the law's own class refuses the land, a quote is a flag.
+  rights_scan TEXT,
+  closed_at   TEXT,
+  -- BOOK-117: who ran the pass — 'pipeline' (the lane on the pin) or 'operator' (a repair).
+  provenance  TEXT CHECK (provenance IN ('pipeline','operator')),
+  UNIQUE (cascade_id, seq)
+);
+CREATE INDEX steps_chapter ON steps(chapter, at);
+CREATE INDEX steps_open ON steps(outcome, at);
+`;

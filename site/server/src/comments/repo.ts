@@ -25,6 +25,7 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
+import { findLiveSentence } from '../sentences/store.ts';
 import { refusalHint, reviseState, unrevisedState } from './attempts.ts';
 
 export type CommentRow = {
@@ -37,6 +38,10 @@ export type CommentRow = {
   quote: string | null;
   prefix: string | null;
   suffix: string | null;
+  /** ADR-044 — the sentence anchor and the reader's selection in it; null = the block anchor. */
+  sentence_id: string | null;
+  sel_start: number | null;
+  sel_end: number | null;
   author: string;
   body: string;
   proposed_text: string | null;
@@ -91,6 +96,10 @@ export type NewCommentRow = {
   quote: string | null;
   prefix: string | null;
   suffix: string | null;
+  /** ADR-044 — the sentence the quote resolved to and the selection in it; omitted = none. */
+  sentenceId?: string | null;
+  selStart?: number | null;
+  selEnd?: number | null;
   author: string;
   body: string;
   proposedText: string | null;
@@ -122,13 +131,13 @@ export type NewCommentRow = {
 export function insertComment(db: Db, comment: NewCommentRow): void {
   db.prepare(
     `INSERT INTO comments
-       (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, author,
-        body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status, frame, guard, created_at, reason,
-        idem_key, terms_version, terms_sha)
+       (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, sentence_id,
+        sel_start, sel_end, author, body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status,
+        frame, guard, created_at, reason, idem_key, terms_version, terms_sha)
      VALUES
-       (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix, @author,
-        @body, @proposedText, @interventionKind, @bodySha, @flags, @ipHash, @status, @frame, @guard, @createdAt,
-        @reason, @idemKey, @termsVersion, @termsSha)`,
+       (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix,
+        @sentenceId, @selStart, @selEnd, @author, @body, @proposedText, @interventionKind, @bodySha,
+        @flags, @ipHash, @status, @frame, @guard, @createdAt, @reason, @idemKey, @termsVersion, @termsSha)`,
   ).run({
     ...comment,
     frame: comment.frame ?? null,
@@ -136,6 +145,8 @@ export function insertComment(db: Db, comment: NewCommentRow): void {
     // than a default that would read as an accepted version.
     termsVersion: comment.termsVersion ?? null,
     termsSha: comment.termsSha ?? null,
+    // ADR-044: no resolved sentence is an honest null (the block anchor), never a guessed id.
+    sentenceId: comment.sentenceId ?? null, selStart: comment.selStart ?? null, selEnd: comment.selEnd ?? null,
     flags: JSON.stringify(comment.flags),
   });
 }
@@ -248,15 +259,23 @@ export function resolveAnchor(db: Db, row: CommentRow): CommentAnchor {
       resolved: true,
     };
   }
+  // ADR-044: a live sentence is the anchor, and it outlives the block id it was filed under — a
+  // block id is content-derived, so an edit renames the paragraph and every stored `block_id`
+  // becomes history. The guard therefore only speaks while the filed block still exists: a
+  // sentence that lives in a different *current* block is not this filing's sentence.
   const block = readBlock(db, row.block_id);
+  const sentence = row.sentence_id === null ? null : findLiveSentence(db, row.sentence_id);
+  const live = sentence !== null && (sentence.block_id === row.block_id || block === undefined) ? sentence : null;
+  const owner = live === null ? undefined : readBlock(db, live.block_id);
   const resolved = block !== undefined && (quote === null || block.text.includes(quote));
   return {
-    blockId: row.block_id,
-    blockIndex: block?.idx ?? row.block_idx,
+    blockId: owner?.id ?? row.block_id,
+    blockIndex: owner?.idx ?? block?.idx ?? row.block_idx,
     quote,
     prefix: row.prefix,
     suffix: row.suffix,
-    resolved,
+    ...(live === null ? {} : { sentenceId: live.id, selStart: row.sel_start, selEnd: row.sel_end }),
+    resolved: live !== null || resolved,
   };
 }
 

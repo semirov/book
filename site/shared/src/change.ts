@@ -79,7 +79,7 @@ export type ChangeEvent = {
   seq: number; // the FIFO ticket, immutable
   kind: ChangeKind;
   chapter: number; // 1..TOTAL_CHAPTERS — the point of change
-  anchor: null | { blockIds: string[]; quote: string; prefix: string; suffix: string };
+  anchor: null | { blockIds: string[]; sentenceIds?: string[]; quote: string; prefix: string; suffix: string };
   intent: string; // ≤200 chars, what must become true
   proposedText: string | null;
   source: { commentId: string | null; sessionId: string | null };
