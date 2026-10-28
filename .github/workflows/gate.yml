@@ -138,6 +138,7 @@ jobs:
           npx vitest run
           --shard=${{ matrix.shard }}/4
           --reporter=blob
+          --reporter=default
           --coverage
           --coverage.reporter=text-summary
           --coverage.thresholds.lines=0
@@ -146,6 +147,7 @@ jobs:
           --coverage.thresholds.branches=0
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: blob-${{ matrix.shard }}
           path: site/.vitest-reports
@@ -153,7 +155,9 @@ jobs:
           # default (it matches the path itself), which would upload nothing and fail the step.
           include-hidden-files: true
           retention-days: 1
-          if-no-files-found: error
+          # `always()` + warn: a red shard must still publish its blob, so the failure can be read
+          # out of the report; a blob that never appeared is caught by the count check in `coverage`.
+          if-no-files-found: warn
 
   coverage:
     name: coverage
