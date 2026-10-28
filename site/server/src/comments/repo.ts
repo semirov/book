@@ -441,6 +441,15 @@ function premiseStatus(
     return change.outcome === 'superseded' ? 'superseded' : 'rejected';
   }
   if (change !== undefined && change.status === 'pending') return 'accepted';
+  // BOOK-183: an ordinary change that landed is a landing too. The row used to stay `accepted`
+  // forever («входит в книгу») while the chapter already carried it, and the queue counted it.
+  if (
+    change !== undefined &&
+    change.status === 'done' &&
+    (change.outcome === 'applied' || change.outcome === 'adapted')
+  ) {
+    return 'applied';
+  }
   return fallback;
 }
 

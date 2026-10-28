@@ -66,7 +66,23 @@ export function recordAcceptance(db: Db, changeId: string, at: string): void {
   if (facts.status !== 'done' || facts.outcome === null || !LANDED_OUTCOMES.has(facts.outcome)) return;
   const commentId = facts.source_comment;
 
+  // The row must say what happened, not just remember the terms: `applied` with the chapter and
+  // revision it entered (BOOK-183). The reason is written with the landing, in this transaction.
+  const landed = db
+    .prepare(
+      `SELECT c.chapter AS chapter, COALESCE(ch.rev, 0) AS rev
+         FROM changes c LEFT JOIN chapters ch ON ch.n = c.chapter
+        WHERE c.id = ?`,
+    )
+    .get(changeId) as { chapter: number; rev: number } | undefined;
+  const appliedReason =
+    landed === undefined ? 'вошло в книгу' : `вошло в редакцию главы ${String(landed.chapter)} (ред. ${String(landed.rev)})`;
+
   db.transaction(() => {
+    db.prepare(`UPDATE comments SET status = 'applied', reason = ? WHERE id = ? AND status NOT IN ('applied','rejected','superseded','hidden')`).run(
+      appliedReason,
+      commentId,
+    );
     const written = db
       .prepare(
         `UPDATE comments SET accepted_at = ?, accepted_terms_version = terms_version
