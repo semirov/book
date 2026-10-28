@@ -106,3 +106,5 @@ describe('operator CLIs refuse the production data dir in a dev shell (BOOK-107 
     expect(readdirSync(scratch)).toEqual([]);
   });
 });
+
+// measurement touch: affected-mode wall time (BOOK-198)
