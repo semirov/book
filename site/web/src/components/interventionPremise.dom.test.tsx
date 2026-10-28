@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { emptyDraft, type SeamDraft } from '../lib/draft.ts';
+import { filingNumber } from '../lib/filings.ts';
 import { NOTE_ACTION_LABEL, NOTE_FATE_LINE, PREMISE_LABEL } from '../lib/kindChoices.ts';
 import { InterventionForm } from './InterventionForm.tsx';
 
@@ -60,22 +61,40 @@ function draftOf(origin: typeof PARAGRAPH | typeof PREMISE, overrides: Partial<S
 }
 
 /** The form is controlled: the page owns the draft, so the test holds the state. */
-function LiveForm({ initial }: { initial: SeamDraft }) {
+function LiveForm({
+  initial,
+  signedIn = true,
+  onOpenDuplicate,
+}: {
+  initial: SeamDraft;
+  signedIn?: boolean;
+  onOpenDuplicate?: (id: string) => void;
+}) {
   const [draft, setDraft] = useState<SeamDraft>(initial);
   return (
     <InterventionForm
       entry={ENTRY}
       draft={draft}
       composer={EMPTY_COMPOSER}
-      viewer={{ signedIn: true, displayName: 'Аня' }}
+      viewer={signedIn ? { signedIn: true, displayName: 'Аня' } : { signedIn: false, displayName: null }}
       onChange={setDraft}
       onPosted={() => undefined}
+      {...(onOpenDuplicate === undefined ? {} : { onOpenDuplicate })}
     />
   );
 }
 
-function mount(initial: SeamDraft): void {
-  act(() => root.render(<LiveForm key={JSON.stringify(initial)} initial={initial} />));
+function mount(initial: SeamDraft, options: { signedIn?: boolean; onOpenDuplicate?: (id: string) => void } = {}): void {
+  act(() =>
+    root.render(
+      <LiveForm
+        key={JSON.stringify(initial)}
+        initial={initial}
+        {...(options.signedIn === undefined ? {} : { signedIn: options.signedIn })}
+        {...(options.onOpenDuplicate === undefined ? {} : { onOpenDuplicate: options.onOpenDuplicate })}
+      />,
+    ),
+  );
 }
 
 function textarea(): HTMLTextAreaElement {
@@ -142,5 +161,93 @@ describe('a premise is not a remark (BOOK-84)', () => {
     expect(textarea().value).toBe('смена переходит на ночь');
     expect(container.querySelector('button.seam-submit')?.textContent).toBe('заложить замысел');
     expect(container.textContent).not.toContain(NOTE_FATE_LINE);
+  });
+});
+
+/**
+ * BOOK-84 — the refusal path is the form's too.
+ *
+ * The clean form agreed with the strip and the errors still said «замечание»: the duplicate
+ * line, the too-short line, the signed-out gate and the transport fallback all came from the
+ * written chapter's table. One mapping (`refusalCopy`, `signinCopy`) answers for the surface,
+ * and a written chapter keeps its own words exactly — the two are different filings, and both
+ * lines must stay true: a duplicate is still a duplicate, a signed-out read still asks to sign
+ * in for the act the form performs.
+ */
+describe('a premise’s refusals speak of the premise (BOOK-84)', () => {
+  async function submit(): Promise<void> {
+    await act(async () => {
+      container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    });
+  }
+
+  function errorText(): string {
+    return container.querySelector('.seam-error')?.textContent ?? '';
+  }
+
+  it('says the chapter already holds a premise when the server answers DUPLICATE', async () => {
+    // The prod 409 on an unwritten chapter: the refusal names the premise that exists, keeps
+    // its door to that row, and never calls it a remark.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено', commentId: 'cmt_x' }),
+            { status: 409, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    );
+    const opened = vi.fn();
+    mount(draftOf(PREMISE, { kind: 'decision', proposed: 'смена переходит на ночь' }), { onOpenDuplicate: opened });
+
+    await submit();
+
+    expect(errorText()).toContain('у главы уже есть замысел');
+    // The number in the line is the row the door opens — one source, so they cannot diverge.
+    expect(errorText()).toContain(`первый замысел — ${filingNumber({ id: 'cmt_x' })}`);
+    expect(errorText()).not.toMatch(/замечани/iu);
+    expect(container.textContent ?? '').not.toMatch(/замечани/iu);
+    // A duplicate is still a duplicate: the door to the premise that exists is beside the line.
+    const open = [...container.querySelectorAll<HTMLButtonElement>('button.seam-inline-action')].find(
+      (button) => button.textContent?.trim() === 'открыть отправленное',
+    );
+    expect(open).not.toBeUndefined();
+    act(() => open?.click());
+    expect(opened).toHaveBeenCalledWith('cmt_x', open);
+    // BOOK-63: the refusal spends nothing — the reader's text is still in the field.
+    expect(textarea().value).toBe('смена переходит на ночь');
+  });
+
+  it('asks a signed-out reader to sign in to leave a premise', async () => {
+    mount(draftOf(PREMISE), { signedIn: false });
+
+    const gate = container.querySelector('.seam-signin');
+    expect(gate?.textContent).toContain('войдите через Яндекс, чтобы заложить замысел');
+    expect(gate?.textContent ?? '').not.toMatch(/замечани/iu);
+    expect(gate?.querySelector('.seam-cta')?.getAttribute('href')).toBe('/auth/yandex/start');
+  });
+
+  it('keeps the written chapter’s note wording exactly as it was', async () => {
+    mount(draftOf(PARAGRAPH), { signedIn: false });
+    expect(container.querySelector('.seam-signin')?.textContent).toContain(
+      'войдите через Яндекс, чтобы оставить замечание',
+    );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ code: 'DUPLICATE', message: 'такое замечание уже отправлено' }), {
+            status: 409,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    );
+    mount(draftOf(PARAGRAPH, { proposed: 'в абзаце повтор' }));
+    await submit();
+
+    expect(errorText()).toContain('такое замечание уже отправлено');
   });
 });

@@ -418,13 +418,19 @@ describe('one close on screen for every surface combination', () => {
     expectOneFrame({ floating: 1, close: 'seam-close' });
     typeInto('textarea.seam-text', 'А как это работает, если свет был раньше?');
     await submit();
-    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    // BOOK-84: the refusal under an empty chapter is the premise's own line.
+    expect(document.querySelector('.seam-error')?.textContent).toContain('у главы уже есть замысел');
     await click('[data-door="duplicate"]');
     expect(document.querySelector('.seam-form')).toBeNull();
+    // BOOK-84: the card the door opened is the premise's card — its title and the collapsed
+    // strip beside it call it a «замысел», never a «замечание».
+    expect(document.querySelector('.filing-title')?.textContent).toBe('замысел №MTX');
+    expect(document.querySelector('.seam')?.textContent).toMatch(/замысел №MTX/u);
+    expect(document.querySelector('.seam')?.textContent).not.toMatch(/замечание/iu);
     expectOneFrame({ floating: 1, close: 'filing-close', frame: '.filing-panel' });
     await click('.filing-close');
     expect(document.querySelector('.seam-form'), 'the premise form comes back').not.toBeNull();
-    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    expect(document.querySelector('.seam-error')?.textContent).toContain('у главы уже есть замысел');
     expectOneFrame({ floating: 1, close: 'seam-close' });
     expect(document.activeElement?.getAttribute('data-door')).toBe('duplicate');
   });

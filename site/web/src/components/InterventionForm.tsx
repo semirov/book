@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { ApiError, postAnchoredComment, reviseComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
-import { budgetLine, counterLabel, draftLimits, errorCopy, type ComposerError } from '../lib/composer.ts';
+import { budgetLine, counterLabel, draftLimits, refusalCopy, signinCopy, type ComposerError } from '../lib/composer.ts';
 import { anchoredPayload, submissionBody, submitLabel, type SeamDraft } from '../lib/draft.ts';
 import {
   NOTE_ACTION_LABEL,
@@ -39,7 +39,9 @@ import { InterventionKinds } from './InterventionKinds.tsx';
  * BOOK-84: an empty chapter takes a premise, and the strip above the form says so («это
  * замысел главы, а не замечание к тексту»). One fact carries that — no block — so the note
  * action and the spent-day recovery are both absent there, and the form's buttons cannot offer
- * a remark the strip denies.
+ * a remark the strip denies. The refusals and the signed-out gate read that same fact
+ * (`refusalCopy`/`signinCopy`), so nothing under the strip calls the filing a «замечание»
+ * either — while a written chapter keeps its own wording exactly.
  */
 export type FormProps = {
   entry: CatalogEntry;
@@ -85,6 +87,14 @@ export function InterventionForm({
   const noteOnly = draft.noteOnly;
   /** BOOK-158: the form is correcting a refused filing, not making a new one. */
   const revise = draft.revisesId !== null;
+  /**
+   * BOOK-84: an empty chapter files a **premise**, and `blockId === null` is that one fact. The
+   * refusal table and the signed-out gate both read it, so nothing under the strip can call this
+   * filing a «замечание» while the strip says it is not one.
+   */
+  const surface = draft.blockId === null ? 'premise' : 'chapter';
+  /** The local too-short line names the act the form would perform. */
+  const filingWord = surface === 'premise' ? 'замысел' : 'замечание';
 
   /**
    * BOOK-63: `form_open` is the form the reader sees, once per mount. It carries nothing —
@@ -130,7 +140,7 @@ export function InterventionForm({
   const submit = async (): Promise<void> => {
     if (!viewer.signedIn) return;
     if (body.length < composer.minChars) {
-      refuse({ code: 'INVALID', message: `замечание короче ${composer.minChars} символов` });
+      refuse({ code: 'INVALID', message: `${filingWord} короче ${composer.minChars} символов` });
       track('error_shown', { code: 'INVALID' });
       return;
     }
@@ -185,15 +195,21 @@ export function InterventionForm({
 
   /** BOOK-111: the id a duplicate refusal names, if this refusal is one. */
   const duplicateId = error !== null && error.code === 'DUPLICATE' ? (error.commentId ?? null) : null;
+  /**
+   * BOOK-84: one mapping for the surface, read once per render instead of three times. A
+   * duplicate's number is the one the refusal itself names — the row its door opens.
+   */
+  const refusal = error === null ? null : { code: error.code, ...refusalCopy(error, surface) };
+  const gate = signinCopy(surface);
 
   if (!viewer.signedIn) {
     return (
       <div className="seam-signin">
-        <p>войдите через Яндекс, чтобы оставить замечание</p>
+        <p>{gate.line}</p>
         <a className="seam-cta" href="/auth/yandex/start">
           войти через Яндекс →
         </a>
-        <p className="fine">Читать можно без входа. Автор замечания виден другим читателям.</p>
+        <p className="fine">{gate.fine}</p>
       </div>
     );
   }
@@ -257,11 +273,11 @@ export function InterventionForm({
       <p className="seam-hint">{counterLabel(draft.proposed.length, limits.edit)}</p>
       {noteOnly ? <p className="seam-hint">{NOTE_BUDGET_LINE}</p> : null}
 
-      {error === null ? null : (
+      {refusal === null ? null : (
         <p className="seam-error" role="alert">
-          {errorCopy(error).line}
-          {errorCopy(error).detail === null ? null : <span className="seam-detail"> · {errorCopy(error).detail}</span>}
-          {error.code === 'STALE_ANCHOR' ? (
+          {refusal.line}
+          {refusal.detail === null ? null : <span className="seam-detail"> · {refusal.detail}</span>}
+          {refusal.code === 'STALE_ANCHOR' ? (
             <button type="button" className="seam-inline-action" onClick={() => onReanchor?.(draft)}>
               привязать заново
             </button>
@@ -280,7 +296,7 @@ export function InterventionForm({
               открыть отправленное
             </button>
           )}
-          {error.code === 'EDIT_DAILY_LIMIT' && draft.blockId !== null ? (
+          {refusal.code === 'EDIT_DAILY_LIMIT' && draft.blockId !== null ? (
             <button
               type="button"
               className="seam-inline-action"

@@ -98,7 +98,9 @@ describe('the refusal outlives the form (BOOK-111)', () => {
   it('prints the refusal it was handed on the very first paint', () => {
     mount(draftOf(PREMISE, { proposed: 'А как?' }), { initialError: DUPLICATE });
 
-    expect(container.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    // BOOK-84: the draft is an empty chapter's premise, so the rebuilt form prints the premise's
+    // line — the strip's own word — and not the written chapter's.
+    expect(container.querySelector('.seam-error')?.textContent).toContain('у главы уже есть замысел');
     expect(container.querySelector('[data-door="duplicate"]')).not.toBeNull();
     // The refused text is kept: the line says the filing exists, not that the thought is lost.
     expect(container.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe('А как?');

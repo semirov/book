@@ -50,7 +50,13 @@ describe('premiseFiling and the refusal', () => {
 
   it('refuses a second premise by name and points at the first', () => {
     expect(PREMISE_EXISTS).toBe('у главы уже есть замысел');
-    expect(premiseRefusal(first)).toEqual({ line: PREMISE_EXISTS, detail: 'первый замысел — замечание №MT1' });
+    // BOOK-84: the whole line is the premise's — the refusal never calls it a «замечание».
+    // The number comes from the refusal's own id — the row its door opens.
+    expect(premiseRefusal(first.id)).toEqual({ line: PREMISE_EXISTS, detail: 'первый замысел — №MT1' });
+    expect(premiseRefusal(first.id).detail).not.toMatch(/замечани/iu);
+    // A refusal that carries no id still says the chapter holds a premise (the prod 409's page
+    // held no row at all), and simply omits the number.
+    expect(premiseRefusal(null)).toEqual({ line: PREMISE_EXISTS, detail: null });
   });
 
   it('keeps the row copy honest about what a premise is', () => {

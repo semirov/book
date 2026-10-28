@@ -438,7 +438,9 @@ describe('the premise strip in an empty chapter', () => {
       await Promise.resolve();
     });
 
-    expect(container.querySelector('#ch-7 .seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    // BOOK-84: the refusal under an empty chapter speaks of the premise it names, never of a
+    // remark the strip above it denies.
+    expect(container.querySelector('#ch-7 .seam-error')?.textContent).toContain('у главы уже есть замысел');
     const open = [...container.querySelectorAll<HTMLButtonElement>('#ch-7 button.seam-inline-action')].find(
       (button) => button.textContent?.trim() === 'открыть отправленное',
     );

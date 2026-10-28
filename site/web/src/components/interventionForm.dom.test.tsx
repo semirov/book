@@ -402,7 +402,8 @@ describe('a refusal that names the existing filing (BOOK-111)', () => {
     const alert = container.querySelector('.seam-error');
     expect(alert).not.toBeNull();
     expect(alert?.getAttribute('role')).toBe('alert');
-    expect(alert?.textContent).toContain('такое замечание уже отправлено');
+    // BOOK-84: the draft is a premise, so the line is the premise's.
+    expect(alert?.textContent).toContain('у главы уже есть замысел');
     // The refused text is kept: the line says the filing exists, not that the thought is lost.
     expect(container.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe('А как?');
 
@@ -431,7 +432,7 @@ describe('a refusal that names the existing filing (BOOK-111)', () => {
       (button) => button.textContent?.trim() === 'открыть отправленное',
     );
     act(() => open?.click());
-    expect(container.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    expect(container.querySelector('.seam-error')?.textContent).toContain('у главы уже есть замысел');
   });
 
   it('offers no duplicate door when the 409 carries no id', async () => {
@@ -448,7 +449,7 @@ describe('a refusal that names the existing filing (BOOK-111)', () => {
     await act(async () => {
       container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     });
-    expect(container.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
+    expect(container.querySelector('.seam-error')?.textContent).toContain('у главы уже есть замысел');
     expect(container.querySelectorAll('button.seam-inline-action')).toHaveLength(0);
   });
 });

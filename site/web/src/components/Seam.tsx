@@ -5,10 +5,10 @@ import { getComment } from '../api.ts';
 import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
+import { filingInk, filingName, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
 import { attachOutsideClose } from '../lib/outsideClose.ts';
-import { PREMISE_HINT } from '../lib/premise.ts';
+import { PREMISE_EXISTS, PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
 import { useOpenFiling } from '../lib/useFiling.ts';
 import { useOpenRevision } from '../lib/useRevision.ts';
@@ -123,7 +123,7 @@ export function Seam({
    * that corrects exactly that filing, and «открыть замысел» would be the wrong way out of it.
    */
   const revising = draft.revisesId !== null;
-  const premiseNote = premise && existingPremise !== null && !open && !revising ? 'у главы уже есть замысел' : null;
+  const premiseNote = premise && existingPremise !== null && !open && !revising ? PREMISE_EXISTS : null;
   /**
    * BOOK-111 (owner, 2026-10-27) — a refusal must not die with the form: a panel opened from
    * the refusal's own door rebuilds the form when it closes, so the strip keeps the refusal
@@ -233,7 +233,7 @@ export function Seam({
         ? 'откуда это слово'
         : prov.comment === null
           ? 'замечание'
-          : `замечание ${filingNumber(prov.comment)}`;
+          : `${filingName(prov.comment)} ${filingNumber(prov.comment)}`;
     return (
       <div
         className="seam ym-hide-content"
