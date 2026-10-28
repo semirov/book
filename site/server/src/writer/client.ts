@@ -185,7 +185,8 @@ export type EscalateSpend = {
 export type EngineClient = {
   state(): Promise<EngineStateView>;
   /** The lane's next job, or null when the lane has nothing (never a refusal). */
-  next(lane: 'fwd' | 'bwd', session: string): Promise<WriterAssignment | null>;
+  /** BOOK-166: `filing` is the lane's door — the oldest undecided filing, whatever its kind. */
+  next(lane: 'fwd' | 'bwd' | 'filing', session: string): Promise<WriterAssignment | null>;
   /** A gate's dispatch for a landed step, or null when neither role is waiting. */
   nextGate(role: 'editor' | 'consultant', session: string): Promise<GateAssignmentView | null>;
   /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */

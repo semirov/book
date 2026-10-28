@@ -29,11 +29,14 @@ function manualFixture(): Fixture {
   return fixture;
 }
 
-/** Chapters 1..4 written, so the forward lane's next draft slot is chapter 5. */
+/** Chapters 1..4 written (prose, not a one-line stub): ch05 is then the first empty slot. */
 function written(fixture: Fixture): void {
-  for (let n = 1; n <= 4; n += 1) {
-    fixture.writeChapterBlocks(n, `Глава ${n}`, [`Служебный абзац главы ${n}. Он не является текстом книги.`]);
-  }
+  const body = [
+    'Первый абзац этой главы достаточно длинный, чтобы считаться прозой, а не служебной строкой.',
+    'Второй абзац продолжает сцену: человек входит в комнату, садится и молчит дольше, чем нужно.',
+    'Третий абзац закрывает эпизод репликой, после которой никто не добавляет ни слова.',
+  ];
+  for (let n = 1; n <= 4; n += 1) fixture.writeChapterBlocks(n, `Глава ${n}`, body);
 }
 
 /** One admitted filing: the fixture records the audit and rights verdicts, so this always lands. */
@@ -90,6 +93,83 @@ describe('the engine writes only on a filing', () => {
       expect(first.chapter).toBe(7);
       const second = fixture.engine.next({ for: 'fwd', session: 'w2' }) as WriterAssignment;
       expect(second.chapter).toBe(5);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('asks by filing: the oldest undecided one wins, whichever kind it is', () => {
+    // Two fresh fixtures, so each call is the lane's first ask and nothing is reused.
+    const order: Array<'premise-first' | 'change-first'> = ['premise-first', 'change-first'];
+    for (const which of order) {
+      const fixture = createEngineFixture({ filings: 'manual' });
+      try {
+        fixture.db
+          .prepare(
+            `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at)
+             VALUES ('idn_viewer', 'yandex-viewer', 'Аня', '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+          )
+          .run();
+        for (let n = 1; n <= 4; n += 1) {
+          fixture.writeChapterBlocks(n, `Глава ${n}`, [
+            'Первый абзац достаточно длинный, чтобы считаться прозой.',
+            'Второй абзац продолжает сцену.',
+            'Третий закрывает эпизод.',
+          ]);
+        }
+        const queued = (): void =>
+          void fixture.db
+            .prepare(
+              `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, status, enqueued_at, premise)
+               VALUES ('chg_queue_2', 'accepted_comment', 2, 'в главе 2 сократить сцену', 1, 'sha', '[]', 'chapter', 'pending', '2026-10-25T09:00:00Z', 0)`,
+            )
+            .run();
+        const premise = (): void =>
+          void accept(fixture.db, seed(fixture.db, { chapter: 5 }), 'глава 5 начинается с документа');
+        // The older filing is the one that wins, whatever kind it is.
+        if (which === 'premise-first') {
+          premise();
+          queued();
+        } else {
+          queued();
+          premise();
+        }
+
+        const first = fixture.engine.next({ for: 'filing', session: 'w1' }) as WriterAssignment;
+        if (which === 'premise-first') {
+          expect(first).toMatchObject({ pass: 'draft', chapter: 5 });
+          expect(first.premise).not.toBeNull();
+        } else {
+          expect(first).toMatchObject({ pass: 'change', chapter: 2 });
+        }
+      } finally {
+        fixture.close();
+      }
+    }
+  });
+
+  it('closes an unbound draft it meets instead of handing it out again', () => {
+    const fixture = manualFixture();
+    try {
+      written(fixture);
+      // A step opened before the rule: no premise, no reader behind it.
+      fixture.db
+        .prepare(
+          `INSERT INTO steps (step_id, seq, wave, pass, chapter, boundary, seams_in, at, rev_before)
+           VALUES ('stp_orphan', 0, 0, 'draft', 16, '16', '[]', ?, 0)`,
+        )
+        .run(new Date(fixture.clock.now()).toISOString());
+      const fresh = filing(fixture, 5, 'глава 5 начинается с документа');
+
+      const assignment = fixture.engine.next({ for: 'filing', session: 'w1' }) as WriterAssignment;
+      expect(assignment.chapter).toBe(5);
+      const orphan = fixture.db.prepare("SELECT outcome, note FROM steps WHERE step_id = 'stp_orphan'").get() as {
+        outcome: string;
+        note: string;
+      };
+      expect(orphan.outcome).toBe('interrupted');
+      expect(orphan.note).toContain('заявки нет');
+      expect(change(fixture.db, fresh.changeId).status).toBe('pending');
     } finally {
       fixture.close();
     }
