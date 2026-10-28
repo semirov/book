@@ -262,8 +262,9 @@ describe('the reader’s name and words are masked from Webvisor', () => {
   it('masks a filled premise slot, which shows the premise’s own first line', () => {
     const html = renderToStaticMarkup(
       <PremiseRow
-        row={{ n: 2, commentId: 'cmt_1', quote: SENTINEL.body, word: 'ждёт', note: null, attempt: null, actionable: true }}
+        row={{ n: 2, commentId: 'cmt_1', quote: SENTINEL.body, word: 'ждёт', note: null, reason: null, revise: null, attempt: null, actionable: true }}
         onOpen={() => undefined}
+        onRevise={() => undefined}
       />,
     );
     expectMasked(html, SENTINEL.body, '.premise');

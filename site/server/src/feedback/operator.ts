@@ -28,6 +28,7 @@ import { isReleasableRights, isRightsRule, RIGHTS_RULES, type RightsRuleId } fro
 import { readAnswer } from './answer.ts';
 import { filingValues, listCommentsByStatus } from './batches.ts';
 import { ENVELOPE_FIELDS, quoteIn, type EnvelopeField } from './envelope.ts';
+import { settleAttempt, spendFromFlags } from './triage.ts';
 
 export type OperatorArgs = {
   positionals: string[];
@@ -124,6 +125,8 @@ export function hold(parsed: OperatorArgs, io: OperatorIo, now: () => Date): num
     quote: evidence.quote,
     by: label.length === 0 ? 'classifier' : label,
   });
+  // BOOK-158: the attempt this hold answers is closed as `held` — no model call, no charge.
+  settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'held', at });
   io.print(`${comment.id}: held ${rule} · замечание сохранено и ждёт человека`);
   return 0;
 }
@@ -225,12 +228,23 @@ export function audit(parsed: OperatorArgs, io: OperatorIo, now: () => Date): nu
     io.print('refused: OFF needs --reason "…" — the reader sees that line as the refusal');
     return 1;
   }
+  // BOOK-158: Gate C's `OFF` is the answer to a submitted attempt — it closes it, and the model
+  // call that wrote the line is a `triage` pass in the money ledger. The flags are read before
+  // the verdict is written, so a bad value refuses the call instead of half-applying it.
+  const spend = verdict === 'OFF' ? spendFromFlags(parsed.flags) : null;
+  if (spend !== null && 'error' in spend) {
+    io.print(`refused: ${spend.error}`);
+    return 2;
+  }
   const recorded = recordAudit(io.db, { commentId: comment.id, verdict, reason, by, at });
   if (!recorded.ok) {
     io.print(`refused (${recorded.code}): ${recorded.message}`);
     return 1;
   }
   if (verdict === 'OFF') {
+    if (spend !== null && 'spend' in spend) {
+      settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
+    }
     appendDecision(io.dir, {
       id: comment.id,
       status: 'rejected',

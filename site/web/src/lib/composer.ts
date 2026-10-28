@@ -35,6 +35,8 @@ export type ComposerError = {
   resetAt?: string;
   /** BOOK-111: the filing a duplicate refusal names, for the «открыть отправленное» door. */
   commentId?: string;
+  /** BOOK-158: when the day's attempts come back (the next 00:00 UTC), with either cap. */
+  reopenAt?: string;
 };
 
 /** A server line may be shown as a detail only when it is the reader's language, never a code. */
@@ -50,6 +52,10 @@ function russianDetail(message: string): string | null {
  * `CAPTCHA_FAILED`, `INTERNAL`, `ORIGIN`, `CONTENT_TYPE` — so no code reaches the reader as
  * a raw token, and every line is a Russian sentence even when the message is `Internal Server
  * Error` or the code is a bare `HTTP_500`.
+ *
+ * BOOK-158 — the revise route's own codes travel here too (`REVISE_COOLDOWN`,
+ * `ATTEMPTS_EXHAUSTED`, `ATTEMPT_LIMIT`, `IDENTICAL`, `NOT_REVISABLE`, `NOT_FOUND`): a refusal
+ * to revise is the same strip's line as a refusal to post, with the wait it owes the reader.
  */
 export function errorCopy(error: ComposerError): { line: string; detail: string | null; canRetry: boolean } {
   const reset = error.resetAt === undefined ? null : `до ${formatReset(error.resetAt)}`;
@@ -65,6 +71,41 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
       return { line: 'такое замечание уже отправлено', detail: null, canRetry: false };
     case 'STALE_ANCHOR':
       return { line: 'абзац изменился — привяжите замечание заново', detail: null, canRetry: true };
+    // BOOK-158 — the revise route's refusals. Its sentences are written for the reader, so the
+    // server's own line is printed when it is Russian; the local line is the fallback for a
+    // message this build cannot read (a proxy's, an older server's).
+    case 'REVISE_COOLDOWN':
+      return {
+        line: russianDetail(error.message) ?? 'слишком быстро — попробуйте ещё раз чуть позже',
+        detail: retryCopy(error.retryAfterMs),
+        canRetry: true,
+      };
+    case 'ATTEMPTS_EXHAUSTED':
+      return {
+        line: russianDetail(error.message) ?? 'исчерпаны попытки — в следующий раз',
+        detail: reopenCopy(error.reopenAt),
+        canRetry: false,
+      };
+    case 'ATTEMPT_LIMIT':
+      return {
+        line: russianDetail(error.message) ?? 'слишком много попыток сегодня — попробуйте завтра',
+        detail: reopenCopy(error.reopenAt),
+        canRetry: false,
+      };
+    case 'IDENTICAL':
+      return {
+        line: russianDetail(error.message) ?? 'это уже было — поправьте формулировку',
+        detail: null,
+        canRetry: true,
+      };
+    case 'NOT_REVISABLE':
+      return {
+        line: russianDetail(error.message) ?? 'это замечание уже поправлено',
+        detail: null,
+        canRetry: false,
+      };
+    case 'NOT_FOUND':
+      return { line: 'замечание не найдено — обновите страницу', detail: null, canRetry: false };
     case 'QUEUE_FULL':
       return { line: 'очередь правок заполнена — попробуйте позже', detail: retryCopy(error.retryAfterMs), canRetry: true };
     case 'ENDING_FROZEN':
@@ -122,6 +163,15 @@ function formatReset(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return 'позже';
   return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * BOOK-158 — when the day's attempts come back: the refusal carries the next 00:00 UTC, and
+ * the reader's own clock prints it. A missing or unreadable time says nothing at all, rather
+ * than inventing an hour.
+ */
+function reopenCopy(iso: string | undefined): string | null {
+  return iso === undefined ? null : `попытки вернутся в ${formatReset(iso)}`;
 }
 
 /**

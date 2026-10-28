@@ -65,6 +65,8 @@ export type ChapterArticleProps = {
    * the latest one, so a change is never a second row beside its filing.
    */
   changes?: readonly ChangeSummaryDto[];
+  /** BOOK-158: the page's revise clock, handed to the premise row and the card. */
+  nowMs?: number;
   /** The chapter's filings were asked for when its slot came into view. */
   onRead?: (chapter: number) => void;
   /** A filing was posted in this chapter: its DTO reaches the page, then the register. */
@@ -92,6 +94,7 @@ export function ChapterArticle({
   onProvenance,
   comments = [],
   changes = [],
+  nowMs,
   onRead,
   onPosted,
   composer,
@@ -322,6 +325,7 @@ export function ChapterArticle({
           entry={entry}
           comments={comments}
           changes={changes}
+          nowMs={nowMs}
           composer={composer}
           viewer={viewer}
           firstEmpty={firstEmpty}
@@ -360,6 +364,7 @@ export function ChapterArticle({
           entry={entry}
           comments={comments}
           changes={changes}
+          nowMs={nowMs}
           composer={composer}
           viewer={viewer}
           firstEmpty={false}
@@ -382,6 +387,7 @@ export function ChapterArticle({
                   text={text}
                   blockCount={chapter.blocks.length}
                   comments={comments}
+                  nowMs={nowMs}
                   composer={composer}
                   viewer={viewer}
                   onPosted={(comment) => onPosted?.(comment)}
@@ -416,6 +422,7 @@ export function ChapterArticle({
           text={basisSentence}
           blockCount={1}
           comments={comments}
+          nowMs={nowMs}
           composer={composer}
           viewer={viewer}
           onPosted={(comment) => onPosted?.(comment)}

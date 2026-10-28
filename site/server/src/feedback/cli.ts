@@ -36,6 +36,7 @@
 
 import {
   EDIT_DAY_MS,
+  holdsInternalCode,
   interventionKindLabel,
   normalizeInterventionKind,
   normalizeRetroMode,
@@ -47,6 +48,7 @@ import {
 
 import type { Db } from '../db/db.ts';
 import { readCommentRow } from '../comments/repo.ts';
+import { isEditExempt } from '../comments/budget.ts';
 import { editIdentityKey, editIpKeyFromHash } from '../rate/policy.ts';
 import { RateLimiter, type LimitSpec } from '../rate/limiter.ts';
 import { acceptComment } from './accept.ts';
@@ -61,6 +63,7 @@ import {
 } from './batches.ts';
 import { appendDecision } from './decisionsFile.ts';
 import { audit, heldInbox, hold, release, rights, rightsInbox } from './operator.ts';
+import { settleAttempt, spendFromFlags } from './triage.ts';
 import { chapterVocabulary } from './vocabulary.ts';
 
 export type FeedbackIo = {
@@ -239,6 +242,13 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     io.print(`refused: ${commentId} is already decided (first decision wins)`);
     return 1;
   }
+  // BOOK-158: the money of the answer, named on the command line. Read before anything is
+  // written, so a bad value refuses the call instead of half-applying it.
+  const spend = spendFromFlags(parsed.flags);
+  if ('error' in spend) {
+    io.print(`refused: ${spend.error}`);
+    return 2;
+  }
   // BOOK-137: the paperwork mode a filing on the frozen frame is filed as. Absent means the
   // engine's default; an unknown word is refused here, never guessed at.
   const rawMode = parsed.flags.get('mode');
@@ -250,6 +260,12 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   const reason = validateReason(parsed.flags.get('reason') ?? '');
   if (!reason.ok) {
     io.print(`refused: ${reason.reason}`);
+    return 1;
+  }
+  // BOOK-158: the decision line is the sentence the reader reads. A handle (`INTENT_SHAPE`)
+  // is an operator's note, not a sentence — the line is refused rather than printed to a reader.
+  if (holdsInternalCode(reason.reason)) {
+    io.print('refused: --reason must be a sentence, not a code');
     return 1;
   }
   const at = now().toISOString();
@@ -265,6 +281,9 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
       batch: comment.batch_id,
       changeId: null,
     });
+    // BOOK-158: the refusal closes the attempt it answered and still charges the call — the
+    // model was paid whether or not the reader's words were taken.
+    settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
     io.print(`${comment.id}: rejected`);
     return 0;
   }
@@ -309,13 +328,14 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   const baseRev = rev?.rev ?? comment.base_rev ?? 0;
 
-  // One edit budget for both paths: a proposed edit already took its identity and network
-  // slots at POST (§14, BOOK-DOC-4 rule 5). A plain comment spends both here, once, and only
-  // after the change exists — a refusal leaves each budget intact.
+  // BOOK-158: acceptance is the one act that spends the day's edit (§14, BOOK-DOC-4 rule 5) —
+  // for a note and an intervention alike, because a filing is a filing. Nothing is spent before
+  // the change exists, and a refusal spends nothing at all. BOOK-113: an exempt identity's
+  // tests cost no slot, but the comment budget still applied at posting.
   const limiter = new RateLimiter(io.db, () => now().getTime());
   const editLimit = io.editsPerDay ?? 1;
   const editBudgets: Array<{ spec: LimitSpec; budget: 'identity' | 'ip' }> = [];
-  if (comment.proposed_text === null) {
+  if (!isEditExempt(io.db, comment.identity_id)) {
     editBudgets.push({
       spec: { key: editIdentityKey(comment.identity_id), limit: editLimit, windowMs: EDIT_DAY_MS },
       budget: 'identity',
@@ -355,12 +375,14 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   // The slot is taken only once the change exists: a refusal must leave the budget intact.
   // Both keys are recorded in one transaction, so a fault cannot spend one and not the other.
-  if (comment.proposed_text === null) {
+  if (editBudgets.length > 0) {
     const atMs = now().getTime();
     io.db.transaction(() => {
       for (const { spec } of editBudgets) limiter.record(spec.key, atMs);
     })();
   }
+  // BOOK-158: the accepted attempt is closed and its model call charged, like a refusal's.
+  settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'accepted', at, spend: spend.spend });
   const chapter = io.db.prepare('SELECT rev, sha256 FROM chapters WHERE n = ?').get(comment.chapter) as
     | { rev: number; sha256: string }
     | undefined;

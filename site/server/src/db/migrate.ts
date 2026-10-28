@@ -1,7 +1,8 @@
-import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, chaptersTableSql, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL } from './schema.ts';
+import { SCHEMA_SQL, SCHEMA_VERSION, REQUIRED_TABLES, REQUIRED_TRIGGERS, STEPS_COLUMNS, STEPS_TABLE_SQL, BLOCK_VERSIONS_TABLE_SQL, RECONCILES_TABLE_SQL, CHAPTERS_COLUMNS, EVENTS_TABLE_SQL, GATE_TABLES_SQL, COMMENT_ATTEMPTS_TABLE_SQL, chaptersTableSql, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL } from './schema.ts';
 import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
+import { widenPassSpend } from './widenPassSpend.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -286,6 +287,18 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'comments', 'terms_sha', 'TEXT');
       addColumn(db, 'comments', 'accepted_at', 'TEXT');
       addColumn(db, 'comments', 'accepted_terms_version', 'TEXT');
+    },
+  },
+  {
+    // BOOK-158: a refusal is explained, revisable and bounded — so every submission a model may
+    // judge is a row in its own ledger, and the money of that judgement is a `triage` pass. The
+    // table is additive; the ledger's `pass` CHECK is widened, which SQLite cannot do in place,
+    // so the table is rebuilt with every row and its index kept (BOOK-18/BOOK-43 style). A
+    // migrated install must equal a fresh one, index for index.
+    to: 20,
+    up(db) {
+      if (!tableExists(db, 'comment_attempts')) db.exec(COMMENT_ATTEMPTS_TABLE_SQL);
+      widenPassSpend(db);
     },
   },
 ];

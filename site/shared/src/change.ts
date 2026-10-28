@@ -454,13 +454,13 @@ export const ENGINE_SILENT_LINE = 'движок не ответил — попы
 export const ATTEMPT_LINE = 'попытка не удалась — заявка остаётся в очереди';
 
 /**
- * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`, `GATE_TIMEOUT`),
- * or their lowercase/snake spelling (`provider_shape`, `engine_timeout`) — an engine's handles
- * come in both registers. No public surface may print one: a reader reads the book's words, and
- * a code is a handle for the operator's log. A sentence with capitals and no underscore
- * («Gate-Timeout», «глава 65 не готова») is a sentence.
+ * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`), or one of the two
+ * lowercase handles the engine writes (`provider_shape`, `engine_timeout`). A lowercase snake
+ * word is **not** a code by shape alone — «глава про west_wing» is a human sentence — so only
+ * the known handles and the upper-case shape are refused. A sentence with capitals and no
+ * underscore («Gate-Timeout», «глава 65 не готова») is a sentence.
  */
-const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/u;
+const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:provider_shape|engine_timeout)\b/u;
 
 /** Does this text carry an internal code? One predicate, so the sanitizer and the DTO agree. */
 export function holdsInternalCode(raw: unknown): boolean {

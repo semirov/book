@@ -207,7 +207,13 @@ export function clampQuote(text: string, max = COMMENT_QUOTE_MAX_CHARS): string 
 
 export type SeamAnchor = {
   blockId: string;
-  baseRev: number;
+  /**
+   * The chapter revision the paragraph was rendered from, so the server can tell a stale
+   * anchor from a fresh one. `null` when the opening carries no anchor at all — BOOK-158's
+   * revision of a refused filing: the revise endpoint keeps the row's own anchor, so the
+   * client has none to claim.
+   */
+  baseRev: number | null;
   /** The sentence, clamped to the server's bound (`COMMENT_QUOTE_MAX_CHARS`). */
   quote: string;
   prefix: string;

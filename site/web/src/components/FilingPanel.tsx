@@ -27,6 +27,8 @@ export function FilingPanel({
   onProvenance,
   earlierAttempts = [],
   premiseIntent = null,
+  nowMs,
+  onRevise,
 }: {
   comment: CommentDto;
   anchor: AnchorRect | null;
@@ -37,6 +39,10 @@ export function FilingPanel({
   earlierAttempts?: readonly ChangeSummaryDto[];
   /** BOOK-137: the premise's derived reading, from its change's intent. */
   premiseIntent?: string | null;
+  /** BOOK-158: the page's revise clock, so the card's cooldown line counts down. */
+  nowMs?: number;
+  /** BOOK-158: the card's way back from a refusal, owned by the surface that opened it. */
+  onRevise?: (comment: CommentDto, origin: HTMLElement) => void;
 }) {
   return (
     <SeamPanel
@@ -48,6 +54,8 @@ export function FilingPanel({
       onProvenance={onProvenance}
       earlierAttempts={earlierAttempts}
       premiseIntent={premiseIntent}
+      nowMs={nowMs}
+      {...(onRevise === undefined ? {} : { onRevise })}
     />
   );
 }

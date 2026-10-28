@@ -16,6 +16,7 @@ import {
   staleLine,
   stripFilings,
   threadFilings,
+  upsertFiling,
 } from './filings.ts';
 
 function comment(overrides: Partial<CommentDto> & { id: string; createdAt: string }): CommentDto {
@@ -154,6 +155,31 @@ describe('insertFiling — the posted row enters the feed (BOOK-111)', () => {
     const feed = [NEW];
     insertFiling(feed, ACCEPTED);
     expect(feed).toEqual([NEW]);
+  });
+});
+
+/**
+ * BOOK-158 — a revision comes back under the id of the row it revised. The feed must replace
+ * that row **in its own place** (its moment decides the order, and a revision does not move the
+ * filing), and the very same DTO accepted twice must still cost nothing.
+ */
+describe('upsertFiling — a revised row keeps its place (BOOK-158)', () => {
+  it('replaces the row with the same id, in place and without a second entry', () => {
+    const earlier = comment({ id: 'cmt_earlier', createdAt: '2026-10-27T18:03:00Z' });
+    const later = comment({ id: 'cmt_later', createdAt: '2026-10-27T18:05:00Z' });
+    const revised = { ...later, status: 'new' as const, hint: null, body: 'Переписал: абзац начинается с действия.' };
+
+    const next = upsertFiling([earlier, later], revised);
+    expect(next?.map((row) => row.id)).toEqual(['cmt_earlier', 'cmt_later']);
+    expect(next?.[1]).toBe(revised);
+    // The row it replaced is not in the feed any more: one filing, one entry.
+    expect(next).not.toContain(later);
+  });
+
+  it('still inserts a row the feed does not hold, and changes nothing for the same DTO', () => {
+    const fresh = comment({ id: 'cmt_fresh', createdAt: '2026-10-27T18:04:00Z' });
+    expect(upsertFiling([NEW], fresh)?.map((row) => row.id)).toEqual([NEW.id, fresh.id]);
+    expect(upsertFiling([NEW], NEW)).toBeNull();
   });
 });
 

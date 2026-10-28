@@ -22,12 +22,16 @@ export type ModelSpend = { model: string | null; tokensIn: number; tokensOut: nu
  * per-step read. The ledger is written inside the transaction that closes a pass, carries the
  * money the engine actually charged and survives a step whose row was later rewritten — it is
  * the book's outlay, and this line is its public reading.
+ *
+ * BOOK-158: a triage pass is money, not a writing step. Its tokens and its dollars belong in
+ * the total, but it must not count as a `steps` row — a model-less refusal would otherwise
+ * inflate the `model IS NULL` group as if a model pass had written prose there.
  */
 const READ_SQL = `
   SELECT model,
          COALESCE(SUM(tokens_in), 0) AS tokens_in,
          COALESCE(SUM(tokens_out), 0) AS tokens_out,
-         COUNT(*) AS steps,
+         COALESCE(SUM(CASE WHEN pass = 'triage' THEN 0 ELSE 1 END), 0) AS steps,
          COALESCE(SUM(usd), 0) AS usd,
          COALESCE(SUM(CASE WHEN priced = 0 AND (tokens_in + tokens_out) > 0 THEN 1 ELSE 0 END), 0) AS unpriced
     FROM pass_spend

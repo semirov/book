@@ -117,7 +117,13 @@ export function Seam({
    * the caller's answer (the tap landed inside `.seam`), so the store never guesses about DOM.
    */
   const prov = panel !== null && panel.fromSeam ? panel : null;
-  const premiseNote = premise && existingPremise !== null && !open ? 'у главы уже есть замысел' : null;
+  /**
+   * BOOK-158 — a strip opened by «исправить» is a revision of the filing this chapter's row
+   * already holds. «У главы уже есть замысел» would be the wrong thing to say above a form
+   * that corrects exactly that filing, and «открыть замысел» would be the wrong way out of it.
+   */
+  const revising = draft.revisesId !== null;
+  const premiseNote = premise && existingPremise !== null && !open && !revising ? 'у главы уже есть замысел' : null;
   /**
    * BOOK-111 (owner, 2026-10-27) — a refusal must not die with the form: a panel opened from
    * the refusal's own door rebuilds the form when it closes, so the strip keeps the refusal
@@ -293,7 +299,7 @@ export function Seam({
           </a>
         ) : null}
 
-        {premise && existingPremise !== null ? (
+        {premise && existingPremise !== null && !revising ? (
           <button
             type="button"
             className="seam-cta"

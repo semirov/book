@@ -21,6 +21,8 @@ import type {
   PostCommentInput,
   PostCommentResponse,
   QueueDto,
+  ReviseCommentInput,
+  ReviseCommentResponse,
   StateSnapshot,
 } from '@book/shared';
 
@@ -37,6 +39,12 @@ export class ApiError extends Error {
      * it instead of asking the reader to write the same thing again.
      */
     readonly commentId?: string,
+    /**
+     * BOOK-158: the day's attempts are spent, and this is when they come back (the next 00:00
+     * UTC). It travels with `ATTEMPTS_EXHAUSTED` and with `ATTEMPT_LIMIT`; the page says «в
+     * следующий раз» and names the hour when it has one.
+     */
+    readonly reopenAt?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -59,6 +67,7 @@ async function toApiError(response: Response): Promise<ApiError> {
   let resetAt: string | undefined;
   let currentText: string | undefined;
   let commentId: string | undefined;
+  let reopenAt: string | undefined;
   try {
     const body = (await response.json()) as {
       code?: unknown;
@@ -67,6 +76,7 @@ async function toApiError(response: Response): Promise<ApiError> {
       resetAt?: unknown;
       currentText?: unknown;
       commentId?: unknown;
+      reopenAt?: unknown;
     };
     if (typeof body.code === 'string') code = body.code;
     if (typeof body.message === 'string') message = body.message;
@@ -74,10 +84,11 @@ async function toApiError(response: Response): Promise<ApiError> {
     if (typeof body.resetAt === 'string') resetAt = body.resetAt;
     if (typeof body.currentText === 'string') currentText = body.currentText;
     if (typeof body.commentId === 'string') commentId = body.commentId;
+    if (typeof body.reopenAt === 'string') reopenAt = body.reopenAt;
   } catch {
     /* a non-JSON error is still an error */
   }
-  return new ApiError(response.status, code, message, retryAfterMs, resetAt, currentText, commentId);
+  return new ApiError(response.status, code, message, retryAfterMs, resetAt, currentText, commentId, reopenAt);
 }
 
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -214,8 +225,22 @@ export async function postAnchoredComment(input: AnchoredCommentInput): Promise<
   });
 }
 
-// ── the history (§6F.2, §11.10) ─────────────────────────────────────────────
+/**
+ * BOOK-158 — a revision of the reader's own refused filing. The anchor is **not** sent: the
+ * server keeps the row's chapter, block, quote and revision, so a revision cannot move the
+ * filing to another paragraph. The answer is the same row, reopened.
+ */
+export async function reviseComment(id: string, input: ReviseCommentInput): Promise<ReviseCommentResponse> {
+  const response = await requestJson(`/api/comments/${encodeURIComponent(id)}/revise`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as ReviseCommentResponse;
+}
 
+// ── the history (§6F.2, §11.10) ─────────────────────────────────────────────
 /** The record's spine: newest first, one change per entry. */
 export function getHistoryTimeline(
   options: { before?: number; limit?: number } = {},

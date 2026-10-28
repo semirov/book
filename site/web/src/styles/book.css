@@ -221,6 +221,11 @@
 .comment-attempt .talk-open {
   margin-top: 0;
 }
+/* BOOK-158 — the refusal's block under the entry's state line: hint, door, and the sentence
+   that says why the door is shut. */
+.comment-revise {
+  margin-top: 4px;
+}
 
 /* ---------- опись: a form with blank fields, not an error page ---------- */
 .inv {

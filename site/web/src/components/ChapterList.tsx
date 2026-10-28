@@ -30,6 +30,7 @@ export function ChapterList({
   passes,
   chapterFeed,
   changes,
+  nowMs,
   onRead,
   onPosted,
   onProvenance,
@@ -47,6 +48,8 @@ export function ChapterList({
   chapterFeed: Record<number, ChapterFeed>;
   /** BOOK-137: the thread's changes, folded into their filing's entry — never a row. */
   changes: readonly ChangeSummaryDto[];
+  /** BOOK-158: the page's revise clock, so a cooldown line counts down (`useReviseTick`). */
+  nowMs?: number;
   onRead: (chapter: number) => void;
   onPosted: (comment: CommentDto) => void;
   onProvenance: (blockId: string, anchor: HTMLElement) => void;
@@ -76,6 +79,7 @@ export function ChapterList({
             onProvenance={onProvenance}
             comments={chapterFeed[entry.n]?.items ?? []}
             changes={changes}
+            nowMs={nowMs}
             onRead={onRead}
             onPosted={onPosted}
             composer={composer}

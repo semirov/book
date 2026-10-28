@@ -1,8 +1,10 @@
 import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, ViewerDto } from '@book/shared';
+import { useEffect, useState } from 'react';
 
 import { attemptsOf, earlierAttempts } from '../lib/filings.ts';
 import { premiseAction, premiseFiling, premiseRow } from '../lib/premise.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
+import { reviseFiling } from '../lib/useRevise.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { FilingPanel } from './FilingPanel.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
@@ -34,6 +36,7 @@ export function PremiseEntry({
   firstEmpty,
   form = false,
   onPosted,
+  nowMs,
 }: {
   entry: CatalogEntry;
   comments: readonly CommentDto[];
@@ -47,6 +50,8 @@ export function PremiseEntry({
   form?: boolean;
   /** BOOK-111: the posted DTO reaches the page, which shows the row without a reload. */
   onPosted?: (comment: CommentDto) => void;
+  /** BOOK-158: the page's revise clock, so a premise's cooldown line counts down. */
+  nowMs?: number;
 }) {
   const seam = useOpenSeam();
   /** BOOK-111: the page's one panel; this chapter's premise owns only its own slot in it. */
@@ -57,8 +62,20 @@ export function PremiseEntry({
       ? { comment: filing.comment, rect: filing.rect }
       : null;
   const premise = premiseFiling(comments, entry.n);
-  const row = premiseRow(entry, premise, changes);
+  const row = premiseRow(entry, premise, changes, nowMs);
+  const draftKey = `ch${entry.n}:premise`;
   const open = seam !== null && seam.chapter === entry.n && seam.blockId === null;
+  /**
+   * BOOK-158 — a written chapter holds no premise form of its own (there is nothing left to
+   * claim), but it does host the strip a refusal's «исправить» opens. The strip then stays
+   * until the reader closes it, so the receipt of the revision is not thrown away by the very
+   * row it updated; the flag is dropped with the seam.
+   */
+  const [revising, setRevising] = useState(false);
+  useEffect(() => {
+    if (!open) setRevising(false);
+  }, [open]);
+  const strip = open && (form || revising);
   /** BOOK-137: the attempts before the latest one live inside the card, not beside it. */
   const earlier = premise === null ? [] : earlierAttempts(premise, changes);
   const intent = premise === null ? null : (attemptsOf(changes, premise.id).at(-1)?.intent ?? null);
@@ -98,17 +115,24 @@ export function PremiseEntry({
             openSeam({
               chapter: entry.n,
               blockId: null,
-              key: `ch${entry.n}:premise`,
+              key: draftKey,
               anchor: null,
               origin,
             });
           }}
+          // BOOK-158: the refusal's own door. It never invents a second filing: the draft is a
+          // revision of the premise this row already holds.
+          onRevise={(origin) => {
+            if (premise === null) return;
+            setRevising(true);
+            reviseFiling(premise, origin);
+          }}
         />
       )}
-      {form && open ? (
+      {strip ? (
         <Seam
           entry={entry}
-          draftKey={`ch${entry.n}:premise`}
+          draftKey={draftKey}
           anchor={null}
           frame="untouched"
           filings={null}
@@ -129,7 +153,16 @@ export function PremiseEntry({
           anchor={panel.rect}
           earlierAttempts={earlier}
           premiseIntent={intent}
+          nowMs={nowMs}
           onClose={hideFiling}
+          // BOOK-158: the card's «исправить» closes the card and opens this chapter's strip,
+          // and the strip is the chapter's own — its state says so, so it outlives the row it
+          // updated and can print the receipt of the revision.
+          onRevise={(comment, origin) => {
+            setRevising(true);
+            hideFiling();
+            reviseFiling(comment, origin);
+          }}
         />
       )}
     </>

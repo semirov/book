@@ -130,6 +130,30 @@ export type CommentAnchor = {
   resolved: boolean;
 };
 
+/**
+ * BOOK-158 — where a refused filing stands with respect to another try.
+ *
+ * It is derived server-side from the attempt ledger (`server/src/comments/attempts.ts`) and
+ * travels with every filing: the page must not guess the cooldown, the day's remaining tries or
+ * which limit refused, because a guess and the server's answer would disagree the moment the
+ * reader reloads in another timezone.
+ *
+ *   • `allowed` — a revision would be judged now (the row is refused and nothing blocks it);
+ *   • `at` — when the refusal's 10-minute cooldown ends (`null` while the row is not refused);
+ *   • `attemptsLeft` — of the filing's three tries today;
+ *   • `closed` — the day's tries are spent, so the page says «в следующий раз» instead of a
+ *     countdown; the tries come back at the next 00:00 UTC, which the refusal that closed them
+ *     names as `reopenAt`;
+ *   • `blocked` — which limit stands in the way, else `null`.
+ */
+export type CommentRevise = {
+  allowed: boolean;
+  at: string | null;
+  attemptsLeft: number;
+  closed: boolean;
+  blocked: 'cooldown' | 'attempts' | 'identity' | 'network' | null;
+};
+
 export type CommentDto = {
   id: string;
   chapter: number;
@@ -180,6 +204,18 @@ export type CommentDto = {
    * the page prints `FAILED_ATTEMPT_LINE` beside it. A landed filing never carries one.
    */
   attempt: 'failed' | null;
+  /**
+   * BOOK-158 — one actionable line beside a refusal, chosen from the gate that refused it
+   * (≤160 chars, Russian). `null` for a filing no gate refused; never generic copy, never a
+   * rule id. Declared optional so a page that does not render it yet still typechecks; the
+   * server always sends it, and `undefined` reads as `null`.
+   */
+  hint?: string | null;
+  /**
+   * BOOK-158 — whether and when this filing may be submitted again. Optional for the same
+   * reason as `hint`: the server always sends it, an older page simply ignores it.
+   */
+  revise?: CommentRevise;
   createdAt: string;
   decidedAt: string | null;
   changeId: string | null;
@@ -239,6 +275,20 @@ export type PostCommentResponse = {
   remaining: CommentBudget;
   queue: { depth: number };
 };
+
+/**
+ * BOOK-158 — `POST /api/comments/:id/revise`. A revision replaces the text of the reader's own
+ * retired filing and keeps its place: chapter, anchor, quote and base revision are the original
+ * row's and are never sent back by the client, so a revision cannot move to another paragraph.
+ */
+export type ReviseCommentInput = {
+  body: string;
+  proposedText?: string | null;
+  /** The untrusted kind id; validated inside the service like a new filing's. */
+  interventionKind?: string | null;
+};
+
+export type ReviseCommentResponse = { comment: CommentDto };
 
 /** §10 `comment:added` — the comment as DATA; the client renders it as text. */
 export type CommentAddedPayload = {

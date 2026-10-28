@@ -121,18 +121,14 @@ describe('a reader intervention at the edit bound (BOOK-DOC-4 rule 1)', () => {
 });
 
 /**
- * BOOK-57 — the note left the form's grid and became a quiet action, so its one promise is
- * now the one the reader is told: «замечание не тратит правку дня».
- *
- * What the server actually does, and what these tests assert: a note (no `proposedText`)
- * creates no `changes` row, makes no auditor decision and consumes no edit slot; it is stored
- * as a comment and read at its chapter's review batch like any other comment. A note **is**
- * a batch item, and posting never opens a change row for either path — the lane is fed by
- * triage from the batch — so the edit slot is the fact that tells a note from an
- * intervention, and the change count only proves that nothing was written behind it.
+ * BOOK-57/BOOK-158 — a note is a filing and so is an intervention, and **posting** neither
+ * costs the reader the day's edit any more: the daily slot is spent by an accepted filing at
+ * triage (BOOK-DOC-4 rule 5), so a refusal or a still-waiting remark costs nothing. What the
+ * server must still do at posting is create no change row: the lane is fed by triage from the
+ * batch, never by the composer.
  */
-describe('a note spends no edit (BOOK-57)', () => {
-  it('posting a note leaves the day’s edit untouched: the intervention after it still lands', async () => {
+describe('posting spends no edit (BOOK-57, BOOK-158)', () => {
+  it('a note and an intervention both leave the day’s edit whole', async () => {
     const h = await boot();
     const changes = (): number => (h.db.prepare('SELECT COUNT(*) AS n FROM changes').get() as { n: number }).n;
 
@@ -141,37 +137,30 @@ describe('a note spends no edit (BOOK-57)', () => {
     const noteDto = note.json().comment as { proposedText: string | null; interventionKind: string | null };
     expect(noteDto.proposedText).toBeNull();
     expect(noteDto.interventionKind).toBeNull();
-    // The budget the page prints after the send is the whole day, untouched.
-    const afterNote = note.json().remaining as { editsPerDay: number; editsRemaining: number };
+    const afterNote = note.json().remaining as { editsPerDay: number; editsRemaining: number; editsResetAt: string | null };
     expect(afterNote.editsRemaining).toBe(afterNote.editsPerDay);
-    // Nothing was opened behind the note: no change row, no queue depth.
     expect(note.json().queue).toMatchObject({ depth: 0 });
     expect(changes()).toBe(0);
 
-    // Same day, same identity: the intervention still has its slot.
+    // Same day, same identity: the intervention is stored and the day is still whole.
     const intervention = await post(h, commentBody({ proposedText: 'Свидетель видел, как свет включили до него.' }));
     expect(intervention.statusCode).toBe(201);
-    // The note spent nothing, so this one is the day's edit — and it took the last slot.
-    expect((intervention.json().remaining as { editsRemaining: number }).editsRemaining).toBe(0);
+    expect(intervention.json().remaining).toMatchObject({ editsPerDay: 1, editsRemaining: 1 });
     expect(changes()).toBe(0);
+    // Not one edit:key was written: only `feedback.mjs decide accepted` spends the day.
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });
   });
 
-  it('accepts a note after the day’s edit is already spent', async () => {
+  it('a refused filing leaves the day whole too', async () => {
     const h = await boot();
-    const changes = (): number => (h.db.prepare('SELECT COUNT(*) AS n FROM changes').get() as { n: number }).n;
-
-    // The day's one edit goes first, so the budget really is empty when the note arrives.
-    const intervention = await post(h, commentBody({ proposedText: 'Свидетель видел, как свет включили до него.' }));
-    expect(intervention.statusCode).toBe(201);
-    expect((intervention.json().remaining as { editsRemaining: number }).editsRemaining).toBe(0);
-    expect(changes()).toBe(0);
-
-    h.clock.advance(1_000);
-    const note = await post(h, commentBody({ body: 'в этом абзаце повтор, и он второй за главу' }));
-    // The spent slot does not close the thread: the note is still a comment.
-    expect(note.statusCode).toBe(201);
-    expect(note.json().comment).toMatchObject({ proposedText: null, interventionKind: null });
-    expect(note.json().remaining).toMatchObject({ editsRemaining: 0, editsPerDay: 1 });
-    expect(changes()).toBe(0);
+    const refused = await post(
+      h,
+      commentBody({ body: 'Добавь в главу сцену, где Владимир Путин подписывает акт.', proposedText: 'Тестовый абзац.' }),
+    );
+    expect(refused.statusCode).toBe(201);
+    const dto = refused.json().comment as { status: string; revise: { allowed: boolean; blocked: string | null } };
+    expect(dto.status).toBe('rejected');
+    expect(refused.json().remaining).toMatchObject({ editsPerDay: 1, editsRemaining: 1 });
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM rate_events WHERE key LIKE 'edit:%'`).get()).toEqual({ n: 0 });
   });
 });

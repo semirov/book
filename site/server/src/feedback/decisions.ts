@@ -14,7 +14,9 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  holdsInternalCode,
   normalizeRetroMode,
+  readerReason,
   validateIntent,
   validateInterventionKind,
   type CommentDecisionPayload,
@@ -234,7 +236,7 @@ export class DecisionsTailer {
   }
 
   private reject(comment: CommentRow, reason: string, at: string, batch: string | null): void {
-    const publicReason = reason.slice(0, 200);
+    const publicReason = publicDecisionReason(reason);
     this.db
       .prepare(
         `UPDATE comments SET status = 'rejected', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id)
@@ -324,6 +326,19 @@ export class DecisionsTailer {
       .get() as { id: string; created_at: string } | undefined;
     return row === undefined ? null : `${row.created_at}|${row.id}`;
   }
+}
+
+/** The sentence a reader is owed when a decision line carries a handle instead of words. */
+export const DECISION_FALLBACK = 'вне рамок: замечание не про текст этой главы';
+
+/**
+ * BOOK-158: the refusal the reader reads is a sentence, never an engine's handle. A line whose
+ * reason is `PROVIDER_SHAPE`/`INTENT_SHAPE`, or nothing readable at all, is refused with the
+ * book's own line — the code stays in the log, where an operator can look it up.
+ */
+export function publicDecisionReason(reason: string): string {
+  if (holdsInternalCode(reason)) return DECISION_FALLBACK;
+  return readerReason(reason)?.slice(0, 200) ?? DECISION_FALLBACK;
 }
 
 /** A line is a decision only when it names a comment, a status and a reason. */

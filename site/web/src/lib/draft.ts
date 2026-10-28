@@ -35,6 +35,13 @@ export type SeamDraft = {
   noteOnly: boolean;
   body: string;
   proposed: string;
+  /**
+   * BOOK-158 — the refused filing this draft revises, or `null` for a new one. Written when
+   * «исправить» reopens the strip on a refusal: the form then sends a revision of **that** row
+   * (`POST /api/comments/:id/revise`) instead of a second filing, so the reader's place in the
+   * book cannot move and the thread keeps one filing with one history.
+   */
+  revisesId: string | null;
 };
 
 export type DraftOrigin = {
@@ -57,6 +64,8 @@ export function emptyDraft(origin: DraftOrigin): SeamDraft {
     noteOnly: origin.noteOnly ?? false,
     body: '',
     proposed: '',
+    // A fresh form is a new filing; only `reviseDraft` (BOOK-158) names a row to revise.
+    revisesId: null,
   };
 }
 

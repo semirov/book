@@ -210,11 +210,16 @@ describe('/rules', () => {
     expect(readersAt).toBeLessThan(worksAt);
   });
 
-  it('states the bounds in one place: the length, one place, the day, the hour', () => {
+  it('states the bounds in one place: the length, one place, the day, the hour, the tries', () => {
     expect(text).toContain(`до ${formatNumber(EDIT_MAX_CHARS)} знаков`);
     expect(text).toContain('в одном месте');
-    // BOOK-DOC-4 rule 5: both counters are named, reader and address.
-    expect(text).toContain('одна правка в сутки на читателя и на адрес');
+    // BOOK-158: the daily edit is spent by an accepted filing; a refusal costs nothing.
+    expect(text).toContain(
+      'Правка дня — одна на читателя и на адрес — списывается только за принятое вмешательство: отказ её не тратит.',
+    );
+    expect(text).toContain(
+      'Попытки ограничены: три на одно замечание в сутки, не чаще одной в десять минут, пять на читателя в сутки и пятнадцать на адрес в сутки.',
+    );
     expect(text).toContain('не больше 10 в час с одного адреса и с одного читателя');
   });
 
