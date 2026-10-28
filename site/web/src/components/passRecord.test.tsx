@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { PASS_NEVER, passRecordView } from '../lib/passRecord.ts';
 import type { PassRecordSession } from '../lib/usePassRecord.ts';
 import { MIDDOT, NBSP } from '../lib/format.ts';
+import { firstDeclarations } from './cssRules.ts';
 import { PassRecord } from './PassRecord.tsx';
 
 /**
@@ -18,6 +19,13 @@ import { PassRecord } from './PassRecord.tsx';
  * «цена» label (the unpriced fallback «цена не задана» is the one allowed phrase), no model id
  * and never the internal noun for a pass.
  */
+
+/** Every stylesheet as text: the head's register is a claim about the sheet, not a snapshot. */
+const sheets = import.meta.glob<string>('../styles/*.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 
 const T0 = Date.parse('2026-10-25T08:18:00Z');
 const T1 = Date.parse('2026-10-25T08:19:00Z');
@@ -116,6 +124,18 @@ function assertReaderSurface(markup: string): void {
 }
 
 describe('the live record', () => {
+  it('prints the head in the marks’ register: mono 12 for the stage, the chapter and the time', () => {
+    // BOOK-197 (§2, audit #34): the head is a line of marks, and the two sentences under it
+    // (`.pr-span`, `.pr-cost`) are serif 15 — a fact is never set beside a serif sentence.
+    const head = firstDeclarations(sheets['../styles/pass-record.css'] ?? '', '.pr-head');
+    expect(head).toContain('font-family: var(--mono)');
+    expect(head).toContain('font-size: var(--fs-micro)');
+    const span = firstDeclarations(sheets['../styles/pass-record.css'] ?? '', '.pr-span');
+    const cost = firstDeclarations(sheets['../styles/pass-record.css'] ?? '', '.pr-cost');
+    expect(span).toContain('font-family: var(--serif)');
+    expect(cost).toContain('font-family: var(--serif)');
+  });
+
   it('prints the exact head, the stage, the elapsed time and the paragraph', () => {
     const html = renderToStaticMarkup(<PassRecord state={session(LIVE)} />);
 

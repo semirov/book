@@ -175,12 +175,10 @@
 
 /* a failing fetch is a sentence and a retry, never a spinner. BOOK-88: the row is prose — the
    one rule in base.css caps it at the measure, flush left, and the retry sits on that edge.
-   Serif 15 (§2, audit #9): the sentence is read; the retry is the one mark on the line. */
+   Serif 15 (§2, audit #9): the sentence is read; BOOK-197 — the retry is a mark, so it takes
+   its own line under the sentence: one line carries one face and one size. */
 .state-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   padding: 44px 0;
   font-family: var(--serif);
   font-size: var(--fs-note);
@@ -189,6 +187,10 @@
   color: var(--ink-3);
 }
 .state-line button {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 4px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   letter-spacing: 0;
@@ -196,8 +198,6 @@
   border-bottom: 1px solid currentColor;
   padding-bottom: 2px;
   min-height: 44px;
-  display: inline-flex;
-  align-items: center;
 }
 
 /* ---------- page 2: the annotation as the book's first prose (BOOK-DOC-5 §3) ---------- */

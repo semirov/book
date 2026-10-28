@@ -22,17 +22,19 @@
   color: var(--ink-2);
 }
 
-/* The heading and the three sentences are prose (§2, audit #34): serif 15 — the mono stays on
-   the stage words, the times and the cost figures. The heading's line box is reserved while the
-   answer is still on its way (one 20 px line), so the body may arrive under it without moving it. */
+/* The heading is the page's first line: it is a line of marks (stage · chapter · time), so it
+   keeps the mono 12 of the figures it names (§2, audit #34: the mono stays for the stage words,
+   the times and the cost figures; only `.pr-span`/`.pr-cost` are sentences). Its line box stays
+   reserved while the answer is on its way (one 20 px line), so the body may arrive under it
+   without moving it. */
 .pr-head {
   margin: 0;
   min-height: 20px;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   font-weight: 400;
   line-height: 20px;
-  letter-spacing: 0;
+  letter-spacing: 0.02em;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;

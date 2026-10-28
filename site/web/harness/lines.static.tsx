@@ -3,12 +3,14 @@ import type { CommentDto } from '@book/shared';
 /**
  * BOOK-128 comment #3900 §2 — the rows whose component cannot be mounted from a fixture.
  *
- * Three of the audited lines live inside machinery that is not a pure function of props:
- * the seam strip reads its draft and the page's one panel (`Seam`), the record's head is drawn
- * by `Record`, which needs the paragraph and its chain read (`ProseParagraph`), and the
- * chronicle's two rows read the book's history page. Here their markup is copied **verbatim**
- * from the component that draws it, class for class, so the same stylesheets lay it out on the
- * same classes; the report names this as a gap rather than pretending the mount happened.
+ * These audited lines live inside machinery that is not a pure function of props: the seam
+ * strip reads its draft and the page's one panel (`Seam`), the record's head is drawn by
+ * `Record`, which needs the paragraph and its chain read (`ProseParagraph`), and the chronicle's
+ * two rows read the book's history page. The pass record scrolls to its own heading on mount
+ * (`PassRecord`) and the chapter's failed row needs the article's store (`ChapterArticle`).
+ * Here their markup is copied **verbatim** from the component that draws it, class for class, so
+ * the same stylesheets lay it out on the same classes; the report names this as a gap rather
+ * than pretending the mount happened.
  *
  * The head row is a copy for the same reason: `Header` resolves its chapter slot from the
  * reading position, so the four registers of one 44 px row only co-exist when a chapter is
@@ -125,6 +127,62 @@ export function PastChapterSummary() {
       </summary>
       <p className="chr-empty">записей нет</p>
     </details>
+  );
+}
+
+/**
+ * `ChapterArticle.tsx` — a failed read: the sentence and its one retry. Copied verbatim, because
+ * the component needs the paragraph store; the two-line shape is the only thing measured here
+ * (BOOK-197: the retry is a mark and takes its own line).
+ */
+export function ChFailRow() {
+  return (
+    <div className="ch-fail">
+      <span>глава не загрузилась</span>
+      <button type="button">повторить</button>
+    </div>
+  );
+}
+
+/** `Chronicle.tsx` — the page's one heading, in its own head row. */
+export function ChrTitle() {
+  return (
+    <div className="chronicle">
+      <div className="chr-head">
+        <h2 className="chr-title">хроника</h2>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * `PassRecord.tsx` — the ended record, copied from `PassRecordBody`: the head of marks, then the
+ * two sentences (`«было» → «стало»`, the cost) as the component draws them. Static because the
+ * component scrolls to its own heading on mount and the gallery must not move under the walker.
+ */
+export function PassRecordBlock() {
+  return (
+    <section className="page sheet pass-record" aria-label="запись о главе">
+      <h2 className="pr-head">писалась · глава 7 · 11:18</h2>
+      <p className="pr-span">«старый фонарь» → «новый фонарь»</p>
+      <p className="pr-cost">126 099 токенов · 0,08 $</p>
+      <footer className="pr-foot">
+        <span className="pr-place">«Дорога»</span>
+        <a className="pr-jump" href="#toc">к оглавлению</a>
+      </footer>
+    </section>
+  );
+}
+
+/** `PassRecord.tsx` — the absent record: one quiet sentence and the way back. */
+export function PassRecordAbsent() {
+  return (
+    <section className="page sheet pass-record" aria-label="запись о главе">
+      <h2 className="pr-head">пока не писалась</h2>
+      <p className="pr-absent">
+        <a className="pr-jump" href="#toc">к оглавлению</a>
+      </p>
+    </section>
   );
 }
 

@@ -391,3 +391,17 @@ export const PASS_EVENTS: PassStageEvent[] = [
 export const PARAGRAPH =
   'Её освещал яркий свет, и на столе лежал лист бумаги, на нём не было ни строки. ' +
   'Свет был включён до меня — и никто не сказал об этом.';
+
+/**
+ * The record's own rows, as `rowWindow` hands them to `RowsList` (BOOK-128 §2, audit #14): the
+ * facts on one mono 12 line, the pair the book wrote under it. `over: 0` here — the fold line is
+ * a fact about a longer list, and this section measures the row, not the lift.
+ */
+export const REC_WINDOW = {
+  rows: [
+    { id: 'rec-1', facts: '28.10.2026 · 14:42 · Аня', specimen: '«старый фонарь» → «новый фонарь»' },
+    { id: 'rec-2', facts: '27.10.2026 · 09:15 · Филипп', specimen: '«свет был включён» → «свет горел»' },
+  ],
+  more: 0,
+  over: 0,
+};

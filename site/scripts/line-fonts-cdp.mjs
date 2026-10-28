@@ -9,12 +9,20 @@
  * above half a pixel. Nothing here is a list of allowed selectors or expected numbers — the
  * report is the data, and the gate is the absence of mixed lines.
  *
- *   node scripts/line-fonts-cdp.mjs [--url <url>] [--verbose]
+ *   node scripts/line-fonts-cdp.mjs [--url <url> [--wait-selector <css>]] [--verbose]
  *
  * The default page is `web/harness/lines.html` — the gallery of every line in the audit's §2
  * table, served through the SAME Vite config the site is built with (`web/vite.config.ts`,
  * `root: web`), so the real stylesheets and the real components are what gets measured.
- * `--url` checks any other page instead (a dev server, a preview build) with the same walker.
+ * `--url` checks any other page instead (a dev server, a preview build) with the same walker;
+ * `--wait-selector` makes that page wait (bounded, 10 s) for the surface under test before it is
+ * measured, because an empty shell is not a clean page.
+ *
+ * **The gallery cannot shrink quietly.** `web/harness/lines.manifest.json` lists the audited
+ * lines the gallery promises; every run of the default page checks that each of them is still
+ * rendered (`[data-line]` sections, taken from the page itself). A missing one is exit 2 with
+ * the list — the run fails instead of measuring less. The manifest holds coverage, never an
+ * expected measurement.
  *
  * Widths: 1440×900, 390×844 and 768×1024 — the phone is where the phone-only rows exist, the
  * desktop is where the marginalia exist, the middle is the regime between them.
@@ -30,8 +38,9 @@
  * text and anything `display:none`/`visibility:hidden` are not lines.
  *
  * Exit codes: 0 — every line has one face and one size; 1 — at least one line mixes; 2 — the
- * harness could not run (no browser, no server, no page). The browser comes from
- * `$LINE_FONTS_CHROME`, `$ACCORDION_CHROME`, the Playwright cache, or a system Chrome/Chromium.
+ * harness could not run (no browser, no server, no page), the page painted nothing, or the
+ * gallery is missing a section the manifest names. The browser comes from `$LINE_FONTS_CHROME`,
+ * `$ACCORDION_CHROME`, the Playwright cache, or a system Chrome/Chromium.
  *
  * JSON on stdout is `{ page, chrome, pass, violations, widths: [{ width, height, lines,
  * violations, sections }] }`: one `{width, lines, violations}` triple per measured viewport, and
@@ -48,6 +57,20 @@ import { COLLECT_SEGMENTS, describe, reportOf } from './lib/lines.mjs';
 const ROOT = resolve(import.meta.dirname, '..');
 const WEB = join(ROOT, 'web');
 const PAGE = '/harness/lines.html';
+/**
+ * The audited lines the gallery promises (§2 of the audit, named by `data-line`). The list is
+ * checked against the page on every harness run: a gallery that stopped rendering a row would
+ * otherwise pass by measuring less, and a green report would claim coverage it does not have.
+ * Measurements are never listed here — only the coverage.
+ */
+const MANIFEST = (() => {
+  try {
+    return JSON.parse(readFileSync(join(WEB, 'harness/lines.manifest.json'), 'utf8')).lines;
+  } catch (error) {
+    return bail(`the gallery manifest cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+})();
+if (!Array.isArray(MANIFEST) || MANIFEST.length === 0) bail('the gallery manifest is empty — nothing would be checked');
 /** The three regimes the audit names, tallest viewport per width. */
 const VIEWPORTS = [
   { width: 1440, height: 900 },
@@ -62,6 +85,23 @@ if (URL_FLAG !== -1 && (EXPLICIT_URL === undefined || EXPLICIT_URL.startsWith('-
   process.stderr.write('line:fonts: --url needs a URL\n');
   process.exit(2);
 }
+/**
+ * `--wait-selector <css>` — for `--url` only: a dev server's page may paint its shell before the
+ * surface under test exists, and a measurement of the empty shell is a green result that proves
+ * nothing. Bounded at 10 s; the default harness path is unaffected (it has `window.__lines`).
+ */
+const WAIT_FLAG = ARGS.indexOf('--wait-selector');
+const WAIT_SELECTOR = WAIT_FLAG === -1 ? null : ARGS[WAIT_FLAG + 1];
+if (WAIT_FLAG !== -1 && (WAIT_SELECTOR === undefined || WAIT_SELECTOR.startsWith('--'))) {
+  process.stderr.write('line:fonts: --wait-selector needs a CSS selector\n');
+  process.exit(2);
+}
+if (WAIT_SELECTOR !== null && EXPLICIT_URL === null) {
+  process.stderr.write('line:fonts: --wait-selector is for --url; the harness page has its own ready flag\n');
+  process.exit(2);
+}
+/** How long `--wait-selector` may wait before the run is a failure, not a measurement. */
+const WAIT_MS = 10_000;
 
 function log(...parts) {
   if (VERBOSE) process.stderr.write(`${parts.join(' ')}\n`);
@@ -226,6 +266,19 @@ async function launch(chrome, url) {
 
 /** Wait for a settled page: the harness's own flag (when it has one), then the webfonts. */
 async function settle(cdp, expectHarness) {
+  if (!expectHarness && WAIT_SELECTOR !== null) {
+    // A dev server's page is ready when the surface is: the shell alone is not a measurement.
+    const deadline = Date.now() + WAIT_MS;
+    let found = false;
+    while (Date.now() < deadline) {
+      found = await cdp
+        .evaluate(`document.querySelector(${JSON.stringify(WAIT_SELECTOR)}) !== null`, false)
+        .catch(() => false);
+      if (found === true) break;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+    }
+    if (found !== true) throw new Error(`--wait-selector "${WAIT_SELECTOR}" did not appear within ${String(WAIT_MS)} ms`);
+  }
   let ready = false;
   if (expectHarness) {
     for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -254,10 +307,28 @@ async function measure(cdp, url, viewport, expectHarness) {
   await settle(cdp, expectHarness);
   const collected = await cdp.evaluate(COLLECT_SEGMENTS);
   if (collected === undefined || !Array.isArray(collected.segments)) {
-    bail('the page answered no segments');
+    throw new Error('the page answered no segments');
+  }
+  // An empty page is not a clean page: `--url about:blank` used to exit 0 with nothing measured.
+  if (collected.segments.length === 0) {
+    throw new Error(`the page painted no text at ${String(viewport.width)} — nothing was measured`);
+  }
+  // The harness alone promises the audited lines, so only it is held to the manifest.
+  if (expectHarness) {
+    const present = new Set(collected.sections);
+    const missing = MANIFEST.filter((selector) => !present.has(selector));
+    if (missing.length > 0) {
+      throw new Error(
+        `the gallery is missing ${String(missing.length)} audited line section(s): ${missing.join('; ')}`,
+      );
+    }
+  }
+  const report = reportOf(viewport.width, viewport.height, collected.segments);
+  if (report.lines === 0) {
+    throw new Error(`the page laid out no line at ${String(viewport.width)} — nothing was measured`);
   }
   log(`width ${String(viewport.width)}: ${String(collected.segments.length)} segments, page height ${String(collected.height)}`);
-  return { ...reportOf(viewport.width, viewport.height, collected.segments), sections: collected.sections };
+  return { ...report, sections: collected.sections };
 }
 
 /* ---------- main ---------- */

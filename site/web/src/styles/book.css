@@ -97,11 +97,10 @@
   }
 }
 
+/* The chapter's own state line (§2, audit #9): the sentence is prose, the retry is a mark, and
+   the two never share a line — BOOK-197 stacks them, as `.state-line` does. */
 .ch-fail {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   padding: 18px 0 4px;
   font-family: var(--serif);
   font-size: var(--fs-note);
@@ -109,16 +108,18 @@
   line-height: 1.5;
   color: var(--ink-3);
 }
-/* The retry is the line's one mark: mono 12, lowercase. */
+/* The retry is the line's one mark: mono 12, lowercase, on its own line. */
 .ch-fail button {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 4px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
   letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   min-height: 44px;
-  display: inline-flex;
-  align-items: center;
 }
 
 /* ---------- comments: the thread a filing is decided in ---------- */

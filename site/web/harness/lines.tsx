@@ -12,10 +12,12 @@ import { LegalPage } from '../src/components/LegalPage.tsx';
 import { MarginNote } from '../src/components/MarginNote.tsx';
 import { MomentControl } from '../src/components/MomentControl.tsx';
 import { NoticeTicket } from '../src/components/Notice.tsx';
+import { Offline } from '../src/components/Offline.tsx';
 import { OwnDecisions } from '../src/components/OwnDecisions.tsx';
 import { PassStrip } from '../src/components/PassStrip.tsx';
 import { PhoneStrip } from '../src/components/PhoneStrip.tsx';
 import { PremiseRow } from '../src/components/PremiseRow.tsx';
+import { RowsList } from '../src/components/RecordParts.tsx';
 import { RecordRow } from '../src/components/RecordRow.tsx';
 import { RevisionObject } from '../src/components/RevisionObject.tsx';
 import { TableOfContents } from '../src/components/TableOfContents.tsx';
@@ -40,10 +42,15 @@ import {
   PREMISE,
   READER_RECORD,
   RECORDS,
+  REC_WINDOW,
   STATE,
 } from './lines.fixtures.ts';
 import {
+  ChFailRow,
+  ChrTitle,
   HeadRow,
+  PassRecordAbsent,
+  PassRecordBlock,
   PastChapterSummary,
   PastTocRow,
   RecordHead,
@@ -130,6 +137,12 @@ function Gallery() {
       <Line id=".top-row (all four registers)">
         <HeadRow />
       </Line>
+      <Line id=".state-line">
+        <Offline />
+      </Line>
+      <Line id=".ch-fail">
+        <ChFailRow />
+      </Line>
       <Line id=".author (title sheet)">
         <TitleSheet front={FRONT} />
       </Line>
@@ -153,6 +166,9 @@ function Gallery() {
       <Line id=".rec-head">
         <RecordHead />
       </Line>
+      <Line id=".rec-row">
+        <RowsList rows={REC_WINDOW} lifted={false} total={REC_WINDOW.rows.length} onLift={noop} onFold={noop} />
+      </Line>
       <Line id=".comment-meta / .sec-h / .comment-attempt / .qline">
         <Discussion depth={0} comments={COMMENTS} changes={[ATTEMPT]} live nowMs={FIXED_NOW} />
       </Line>
@@ -168,6 +184,9 @@ function Gallery() {
       <Line id=".revision-head">
         <RevisionObject comment={COMMENT_TWO} text={PARAGRAPH} onClose={noop} />
       </Line>
+      <Line id=".chr-title">
+        <ChrTitle />
+      </Line>
       <Line id=".chr-row">
         <ol className="chronicle-list">
           <RecordRow record={READER_RECORD} />
@@ -182,6 +201,10 @@ function Gallery() {
       </Line>
       <Line id=".past-ch summary">
         <PastChapterSummary />
+      </Line>
+      <Line id=".pr-head / .pr-span / .pr-cost / .pr-absent">
+        <PassRecordBlock />
+        <PassRecordAbsent />
       </Line>
       <Line id=".pass-strip-head / .pass-row-line">
         <PassStrip chapter={1} events={PASS_EVENTS} blocks={[{ id: 'ch01#aa11bb22' }]} blockId="ch01#aa11bb22" now={FIXED_NOW} onClose={noop} />
@@ -200,6 +223,9 @@ function Gallery() {
       </Line>
       <Line id=".colophon .row">
         <Colophon state={STATE} imprint={IMPRINT} />
+      </Line>
+      <Line id=".consent-actions / .consent-state">
+        <LegalPage page="privacy" />
       </Line>
       <Line id=".legal p code">
         <LegalPage page="privacy" />
