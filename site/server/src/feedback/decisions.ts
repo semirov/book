@@ -58,6 +58,13 @@ export type DecisionsTailerOptions = {
   now?: () => Date;
   /** Apply the whole file on start (tests); a running site primes to the end instead. */
   replay?: boolean;
+  /**
+   * BOOK-189 — called once for a filing **refused at triage**. A rejection never becomes a
+   * change, so the engine's decision hook can never speak for it: without this the reader would
+   * wait for an answer that the queue has already given. Accepted lines are not announced here;
+   * their change is, when it is decided.
+   */
+  notify?: (commentId: string) => void;
 };
 
 const OFFSET_KEY = 'feedback_decisions_offset';
@@ -69,6 +76,7 @@ export class DecisionsTailer {
   private readonly emit: DecisionEmit;
   private readonly now: () => Date;
   private readonly replay: boolean;
+  private readonly notify: ((commentId: string) => void) | null;
   private offset = 0;
   private batchCursor: string | null = null;
 
@@ -78,6 +86,7 @@ export class DecisionsTailer {
     this.emit = options.emit;
     this.now = options.now ?? (() => new Date());
     this.replay = options.replay === true;
+    this.notify = options.notify ?? null;
   }
 
   /** Read the cursor once: a restart must not replay yesterday's decisions as news. */
@@ -137,6 +146,11 @@ export class DecisionsTailer {
         source: 'llm',
       } satisfies CommentDecisionPayload);
       if (comment.change_id !== null) this.announceQueued(comment.change_id);
+      // BOOK-189: this is the **normal** path for a refusal, not an edge — `feedback.mjs decide`
+      // writes the row before it appends the line, so the re-announce branch above is where a
+      // refused filing's author is heard. The push claim (`push_log`) makes a re-read of the same
+      // line a duplicate instead of a second notification.
+      if (decision.status === 'rejected') this.notify?.(comment.id);
       return 1;
     }
 
@@ -255,6 +269,10 @@ export class DecisionsTailer {
       queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
       source: 'llm',
     } satisfies CommentDecisionPayload);
+    // BOOK-189: the row is decided and the reader has been told on the socket; the push goes out
+    // once, after both. A refused filing has no change to be decided later, so this is the only
+    // moment its author can hear the answer.
+    this.notify?.(comment.id);
   }
 
   private announceBatches(): number {
