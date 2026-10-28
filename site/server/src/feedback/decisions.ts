@@ -30,6 +30,8 @@ import { readQueue } from '../engineState/reader.ts';
 import { readAuthor, publicIntent } from '../engineState/changes.ts';
 import type { ChangeRow } from '../engineState/rows.ts';
 import { acceptComment } from './accept.ts';
+import { parseDispositionProposal, type DispositionProposal } from './disposition.ts';
+import { reportOfDecision, disposeRejection, storedDecision } from './dispositionStore.ts';
 import { chapterVocabulary } from './vocabulary.ts';
 
 export type DecisionEmit = (type: 'comment:decision' | 'change:queued' | 'feedback:batch', data: unknown) => void;
@@ -49,6 +51,12 @@ export type DecisionLine = {
    * an unknown word is dropped here, exactly as `normalizeRetroMode` drops it anywhere else.
    */
   mode?: RetroMode | null;
+  /**
+   * BOOK-174 — the triage line's own reading of the filing (how it asks to be read). Absent is
+   * `as_said`: the gates already passed. The chooser is the arbiter of what is allowed; the line
+   * only proposes.
+   */
+  disposition?: DispositionProposal | null;
 };
 
 export type DecisionsTailerOptions = {
@@ -129,21 +137,25 @@ export class DecisionsTailer {
       const sameChange =
         decision.status === 'accepted'
           ? decision.changeId !== null && comment.change_id === decision.changeId
-          : comment.status === 'rejected';
+          : comment.status === 'rejected' || comment.status === 'escalated';
       if (!sameChange) {
         appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'first decision wins' });
         return 0;
       }
+      // BOOK-174: an escalated row keeps its own word — the file says `rejected`, the row says
+      // «ждёт решения автора», and the frame carries the row's answer, never the line's.
+      const escalated = comment.status === 'escalated';
       this.emit('comment:decision', {
         id: comment.id,
         chapter: comment.chapter,
-        status: decision.status,
+        status: escalated ? 'escalated' : decision.status,
         reason: comment.reason ?? decision.reason,
         decidedAt: comment.decided_at,
         batchId: comment.batch_id,
         changeId: comment.change_id,
         queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
         source: 'llm',
+        report: this.reportOf(comment),
       } satisfies CommentDecisionPayload);
       if (comment.change_id !== null) this.announceQueued(comment.change_id);
       // BOOK-189: this is the **normal** path for a refusal, not an edge — `feedback.mjs decide`
@@ -191,9 +203,26 @@ export class DecisionsTailer {
       baseRev: decision.rev?.rev ?? null,
       batch: decision.batch ?? null,
       frameMode: decision.mode ?? null,
+      proposal: decision.disposition ?? null,
     });
     if ('error' in accepted) {
+      // BOOK-61/BOOK-174: a gate that has not spoken is not a decision — A's hold, B's rights
+      // and C's auditor keep exactly the answer they always gave, untouched by the ladder.
+      if (
+        accepted.code === 'AUDIT_REQUIRED' ||
+        accepted.code === 'RIGHTS_REQUIRED' ||
+        accepted.code === 'QUARANTINED'
+      ) {
+        this.refuseAtGate(comment, accepted.error, at, decision.batch ?? null);
+        return 1;
+      }
       this.reject(comment, accepted.error, at, decision.batch ?? null);
+      return 1;
+    }
+    // BOOK-174: the ladder could not place the filing and no lock applies — the author decides.
+    // Nothing was written by `acceptComment`; the escalation record is the rejection helper's.
+    if ('escalated' in accepted) {
+      this.reject(comment, accepted.decision.reason, at, decision.batch ?? null);
       return 1;
     }
 
@@ -218,6 +247,8 @@ export class DecisionsTailer {
       changeId: accepted.changeId,
       queue: { depth: queue.depth, ahead },
       source: 'llm',
+      // BOOK-174: the reading travels with the frame, so the open filing shows it at once.
+      report: this.reportOf(readCommentRow(this.db, comment.id) ?? comment),
     };
     this.emit('comment:decision', payload);
     this.announceQueued(accepted.changeId);
@@ -249,7 +280,39 @@ export class DecisionsTailer {
     });
   }
 
+  /**
+   * BOOK-174 — a content rejection is not a refusal any more unless a lock applies. The one
+   * helper decides: a lock → `rejected` with its chain and the lock's own line; no lock →
+   * `escalated`, the author's question as the reason, and a frame that says so. A gate that
+   * has not spoken (`AUDIT_REQUIRED`, `RIGHTS_REQUIRED`, `QUARANTINED`) never reaches here.
+   */
   private reject(comment: CommentRow, reason: string, at: string, batch: string | null): void {
+    // The engine's note stays in the event, where an operator can look it up; the reader is
+    // owed the book's own word (`refuseAtGate` below keeps the old sentence for a gate that has
+    // spoken and not decided anything about how the filing should be read).
+    const result = disposeRejection(this.db, { comment, at, batch, note: publicDecisionReason(reason) });
+    this.emit('comment:decision', {
+      id: comment.id,
+      chapter: comment.chapter,
+      status: result.status,
+      reason: result.reason,
+      decidedAt: at,
+      batchId: batch,
+      changeId: null,
+      queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
+      source: 'llm',
+      report: reportOfDecision(result.decision, comment.chapter),
+    } satisfies CommentDecisionPayload);
+  }
+
+  /** The report of a row that already carries a chain; null for a row read before v24. */
+  private reportOf(row: CommentRow): CommentDecisionPayload['report'] {
+    const stored = storedDecision(row);
+    return stored === null ? null : reportOfDecision(stored, row.chapter);
+  }
+
+  /** A gate's own refusal: unchanged by BOOK-174, and it stores no disposition chain. */
+  private refuseAtGate(comment: CommentRow, reason: string, at: string, batch: string | null): void {
     const publicReason = publicDecisionReason(reason);
     this.db
       .prepare(
@@ -377,5 +440,6 @@ export function parseDecision(raw: unknown): DecisionLine | null {
     rev: value.rev ?? null,
     base: value.base ?? null,
     mode: normalizeRetroMode(value.mode),
+    disposition: parseDispositionProposal(value.disposition),
   };
 }

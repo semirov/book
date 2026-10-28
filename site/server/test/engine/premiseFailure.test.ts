@@ -24,7 +24,6 @@ const BROKEN = 'модель не ответила: PROVIDER_SHAPE';
 function premiseOf(fixture: ReturnType<typeof fixtureOf>, chapter = 5): string {
   const id = seed(fixture.db, { chapter, proposedText: 'Документ о допуске.', kind: 'document' });
   const accepted = accept(fixture.db, id, `в главе ${String(chapter)} появляется документ о допуске`);
-  if ('error' in accepted) throw new Error(accepted.error);
   return accepted.changeId;
 }
 

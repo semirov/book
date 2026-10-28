@@ -7,6 +7,7 @@ import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
 import { migrateV25 } from './migrateV25.ts';
 import { migrateV26 } from './migrateV26.ts';
+import { migrateV27 } from './migrateV27.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -328,6 +329,9 @@ const MIGRATIONS: Migration[] = [
   { to: 25, up: migrateV25 },
   // BOOK-189: the push tables — subscriptions, the claim and the outbox (26: 24 stays ADR-043's).
   { to: 26, up: migrateV26 },
+  // The disposition of a filing (BOOK-174): `migrateV27.ts` holds the chain and the counts table.
+  // 27, not 24: the cursor skips every step at or below `user_version`, and v24 is ADR-043's.
+  { to: 27, up: migrateV27 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

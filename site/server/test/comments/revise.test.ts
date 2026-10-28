@@ -58,13 +58,24 @@ function cli(h: Harness, ...argv: string[]): { code: number; out: string[] } {
   return { code, out };
 }
 
-/** A filing the reader made, then refused by triage — the state a revision starts from. */
+/**
+ * A filing the reader made, then refused by triage — the state a revision starts from.
+ *
+ * BOOK-174: a content decision no longer refuses anything (it escalates to the author), so a
+ * refused row is the auditor's `OFF` — a gate's own verdict, unchanged by the disposition
+ * ladder, and the refusal a reader's way back has always answered.
+ */
 async function refusedFiling(h: Harness, body: string): Promise<string> {
   const response = await post(h, commentBody({ body }));
   expect(response.statusCode).toBe(201);
   const id = response.json().comment.id as string;
-  expect(cli(h, 'decide', id, 'rejected', '--reason', REASON).code).toBe(0);
+  expect(refuse(h, id).code).toBe(0);
   return id;
+}
+
+/** Refuse a filing the way triage does now: Gate C's verdict, in one act with its sentence. */
+function refuse(h: Harness, id: string): { code: number; out: string[] } {
+  return cli(h, 'audit', id, '--verdict', 'OFF', '--reason', REASON);
 }
 
 function attempts(h: Harness, id: string): Array<{ n: number; outcome: string | null }> {
@@ -302,7 +313,7 @@ describe('the fourth attempt closes the filing until the next UTC day', () => {
       h.clock.advance(11 * MINUTE);
       const response = await revise(h, id, { body: `Переписал в ${String(turn)}-й раз: начинается с действия.` });
       expect(response.statusCode, `revision ${String(turn)}`).toBe(200);
-      expect(cli(h, 'decide', id, 'rejected', '--reason', REASON).code).toBe(0);
+      expect(refuse(h, id).code).toBe(0);
     }
     expect(attempts(h, id).map((attempt) => attempt.n)).toEqual([1, 2, 3]);
 

@@ -33,7 +33,7 @@ import { clampQuote, splitSentences } from './seam.ts';
  * `идёт`, not `внесено`. Only `applied` is `внесено`; only `registered` is «рассмотрено».
  */
 
-export type State = 'waiting' | 'working' | 'landed' | 'registered';
+export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'escalated';
 
 /** The deck's one line for a premise that waits for the chapter's first pass (one source). */
 export const PREMISE_PENDING = 'принято в основу, до первой редакции';
@@ -44,6 +44,9 @@ export const STATE_WORDS: Readonly<Record<State, string>> = {
   working: 'идёт',
   landed: 'внесено',
   registered: 'рассмотрено',
+  // BOOK-174 — the ladder could not place the filing and no lock applies: it is decided (the
+  // author will decide it) and it is not a refusal. The word says whose turn it is.
+  escalated: 'ждёт решения автора',
 };
 
 /**
@@ -140,6 +143,9 @@ export function filingState(comment: FilingFacts): State {
     // so it is never «внесено» — and it is decided, so it is never «ждёт» or «идёт».
     case 'registered':
       return 'registered';
+    // BOOK-174: escalated is decided and not refused — the author's turn, said in its own words.
+    case 'escalated':
+      return 'escalated';
     case 'batched':
     case 'delivered':
     case 'accepted':
@@ -211,6 +217,9 @@ export function filingConsequence(comment: FilingFacts): string {
         ? RECEIPT_RIGHTS
         : receiptLine(String(applied.chapter).padStart(2, '0'));
     }
+    case 'escalated':
+      // BOOK-174: nothing landed, so there is no receipt — the fact is whose turn it is.
+      return 'решает автор';
     case 'superseded':
       return 'снято: текст успел измениться';
     case 'rejected':

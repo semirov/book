@@ -63,6 +63,8 @@ import {
   readBatchLines,
 } from './batches.ts';
 import { appendDecision } from './decisionsFile.ts';
+import { disposeRejection } from './dispositionStore.ts';
+import { dispositionLimitLines, readDispositionCounts, refreshDispositionCounts } from './dispositionCounts.ts';
 import { audit, heldInbox, hold, release, rights, rightsInbox } from './operator.ts';
 import { settleAttempt, spendFromFlags } from './triage.ts';
 import { chapterVocabulary } from './vocabulary.ts';
@@ -105,7 +107,7 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
   return { command: positionals.shift() ?? null, positionals, flags };
 }
 
-const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|close|list> [...]
+const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|close|list|limits> [...]
   inbox  [--limit 20] [--chapter 8] [--held] [--rights]
   audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
   audit  <commentId> --answer <json | @file | ->
@@ -118,7 +120,9 @@ const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|
   decide <commentId> rejected --reason "…"
   close  <batchId>
   list   [--status new] [--limit 50]
-  a filing on the frozen frame is accepted as paperwork: --mode names the document it became`;
+  limits            the editor's check: отказа в мире больше 1 в 4 · 1 в 6 · 0 в части
+  a filing on the frozen frame is accepted as paperwork: --mode names the document it became
+  a rejected filing is escalated to the author unless a lock (право, безопасность, рамка, финал) applies`;
 
 export function runFeedback(argv: string[], io: FeedbackIo): number {
   const now = io.now ?? (() => new Date());
@@ -155,6 +159,8 @@ export function runFeedback(argv: string[], io: FeedbackIo): number {
         return close(parsed, io, now);
       case 'list':
         return list(parsed, io);
+      case 'limits':
+        return limits(io, now);
       default:
         io.print(`unknown command: ${parsed.command}`);
         io.print(USAGE);
@@ -271,13 +277,14 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   }
   const at = now().toISOString();
   if (verdict === 'rejected') {
-    io.db
-      .prepare(`UPDATE comments SET status = 'rejected', decided_at = ?, reason = ? WHERE id = ?`)
-      .run(at, reason.reason, comment.id);
+    // BOOK-174: a rejection is a refusal only under a lock; otherwise the filing is escalated
+    // and the author decides. The exchange file keeps its two words (`rejected`), the row keeps
+    // its own: the site's tailer emits the row's status, never the line's.
+    const result = disposeRejection(io.db, { comment, at, batch: comment.batch_id, note: reason.reason });
     appendDecision(io.dir, {
       id: comment.id,
       status: 'rejected',
-      reason: reason.reason,
+      reason: result.reason,
       at,
       batch: comment.batch_id,
       changeId: null,
@@ -285,7 +292,7 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     // BOOK-158: the refusal closes the attempt it answered and still charges the call — the
     // model was paid whether or not the reader's words were taken.
     settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
-    io.print(`${comment.id}: rejected`);
+    io.print(`${comment.id}: ${result.status}${result.decision.lock === null ? '' : ` (${result.decision.lock})`}`);
     return 0;
   }
 
@@ -374,6 +381,27 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
     io.print(`${prefix}: ${accepted.error}`);
     return 1;
   }
+  // BOOK-174: the ladder could not place the filing and no lock applies. Nothing was queued, no
+  // slot is spent, and the row waits for the author — one `escalated` record and one file line.
+  if ('escalated' in accepted) {
+    const escalation = disposeRejection(io.db, {
+      comment,
+      at,
+      batch: comment.batch_id,
+      note: accepted.decision.reason,
+    });
+    appendDecision(io.dir, {
+      id: comment.id,
+      status: 'rejected',
+      reason: escalation.reason,
+      at,
+      batch: comment.batch_id,
+      changeId: null,
+    });
+    settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
+    io.print(`${comment.id}: escalated — решает автор`);
+    return 0;
+  }
   // The slot is taken only once the change exists: a refusal must leave the budget intact.
   // Both keys are recorded in one transaction, so a fault cannot spend one and not the other.
   if (editBudgets.length > 0) {
@@ -412,6 +440,17 @@ function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
         ? `${comment.id}: ${linked.reason ?? 'принято'} → ${accepted.changeId}`
         : `${comment.id}: accepted → ${accepted.changeId}`,
   );
+  return 0;
+}
+
+/**
+ * `limits` — the editor's check on how often the world refuses (BOOK-174 §7): one line per
+ * part or chapter with a breach, `ok` when there is none. Operator only: the counters are
+ * recomputed here from `comments` and never travel to a reader surface.
+ */
+function limits(io: FeedbackIo, now: () => Date): number {
+  refreshDispositionCounts(io.db, now().toISOString());
+  for (const line of dispositionLimitLines(readDispositionCounts(io.db))) io.print(line);
   return 0;
 }
 

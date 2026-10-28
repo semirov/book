@@ -26,6 +26,7 @@ import {
 import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
 import { findLiveSentence } from '../sentences/store.ts';
+import { dispositionFieldsOf } from './dispositionReport.ts';
 import { refusalHint, reviseState, unrevisedState } from './attempts.ts';
 
 export type CommentRow = {
@@ -83,6 +84,12 @@ export type CommentRow = {
   /** BOOK-58 — the moment a landed variant was entered, and the version it accepted. */
   accepted_at: string | null;
   accepted_terms_version: string | null;
+  /** BOOK-174 — how the filing was read; all five null for a row stored before v24. */
+  disposition: string | null;
+  lock: string | null;
+  carrier_kind: string | null;
+  quote_kept: string | null;
+  sentence_id: string | null;
   idem_key: string | null;
 };
 
@@ -320,6 +327,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // The attempt counts are read only for a row a revision could reopen: a settling row on a
   // public list owes no ledger question (three COUNTs per row otherwise).
   const revise = status === 'rejected' ? reviseState(db, row, nowMs) : unrevisedState();
+  // BOOK-174: how the filing was read, from the five stored columns — the report is derived
+  // here, once, so every surface prints the same three lines.
+  const { disposition, report } = dispositionFieldsOf(row);
   return {
     id: row.id,
     chapter: row.chapter,
@@ -359,6 +369,10 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
       (row.applied_chapter !== null && row.applied_rev !== null
         ? { chapter: row.applied_chapter, rev: row.applied_rev }
         : null),
+    // BOOK-174: `null` for every row written before v24 — no reading was ever recorded, and
+    // the report is derived from the chain rather than from a second flag.
+    disposition,
+    report,
   };
 }
 

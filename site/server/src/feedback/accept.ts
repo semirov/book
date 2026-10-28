@@ -48,9 +48,17 @@ import type { Db } from '../db/db.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { newChangeId } from '../util/ulid.ts';
+import type { DispositionDecision, DispositionProposal } from './disposition.ts';
+import { chooseFor, storeChain } from './dispositionStore.ts';
 
 export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
+  /**
+   * BOOK-174 — the ladder could not place the filing and no lock applies: nothing is written
+   * here, no change and no rejection. The caller records the escalation and tells the reader
+   * that the author decides.
+   */
+  | { escalated: true; decision: DispositionDecision }
   | {
       error: string;
       /**
@@ -75,6 +83,11 @@ export type AcceptInput = {
   changeId?: string | null;
   baseRev?: number | null;
   batch?: string | null;
+  /**
+   * BOOK-174 — the semantic reading the decision line proposed. Absent means `as_said`: the
+   * gates already passed, so the words are taken as said unless the chooser says otherwise.
+   */
+  proposal?: DispositionProposal | null;
 };
 
 type ChapterRow = { rev: number; sha256: string; basis: number; block_count: number };
@@ -169,8 +182,23 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // BOOK-137: a filing that misses the frame but lands on a basis-only slot has no prose to
     // rewrite and no anchor to place — the frame is the whole text — so the answer is the queue's
     // own refusal, never a premise waiting for a first draft that cannot rewrite the sentence.
+    // BOOK-174: that refusal is the frame lock, and its chain is stored here so the reader's
+    // report can be rendered even though nothing landed.
     if (isBasisSlot(chapter)) {
+      storeChain(db, comment.id, chooseFor(db, comment, input.proposal ?? null));
       return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
+    }
+
+    // BOOK-174: how this filing is read is decided once, here, before anything is written — by
+    // the chooser over the decision line's own reading. A filing the ladder cannot place and no
+    // lock holds is **escalated**: no change, no rejection, and the caller records the question.
+    const decision = chooseFor(db, comment, input.proposal ?? null);
+    if (decision.escalated) return { escalated: true, decision };
+    // A lock can only reach here through the finale (the other three are refused before this
+    // point); the chain is stored so the refusal is reported as the book's word, not a code.
+    if (decision.disposition === 'inadmissible') {
+      storeChain(db, comment.id, decision);
+      return { code: 'FROZEN_FRAME', error: decision.reason };
     }
 
     // BOOK-7: premise vs ordinary is "is the slot written", from the projection — a row with no
@@ -202,6 +230,8 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
             SET status = ?, decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
           WHERE id = ?`,
       ).run(status, input.at, reason, input.batch ?? null, changeId, comment.id);
+      // BOOK-174: the chain is stored in the same transaction as the status it explains.
+      storeChain(db, comment.id, decision);
       appendCommentEvent(db, comment.id, 'decided', input.at, { status, changeId, premise: true });
       return { changeId, created: existing === undefined, superseded };
     }
@@ -275,6 +305,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
           SET status = 'accepted', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
         WHERE id = ?`,
     ).run(input.at, input.reason.slice(0, 200), input.batch ?? null, changeId, comment.id);
+    // BOOK-174: a `through_paper` acceptance is an ordinary change — the step writes the
+    // document — and the reading travels with the row in the same transaction.
+    storeChain(db, comment.id, decision);
     appendCommentEvent(db, comment.id, 'decided', input.at, { status: 'accepted', changeId });
 
     return { changeId, created: existing === undefined };

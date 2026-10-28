@@ -1,0 +1,357 @@
+/**
+ * BOOK-174 — the chooser: the four answers tried in order, and the author's door behind them.
+ *
+ * The ladder is the design, not a preference: `as_said` → `through_paper` → `refused_in_world`
+ * → `inadmissible` (only under a lock), and everything the ladder cannot place is `escalated`.
+ * A failed carrier returns **one rung up** — never down to a bin — and the two anti-cheat caps
+ * keep «the world refuses» from becoming a template.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  CARRIER_LABELS,
+  DISPOSITION_REASONS,
+  ESCALATION_QUESTION,
+  LOCK_ALTERNATIVES,
+  LOCK_REASONS,
+  REPORT_LINE_MAX_CHARS,
+  chainReport,
+  DISPOSITION_WORDS,
+} from '@book/shared';
+
+import {
+  chooseDisposition,
+  MAX_IN_WORLD_RUN,
+  parseDispositionProposal,
+  type ChooseDispositionInput,
+} from '../../src/feedback/disposition.ts';
+
+/** Three sentences; the middle one is the filing's own place. */
+const BLOCK = 'Он вошёл в регистратуру. Там сидела женщина с бланком. Срок — тридцать дней.';
+const ONE_SENTENCE = 'Там сидела женщина с бланком.';
+/** Two sentences in one quote: no single sentence can be named. */
+const TWO_SENTENCES = 'Он вошёл в регистратуру. Там сидела женщина с бланком.';
+const WORDING = 'В регистратуре выдают уведомление: срок тридцать дней и подпись.';
+/** Five words of the wording, verbatim. */
+const KEPT = 'срок тридцать дней и подпись';
+const STAMP = 'не соответствует форме';
+
+function input(overrides: Partial<ChooseDispositionInput> = {}): ChooseDispositionInput {
+  return {
+    chapterIsBasis: false,
+    chapter: 12,
+    blockText: BLOCK,
+    blockIndex: 3,
+    quote: ONE_SENTENCE,
+    body: 'В сцене этого некому сказать.',
+    proposedText: WORDING,
+    rightsVerdict: 'CLEAR',
+    guard: null,
+    flags: [],
+    proposal: {},
+    caps: { inWorldInChapterByReader: 0, stampUsedInChapter: false, runBefore: 0 },
+    ...overrides,
+  };
+}
+
+/** A carrier that passes its whole licence: a carrier, five verbatim words, one fact changed. */
+function paper(overrides: Partial<ChooseDispositionInput['proposal']> = {}): ChooseDispositionInput {
+  return input({
+    proposal: { disposition: 'through_paper', carrierKind: 'document', quoteKept: KEPT, factsChanged: 1, ...overrides },
+  });
+}
+
+/** A complete in-world refusal: the four facts, the stamp, the caps' leave. */
+function inWorld(overrides: Partial<ChooseDispositionInput['proposal']> = {}): ChooseDispositionInput {
+  return input({
+    proposal: {
+      disposition: 'refused_in_world',
+      establishedFact: 'срок рассмотрения — тридцать дней',
+      namedPerson: 'Пётр Ильич',
+      namedInstance: 'регистратура',
+      cost: 'срок начинается заново',
+      stamp: STAMP,
+      ...overrides,
+    },
+  });
+}
+
+describe('the ladder — each of the five outcomes is reachable', () => {
+  it('as_said: one sentence resolved, nothing established changed — the words stand as said', () => {
+    const decision = chooseDisposition(input());
+    expect(decision).toMatchObject({
+      disposition: 'as_said',
+      lock: null,
+      carrierKind: null,
+      reason: DISPOSITION_REASONS.as_said,
+      sentenceId: 'b3.s1',
+      escalated: false,
+      alternate: false,
+    });
+    expect(chainReport(decision, 12)).toEqual({
+      line1: 'прочитано как сказано',
+      line2: DISPOSITION_REASONS.as_said,
+      line3: 'где это в книге: глава 12 · абзац 4 · предложение 2',
+    });
+  });
+
+  it('through_paper: a carrier keeps five verbatim words and changes a fact', () => {
+    const decision = chooseDisposition(paper());
+    expect(decision).toMatchObject({
+      disposition: 'through_paper',
+      carrierKind: 'document',
+      quoteKept: KEPT,
+      sentenceId: 'b3.s1',
+      // Both plans existed: the report names the one that was declined.
+      alternate: true,
+    });
+    expect(chainReport(decision, 12).line3).toBe(
+      'где это в книге: глава 12 · абзац 4 · предложение 2 — документ',
+    );
+  });
+
+  it('refused_in_world: the four facts and the caps let the world answer, the stamp is line 3', () => {
+    const decision = chooseDisposition(inWorld());
+    expect(decision).toMatchObject({
+      disposition: 'refused_in_world',
+      quoteKept: STAMP,
+      sentenceId: 'b3.s1',
+      reason: DISPOSITION_REASONS.refused_in_world,
+    });
+    expect(chainReport(decision, 12)).toEqual({
+      line1: 'прочитано как отказ в мире',
+      line2: DISPOSITION_REASONS.refused_in_world,
+      line3: `где это в книге: глава 12 · абзац 4 · предложение 2 — «${STAMP}»`,
+    });
+  });
+
+  it('inadmissible: every lock answers with its own line and its own alternative', () => {
+    const locks = [
+      { input: input({ rightsVerdict: 'REFUSED' }), lock: 'rights' },
+      { input: input({ guard: 'legal' }), lock: 'harm' },
+      { input: input({ flags: ['illegal-content'] }), lock: 'harm' },
+      { input: input({ chapterIsBasis: true }), lock: 'frame' },
+      { input: input({ proposal: { lock: 'finale' } }), lock: 'finale' },
+    ] as const;
+    for (const { input: fixture, lock } of locks) {
+      const decision = chooseDisposition(fixture);
+      expect(decision, lock).toMatchObject({
+        disposition: 'inadmissible',
+        lock,
+        reason: LOCK_REASONS[lock],
+        // A lock carries its sentence, and nothing that would point at a place in the book.
+        carrierKind: null,
+        sentenceId: null,
+        quoteKept: null,
+        blockIndex: null,
+        sentenceIndex: null,
+        escalated: false,
+      });
+      expect(chainReport(decision, 12)).toEqual({
+        line1: 'не принято',
+        line2: LOCK_REASONS[lock],
+        line3: `сработает иначе: ${LOCK_ALTERNATIVES[lock]}`,
+      });
+    }
+  });
+
+  it('escalated: a proposal may not refuse, and a quote spanning two sentences is not as said', () => {
+    const decision = chooseDisposition(input({ quote: TWO_SENTENCES, proposal: { disposition: 'refused_in_world' } }));
+    expect(decision).toMatchObject({
+      disposition: 'escalated',
+      lock: null,
+      escalated: true,
+      question: ESCALATION_QUESTION,
+      reason: DISPOSITION_REASONS.escalated,
+      sentenceId: null,
+    });
+    expect(chainReport(decision, 12)).toEqual({
+      line1: 'ждёт решения автора',
+      line2: DISPOSITION_REASONS.escalated,
+      line3: 'решает автор',
+    });
+  });
+});
+
+describe('one rung up — a failed carrier never falls to a bin', () => {
+  it('returns to as_said when the kept fragment is shorter than five words', () => {
+    const decision = chooseDisposition(paper({ quoteKept: 'тридцать дней' }));
+    expect(decision.disposition).toBe('as_said');
+    expect(decision.carrierKind).toBeNull();
+  });
+
+  it('returns to as_said when the kept fragment is not verbatim', () => {
+    const decision = chooseDisposition(paper({ quoteKept: 'срок тридцать дней и подпись автора' }));
+    expect(decision.disposition).toBe('as_said');
+  });
+
+  it('returns to as_said when the carrier is not one of the six', () => {
+    const decision = chooseDisposition(
+      paper({ carrierKind: 'letter' as unknown as ChooseDispositionInput['proposal']['carrierKind'] }),
+    );
+    expect(decision.disposition).toBe('as_said');
+  });
+
+  it('returns to as_said when the document changes no fact', () => {
+    const decision = chooseDisposition(paper({ factsChanged: 0 }));
+    expect(decision.disposition).toBe('as_said');
+  });
+
+  it('returns to as_said when as_said fails and the carrier is short: then the author, not a bin', () => {
+    const decision = chooseDisposition(
+      input({ quote: TWO_SENTENCES, proposal: { disposition: 'through_paper', carrierKind: 'document', quoteKept: 'тридцать дней', factsChanged: 1 } }),
+    );
+    expect(decision.disposition).toBe('escalated');
+  });
+});
+
+describe('the anti-cheat caps of an in-world refusal', () => {
+  it('returns one rung up to through_paper when this reader already refused in this chapter', () => {
+    const fixture = inWorld();
+    const decision = chooseDisposition({
+      ...fixture,
+      proposedText: WORDING,
+      proposal: { ...fixture.proposal, carrierKind: 'document', quoteKept: KEPT, factsChanged: 1 },
+      caps: { inWorldInChapterByReader: 1, stampUsedInChapter: false, runBefore: 0 },
+    });
+    expect(decision.disposition).toBe('through_paper');
+  });
+
+  it('returns one rung up when the same stamp already stands in the chapter', () => {
+    // The stamp cap is the input, not the proposal: the same formula twice would be a template.
+    const twice = chooseDisposition({
+      ...inWorld(),
+      caps: { inWorldInChapterByReader: 0, stampUsedInChapter: true, runBefore: 0 },
+    });
+    expect(twice.disposition).not.toBe('refused_in_world');
+    // With no carrier to fall back on, the words stand as said — never a bin.
+    expect(twice.disposition).toBe('as_said');
+  });
+
+  it('converts the third in a row: two behind it is the last that may pass', () => {
+    const second = chooseDisposition(inWorld());
+    expect(second.disposition).toBe('refused_in_world');
+    const third = chooseDisposition({
+      ...inWorld({ carrierKind: 'document', quoteKept: KEPT, factsChanged: 1 }),
+      caps: { inWorldInChapterByReader: 0, stampUsedInChapter: false, runBefore: MAX_IN_WORLD_RUN },
+    });
+    expect(third.disposition).toBe('through_paper');
+  });
+
+  it('carries the paper alternative when the refusal is capped but a carrier is named', () => {
+    const third = chooseDisposition({
+      ...inWorld({ carrierKind: 'speech', quoteKept: KEPT, factsChanged: 2 }),
+      caps: { inWorldInChapterByReader: 0, stampUsedInChapter: false, runBefore: MAX_IN_WORLD_RUN },
+    });
+    expect(third).toMatchObject({ disposition: 'through_paper', carrierKind: 'speech' });
+  });
+});
+
+describe('the report’s two forms and its bounds', () => {
+  it('names the declined plan only when the sentence really resolved', () => {
+    const both = chooseDisposition(paper());
+    expect(both.alternate).toBe(true);
+    expect(chainReport(both, 12).line1).toBe('прочитано через бумагу, а не как сказано');
+
+    const paperOnly = chooseDisposition(
+      input({
+        quote: TWO_SENTENCES,
+        proposal: { disposition: 'through_paper', carrierKind: 'document', quoteKept: KEPT, factsChanged: 1 },
+      }),
+    );
+    expect(paperOnly.alternate).toBe(false);
+    expect(chainReport(paperOnly, 12).line1).toBe('прочитано через бумагу');
+  });
+
+  it('keeps every line of every report within 200 characters', () => {
+    const decisions = [
+      chooseDisposition(input()),
+      chooseDisposition(paper()),
+      chooseDisposition(inWorld()),
+      chooseDisposition(input({ rightsVerdict: 'REFUSED' })),
+      chooseDisposition(input({ quote: TWO_SENTENCES, proposal: { disposition: 'refused_in_world' } })),
+    ];
+    for (const decision of decisions) {
+      for (const line of Object.values(chainReport(decision, 12))) {
+        expect(line.length).toBeLessThanOrEqual(REPORT_LINE_MAX_CHARS);
+        // No code, no gate name, no findings — the reader reads words.
+        expect(line).not.toMatch(/[A-Z_]{4,}/u);
+      }
+    }
+  });
+
+  it('has one closed word per reading and a closed label per carrier', () => {
+    expect(Object.values(DISPOSITION_WORDS)).toEqual([
+      'прочитано как сказано',
+      'прочитано через бумагу',
+      'прочитано как отказ в мире',
+      'не принято',
+      'ждёт решения автора',
+    ]);
+    expect(Object.values(CARRIER_LABELS)).toEqual([
+      'документ',
+      'чья-то речь',
+      'расхождение в реестре',
+      'предмет с номером',
+      'шутка, которую никто не подхватил',
+      'анекдот по протоколу',
+    ]);
+  });
+});
+
+describe('as_said’s own exclusions', () => {
+  it('fails when the filing changes a number that already stands in the block', () => {
+    // «тридцать» is not a digit, so the token that bites is a number the block already has.
+    const fresh = chooseDisposition(
+      input({ body: 'Срок — 30 дней.', proposedText: 'Срок — 30 дней, не больше.' }),
+    );
+    // The block says «тридцать», not «30»: the token is new, so nothing established is changed.
+    expect(fresh.disposition).toBe('as_said');
+    const stored = chooseDisposition(
+      input({
+        blockText: 'Срок — 30 дней. Он вошёл.',
+        quote: 'Срок — 30 дней.',
+        body: 'Срок — 30 дней, и всё.',
+        proposedText: null,
+      }),
+    );
+    expect(stored.disposition).toBe('escalated');
+  });
+
+  it('holds for a filing with no quote: it makes no sentence claim to fail', () => {
+    const decision = chooseDisposition(input({ quote: null, blockText: null, blockIndex: null }));
+    expect(decision.disposition).toBe('as_said');
+    // Nothing landed on a sentence, so the report names the chapter and no place in it.
+    expect(chainReport(decision, 12).line3).toBe('где это в книге: глава 12');
+  });
+});
+
+describe('the proposal as it arrives — untrusted JSON from the decision line', () => {
+  it('drops a word this build does not know, and keeps the numbers it understands', () => {
+    const parsed = parseDispositionProposal({
+      disposition: 'wide',
+      carrierKind: 'document',
+      quoteKept: '  срок тридцать дней  ',
+      factsChanged: 2,
+      lock: 'право',
+    });
+    expect(parsed).toMatchObject({
+      // «wide» is not a disposition and «право» is not a lock id: both are dropped, not guessed.
+      disposition: null,
+      lock: null,
+      carrierKind: 'document',
+      quoteKept: 'срок тридцать дней',
+      factsChanged: 2,
+    });
+  });
+
+  it('answers null for anything that is not an object, and counts no facts it cannot count', () => {
+    expect(parseDispositionProposal(null)).toBeNull();
+    expect(parseDispositionProposal('through_paper')).toBeNull();
+    expect(parseDispositionProposal({ factsChanged: 'many', carrierKind: 42 })).toMatchObject({
+      factsChanged: 0,
+      carrierKind: null,
+    });
+  });
+});

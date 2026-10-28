@@ -10,6 +10,7 @@ export * from './cost.ts';
 export * from './publicChange.ts';
 export * from './captcha.ts';
 export * from './comment.ts';
+export * from './disposition.ts';
 export * from './terms.ts';
 export * from './intervention.ts';
 export * from './decisions.ts';
