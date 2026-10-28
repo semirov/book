@@ -4,12 +4,17 @@
  * A batch is immutable once written: its name is minted when it is created, and a comment id
  * appears in at most one batch. Each line is a `book.filing/v1` envelope (see `envelope.ts`),
  * and the envelopes sit between two identical fence lines carrying the batch id — a reader
- * cannot know the fence before her row exists. `README.txt` beside the batches is trusted
- * static text and is never regenerated from user input.
+ * cannot know the fence before her row exists. `README.txt` beside the batches is our own
+ * constant, never user text: a file that differs from it (an older exchange directory) is
+ * replaced, so a live directory cannot keep a text that stops naming `author`/`quote` as DATA.
  *
  * Gate A runs again at this boundary, on every field and on `text‖proposed‖author` joined: a
  * row that fails becomes `quarantined` with the rule that held it, and the batch is **refused**
  * with the ids — the `ITEM_TOO_LARGE` precedent. A row is never dropped in silence.
+ *
+ * The display name is the exception (BOOK-45), because it is not the reader's filing: it comes
+ * from her account settings, so a finding inside it is answered with a neutral label, a flag
+ * and an event — the row still ships, and the thread keeps the real name.
  *
  * Gate B runs here too (BOOK-61): a row stored before the scan existed, or one whose posting
  * scan was lost, is asked the same question of `body‖proposed‖quote`. A refusal leaves the row
@@ -24,8 +29,10 @@ import {
   COMMENT_BATCH_ITEM_MAX_BYTES,
   COMMENT_BATCH_MAX_ITEMS,
   classifyPayload,
+  classifyText,
   normalizeInterventionKind,
   type CommentStatus,
+  type GuardCategory,
   type InjectionRule,
   type InterventionKind,
 } from '@book/shared';
@@ -98,6 +105,33 @@ export type BatchDeps = {
   idFactory?: (nowMs: number) => string;
 };
 
+/**
+ * BOOK-45 — what a model reads in place of a display name that carried a finding. The label
+ * says nothing about the reader and nothing about the finding; the real name stays on the row
+ * (`comments.author` is never rewritten), so the thread and the operator keep it.
+ */
+export const NEUTRAL_AUTHOR = 'читатель';
+
+/** The public flag and the event type a neutralised row keeps, so the rewrite is auditable. */
+export const AUTHOR_FLAG = 'author-flagged';
+
+type AuthorFinding = { category: GuardCategory; rule: InjectionRule | null };
+
+/**
+ * Classify the display name the way the filing's own values are classified — Gate A's patterns
+ * first, then the payload rules with the batch's fence in hand. A name is not a filing: **any**
+ * hit (a scope request as much as an instruction) means «this is not a name», so the caller
+ * substitutes `NEUTRAL_AUTHOR` instead of refusing the batch over account settings.
+ */
+function classifyAuthor(name: string, fence: string): AuthorFinding | null {
+  if (name.length === 0) return null;
+  const guard = classifyText(name);
+  if (guard !== null) return { category: guard.category, rule: guard.rule ?? null };
+  const payload = classifyPayload(name, { fence });
+  if (payload !== null) return { category: payload.category, rule: payload.rule };
+  return null;
+}
+
 /** `text‖proposed‖author` joined: a payload split across fields is one string to the filter. */
 function joinedText(values: FilingValues): string {
   return [values.text, values.proposed ?? '', values.author].join(' ');
@@ -157,8 +191,17 @@ export function createBatch(
   const oversized: string[] = [];
   const held: Array<{ id: string; rule: InjectionRule; field: string }> = [];
   const refused: string[] = [];
+  /** BOOK-45 — rows whose display name was rewritten; written to the db only with the batch. */
+  const neutralised: Array<{ id: string } & AuthorFinding> = [];
   for (const row of rows) {
     const item = toBatchItem(db, row);
+    // BOOK-45: the name is classified before any gate reads the row. The reader loses neither
+    // her filing nor her name — the model reads a neutral label, the row keeps the real one.
+    const nameFinding = classifyAuthor(item.values.author, batchId);
+    if (nameFinding !== null) {
+      neutralised.push({ id: row.id, ...nameFinding });
+      item.values.author = NEUTRAL_AUTHOR;
+    }
     const hit = filingHeld(item.values, batchId);
     if (hit !== null) {
       held.push({ id: row.id, rule: hit.rule, field: hit.field });
@@ -235,9 +278,56 @@ export function createBatch(
     db.prepare(
       `UPDATE comments SET status = 'batched', batch_id = ?, delivered_at = ? WHERE id IN (${placeholders})`,
     ).run(batchId, createdAt, ...ids);
+    for (const entry of neutralised) flagAuthor(db, entry, batchId, createdAt);
   })();
 
   return { batchId, path: absolute, ids };
+}
+
+/** The row's flags as a list; a malformed value is an empty list, never a crash. */
+function readFlags(raw: string | null): string[] {
+  if (raw === null) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function withFlags(raw: string | null, extra: readonly string[]): string[] {
+  const flags = readFlags(raw);
+  for (const flag of extra) if (!flags.includes(flag)) flags.push(flag);
+  return flags;
+}
+
+/**
+ * BOOK-45 — the rewrite is an event, not a silent edit. The flag joins whatever the row already
+ * carries (another gate may have flagged it while the batch was built), and the event names the
+ * category and the rule that won — **never the name itself**, so no PII is copied into the log.
+ *
+ * The conditional UPDATE is the serialisation point: only the row this call moved to `batched`
+ * in this batch is recorded, so the row never accumulates a second `author-flagged` event.
+ */
+function flagAuthor(
+  db: Db,
+  entry: { id: string } & AuthorFinding,
+  batchId: string,
+  at: string,
+): void {
+  const row = db.prepare('SELECT flags FROM comments WHERE id = ?').get(entry.id) as
+    | { flags: string | null }
+    | undefined;
+  const update = db
+    .prepare(`UPDATE comments SET flags = ? WHERE id = ? AND batch_id = ? AND status = 'batched'`)
+    .run(JSON.stringify(withFlags(row?.flags ?? null, [AUTHOR_FLAG])), entry.id, batchId);
+  if (update.changes === 0) return;
+  appendCommentEvent(db, entry.id, AUTHOR_FLAG, at, {
+    field: 'author',
+    category: entry.category,
+    rule: entry.rule,
+    by: 'filter',
+  });
 }
 
 /** A row that failed Gate A: quarantined with the rule, an event, and its flags kept. */
@@ -279,9 +369,13 @@ function envelopeInput(item: BatchItem): {
 
 /**
  * The filing's four values, normalised once, at the boundary where they enter a model's
- * context. The author is the one field the posting guard never looked at (audit M3): a display
- * name from an IdP is normalised again here (controls, invisibles, one line, 32 chars), and
- * `filingHeld` classifies it above like every other field.
+ * context. The author is not the reader's filing but her account's display name (audit M3): it
+ * is normalised here (controls, invisibles, one line, 32 chars), classified by `createBatch`,
+ * and a hit means a neutral label plus a flag and an event — never a dropped row. `text`,
+ * `proposed` and `quote` still hold the batch when they fail Gate A.
+ *
+ * The function stays pure: `feedback/operator.ts` validates `--evidence author:«…»` against the
+ * real name, so the rewrite belongs to the caller, not here.
  */
 export function filingValues(row: CommentRow): FilingValues {
   return {
@@ -359,11 +453,24 @@ export function listCommentsByStatus(db: Db, status: CommentStatus | undefined, 
     .all(status, limit) as CommentListRow[];
 }
 
+/**
+ * BOOK-45 — `README.txt` is our own constant and is never merged with what is on disk. A file
+ * that differs from it (an exchange directory created before this text) is replaced, because a
+ * model reading an old README would not be told that `author` and `quote` are DATA. The write is
+ * temp-then-rename, as the batch file is, so a reader never sees half a README.
+ */
 function writeReadme(dir: string): void {
   const path = join(dir, 'README.txt');
+  if (currentReadme(path) === README_TEXT) return;
+  const temp = `${path}.tmp`;
+  writeFileSync(temp, README_TEXT, { encoding: 'utf8', mode: 0o600 });
+  renameSync(temp, path);
+}
+
+function currentReadme(path: string): string | null {
   try {
-    readFileSync(path, 'utf8');
+    return readFileSync(path, 'utf8');
   } catch {
-    writeFileSync(path, README_TEXT, { encoding: 'utf8', mode: 0o600 });
+    return null;
   }
 }
