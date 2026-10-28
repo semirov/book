@@ -14,6 +14,8 @@ export type ChapterRow = {
   written_at: string;
   updated_at: string;
   parse_error: string | null;
+  /** BOOK-176 / ADR-043 D9: fact-shaped tokens in the live text with no fact mention. */
+  ledger_gap: number;
 };
 
 export type BlockRow = {

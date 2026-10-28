@@ -35,7 +35,11 @@ export const CHAPTERS_TABLE_SQL = `CREATE TABLE chapters (
                                                -- above the sentence is still the title (owner, 2026-10-28)
   written_at  TEXT    NOT NULL,                -- first sighting
   updated_at  TEXT    NOT NULL,
-  parse_error TEXT
+  parse_error TEXT,
+  -- BOOK-176 / ADR-043 D9: fact-shaped tokens (a date, an n/m number, a «№» reference) in the
+  -- live text that no fact mention covers. A counted gap, not a verdict: a chapter with a gap
+  -- still reads and still lands, it just cannot be quoted as evidence.
+  ledger_gap  INTEGER NOT NULL DEFAULT 0
 );`;
 
 /** The same table under another name — migration v7 builds it, copies, then swaps the names. */
@@ -55,6 +59,7 @@ export const CHAPTERS_COLUMNS = [
   'written_at',
   'updated_at',
   'parse_error',
+  'ledger_gap',
 ] as const;
 
 export const BLOCK_VERSIONS_TABLE_SQL = `CREATE TABLE block_versions (               -- stable paragraph identity across rewrites (§6F.3)
@@ -72,6 +77,10 @@ export const BLOCK_VERSIONS_TABLE_SQL = `CREATE TABLE block_versions (          
   change_id   TEXT, step_id TEXT,
   actor_kind  TEXT NOT NULL, actor_label TEXT NOT NULL, identity_id TEXT,
   at          TEXT NOT NULL,
+  spans       TEXT NOT NULL DEFAULT '[]',      -- BOOK-176: JSON BlockSpan[] of this version
+  -- BOOK-176 / ADR-043 D5: the full block text, written only on a checkpoint (ver 1, 8, 16 …);
+  -- '' everywhere else. A change span is replayed forward from the nearest checkpoint.
+  text        TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (block_uid, ver)
 );
 CREATE INDEX block_versions_block   ON block_versions(block_id);
@@ -107,6 +116,9 @@ export const EVENTS_TRIGGERS_SQL = `CREATE TRIGGER events_no_update BEFORE UPDAT
   BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;
 CREATE TRIGGER events_no_delete BEFORE DELETE ON events
   BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
+
+/** The names of those two guards — the launch reset drops exactly these before its wipe. */
+export const EVENTS_TRIGGER_NAMES = ['events_no_update', 'events_no_delete'] as const;
 
 /**
  * The writer lane's stages (docs/writer-lane.md §3, BOOK-117): one row per stage a pass

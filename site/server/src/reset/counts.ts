@@ -48,6 +48,13 @@ const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
   { key: 'front_revisions', label: 'front_revisions', sql: 'SELECT COUNT(*) AS n FROM front_revisions' },
   { key: 'block_lineage', label: 'block_lineage', sql: 'SELECT COUNT(*) AS n FROM block_lineage' },
   { key: 'block_versions', label: 'block_versions', sql: 'SELECT COUNT(*) AS n FROM block_versions' },
+  // BOOK-176: the ledger's own rows. Without these the wipe would look complete while a fact,
+  // a mention or a literal survived it — `assertWiped` reads exactly this list.
+  { key: 'facts', label: 'facts', sql: 'SELECT COUNT(*) AS n FROM facts' },
+  { key: 'threads', label: 'threads', sql: 'SELECT COUNT(*) AS n FROM threads' },
+  { key: 'thread_events', label: 'thread_events', sql: 'SELECT COUNT(*) AS n FROM thread_events' },
+  { key: 'mentions', label: 'mentions', sql: 'SELECT COUNT(*) AS n FROM mentions' },
+  { key: 'literals', label: 'literals', sql: 'SELECT COUNT(*) AS n FROM literals' },
   { key: 'overwrites', label: 'overwrites', sql: 'SELECT COUNT(*) AS n FROM overwrites' },
   { key: 'contributions', label: 'contributions', sql: 'SELECT COUNT(*) AS n FROM contributions' },
   {

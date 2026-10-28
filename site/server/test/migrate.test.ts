@@ -13,10 +13,7 @@ function tables(db: Db): string[] {
 }
 
 function triggers(db: Db): string[] {
-  return db
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger'`)
-    .all()
-    .map((row) => (row as { name: string }).name);
+  return (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger'`).all() as Array<{ name: string }>).map((row) => row.name);
 }
 
 function columns(db: Db, table: string): string[] {
@@ -24,18 +21,16 @@ function columns(db: Db, table: string): string[] {
 }
 
 function tableSql(db: Db, table: string): string {
-  const row = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table) as
-    | { sql: string }
-    | undefined;
+  const row = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`).get(table) as { sql: string } | undefined;
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v20', () => {
+describe('migrate — schema v22', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(21);
+    expect(SCHEMA_VERSION).toBe(22);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -75,6 +70,9 @@ describe('migrate — schema v20', () => {
     );
     // BOOK-113: the operator's edit exemption, off for every reader until a route turns it on.
     expect(columns(db, 'identities')).toContain('edit_exempt');
+    // BOOK-176 / BOOK-DOC-69: the ledger tables, the version's span list and the full-text mirror.
+    expect(columns(db, 'block_versions')).toContain('spans');
+    expect(present).toEqual(expect.arrayContaining(['facts', 'threads', 'thread_events', 'mentions', 'literals', 'blocks_fts']));
     db.close();
   });
 

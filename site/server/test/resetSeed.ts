@@ -117,6 +117,31 @@ export function seedBook(target: Fixture): string {
     `INSERT INTO contribution_history (identity_id, day, edits, chars, share, measured_at)
      VALUES (?, '2026-10-25', 1, 100, 0.5, ?)`,
   ).run(owner, AT);
+  // BOOK-176: one row of every ledger table. The counters must count them and the wipe must
+  // remove them; the offsets are nominal — this fixture writes no prose of its own.
+  db.prepare(
+    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, invalidated_at,
+                        invalidated_by_change, created_at)
+     VALUES ('fct_one', 8, 'state', 'Служебное утверждение.', 'служебный термин', 8, NULL, NULL, ?)`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO threads (id, label, direction, opened_at_chapter, closed_at_chapter, state)
+     VALUES ('thr_one', 'служебная линия', 'forward', 8, NULL, 'opened')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO thread_events (thread_id, chapter, kind, fact_id, note, at)
+     VALUES ('thr_one', 8, 'opened', 'fct_one', NULL, ?)`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO mentions (span_id, block_id, chapter, start, end, kind, fact_id, thread_id,
+                           resolved_by_change, role, witness, edge_path)
+     VALUES ('bkd_seed:1:0', 'ch08#seed0001', 8, 0, 7, 'fact', 'fct_one', NULL, NULL, 'assert',
+             'Тестов', '[]')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, start, end)
+     VALUES ('2065-09-14', '14.09.2065', 'ch08#seed0001', 'bkd_seed:1:0', 8, 'date', 0, 10)`,
+  ).run();
   const rate = db.prepare('INSERT INTO rate_events (key, ts) VALUES (?, ?)');
   rate.run(`edit:id:${owner}`, 1_760_000_000_000);
   rate.run('edit:ip:hash-one', 1_760_000_000_000);
@@ -155,6 +180,13 @@ export const CONTENT_KEYS = [
   'front_revisions',
   'block_lineage',
   'block_versions',
+  // BOOK-176: the ledger's own rows are content too — a reset that left them behind would
+  // publish rows pointing at a book that no longer exists.
+  'facts',
+  'threads',
+  'thread_events',
+  'mentions',
+  'literals',
   'overwrites',
   'contributions',
   'contribution_history',
@@ -191,6 +223,11 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     front_revisions: 0,
     block_lineage: count(db, 'SELECT COUNT(*) AS n FROM block_lineage'),
     block_versions: count(db, 'SELECT COUNT(*) AS n FROM block_versions'),
+    facts: 1,
+    threads: 1,
+    thread_events: 1,
+    mentions: 1,
+    literals: 1,
     overwrites: 0,
     contributions: 1,
     contribution_history: 1,
