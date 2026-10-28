@@ -16,11 +16,14 @@ export type ParsedReset = {
   url?: string;
 };
 
-export type ParsedCommand = ParsedBudget | ParsedReset;
+export type ParsedCommand = ParsedBudget | ParsedReset | ParsedDoctor;
+
+/** BOOK-188: `doctor` — read-only, `--json` for a driver. */
+export type ParsedDoctor = { kind: 'doctor'; json: boolean; url?: string };
 
 export function parseBudgetArgs(argv: string[]): ParsedBudget;
 export function parseResetArgs(argv: string[]): ParsedReset | { kind: 'help' };
-export function parseCommand(argv: string[]): ParsedCommand;
+export function parseCommand(argv: string[]): ParsedCommand | { kind: 'help' };
 export function assertLocalTarget(raw: string): URL;
 export function localAddresses(): Set<string>;
 export function resolveAdminToken(env?: NodeJS.ProcessEnv): string;
