@@ -1,9 +1,10 @@
 /**
  * BOOK-DOC-74 (ADR-044) §3.2 — one segmenter, versioned, shared by the client and the server.
  *
- * The site had three splitters: the careful one in `web/src/lib/seam.ts`, the index's
- * `(?<=[.!?…])\s+` (`server/src/index/extract.ts`) and the injection gate's copy
- * (`shared/src/injection.ts`). On the paragraph that opens `ch12` they disagreed by four
+ * The site had four splitters: the careful one in `web/src/lib/seam.ts`, a terminator-and-
+ * whitespace regex in the index (`server/src/index/extract.ts`), the injection gate's copy
+ * (`shared/src/injection.ts`) and the intent check's own (`shared/src/intent.ts`). On the
+ * paragraph that opens `ch12` they disagreed by four
  * sentences, because only the client's splitter knew that a full stop inside `«…»` is not the
  * end of a sentence — and every one of those fragments was an anchor a fact or a comment could
  * hang on. This module is the single answer: rules R1–R12 are one ordered pass, and a rule

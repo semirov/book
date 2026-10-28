@@ -23,15 +23,7 @@ const CH05 = `Через час я получил жёлтый бланк спр
 /** ch11, paragraph 109: a commission written as initials («Бардин С. Л., …»). */
 const CH11 = `Я развернул лист. Это был стандартный бланк: «Акт № 14-2065 от 14 сентября 1965 г.». Текст был напечатан на машинке, пропуски заполнены от руки. В нём значилась комиссия: «Бардин С. Л., Голованова Е. В., Пенькова Н. П.». Тема — «об уничтожении документов, не подлежащих хранению». Ниже стояли три подписи. Первая была неразборчива, с длинным хвостом. Вторая — Головановой, круглая и чёткая. Третья была моей. Я узнал её сразу: тот же левый наклон, та же круглая последняя петля, которую я никогда не мог удержаться, чтобы не переправить. Это была моя подпись, но она была не моя. Она была как будто скопирована с моей руки и положена на эту бумагу за пятьдесят девять лет до того, как я научился писать.`;
 
-/** What every surface did before this module: a terminator and any whitespace. */
-const NAIVE = /(?<=[.!?…])\s+/u;
-
 const texts = (text: string): string[] => splitSentences(text).map((span) => span.text);
-const naive = (text: string): string[] =>
-  text
-    .split(NAIVE)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
 
 describe('the shared segmenter (BOOK-DOC-74 §3.2)', () => {
   it('R1 splits after a run of terminals and the closers that follow it', () => {
@@ -210,14 +202,15 @@ describe('the shared segmenter is lossless and versioned', () => {
   });
 });
 
-describe('the disagreement this module removes (BOOK-DOC-74 §1)', () => {
-  it('reads the ch12 notice as 9 sentences where the naive split reads 13', () => {
-    expect(naive(CH12)).toHaveLength(13);
+/**
+ * The disagreement this module removes (BOOK-DOC-74 §1): the naive splitter withdrawn with it —
+ * a terminator and any whitespace, and nothing else — read this paragraph as 13 sentences, four
+ * of them fragments of one quoted notice, every fragment anchorable before. Nine is the answer.
+ */
+describe('the paragraph the naive splitter overcounted (BOOK-DOC-74 §1)', () => {
+  it('reads the paragraph as 9 sentences', () => {
     expect(texts(CH12)).toHaveLength(9);
-    // The +44 % is four fragments of one quoted notice, every one of them anchorable before.
-    expect(naive(CH12)[3]).toBe(
-      'В тексте значилось: «Вам надлежит явиться в отдел учёта и регистрации для ознакомления с материалами дела № 44/17.',
-    );
+    // The quoted ruling is the fourth, whole: five full stops, one sentence.
     expect(texts(CH12)[3]).toContain('Кабинет 7. Явиться без вызова повторно нельзя».');
   });
 });
