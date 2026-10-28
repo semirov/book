@@ -33,6 +33,14 @@
  *     because the edition changes with every chapter and a stored copy of the file is a stale
  *     copy. The tag stays, so an explicit `If-None-Match` still gets a truthful `304`.
  *
+ *     BOOK-157 excepts one file from `no-store`: `/sw.js`. A service worker's script is not
+ *     prose — it carries the offline document and a list of files whose names are their hashes —
+ *     and a browser must be able to keep it at all, or it cannot register one (`no-store` on the
+ *     script makes registration fail). It is `no-cache` instead: stored, and revalidated before
+ *     every use, so a reader never runs a worker from an older release. It is not in
+ *     `REVALIDATABLE`, so the conditional headers are dropped and the browser gets the bytes of
+ *     *this* release rather than a `304` for an older worker.
+ *
  * ETags stay: they still name the representation (a test, a proxy log and a future client can
  * compare them), and outside prose they still answer `304`.
  */
@@ -88,6 +96,12 @@ export function registerCachePolicy(app: FastifyInstance): void {
     // an asset — never pin that, and never let a browser keep the answer past the next publish.
     if (path.startsWith('/assets/')) {
       reply.header('cache-control', reply.statusCode < 400 ? IMMUTABLE : 'no-store');
+    }
+    // BOOK-157: the service worker's script is the one file a browser must be able to keep and
+    // must never run from an older release — `no-store` would make registration fail outright.
+    // A 404 for it is not a worker either: keep a miss unstorable, like an asset miss.
+    if (path === '/sw.js') {
+      reply.header('cache-control', reply.statusCode < 400 ? 'no-cache' : 'no-store');
     }
     // `/healthz` explicitly: a probe that fails (a 500 from the error handler) must not be
     // stored either — "is this host up" is a fact about now, not a cached document.
