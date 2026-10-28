@@ -15,6 +15,13 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // BOOK-81: threads, not the default forks. A killed `vitest run` (an agent timeout sends
+    // `kill -9`) left its forked workers with parent 1 — 18 counted at 36–760 MB each — and no
+    // teardown hook runs on SIGKILL, so the pool itself has to be the guarantee: a thread dies
+    // with its process. Measured on this suite: 6 orphans on forks, 0 on threads; 323 files /
+    // 3162 tests green on both (real better-sqlite3 connections included), 26.7s → 21.6s. After
+    // a run: `npm run check:orphans`.
+    pool: 'threads',
     // The suite's environment, in one place (BOOK-107): a fresh temp DATA_DIR per test file,
     // and a before/after snapshot of the dev and production data dirs, so a test that writes
     // to either one turns the run red.

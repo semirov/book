@@ -22,6 +22,7 @@
     "arch": "node scripts/arch.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "check:orphans": "node scripts/orphan-check.mjs",
     "frame:check": "node scripts/frame-check.mjs",
     "validate": "node bin/validate.mjs",
     "start": "node server/dist/index.js",
