@@ -9,6 +9,10 @@ import { offsetTopOfPage } from './lib/headerOffset.ts';
  * arithmetic is document coordinates — the section's rect plus the scroll already passed —
  * because `scrollIntoView` would re-apply a margin we have already applied.
  *
+ * The scroll is a jump (`behavior: 'auto'`): a smooth travel from the end matter to chapter 3
+ * of a 130 000 px page never arrives, and the contents row, the notice and the grip link all
+ * then read as a tap that did nothing.
+ *
  * Returns whether the section exists: a caller keeps the browser's own `#ch-N` jump (and
  * therefore does **not** `preventDefault`) when it does not.
  */
@@ -16,7 +20,7 @@ export function scrollToChapter(n: number): boolean {
   const target = document.getElementById(`ch-${n}`);
   if (target === null) return false;
   const top = Math.max(0, target.getBoundingClientRect().top + window.scrollY - offsetTopOfPage());
-  window.scrollTo({ top, behavior: reducedMotion() ? 'auto' : 'smooth' });
+  window.scrollTo({ top, behavior: 'auto' });
   return true;
 }
 

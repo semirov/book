@@ -8,6 +8,16 @@
  */
 
 .filing-panel {
+  /*
+   * BOOK-168 (owner, 2026-10-28) — **out of the page's flow from the first paint.** The card is
+   * portaled to `document.body`; while it was static an unplaced card stood at the document's
+   * end, and its own focus scrolled the page to the colophon right after a place door's landing.
+   * The placement (`placePanel`) writes top/left/width/maxHeight over this box, and
+   * `.filing-panel-anchored` marks that a measured box has landed — it frames nothing itself.
+   */
+  position: fixed;
+  top: 0;
+  left: 0;
   z-index: 40;
   display: grid;
   gap: 10px;
@@ -19,9 +29,6 @@
   border: 1px solid var(--rule);
   background: var(--paper-2);
   animation: seam-fade 120ms var(--ease-out);
-}
-.filing-panel-anchored {
-  position: fixed;
 }
 .filing-head {
   display: flex;

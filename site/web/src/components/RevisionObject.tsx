@@ -68,7 +68,9 @@ export function RevisionObject({
   }, [comment.id]);
 
   useEffect(() => {
-    node.current?.focus();
+    // BOOK-168 — a focus on a surface the page did not ask to scroll to must not scroll it: the
+    // object opens beside the line the reader is on, and the page stays where the reader left it.
+    node.current?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {

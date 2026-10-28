@@ -382,7 +382,8 @@ export function App() {
   const go = (target: Notice): void => {
     setNotice(null);
     if (target.kind === 'front') {
-      document.getElementById('toc')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // A notice is a landing too: the contents come to the reading line in one jump.
+      document.getElementById('toc')?.scrollIntoView({ behavior: 'auto', block: 'start' });
       return;
     }
     scrollToChapter(target.n);
