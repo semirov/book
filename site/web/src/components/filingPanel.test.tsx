@@ -65,29 +65,40 @@ describe('the filing panel’s state line (BOOK-90)', () => {
   });
 
   it('keeps the clause in the detail, where it may wrap, and the state a chip', () => {
-    // BOOK-90: the state is one of the three words; the fact it cannot carry is the detail.
+    // BOOK-90: the state is one of the deck's words; the fact it cannot carry is the detail.
     const superseded = render(comment({ status: 'superseded' }));
     expect(superseded).toContain('<p class="filing-state ink-quiet">ждёт</p>');
     expect(superseded).toContain('<p class="filing-fact">снято: текст успел измениться</p>');
+    // BOOK-189 — an accepted filing the writer has not reached waits, and the fact under the
+    // word is the lane, never the old «правка в очереди на запись». The ink stays `live`: it is
+    // a filing in the lane, not a settled one.
     const accepted = render(comment({ status: 'accepted', interventionKind: 'testimony' }));
-    expect(accepted).toContain('<p class="filing-state ink-live">идёт</p>');
-    expect(accepted).toContain('<p class="filing-fact">правка в очереди на запись</p>');
+    expect(accepted).toContain('<p class="filing-state ink-live">ждёт</p>');
+    expect(accepted).toContain('<p class="filing-fact">в очереди на запись</p>');
+    const working = render(
+      comment({ status: 'accepted', interventionKind: 'testimony', changeStatus: 'processing' }),
+    );
+    expect(working).toContain('<p class="filing-state ink-live">идёт</p>');
+    expect(working).toContain('<p class="filing-fact">пишется</p>');
     const expired = render(comment({ status: 'expired' }));
     expect(expired).toContain('<p class="filing-fact">правка не состоялась</p>');
-    for (const html of [superseded, accepted, expired]) {
+    for (const html of [superseded, accepted, working, expired]) {
       expect(html).not.toContain('class="filing-sentence');
       expect(html).not.toContain('состояние:');
     }
   });
 
   it('prints a landed intervention as the word and its receipt as the fact', () => {
+    // BOOK-189 — the owner's row: «внесено · глава 7 · ревизия 2», one «внесено» and no rights
+    // clause (the reader signed that when filing).
     const html = render(
       comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 7, rev: 2 }, reason: null }),
     );
     expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
-    expect(html).toContain(
-      '<p class="filing-fact">внесено в главу 07 · право на ваш текст перешло автору книги · ревизия 2</p>',
-    );
+    expect(html).toContain('<p class="filing-fact">глава 7 · ревизия 2</p>');
+    // One «внесено» and one receipt shape (BOOK-189): the fact line never repeats the word.
+    expect(html.split('внесено').length - 1).toBe(1);
+    expect(html).not.toContain('право на ваш текст');
   });
 
   it('names the record’s numeral beside «внесено» once a change has landed (BOOK-117 §1)', () => {

@@ -185,9 +185,11 @@ describe('the chip table (BOOK-70)', () => {
     }
   });
 
-  it('pins the filing states the audits named: one of three words, always a chip', () => {
+  it('pins the filing states the audits named: one word of the deck, always a chip', () => {
+    // BOOK-189 — «отклонено» is a state now, and it is the same word C's gate already printed;
+    // it joins the three the audits named rather than adding a sixth vocabulary.
     const states = [...new Set(FILING_PINS.map((pin) => pin.state))].sort();
-    expect(states).toEqual(['внесено', 'ждёт', 'идёт']);
+    expect(states).toEqual(['внесено', 'ждёт', 'идёт', 'отклонено']);
     for (const pin of FILING_PINS) {
       expect(pin.form, pin.state).toBe('chip');
       expect(pin.state.length, pin.state).toBeLessThanOrEqual(CHIP_MAX_CHARS);

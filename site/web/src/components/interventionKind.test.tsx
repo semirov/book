@@ -29,13 +29,16 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     proposedText: 'Отказ подписан.',
     interventionKind: 'testimony',
     premise: false,
-    status: 'accepted',
+    // BOOK-189 — the DTO the server sends for a landed filing: the change decided the state,
+    // the receipt is the chapter and its revision, and no acceptance sentence is left on the row.
+    status: 'applied',
+    applied: { chapter: 8, rev: 4 },
     frame: 'untouched',
-    reason: 'входит в книгу',
+    reason: null,
     createdAt: '2026-10-25T12:04:11Z',
     decidedAt: '2026-10-25T12:05:00Z',
     changeId: 'chg_1',
-    applied: null,
+    changeStatus: null,
     refusal: null,
     attempt: null,
     ...overrides,
@@ -110,18 +113,27 @@ describe('the composer’s kinds (BOOK-16)', () => {
 
 describe('the kind in the thread and on the change card (BOOK-16)', () => {
   it('prints the kind beside the decision, as one plain word', () => {
-    const html = renderToStaticMarkup(<Discussion depth={2} comments={[comment()]} live />);
+    // BOOK-189 — the landed fixture is the DTO the server now sends: `applied` with its receipt,
+    // not a stale `accepted` beside a `done applied` change.
+    const html = renderToStaticMarkup(<Discussion depth={1} comments={[comment()]} live />);
     // The kind sits in front of the decision, one word, inside the same line.
-    // BOOK-90: the state is the word «идёт»; the queue fact is the detail.
-    expect(html).toContain('<span class="comment-kind">свидетельство · </span>идёт');
-    expect(html).toContain('правка в очереди на запись · входит в книгу');
+    expect(html).toContain('<span class="comment-kind">свидетельство · </span>внесено');
+    expect(html).toContain('глава 8 · ревизия 4');
+    expect(html).not.toContain('право на ваш текст');
+    expect(html).not.toContain('идёт');
   });
 
   it('prints nothing for a note or a row stored before BOOK-16', () => {
     const html = renderToStaticMarkup(
-      <Discussion depth={2} comments={[comment({ interventionKind: null, proposedText: null })]} live />,
+      <Discussion
+        depth={1}
+        comments={[
+          comment({ status: 'new', interventionKind: null, proposedText: null, applied: null, changeId: null }),
+        ]}
+        live
+      />,
     );
-    expect(html).toContain('замечание в очереди · входит в книгу');
+    expect(html).toContain('ждёт');
     expect(html).not.toContain('свидетельство');
   });
 

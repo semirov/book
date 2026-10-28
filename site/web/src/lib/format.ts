@@ -120,12 +120,10 @@ export type QueueRow = { kind: 'filing'; id: string };
  * A premise never takes a queue place at all: it waits for the chapter's first pass (BOOK-7),
  * and its row says so in its own word.
  *
- * The rule the line states: it counts what the page presents as **waiting or working** — the
- * filing's own word is «ждёт» or «идёт», never «внесено» and never a refusal. A `new` filing
- * waits its turn; a `batched`/`delivered` one is being read by triage; both are on their way
- * into the lane, not out of the book, so the word «в очереди» covers triage too. Dropping the
- * two would print «в очереди пусто» above a row the page shows as going, and a count is not
- * worth that contradiction.
+ * BOOK-189 — this set decides only which **rows** the register presents as on their way; it
+ * never counts the lane. A filing waiting for a decision is not in the writer's queue: the
+ * count is the writer's own pending changes (`queueView`), and a page that added the two said
+ * «в очереди 2 правки» over text that was already written.
  */
 const QUEUED_FILING = new Set<CommentStatus>(['new', 'batched', 'delivered', 'accepted']);
 
@@ -135,11 +133,11 @@ type QueueComment = Pick<CommentDto, 'id' | 'status'> & { premise?: boolean };
 /**
  * The queue line and the entries behind it, from one fact.
  *
- * `depth` is the server's own count of the lane and may include rows beyond this page, so the
- * line prints the larger of the two: it can never say «в очереди пусто» while an entry is
- * presented as waiting, and it never shrinks the depth the engine measured. With BOOK-137 the
- * entries are filings only — a change attaches to its filing — so the count of queued rows is
- * the count of queued filings, and one filing with an attempt is still one row.
+ * `depth` is the writer's own count of the lane (`queueState().depth`, the `changes` that are
+ * `pending` and not a premise) — the same predicate the writer picks its head with. It is the
+ * **only** source of the count: a filing is not a queue place, so the rows below are what the
+ * page lists, never a second count. When the writer would pick up nothing, the line says
+ * «в очереди пусто», whatever the thread still shows as waiting.
  */
 export function queueView(
   depth: number,
@@ -150,5 +148,5 @@ export function queueView(
     if (entry.premise === true) continue;
     if (QUEUED_FILING.has(entry.status)) rows.push({ kind: 'filing', id: entry.id });
   }
-  return { count: Math.max(Math.max(0, Math.trunc(depth)), rows.length), rows };
+  return { count: Math.max(0, Math.trunc(depth)), rows };
 }
