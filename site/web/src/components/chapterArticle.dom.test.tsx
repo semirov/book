@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { CatalogEntry, ChapterDto } from '@book/shared';
+import type { CatalogEntry, ChapterDto, ChapterRevisionPayload } from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,12 +57,15 @@ const ENTRY: CatalogEntry = {
 };
 
 let root: Root | null = null;
+let container: HTMLDivElement | null = null;
 
 afterEach(async () => {
   if (root !== null) await act(async () => root?.unmount());
   root = null;
+  container = null;
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /**
@@ -351,5 +354,146 @@ describe('the chapter skeleton under a browser', () => {
     });
 
     expect(container.querySelector('.ch-placeholder')).toBeNull();
+  });
+});
+
+// ── the reader's change is typed (§1 `typing`)
+const LOADED: ChapterDto = {
+  n: 1, title: null, rev: 1, chars: 85, basis: false, writtenAt: '2026-10-20T09:20:00Z', updatedAt: '2026-10-20T09:20:00Z',
+  blocks: [
+    { id: 'ch01#aaaa1111', i: 0, text: 'Первый абзац стоит на месте.', hash: 'a' },
+    { id: 'ch01#bbbb2222', i: 1, text: 'Второй абзац до правки читателя.', hash: 'b' },
+    { id: 'ch01#cccc3333', i: 2, text: 'Третий абзац стоит на месте.', hash: 'c' },
+  ],
+};
+
+const NEW_TEXT = 'Второй абзац, переписанный по слову читателя.';
+const APPLIED: ChapterDto = {
+  ...LOADED, rev: 2, chars: 100, updatedAt: '2026-10-20T09:21:00Z',
+  blocks: [LOADED.blocks[0]!, { id: 'ch01#dddd4444', i: 1, text: NEW_TEXT, hash: 'd' }, LOADED.blocks[2]!],
+};
+
+/** The frame the site publishes: one replaced paragraph, and the change behind it. */
+function landed(overrides: Partial<ChapterRevisionPayload> = {}): ChapterRevisionPayload {
+  return {
+    n: 1, rev: 2, title: null, chars: 100, delta: NEW_TEXT.length - LOADED.blocks[1]!.text.length, kind: 'edit',
+    patch: [{ op: 'replace', id: 'ch01#bbbb2222', i: 1, newId: 'ch01#dddd4444', text: NEW_TEXT }], patchTruncated: false,
+    attributed: true, updatedAt: '2026-10-20T09:21:00Z',
+    cause: { changeId: 'chg_01J9Z8K4Q7', cascadeId: null, wave: null, lane: null, direction: null, stepId: null, seamsIn: [], seamsOut: [] },
+    ...overrides,
+  };
+}
+
+/** A machine pass: a rewrite is nobody's change, so `changeId` is null. */
+function rewritten(): ChapterRevisionPayload {
+  const frame = landed({ kind: 'rewrite' });
+  return { ...frame, cause: { ...frame.cause, changeId: null, stepId: 'stp_9' } };
+}
+
+const answer = (body: unknown): Response => ({ ok: true, status: 200, statusText: 'OK', json: async () => body }) as unknown as Response;
+const BASE = { revising: null, caret: null, fresh: false, composer: EMPTY_COMPOSER, viewer: { signedIn: false, displayName: null }, history: true } as const;
+
+/** Mount once, then re-render with the props a frame would bring: the state is kept. */
+async function draw(props: { entry?: CatalogEntry; revision?: ChapterRevisionPayload | null } = {}): Promise<HTMLDivElement> {
+  if (container === null) {
+    container = document.createElement('div');
+    document.body.append(container);
+    root = createRoot(container);
+  }
+  await act(async () => { root?.render(<ChapterArticle {...BASE} entry={props.entry ?? ENTRY} revision={props.revision ?? null} />); });
+  await flush();
+  return container;
+}
+
+/** The text the paragraph holds right now: its own count, never `textContent` (BOOK-89). */
+const chars = (view: HTMLDivElement, id: string): string | null =>
+  view.querySelector(`[data-block-id="${id}"]`)?.getAttribute('data-chars') ?? null;
+const full = (index: number): string => String(LOADED.blocks[index]!.text.length);
+
+describe('the change a reader made is printed, not landed whole (§1 typing)', () => {
+  let frames: FrameRequestCallback[] = [];
+  let clock = 0; // one animation frame of the printing loop, with `ms` of prose time. */
+  async function tick(ms: number): Promise<void> {
+    const next = frames.shift();
+    clock += ms;
+    await act(async () => next?.(clock));
+  }
+
+  beforeEach(() => {
+    frames = []; clock = performance.now();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: () => undefined, removeEventListener: () => undefined }));
+    vi.stubGlobal('IntersectionObserver', EagerObserver);
+  });
+
+  it('types the paragraph the change touched and leaves the rest final', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer(LOADED)));
+    const view = await draw();
+    // Joining a chapter written days ago prints nothing: its text is simply there.
+    expect(chars(view, 'ch01#bbbb2222')).toBe(full(1));
+    expect(view.querySelector('.ch-print')).toBeNull();
+
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: landed() });
+
+    // The change arrives at the reading line and is written there, character by character.
+    expect(chars(view, 'ch01#dddd4444')).toBe('0');
+    expect(view.querySelector('[data-block-id="ch01#dddd4444"]')?.className).toContain('is-printing');
+    expect(view.querySelector('.ch-print')?.textContent).toBe('■ печатается');
+    // Untouched paragraphs are already final — no second animation, no re-typing.
+    expect(chars(view, 'ch01#aaaa1111')).toBe(full(0));
+    expect(chars(view, 'ch01#cccc3333')).toBe(full(2));
+
+    for (let step = 0; step < 12; step += 1) await tick(250);
+    expect(chars(view, 'ch01#dddd4444')).toBe(String(NEW_TEXT.length));
+    expect(view.querySelector('.ch-print')).toBeNull();
+  });
+
+  it('keeps a machine rewrite a cross-fade: the patch lands whole, nothing prints', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer(LOADED)));
+    const view = await draw();
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: rewritten() });
+
+    expect(chars(view, 'ch01#dddd4444')).toBe(String(NEW_TEXT.length));
+    expect(view.querySelector('.ch-print')).toBeNull();
+    expect(view.querySelector('[data-block-id="ch01#dddd4444"]')?.className).toContain('is-revised');
+  });
+
+  it('brings the change to the reading line only when it is off-screen', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => answer(LOADED)));
+    const far = { value: false };
+    const rect = (top: number): DOMRect => ({ top, bottom: top + 24, left: 0, right: 400, width: 400, height: 24, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      return rect(this.getAttribute('data-block-id') === 'ch01#dddd4444' && far.value ? 5_000 : 120);
+    });
+    const scrolled: Array<string | null> = [];
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true, value(this: Element) { scrolled.push(this.getAttribute('data-block-id')); },
+    });
+
+    await draw();
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: landed() });
+    // Already inside the reading window: the page must not jump under the reader's eyes.
+    expect(scrolled).toEqual([]);
+
+    await act(async () => root?.unmount());
+    root = null;
+    container = null;
+    far.value = true;
+    await draw();
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: landed() });
+    expect(scrolled).toEqual(['ch01#dddd4444']);
+  });
+
+  it('refetches a patch it cannot apply and prints the refetched chapter by the same rule', async () => {
+    const fetchMock = vi.fn(async () => answer(fetchMock.mock.calls.length === 1 ? LOADED : APPLIED));
+    vi.stubGlobal('fetch', fetchMock);
+    const view = await draw();
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: landed({ patchTruncated: true }) });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The fact travels with the refetch: a change behind it still prints, block by block.
+    expect(chars(view, 'ch01#dddd4444')).toBe('0');
+    expect(chars(view, 'ch01#aaaa1111')).toBe(full(0));
   });
 });

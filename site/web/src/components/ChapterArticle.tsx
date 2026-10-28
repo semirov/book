@@ -1,4 +1,5 @@
 import {
+  type BlockDto,
   type BlockRevisingPayload,
   type CatalogEntry,
   type ChangeSummaryDto,
@@ -11,31 +12,27 @@ import {
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 import { getChapter } from '../api.ts';
-import { nearViewport, reducedMotion } from '../dom.ts';
+import { reducedMotion } from '../dom.ts';
 import { basisSentenceOf, chapterMatchesEntry } from '../lib/basis.ts';
 import { reserveHeight } from '../lib/cssom.ts';
 import { estimateChapterHeight } from '../lib/layout.ts';
 import { CHAPTER_BOX_PX, statusLine } from '../lib/skeleton.ts';
-import { applyPatch, revisedBlockIds } from '../lib/patch.ts';
+import { applyPatch, refetchPrints, revisedBlockIds } from '../lib/patch.ts';
 import { rekeyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { reanchorAnchor, seamKey } from '../lib/seam.ts';
 import { openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { usePending } from '../usePending.ts';
+import { usePrintingReveal } from '../lib/usePrintingReveal.ts';
 import { ChapterHeader } from './ChapterHeader.tsx';
 import { PremiseEntry } from './PremiseEntry.tsx';
 import { ProseParagraph } from './ProseParagraph.tsx';
 import { Skeleton } from './Skeleton.tsx';
 import {
-  REVEAL,
   activeBlockId,
   blockText,
   createReveal,
   finishReveal,
-  planReveal,
-  revealComplete,
-  skipBlocks,
-  tickReveal,
-  type RevealState,
+  printsChange,
 } from '../lib/reveal.ts';
 
 /**
@@ -78,6 +75,12 @@ export type ChapterArticleProps = {
   history: boolean;
   /** The first empty chapter in the flow carries the page's one explanation sentence. */
   firstEmpty?: boolean;
+  /**
+   * BOOK-117: a writer pass is in flight for this chapter (the stage stream says so). The
+   * engine publishes the revision in its own process, so the site's watcher sends no frame; the
+   * refetch this page does anyway is then *printed* — the reader watches the change land.
+   */
+  passActive?: boolean;
 };
 
 export function ChapterArticle({
@@ -95,6 +98,7 @@ export function ChapterArticle({
   viewer,
   history,
   firstEmpty = false,
+  passActive = false,
 }: ChapterArticleProps) {
   const seam = useOpenSeam();
   /**
@@ -103,16 +107,20 @@ export function ChapterArticle({
    */
   const [reanchor, setReanchor] = useState<{ draft: SeamDraft; blockGone: boolean } | null>(null);
   const [chapter, setChapter] = useState<ChapterDto | null>(null);
-  const [reveal, setReveal] = useState<RevealState | null>(null);
   const [revisedIds, setRevisedIds] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState(false);
   const [inView, setInView] = useState(false);
-  const article = useRef<HTMLElement | null>(null);
   const loading = useRef(false);
-  const measured = useRef(false);
-  const speed = useRef(1);
+  const printingReveal = usePrintingReveal({ chapter, fresh });
+  const { article, reveal, setReveal, printing, line, startReveal } = printingReveal;
+  /** BOOK-117: the change behind a revision, held across the refetch it forces. */
+  const changeIds = useRef<ReadonlySet<string> | null>(null);
+  /** The blocks this article last rendered: what a refetch compares against to find the change. */
+  const shownBlocks = useRef<readonly BlockDto[] | null>(null);
+  /** The pass flag as `load` sees it without taking `passActive` into its dependency list. */
+  const passInFlight = useRef(false);
+  passInFlight.current = passActive;
 
-  const printing = reveal !== null && !revealComplete(reveal);
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
   const showsText = entry.written || entry.basis;
   const basisSentence = basisSentenceOf(entry);
@@ -123,20 +131,6 @@ export function ChapterArticle({
    */
   const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
   const stage = usePending(busy);
-  const startReveal = useCallback((loaded: ChapterDto) => {
-    const reduce = reducedMotion();
-    const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : Date.now() - Date.parse(loaded.writtenAt);
-    const plan = planReveal({
-      blocks: loaded.blocks,
-      mode: fresh ? 'live' : 'join',
-      chapterAgeMs: Math.max(0, ageMs),
-      reducedMotion: reduce,
-    });
-    const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
-    setReveal(createReveal(queued, { reducedMotion: reduce }));
-    measured.current = false;
-  }, [fresh]);
-
   const load = useCallback(async () => {
     if (loading.current) return;
     loading.current = true;
@@ -148,7 +142,17 @@ export function ChapterArticle({
       }
       setFailed(false);
       setChapter(result);
-      startReveal(result);
+      // BOOK-117: what prints on a refetch — the change it carries, or, while a pass is in
+      // flight, the blocks that differ from the ones already on screen.
+      const changed = refetchPrints({
+        change: changeIds.current,
+        passInFlight: passInFlight.current,
+        before: shownBlocks.current,
+        after: result.blocks,
+      });
+      changeIds.current = null;
+      shownBlocks.current = result.blocks;
+      startReveal(result, changed);
     } catch {
       setFailed(true);
     } finally {
@@ -219,57 +223,34 @@ export function ChapterArticle({
           updatedAt: revision.updatedAt,
           blocks: patched,
         });
-        setRevisedIds(new Set(revisedBlockIds(revision.patch)));
-        // A rewrite cross-fades; it never re-types. If text was still printing, stop.
-        setReveal((current) => (current === null ? current : finishReveal(current)));
+        shownBlocks.current = patched;
+        if (!printsChange(revision)) {
+          setRevisedIds(new Set(revisedBlockIds(revision.patch)));
+          // A machine rewrite cross-fades; it never re-types. If text was printing, stop.
+          setReveal((current) => (current === null ? current : finishReveal(current)));
+          return;
+        }
+        // BOOK-117: a change the reader made is *seen being written*: its blocks print.
+        const change = revisedBlockIds(revision.patch);
+        setRevisedIds(new Set());
+        line.current = change[0] ?? null;
+        setReveal(createReveal(patched.filter((block) => change.includes(block.id)), { reducedMotion: reducedMotion() }));
+        printingReveal.startReveal; // the hook owns `measured`; the change prints where it is
         return;
       }
     }
+    // A patch this client cannot apply is refetched; the change behind it travels with the
+    // request, so the refetched text still prints instead of appearing whole.
+    if (
+      revision !== null &&
+      revision.n === entry.n &&
+      revision.rev > chapter.rev &&
+      printsChange(revision)
+    ) {
+      changeIds.current = new Set(revisedBlockIds(revision.patch));
+    }
     void load();
   }, [chapter, entry, showsText, inView, load, revision]);
-
-  // One animation loop while the queue prints; it stops when the queue is empty.
-  useEffect(() => {
-    if (!printing) return;
-    let frame = 0;
-    let last = performance.now();
-    const step = (now: number): void => {
-      const delta = Math.min(250, now - last);
-      last = now;
-      setReveal((current) => (current === null ? current : tickReveal(current, delta, speed.current)));
-      frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [printing]);
-
-  // Scrolling away drains the queue at 8× rather than holding a chapter hostage.
-  useEffect(() => {
-    const update = (): void => {
-      const node = article.current;
-      speed.current = node !== null && !nearViewport(node, 0.5) ? REVEAL.offscreenSpeedUp : 1;
-    };
-    update();
-    window.addEventListener('scroll', update, { passive: true });
-    return () => window.removeEventListener('scroll', update);
-  }, []);
-
-  // Only blocks inside the reveal window print; after the first paint the rest is set.
-  useEffect(() => {
-    if (chapter === null || reveal === null || measured.current) return;
-    measured.current = true;
-    const node = article.current;
-    if (node === null) return;
-    const height = window.innerHeight || 800;
-    const skipped = new Set<string>();
-    for (const element of node.querySelectorAll('[data-block-id]')) {
-      const id = element.getAttribute('data-block-id');
-      if (id === null) continue;
-      const rect = element.getBoundingClientRect();
-      if (rect.bottom < -1.5 * height || rect.top > 2.5 * height) skipped.add(id);
-    }
-    if (skipped.size > 0) setReveal((current) => (current === null ? current : skipBlocks(current, skipped)));
-  }, [chapter, reveal]);
 
   // The reload that a stale send asks for is the moment to re-key the draft: the new block
   // id, sentence and revision come from the chapter that just arrived (BOOK-33).

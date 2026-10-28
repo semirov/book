@@ -45,6 +45,8 @@ export type ServerEventType =
   | 'comment:decision'
   | 'feedback:batch'
   | 'history:event'
+  /** One writer-lane stage (docs/writer-lane.md §3); the payload is a `PassStageEvent`. */
+  | 'pass:stage'
   | 'presence'
   | 'error'
   | 'pong';

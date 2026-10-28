@@ -31,7 +31,7 @@ import { getChapterRow } from '../db/repo/chapters.ts';
 import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
 import { isBasisSlot, isWritten } from './text.ts';
-import type { EngineDeps } from './types.ts';
+import type { EngineDeps, PremiseCause } from './types.ts';
 
 /** «у главы уже есть замысел» — the second premise of one chapter, told to its reader. */
 export const PREMISE_SUPERSEDED_REASON = 'у главы уже есть замысел';
@@ -171,8 +171,12 @@ export type PremiseSettlement = 'applied' | 'rejected' | null;
 
 /**
  * Settle the premise a draft step consumed. Called only from `closeStep`, inside its
- * transaction: the chapter's text is the fact that decides it. An interrupted or escalated
- * pass leaves the premise queued — the next first pass still has it (`null`).
+ * transaction: the chapter's text is the fact that decides it. An interrupted pass leaves the
+ * premise queued — the next first pass still has it (`null`). A pass that **broke**
+ * (`cause: 'failed'`) neither takes nor refuses an intervention: if it wrote the chapter, the
+ * premise did enter the first edition whatever killed the gate afterwards (`applied`); if it did
+ * not, the premise waits for a later pass (`null`). Only the writer's own refusal of the work
+ * (`'refused'`, the default and today's meaning) drops the reader's row.
  */
 export function settleDraftPremise(
   deps: EngineDeps,
@@ -181,11 +185,18 @@ export function settleDraftPremise(
   escalation: string | null,
   note: string | null,
   now: number,
+  cause: PremiseCause = 'refused',
 ): PremiseSettlement {
   if (step.pass !== 'draft' || step.premise_change === null) return null;
   const premise = store.getChange(deps.db, step.premise_change);
   if (premise === undefined || premise.premise !== 1) return null;
   const words = (note ?? '').replace(/\s+/gu, ' ').trim().slice(0, REASON_MAX_CHARS);
+  // A broken pass is not a refusal: the pass wrote the chapter from this premise or it did not
+  // write at all. Text is the fact here, so no note is needed to acknowledge it.
+  if (outcome === 'escalated' && cause === 'failed') {
+    if (!isWritten(deps.bookRoot, premise.chapter)) return null;
+    return settle(deps, premise, 'applied', premiseAppliedReason(premise.chapter), now);
+  }
   // A refusal wins over a landing: a writer who escalated said no, even if the file exists and
   // the report also carries a note. «Замысел учтён» must never be published for a refusal.
   if (outcome === 'escalated' && escalation !== 'escalated:gate_timeout') {

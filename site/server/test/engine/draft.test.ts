@@ -88,17 +88,30 @@ describe('dailyTokens — the input to the throttled state (§6A.12)', () => {
     }
   });
 
-  it('keeps drafting out of the way when the day is spent', () => {
+  it('keeps drafting out of the way while the day is paused (BOOK-117)', () => {
     const fixture = createEngineFixture({ env: { BUDGET_DAILY_TOKENS: '100' } });
     try {
+      const at = new Date(fixture.clock.now()).toISOString().replace(/\.\d{3}Z$/u, 'Z');
       fixture.db
         .prepare(
           `INSERT INTO steps (step_id, seq, wave, pass, chapter, boundary, at, outcome, tokens_in, tokens_out)
            VALUES ('stp_spent', 0, 0, 'draft', 1, 'front', ?, 'rewritten', 90, 20)`,
         )
-        .run(new Date(fixture.clock.now()).toISOString().replace(/\.\d{3}Z$/u, 'Z'));
-      expect(fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toBeNull();
-      expect(fixture.engine.state().status).toBe('throttled');
+        .run(at);
+      fixture.db
+        .prepare(
+          `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, model, tokens_in, tokens_out, usd, priced)
+           VALUES (?, ?, 'stp_spent', 1, 'draft', 'deepseek/deepseek-v4-pro', 0, 0, 10.01, 1)`,
+        )
+        .run(at, at.slice(0, 10));
+
+      // Tokens stay information — the engine still calls itself throttled — while the money is
+      // the bound that refuses the pass, with the day's own sentence as the message.
+      expect(fixture.engine.state()).toMatchObject({ status: 'throttled', tokens: { today: 110 } });
+      expect(fixture.engine.state().budget.state).toBe('pause');
+      expect(() => fixture.engine.next({ for: 'fwd', session: 'fwd-1' })).toThrowError(/^пауза · дневной потолок/u);
+      // No draft was opened: the one step in the table is the seeded row.
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 1 });
     } finally {
       fixture.close();
     }

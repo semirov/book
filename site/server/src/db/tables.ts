@@ -99,6 +99,56 @@ CREATE TRIGGER events_no_delete BEFORE DELETE ON events
   BEGIN SELECT RAISE(ABORT, 'events is append-only (ADR-027)'); END;`;
 
 /**
+ * The writer lane's stages (docs/writer-lane.md §3, BOOK-117): one row per stage a pass
+ * passed. `seq` is the store's own order and the replay cursor; `stage_seq` is the order
+ * inside the pass, assigned by the store when the site emits a stage it holds no counter for.
+ * No foreign key to `steps`: a stage is a fact about what happened even if the step is reaped.
+ * It lives here because both the full schema and migration v16 (BOOK-117) build the same table.
+ */
+export const PASS_STAGES_TABLE_SQL = `CREATE TABLE pass_stages (                 -- one row per lane stage (docs/writer-lane.md §2)
+  seq           INTEGER PRIMARY KEY AUTOINCREMENT,   -- the store's own order = the replay cursor
+  pass_id       TEXT NOT NULL,                       -- the engine's step id
+  chapter       INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  stage_seq     INTEGER NOT NULL,                    -- monotonic inside the pass, from 1
+  stage         TEXT NOT NULL CHECK (stage IN
+                  ('queued','read','verdict','drafting','typing','landed','refused')),
+  at            TEXT NOT NULL,                       -- ISO-8601 UTC, when the work happened
+  actor_process TEXT NOT NULL CHECK (actor_process IN ('engine','writer','site','auditor')),
+  actor_model   TEXT,                                -- null when no model ran
+  change_id     TEXT,                                -- the change this pass carries, when any
+  summary       TEXT NOT NULL,                       -- one factual line, ≤200 chars
+  span          TEXT,                                -- JSON StageSpan[], null off 'landed'
+  tokens_in     INTEGER,                             -- one call's on 'drafting', the pass's on 'landed'
+  tokens_out    INTEGER,
+  cost_usd      REAL,                                -- null off 'landed'
+  UNIQUE (pass_id, stage_seq)
+);
+CREATE INDEX pass_stages_chapter_seq ON pass_stages(chapter, seq);`;
+
+/**
+ * The money ledger (BOOK-117): one row per pass that closed, the only place a spend total
+ * comes from. `pass_id` is the engine's step id and UNIQUE, so a re-close is not a second
+ * charge; `day` is the UTC date of `at`, which is what makes the day's cap lift by itself at
+ * 00:00 UTC. `priced = 0` means the model has no rate and `usd` is the honest zero (BOOK-23).
+ * It lives here because both the full schema and migration v17 (BOOK-117) build the same table.
+ */
+export const PASS_SPEND_TABLE_SQL = `CREATE TABLE pass_spend (                 -- the money ledger (BOOK-117)
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  at         TEXT NOT NULL,                        -- ISO UTC, when the pass closed
+  day        TEXT NOT NULL,                        -- 'YYYY-MM-DD' (UTC), taken from 'at'
+  pass_id    TEXT NOT NULL UNIQUE,                 -- the engine's step id
+  chapter    INTEGER,
+  pass       TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep')),
+  change_id  TEXT,
+  model      TEXT,                                 -- the model the step closed with (null: none)
+  tokens_in  INTEGER NOT NULL,
+  tokens_out INTEGER NOT NULL,
+  usd        REAL NOT NULL,                        -- costUsd of the step's tokens, 6 dp
+  priced     INTEGER NOT NULL CHECK (priced IN (0,1))  -- 1 = usd is a measurement
+);
+CREATE INDEX pass_spend_day ON pass_spend(day);`;
+
+/**
  * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the
  * history's vocabulary. It is a named constant because BOOK-18 adds `document.status` and
  * SQLite cannot widen a CHECK with ALTER, so migration v12 rebuilds the table with its rows,

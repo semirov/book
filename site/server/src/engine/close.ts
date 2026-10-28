@@ -1,33 +1,30 @@
 /**
- * Closing a step, advancing its ripple, closing the change (ARCHITECTURE.md §6A.4 steps
- * 7–9, §6A.6, §6B.4).
+ * Closing a step, advancing its ripple, closing the change (ARCHITECTURE.md §6A.4 steps 7–9,
+ * §6B.4).
  *
  * One rule shapes this module: **a step is closed only by the engine**, and every close has
  * a cause that is already a row — the two verdicts, the seam report, the cascade plan. The
- * cascade itself is a projection of its steps: `advanceCascade` re-derives the ripple's
- * state from them and either opens the next step per wing, waits, or closes with an
- * outcome from the stop table. No timer moves a ripple, so replaying the rows replays the
- * cascade.
+ * cascade is a projection of its steps (`advanceCascade`), and no timer moves a ripple, so
+ * replaying the rows replays the cascade.
  */
 
-import type {
-  CascadeOutcome,
-  CascadeStatus,
-  ChangeOutcome,
-  ChangeStatus,
-  SeamRef,
-  StepOutcome,
+import {
+  parseSeams,
+  type CascadeOutcome,
+  type CascadeStatus,
+  type ChangeOutcome,
+  type ChangeStatus,
 } from '@book/shared';
-import { parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordImpact } from '../history/impact.ts';
+import { recordCloseSpend, spendOfClose } from '../budget.ts';
+import { budgetFromConfig } from './budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
-import { budgetFromConfig } from './budget.ts';
 import {
   closeReason,
   planCascade,
@@ -119,9 +116,8 @@ export function closeChange(
   reason: string | null,
   now: number,
 ): void {
-  // Tokens and the model are frozen here, once (§6D.5). Cost stays 0 — no price source exists
-  // yet — so the row is not priced (`cost_priced` stays 0) and BOOK-23 reads the amount as
-  // «not measured» (`measuredRub`): no surface prints a ₽ figure from a placeholder zero.
+  // Tokens and the model are frozen here, once (§6D.5); cost stays the placeholder zero and the
+  // row is not priced, so BOOK-23 reads it as «not measured» (`measuredRub`), never as free.
   const steps = store.stepsOfChange(deps.db, change.id);
   const tokensIn = steps.reduce((sum, step) => sum + step.tokens_in, 0);
   const tokensOut = steps.reduce((sum, step) => sum + step.tokens_out, 0);
@@ -331,32 +327,8 @@ export function openCascade(deps: EngineDeps, step: store.StepRow, change: store
 
 // ── step close ───────────────────────────────────────────────────────────────
 
-export type CloseStepInput = {
-  outcome: StepOutcome;
-  seamsOut: SeamRef[];
-  note: string | null;
-  model: string | null;
-  tokensIn: number;
-  tokensOut: number;
-  /** The change's outcome, decided from relevance before the write (void/dropped or applied). */
-  changeOutcome?: ChangeOutcome | null;
-  /** Overrides for a step that closes a change without editing it (void/dropped). */
-  changeStatus?: ChangeStatus;
-  changeReason?: string | null;
-  /** Why the step is escalated; also the cascade outcome when it belongs to one. */
-  escalation?: CascadeOutcome | null;
-  /**
-   * BOOK-34: the id of a lease that had already expired when this close arrived — the release
-   * then reads `expired-close` and `step.closed` says so.
-   */
-  expiredLeaseId?: string | null;
-};
-
-export type CloseStepResult = {
-  cascadeId: string | null;
-  outcome: StepOutcome;
-  changeStatus: ChangeStatus | null;
-};
+export type { CloseStepInput, CloseStepResult } from './closeTypes.ts';
+import type { CloseStepInput, CloseStepResult } from './closeTypes.ts';
 
 export function closeStep(
   deps: EngineDeps,
@@ -376,6 +348,7 @@ export function closeStep(
   // since the session last looked, and the close is refused (`LEASE_HELD`), not mis-booked.
   const { lease, live } = leaseForClose(db, step.step_id, input.expiredLeaseId);
   const gateRows = store.listVerdicts(db, step.step_id);
+  const spend = spendOfClose(db, step.step_id, { model: input.model, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
   const ms = Math.max(0, now - Date.parse(step.at));
 
   const close = db.transaction((): CloseStepResult => {
@@ -383,9 +356,9 @@ export function closeStep(
       outcome: input.outcome,
       seams_out: JSON.stringify(input.seamsOut),
       note: input.note,
-      model: input.model,
-      tokens_in: input.tokensIn,
-      tokens_out: input.tokensOut,
+      model: spend.model,
+      tokens_in: spend.tokensIn,
+      tokens_out: spend.tokensOut,
       closed_at: toIso(now),
       ms,
       lease_id: lease?.id ?? step.lease_id,
@@ -397,11 +370,10 @@ export function closeStep(
       releaseLease(db, live.id, input.outcome === 'escalated' ? 'escalated' : input.outcome === 'holds' ? 'holds' : 'done', now);
     }
     store.deleteDispatches(db, step.step_id);
-    // BOOK-7: a draft's first pass settles its chapter's premise from the text that now
-    // exists — applied when the chapter is written, rejected when the writer refused it with
-    // one reason, and left queued when the pass was interrupted (a vanished session is not a
-    // refusal: the step is re-issued and the premise waits with it).
-    settleDraftPremise(deps, step, input.outcome, input.escalation ?? null, input.note, now);
+    // BOOK-7: a draft's first pass settles its chapter's premise from the text that now exists —
+    // applied when the chapter is written, rejected when the writer refused it with one reason,
+    // and left queued when the pass was interrupted or broke (a broken call is not a refusal).
+    settleDraftPremise(deps, step, input.outcome, input.escalation ?? null, input.note, now, input.premiseCause);
     const span = db.prepare('SELECT MIN(hseq) AS fromHseq FROM events WHERE step_id = ?').get(step.step_id) as {
       fromHseq: number | null;
     };
@@ -425,6 +397,8 @@ export function closeStep(
       now,
     );
     store.updateStep(db, step.step_id, { hseq_from: span.fromHseq, hseq_to: hseq });
+    // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
+    recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: input.model ?? null, tokensIn: input.tokensIn, tokensOut: input.tokensOut });
 
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
@@ -493,7 +467,6 @@ function findOriginChange(db: Db, step: store.StepRow): store.ChangeRow | null {
     if (change) return change;
   }
   const processing = db.prepare(`SELECT * FROM changes WHERE status = 'processing' ORDER BY seq LIMIT 1`).get() as
-    | store.ChangeRow
-    | undefined;
+    store.ChangeRow | undefined;
   return processing ?? null;
 }

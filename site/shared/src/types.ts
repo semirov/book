@@ -16,6 +16,30 @@ export type SeamState = 'not_reached' | 'open' | 'verified' | 'failed';
 export type CascadeWingState = 'waiting' | 'moving' | 'settled' | 'stopped';
 
 /**
+ * The money bound (BOOK-117). `ok` — inside both caps; `warn` — 80 % of a cap is spent, a
+ * pass is still allowed; `pause` — the day's cap is reached, it lifts by itself at 00:00 UTC;
+ * `stop` — the book's cap is reached and nothing opens again.
+ */
+export type BudgetState = 'ok' | 'warn' | 'pause' | 'stop';
+
+/** One cap and what was spent against it; `ratio` is `spentUsd / capUsd`, at six decimals. */
+export type BudgetScope = { spentUsd: number; capUsd: number; ratio: number };
+
+/**
+ * The one money answer, read from the `pass_spend` ledger — never computed by the site. `line`
+ * is the single plain sentence the site prints; it is `''` while the state is `ok`.
+ */
+export type BudgetDto = {
+  state: BudgetState;
+  line: string;
+  /** `day` is a UTC date (`YYYY-MM-DD`), `resumesAt` the next 00:00 UTC (ISO). */
+  day: BudgetScope & { day: string; resumesAt: string };
+  book: BudgetScope;
+  /** Tokens stay information, never a bound. */
+  tokens: { today: number };
+};
+
+/**
  * One wing of a ripple, as the ribbon and the focus view draw it. A wing is **data**: it is
  * computed from the cascade's recorded steps, so a wing that never opened reports `waiting`
  * and no reached chapters — there is never a ring for a ripple that did not run.
@@ -161,6 +185,12 @@ export type StateSnapshot = {
    * rendered at all, rather than hidden.
    */
   history: HistoryStateDto;
+  /**
+   * BOOK-117: the money bound the engine's guard reads, from the same ledger. The server always
+   * sends it; it is optional only because a snapshot assembled by hand (a web fixture) predates
+   * the field, and a client renders the line when it is there.
+   */
+  budget?: BudgetDto;
 };
 
 /** One row of `GET /api/chapters` — all 67 slots, always. */

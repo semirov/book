@@ -30,12 +30,12 @@ function tableSql(db: Db, table: string): string {
   return row?.sql ?? '';
 }
 
-describe('migrate — schema v16', () => {
+describe('migrate — schema v18', () => {
   it('creates every table of revision 4 and no retired one', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(16);
+    expect(SCHEMA_VERSION).toBe(18);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -417,7 +417,7 @@ describe('migrate — schema v16', () => {
     // Shape a v13 install: the flag did not exist before BOOK-113.
     db.exec('ALTER TABLE identities DROP COLUMN edit_exempt');
     db.pragma('user_version = 13');
-    // BOOK-113, BOOK-61 and BOOK-137 land on the way to the head version.
+    // BOOK-113, BOOK-61, BOOK-137 and BOOK-117 land on the way to the head version.
     expect(migrate(db)).toEqual({ from: 13, to: SCHEMA_VERSION });
     // An existing reader is not exempt by accident: the column reads as 0.
     expect(db.prepare('SELECT edit_exempt FROM identities WHERE id = ?').get('idt_old')).toEqual({ edit_exempt: 0 });

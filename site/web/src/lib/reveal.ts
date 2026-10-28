@@ -7,7 +7,7 @@
  * `planReveal` decides what prints, `tickReveal` advances the queue by grapheme clusters.
  */
 
-import type { BlockDto } from '@book/shared';
+import type { BlockDto, ChapterDto } from '@book/shared';
 
 export const REVEAL = {
   /** Characters per second ≈ 180 wpm of printed prose. */
@@ -58,8 +58,14 @@ export type RevealPlanInput = {
   /**
    * `live`: the chapter arrived while the reader is here → print its opening.
    * `join`: the reader opened an existing chapter → print only a young chapter's tail.
+   * `change`: a revision a reader caused landed (BOOK-117 §1) → print only what it touched.
    */
-  mode: 'live' | 'join';
+  mode: 'live' | 'join' | 'change';
+  /**
+   * `change`: the blocks the revision added or replaced. Everything else in the chapter is
+   * already set, so only these reach the queue.
+   */
+  changedIds?: ReadonlySet<string>;
   chapterAgeMs: number;
   /** Blocks intersecting the viewport; default is every block. */
   visibleIds?: ReadonlySet<string>;
@@ -84,7 +90,13 @@ export function planReveal(input: RevealPlanInput): RevealPlan {
   const isVisible = (id: string): boolean => visible === undefined || visible.has(id);
 
   let candidates: readonly RevealBlockLike[] = [];
-  if (input.mode === 'live') {
+  if (input.mode === 'change') {
+    // A change writes only where it wrote: the rest of the chapter is already final.
+    const changed = input.changedIds ?? new Set<string>();
+    candidates = input.blocks
+      .filter((block) => changed.has(block.id))
+      .slice(0, input.maxQueueBlocks ?? REVEAL.maxQueueBlocks);
+  } else if (input.mode === 'live') {
     candidates = input.blocks.slice(0, input.maxQueueBlocks ?? REVEAL.maxQueueBlocks);
   } else if (input.chapterAgeMs <= (input.tailOnlyOnJoinMs ?? REVEAL.tailOnlyOnJoinMs)) {
     const tail = input.tailBlocks ?? REVEAL.tailBlocks;
@@ -94,6 +106,47 @@ export function planReveal(input: RevealPlanInput): RevealPlan {
   const queued = candidates.filter((block) => isVisible(block.id)).map((block) => block.id);
   const queuedSet = new Set(queued);
   return { queued, instant: all.filter((id) => !queuedSet.has(id)) };
+}
+
+/**
+ * BOOK-117 §1 — whether a revision must be **printed** rather than cross-faded.
+ *
+ * `cause.changeId` is the evidence that a reader's intervention landed: those revisions
+ * (`edit`, `polish`, `create`) are typed through `planReveal({ mode: 'change' })`. A cascade
+ * or a rewrite is machinery — `changeId` is null — and keeps the cross-fade `patch.ts` gives
+ * it. The rule is pure so the two callers (the patch and the refetch it falls back to) can
+ * never disagree about the same frame.
+ */
+export function printsChange(revision: {
+  kind: string;
+  cause: { changeId: string | null };
+}): boolean {
+  if (revision.cause.changeId === null) return false;
+  return revision.kind === 'edit' || revision.kind === 'polish' || revision.kind === 'create';
+}
+
+/**
+ * The reveal a chapter's arrival deserves, decided in one place (`startReveal` in the
+ * article): `changed` means a change (`BOOK-117 §1`), otherwise a chapter the reader watched
+ * arrive prints (`live`) and an older one prints only its tail on join. Reduced motion sets
+ * everything at once, and an unreadable `writtenAt` counts as just written (the tail prints).
+ */
+export function chapterReveal(
+  loaded: Pick<ChapterDto, 'blocks' | 'writtenAt'>,
+  options: { fresh: boolean; changed?: ReadonlySet<string> | null; reducedMotion?: boolean; now?: number },
+): RevealState {
+  const reduced = options.reducedMotion === true;
+  const now = options.now ?? Date.now();
+  const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : now - Date.parse(loaded.writtenAt);
+  const plan = planReveal({
+    blocks: loaded.blocks,
+    mode: options.changed == null ? (options.fresh ? 'live' : 'join') : 'change',
+    changedIds: options.changed ?? undefined,
+    chapterAgeMs: Math.max(0, ageMs),
+    reducedMotion: reduced,
+  });
+  const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
+  return createReveal(queued, { reducedMotion: reduced });
 }
 
 export type RevealBlockState = {

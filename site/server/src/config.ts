@@ -8,7 +8,6 @@
  * plain variable is still accepted, so a local run needs no files.
  */
 
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +15,8 @@ import { z } from 'zod';
 
 import { CASCADE_MAX_WAVE, isPublishedCaptchaTestKey } from '@book/shared';
 
+import { budgetCapsFromEnv } from './budget.ts';
+import { readMountedSecret } from './configSecrets.ts';
 import { assertDataDirIsolation, productionDataDirs } from './dataDirGuard.ts';
 import { donateUrlOf } from './donate.ts';
 import { loadPipeline, type Pipeline } from './pipeline.ts';
@@ -162,7 +163,9 @@ const schema = z.object({
   maxDeltaRatio: z.coerce.number().min(0).max(1).default(0.35),
   /** Writer revisions per step before the text is published with its finding (§6B.4). */
   gateCycles: z.coerce.number().int().min(1).default(3),
-  gateTtlMs: z.coerce.number().int().min(1).default(300_000),
+  /** How long a gate may read before its dispatch is dead: a real editor read took 4–7 min, and
+   *  the old five minutes killed a normal pass. The beat extends a live one; the wall still bounds. */
+  gateTtlMs: z.coerce.number().int().min(1).default(1_200_000),
   leaseTtlMs: z.coerce.number().int().min(1).default(120_000),
   /**
    * BOOK-34 — the step wall: how long one step may stay open, measured from `steps.at`,
@@ -255,61 +258,22 @@ const schema = z.object({
 
 export type Config = z.infer<typeof schema> & {
   pipeline: Pipeline; // ADR-038: the model the pipeline runs on, read from `pipelinePath` at boot.
+  /**
+   * BOOK-117: the money caps, in USD. Environment, not data (`BOOK_BUDGET_DAY_USD`,
+   * `BOOK_BUDGET_BOOK_USD`), read by `budgetCapsFromEnv` so a bad value names its own variable;
+   * they sit on the parsed config without widening the schema's own field list.
+   */
+  budgetDayUsd: number;
+  budgetBookUsd: number;
 };
-
-/**
- * Secrets that accept a file mount (§21.2). `ADMIN_TOKEN`/`ENGINE_TOKEN` are absent on
- * purpose: their `*_FILE` contract is already implemented next to them (`readAdminToken`,
- * the engine mints its token on a local first boot), and a missing optional panel token
- * must keep disabling the panel instead of failing the whole boot.
- */
-type MountedSecret =
-  | 'SESSION_SECRET'
-  | 'IP_SALT'
-  | 'YANDEX_CLIENT_ID'
-  | 'YANDEX_CLIENT_SECRET'
-  | 'CAPTCHA_SECRET';
-
-/**
- * Resolves a mounted secret. The file wins over the plain variable in every environment.
- * In production the file is the only accepted source: a plain value is refused (invariant 30
- * — `--env-file` and `docker inspect` both expose it), and there is no opt-out. A blank value
- * is no secret at all, so the required checks below report it with their own message.
- * Outside production the plain variable is accepted, so tests and local development need no
- * files. A declared file that is missing, unreadable or empty is a boot failure everywhere —
- * never a silent "no session secret, no CAPTCHA secret". The messages carry the variable name
- * only, never a value or a path.
- */
-function readMountedSecret(
-  env: NodeJS.ProcessEnv,
-  name: MountedSecret,
-  production: boolean,
-): string | undefined {
-  const file = env[`${name}_FILE`];
-  if (file === undefined || file.trim().length === 0) {
-    const plain = env[name];
-    if (!production) return plain;
-    // A blank value is no secret at all: the required checks below report it more plainly.
-    if ((plain ?? '').trim().length === 0) return undefined;
-    throw new Error(
-      `invalid configuration: ${name} must come from ${name}_FILE in production, ` +
-        'never from a plain value (invariant 30)',
-    );
-  }
-  let value: string;
-  try {
-    value = readFileSync(file.trim(), 'utf8').trim();
-  } catch {
-    throw new Error(`invalid configuration: cannot read ${name}_FILE`);
-  }
-  if (value.length === 0) throw new Error(`invalid configuration: ${name}_FILE is empty`);
-  return value;
-}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Case- and space-insensitive on purpose: `Production` must not slip past the invariants
   // below and let a deployed boot run the development shape.
   const production = (env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+  // BOOK-117: the two money caps are environment, read once and validated on their own, so
+  // a bad value names the variable (`BOOK_BUDGET_DAY_USD must be a positive decimal`).
+  const caps = budgetCapsFromEnv(env);
   const parsed = schema.safeParse({
     bookRoot: env.BOOK_ROOT,
     dataDir: env.DATA_DIR,
@@ -383,7 +347,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
     throw new Error(`invalid configuration: ${details}`);
   }
-  const config = parsed.data;
+  const config = { ...parsed.data, budgetDayUsd: caps.dayUsd, budgetBookUsd: caps.bookUsd };
   // BOOK-126: no link at all is a deployment that does not ask for gifts. A *set* link that
   // fails the allowlist is an operator mistake and must be visible, but the boot keeps going —
   // a typo must not keep the book offline, and a dead link would be worse than no row. The

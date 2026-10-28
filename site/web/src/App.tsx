@@ -12,6 +12,7 @@ import type {
   FrontUpdatedPayload,
   HelloPayload,
   HistoryEventFrame,
+  PassStageEvent,
   ServerEventType,
   StateUpdatedPayload,
   ViewerDto,
@@ -37,6 +38,8 @@ import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
+import { applyStage, type Passes } from './lib/passes.ts';
+import { applyRevisingMark } from './lib/revisingMark.ts';
 import {
   bookFromHello,
   catalogOutOfSync,
@@ -82,6 +85,8 @@ export function App() {
   const [connection, setConnection] = useState<SocketStatus>('connecting');
   const [revisions, setRevisions] = useState<Record<number, ChapterRevisionPayload>>({});
   const [revising, setRevising] = useState<Record<number, BlockRevisingPayload>>({});
+  /** The writer lanes' passes in flight, by chapter — the page's only notice a text is coming. */
+  const [passes, setPasses] = useState<Passes>({});
   const [fresh, setFresh] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
@@ -179,6 +184,7 @@ export function App() {
             setNotice(null);
             setRevisions({});
             setRevising({});
+            setPasses({});
             setFresh(null);
             setFailed(false);
             noteRecord({ kind: 'hello', signedIn: hello.viewer.signedIn });
@@ -261,29 +267,16 @@ export function App() {
             });
             break;
           }
-          case 'block:revising': {
-            const mark = frame.data as BlockRevisingPayload;
-            if (!mark.active) {
-              setRevising((current) => {
-                const next = { ...current };
-                delete next[mark.n];
-                return next;
-              });
-              break;
-            }
-            setRevising((current) => ({ ...current, [mark.n]: mark }));
-            const expiresIn = Math.max(0, Date.parse(mark.expiresAt) - Date.now());
-            const timer = window.setTimeout(() => {
-              setRevising((current) => {
-                if (current[mark.n]?.since !== mark.since) return current;
-                const next = { ...current };
-                delete next[mark.n];
-                return next;
-              });
-            }, Number.isNaN(expiresIn) ? 0 : expiresIn + 250);
-            timers.current.push(timer);
+          case 'block:revising':
+            applyRevisingMark(frame.data as BlockRevisingPayload, setRevising, (run, ms) => {
+              timers.current.push(window.setTimeout(run, ms));
+            });
             break;
-          }
+          case 'pass:stage':
+            // A pass is the only notice a page gets that a chapter's text is being written:
+            // `landed` is the engine's, and the site's watcher then publishes no revision.
+            setPasses((current) => applyStage(current, frame.data as PassStageEvent));
+            break;
           case 'history:event': {
             // The chronicle's ticker; the payload is one summary line, never a body.
             const entry = frame.data as HistoryEventFrame;
@@ -465,6 +458,7 @@ export function App() {
         revising={revising}
         markers={markers}
         fresh={fresh}
+        passes={passes}
         chapterFeed={chapterFeed}
         changes={changes}
         onRead={loadChapter}

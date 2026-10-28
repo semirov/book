@@ -19,17 +19,19 @@
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 18;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
  * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
  * of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
+  PASS_STAGES_TABLE_SQL,
+  PASS_SPEND_TABLE_SQL,
   CHAPTERS_COLUMNS,
   CHAPTERS_TABLE_SQL,
   EVENTS_TABLE_SQL,
@@ -371,6 +373,10 @@ CREATE INDEX lineage_cause   ON block_lineage(change_id);
 
 ${BLOCK_VERSIONS_TABLE_SQL}
 
+${PASS_STAGES_TABLE_SQL}
+
+${PASS_SPEND_TABLE_SQL}
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -448,6 +454,8 @@ export const REQUIRED_TABLES = [
   'block_lineage',
   'block_versions',
   'overwrites',
+  'pass_stages',
+  'pass_spend',
   'change_impact',
   'contribution_history',
   'rate_events',

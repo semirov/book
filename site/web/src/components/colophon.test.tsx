@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { COLOPHON_MOTTO, Colophon } from './Colophon.tsx';
+import { state, stubDocument } from './colophon.fixture.ts';
 
 /** Every stylesheet as text, keyed by path: whether the source link is printed is a rule
  *  across the set, not of one sheet (`bookMatter.test.tsx` reads the sheets the same way). */
@@ -45,17 +46,6 @@ function mediaBody(css: string, query: string): string {
   return '';
 }
 
-const state = {
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
-} as unknown as StateSnapshot;
-
-/** The theme is read from the document at first paint; the test renders without a browser. */
-function stubDocument(): void {
-  vi.stubGlobal('document', {
-    documentElement: { getAttribute: () => 'night', setAttribute: () => undefined },
-    querySelector: () => null,
-  });
-}
 
 /** The imprint row's own `<span>`, so a match cannot come from another row of the colophon. */
 function imprintLine(html: string): string {

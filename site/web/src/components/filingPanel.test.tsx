@@ -88,6 +88,15 @@ describe('the filing panel’s state line (BOOK-90)', () => {
     );
   });
 
+  it('names the record’s numeral beside «внесено» once a change has landed (BOOK-117 §1)', () => {
+    // The live path: the chapter's revision carried `cause.changeId`, the filing refreshed to
+    // `applied`. The numeral and the word are one surface — the head names the record, the
+    // state names the fact — so the reader can tie «внесено» to the entry they filed.
+    const html = render(comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 8, rev: 2 } }));
+    expect(html).toContain('<span class="filing-title">замечание №4Q7</span>');
+    expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');
+  });
+
   it('keeps a bare «внесено» a chip: a note’s terminal is «сохранено», never a right transfer', () => {
     const html = render(comment({ status: 'applied', applied: null, reason: null }));
     expect(html).toContain('<p class="filing-state ink-quiet">внесено</p>');

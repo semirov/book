@@ -7,6 +7,10 @@
  * catalogue of every read.
  */
 
+import { type BudgetDto } from '@book/shared';
+
+import { budgetCapsOf, budgetSnapshot } from '../budget.ts';
+import { noteBudgetWarnings } from './budget.ts';
 import { toIso } from '../util/time.ts';
 import { dailyTokens } from './draft.ts';
 import { beatOpenSteps } from './leases.ts';
@@ -24,6 +28,8 @@ export type EngineState = {
   alerts: unknown;
   /** ADR-038 (BOOK-62): the model this engine's pipeline runs on; `/api/state` is untouched. */
   pipeline: { provider: string; model: string };
+  /** BOOK-117: the same money the guard reads — `/internal/state` answers it verbatim. */
+  budget: BudgetDto;
 };
 
 export function createOverview(deps: EngineDeps) {
@@ -45,6 +51,7 @@ export function createOverview(deps: EngineDeps) {
       tokens: { today, dailyBudget: config.budgetDailyTokens },
       alerts: safeJson(store.getMeta(db, 'engine.alerts')),
       pipeline: { provider: config.pipeline.provider, model: config.pipeline.model },
+      budget: budgetSnapshot(db, budgetCapsOf(config), deps.clock.now()),
     };
   }
 
@@ -65,6 +72,9 @@ export function createOverview(deps: EngineDeps) {
   }
 
   function heartbeat(): void {
+    // BOOK-117: the 80 % sentence is raised on the engine's own tick, once per scope per day —
+    // next to the beat, so the operator hears about the bound before a pass is refused.
+    noteBudgetWarnings(deps, budgetCapsOf(config), deps.clock.now());
     const at = deps.clock.now();
     store.setMeta(db, 'engine.heartbeat', iso(at));
     store.setMeta(db, 'engine.status', state().status);

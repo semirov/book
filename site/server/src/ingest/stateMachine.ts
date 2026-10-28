@@ -64,7 +64,14 @@ export type DeriveInput = {
   started?: boolean;
 };
 
-export function deriveState(input: DeriveInput): StateSnapshot {
+/**
+ * Everything the snapshot derives from the files and the engine's rows. The money is **not**
+ * derived here: BOOK-117 keeps it in one ledger reader (`budget.ts`), so `StateService` adds the
+ * `budget` block to this projection — the state machine stays a function of the book.
+ */
+export type ProjectedState = Omit<StateSnapshot, 'budget'>;
+
+export function deriveState(input: DeriveInput): ProjectedState {
   const facts = [...input.facts].filter((fact) => fact.blocks > 0).sort((a, b) => a.n - b.n);
   const readerChanges = Math.max(0, Math.trunc(input.readerChanges ?? 0));
   // A reader change is a record too, so it starts the chronicle even if the caller did not say

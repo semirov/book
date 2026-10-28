@@ -27,6 +27,7 @@ import {
 import { createAuthorsCount } from '../authors/count.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
+import { appendTypingStage } from './typingStage.ts';
 import { chapterEtag } from '../util/etag.ts';
 import { toIso } from '../util/time.ts';
 import { type AppliedChapter, applyChapterFile, removeChapter } from './applyChapter.ts';
@@ -319,11 +320,13 @@ export class ManuscriptWatcher {
     this.frameRejected.delete(path);
     if (result.status === 'created') {
       this.status.lastEventAt = toIso(this.now());
+      appendTypingStage(this.db, result, this.now().getTime(), (message, context) => this.log(message, context));
       this.emit({ type: 'chapter:created', data: createdPayload(result) });
       this.emitAuthors();
       this.emitState('file');
     } else if (result.status === 'revised') {
       this.status.lastEventAt = toIso(this.now());
+      appendTypingStage(this.db, result, this.now().getTime(), (message, context) => this.log(message, context));
       this.emit({ type: 'chapter:revision', data: revisionPayload(result) });
       this.emitAuthors();
       this.emitState('file');

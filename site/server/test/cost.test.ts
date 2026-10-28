@@ -129,7 +129,11 @@ describe('the cost arithmetic', () => {
 const AT = '2026-10-27T09:00:00Z';
 const CHAPTER_ONE = longProse(['Первый абзац главы.']);
 
-/** A step row as the engine writes it; only the cost columns matter here. */
+/**
+ * A pass as the engine writes it: the step row and its ledger row, in the same shape a close
+ * leaves behind. BOOK-117 moved the footer's aggregate to `pass_spend`, so a fixture that only
+ * wrote `steps` would describe a book nobody spent on.
+ */
 function insertStep(
   db: Db,
   step: { id: string; seq: number; model: string | null; tokensIn: number; tokensOut: number },
@@ -138,6 +142,17 @@ function insertStep(
     `INSERT INTO steps (step_id, seq, wave, pass, boundary, at, model, tokens_in, tokens_out)
      VALUES (@id, @seq, 1, 'draft', '5', @at, @model, @tokensIn, @tokensOut)`,
   ).run({ ...step, at: AT });
+  const rate = rateFor(step.model);
+  db.prepare(
+    `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced)
+     VALUES (@at, @day, @id, 1, 'draft', NULL, @model, @tokensIn, @tokensOut, @usd, @priced)`,
+  ).run({
+    ...step,
+    at: AT,
+    day: AT.slice(0, 10),
+    usd: rate === null ? 0 : Math.round(((step.tokensIn / 1e6) * rate.input + (step.tokensOut / 1e6) * rate.output) * 1e6) / 1e6,
+    priced: rate === null ? 0 : 1,
+  });
 }
 
 /** The prose facts `bookStateKey` watches: the chapter `rev` sum and the last block version. */
@@ -289,6 +304,8 @@ describe('GET /api/cost', () => {
     const fresh = await boot();
     // The step opened with no tokens; the close writes them. A `holds` close applies no prose, so
     // `bookStateKey` cannot see it — the events clock is what makes the memo stale (BOOK-114).
+    // The step opens and its ledger row is written with zero tokens — the close moves the
+    // numbers, and this test is about the total following that move (not the row appearing).
     insertStep(fresh.db, { id: 'stp_a', seq: 1, model: 'deepseek-flash', tokensIn: 0, tokensOut: 0 });
     appendEvent(fresh.db, { kind: 'step.opened', chapter: 1, stepId: 'stp_a', authorKind: 'writer' }, Date.parse(AT));
     const cost = countingCost(fresh.db);
@@ -296,14 +313,22 @@ describe('GET /api/cost', () => {
 
     const proseBefore = proseState(fresh);
     const first = await app!.inject({ method: 'GET', url: '/api/cost' });
+    // One pass row before the close writes its totals: the ledger counts passes, not money.
     expect(first.headers.etag).toBe('"cost-0-0-0.00-4f53cda1-1"');
     expect(cost.calls()).toBe(1);
 
-    // What `close.ts` does in one transaction: the tokens land in the existing row, the step
-    // closes, and `step.closed` is appended. No chapter `rev`, no block version.
+    // What `close.ts` does in one transaction: the tokens land in the existing row, the ledger
+    // row is written, the step closes, and `step.closed` is appended. No chapter `rev`, no block
+    // version — so the memo is made stale by the events clock, and the total moves because the
+    // ledger gained the pass.
     fresh.db
       .prepare("UPDATE steps SET tokens_in = 1000000, outcome = 'holds', closed_at = @at WHERE step_id = 'stp_a'")
       .run({ at: AT });
+    fresh.db
+      .prepare(
+        `UPDATE pass_spend SET tokens_in = 1000000, usd = 0.15, priced = 1 WHERE pass_id = 'stp_a'`,
+      )
+      .run();
     appendEvent(fresh.db, { kind: 'step.closed', chapter: 1, stepId: 'stp_a', authorKind: 'writer', payload: { outcome: 'holds' } }, Date.parse(AT));
 
     // The claim above, asserted: the prose did not move.

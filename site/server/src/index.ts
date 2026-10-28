@@ -21,10 +21,12 @@ import { listCatalog } from './db/repo/chapters.ts';
 import { EngineBridge } from './engineState/bridge.ts';
 import { startErosionJob } from './history/erosion.ts';
 import { DecisionsTailer } from './feedback/decisions.ts';
+import { budgetCapsOf } from './budget.ts';
 import { SessionStore, SESSION_COOKIE } from './identity/session.ts';
 import { reconcile, rememberScan } from './ingest/reconcile.ts';
 import { StateService } from './ingest/stateService.ts';
 import { ManuscriptWatcher } from './ingest/watcher.ts';
+import { StageTailer } from './stages/tailer.ts';
 import { loadImprint } from './imprint.ts';
 import { RateLimiter } from './rate/limiter.ts';
 import { parseCookies } from './util/cookies.ts';
@@ -67,7 +69,7 @@ async function main(): Promise<void> {
   });
   const limiter = new RateLimiter(db, () => now().getTime());
 
-  const state = new StateService(db);
+  const state = new StateService(db, undefined, budgetCapsOf(config));
   const imprint = loadImprint(config.imprintPath);
   // One byline reader for the socket, the watcher and the HTTP app, so page 1, a live
   // `authors:update` and a reconnect all carry comparable markers (BOOK-DOC-4).
@@ -149,6 +151,17 @@ async function main(): Promise<void> {
 
   await watcher.start();
   bridge.start();
+
+  // docs/writer-lane.md §3: a stage written by the engine or the writer reaches live sockets
+  // through the tailer; a socket that missed one reads the GET route. The cursor is seeded at
+  // boot, so a restart does not replay yesterday's stages as news.
+  const stages = new StageTailer({
+    db,
+    emit: (type, data) => hub.publish(type, data),
+    onError: (message, error) => app.log.error({ err: error }, message),
+  });
+  stages.start();
+
   await app.listen({ host: config.host, port: config.port });
 
   const catalog = listCatalog(db);
@@ -178,6 +191,7 @@ async function main(): Promise<void> {
     clearInterval(decisionTimer);
     stopErosion();
     bridge.stop();
+    stages.stop();
     await watcher.stop();
     await app.close();
     db.close();

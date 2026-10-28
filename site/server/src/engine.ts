@@ -53,6 +53,7 @@ async function main(): Promise<void> {
 
   const app = await buildControl({
     engine,
+    db,
     token,
     version: process.env.npm_package_version ?? '0.0.0',
     vocabulary: (chapter) => chapterVocabulary(db, chapter),
