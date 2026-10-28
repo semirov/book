@@ -13,7 +13,8 @@
  *
  * The book still has no write API (§13.1): the panel can release, cancel and pause through the
  * engine and — BOOK-113 — clear or exempt one identity's *budget state*, which is operational
- * data about a reader, not the manuscript. No route here edits a paragraph.
+ * data about a reader, not the manuscript. No route here edits a paragraph. The author marker
+ * (owner, 2026-10-28) is the same kind of fact: one column on one identity, never the text.
  *
  * Both budget routes take one identity in any of the three forms an operator has at hand
  * (`identity/resolve.ts` documents them): the internal id `idt_…`, the display name (trimmed,
@@ -39,6 +40,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { SITE_ROOT } from '../../config.ts';
 import { assertDataDirOutsideRepo } from '../../dataDirGuard.ts';
+import { readIdentity } from '../../db/repo/identities.ts';
 import { readEngineHealth } from '../../engineState/reader.ts';
 import { resolveIdentity } from '../../identity/resolve.ts';
 import { readIntegrity } from '../../integrity/service.ts';
@@ -251,6 +253,38 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
     deps.db.prepare('UPDATE identities SET edit_exempt = ? WHERE id = ?').run(current, identity.id);
     return reply.header('cache-control', 'no-store').send({
       identity: { id: identity.id, displayName: identity.displayName },
+      previous,
+      current,
+    });
+  });
+
+  /**
+   * Owner's decision (2026-10-28) — mark one identity as the imprint's author, or clear the mark.
+   *
+   * The author signs in as a reader, so without this marker his own identity is a contributor
+   * row and the `+1` on the byline. The mark is structural: the author keeps filing, discussing
+   * and seeing his own trace, but is excluded from the readers list, the listed shares and the
+   * byline count. This route is the documented way to set it on a fresh book — no reader is ever
+   * guessed into the role. Previous and current are both returned, so a no-op is visible as such.
+   */
+  app.post('/api/admin/authors/author', async (request, reply) => {
+    if (!guard(deps, request, reply)) return reply;
+    const query = identityOf(request.body);
+    const author = (request.body as { author?: unknown } | null)?.author;
+    if (query === null || typeof author !== 'boolean') {
+      return reply
+        .code(400)
+        .send({ code: 'INVALID', message: 'нужны поля identity (id, имя или alias) и author (true|false)' });
+    }
+    const candidate = resolved(deps, reply, query);
+    if (candidate === null) return reply;
+    const previous = readIdentity(deps.db, candidate.id)?.is_author === 1 ? 1 : 0;
+    const current = author ? 1 : 0;
+    deps.db.prepare('UPDATE identities SET is_author = ? WHERE id = ?').run(current, candidate.id);
+    // The count is a fact a reader sees on page 1: the route that changes it broadcasts it (§10).
+    deps.emit?.('authors:update', deps.authorsCount());
+    return reply.header('cache-control', 'no-store').send({
+      identity: { id: candidate.id, displayName: candidate.displayName },
       previous,
       current,
     });

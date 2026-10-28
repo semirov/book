@@ -10,7 +10,8 @@ import { formatShare, type MyTraceDto } from '@book/shared';
  *
  * Hiding is reversible and loses nothing: «скрыть из списка авторов» takes the name out of
  * the list and out of the byline, and «вернуть в список» puts it back. The history and the
- * share stay either way, and the copy says so.
+ * share stay either way, and the copy says so. The author (`isAuthor`) has no such control:
+ * he is not in the list by structure, not by preference, so a toggle would be a silent lie.
  */
 
 /** Russian plural for «ревизия»: 1 ревизию · 2 ревизии · 5 ревизий. */
@@ -46,7 +47,8 @@ export function OwnTrace({
         {trace.edits > 0 ? ` · правок: ${trace.edits}` : ''}
       </p>
       {trace.hidden ? <p className="own-trace-note">вас нет в списке авторов — история и доля сохранены</p> : null}
-      {onToggleHidden === undefined ? null : (
+      {/* The author is not in the list by structure: the marker is the imprint's, not a setting. */}
+      {onToggleHidden === undefined || trace.isAuthor ? null : (
         <button
           className="own-trace-toggle"
           type="button"

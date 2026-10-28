@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
+import { migrateV23 } from './migrateV23.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -323,6 +324,8 @@ const MIGRATIONS: Migration[] = [
       migrateV22(db);
     },
   },
+  // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
+  { to: 23, up: migrateV23 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

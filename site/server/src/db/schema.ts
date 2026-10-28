@@ -6,10 +6,10 @@
  * `steps.premise_change`); BOOK-9 adds the auditor's verdict to a comment, recorded before
  * triage can accept it; BOOK-16 adds the intervention's kind to the comment and the change;
  * BOOK-18 adds `document.status` to the history's vocabulary, in `EVENTS_TABLE_SQL`;
- * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured»
- * and «placeholder zero» are different data, not the same 0); BOOK-113 adds
- * `identities.edit_exempt` — off by default — so the owner can test a change without waiting
- * out the daily edit budget, while every other reader keeps it; BOOK-61 adds the three gates of
+ * BOOK-23 adds `cost_priced` to the three tables that hold a money figure, so «measured» and
+ * «placeholder zero» are different data, not the same 0); BOOK-113 adds `identities.edit_exempt`
+ * — off by default — so the owner can test a change without waiting out the daily edit budget,
+ * while every other reader keeps it; BOOK-61 adds the three gates of
  * BOOK-DOC-42 — Gate A's hold (`comments.held_*`), Gate B's verdict (`comments.rights_*`,
  * `steps.rights_scan`) and the conditional `rights` role on both gate tables); BOOK-137 adds the
  * frame mark to the comment and the change, and the paperwork mode to the change, so a filing
@@ -18,10 +18,9 @@
  * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
  * «which terms did the reader accept?» has an answer years later; BOOK-158 adds the attempt
  * ledger (`comment_attempts`) and `triage` to the ledger's pass vocabulary, so a refusal can be
- * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span ledger (BOOK-DOC-69).
- * Text tables are a projection of the manuscript files; the engine tables are the only home
- * of process facts. Every table §8 names exists here, and the retired `obligations` table
- * does not (§23.5, ADR-023).
+ * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span ledger (BOOK-DOC-69) and v23 adds `identities.is_author` — the imprint's own reader (owner, 2026-10-28).
+ * Text tables are a projection of the manuscript files; the engine tables are the only home of
+ * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
  *
  * **The `chapter` CHECKs below stay `BETWEEN 1 AND 67` although the book is 42 chapters
  * (BOOK-155).** A row written before the cut (chapter 65) is real prose and must survive;
@@ -31,7 +30,7 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -341,6 +340,7 @@ CREATE TABLE identities (
   -- BOOK-113: 1 = the daily edit budget (identity *and* network) does not apply to this
   -- identity. Off by default; the comment budget still applies.
   edit_exempt   INTEGER NOT NULL DEFAULT 0,
+  is_author     INTEGER NOT NULL DEFAULT 0,     -- 1 = the imprint's author (owner, 2026-10-28): a reader, never a row
   created_at    TEXT NOT NULL,
   last_seen_at  TEXT NOT NULL
 );

@@ -68,6 +68,79 @@ describe('GET /api/authors/me', () => {
   });
 });
 
+describe('the author marker on the reader’s own surfaces (owner, 2026-10-28)', () => {
+  async function me(h: Harness): Promise<MyTraceDto> {
+    return (
+      await h.app.inject({ method: 'GET', url: '/api/authors/me', headers: { cookie: h.sessionCookieHeader } })
+    ).json() as MyTraceDto;
+  }
+
+  it('serves the author his own trace — and the list and the byline count only the second reader', async () => {
+    harness = await bootComments();
+    seedSurviving(harness, harness.identity.id, 'bkd_me', 300);
+    const boris = upsertIdentity(harness.db, {
+      yandexSub: 'yandex-2002',
+      displayName: 'Борис',
+      at: '2026-10-25T12:00:00Z',
+    });
+    seedSurviving(harness, boris.id, 'bkd_boris', 500);
+    harness.db.prepare('UPDATE identities SET is_author = 1 WHERE id = ?').run(harness.identity.id);
+
+    const trace = await me(harness);
+    expect(trace).toMatchObject({ label: 'Аня', isAuthor: true, hidden: false, edits: 0 });
+    // The author is still a reader for his own numbers: his chars, his share, his label.
+    expect(trace.chars).toBe(300);
+    expect(trace.share).toBeGreaterThan(0);
+    // Own only, keyless — and no other reader's name in the payload.
+    const body = JSON.stringify(trace);
+    expect(body).not.toContain('Борис');
+    expect(body).not.toContain(harness.identity.id);
+    expect(body).not.toContain(boris.id);
+
+    const list = (await harness.app.inject({ method: 'GET', url: '/api/authors' })).json() as AuthorsDto;
+    expect(list.contributors.map((item) => item.label)).toEqual(['Борис']);
+    // The author's own 300 characters are the remainder, not a row — the rest of the book is
+    // written prose (no reader), which is also the author's.
+    expect(list.author.chars).toBe(list.totalChars - 500);
+    expect(list.author.chars).toBeGreaterThanOrEqual(300);
+    expect(list.sum).toBe(1);
+    const front = (await harness.app.inject({ method: 'GET', url: '/api/front' })).json() as {
+      authors: { count: number };
+    };
+    expect(front.authors.count).toBe(1);
+  });
+
+  it('keeps the author out of the list and the byline whatever his hide flag says', async () => {
+    harness = await bootComments();
+    seedSurviving(harness, harness.identity.id, 'bkd_me', 300);
+    harness.db.prepare('UPDATE identities SET is_author = 1 WHERE id = ?').run(harness.identity.id);
+
+    const hidden = await harness.app.inject({
+      method: 'POST',
+      url: '/api/authors/hide',
+      headers: harness.headers(),
+      payload: { hidden: true },
+    });
+    expect(hidden.statusCode).toBe(200);
+    expect(hidden.json()).toMatchObject({ hidden: true, authors: { count: 0 } });
+
+    // Clearing the flag does not put him back: the exclusion is the marker, not the opt-out.
+    const cleared = await harness.app.inject({
+      method: 'POST',
+      url: '/api/authors/hide',
+      headers: harness.headers(),
+      payload: { hidden: false },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json()).toMatchObject({ hidden: false, authors: { count: 0 } });
+
+    const list = (await harness.app.inject({ method: 'GET', url: '/api/authors' })).json() as AuthorsDto;
+    expect(list.contributors).toEqual([]);
+    expect(list.author.share).toBe(1);
+    expect((await me(harness)).isAuthor).toBe(true);
+  });
+});
+
 describe('the front payload (BOOK-DOC-4)', () => {
   it('puts the byline count in the ETag, and never answers 304 (BOOK-109)', async () => {
     harness = await bootComments();

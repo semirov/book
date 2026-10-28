@@ -1,7 +1,8 @@
 /**
  * What a whole-book aggregate depends on, cheaply: the front revision, every chapter `rev`, the
- * last paragraph version written, and **which** readers are hidden (`POST /api/authors/hide`
- * moves the count without touching the text).
+ * last paragraph version written, **which** readers are hidden (`POST /api/authors/hide` moves
+ * the count without touching the text) and **which** reader is the author (`POST
+ * /api/admin/authors/author` moves it the same way).
  *
  * The byline count (`authors/count.ts`) and the book's outlay (`cost/book.ts`) are both
  * whole-book aggregates: the count is the last version of every paragraph joined to
@@ -27,7 +28,15 @@ export function bookStateKey(db: Db, frontRev: number): string {
          FROM (SELECT id FROM identities WHERE hide_from_authors = 1 ORDER BY id)`,
     )
     .get() as { ids: string };
+  // The author marker is the same kind of fact: the byline count excludes the author, so marking
+  // or unmarking one moves the count with no prose written.
+  const authors = db
+    .prepare(
+      `SELECT COALESCE(GROUP_CONCAT(id), '') AS ids
+         FROM (SELECT id FROM identities WHERE is_author = 1 ORDER BY id)`,
+    )
+    .get() as { ids: string };
   // Paragraph versions are append-only: the newest one is the last write of prose.
   const lastBlock = db.prepare('SELECT COALESCE(MAX(hseq), 0) AS hseq FROM block_versions').get() as { hseq: number };
-  return `${frontRev}|${chapters.revs}|${lastBlock.hseq}|${hidden.ids}`;
+  return `${frontRev}|${chapters.revs}|${lastBlock.hseq}|${hidden.ids}|${authors.ids}`;
 }
