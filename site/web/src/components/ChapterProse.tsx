@@ -148,6 +148,7 @@ export function ChapterProse({
                 span={run.span}
                 startAt={spec.startAt}
                 reduced={reduced}
+                prov={history && onProvenance !== undefined}
                 onSettled={() => setSettled(spec.key)}
               />
             )}

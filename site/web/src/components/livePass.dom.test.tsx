@@ -48,6 +48,8 @@ type DrawOptions = {
   /** What the injected `now` answers; the pass's own clock is `startAt` = `START`. */
   nowAt?: number;
   reduced?: boolean;
+  /** The page's provenance door, as `ChapterProse` hands it over (`history && onProvenance`). */
+  prov?: boolean;
   onSettled?: () => void;
   onMeasure?: (layout: PassLayout) => void;
 };
@@ -97,6 +99,7 @@ async function draw(options: DrawOptions): Promise<HTMLParagraphElement> {
         startAt={START}
         now={() => nowAt}
         reduced={options.reduced}
+        prov={options.prov}
         onSettled={options.onSettled}
         onMeasure={options.onMeasure}
       />,
@@ -406,6 +409,42 @@ describe('the third exit: unmounted', () => {
     });
     expect(settled).not.toHaveBeenCalled();
     expect(frames).toHaveLength(0);
+  });
+});
+
+describe('the provenance door', () => {
+  /** Everything that is the prose: the painted copy, the announcement, the run's graphemes. */
+  const expectProse = (paragraph: Element, text: string, runGraphemes: number): void => {
+    expect(paragraph.querySelector('.pass-visual')?.textContent).toBe(text);
+    expect(paragraph.querySelector('.visually-hidden')?.textContent).toBe(text);
+    expect(paragraph.querySelectorAll('.pg')).toHaveLength(runGraphemes);
+  };
+
+  it('paints the ordinary paragraph’s door when the page has one, adding nothing to the prose', async () => {
+    stubRects({ per: 21, firstLine: 2, blockLines: 6 });
+    const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN, prov: true });
+
+    const door = paragraph.querySelector('.prov');
+    expect(door).not.toBeNull();
+    // The same box the ordinary paragraph gives it (`.prov`), and the same place: last in flow.
+    expect(door?.tagName).toBe('BUTTON');
+    expect(door?.getAttribute('type')).toBe('button');
+    expect(door?.getAttribute('aria-hidden')).toBe('true');
+    expect((door as HTMLButtonElement).tabIndex).toBe(-1);
+    expect(door?.textContent).toBe('⋯');
+    expect(paragraph.lastElementChild).toBe(door);
+
+    expectProse(paragraph, REPLACEMENT.after, REPLACEMENT_SPAN.after.length);
+  });
+
+  it('leaves it out when the page has none, and the prose is the same word for word', async () => {
+    stubRects({ per: 21, firstLine: 2, blockLines: 6 });
+    const paragraph = await draw({ text: REPLACEMENT.after, span: REPLACEMENT_SPAN, prov: false });
+
+    expect(paragraph.querySelector('.prov')).toBeNull();
+    // Not one character of the door's glyph leaks into the paragraph's own text.
+    expect(paragraph.textContent?.includes('⋯')).toBe(false);
+    expectProse(paragraph, REPLACEMENT.after, REPLACEMENT_SPAN.after.length);
   });
 });
 

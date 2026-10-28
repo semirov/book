@@ -55,6 +55,12 @@ export type LivePassProps = {
   startAt: number;
   now?: () => number;
   reduced?: boolean;
+  /**
+   * The ordinary paragraph's provenance door (`⋯`, `.prov`): an **inline** box, so its presence
+   * or absence changes the last line box. The renderer paints the same door — never reachable —
+   * or handing the block back would move the paragraph's last line.
+   */
+  prov?: boolean;
   onSettled?: () => void;
   /** The layout the plan was built from, once — the caller can pin what the block measured. */
   onMeasure?: (layout: PassLayout) => void;
@@ -67,6 +73,7 @@ export function LivePass({
   startAt,
   now: readNow = Date.now,
   reduced = false,
+  prov = false,
   onSettled,
   onMeasure,
 }: LivePassProps) {
@@ -287,6 +294,17 @@ export function LivePass({
           <span className="caret-read" aria-hidden="true" ref={readRef} />
           <span className="caret-write" aria-hidden="true" ref={writeRef} />
         </>
+      ) : null}
+      {/*
+        The page's provenance door, in the box the ordinary paragraph gives it (`.prov`:
+        `inline-block`, `vertical-align: super`, the same glyph and margin). It is not a control
+        here — the reader's copy arrives when the pass settles — so it is hidden from assistive
+        technology and cannot be focused; only its line box is load-bearing.
+      */}
+      {prov ? (
+        <button type="button" className="prov" aria-hidden="true" tabIndex={-1}>
+          ⋯
+        </button>
       ) : null}
     </p>
   );

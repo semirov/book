@@ -182,10 +182,14 @@ async function draw({
   stages,
   revising = livePass(),
   chapter = LOADED,
+  onProvenance,
+  history = true,
 }: {
   stages?: readonly PassStageEvent[];
   revising?: BlockRevisingPayload | null;
   chapter?: ChapterDto;
+  onProvenance?: (blockId: string, anchor: HTMLElement) => void;
+  history?: boolean;
 } = {}): Promise<HTMLDivElement> {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -202,7 +206,8 @@ async function draw({
         fresh={false}
         composer={EMPTY_COMPOSER}
         viewer={{ signedIn: false, displayName: null }}
-        history
+        history={history}
+        onProvenance={onProvenance}
         stages={stages}
       />,
     );
@@ -240,6 +245,25 @@ describe('a typing stage paints its block and opens the strip', () => {
     expect(strip?.textContent).toContain('книга пишется');
     // The nav's anchor still names the block the door opened.
     expect(view.querySelector('#pass')?.getAttribute('data-pass-block')).toBe('ch01#bbbb2222');
+  });
+});
+
+describe('the live paragraph’s provenance door', () => {
+  it('paints the page’s door inside the pass, hidden and unreachable, when the page has one', async () => {
+    const view = await draw({ stages: LEAD, onProvenance: () => undefined });
+    const pass = view.querySelector('.p-pass') as HTMLElement;
+    const door = pass.querySelector('.prov');
+    expect(door).not.toBeNull();
+    expect(door?.getAttribute('aria-hidden')).toBe('true');
+    expect((door as HTMLButtonElement).tabIndex).toBe(-1);
+    // The prose is the pass's own; the door is the last thing in the paragraph.
+    expect(pass.querySelector('.pass-visual')?.textContent).toBe(AFTER);
+    expect(pass.lastElementChild).toBe(door);
+  });
+
+  it('paints no door when the page has no paragraph chain (history off)', async () => {
+    const view = await draw({ stages: LEAD, onProvenance: () => undefined, history: false });
+    expect(view.querySelector('.p-pass .prov')).toBeNull();
   });
 });
 
