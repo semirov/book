@@ -230,7 +230,6 @@ export async function createHarness(options: { chapters?: Record<number, string>
       return runPass({
         config,
         bookRoot: fixture.root,
-        dataDir: fixture.dataDir,
         engine,
         provider,
         now: () => fixture.clock.now(),

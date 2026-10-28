@@ -14,7 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { GUARDED_ROOTS, MANUSCRIPT_READERS, textHomeProblems } from '../../scripts/lib/textHome.mjs';
+import { BOOT_FILE, BOOT_REFUSED, GUARDED_ROOTS, MANUSCRIPT_READERS, textHomeProblems } from '../../scripts/lib/textHome.mjs';
 
 const SITE = resolve(import.meta.dirname, '../..');
 
@@ -63,9 +63,39 @@ describe('the text-home rule (BOOK-187, ADR-043 §3 row 4)', () => {
     }
   });
 
+  it('fires on a scanner import outside the one-shot import, and on a boot that attaches a reader', () => {
+    const root = tree({
+      // A second module reading a manuscript directory: only `ingest/reconcile.ts` may.
+      'server/src/integrity/probe.ts': `import { scanManuscript } from '../ingest/scanManuscript.ts';\nexport const s = scanManuscript;\n`,
+      // The boot reaching the import or the watcher: a restart serves rows.
+      [BOOT_FILE]: `import { reconcile } from './ingest/reconcile.ts';\nimport { ManuscriptWatcher } from './ingest/watcher.ts';\nexport const r = [reconcile, ManuscriptWatcher];\n`,
+    });
+    try {
+      const problems = textHomeProblems(root);
+      expect(problems.map((problem) => problem.file)).toEqual([
+        join('server/src/integrity', 'probe.ts'),
+        BOOT_FILE,
+        BOOT_FILE,
+      ]);
+      expect(problems[0]?.message).toContain('only ingest/reconcile.ts');
+      expect(problems[1]?.message).toContain('./ingest/reconcile.ts');
+      expect(problems[2]?.message).toContain('./ingest/watcher.ts');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('declares the import directory and the two specifiers a boot may not reach', () => {
+    expect(BOOT_FILE).toBe('server/src/index.ts');
+    expect(BOOT_REFUSED).toEqual(['./ingest/reconcile.ts', './ingest/watcher.ts']);
+  });
+
   it('accepts the row readers, another module and a file reader outside the guarded trees', () => {
     const root = tree({
       'server/src/engine/probe.ts': `import { readChapterRows, isWrittenIn } from './text.ts';\nexport const r = readChapterRows;\nexport const w = isWrittenIn;\n`,
+      // The one-shot import may scan; the boot may import neither the import nor the watcher.
+      'server/src/ingest/reconcile.ts': `import { scanManuscript } from './scanManuscript.ts';\nexport const s = scanManuscript;\n`,
+      [BOOT_FILE]: `import { listCatalog } from './db/repo/chapters.ts';\nexport const c = listCatalog;\n`,
       'server/src/ingest/probe.ts': `import { readChapter, chapterPath } from '../engine/text.ts';\nexport const r = readChapter;\nexport const p = chapterPath;\n`,
       'server/src/writer/probe.ts': `import { isWrittenView } from '../engine/text.ts';\nexport const v = isWrittenView;\n`,
     });

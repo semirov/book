@@ -1,27 +1,33 @@
 /**
  * The integrity panel's one query (ARCHITECTURE.md §13.4 point 5, §17).
  *
- * The site never blocks publication: it runs the cheap rule subset over the files it can
- * see (F001, F002, F005–F007, F009, F020–F022, F029), reads the legal denylist, and reports
- * it found. The panel is an operator tool, and every field here answers a question an
- * operator would otherwise ask the database by hand:
+ * The site never blocks publication: it runs the cheap rule subset over the text it serves
+ * (F001, F002, F005–F007, F009, F020–F022, F029), reads the legal denylist, and reports what it
+ * found. The panel is an operator tool, and every field here answers a question an operator
+ * would otherwise ask the database by hand:
  *
  * - is the text legal and well-formed right now (`validator`, `legal`)?
  * - does the denylist have teeth (`legal`)?
  * - is anything on the page uncredited (`attribution`, F015)?
  * - is any chapter sitting on a restore that never ran the gates (`ungated`, §13.3)?
  *
+ * BOOK-187: the text is read from **rows** (`chapters`, `blocks`, `front_matter`) with
+ * `scanRows`, never from a manuscript directory. The rules and their messages are the same
+ * ones the commit gate uses — the validator is a pure function of `(files, denylist, imprint)`,
+ * and the projection is what builds `files`. A slot with no row is an empty slot, not a broken
+ * file: a missing directory stopped being a finding when the directory stopped being a source.
+ *
  * Nothing here is cached: an integrity answer that lags the text would be a worse answer
  * than a slow one, and the route is called by an operator, not by a reader.
  */
 
-import type { Imprint, LegalDenylist, ValidatorFinding } from '@book/shared';
-import { CHAPTER_CHARS, TOTAL_CHAPTERS, runValidation, type ValidateResult } from '@book/shared';
+import { FRONT_FILE, type Imprint, type LegalDenylist, type ValidatorFinding } from '@book/shared';
+import { CHAPTER_CHARS, TOTAL_CHAPTERS, chapterLabel, runValidation, type ValidateResult } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { scanManuscript } from '../ingest/scanManuscript.ts';
 import { toIso } from '../util/time.ts';
 import { loadDenylist } from './config.ts';
+import { readChapterRows, readFrontRows } from '../engine/text.ts';
 import {
   listReconciles,
   listUngated,
@@ -87,7 +93,6 @@ export type IntegrityReport = {
 };
 
 export type IntegrityOptions = {
-  bookRoot: string;
   denylistPath: string;
   imprint: Imprint;
   /** Injected in tests; the route uses the clock. */
@@ -98,13 +103,30 @@ export type IntegrityOptions = {
 
 type CountRow = { n: number };
 
-function validate(options: IntegrityOptions, denylist: LegalDenylist | null): ValidateResult {
-  const scan = scanManuscript(options.bookRoot);
-  const files = [
-    ...scan.chapters.map((chapter) => ({ name: chapter.fileName, text: chapter.raw })),
-    ...(scan.front === null ? [] : [{ name: scan.front.fileName, text: scan.front.raw }]),
-  ];
-  return runValidation({ files, denylist, imprint: options.imprint });
+/**
+ * The book's text as the validator's `files` input, read from rows (BOOK-187).
+ *
+ * The projection is the same one the applier writes: `chNN.md` with the title line, a blank
+ * line and the paragraphs joined by a blank line; `00-front.md` with the published title and
+ * annotation. Names are the manuscript's own, so every rule's message, line number and lexeme
+ * are exactly what they were when the same text sat on disk.
+ *
+ * A slot without a row is simply absent from the list — an empty slot, not a missing file.
+ */
+export function scanRows(db: Db): Array<{ name: string; text: string }> {
+  const files: Array<{ name: string; text: string }> = [];
+  for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) {
+    const chapter = readChapterRows(db, n);
+    if (!chapter.exists) continue;
+    files.push({ name: `ch${chapterLabel(n)}.md`, text: chapter.raw });
+  }
+  const front = readFrontRows(db);
+  if (front.exists) files.push({ name: FRONT_FILE, text: front.raw });
+  return files;
+}
+
+function validate(db: Db, options: IntegrityOptions, denylist: LegalDenylist | null): ValidateResult {
+  return runValidation({ files: scanRows(db), denylist, imprint: options.imprint });
 }
 
 export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityReport {
@@ -113,7 +135,7 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
   const loaded =
     options.denylist === undefined ? loadDenylist(options.denylistPath) : { denylist: options.denylist, problems: [] };
   const denylist = loaded.denylist;
-  const result = validate(options, denylist);
+  const result = validate(db, options, denylist);
 
   // A slot is written when it has prose: a basis-only or zero-block row is an empty slot (BOOK-6).
   // BOOK-155 — the aggregate is about the book, so a row left from the 67-chapter book (chapter 65,

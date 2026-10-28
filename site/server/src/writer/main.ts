@@ -11,18 +11,18 @@
  * per stage, and the hashes a revert compares. What it never prints: a prompt, the key, a body.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { TOTAL_CHAPTERS } from '@book/shared';
 
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
-import { createEngineClient } from './client.ts';
+import { createEngineClient, type EngineClient } from './client.ts';
 import { runPass, type PassResult } from './pass.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
+import { reasonOf } from './reasons.ts';
 import { revertChapter } from './revert.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -132,32 +132,34 @@ function tokenLine(config: WriterConfig): string {
   return `[writer] токены: ${String(config.dailyTokens)} за сутки — информация, не граница (граница — деньги)`;
 }
 
-type PassState = { date: string; passes: number };
-
-function statePath(dataDir: string): string {
-  return join(dataDir, 'writer', 'state.json');
-}
-
-/** The supervised lane's own counter: what this process spent today, and nothing else. */
-export function readPassState(dataDir: string, today: string): PassState {
-  try {
-    const parsed = JSON.parse(readFileSync(statePath(dataDir), 'utf8')) as Partial<PassState>;
-    if (parsed.date === today && typeof parsed.passes === 'number' && Number.isInteger(parsed.passes)) {
-      return { date: today, passes: Math.max(0, parsed.passes) };
-    }
-  } catch {
-    // A missing or unreadable counter is a fresh day, not a crash.
-  }
-  return { date: today, passes: 0 };
-}
-
-function writePassState(dataDir: string, state: PassState): void {
-  mkdirSync(dirname(statePath(dataDir)), { recursive: true });
-  writeFileSync(statePath(dataDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-}
-
 function todayUtc(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
+}
+
+/**
+ * The lane's day counter, read from the engine (BOOK-187 AC5): the writer process holds no
+ * database and writes no `writer/state.json` — the row is `writer_state`, and the engine is its
+ * only door. An engine that cannot answer is not a licence to spend: the money budget is the
+ * engine's own and is enforced there, so a failed read only means this process counts the day
+ * from zero (one line says so).
+ */
+async function dayCounter(engine: EngineClient, day: string, log: (line: string) => void): Promise<{ day: string; passes: number }> {
+  try {
+    const view = await engine.writerState(day);
+    return { day: view.day, passes: Number.isInteger(view.passes) && view.passes > 0 ? view.passes : 0 };
+  } catch (error) {
+    log(`[writer] счётчик дня не прочитан: ${reasonOf(error)} — день считается пустым, деньги по-прежнему считает движок`);
+    return { day, passes: 0 };
+  }
+}
+
+/** Count one pass that spent money. Bookkeeping: a failed write is a line, not a failed pass. */
+async function countPass(engine: EngineClient, day: string, log: (line: string) => void): Promise<void> {
+  try {
+    await engine.recordPass({ day, spent: true });
+  } catch (error) {
+    log(`[writer] проход не записан в счётчик дня: ${reasonOf(error)}`);
+  }
 }
 
 /** A pass that spent money counts toward the day, closed or parked. */
@@ -171,6 +173,8 @@ export type MainDeps = {
   log?: (line: string) => void;
   /** Injected in tests: a scripted model transport. */
   provider?: (request: Parameters<typeof callProvider>[0]) => Promise<ProviderResult>;
+  /** Injected in tests: the engine client, so a lane whose counter is unreachable can be proven. */
+  engine?: EngineClient;
   now?: () => number;
 };
 
@@ -267,9 +271,9 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     deps.provider ??
     ((request) => callProvider(request));
 
-  let engine: ReturnType<typeof createEngineClient>;
+  let engine: EngineClient;
   try {
-    engine = engineOf();
+    engine = deps.engine ?? engineOf();
   } catch (error) {
     console.error(`writer: ${error instanceof Error ? error.message : 'engine token refused'}`);
     return 2;
@@ -279,7 +283,6 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     runPass({
       config,
       bookRoot,
-      dataDir,
       engine,
       provider,
       now,
@@ -289,13 +292,13 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     });
 
   if (!cli.loop) {
-    const counter = readPassState(dataDir, todayUtc(now()));
+    const counter = await dayCounter(engine, todayUtc(now()), log);
     if (counter.passes >= config.maxPassesPerDay) {
       log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
       return 0;
     }
     const result = await pass();
-    if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
+    if (spent(result)) await countPass(engine, counter.day, log);
     if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
     return EXIT[result.status];
   }
@@ -328,12 +331,12 @@ export async function main(deps: MainDeps = {}): Promise<number> {
 
   log(`[writer] loop: пауза ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`);
   while (!stopping) {
-    const counter = readPassState(dataDir, todayUtc(now()));
+    const counter = await dayCounter(engine, todayUtc(now()), log);
     if (counter.passes >= config.maxPassesPerDay) {
       log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
     } else {
       const result = await pass();
-      if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
+      if (spent(result)) await countPass(engine, counter.day, log);
       if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
       // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
       // the next filing is asked for in the same cycle, without the pacing pause.

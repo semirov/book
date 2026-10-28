@@ -14,10 +14,11 @@
  * `reset book` (BOOK-137) empties the book's content and progress before a launch. It is an
  * HTTP client like the budget commands: the wipe runs inside the running server, so one
  * process owns the database. Without a flag it is a dry run — the table of counts is the
- * answer, and nothing is written; `--yes` performs it. A dry run also names the two things
- * that would make the wipe refuse: chapter files the manuscript still holds (`MANUSCRIPT_WRITTEN`
- * — a boot scan would restore them; engine-written chapters are untracked, so the remedy is
- * `git clean -fd manuscript/`) and a live engine (`ENGINE_BUSY`).
+ * answer, and nothing is written; `--yes` performs it. A dry run also names what the wipe will
+ * remove (`content: N written chapters · X characters · Y blocks`, read from the rows) and the
+ * things that would make it refuse: a frame slot that is prose instead of the canon
+ * (`FRAME_NOT_BASIS`, BOOK-187 — the guard reads `chapters.basis`/`chapters.chars`) and a live
+ * engine (`ENGINE_BUSY`).
  *
  * Token: `ADMIN_TOKEN`, else the file at `ADMIN_TOKEN_FILE` when it is set (a declared file
  * that is missing, unreadable or empty is an error, never a silent fallback), else
@@ -33,8 +34,7 @@
  * contract, and it stays. `reset book` refines it, because an operator has to tell «no token»
  * from «this target is not mine» from «the backup failed»:
  *   0 done · 2 usage · 3 no admin token · 4 non-local target
- *   5 the server refused (`MANUSCRIPT_WRITTEN`, `FRAME_MISSING`, `FRAME_NOT_BASIS`,
- *     `ENGINE_BUSY`, 401, `INVALID`, …)
+ *   5 the server refused (`FRAME_MISSING`, `FRAME_NOT_BASIS`, `ENGINE_BUSY`, 401, `INVALID`, …)
  *   6 DATA_DIR is inside the checkout · 7 the backup failed and `--backup-ok` was not given
  *
  * Node builtins only.
@@ -71,7 +71,7 @@ flags:
 token: ADMIN_TOKEN, else the file at ADMIN_TOKEN_FILE (when set), else <DATA_DIR>/admin.token,
        else site/.data/admin.token (the path is named, the value never printed)
 exit: 0 done · 2 usage or config · 3 no admin token · 4 non-local target
-      5 the server refused the command (MANUSCRIPT_WRITTEN, FRAME_MISSING, FRAME_NOT_BASIS,
+      5 the server refused the command (FRAME_MISSING, FRAME_NOT_BASIS,
         ENGINE_BUSY, INVALID, a refused token)
         PASS_RUNNING, INVALID_CHAPTER, ENGINE_UNREACHABLE)
       6 DATA_DIR inside the checkout · 7 the backup failed and --backup-ok was not given
@@ -304,17 +304,16 @@ function printResetResult(body) {
   console.log(`  ${tables.length} entries, ${body.total ?? 0} rows${dryRun ? '' : ' removed'}`);
   const kept = Array.isArray(body.kept) ? body.kept : [];
   console.log(`kept: ${kept.map((entry) => `${entry.key} ${entry.rows ?? 0}`).join(' · ')}`);
-  console.log('frame: ch01, ch42 re-read from the manuscript');
+  console.log('frame: ch01, ch42 seeded from book_frame');
   if (dryRun) {
-    // The two refusals a dry run can see coming. They are the operator's next action, and both
-    // are invisible in the counts — a manuscript file is not a row, and a live engine refuses
-    // the wipe rather than being reset under.
-    const prose = body.manuscript?.proseChapters ?? 0;
-    if (prose > 0) {
-      console.log(
-        `manuscript: ${prose} chapter files hold prose — a boot scan would restore them; clear manuscript/ first`,
-      );
-    }
+    // What the wipe removes, from the rows, and the one refusal a dry run can see coming: a live
+    // engine refuses the wipe rather than being reset under. A frame slot that is prose is
+    // refused by the server on the wipe itself, not by the dry run (a dry run refuses nothing).
+    const content = body.content ?? {};
+    console.log(
+      `content: ${content.written ?? 0} written chapter(s) · ${content.chars ?? 0} characters · ` +
+        `${content.blocks ?? 0} blocks — the wipe removes them`,
+    );
     const openSteps = body.engine?.openSteps ?? 0;
     const liveLeases = body.engine?.liveLeases ?? 0;
     if (openSteps > 0 || liveLeases > 0) {

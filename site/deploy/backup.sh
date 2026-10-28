@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 #
-# site/deploy/backup.sh — consistent backup of the book data volume (BOOK-28).
+# site/deploy/backup.sh — consistent backup of the book data volume (BOOK-28, BOOK-187).
 #
 # The live database runs in WAL mode: a raw `cp book.db` can capture a torn state and misses
 # everything still in -wal. This script uses the SQLite online backup API (`sqlite3 .backup`),
 # which reads a consistent snapshot without stopping the service, then verifies the copy and
 # moves it into a dated directory under a bounded retention.
+#
+# **What is being copied, and what is not.** The book — its text, its readers, its ledger — is
+# rows inside `book.db`: that copy is the backup. `versions/` is the cold backup of *revisions*
+# (content-addressed snapshots keyed by `revisions.snapshot`), so it travels with the database as
+# the second half of the same copy, never as a source of anything. There is no `manuscript/` to
+# copy: since BOOK-187 the text has no file, in the volume or in the repository.
 #
 # Layout (default BACKUP_ROOT=/Users/filipp/book-site-backups):
 #   daily/20261027T044500/book.db          consistent copy, journal_mode=DELETE

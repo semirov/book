@@ -17,7 +17,6 @@ import { type WriterAssignment } from '@book/shared';
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import type { ChapterTextView } from '../engine/text.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
-import type { PassEstimate } from './estimate.ts';
 import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import {
@@ -29,9 +28,8 @@ import {
 } from './prompt.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
-import type { CallKind, CallRecord } from './transcript.ts';
+import { storeTranscript, type CallKind, type CallRecord, type CallVerdict, type PromptSectionFact } from './transcript.ts';
 import { rightsRunner } from './rightsGate.ts';
-import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import { askGateAnswer } from './gateAnswer.ts';
@@ -117,11 +115,12 @@ function sliceText(path: string | null): string | null {
 export type LaneInput = {
   config: WriterConfig;
   bookRoot: string;
-  dataDir: string;
   engine: EngineClient;
   provider: ProviderCall;
   now: () => number;
   log: (line: string) => void;
+  /** ADR-043 G3: the prompt bundle this image carries, recorded on every receipt row. */
+  promptBundle: string | null;
 };
 
 export type GateRun = { revise: boolean; findings: GateFinding[] };
@@ -140,7 +139,8 @@ export type Lane = {
   textOf: ChapterTextLookup;
   /** The one way the pass's text becomes a fact: the request body carries it, no file (BOOK-187). */
   land(value: string): Promise<void>;
-  transcript(result: PassResult): void;
+  /** The pass's receipt, sent once after its outcome is known; never fatal (AC7). */
+  transcript(result: PassResult): Promise<void>;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
   check(value: string, finishReason?: string | null): Answer;
   /** One gate; `refusal` is the reason a previous answer was not parsed, shown to the model once. */
@@ -151,8 +151,8 @@ export type Lane = {
   writerTokens(): { in: number; out: number };
   /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
   model(): string | null;
-  setPrompt(sections: number, sha256: string | null): void;
-  setEstimate(value: PassEstimate): void;
+  /** The prompt's sections, as facts: ids, hashes and lengths — never the prompt itself. */
+  setPrompt(value: { sections: PromptSectionFact[]; promptSha256: string }): void;
 };
 
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
@@ -161,15 +161,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   const calls: CallRecord[] = [];
   const written = { in: 0, out: 0 };
   let all: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
-  let reported: string | null = null;
-  // ADR-038 §2's honest limit: other weights are evidence, not a refusal.
-  let mismatch: { declared: string; reported: string } | null = null;
-  let promptSections = 0;
-  let promptSha256: string | null = null;
-  let estimate: PassEstimate | null = null;
-  // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
+  /** The prompt's sections as facts (AC7): ids, hashes, lengths — the receipt's only census. */
+  let sections: PromptSectionFact[] = [];
+  // The code of a stop, for the receipt; the sentence the reader gets is built in `park`.
   let failure: Failure | null = null;
-  let note: string | null = null;
   /** The rows the prompt quotes, loaded per call: the engine answers, the writer caches. */
   const views = new Map<number, ChapterTextView>();
 
@@ -236,14 +231,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       written.out += result.usage.out;
     }
     all = addUsage(all, result.usage);
-    reported = result.responseModel;
-    // The pin's own wire id (`apiModelOf`) is the same weights; any other id is the honest-limit
-    // case below: recorded once, and the pass goes on.
-    if (mismatch === null && result.responseModel !== config.model && result.responseModel !== config.apiModel) {
-      mismatch = { declared: config.model, reported: result.responseModel };
+    // ADR-038 §2's honest limit: other weights are evidence, not a refusal — one line, no vertex
+    // id in a row (a receipt names shas and lengths, never a model string in free text).
+    if (result.responseModel !== config.model && result.responseModel !== config.apiModel) {
+      input.log(`[writer] модель ответила другими весами: ${result.responseModel} — проход идёт дальше`);
     }
     calls.push({
       kind,
+      at: now(),
       system: messages.find((message) => message.role === 'system')?.content ?? '',
       user: messages
         .filter((message) => message.role !== 'system')
@@ -273,6 +268,22 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
 
+  /**
+   * A gate's verdict, on the call that produced it: the last call, and only when it is that gate's
+   * own. A clean rights scan answers mechanically without a model call, and must not stamp the
+   * consultant's answer with Gate B's `CLEAR`.
+   */
+  function markVerdict(kind: CallKind, verdict: CallVerdict | null): void {
+    const last = calls.at(-1);
+    if (verdict !== null && last !== undefined && last.kind === kind) last.verdict = verdict;
+  }
+
+  /** AC7: the receipt goes once, after the outcome — and a failure there can never change it. */
+  function transcript(result: PassResult): Promise<void> {
+    return storeTranscript({ engine, log: input.log, passId: job.stepId, calls, sections,
+      promptBundle: input.promptBundle, failure: result.status === 'closed' ? null : failure?.code ?? null });
+  }
+
   /** Park the pass: the note is a sentence, the log line and the transcript carry the code. */
   async function park(why: ParkInput): Promise<PassResult> {
     // A coded failure the table does not know still owes the reader a sentence, not a code word.
@@ -289,7 +300,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };
-    note = sentence;
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
     // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
     // each gate's verdict row is added by the close. A park before the first call claims neither.
@@ -316,7 +326,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       model: laneModel(), // no call, no pin: a park before the model ran claims no model, no money
       at: now(),
     });
-    return {
+    const parked: PassResult = {
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
@@ -326,6 +336,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       tokens: { ...written },
       costUsd: costUsd(config.pipeline.pricing, all),
     };
+    // AC7: the receipt is sent once, after the outcome — and cannot change it.
+    await transcript(parked);
+    return parked;
   }
 
   /**
@@ -349,21 +362,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   }
 
   const textOf: ChapterTextLookup = (n) => views.get(n) ?? noChapterText(n);
-
-  /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
-  function transcript(result: PassResult): void {
-    try {
-      writeTranscript(input.dataDir, job.stepId, {
-        chapter, at: now(), model: config.model, apiModel: config.apiModel,
-        reportedModel: reported, modelMismatch: mismatch, promptSha256,
-        sections: promptSections, estimate, note, failure,
-        result: { status: result.status, reason: result.reason ?? null },
-        calls,
-      });
-    } catch {
-      input.log('[writer] transcript not written');
-    }
-  }
 
   function check(value: string, finishReason?: string | null): Answer {
     return validateAnswer(value, { chapter, finishReason: finishReason ?? null });
@@ -425,6 +423,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     answered[role] = true;
+    markVerdict(role === 'editor' ? 'gate:editor' : 'gate:consultant', parsed.verdict);
     await emit({
       stage: 'verdict',
       chapter,
@@ -471,28 +470,28 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     transcript,
     check,
     runGate: (role) => runGate(role),
-    runRightsGate: rightsRunner({
-      config,
-      engine,
-      bookRoot,
-      chapter,
-      chapterText: textOf,
-      passId: job.stepId,
-      changeId: job.changeId,
-      now,
-      ask,
-      emit: (event) => emit(event),
-    }),
+    runRightsGate: async () => {
+      const run = await rightsRunner({
+        config,
+        engine,
+        bookRoot,
+        chapter,
+        chapterText: textOf,
+        passId: job.stepId,
+        changeId: job.changeId,
+        now,
+        ask,
+        emit: (event) => emit(event),
+      })();
+      markVerdict('gate:rights', run.verdict);
+      return run;
+    },
     reviseText,
     usage: () => all,
     writerTokens: () => ({ ...written }),
     model: () => laneModel(),
-    setPrompt: (sections, sha) => {
-      promptSections = sections;
-      promptSha256 = sha;
-    },
-    setEstimate: (value) => {
-      estimate = value;
+    setPrompt: (value) => {
+      sections = value.sections;
     },
   };
 }

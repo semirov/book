@@ -39,8 +39,10 @@ npm run typecheck
 npm run arch                 # file-size limit, layer boundaries, F023, no model in the engine
 npm run frame:check          # F029: ch01 opens and ch67 closes on the canon; deploy.sh checks the live site
 npm run frame:check -- --url=http://127.0.0.1:8091 --data="$HOME/book-site-data"   # «what does the site actually serve»
-npm run validate             # F001–F009 + F020–F022 + F029 over manuscript/; exit 1 on errors
-node bin/validate.mjs --staged   # what the git hook runs on the index
+npm run validate             # the image's files only: F005 + F020 (+ F006), naming the text rules it skips
+node bin/validate.mjs --from-db "$HOME/book-site-data" --strict   # the text as stored: the deploy's gate
+node bin/validate.mjs --staged   # what the git hook runs: no `manuscript/` path may be staged
+node bin/home-check.mjs --data-dir "$HOME/book-site-data"         # the volume holds the book and nothing else
 ```
 
 Install the commit gate once per clone: `git config core.hooksPath site/bin/git-hooks && chmod +x site/bin/git-hooks/pre-commit`.
@@ -71,7 +73,8 @@ node bin/engine.mjs done <leaseId> --seams seams.json --note "…"   # requires 
 node bin/engine.mjs trace <changeId|stepId>       # the ripple, step by step
 node bin/engine.mjs reconcile                     # boot check: lane, leases, stranded steps
 node bin/index.mjs show|rebuild                   # the derived index: paths, hash, counts; rebuild
-node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile
+node bin/restore.mjs --chapter 9 --list            # the revisions of a chapter, and what a restore would publish
+node bin/restore.mjs --chapter 9 --rev 3 --dry-run # preview only: a restore is a revision (see below)
 ```
 
 Beats are automatic: the engine's own tick (`ENGINE_REAPER_MS`) refreshes the lease of every open step,
@@ -110,8 +113,10 @@ Sign-in is optional (ADR-021). To enable it, put the client id in `secrets/yande
 client secret in `secrets/yandex_client_secret` (both `0600`) and point `YANDEX_CLIENT_ID_FILE` /
 `YANDEX_CLIENT_SECRET_FILE` at them (`/run/secrets/…` for the compose services, `./secrets/…` in
 `.env` for the launchd fallback). To run without OAuth, mount neither: the site stays readable and
-sign-in answers `503 OAUTH_UNCONFIGURED`. Text rollback is unchanged (`bin/restore.mjs` for a chapter,
-then `bin/engine.mjs reconcile`); the paragraphs below are about code.
+sign-in answers `503 OAUTH_UNCONFIGURED`. A text rollback is a **revision**, not a file: it goes through
+`POST /internal/restore` (`npm run writer -- --revert --chapter N` from the host), then
+`bin/engine.mjs reconcile` marks it; `bin/restore.mjs` only lists and previews
+(BOOK-187 — the book's text lives in the database). The paragraphs below are about code.
 
 | service | command | published | cpu / mem / pids | grace | healthcheck |
 | --- | --- | --- | --- | --- | --- |

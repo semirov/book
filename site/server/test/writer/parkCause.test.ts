@@ -38,7 +38,6 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine: harness.client,
         now: () => harness.fixture.clock.now(),
         log: (line) => harness.logs.push(line),

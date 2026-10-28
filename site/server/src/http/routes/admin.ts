@@ -48,7 +48,6 @@ import {
   EngineBusyError,
   FrameMissingError,
   FrameNotBasisError,
-  ManuscriptWrittenError,
   resetBook,
 } from '../../reset/book.ts';
 import { tokenMatches } from '../../util/secret.ts';
@@ -203,7 +202,6 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
   app.get('/api/admin/integrity', async (request, reply) => {
     if (!guard(deps, request, reply)) return reply;
     const report = readIntegrity(deps.db, {
-      bookRoot: deps.config.bookRoot,
       denylistPath: deps.config.denylistPath,
       imprint: deps.imprint,
       nowMs: deps.now().getTime(),
@@ -264,9 +262,9 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
    * a request that lost its body. Counts are the answer in both shapes; nothing here returns a
    * row, a text or a token.
    *
-   * Refusals: `MANUSCRIPT_WRITTEN` (a boot scan would restore the book), `FRAME_MISSING` /
-   * `FRAME_NOT_BASIS` (the canon is not readable or no longer the frozen sentence),
-   * `ENGINE_BUSY` (a step is writing into the rows about to be deleted) and `BACKUP_FAILED`.
+   * Refusals: `FRAME_MISSING` / `FRAME_NOT_BASIS` (no row holds the canon, or a frame slot holds
+   * prose — BOOK-187 reads both from the volume, never from a file), `ENGINE_BUSY` (a step is
+   * writing into the rows about to be deleted) and `BACKUP_FAILED`.
    */
   app.post('/api/admin/reset/book', async (request, reply) => {
     if (!guard(deps, request, reply)) return reply;
@@ -292,7 +290,6 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
 
     try {
       let report = resetBook(deps.db, {
-        bookRoot: deps.config.bookRoot,
         dataDir: deps.config.dataDir,
         now: deps.now(),
         dryRun: options.dryRun,
@@ -318,9 +315,6 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
       }
       return reply.header('cache-control', 'no-store').send({ target: 'book', ...report });
     } catch (error) {
-      if (error instanceof ManuscriptWrittenError) {
-        return reply.code(409).send({ code: error.code, message: error.message, files: error.files });
-      }
       if (error instanceof FrameMissingError) {
         return reply.code(409).send({ code: error.code, message: error.message });
       }

@@ -10,4 +10,13 @@ export const GUARDED_ROOTS: readonly string[];
 
 export const MANUSCRIPT_READERS: readonly string[];
 
+/** The boot: it serves rows, so it may not attach a filesystem reader. */
+export const BOOT_FILE: string;
+
+/** The import and the watcher: the two modules a boot may never reach. */
+export const BOOT_REFUSED: readonly string[];
+
+/** The directory the one-shot import lives in; only it may name `scanManuscript`. */
+export const IMPORT_DIR: string;
+
 export function textHomeProblems(root: string): TextHomeProblem[];

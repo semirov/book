@@ -119,6 +119,32 @@ export type LandInput = {
 /** `--revert` as a restore revision: what the engine published, and what it replaced. */
 export type RestoreView = { rev: number; sha: string; previousRev: number };
 
+/**
+ * BOOK-187 AC5: the lane's counter, as the engine's row answers it. A day other than the row's
+ * reads as a fresh day (`passes: 0`), so the writer never has to reset anything at midnight.
+ */
+export type WriterStateView = { day: string; passes: number; lastPassAt: string | null; pauseUntil: string | null };
+
+/** What `recordPass` sends: one pass counted, and optionally when the lane may run again. */
+export type RecordPassInput = { day: string; spent: boolean; pauseUntil?: string | null };
+
+/**
+ * BOOK-187 AC7: the redacted receipt of a pass, as the writer built it. The shape is `transcript.ts`'s
+ * `TranscriptRow` seen from the wire side; `storeTranscript` is where the two meet, so the compiler
+ * keeps them equal without the modules importing each other.
+ */
+export type TranscriptRowInput = {
+  seq: number;
+  at: number;
+  role: 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant' | 'gate:rights';
+  tokensIn: number;
+  tokensOut: number;
+  promptBundle: string | null;
+  content: string;
+};
+
+export type TranscriptStored = { stored: number; pruned: number };
+
 export type StartView = {
   leaseId: string;
   stepId?: string;
@@ -220,6 +246,15 @@ export type EngineClient = {
   beat(leaseId: string): Promise<{ leaseId: string; expiresAt: string }>;
   reconcile(chapter: number, because: string): Promise<unknown>;
   stage(event: Record<string, unknown>): Promise<unknown>;
+  /**
+   * BOOK-187 AC5: the lane's day, read from `writer_state` through the engine — the writer keeps
+   * no file and no database handle. Another day reads as a fresh one.
+   */
+  writerState(day: string): Promise<WriterStateView>;
+  /** Count one pass (one transaction engine-side) and answer the resulting row. */
+  recordPass(input: RecordPassInput): Promise<WriterStateView>;
+  /** BOOK-187 AC7: store the pass's redacted receipt once, after the outcome is known. */
+  transcript(input: { passId: string; rows: readonly TranscriptRowInput[] }): Promise<TranscriptStored>;
 };
 
 function readToken(options: EngineClientOptions): string {
@@ -360,5 +395,16 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       (await post('/internal/beat', { leaseId })) as { leaseId: string; expiresAt: string },
     reconcile: async (chapter, because) => post('/internal/reconcile', { chapter, because }),
     stage: async (event) => post('/internal/stage', event),
+    // AC5: one read, one write, both keyed by the caller's day and never by a file.
+    writerState: async (day) =>
+      (await send('GET', `/internal/writer-state?day=${encodeURIComponent(day)}`, null)) as WriterStateView,
+    recordPass: async (input) =>
+      (await post('/internal/writer-state', {
+        day: input.day,
+        spent: input.spent,
+        ...(input.pauseUntil === undefined ? {} : { pauseUntil: input.pauseUntil }),
+      })) as WriterStateView,
+    transcript: async (input) =>
+      (await post('/internal/transcript', { passId: input.passId, rows: input.rows })) as TranscriptStored,
   };
 }

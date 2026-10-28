@@ -12,8 +12,9 @@
  * fact-shaped carrier unbound (L8 warning, never a refusal in this stage) and republishes the
  * chapter's gap (D9); it writes one `block_versions` row per edited block carrying **one span** and
  * a checkpoint text every eighth version (D5); and it appends the `chapter.revised` event and the
- * `edit` revision, both naming the cause. No chapter snapshot is written: the block checkpoint is
- * the boundary.
+ * `edit` revision, both naming the cause. It also writes the chapter's content-addressed snapshot
+ * (the cold-backup copy the history views and the restore read — ADR-043 D5's checkpoint stays the
+ * ledger's boundary; the snapshot is what stands in for a per-version block order until BOOK-182).
  */
 
 import type { Db } from '../db/db.ts';
@@ -24,6 +25,7 @@ import { appendEvent } from '../history/log.ts';
 import { blockId, normalizeForHash } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
+import { writeSnapshot } from '../versions/snapshots.ts';
 import { countUnboundFactShaped, unboundFactShaped } from './factShaped.ts';
 import { insertSpanMentions, type BoundBlock } from './mentions.ts';
 import {
@@ -134,6 +136,15 @@ export function applyPatch(input: ApplyPatchInput): ApplyPatchResult {
     }
     const canonical = canonicalChapterText(chapterRow.title, texts);
     const sha256 = sha256Hex(canonical);
+    // ADR-043 D5 keeps its point: a block version stores its span (and a checkpoint every eighth
+    // version), so no paragraph is written twice on the ledger's account. What follows is a
+    // different copy for a different reader — the chapter's content-addressed snapshot in the cold
+    // backup store, the one text time travel reads today (`chapterAt`, `readRestoreSource`, the
+    // restore route). It is here because `block_versions` carries no paragraph index: a chapter's
+    // **order** at an arbitrary moment is not reconstructible from rows, and until order is stored
+    // per version (BOOK-182) the snapshot is the only honest answer. It is written from the rows
+    // this transaction is producing, inside the transaction, and dies with BOOK-182.
+    const snapshot = writeSnapshot(input.dataDir, chapter, sha256, canonical);
     db.prepare(
       `UPDATE chapters SET rev = ?, sha256 = ?, chars = ?, block_count = ?, updated_at = ? WHERE n = ?`,
     ).run(
@@ -239,9 +250,9 @@ export function applyPatch(input: ApplyPatchInput): ApplyPatchResult {
       added: 0,
       changed: resolved.length,
       removed: 0,
-      // ADR-043 D5: no chapter snapshot per revision — the block checkpoint is the boundary, and
-      // a second copy of the whole chapter is the cost this design exists to avoid.
-      snapshot: '',
+      // The path of the snapshot written above: this is what makes an applier revision readable by
+      // the history views and the restore, which `''` never was.
+      snapshot,
       // There is no lease to discover here: the caller asserts the cause, so the write is
       // attributed by construction (unlike an observed file write, F015).
       attributed: true,
@@ -268,6 +279,7 @@ export function applyPatch(input: ApplyPatchInput): ApplyPatchResult {
         chars: (newTextOf.get(edit.block.id) ?? edit.block.text).length,
         spans: JSON.stringify([span]),
         text: checkpointText(ver, newTextOf.get(edit.block.id) ?? edit.block.text),
+        nextText: newTextOf.get(edit.block.id) ?? edit.block.text,
         cause: causeForChain,
         actor,
         nowMs,

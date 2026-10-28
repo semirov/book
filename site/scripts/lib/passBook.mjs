@@ -2,12 +2,16 @@
  * lib/passBook.mjs — the scratch book a pass replay runs on, and the one transaction it needs.
  *
  * Everything here touches **the temp copy**: a read-only `VACUUM INTO` of the production store,
- * this checkout's manuscript beside it, the two `pass_stages` rows of one pass, and the readback
- * the report prints. Production is opened read-only and never written; the caller removes the
+ * the two `pass_stages` rows of one pass, the edit written into the copy's `blocks` row (the
+ * served text is a row since BOOK-187 — there is no chapter file to write), and the readback the
+ * report prints. Production is opened read-only and never written; the caller removes the
  * directory when it is done.
+ *
+ * Dev-only by construction: it needs a volume to copy, and it says so and exits 0 when there is
+ * none (a laptop without prod is not a failure of this script).
  */
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -43,9 +47,9 @@ export async function buildSite({ skip, log }) {
   if (build.code !== 0) throw new Error(`npm run build failed (${build.code}):\n${build.output.split('\n').slice(-25).join('\n')}`);
 }
 
-/** The temp directory: prod's store copied, this checkout's manuscript, a scratch feedback dir. */
+/** The temp directory: prod's store copied, and a scratch feedback dir. No prose is copied. */
 export async function prepareTemp() {
-  if (!existsSync(PROD_DB)) throw new Error(`no production database at ${PROD_DB}`);
+  if (!existsSync(PROD_DB)) return null;
   const dir = mkdtempSync(join(tmpdir(), 'pass-frames-'));
   mkdirSync(join(dir, 'data'), { recursive: true });
   mkdirSync(join(dir, 'feedback'), { recursive: true });
@@ -53,7 +57,6 @@ export async function prepareTemp() {
   // `sqlite3 -readonly` + VACUUM INTO: the copy is read out of prod, never written back to it.
   const vacuum = await run('sqlite3', ['-readonly', PROD_DB, `VACUUM INTO '${target}'`], dir);
   if (vacuum.code !== 0) throw new Error(`sqlite3 VACUUM INTO failed (${vacuum.code}): ${vacuum.output}`);
-  cpSync(join(WORKTREE, 'manuscript'), join(dir, 'book', 'manuscript'), { recursive: true });
   const db = new DatabaseSync(target);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   // Schema v21 (this branch understands v20) only added two nullable columns; pin the marker.
@@ -64,8 +67,8 @@ export async function prepareTemp() {
 }
 
 /**
- * One transaction: the temp chapter file gets the edit, then the two rows the tailer publishes
- * (`landed`, then `typing` of the same pass). `at` is the moment of the write.
+ * One transaction: the temp copy's block takes the edit (a row — BOOK-187), then the two rows the
+ * tailer publishes (`landed`, then `typing` of the same pass). `at` is the moment of the write.
  */
 export function replayPass(run, dir, passId) {
   const now = Date.now();
@@ -91,9 +94,12 @@ export function replayPass(run, dir, passId) {
       costUsd: null,
     },
   ];
-  writeFileSync(run.file, run.source.replace(run.phrase, run.replacement));
   const db = new DatabaseSync(join(dir, 'data', 'book.db'));
   db.exec('PRAGMA busy_timeout = 5000;');
+  // The served paragraph is `blocks.text`: the old flow wrote the chapter file and the watcher
+  // re-ingested it, which no longer exists. The blockid is unchanged by the edit, and the page
+  // finds the paragraph by its own text (the locator), so the measurement is the same one.
+  db.prepare('UPDATE blocks SET text = ? WHERE id = ?').run(run.after, run.block.id);
   const insert = db.prepare(`INSERT INTO pass_stages
     (pass_id, chapter, stage_seq, stage, at, actor_process, actor_model, change_id, summary, span,
      tokens_in, tokens_out, cost_usd)

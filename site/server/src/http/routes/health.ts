@@ -2,6 +2,7 @@ import { OPENING_CHAPTER, TOTAL_CHAPTERS, type HealthDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { frameSha } from '../../db/repo/frame.ts';
+import { readWriterSummary } from '../../db/repo/writerState.ts';
 import { readEngineHealth } from '../../engineState/reader.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -24,6 +25,9 @@ type MaxRow = { at: string | null };
  * the one the volume recorded (`prompt_drift`, a rollback's fingerprint). All three are `meta` /
  * `book_frame` reads: no file is touched, so a probe stays as cheap as it was.
  *
+ * AC5 adds `writer` — the lane's day, its spent passes and the two moments — read from
+ * `writer_state`, the row that replaced `writer/state.json`. It is a counter, not the text: the
+ * pen's state answers «is the book being written today», which the page already asks.
  * No freshness header here: the app's one policy (`http/cache.ts`) marks `/healthz` `no-store`
  * above the route, so a failed probe (the error handler's 500) cannot be stored either.
  */
@@ -55,6 +59,8 @@ export function registerHealthRoutes(app: FastifyInstance, deps: RouteDeps): voi
         last: frameSha(deps.db, TOTAL_CHAPTERS, 'last'),
       },
       prompt_drift: drift?.v ?? null,
+      // BOOK-187 AC5: the lane's counter, from the row; null until the first pass ever ran.
+      writer: readWriterSummary(deps.db),
     };
     return reply.send(body);
   });

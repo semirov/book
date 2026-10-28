@@ -15,6 +15,7 @@ import type { BlockRow } from '../db/repo/chapters.ts';
 import type { WriteActor, WriteCause } from '../ingest/attribution.ts';
 import { OUT_OF_PROCESS_LABEL, overwriteByKind } from '../ingest/attribution.ts';
 import { ulid } from '../util/ulid.ts';
+import { recordBlockDelta } from './deltaWrite.ts';
 import { appendEvent } from './log.ts';
 import { REPLACE_SIMILARITY, pairBySimilarity } from './similarity.ts';
 
@@ -102,6 +103,8 @@ function insertVersion(
     spans?: string;
     /** ADR-043 D5: the block's full text on a checkpoint version, '' otherwise. */
     text?: string;
+    /** ADR-041 §2.2: the version's whole text — the input of its delta, never a re-read. */
+    nextText: string;
   },
 ): void {
   db.prepare(
@@ -131,6 +134,24 @@ function insertVersion(
     actorLabel: input.actor.label,
     identityId: input.actor.identityId,
     at: input.at,
+  });
+  // ADR-041 §2.2 / BOOK-187 AC 10: the version and the change that produced it are written in
+  // one place and one transaction. The delta is skipped (with a code) rather than invented when
+  // the ledger cannot replay the predecessor.
+  recordBlockDelta({
+    db,
+    chapter: input.chapter,
+    blockUid: version.uid,
+    ver: version.ver,
+    prevVer: version.prevVer,
+    op: version.op,
+    nextText: version.nextText,
+    spans: version.spans,
+    rev: input.rev,
+    hseq: input.hseq,
+    at: input.at,
+    changeId: input.cause.changeId,
+    stepId: input.cause.stepId,
   });
 }
 
@@ -205,6 +226,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
             prevVer: null,
             replacedBy: null,
             text: block.text,
+            nextText: block.text,
           });
           result.introduced += 1;
         }
@@ -225,6 +247,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
         prevVer: known?.ver ?? null,
         replacedBy: null,
         text: checkpointText(ver, block.text),
+        nextText: block.text,
       });
       closeLineage(db, input, old.id, block.id);
       openLineage(db, input, block.id, block.text.length);
@@ -244,6 +267,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
       prevVer: null,
       replacedBy: null,
       text: block.text,
+      nextText: block.text,
     });
     openLineage(db, input, block.id, block.text.length);
     uidOfNew.set(newIndex, uid);
@@ -275,6 +299,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
       prevVer: known?.ver ?? null,
       replacedBy: heirUid,
       text: checkpointText((known?.ver ?? 0) + 1, old.text),
+      nextText: old.text,
     });
     closeLineage(db, input, old.id, heir?.id ?? null);
 
@@ -363,6 +388,8 @@ export type RecordPatchedBlockInput = {
   spans: string;
   /** ADR-043 D5: the block's full text on a checkpoint version, `''` otherwise. */
   text: string;
+  /** The block's whole text after the patch — what the version's delta is computed from. */
+  nextText: string;
   cause: WriteCause;
   actor: WriteActor;
   nowMs?: number;
@@ -401,6 +428,7 @@ export function recordPatchedBlock(input: RecordPatchedBlockInput): void {
     replacedBy: null,
     spans: input.spans,
     text: input.text,
+    nextText: input.nextText,
   });
   closeLineage(input.db, frame, input.previousBlockId, input.blockId);
   openLineage(input.db, frame, input.blockId, input.chars);

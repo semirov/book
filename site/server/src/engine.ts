@@ -58,6 +58,8 @@ async function main(): Promise<void> {
     token,
     version: process.env.npm_package_version ?? '0.0.0',
     vocabulary: (chapter) => chapterVocabulary(db, chapter),
+    // BOOK-187 AC7: retention is the process's own property (`TRANSCRIPT_RETENTION_DAYS`).
+    transcriptRetentionDays: config.transcriptRetentionDays,
   });
   const recovery = engine.reconcile();
   app.log.info(

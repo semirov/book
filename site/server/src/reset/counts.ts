@@ -16,8 +16,12 @@ export type KeptCount = { key: string; rows: number };
 
 export type EngineState = { openSteps: number; liveLeases: number };
 
-/** What the manuscript itself would put back: chapter files a boot scan would resurrect. */
-export type ManuscriptState = { proseChapters: number };
+/**
+ * The book's content as a dry run reports it, counted from rows (BOOK-187): the chapters the
+ * wipe will remove, their characters and their paragraphs. A row is the only place the book is,
+ * so this is the only place the count can come from.
+ */
+export type ContentState = { written: number; chars: number; blocks: number };
 
 /** Every counter, in the order the operator's table prints them. */
 const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
@@ -99,6 +103,15 @@ export function countEngine(db: Db): EngineState {
   return {
     openSteps: count(db, 'SELECT COUNT(*) AS n FROM steps WHERE outcome IS NULL'),
     liveLeases: count(db, 'SELECT COUNT(*) AS n FROM leases WHERE released_at IS NULL'),
+  };
+}
+
+/** The content a wipe removes, from the projection: written chapters, their characters and paragraphs. */
+export function countContent(db: Db): ContentState {
+  return {
+    written: count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0 AND block_count > 0'),
+    chars: count(db, 'SELECT COALESCE(SUM(chars), 0) AS n FROM chapters WHERE basis = 0'),
+    blocks: count(db, 'SELECT COUNT(*) AS n FROM blocks'),
   };
 }
 

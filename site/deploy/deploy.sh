@@ -12,8 +12,9 @@
 #   site/deploy/deploy.sh --rollback              # one command back to the last known good
 #
 # What it guarantees:
-#   * the gate runs here too (typecheck, arch, tests, coverage floor, build, manuscript, and the
-#     F023 release check on the built bundle) — a red gate deploys nothing;
+#   * the gate runs here too (typecheck, arch, tests, coverage floor, build, the volume's home
+#     guard, the text as stored in the database, and the F023 release check on the built
+#     bundle) — a red gate deploys nothing;
 #   * the prod launchd job must already be pointed at this root, otherwise it refuses: silently
 #     updating a clone that prod does not run would report a green deploy of nothing;
 #   * BOOK-119: two real-artifact proofs run after the build, and BOOK-157 adds a third over the
@@ -230,6 +231,12 @@ health_url() {
   printf '%s/healthz' "$(site_url)"
 }
 
+# BOOK-187: the volume the site reads. A deploy without it is an incident, not an empty book —
+# the text gate and the home guard both need it, and neither may pass by absence.
+data_dir_of_service() {
+  plist_field EnvironmentVariables.DATA_DIR 2>/dev/null || true
+}
+
 site_url() {
   local host port
   host="$(plist_field EnvironmentVariables.HOST || echo 127.0.0.1)"
@@ -402,15 +409,20 @@ npm ci --no-audit --no-fund >/dev/null 2>&1 || die "npm ci failed at $(git -C "$
 STEP="gate: verify"
 say "gate: verify (typecheck, arch, tests)"
 npm run verify || die "gate (verify) is red — nothing was deployed or restarted"
+STEP="gate: home"
+DATA_DIR_SITE="$(data_dir_of_service)"
+[ -n "$DATA_DIR_SITE" ] || die "the service names no DATA_DIR — a deploy without the volume cannot check the book; nothing was deployed or restarted"
+say "gate: home (the volume and manuscript/ hold only what they may)"
+node "$ROOT/site/bin/home-check.mjs" --data-dir "$DATA_DIR_SITE" || die "the data dir holds something it may not (every path above is named) — nothing was deployed or restarted"
 STEP="gate: coverage"
 say "gate: coverage"
 npm run test:coverage || die "coverage floor not met — nothing was deployed or restarted"
 STEP="gate: build"
 say "gate: build"
 npm run build || die "build failed — nothing was deployed or restarted"
-STEP="gate: manuscript"
-say "gate: manuscript"
-node "$ROOT/site/bin/validate.mjs" --strict || die "manuscript validation is red — nothing was deployed or restarted"
+STEP="gate: text (DB)"
+say "gate: text (DB)"
+node "$ROOT/site/bin/validate.mjs" --from-db "$DATA_DIR_SITE" --strict || die "the text as stored is invalid — nothing was deployed or restarted"
 
 # BOOK-119: the two proofs run on the build that just landed in `dist/staging`. They read real
 # bytes: a red proof means an asset URL would not survive the next publish or the guard would

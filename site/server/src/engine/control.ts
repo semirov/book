@@ -14,7 +14,9 @@ import { TOTAL_CHAPTERS, validateIntent, validateInterventionKind } from '@book/
 
 import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
+import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
+import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -48,6 +50,12 @@ export type ControlOptions = {
    * projection (a cold database) the vocabulary is empty and the new-entity rule is skipped.
    */
   vocabulary?: (chapter: number) => readonly string[];
+  /**
+   * BOOK-187 AC7: how long a redacted transcript row is kept (`TRANSCRIPT_RETENTION_DAYS`,
+   * validated in `config.ts`). An app built without a config — a REST-only test — keeps the
+   * ADR's 30 days rather than an unbounded table.
+   */
+  transcriptRetentionDays?: number;
 };
 
 const session = z.string().min(1).max(64);
@@ -238,6 +246,8 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     ok: true,
     version: options.version ?? '0.0.0',
     state: options.engine.state(),
+    // BOOK-187 AC5: the lane's counters, straight from the row; null before the first pass.
+    writer: options.db === undefined ? null : readWriterSummary(options.db),
   }));
 
   app.get('/internal/state', async () => ({ ok: true, data: options.engine.state() }));
@@ -461,6 +471,9 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       throw error;
     }
   });
+
+  // BOOK-187 AC5/AC7: the writer lane's counter and its redacted receipts, under the same guard.
+  registerLaneStoreRoutes(app, { db: options.db, transcriptRetentionDays: options.transcriptRetentionDays });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {

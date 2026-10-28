@@ -1,12 +1,13 @@
 /**
- * The seeded book BOOK-137 wipes: three chapter files, one identity with its session, one
- * filing that became a change, and the engine row of every table the reset drops. It lives
- * apart from the test so the reset suite reads as assertions rather than as SQL, and so the
- * same seed can be counted from two sides — the literals below and the response.
+ * The seeded book BOOK-137 wipes: three chapters, one identity with its session, one filing that
+ * became a change, and the engine row of every table the reset drops. It lives apart from the
+ * test so the reset suite reads as assertions rather than as SQL, and so the same seed can be
+ * counted from two sides — the literals below and the response.
+ *
+ * BOOK-187: `bookFiles()` is the **one-shot import's** input — a fixture tree a test hands to
+ * `reconcile`, which is how a book gets into a volume. Nothing reads it after the seed: the
+ * reset itself reads rows.
  */
-
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 
@@ -20,10 +21,9 @@ export const AT = '2026-10-25T12:00:00Z';
 export const SEEDED_STATE_VERSION = 813;
 
 /**
- * The three chapter files a seeded book has: the two frame slots and one written chapter.
- * The operator's real pre-launch state is this manuscript already cleaned of the engine's
- * untracked output: `clearProse` removes the written file while the database keeps the chapter —
- * a reset over a manuscript that still holds prose is refused (BOOK-137 B2).
+ * The three chapters a seeded book has: the two frame slots and one written chapter, as the
+ * one-shot import reads them. `reconcile` turns them into rows and that is the last time any of
+ * this exists as a file.
  */
 export function bookFiles(): Record<string, string> {
   return {
@@ -31,11 +31,6 @@ export function bookFiles(): Record<string, string> {
     [`ch${String(TOTAL_CHAPTERS).padStart(2, '0')}.md`]: FRAME_LAST_SENTENCE,
     'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
   };
-}
-
-/** Drop the written chapter's file, keeping its rows: the state after the operator cleaned it. */
-export function clearProse(target: Fixture): void {
-  rmSync(join(target.manuscript, 'ch08.md'), { force: true });
 }
 
 export function count(db: Db, sql: string): number {

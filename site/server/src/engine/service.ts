@@ -101,7 +101,7 @@ export type DoneResult = {
 export type { EngineState } from './overview.ts';
 
 export function createEngine(deps: EngineDeps) {
-  const { db, config, bookRoot } = deps;
+  const { db, config } = deps;
   const queue = createQueue(deps);
   const write = createWriteOps(deps);
   const overview = createOverview(deps);
@@ -130,9 +130,10 @@ export function createEngine(deps: EngineDeps) {
       try {
         // BOOK-18: an editor gets a slice of the derived index — this chapter and its
         // neighbours. The consultant judges physics, not continuity, and gets none.
+        // BOOK-187: the slice is built from the rows of this connection, never from a file.
         const indexSlice =
           role === 'editor' && step.chapter !== null
-            ? ensureSlice({ bookRoot, dataDir: config.dataDir }, step.chapter, (error) =>
+            ? ensureSlice({ db, dataDir: config.dataDir }, step.chapter, (error) =>
                 reportIndexFailure(deps, step.step_id, error))
             : null;
         return assignmentOf(step, openDispatch(deps, step, role, session), indexSlice);

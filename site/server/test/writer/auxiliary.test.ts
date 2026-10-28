@@ -12,9 +12,6 @@
  * stage emitter, the transcript, a gate dispatch — fail after the landing.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { describe, expect, it } from 'vitest';
 
 import { EngineRefusalError, type EngineClient } from '../../src/writer/client.ts';
@@ -108,7 +105,6 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
@@ -127,20 +123,39 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
     }
   });
 
-  it('closes when the transcript cannot be written', async () => {
+  it('closes when the transcript cannot be stored, and says so in one line', async () => {
     const harness = await createHarness();
     try {
       harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
-      // `writer/transcripts` is a file, so the directory cannot be made: a full disk, in one line.
-      mkdirSync(join(harness.dataDir, 'writer'), { recursive: true });
-      writeFileSync(join(harness.dataDir, 'writer', 'transcripts'), 'not a directory', 'utf8');
+      // BOOK-187 AC7: the receipt is a row now — the store is what can go away, and it must not
+      // turn a published chapter into a parked pass.
+      const engine = new Proxy(harness.client, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== 'function') return value;
+          if (property !== 'transcript') return (value as (...rest: unknown[]) => unknown).bind(target);
+          return (): never => {
+            throw new EngineRefusalError('ENGINE_TIMEOUT', 'the engine did not answer within 60000 ms', 0);
+          };
+        },
+      }) as EngineClient;
 
-      const result = await harness.run({ chapter: CHAPTER });
+      const result = await runPass({
+        config: harness.config,
+        bookRoot: harness.bookRoot,
+        engine,
+        provider: harness.provider,
+        now: () => harness.fixture.clock.now(),
+        log: (line) => harness.logs.push(line),
+        chapter: CHAPTER,
+      });
 
       expect(result.status).toBe('closed');
-      expect(harness.logs).toContain('[writer] transcript not written');
+      expect(harness.logs).toContain('[writer] transcript not stored: ENGINE_TIMEOUT');
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('rewritten');
+      // Nothing was invented: the failed store left the table as it was.
+      expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_transcripts').get()).toEqual({ n: 0 });
     } finally {
       await harness.close();
     }

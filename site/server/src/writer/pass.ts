@@ -31,6 +31,7 @@
 import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
+import { readBuildStamp } from '../buildStamp.ts';
 import { isWrittenView } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
@@ -100,13 +101,14 @@ const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 export type PassDeps = {
   config: WriterConfig;
   bookRoot: string;
-  dataDir: string;
   engine: EngineClient;
   provider: ProviderCall;
   now: () => number;
   log: (line: string) => void;
   /** A dry run builds the plan and stops: no engine call, no model call, no write. */
   dryRun?: boolean;
+  /** ADR-043 G3: the prompt bundle this image carries, for the receipt; the build stamp otherwise. */
+  promptBundle?: string | null;
   /** `--chapter N`: open that chapter's first pass instead of the lane's next slot. */
   chapter?: number | null;
   /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
@@ -139,7 +141,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   }
   // Tokens are information, not a bound (2026-10-27): the $ cap is, so `tokens.today` is unread.
   const budget: BudgetDto | null = state.budget ?? null;
-  let estimate: PassEstimate | null = null;
   if (budget === null) {
     // An engine from before the cap reports no money: say so — a silent pretend-bound is worse.
     deps.log('[writer] бюджет недоступен: движок не отдаёт потолки — проход идёт без денежной проверки');
@@ -154,7 +155,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     } catch (error) {
       return { status: 'refused', reason: error instanceof Error ? error.message : 'оценка прохода не собрана' };
     }
-    estimate = priced;
     deps.log(estimateLine(priced, budget));
     const crossed = capLine(budget, priced.usd);
     if (crossed !== null) {
@@ -209,13 +209,12 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   const chapter: number = job.chapter;
   const answered = { ...job.verdicts };
   const lane = createLane(
-    { config, bookRoot, dataDir: deps.dataDir, engine, provider: deps.provider, now, log: deps.log },
-    job,
-    chapter,
-    answered,
+    {
+      config, bookRoot, engine, provider: deps.provider, now, log: deps.log,
+      promptBundle: deps.promptBundle === undefined ? readBuildStamp().promptBundleSha : deps.promptBundle,
+    },
+    job, chapter, answered,
   );
-  // The estimate that let the pass open travels with it: the transcript is where money is proved.
-  if (estimate !== null) lane.setEstimate(estimate);
   let beforeText = '';
 
   function goneOf(code: string | null, detail: string): PassResult | null {
@@ -287,7 +286,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
-      lane.setPrompt(built.sections.length, built.promptSha256);
+      lane.setPrompt(built);
       const neighbours = [chapter - 1, chapter + 1].filter(
         (n) => isChapterNumber(n) && isWrittenView(lane.textOf(n)),
       );
@@ -316,7 +315,6 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
               promptChars: built.system.length + built.user.length,
               continueMax: config.continueMax,
             });
-            lane.setEstimate(real);
             const crossed = capLine(fresh, real.usd);
             if (crossed !== null) {
               deps.log(`[writer] ${crossed}`);
@@ -397,7 +395,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       if (rightsClosed) {
         // The rights gate refused the text and the engine closed the step: no `done`, no revision.
         deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
-        return rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
+        const refused = rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
+        await lane.transcript(refused);
+        return refused;
       }
       if (!editor.revise && consultant?.revise !== true) break;
       if (revisions >= MAX_REVISIONS) break;
@@ -482,7 +482,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       tokens: lane.writerTokens(),
       costUsd: passCost,
     };
-    lane.transcript(result);
+    await lane.transcript(result);
     deps.log(
       `[writer] closed ${closed.stepId}: ${closed.outcome}, глава ${String(chapter)}, ${String(parsed.chars)} знаков, $${passCost.toFixed(4)}`,
     );
@@ -490,8 +490,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   } catch (error) {
     const stepped = gone(error);
     if (stepped !== null) return stepped;
-    const parked = await lane.park(failureOf(error));
-    lane.transcript(parked);
-    return parked;
+    // `park` sends the receipt itself, once, after the outcome it states.
+    return await lane.park(failureOf(error));
   }
 }

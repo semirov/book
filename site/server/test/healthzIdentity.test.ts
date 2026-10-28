@@ -132,6 +132,24 @@ describe('GET /healthz — the identity of the answering process (BOOK-109)', ()
     expect(body.prompt_drift).toBe('b');
   });
 
+  it('prints the lane’s counter from the row, and null before the first pass (BOOK-187 AC5)', async () => {
+    await boot({ commit: '5558449' });
+    const before = (await app!.inject({ method: 'GET', url: '/healthz' })).json() as { writer: unknown };
+    // No row yet: the answer is `null`, never an invented zero that reads like a real day.
+    expect(before.writer).toBeNull();
+
+    fixture!.db
+      .prepare(
+        `INSERT INTO writer_state (id, day, passes, last_pass_at, pause_until, updated_at)
+         VALUES (1, '2026-10-28', 3, '2026-10-28T10:00:00Z', NULL, '2026-10-28T10:00:00Z')`,
+      )
+      .run();
+    const after = (await app!.inject({ method: 'GET', url: '/healthz' })).json() as { writer: unknown };
+    expect(after.writer).toEqual({ day: '2026-10-28', passes: 3, lastPassAt: '2026-10-28T10:00:00Z', pauseUntil: null });
+    // A counter, not the text: the probe still says nothing about the prose or the queue.
+    expect(JSON.stringify(after)).not.toContain('блок');
+  });
+
   it('falls back to a placeholder rather than an empty string when no stamp is shipped', async () => {
     await boot();
     const body = (await app!.inject({ method: 'GET', url: '/healthz' })).json() as { commit: string };

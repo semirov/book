@@ -14,9 +14,15 @@
  * answer is `null`: the ingest writes exactly that shape today (`spans='[]'`, `text=''` on a
  * non-checkpoint version), and skipping it would return the previous text as if nothing had
  * happened — the one lie this function must never tell.
+ *
+ * BOOK-187 — the ledger's own delta closes that gap. `block_deltas` carries the op list of a
+ * version whose spans the ingest never wrote (a whole-body rewrite has no per-character spans to
+ * record, but it does have a computed diff), so a step is unknown only when **neither** record
+ * exists. The checkpoint stays the start; each later step is its spans or its ops.
  */
 
 import type { Db } from '../db/db.ts';
+import { applyDelta, parseDeltaOps } from '../history/delta.ts';
 import { applyForward, parseSpans } from './spans.ts';
 
 export type ReplayResult = { text: string; checkpointVer: number };
@@ -45,12 +51,18 @@ export function replayBlock(db: Db, input: { blockUid: string; ver: number }): R
         ORDER BY ver`,
     )
     .all(input.blockUid, checkpoint.ver, input.ver) as VersionRow[];
+  const deltaOf = db.prepare('SELECT ops FROM block_deltas WHERE block_uid = ? AND to_ver = ?');
   let text = checkpoint.text;
   for (const row of later) {
     const spans = parseSpans(row.spans);
-    // No delta and no checkpoint: the step that produced this version is not recorded, so the
-    // text after it is unknown. A checkpoint is the only other way to know it, and it is empty.
-    if (spans.length === 0 && row.text === '') return null;
+    if (spans.length === 0 && row.text === '') {
+      // No span and no checkpoint: the step's own op list is the only other record of it. When
+      // the ingest wrote one (BOOK-187), replay it; when it did not, the step is unknown.
+      const delta = deltaOf.get(input.blockUid, row.ver) as { ops: string } | undefined;
+      if (delta === undefined) return null;
+      text = applyDelta(text, parseDeltaOps(delta.ops));
+      continue;
+    }
     text = applyForward(text, spans);
   }
   return { text, checkpointVer: checkpoint.ver };

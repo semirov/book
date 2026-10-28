@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it, afterEach } from 'vitest';
 
 import type { Db } from '../../src/db/db.ts';
@@ -102,12 +105,17 @@ describe('level 3 — a change span and a checkpoint every eighth version', () =
     expect(replay?.text).toBe(live.text);
     expect(live.text).toBe(`Абзац: ${tokens.map((_, index) => `Т${String(index + 1).padStart(2, '0')}`).join(', ')}.`);
 
-    // No chapter snapshot per applier revision: the checkpoint is the boundary.
-    const snapshots = db.prepare('SELECT snapshot FROM revisions WHERE chapter = 8').all() as Array<{
+    // BOOK-187: each applier revision carries a real snapshot path — the cold-backup copy the
+    // history views and the restore read (`chapterAt`, `readRestoreSource`), written in the same
+    // transaction. The ledger's boundary is still the checkpoint (D5); the snapshot exists because
+    // block order is not stored per version yet (BOOK-182).
+    const snapshots = db.prepare('SELECT snapshot FROM revisions WHERE chapter = 8 ORDER BY rev').all() as Array<{
       snapshot: string;
     }>;
     expect(snapshots).toHaveLength(11);
-    expect(snapshots.every((row) => row.snapshot === '')).toBe(true);
+    expect(snapshots.every((row) => row.snapshot !== '')).toBe(true);
+    expect(new Set(snapshots.map((row) => row.snapshot)).size).toBe(11);
+    for (const row of snapshots) expect(existsSync(join(dataDir, row.snapshot))).toBe(true);
 
     // The replay checks the text it applies: a tampered span is a refusal, not a plausible text.
     const tampered = db

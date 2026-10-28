@@ -301,6 +301,25 @@ export type ApiErrorBody = {
 };
 
 /**
+ * BOOK-187 AC5: the writer lane's day as the volume holds it — the counter that used to be
+ * `writer/state.json`. It is the lane's own bookkeeping (how many passes today, when the last
+ * one spent money, until when it is told to wait), never the text: a reader of this object
+ * learns how busy the lane is and nothing about the book.
+ *
+ * `day` is the caller's clock (`YYYY-MM-DD`, UTC). A row for another day reads as a fresh day,
+ * so the counter is per-day by construction and no midnight job has to reset it.
+ */
+export type WriterStateDto = {
+  day: string;
+  /** Passes that spent money on `day` — closed or parked, never an idle or refused one. */
+  passes: number;
+  /** ISO moment of the last spending pass, null when none has run. */
+  lastPassAt: string | null;
+  /** ISO moment the lane may run again, null when it was not told to wait. */
+  pauseUntil: string | null;
+};
+
+/**
  * `GET /healthz` — liveness only, and the watcher/engine state a reader's page can show.
  * Counts, the version and the lane's holder are operator facts: they leak how busy the book
  * is and who holds the pen, so they live behind the admin token (audit m4).
@@ -328,6 +347,8 @@ export type HealthDto = {
   schema_version: number;
   frame: { first: string | null; last: string | null };
   prompt_drift: string | null;
+  /** BOOK-187 AC5: the lane's counters, read from `writer_state`; null before the first pass. */
+  writer: WriterStateDto | null;
 };
 
 /** `GET /api/admin/health` — the operator's half of the health, token-guarded (§17). */
