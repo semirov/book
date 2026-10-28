@@ -59,6 +59,12 @@ export type BuiltPrompt = {
   user: string;
   promptSha256: string;
   sections: PromptSection[];
+  /**
+   * BOOK-174/ADR-043: the prompt as three layers, ordered by rate of change. `p0` is the
+   * cacheable prefix — canon, the role and the static contract — byte-identical for a book
+   * version, and it must be the **first** thing in the request or the provider caches nothing.
+   */
+  layers: { p0: string; p1: string; p2: string; p0Sha256: string };
 };
 
 export type PromptCode = 'PROMPT_SECTION_MISSING' | 'CANON_MISSING' | 'PROMPT_INPUT_INVALID';
@@ -280,7 +286,23 @@ function contractSection(): Part {
   return part('contract', body);
 }
 
+/** The layers by rate of change: `p0` never moves inside a book version (ADR-043). */
+const P0_IDS = new Set(['concept', 'climax', 'voice', 'contract']);
+/** Per chapter, stable while the chapter is: the place, the frame, the neighbours, the facts. */
+const P1_IDS = new Set(['place', 'frame', 'neighbours', 'facts', 'seam']);
+
 function assemble(system: string, parts: Part[]): BuiltPrompt {
+  // P0 = the role section plus the canon and the contract; P1 = the chapter's place and facts;
+  // P2 = what is edited now. A part with an unknown id is dynamic by default, so a new section
+  // can never leak into the cacheable prefix by accident.
+  const p0Parts = parts.filter((entry) => P0_IDS.has(entry.section.id));
+  const p1Parts = parts.filter((entry) => P1_IDS.has(entry.section.id));
+  // Everything else is dynamic: an unknown section joins P2, so it can never sit inside the
+  // cacheable prefix by accident.
+  const p2Parts = parts.filter((entry) => !P0_IDS.has(entry.section.id) && !P1_IDS.has(entry.section.id));
+  const p0 = [system, ...p0Parts.map((entry) => entry.body)].join('\n\n');
+  const p1 = p1Parts.map((entry) => entry.body).join('\n\n');
+  const p2 = p2Parts.map((entry) => entry.body).join('\n\n');
   const user = parts.map((entry) => entry.body).join('\n\n');
   return {
     system,
@@ -290,7 +312,16 @@ function assemble(system: string, parts: Part[]): BuiltPrompt {
       { id: 'role', chars: system.length, sha256: sha256Hex(system) },
       ...parts.map((entry) => entry.section),
     ],
+    layers: { p0, p1, p2, p0Sha256: sha256Hex(p0) },
   };
+}
+
+/** [system = P0][user = P1 + P2]: the one shape a real call uses (BOOK-174). */
+export function layeredMessages(built: BuiltPrompt): Array<{ role: 'system' | 'user'; content: string }> {
+  return [
+    { role: 'system', content: built.layers.p0 },
+    { role: 'user', content: [built.layers.p1, built.layers.p2].filter((value) => value.length > 0).join('\n\n') },
+  ];
 }
 
 function checkAssignment(assignment: WriterAssignmentData): void {

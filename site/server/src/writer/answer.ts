@@ -10,6 +10,7 @@
 import { CHAPTER_CHARS } from '@book/shared';
 
 import { charsOf, finalize, mergeContinuation, type Answer, type Lane } from './passLane.ts';
+import { layeredMessages } from './prompt.ts';
 import { buildContinuePrompt, type BuiltPrompt } from './prompt.ts';
 import type { ProviderResult, WriterMessage } from './provider.ts';
 
@@ -20,10 +21,8 @@ const REASON_CHARS = 200;
 
 /** The model's first answer, with one retry that carries the reason it was refused. */
 export async function draftAnswer(lane: Lane, built: BuiltPrompt, log: (line: string) => void): Promise<Answer> {
-  const request: WriterMessage[] = [
-    { role: 'system', content: built.system },
-    { role: 'user', content: built.user },
-  ];
+  // BOOK-174/ADR-043: [system = P0][user = P1 + P2] — the cacheable prefix is the first bytes.
+  const request: WriterMessage[] = layeredMessages(built);
   const first = await lane.ask('draft', request, 'draft');
   const checked = lane.check(first.text, first.finishReason);
   if (checked.ok) return checked;
