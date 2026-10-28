@@ -26,6 +26,8 @@ import './styles/seam.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
+// BOOK-156 — the grip's band, its reserve and its veil; after the registers it sits over.
+import './styles/foot-jumps.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's
 // height at title scale and owns every `data-seq` delay.
 import './styles/first-load.css';

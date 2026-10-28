@@ -31,6 +31,7 @@ import { ParagraphChain } from './components/ParagraphChain.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
 import { FocusView } from './components/FocusView.tsx';
+import { FootJumps, liveChapter } from './components/FootJumps.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
@@ -486,6 +487,7 @@ export function App() {
         <ParagraphChain chain={chain} loading={chainLoading} failed={chainFailed} onClose={closeChain} onRetry={retryChain} anchor={chainAnchor} live={history} />
       ) : null}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
+      <FootJumps live={history} processing={state.queue.processing !== null} revising={Object.values(revising).some((block) => block.active)} chapter={liveChapter(state.queue.processing?.chapter ?? null, revising)} change={changes[0] ?? null} plate={connection === 'capacity'} onLoad={loadChapter} />
       <CapacityPlate active={connection === 'capacity'} />
       {focusView}
     </>

@@ -169,13 +169,13 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(container.querySelector('.premise-row .premise-open')).toBeNull();
 
     // The register prints no block for it — the premise has one home, the chapter.
-    expect(container.querySelector('#talks .comment')).toBeNull();
-    expect(container.querySelector('#talks [data-comment-id]')).toBeNull();
-    expect(container.querySelector('#talks')?.textContent ?? '').not.toContain('смена переходит на ночь');
+    expect(container.querySelector('#discussion .comment')).toBeNull();
+    expect(container.querySelector('#discussion [data-comment-id]')).toBeNull();
+    expect(container.querySelector('#discussion')?.textContent ?? '').not.toContain('смена переходит на ночь');
 
     // No contradiction with the queue line: the premise holds no queue place, and nothing on
     // the page presents it as queued.
-    expect(container.querySelector('#talks .qline')?.textContent).toContain('в очереди пусто');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди пусто');
     expect(count(text, 'ждёт')).toBe(0);
   });
 
@@ -186,14 +186,14 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(container.querySelectorAll(`[data-comment-id="${PREMISE.id}"]`)).toHaveLength(1);
     expect(container.querySelectorAll(`[data-comment-id="${NOTE.id}"]`)).toHaveLength(1);
     // One entry from the chapter's row, one from the register: two blocks, not three.
-    expect(container.querySelectorAll('#talks .comment')).toHaveLength(1);
-    expect(container.querySelector('#talks .comment')?.getAttribute('data-comment-id')).toBe(NOTE.id);
+    expect(container.querySelectorAll('#discussion .comment')).toHaveLength(1);
+    expect(container.querySelector('#discussion .comment')?.getAttribute('data-comment-id')).toBe(NOTE.id);
     // The number belongs to the premise's attempt and appears once on the page.
     expect(count(text, '001')).toBe(1);
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
     expect(count(text, 'прицел')).toBe(1);
     // One queued filing, and the line counts exactly it.
-    expect(container.querySelector('#talks .qline')?.textContent).toContain('в очереди 1 правка');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди 1 правка');
   });
 
   it('keeps the attempts inside the premise’s card: one number on the row, none in the panel', async () => {

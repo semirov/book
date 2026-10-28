@@ -1,0 +1,277 @@
+/* ============================================================================
+   BOOK-156 — the grip: the page's foot, one rule and three words.
+
+   Not a bar (#3801 §1): no cells, no separators, no numerals, no icons, no shadow, no blur,
+   no fill of its own beyond the paper it is made of — the 24 px band of the column's own
+   paper with one 1 px rule on top, carrying оглавление · обсуждение · каретки. Its width is
+   the column's, not the viewport's: `.page` inside the nested `.canvas` is exactly the
+   measure, so the hairline runs 24…366 at 390 and 400…1040 at 1440 and stops there.
+
+   Two things are static and never toggled (CLS 0 by structure, not by measurement):
+   `body`'s bottom padding is the band plus the safe-area inset, and `html`'s scroll padding
+   is the same. Opening the row changes the band's height only — it grows upward, into the
+   paper the reserve already holds.
+
+   Both are scoped to the page that carries the grip (`body:has(nav.foot-jumps)`, the pattern
+   `capacity.css` already uses): the chronicle and the legal pages have no band, so they
+   reserve no paper for one. A 24 px band is the whole of the reserve where there is no inset
+   (desktop, Android) — the item's box is the band there, never 24 px of box hanging below the
+   screen's edge (owner's fallback, #3802 §1, BOOK-156 fix).
+   ============================================================================ */
+
+/* The document's tail ends at the band's top edge: the last line of the book is reachable and
+   no line of prose can ever be covered (owner's arithmetic, #3802 §5). */
+body:has(nav.foot-jumps) {
+  padding-block-end: calc(var(--grip-h) + env(safe-area-inset-bottom));
+}
+/* WCAG 2.2 C43 — every jump target lands above the grip, not under it. */
+html:has(nav.foot-jumps) {
+  scroll-padding-block-end: calc(var(--grip-h) + env(safe-area-inset-bottom));
+}
+.toc,
+#discussion,
+.ch,
+#pass,
+#talks {
+  scroll-margin-bottom: calc(var(--grip-h) + env(safe-area-inset-bottom));
+}
+/* §3802 §4 — `#pass` is the live block's first line; it lands `--offset-top + 16` from the
+   head, because the reader came to watch the carets, not the strip's first row. */
+#pass {
+  scroll-margin-top: calc(var(--offset-top) + 16px);
+}
+/* The legacy `#talks` deep link still lands on the register's own head (§3802 §3). */
+#talks {
+  scroll-margin-top: var(--offset-top);
+}
+/* #3801 §8.6 — the талон is 44 px tall and fixed at 16 px: it lifts by the painted band so
+   it never sits on the third cell. It keeps z 55, so it still paints above the grip (35);
+   this is the only line the grip takes from `live.css`, which keeps owning the strip. */
+.ticket {
+  bottom: calc(var(--grip-h) + 16px + env(safe-area-inset-bottom));
+}
+
+/* ---------- the band ---------- */
+
+.foot-jumps {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  /* Under the head (40), the plate (50), the ticket (55), the chain (58) and the sheets (60):
+     nothing the reader opened is ever trapped under the page's foot. */
+  z-index: 35;
+  /* The inset is the page's, not the grip's: the grip's paper stops above it. */
+  padding-block-end: env(safe-area-inset-bottom);
+  pointer-events: none;
+}
+/* The canvas centres the column and owns the gutters; it is not a target itself, or the two
+   gutter strips would swallow a tap and answer with nothing. */
+.foot-jumps .canvas {
+  pointer-events: none;
+}
+.foot-jumps-in {
+  /* The item's own box: the painted band, grown by the bottom inset and capped at `--grip-hit`.
+     24 px with no inset (desktop, Android), 44 px on a notched phone (24 + 34 ≥ 44). It can
+     never be taller than the band plus the inset, so it never passes the screen's edge. */
+  --grip-box: clamp(var(--grip-h), calc(var(--grip-h) + env(safe-area-inset-bottom)), var(--grip-hit));
+  position: relative;
+  display: grid;
+  /* One third per item, whatever their number: three items give 114 px at 390 and 213.3 at
+     1440, two split the column in halves, one takes it whole — no empty cell is invented. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: start;
+  /* The painted band. A real border, not a shadow: forced colors keep it. */
+  height: var(--grip-h);
+  /* The band is paper, not a window. The viewport almost always ends mid-line, so the band's
+     24 px cover the bottom of whatever line happens to sit there: without its own fill it
+     would be that line's glyphs showing through the words, and the hairline and the meta
+     drawn over them (0.84 of a line is exactly the line it must hide). It paints the same
+     `--paper` the page paints, from the token, so night follows without a second rule; the
+     strip is opaque by construction — no shadow, no blur, no second surface. */
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
+  pointer-events: auto;
+  transition:
+    height var(--dur-ui) var(--ease-inout),
+    border-color var(--dur-ui) var(--ease-inout);
+}
+/* Arriving may take a beat (220 ms); leaving is a favour to the reader (160 ms, `--ease-in`). */
+.foot-jumps[data-open='false'] .foot-jumps-in {
+  transition:
+    height 160ms var(--ease-in),
+    border-color 160ms var(--ease-in);
+}
+/* The row: the same three words in the same three cells, the hairline at `--rule-2` — the
+   mark the seam strip uses when its form opens. Nothing moves horizontally. */
+.foot-jumps[data-open='true'] .foot-jumps-in {
+  height: var(--grip-row);
+  border-top-color: var(--rule-2);
+}
+
+/* ---------- the three items ---------- */
+
+/* Each item's own box is `--grip-box`: the painted 24 px band, plus the bottom inset where
+   there is one, capped at 44 px. The band draws its hairline *inside* `--grip-h` (a border,
+   so forced colors keeps it), and the grid's content box therefore starts 1 px below the
+   band's edge; `margin-block-start: -1px` puts the box back on the band's own top edge. Its
+   top is then exactly the content's bottom edge — no line of text is ever under it — and a
+   24 px box ends on the screen's edge instead of 1 px past it (measured, BOOK-156 fix).
+   `pointer-events` is off on the box and on only on the word: a tap on a word is a jump, a
+   tap on the paper opens the row and is never a no-op. */
+.foot-jump {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-block-start: -1px;
+  height: var(--grip-box);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
+  line-height: var(--grip-h);
+  color: var(--ink-3);
+  text-decoration: none;
+  pointer-events: none;
+}
+/* The word is the item's target: its box is the item's own (`--grip-box` — 24 px with no
+   inset, 44 px on a notched phone), so the jump is a real target and nothing hangs below the
+   band's reserve. `width: max-content` keeps ~9 px of paper either side of the word at 390
+   (96 px of a 114 px cell), and that paper still reaches the expander: a tap on the paper
+   opens the row. Centring is the flex parent's (`align-items: center`) — the measure guard
+   allows no self-centring margin on a rule that stands on the column. */
+.foot-jump-word {
+  display: block;
+  width: max-content;
+  height: var(--grip-box);
+  padding-inline: 12px;
+  /* The word stays painted in the top 24 px of its box. */
+  line-height: var(--grip-h);
+  transform: translateY(0);
+  pointer-events: auto;
+  transition: transform var(--dur-ui) var(--ease-inout);
+}
+.foot-jumps[data-open='false'] .foot-jump-word {
+  transition: transform 160ms var(--ease-in);
+}
+.foot-jumps[data-open='true'] .foot-jump-word {
+  transform: translateY(calc((var(--grip-row) - var(--grip-h)) / 2));
+}
+/* The meta line: the rail's own words, never a new sentence. It is out of the cell's flow —
+   an absolutely placed line, so it can never widen the word's column — centred, and inside
+   the open row's own 44 px: 30…42 from the item's top, so its bottom sits 2 px above the
+   band's edge and is never clipped by the screen. It rides the row's own two motions: the
+   10 px rise is the transform, the ink is the 120 ms fade after the rise. Closed, it is
+   inert: a tap there reaches the page or the expander, never an invisible control. */
+.foot-jump-meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--grip-row) - 14px);
+  text-align: center;
+  line-height: var(--fs-micro);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition:
+    opacity var(--dur-tick) var(--ease-inout),
+    transform var(--dur-ui) var(--ease-inout);
+}
+.foot-jumps[data-open='false'] .foot-jump-meta {
+  transition:
+    opacity var(--dur-tick) var(--ease-inout),
+    transform 160ms var(--ease-in);
+}
+/* The meta appears only after the words have risen: the rise owns 0…220, the line 220…340.
+   Open, it sits 30 px from the item's top (a 12 px line, ending 2 px above the row's edge)
+   and its ink catches up; closed, the same box is pushed 12 px down and faded, so nothing is
+   ever a control while it cannot be seen. */
+.foot-jumps[data-open='true'] .foot-jump-meta {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: var(--dur-ui);
+  pointer-events: auto;
+}
+/* The expander: a button layer behind the words, covering the band and the item's own box.
+   `-1px` on top: the band's hairline is inside its height, so the layer must start on the
+   band's outer edge, exactly as the items do. */
+.foot-jumps-open {
+  position: absolute;
+  inset: -1px 0 auto 0;
+  z-index: 0;
+  height: var(--grip-box);
+}
+/* Visible focus, drawn on a band-sized layer: a ring around the item's whole box would hang
+   below the screen's edge on a page with no inset, where only the band is reserved, and the
+   ring would be clipped. The layer is the painted 24 px, the ring is inside it (#3801 §8).
+   The base sheet's own `:focus-visible` ring is dropped here — it is the one that would be
+   cut off; this pair of rules is the whole ring. */
+.foot-jump:focus-visible {
+  outline: none;
+}
+.foot-jump:focus-visible::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--grip-h);
+  outline: 2px solid var(--live);
+  outline-offset: -3px;
+}
+/* An item with no target is a word, not a control: no pointer, no ring, the quiet ink — and
+   a tap on it falls through to the expander behind, so the row still opens (never a no-op). */
+.foot-jump.is-inert {
+  pointer-events: none;
+}
+.foot-jump.is-inert .foot-jump-word,
+.foot-jump.is-inert .foot-jump-meta {
+  pointer-events: none;
+}
+
+/* ---------- cuts ---------- */
+
+/* A fling, and a keyboard-driven open, apply the state as a cut: 0 ms, no envelope. */
+.foot-jumps[data-cut='true'] .foot-jumps-in,
+.foot-jumps[data-cut='true'] .foot-jump-word,
+.foot-jumps[data-cut='true'] .foot-jump-meta {
+  transition: none;
+}
+
+/* ---------- the door's veil ---------- */
+
+/* A cut under a brief veil, never a scroll (#3797 §3): the chrome does not travel, the page
+   turns beneath it. Under the grip (35), under the head (40), and never in the way. */
+.foot-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  background: var(--paper);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-tick) var(--ease-inout);
+}
+.foot-veil[data-phase='in'] {
+  opacity: 0.26;
+  transition-timing-function: linear;
+}
+[data-theme='night'] .foot-veil {
+  background: var(--ink);
+}
+
+/* ---------- reduced motion ---------- */
+
+/* `base.css` already kills CSS transitions; these zero the durations in the sheet itself, so
+   the grip is readable as a static object and not only as a disabled animation. The module
+   applies the settled state at t = 0 as well (#3797 §5). */
+@media (prefers-reduced-motion: reduce) {
+  .foot-jumps-in,
+  .foot-jumps[data-open='true'] .foot-jumps-in,
+  .foot-jumps[data-open='false'] .foot-jumps-in,
+  .foot-jumps .foot-jump-word,
+  .foot-jumps .foot-jump-meta,
+  .foot-veil {
+    transition-duration: 0ms;
+    transition-delay: 0ms;
+  }
+}

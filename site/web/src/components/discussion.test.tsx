@@ -85,6 +85,21 @@ describe('the author ink on the thread', () => {
 });
 
 /**
+ * BOOK-156 (#3802 §3) — the register's public anchors. The section is named `#discussion`
+ * (the owner's word for it) and the old `#talks` deep link still has to land in the same
+ * place: a public anchor is a promise, so both are stated and tested.
+ */
+describe('the register’s two anchors', () => {
+  it('states id="discussion" and keeps a zero-height #talks at the same head', () => {
+    const html = render([]);
+    expect(html).toContain('class="page talks ym-hide-content" id="discussion"');
+    expect(html).toContain('<span id="talks" aria-hidden="true"></span>');
+    // The legacy anchor is inside the register, not a second section beside it.
+    expect(html.indexOf('id="talks"')).toBeGreaterThan(html.indexOf('id="discussion"'));
+  });
+});
+
+/**
  * BOOK-59 / BOOK-70 — the two counters of the register. A bare «обсуждение 4» is a number
  * without its noun, «в очереди 3» could be read as three chapters, and a chip never counts
  * nothing: the zero states are sentences («замечаний нет», «в очереди пусто»).

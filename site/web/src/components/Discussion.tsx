@@ -67,12 +67,16 @@ export function Discussion({
   // above an entry the page presents as waiting.
   const queue = queueView(depth, filings);
   const attempted = filings.some((comment) => filingAttempt(comment, changes) !== null);
+  // BOOK-156 (#3802 §3) — the owner's brief names this anchor `#discussion`; the class stays
+  // `talks` (the measure guard and every sheet key on it) and the zero-height `#talks` span
+  // below keeps the old public deep link landing in the same place.
   return (
     <section
       className="page talks ym-hide-content"
-      id="talks"
+      id="discussion"
       aria-busy={pending ? 'true' : undefined}
     >
+      <span id="talks" aria-hidden="true" />
       <header className="sec-h">
         <span className="lbl">обсуждение</span>
         {/* A bare counter is a number without its noun (BOOK-59) — and a count of zero is a
