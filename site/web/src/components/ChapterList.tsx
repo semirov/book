@@ -11,7 +11,7 @@ import type { ChapterFeed } from '../useReaderFeed.ts';
 import type { ParagraphChainMode } from '../useParagraphChain.ts';
 
 import type { SpineMarkers } from '../lib/spine.ts';
-import type { Passes } from '../lib/passes.ts';
+import type { Stages } from '../lib/useStages.ts';
 import { canTakePremise } from '../lib/premise.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
 
@@ -21,6 +21,9 @@ import { ChapterArticle } from './ChapterArticle.tsx';
  * The renderer that knows the order decides which empty slot is the **first**: its number is
  * passed down as `firstEmpty`, so the explanation sentence is printed once and moves to the
  * next empty chapter the day the first one is written. No global flag, no timer.
+ *
+ * BOOK-167 — the page's stage log (`useStages`) arrives as one prop: each slot reads the
+ * passes in flight for its own chapter and the events the strip under it prints.
  */
 export function ChapterList({
   catalog,
@@ -28,7 +31,7 @@ export function ChapterList({
   revising,
   markers,
   fresh,
-  passes,
+  stages,
   chapterFeed,
   changes,
   nowMs,
@@ -44,8 +47,8 @@ export function ChapterList({
   revising: Record<number, BlockRevisingPayload>;
   markers: SpineMarkers;
   fresh: number | null;
-  /** The writer lanes' passes in flight, by chapter (`lib/passes.ts`). */
-  passes?: Passes;
+  /** The page's one stage log: the passes in flight and the events behind each strip. */
+  stages?: Stages;
   chapterFeed: Record<number, ChapterFeed>;
   /** BOOK-137: the thread's changes, folded into their filing's entry — never a row. */
   changes: readonly ChangeSummaryDto[];
@@ -76,7 +79,8 @@ export function ChapterList({
             revising={revising[entry.n] ?? null}
             caret={show ? { show, live } : null}
             fresh={fresh === entry.n}
-            passActive={passes?.[entry.n] !== undefined}
+            passActive={stages?.passes[entry.n] !== undefined}
+            stages={stages?.log[entry.n]}
             firstEmpty={firstEmpty === entry.n}
             sentence={sentence}
             comments={chapterFeed[entry.n]?.items ?? []}

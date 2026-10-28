@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { blankComments, exactly, rulesOf } from './measure.css.ts';
+import { tokenPxOf } from './measure.rules.ts';
 import {
   BASE,
   CANVAS_BOUND,
@@ -68,11 +69,11 @@ describe('the page has one column (BOOK-88/BOOK-91)', () => {
     const measureNarrow = tokenPx('--measure', { query: 'narrow', file: TOKENS });
     const gutter = tokenPx('--gut');
     const phoneGutter = tokenPx('--gut', { query: 'phone', file: BASE });
-    // The numbers the whole table rests on: a 640 / 622.4 px column, 32 / 24 px of gutter.
+    // The numbers the whole table rests on: a 640 / 622 px column, 32 / 24 px of gutter.
     // Read from the sheets, so a drifted token fails here and not in a screenshot.
     expect({ measure, measureNarrow, gutter, phoneGutter }).toEqual({
       measure: 640,
-      measureNarrow: 622.4,
+      measureNarrow: 622,
       gutter: 32,
       phoneGutter: 24,
     });
@@ -107,7 +108,7 @@ describe('the page has one column (BOOK-88/BOOK-91)', () => {
     // The owner's rects, pinned: 24..366 at 390, 73..695 in a 41..727 canvas at 768,
     // 192..832 in 160..864 at 1024, 400..1040 in 368..1072 at 1440.
     expect(frame(390, phoneGutter, measureNarrow)).toEqual([0, 390, 24, 366]);
-    expect(frame(768, gutter, measureNarrow)).toEqual([40.8, 727.2, 72.8, 695.2]);
+    expect(frame(768, gutter, measureNarrow)).toEqual([41, 727, 73, 695]);
     expect(frame(1024, gutter, measure)).toEqual([160, 864, 192, 832]);
     expect(frame(1440, gutter, measure)).toEqual([368, 1072, 400, 1040]);
 
@@ -182,8 +183,8 @@ describe('the TOC row is a register like every other (BOOK-88, BOOK-89)', () => 
     expect({ gap, micro }).toEqual({ gap: 14, micro: 12 });
     expect(390 - 2 * tokenPx('--gut', { query: 'phone', file: BASE }) - (36 + 2 * gap + 3 * 0.6 * micro)).toBeCloseTo(256.4, 1);
     // BOOK-91: the wider column only adds room to the title cell — 640 at 1440 leaves 554.4,
-    // 622.4 at 768 leaves 536.8 — so the row still fits with the leader at every width.
-    for (const [width, title] of [[640, 554.4], [622.4, 536.8]] as const) {
+    // 622 at 768 leaves 536.4 — so the row still fits with the leader at every width.
+    for (const [width, title] of [[640, 554.4], [622, 536.4]] as const) {
       expect(width - (36 + 2 * gap + 3 * 0.6 * micro)).toBeCloseTo(title, 1);
     }
   });
@@ -224,6 +225,37 @@ describe('the guard fires on every class of violation it names', () => {
     const alias = layoutProblems(seeded(BASE, '.page.sheet { max-width: var(--shell); }'));
     expect(alias.some((problem) => problem.startsWith('--shell is back (0 declaration(s), 1 use(s))'))).toBe(true);
     expect(alias.some((problem) => problem.includes('.page.sheet { max-width: var(--shell) }'))).toBe(true);
+  });
+
+  it('a rem length back in the geometry (BOOK-170)', () => {
+    // The size the reader's browser sets is theirs; the line must not follow it. `replaced`,
+    // not `seeded`: the 40rem has to be the sheet's *only* `--measure`, or `tokenPxOf` finds
+    // the px step first and the rem branch below is never reached.
+    const set = replaced(TOKENS, '--measure: 640px;', '--measure: 40rem;');
+    expect(layoutProblems(set)).toContain(
+      `${TOKENS}: :root { --measure: 40rem } — a rem follows the reader's root font size; the reading geometry is px and a copy cap is ch`,
+    );
+
+    // The rem branch is load-bearing: `40 × 16` is the design's 640 px, so drop that branch and
+    // this reads 40. The guard refuses the unit, not the value.
+    const columns = rulesOf(TOKENS, blankComments(set[TOKENS] ?? ''));
+    expect(tokenPxOf(columns, '--measure', { file: TOKENS })).toBe(640);
+  });
+
+  it('reads a rem in any case, and as an exponent, as a rem (BOOK-170)', () => {
+    // CSS units are case-insensitive and a number may carry an exponent: neither spelling may
+    // walk past check 8, and neither may be invented by a word that merely starts like one.
+    const upper = layoutProblems(seeded('../styles/live.css', '.toc { padding: 2REM 0; }'));
+    expect(upper).toContain(
+      `../styles/live.css: .toc { padding: 2REM 0 } — a rem follows the reader's root font size; the reading geometry is px and a copy cap is ch`,
+    );
+
+    const exponent = layoutProblems(seeded('../styles/live.css', '.toc { outline-offset: 1e2rem; }'));
+    expect(exponent.some((problem) => problem.includes('.toc { outline-offset: 1e2rem }'))).toBe(true);
+
+    // A word is not a unit: `premise` and a number with a word suffix (`1rem2`) stay silent.
+    const words = layoutProblems(seeded('../styles/live.css', '.toc { content: "premise 1rem2"; }'));
+    expect(words.filter((problem) => problem.includes('premise 1rem2'))).toEqual([]);
   });
 
   it('retires the canvas token: no rule may read it, and the folio keeps its one inset', () => {

@@ -19,7 +19,9 @@
  * §2), only the meta line under it and whether the item is a link at all.
  */
 
-import { formatTime } from './format.ts';
+import { PASS_RECORD_PREFIX } from '@book/shared';
+
+import { formatDayMonth } from './format.ts';
 
 export const GRIP = {
   /** --dur-ui: arriving may take a beat. */
@@ -45,8 +47,12 @@ export const GRIP = {
 export const PASS_LABEL = 'каретки';
 /** The door's name while the reader is inside the pass: the entrance is the exit. */
 export const PASS_WATCHING = 'каретки — вернуться к месту чтения';
-/** The one state word an inert item may print. */
-export const PASS_SILENT = 'не пишется';
+/** The one state word an inert item may print (owner, 2026-10-28: never «проход»). */
+export const PASS_SILENT = 'пока не писалась';
+/** The running pass's one word; the cell never names the machinery. */
+export const PASS_LIVE = 'пишется';
+/** The ended pass's lead word; its day follows it. */
+export const PASS_WROTE = 'писалась';
 
 // ── the door's three states ───────────────────────────────────────────────────
 
@@ -87,19 +93,23 @@ export function passStateOf(facts: PassFacts): PassState {
 }
 
 /**
- * The third item's target, its meta line and its accessible name. `record` points at the
- * newest change the page already holds (`#правка-<id>`), never at `#pass`: the record is a
- * fact that stays true, and a re-enactment of a pass nobody saw is what AC4 refuses.
+ * The third item's target, its meta line and its accessible name.
+ *
+ * Live: `#pass` — the reader watches the block being printed. Record: `#проход-<changeId>` —
+ * the pass's own page, never the change card, because the card is the workshop's view and the
+ * reader asked what happened to the chapter. Silent: no target at all, and the item says so.
+ * The visible word never changes; the meta line is the only thing the state rewrites.
  */
 export function passDoor(facts: PassFacts & { watching?: boolean }): PassDoor {
   const state = passStateOf(facts);
   if (state === 'live') {
+    const meta = PASS_LIVE;
     return {
       state,
       href: '#pass',
-      meta: null,
+      meta,
       label: PASS_LABEL,
-      name: facts.watching === true ? PASS_WATCHING : PASS_LABEL,
+      name: facts.watching === true ? PASS_WATCHING : `${PASS_LABEL} · ${meta}`,
     };
   }
   if (state === 'absent') {
@@ -108,10 +118,10 @@ export function passDoor(facts: PassFacts & { watching?: boolean }): PassDoor {
   if (facts.change === null) {
     return { state: 'silent', href: null, meta: PASS_SILENT, label: PASS_LABEL, name: `${PASS_LABEL} · ${PASS_SILENT}` };
   }
-  const meta = `проход был ${formatTime(facts.change.decidedAt ?? facts.change.enqueuedAt)}`;
+  const meta = `${PASS_WROTE} · ${formatDayMonth(facts.change.decidedAt ?? facts.change.enqueuedAt)}`;
   return {
     state: 'record',
-    href: `#правка-${facts.change.id}`,
+    href: `#${PASS_RECORD_PREFIX}${facts.change.id}`,
     meta,
     label: PASS_LABEL,
     name: `${PASS_LABEL} · ${meta}`,

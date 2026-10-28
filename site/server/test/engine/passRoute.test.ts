@@ -240,6 +240,8 @@ describe('POST /internal/pass — the route', () => {
       expect(outOfRange.json()).toMatchObject({ code: 'INVALID' });
       expect(stepCount(fixture)).toEqual({ n: 0 });
 
+      // BOOK-166: the route opens a pass only for a filing — the engine's own rule, not a UI one.
+      premiseOn(fixture, 40, 'в главе 40 появляется документ о допуске');
       const ok = await app.inject({
         method: 'POST',
         url: '/internal/pass',

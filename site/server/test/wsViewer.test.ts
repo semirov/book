@@ -50,19 +50,30 @@ async function boot(): Promise<void> {
 }
 
 async function hello(headers: Record<string, string> = {}): Promise<Frame> {
-  const frames: Frame[] = [];
+  // The hello arrives on its own: the promise is the wait, not a poll of the wall clock. The
+  // 1 s timer is a failure bound with a readable message, not a claim about how long a frame takes.
+  let resolveFirst: (frame: Frame) => void = () => undefined;
+  const first = new Promise<Frame>((resolve) => {
+    resolveFirst = resolve;
+  });
   const ws: WebSocket = await app!.injectWS(
     '/ws',
     { headers },
-    { onInit: (socket) => socket.on('message', (data) => frames.push(JSON.parse(data.toString()) as Frame)) },
+    { onInit: (socket) => socket.on('message', (data) => resolveFirst(JSON.parse(data.toString()) as Frame)) },
   );
-  for (let attempt = 0; attempt < 100 && frames.length === 0; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  let bound: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const arrived = Promise.race([
+      first,
+      new Promise<never>((_resolve, reject) => {
+        bound = setTimeout(() => reject(new Error('no hello frame')), 1_000);
+      }),
+    ]);
+    return await arrived;
+  } finally {
+    if (bound !== undefined) clearTimeout(bound);
+    ws.terminate();
   }
-  ws.terminate();
-  const first = frames[0];
-  if (first === undefined) throw new Error('no hello frame');
-  return first;
 }
 
 describe('hello — viewer and composer', () => {

@@ -1,14 +1,9 @@
 /**
- * The engine's session-facing surface (ARCHITECTURE.md §6A.4, §6A.11, §6A.12).
- *
- * Everything a writer or a gate session can do goes through these methods, and they are the
- * only place where one operation spans more than one fact: land, ask both gates, close the
- * step, advance the ripple. The CLI (`bin/engine.mjs`) and the internal API are thin adapters
- * over this object, so the protocol has exactly one implementation.
- *
- * The engine has no opinion about prose. Its opinions are factual: is the step complete (two
- * verdicts, in order, from the sessions that hold it), is the ripple inside its bounds, may
- * this chapter be written now (§6A.1, ADR-012).
+ * The engine's session-facing surface (ARCHITECTURE.md §6A.4, §6A.11, §6A.12): the only place
+ * where one operation spans several facts — land, gates, close, ripple. The CLI and the internal
+ * API are thin adapters, so the protocol has one implementation. The engine has no opinion about
+ * prose, only facts: two verdicts in order, a ripple inside its bounds, may this chapter be
+ * written now (§6A.1, ADR-012).
  */
 
 import {
@@ -56,6 +51,7 @@ import { normalizeProvenance, requirePipelineModel, type Provenance } from './mo
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
+import { closeUnfiledDraft } from './filings.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapter, readFront } from './text.ts';
@@ -150,9 +146,7 @@ export function createEngine(deps: EngineDeps) {
   }
 
   /**
-   * BOOK-61 — the conditional rights gate lives in its own module (`rightsGate.ts`): a
-   * different question, a different enum, and its own close. The engine only wires it in.
-   */
+   * BOOK-61 — the conditional rights gate lives in `rightsGate.ts`. */
   const rights = createRightsGate(deps);
 
   function next(input: NextInput): WriterAssignment | GateAssignment | RightsAssignment | null {
@@ -163,22 +157,30 @@ export function createEngine(deps: EngineDeps) {
     // flagged, and it is offered before any writer claim (it belongs to a landed step).
     if (input.role === 'rights') return rights.next(input.session);
     if (input.role) return nextGate(input.role, input.session);
-    if (input.for !== 'fwd' && input.for !== 'bwd') {
-      refuse('INVALID_LANE', 422, 'either --for fwd|bwd or --role editor|consultant|rights is required');
+    if (input.for !== 'fwd' && input.for !== 'bwd' && input.for !== 'filing') {
+      refuse('INVALID_LANE', 422, 'either --for fwd|bwd|filing or --role editor|consultant|rights is required');
     }
-    const lane: DraftLane = input.for;
+    const lane: DraftLane | 'filing' = input.for;
 
-    // §6A.9 / BOOK-6: writing is the owner's switch. While `DRAFTING` is off no writer
-    // assignment is handed out — not a draft, not an open step, not a queued change — so an
-    // empty book cannot start a pass by itself. Gates may still answer a landed step.
+    // §6A.9 / BOOK-6: `DRAFTING` off hands out nothing; gates may still answer a landed step.
     if (config.drafting !== 'on') return null;
 
+    const at = deps.clock.now();
     for (const lease of store.liveLeaseForSession(db, input.session)) {
       const step = store.getStep(db, lease.step_id);
-      if (step && step.outcome === null) return assign(step, lease.id);
+      if (!step || step.outcome !== null) continue;
+      // A session can hold the lease of a draft opened before the rule: unfiled, it is closed
+      // here so the door is not blocked by the session's own dead step (BOOK-166).
+      if (lane === 'filing' && closeUnfiledDraft(db, step, toIso(at), at)) {
+        releaseLease(db, lease.id, 'failed', at);
+        continue;
+      }
+      return assign(step, lease.id);
     }
     const open = queue.claimOpenStep(input.session, lane);
     if (open) return open;
+    // BOOK-166: `filing` is the door — the oldest undecided filing; fwd/bwd only for a direct walk.
+    if (lane === 'filing') return queue.claimFiling(input.session);
     if (store.listOpenCascades(db).length === 0) {
       const claimed = queue.claimHead(input.session);
       if (claimed) return claimed;
@@ -437,8 +439,7 @@ export function createEngine(deps: EngineDeps) {
   // ── reconcile ─────────────────────────────────────────────────────────────
 
   /**
-   * Two operator meanings of one word, kept apart by the caller (§13.3): with a chapter it is
-   * the mark on a restore; without one it is the maintenance pass over leaked leases.
+   * Two meanings of one word (§13.3): with a chapter, the mark on a restore; without, a sweep.
    */
   function reconcileRestoreOf(input: { chapter: number; because: string; actor?: string }): RestoreReconcileResult {
     return reconcileRestore(deps, input);

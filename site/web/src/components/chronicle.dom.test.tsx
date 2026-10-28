@@ -27,18 +27,24 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const MID = `${NBSP}·${NBSP}`;
 
 function record(hseq: number, at: string, seq: number): HistoryRecordDto {
+  const id = `chg_${seq}`;
   return {
+    id,
     hseq,
     at,
     seq,
     chapter: 1,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Филипп',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
-    changeId: `chg_${seq}`,
+    changeId: id,
+    recordHref: `#правка-${id}`,
+    span: null,
   };
 }
 
@@ -126,12 +132,12 @@ async function advance(ms: number): Promise<void> {
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-function mount(onOpenChange: (changeId: string) => void = () => undefined): void {
+function mount(): void {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={onOpenChange} started live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} started live />);
   });
 }
 
@@ -476,24 +482,4 @@ describe('the moment’s read from the control (BOOK-DOC-43 §10, BOOK-65)', () 
     expect(container.querySelector('.past-title')?.textContent).toBe('Книга момента');
   });
 
-  it('opens the card from a record entry and never scrubs from it (BOOK-65)', async () => {
-    const opened: string[] = [];
-    const fetchMock = stubFetch(() => answer(page(ITEMS, 10)));
-    mount((changeId) => opened.push(changeId));
-    await flush();
-
-    const rows = container.querySelectorAll('li.chr-row');
-    expect(rows).toHaveLength(3);
-    // One control per entry, and it names the card, not a moment.
-    expect(container.querySelectorAll('.chr-row .chr-change')).toHaveLength(3);
-
-    const oldest = container.querySelectorAll<HTMLButtonElement>('.chr-row .chr-change')[2];
-    await act(async () => oldest?.click());
-
-    expect(opened).toEqual(['chg_3']);
-    // The tap opened a card; it did not move the moment and it asked the server for nothing.
-    expect(askedAt(fetchMock)).toEqual([]);
-    expect(container.querySelector('.past')).toBeNull();
-    expect(range().value).toBe('10');
-  });
 });

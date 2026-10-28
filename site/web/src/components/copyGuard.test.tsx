@@ -166,17 +166,22 @@ const ribbon: Ribbon = {
 };
 
 const record: HistoryRecordDto = {
+  id: 'chg_1',
   hseq: 7,
   at: '2026-10-25T12:05:00Z',
   seq: 7,
   chapter: 8,
+  chapterTitle: null,
   premise: false,
   premiseLanded: false,
   alias: 'Аня',
+  cause: 'reader',
   status: 'done',
   outcome: 'adapted',
   reason: null,
   changeId: 'chg_1',
+  recordHref: '#правка-chg_1',
+  span: null,
 };
 
 function surfaces(): string {
@@ -192,8 +197,8 @@ function surfaces(): string {
     renderToStaticMarkup(
       <FocusView change={change} impact={null} missing={false} ribbon={ribbon} revisions={{}} onClose={() => undefined} live />,
     ),
-    renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
-    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />),
+    renderToStaticMarkup(<RecordRow record={record} />),
+    renderToStaticMarkup(<Chronicle catalog={[]} frontRev={1} tick={0} started live />),
     renderToStaticMarkup(
       <SentenceBlock
         chain={null}

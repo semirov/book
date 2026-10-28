@@ -112,7 +112,7 @@ export function pathsOf(env: NodeJS.ProcessEnv = process.env): { bookRoot: strin
   };
 }
 
-const EXIT: Record<PassResult['status'], number> = { closed: 0, idle: 0, parked: 1, refused: 2 };
+const EXIT: Record<PassResult['status'], number> = { closed: 0, idle: 0, gone: 0, parked: 1, refused: 2 };
 
 function configLines(config: WriterConfig): string[] {
   return [
@@ -335,6 +335,9 @@ export async function main(deps: MainDeps = {}): Promise<number> {
       const result = await pass();
       if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
       if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
+      // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
+      // the next filing is asked for in the same cycle, without the pacing pause.
+      if (result.status === 'gone' || result.filingRefused === true) continue;
     }
     // An idle pass sleeps too: the lane is supervised, not a busy loop.
     await pause(config.pauseMs);

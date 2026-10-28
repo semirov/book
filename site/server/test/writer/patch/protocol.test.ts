@@ -1,14 +1,17 @@
 /**
- * The patch protocol (BOOK-173 §1): one JSON object, and every way its shape can be refused.
+ * The patch protocol (BOOK-173 §1, BOOK-176): one JSON object, and every way its shape can be
+ * refused — in the ledger's words.
  *
- * The parser is the first of three doors (protocol → applier → validator). It is deliberately
- * unforgiving: prose around the object, a second object, a guessed "first { to last }" — all
- * `PATCH_UNPARSED`, because a guessed patch is worse than a parked pass.
+ * The bounds are not restated here: eight edits and the code-point limits are `patchCheck`'s
+ * (`MAX_EDITS`, `MAX_OLD_CP`, `MAX_NEW_CP`) and the parser calls `shapeRefusal`, so a patch the
+ * ledger would refuse is refused before the writer ever writes a byte — with the same code.
  */
 
 import { describe, expect, it } from 'vitest';
 
+import { MAX_EDITS, MAX_NEW_CP, MAX_OLD_CP } from '../../../src/ledger/patchCheck.ts';
 import {
+  PATCH_BOUNDS,
   declaredPatchMode,
   parsePatchAnswer,
   stripPatchFence,
@@ -37,8 +40,7 @@ function withEdit(edit: Record<string, unknown>): string {
 
 describe('parsePatchAnswer — the one object', () => {
   it('reads the design’s own example, mark and all', () => {
-    const parsed = parsePatchAnswer(json(VALID));
-    expect(parsed).toEqual({ ok: true, patch: VALID });
+    expect(parsePatchAnswer(json(VALID))).toEqual({ ok: true, patch: VALID });
   });
 
   it('tolerates exactly one surrounding json fence and strips it', () => {
@@ -83,48 +85,36 @@ describe('parsePatchAnswer — mode and the shape of an edit', () => {
     expect(declaredPatchMode(`\`\`\`json\n${json({ mode: 'rewrite' })}\n\`\`\``)).toBe('rewrite');
   });
 
-  it('refuses wrong types, an empty id, a blank block and a heading', () => {
+  it('refuses wrong types, an empty id, a blank block, a heading and an insert', () => {
     expect(codeOf(withEdit({ blockId: 7 }))).toBe('PATCH_SHAPE');
     expect(codeOf(withEdit({ blockId: '  ' }))).toBe('PATCH_SHAPE');
     expect(codeOf(withEdit({ oldText: 5 }))).toBe('PATCH_SHAPE');
     expect(codeOf(withEdit({ newText: null }))).toBe('PATCH_SHAPE');
     expect(codeOf(withEdit({ newText: 'два\n\nабзаца' }))).toBe('PATCH_SHAPE');
     expect(codeOf(withEdit({ newText: '# заголовок' }))).toBe('PATCH_SHAPE');
-    expect(codeOf(withEdit({ afterBlockId: 3 }))).toBe('PATCH_SHAPE');
+    // The ledger's `PatchEdit` names one block and replaces text inside it: no insert, no delete.
+    expect(codeOf(withEdit({ blockId: null, afterBlockId: 'ch03#a1b2c3d4', oldText: '' }))).toBe('PATCH_SHAPE');
   });
 
-  it('requires afterBlockId on an insert, and no pre-image with it', () => {
-    expect(codeOf(withEdit({ blockId: null, oldText: '', newText: 'Новый абзац.' }))).toBe('PATCH_SHAPE');
-    expect(codeOf(withEdit({ blockId: null, afterBlockId: 'ch03#a1b2c3d4', oldText: 'Гуси', newText: 'Новый.' }))).toBe(
-      'PATCH_SHAPE',
-    );
-    const insert = parsePatchAnswer(
-      withEdit({ blockId: null, afterBlockId: 'ch03#a1b2c3d4', oldText: '', newText: 'Новый абзац.' }),
-    );
-    expect(insert.ok).toBe(true);
-    if (!insert.ok) return;
-    expect(insert.patch.edits[0]).toEqual({
-      blockId: null,
-      afterBlockId: 'ch03#a1b2c3d4',
-      oldText: '',
-      newText: 'Новый абзац.',
-    });
+  it('takes the bounds from patchCheck, not from a second copy of the numbers', () => {
+    expect(PATCH_BOUNDS).toEqual({ maxEdits: MAX_EDITS, maxOldCp: MAX_OLD_CP, maxNewCp: MAX_NEW_CP });
+    const many = Array.from({ length: MAX_EDITS + 1 }, (_, i) => ({ ...VALID.edits[0], blockId: `ch03#b${String(i)}` }));
+    expect(codeOf(json({ ...VALID, edits: many }))).toBe('PATCH_INVALID');
+    expect(codeOf(json({ ...VALID, edits: many.slice(0, 2) }), { maxEdits: 1 })).toBe('PATCH_INVALID');
+    expect(codeOf(withEdit({ newText: 'x'.repeat(MAX_NEW_CP) }))).toBe('OK');
+    expect(codeOf(withEdit({ newText: 'x'.repeat(MAX_NEW_CP + 1) }))).toBe('PATCH_INVALID');
+    expect(codeOf(withEdit({ newText: 'x'.repeat(11) }), { maxNewChars: 10 })).toBe('PATCH_INVALID');
+    expect(codeOf(withEdit({ oldText: 'x'.repeat(MAX_OLD_CP + 1) }))).toBe('PATCH_INVALID');
   });
 
-  it('bounds the answer: no empty patch, at most eight edits, text inside its own limits', () => {
-    expect(codeOf(json({ ...VALID, edits: [] }))).toBe('PATCH_EMPTY');
-    const many = Array.from({ length: 9 }, (_, i) => ({ ...VALID.edits[0], blockId: `ch03#b${String(i)}` }));
-    expect(codeOf(json({ ...VALID, edits: many }))).toBe('PATCH_TOO_MANY_EDITS');
-    expect(codeOf(json({ ...VALID, edits: many })), 'a caller may allow fewer').toBe('PATCH_TOO_MANY_EDITS');
-    expect(codeOf(json({ ...VALID, edits: many.slice(0, 2) }), { maxEdits: 1 })).toBe('PATCH_TOO_MANY_EDITS');
-    expect(codeOf(withEdit({ newText: 'x'.repeat(4_000) }))).toBe('OK');
-    expect(codeOf(withEdit({ newText: 'x'.repeat(4_001) }))).toBe('PATCH_EDIT_TOO_LARGE');
-    expect(codeOf(withEdit({ newText: 'x'.repeat(11) }), { maxNewChars: 10 })).toBe('PATCH_EDIT_TOO_LARGE');
-    expect(codeOf(withEdit({ oldText: 'x'.repeat(2_001) }))).toBe('PATCH_EDIT_TOO_LARGE');
+  it('counts code points, not UTF-16 units: an emoji is one character for the ledger', () => {
+    // The ledger bounds live in code points (`cpLength`); a 2 000-emoji pre-image is legal.
+    expect(codeOf(withEdit({ oldText: '🙂'.repeat(MAX_OLD_CP), newText: 'Часы.' }))).toBe('OK');
   });
 
-  it('refuses an answer that changes nothing, even when it is well formed', () => {
-    expect(codeOf(withEdit({ newText: 'Гуси шли по льду.' }))).toBe('PATCH_EMPTY');
+  it('refuses an answer that changes nothing, and one with no edits at all', () => {
+    expect(codeOf(json({ ...VALID, edits: [] }))).toBe('PATCH_INVALID');
+    expect(codeOf(withEdit({ newText: 'Гуси шли по льду.' }))).toBe('PATCH_INVALID');
   });
 });
 
@@ -150,7 +140,7 @@ describe('parsePatchAnswer — facts and note', () => {
     expect(parsed.patch.note).toBeNull();
   });
 
-  it('names what is wrong with the edit it refused', () => {
+  it('names the edit it refused', () => {
     const parsed = parsePatchAnswer(json({ ...VALID, edits: [{ ...VALID.edits[0] }, { blockId: 1 }] }));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;

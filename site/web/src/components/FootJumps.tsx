@@ -9,6 +9,7 @@ import {
   type GripState,
   type PassFacts,
 } from '../lib/grip.ts';
+import { openPassStrip } from '../lib/usePassStrip.ts';
 
 /**
  * The door's chapter is resolved by the grip's pure module (`liveChapter`); it is re-exported
@@ -28,7 +29,7 @@ export { liveChapter } from '../lib/grip.ts';
  *
  * The door is a **cut under a veil, never a scroll** (#3797 §3): any programmatic scroll
  * across a chapter drags the eye through text the reader did not ask for, and it fires the
- * grip's own 48 px rule mid-transition. `scrollToChapter` (smooth) is never called here.
+ * grip's own 48 px rule mid-transition. `scrollToChapter` is never called here.
  */
 
 export type FootJumpsChange = { id: string; decidedAt: string | null; enqueuedAt: string };
@@ -259,6 +260,10 @@ export function FootJumps({
       }
       return;
     }
+    // BOOK-167: the strip opens on the block the page names, before the cut — the reader
+    // arrives at a live row, not at a paragraph that starts being explained afterwards.
+    const owner = block.getAttribute('data-pass-block');
+    if (chapter !== null && owner !== null) openPassStrip({ chapter, blockId: owner });
     saved.current = { y: window.scrollY, blockId: 'pass', dy: window.scrollY - topOf(block) };
     locked.current = true;
     if (reduced) {

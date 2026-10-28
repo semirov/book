@@ -192,7 +192,10 @@ h3 {
   color: var(--live);
 }
 
-.sr-only {
+/* BOOK-121 — the pass's spoken copy asks for the same primitive under the name its markup uses:
+   one rule, two names, never two declarations that can drift. */
+.sr-only,
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;

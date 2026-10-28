@@ -146,7 +146,7 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
 });
 
 describe('a patch that cannot be proved parks instead of landing', () => {
-  it('parks with PATCH_FRAME_TOUCHED when the edit overlaps ch01’s frozen sentence', async () => {
+  it('parks with FRAME_CHANGED when the edit overlaps ch01’s frozen sentence', async () => {
     const text = `${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${para('Второй абзац.')}\n\n${para('Третий абзац.')}\n\n${para('Четвёртый абзац.')}\n`;
     const harness = await written({ chapter: 1, text, intent: 'в главе 1 меняется свет' });
     try {
@@ -159,7 +159,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
 
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
-      expect(harness.logs.join('\n')).toContain('PATCH_FRAME_TOUCHED');
+      expect(harness.logs.join('\n')).toContain('FRAME_CHANGED');
       expect(readFileSync(join(harness.bookRoot, 'manuscript', 'ch01.md'), 'utf8')).toBe(original);
       const stages = listStages(harness.fixture.db, 1);
       expect(stages.at(-1)?.stage).toBe('refused');

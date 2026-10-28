@@ -43,6 +43,7 @@ import type { WatcherStatus } from './ingest/watcher.ts';
 import { loadImprint } from './imprint.ts';
 import { readAdminToken } from './integrity/config.ts';
 import { RateLimiter } from './rate/limiter.ts';
+import { isTrustedProxy, normalizeIp } from './util/ip.ts';
 import { createIpHasher, ephemeralSecret } from './util/ipHash.ts';
 import type { WsHub } from './ws/hub.ts';
 
@@ -198,6 +199,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         path: request.url.split('?')[0],
         statusCode: reply.statusCode,
         responseTimeMs: Math.round(reply.elapsedTime),
+        // The proxy question, answerable from the log: was the socket peer one of the configured
+        // proxies — i.e. is `X-Forwarded-For` believed for this request? A boolean about the hop,
+        // never an address and never a header value.
+        peerTrusted: isTrustedProxy(
+          normalizeIp(request.socket?.remoteAddress ?? request.ip ?? ''),
+          options.config.trustedProxies.split(',').map((part) => part.trim()),
+        ),
       },
       'request completed',
     );

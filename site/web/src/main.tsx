@@ -12,6 +12,8 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/chrome.css';
 import './styles/running-head.css';
+// BOOK-156 #3814 — the book's state in the running head's free space; after the head it sits in.
+import './styles/head-status.css';
 import './styles/legal.css';
 import './styles/consent.css';
 import './styles/book.css';
@@ -23,6 +25,13 @@ import './styles/ribbon.css';
 import './styles/chronicle.css';
 import './styles/focus.css';
 import './styles/seam.css';
+// BOOK-121 — the pass's box, its two carets and the ink gate; after the seam, before the
+// panels, because the pass paints prose and never a panel.
+import './styles/pass-live.css';
+// BOOK-167 — the pass strip: a block in the seam's place, after the pass's own ink.
+import './styles/pass-strip.css';
+// BOOK-166 — the pass record: a page framed like the colophon, after the surfaces it sits beside.
+import './styles/pass-record.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';

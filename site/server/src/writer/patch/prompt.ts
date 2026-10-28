@@ -16,7 +16,7 @@ import { parseChapter } from '../../ingest/parseChapter.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import { isWrittenChapter, readChapter } from '../../engine/text.ts';
 import { PromptError, assignmentSection, canonParts, frameSection, placeSection, roleSection, type PromptPart, type PromptSection, type WriterAssignmentData } from '../prompt.ts';
-import { PATCH_MAX_EDITS, PATCH_MAX_FACTS, PATCH_MAX_FACT_CHARS, PATCH_MAX_NEW_CHARS, PATCH_MAX_NOTE_CHARS, PATCH_MAX_OLD_CHARS } from './protocol.ts';
+import { PATCH_BOUNDS, PATCH_MAX_FACTS, PATCH_MAX_FACT_CHARS, PATCH_MAX_NOTE_CHARS } from './protocol.ts';
 
 export type PatchPrompt = {
   system: string;
@@ -42,10 +42,10 @@ function protocolSection(): PromptPart {
     '{"mode":"patch","edits":[{"blockId":"ch40#a1b2c3d4","oldText":"дословные байты","newText":"что встаёт на их место"}],"facts":[],"note":null}',
     '```',
     `- \`mode\`: "patch" — правка. "rewrite" — правка невозможна (например, меняется число или затронута вся глава): тогда edits пуст, а причина — в note; проход перепишет главу целиком.`,
-    `- \`edits\`: от 1 до ${String(PATCH_MAX_EDITS)}; одна правка — один абзац; нулевая правка не принимается.`,
-    '- `blockId`: id абзаца ровно как напечатан ниже; `null` — вставка нового абзаца, тогда обязателен `afterBlockId` с id абзаца, после которого он встаёт, и `oldText` пуст.',
-    `- \`oldText\`: дословная копия байтов из названного абзаца (не более ${String(PATCH_MAX_OLD_CHARS)} знаков), ровно одно вхождение в нём; цитата никогда не переходит через границу абзаца.`,
-    `- \`newText\`: что встаёт на место скопированного (не более ${String(PATCH_MAX_NEW_CHARS)} знаков); "" удаляет абзац целиком; без пустой строки внутри и без «#» в начале.`,
+    `- \`edits\`: от 1 до ${String(PATCH_BOUNDS.maxEdits)}; одна правка — один абзац; нулевая правка не принимается.`,
+    '- `blockId`: id абзаца ровно как напечатан ниже. Новых абзацев и удалений правка не делает: если нужен новый абзац или абзац должен исчезнуть — верни "rewrite".',
+    `- \`oldText\`: дословная копия байтов из названного абзаца (не более ${String(PATCH_BOUNDS.maxOldCp)} знаков), ровно одно вхождение в нём; цитата никогда не переходит через границу абзаца.`,
+    `- \`newText\`: что встаёт на место скопированного (не более ${String(PATCH_BOUNDS.maxNewCp)} знаков); "" убирает ровно скопированное, но абзац целиком опустеть не может — тогда "rewrite"; без пустой строки внутри и без «#» в начале.`,
     `- \`facts\`: от 0 до ${String(PATCH_MAX_FACTS)} строк (каждая не длиннее ${String(PATCH_MAX_FACT_CHARS)} знаков) — то, что правка утверждает или не должна сломать, дословно так, как это будет читаться в главе.`,
     `- \`note\`: одна строка по-английски, не длиннее ${String(PATCH_MAX_NOTE_CHARS)} знаков — только для журнала; в главу она не попадает.`,
     '',

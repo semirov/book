@@ -28,11 +28,10 @@ import { readFileSync } from 'node:fs';
 
 import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
-import { formatUsd } from '../budget.ts';
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
-import { estimatePassUsd, type PassEstimate } from './estimate.ts';
+import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
@@ -41,7 +40,7 @@ import { chooseMode, type ModeChoice } from './mode.ts';
 import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import { failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
+import { codeOf, failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
@@ -51,44 +50,14 @@ export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
 /** One gate's revision in a pass, whatever the engine's cycle cap allows. */
 const MAX_REVISIONS = 1;
 
-/** Money with four decimals and a comma: `$0,0412` — the estimate line's own number. */
-function usd4(value: number): string {
-  return value.toFixed(4).replace('.', ',');
-}
-
-/** The pause sentence (§6), in the engine's own words: a day's cap lifts at 00:00 UTC. */
-function pauseLine(capUsd: number): string {
-  return `пауза · дневной потолок ${formatUsd(capUsd)} $ · возобновится в 00:00 UTC`;
-}
-
-/** The stop sentence (§6): the book's cap ends the book, not a day of it. */
-function stopLine(capUsd: number): string {
-  return `остановлено · потолок книги ${formatUsd(capUsd)} $`;
-}
-
 /**
- * The estimate against both caps. The book's cap wins, as it does in `budget.ts`: a pass that
- * would spend the book's last dollars is stopped, not paused. The engine's own line is used
- * when the engine already stated one, so a pause reads the same on every surface.
+ * BOOK-145: a step the engine already took away is not a failure of this pass.
+ *
+ * A step wall, a released lease, a step the engine closed itself: the text may be landed and the
+ * step is simply not ours any more. The lane says so in one line, asks `next` again immediately
+ * and never tries to close the dead step — a park there would be a second, false story.
  */
-function capLine(budget: BudgetDto, usd: number): string | null {
-  if (budget.book.spentUsd + usd > budget.book.capUsd) {
-    return budget.state === 'stop' ? budget.line : stopLine(budget.book.capUsd);
-  }
-  if (budget.day.spentUsd + usd > budget.day.capUsd) {
-    return budget.state === 'pause' ? budget.line : pauseLine(budget.day.capUsd);
-  }
-  return null;
-}
-
-/** `[writer] оценка прохода $0,0412 (день 3,20 / 10,00, книга 12,40 / 1 000,00)` — one line. */
-function estimateLine(estimate: PassEstimate, budget: BudgetDto): string {
-  const day = `${formatUsd(budget.day.spentUsd)} / ${formatUsd(budget.day.capUsd)}`;
-  const book = `${formatUsd(budget.book.spentUsd)} / ${formatUsd(budget.book.capUsd)}`;
-  // BOOK-173: the guard is always the rewrite figure; the patch figure is display only.
-  const mode = estimate.mode === null ? 'режим: ещё не выбран' : `режим: ${estimate.mode === 'patch' ? 'правка' : 'перепись'}`;
-  return `[writer] оценка прохода $${usd4(estimate.usd)} · перепись $${usd4(estimate.usdRewrite)} / правка $${usd4(estimate.usdPatch)} · ${mode} (день ${day}, книга ${book})`;
-}
+const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
 export type PassDeps = {
   config: WriterConfig;
@@ -102,8 +71,8 @@ export type PassDeps = {
   dryRun?: boolean;
   /** `--chapter N`: open that chapter's first pass instead of the lane's next slot. */
   chapter?: number | null;
-  /** Lanes to ask for the next job, in order. Forward first: the book is written forward. */
-  lanes?: Array<'fwd' | 'bwd'>;
+  /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
+  lanes?: Array<'fwd' | 'bwd' | 'filing'>;
 };
 
 /** Run one pass. Returns a typed result and never throws. */
@@ -163,7 +132,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       picked = await engine.pass(deps.chapter, config.session);
     } else {
       picked = null;
-      for (const lane of deps.lanes ?? ['fwd', 'bwd']) {
+      // BOOK-166: work is asked for by filing, never by chapter order.
+      for (const lane of deps.lanes ?? ['filing']) {
         picked = await engine.next(lane, config.session);
         if (picked !== null) break;
       }
@@ -172,7 +142,20 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     // A refusal before the lease is a fact about the day, not a parked pass.
     return { status: 'refused', reason: reasonOf(error) };
   }
-  if (picked === null) return { status: 'idle', reason: 'в полосе нет работы' };
+  if (picked === null) return { status: 'idle', reason: 'пока нечего писать: заявок нет' };
+  const filed = picked.changeId !== null && picked.changeId !== undefined
+    ? true
+    : (picked as { premise?: unknown }).premise !== null && (picked as { premise?: unknown }).premise !== undefined;
+  // A resumed landed step continues at the gates (BOOK-117): it writes nothing.
+  if (picked.pass === 'draft' && !filed && picked.landed !== true) {
+    // A step without a filing is skipped, not spun on: ask the door once (BOOK-166).
+    deps.log(`[writer] NO_FILING_FOR_CHAPTER: глава ${String(picked.chapter)} без заявки — пропускаю, спрашиваю дверь`);
+    const filedAgain = await engine.next('filing', config.session);
+    if (filedAgain === null || (filedAgain.pass === 'draft' && filedAgain.premise == null && filedAgain.changeId == null)) {
+      return { status: 'idle', reason: 'пока нечего писать: заявок нет' };
+    }
+    picked = filedAgain;
+  }
 
   const job: WriterAssignment = picked;
   if (typeof job.chapter !== 'number') {
@@ -197,14 +180,30 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   if (estimate !== null) lane.setEstimate(estimate);
   let beforeText = '';
 
+  function goneOf(code: string | null, detail: string): PassResult | null {
+    if (code === null || !GONE_CODES.has(code)) return null;
+    deps.log(`lease released by the engine — taking the next filing (${code}: ${detail.slice(0, 120)})`);
+    return {
+      status: 'gone',
+      stepId: job.stepId,
+      changeId: job.changeId,
+      reason: 'lease released by the engine — taking the next filing',
+    };
+  }
+
+  /** The same check for a thrown engine refusal. */
+  function gone(error: unknown): PassResult | null {
+    return goneOf(codeOf(error), reasonOf(error));
+  }
+
   /** One gate round: the editor, then the consultant when the editor asks for no revision. */
-  async function gateRound(): Promise<
+  async function gateRound(refusal?: string | null): Promise<
     | { ok: true; editor: GateRun; consultant: GateRun | null; rightsClosed: boolean }
     | { ok: false; failure: Failure }
   > {
     try {
-      const editor = await lane.runGate('editor');
-      const consultant = editor.revise ? null : await lane.runGate('consultant');
+      const editor = await lane.runGate('editor', refusal ?? null);
+      const consultant = editor.revise ? null : await lane.runGate('consultant', refusal ?? null);
       // BOOK-61: Gate B last, and it may close the step itself — a refusal is a decision about
       // the text, so there is nothing left for this pass to finish.
       const rights = await lane.runRightsGate();
@@ -239,7 +238,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         started = await engine.start(job.leaseId);
       } catch (error) {
-        return await lane.park(failureOf(error));
+        return gone(error) ?? (await lane.park(failureOf(error)));
       }
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
       try {
@@ -324,6 +323,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         continueMax: config.continueMax,
         patchMaxFraction: config.patchMaxFraction,
         patchMaxEdits: config.patchMaxEdits,
+        log: deps.log,
       });
       if (!written.ok) {
         lane.setMode(written.mode, written.patch);
@@ -346,7 +346,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       try {
         await lane.land();
       } catch (error) {
-        return await lane.park(failureOf(error));
+        return gone(error) ?? (await lane.park(failureOf(error)));
       }
       // A landing drops the verdicts of the previous revision: every gate is asked again.
       answered.editor = false;
@@ -368,11 +368,15 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     let failed: Failure | null = null;
     for (;;) {
       let round = await gateRound();
-      if (!round.ok && isTransportFailure(round.failure)) {
-        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail} — повтор`);
-        round = await gateRound();
+      // A transport failure and a refused answer both get one retry; the parse failure carries
+      // its own reason back to the model, so the second answer can be the one that parses.
+      if (!round.ok && (isTransportFailure(round.failure) || round.failure.code === 'GATE_UNPARSED')) {
+        deps.log(`[writer] гейт не спрошен (${round.failure.code ?? 'транспорт'}): ${round.failure.detail.slice(0, 200)} — повтор`);
+        round = await gateRound(round.failure.detail);
       }
       if (!round.ok) {
+        const stepped = goneOf(round.failure.code ?? null, round.failure.detail);
+        if (stepped !== null) return stepped;
         // A rights failure is not auxiliary: the step cannot close without an answer, so the
         // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
         const code = round.failure.code ?? '';
@@ -478,6 +482,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     );
     return result;
   } catch (error) {
+    const stepped = gone(error);
+    if (stepped !== null) return stepped;
     const parked = await lane.park(failureOf(error));
     lane.transcript(parked);
     return parked;

@@ -84,8 +84,13 @@ export function SeamPanel(props: FilingContext) {
 
   // §7: focus moves into the card on open. The caller returns focus to the trigger when the
   // card closes, which is the only moment the strip gets its rows back.
+  //
+  // BOOK-168 (owner, 2026-10-28) — **the focus never moves the page**. The card lives in a portal
+  // on `document.body`, so a browser that scrolls the newly focused node into view answers the
+  // door's landing with a second scroll: the page jumps to the body's end and the reader lands at
+  // the colophon. The card is placed from its rect (`placePanel`), never scrolled to.
   useEffect(() => {
-    panel.current?.focus();
+    panel.current?.focus({ preventScroll: true });
   }, []);
 
   // One `Escape` for the one box.

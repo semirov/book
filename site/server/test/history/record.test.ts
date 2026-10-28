@@ -89,18 +89,23 @@ describe('one entry per reader change (AC1)', () => {
 
     const record = readRecord(db).items[0];
     expect(record).toEqual({
+      id: seeded.changeId,
       hseq: last,
       at: '2026-10-25T09:00:00Z',
       seq: 1,
       chapter: 8,
+      chapterTitle: null,
       premise: false,
       premiseLanded: false,
       alias: 'Аня',
+      cause: 'reader',
       status: 'processing',
       outcome: null,
       reason: null,
       sourceCommentId: seeded.commentId,
       changeId: seeded.changeId,
+      recordHref: `#правка-${seeded.changeId}`,
+      span: null,
     });
   });
 
@@ -149,8 +154,14 @@ describe('no technical event reaches the record (AC2)', () => {
   });
 });
 
-describe('a machine-only pass adds no entry (AC3)', () => {
-  it('rewrites the text with no source comment and prints zero rows', () => {
+/**
+ * An ingest is not a pass: it writes the text and the log row, but no `pass_stages` row, so it
+ * is not one of the book's changes and adds no entry. A *pass* is (the old AC3 claimed the
+ * opposite — «a machine-only pass adds no entry» — and that rule is what hid a written chapter
+ * from the chronicle; `recordMerged.test.ts` proves the new one).
+ */
+describe('an ingest is not a change to the record (AC3, amended)', () => {
+  it('rewrites the text with no source comment and no landed stage, and prints zero rows', () => {
     fixture = createFixture();
     const local = fixture;
     ingest(local, 'ch01.md', longProse(['Первый абзац. Это служебный текст, он не является текстом книги.'], 'Глава 1'));
@@ -164,9 +175,9 @@ describe('a machine-only pass adds no entry (AC3)', () => {
     const revised = local.db
       .prepare("SELECT change_id FROM events WHERE kind = 'chapter.revised'")
       .get() as { change_id: string | null } | undefined;
-    // The pass is in the log, unattributed and belonging to no change…
+    // The row is in the log, unattributed and belonging to no change…
     expect(revised?.change_id).toBeNull();
-    // …and the record still has nothing to show.
+    // …and no pass claimed it, so the record has nothing to show.
     expect(readRecord(local.db).items).toEqual([]);
   });
 });

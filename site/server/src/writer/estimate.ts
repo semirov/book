@@ -24,7 +24,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { CHAPTER_CHARS } from '@book/shared';
+import { CHAPTER_CHARS, type BudgetDto } from '@book/shared';
+
+import { formatUsd } from '../budget.ts';
 
 import { costUsd, type PipelinePricing } from './pipeline.ts';
 import { writerRolePrompt } from './prompt.ts';
@@ -172,4 +174,46 @@ export function estimatePassUsd(input: EstimateInput): PassEstimate {
       patchTokensOut,
     },
   };
+}
+
+/** Money with four decimals and a comma: `$0,0412` — the estimate line's own number. */
+function usd4(value: number): string {
+  return value.toFixed(4).replace('.', ',');
+}
+
+/** The pause sentence (§6), in the engine's own words: a day's cap lifts at 00:00 UTC. */
+function pauseLine(capUsd: number): string {
+  return `пауза · дневной потолок ${formatUsd(capUsd)} $ · возобновится в 00:00 UTC`;
+}
+
+/** The stop sentence (§6): the book's cap ends the book, not a day of it. */
+function stopLine(capUsd: number): string {
+  return `остановлено · потолок книги ${formatUsd(capUsd)} $`;
+}
+
+/**
+ * The estimate against both caps (`pass.ts` §6 before BOOK-173 kept this there). The book's cap
+ * wins, as it does in `budget.ts`: a pass that would spend the book's last dollars is stopped,
+ * not paused. The engine's own line is used when it already stated one, so a pause reads the
+ * same on every surface.
+ */
+export function capLine(budget: BudgetDto, usd: number): string | null {
+  if (budget.book.spentUsd + usd > budget.book.capUsd) {
+    return budget.state === 'stop' ? budget.line : stopLine(budget.book.capUsd);
+  }
+  if (budget.day.spentUsd + usd > budget.day.capUsd) {
+    return budget.state === 'pause' ? budget.line : pauseLine(budget.day.capUsd);
+  }
+  return null;
+}
+
+/**
+ * `[writer] оценка прохода $0,0412 · перепись $0,0412 / правка $0,0093 · режим: … (день …, книга …)`
+ * — one line. The guard is always the rewrite figure; the patch figure is display only.
+ */
+export function estimateLine(estimate: PassEstimate, budget: BudgetDto): string {
+  const day = `${formatUsd(budget.day.spentUsd)} / ${formatUsd(budget.day.capUsd)}`;
+  const book = `${formatUsd(budget.book.spentUsd)} / ${formatUsd(budget.book.capUsd)}`;
+  const mode = estimate.mode === null ? 'режим: ещё не выбран' : `режим: ${estimate.mode === 'patch' ? 'правка' : 'перепись'}`;
+  return `[writer] оценка прохода $${usd4(estimate.usd)} · перепись $${usd4(estimate.usdRewrite)} / правка $${usd4(estimate.usdPatch)} · ${mode} (день ${day}, книга ${book})`;
 }

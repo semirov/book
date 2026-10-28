@@ -66,17 +66,22 @@ function impact(costRub: number | null): ChangeImpactDto {
 }
 
 const record: HistoryRecordDto = {
+  id: 'chg_1',
   hseq: 7,
   at: '2026-10-25T12:05:00Z',
   seq: 7,
   chapter: 8,
+  chapterTitle: null,
   premise: false,
   premiseLanded: false,
   alias: 'Аня',
+  cause: 'reader',
   status: 'done',
   outcome: 'applied',
   reason: null,
   changeId: 'chg_1',
+  recordHref: '#правка-chg_1',
+  span: null,
 };
 
 /** The three public surfaces a reader meets a change on: card, focus view, chronicle row. */
@@ -94,16 +99,16 @@ function surfaces(cost: ChangeCostDto | null, costRub: number | null): string {
         onClose={() => undefined}
       live />,
     ),
-    renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
+    renderToStaticMarkup(<RecordRow record={record} />),
   ].join('\n');
 }
 
 const tokensAndModel: ChangeCostDto = { model: 'deepseek-flash', tokensIn: 120_000, tokensOut: 30_572, rub: null };
 
 describe('the change surfaces never print a price that was not measured', () => {
-  it('shows the model and the tokens, and no ₽ figure at all', () => {
+  it('shows the tokens and never the model id, and no ₽ figure at all', () => {
     const markup = surfaces(tokensAndModel, null);
-    expect(markup).toContain('deepseek-flash');
+    expect(markup).not.toContain('deepseek');
     expect(markup).toContain(`150${NBSP}572${NBSP}токена`);
     expect(markup).not.toContain('₽');
     expect(markup).not.toContain('0,00');

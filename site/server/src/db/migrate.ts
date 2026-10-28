@@ -3,6 +3,7 @@ import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
+import { migrateV22 } from './migrateV22.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -310,6 +311,16 @@ const MIGRATIONS: Migration[] = [
     up(db) {
       addColumn(db, 'steps', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
       addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
+    },
+  },
+  {
+    // BOOK-176 (BOOK-DOC-69): the span ledger. `block_versions` gains the edit list of a version,
+    // the ledger tables and the full-text mirror are created from the same constants a fresh
+    // install uses, and every live block gets a legacy span so «the block as it stands» is
+    // readable history rather than an exception. Idempotent to the statement.
+    to: 22,
+    up(db) {
+      migrateV22(db);
     },
   },
 ];

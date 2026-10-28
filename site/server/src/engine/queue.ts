@@ -26,19 +26,20 @@ import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { assertBudgetAllowsPass, budgetCapsOf } from '../budget.ts';
 import { toIso } from '../util/time.ts';
 import { newChangeId, newStepId } from '../util/ulid.ts';
-import { nextDraftChapter, type DraftLane } from './draft.ts';
+import type { DraftLane } from './draft.ts';
 import {
   boundaryFor,
   changeForStep,
   processingChange,
   safeJson,
 } from './helpers.ts';
+import { closeUnfiledDraft } from './filings.ts';
 import { acquireLease } from './leases.ts';
 import { admitPremise, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
-import { isBasisSlot, isWrittenChapter, readChapter, writtenChapters } from './text.ts';
+import { isBasisSlot, isWrittenChapter, readChapter } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -242,18 +243,21 @@ export function createQueue(deps: EngineDeps) {
     return null;
   }
 
-  /** An already-created step (a ripple repair, a title rewrite, an ending check) is claimed. */
-  function claimOpenStep(session: string, lane: DraftLane): WriterAssignment | null {
+  /** An already-created step is claimed — never one whose filing is gone (BOOK-166). */
+  function claimOpenStep(session: string, lane: DraftLane | 'filing'): WriterAssignment | null {
     budgetGuard(deps.clock.now());
+    const at = iso(deps.clock.now());
     const candidates = store
       .listOpenSteps(db)
       .filter((step) => store.liveLeaseForStep(db, step.step_id) === undefined)
       .filter((step) => !(step.pass === 'cascade' && step.chapter === TOTAL_CHAPTERS))
       .filter((step) => {
         const expected = laneOf(step);
-        return expected === null || expected === lane;
+        return expected === null || lane === 'filing' || expected === lane;
       });
     for (const step of candidates) {
+      // A draft without a live filing is closed here, never handed out (BOOK-166).
+      if (closeUnfiledDraft(db, step, at, deps.clock.now())) continue;
       try {
         const lease = acquireLease(deps, {
           step,
@@ -268,6 +272,19 @@ export function createQueue(deps: EngineDeps) {
       }
     }
     return null;
+  }
+
+  /** BOOK-166: the oldest undecided filing wins — a premise (a draft) or a change, by `seq`. */
+  function claimFiling(session: string): WriterAssignment | null {
+    const at = deps.clock.now();
+    const premise = db.prepare(`SELECT * FROM changes WHERE premise = 1 AND status = 'pending' ORDER BY seq LIMIT 1`).get() as
+      | store.ChangeRow
+      | undefined;
+    const head = store.headPending(db);
+    if (premise === undefined && (head === null || head === undefined)) return null;
+    const premiseFirst = premise !== undefined && (head === null || head === undefined || premise.seq < head.seq);
+    if (premiseFirst) return startDraft(session, premise.chapter <= FORWARD_LAST ? 'fwd' : 'bwd', at);
+    return claimHead(session);
   }
 
   /** The head of the FIFO lane becomes the change in `processing`. */
@@ -363,6 +380,17 @@ export function createQueue(deps: EngineDeps) {
     // book are the owner's numbers, and they are the same line on every surface.
     budgetGuard(at);
 
+    // BOOK-166 (owner, 2026-10-28): the book is written only on interventions. A draft pass
+    // exists only when a filing asks for this chapter; with none there is no work at all.
+    const premise = queuedPremise(db, chapter);
+    if (premise === undefined) {
+      refuse(
+        'NO_FILING_FOR_CHAPTER',
+        409,
+        `глава ${chapter} не заказана заявкой — книга пишется только при воздействиях`,
+      );
+    }
+
     // One pass per chapter: an open draft step of this chapter *is* the pass, whoever holds it.
     const open = store.listOpenSteps(db).find((step) => step.pass === 'draft' && step.chapter === chapter);
     if (open) {
@@ -385,7 +413,7 @@ export function createQueue(deps: EngineDeps) {
 
     // BOOK-7: the chapter's premise rides on the step that opens its first pass, so a
     // resumed step carries it again and a close can settle exactly that premise.
-    const premise = queuedPremise(db, chapter);
+    // The premise is already resolved above (BOOK-166): the step carries the filing it serves.
     const lane: DraftLane = chapter <= FORWARD_LAST ? 'fwd' : 'bwd';
     const stepId = newStepId(at);
     store.insertStep(db, {
@@ -429,27 +457,42 @@ export function createQueue(deps: EngineDeps) {
     }
   }
 
-  /**
-   * Drafting is pulled in the gaps of the lane; it never enters the queue (§6A.9).
-   *
-   * A lane that finds no work answers `null` — a paused day is "no pass today", not a refusal a
-   * polling session has to parse — while a named pass (`openPass`) speaks the code.
-   */
-  function startDraft(session: string, lane: DraftLane, at: number): WriterAssignment | null {
-    try {
-      budgetGuard(at);
-    } catch (error) {
-      const code = refusalCode(error);
-      if (code === 'BUDGET_PAUSED' || code === 'BUDGET_STOPPED') return null;
-      throw error;
+  /** BOOK-166: drafting is pulled by filing; no work answers `null` (a named pass speaks the code). */
+  function startDraft(session: string, _lane: DraftLane, at: number): WriterAssignment | null {
+    // BOOK-166: the filings' own order, oldest first; no filing — no assignment, no estimate.
+    const filings = db
+      .prepare(`SELECT * FROM changes WHERE premise = 1 AND status = 'pending' ORDER BY seq`)
+      .all() as store.ChangeRow[];
+    for (const filing of filings) {
+      const chapter = filing.chapter;
+      // Only an *existing* basis-only slot is frozen; an absent chapter is the normal case.
+      const slot = readChapter(bookRoot, chapter);
+      if (chapter < 1 || chapter > TOTAL_CHAPTERS || (slot.exists && isBasisSlot(slot))) {
+        // A frozen filing is closed with its reason; refusing would block the queue behind it.
+        store.updateChange(db, filing.id, {
+          status: 'void',
+          outcome: 'dropped',
+          reason: PREMISE_FROZEN_REASON,
+        });
+        appendChangeEvent(db, filing.id, 'cancelled', { reason: PREMISE_FROZEN_REASON }, at);
+        continue;
+      }
+      // A written chapter changes through the FIFO lane (`claimHead`), not through a draft.
+      if (isWrittenChapter(readChapter(bookRoot, chapter))) continue;
+      if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) continue;
+      try {
+        budgetGuard(at);
+      } catch (error) {
+        const code = refusalCode(error);
+        if (code === 'BUDGET_PAUSED' || code === 'BUDGET_STOPPED') return null;
+        throw error;
+      }
+      return openPass(session, chapter, at);
     }
-    const chapter = nextDraftChapter(writtenChapters(bookRoot), lane);
-    if (chapter === null) return null;
-    if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) return null;
-    return openPass(session, chapter, at);
+    return null;
   }
 
-  return { enqueue, relevanceOf, claimOpenStep, claimHead, startDraft, openPass };
+  return { enqueue, relevanceOf, claimOpenStep, claimFiling, claimHead, startDraft, openPass };
 }
 
 export type Queue = ReturnType<typeof createQueue>;

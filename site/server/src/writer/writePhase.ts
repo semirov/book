@@ -18,7 +18,7 @@
  */
 
 import { readChapter } from '../engine/text.ts';
-import type { Answer, Lane } from './passLane.ts';
+import type { Lane } from './passLane.ts';
 import type { BuiltPrompt } from './prompt.ts';
 import type { ModeChoice, ModeReason, WriteMode } from './mode.ts';
 import { MODEL_REWRITE } from './mode.ts';
@@ -26,8 +26,9 @@ import type { PatchPrompt } from './patch/prompt.ts';
 import { declaredPatchMode, parsePatchAnswer } from './patch/protocol.ts';
 import { applyPatch } from './patch/apply.ts';
 import { danglingReference, factsIntact, neighbourDigests, neighbourMoved } from './patch/integrity.ts';
-import { mergeContinuation, finalize, isThin } from './prose.ts';
-import { continuationInstruction, headOf, openSession, repairInstruction } from './session.ts';
+import { continueDraft, draftAnswer } from './answer.ts';
+import { finalize } from './prose.ts';
+import { headOf, openSession, repairInstruction } from './session.ts';
 import type { PatchReceipt } from './transcript.ts';
 
 /** How much already-written prose a repair is shown: context, never a second chapter. */
@@ -50,6 +51,8 @@ export type WritePhaseInput = {
   continueMax: number;
   patchMaxFraction: number;
   patchMaxEdits: number;
+  /** The pass's log: a refused answer is a diagnosis line, never a silent park (BOOK-145). */
+  log: (line: string) => void;
 };
 
 /** The last characters of a chapter, told apart from an instruction by their own fence. */
@@ -75,7 +78,7 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
   const own = readChapter(bookRoot, chapter);
   const beforeBlocks = own.blocks.map((block) => ({ id: block.id, text: block.text }));
   const neighbours = neighbourDigests(bookRoot, chapter);
-  const session = openSession({ system: prompt.system, user: prompt.user });
+  const session = openSession({ system: prompt.system, user: prompt.user, log: input.log });
 
   let answer = await lane.ask('draft', session.messages(), 'draft');
   let previous = '';
@@ -145,44 +148,26 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
   return { kind: 'refused', ...last, cause: 'failed' };
 }
 
-/** The rewrite: one draft, one repair with the reason, then continuations in the same session. */
+/**
+ * The rewrite: main's `answer.ts` owns it (`draftAnswer` + `continueDraft`, BOOK-145's refusal
+ * line and BOOK-173's one session). Here it is only one of two modes, so the pass can park on
+ * the code the check named.
+ */
 async function rewrite(input: WritePhaseInput): Promise<OutcomeAttempt> {
-  const { lane, chapter } = input;
-  const session = openSession({ system: input.rewrite.system, user: input.rewrite.user });
-  const first = await lane.ask('draft', session.messages(), 'draft');
-  let checked: Answer = lane.check(first.text, first.finishReason);
-  if (!checked.ok) {
-    const reason = checked.reason;
-    const turn = session.append({
-      kind: 'repair',
-      assistant: headOf(first.text),
-      user: repairInstruction(checked.code, reason, tailContext(readChapter(input.bookRoot, chapter).raw)),
-    });
-    if (!turn.ok) return { kind: 'refused', code: turn.code, detail: turn.detail, cause: 'failed' };
-    const second = await lane.ask('repair', turn.messages, 'repair');
-    checked = lane.check(second.text, second.finishReason);
-    if (!checked.ok) {
-      return {
-        kind: 'refused',
-        code: checked.code,
-        detail: `ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300),
-        cause: checked.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed',
-      };
-    }
+  const started = await draftAnswer(input.lane, input.rewrite, input.log);
+  if (!started.answer.ok) {
+    return {
+      kind: 'refused',
+      code: started.answer.code,
+      detail: `ответ модели не прошёл проверку: ${started.answer.code}: ${started.answer.reason}`.slice(0, 300),
+      cause: started.answer.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed',
+    };
   }
-
-  let text = finalize(checked.text);
-  let continuations = 0;
-  while (continuations < input.continueMax && isThin(chapter, text)) {
-    const turn = session.append({ kind: 'continue', assistant: text, user: continuationInstruction() });
-    if (!turn.ok) return { kind: 'refused', code: turn.code, detail: turn.detail, cause: 'failed' };
-    const more = await lane.ask('continue', turn.messages, 'continue');
-    const next = lane.check(mergeContinuation(chapter, text, more.text), more.finishReason);
-    // A continuation that breaks a rule is dropped: the chapter that validates already stands.
-    if (!next.ok || next.text.length <= text.length) break;
-    text = finalize(next.text);
-    continuations += 1;
-  }
+  const text = await continueDraft(
+    input.lane,
+    { chapter: input.chapter, text: finalize(started.answer.text), max: input.continueMax, session: started.session },
+    input.log,
+  );
   return { kind: 'applied', text, patch: { edits: 0, changedChars: 0, fraction: 0, facts: 0, note: null, dangling: null } };
 }
 

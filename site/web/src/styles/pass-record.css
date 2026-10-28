@@ -1,0 +1,138 @@
+/* ============================================================================
+   BOOK-166 — the pass record: one page, two states, in the flow.
+
+   Framed like the colophon (`.page.sheet`): the column's own paper, lowercase, `--mono` 12 px
+   for every fact. It is a mode of the same page, not a modal, and it owns no motion at all —
+   the only thing that moves here is the reader's own scroll.
+
+   The heading is the page's first line and its height is reserved (one 20 px line) so the
+   body may arrive under it without moving it: that is the no-drift rule, made by structure
+   rather than by a measurement. `overflow-anchor: none` stops the browser from re-anchoring
+   the scroll when the body lands, and the heading carries the same offset the book's own
+   anchors do (`--offset-top`).
+   ============================================================================ */
+
+.pass-record {
+  /* A section that grows below its heading is not a reason to move the reader. */
+  overflow-anchor: none;
+  padding-block: calc(var(--offset-top) + 8px) 48px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+/* The heading: one line, its height reserved while the answer is still on its way. */
+.pr-head {
+  margin: 0;
+  min-height: 20px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  scroll-margin-top: var(--offset-top);
+}
+
+/* ---------- the state line ---------- */
+
+/* Left of the head is the heading; this row is the right-hand fact: the square and the stage
+   while a pass runs, the book's one word when it ended. */
+.pr-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-block-start: 10px;
+}
+.pr-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+}
+/* 5 × 5: the one live mark on the page, the same `--live` the carets use. */
+.pr-square {
+  width: 5px;
+  height: 5px;
+  background: var(--live);
+}
+/* The final word is news that has settled: quiet ink, never the live colour. */
+.pr-final {
+  color: var(--ink-3);
+}
+.pr-facts,
+.pr-time {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the stage timeline ---------- */
+
+/* One row, one line: `читал 11:18 · сверял 11:19 · писал 11:20 · внёс 11:24`. A stage word and
+   its time are one item, separated by a real space; the separator between items is the
+   middot. The row wraps between items and never inside one. */
+.pr-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 0;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.pr-step {
+  white-space: nowrap;
+}
+.pr-step + .pr-step::before {
+  content: '\00a0\00b7\00a0';
+  color: var(--ink-3);
+}
+/* The stage the pass is on now: the ink, and a rule under the word — no second colour. */
+.pr-step.is-current .pr-word {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--live);
+}
+
+/* ---------- the pair, the money, the foot ---------- */
+
+/* «было» → «стало»: one arrow, typographic quotes, the page's own measure. */
+.pr-span {
+  margin: 14px 0 0;
+  color: var(--ink);
+}
+/* One cost sentence with nouns; the money is the book's own `0,08 $` or «цена не задана». */
+.pr-cost {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pr-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-block-start: 18px;
+}
+.pr-place {
+  color: var(--ink-2);
+}
+/* The way out: the same quiet link in every state, never a button and never a second door. */
+.pr-jump {
+  color: var(--ink-3);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pr-jump:hover,
+.pr-jump:focus-visible {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.pr-next,
+.pr-absent {
+  margin: 14px 0 0;
+}

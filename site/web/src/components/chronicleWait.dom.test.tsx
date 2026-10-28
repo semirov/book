@@ -18,17 +18,22 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 function record(hseq: number, chapter: number): HistoryRecordDto {
   return {
+    id: `chg_${chapter}`,
     hseq,
     at: '2026-10-26T10:00:00Z',
     seq: chapter,
     chapter,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Филипп',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
     changeId: `chg_${chapter}`,
+    recordHref: `#правка-chg_${chapter}`,
+    span: null,
   };
 }
 
@@ -75,7 +80,7 @@ function mount(): HTMLDivElement {
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} onOpenChange={() => undefined} started live />);
+    root?.render(<Chronicle catalog={[]} frontRev={1} tick={0} started live />);
   });
   return container;
 }

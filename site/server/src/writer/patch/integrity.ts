@@ -70,33 +70,26 @@ function removedText(edit: PatchEdit): string {
   return edit.oldText.split(edit.newText).join(' ');
 }
 
-/** The post-image blocks, in order, with the source block each one came from. */
+/**
+ * The post-image blocks, in order, with the source block each one came from. A patch only
+ * replaces text inside a named block (the ledger's `PatchEdit` has no insert and no delete), so
+ * the list has the same length as the chapter's.
+ */
 function postImage(blocks: readonly BlockView[], edits: readonly PatchEdit[]): Array<{ source: number; text: string; edited: boolean }> {
   const byId = new Map(blocks.map((block, index) => [block.id, index]));
   const touched = new Map<number, PatchEdit>();
-  const inserts = new Map<number, string[]>();
   for (const edit of edits) {
-    if (edit.blockId === null) {
-      const after = byId.get(edit.afterBlockId ?? '');
-      if (after === undefined) continue;
-      if (edit.newText.length > 0) inserts.set(after, [...(inserts.get(after) ?? []), edit.newText]);
-      continue;
-    }
     const index = byId.get(edit.blockId);
     if (index !== undefined) touched.set(index, edit);
   }
-  const out: Array<{ source: number; text: string; edited: boolean }> = [];
-  for (const [index, block] of blocks.entries()) {
+  return blocks.map((block, index) => {
     const edit = touched.get(index);
-    let text = block.text;
-    if (edit !== undefined && edit.newText !== edit.oldText) {
-      const at = block.text.indexOf(edit.oldText);
-      if (at !== -1) text = `${block.text.slice(0, at)}${edit.newText}${block.text.slice(at + edit.oldText.length)}`;
-    }
-    if (text.length > 0) out.push({ source: index, text, edited: edit !== undefined });
-    for (const inserted of inserts.get(index) ?? []) out.push({ source: index, text: inserted, edited: false });
-  }
-  return out;
+    if (edit === undefined || edit.newText === edit.oldText) return { source: index, text: block.text, edited: edit !== undefined };
+    const at = block.text.indexOf(edit.oldText);
+    const text =
+      at === -1 ? block.text : `${block.text.slice(0, at)}${edit.newText}${block.text.slice(at + edit.oldText.length)}`;
+    return { source: index, text, edited: true };
+  });
 }
 
 export type DanglingResult =
@@ -118,7 +111,7 @@ export function danglingReference(input: { blocks: readonly BlockView[]; edits: 
   let skipped: 'no-predecessor' | null = null;
 
   for (const [editIndex, edit] of input.edits.entries()) {
-    if (edit.blockId === null || edit.newText === edit.oldText) continue;
+    if (edit.newText === edit.oldText) continue;
     const before = byId.get(edit.blockId);
     if (before === undefined) continue;
     const at = after.findIndex((block) => block.source === before && block.edited);

@@ -96,12 +96,11 @@ export function noteWidth(
 /** A token's px value from the root, with the design's number as the last resort. */
 function tokenPx(doc: Document, name: string, fallback: number): number {
   if (typeof getComputedStyle === 'undefined') return fallback;
-  const raw = getComputedStyle(doc.documentElement).getPropertyValue(name).trim();
-  const value = Number.parseFloat(raw);
-  if (!Number.isFinite(value) || value <= 0) return fallback;
-  // `--measure` is declared in rem: a custom property computes to its specified token stream,
-  // so the unit is still there (the root size is 16 px — `html` declares no font-size).
-  return raw.endsWith('rem') ? value * 16 : value;
+  // The sheets are px by contract — the guard's check 8 refuses a `rem` — so the specified
+  // number is the used one. A root-relative unit would need the reader's root size, which this
+  // pass never reads: that is exactly the dependency BOOK-170 removed from the column.
+  const value = Number.parseFloat(getComputedStyle(doc.documentElement).getPropertyValue(name));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 type Item = { element: HTMLElement; anchorTop: number; height: number; originTop: number };

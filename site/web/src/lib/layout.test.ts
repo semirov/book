@@ -5,9 +5,9 @@ import { charsPerLine, estimateChapterHeight } from './layout.ts';
 /**
  * BOOK-88/BOOK-91 — the placeholder estimate follows the prose block of `styles/base.css`.
  *
- * The prose is `min(640, viewport − 2 × gut)` at ≥1024 and `min(622.4, …)` at ≤1023 (38.9rem,
- * the same 71 ch at 17.5 px as 640 at 18), at 18 / 17.5 / 17 px, with a 32 px gutter (24 px
- * below 600). `charsPerLine` is that width divided by half an em, rounded down, times a 0.94
+ * The prose is `min(640, viewport − 2 × gut)` at ≥1024 and `min(622, …)` at ≤1023 (the same
+ * 71 ch at 17.5 px as 640 at 18), at 18 / 17.5 / 17 px, with a 32 px gutter (24 px below 600).
+ * `charsPerLine` is that width divided by half an em, rounded down, times a 0.94
  * haircut: it may never over-estimate a line, because an over-estimate under-reserves the
  * placeholder and a chapter's arrival shifts every chapter below it.
  */
@@ -16,10 +16,10 @@ const PROSE = [
   // viewport, gutter, measure, font — the prose block the sheets declare.
   [1440, 32, 640, 18],
   [1024, 32, 640, 18],
-  [768, 32, 622.4, 17.5],
-  [600, 32, 622.4, 17.5],
-  [390, 24, 622.4, 17],
-  [320, 24, 622.4, 17],
+  [768, 32, 622, 17.5],
+  [600, 32, 622, 17.5],
+  [390, 24, 622, 17],
+  [320, 24, 622, 17],
 ] as const;
 
 const proseWidth = (viewport: number, gutter: number, measure: number): number =>
@@ -27,7 +27,7 @@ const proseWidth = (viewport: number, gutter: number, measure: number): number =
 
 describe('charsPerLine', () => {
   it('follows the prose block of the design (BOOK-88/BOOK-91)', () => {
-    // 640 px at 18 px → 66; 622.4 px at 17.5 px → 66; 342 px at 17 px → 37; 272 px → 30.
+    // 640 px at 18 px → 66; 622 px at 17.5 px → 66; 342 px at 17 px → 37; 272 px → 30.
     expect(charsPerLine(1440)).toBe(66);
     expect(charsPerLine(768)).toBe(66);
     expect(charsPerLine(390)).toBe(37);

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 
+import { REQUIRED_TRIGGERS } from '../src/db/schema.ts';
 import { BackupFailedError, countBook, resetBook } from '../src/reset/book.ts';
 import { longProse } from './helpers.ts';
 import { AT, CONTENT_KEYS, count, expectedCounts, ZEROS } from './resetSeed.ts';
@@ -178,7 +179,9 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     const triggers = (
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all() as Array<{ name: string }>
     ).map((row) => row.name);
-    expect(triggers).toEqual(['events_no_delete', 'events_no_update']);
+    // BOOK-176: the ledger's guards are restored with the log's — a reset empties the book but
+    // keeps every promise that makes the tables mean something.
+    expect(triggers).toEqual([...REQUIRED_TRIGGERS].sort());
     // A fresh book numbers its fifo from 1: the counters restarted with the rows.
     expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name IN ('changes', 'events')")).toBe(0);
   });

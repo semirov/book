@@ -13,9 +13,16 @@
  *   2. the footer grip is a floor as well as a ceiling: a landing may not leave the target's
  *      top under the band the page fixes over the bottom edge, and the end of the book is a
  *      clamp, not a different algorithm (`landingScroll`);
- *   3. the card is placed on the target's **post-scroll** rect, computed analytically from the
- *      scroll that was asked for — a browser reports the rect it will have after the smooth
- *      scroll, and the panel must not blink while the page travels.
+ *   3. the scroll is a **jump**, never a journey (owner, 2026-10-28): measured in a real
+ *      Chromium, a `behavior: 'smooth'` landing over 108 000 px moved 5 px in 1.8 s and the
+ *      card opened while the page still stood at the colophon. So the jump is instant, and the
+ *      card is placed on the rect that jump lands on.
+ *
+ * The chapter a place names may not be **read** yet, and only the page can read it: its own
+ * `IntersectionObserver` starts the prose when the slot comes near the viewport, and the door's
+ * `load` only fetches the chapter's comments. So a landing whose paragraph is absent brings the
+ * chapter to the reading line first — that is what starts the read — and then waits for the
+ * paragraph (a `MutationObserver` on the chapter plus a frame budget).
  *
  * The place itself is three shapes, and the anchor is the only thing that decides between the
  * block and the chapter:
@@ -32,15 +39,14 @@
  * правки»). A wrong paragraph is never invented.
  *
  * A block that is merely **absent from the page** is a different fact: the chapter may simply
- * not have been read yet, so `resolvePlaceAfterLoad` waits for it (one read, then a bounded
- * number of frames) before it gives up, and the card stays silent — an unloaded paragraph is
- * not a lost one. When even the chapter is not on this page, the door has one act left that is
- * still true: the change card (`onOpenChange`).
+ * not have been read yet, so `resolvePlaceAfterLoad` jumps to the chapter's mouth (which starts
+ * the read) and waits for the block before it gives up, and the card stays silent — an unloaded
+ * paragraph is not a lost one. When even the chapter is not on this page, the door has one act
+ * left that is still true: the change card (`onOpenChange`).
  */
 
 import type { CommentDto } from '@book/shared';
 
-import { reducedMotion } from '../dom.ts';
 import { gripHeight, offsetTopOfPage } from './headerOffset.ts';
 import type { AnchorRect } from './popover.ts';
 
@@ -177,20 +183,49 @@ export type PlaceTarget = {
  */
 export function resolvePlaceTarget(place: Place, doc: Document = document): PlaceTarget | null {
   if (isCommentPlace(place)) {
-    const index = placeBlockIndex(place);
-    const blockId = placeBlockId(place);
-    const block =
-      index !== null
-        ? doc.getElementById(blockElementId(place.chapter, index))
-        : blockId === null
-          ? null
-          : doc.querySelector<HTMLElement>(`[data-block-id="${escapeAttribute(blockId)}"]`);
+    const block = blockOf(place, doc);
     if (block !== null) return { element: block, chapterOnly: false };
   }
   const chapter = doc.getElementById(`ch-${String(place.chapter)}`);
   if (chapter === null) return null;
   // A premise's home *is* the chapter's mouth, so its landing says nothing about a lost block.
   return { element: chapter, chapterOnly: isCommentPlace(place) };
+}
+
+/** The paragraph a filing's anchor names, or `null` when it is not in the document. */
+function blockOf(place: CommentPlace, doc: Document): HTMLElement | null {
+  const index = placeBlockIndex(place);
+  if (index !== null) return doc.getElementById(blockElementId(place.chapter, index));
+  const blockId = placeBlockId(place);
+  if (blockId === null) return null;
+  return doc.querySelector<HTMLElement>(`[data-block-id="${escapeAttribute(blockId)}"]`);
+}
+
+/**
+ * The paragraph, once it has a box. A paragraph in a slot whose prose has not been committed
+ * reports a zero-height rect, and landing on it would be landing on nothing.
+ */
+function boxed(element: HTMLElement | null): HTMLElement | null {
+  return element !== null && element.getBoundingClientRect().height > 0 ? element : null;
+}
+
+/**
+ * The page has one landing at a time (owner, 2026-10-28): a click, a hash, a back/forward are
+ * all landings, and the newest one owns the page. Every landing takes a token when it starts
+ * and drops its remaining acts (`isCurrent`) when a newer one has started while it waited —
+ * otherwise two clicks scroll twice and raise two cards.
+ */
+let landingGeneration = 0;
+
+/** Take the page for a new landing: every older landing becomes stale. */
+export function beginLanding(): number {
+  landingGeneration += 1;
+  return landingGeneration;
+}
+
+/** Is this landing still the newest one? A stale landing must not scroll or open a card. */
+export function isCurrent(token: number): boolean {
+  return token === landingGeneration;
 }
 
 /**
@@ -200,11 +235,12 @@ export function resolvePlaceTarget(place: Place, doc: Document = document): Plac
 export type ChapterLoader = (chapter: number) => void | Promise<void>;
 
 /**
- * How many frames a landing gives the page to commit prose it has just asked for (≈0.5 s at
+ * How many frames a landing gives the page to commit prose it has just asked for (≈2.5 s at
  * 60 Hz). A count, not a clock: the wait is the same on a slow machine and a fast one, and the
- * caller can measure it by counting callbacks.
+ * caller can measure it by counting callbacks. A chapter's read is a request over the network,
+ * so the budget is the length of a slow read, not a single paint.
  */
-export const PLACE_RETRY_FRAMES = 30;
+export const PLACE_RETRY_FRAMES = 150;
 
 /** One frame of the page: the animation frame the commit lands in, or a task where there is none. */
 export function nextFrame(): Promise<void> {
@@ -219,11 +255,76 @@ export function nextFrame(): Promise<void> {
   });
 }
 
+/** What a wait for a paragraph looks at: the chapter's own subtree, and a frame to fall back on. */
+export type BlockWait = {
+  /** Where the prose arrives: the chapter element, watched for the commit. */
+  scope: Node | null;
+  /** The paragraph, as it is in the document right now. */
+  find: () => HTMLElement | null;
+  /** How many frames the wait may spend. */
+  frames: number;
+  /** One frame; injected so the wait is provable without a browser clock. */
+  wait: () => Promise<void>;
+};
+
+/**
+ * Wait for a paragraph the page is still reading, and stop waiting.
+ *
+ * Two signals, because neither is enough on its own: the chapter's `MutationObserver` sees the
+ * commit the moment it happens (prose inserted under `#ch-N`), and the frame loop is the
+ * fallback for a commit no mutation record covers (a browser re-laying out what is already
+ * there). The budget is the frames alone — a wait with no paragraph and no commit ends there.
+ */
+export async function waitForBlock(input: BlockWait): Promise<HTMLElement | null> {
+  const find = (): HTMLElement | null => boxed(input.find());
+  const first = find();
+  if (first !== null) return first;
+  const watching = watchFor(input.scope, find);
+  try {
+    for (let frame = 0; frame < input.frames; frame += 1) {
+      const hit = await Promise.race([watching.hit, input.wait().then(find)]);
+      if (hit !== null) return hit;
+    }
+    return find();
+  } finally {
+    watching.stop();
+  }
+}
+
+type Watching = { hit: Promise<HTMLElement | null>; stop: () => void };
+
+/** The chapter's commit, as it happens; `stop` releases the observer and settles the promise. */
+function watchFor(scope: Node | null, find: () => HTMLElement | null): Watching {
+  let observer: MutationObserver | null = null;
+  let settle: (element: HTMLElement | null) => void = () => undefined;
+  const hit = new Promise<HTMLElement | null>((resolve) => {
+    settle = resolve;
+    if (typeof MutationObserver !== 'function' || scope === null) return;
+    observer = new MutationObserver(() => {
+      const element = find();
+      if (element === null) return;
+      observer?.disconnect();
+      observer = null;
+      resolve(element);
+    });
+    observer.observe(scope, { childList: true, subtree: true });
+  });
+  return {
+    hit,
+    stop: () => {
+      observer?.disconnect();
+      observer = null;
+      settle(null);
+    },
+  };
+}
+
 export type PlaceResolveInput = {
   place: Place;
   /** The page's chapter read; absent on a surface that cannot load anything (a static render). */
   load?: ChapterLoader;
   doc?: Document;
+  win?: Window;
   /** How many frames the paragraph is waited for; `PLACE_RETRY_FRAMES` by default. */
   frames?: number;
   /** One frame; injected so the wait is provable without a browser clock. */
@@ -235,28 +336,36 @@ export type PlaceResolveInput = {
  *
  * A door on the register, the end matter or the chronicle can name a paragraph whose chapter was
  * never read: the block is not in the DOM, and landing on the chapter's mouth as if the anchor
- * were lost would print a false «место изменилось после правки». So the door asks the page for
- * the chapter (once), then re-resolves the block for a bounded number of frames — the prose is
- * committed by the chapter's own read, and the door cannot await a request it did not make.
+ * were lost would print a false «место изменилось после правки». The door's own `load` is the
+ * chapter's **comments**, so it cannot bring the prose: the landing first jumps to the chapter's
+ * mouth — the chapter's own `IntersectionObserver` starts the read from there — then asks for the
+ * comments and waits for the paragraph, and only then answers.
  *
  * The wait is only for a **live anchor that has not arrived**: a chapter-level place, a premise
  * (the chapter's own row) and a stale anchor (`anchor.resolved === false`) have nothing to wait
  * for, and resolve at once — the last one so the card's honesty line is printed immediately.
  */
 export async function resolvePlaceAfterLoad(input: PlaceResolveInput): Promise<PlaceTarget | null> {
+  const place = input.place;
   const doc = input.doc ?? document;
+  const win = input.win ?? window;
   const wait = input.wait ?? nextFrame;
   const frames = Math.max(1, input.frames ?? PLACE_RETRY_FRAMES);
-  const target = resolvePlaceTarget(input.place, doc);
+  const target = resolvePlaceTarget(place, doc);
   if (target !== null && !target.chapterOnly) return target;
-  if (!isCommentPlace(input.place) || input.place.premise || !input.place.anchor.resolved) return target;
-  await input.load?.(input.place.chapter);
-  for (let frame = 0; frame < frames; frame += 1) {
-    const again = resolvePlaceTarget(input.place, doc);
-    if (again !== null && !again.chapterOnly) return again;
-    if (frame < frames - 1) await wait();
-  }
-  return resolvePlaceTarget(input.place, doc);
+  if (!isCommentPlace(place) || place.premise || !place.anchor.resolved) return target;
+  // The chapter is not on this page at all: nothing to jump to and nothing to wait for.
+  if (target === null) return null;
+  landAt(target.element, win, doc);
+  await input.load?.(place.chapter);
+  const block = await waitForBlock({
+    scope: target.element,
+    find: () => blockOf(place, doc),
+    frames,
+    wait,
+  });
+  if (block !== null) return { element: block, chapterOnly: false };
+  return resolvePlaceTarget(place, doc);
 }
 
 /** A paragraph fragment (`#ch-N-bI`) as the address bar carries it. */
@@ -273,26 +382,50 @@ export type LandFragmentInput = {
 /**
  * Land a fragment with the site's own measurement (`landAt`), waiting for prose that is still
  * being read: a `#ch-3-b12` opened on a fresh load names a paragraph whose chapter has not been
- * fetched yet. The paragraph is waited for; when it never comes the chapter's mouth is the
- * honest place, exactly as it is for a stale anchor. Returns whether anything was landed at
- * all — a fragment whose chapter is not on this page moves nothing and claims nothing.
+ * fetched yet, and the read only starts when the chapter comes near the viewport. So the page
+ * jumps to the chapter's mouth **first** (that is what starts the read), waits for the paragraph,
+ * then jumps to the paragraph. When the paragraph never comes the chapter's mouth — where the
+ * page already stands — is the honest place, exactly as it is for a stale anchor. Returns whether
+ * anything was landed at all: a fragment whose chapter is not on this page moves nothing, and a
+ * landing a newer one has taken over claims nothing either.
  */
 export async function landFragment(input: LandFragmentInput): Promise<boolean> {
   const doc = input.doc ?? document;
   const win = input.win ?? window;
   const wait = input.wait ?? nextFrame;
   const frames = Math.max(1, input.frames ?? PLACE_RETRY_FRAMES);
-  const blockId = input.fragment.blockIndex === null ? null : blockElementId(input.fragment.chapter, input.fragment.blockIndex);
-  for (let frame = 0; frame < frames; frame += 1) {
-    const block = blockId === null ? null : doc.getElementById(blockId);
+  const token = beginLanding();
+  const chapter = doc.getElementById(`ch-${String(input.fragment.chapter)}`);
+  const blockId =
+    input.fragment.blockIndex === null
+      ? null
+      : blockElementId(input.fragment.chapter, input.fragment.blockIndex);
+  if (blockId === null) {
+    if (chapter === null) return false;
+    landAt(chapter, win, doc);
+    return true;
+  }
+  const here = boxed(doc.getElementById(blockId));
+  if (here !== null) {
+    landAt(here, win, doc);
+    return true;
+  }
+  if (chapter !== null) {
+    // The chapter's mouth is where its read starts: jump there once, then wait for the paragraph.
+    landAt(chapter, win, doc);
+    const block = await waitForBlock({
+      scope: chapter,
+      find: () => doc.getElementById(blockId),
+      frames,
+      wait,
+    });
+    // A newer landing owns the page now: this one must not scroll and must not claim the open.
+    if (!isCurrent(token)) return false;
     if (block !== null) {
       landAt(block, win, doc);
       return true;
     }
-    if (blockId === null) break;
-    if (frame < frames - 1) await wait();
   }
-  const chapter = doc.getElementById(`ch-${String(input.fragment.chapter)}`);
   if (chapter === null) return false;
   landAt(chapter, win, doc);
   return true;
@@ -305,9 +438,14 @@ function escapeAttribute(value: string): string {
 }
 
 /**
- * Land one element and report the rect the card is placed on. The rect is computed, not read
- * again: a smooth scroll is still travelling when the panel opens, and a second measurement
- * would place the box over the paragraph's old position.
+ * Land one element and report the rect the card is placed on.
+ *
+ * The scroll is a **jump** (`behavior: 'auto'`), never a smooth travel: a landing asked for
+ * from the colophon can be a hundred thousand pixels away, and a smooth scroll over that
+ * distance does not arrive — the page stays where it was and the card opens over the wrong
+ * place. The jump is measured once and then performed, and the rect the card receives is the
+ * one that jump lands on (`docTop - top`), so the box is placed on the paragraph's new position
+ * without a second measurement or a blink.
  */
 export function landAt(element: HTMLElement, win: Window = window, doc: Document = document): AnchorRect {
   const before = element.getBoundingClientRect();
@@ -318,6 +456,6 @@ export function landAt(element: HTMLElement, win: Window = window, doc: Document
     gripFloor: win.innerHeight - gripHeight(doc),
     maxScroll: maxScrollOf(doc, win),
   });
-  win.scrollTo({ top, behavior: reducedMotion() ? 'auto' : 'smooth' });
+  win.scrollTo({ top, behavior: 'auto' });
   return { top: docTop - top, left: before.left, width: before.width, height: before.height };
 }

@@ -34,7 +34,8 @@ const TRANSPORT_ATTEMPTS = 2;
 
 /** The two codes this client owns: the engine did not answer, which is not a refusal. */
 export function isEngineTransportCode(code: string | null | undefined): boolean {
-  return code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE';
+  // BOOK-145: a busy database is a fact about the moment, like a timeout — retried once.
+  return code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE' || code === 'DB_BUSY';
 }
 
 /** `fetch` (or a test double): the only seam this client has to the outside. */
@@ -184,7 +185,8 @@ export type EscalateSpend = {
 export type EngineClient = {
   state(): Promise<EngineStateView>;
   /** The lane's next job, or null when the lane has nothing (never a refusal). */
-  next(lane: 'fwd' | 'bwd', session: string): Promise<WriterAssignment | null>;
+  /** BOOK-166: `filing` is the lane's door — the oldest undecided filing, whatever its kind. */
+  next(lane: 'fwd' | 'bwd' | 'filing', session: string): Promise<WriterAssignment | null>;
   /** A gate's dispatch for a landed step, or null when neither role is waiting. */
   nextGate(role: 'editor' | 'consultant', session: string): Promise<GateAssignmentView | null>;
   /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */

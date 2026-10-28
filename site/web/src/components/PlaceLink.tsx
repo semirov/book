@@ -4,8 +4,10 @@ import { createPortal } from 'react-dom';
 
 import { getComment } from '../api.ts';
 import {
+  beginLanding,
   isCommentIdPlace,
   isCommentPlace,
+  isCurrent,
   landAt,
   placeChangeId,
   placeHref,
@@ -42,11 +44,12 @@ import { FilingPanel } from './FilingPanel.tsx';
  * the only thing to hand back to the reader.
  *
  * A block that is **not in the DOM** is not a lost anchor: the chapter may not have been read
- * yet, so the door asks the page for it (`onLoadChapter`, `App`'s own read) and re-resolves the
- * paragraph for a bounded number of frames before it settles for the chapter's mouth and — with
- * `anchor.resolved === false` alone — the one honesty line. A place the page cannot show at all
- * (the chronicle holds records, not chapters) falls back to the change card, because a door that
- * silently sets a fragment to nothing is not a door.
+ * yet, so the door first brings the chapter to the reading line — which is what starts its own
+ * read — and then waits for the paragraph before it settles for the chapter's mouth and — with
+ * `anchor.resolved === false` alone — the one honesty line. The landing itself is an instant
+ * jump, and the card opens after it, on the rect that jump lands on. A place the page cannot show
+ * at all (the chronicle holds records, not chapters) falls back to the change card, because a door
+ * that silently sets a fragment to nothing is not a door.
  */
 export type PlaceLinkProps = {
   place: Place;
@@ -103,12 +106,25 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
     window.location.hash = placeHref(at);
   };
 
-  /** Land the place once the page has had its chance to hold it, or hand over to the card. */
-  const settle = async (at: Place, comment: CommentDto | null, fallback: Place = at): Promise<void> => {
+  /**
+   * Land the place once the page has had its chance to hold it, or hand over to the card.
+   *
+   * `token` is the landing generation this click took (owner, 2026-10-28): while the door waits
+   * for a chapter to be read, a second click — or a hash — starts a newer landing, and this one
+   * must then move nothing and open nothing. One scroll, one card.
+   */
+  const settle = async (
+    at: Place,
+    comment: CommentDto | null,
+    fallback: Place = at,
+    token: number = beginLanding(),
+  ): Promise<void> => {
     const target = await resolvePlaceAfterLoad({
       place: at,
       load: onLoadChapter === undefined ? undefined : () => onLoadChapter(at.chapter),
     });
+    // A newer landing owns the page now: this one drops its remaining acts.
+    if (!isCurrent(token)) return;
     if (target === null) {
       handOver(fallback);
       return;
@@ -124,19 +140,22 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
 
   /** A filing the page does not hold yet: one read, then the same landing. */
   const openById = async (at: Place & { commentId: string }): Promise<void> => {
+    const token = beginLanding();
     let comment: CommentDto | null = null;
     try {
       comment = await getComment(at.commentId);
     } catch {
       comment = null;
     }
+    // The read took a turn: a newer landing may have started meanwhile.
+    if (!isCurrent(token)) return;
     if (comment === null) {
       handOver(at);
       return;
     }
     // The filing's own anchor is what the landing resolves; the row's change is what a page
     // that cannot show it opens.
-    await settle(comment, comment, at);
+    await settle(comment, comment, at, token);
   };
 
   const activate = (event: MouseEvent<HTMLAnchorElement>): void => {

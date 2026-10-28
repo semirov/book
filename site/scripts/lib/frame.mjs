@@ -146,8 +146,8 @@ function checkChapterOneTitle({ repoRoot, readFile, fileExists }) {
 }
 
 /** One chapter answer: its blocks, or the reason the site did not give any. */
-async function fetchChapter(baseUrl, n, fetchImpl, deadline) {
-  const remaining = deadline - Date.now();
+async function fetchChapter(baseUrl, n, fetchImpl, deadline, now) {
+  const remaining = deadline - now();
   // Nothing left of the budget: the deploy must not wait for a third attempt.
   if (remaining <= 0) return { error: 'timeout' };
   const url = `${baseUrl.replace(/\/+$/u, '')}/api/chapters/${String(n)}`;
@@ -187,11 +187,12 @@ function answerCheck(label, kind, frame, answer) {
 /**
  * The running site serves the frame: ch01's first block opens with it and the finale's last
  * block closes with it. A non-200 answer is a mismatch whose `actual` is the status and the code.
+ * `now` is injected so a test can drive the deadline instead of waiting for a real timer.
  */
-export async function checkServer({ baseUrl, fetchImpl = fetch, budgetMs = TOTAL_TIMEOUT_MS }) {
-  const deadline = Date.now() + budgetMs;
-  const first = await fetchChapter(baseUrl, 1, fetchImpl, deadline);
-  const last = await fetchChapter(baseUrl, TOTAL_CHAPTERS, fetchImpl, deadline);
+export async function checkServer({ baseUrl, fetchImpl = fetch, budgetMs = TOTAL_TIMEOUT_MS, now = () => Date.now() }) {
+  const deadline = now() + budgetMs;
+  const first = await fetchChapter(baseUrl, 1, fetchImpl, deadline, now);
+  const last = await fetchChapter(baseUrl, TOTAL_CHAPTERS, fetchImpl, deadline, now);
   return [
     answerCheck('site /api/chapters/1', 'first', FRAME.first, first),
     answerCheck(`site /api/chapters/${String(TOTAL_CHAPTERS)}`, 'last', FRAME.last, last),

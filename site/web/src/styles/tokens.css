@@ -170,15 +170,18 @@
   --fs-body: 18px;
   --fs-lead: 19px;
 
-  /* space — BOOK-DOC-35 §1, BOOK-88 §2, BOOK-91: the column and its gutters.
-     `--measure` is THE COLUMN — 40rem = 640 px = 71.1 ch at 18 px — and every register (the
-     TOC, the colophon, the header's rows, the cover, page 2, the discussion, the legal
-     documents) is exactly this box. There is no second, wider frame: the canvas is the column
-     plus its two gutters (`calc(var(--measure) + 2 * var(--gut))`), centred, so the slack
-     falls equally on both sides of the text (400 at 1440, 192 at 1024, 73 at 768). The prose
-     is not narrower than the column; the column is not narrower than the page it names. */
+  /* space — BOOK-DOC-35 §1, BOOK-88 §2, BOOK-91, BOOK-170: the column and its gutters.
+     `--measure` is THE COLUMN — 640 px = 71.1 ch at 18 px — and every register (the TOC, the
+     colophon, the header's rows, the cover, page 2, the discussion, the legal documents) is
+     exactly this box. It is px, not rem, because the type is px: `rem` follows the *reader's*
+     root font size, so on a device whose default is 18 or 20 px a rem column would widen while
+     the glyphs stayed put — a longer line and text that reads smaller. There is no second,
+     wider frame: the canvas is the column plus its two gutters
+     (`calc(var(--measure) + 2 * var(--gut))`), centred, so the slack falls equally on both
+     sides of the text (400 at 1440, 192 at 1024, 73 at 768). The prose is not narrower than
+     the column; the column is not narrower than the page it names. */
   --gut: 32px;
-  --measure: 40rem;
+  --measure: 640px;
   /* The anchor contract (owner, 2026-10-28): the sticky head's measured height plus the site's
      breathing space, written on `:root` by `lib/headerOffset.ts` (`applyStickyOffsets`) and
      read by `scroll-margin-top`, `scroll-margin-bottom` and the reading line. The values here
@@ -219,6 +222,10 @@
   --grip-row: 44px;
   --grip-hit: 44px;
 
+  /* BOOK-167 — the pass strip's fixed height: a block in the seam's place, never a growing
+     panel. 18 px of head, a 172 px rail (four rows and one live row) and what the pass spent. */
+  --pass-h: 235px;
+
   /* skeleton widths — BOOK-DOC-43 §3. Geometry, not ink, so there is no day/night pair:
      eight ragged line endings, never 100 %, selected by `data-w` on a `.skel-line`. */
   --skel-w1: 94%;
@@ -233,13 +240,14 @@
 
 /* The scale narrows with the measure: the laptop keeps 18px, the tablet 17.5, the phone 17.
    Tokens only — no other sheet may declare a `--fs-*` rung (the arch guard checks it).
-   BOOK-91: the column scales with the type, so the character count does not jump at the step —
-   38.9rem = 622.4 px = 71.1 ch at 17.5 px, the same 71 ch as 640 at 18 (640 × 17.5 / 18 =
-   622.22 px; 38.9rem is the nearest 0.1rem). */
+   BOOK-91/BOOK-170: the column scales with the type, so the character count does not jump at
+   the step — 622 px = 71.1 ch at 17.5 px, the same 71 ch as 640 at 18 (640 × 17.5 / 18 =
+   622.2 px, rounded to the whole px). Both measures are px for the same reason: a rem column
+   would follow the reader's root font size, not the design's. */
 @media (max-width: 1023px) {
   :root {
     --fs-body: 17.5px;
-    --measure: 38.9rem;
+    --measure: 622px;
   }
 }
 @media (max-width: 599px) {

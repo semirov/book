@@ -4,6 +4,7 @@ import { closeOtherOverlays } from './overlayRegistry.ts';
 import './useSeam.ts';
 import './useFiling.ts';
 import './useRevision.ts';
+import './usePassStrip.ts';
 
 /**
  * BOOK-111 (owner, 2026-10-27) — the page holds one overlay at a time.

@@ -1,21 +1,16 @@
-import type {
-  BookAtDto,
-  CatalogEntry,
-  HistoryChapterDto,
-  HistoryTimelineDto,
-} from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryTimelineDto } from '@book/shared';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getHistoryAt, getHistoryChapter, getHistoryTimeline } from '../api.ts';
+import { getHistoryAt, getHistoryTimeline } from '../api.ts';
 import { formatChars } from '../lib/format.ts';
 import { compareToNow, momentText } from '../lib/history.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
+import { PastChapter } from './ChroniclePast.tsx';
 import { MomentControl } from './MomentControl.tsx';
-import { SentenceBlock } from './SentenceBlock.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { Skeleton } from './Skeleton.tsx';
-import { useParagraphChain, type ParagraphChainMode } from '../useParagraphChain.ts';
+import { useParagraphChain } from '../useParagraphChain.ts';
 import { usePending } from '../usePending.ts';
 
 /** A drag idles before it asks (BOOK-DOC-50 §6); a release asks at once. */
@@ -58,14 +53,18 @@ export type ChronicleProps = {
   frontRev: number;
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
-  onOpenChange: (changeId: string) => void;
   /**
-   * BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
-   * exists from the book's start. Its one starting row is not a history surface and needs
-   * no reader change.
+   * BOOK-168 — the record row's door: the chronicle holds no прицел, so a change the row names
+   * opens in this page's card. Optional: a surface that draws no card still lists rows.
    */
+  onOpenChange?: (changeId: string) => void;
+  /** BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
+   * exists from the book's start. Its one starting row is not a history surface and needs
+   * no reader change. */
   started: boolean;
-  /** BOOK-56: `state.history.live`; without a reader change the record list stays empty and the chain off. */
+  /** BOOK-56: `state.history.live` — the **reader-driven** flag. It gates the reader's
+   * apparatus (here: the paragraph chain's reader names), never the record list: the
+   * chronicle lists every change to the book, a reader's filing and a pass alike. */
   live: boolean;
   /** BOOK-168 — the page's chapter read for the record's place door; a place it cannot show opens the card. */
   onLoadChapter?: ChapterLoader;
@@ -328,7 +327,6 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
           </button>
         </div>
       ) : null}
-
     </section>
   );
 }
@@ -336,10 +334,13 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
 /**
  * The record list under the head (BOOK-65, BOOK-56).
  *
- * Three states, and each one says only what the answer holds. Records: one row per change.
- * A begun book with no reader change: the log's first moment is the one record, «начало
- * книги», and one quiet line says there is nothing to rewind yet. An empty log: the record
- * is empty, and that is a fact about an answer, never printed after a failed read.
+ * Three states, and each one says only what the answer holds. Records: one row per change to
+ * the book — a reader's accepted filing or a pass — regardless of `history.live`, which is the
+ * reader-driven gate of the other surfaces. A begun book whose record is empty: the log's first
+ * moment is the one row, «начало книги», and one quiet line says there is nothing to rewind
+ * yet; that line needs the answer's empty list, so it cannot stand over a change the server
+ * has and the page forgot. An empty log: the record is empty, and that is a fact about an
+ * answer, never printed after a failed read.
  */
 export function ChronicleRecords({
   timeline,
@@ -350,17 +351,17 @@ export function ChronicleRecords({
   timeline: HistoryTimelineDto;
   /** The last read failed: an absence is not claimed on top of it. */
   failed: boolean;
-  onOpenChange: (changeId: string) => void;
-  /** BOOK-168: the page's chapter read, handed to every record's place door. */
+  /** BOOK-168: the record's own door (the card), and the page's chapter read for its place. */
+  onOpenChange?: (changeId: string) => void;
   onLoadChapter?: ChapterLoader;
 }) {
   if (timeline.items.length > 0) {
     return (
       <ol className="chr-timeline">
         {timeline.items.map((record) => (
-          // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
+          // BOOK-65: the key is the entry, not its moment — `hseq` moves when any event
           // lands for that change, and a remount would drop keyboard focus on a live tick.
-          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
+          <RecordRow key={record.id} record={record} onOpenChange={onOpenChange} onLoadChapter={onLoadChapter} />
         ))}
       </ol>
     );
@@ -385,115 +386,5 @@ export function ChronicleRecords({
         </ol>
       ) : null}
     </>
-  );
-}
-
-function PastChapter({
-  n,
-  hseq,
-  title,
-  sentence,
-  live,
-}: {
-  n: number;
-  hseq: number;
-  title: string | null;
-  sentence: ParagraphChainMode;
-  live: boolean;
-}) {
-  const [chapter, setChapter] = useState<HistoryChapterDto | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [opened, setOpened] = useState(false);
-
-  useEffect(() => {
-    if (!opened) return;
-    let cancelled = false;
-    void getHistoryChapter(n, hseq)
-      .then((loaded) => {
-        if (!cancelled) setChapter(loaded);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [opened, n, hseq]);
-
-  return (
-    <details
-      className="past-ch"
-      onToggle={(event) => setOpened((event.currentTarget as HTMLDetailsElement).open)}
-    >
-      <summary>
-        <span className="past-ch-n">{String(n).padStart(2, '0')}</span>
-        <span className="past-ch-title">{title ?? `глава ${n}`}</span>
-      </summary>
-      {failed ? <p className="chr-empty">глава не прочиталась</p> : null}
-      {chapter === null && !failed ? <p className="chr-empty">глава читается…</p> : null}
-      {chapter?.blocks.map((block) => (
-        <PastBlock key={block.id} block={block} sentence={sentence} live={live} />
-      ))}
-    </details>
-  );
-}
-
-/**
- * One paragraph of a past chapter, with the phrase's own `⋯` — BOOK-128 comment #3815: the facts
- * open in flow under the paragraph (a past chapter has no margin channel), and the door that
- * opened them is where focus comes back.
- */
-function PastBlock({
-  block,
-  sentence,
-  live,
-}: {
-  block: { id: string; text: string };
-  sentence: ParagraphChainMode;
-  live: boolean;
-}) {
-  const door = useRef<HTMLButtonElement>(null);
-  const open = live && sentence.openId === block.id;
-  return (
-    <div>
-      <p className="p past-p" data-block-id={block.id}>
-        {block.text}
-        {live ? (
-          <button
-            type="button"
-            className="prov"
-            aria-label="откуда эта фраза"
-            aria-expanded={open}
-            ref={door}
-            onClick={() => {
-              // The door is the toggle and the only close this layer has.
-              if (sentence.openId === block.id) {
-                sentence.close();
-                door.current?.focus();
-                return;
-              }
-              sentence.open(block.id, door.current?.getBoundingClientRect() ?? new DOMRect());
-            }}
-          >
-            ⋯
-          </button>
-        ) : null}
-      </p>
-      {open ? (
-        <SentenceBlock
-          chain={sentence.chain}
-          loading={sentence.loading}
-          failed={sentence.failed}
-          quote={block.text}
-          frame="none"
-          place="flow"
-          onRetry={sentence.retry}
-          onClose={() => {
-            sentence.close();
-            door.current?.focus();
-          }}
-        />
-      ) : null}
-    </div>
   );
 }

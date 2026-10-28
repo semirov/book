@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PLACE_NOTE,
+  beginLanding,
+  isCurrent,
   landingScroll,
   placeBlockId,
   placeBlockIndex,
@@ -109,6 +111,21 @@ describe('the card a place hands over to', () => {
     expect(placeChangeId({ commentId: 'cmt_9', chapter: 7, changeId: 'chg_9' })).toBe('chg_9');
     expect(placeChangeId({ commentId: 'cmt_9', chapter: 7 })).toBeNull();
     expect(placeChangeId(CHAPTER)).toBeNull();
+  });
+});
+
+describe('one landing at a time', () => {
+  it('hands the page to the newest landing and drops every older one', () => {
+    // A click, a hash and a back/forward are landings on one page: the second tap is a landing
+    // of its own, and the first may no longer scroll or open a card.
+    const first = beginLanding();
+    expect(isCurrent(first)).toBe(true);
+    const second = beginLanding();
+    expect(second).not.toBe(first);
+    expect(isCurrent(first)).toBe(false);
+    expect(isCurrent(second)).toBe(true);
+    // A token from another page (a number nobody issued) is never current.
+    expect(isCurrent(second + 1)).toBe(false);
   });
 });
 

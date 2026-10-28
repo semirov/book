@@ -90,17 +90,22 @@ const TIMELINE: HistoryTimelineDto = {
   nextBefore: null,
   items: [
     {
+      id: 'chg_1',
       hseq: 10,
       at: NOW,
       seq: 1,
       chapter: 8,
+      chapterTitle: null,
       premise: false,
       premiseLanded: false,
       alias: 'Аня',
+      cause: 'reader',
       status: 'done',
       outcome: 'applied',
       reason: null,
       changeId: 'chg_1',
+      recordHref: '#правка-chg_1',
+      span: null,
     },
   ],
 };
