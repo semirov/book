@@ -18,7 +18,7 @@
  * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
  * «which terms did the reader accept?» has an answer years later; BOOK-158 adds the attempt
  * ledger (`comment_attempts`) and `triage` to the ledger's pass vocabulary, so a refusal can be
- * explained, revised and charged without spending the reader's daily edit).
+ * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span ledger (BOOK-DOC-69).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
@@ -31,7 +31,7 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -39,6 +39,7 @@ export const SCHEMA_VERSION = 21;
  * of the schema still finds every table in one place.
  */
 import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL } from './tables.ts';
+import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
@@ -54,6 +55,7 @@ export {
   STEPS_COLUMNS,
   chaptersTableSql,
 } from './tables.ts';
+export { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 
 export const STEPS_TABLE_SQL = `CREATE TABLE steps (                             -- one step = one chapter edit + its two gates
   step_id     TEXT PRIMARY KEY,                  -- 'stp_01JB7…'
@@ -404,6 +406,8 @@ ${PASS_SPEND_TABLE_SQL}
 
 ${COMMENT_ATTEMPTS_TABLE_SQL}
 
+${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger and its full-text mirror
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -488,7 +492,8 @@ export const REQUIRED_TABLES = [
   'contribution_history',
   'rate_events',
   'meta',
+  ...LEDGER_REQUIRED_TABLES,
 ] as const;
 
 /** §6F.1: the log is append-only; a missing trigger means the promise is not kept (F027). */
-export const REQUIRED_TRIGGERS = ['events_no_update', 'events_no_delete'] as const;
+export const REQUIRED_TRIGGERS = ['events_no_update', 'events_no_delete', ...LEDGER_REQUIRED_TRIGGERS] as const;

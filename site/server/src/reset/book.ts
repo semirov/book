@@ -43,7 +43,8 @@ import { chapterLabel, TOTAL_CHAPTERS } from '@book/shared';
 import type { Db } from '../db/db.ts';
 import { getNumber, setMeta } from '../db/repo/meta.ts';
 import { REQUIRED_TRIGGERS } from '../db/schema.ts';
-import { EVENTS_TRIGGERS_SQL } from '../db/tables.ts';
+import { EVENTS_TRIGGER_NAMES, EVENTS_TRIGGERS_SQL } from '../db/tables.ts';
+import { LEDGER_TABLES_SQL } from '../db/ledgerTables.ts';
 import { applyChapterFile } from '../ingest/applyChapter.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import { scanManuscript } from '../ingest/scanManuscript.ts';
@@ -178,6 +179,13 @@ const WIPE_BEFORE_COMMENTS = [
   'reconciles',
   'events',
   'comment_events',
+  // BOOK-176: the ledger, child first — a mention names a fact and a thread, an event names a
+  // thread, and a fact names a change.
+  'literals',
+  'mentions',
+  'thread_events',
+  'threads',
+  'facts',
 ] as const;
 
 const WIPE_AFTER_COMMENTS = [
@@ -204,6 +212,10 @@ const AUTOINCREMENT_TABLES = [
   'front_revisions',
   'overwrites',
   'reconciles',
+  // BOOK-176: the ledger's own counters, so a fresh book numbers its first mention 1.
+  'thread_events',
+  'mentions',
+  'literals',
 ] as const;
 
 type FrameFile = { n: number; path: string; raw: string; mtimeMs: number };
@@ -253,11 +265,15 @@ function scanProse(bookRoot: string): { proseChapters: number; files: string[] }
 }
 
 function dropEventTriggers(db: Db): void {
-  for (const trigger of REQUIRED_TRIGGERS) db.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
+  // BOOK-176: a fact is never deleted — which is exactly what a launch reset has to do, so its
+  // guard is lifted here with the log's own and put back below. The full-text triggers stay:
+  // they are what keeps the mirror empty when the blocks go.
+  for (const trigger of [...EVENTS_TRIGGER_NAMES, 'facts_no_delete']) db.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
 }
 
 function createEventTriggers(db: Db): void {
   db.exec(EVENTS_TRIGGERS_SQL);
+  db.exec(LEDGER_TABLES_SQL);
 }
 
 function wipe(db: Db): void {

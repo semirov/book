@@ -58,6 +58,21 @@ export function newBlockUid(nowMs: number = Date.now()): string {
   return `bkd_${ulid(nowMs)}`;
 }
 
+/** ADR-043 D5: one checkpoint per eight versions of a block (and the first one). */
+export const CHECKPOINT_EVERY = 8;
+
+export function isCheckpoint(ver: number): boolean {
+  return ver === 1 || ver % CHECKPOINT_EVERY === 0;
+}
+
+/**
+ * What a version stores in `block_versions.text`: its whole text on a checkpoint, `''` otherwise.
+ * The change span is the delta; the checkpoint is the point a replay may start from.
+ */
+export function checkpointText(ver: number, text: string): string {
+  return isCheckpoint(ver) ? text : '';
+}
+
 /** The latest version of every paragraph still in the chapter's text. */
 export function readLiveUids(db: Db, chapter: number): Map<string, LiveUidRow> {
   const rows = db
@@ -83,16 +98,22 @@ function insertVersion(
     op: 'introduced' | 'revised' | 'erased';
     prevVer: number | null;
     replacedBy: string | null;
+    /** BOOK-176: the JSON span list of this version; '[]' for a version written without one. */
+    spans?: string;
+    /** ADR-043 D5: the block's full text on a checkpoint version, '' otherwise. */
+    text?: string;
   },
 ): void {
   db.prepare(
     `INSERT INTO block_versions
        (block_uid, ver, chapter, rev, hseq, block_id, text_hash, chars, op, prev_ver, replaced_by,
-        change_id, step_id, actor_kind, actor_label, identity_id, at)
+        change_id, step_id, actor_kind, actor_label, identity_id, at, spans, text)
      VALUES
        (@blockUid, @ver, @chapter, @rev, @hseq, @blockId, @textHash, @chars, @op, @prevVer, @replacedBy,
-        @changeId, @stepId, @actorKind, @actorLabel, @identityId, @at)`,
+        @changeId, @stepId, @actorKind, @actorLabel, @identityId, @at, @spans, @text)`,
   ).run({
+    spans: version.spans ?? '[]',
+    text: version.text ?? '',
     blockUid: version.uid,
     ver: version.ver,
     chapter: input.chapter,
@@ -183,6 +204,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
             op: 'introduced',
             prevVer: null,
             replacedBy: null,
+            text: block.text,
           });
           result.introduced += 1;
         }
@@ -202,6 +224,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
         op: 'revised',
         prevVer: known?.ver ?? null,
         replacedBy: null,
+        text: checkpointText(ver, block.text),
       });
       closeLineage(db, input, old.id, block.id);
       openLineage(db, input, block.id, block.text.length);
@@ -220,6 +243,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
       op: 'introduced',
       prevVer: null,
       replacedBy: null,
+      text: block.text,
     });
     openLineage(db, input, block.id, block.text.length);
     uidOfNew.set(newIndex, uid);
@@ -250,6 +274,7 @@ export function recordBlockRevision(input: RecordBlocksInput): RecordedBlocks {
       op: 'erased',
       prevVer: known?.ver ?? null,
       replacedBy: heirUid,
+      text: checkpointText((known?.ver ?? 0) + 1, old.text),
     });
     closeLineage(db, input, old.id, heir?.id ?? null);
 
@@ -316,4 +341,67 @@ function nearestHeirs(
     }
   }
   return heirs;
+}
+
+export type RecordPatchedBlockInput = {
+  db: Db;
+  chapter: number;
+  rev: number;
+  hseq: number;
+  /** The revision's own time (ISO), stored on the version row. */
+  at: string;
+  /** The block id the paragraph had before the patch — the lineage row that closes. */
+  previousBlockId: string;
+  /** The block id after the patch — the lineage row that opens. */
+  blockId: string;
+  blockUid: string;
+  ver: number;
+  prevVer: number | null;
+  textHash: string;
+  chars: number;
+  /** The version's JSON span list (BOOK-176); `span_id` embeds `blockUid:ver`. */
+  spans: string;
+  /** ADR-043 D5: the block's full text on a checkpoint version, `''` otherwise. */
+  text: string;
+  cause: WriteCause;
+  actor: WriteActor;
+  nowMs?: number;
+};
+
+/**
+ * BOOK-176: one patched paragraph as one version of the chain. The applier owns the span list
+ * (its `span_id` is `blockUid:ver:0`, so the caller mints the version number), and this function
+ * keeps the chain's other promises: the old lineage row closes, the new one opens, and the
+ * version carries the cause, the actor and the JSON spans.
+ *
+ * It reuses `insertVersion`/`closeLineage`/`openLineage` unchanged, so a patched version and an
+ * ingested one are the same row shape — nothing downstream has to know which wrote it.
+ */
+export function recordPatchedBlock(input: RecordPatchedBlockInput): void {
+  const frame: RecordBlocksInput = {
+    db: input.db,
+    chapter: input.chapter,
+    rev: input.rev,
+    hseq: input.hseq,
+    at: input.at,
+    nowMs: input.nowMs ?? Date.now(),
+    before: [],
+    after: [],
+    cause: input.cause,
+    actor: input.actor,
+  };
+  insertVersion(input.db, frame, {
+    uid: input.blockUid,
+    ver: input.ver,
+    blockId: input.blockId,
+    textHash: input.textHash,
+    chars: input.chars,
+    op: 'revised',
+    prevVer: input.prevVer,
+    replacedBy: null,
+    spans: input.spans,
+    text: input.text,
+  });
+  closeLineage(input.db, frame, input.previousBlockId, input.blockId);
+  openLineage(input.db, frame, input.blockId, input.chars);
 }
