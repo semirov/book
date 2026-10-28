@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../../src/db/db.ts';
@@ -68,6 +68,42 @@ describe('applyPatch — the round trip', () => {
     expect(after.id).toBe(before.id);
     // The revert is a revision of its own: a third version, and a span that undoes the second.
     expect(db.prepare('SELECT COUNT(*) AS n FROM block_versions WHERE chapter = 8').get()).toEqual({ n: 4 });
+  });
+
+  it('patches two paragraphs at once and reverts both byte-identically', () => {
+    fixture = ledgerFixture();
+    const { db, dataDir } = fixture;
+    const seeded = seedChapter(db, { chapter: 8, texts: [A, B, 'Третий тестовый абзац: эта и тета.'] });
+    const [first, second] = seeded;
+    if (first === undefined || second === undefined) throw new Error('fixture did not seed two blocks');
+    const beforeFirst = blockRow(db, first.id);
+    const beforeSecond = blockRow(db, second.id);
+
+    const applied = applyPatch({
+      db,
+      dataDir,
+      chapter: 8,
+      patch: {
+        mode: 'patch',
+        edits: [
+          { blockId: first.id, oldText: 'альфа', newText: 'омега' },
+          { blockId: second.id, oldText: 'дельта', newText: 'сигма' },
+        ],
+      },
+      cause: { kind: 'operator' },
+      nowMs: NOW_MS,
+    });
+    expect(applied).toMatchObject({ ok: true, spans: 2, blocksChanged: 2 });
+
+    const reverted = revertRevision({ db, dataDir, chapter: 8, rev: applied.ok ? applied.rev : 0, nowMs: NOW_MS });
+    expect(reverted).toMatchObject({ ok: true, spans: 2 });
+
+    expect(blockRow(db, beforeFirst.id)).toEqual(beforeFirst);
+    expect(blockRow(db, beforeSecond.id)).toEqual(beforeSecond);
+    // The untouched third paragraph kept its own version and its own id.
+    expect(db.prepare('SELECT COUNT(*) AS n FROM block_versions WHERE chapter = 8 AND ver = 1').get()).toEqual({
+      n: 3,
+    });
   });
 
   it('records the change that caused an edit on the span, the version and the revision', () => {
@@ -212,6 +248,8 @@ describe('applyPatch — refusals leave nothing behind', () => {
     const [first] = seeded;
     if (first === undefined) throw new Error('fixture did not seed a block');
     db.prepare('UPDATE blocks SET hash = ? WHERE id = ?').run('deadbeef', first.id);
+    // The damaged projection is what the refusal is about; no counter may move because of it.
+    const before = ledgerCounts(db, 8);
 
     expect(
       applyPatch({
@@ -223,6 +261,7 @@ describe('applyPatch — refusals leave nothing behind', () => {
         nowMs: NOW_MS,
       }),
     ).toMatchObject({ ok: false, code: 'HASH_MISMATCH' });
+    expect(ledgerCounts(db, 8)).toEqual(before);
   });
 });
 
@@ -261,5 +300,41 @@ describe('applyPatch — the frozen frame (F029)', () => {
         FRAME_FIRST_SENTENCE,
       ),
     ).toBe(true);
+  });
+
+  it('refuses an edit that touches the final frame sentence of the last chapter', () => {
+    fixture = ledgerFixture();
+    const { db, dataDir } = fixture;
+    const closing = `Последний служебный абзац: омега и сигма. ${FRAME_LAST_SENTENCE}`;
+    const seeded = seedChapter(db, { chapter: TOTAL_CHAPTERS, texts: [B, closing] });
+    const last = seeded[1];
+    if (last === undefined) throw new Error('fixture did not seed the closing block');
+    const before = ledgerCounts(db, TOTAL_CHAPTERS);
+
+    expect(
+      applyPatch({
+        db,
+        dataDir,
+        chapter: TOTAL_CHAPTERS,
+        patch: {
+          mode: 'patch',
+          edits: [{ blockId: last.id, oldText: 'не осталось глаз', newText: 'не осталось никого' }],
+        },
+        cause: { kind: 'operator' },
+        nowMs: NOW_MS,
+      }),
+    ).toMatchObject({ ok: false, code: 'FRAME_CHANGED' });
+    expect(ledgerCounts(db, TOTAL_CHAPTERS)).toEqual(before);
+
+    // The prose before the sentence is ordinary text, and it may move.
+    const prose = applyPatch({
+      db,
+      dataDir,
+      chapter: TOTAL_CHAPTERS,
+      patch: { mode: 'patch', edits: [{ blockId: last.id, oldText: 'омега', newText: 'дельта' }] },
+      cause: { kind: 'operator' },
+      nowMs: NOW_MS,
+    });
+    expect(prose.ok).toBe(true);
   });
 });

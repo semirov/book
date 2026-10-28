@@ -124,6 +124,43 @@ describe('level 3 — a change span and a checkpoint every eighth version', () =
   });
 });
 
+describe('replay — an unknown delta is not a stale text', () => {
+  it('returns null for a version that records neither a span nor a checkpoint', () => {
+    fixture = ledgerFixture();
+    const { db, dataDir } = fixture;
+    const seeded = seedChapter(db, { chapter: 8, texts: [PROSE, OTHER] });
+    const [first, second] = seeded;
+    if (first === undefined || second === undefined) throw new Error('fixture did not seed two blocks');
+
+    // The writer lane (`history/blocks.ts::recordBlockRevision`) writes exactly this on a
+    // non-checkpoint version of a rewrite: the hash moves, the delta is not recorded yet.
+    const next = 'Переписанный абзац: сигма и омега.';
+    db.prepare(
+      `INSERT INTO block_versions
+         (block_uid, ver, chapter, rev, hseq, block_id, text_hash, chars, op, prev_ver, replaced_by,
+          change_id, step_id, actor_kind, actor_label, identity_id, at, spans, text)
+       VALUES (?, 2, 8, 2, 2, ?, ?, ?, 'revised', 1, NULL, NULL, NULL, 'writer', 'печатник', NULL, ?,
+               '[]', '')`,
+    ).run(
+      first.uid,
+      `ch08#${'0'.repeat(8)}`,
+      'deadbeef',
+      next.length,
+      '2026-10-25T12:00:00Z',
+    );
+    expect(replayBlock(db, { blockUid: first.uid, ver: 2 })).toBeNull();
+    // The checkpoint itself is still a true answer.
+    expect(replayBlock(db, { blockUid: first.uid, ver: 1 })).toEqual({ text: PROSE, checkpointVer: 1 });
+
+    // A version that does carry its delta still replays — the rule is about unknown steps only.
+    patch(db, dataDir, second.uid, 'гамма', 'сигма');
+    expect(replayBlock(db, { blockUid: second.uid, ver: 2 })).toEqual({
+      text: OTHER.replace('гамма', 'сигма'),
+      checkpointVer: 1,
+    });
+  });
+});
+
 describe('the fact-shaped guard and the published gap (D4, D9, L8)', () => {
   it('warns instead of refusing, and the gap closes when a fact covers the token', () => {
     fixture = ledgerFixture();
@@ -146,6 +183,7 @@ describe('the fact-shaped guard and the published gap (D4, D9, L8)', () => {
       nowMs: NOW_MS,
     });
     expect(first).toMatchObject({ ok: true, warnings: 1 });
+    if (first.ok) expect(first.warnings).toBe(1);
     if (!first.ok) throw new Error('unreachable');
     expect(first.ledgerGap).toBeGreaterThanOrEqual(1);
 

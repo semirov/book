@@ -138,6 +138,8 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     migrate(db);
     const texts = ['Первый тестовый абзац: альфа и бета.', 'Второй тестовый абзац: гамма и дельта.'];
     const seeded = seedChapter(db, { chapter: 8, texts, at: AT });
+    // A second chapter that carries one fact-shaped token, so the gap is measured, not assumed.
+    seedChapter(db, { chapter: 9, texts: ['Акт 14.09.2065 подшит в дело.'], at: AT });
     const withoutVersion = seeded[1];
     if (withoutVersion === undefined) throw new Error('fixture did not seed two blocks');
     // One block has a version row, the other was projected before the chain existed.
@@ -156,10 +158,13 @@ describe('migration v22 — the ledger on an upgraded install', () => {
       expect.arrayContaining(['spans', 'text']),
     );
 
-    const blocks = db.prepare('SELECT id, text FROM blocks ORDER BY idx').all() as Array<{ id: string; text: string }>;
-    expect(blocks).toHaveLength(2);
+    const blocks = db.prepare('SELECT id, text FROM blocks ORDER BY chapter, idx').all() as Array<{
+      id: string;
+      text: string;
+    }>;
+    expect(blocks).toHaveLength(3);
     const spans = latestSpans(db);
-    expect(spans).toHaveLength(2);
+    expect(spans).toHaveLength(3);
     for (const block of blocks) {
       const row = spans.find((entry) => entry.block_id === block.id);
       expect(row).toBeDefined();
@@ -186,12 +191,18 @@ describe('migration v22 — the ledger on an upgraded install', () => {
     const checkpoints = db
       .prepare('SELECT chapter, block_id, ver, text FROM block_versions WHERE text != \'\' ORDER BY chapter, ver')
       .all() as Array<{ chapter: number; block_id: string; ver: number; text: string }>;
-    expect(checkpoints).toHaveLength(2);
+    expect(checkpoints).toHaveLength(3);
     for (const row of checkpoints) {
       const live = db.prepare('SELECT text FROM blocks WHERE id = ?').get(row.block_id) as { text: string };
       expect(row.text).toBe(live.text);
     }
-    expect((db.prepare('SELECT ledger_gap FROM chapters WHERE n = 8').get() as { ledger_gap: number }).ledger_gap).toBe(0);
+    // ADR-043 D9: the gap is measured at migration — chapter 9 carries one date and no fact
+    // mention, chapter 8 carries none.
+    const gaps = db.prepare('SELECT n, ledger_gap FROM chapters ORDER BY n').all() as Array<{
+      n: number;
+      ledger_gap: number;
+    }>;
+    expect(Object.fromEntries(gaps.map((row) => [row.n, row.ledger_gap]))).toEqual({ 8: 0, 9: 1 });
     // No land happened at migration: no revision, no warning, no log note.
     expect(db.prepare('SELECT COUNT(*) AS n FROM revisions').get()).toEqual({ n: 0 });
 
@@ -200,7 +211,9 @@ describe('migration v22 — the ledger on an upgraded install', () => {
       versions: db.prepare('SELECT COUNT(*) AS n FROM block_versions').get(),
       spans: spans.map((row) => row.spans),
     };
-    expect(counts.versions).toEqual({ n: 2 });
+    // Two blocks had a version before the migration (one was deleted to shape the fixture) and
+    // the third got its own; nothing else was invented.
+    expect(counts.versions).toEqual({ n: 3 });
     expect(db.pragma('foreign_key_check')).toEqual([]);
 
     // A second boot has nothing to do: no new version, no rewritten span.
