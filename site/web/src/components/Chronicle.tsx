@@ -277,11 +277,13 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
               <ol className="past-toc">
                 {past.chapters.map((chapter) => (
                   <li key={chapter.n} className={`past-toc-row${chapter.written ? '' : ' is-empty'}`}>
-                    <span className="past-toc-n">{String(chapter.n).padStart(2, '0')}</span>
+                    <span className="past-toc-facts">
+                      <span className="past-toc-n">{String(chapter.n).padStart(2, '0')}</span>
+                      {chapter.written ? <span className="past-toc-meta">{formatChars(chapter.chars)}</span> : null}
+                    </span>
                     <span className="past-toc-title">
                       {chapter.written ? (chapter.title ?? `глава ${chapter.n}`) : 'ещё не написана'}
                     </span>
-                    {chapter.written ? <span className="past-toc-meta">{formatChars(chapter.chars)}</span> : null}
                   </li>
                 ))}
               </ol>

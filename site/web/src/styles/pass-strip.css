@@ -13,7 +13,8 @@
   border-top: 1px solid var(--rule-2);
   border-bottom: 1px solid var(--rule);
   background: var(--paper-2);
-  font-family: var(--label);
+  /* The strip's facts are marks: mono 12 covers the head, the rail and the receipt (§2). */
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 18px;
   color: var(--ink-2);
@@ -45,11 +46,10 @@
   margin: 0;
   min-width: 0;
   overflow: hidden;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 18px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
   white-space: nowrap;
 }
@@ -76,8 +76,8 @@
   padding: 0;
   border: 0;
   background: none;
-  font-family: var(--ui);
-  font-size: var(--fs-meta);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 1;
   color: var(--ink-3);
   cursor: pointer;
@@ -163,9 +163,12 @@
   min-height: 100px;
   padding: 4px 0 0;
 }
+/* BOOK-128 comment 3900 §1 (audit 33) — the rail line is one register: the live row's word is
+   mono 12 beside its time, like every other row. The paragraph the pass quotes keeps its own
+   serif inside `.pass-row-live`; the line above it does not. */
 .pass-row[data-state='live'] .pass-row-word {
-  font-family: var(--ui);
-  font-size: var(--fs-note);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 20px;
   color: var(--ink);
 }

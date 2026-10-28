@@ -33,7 +33,6 @@
   gap: 24px;
 }
 .brand {
-  letter-spacing: 0.16em;
   color: var(--ink-2);
 }
 
@@ -97,22 +96,24 @@
   overflow-wrap: break-word;
   hyphens: manual;
 }
+/* The byline is a name — the one 13 px line of the cover, mono and lowercase as written
+   (BOOK-128 #3900: the cover's caps are retired with the label register). */
 .author {
   margin: 24px 0 0;
   font-family: var(--mono);
   font-size: var(--fs-label);
   font-weight: 400;
   line-height: 1.5;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
-/* «+ 3» — a reference chip beside the signature: 12 px mono, tabular, one line. Zero readers
-   print nothing at all (BOOK-70). */
+/* «+ 3» — a reference chip beside the signature: the byline's own 13 px rung and line box, so
+   the line is one face at one size. Zero readers print nothing at all (BOOK-70). */
 .author-plus {
   font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.02em;
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -130,16 +131,16 @@
   color: var(--ink-2);
   text-wrap: pretty;
 }
-/* `.kicker` and `.copyright` stay: LegalPage and the colophon use them. */
+/* `.kicker` and `.copyright` stay: LegalPage and the colophon use them. Both are marks — the
+   mono 12 face and the tracking come from `base.css`; nothing here shouts. */
 .kicker {
-  letter-spacing: 0.18em;
   color: var(--ink-3);
 }
 /* BOOK-92 retired `p.premise`; BOOK-88's flush-left tweak of that rule went with it. */
 .copyright {
   margin: 7px 0 0;
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 
@@ -173,27 +174,30 @@
 }
 
 /* a failing fetch is a sentence and a retry, never a spinner. BOOK-88: the row is prose — the
-   one rule in base.css caps it at the measure, flush left, and the retry sits on that edge. */
+   one rule in base.css caps it at the measure, flush left, and the retry sits on that edge.
+   Serif 15 (§2, audit #9): the sentence is read; the retry is the one mark on the line. */
 .state-line {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   padding: 44px 0;
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  letter-spacing: 0;
+  line-height: 1.5;
   color: var(--ink-3);
 }
 .state-line button {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   padding-bottom: 2px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  letter-spacing: 0.14em;
 }
 
 /* ---------- page 2: the annotation as the book's first prose (BOOK-DOC-5 §3) ---------- */
@@ -226,10 +230,9 @@
 }
 .authors-title {
   margin: 0;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .authors-note,
@@ -244,11 +247,10 @@
   padding: 0;
   list-style: none;
 }
+/* BOOK-128 #3900 §1 (audit #29) — two lines, one register each: the name on line 1, the
+   role and the share under it, both at the mark rung. */
 .authors-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 12px;
-  align-items: baseline;
+  display: block;
   padding: 8px 0;
   border-top: 1px solid var(--rule);
 }
@@ -257,20 +259,26 @@
   font-size: var(--fs-body);
 }
 .authors-name {
+  display: block;
   font-size: var(--fs-note);
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+.authors-meta {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 2px;
+}
 .authors-role {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .authors-share {
   font-family: var(--mono);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-micro);
   font-variant-numeric: tabular-nums;
   color: var(--ink-2);
 }
@@ -278,10 +286,9 @@
    its own. The rule is the site's register for it on both surfaces: mono at the 12 px floor,
    the quiet ink, the house underline, and no box of its own — the row owns the space, the link
    owns the words. `.page` scopes it above the footer's shared `.colophon a` target, so the
-   44 px one below is the one that paints. The footer's `.colophon` inherits the label register
-   (`base.css`: uppercase, 0.12em tracking), so the two lines that follow keep this one control
-   in its own voice: a lowercase verb, near-normal tracking, in the end matter and in the
-   footer alike — one component, one register. */
+   44 px one below is the one that paints. The voice is stated here (lowercase, near-normal
+   tracking) so the one control reads the same in the end matter and in the footer, whichever
+   register its row carries. */
 .page .export-link {
   display: inline-flex;
   align-items: center;
@@ -311,10 +318,9 @@
 }
 .own-trace-title {
   margin: 0;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .own-trace-line {
@@ -333,10 +339,9 @@
   padding: 0;
   border: 0;
   background: none;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -355,10 +360,9 @@
 }
 .own-decisions-title {
   margin: 0;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .own-decisions-list {
@@ -399,14 +403,15 @@
   flex-wrap: wrap;
   gap: 4px 10px;
   margin: 6px 0 0;
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .own-decision-open {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
   text-decoration: underline;
   text-underline-offset: 4px;

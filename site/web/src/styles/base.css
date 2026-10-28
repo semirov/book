@@ -138,34 +138,33 @@ h3 {
   scroll-margin-bottom: var(--offset-bottom);
 }
 
-/* labels: the voice of the form, never the voice of the book */
+/* marks: the apparatus, never the voice of the book. One line, mono 12 px, lowercase as
+   written — a state word, a numeral, a time, an id, a count, an action, a form label.
+   BOOK-128 #3900 §2: the former `--label` register is gone; anything that is a sentence a
+   reader reads is serif (prose), anything that is a mark is this. */
 .lbl,
 .kicker,
 .ch-meta,
 .sec-meta,
-.qline,
 .counter,
 .chint,
 .ctext,
-.fine,
 .top-row,
-.colophon,
 .pf-top,
 .pf-pair b,
 .pf-note,
 .mark {
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   font-weight: 400;
-  font-size: var(--fs-label);
+  letter-spacing: 0;
   line-height: 1.35;
   color: var(--ink-3);
 }
 
 /* A stamp is one of two things, and they are no longer one class (BOOK-70): a **moment** is
-   data — mono, tabular, sentence case — and a **state** is a one-word chip in the label's
-   voice. `.stamp` used to be both, so a clock and a status shared a face. */
+   data — mono, tabular, sentence case — and a **state** is a one-word chip, the mark register's
+   mono 12 lowercase. `.stamp` used to be both, so a clock and a status shared a face. */
 .stamp-time,
 .stamp-state {
   white-space: nowrap;
@@ -178,12 +177,11 @@ h3 {
   color: var(--ink-3);
 }
 .stamp-state {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   line-height: 1.35;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 /* The one state that is happening now — the change is being applied. Finality is the verb's

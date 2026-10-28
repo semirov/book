@@ -38,18 +38,20 @@
   gap: 8px;
 }
 .filing-title {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
 }
+/* The card's one close: the row's mark face and size (§2). */
 .filing-close {
   margin-left: auto;
   width: 44px;
   height: 44px;
   border: 0;
   background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
   cursor: pointer;
 }
@@ -69,10 +71,12 @@
 /* BOOK-168 — the one line a card owes the reader when its landing fell back to the chapter:
    the paragraph the filing quotes is gone, so the card says what changed instead of pointing
    at a neighbour that was never filed on. */
+/* The card's sentences and its compact fact lines (§2): serif 15 for the sentence, serif 14
+   for the facts — the reader's own words are never the third face. */
 .filing-place-note {
   margin: 0;
-  font-family: var(--ui);
-  font-size: var(--fs-meta);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--ink-3);
 }
@@ -83,17 +87,16 @@
   line-height: 1.6;
   color: var(--ink);
 }
-/* The filing's state, printed once (BOOK-70): a chip — 12 px, the label's voice, one line,
+/* The filing's state, printed once (BOOK-70): a chip — mono 12, lowercase as written, one line,
    one of two inks. `ink-live` while it is in work, `ink-quiet` for everything settled; the
    tone class still travels on the element, but a chip may not take a third ink. */
 .filing-state {
   margin: 0;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   line-height: 1.35;
-  text-transform: uppercase;
   white-space: nowrap;
   color: var(--ink-3);
 }
@@ -111,9 +114,11 @@
   text-transform: none;
   color: var(--ink-2);
 }
+/* The card's compact fact lines (§2): serif 14 — a fact is read, not stamped, and it is
+   never the retired `--ui` face. */
 .filing-fact {
   margin: 0;
-  font-family: var(--ui);
+  font-family: var(--serif);
   font-size: var(--fs-meta);
   color: var(--ink-3);
 }
@@ -127,7 +132,7 @@
   gap: 4px;
 }
 .filing-attempt {
-  font-family: var(--ui);
+  font-family: var(--serif);
   font-size: var(--fs-meta);
   line-height: 1.45;
   color: var(--ink-3);

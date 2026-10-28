@@ -181,6 +181,7 @@
     opacity: 0;
   }
 }
+/* The act is a mark: mono 12, lowercase, no tracking (§2, audit #10). */
 .rec-cta {
   margin-left: auto;
   min-height: 44px;
@@ -189,10 +190,9 @@
   padding: 0;
   border: 0;
   background: none;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   cursor: pointer;
 }
@@ -202,12 +202,12 @@
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink);
 }
+/* The one close: the row's mark face and the row's size (§2, audit #10). */
 .rec-close {
   flex: none;
   width: 44px;
@@ -216,8 +216,9 @@
   padding: 0;
   border: 0;
   background: none;
+  font-family: var(--mono);
   color: var(--ink-3);
-  font-size: 15px;
+  font-size: var(--fs-micro);
   cursor: pointer;
 }
 .rec-close:focus-visible,
@@ -230,20 +231,20 @@
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }
-/* The one line a state cannot carry — never a second row of chrome. */
+/* The sentences the record's state needs (§2, audit #12): serif 15, never the mono floor — a
+   sentence is not a mark. The facts above them (`.rec-hand`, `.rec-state`, `.rec-row-facts`)
+   keep their mono 12. */
 .rec-state-line,
 .rec-frame-note,
 .rec-empty {
   margin: 0 0 8px;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
   color: var(--ink-3);
 }
+/* The frozen frame's line is a fact about the text, in the reader's own ink. */
 .rec-frame-note {
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  line-height: 1.4;
   color: var(--ink-2);
 }
 
@@ -332,8 +333,10 @@
 }
 .rec-row-specimen {
   margin-top: 2px;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
+  /* The pair is the book's own words — prose, so serif; a compact fragment at the fact rung,
+     clamped (audit #14, the row's second line). */
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
   line-height: 1.35;
   color: var(--ink-3);
   /* The pair wraps to two lines, then ellipsises: the row grows, it never clips a word. */
@@ -396,15 +399,16 @@
   line-height: 1.4;
   color: var(--ink);
 }
+/* The receipt and the reason lines are sentences (§2, audit #12): serif 15, no tracking. */
 .rec-line {
   margin: 0;
   min-height: 24.8px;
   display: flex;
   align-items: center;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.4;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 .rec-quiet {
   color: var(--ink-3);

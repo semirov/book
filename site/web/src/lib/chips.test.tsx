@@ -291,7 +291,8 @@ describe('the removed chips are gone from their surfaces', () => {
   });
 
   it('prints the register’s zero as a sentence', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} live />);
+    // §1: the zero is a claim about the whole thread, so it is printed over a complete page.
+    const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />);
     expect(html).toContain('замечаний нет');
     expect(html).toContain('в очереди пусто');
     expect(html).not.toContain('0 замечаний');

@@ -37,15 +37,17 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     return found;
   }
 
-  /** The label declarations a rule is missing, or has lost to another face (BOOK-70, BOOK-92). */
-  const LABEL_VOICE: Record<string, string> = {
-    'font-family': 'var(--label)',
-    'font-size': 'var(--fs-label)',
+  /** The mark declarations a rule is missing, or has lost to another face (BOOK-70, BOOK-92,
+   *  BOOK-128 #3900): the legal page's kicker is a mark — mono 12, the quiet ink — never a
+   *  serif sentence and never the retired label face. */
+  const MARK_VOICE: Record<string, string> = {
+    'font-family': 'var(--mono)',
+    'font-size': 'var(--fs-micro)',
     color: 'var(--ink-3)',
   };
 
   function missingVoice(rule: ParsedRule): string[] {
-    return Object.entries(LABEL_VOICE)
+    return Object.entries(MARK_VOICE)
       .filter(([property, value]) => rule.declarations[property] !== value)
       .map(([property, value]) => `${property}: ${value}`);
   }
@@ -183,10 +185,12 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
   it('sets the title block, the sections and the lists on the book’s steps', () => {
     const kicker = winning('.legal .kicker');
     expect(sides(kicker)).toEqual(['0', '0', '8px', '0']);
-    // The kicker is the book's label, not `.legal p`'s serif body: face, size and ink are the
-    // label's, and only the declarations `.legal p` would steal are restated here.
+    // The kicker is a mark, not `.legal p`'s serif body: face, size and ink are the mark's
+    // (`--mono` at the 12 px floor), and only the declarations `.legal p` would steal are
+    // restated here.
     expect(missingVoice(kicker)).toEqual([]);
     expect(kicker.declarations['line-height']).toBe('1.35');
+    expect(kicker.declarations['letter-spacing']).toBe('0');
 
     const title = winning('.legal .title');
     expect(sides(title)).toEqual(['0', '0', '24px', '0']);
@@ -194,8 +198,16 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     expect(title.declarations['font-size']).toBe('clamp(28px, 6vw, 40px)');
     expect(title.declarations['line-height']).toBe('1.12');
 
+    // A document's headings are words of the document (BOOK-128 #3900): serif at the body size,
+    // lowercase as written, no tracking — never the retired label face.
+    const heading = winning('.legal h2');
+    expect(sides(heading)).toEqual(['0', '0', '12px', '0']);
+    expect(heading.declarations['font-family']).toBe('var(--serif)');
+    expect(heading.declarations['font-size']).toBe('var(--fs-body)');
+    expect(heading.declarations['letter-spacing']).toBe('0');
+    expect(heading.declarations['text-transform']).toBeUndefined();
+
     expect(winning('.legal section').declarations['margin-top']).toBe('32px');
-    expect(sides(winning('.legal h2'))).toEqual(['0', '0', '12px', '0']);
 
     // A list is a paragraph too: P→UL and UL→P are the same 12px step, so a list is not a card
     // of its own and the paragraph after it does not read as part of it.
@@ -225,48 +237,51 @@ describe('BOOK-92 — the legal pages, one spacing style', () => {
     );
   });
 
-  it('rejects a kicker that loses the label voice to `.legal p`', () => {
+  it('rejects a kicker that loses the mark voice to `.legal p`', () => {
     const kicker = (body: string): ParsedRule =>
       winning('.legal .kicker', { legal: `.legal .kicker { ${body} }` });
     // The shape the defect had: a margin only, so `.legal p` owns the face, the size and the ink.
     expect(missingVoice(kicker('margin: 0 0 8px'))).toEqual([
-      'font-family: var(--label)',
-      'font-size: var(--fs-label)',
+      'font-family: var(--mono)',
+      'font-size: var(--fs-micro)',
       'color: var(--ink-3)',
     ]);
     // One stolen declaration at a time is still a finding, and it names the one that is gone.
     expect(
       missingVoice(
         kicker(
-          'margin: 0 0 8px; font-family: var(--label); font-size: var(--fs-label); color: var(--ink-2)',
+          'margin: 0 0 8px; font-family: var(--mono); font-size: var(--fs-micro); color: var(--ink-2)',
         ),
       ),
     ).toEqual(['color: var(--ink-3)']);
+    // A sentence's face on a mark is the same defect as a missing one: the label face is
+    // retired, so the seed names the serif a coder might reach for instead.
     expect(
       missingVoice(
         kicker(
-          'margin: 0 0 8px; font-family: var(--sans); font-size: var(--fs-label); color: var(--ink-3)',
+          'margin: 0 0 8px; font-family: var(--serif); font-size: var(--fs-micro); color: var(--ink-3)',
         ),
       ),
-    ).toEqual(['font-family: var(--label)']);
+    ).toEqual(['font-family: var(--mono)']);
     // Reordered declarations and a four-value margin are the same kicker.
     expect(
       missingVoice(
         kicker(
-          'color: var(--ink-3); font-size: var(--fs-label); margin: 0 0 8px 0; font-family: var(--label)',
+          'color: var(--ink-3); font-size: var(--fs-micro); margin: 0 0 8px 0; font-family: var(--mono)',
         ),
       ),
     ).toEqual([]);
     expect(sides(kicker('margin: 0 0 8px 0'))).toEqual(['0', '0', '8px', '0']);
   });
 
-  it('sets the footer nav as a label, so `.legal p` cannot reset it to a serif body', () => {
+  it('sets the footer nav as a mark, so `.legal p` cannot reset it to a serif body', () => {
     const nav = winning('.legal .legal-nav');
     expect(nav.declarations['margin-top']).toBe('24px');
-    expect(nav.declarations['font-family']).toBe('var(--label)');
+    expect(nav.declarations['font-family']).toBe('var(--mono)');
     expect(nav.declarations['font-size']).toBe('var(--fs-micro)');
-    expect(nav.declarations['letter-spacing']).toBe('0.08em');
-    expect(nav.declarations['text-transform']).toBe('uppercase');
+    expect(nav.declarations['letter-spacing']).toBe('0');
+    // No case transform: the register is lowercase as written (BOOK-128 #3900 §3).
+    expect(nav.declarations['text-transform']).toBeUndefined();
     expect(nav.declarations.display).toBe('flex');
     expect(nav.declarations.gap).toBe('18px');
     // The bare selectors are gone: a `.legal-nav` rule at (0,1,0) loses to `.legal p`.

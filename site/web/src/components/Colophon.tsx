@@ -92,7 +92,7 @@ export function Colophon({
               : `книга · ${state.chapters.count} ${plural(state.chapters.count, 'глава', 'главы', 'глав')} из ${TOTAL_CHAPTERS}`}
           </span>
         </div>
-        <div className="row">
+        <div className="row row-print">
           <span>печатается по ходу письма</span>
           <span className="mono">{formatNumber(state.chapters.totalChars)} зн.</span>
         </div>

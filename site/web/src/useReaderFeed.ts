@@ -34,6 +34,12 @@ export type ChapterFeed = {
 export function useReaderFeed() {
   const [changes, setChanges] = useState<ChangeSummaryDto[]>([]);
   const [comments, setComments] = useState<CommentDto[]>([]);
+  /**
+   * BOOK-128 #3900 §1 — the register may print a count only over a **complete** feed: the
+   * endpoint has no total, so `nextBefore === null` is the one proof that the 20 loaded rows
+   * are all of them. It starts false and stays false after a failed read (fail closed).
+   */
+  const [commentsComplete, setCommentsComplete] = useState(false);
   const [chapterFeed, setChapterFeed] = useState<Record<number, ChapterFeed>>({});
   const [decisions, setDecisions] = useState<MyDecisionsDto | null>(null);
   /**
@@ -73,9 +79,12 @@ export function useReaderFeed() {
    */
   const refreshComments = useCallback(async (chapter?: number) => {
     try {
-      setComments((await getComments({ limit: 20 })).items);
+      const page = await getComments({ limit: 20 });
+      setComments(page.items);
+      setCommentsComplete(page.nextBefore === null);
     } catch {
-      /* the next comment event or reconnect retries */
+      /* the next comment event or reconnect retries — and an unread page may not be counted */
+      setCommentsComplete(false);
     }
     if (chapter !== undefined) await refreshChapter(chapter);
   }, [refreshChapter]);
@@ -164,6 +173,7 @@ export function useReaderFeed() {
   return {
     changes,
     comments,
+    commentsComplete,
     chapterFeed,
     decisions,
     threadSettled,

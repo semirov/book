@@ -17,9 +17,9 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.08em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   text-transform: lowercase;
   color: var(--ink-3);
   padding: 4px 8px;
@@ -37,12 +37,12 @@
   padding: 8px 0 14px;
   border-bottom: 1px solid var(--rule-2);
 }
+/* The page's heading is a word of the document (audit #28): serif 18, lowercase, no tracking. */
 .chr-title {
-  font-family: var(--label);
+  font-family: var(--serif);
   font-size: var(--fs-body);
   font-weight: 400;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   margin: 0 0 6px;
   color: var(--ink-2);
 }
@@ -75,15 +75,17 @@
   margin-bottom: 8px;
   font-family: var(--mono);
 }
+/* BOOK-128 #3900 §1 (audit #26) — the readout, «сейчас» and the count are one register: the
+   moment drops from 15 to the 12 px mark rung, so the row is mono 12 end to end. */
 .scrub-moment {
-  font-size: var(--fs-note);
+  font-size: var(--fs-micro);
   color: var(--ink);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .scrub-moment-now {
-  font-family: var(--label);
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink-2);
 }
 .scrub-count {
@@ -164,11 +166,11 @@
   min-height: 44px;
   padding: 0;
   text-align: left;
-  font-family: var(--label);
+  font-family: var(--mono);
 }
 .chr-end-word {
-  font-size: var(--fs-label);
-  letter-spacing: 0.12em;
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   text-transform: lowercase;
   color: var(--ink-2);
 }
@@ -212,9 +214,9 @@
   margin-bottom: 14px;
 }
 .past-retry {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
 }
@@ -235,12 +237,11 @@
   padding: 0;
   border-top: 1px solid var(--rule);
 }
+/* BOOK-128 #3900 §1 (audit #27) — the facts (numeral, size) on a mono 12 line, the chapter's
+   title under it in serif 14. The empty row keeps its one honest sentence as that second line. */
 .past-toc-row {
-  display: grid;
-  grid-template-columns: 35px 1fr auto;
-  gap: 8px;
-  align-items: baseline;
-  padding: 4px 0;
+  display: block;
+  padding: 6px 0;
   border-bottom: 1px solid var(--rule);
   font-size: var(--fs-meta);
   color: var(--ink-2);
@@ -248,15 +249,22 @@
 .past-toc-row.is-empty {
   color: var(--ink-3);
 }
+.past-toc-facts {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
 .past-toc-n,
 .past-toc-meta,
 .past-ch-n {
   font-family: var(--mono);
-  font-size: var(--fs-meta);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .past-toc-title {
+  display: block;
   font-family: var(--serif);
+  font-size: var(--fs-meta);
 }
 .past-chapters {
   margin-top: 14px;
@@ -265,26 +273,38 @@
   border-bottom: 1px solid var(--rule);
   padding: 6px 0;
 }
+/* BOOK-128 #3900 §1 (audit #27) — the numeral on its own line, the chapter's title under it;
+   the `+` is a glyph in the right-hand track, one face (mono) and not a line of words. */
 .past-ch > summary {
-  display: flex;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
+  gap: 0 10px;
   cursor: pointer;
   list-style: none;
 }
 .past-ch > summary::-webkit-details-marker {
   display: none;
 }
+.past-ch-n {
+  grid-column: 1;
+}
 .past-ch > summary::after {
   content: '+';
-  margin-left: auto;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: center;
   font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 .past-ch[open] > summary::after {
   content: '−';
 }
 .past-ch-title {
+  display: block;
+  grid-column: 1;
+  font-family: var(--serif);
   font-size: var(--fs-note);
 }
 .past-p {
@@ -302,15 +322,29 @@
   margin: 18px 0 0;
   padding: 0;
 }
+/* BOOK-128 #3900 §1 (audit #25) — a row is two lines, not seven spans on one: the facts
+   (moment · place · state · cause · door) on a mono 12 line, and the pair the book wrote or the
+   reason it did not under them, in serif 14. The facts wrap between items; a date never splits. */
 .chr-row {
+  display: block;
+  border-bottom: 1px solid var(--rule);
+  padding: 8px 0;
+  color: var(--ink-2);
+}
+.chr-facts {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  border-bottom: 1px solid var(--rule);
-  padding: 8px 0;
-  font-size: var(--fs-note);
-  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+}
+.chr-prose {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
+  line-height: 1.45;
 }
 .chr-date {
   font-family: var(--mono);
@@ -322,9 +356,9 @@
 .chr-seq,
 .chr-place,
 .chr-cause {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.05em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -336,9 +370,9 @@
   color: var(--ink);
 }
 .chr-state {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.04em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-2);
   white-space: nowrap;
 }
@@ -352,9 +386,9 @@
 }
 .chr-change {
   margin-left: auto;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.06em;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   padding-bottom: 1px;
