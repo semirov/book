@@ -73,7 +73,8 @@ describe('runPass — one pass, end to end', () => {
       const spend = spendRow(harness, result.stepId ?? '');
       expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
       expect(Number(spend?.usd)).toBeGreaterThan(0);
-      expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
+      // Writer (3 000/600) plus the two prose gates (1 000/200 each): the step's whole pass.
+      expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 5_000, out: 1_000, cachedIn: 0 }));
 
       // 3. The premise settles as applied — the change is not a cascade.
       expect(harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(changeId)).toEqual({ status: 'done', outcome: 'applied', reason: 'вошло в первую редакцию главы 65' });

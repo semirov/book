@@ -93,6 +93,8 @@ const doneBody = z.object({
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
+  /** BOOK-117: `operator` closes on the model that answered; the default is the pinned lane. */
+  provenance: z.enum(['pipeline', 'operator']).optional(),
 });
 
 /** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
@@ -263,6 +265,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         model: body.model ?? '',
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
+        provenance: body.provenance,
       }),
     };
   });

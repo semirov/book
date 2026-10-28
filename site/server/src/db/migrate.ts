@@ -301,6 +301,17 @@ const MIGRATIONS: Migration[] = [
       widenPassSpend(db);
     },
   },
+  {
+    // BOOK-117 (owner, 2026-10-28): who ran a pass. A 'pipeline' step is the writer lane on the
+    // pinned model; an 'operator' step is a repair that closes on the model it actually used.
+    // The ledger keeps the same word, so the money and the history agree about the provenance.
+    // v21, not v20: BOOK-158 took 20 first, and an install may already have run it.
+    to: 21,
+    up(db) {
+      addColumn(db, 'steps', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
+      addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
+    },
+  },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

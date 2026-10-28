@@ -15,6 +15,8 @@ export type CloseStepInput = {
   model: string | null;
   tokensIn: number;
   tokensOut: number;
+  /** Who ran the pass (`pipeline` | `operator`): the history answers «machine or repair». */
+  provenance?: 'pipeline' | 'operator' | null;
   /** The change's outcome, decided from relevance before the write (void/dropped or applied). */
   changeOutcome?: ChangeOutcome | null;
   /** Overrides for a step that closes a change without editing it (void/dropped). */

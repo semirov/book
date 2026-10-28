@@ -24,7 +24,7 @@
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -83,6 +83,8 @@ export const STEPS_TABLE_SQL = `CREATE TABLE steps (                            
   -- A refusal is never stored here: the law's own class refuses the land, a quote is a flag.
   rights_scan TEXT,
   closed_at   TEXT,
+  -- BOOK-117: who ran the pass — 'pipeline' (the lane on the pin) or 'operator' (a repair).
+  provenance  TEXT CHECK (provenance IN ('pipeline','operator')),
   UNIQUE (cascade_id, seq)
 );
 CREATE INDEX steps_chapter ON steps(chapter, at);
