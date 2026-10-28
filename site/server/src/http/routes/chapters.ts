@@ -2,8 +2,9 @@ import { TOTAL_CHAPTERS, isChapterNumber, type ChapterDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { getChapterRow, listBlocks } from '../../db/repo/chapters.ts';
+import { frameBlockOf, frameOf } from '../../db/repo/frame.ts';
 import { chapterEtag } from '../../util/etag.ts';
-import { checkFrameDrift, frameFile } from '../frameDrift.ts';
+import { checkFrameDrift, framePositionOf, frameSource } from '../frameDrift.ts';
 import type { RouteDeps } from '../deps.ts';
 
 const paramsSchema = {
@@ -14,17 +15,17 @@ const paramsSchema = {
 } as const;
 
 /**
- * The frame files already reported as unreadable in this process. A mount that is gone answers
- * every request the same way, so the line is written once — an operator reads one reason, not
- * a log flood; `ch01` and `ch42` are separate files and report separately.
+ * The frame rows already reported as unreadable in this process. A volume that lost its row
+ * answers every request the same way, so the line is written once — an operator reads one reason,
+ * not a log flood; `1/first` and `42/last` are separate rows and report separately.
  */
 const unreadableReported = new Set<string>();
 
 /**
- * The drift already reported, per frame file: the pair of texts, not a flag. A projection that
- * stays wrong would otherwise write both paragraphs into the log on every reader's page view;
- * one line per *distinct* drift is news, a repeat is not. Agreement clears the entry, so the
- * same drift coming back later is reported again.
+ * The drift already reported, per frame row: the pair of texts, not a flag. A row that stays
+ * wrong would otherwise write both paragraphs into the log on every reader's page view; one line
+ * per *distinct* drift is news, a repeat is not. Agreement clears the entry, so the same drift
+ * coming back later is reported again.
  */
 const loggedDrift = new Map<string, string>();
 
@@ -40,7 +41,31 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
       // A basis-only slot is not one: it carries the frozen frame as its one paragraph and
       // is served like prose, while the catalog keeps it `written: false` (BOOK-6). The cache
       // policy is the app's (`http/cache.ts`), so the 404 carries none of its own (BOOK-109).
-      return reply.code(404).send({ code: 'NOT_WRITTEN', message: 'chapter is not written yet' });
+      //
+      // BOOK-187 AC3: before the book has a chapter, ch01 and ch42 are still those sentences —
+      // so the **row** is served as the slot's one basis block. A fresh v28 volume has no
+      // `chapters` row at all, and a constant compiled into the image is not a source: what a
+      // reader is given here is what the volume says, which is what `book_frame` is for. No
+      // drift check on this branch: the block *is* the row that check would compare it with.
+      const position = framePositionOf(n);
+      const frame = position === null ? null : frameBlockOf(deps.db, n, position);
+      if (frame === null) {
+        return reply.code(404).send({ code: 'NOT_WRITTEN', message: 'chapter is not written yet' });
+      }
+      const basisBody: ChapterDto = {
+        n,
+        title: null,
+        rev: 0,
+        chars: 0,
+        basis: true,
+        blocks: [{ id: frame.id, i: 0, text: frame.text, hash: frame.hash }],
+        // Nothing was written: a basis sentence is not prose, so it has no written moment.
+        writtenAt: null,
+        updatedAt: null,
+      };
+      // The tag names the projection like every other answer (BOOK-6): rev 0 and `basis`.
+      reply.header('etag', `"${chapterEtag(n, 0, true)}"`);
+      return reply.send(basisBody);
     }
 
     const blocks = listBlocks(deps.db, n);
@@ -60,25 +85,26 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
       })),
     };
 
-    // BOOK-109: the frame the reader is about to see against the one the file holds. Only
-    // ch01/ch42 cost a read, and only a real disagreement is logged — with both strings, so
-    // the line says which side is wrong without a second request. Each distinct drift is one
-    // line: a page view is not news (see `loggedDrift`).
-    const check = checkFrameDrift({ bookRoot: deps.config.bookRoot }, n, blocks);
+    // BOOK-109 / BOOK-187: the frame the reader is about to see against the row `book_frame`
+    // holds. Only ch01/ch42 cost a row, and only a real disagreement is logged — with both
+    // strings, so the line says which side is wrong without a second request. Each distinct drift
+    // is one line: a page view is not news (see `loggedDrift`).
+    const check = checkFrameDrift({ frameOf: (chapter, position) => frameOf(deps.db, chapter, position) }, n, blocks);
     if (check === null) {
       // Back in agreement: forget the drift, so a recurrence is reported again.
-      if (n === 1 || n === TOTAL_CHAPTERS) loggedDrift.delete(frameFile(deps.config.bookRoot, n));
+      const position = framePositionOf(n);
+      if (position !== null) loggedDrift.delete(frameSource(n, position));
     } else if ('unreadable' in check) {
-      if (!unreadableReported.has(check.file)) {
-        unreadableReported.add(check.file);
-        request.log.error({ chapter: n, file: check.file, reason: check.unreadable }, 'FRAME_DRIFT unreadable');
+      if (!unreadableReported.has(check.source)) {
+        unreadableReported.add(check.source);
+        request.log.error({ chapter: n, source: check.source, reason: check.unreadable }, 'FRAME_DRIFT unreadable');
       }
     } else {
-      const signature = `${check.served}\n${check.manuscript}`;
-      if (loggedDrift.get(check.file) !== signature) {
-        loggedDrift.set(check.file, signature);
+      const signature = `${check.served}\n${check.stored}`;
+      if (loggedDrift.get(check.source) !== signature) {
+        loggedDrift.set(check.source, signature);
         request.log.error(
-          { chapter: n, file: check.file, served: check.served, manuscript: check.manuscript },
+          { chapter: n, source: check.source, served: check.served, stored: check.stored },
           'FRAME_DRIFT',
         );
       }

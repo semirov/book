@@ -309,7 +309,7 @@ describe('the cap lines and the states (BOOK-117)', () => {
   it('leaves a pending change pending and opens no step while the day is paused', () => {
     const fixture = createEngineFixture();
     try {
-      fixture.writeChapterBlocks(2, 'Глава 2', ['Глава 2 начинается.', 'Служебный абзац для объёма.']);
+      fixture.seedChapterBlocks(2, 'Глава 2', ['Глава 2 начинается.', 'Служебный абзац для объёма.']);
       const change = fixture.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'уточнить первый абзац' });
       seedSpend(fixture.db, '2026-10-25T09:00:00Z', 10.01);
 

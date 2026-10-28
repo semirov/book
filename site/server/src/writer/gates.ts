@@ -26,10 +26,10 @@ import {
   type RetroMode,
 } from '@book/shared';
 
-import { isWrittenChapter, readChapter } from '../engine/text.ts';
+import { isWrittenView } from '../engine/text.ts';
 import { RIGHTS_RULES } from '../rights/rules.ts';
 import { sha256Hex } from '../util/hash.ts';
-import { PromptError, rolePromptOf, type PromptSection } from './prompt.ts';
+import { PromptError, chapterQuote, rolePromptOf, type ChapterTextLookup, type PromptSection } from './prompt.ts';
 
 /** The canon the writer reads, and so the canon a gate judges against (`prompt.ts` CANON_FILES). */
 const CANON_FILES = ['concept/CONCEPT.md', 'concept/CLIMAX.md', 'style/VOICE.md', 'outline/PLAN.md'] as const;
@@ -45,8 +45,10 @@ export type GatePromptInput = {
   chapter: number;
   /** The assignment as the engine returned it; quoted as data, never as instruction. */
   assignment: unknown;
-  /** The text that landed: the gate reads what is on disk, not a summary of it. */
+  /** The text that landed: the gate reads the rows, not a summary of them. */
   landedText: string;
+  /** The written neighbours, from rows only (`POST /internal/text`, BOOK-187). */
+  chapterText: ChapterTextLookup;
   indexSlice: string | null;
   /** BOOK-145: why the previous answer was not parsed — one retry carries it back to the model. */
   refusal?: string | null;
@@ -100,16 +102,16 @@ function dataBlock(id: string, title: string, payload: string, note: string): Pa
   return part(id, [title, `${fence}text`, note, payload, fence].join('\n'));
 }
 
-function neighboursPart(bookRoot: string, chapter: number): Part {
+function neighboursPart(chapterText: ChapterTextLookup, chapter: number): Part {
   const lines: string[] = ['## Написанные соседи'];
   const written = [chapter - 1, chapter + 1]
     .filter((n) => isChapterNumber(n))
-    .map((n) => ({ n, text: readChapter(bookRoot, n) }))
-    .filter((entry) => isWrittenChapter(entry.text));
+    .map((n) => chapterText(n))
+    .filter((view) => isWrittenView(view));
   if (written.length === 0) {
     lines.push('соседних глав ещё нет');
   } else {
-    for (const entry of written) lines.push(`### Глава ${String(entry.n)}`, '', entry.text.text.trim());
+    for (const view of written) lines.push(`### Глава ${String(view.n)}`, '', chapterQuote(view));
   }
   return part('neighbours', lines.join('\n'));
 }
@@ -150,8 +152,8 @@ export function buildGatePrompt(input: GatePromptInput): BuiltGatePrompt {
   const role = roleSection(input.bookRoot, input.role);
   const parts: Part[] = [
     ...canonParts(input.bookRoot),
-    part('landed', ['## Просмотренная глава', `Глава ${String(input.chapter)} — текст на диске, дословно:`, '', input.landedText.trim()].join('\n')),
-    neighboursPart(input.bookRoot, input.chapter),
+    part('landed', ['## Просмотренная глава', `Глава ${String(input.chapter)} — текст главы, дословно:`, '', input.landedText.trim()].join('\n')),
+    neighboursPart(input.chapterText, input.chapter),
     dataBlock(
       'assignment',
       '## Задание',
@@ -325,7 +327,7 @@ export function buildRightsPrompt(input: {
   ].join('\n');
 
   const parts: Part[] = [
-    part('landed', ['## Проверяемая глава', `Глава ${String(input.chapter)} — текст на диске, дословно:`, '', input.landedText.trim()].join('\n')),
+    part('landed', ['## Проверяемая глава', `Глава ${String(input.chapter)} — текст главы, дословно:`, '', input.landedText.trim()].join('\n')),
     dataBlock(
       'scan',
       '## Что нашёл скан',

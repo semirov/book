@@ -28,6 +28,8 @@
     "frame:check": "node scripts/frame-check.mjs",
     "type:stability": "node scripts/type-stability.mjs",
     "validate": "node bin/validate.mjs",
+    "export:md": "node bin/export.mjs --format md",
+    "export:fb2": "node bin/export.mjs --format fb2",
     "start": "node server/dist/index.js",
     "engine": "node server/dist/engine.js",
     "engine:cli": "node bin/engine.mjs",

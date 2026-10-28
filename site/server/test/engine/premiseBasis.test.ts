@@ -19,8 +19,8 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
     const fixture = fixtureOf();
     try {
       // The real basis files: the ingest projects ch01/ch42 as rows (rev 0, one block).
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       expect(
         fixture.db
@@ -69,8 +69,8 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
   it('settles a premise left on a basis slot at reconcile, and keeps an empty chapter’s', () => {
     const fixture = fixtureOf();
     try {
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       // Rows from before the refusal existed: a premise is filed straight onto a basis slot and
       // onto an empty ch05, which is what BOOK-7 keeps waiting for its first draft.

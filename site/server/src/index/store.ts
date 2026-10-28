@@ -1,10 +1,11 @@
 /**
- * Where the derived index lives (BOOK-18 §1, §2).
+ * Where the derived index lives (BOOK-18 §1, §2; BOOK-187 AC2).
  *
  * One JSON artifact under the data directory — `<data>/index/derived-index.json` — carrying
  * `manuscriptHash` and every chapter's facts. **Storage choice:** a file, not a table, because
- * the index is a cache of the text: the manuscript hash keys it, a rebuild replaces it
+ * the index is a cache: the hash of the stored chapter shas keys it, a rebuild replaces it
  * wholesale, and no SQLite write path exists through which a hand edit could pose as canon.
+ * The text it summarises is read from rows (`build.ts`), never from a file.
  *
  * The artifact is the whole book, so it is never handed to a session. An editor gets a
  * **slice** — `<data>/index/slices/chNN.json`, one chapter plus its neighbours — written on
@@ -20,10 +21,11 @@ import { dirname, join } from 'node:path';
 
 import { TOTAL_CHAPTERS, chapterLabel } from '@book/shared';
 
+import type { Db } from '../db/db.ts';
 import { buildIndex } from './build.ts';
 import { INDEX_VERSION, SLICE_RADIUS, type DerivedIndex, type IndexSlice } from './types.ts';
 
-export type IndexInput = { bookRoot: string; dataDir: string };
+export type IndexInput = { db: Db; dataDir: string };
 
 export function artifactPath(dataDir: string): string {
   return join(dataDir, 'index', 'derived-index.json');
@@ -50,9 +52,9 @@ function writeIfChanged(path: string, body: string): void {
   renameSync(temporary, path);
 }
 
-/** Rebuild from the text and replace the artifact when its bytes differ. */
+/** Rebuild from the rows and replace the artifact when its bytes differ. */
 export function ensureIndex(input: IndexInput): DerivedIndex {
-  const index = buildIndex(input.bookRoot);
+  const index = buildIndex(input.db);
   writeIfChanged(artifactPath(input.dataDir), renderIndex(index));
   return index;
 }
@@ -69,7 +71,7 @@ export function readIndex(dataDir: string): DerivedIndex | null {
   }
 }
 
-/** One chapter and its neighbours, clamped to the book — never the whole manuscript. */
+/** One chapter and its neighbours, clamped to the book — never the whole book. */
 export function sliceOf(index: DerivedIndex, chapter: number): IndexSlice {
   const low = Math.max(1, chapter - SLICE_RADIUS);
   const high = Math.min(TOTAL_CHAPTERS, chapter + SLICE_RADIUS);
@@ -82,7 +84,7 @@ export function sliceOf(index: DerivedIndex, chapter: number): IndexSlice {
 }
 
 /**
- * Rebuild from the text and return the slice's path, or `null` if anything went wrong. The
+ * Rebuild from the rows and return the slice's path, or `null` if anything went wrong. The
  * caller (a gate dispatch) must never treat `null` as an error: the slice is optional. A
  * failed build or write is handed to `onError` so the operator hears about it once.
  */

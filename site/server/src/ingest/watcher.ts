@@ -1,7 +1,7 @@
 /**
  * The watcher (ARCHITECTURE.md §6.1–6.2, §7 M2): chokidar in polling mode because
  * fsevents do not reliably cross the OrbStack VM boundary, one path at a time, bursts
- * coalesced, and the same per-file ingestion the boot scan uses.
+ * coalesced, and the same per-file ingestion the boot scan uses (BOOK-187: nothing attaches it).
  *
  * It reports facts, never inference: a write that matches no live lease is published and
  * flagged `attributed: false` (leases arrive with the engine in M3).

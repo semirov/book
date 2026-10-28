@@ -290,14 +290,38 @@ export type ChapterDto = {
   /** True when the whole chapter is its basis sentence: prose to read, not a written chapter. */
   basis: boolean;
   blocks: BlockDto[];
-  writtenAt: string;
-  updatedAt: string;
+  /**
+   * BOOK-187 AC3: the moment the prose was written — `null` on a basis-only slot served from
+   * `book_frame` before the chapter has a row, because nothing was written. A written chapter
+   * always carries both.
+   */
+  writtenAt: string | null;
+  updatedAt: string | null;
 };
 
 export type ApiErrorBody = {
   code: string;
   message: string;
   retryAfterMs?: number;
+};
+
+/**
+ * BOOK-187 AC5: the writer lane's day as the volume holds it — the counter that used to be
+ * `writer/state.json`. It is the lane's own bookkeeping (how many passes today, when the last
+ * one spent money, until when it is told to wait), never the text: a reader of this object
+ * learns how busy the lane is and nothing about the book.
+ *
+ * `day` is the caller's clock (`YYYY-MM-DD`, UTC). A row for another day reads as a fresh day,
+ * so the counter is per-day by construction and no midnight job has to reset it.
+ */
+export type WriterStateDto = {
+  day: string;
+  /** Passes that spent money on `day` — closed or parked, never an idle or refused one. */
+  passes: number;
+  /** ISO moment of the last spending pass, null when none has run. */
+  lastPassAt: string | null;
+  /** ISO moment the lane may run again, null when it was not told to wait. */
+  pauseUntil: string | null;
 };
 
 /**
@@ -320,6 +344,16 @@ export type HealthDto = {
   startedAt: string;
   watcher: { lastTickAt: string | null; lastEventAt: string | null; missing: boolean };
   engine: { status: EngineStatus };
+  /**
+   * BOOK-187: the schema version the volume was migrated to (0 = never stamped), the two hashes of
+   * the frame rows it holds (null when a row is absent), and the image's prompt-bundle hash when it
+   * differs from the one the volume recorded — a rollback's fingerprint, null while they agree.
+   */
+  schema_version: number;
+  frame: { first: string | null; last: string | null };
+  prompt_drift: string | null;
+  /** BOOK-187 AC5: the lane's counters, read from `writer_state`; null before the first pass. */
+  writer: WriterStateDto | null;
 };
 
 /** `GET /api/admin/health` — the operator's half of the health, token-guarded (§17). */

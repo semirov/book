@@ -41,7 +41,9 @@ export function usePrintingReveal(input: {
   const startReveal = useCallback(
     (loaded: ChapterDto, changed: ReadonlySet<string> | null) => {
       const reduce = reducedMotion();
-      const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : Date.now() - Date.parse(loaded.writtenAt);
+      // `null` for a basis slot served before its chapter exists (BOOK-187 AC3): just written.
+      const writtenAt = loaded.writtenAt === null ? Number.NaN : Date.parse(loaded.writtenAt);
+      const ageMs = Number.isNaN(writtenAt) ? 0 : Date.now() - writtenAt;
       const plan = planReveal({
         blocks: loaded.blocks,
         mode: changed === null ? (input.fresh ? 'live' : 'join') : 'change',

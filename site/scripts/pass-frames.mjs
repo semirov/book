@@ -18,14 +18,15 @@
  * How (local only, prod is never written):
  *   1. `npm run build` — the frames are of the shipped bundle, and its service worker exists (the
  *      dev server serves `/sw.js` as `index.html`, which is a console error, not a renderee).
- *   2. `VACUUM INTO` a temp copy of `~/book-site-data/book.db` (`sqlite3 -readonly`) with this
- *      checkout's `manuscript/` beside it; `DATA_DIR`/`BOOK_ROOT` point there, so the data-dir
- *      guard sees a non-production boot on a scratch dir. The copy is schema v21 and this branch
- *      understands v20; v21 added two nullable columns, so only the copy's `user_version` is
- *      pinned to 20. Nothing else in the copy changes but the two replayed rows.
+ *   2. `VACUUM INTO` a temp copy of `~/book-site-data/book.db` (`sqlite3 -readonly`);
+ *      `DATA_DIR`/`BOOK_ROOT` point at scratch dirs, so the data-dir guard sees a non-production
+ *      boot. BOOK-187: the served text is rows, so nothing is copied from a manuscript and the
+ *      pass's edit is one `UPDATE blocks` in the copy; the copy's `user_version` is pinned to 20
+ *      (v21 added two nullable columns this branch does not know). Nothing else changes but the
+ *      edited block and the two replayed rows.
  *   3. `node server/dist/index.js` on :8092 serves the API, the socket and the built SPA.
  *   4. Chromium (Playwright's binary) over raw CDP (scripts/lib/cdp.mjs) — no package.
- *   5. One transaction per run: the temp chapter file gets the edit and two `pass_stages` rows
+ *   5. One transaction per run: the copy's block gets the edit and two `pass_stages` rows
  *      (`landed`, then `typing`, one pass id) go into the temp store. The stage tailer publishes
  *      them within its 500 ms tick; the page mounts `LivePass` for that block.
  *   6. Frames at 0/250/600/1000/1500/2200/3000 ms after the first `.p-pass`; the line boxes are
@@ -43,12 +44,12 @@
  *   node scripts/pass-frames.mjs --out DIR     put the jpegs and report.json elsewhere
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import { chromiumBinary, Cdp, killTree, launchChromium, portIsFree, spawnLogged, waitForUrl } from './lib/cdp.mjs';
-import { buildSite, prepareTemp, replayPass, SITE, storedStages, WORKTREE } from './lib/passBook.mjs';
+import { buildSite, PROD_DB, prepareTemp, replayPass, SITE, storedStages, WORKTREE } from './lib/passBook.mjs';
 import { compareLines, graphemes, measure, measureDoorEffect, spanOf, waitForState } from './lib/passProbe.mjs';
 
 // 8091 is the deployed site on this host and 9333 a browser a person may have open: stay clear.
@@ -152,16 +153,16 @@ async function openPage(cdp, run) {
   await sleep(300);
 }
 
-/** The run's facts before the page opens: block, file, edit, span, and the surviving locator. */
-async function prepareRun(run, dir) {
+/** The run's facts before the page opens: block, edit, span, and the surviving locator. */
+async function prepareRun(run) {
   const chapter = await (await fetch(`${API}/api/chapters/${run.chapter}`)).json();
   const block = chapter.blocks[run.blockIndex];
   if (block === undefined) fail(`chapter ${run.chapter} has no block ${run.blockIndex}`);
   if (!block.text.includes(run.phrase)) fail(`block ${block.id} does not hold the phrase`);
-  const file = join(dir, 'book', 'manuscript', `ch${String(run.chapter).padStart(2, '0')}.md`);
-  const source = readFileSync(file, 'utf8');
+  // BOOK-187: the chapter's text is the rows the API just served, not a file.
+  const source = chapter.blocks.map((entry) => entry.text).join('\n\n');
   const occurrences = source.split(run.phrase).length - 1;
-  if (occurrences !== 1) fail(`the phrase occurs ${occurrences} times in ${file}, expected once`);
+  if (occurrences !== 1) fail(`the phrase occurs ${occurrences} times in chapter ${run.chapter}, expected once`);
   // The locator is the paragraph's tail: unchanged by the edit, so it finds the block before,
   // during (the renderer paints the new text) and after (the ordinary paragraph).
   const locator = block.text.slice(-45);
@@ -182,7 +183,7 @@ async function prepareRun(run, dir) {
     phraseLength: run.phrase.length,
     runGraphemes: graphemes(span.after).length,
   };
-  Object.assign(run, { block, file, source, after, locator, span, offsets });
+  Object.assign(run, { block, source, after, locator, span, offsets });
   log(
     `${run.width}: chapter ${run.chapter}, block ${block.id}, ${graphemes(run.span.after).length} graphemes at offset ${run.span.offset}`,
   );
@@ -348,6 +349,12 @@ async function main() {
 
   await buildSite({ skip: skipBuild, log });
   const dir = await prepareTemp();
+  if (dir === null) {
+    // Dev-only: this harness photographs a pass in the live book's copy. With no volume there is
+    // nothing to photograph, and that is not a failure of the script.
+    log(`skipped: no volume to copy (${PROD_DB} is not there) — this run needs a local book`);
+    return;
+  }
   log(`temp book at ${dir}`);
   const server = spawnLogged('node', ['server/dist/index.js'], {
     cwd: SITE,
@@ -355,6 +362,7 @@ async function main() {
       ...process.env,
       PORT: String(PORT),
       DATA_DIR: join(dir, 'data'),
+      // Prompts and canon only: since BOOK-187 nothing reads a manuscript from here.
       BOOK_ROOT: join(dir, 'book'),
       FEEDBACK_DIR: join(dir, 'feedback'),
       WEB_DIST: join(SITE, 'web', 'dist', 'staging'),
@@ -400,7 +408,7 @@ async function main() {
 
     const runs = [];
     for (const run of RUNS) {
-      await prepareRun(run, dir);
+      await prepareRun(run);
       await openPage(cdp, run);
       runs.push(await runOnce({ cdp, run, dir, consoleLog }));
     }

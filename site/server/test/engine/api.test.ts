@@ -212,7 +212,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
 
       fixture.writeChapterBlocks(1, 'Начало', ['Изменённый абзац.']);
       const landed = await post('/internal/land', { leaseId: job.leaseId });
-      expect(landed.body.data).toMatchObject({ landed: true, changed: true, revAfter: 1 });
+      expect(landed.body.data).toMatchObject({ landed: true, changed: true, revAfter: 2 });
 
       expect((await post('/internal/next', { role: 'editor', session: 'editor-1' })).status).toBe(200);
       const editor = await post('/internal/verdict', {
@@ -292,8 +292,9 @@ describe('the internal API (§4.2, §6A.11)', () => {
       // BOOK-62: a prose step declares the pinned model, and `trace` prints it on the step and
       // on both gates — «which model wrote this chapter» without grepping.
       fixture.writeChapterBlocks(3, 'Глава', ['Служебный абзац для проверки объёма страницы.']);
+      const draftFile = fixture.stageFile(3); // BOOK-187: the text travels in the request.
       expect((await cli(url, ['start', assignment.leaseId])).code).toBe(0);
-      expect((await cli(url, ['land', assignment.leaseId])).code).toBe(0);
+      expect((await cli(url, ['land', assignment.leaseId, '--text', draftFile])).code).toBe(0);
       for (const role of ['editor', 'consultant']) {
         await cli(url, ['next', '--role', role, '--session', `${role}-1`]);
         const answer = await cli(url, [
@@ -330,13 +331,12 @@ describe('the internal API (§4.2, §6A.11)', () => {
       expect(missing.code).toBe(1);
       expect(missing.stderr).toContain('leaseId is required');
     } finally {
-      // `closeApp` closes both; only runs if the listen succeeded.
       if (closeApp === null) {
         await app.close();
         fixture.close();
       }
     }
-  });
+  }, 30_000); // a real CLI process per step: the 5 s default is tight under parallel workers
 
   it('refuses an intervention without an auditor FITS (BOOK-9)', async () => {
     const fixture = createEngineFixture({

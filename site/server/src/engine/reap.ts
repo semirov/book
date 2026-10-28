@@ -15,7 +15,7 @@ import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { lastLeaseOfStep, releaseLease, stampEscalatedRelease } from './leases.ts';
 import * as store from './store.ts';
-import { isWrittenChapter, readChapter, readFront } from './text.ts';
+import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
 import { isEngineError, type EngineDeps } from './types.ts';
 
 export type ReapReport = {
@@ -112,8 +112,8 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     const attempts = bumpAttempts(deps, lease.change_id);
 
     if (step.landed_at === null) {
-      const target = step.pass === 'front' ? readFront(deps.bookRoot) : null;
-      const chapter = step.chapter === null ? null : readChapter(deps.bookRoot, step.chapter);
+      const target = step.pass === 'front' ? readFrontRows(deps.db) : null;
+      const chapter = step.chapter === null ? null : readChapterRows(deps.db, step.chapter);
       // A basis-only slot is not a write: recovering the frame as "landed" would credit a
       // chapter nobody wrote (§BOOK-6).
       const written =

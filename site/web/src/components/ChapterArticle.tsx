@@ -132,7 +132,7 @@ export function ChapterArticle({
 
   /** A basis slot carries text too, but it is not a written chapter (§BOOK-6). */
   const showsText = entry.written || entry.basis;
-  const basisSentence = basisSentenceOf(entry);
+  const basisSentence = basisSentenceOf(entry, chapter);
   /**
    * BOOK-DOC-43 §4 — the wait is real from the fetch until it settles, data or failure, and
    * derived from state (a settle re-renders). A basis slot is complete before the request, so

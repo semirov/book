@@ -9,7 +9,6 @@
  */
 
 import {
-  TOTAL_CHAPTERS,
   parseSeams,
   type CascadeOutcome,
   type CascadeStatus,
@@ -39,7 +38,7 @@ import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts
 import { settleDraftPremise } from './premise.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
-import { isWritten } from './text.ts';
+import { writtenChaptersOf } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
@@ -259,8 +258,7 @@ export function advanceCascade(deps: EngineDeps, cascadeId: string, now: number)
     tokens: steps.reduce((sum, step) => sum + step.tokens_in + step.tokens_out, 0),
     steps: steps.map(stepFacts),
   };
-  const written = new Set<number>();
-  for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) if (isWritten(deps.bookRoot, n)) written.add(n);
+  const written = writtenChaptersOf(db);
 
   const plan = planCascade(facts, { nowMs: now, written });
   if (plan.kind === 'wait') return;

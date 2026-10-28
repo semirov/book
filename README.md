@@ -9,20 +9,21 @@
 глава 42. Сайт: https://book.semirov.dev.
 
 **Канон (авторский, обязательный):** `concept/CONCEPT.md` · `concept/CLIMAX.md` · `style/VOICE.md` ·
-`notes/canon-constraints.md`. `outline/PLAN.md` — план, а не правило. **Рукопись — единственный источник
-правды для текста** (`manuscript/`); база данных — её проекция.
+`notes/canon-constraints.md`. `outline/PLAN.md` — план, а не правило. **Текст живёт в базе**
+(`book.db`: `blocks`, `block_versions`, `revisions`, `block_deltas`, `book_frame`); `manuscript/`
+в репозитории больше нет, а экспорт (FB2, markdown) собирается из базы по требованию.
 
 ## Что где лежит
 
-| Каталог | Что это |
+| Путь | Что это |
 |---|---|
-| `manuscript/` | Сам роман: фронт-маттер и главы в фиксированных слотах (`ch01` … `ch42`), заполняются по одной. Единственный источник правды для текста. |
+| `book.db` | Сам роман, и только он: главы, абзацы, их версии и дельты, ревизии, факты и линии. Том (`/data`), не репозиторий. `manuscript/` не отслеживается и не читается; `bin/home-check.mjs` падает, если проза появится там снова. |
 | `concept/` | `CONCEPT.md` и `CLIMAX.md` — авторский канон: что за мир и чем всё кончается. |
 | `outline/` | `PLAN.md` — раскладка частей и слотов. План, а не правило. |
 | `style/` | `VOICE.md` — голос, которому подчиняется проза. |
 | `notes/` | Рабочие заметки, в том числе `canon-constraints.md` — ограничения канона, обязательные для правок. |
 | `process/` | `ROLE_PROMPTS.md` — роли сессий, которые пишут и судят шаг. |
-| `site/` | Движок, сервер и SPA: публикуют книгу, принимают вмешательства, ведут проекцию базы. |
+| `site/` | Движок, сервер и SPA: публикуют книгу из базы, принимают вмешательства, пишут текст в базу. |
 
 ## Лицензии: три разные вещи
 
@@ -31,7 +32,7 @@
 | Что | Лицензия |
 |---|---|
 | Код `site/**` — движок, сервер, SPA | [Apache License 2.0](LICENSE) |
-| Текст: `manuscript/`, `concept/`, `outline/`, `style/`, `notes/`, `process/` | © Филипп Семиров, все права защищены |
+| Текст: `book.db`, `concept/`, `outline/`, `style/`, `notes/`, `process/` | © Филипп Семиров, все права защищены |
 | Шрифты `site/web/public/fonts/**` (PT Sans, PT Serif, PT Mono, PT Sans Narrow) | [SIL Open Font License 1.1](site/web/public/fonts/LICENSE.md), апстрим — ParaType |
 
 Почему так: код открыт, имя автора сохраняется в [LICENSE](LICENSE) и [NOTICE](NOTICE) — файл `NOTICE`
@@ -48,7 +49,9 @@ npm install
 npm run dev                       # API :8080 + Vite :5173
 npm run build && npm start        # один процесс на :8080
 npm run verify                    # typecheck + arch + рамка (frame-check), без тестов
-node bin/validate.mjs             # проверка рукописи: 0 ошибок
+npm run test                      # 462 файла, ~4 440 тестов
+node bin/validate.mjs --strict    # канон и импринт (текст книги лежит в базе)
+node bin/validate.mjs --from-db "$DATA_DIR"   # текст как он лежит в базе: 0 ошибок
 ```
 
 Операторская памятка и инварианты — [`site/README.md`](site/README.md).

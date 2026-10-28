@@ -38,7 +38,6 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine: harness.client,
         now: () => harness.fixture.clock.now(),
         log: (line) => harness.logs.push(line),
@@ -56,7 +55,8 @@ describe('a parked pass tells a broken call from a refusal', () => {
       expect(result.reason).toContain('модель ответила не по форме');
       expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
       // The chapter the broken pass wrote is the first edition the premise entered.
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch40.md'))).toBe(true);
+      expect(harness.fixture.readChapter(CHAPTER)).not.toBeNull();
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
       expect(changeRow(harness, changeId)).toEqual({
         status: 'done',
         outcome: 'applied',

@@ -98,21 +98,20 @@ async function boot(db: Db, root: string, dataDir: string, onBookReset?: () => v
 }
 
 type LiveOptions = {
-  /** Leave `manuscript/ch08.md` on disk, so a boot scan would re-ingest it (the B2 refusal). */
-  keepProse?: boolean;
+  /** The fixture's chapters, as the one-shot import reads them. */
+  files?: Record<string, string>;
   /** BOOK-137 M1: a hook that fails, so the server has to answer with a warning. */
   brokenBridge?: boolean;
 };
 
 /**
- * A seeded fixture and a server on it, in the operator's pre-launch state: the rows of a written
- * chapter stay, its engine-written file is removed from the manuscript.
+ * A seeded fixture and a server on it, in the operator's pre-launch state: the book exists as
+ * rows (the import wrote them), and the program that asked for the wipe is an HTTP client.
  */
 async function live(options: LiveOptions = {}): Promise<{ fixture: Fixture; base: string }> {
-  fixture = createFixture(bookFiles());
+  fixture = createFixture(options.files ?? bookFiles());
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
   seed(fixture);
-  if (options.keepProse !== true) rmSync(join(fixture.manuscript, 'ch08.md'), { force: true });
   const onBookReset =
     options.brokenBridge === true
       ? (): void => {
@@ -249,7 +248,7 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — dry run, nothing is written');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, true));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 re-read from the manuscript');
+    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 seeded from book_frame');
     // No backup line on a dry run: nothing is written, so nothing is backed up. And no warning:
     // the manuscript holds no prose and the engine is idle.
     expect(stdout).not.toContain('backup:');
@@ -269,7 +268,7 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — done');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, false));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 re-read from the manuscript');
+    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 seeded from book_frame');
     expect(lines[3 + body.tables.length + 1]).toMatch(
       /^backup: .*book-reset-\d{8}T\d{6}Z\.db \(0600, integrity ok, counts match\)$/u,
     );
@@ -286,25 +285,26 @@ describe('reset book — the lines the runbook prints', () => {
 });
 
 describe('reset book — the two refusals a dry run names', () => {
-  it('prints the prose chapter and refuses the wipe, naming the files', async () => {
-    const { base } = await live({ keepProse: true });
+  it('reports the content the wipe removes, and refuses a frame slot that is prose', async () => {
+    // A frame slot that is prose is a canon problem, read from its row: the reset refuses, and
+    // the operator's remedy is the canon (the row), never a file.
+    const { base } = await live({
+      files: {
+        'ch01.md': longProse(['Глава первая. Теперь это обычная глава, а не кадр.']),
+        'ch42.md': FRAME_LAST_SENTENCE,
+        'ch08.md': longProse(['Служебный абзац.']),
+      },
+    });
 
     const dry = await run(`reset book --url ${base}`);
-    expect(dry.stdout).toContain(
-      'manuscript: 1 chapter files hold prose — a boot scan would restore them; clear manuscript/ first',
-    );
+    expect(dry.stdout).toMatch(/content: 2 written chapter\(s\) · \d+ characters · \d+ blocks — the wipe removes them/u);
 
     const failure = await failed(`reset book --url ${base} --yes`);
     expect(failure.code).toBe(5);
-    expect(failure.stderr).toContain('MANUSCRIPT_WRITTEN');
-    expect(failure.stderr).toContain('ch08.md');
-    expect(failure.stderr).toContain('git clean -fd manuscript/');
+    expect(failure.stderr).toContain('FRAME_NOT_BASIS');
+    expect(failure.stderr).toContain('chapter 1');
+    expect(failure.stderr).not.toContain('manuscript/');
     expect(failure.stdout ?? '').not.toContain('reset book — done');
-
-    // Removing the file (the operator's `git clean -fd manuscript/`) makes the dry run clean.
-    rmSync(join(fixture!.manuscript, 'ch08.md'), { force: true });
-    const clean = await run(`reset book --url ${base}`);
-    expect(clean.stdout).not.toContain('manuscript:');
   });
 
   it('prints the open step and reports ENGINE_BUSY on --yes', async () => {

@@ -3,7 +3,7 @@
  *
  * A mis-set `DATA_DIR` was previously invisible — the engine swallowed the failure and the
  * editor simply got `indexSlice: null`. `show` prints the directory it looked in and what it
- * found (or why it found nothing); `rebuild` replaces the artifact from the text and prints
+ * found (or why it found nothing); `rebuild` replaces the artifact from the rows and prints
  * the new hash. Exit codes: 0 done, 1 missing/unbuildable, 2 unknown command.
  */
 
@@ -38,6 +38,7 @@ function summary(input: IndexInput, index: DerivedIndex): Record<string, unknown
   };
 }
 
+/** `bin/index.mjs`'s entry: it opens the volume read-write (the artifact is written) and hands it in. */
 export function runIndex(argv: readonly string[], io: IndexIo, input: IndexInput): number {
   const command = argv[0];
   if (command === 'show') {

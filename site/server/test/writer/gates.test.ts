@@ -4,6 +4,10 @@
  * The parser is the dangerous half: the engine downgrades a `GAP` without a blocker to `HOLDS`
  * (a prose finding), so an answer the parser could not read must be a refusal, never an empty
  * finding list. A gate that answers nothing has not said the text holds.
+ *
+ * The neighbours a prompt quotes come from `chapterText`, which in production is
+ * `POST /internal/text` (rows). A prompt test controls its book as files, so `textOf(root)` is the
+ * test's own adapter: it reads them with the engine's import reader and answers the same shape.
  */
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,7 +18,8 @@ import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildGatePrompt, parseGateAnswer } from '../../src/writer/gates.ts';
-import { PromptError, rolePromptOf } from '../../src/writer/prompt.ts';
+import { PromptError, noChapterText, rolePromptOf } from '../../src/writer/prompt.ts';
+import { textOf } from './textView.ts';
 
 const dirs: string[] = [];
 
@@ -160,7 +165,7 @@ describe('buildGatePrompt', () => {
   it('quotes §2, the canon, the landed text, the neighbours, the assignment and the contract', () => {
     const root = book();
     const prompt = buildGatePrompt({
-      bookRoot: root,
+      bookRoot: root, chapterText: textOf(root),
       role: 'editor',
       chapter: 9,
       assignment: { chapter: 9, pass: 'change', intent: 'документ о допуске' },
@@ -192,7 +197,7 @@ describe('buildGatePrompt', () => {
 
   it('gives the consultant §3 and no index slice', () => {
     const prompt = buildGatePrompt({
-      bookRoot: book(),
+      bookRoot: book(), chapterText: noChapterText,
       role: 'consultant',
       chapter: 9,
       assignment: { chapter: 9 },
@@ -210,7 +215,7 @@ describe('buildGatePrompt', () => {
     writeFileSync(join(root, 'manuscript', 'ch01.md'), 'Начало\n\nПервая глава.\n');
 
     const last = buildGatePrompt({
-      bookRoot: root,
+      bookRoot: root, chapterText: textOf(root),
       role: 'editor',
       chapter: TOTAL_CHAPTERS,
       assignment: { chapter: TOTAL_CHAPTERS },
@@ -221,7 +226,7 @@ describe('buildGatePrompt', () => {
     expect(last.user).not.toContain(`### Глава ${String(TOTAL_CHAPTERS + 1)}`);
 
     const first = buildGatePrompt({
-      bookRoot: root,
+      bookRoot: root, chapterText: textOf(root),
       role: 'editor',
       chapter: 1,
       assignment: { chapter: 1 },
@@ -234,7 +239,7 @@ describe('buildGatePrompt', () => {
 
   it('says so when the assignment’s intent could close its own fence', () => {
     const prompt = buildGatePrompt({
-      bookRoot: book(),
+      bookRoot: book(), chapterText: noChapterText,
       role: 'editor',
       chapter: 9,
       assignment: { intent: 'хвост ``` конец' },

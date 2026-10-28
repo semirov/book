@@ -2,31 +2,23 @@
  * BOOK-137 + BOOK-117 — the writer cannot land a chapter whose frame sentence moved.
  *
  * The engine refuses such a landing (`FRAME_CHANGED`) and the site refuses to publish it; the
- * lane's half is that the bytes never stay: the pass puts its pre-pass snapshot back, parks with
- * a sentence a reader can read, and leaves the stage trail intact — a broken frame must not cost
- * the reader the record of what happened.
+ * lane's half is that the text never stays: nothing was written, so the chapter keeps the text
+ * the site served, the pass parks with a sentence a reader can read, and the stage trail stays
+ * intact — a broken frame must not cost the reader the record of what happened.
  *
  * The frame is the canonical sentence of ch01/ch42 (`@book/shared` `frameSentenceOf`), so the
  * scripted answer here is *valid prose* that opens or closes with the sentence moved by a letter:
  * nothing but the frame guard can refuse it.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
-import { chapterLabel, frameSentenceOf } from '@book/shared';
+import { frameSentenceOf } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { listStages } from '../../src/stages/repo.ts';
-import { sha256Hex } from '../../src/util/hash.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
 const CHAPTER = 1;
-const SENTENCE = 'рамка книги — фраза этой главы не меняется, текст возвращён к прежнему';
-
-function chapterFile(harness: Harness): string {
-  return join(harness.bookRoot, 'manuscript', `ch${chapterLabel(CHAPTER)}.md`);
-}
+const SENTENCE = 'рамка книги — фраза этой главы не меняется, текст не опубликован';
 
 function stagesOf(harness: Harness): string[] {
   return listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage);
@@ -60,7 +52,6 @@ describe('a chapter whose frame moved is never landed', () => {
     const original = withFrame('исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
-      harness.ingest(CHAPTER);
       harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 65 появляется документ о допуске' });
 
       // The model retypes the frame with a doubled space: the lane's validator collapses it and
@@ -77,10 +68,9 @@ describe('a chapter whose frame moved is never landed', () => {
       expect(harness.logs.join('\n')).toContain('FRAME_CHANGED');
       expect(refusedStage(harness)).not.toContain('FRAME_CHANGED');
 
-      // The file is the pre-pass text again, byte for byte, and nothing was published.
-      expect(existsSync(chapterFile(harness))).toBe(true);
-      const back = readFileSync(chapterFile(harness), 'utf8');
-      expect(sha256Hex(back)).toBe(sha256Hex(original));
+      // The chapter still reads the text the site served, and nothing was published.
+      const back = harness.fixture.readChapter(CHAPTER);
+      expect(back).toBe(original);
       expect(back).not.toContain(moved);
       expect(revisions(harness)).toBe(1);
 

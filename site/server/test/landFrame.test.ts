@@ -1,43 +1,18 @@
-import { join } from 'node:path';
-
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { TOTAL_CHAPTERS, FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type WriterAssignment } from '@book/shared';
+import { describe, expect, it } from 'vitest';
 
 import type { EngineError } from '../src/engine/types.ts';
 import { createEngineFixture, type Fixture } from './engine/helpers.ts';
-
-/**
- * BOOK-137 — the landing's **second** read. `land`'s guard reads the file, and the ingest it
- * publishes through reads it again; a live session may write in between, and then nothing was
- * published at all. The seam is the read itself: the mocked `readChapter` writes the weaker
- * file between the guard's read and the ingest's, which is exactly what a watcher would see.
- */
-const seam = vi.hoisted(() => ({ armed: false, reads: 0, path: '', weaker: '' }));
-
-vi.mock('../src/engine/text.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/engine/text.ts')>();
-  const { writeFileSync } = await import('node:fs');
-  return {
-    ...actual,
-    readChapter: (bookRoot: string, n: number) => {
-      if (seam.armed && actual.chapterPath(bookRoot, n) === seam.path) {
-        seam.reads += 1;
-        // Read 1 is the guard's; read 2 is the ingest's own — the file moves in between.
-        if (seam.reads === 2) writeFileSync(seam.path, seam.weaker, 'utf8');
-      }
-      return actual.readChapter(bookRoot, n);
-    },
-  };
-});
 
 /**
  * BOOK-137 — the frame check on a landing (F029).
  *
  * A landing is the only way a file becomes a fact, so it is where the sentence's letters are
  * defended: ch01 must open with the canon sentence and the finale must close with it, character for
- * character. The boot scan and the watcher keep applying files (§18: files win); a landing that
- * would move a letter is refused with `FRAME_CHANGED` and publishes nothing. The files here are
- * written raw (`fixture.writeChapter`), because a test of the guard must control every byte.
+ * character. A landing that would move a letter is refused with `FRAME_CHANGED` and publishes
+ * nothing. Since BOOK-187 the text travels in the request and is parsed once, so the guard and
+ * the applier cannot read two different texts: these tests stage the answer raw
+ * (`fixture.writeChapter`) and control every byte of it.
  */
 
 /** The one word a landing must not be allowed to change. */
@@ -183,48 +158,11 @@ describe('land — the frozen frame is character-exact (F029, BOOK-137)', () => 
     }
   });
 
-  it('refuses a landing whose file is weakened after the guard read, and records no landing', () => {
-    const fixture = createEngineFixture({ front: null });
-    try {
-      const assignment = draftOf(fixture, 'fwd');
-      expect(assignment.chapter).toBe(1);
-      fixture.writeChapter(1, `Начало\n\n${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${FILLER}\n`);
-
-      // The guard will read this file intact; the ingest will read the weaker one.
-      seam.path = join(fixture.manuscript, 'ch01.md');
-      seam.weaker = `Начало\n\n${WEAKENED_FIRST} Я постоял и вышел.\n\n${FILLER}\n`;
-      seam.reads = 0;
-      seam.armed = true;
-
-      const error = refusal(() => fixture.engine.land(assignment.leaseId));
-      seam.armed = false;
-
-      // The guard's read, the ingest's, and the fresh read the refusal is asked of.
-      expect(seam.reads).toBeGreaterThanOrEqual(2);
-      expect(error).toMatchObject({ code: 'FRAME_CHANGED', status: 409 });
-      expect(error?.message).toBe('рамка книги: фраза этой главы не меняется — правка остаётся бумагой');
-      // The refusal asked the guard again of the fresh file, which is no longer intact.
-      expect(error?.detail).toEqual({ intact: false });
-
-      // The ingest published nothing and the step invents nothing: no revision, no `landed_sha`,
-      // no `rev_after` — a landing the site never served is not recorded as one.
-      expect(revisionsOf(fixture, 1)).toEqual([]);
-      expect(
-        fixture.db
-          .prepare('SELECT landed_at, landed_sha, rev_after FROM steps WHERE step_id = ?')
-          .get(assignment.stepId),
-      ).toEqual({ landed_at: null, landed_sha: null, rev_after: null });
-    } finally {
-      seam.armed = false;
-      fixture.close();
-    }
-  });
-
   it('leaves a chapter with no frame alone: a landing below the frame chapters is unchanged', () => {
     const fixture = createEngineFixture({ front: null });
     try {
       // ch01 is written, so the forward lane's next draft is chapter 2 — no frame there.
-      fixture.writeChapter(1, `Начало\n\n${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${FILLER}\n`);
+      fixture.seedChapter(1, `Начало\n\n${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${FILLER}\n`);
       const assignment = draftOf(fixture, 'fwd');
       expect(assignment.chapter).toBe(2);
       fixture.writeChapter(2, `Вторая\n\n${FILLER}\n`);

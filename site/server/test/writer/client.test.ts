@@ -137,6 +137,24 @@ describe('createEngineClient', () => {
     expect(headers.authorization).toBe(`Bearer ${TOKEN}`);
   });
 
+  it('reads and moves the day counter through the engine, never through a file', async () => {
+    const { fetch, seen } = transportOf(() => json({ ok: true, data: { day: '2026-10-28', passes: 2, lastPassAt: null, pauseUntil: null } }));
+    const client = createEngineClient({ baseUrl: 'http://127.0.0.1:9', tokenFile: tokenFile(), fetch });
+
+    // BOOK-187 AC5: the day is a query parameter, so a reader can ask for any bucket.
+    await client.writerState('2026-10-28');
+    expect(seen[0]?.url).toBe('http://127.0.0.1:9/internal/writer-state?day=2026-10-28');
+    expect(seen[0]?.init.method).toBe('GET');
+
+    const recorded = await client.recordPass({ day: '2026-10-28', spent: true });
+    expect(recorded.passes).toBe(2);
+    expect(seen[1]?.init.method).toBe('POST');
+    // `pauseUntil` is omitted unless the caller states it: an absent key leaves the column alone.
+    expect(JSON.parse(String(seen[1]?.init.body))).toEqual({ day: '2026-10-28', spent: true });
+    await client.recordPass({ day: '2026-10-28', spent: false, pauseUntil: null });
+    expect(JSON.parse(String(seen[2]?.init.body))).toEqual({ day: '2026-10-28', spent: false, pauseUntil: null });
+  });
+
   it('maps a node-style refusal to the code the pass branches on', async () => {
     const { fetch } = transportOf(() => json({ code: 'CHAPTER_WRITTEN', message: 'глава 65 уже написана' }, 409));
     const client = createEngineClient({ baseUrl: 'http://127.0.0.1:9', tokenFile: tokenFile(), fetch });

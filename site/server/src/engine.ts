@@ -13,8 +13,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { loadConfig } from './config.ts';
-import { databaseFile, openDatabase } from './db/db.ts';
-import { migrate } from './db/migrate.ts';
+import { bootDatabase, bootFailureLine } from './db/boot.ts';
+import { SCHEMA_VERSION } from './db/schema.ts';
 import { buildControl } from './engine/control.ts';
 import { createEngine } from './engine/service.ts';
 import { systemClock, type EngineAlert } from './engine/types.ts';
@@ -36,8 +36,9 @@ function resolveToken(config: ReturnType<typeof loadConfig>): string {
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const db = openDatabase(databaseFile(config.dataDir));
-  const migration = migrate(db);
+  // BOOK-187 / ADR-043 §5: the same boot the site runs — schema read, verified dump, migrate,
+  // stamps, prompt drift. The lane never writes a schema the site has not accepted.
+  const db = await bootDatabase({ dataDir: config.dataDir });
   const token = resolveToken(config);
 
   const engine = createEngine({
@@ -57,10 +58,12 @@ async function main(): Promise<void> {
     token,
     version: process.env.npm_package_version ?? '0.0.0',
     vocabulary: (chapter) => chapterVocabulary(db, chapter),
+    // BOOK-187 AC7: retention is the process's own property (`TRANSCRIPT_RETENTION_DAYS`).
+    transcriptRetentionDays: config.transcriptRetentionDays,
   });
   const recovery = engine.reconcile();
   app.log.info(
-    { migration, dataDir: config.dataDir, pipeline: config.pipeline.model, recovery },
+    { schema: SCHEMA_VERSION, dataDir: config.dataDir, pipeline: config.pipeline.model, recovery },
     'engine recovered, lane checked',
   );
 
@@ -88,6 +91,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // One line, naming the refusal code and the numbers (ADR-043 §5): the supervisor reads it.
+  console.error(bootFailureLine(error) ?? (error instanceof Error ? error.message : String(error)));
   process.exit(1);
 });

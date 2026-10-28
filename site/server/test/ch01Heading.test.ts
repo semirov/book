@@ -1,64 +1,90 @@
 /**
- * The owner's correction (2026-10-28) on the real file: **a status word is not a title**.
+ * A status word is not a title (owner, 2026-10-28).
  *
- * `manuscript/ch01.md` opens with its heading «Замечаний нет» and the frozen first sentence is
- * its first prose block. The heading must be read as the chapter's title — that is what the
- * contents and the chapter header print — while the frame stays prose, the character count
- * still belongs to the prose (never to the title line), and F007's floor / F022's missing
- * title cannot fire on it.
+ * A chapter may open on a heading above the frozen first sentence. The heading is the
+ * chapter's **title** — what the contents and the chapter header print — while the frame stays
+ * the first prose block: a heading is not prose, so it adds no characters to the count.
  *
- * The basis-slot rule the heading now sits on top of is proved on the same bytes in
- * `parseChapter.test.ts` and `shared/test/book.test.ts`: a slot emptied down to its frozen
- * sentence under this heading stays a basis slot with `chars = 0`.
+ * This is a fixture, not the owner's file: since BOOK-187 the rows are the home of the text
+ * (ADR-043 / BOOK-DOC-76) and `manuscript/` is not read at runtime. The real book's heading is
+ * checked on deploy by `node bin/validate.mjs --from-db "$DATA_DIR"`, which runs the same
+ * parser rules (F007 for length, F022 for a missing title) over `chapters.title` and the blocks
+ * the chapter is stored as.
+ *
+ * The basis-slot rule the heading sits on top of is proved on the same path in
+ * `basisHeading.test.ts`: a slot emptied down to its frozen sentence under this heading stays a
+ * basis slot with `chars = 0`.
  */
 
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-
 import { CHAPTER_CHARS, FRAME_FIRST_SENTENCE, isEmptySlot } from '@book/shared';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
+import { getChapterRow, listBlocks } from '../src/db/repo/chapters.ts';
+import { applyChapterFile } from '../src/ingest/applyChapter.ts';
 import { parseChapter } from '../src/ingest/parseChapter.ts';
-
-const SITE = resolve(import.meta.dirname, '..', '..');
-const CHAPTER_ONE = join(SITE, '..', 'manuscript', 'ch01.md');
+import { createFixture, type Fixture } from './helpers.ts';
 
 const HEADING = 'Замечаний нет';
+const NOW = Date.parse('2026-10-28T09:00:00Z');
 
-const raw = readFileSync(CHAPTER_ONE, 'utf8');
+/** Neutral filler: a fixture never carries the book's prose (`helpers.ts` says the same). */
+const FILLER =
+  'Служебный абзац для проверки главы: это предложение не является текстом книги и повторяется, чтобы набрать длину.';
+const FILLER_BLOCK = Array.from({ length: 3 }, () => FILLER).join(' ');
+/** The frame is a block of its own, so the heading can be proved not to be the first one. */
+const BLOCKS = [FRAME_FIRST_SENTENCE, ...Array.from({ length: 8 }, () => FILLER_BLOCK)];
+const BODY = BLOCKS.join('\n\n');
+/** What the parser counts: the blocks' own characters, not the blank lines between them. */
+const CHARS = BLOCKS.reduce((sum, block) => sum + block.length, 0);
+const RAW = `${HEADING}\n\n${BODY}\n`;
 
-describe('manuscript/ch01.md on disk (owner, 2026-10-28)', () => {
-  it('opens with the heading on line 1 and a blank line 2', () => {
-    const [first, second] = raw.split('\n');
-    expect(first).toBe(HEADING);
-    expect(second).toBe('');
-  });
+let fixture: Fixture | null = null;
 
-  it('is read as a titled chapter whose first prose block is still the frozen sentence', () => {
-    const parsed = parseChapter(1, raw);
+afterEach(() => {
+  fixture?.close();
+  fixture = null;
+});
+
+describe('a chapter heading above the frozen first sentence', () => {
+  it('is read as the title, with the frame as the first block and no character of its own', () => {
+    const parsed = parseChapter(1, RAW);
     expect(parsed.title).toBe(HEADING);
     expect(parsed.titleProblems).toEqual([]);
     // The frame is prose, not the title: the reader prints it as the chapter's first paragraph.
     expect(parsed.blocks[0]?.text).toBe(FRAME_FIRST_SENTENCE);
-    // The heading is not prose: the count belongs to the chapter's own text.
-    expect(parsed.chars).toBeGreaterThan(CHAPTER_CHARS.floor);
+    expect(parsed.blocks).toHaveLength(BLOCKS.length);
+    // The heading is not prose: the count belongs to the chapter's own text, block for block.
+    expect(parsed.chars).toBe(CHARS);
     expect(parsed.basis).toBe(false);
   });
 
+  it('is stored in chapters.title by the projector, and the heading never becomes a block', () => {
+    const active = (fixture = createFixture());
+    const applied = applyChapterFile({
+      db: active.db,
+      dataDir: active.dataDir,
+      n: 1,
+      raw: RAW,
+      mtimeMs: NOW,
+      nowMs: NOW,
+    });
+
+    expect(applied.status).toBe('created');
+    const row = getChapterRow(active.db, 1);
+    expect(row).toMatchObject({ title: HEADING, basis: 0, block_count: BLOCKS.length });
+    // The projection keeps the parser's count: the title line is not part of it.
+    expect(row?.chars).toBe(CHARS);
+    const stored = listBlocks(active.db, 1).map((block) => block.text);
+    expect(stored[0]).toBe(FRAME_FIRST_SENTENCE);
+    expect(stored.join('\n\n')).not.toContain(HEADING);
+  });
+
   it('cannot trip F007 for length or F022 for a missing title', () => {
-    const parsed = parseChapter(1, raw);
+    const parsed = parseChapter(1, RAW);
     expect(parsed.title).not.toBeNull();
     expect(parsed.chars).toBeGreaterThanOrEqual(CHAPTER_CHARS.floor);
     expect(parsed.chars).toBeLessThanOrEqual(CHAPTER_CHARS.max);
     // And the shared emptiness rule does not call a written chapter an empty slot.
-    expect(isEmptySlot(1, raw)).toBe(false);
-  });
-
-  it('stays a basis slot when it is emptied down to the frame under the same heading', () => {
-    const emptied = parseChapter(1, `${HEADING}\n\n${FRAME_FIRST_SENTENCE}\n`);
-    expect(emptied.title).toBe(HEADING);
-    expect(emptied.basis).toBe(true);
-    expect(emptied.chars).toBe(0);
-    expect(emptied.blocks.map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
+    expect(isEmptySlot(1, RAW)).toBe(false);
   });
 });

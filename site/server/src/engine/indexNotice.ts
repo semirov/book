@@ -2,7 +2,7 @@
  * The engine's one conversation with the derived index (BOOK-18 §2, §3).
  *
  * On close it compares the document statuses of the chapters the change actually rewrote —
- * reading «before» from the stored revision snapshot and «after» from the file — and appends
+ * reading «before» from the stored revision snapshot and «after» from the rows — and appends
  * **one** public statement per moved document. It does not rebuild the artifact: extraction
  * is memoised per chapter and the artifact is rebuilt on the next editor dispatch, outside
  * the close transaction, where it is actually read.
@@ -21,7 +21,7 @@ import { documentMoves, type ChapterTextChange } from '../index/chronicle.ts';
 import { toIso } from '../util/time.ts';
 import { readSnapshot } from '../versions/snapshots.ts';
 import * as store from './store.ts';
-import { readChapter } from './text.ts';
+import { readChapterRows } from './text.ts';
 import type { EngineDeps } from './types.ts';
 
 /** The step outcomes that actually changed the file's prose. */
@@ -39,7 +39,7 @@ function snapshotText(deps: Pick<EngineDeps, 'db' | 'config'>, chapter: number, 
 
 /** Chapters this change rewrote, with the earliest pre-image each one had. */
 export function changedChapters(
-  deps: Pick<EngineDeps, 'db' | 'config' | 'bookRoot'>,
+  deps: Pick<EngineDeps, 'db' | 'config'>,
   changeId: string,
 ): ChapterTextChange[] {
   const firstRev = new Map<number, number>();
@@ -55,7 +55,7 @@ export function changedChapters(
     // A revision existed but its snapshot is gone: the honest answer is no statement, not
     // «everything appeared». A chapter that never existed (rev 0) has no pre-image either.
     if (rev > 0 && before === null) continue;
-    const now = readChapter(deps.bookRoot, chapter);
+    const now = readChapterRows(deps.db, chapter);
     chapters.push({ chapter, before, after: now.exists ? now.raw : null });
   }
   return chapters;

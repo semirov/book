@@ -46,6 +46,7 @@ const skip = plugin ? false : 'docker compose is not available on this box';
 
 type Service = {
   image?: string;
+  build?: { context?: string; dockerfile?: string; additional_contexts?: Record<string, string> };
   user?: string;
   read_only?: boolean;
   cap_drop?: string[];
@@ -71,7 +72,6 @@ const REHEARSAL: Record<string, string> = {
   BOOK_SITE_PUBLISH: '192.168.1.76:8092',
   BOOK_DATA_VOLUME: 'book-172-rehearsal-data',
   BOOK_BACKUPS_DIR: '/tmp/book-172/backups',
-  BOOK_MANUSCRIPT: '/tmp/book-172/book',
   BOOK_SECRETS_DIR: '/tmp/book-172/secrets',
   BOOK_LOCKS_DIR: '/tmp/book-172/locks',
   BOOK_IMAGE_TAG: 'book:test',
@@ -132,7 +132,7 @@ describe.skipIf(skip)('the compose topology', () => {
     expect(mem).toBe(2560 * 1024 * 1024);
   });
 
-  it('mounts the data VOLUME, never a host directory, and keeps the manuscript read-only', () => {
+  it('mounts the data VOLUME, never a host directory, and no book tree at all', () => {
     const config = loaded(REHEARSAL);
     for (const name of ['site', 'engine', 'writer']) {
       const data = mount(config.services[name] as Service, '/data');
@@ -145,12 +145,17 @@ describe.skipIf(skip)('the compose topology', () => {
       expect(data?.read_only, name).toBeFalsy();
       expect(mount(config.services[name] as Service, '/locks')?.source, name).toBe('/tmp/book-172/locks');
     }
-    for (const name of ['site', 'engine']) {
-      expect(mount(config.services[name] as Service, '/book')?.read_only, name).toBe(true);
+    // BOOK-187 / ADR-043 G1: no service mounts the book tree (not even read-only) and none sets
+    // BOOK_ROOT — the canon is baked into the image at its root, the prose is rows in the volume.
+    // A host mount here would mean a pass read the HOST's prompts while its bundle sha named the
+    // image's, and a writable `manuscript/` would be a second home for text the DB owns.
+    for (const name of ['site', 'engine', 'writer']) {
+      const service = config.services[name] as Service;
+      const targets = (service.volumes ?? []).map((volume) => volume.target);
+      expect(targets, name).not.toContain('/book');
+      expect(targets.filter((target) => target.startsWith('/book/')), name).toEqual([]);
+      expect(service.environment?.BOOK_ROOT, name).toBeUndefined();
     }
-    const writer = config.services.writer as Service;
-    expect(mount(writer, '/book')?.read_only).toBe(true);
-    expect(mount(writer, '/book/manuscript')?.read_only).toBeFalsy();
     // The production defaults: the named volume the migration seeds, and a backups dir on the host.
     const production = loaded();
     expect(mount(production.services.site as Service, '/data')?.source).toBe('book-data');
@@ -236,6 +241,19 @@ describe.skipIf(skip)('the compose topology', () => {
     for (const name of ['site', 'engine', 'writer']) {
       expect((config.services[name]?.environment ?? {}).BOOK_ROLE, name).toBe(name);
     }
+  });
+
+  it('carries the canon into the image from the book root (BOOK-187, ADR-043 G3)', () => {
+    const config = loaded(REHEARSAL);
+    // The prompts/concept/style live one level above `site/`; the image is their only home at
+    // runtime, and `scripts/build-info.mjs` refuses to bake a bundle it cannot hash. So the build
+    // names the book root as the `canon` additional context — outside `site/`, inside the image.
+    const additional = config.services.site?.build?.additional_contexts ?? {};
+    expect(Object.keys(additional)).toEqual(['canon']);
+    expect(additional.canon).toBe(resolve(SITE, '..'));
+    // The engine and the writer run the same image: no second context, no second canon.
+    expect(config.services.engine?.build).toBeUndefined();
+    expect(config.services.writer?.build).toBeUndefined();
   });
 
   it('starts the writer only after a healthy engine, and holds no other service behind another', () => {

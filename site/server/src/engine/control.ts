@@ -14,7 +14,9 @@ import { TOTAL_CHAPTERS, validateIntent, validateInterventionKind } from '@book/
 
 import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
+import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
+import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -48,10 +50,26 @@ export type ControlOptions = {
    * projection (a cold database) the vocabulary is empty and the new-entity rule is skipped.
    */
   vocabulary?: (chapter: number) => readonly string[];
+  /**
+   * BOOK-187 AC7: how long a redacted transcript row is kept (`TRANSCRIPT_RETENTION_DAYS`,
+   * validated in `config.ts`). An app built without a config — a REST-only test — keeps the
+   * ADR's 30 days rather than an unbounded table.
+   */
+  transcriptRetentionDays?: number;
 };
 
 const session = z.string().min(1).max(64);
 const id = z.string().min(1).max(80);
+
+/**
+ * BOOK-187: the text now travels in the body, so one route needs more room than Fastify's 64 KB
+ * default. A chapter is at most `CHAPTER_CHARS.max` (30 000) characters and 60 000 is the door's
+ * own bound; in UTF-8 that is under 240 KB, and a quarter of a megabyte is the whole envelope.
+ */
+const TEXT_CHARS_MAX = 60_000;
+const LAND_BODY_LIMIT = 512 * 1024;
+/** The most chapters one `/internal/text` call may ask for: the chapter, its two neighbours, and room. */
+const TEXT_CHAPTERS_MAX = 8;
 
 const nextBody = z
   .object({
@@ -76,7 +94,22 @@ const passBody = z.object({ chapter: z.number().int().min(1).max(TOTAL_CHAPTERS)
 
 const landBody = z.object({
   leaseId: id,
+  /** The writer's own text: the engine never reads a manuscript file (BOOK-187). */
+  text: z.string().max(TEXT_CHARS_MAX).optional(),
+  /** The first sheet's whole text, for a `front` step. */
+  frontRaw: z.string().max(TEXT_CHARS_MAX).optional(),
   noWrite: z.boolean().optional(),
+  rev: z.number().int().min(0).max(1_000_000).optional(),
+});
+
+/** The chapters a prompt may quote, by number: 1..8 of them, each a real chapter. */
+const textBody = z.object({
+  chapters: z.array(z.number().int().min(1).max(TOTAL_CHAPTERS)).min(1).max(TEXT_CHAPTERS_MAX),
+});
+
+/** `--revert`: the revision to bring back; omitted means the one before the current. */
+const restoreBody = z.object({
+  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
   rev: z.number().int().min(0).max(1_000_000).optional(),
 });
 
@@ -119,9 +152,8 @@ const seenBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
 });
 /**
- * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them,
- * and one that claims nothing keeps the null/0 default. The triple is the same shape `done` takes.
- * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
+ * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them, one
+ * that claims nothing keeps the null/0 default. BOOK-117 adds `cause` — a broken pass is no refusal.
  */
 const escalateBody = z.object({
   leaseId: id,
@@ -150,8 +182,7 @@ const enqueueBody = z.object({
   anchor: z
     .object({
       blockIds: z.array(z.string()).max(8),
-      /** ADR-044 — the sentence rows the change is aimed at; optional for every older caller. */
-      sentenceIds: z.array(z.string()).max(8).optional(),
+      sentenceIds: z.array(z.string()).max(8).optional(), // ADR-044: the rows the change is aimed at
       quote: z.string().max(280),
       prefix: z.string().max(40),
       suffix: z.string().max(40),
@@ -164,9 +195,9 @@ const enqueueBody = z.object({
 });
 
 /**
- * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the
- * summary/span bounds and the `truncated` flag are `stage.ts`'s job, so the door and the
- * store cannot drift. `chapter` and `changeId` are not in the body: they are the step's.
+ * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the summary/span
+ * bounds and the `truncated` flag are `stage.ts`'s job, so the door and the store cannot drift.
+ * `chapter` and `changeId` are not in the body: they are the step's.
  */
 const stageBody = z.object({
   passId: id,
@@ -215,6 +246,8 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     ok: true,
     version: options.version ?? '0.0.0',
     state: options.engine.state(),
+    // BOOK-187 AC5: the lane's counters, straight from the row; null before the first pass.
+    writer: options.db === undefined ? null : readWriterSummary(options.db),
   }));
 
   app.get('/internal/state', async () => ({ ok: true, data: options.engine.state() }));
@@ -231,9 +264,34 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     const body = startBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.start(body.leaseId, { decision: body.decision, reason: body.reason, intent: body.intent }) };
   });
-  app.post('/internal/land', async (request) => {
+  app.post('/internal/land', { bodyLimit: LAND_BODY_LIMIT }, async (request) => {
     const body = landBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.land(body.leaseId, { noWrite: body.noWrite, rev: body.rev }) };
+    return {
+      ok: true,
+      data: options.engine.land(body.leaseId, {
+        text: body.text,
+        frontRaw: body.frontRaw,
+        noWrite: body.noWrite,
+        rev: body.rev,
+      }),
+    };
+  });
+  /**
+   * BOOK-187: the text a prompt may quote, **from rows only** — the chapter the writer is on, its
+   * neighbours, and the landed text a gate judges. The body is canonical and carries no title
+   * line; the prompt prints the title itself.
+   */
+  app.post('/internal/text', async (request) => {
+    const body = textBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.text(body.chapters) };
+  });
+  /**
+   * BOOK-187 / ADR-043 §3 row 9: `--revert` is a **new** revision (`cause_kind = 'restore'`)
+   * published through the applier, never a file put back.
+   */
+  app.post('/internal/restore', async (request) => {
+    const body = restoreBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.restore({ chapter: body.chapter, rev: body.rev }) };
   });
   app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});
@@ -413,6 +471,9 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       throw error;
     }
   });
+
+  // BOOK-187 AC5/AC7: the writer lane's counter and its redacted receipts, under the same guard.
+  registerLaneStoreRoutes(app, { db: options.db, transcriptRetentionDays: options.transcriptRetentionDays });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {

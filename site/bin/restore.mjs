@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * bin/restore.mjs — the operator's rollback (§13.3 step 1–2).
+ * bin/restore.mjs — the operator's revision browser (§13.3 step 1).
  *
- * A rollback is an operator action on the host, never a web action: the site has no write
- * API for `manuscript/` (§13.1). This tool only chooses the revision and copies the
- * content-addressed snapshot back over the chapter. The *site* then does the honest part: it
- * observes an unattributed write, recognises the text as an earlier revision, and publishes
- * `attributed:false` + `kind:restore` — the chapter stays `ungated` until `reconcile`.
+ * **BOOK-187: a restore is a revision, and this tool writes nothing.** The text has no file to
+ * copy a snapshot over, so the apply half is a refusal that names the row path: the site
+ * publishes a `cause_kind='restore'` revision through `POST /internal/restore` (the writer
+ * lane's `npm run writer -- --revert --chapter N`), and the chapter stays `ungated` until the
+ * operator's `reconcile` mark. What is left here is what a host-side tool is good at: showing
+ * the revisions, and previewing which text a restore would publish.
  *
  *   node bin/restore.mjs --chapter 9 --list
- *   node bin/restore.mjs --chapter 9 --rev 3 [--dry-run]
- *   node bin/restore.mjs --chapter 9 --rev 3 --because "restore rev 3"   # prints the next step
+ *   node bin/restore.mjs --chapter 9 --rev 3 --dry-run   # what a restore would publish
+ *   node bin/restore.mjs --chapter 9 --rev 3             # refused: names the row path
  *
- * Environment: BOOK_ROOT (default: the repository above site/), DATA_DIR (default site/.data).
- * Flags override them. Nothing here writes to the database.
+ * Environment: DATA_DIR (default site/.data). Flags override it. Nothing here writes.
  */
 
-import { copyFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,8 +26,7 @@ import { readRestoreSource } from '../server/src/history/restore.ts';
 import { TOTAL_CHAPTERS } from '../shared/src/book.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const USAGE =
-  'usage: restore.mjs --chapter N (--list | --rev R [--dry-run] [--because "…"]) [--root DIR] [--data-dir DIR]';
+const USAGE = 'usage: restore.mjs --chapter N (--list | --rev R --dry-run) [--data-dir DIR]';
 
 function parse(argv) {
   const flags = new Map();
@@ -65,10 +64,6 @@ function chapterNumber(flags) {
     throw new Error(`--chapter must be an integer between 1 and ${String(TOTAL_CHAPTERS)}`);
   }
   return n;
-}
-
-function fileName(n) {
-  return `ch${String(n).padStart(2, '0')}.md`;
 }
 
 /** One short-lived connection: the CLI is a reader, and the site owns the file. */
@@ -122,10 +117,9 @@ function main() {
     return 0;
   }
   const n = chapterNumber(flags);
-  const bookRoot = absolute(flags.get('root') ?? process.env.BOOK_ROOT ?? join(SITE_ROOT, '..'));
   const dataDir = absolute(flags.get('data-dir') ?? process.env.DATA_DIR ?? join(SITE_ROOT, '.data'));
-  // BOOK-107: this tool reads `book.db` and can copy a snapshot over a chapter, so it uses the
-  // boot's wall too — a dev shell pointed at the prod data dir is refused before any open.
+  // BOOK-107: this tool opens `book.db`, so it uses the boot's wall too — a dev shell pointed at
+  // the prod data dir is refused before any open.
   assertDataDirIsolation(
     { dataDir, adminTokenFile: '', engineTokenFile: '', feedbackDir: '' },
     isProductionEnv(),
@@ -151,8 +145,6 @@ function main() {
   // and the history agree on which text a revision means.
   const source = withDatabase(dataDir, (db) => readRestoreSource(db, dataDir, n, rev));
   if (source === null) throw new Error(`снимок ревизии ${rev} не найден в ${join(dataDir, 'versions')}`);
-  const target = join(bookRoot, 'manuscript', fileName(n));
-  const text = source.text;
 
   if (rev === currentRev) {
     console.log(`глава ${n} уже на rev ${rev}: ничего не меняется`);
@@ -160,18 +152,17 @@ function main() {
   }
 
   if (flags.get('dry-run')) {
-    console.log(`проверка: версия ${rev} → ${target} (${text.length} знаков), без записи`);
+    console.log(`проверка: rev ${rev} даст ${source.text.length} знаков — ревизия, а не файл; без записи`);
     return 0;
   }
 
-  const sourceFile = join(dataDir, String(chosen.snapshot));
-  copyFileSync(sourceFile, target);
-  console.log(`глава ${n} восстановлена из rev ${rev} (${text.length} знаков) → ${target}`);
-  console.log('дальше — обычный путь:');
-  console.log('  node site/bin/validate.mjs');
-  const because = flags.get('because') ?? `restore rev ${rev}`;
-  console.log(`  node site/bin/engine.mjs reconcile ${n} --because ${JSON.stringify(because)}`);
-  return 0;
+  // BOOK-187: nothing is copied anywhere. The restore is a revision the site publishes, and the
+  // operator's command is the lane's own — one write path, one history.
+  console.error(`restore: глава ${n} не восстановлена — текст живёт в базе, копировать нечего`);
+  console.error('путь: POST /internal/restore {chapter, rev} — или с хоста:');
+  console.error(`  npm run writer -- --revert --chapter ${n}`);
+  console.error(`  node site/bin/engine.mjs reconcile ${n} --because "restore rev ${rev}"`);
+  return 2;
 }
 
 try {

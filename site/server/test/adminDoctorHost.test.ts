@@ -5,16 +5,14 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
-
-import { callJson, judgeVolume, manuscriptProse, parseMountInfo, parseMountInfos, resolveRepoRoot } from '../../bin/adminDoctorHost.mjs';
+import { callJson, judgeVolume, parseMountInfo, parseMountInfos, resolveRepoRoot } from '../../bin/adminDoctorHost.mjs';
 import type { FetchLike } from '../../bin/adminDoctorHost.mjs';
 import { BIND_MOUNTINFO, READY_MOUNTINFO } from './adminDoctorFixtures.ts';
 
 /**
  * BOOK-188 — the readings the host module owns: the volume rule and the mountinfo lines, the
- * working-tree resolver, the manuscript-is-prose rule (a heading is a title, not prose — BOOK-32)
- * and the one HTTP call's budget, because a server that never answers must not hang a preflight.
+ * tree resolver (BOOK-187: a directory, never a checkout) and the one HTTP call's budget, because
+ * a server that never answers must not hang a preflight.
  */
 
 const dirs: string[] = [];
@@ -79,29 +77,19 @@ describe('the mountinfo lines and the volume rule', () => {
   });
 });
 
-describe('resolveRepoRoot — a wrong root is not an empty tree', () => {
-  it('believes a root with manuscript/ or .git, and names the one that has neither', () => {
+describe('resolveRepoRoot — a directory, not a checkout (BOOK-187)', () => {
+  it('believes any directory, including one with neither manuscript/ nor .git', () => {
     expect(resolveRepoRoot(repoWith({})).error).toBeNull();
     const bare = mkdtempSync(join(tmpdir(), 'book-doctor-noroot-'));
     dirs.push(bare);
-    expect(resolveRepoRoot(bare)).toEqual({ root: bare, error: `BOOK_REPO_ROOT is not a book checkout: ${bare}` });
-  });
-});
-
-describe('manuscriptProse — a chapter heading is a title, not prose', () => {
-  it('passes a chapter that is a heading plus the frozen sentence', () => {
-    expect(manuscriptProse(repoWith({ 'ch01.md': `Замечаний нет\n\n${FRAME_FIRST_SENTENCE}\n` }))).toEqual([]);
+    // The host doctor must not require a checkout: the book is a volume, the prose guard is
+    // bin/home-check.mjs, and this module only needs the drill script beside the root.
+    expect(resolveRepoRoot(bare)).toEqual({ root: bare, error: null });
   });
 
-  it('lists a chapter with one paragraph that is not the frame', () => {
-    const repo = repoWith({ 'ch01.md': `Замечаний нет\n\n${FRAME_FIRST_SENTENCE}\n\nИ ещё один абзац.\n` });
-    expect(manuscriptProse(repo)).toEqual(['ch01.md']);
-  });
-
-  it('lists a file that is not a chapter, and a tree with no manuscript holds none', () => {
-    const front = repoWith({ '00-front.md': 'Книга без названия\n\nО чём эта книга.\n' });
-    expect(manuscriptProse(front)).toEqual(['00-front.md']);
-    expect(manuscriptProse(join(tmpdir(), 'book-doctor-no-such-tree'))).toEqual([]);
+  it('names a root that is not there at all', () => {
+    const missing = join(tmpdir(), 'book-doctor-no-such-tree');
+    expect(resolveRepoRoot(missing)).toEqual({ root: missing, error: `BOOK_REPO_ROOT is not a directory: ${missing}` });
   });
 });
 

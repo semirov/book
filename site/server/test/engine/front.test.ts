@@ -20,17 +20,6 @@ import { createEngineFixture, DEFAULT_ABOUT, type Fixture } from './helpers.ts';
 
 const OTHER_ABOUT = DEFAULT_ABOUT.replace('Тестовая аннотация', 'Переписанная аннотация');
 
-/** Publish the first sheet as the site does on boot, so a basis exists before any wave. */
-function seedBasis(fixture: Fixture): void {
-  applyFrontFile({
-    db: fixture.db,
-    dataDir: fixture.dataDir,
-    raw: readFileSync(join(fixture.root, 'manuscript', '00-front.md'), 'utf8'),
-    mtimeMs: fixture.clock.now(),
-    nowMs: fixture.clock.now(),
-  });
-}
-
 function openFrontLease(fixture: Fixture, id: string): string {
   store.insertStep(fixture.db, {
     stepId: id,
@@ -62,7 +51,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('lands a new title and leaves the annotation byte-identical', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       const leaseId = openFrontLease(fixture, 'stp_front_title');
       fixture.writeFront('Другое название', DEFAULT_ABOUT);
 
@@ -91,7 +79,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('refuses a pass that would alter the annotation, by name', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       const leaseId = openFrontLease(fixture, 'stp_front_refused');
       fixture.writeFront('Другое название', OTHER_ABOUT);
 
@@ -117,7 +104,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('records an annotation-only attempt as a refused rewrite while a lease owns the front', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       // A live front lease is a pass writing: page 2 is basis against it (BOOK-7).
       openFrontLease(fixture, 'stp_front_direct');
       const result = applyFrontFile({
@@ -146,7 +132,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('accepts an owner hand edit of page 2 with no lease: the annotation becomes the new basis', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       // No step, no lease: the owner edited `00-front.md` by hand (BOOK-7).
       const edited = applyFrontFile({
         db: fixture.db,
@@ -197,7 +182,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('keeps the annotation as it was when an old snapshot is restored', () => {
     const fixture = createEngineFixture({ front: { title: 'Старое название', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       // An owner edit moves page 2, so the restore has a different annotation to put back.
       const edited = applyFrontFile({
         db: fixture.db,
@@ -232,7 +216,6 @@ describe('a front step rewrites the title, never page 2 (BOOK-DOC-6)', () => {
   it('keeps the annotation when an old title is restored', () => {
     const fixture = createEngineFixture({ front: { title: 'Старое название', about: DEFAULT_ABOUT } });
     try {
-      seedBasis(fixture);
       const first = fixture.db
         .prepare('SELECT snapshot FROM front_revisions ORDER BY rev DESC LIMIT 1')
         .get() as { snapshot: string };

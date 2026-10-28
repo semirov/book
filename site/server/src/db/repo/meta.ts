@@ -11,6 +11,11 @@ export function setMeta(db: Db, key: string, value: string): void {
   db.prepare('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').run(key, value);
 }
 
+/** Remove a stamp that stopped being true (the boot's `prompt_drift`, once the bundles agree). */
+export function deleteMeta(db: Db, key: string): void {
+  db.prepare('DELETE FROM meta WHERE k = ?').run(key);
+}
+
 export function getNumber(db: Db, key: string, fallback: number): number {
   const raw = getMeta(db, key);
   if (raw === null) return fallback;

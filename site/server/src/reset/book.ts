@@ -2,26 +2,23 @@
  * BOOK-137 — the launch reset: one command that empties the book and keeps its people.
  *
  * What a launch needs is not «drop the database»: the site keeps identities, sessions, the
- * front matter (the canon of `00-front.md`, not written prose) and every secret and static
- * file. What has to go is the book's *content and progress*: the projection of every written
- * chapter, the whole engine ledger, the log, the readers' filings and the rate state. After
- * the reset the book must be indistinguishable from one that was never written — ch01 and
- * ch42 still hold their frozen frame sentence as one readable paragraph each, and that is a
- * `basis` slot, not a written chapter.
+ * front matter (the canon, not written prose) and every secret and static file. What has to go
+ * is the book's *content and progress*: the projection of every written chapter, the whole
+ * engine ledger, the log, the readers' filings and the rate state. After the reset the book must
+ * be indistinguishable from one that was never written — ch01 and ch42 still hold their frozen
+ * frame sentence as one readable paragraph each, and that is a `basis` slot, not a written
+ * chapter.
  *
  * Rules this module keeps:
  *
  *   * a backup is taken before anything is deleted and is *verified* (`backup.ts`): mode
  *     `0600`, `PRAGMA integrity_check` = `ok`, and the same counts the pre-reset book reports.
  *     A target that already exists is refused, never overwritten and never unlinked;
- *   * a chapter file the manuscript still holds refuses the wipe: a boot scan re-reads
- *     `manuscript/chNN.md`, so a reset over a written manuscript would be undone by the next
- *     restart. Removing the files is the operator's act, never this module's (the site does not
- *     write to the repository), and the refusal says how: engine-written chapters are untracked
- *     working-tree files (`git clean -fd manuscript/`), a committed chapter is `git rm`;
- *   * the frame is re-read from the manuscript **before** the wipe, and a missing file — or a
- *     frame slot that holds prose instead of the frozen sentence — refuses the whole operation:
- *     an unreadable frame is a broken mount, never a reason to delete;
+ *   * BOOK-187: **the guard asks rows, not files.** The two frame slots must be `basis` rows
+ *     (`chapters.basis`, `chapters.chars`, `blocks`); a frame slot rewritten into prose refuses
+ *     the whole operation, because the wipe would freeze the wrong text as the canon. The frame
+ *     is re-seeded from `book_frame` (the volume's own copy of the canon, seeded by migration
+ *     v28) — never from a chapter file, of which there is none any more;
  *   * a live engine (an open step or an unreleased lease) refuses the wipe: deleting the rows
  *     a running step is writing into corrupts the book instead of resetting it;
  *   * the wipe is one transaction. Counts are asserted inside it, and `foreign_key_check` must
@@ -35,34 +32,32 @@
  * refusals. No Fastify here: the route in `http/routes/admin.ts` is transport.
  */
 
-import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-
-import { chapterLabel, TOTAL_CHAPTERS } from '@book/shared';
+import { TOTAL_CHAPTERS } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { getChapterRow, listBlocks } from '../db/repo/chapters.ts';
+import { frameOf } from '../db/repo/frame.ts';
 import { getNumber, setMeta } from '../db/repo/meta.ts';
 import { REQUIRED_TRIGGERS } from '../db/schema.ts';
 import { EVENTS_TRIGGER_NAMES, EVENTS_TRIGGERS_SQL } from '../db/tables.ts';
 import { LEDGER_TABLES_SQL } from '../db/ledgerTables.ts';
 import { applyChapterFile } from '../ingest/applyChapter.ts';
-import { parseChapter } from '../ingest/parseChapter.ts';
-import { scanManuscript } from '../ingest/scanManuscript.ts';
 import { type BackupFact, BackupFailedError, backupPath, writeBackup } from './backup.ts';
 import {
   type BookCount,
-  countBook,
-  countEngine,
-  countKept,
+  type ContentState,
   type EngineState,
   type KeptCount,
-  type ManuscriptState,
+  countBook,
+  countContent,
+  countEngine,
+  countKept,
   totalOf,
 } from './counts.ts';
 
 export { BackupFailedError } from './backup.ts';
-export { countBook, countEngine, countKept, totalOf } from './counts.ts';
-export type { BookCount, EngineState, KeptCount, ManuscriptState } from './counts.ts';
+export { countBook, countContent, countEngine, countKept, totalOf } from './counts.ts';
+export type { BookCount, ContentState, EngineState, KeptCount } from './counts.ts';
 
 export type ResetReport = {
   dryRun: boolean;
@@ -72,14 +67,14 @@ export type ResetReport = {
   kept: KeptCount[];
   frame: [number, number];
   engine: EngineState;
-  manuscript: ManuscriptState;
+  /** What the wipe removes, from the projection (rows): written chapters, characters, blocks. */
+  content: ContentState;
   backup: BackupFact | null;
   backupSkipped: string | null;
   warning?: string;
 };
 
 export type ResetOptions = {
-  bookRoot: string;
   dataDir: string;
   now: Date;
   /** `true` (or absent) counts only; the wipe happens only on an explicit `false` from the caller. */
@@ -93,11 +88,14 @@ export type ResetOptions = {
 /**
  * A refusal the route maps to a status: kept as classes so the message and the code travel
  * together and a test can assert on either.
+ *
+ * BOOK-187: the refusal names the missing **row**, never a file. A volume whose canon was never
+ * seeded (no `book_frame` row and no basis row) cannot be reset to a canon it does not hold.
  */
 export class FrameMissingError extends Error {
   readonly code = 'FRAME_MISSING';
-  constructor(readonly file: string, reason: string) {
-    super(`the frame file is missing or unreadable (${file}): ${reason}`);
+  constructor(readonly row: string, reason: string) {
+    super(`the frame is missing from the volume (${row}): ${reason}`);
     this.name = 'FrameMissingError';
   }
 }
@@ -114,42 +112,29 @@ export class EngineBusyError extends Error {
 }
 
 /**
- * B2 — the manuscript still holds prose, so a boot scan would re-ingest it. The reset refuses
- * and names the files, and the remedy is the operator's act: engine-written chapters are
- * untracked files (`git clean -fd manuscript/`), a committed one is `git rm`. `git checkout`
- * is not the remedy for them — it never deletes an untracked file, and for a committed chapter
- * it puts the prose back.
- */
-export class ManuscriptWrittenError extends Error {
-  readonly code = 'MANUSCRIPT_WRITTEN';
-  constructor(readonly files: string[]) {
-    super(
-      `the manuscript holds ${String(files.length)} chapter file(s) whose prose a boot scan would restore; ` +
-        'remove them from manuscript/ (untracked engine output: git clean -fd manuscript/; ' +
-        'a committed chapter: git rm) and run the reset again',
-    );
-    this.name = 'ManuscriptWrittenError';
-  }
-}
-
-/**
- * The frame slot is prose, not the frozen sentence: the book would lose its canon. Unlike a
- * written chapter, ch01/ch42 are committed canon, so `git checkout` is the right remedy here —
- * it is the engine's output that is untracked, not the frame.
+ * The frame slot is prose, not the frozen sentence: the book would lose its canon. BOOK-187: the
+ * evidence is the row (`chapters.basis = 0`, `chapters.chars > 0`), and the remedy is the frame's
+ * own row — a `book_frame` seed or a restore, never a file edit.
  */
 export class FrameNotBasisError extends Error {
   readonly code = 'FRAME_NOT_BASIS';
-  constructor(readonly file: string) {
+  constructor(readonly slot: number, readonly chars: number) {
     super(
-      `the frame file holds prose, not the frozen sentence (${file}); ` +
-        'clear manuscript/ (git checkout) and run the reset again',
+      `the frame slot holds prose, not the frozen sentence (chapter ${String(slot)}, ${String(chars)} characters); ` +
+        'restore the frame (book_frame row or the restore route) and run the reset again',
     );
     this.name = 'FrameNotBasisError';
   }
 }
 
-/** The two slots that hold nothing but the frozen frame (§BOOK-6): re-read after the wipe. */
+/** The two slots that hold nothing but the frozen frame (§BOOK-6): re-seeded after the wipe. */
 const FRAME_SLOTS: readonly [number, number] = [1, TOTAL_CHAPTERS];
+
+/** Which end of the slot each frame row sits on, for `book_frame`. */
+const FRAME_POSITION: Readonly<Record<number, 'first' | 'last'>> = {
+  [FRAME_SLOTS[0]]: 'first',
+  [FRAME_SLOTS[1]]: 'last',
+};
 
 /**
  * The `meta` keys the reset drops: the engine's alert cursor. `state_version` is **not** one of
@@ -222,50 +207,36 @@ const AUTOINCREMENT_TABLES = [
   'sentence_touches',
 ] as const;
 
-type FrameFile = { n: number; path: string; raw: string; mtimeMs: number };
+type FrameSlot = { n: number; raw: string };
 
 /**
- * The two frame slots as the manuscript holds them. Read before anything is deleted: an
- * absent or unreadable file is a broken mount, and the reset refuses instead of leaving the
- * reader with two chapters that no longer exist anywhere.
+ * The two frame slots as the volume holds them, read before anything is deleted (BOOK-187).
+ *
+ * The text comes from the rows: a `basis` chapter row is reprojected from its own title and
+ * paragraph, so ch01 keeps its heading («Замечаний нет») and nothing is re-parsed from a file.
+ * A slot without a chapter row is not a broken mount any more — the canon is a `book_frame`
+ * row, seeded by migration v28, and that row is what re-seeds an empty slot. Only a volume that
+ * holds neither refuses.
  */
-function readFrame(bookRoot: string): FrameFile[] {
+function frameSlots(db: Db): FrameSlot[] {
   return FRAME_SLOTS.map((n) => {
-    const file = join(bookRoot, 'manuscript', `ch${chapterLabel(n)}.md`);
-    try {
-      const raw = readFileSync(file, 'utf8');
-      return { n, path: file, raw, mtimeMs: statSync(file).mtimeMs };
-    } catch (error) {
-      const reason = (error as NodeJS.ErrnoException).code ?? 'unreadable';
-      throw new FrameMissingError(file, reason);
+    const position = FRAME_POSITION[n] ?? 'first';
+    const sentence = frameOf(db, n, position);
+    const row = getChapterRow(db, n);
+    if (row === undefined) {
+      if (sentence === null) {
+        throw new FrameMissingError(`book_frame ${String(n)}/${position}`, 'no frame row and no chapter row');
+      }
+      return { n, raw: sentence };
     }
+    // A frame slot rewritten into prose is a book whose canon moved: the reset would freeze the
+    // wrong text, so it refuses. `chars` is the row's own measure of the prose, `basis` the flag
+    // the projection publishes.
+    if (row.basis !== 1 || row.chars > 0) throw new FrameNotBasisError(n, row.chars);
+    const blocks = listBlocks(db, n);
+    const body = blocks.map((block) => block.text).join('\n\n');
+    return { n, raw: row.title === null ? body : `${row.title}\n\n${body}` };
   });
-}
-
-/**
- * A frame slot must be exactly its frozen sentence (§BOOK-6). A slot rewritten into prose is a
- * book whose canon moved: the reset would freeze the wrong text as the frame, so it refuses.
- */
-function assertFrameIsBasis(files: readonly FrameFile[]): void {
-  for (const file of files) {
-    if (!parseChapter(file.n, file.raw).basis) throw new FrameNotBasisError(file.path);
-  }
-}
-
-/**
- * Chapter files a boot scan would turn back into a written chapter (B2). The frame slots are
- * judged separately (`assertFrameIsBasis`); every other `chNN.md` holding prose is a book the
- * next restart would resurrect, so a successful reset would be undone by a boot.
- */
-function scanProse(bookRoot: string): { proseChapters: number; files: string[] } {
-  const scan = scanManuscript(bookRoot);
-  const files: string[] = [];
-  for (const chapter of scan.chapters) {
-    if (chapter.n === FRAME_SLOTS[0] || chapter.n === FRAME_SLOTS[1]) continue;
-    const parsed = parseChapter(chapter.n, chapter.raw);
-    if (parsed.blocks.length > 0 && !parsed.basis) files.push(chapter.fileName);
-  }
-  return { proseChapters: files.length, files };
 }
 
 function dropEventTriggers(db: Db): void {
@@ -338,16 +309,15 @@ function assertWiped(db: Db, expectedVersion: number): void {
 
 /**
  * Count, and — when `dryRun` is false — back up and wipe. Throws a typed refusal for the
- * answers a caller must distinguish: a busy engine (`409`), a manuscript that still holds prose
- * (`409`), a missing or rewritten frame (`409`) and a backup that could not be verified
- * (`500`, or a warning with `backupOk`).
+ * answers a caller must distinguish: a busy engine (`409`), a rewritten frame (`409`, read from
+ * its rows), a frame no row holds (`409`) and a backup that could not be verified (`500`, or a
+ * warning with `backupOk`).
  */
 export function resetBook(db: Db, options: ResetOptions): ResetReport {
   const tables = countBook(db);
   const total = totalOf(tables);
   const kept = countKept(db);
   const engine = countEngine(db);
-  const prose = scanProse(options.bookRoot);
   const frame: [number, number] = [FRAME_SLOTS[0], FRAME_SLOTS[1]];
   const report: ResetReport = {
     dryRun: options.dryRun,
@@ -356,7 +326,7 @@ export function resetBook(db: Db, options: ResetOptions): ResetReport {
     kept,
     frame,
     engine,
-    manuscript: { proseChapters: prose.proseChapters },
+    content: countContent(db),
     backup: null,
     backupSkipped: null,
   };
@@ -364,11 +334,9 @@ export function resetBook(db: Db, options: ResetOptions): ResetReport {
   if (options.dryRun) return report;
 
   if (engine.openSteps > 0 || engine.liveLeases > 0) throw new EngineBusyError(engine);
-  // B2: a chapter file the manuscript still holds would be re-ingested by the next boot scan,
-  // so the reset refuses before it writes anything — no backup, no wipe.
-  if (prose.proseChapters > 0) throw new ManuscriptWrittenError(prose.files);
-  const frameFiles = readFrame(options.bookRoot);
-  assertFrameIsBasis(frameFiles);
+  // The frame is read before anything is deleted: a slot rewritten into prose refuses the whole
+  // operation (no backup, no wipe), because the reset would otherwise freeze the wrong canon.
+  const slots = frameSlots(db);
 
   let warning: string | undefined;
   if (total === 0) {
@@ -397,8 +365,10 @@ export function resetBook(db: Db, options: ResetOptions): ResetReport {
     dropEventTriggers(db);
     wipe(db);
     createEventTriggers(db);
-    for (const file of frameFiles) {
-      applyChapterFile({ db, dataDir: options.dataDir, n: file.n, raw: file.raw, mtimeMs: file.mtimeMs, nowMs });
+    // The canon comes back from the rows read above (`book_frame` or the slot's own basis row),
+    // through the same publisher a landing uses: the two frame slots are rows again.
+    for (const slot of slots) {
+      applyChapterFile({ db, dataDir: options.dataDir, n: slot.n, raw: slot.raw, mtimeMs: nowMs, nowMs });
     }
     setMeta(db, 'state_version', String(nextVersion));
     assertWiped(db, nextVersion);

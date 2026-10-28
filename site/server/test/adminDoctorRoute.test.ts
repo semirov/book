@@ -87,7 +87,8 @@ describe('GET /api/admin/doctor', () => {
     expect(body.dataDir.denied).toEqual([]);
     expect(body.dataDir.tokens).toEqual({ admin: false, engine: false });
     expect(body.dataDir.error).toBeNull();
-    expect(body.frame.source).toBe('basis');
+    // BOOK-187: the volume carries the two seeded rows, so the table answers — still digests only.
+    expect(body.frame.source).toBe('book_frame');
     expect(body.frame.rows.map((row) => row.chapter)).toEqual([1, 42]);
     expect(body.frame.rows.every((row) => /^[0-9a-f]{64}$/u.test(row.sha256))).toBe(true);
     expect(body.graph).toEqual({ shipped: false });

@@ -148,9 +148,15 @@ function stageEvent(stage: string): PassStageEvent {
 describe('a pass in flight prints the text its refetch brings', () => {
   let frames: FrameRequestCallback[] = [];
   let clock = 0;
+  /**
+   * One frame, pulled by hand. Its timestamp is `ms` on from the *real* clock, not only from
+   * the seeded one: the reveal loop seeds its own `last` from `performance.now()` when it
+   * starts, so on a loaded machine a mount that took over `ms` would hand it a negative delta
+   * and the paragraph would print nothing — a green test on a quiet host, red under a full run.
+   */
   async function tick(ms: number): Promise<void> {
     const next = frames.shift();
-    clock += ms;
+    clock = Math.max(clock, performance.now()) + ms;
     await act(async () => next?.(clock));
   }
 

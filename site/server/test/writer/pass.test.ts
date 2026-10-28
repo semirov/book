@@ -3,7 +3,7 @@
  * every fact a reader could see — file, step, change, stages, money, transcript — asserted.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -23,6 +23,21 @@ const CHAPTER = 40;
 
 const spendRow = (harness: Harness, stepId: string): Record<string, unknown> | undefined =>
   harness.fixture.db.prepare('SELECT * FROM pass_spend WHERE pass_id = ?').get(stepId) as Record<string, unknown> | undefined;
+
+/** One pass's receipt rows, in call order (`pass_transcripts`, BOOK-187 AC7). */
+const transcriptRows = (harness: Harness, passId: string): Array<Record<string, unknown> & { seq: number; role: string; content_redacted: string; tokens_in: number; tokens_out: number }> =>
+  harness.fixture.db
+    .prepare('SELECT seq, role, at, tokens_in, tokens_out, prompt_bundle, content_redacted FROM pass_transcripts WHERE pass_id = ? ORDER BY seq')
+    .all(passId) as Array<Record<string, unknown> & { seq: number; role: string; content_redacted: string; tokens_in: number; tokens_out: number }>;
+
+/** The facts a receipt row carries: shas and lengths, never a message. */
+const factsOf = (row: { content_redacted: string }): {
+  promptSha256: string;
+  sections: Array<{ id: string; sha256: string; chars: number }>;
+  answer: { sha256: string; chars: number };
+  verdict?: string;
+  failure?: string;
+} => JSON.parse(row.content_redacted) as ReturnType<typeof factsOf>;
 
 /** The engine's money answer as a test states it: no ledger, just the numbers the guard reads. */
 function budgetOf(input: {
@@ -55,13 +70,11 @@ describe('runPass — one pass, end to end', () => {
       expect(result.status).toBe('closed');
       expect(result.stepId).toBeDefined();
 
-      // 1. The file holds the answer, and the engine reads a whole chapter.
-      const chainPath = join(harness.bookRoot, 'manuscript', 'ch40.md');
-      expect(existsSync(chainPath)).toBe(true);
-      const written = readFileSync(chainPath, 'utf8');
-      expect(written.startsWith('Глава сорок\n\n')).toBe(true);
+      // 1. The rows hold the answer, and the pass wrote no file at all (BOOK-187).
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
+      const written = harness.fixture.readChapter(40);
+      expect(written?.startsWith('Глава сорок\n\n')).toBe(true);
       expect(written).toContain('служебный абзац для проверки объёма страницы');
-      expect(existsSync(`${chainPath}.tmp`)).toBe(false);
 
       // 2. The step is closed with the pinned model and the summed tokens (writer + both gates).
       const step = stepRow(harness.fixture, result.stepId ?? '');
@@ -103,40 +116,29 @@ describe('runPass — one pass, end to end', () => {
       expect(landed?.costUsd).toBe(costUsd(harness.config.pipeline.pricing, { in: 3_000, out: 600, cachedIn: 0 }));
       expect(landed?.costUsd).toBeGreaterThan(0);
 
-      // 6. The transcript holds the requests and the answers, and never the key.
-      const transcript = join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`);
-      expect(existsSync(transcript)).toBe(true);
-      const saved = readFileSync(transcript, 'utf8');
+      // 6. The transcript is rows of facts (BOOK-187 AC7): one per call, no prompt, no answer.
+      const receipts = transcriptRows(harness, result.stepId ?? '');
+      expect(receipts.map((row) => row.role)).toEqual(['draft', 'gate:editor', 'gate:consultant']);
+      expect(receipts.map((row) => row.seq)).toEqual([1, 2, 3]);
+      expect(receipts[0]?.tokens_in).toBe(1_000);
+      expect(receipts[0]?.tokens_out).toBe(200);
+      // The verdicts are facts of the receipt: the editor and the consultant both held.
+      expect(receipts.map((row) => factsOf(row).verdict ?? null)).toEqual([null, 'HOLDS', 'HOLDS']);
+      expect(factsOf(receipts[0]!).answer.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(factsOf(receipts[0]!).sections.length).toBeGreaterThan(3);
+      // No prose, no prompt, no key: a receipt is useless as a second copy of the book.
+      const saved = receipts.map((row) => row.content_redacted).join('\n');
+      expect(saved).not.toContain('Глава сорок');
+      expect(saved).not.toContain('служебный абзац');
       expect(saved).not.toContain('sk-writer-harness');
-      const parsed = JSON.parse(saved) as {
-        calls: Array<{ kind: string; system: string; user: string; answer: string }>;
-        sections: number;
-        promptSha256: string;
-        model: string;
-        reportedModel: string;
-        modelMismatch: { declared: string; reported: string } | null;
-        estimate: { usd: number; calls: number; tokensIn: number; assumptions: Record<string, number> };
-        result: { status: string };
-      };
-      expect(parsed.calls.map((call) => call.kind)).toEqual(['draft', 'gate:editor', 'gate:consultant']);
-      expect(parsed.calls[0]?.answer).toContain('Глава сорок');
-      expect(parsed.sections).toBeGreaterThan(3);
-      expect(parsed.promptSha256).toMatch(/^[0-9a-f]{64}$/u);
-      expect(parsed.result.status).toBe('closed');
-      // The pin closes the pass; the provider's own word is kept beside it, and they agree here.
-      expect(parsed.model).toBe(harness.config.model);
-      expect(parsed.reportedModel).toBe(harness.config.apiModel);
-      expect(parsed.modelMismatch).toBeNull();
 
-      // 6b. The estimate that let the pass run is in the transcript, and one line says it aloud.
-      expect(parsed.estimate.usd).toBeGreaterThan(0);
-      expect(parsed.estimate.calls).toBe(6);
-      expect(parsed.estimate.assumptions.charsPerToken).toBe(2.3);
+      // 6b. The estimate that let the pass run is a log line — money is proved by the stages.
       expect(harness.logs.some((line) => line.includes('оценка прохода $'))).toBe(true);
+      expect(harness.logs.some((line) => line.includes('транскрипт: 3 строк'))).toBe(true);
 
-      // 7. The pre-image was taken before the write, and says the slot was empty.
-      const pre = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'pre', 'ch40.json'), 'utf8')) as { state: string; sha: string | null; chapter: number };
-      expect(pre).toMatchObject({ chapter: CHAPTER, state: 'absent', sha: null });
+      // 7. No pre-image exists any more: a refused landing touches nothing, so the rows the site
+      //    served *are* the pre-image (BOOK-187).
+      expect(existsSync(join(harness.dataDir, 'writer', 'pre'))).toBe(false);
 
       // 8. One log line per stage, each with the stage's own summary — never the prompt.
       expect(harness.logs.filter((line) => line.includes('queued'))).toHaveLength(1);
@@ -154,7 +156,7 @@ describe('runPass — one pass, end to end', () => {
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       // ADR-038 §2: other weights are evidence, not a refusal — the pass takes this provider here.
       const deps: PassDeps = {
-        config: harness.config, bookRoot: harness.bookRoot, dataDir: harness.dataDir, engine: harness.client,
+        config: harness.config, bookRoot: harness.bookRoot, engine: harness.client,
         now: () => harness.fixture.clock.now(), log: (line) => harness.logs.push(line), chapter: CHAPTER,
         provider: async (request) => ({ ...(await harness.provider(request)), responseModel: 'deepseek-v4-pro-0901' }),
       };
@@ -165,15 +167,10 @@ describe('runPass — one pass, end to end', () => {
       expect(stepRow(harness.fixture, stepId)?.model).toBe(harness.config.model);
       expect(spendRow(harness, stepId)).toMatchObject({ model: harness.config.model, priced: 1 });
       expect(Number(spendRow(harness, stepId)?.usd)).toBeGreaterThan(0);
-      // The transcript keeps both: what the engine recorded and what actually answered.
-      const saved = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${stepId}.json`), 'utf8')) as {
-        model: string; reportedModel: string; modelMismatch: { declared: string; reported: string } | null;
-      };
-      expect(saved).toMatchObject({
-        model: harness.config.model,
-        reportedModel: 'deepseek-v4-pro-0901',
-        modelMismatch: { declared: harness.config.model, reported: 'deepseek-v4-pro-0901' },
-      });
+      // The mismatch is evidence, and it stays an operator line: a receipt names shas and lengths,
+      // never a model string in free text (BOOK-187 AC7).
+      expect(harness.logs.some((line) => line.includes('другими весами: deepseek-v4-pro-0901'))).toBe(true);
+      expect(transcriptRows(harness, stepId).map((row) => row.content_redacted).join('\n')).not.toContain('deepseek');
     } finally {
       await harness.close();
     }
@@ -188,7 +185,7 @@ describe('runPass — one pass, end to end', () => {
       expect(result.status).toBe('parked');
       expect(result.reason).toContain('модель отказалась писать');
       expect(harness.logs.join('\n')).toContain('ANSWER_REFUSAL');
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch40.md'))).toBe(false);
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
 
       // The park carries what it spent: both draft attempts priced, so the bound sees the pass.
       const parkedStep = stepRow(harness.fixture, result.stepId ?? '');
@@ -260,9 +257,10 @@ describe('runPass — one pass, end to end', () => {
       expect(drafting).toHaveLength(6);
       expect(drafting[2]?.summary).toContain('продолжение');
       expect(harness.calls[1]?.messages.at(-1)?.content).toContain('Продолжи прозу ровно с этого места.');
-      const written = readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8');
+      const written = harness.fixture.readChapter(CHAPTER);
       expect(written).toContain('Дописанный абзац.');
       expect(written).toContain('Дописанный абзац продолжается');
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
     } finally {
       await harness.close();
     }
@@ -277,12 +275,12 @@ describe('runPass — one pass, end to end', () => {
       harness.fixture.engine.start(assignment.leaseId);
       harness.fixture.writeChapter(CHAPTER, chapterAnswer());
       harness.fixture.engine.land(assignment.leaseId);
-      const onDisk = readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8');
+      const landed = harness.fixture.readChapter(CHAPTER);
       harness.script.push('HOLDS', 'HOLDS');
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
-      // No model call wrote prose: only the two gates answered.
-      expect(readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8')).toBe(onDisk);
+      // No model call wrote prose: only the two gates answered, and the rows did not move.
+      expect(harness.fixture.readChapter(CHAPTER)).toBe(landed);
       expect(harness.calls.map((call) => call.messages[0]?.content.slice(0, 2))).toHaveLength(2);
       expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'verdict', 'verdict', 'verdict', 'landed']);
     } finally {
@@ -395,7 +393,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.calls).toHaveLength(0);
       expect(spendRow(harness, result.stepId ?? '')).toMatchObject({ model: null, tokens_in: 0, tokens_out: 0, priced: 0 });
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch40.md'))).toBe(false);
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
       expect(listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage)).toEqual(['queued', 'read', 'refused']);
     } finally {
       await harness.close();

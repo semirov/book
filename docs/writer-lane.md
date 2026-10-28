@@ -109,9 +109,17 @@ one implementation of "open a draft step, ride its premise, take its lease".
 - `--dry-run` — resolve config, prompt, assignment and validation shape; **zero** model calls,
   nothing written, no transcript.
 - `--loop` — the supervised shape: one pass, then sleep; the launchd job `dev.book-writer`.
-- `--revert --chapter N` — put the chapter back to its pre-pass state byte-identically
-  (previous revision's snapshot, or remove the file when the slot was empty), then
-  `POST /internal/reconcile`.
+- `--revert --chapter N [--rev R]` — publish the earlier text as a **new** revision through
+  `POST /internal/restore` (`cause_kind='restore'`); the old text is read from the revision's
+  snapshot row, never from a file. The revert prints the new revision and the sha it verified.
+  A pre-image file does not exist: nothing the writer holds could be lost, because the text was
+  never written anywhere but the database.
+
+**Where the lane's own state lives.** Not in the data dir: `writer_state` (one row, the day's
+counter and the pause) and `pass_transcripts` (one row per model call, redacted to section ids,
+hashes and token counts — no prompt, no answer, no key, no address, no session) are tables. The
+writer reaches them through the engine (`/internal/writer-state`, `/internal/transcript`), so one
+process owns the database. Retention: 30 days (`TRANSCRIPT_RETENTION_DAYS`).
 
 Model: `site/config/pipeline.json` is the single source — `provider`, `model`, `endpoint`, and
 the rate `table` for every model the book may run (the same table BOOK-114's line reads).
@@ -167,8 +175,9 @@ deployed by `deploy.sh` and is not touched here.
 5. **One real pass before the loop is trusted**: `npm run writer -- --once --chapter 65`, then read
    `steps`, `changes`, `GET /api/chapters/65`, the `pass_stages` rows and the transcript.
 
-**Rollback** (any step, in this order): `launchctl bootout gui/$(id -u)/dev.book-writer` (the file
-already written stays — it is a revision like any other and `--revert --chapter N` takes it back);
+**Rollback** (any step, in this order): `launchctl bootout gui/$(id -u)/dev.book-writer` (the text
+already landed stays — it is a revision like any other, and `--revert --chapter N` publishes a
+restore revision that takes it back);
 `DRAFTING=off` + kickstart the engine; point the engine plist's `WorkingDirectory` back at
 `/Users/filipp/projects/book/site` and kickstart. The schema only gained a table (`v14`), which an
 older binary ignores.

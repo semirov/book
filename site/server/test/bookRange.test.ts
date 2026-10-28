@@ -141,10 +141,11 @@ describe('the book’s range at the route boundary (BOOK-155)', () => {
     // The route refuses it as no chapter at all — not as a slot that is merely unwritten.
     const served = await app!.inject({ method: 'GET', url: '/api/chapters/65' });
     expect(served.statusCode).toBe(400);
-    // The finale is inside the book, so it answers the normal "not written yet".
-    expect((await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` })).statusCode).toBe(
-      404,
-    );
+    // The finale is inside the book, and since BOOK-187 it carries the frozen frame before it has
+    // a chapter: the row `book_frame` holds is the text a reader is given.
+    const finale = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
+    expect(finale.statusCode).toBe(200);
+    expect(finale.json()).toMatchObject({ n: TOTAL_CHAPTERS, basis: true, rev: 0 });
 
     const catalog = (await app!.inject({ method: 'GET', url: '/api/chapters' })).json() as Array<{ n: number }>;
     expect(catalog).toHaveLength(TOTAL_CHAPTERS);
@@ -167,10 +168,14 @@ describe('the book’s range at the route boundary (BOOK-155)', () => {
     await boot();
     const past = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS + 1)}` });
     expect(past.statusCode).toBe(400);
-    // In range and unwritten: 404 `NOT_WRITTEN`, never a 400.
+    // In range and unwritten, a slot with no frame is 404 `NOT_WRITTEN`, never a 400; the finale
+    // is the frame, so it answers 200 (BOOK-187 AC3).
+    const before = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS - 1)}` });
+    expect(before.statusCode).toBe(404);
+    expect(before.json()).toMatchObject({ code: 'NOT_WRITTEN' });
     const last = await app!.inject({ method: 'GET', url: `/api/chapters/${String(TOTAL_CHAPTERS)}` });
-    expect(last.statusCode).toBe(404);
-    expect(last.json()).toMatchObject({ code: 'NOT_WRITTEN' });
+    expect(last.statusCode).toBe(200);
+    expect(last.json()).toMatchObject({ n: TOTAL_CHAPTERS, basis: true });
   });
 });
 

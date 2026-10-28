@@ -17,7 +17,7 @@ function bookBlocks(n: number): string[] {
 }
 
 function book(fixture: ReturnType<typeof createEngineFixture>, from: number, to: number): void {
-  for (let n = from; n <= to; n += 1) fixture.writeChapterBlocks(n, `Глава ${n}`, bookBlocks(n));
+  for (let n = from; n <= to; n += 1) fixture.seedChapterBlocks(n, `Глава ${n}`, bookBlocks(n));
 }
 
 function edited(n: number, index: number, text: string): string[] {
@@ -121,7 +121,7 @@ describe('the FIFO lane (§6A.3)', () => {
       const assignment = fixture.engine.next({ for: 'fwd', session: 'fwd-1' }) as WriterAssignment;
       expect(assignment.pass).toBe('change');
       // The file is emptied down to its basis sentence while the step is open.
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
 
       expect(() => fixture.engine.start(assignment.leaseId)).toThrow(/ещё не написана/u);
       // Nothing was captured as a pre-image of a chapter that has no prose.

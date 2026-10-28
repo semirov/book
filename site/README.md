@@ -41,8 +41,10 @@ npm run frame:check          # F029: ch01 opens and ch67 closes on the canon; de
 npm run frame:check -- --url=http://127.0.0.1:8091   # «what does the site actually serve» (HTTP, no DB)
 # `--data <dir>` opens a LOCAL data dir. The live store is the `book-data` volume (BOOK-183): copy it out
 # with `site/deploy/backup.sh` and point `--data` at that copy — never at a host path of the volume.
-npm run validate             # F001–F009 + F020–F022 + F029 over manuscript/; exit 1 on errors
-node bin/validate.mjs --staged   # what the git hook runs on the index
+npm run validate             # the image's constants only: F005 + F020 (+ F006), naming the rules it skips
+node bin/validate.mjs --from-db "$DATA_DIR" --strict   # the text as stored: the deploy's gate
+node bin/validate.mjs --staged   # what the git hook runs: no `manuscript/` path may be staged
+node bin/home-check.mjs --data-dir "$DATA_DIR"         # the volume holds the book and nothing else
 ```
 
 Install the commit gate once per clone: `git config core.hooksPath site/bin/git-hooks && chmod +x site/bin/git-hooks/pre-commit`.
@@ -75,8 +77,9 @@ node bin/engine.mjs done <leaseId> --seams seams.json --note "…"   # requires 
 node bin/engine.mjs trace <changeId|stepId>       # the ripple, step by step
 node bin/engine.mjs reconcile                     # boot check: lane, leases, stranded steps
 node bin/index.mjs show|rebuild                   # the derived index: paths, hash, counts; rebuild
-node bin/restore.mjs --chapter 9 --rev 3 --dry-run # a human rollback, then reconcile (in the container:
-                                                  #   site/deploy/admin.sh restore --chapter 9 --rev 3 --dry-run)
+node bin/restore.mjs --chapter 9 --list            # the revisions of a chapter, and what a restore would publish
+node bin/restore.mjs --chapter 9 --rev 3 --dry-run # preview only: a restore is a revision, then reconcile
+                                                  #   (in the container: site/deploy/admin.sh restore --chapter 9 --rev 3 --dry-run)
 ```
 
 These CLIs open the database, which since BOOK-183 lives in the `book-data` volume: run them through
@@ -110,8 +113,9 @@ One image (`book:<40-char sha>`, never `latest`), three services from it — `si
 (`server/dist/index.js`, published on the Mac's LAN address for Caddy on the home-server), `engine`
 (`server/dist/engine.js`, no published port) and `writer` (`server/dist/writer/main.js --loop`, no
 port). The data dir is the **named volume** `book-data` mounted at `/data` in all three services, never
-a host bind (BOOK-183 — see "State is a volume" below); the manuscript is read-only into `site` and
-`engine`, and only `manuscript/` is writable into `writer`.
+a host bind (BOOK-183 — see "State is a volume" below). **No service mounts a book tree** (BOOK-187):
+the canon (prompts, concept, style, the plan) is baked into the image at its root and the text is rows,
+so there is no `manuscript/` to mount — read-only or writable — in any of the three.
 Secrets are files: the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`,
 `YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`, `CAPTCHA_SECRET_FILE` only when a captcha is
 chosen) and the values live in `0600` files mounted at `/run/secrets/…`. `site` and `engine` both get
@@ -123,8 +127,10 @@ Sign-in is optional (ADR-021). To enable it, put the client id in `secrets/yande
 client secret in `secrets/yandex_client_secret` (both `0600`) and point `YANDEX_CLIENT_ID_FILE` /
 `YANDEX_CLIENT_SECRET_FILE` at them (`/run/secrets/…` for the compose services, `./secrets/…` in
 `.env` for the launchd fallback). To run without OAuth, mount neither: the site stays readable and
-sign-in answers `503 OAUTH_UNCONFIGURED`. Text rollback is unchanged (`bin/restore.mjs` for a chapter,
-then `bin/engine.mjs reconcile`); the paragraphs below are about code.
+sign-in answers `503 OAUTH_UNCONFIGURED`. A text rollback is a **revision**, not a file: it goes through
+`POST /internal/restore` (`npm run writer -- --revert --chapter N` from the host), then
+`bin/engine.mjs reconcile` marks it; `bin/restore.mjs` only lists and previews
+(BOOK-187 — the book's text lives in the database). The paragraphs below are about code.
 
 | service | command | published | cpu / mem / pids | grace | healthcheck |
 | --- | --- | --- | --- | --- | --- |
@@ -354,10 +360,11 @@ cp -a "$HOME/book-site-backups/daily/$(ls "$HOME/book-site-backups/daily" | tail
 docker compose -p book cp site:/data/engine.token "$R/host-data/engine.token" 2>/dev/null || true
 docker compose -p book cp site:/data/admin.token  "$R/host-data/admin.token"  2>/dev/null || true
 chmod 0600 "$R/host-data/engine.token" "$R/host-data/admin.token" 2>/dev/null || true
-rsync -a --exclude .git "$HOME/projects/book/" "$R/book/"         # a copy: the writer writes here
+# No book tree is copied or mounted any more (BOOK-187): the image carries the canon, the text is
+# rows in the volume, and the writer writes no file.
 
 export BOOK_SITE_PUBLISH=127.0.0.1:18095 BOOK_DATA_VOLUME=book-183-data BOOK_BACKUPS_DIR="$R/backups" \
-       BOOK_MANUSCRIPT="$R/book" BOOK_SECRETS_DIR="$HOME/projects/book/site/secrets" \
+       BOOK_SECRETS_DIR="$HOME/projects/book/site/secrets" \
        BOOK_LOCKS_DIR="$R/locks" BOOK_PROJECT=book-183-rehearsal BOOK_STATE_DIR="$R/state" \
        BOOK_IMAGE_TAG=book-183:<sha> BOOK_HOST_DATA_DIR="$R/host-data"
 # BOOK_DATA_VOLUME names a volume of the rehearsal's own: pointed at `book-data` it would seed — or

@@ -1,18 +1,18 @@
 /**
- * BOOK-109 — `FRAME_DRIFT`: the served frame against the manuscript's.
+ * BOOK-109 / BOOK-187 — `FRAME_DRIFT`: the served frame against the row the volume holds.
  *
- * The owner read ch01/ch42 as text no file held, and neither the pages nor the probe could say
- * which side of the projection was wrong. The check compares the block a request is about to
- * serve with the paragraph the file holds, so the log line names both strings — and it speaks
- * only for the two chapters that carry the frame.
+ * The owner read ch01/ch42 as text no source held, and neither the pages nor the probe could say
+ * which side of the projection was wrong. Since v28 the comparison reads no file: the block a
+ * request is about to serve is compared with the sentence `book_frame` keeps, so the log line
+ * names both strings — and it speaks only for the two chapters that carry the frame.
  *
- * The unit cases pin the comparison itself (agreement, either end, a re-wrapped paragraph, an
- * unreadable file); the integration ones are the real road: a row updated under the route's
- * feet, the answer still a 200, and one JSON line carrying both texts — once per *distinct*
- * drift, not once per reader page view (BOOK-109 review).
+ * The unit cases pin the comparison itself (agreement, either end, a re-wrapped paragraph, a
+ * missing row); the integration ones are the real road: a row updated under the route's feet, the
+ * answer still a 200, and one JSON line carrying both texts — once per *distinct* drift, not once
+ * per reader page view (BOOK-109 review).
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,9 +22,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
 import { loadConfig } from '../src/config.ts';
-import { checkFrameDrift, frameFile } from '../src/http/frameDrift.ts';
+import { frameOf, frameSha, type FramePosition } from '../src/db/repo/frame.ts';
+import { checkFrameDrift, framePositionOf, frameSource } from '../src/http/frameDrift.ts';
 import { reconcile } from '../src/ingest/reconcile.ts';
 import { StateService } from '../src/ingest/stateService.ts';
+import { sha256Hex } from '../src/util/hash.ts';
 import { createFixture, longProse, type Fixture } from './helpers.ts';
 
 const roots: string[] = [];
@@ -38,19 +40,16 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-/** A directory this file owns and removes — a book root, or the app's built SPA. */
+/** A directory this file owns and removes — the app's built SPA in these cases. */
 function tempDir(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
   roots.push(root);
   return root;
 }
 
-/** A book root holding only the files a case needs. */
-function bookRoot(files: Record<string, string>): string {
-  const root = tempDir('book-frame-');
-  mkdirSync(join(root, 'manuscript'), { recursive: true });
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(root, 'manuscript', name), text, 'utf8');
-  return root;
+/** A reader over a fixed set of rows: the seam a database would fill in production. */
+function rowsOf(rows: Partial<Record<string, string>>) {
+  return (_chapter: number, position: FramePosition): string | null => rows[position] ?? null;
 }
 
 /** The app with a log stream, and the lines it wrote — parsed once at the assertion. */
@@ -76,72 +75,66 @@ async function bootLogged(): Promise<{ lines: string[]; records: () => Array<Rec
   };
 }
 
-describe('checkFrameDrift — ch01 opens the frame, the finale closes it (BOOK-109)', () => {
-  it('says nothing when the served first paragraph is the file’s first paragraph', () => {
-    const root = bookRoot({ 'ch01.md': `${FRAME_FIRST_SENTENCE}\n` });
-    expect(checkFrameDrift({ bookRoot: root }, 1, [{ text: FRAME_FIRST_SENTENCE }])).toBeNull();
+describe('checkFrameDrift — ch01 opens the frame, the finale closes it (BOOK-109, BOOK-187)', () => {
+  it('says nothing when the served first block opens with the row', () => {
+    const frameOf = rowsOf({ first: FRAME_FIRST_SENTENCE });
+    expect(checkFrameDrift({ frameOf }, 1, [{ text: `${FRAME_FIRST_SENTENCE} Я постоял и вышел.` }])).toBeNull();
   });
 
-  it('returns both texts when ch01 serves a first paragraph the file does not hold', () => {
-    const root = bookRoot({ 'ch01.md': `Заголовок главы\n\n${FRAME_FIRST_SENTENCE}\n\nВторой абзац.` });
+  it('returns both texts when ch01 serves a first block that lost the sentence', () => {
+    const frameOf = rowsOf({ first: FRAME_FIRST_SENTENCE });
     const served = 'Рано утром я проснулся по будильнику, был обычный будний день.';
-    const check = checkFrameDrift({ bookRoot: root }, 1, [{ text: served }, { text: 'Второй абзац.' }]);
-    expect(check).toEqual({
-      file: join(root, 'manuscript', 'ch01.md'),
+    expect(checkFrameDrift({ frameOf }, 1, [{ text: served }, { text: 'Второй абзац.' }])).toEqual({
+      source: frameSource(1, 'first'),
       served,
-      manuscript: FRAME_FIRST_SENTENCE,
+      stored: FRAME_FIRST_SENTENCE,
     });
   });
 
-  it('compares the last paragraph of the finale, not its first', () => {
-    const root = bookRoot({ 'ch42.md': `Последняя глава\n\nОткрывающий абзац.\n\n${FRAME_LAST_SENTENCE}` });
+  it('compares the last block of the finale, not its first', () => {
+    const frameOf = rowsOf({ last: FRAME_LAST_SENTENCE });
     const blocks = [{ text: 'Открывающий абзац.' }, { text: 'И никого не стало.' }];
-    const check = checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, blocks);
-    expect(check).toEqual({
-      file: frameFile(root, TOTAL_CHAPTERS),
+    expect(checkFrameDrift({ frameOf }, TOTAL_CHAPTERS, blocks)).toEqual({
+      source: frameSource(TOTAL_CHAPTERS, 'last'),
       served: 'И никого не стало.',
-      manuscript: FRAME_LAST_SENTENCE,
+      stored: FRAME_LAST_SENTENCE,
     });
-    // The opening paragraph agrees, so the same file aligned at the other end is silence.
+    // The closing block carries the sentence at its end, so the same reader is silence.
     expect(
-      checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, [{ text: 'Открывающий абзац.' }, { text: FRAME_LAST_SENTENCE }]),
+      checkFrameDrift({ frameOf }, TOTAL_CHAPTERS, [{ text: 'Открывающий абзац.' }, { text: `И никого не стало. ${FRAME_LAST_SENTENCE}` }]),
     ).toBeNull();
   });
 
-  it('does not read whitespace as drift: a re-wrapped paragraph is the same paragraph', () => {
-    const root = bookRoot({ 'ch01.md': `Заголовок главы\n\nЯ вошёл в пустую\nкомнату.   Её освещал яркий свет.` });
-    const check = checkFrameDrift({ bookRoot: root }, 1, [{ text: 'Я вошёл в пустую комнату.  Её освещал яркий свет.' }]);
-    expect(check).toBeNull();
+  it('does not read whitespace as drift: a re-wrapped block carries the same sentence', () => {
+    const frameOf = rowsOf({ first: FRAME_FIRST_SENTENCE });
+    const rewrapped = FRAME_FIRST_SENTENCE.replace('Её', '\nЕё').replace('  ', ' ');
+    expect(checkFrameDrift({ frameOf }, 1, [{ text: `${rewrapped} И дальше идёт текст главы.` }])).toBeNull();
   });
 
-  it('reports a readable but empty body as drift rather than as agreement', () => {
-    const root = bookRoot({ 'ch42.md': '' });
-    expect(checkFrameDrift({ bookRoot: root }, TOTAL_CHAPTERS, [{ text: FRAME_LAST_SENTENCE }])).toEqual({
-      file: frameFile(root, TOTAL_CHAPTERS),
-      served: FRAME_LAST_SENTENCE,
-      manuscript: '',
-    });
-  });
-
-  it('does not throw on a missing file, and asks nothing of the other chapters', () => {
-    const root = bookRoot({});
-    const missing = checkFrameDrift({ bookRoot: root }, 1, [{ text: FRAME_FIRST_SENTENCE }]);
+  it('reports a missing row as unreadable, and asks nothing of the other chapters', () => {
+    const missing = checkFrameDrift({ frameOf: rowsOf({}) }, 1, [{ text: FRAME_FIRST_SENTENCE }]);
     expect(missing).not.toBeNull();
     expect(missing !== null && 'unreadable' in missing).toBe(true);
+    expect(missing !== null && 'source' in missing && missing.source).toBe('book_frame/1/first');
 
-    // Ch 12 has no frame: no file is read at all, so a broken seam would fail here.
-    const exploding = { readFile: (): string => { throw new Error('must not be read'); } };
-    expect(checkFrameDrift({ bookRoot: root, ...exploding }, 12, [{ text: 'Абзац.' }])).toBeNull();
+    // Ch 12 has no frame: no row is read at all, so an exploding reader would fail here.
+    const exploding = {
+      frameOf: (): string => {
+        throw new Error('must not be read');
+      },
+    };
+    expect(checkFrameDrift(exploding, 12, [{ text: 'Абзац.' }])).toBeNull();
+    expect([1, TOTAL_CHAPTERS, 12].map(framePositionOf)).toEqual(['first', 'last', null]);
   });
 });
 
 /** Values written above: the owner's report, and a second, different corruption. */
 const WRONG = 'Рано утром я проснулся по будильнику, был обычный будний день.';
-/** BOOK-137: the fixture's ch01 file opens on the canon frame, so its first paragraph is this. */
-const MANUSCRIPT_FIRST = `${FRAME_FIRST_SENTENCE} Первый абзац главы.`;
+/** BOOK-137: the fixture's ch01 file opens on the canon frame, so its first block is this. */
+const FRAME_BLOCK = `${FRAME_FIRST_SENTENCE} Первый абзац главы.`;
 const WRONG_AGAIN = 'Другая подмена первого абзаца.';
 
-/** A row the file does not hold: the shape of the owner's report — old prose, new file. */
+/** A row the block does not carry: the shape of the owner's report — old prose, new row. */
 function setFirstBlock(text: string): void {
   fixture!.db.prepare(`UPDATE blocks SET text = ? WHERE chapter = 1 AND idx = 0`).run(text);
 }
@@ -156,7 +149,7 @@ function driftLines(log: { records: () => Array<Record<string, unknown>> }): Arr
 }
 
 describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', () => {
-  it('writes one line with both texts when the projection and the manuscript disagree', async () => {
+  it('writes one line with both texts when the served block and the row disagree', async () => {
     const log = await bootLogged();
     setFirstBlock(WRONG);
 
@@ -167,12 +160,14 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
 
     const drift = driftLines(log);
     expect(drift).toHaveLength(1);
-    expect(drift[0]).toMatchObject({ chapter: 1, served: WRONG, manuscript: MANUSCRIPT_FIRST });
-    expect(String(drift[0]?.file)).toBe(join(fixture!.root, 'manuscript', 'ch01.md'));
+    expect(drift[0]).toMatchObject({ chapter: 1, served: WRONG, stored: FRAME_FIRST_SENTENCE });
+    expect(String(drift[0]?.source)).toBe('book_frame/1/first');
   });
 
-  it('says nothing when the projection agrees with the file', async () => {
+  it('says nothing when the served block carries the row', async () => {
     const log = await bootLogged();
+    // The fixture's own ch01 block: the canon sentence, then the paragraph beside it.
+    expect(fixture!.db.prepare('SELECT text FROM blocks WHERE chapter = 1 AND idx = 0').get()).toEqual({ text: FRAME_BLOCK });
 
     expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
     await settle();
@@ -194,10 +189,10 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);
-    expect(driftLines(log)[1]).toMatchObject({ served: WRONG_AGAIN, manuscript: MANUSCRIPT_FIRST });
+    expect(driftLines(log)[1]).toMatchObject({ served: WRONG_AGAIN, stored: FRAME_FIRST_SENTENCE });
 
     // Agreement clears the memory, so the same drift returning later is reported again.
-    setFirstBlock(MANUSCRIPT_FIRST);
+    setFirstBlock(FRAME_BLOCK);
     await app!.inject({ method: 'GET', url: '/api/chapters/1' });
     await settle();
     expect(driftLines(log)).toHaveLength(2);
@@ -208,9 +203,10 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
     expect(driftLines(log)).toHaveLength(3);
   });
 
-  it('reports an unreadable frame file once per process, with the reason', async () => {
+  it('reports a missing frame row once per process, with the reason', async () => {
     const log = await bootLogged();
-    rmSync(join(fixture!.root, 'manuscript', 'ch01.md'), { force: true });
+    // A volume whose seed never ran (a pre-v28 database) has no row to compare against.
+    fixture!.db.prepare('DELETE FROM book_frame WHERE chapter = 1').run();
 
     expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
     expect((await app!.inject({ method: 'GET', url: '/api/chapters/1' })).statusCode).toBe(200);
@@ -218,10 +214,22 @@ describe('GET /api/chapters/:n logs FRAME_DRIFT and still serves (BOOK-109)', ()
 
     const unreadable = log.records().filter((record) => record.msg === 'FRAME_DRIFT unreadable');
     expect(unreadable).toHaveLength(1);
-    expect(unreadable[0]).toMatchObject({ chapter: 1 });
-    expect(String(unreadable[0]?.reason)).toMatch(/ENOENT|no such file/u);
-    // The drift line itself never fires for a file that could not be read: an unanswerable
-    // check is not a claim that the text is wrong.
+    expect(unreadable[0]).toMatchObject({ chapter: 1, source: 'book_frame/1/first' });
+    expect(String(unreadable[0]?.reason)).toMatch(/no book_frame row/u);
+    // The drift line itself never fires for a row that is not there: an unanswerable check is
+    // not a claim that the text is wrong.
     expect(log.records().filter((record) => record.msg === 'FRAME_DRIFT')).toEqual([]);
+  });
+});
+
+describe('frameOf — the reader the route hands over (BOOK-187)', () => {
+  it('answers the seeded sentence and null for a chapter without a frame', () => {
+    fixture = createFixture({});
+    expect(frameOf(fixture.db, 1, 'first')).toBe(FRAME_FIRST_SENTENCE);
+    expect(frameOf(fixture.db, TOTAL_CHAPTERS, 'last')).toBe(FRAME_LAST_SENTENCE);
+    expect(frameOf(fixture.db, 12, 'first')).toBeNull();
+    // The health answer reads the hashes the same way: a row that is not there has none.
+    expect(frameSha(fixture.db, 1, 'first')).toBe(sha256Hex(FRAME_FIRST_SENTENCE));
+    expect(frameSha(fixture.db, 12, 'first')).toBeNull();
   });
 });

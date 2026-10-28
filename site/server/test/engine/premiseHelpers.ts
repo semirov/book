@@ -101,6 +101,6 @@ export function codeOf(run: () => unknown): string | null {
 /** Chapters 1..4 written, so the forward lane's next draft slot is chapter 5. */
 export function fourWritten(fixture: Fixture): void {
   for (let n = 1; n <= 4; n += 1) {
-    fixture.writeChapterBlocks(n, `Глава ${n}`, [`Служебный абзац главы ${n}. Он не является текстом книги.`]);
+    fixture.seedChapterBlocks(n, `Глава ${n}`, [`Служебный абзац главы ${n}. Он не является текстом книги.`]);
   }
 }

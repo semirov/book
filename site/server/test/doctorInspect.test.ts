@@ -79,10 +79,11 @@ describe('inspectSchema', () => {
 });
 
 describe('inspectFrame', () => {
-  it('reads the basis slots and reports the sha256 of the frozen sentences', () => {
+  it('reads the seeded rows and reports the sha256 of the frozen sentences', () => {
     const fixture = framed();
     const frame = inspectFrame(fixture.db);
-    expect(frame.source).toBe('basis');
+    // BOOK-187: a v28 volume carries the two rows, so the table — not the basis slot — answers.
+    expect(frame.source).toBe('book_frame');
     expect(frame.rows).toEqual([
       { chapter: 1, position: 'first', sha256: sha(FRAME_FIRST_SENTENCE) },
       { chapter: 42, position: 'last', sha256: sha(FRAME_LAST_SENTENCE) },
@@ -121,6 +122,8 @@ describe('inspectFrame', () => {
 
   it('falls back to the basis when book_frame has no text column', () => {
     const fixture = framed();
+    // A volume written by a build whose table had no `text`: the row cannot answer, so the slot does.
+    fixture.db.exec('DROP TABLE book_frame');
     fixture.db.exec('CREATE TABLE book_frame (chapter INTEGER NOT NULL, body TEXT NOT NULL)');
     const frame = inspectFrame(fixture.db);
     expect(frame.source).toBe('basis');

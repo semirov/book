@@ -24,6 +24,7 @@ import { TOTAL_CHAPTERS, isChapterNumber } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { chapterAt, bookAt, resolveMoment } from '../../history/book.ts';
+import { blame, type BlameAnswer } from '../../history/blame.ts';
 import { lastHseq } from '../../history/events.ts';
 import { readImpact } from '../../history/impact.ts';
 import { readContributors, readDiff, readParagraphChain } from '../../history/query.ts';
@@ -38,6 +39,20 @@ const chapterParams = {
 } as const;
 
 type MomentQuery = { at?: string | number; before?: string | number; limit?: string | number; chapter?: string | number };
+
+type BlameQuery = { chapter: number; blockUid: string; pos: number };
+
+/** One paragraph, one code-point offset: the three coordinates of a blame question. */
+const blameQuery = {
+  type: 'object',
+  required: ['chapter', 'blockUid', 'pos'],
+  properties: {
+    chapter: { type: 'integer', minimum: 1, maximum: TOTAL_CHAPTERS },
+    blockUid: { type: 'string', minLength: 1, maxLength: 80 },
+    pos: { type: 'integer', minimum: 0, maximum: 1_000_000 },
+  },
+  additionalProperties: false,
+} as const;
 
 function positive(value: unknown): number | undefined {
   if (value === undefined) return undefined;
@@ -104,6 +119,25 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const body: HistoryDiffDto = readDiff(db, from, to, chapter);
     return reply.send(body);
   });
+
+  /**
+   * Who wrote this character (ADR-041 §2.2, ADR-043 §4): the origin revision of one code point of
+   * a live block, walked back over `block_deltas`. `exact: 0` means the origin came out of a
+   * rewrite's computed diff, and the panel says «восстановлено по разнице» instead of naming a
+   * pass. An unknown paragraph is a 404; every other miss is a 200 with `blame: null` and a reason.
+   */
+  app.get<{ Querystring: BlameQuery }>(
+    '/api/history/blame',
+    { schema: { querystring: blameQuery } },
+    async (request, reply) => {
+      const { chapter, blockUid, pos } = request.query;
+      const body: BlameAnswer = blame(db, chapter, blockUid, pos);
+      if (body.reason === 'no-block') {
+        return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such paragraph' });
+      }
+      return reply.send(body);
+    },
+  );
 
   /** The lineage chain of one paragraph: where it came from, what rewrote it (§6F.3). */
   app.get<{ Params: { blockId: string } }>('/api/history/paragraphs/:blockId', async (request, reply) => {

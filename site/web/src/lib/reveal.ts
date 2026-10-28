@@ -137,7 +137,10 @@ export function chapterReveal(
 ): RevealState {
   const reduced = options.reducedMotion === true;
   const now = options.now ?? Date.now();
-  const ageMs = Number.isNaN(Date.parse(loaded.writtenAt)) ? 0 : now - Date.parse(loaded.writtenAt);
+  // A basis slot served before its chapter exists has no written moment (`null`, BOOK-187 AC3);
+  // it counts as just written, the way an unreadable `writtenAt` always has.
+  const writtenAt = loaded.writtenAt === null ? Number.NaN : Date.parse(loaded.writtenAt);
+  const ageMs = Number.isNaN(writtenAt) ? 0 : now - writtenAt;
   const plan = planReveal({
     blocks: loaded.blocks,
     mode: options.changed == null ? (options.fresh ? 'live' : 'join') : 'change',

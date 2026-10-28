@@ -199,7 +199,8 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
       fixture.engine.start(assignment.leaseId);
       const landed = fixture.engine.land(assignment.leaseId);
       expect(landed.changed).toBe(false);
-      expect(landed.revAfter).toBe(0);
+      // A hold keeps the revision the seeded chapter already had.
+      expect(landed.revAfter).toBe(1);
       fixture.engine.next({ role: 'editor', session: 'editor-1' });
       fixture.engine.verdict(assignment.stepId, {
         role: 'editor', session: 'editor-1', verdict: 'HOLDS', findings: [], model: PIPELINE_MODEL, tokensIn: 1, tokensOut: 1,
@@ -239,7 +240,8 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
       if (!front) throw new Error('step missing');
       const lease = acquireLease(fixture.deps, { step: front, session: 'w1', expectedRev: 0, changeId: null });
       fixture.engine.start(lease.id);
-      fixture.writeFront('Заголовок', 'Коротко.');
+      // The annotation is the published basis, so only the title can fail here.
+      fixture.writeFront('З'.repeat(81), DEFAULT_ABOUT);
       expect(() => fixture.engine.land(lease.id)).toThrow(/title ≤80 chars/u);
     } finally {
       fixture.close();
@@ -258,7 +260,8 @@ describe('land — shapes the engine refuses to bless (§6A.11)', () => {
       fixture.writeFront('Новое название', DEFAULT_ABOUT);
       const landed = fixture.engine.land(lease.id);
       expect(landed.changed).toBe(true);
-      expect(landed.revAfter).toBe(1);
+      // The seeded first sheet is revision 1; the wave publishes 2.
+      expect(landed.revAfter).toBe(2);
     } finally {
       fixture.close();
     }
@@ -291,7 +294,8 @@ describe('land — the length floor is a limit, not a hint (BOOK-24, F007)', () 
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE chapter = 1').get()).toEqual({ n: 0 });
       const step = store.getStep(fixture.db, 'stp_floor');
       expect(step?.landed_at).toBeNull();
-      expect(fixture.readChapter(1)).toBe(page(1_599));
+      // A refused landing publishes nothing: the slot still has no text.
+      expect(fixture.readChapter(1)).toBeNull();
     } finally {
       fixture.close();
     }
@@ -351,7 +355,8 @@ describe('land — the length floor is a limit, not a hint (BOOK-24, F007)', () 
       // 1 599-character draft stays the writer's own business, not a revision.
       const published = fixture.db.prepare('SELECT sha256 FROM chapters WHERE n = 1').get();
       expect(published).toEqual({ sha256: sha256Hex(page(1_700)) });
-      expect(fixture.readChapter(1)).toBe(page(1_599));
+      // The rows still serve the published page: the refused draft never became text.
+      expect(fixture.readChapter(1)).toBe(page(1_700));
     } finally {
       fixture.close();
     }

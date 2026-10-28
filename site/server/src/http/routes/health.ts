@@ -1,6 +1,8 @@
-import type { HealthDto } from '@book/shared';
+import { OPENING_CHAPTER, TOTAL_CHAPTERS, type HealthDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
+import { frameSha } from '../../db/repo/frame.ts';
+import { readWriterSummary } from '../../db/repo/writerState.ts';
 import { readEngineHealth } from '../../engineState/reader.ts';
 import type { RouteDeps } from '../deps.ts';
 
@@ -18,6 +20,14 @@ type MaxRow = { at: string | null };
  * the owner's stale phone could not be answered with; they still say nothing about the text,
  * the queue or the pen. `deploy.sh` reads `"ok":true`, so `ok` stays the first key.
  *
+ * BOOK-187 (ADR-043 §5) adds three facts about the volume: the schema version it was migrated to,
+ * the two hashes of the frame rows it holds, and whether this image's prompt bundle differs from
+ * the one the volume recorded (`prompt_drift`, a rollback's fingerprint). All three are `meta` /
+ * `book_frame` reads: no file is touched, so a probe stays as cheap as it was.
+ *
+ * AC5 adds `writer` — the lane's day, its spent passes and the two moments — read from
+ * `writer_state`, the row that replaced `writer/state.json`. It is a counter, not the text: the
+ * pen's state answers «is the book being written today», which the page already asks.
  * No freshness header here: the app's one policy (`http/cache.ts`) marks `/healthz` `no-store`
  * above the route, so a failed probe (the error handler's 500) cannot be stored either.
  */
@@ -25,6 +35,8 @@ export function registerHealthRoutes(app: FastifyInstance, deps: RouteDeps): voi
   app.get('/healthz', async (_request, reply) => {
     const lastScan = deps.db.prepare('SELECT v FROM meta WHERE k = ?').get('last_scan_at') as ValueRow | undefined;
     const lastEvent = deps.db.prepare('SELECT MAX(updated_at) AS at FROM chapters').get() as MaxRow;
+    const schema = deps.db.prepare('SELECT v FROM meta WHERE k = ?').get('schema_version') as ValueRow | undefined;
+    const drift = deps.db.prepare('SELECT v FROM meta WHERE k = ?').get('prompt_drift') as ValueRow | undefined;
 
     // Deliberately does not touch StateService: a health poll must not bump state.version.
     const engine = readEngineHealth(deps.db, Date.now());
@@ -40,6 +52,15 @@ export function registerHealthRoutes(app: FastifyInstance, deps: RouteDeps): voi
         missing: deps.watcher?.missing ?? false,
       },
       engine: { status: engine.status },
+      // The volume's own identity: which shape it was migrated to, and the frame it holds.
+      schema_version: schema === undefined ? 0 : Number.parseInt(schema.v, 10),
+      frame: {
+        first: frameSha(deps.db, OPENING_CHAPTER, 'first'),
+        last: frameSha(deps.db, TOTAL_CHAPTERS, 'last'),
+      },
+      prompt_drift: drift?.v ?? null,
+      // BOOK-187 AC5: the lane's counter, from the row; null until the first pass ever ran.
+      writer: readWriterSummary(deps.db),
     };
     return reply.send(body);
   });

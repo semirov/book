@@ -8,7 +8,6 @@ import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, splitSentences } from '@book
 
 import { REQUIRED_TRIGGERS } from '../src/db/schema.ts';
 import { BackupFailedError, countBook, resetBook } from '../src/reset/book.ts';
-import { longProse } from './helpers.ts';
 import { AT, CONTENT_KEYS, count, expectedCounts, ZEROS } from './resetSeed.ts';
 import { createResetHarness } from './resetApp.ts';
 
@@ -81,7 +80,11 @@ describe('POST /api/admin/reset/book — the guard and the dry run', () => {
     ]);
     expect(body.frame).toEqual([1, 42]);
     expect(body.engine).toEqual({ openSteps: 0, liveLeases: 0 });
-    expect(body.manuscript).toEqual({ proseChapters: 0 });
+    // BOOK-187: what the wipe removes, counted from rows — written chapters, characters,
+    // paragraphs. There is no manuscript file to report.
+    const chars = target.db.prepare('SELECT chars AS n FROM chapters WHERE basis = 0').get() as { n: number };
+    const blocks = target.db.prepare('SELECT COUNT(*) AS n FROM blocks').get() as { n: number };
+    expect(body.content).toEqual({ written: 1, chars: chars.n, blocks: blocks.n });
     expect(body.backup).toBeNull();
     expect(body.backupSkipped).toBeNull();
 
@@ -311,16 +314,19 @@ describe('the book the API serves after a reset', () => {
 });
 
 describe('the reset refuses rather than destroying', () => {
-  it('refuses with FRAME_MISSING when a frame file is gone, and wipes nothing', async () => {
-    const target = await h.live({
-      files: { 'ch01.md': FRAME_FIRST_SENTENCE, 'ch08.md': longProse(['Служебный абзац.']) },
-    });
+  it('refuses with FRAME_MISSING when no row holds the frame, and wipes nothing', async () => {
+    // BOOK-187: a slot with no chapter row is seeded from `book_frame`; a volume that holds
+    // neither is the only thing left to refuse. The rows are deleted on purpose here.
+    const target = await h.live();
+    target.db.prepare('DELETE FROM book_frame').run();
+    target.db.prepare('DELETE FROM blocks WHERE chapter = 42').run();
+    target.db.prepare('DELETE FROM chapters WHERE n = 42').run();
     const before = expectedCounts(target);
 
     const response = await h.call({ dryRun: false });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ code: 'FRAME_MISSING' });
-    expect(response.json().message).toContain('ch42.md');
+    expect(response.json().message).toContain('book_frame 42/last');
     expect(expectedCounts(target)).toEqual(before);
     expect(backups(target.dataDir)).toEqual([]);
   });
@@ -352,7 +358,6 @@ describe('the reset refuses rather than destroying', () => {
 
     expect(() =>
       resetBook(target.db, {
-        bookRoot: target.root,
         dataDir: target.dataDir,
         now: new Date(),
         dryRun: false,

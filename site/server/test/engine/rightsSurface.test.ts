@@ -18,6 +18,7 @@ import type { WriterAssignment } from '@book/shared';
 
 import type { GateAssignment, RightsAssignment } from '../../src/engine/gates.ts';
 import * as store from '../../src/engine/store.ts';
+import { removeChapter } from '../../src/ingest/applyChapter.ts';
 import { RIGHTS_COPY } from '../../src/rights/rules.ts';
 import { chapterText, createEngineFixture, PIPELINE_MODEL, type Fixture } from './helpers.ts';
 
@@ -347,8 +348,8 @@ describe('a step that landed before this deploy still cannot close without B (B3
       const assignment = draftChapter(fixture, [CLEAN]);
       fixture.engine.land(assignment.leaseId);
       store.updateStep(fixture.db, assignment.stepId, { rights_scan: null });
-      // The file vanished after the landing (a restore, a moved checkout).
-      fixture.writeChapter(1, '');
+      // The rows vanished after the landing (a restore of an empty slot, a hand repair).
+      removeChapter(fixture.db, 1);
       answerProse(fixture, 'editor');
       answerProse(fixture, 'consultant');
       expect(codeOf(() => fixture.engine.done(assignment.leaseId, { seams: [], model: PIPELINE_MODEL }))).toBe('RIGHTS_REQUIRED');

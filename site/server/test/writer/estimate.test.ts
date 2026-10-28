@@ -13,7 +13,7 @@ import { CHAPTER_CHARS } from '@book/shared';
 
 import { costUsd, loadPipeline } from '../../src/writer/pipeline.ts';
 import { CHARS_PER_TOKEN, canonChars, estimatePassUsd } from '../../src/writer/estimate.ts';
-import { buildWriterPrompt } from '../../src/writer/prompt.ts';
+import { buildWriterPrompt, noChapterText } from '../../src/writer/prompt.ts';
 import { BOOK_ROOT, SITE_ROOT } from './harness.ts';
 
 const pipeline = loadPipeline(join(SITE_ROOT, 'config', 'pipeline.json'));
@@ -71,7 +71,9 @@ describe('estimatePassUsd — one pass, priced before it runs', () => {
 
   it('never prices an unbuilt pass below the same pass built from the real prompt', () => {
     const built = buildWriterPrompt({
+      // No rows without an engine: the estimate's floor is the canon it always was.
       bookRoot: BOOK_ROOT,
+      chapterText: noChapterText,
       assignment: { chapter: 40, pass: 'draft', intent: null, interventionKind: null, premise: null, expectation: null },
     });
     const promptChars = built.system.length + built.user.length;

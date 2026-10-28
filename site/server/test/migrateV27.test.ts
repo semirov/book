@@ -67,7 +67,7 @@ describe('migration v27 — the disposition chain', () => {
   it('creates the four columns and the counts table on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(27);
+    expect(SCHEMA_VERSION).toBe(28);
 
     const names = columns(db, 'comments').map((column) => column.name);
     for (const column of CHAIN) expect(names).toContain(column);
@@ -114,8 +114,9 @@ describe('migration v27 — the disposition chain', () => {
     );
     for (const table of KEPT_TABLES) expect(before.has(table), table).toBe(true);
 
-    expect(migrate(db)).toEqual({ from: 26, to: 27 });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(27);
+    // BOOK-187's v28 follows, so the cursor lands on the head of the chain.
+    expect(migrate(db)).toEqual({ from: 26, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect(db.prepare('SELECT status, disposition, lock, carrier_kind, quote_kept FROM comments').get()).toEqual({
       status: 'rejected',
       disposition: null,

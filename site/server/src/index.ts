@@ -1,8 +1,13 @@
 /**
- * Boot: config → db → migrate → full rescan → hub → watcher → http (§4.3).
+ * Boot: config → db → schema read/dump/migrate → hub → http (§4.3, ADR-043 §5).
  *
- * The site still writes nothing to the repository: the watcher reads files and the hub
- * fans out facts. Intent (leases, changes, cascades) arrives with the engine in M3; reader
+ * **No path here reads a manuscript directory** (BOOK-187 AC2): the book's text, its front
+ * matter and its frame are rows, so a restart has nothing to rescan. The one module that may
+ * read an existing file tree is `ingest/reconcile.ts` — a one-shot import an operator runs
+ * deliberately, never a boot step.
+ *
+ * The site writes nothing to the repository: the hub fans out facts, the tailers read rows and
+ * the feedback inbox. Intent (leases, changes, cascades) arrives with the engine in M3; reader
  * identity and comments arrive here in M5, with the decisions tailer closing the loop from
  * `feedback.mjs` back to the readers' sockets.
  */
@@ -15,17 +20,15 @@ import { buildApp } from './app.ts';
 import { createAuthorsCount } from './authors/count.ts';
 import { readBuildCommit } from './build.ts';
 import { loadConfig, SITE_ROOT, gateAnnouncement } from './config.ts';
-import { databaseFile, openDatabase } from './db/db.ts';
-import { migrate } from './db/migrate.ts';
+import { bootDatabase, bootFailureLine } from './db/boot.ts';
+import { SCHEMA_VERSION } from './db/schema.ts';
 import { listCatalog } from './db/repo/chapters.ts';
 import { EngineBridge } from './engineState/bridge.ts';
 import { startErosionJob } from './history/erosion.ts';
 import { DecisionsTailer } from './feedback/decisions.ts';
 import { budgetCapsOf } from './budget.ts';
 import { SessionStore, SESSION_COOKIE } from './identity/session.ts';
-import { reconcile, rememberScan } from './ingest/reconcile.ts';
 import { StateService } from './ingest/stateService.ts';
-import { ManuscriptWatcher } from './ingest/watcher.ts';
 import { StageTailer } from './stages/tailer.ts';
 import { loadImprint } from './imprint.ts';
 import { RateLimiter } from './rate/limiter.ts';
@@ -57,10 +60,10 @@ async function main(): Promise<void> {
   // deployment stays quiet here and logs its provider with the scan below.
   const gate = gateAnnouncement(config);
   if (gate !== null) console.log(gate);
-  const db = openDatabase(databaseFile(config.dataDir));
-  const migration = migrate(db);
-  const report = reconcile(db, { bookRoot: config.bookRoot, dataDir: config.dataDir });
-  rememberScan(db, report);
+  // BOOK-187 / ADR-043 §5: schema read → verified dump → migrate → stamps → prompt drift. A
+  // refusal (a newer schema on the volume, a dump that cannot be verified) throws `BootRefusal`,
+  // and the supervisor — not this process — owns the restart.
+  const db = await bootDatabase({ dataDir: config.dataDir });
 
   const now = (): Date => new Date();
   // Deployment secrets arrive as `0600` files resolved by `loadConfig` (§21.2); an ephemeral
@@ -78,8 +81,8 @@ async function main(): Promise<void> {
 
   const state = new StateService(db, undefined, budgetCapsOf(config));
   const imprint = loadImprint(config.imprintPath);
-  // One byline reader for the socket, the watcher and the HTTP app, so page 1, a live
-  // `authors:update` and a reconnect all carry comparable markers (BOOK-DOC-4).
+  // One byline reader for the socket and the HTTP app, so page 1, a live `authors:update` and a
+  // reconnect all carry comparable markers (BOOK-DOC-4).
   const authorsCount = createAuthorsCount(db, now);
   const hub = new WsHub({
     db,
@@ -93,18 +96,6 @@ async function main(): Promise<void> {
         ? { signedIn: false, displayName: null }
         : { signedIn: true, displayName: session.identity.display_name };
     },
-  });
-
-  const watcher = new ManuscriptWatcher({
-    db,
-    state,
-    bookRoot: config.bookRoot,
-    dataDir: config.dataDir,
-    pollMs: config.watchPollMs,
-    coalesceMs: config.watchCoalesceMs,
-    emptyGraceMs: config.emptyWriteGraceMs,
-    emit: (event) => hub.publish(event.type, event.data),
-    authorsCount,
   });
 
   // The engine writes facts into the same database; the bridge narrates them to readers.
@@ -153,7 +144,6 @@ async function main(): Promise<void> {
     imprint,
     commit,
     wsHub: hub,
-    watcherStatus: watcher.status,
     version: serverVersion(),
     sessions,
     limiter,
@@ -168,7 +158,6 @@ async function main(): Promise<void> {
   });
   if (vapid.problem !== null) app.log.warn({ problem: vapid.problem }, 'web push is off: the VAPID key is unreadable');
 
-  await watcher.start();
   bridge.start();
 
   // docs/writer-lane.md §3: a stage written by the engine or the writer reaches live sockets
@@ -218,18 +207,13 @@ async function main(): Promise<void> {
       bookRoot: config.bookRoot,
       dataDir: config.dataDir,
       feedbackDir: config.feedbackDir,
-      migration,
+      schema: SCHEMA_VERSION,
       oauth: config.yandexClientId.length > 0 ? 'configured' : 'unconfigured',
       captcha: config.captchaProvider,
       written: catalog.filter((entry) => entry.written).map((entry) => entry.n),
-      front: report.front,
-      frontProblems: report.frontProblems,
-      frameRejected: report.frameRejected,
-      ignored: report.ignored,
-      readErrors: report.readErrors,
-      watcher: watcher.status,
+      chapters: catalog.filter((entry) => entry.written || entry.basis).length,
     },
-    'manuscript scanned, watcher attached',
+    'serving the volume: the book is rows',
   );
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -240,7 +224,6 @@ async function main(): Promise<void> {
     stopErosion();
     bridge.stop();
     stages.stop();
-    await watcher.stop();
     await app.close();
     db.close();
     process.exit(0);
@@ -250,6 +233,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  // One line, naming the refusal code and the numbers (ADR-043 §5): the supervisor reads it.
+  console.error(bootFailureLine(error) ?? (error instanceof Error ? error.message : String(error)));
   process.exit(1);
 });

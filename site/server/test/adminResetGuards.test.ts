@@ -3,13 +3,13 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 
 import { EngineBridge } from '../src/engineState/bridge.ts';
 import { applyChapterFile } from '../src/ingest/applyChapter.ts';
-import { BackupFailedError, resetBook } from '../src/reset/book.ts';
+import { BackupFailedError, FrameMissingError, resetBook } from '../src/reset/book.ts';
 import { longProse } from './helpers.ts';
-import { clearProse, count, expectedCounts, SEEDED_STATE_VERSION } from './resetSeed.ts';
+import { count, expectedCounts, SEEDED_STATE_VERSION } from './resetSeed.ts';
 import { createResetHarness, stateVersionOf } from './resetApp.ts';
 
 /**
@@ -17,9 +17,10 @@ import { createResetHarness, stateVersionOf } from './resetApp.ts';
  *
  *   B1 — the snapshot counter is bumped, never reset: a page ignores a state whose version went
  *        backwards, so a restart at 1 would leave every open tab on the pre-launch book.
- *   B2 — the manuscript is the source of truth: a `chNN.md` that still holds prose is a written
- *        chapter the next boot scan would restore, so the reset refuses (and the frame slot has
- *        its own refusal when it is no longer the frozen sentence).
+ *   B2 — BOOK-187: the guard reads **rows**. A frame slot whose `chapters` row is prose (not
+ *        `basis`, `chars > 0`) refuses the wipe — the reset would otherwise freeze the wrong
+ *        text as the canon — and a slot with no row at all is re-seeded from `book_frame`, the
+ *        volume's own copy of the sentence.
  *   M2 — a reset may delete only the file it created: an existing backup is never unlinked.
  *   M1 — the engine bridge keeps in-memory cursors over ids the wipe restarts, so it is
  *        re-primed after a completed wipe and never on a dry run or a refusal.
@@ -63,40 +64,30 @@ describe('BOOK-137 B1 — the state version never goes down', () => {
   });
 });
 
-describe('BOOK-137 B2 — a manuscript that still holds prose', () => {
-  it('reports the prose chapter on a dry run and refuses the wipe', async () => {
-    const target = await h.live({ keepProse: true });
+describe('BOOK-137 B2 — the guard reads rows, and the frame is a row', () => {
+  it('reports the content from rows on a dry run, and wipes a book whose prose is only rows', async () => {
+    const target = await h.live();
     const before = expectedCounts(target);
 
     const dry = await h.call({ dryRun: true });
     expect(dry.statusCode).toBe(200);
-    expect(dry.json().manuscript).toEqual({ proseChapters: 1 });
+    expect(dry.json().content).toEqual({
+      written: 1,
+      chars: count(target.db, 'SELECT COALESCE(SUM(chars), 0) AS n FROM chapters WHERE basis = 0'),
+      blocks: count(target.db, 'SELECT COUNT(*) AS n FROM blocks'),
+    });
+    expect(dry.json().content.written).toBe(1);
 
-    const refused = await h.call({ dryRun: false });
-    expect(refused.statusCode).toBe(409);
-    expect(refused.json()).toMatchObject({ code: 'MANUSCRIPT_WRITTEN', files: ['ch08.md'] });
-    // The remedy has to be one that clears the condition: engine-written chapters are
-    // untracked, so `git checkout` would leave them in place and the operator would loop.
-    expect(refused.json().message).toBe(
-      'the manuscript holds 1 chapter file(s) whose prose a boot scan would restore; ' +
-        'remove them from manuscript/ (untracked engine output: git clean -fd manuscript/; ' +
-        'a committed chapter: git rm) and run the reset again',
-    );
-    expect(expectedCounts(target)).toEqual(before);
-    expect(stateVersionOf(target.db)).toBe(SEEDED_STATE_VERSION);
-
-    // Once the operator has removed the file, the same command goes through: the rows were
-    // never the problem.
-    clearProse(target);
-    const ok = await h.call({ dryRun: false });
-    expect(ok.statusCode).toBe(200);
-    expect(ok.json().dryRun).toBe(false);
+    const done = await h.call({ dryRun: false });
+    expect(done.statusCode).toBe(200);
+    expect(done.json().dryRun).toBe(false);
+    expect(expectedCounts(target)).not.toEqual(before);
     expect(count(target.db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0')).toBe(0);
   });
 
-  it('judges the frame slots separately, and refuses one rewritten into prose', async () => {
-    // ch01 is the frame: prose there is a canon problem (`FRAME_NOT_BASIS`), not a chapter a
-    // boot scan would restore — and it is refused before the backup, so nothing is written.
+  it('refuses a frame slot whose row is prose, before any backup, and names the row', async () => {
+    // ch01 is the frame: prose there is a canon problem (`FRAME_NOT_BASIS`), not a chapter to
+    // reset — and it is refused before the backup, so nothing is written.
     const target = await h.live({
       files: {
         'ch01.md': longProse(['Глава первая. Теперь это обычная глава, а не кадр.']),
@@ -105,23 +96,44 @@ describe('BOOK-137 B2 — a manuscript that still holds prose', () => {
       },
     });
     const before = expectedCounts(target);
-
-    const dry = await h.call({ dryRun: true });
-    expect(dry.json().manuscript).toEqual({ proseChapters: 0 });
+    const chars = count(target.db, 'SELECT chars AS n FROM chapters WHERE n = 1');
+    expect(chars).toBeGreaterThan(0);
 
     const refused = await h.call({ dryRun: false });
     expect(refused.statusCode).toBe(409);
     expect(refused.json()).toMatchObject({ code: 'FRAME_NOT_BASIS' });
-    expect(refused.json().message).toContain('ch01.md');
+    expect(refused.json().message).toContain('chapter 1');
+    expect(refused.json().message).toContain(String(chars));
+    // No file, no git, no operator step to clear: the remedy is the canon's own row.
+    expect(refused.json().message).not.toContain('manuscript/');
+    expect(refused.json().message).not.toContain('git ');
     expect(expectedCounts(target)).toEqual(before);
     expect(stateVersionOf(target.db)).toBe(SEEDED_STATE_VERSION);
   });
 
-  it('keeps the frozen sentence when only the frame files are left', async () => {
+  it('re-seeds a frame slot that has no chapter row from its book_frame row', async () => {
+    const target = await h.live();
+    // A slot with no row at all: an empty book, not a broken mount (BOOK-187).
+    target.db.prepare('DELETE FROM blocks WHERE chapter = 1').run();
+    target.db.prepare('DELETE FROM chapters WHERE n = 1').run();
+
+    const response = await h.call({ dryRun: false });
+    expect(response.statusCode).toBe(200);
+    const rows = target.db.prepare('SELECT n, basis, block_count FROM chapters ORDER BY n').all();
+    expect(rows).toEqual([
+      { n: 1, basis: 1, block_count: 1 },
+      { n: 42, basis: 1, block_count: 1 },
+    ]);
+    expect((target.db.prepare('SELECT text FROM blocks WHERE chapter = 1').get() as { text: string }).text).toBe(
+      FRAME_FIRST_SENTENCE,
+    );
+  });
+
+  it('keeps the frozen sentence when only the frame rows are left', async () => {
     // The positive control for both refusals: two basis slots and nothing else is a clean book.
     const target = await h.live();
-    const dry = await h.call({ dryRun: true });
-    expect(dry.json().manuscript).toEqual({ proseChapters: 0 });
+    target.db.prepare('DELETE FROM blocks WHERE chapter NOT IN (1, 42)').run();
+    target.db.prepare('DELETE FROM chapters WHERE basis = 0').run();
 
     expect((await h.call({ dryRun: false })).statusCode).toBe(200);
     const frame = target.db.prepare('SELECT n, block_count, basis FROM chapters ORDER BY n').all();
@@ -129,6 +141,18 @@ describe('BOOK-137 B2 — a manuscript that still holds prose', () => {
       { n: 1, block_count: 1, basis: 1 },
       { n: 42, block_count: 1, basis: 1 },
     ]);
+  });
+
+  it('refuses a volume that holds neither a frame row nor a chapter row', async () => {
+    const target = await h.live();
+    target.db.prepare('DELETE FROM book_frame').run();
+    target.db.prepare('DELETE FROM blocks WHERE chapter IN (1, 42)').run();
+    target.db.prepare('DELETE FROM chapters WHERE n IN (1, 42)').run();
+
+    expect(() =>
+      resetBook(target.db, { dataDir: target.dataDir, now: new Date(), dryRun: false }),
+    ).toThrow(FrameMissingError);
+    expect(count(target.db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0')).toBe(1);
   });
 });
 
@@ -141,7 +165,6 @@ describe('BOOK-137 M2 — a backup the reset did not create', () => {
 
     expect(() =>
       resetBook(target.db, {
-        bookRoot: target.root,
         dataDir: target.dataDir,
         now: new Date(),
         dryRun: false,
@@ -159,7 +182,7 @@ describe('BOOK-137 M2 — a backup the reset did not create', () => {
     writeFileSync(taken, 'an earlier copy', { mode: 0o600 });
     const before = readFileSync(taken);
 
-    const report = resetBook(target.db, { bookRoot: target.root, dataDir: target.dataDir, now, dryRun: false });
+    const report = resetBook(target.db, { dataDir: target.dataDir, now, dryRun: false });
     expect(report.backup?.file).toBe(join(target.dataDir, 'book-reset-20261028T120000Z-1.db'));
     expect(readFileSync(taken)).toEqual(before);
   });
@@ -221,16 +244,24 @@ describe('BOOK-137 M1 — the bridge after a wipe', () => {
   it('never re-primes on a dry run or a refusal', async () => {
     let calls = 0;
     const target = await h.live({
-      keepProse: true,
       onBookReset: () => {
         calls += 1;
       },
     });
-    await h.call({ dryRun: true });
-    expect((await h.call({ dryRun: false })).statusCode).toBe(409);
-    expect(calls).toBe(0);
+    // A frame slot turned into prose is the refusal; the canon is restored by putting the row
+    // back (the same `chapters`/`blocks` write the applier does), never by editing a file.
+    const frame = target.db.prepare('SELECT * FROM chapters WHERE n = 1').get() as Record<string, unknown>;
+    target.db.prepare("UPDATE chapters SET basis = 0, chars = 120 WHERE n = 1").run();
+    try {
+      await h.call({ dryRun: true });
+      expect((await h.call({ dryRun: false })).statusCode).toBe(409);
+      expect(calls).toBe(0);
+    } finally {
+      target.db
+        .prepare('UPDATE chapters SET basis = ?, chars = ? WHERE n = 1')
+        .run(frame.basis as number, frame.chars as number);
+    }
 
-    clearProse(target);
     expect((await h.call({ dryRun: false })).statusCode).toBe(200);
     expect(calls).toBe(1);
   });

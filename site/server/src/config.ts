@@ -202,6 +202,12 @@ const schema = z.object({
    * owner saying «пиши».
    */
   drafting: z.enum(['on', 'off']).default('off'),
+  /**
+   * BOOK-187 AC7: how many days a redacted transcript row is kept. Read once at boot and applied
+   * on every write (the insert and the prune share one transaction), so retention is a property
+   * of the process, not a job somebody has to remember. 30 days is the ADR's default.
+   */
+  transcriptRetentionDays: z.coerce.number().int().min(1).max(3650).default(30),
 }).superRefine((config, ctx) => {
   // BOOK-DOC-4 rule 3 is a public promise, so the wave bound is authoritative in code, not in
   // an env file: an old deployment that still says 5 must fail the boot, never tell the client
@@ -350,6 +356,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     watchCoalesceMs: env.WATCH_COALESCE_MS,
     emptyWriteGraceMs: env.EMPTY_WRITE_GRACE_MS,
     drafting: env.DRAFTING,
+    transcriptRetentionDays: env.TRANSCRIPT_RETENTION_DAYS,
   });
   if (!parsed.success) {
     const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');

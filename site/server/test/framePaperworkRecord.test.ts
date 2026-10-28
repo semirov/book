@@ -1,24 +1,27 @@
-/**
- * BOOK-137 — the change record tells the truth about the paperwork.
- *
- * Split from `framePaperwork.test.ts` (the 500-line gate): a touched filing's change carries the
- * mark and the mode, the public summary repeats them, and a replay writes nothing twice.
- */
-
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readMyDecisions } from '../src/authors/decisions.ts';
 import { readCommentRow } from '../src/comments/repo.ts';
-import { acceptComment } from '../src/feedback/accept.ts';
 import { listChanges } from '../src/engineState/changes.ts';
+import { acceptComment } from '../src/feedback/accept.ts';
 import { runFeedback } from '../src/feedback/cli.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
+
+/**
+ * BOOK-137 — **the change record tells the truth about the paperwork.**
+ *
+ * Split from `framePaperwork.test.ts` (the 500-line gate): that file is about a filing stopping at
+ * the frame, this one is about what the decision then *says* — the mark and the mode on the change,
+ * the reader's own record («рассмотрено», never «внесено»), and the decision line the site's tailer
+ * files. The two chapter files carry the canon exactly as `manuscript/ch01.md` and
+ * `manuscript/ch42.md` do: a title line, the frame at the edge of the prose, a paragraph beside it.
+ */
 
 const CH01 = [
   'Начало',
@@ -27,12 +30,13 @@ const CH01 = [
   '',
   'Свет был включён до меня, и это было странно.',
 ].join('\n');
+const CH42 = ['Финал', '', 'Свет был включён до меня, и это было странно.', '', FRAME_LAST_SENTENCE].join('\n');
 
 let harness: Harness | null = null;
 let dir: string | null = null;
 
 async function boot(): Promise<Harness> {
-  harness = await bootComments({ chapters: { 'ch01.md': CH01 } });
+  harness = await bootComments({ chapters: { 'ch01.md': CH01, 'ch42.md': CH42 } });
   dir = mkdtempSync(join(tmpdir(), 'book-frame-record-'));
   return harness;
 }
@@ -44,14 +48,14 @@ afterEach(async () => {
   dir = null;
 });
 
+function post(h: Harness, body: Record<string, unknown>) {
+  return h.app.inject({ method: 'POST', url: '/api/comments', headers: h.headers(), payload: body });
+}
+
 function cli(h: Harness, ...argv: string[]): { code: number; out: string[] } {
   const out: string[] = [];
   const code = runFeedback(argv, { db: h.db, dir: dir ?? '', now: h.clock.now, print: (line) => out.push(line) });
   return { code, out };
-}
-
-function post(h: Harness, body: Record<string, unknown>) {
-  return h.app.inject({ method: 'POST', url: '/api/comments', headers: h.headers(), payload: body });
 }
 
 function blockOf(h: Harness, chapter: number, index: number): { id: string; text: string } {

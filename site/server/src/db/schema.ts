@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 16** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 28** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -26,27 +26,33 @@
  * deliberately carry **no foreign key** — SQLite cannot add one by `ALTER TABLE`, so a migrated
  * install would refuse what a fresh one accepts; the writer enforces the reference instead.
  * v26 adds the three push tables (`push_subscriptions`, `push_log`, `push_outbox`, BOOK-189):
- * a device list, a one-per-chapter claim and the queue the site process drains.
- * Text tables are a projection of the manuscript files; the engine tables are the only home of
- * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
+ * a device list, a one-per-chapter claim and the queue the site process drains. v27 adds BOOK-174's
+ * disposition chain to the comment and its counters. BOOK-187 adds the book's own state (v28 —
+ * ADR-043 G6, ADR-041 §2.2): the canon frame, the lane's counters, the redacted transcripts and
+ * the block deltas live in `bookStateTables.ts` (`V28_TABLES_SQL`), and the text lives in rows.
+ * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
+ * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
+ * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
+ * only door a file may still come through. The engine tables are the only home of process
+ * facts. Every table §8 names exists here, and the retired `obligations` table does not
+ * (§23.5, ADR-023).
  *
  * **The `chapter` CHECKs below stay `BETWEEN 1 AND 67` although the book is 42 chapters
  * (BOOK-155).** A row written before the cut (chapter 65) is real prose and must survive;
- * SQLite cannot narrow a CHECK without rebuilding the table, and a rebuild would reject that
- * row. The columns are therefore a **storage** bound, and the book's range (`TOTAL_CHAPTERS`)
- * is enforced at ingest, in the routes and in the engine — see `tables.ts` for the same note
- * next to `CHAPTERS_TABLE_SQL`.
+ * SQLite cannot narrow a CHECK without a rebuild that would reject that row, so the columns are
+ * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
- * `events`, the gate tables, the attempt ledger, `comments` and the disposition counters) live in
- * `tables.ts` (§13.3, §6F.3, BOOK-6, BOOK-174); they are re-exported so a reader of the schema
- * still finds every table in one place.
+ * `events`, the gate tables, the attempt ledger, `comments`, the disposition counters) live in
+ * `tables.ts` (§13.3, §6F.3, BOOK-6, BOOK-174), BOOK-187's four in `bookStateTables.ts`; they are
+ * re-exported so a reader of the schema still finds every table in one place.
  */
 import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
+import { V28_REQUIRED_TABLES, V28_TABLES_SQL } from './bookStateTables.ts';
 import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 import { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
@@ -323,6 +329,7 @@ ${PASS_SPEND_TABLE_SQL}
 ${COMMENT_ATTEMPTS_TABLE_SQL}
 
 ${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger and its full-text mirror
+${V28_TABLES_SQL}   -- BOOK-187 (v28): frame, lane state, redacted transcripts, deltas
 
 ${SENTENCE_TABLES_SQL}                  -- ADR-044: the sentence rows and their touch ledger
 
@@ -416,6 +423,7 @@ export const REQUIRED_TABLES = [
   ...LEDGER_REQUIRED_TABLES,
   ...SENTENCE_REQUIRED_TABLES,
   ...PUSH_REQUIRED_TABLES,
+  ...V28_REQUIRED_TABLES,
 ] as const;
 
 /** §6F.1: the log is append-only; a missing trigger means the promise is not kept (F027). */

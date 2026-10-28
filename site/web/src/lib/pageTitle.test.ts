@@ -2,7 +2,7 @@ import { IMPRINT_AUTHOR } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import shell from '../../index.html?raw';
-import { applyDocumentTitle, documentTitle, FALLBACK_TITLE } from './pageTitle.ts';
+import { applyDocumentTitle, documentTitle, FALLBACK_TITLE, SHELL_TITLE } from './pageTitle.ts';
 
 /** The value of `<meta|title …>` in the static shell, with whitespace flattened. */
 function shellValue(pattern: RegExp): string {
@@ -19,6 +19,12 @@ const shellOgDescription = shellValue(/<meta property="og:description" content="
 describe('documentTitle', () => {
   it('names the book exactly as the first sheet does, and its author', () => {
     expect(documentTitle('Бланк')).toBe(`Бланк — ${IMPRINT_AUTHOR}`);
+  });
+
+  it('ships the same string in the static shell as the one fallback constant', () => {
+    // `web/index.html` cannot import: the shell's copy and this constant are compared in
+    // `server/test/staticShell.test.ts`; here the fallback is what `documentTitle` would write.
+    expect(SHELL_TITLE).toBe(documentTitle('Бланк'));
   });
 
   it('falls back to the cover word while the sheet has no title line', () => {
