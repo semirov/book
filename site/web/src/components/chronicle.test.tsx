@@ -8,6 +8,7 @@ import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { RecordRow } from './RecordRow.tsx';
 import { ViewSwitch } from './ViewSwitch.tsx';
+import { firstDeclarations, hasRule, mediaBlockList, unionDeclarations } from './cssRules.ts';
 
 const CHAIN: ParagraphChainDto = {
   blockUid: 'bkd_1',
@@ -117,13 +118,6 @@ const MID = `${NBSP}·${NBSP}`;
 /** Every stylesheet as text: the readout row's wrap is a layout rule jsdom cannot compute. */
 const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', import: 'default', eager: true });
 
-/** The declarations of the first rule whose selector is exactly `selector`. */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u'));
-  return match?.[1] ?? '';
-}
-
 describe('one public record entry (BOOK-65)', () => {
   it('carries the six facts of the change and exactly one way into the card', () => {
     const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
@@ -213,13 +207,14 @@ describe('a premise on the record (BOOK-7, BOOK-65)', () => {
 describe('the record row is dated (BOOK-DOC-50 §5)', () => {
   it('carries the record’s own date and time, whole, and never splits them', () => {
     const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
-    // The date is one run in the markup and one unbreakable run in the sheet.
+    // The date is one run in the markup and one unbreakable run in the base rule of the sheet.
     expect(html).toContain(`<span class="chr-date">26.10.2026${MID}09:00</span>`);
-    const date = declarations(sheets['../styles/chronicle.css'] ?? '', '.chr-date');
-    expect(date).toContain('white-space: nowrap');
+    const chronicle = sheets['../styles/chronicle.css'] ?? '';
+    expect(hasRule(chronicle, '.chr-date')).toBe(true);
+    expect(firstDeclarations(chronicle, '.chr-date')).toContain('white-space: nowrap');
     // …and the row wraps between facts, so a phone reads it as a list, not a cut date.
-    const row = declarations(sheets['../styles/chronicle.css'] ?? '', '.chr-row');
-    expect(row).toContain('flex-wrap: wrap');
+    expect(hasRule(chronicle, '.chr-row')).toBe(true);
+    expect(firstDeclarations(chronicle, '.chr-row')).toContain('flex-wrap: wrap');
   });
 });
 
@@ -261,7 +256,8 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
     const sheet = sheets['../styles/chronicle.css'] ?? '';
     // The box wraps between the parts only, and each part is an unbreakable run at 12 px…
-    const at = declarations(sheet, '.chr-end-at');
+    expect(hasRule(sheet, '.chr-end-at')).toBe(true);
+    const at = firstDeclarations(sheet, '.chr-end-at');
     expect(at).toContain('flex-wrap: wrap');
     expect(at).toContain('white-space: nowrap');
     expect(at).toContain('font-size: var(--fs-micro)');
@@ -323,9 +319,7 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
   });
 
   it('draws no rail under two records', () => {
-    const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />,
-    );
+    const html = renderToStaticMarkup(<MomentControl items={ITEMS.slice(0, 1)} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={null} onInput={noop} onCommit={noop} />);
     expect(html).not.toContain('type="range"');
     expect(html).toContain('начало книги');
     expect(html).toContain('сейчас');
@@ -334,7 +328,9 @@ describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
 
 describe('the readout row on a narrow phone (BOOK-DOC-50 §2)', () => {
   it('wraps the counter onto a second line instead of spilling, and stays 22 px on desktop', () => {
-    const head = declarations(sheets['../styles/chronicle.css'] ?? '', '.scrub-head');
+    const chronicle = sheets['../styles/chronicle.css'] ?? '';
+    expect(hasRule(chronicle, '.scrub-head')).toBe(true);
+    const head = firstDeclarations(chronicle, '.scrub-head');
     expect(head).toContain('flex-wrap: wrap');
     expect(head).toContain('row-gap: 2px');
     expect(head).toContain('min-height: 22px');
@@ -342,10 +338,16 @@ describe('the readout row on a narrow phone (BOOK-DOC-50 §2)', () => {
     expect(head).toContain('line-height: 22px');
     // A fixed height would clip the wrapped line; `min-height` keeps one-line rows at 22 px.
     expect(head).not.toMatch(/(?:^|[;\s])height:\s*22px/u);
+    // A width step is written after the rule it narrows and wins where it matches, so no block
+    // may restate a property the four claims above read from the base rule.
+    for (const { query, body } of mediaBlockList(chronicle)) {
+      expect(unionDeclarations(body, '.chr-date'), `${query} .chr-date`).not.toMatch(/(?:^|;)\s*white-space:/u);
+      expect(unionDeclarations(body, '.chr-row'), `${query} .chr-row`).not.toMatch(/(?:^|;)\s*flex-wrap:/u);
+      expect(unionDeclarations(body, '.chr-end-at'), `${query} .chr-end-at`).not.toMatch(/(?:^|;)\s*(?:flex-wrap|white-space|font-size):/u);
+      expect(unionDeclarations(body, '.scrub-head'), `${query} .scrub-head`).not.toMatch(/(?:^|;)\s*(?:flex-wrap|row-gap|min-height|line-height|height):/u);
+    }
     // …and nothing in the markup pins a width that would defeat the wrap (BOOK-30).
-    const html = renderToStaticMarkup(
-      <MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />,
-    );
+    const html = renderToStaticMarkup(<MomentControl items={ITEMS} lastHseq={10} lastAt={ITEMS[0]!.at} more={false} thumb={7} onInput={noop} onCommit={noop} />);
     expect(html).toContain('class="scrub-head"');
     expect(html).not.toMatch(/style=/u);
   });

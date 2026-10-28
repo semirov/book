@@ -69,4 +69,16 @@ describe('the sheet reader (BOOK-99)', () => {
     expect(hasRule(css, '.a')).toBe(true);
     expect(hasRule(css, '.b')).toBe(false);
   });
+
+  it('names a selector stated only inside a list, and never a prefix of one', () => {
+    const css = ['.a, .b { color: red }', '.ab { color: pink }'].join('\n');
+    // `.b` is stated by the list, so a loud presence check must not answer «the sheet has none».
+    expect(hasRule(css, '.b')).toBe(true);
+    expect(hasRule(css, '.a')).toBe(true);
+    // A token is a whole selector, not a prefix: `.b:hover` and a bare `b` are not `.b`.
+    expect(hasRule(css, '.b:hover')).toBe(false);
+    expect(hasRule(css, 'b')).toBe(false);
+    // A commented-out rule is not a rule, in `hasRule` either.
+    expect(hasRule('/* .c { color: red } */', '.c')).toBe(false);
+  });
 });

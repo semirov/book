@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { COVER_ALT, TITLE_GENRE, TITLE_PROMISE, TitleSheet } from './TitleSheet.tsx';
+import { firstDeclarations, hasRule, mediaBlocks, unionDeclarations } from './cssRules.ts';
 
 /**
  * BOOK-131 — the cover plate on the first sheet (BOOK-DOC-49 §2, BOOK-131 comment #3738).
@@ -23,29 +24,6 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
 });
 
 const chrome = sheets['../styles/chrome.css'] ?? '';
-
-/** The declarations of the first rule whose selector is exactly `selector`. */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u'));
-  return match?.[1] ?? '';
-}
-
-/** The body of `@media (<query>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, query: string): string {
-  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
-  if (start < 0) return '';
-  const open = css.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, index);
-    }
-  }
-  return '';
-}
 
 /** Every selector, in the whole sheet set, that names the plate — with the sheet it lives in. */
 function plateRules(): Array<{ file: string; selector: string }> {
@@ -145,7 +123,11 @@ describe('the plate is the second column of the title sheet (BOOK-131)', () => {
 
 describe('the plate’s rule is a refusal list, not a style (BOOK-131 §3, §7)', () => {
   it('is a hairline outside the drawing, at its own ratio, and nothing else', () => {
-    const rule = declarations(chrome, '.cover-plate');
+    // The rule itself, and loudly present: `unionDeclarations` reads `.cover-plate` wherever
+    // the sheet names it — alone or in a selector list — and the refusal list below means
+    // nothing if the selector is absent.
+    expect(hasRule(chrome, '.cover-plate')).toBe(true);
+    const rule = unionDeclarations(chrome, '.cover-plate');
     expect(rule).toContain('display: block');
     expect(rule).toContain('width: 100%');
     expect(rule).toContain('height: auto');
@@ -185,7 +167,10 @@ describe('the plate’s rule is a refusal list, not a style (BOOK-131 §3, §7)'
   });
 
   it('makes the sheet a spread: text in column 1, the plate in 35% at the sheet’s one line', () => {
-    const titul = declarations(chrome, '.titul');
+    // The base rule — the first rule of that selector, above the phone step, which narrows the
+    // same grid and would otherwise blur the spread's own numbers.
+    expect(hasRule(chrome, '.titul')).toBe(true);
+    const titul = firstDeclarations(chrome, '.titul');
     expect(titul).toContain('display: grid');
     expect(titul).toContain('grid-template-columns: minmax(0, 1fr) 35%');
     expect(titul).toContain('column-gap: 6.25%');
@@ -201,20 +186,26 @@ describe('the plate’s rule is a refusal list, not a style (BOOK-131 §3, §7)'
     expect(titul).not.toContain('flex-direction');
     expect(titul).not.toContain('justify-content');
 
-    const text = declarations(chrome, '.titul-text');
+    const text = unionDeclarations(chrome, '.titul-text');
     expect(text).toContain('display: flex');
     expect(text).toContain('flex-direction: column');
     expect(text).toContain('min-width: 0');
   });
 
   it('stacks the plate under the text on the phone, in one column, at the same gap', () => {
-    const phone = mediaBody(chrome, 'max-width: 599px');
-    expect(phone).not.toBe('');
-    const titul = declarations(phone, '.titul');
+    // Every block of the phone query, not the first: `chrome.css` writes `(max-width: 599px)`
+    // twice, and a reader that answered with the first block would scan it twice and let a
+    // second plate rule — or a per-breakpoint size — pass unseen.
+    const phones = mediaBlocks(chrome, 'max-width: 599px');
+    const titul = unionDeclarations(phones.join('\n'), '.titul');
     expect(titul).toContain('grid-template-columns: minmax(0, 1fr)');
     expect(titul).toContain('column-gap: 0');
-    // The phone is a narrowing of the same sheet: no second plate rule, no per-breakpoint size.
-    expect(phone).not.toContain('.cover-plate');
-    expect(declarations(phone, '.cover-plate')).toBe('');
+    // The phone is a narrowing of the same sheet: no second plate rule, no per-breakpoint size —
+    // in any block of the query.
+    for (const [index, body] of phones.entries()) {
+      const block = `chrome.css phone block ${index + 1}`;
+      expect(body, block).not.toContain('.cover-plate');
+      expect(unionDeclarations(body, '.cover-plate'), block).toBe('');
+    }
   });
 });

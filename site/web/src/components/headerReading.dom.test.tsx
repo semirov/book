@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { Header } from './Header.tsx';
+import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
 
 /**
  * BOOK-104 — the running head's chapter, the folio's page and the contents' page are one
@@ -27,29 +28,6 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   import: 'default',
   eager: true,
 });
-
-/** The declarations of the first rule whose selector is exactly `selector`. */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const match = css.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u'));
-  return match?.[1] ?? '';
-}
-
-/** The body of `@media (<query>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, query: string): string {
-  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
-  if (start < 0) return '';
-  const open = css.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, index);
-    }
-  }
-  return '';
-}
 
 /** `--offset-top` in jsdom: the token cannot be read, so the hook keeps its 64 px fallback. */
 const HEAD = 64;
@@ -408,7 +386,20 @@ describe('the head’s copy', () => {
     expect(chip().querySelector('.top-chapter-n')?.textContent).toBe('21');
     expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('Перевод смены');
     const css = sheets['../styles/running-head.css'] ?? '';
-    expect(css).toMatch(/@media \(max-width: 599px\)[\s\S]*\.top-chapter-w[\s\S]*display: none/u);
+    // The step that hides it, read from the query it is written in: `mediaBlocks` throws when
+    // the sheet states no such block, where a regex over the flat text could match a comment.
+    const phone = mediaBlocks(css, 'max-width: 599px').join('\n');
+    expect(unionDeclarations(phone, '.top-chapter-w'), 'running-head.css @media (max-width: 599px)').toContain(
+      'display: none',
+    );
+    // A step written after it still matches at 390 and wins there: no other query of the sheet
+    // may state a display for the word at all, or the phone would print the title again.
+    for (const block of mediaBlockList(css)) {
+      if (block.query === 'max-width: 599px') continue;
+      expect(unionDeclarations(block.body, '.top-chapter-w'), `running-head.css @media (${block.query})`).not.toMatch(
+        /display:/u,
+      );
+    }
   });
 });
 
@@ -446,18 +437,31 @@ describe('the head’s layout', () => {  it('keeps the brand, the chapter slot a
 describe('one number in the phone head', () => {
   it('hides the chapter chip below 768 and keeps the folio in the row', () => {
     const live = sheets['../styles/live.css'] ?? '';
-    const phone = mediaBody(live, 'max-width: 767px');
+    // Every block of the phone query, not the first: a second `(max-width: 767px)` block that
+    // re-showed the chip or fixed the folio again would undo the one number as surely as the
+    // flat rule the first block replaces. A missing query throws here.
+    const phones = mediaBlocks(live, 'max-width: 767px');
+    const phone = phones.join('\n');
     // BOOK-104: two bare numerals — chapter 61 beside page 64, «1 | 1» at the first chapter —
     // read as a duplicate, so the phone head prints the page alone.
-    expect(declarations(phone, '.top-chapter')).toContain('display: none');
+    expect(unionDeclarations(phone, '.top-chapter')).toContain('display: none');
     // The folio is that one number: it stays the row's last item, and nothing under 768 hides it.
-    expect(declarations(phone, '.folio')).toContain('position: static');
+    expect(unionDeclarations(phone, '.folio')).toContain('position: static');
+    // And no block of the step re-states either the other way: the chip is not shown again and
+    // the folio is not put back into the margin inside the same query.
+    for (const [index, body] of phones.entries()) {
+      const block = `live.css phone block ${index + 1}`;
+      expect(unionDeclarations(body, '.top-chapter'), block).not.toMatch(/display:\s*(?!\s*none\b)/u);
+      expect(unionDeclarations(body, '.folio'), block).not.toMatch(/position:\s*(?!\s*static\b)/u);
+    }
     for (const css of Object.values(sheets)) {
       expect(css).not.toMatch(/\.folio\s*\{[^}]*display:\s*none/u);
     }
-    // Above 768 nothing changes: the chip is still a chip, the folio still in the margin.
+    // Above 768 nothing changes: the chip is still a chip, the folio still in the margin. The
+    // base rule is the first one of the selector, above the two narrow steps.
     expect(sheets['../styles/running-head.css']).toMatch(/\.top-chapter \{[^}]*display: inline-flex/u);
-    expect(declarations(live, '.folio')).toContain('position: fixed');
+    expect(hasRule(live, '.folio')).toBe(true);
+    expect(firstDeclarations(live, '.folio')).toContain('position: fixed');
   });
 
   it('keeps the chip in the markup and reads as the brand and the page alone', async () => {

@@ -37,10 +37,11 @@ export function rules(css: string): Array<[string, string]> {
   ]);
 }
 
-/** Whether the sheet states the selector at all — the loud check before a negative claim. */
+/** Whether the sheet names the selector at all — alone or in a selector list, because
+ *  `.a, .b { … }` does state `.b`. The loud check before a negative claim. */
 export function hasRule(css: string, selector: string): boolean {
-  const escaped = escapeSelector(selector);
-  return new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{`, 'u').test(strip(css));
+  const wanted = selector.replace(/\s+/gu, ' ').trim();
+  return rules(css).some(([list]) => selectorTokens(list).includes(wanted));
 }
 
 /** The declarations of the first rule whose selector is exactly `selector`, or `''` when the
