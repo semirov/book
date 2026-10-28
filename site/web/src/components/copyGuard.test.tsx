@@ -3,10 +3,15 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
+import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { emptyDraft } from '../lib/draft.ts';
+import { RIGHTS_ASSIGNMENT, SUBMIT_LINE } from '../lib/terms.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { ChangeCard } from './ChangeCard.tsx';
 import { Chronicle } from './Chronicle.tsx';
 import { FocusView } from './FocusView.tsx';
+import { InterventionForm } from './InterventionForm.tsx';
+import { LegalPage } from './LegalPage.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
 import { RecordRow } from './RecordRow.tsx';
 
@@ -27,6 +32,11 @@ import { RecordRow } from './RecordRow.tsx';
  * BOOK-DOC-43 §6 (BOOK-66): a placeholder may not promise progress it does not measure, so
  * the skeleton's own vocabulary is banned too. The surfaces this pass touched (the chronicle
  * and the paragraph chain) are printed here as well, so the guard is not vacuous for them.
+ *
+ * BOOK-58: the terms a reader accepts moved from a licence to an assignment, and the words of
+ * the old promise are banned on every surface that prints the terms — /rules and the line under
+ * the submit button, which this file renders for the first time. The new words are asserted
+ * beside the ban, so no surface can go back to the old promise or lose the new one.
  */
 
 const BANNED = [
@@ -39,6 +49,18 @@ const BANNED = [
   'почти готово',
   'осталось',
   'подождите немного',
+];
+
+/**
+ * The promise BOOK-58 replaced: a simple licence granted by sending a variant. Kept apart from
+ * `BANNED` because `/rules` names the reading chain («аудитор», «редактор» — BOOK-76) and the
+ * role words must stay banned on the change surfaces, while the licence words are banned
+ * everywhere the terms are printed.
+ */
+const OLD_PROMISE = [
+  'вы даёте проекту неисключительную лицензию',
+  'неисключительную лицензию на него',
+  'неисключительная лицензия',
 ];
 
 const change: ChangeDto = {
@@ -184,6 +206,39 @@ function surfaces(): string {
   ].join('\n');
 }
 
+/**
+ * BOOK-58 — the two surfaces that print the terms, rendered here so the licence words are
+ * checked where a reader could meet them: `/rules` and the line under the submit button.
+ */
+function termsSurfaces(): string {
+  const entry = {
+    n: 8,
+    part: 1 as const,
+    title: 'Глава',
+    rev: 4,
+    chars: 22_000,
+    blocks: 1,
+    written: true,
+    basis: false,
+    writtenAt: '2026-10-25T09:20:00Z',
+    updatedAt: '2026-10-25T09:20:00Z',
+    direction: 'forward' as const,
+  };
+  return [
+    renderToStaticMarkup(<LegalPage page="rules" />),
+    renderToStaticMarkup(
+      <InterventionForm
+        entry={entry}
+        draft={emptyDraft({ chapter: 8, blockId: 'ch08#aa11bb22', sentence: 'Её освещал ровный свет.', baseRev: 4 })}
+        composer={EMPTY_COMPOSER}
+        viewer={{ signedIn: true, displayName: 'Аня' }}
+        onChange={() => undefined}
+        onPosted={() => undefined}
+      />,
+    ),
+  ].join('\n');
+}
+
 describe('the reader-facing copy guard', () => {
   it('never says a banned word on any surface', () => {
     const markup = surfaces().toLowerCase();
@@ -203,5 +258,22 @@ describe('the reader-facing copy guard', () => {
     expect(card('passed')).toContain('<dt>проверка</dt><dd>пройдена · научный консультант</dd>');
     expect(card('failed')).toContain('<dt>проверка</dt><dd>не пройдена · научный консультант</dd>');
     expect(card(null)).not.toContain('<dt>проверка</dt>');
+  });
+
+  it('never brings back the old licence promise where the terms are printed (BOOK-58)', () => {
+    const markup = `${surfaces()}\n${termsSurfaces()}`.toLowerCase();
+    for (const phrase of OLD_PROMISE) expect(markup).not.toContain(phrase);
+  });
+
+  it('prints the assignment on /rules and the submit line under the button (BOOK-58)', () => {
+    const markup = termsSurfaces();
+    // The page states the assignment, and the form offers it in one line: the words a reader
+    // meets are the words the record names, so no surface can quietly keep the old promise.
+    expect(markup).toContain(RIGHTS_ASSIGNMENT);
+    expect(markup).toContain(`<p class="fine seam-licence">${SUBMIT_LINE}`);
+    // The fallback is the one place a licence word may live — and the form is not that place.
+    const formAt = markup.indexOf('<form');
+    expect(formAt).toBeGreaterThan(-1);
+    expect(markup.slice(formAt)).not.toMatch(/лиценз/iu);
   });
 });

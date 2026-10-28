@@ -137,6 +137,27 @@ describe('/rules', () => {
     expect(text).toContain('Свою долю в окончательном тексте');
   });
 
+  it('prints the licence word once, and only inside the fallback (BOOK-58 AC5)', () => {
+    // The promise the site makes is an assignment; the word «неисключительн…» may appear once
+    // on the page — in the sentence that saves the worst case (§7a) — and nowhere else.
+    const occurrences = [...html.matchAll(/неисключительн/gu)];
+    expect(occurrences).toHaveLength(1);
+    const fallbackAt = html.indexOf(RIGHTS_FALLBACK);
+    expect(fallbackAt).toBeGreaterThan(-1);
+    const fallback = html.slice(fallbackAt, fallbackAt + RIGHTS_FALLBACK.length);
+    expect(fallback).toContain('неисключительн');
+    // Stronger than the stem: every «лиценз…» on the page — whatever the sentence around it —
+    // sits inside the fallback. A new licence phrase anywhere else fails, not just this stem.
+    const licenceAt = [...html.matchAll(/лиценз/giu)].map((match) => match.index ?? -1);
+    expect(licenceAt.length).toBeGreaterThan(0);
+    for (const at of licenceAt) {
+      expect(at, `«лиценз» at ${String(at)} is outside the fallback`).toBeGreaterThanOrEqual(fallbackAt);
+      expect(at).toBeLessThan(fallbackAt + RIGHTS_FALLBACK.length);
+    }
+    // And the assignment itself never says it: the right passes, it is not licensed.
+    expect(RIGHTS_ASSIGNMENT).not.toMatch(/неисключительн|лиценз/u);
+  });
+
   it('prints the grant and what stays as two sections, in that order (BOOK-72)', () => {
     // One heading used to carry both promises; now a reader reads the grant, then the list.
     expect(html).not.toContain('Что вы отдаёте и что остаётся вашим');

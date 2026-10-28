@@ -13,13 +13,16 @@
  * BOOK-DOC-42 — Gate A's hold (`comments.held_*`), Gate B's verdict (`comments.rights_*`,
  * `steps.rights_scan`) and the conditional `rights` role on both gate tables); BOOK-137 adds the
  * frame mark to the comment and the change, and the paperwork mode to the change, so a filing
- * that touched the canon sentence is recorded as paperwork instead of disappearing).
+ * that touched the canon sentence is recorded as paperwork instead of disappearing; BOOK-58 adds
+ * the terms a reader accepted (`comments.terms_version`, `comments.terms_sha`) and the moment a
+ * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
+ * «which terms did the reader accept?» has an answer years later).
  * Text tables are a projection of the manuscript files; the engine tables are the only home
  * of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
  */
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and
@@ -275,6 +278,14 @@ CREATE TABLE comments (
   rights_at      TEXT,
   rights_by      TEXT,
   rights_source  TEXT CHECK (rights_source IN ('scan','model','operator')),
+  -- BOOK-58: the terms a submission accepted, written once at posting from the shared copy
+  -- (shared/src/terms.ts), and the moment a landed variant was entered into the book. The
+  -- acceptance columns are the row's own record: accepted_terms_version copies the row's
+  -- terms_version, so a later text change cannot rewrite what a reader once accepted.
+  terms_version TEXT,
+  terms_sha     TEXT,
+  accepted_at   TEXT,
+  accepted_terms_version TEXT,
   idem_key     TEXT UNIQUE
 );
 CREATE INDEX comments_chapter ON comments(chapter, created_at);
@@ -287,8 +298,10 @@ CREATE TABLE comment_events (
   comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
   at         TEXT NOT NULL,
   -- BOOK-61 adds held (Gate A stopped the row before a model could read it) and rights
-  -- (Gate B decided it); free text, so the vocabulary is documented here and nowhere else.
-  type       TEXT NOT NULL,                    -- posted|quarantined|held|released|queued|delivered|decided|rights|hidden|expired
+  -- (Gate B decided it); BOOK-58 adds applied (a landed variant was entered into the book and
+  -- the reader's terms were recorded). Free text, so the vocabulary is documented here and
+  -- nowhere else.
+  type       TEXT NOT NULL,                    -- posted|quarantined|held|released|queued|delivered|decided|rights|hidden|expired|applied
   meta       TEXT                              -- JSON, no bodies
 );
 

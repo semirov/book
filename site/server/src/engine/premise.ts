@@ -25,6 +25,7 @@ import {
 } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
+import { recordAcceptance } from '../comments/acceptance.ts';
 import { recordImpact } from '../history/impact.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
@@ -259,6 +260,9 @@ function settle(
     .run(status, outcome, reason, toIso(now), premise.id).changes;
   // No confirmation, no side effect: the second close of a premise is a silent no-op here.
   if (changed !== 1) return null;
+  // BOOK-58 §10: a landed premise is a landing too — the reader's intervention entered the
+  // chapter's first edition, so its acceptance is recorded now (once; the guard is inside).
+  if (state === 'applied') recordAcceptance(deps.db, premise.id, toIso(now));
   appendChangeEvent(deps.db, premise.id, 'decided', { outcome, reason, premise: true }, now);
   appendEvent(
     deps.db,
