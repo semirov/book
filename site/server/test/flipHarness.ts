@@ -106,6 +106,23 @@ exit "\${STUB_EXIT:-0}"
 `;
   writeFileSync(join(script, 'compose-release.sh'), stub, { encoding: 'utf8', mode: 0o755 });
 
+  // BOOK-183: the flip seeds an empty volume through the real sibling name, `migrate-to-volume.sh`.
+  // The stub records the argv and, on success, records the volume as seeded — the fake docker reads
+  // that marker for `test -f /v/book.db`, so "the flip seeded it" and "the volume is no longer empty"
+  // are one causal chain. `STUB_SEED_EXIT=1` is a seed that failed.
+  writeFileSync(
+    join(script, 'migrate-to-volume.sh'),
+    `#!/bin/bash
+printf 'migrate %s inherited=%s holder=%s\n' "$*" "\${BOOK_LOCK_INHERITED:-0}" "\${BOOK_LOCK_HOLDER:-unknown}" >> "$CALLS"
+# The copy is the fake docker's; the marker is what makes the volume non-empty afterwards.
+case "$*" in
+  *--seed-only*) [ "\${STUB_SEED_EXIT:-0}" = "0" ] && : > "${stateDir}/volume-seeded" ;;
+esac
+exit "\${STUB_SEED_EXIT:-0}"
+`,
+    { encoding: 'utf8', mode: 0o755 },
+  );
+
   // The fake docker: records every argv, refuses the stale pre-BOOK-172 container, answers the rest.
   // `ps -q` lists containers that `compose down` was supposed to remove — `FAKE_LEFTOVER=1` is the
   // stack that is still up.
@@ -115,6 +132,46 @@ exit "\${STUB_EXIT:-0}"
 printf 'docker %s\\n' "$*" >> "$CALLS"
 if [ "$1" = "container" ] && [ "$2" = "inspect" ]; then exit 1; fi
 if [ "$1" = "version" ]; then echo "Docker version 29.8.2"; exit 0; fi
+# BOOK-183: the volume and the one-shot copies. The volume is empty (no book.db) until a seed recorded
+# itself, unless FAKE_VOLUME_DB=1 says it already holds one; the node one-shot prints the export proof.
+if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then
+  [ "\${FAKE_VOLUME_MISSING:-0}" = "1" ] && exit 1
+  exit 0
+fi
+if [ "$1" = "run" ]; then
+  case "$*" in
+    *"test -f /v/book.db"*)
+      if [ "\${FAKE_VOLUME_DB:-1}" = "1" ] || [ -e "${stateDir}/volume-seeded" ]; then exit 0; fi
+      exit 1 ;;
+    # The volume's counts, read inside a container. Separate from the host copy's (FAKE_CH_HOST) so a
+    # case can make the two sides disagree on purpose: the fallback window is exactly that mismatch.
+    *"--entrypoint node"*)
+      printf '{"chapters":%s,"blocks":%s,"changes":%s,"comments":%s}\\n' \\
+        "\${FAKE_CH_VOLUME:-18}" "\${FAKE_BLOCKS:-2388}" "\${FAKE_CHANGES:-8}" "\${FAKE_COMMENTS:-3}"
+      exit "\${FAKE_EXPORT_EXIT:-0}" ;;
+  esac
+  # The one-shot export copy: the container writes into the host dir it was given for /to. A real
+  # sqlite3 makes the rows the host-side proof (in the flip) reads - the copy and the check are one
+  # causal chain here too.
+  to_path=""
+  for a in "$@"; do case "$a" in *:/to) to_path="\${a%:/to}" ;; esac; done
+  if [ -n "$to_path" ]; then
+    mkdir -p "$to_path" && : > "$to_path/engine.token"
+    # sqlite3 from PATH, never an absolute path: the gate image and this Mac install it in different
+    # places, and a stub that names one of them fails on the other. A box without it exits like a copy
+    # whose DB cannot be read — the flip reports that, and no case counts it as a mismatch.
+    command -v sqlite3 >/dev/null 2>&1 || { echo "sqlite3 is not on PATH" >&2; exit 1; }
+    sqlite3 "$to_path/book.db" \\
+      "CREATE TABLE chapters(n INTEGER); CREATE TABLE blocks(n INTEGER); CREATE TABLE changes(n INTEGER); CREATE TABLE comments(n INTEGER);
+       WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < \${FAKE_CH_HOST:-18}) INSERT INTO chapters SELECT n FROM c;
+       WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < \${FAKE_BLOCKS:-2388}) INSERT INTO blocks SELECT n FROM c;
+       WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < \${FAKE_CHANGES:-8}) INSERT INTO changes SELECT n FROM c;
+       WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < \${FAKE_COMMENTS:-3}) INSERT INTO comments SELECT n FROM c;" \\
+      >/dev/null 2>&1 || exit 1
+    exit 0
+  fi
+  exit 0
+fi
 case "$*" in
   *" compose version"*) echo "Docker Compose version v5.5.0"; exit 0 ;;
   *" down") exit 0 ;;
@@ -126,10 +183,19 @@ exit 0
   );
   // The fake launchctl: records every argv; a successful `bootstrap` is "launchd serves again", and
   // `disable` for the job named in `FAKE_DISABLE_REFUSE` is refused exactly as launchd would.
+  //
+  // `print` answers the way launchd does for a job that is not loaded — exit 1 with no state. The flip's
+  // liveness gate reads it before it exports the volume to the host dir, and a job that IS running
+  // (`FAKE_JOB_RUNNING=1`) must refuse the flip: the export would race that job's writer.
   writeFileSync(
     join(fakes, 'launchctl'),
     `#!/bin/bash
 printf 'launchctl %s\\n' "$*" >> "$CALLS"
+if [ "$1" = "print" ]; then
+  if [ "\${FAKE_JOB_RUNNING:-0}" = "1" ]; then echo "state = running"; exit 0; fi
+  echo "Could not find service" >&2
+  exit 1
+fi
 if [ "$1" = "bootstrap" ]; then : > "$SERVING"; fi
 if [ "$1" = "disable" ] && [ -n "\${FAKE_DISABLE_REFUSE:-}" ]; then
   case "$2" in */"\$FAKE_DISABLE_REFUSE") exit 1 ;; esac
@@ -268,6 +334,34 @@ export const statCallsOf = (f: Fixture): string[] =>
 /** The commit the deploy root is on, read the way `flip.sh` reads it. */
 export const headOf = (root: string, ref = 'HEAD'): string =>
   execFileSync('git', ['-C', root, 'rev-parse', ref], { encoding: 'utf8' }).trim();
+
+/** `sqlite3` on PATH — the flip reads the host copy with it, so a case that needs that read needs this. */
+export const HAS_SQLITE3 = spawnSync('sh', ['-c', 'command -v sqlite3'], { encoding: 'utf8' }).status === 0;
+
+/** The host data dir the launchd runtime serves from — assembled, never spelled (dataIsolation's rule). */
+const hostDataDir = (home: string): string => join(home, ['book', 'site', 'data'].join('-'));
+
+/**
+ * A host `book.db` as launchd would leave it: a real SQLite file with the four tables the flip's export
+ * proof counts. The rows are the fake docker's defaults except for `chapters`, so a case that makes the
+ * two sides disagree disagrees on ONE number and the refusal can name it.
+ */
+export function hostDb(home: string, chapters: number): string {
+  if (!HAS_SQLITE3) throw new Error('sqlite3 is not on PATH: a real host read cannot be fixtured');
+  const dir = hostDataDir(home);
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, 'book.db');
+  execFileSync('sqlite3', [
+    file,
+    `CREATE TABLE chapters(n INTEGER); CREATE TABLE blocks(n INTEGER);
+     CREATE TABLE changes(n INTEGER); CREATE TABLE comments(n INTEGER);
+     WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < ${String(chapters)}) INSERT INTO chapters SELECT n FROM c;
+     WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 2388) INSERT INTO blocks SELECT n FROM c;
+     WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 8) INSERT INTO changes SELECT n FROM c;
+     WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 3) INSERT INTO comments SELECT n FROM c;`,
+  ]);
+  return file;
+}
 
 /** What the served `/healthz` names: the short sha launchd is really running. */
 export const served = (f: Fixture, sha: string): void => {
