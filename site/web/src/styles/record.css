@@ -1,0 +1,487 @@
+/**
+ * BOOK-128 comments #3863 / #3862 — the sentence's record.
+ *
+ * One block in the flow after the paragraph (`p + .rec`), full column, three hairlines: `--rule-2`
+ * above (the tie to the text) and on the left (the spine), `--rule` below (the foot). Between
+ * sections and rows one `--rule` hairline per boundary, like the chronicle's rows.
+ *
+ * No fill, no shadow, no radius, no `z-index`, no `overflow` and no `max-height` on the block:
+ * the page is the scroller, the record only grows. The single clip in the sheet is the
+ * disclosure's own, and the form's textarea is the only inner scroller anywhere.
+ *
+ * Geometry, both widths (only the column changes): content 326 / 624, padding 12/16/12/0,
+ * quote serif italic 15/1.4, facts mono 12/1.4 = 16.8, head 44, section header 44, row 52
+ * (two lines) with a 44 px floor, fold row 44.
+ */
+
+.rec {
+  /* The record is never the browser's scroll anchor: the line the reader is reading is the
+     paragraph's, and a block that grows below it must not be able to hold the view of it.
+     The reading column states `overflow-anchor: auto` for the same contract. */
+  overflow-anchor: none;
+  display: block;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+
+/* The reading column keeps the reader's place on its own: the paragraph is the anchor, the
+   record never is (BOOK-128 #3863; `anchorHold.ts` is the measured fallback for engines that
+   do not anchor animated layout changes). */
+.ch,
+.discussion-list {
+  overflow-anchor: auto;
+}
+
+/* The paragraph's own bottom air is the block's gap: the block is inserted straight after the
+   `<p>`, whose `margin-bottom` no longer collapses across it, so the same distance is taken
+   back here and the gap itself lives inside the clip (`.rec-gap`). Nothing moves on mount. */
+.p + .rec {
+  margin-top: -1.02em;
+}
+
+/* The disclosure: 0fr → 1fr, 220 ms out, 150 ms in, no bounce. */
+.rec-clip {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 150ms var(--ease-in);
+}
+.rec[data-acc='open'] .rec-clip {
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 220ms var(--ease-out);
+}
+.rec-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.rec-gap {
+  /* The 10 px above the block, inside the clip: at 0fr it has no height, so nothing moves
+     before the block is opened and nothing is left behind when it closes. */
+  height: 10px;
+}
+.rec-sheet {
+  margin: 0;
+  border-top: 1px solid var(--rule-2);
+  border-left: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0 12px 16px;
+}
+/* The tail inside the clip: one paragraph gap below the block, carried by the same clip. */
+.rec-sheet::after {
+  content: '';
+  display: block;
+  height: 10px;
+}
+
+/* Ink 160 ms at +60 in, 90 ms out; the content rises ≤ 4 px (the form 0). */
+.rec-sheet > * {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 90ms var(--ease-in),
+    transform 90ms var(--ease-in);
+}
+.rec[data-acc='open'] .rec-sheet > * {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 160ms var(--ease-out) 60ms,
+    transform 220ms var(--ease-out) 60ms;
+}
+.rec[data-body='form'] .rec-sheet > * {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-clip,
+  .rec[data-acc='open'] .rec-clip {
+    transition: none;
+  }
+  .rec-sheet > *,
+  .rec[data-acc='open'] .rec-sheet > * {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
+  .rec-caret {
+    animation: none;
+  }
+}
+
+/* ---------- quote, hand, state ---------- */
+.rec-quote {
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.4;
+  color: var(--ink);
+  /* The subject of the record is never cut: no clamp, no ellipsis, the full sentence. */
+  white-space: normal;
+  hyphens: manual;
+}
+/* ADR-044 — the word the tap landed on, underlined inside the quote: decoration only. */
+.rec-word {
+  text-decoration: underline 1px var(--live);
+  text-underline-offset: 3px;
+}
+.rec-hand {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.rec-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  margin-top: 8px;
+}
+.rec-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.rec-state[data-ink='live'] {
+  color: var(--live);
+}
+.rec-state[data-ink='revise'] {
+  color: var(--revise);
+}
+.rec-state[data-ink='quiet'] {
+  color: var(--ink-3);
+}
+/* `пишется`: the shipped caret, 4 × 12, no new cadence. */
+.rec-caret {
+  width: 4px;
+  height: 12px;
+  background: var(--live);
+  animation: rec-caret 1s steps(2, start) infinite;
+}
+@keyframes rec-caret {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+.rec-cta {
+  margin-left: auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--live);
+  cursor: pointer;
+}
+/* The form's state word: the same word in the same place, no target and no underline. */
+.rec-act-word {
+  margin-left: auto;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--label);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.rec-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-size: 15px;
+  cursor: pointer;
+}
+.rec-close:focus-visible,
+.rec-cta:focus-visible,
+.rec-section:focus-visible,
+.rec-row:focus-visible,
+.rec-fold:focus-visible,
+.rec-back:focus-visible,
+.rec-marker:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+/* The one line a state cannot carry — never a second row of chrome. */
+.rec-state-line,
+.rec-frame-note,
+.rec-empty {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.rec-frame-note {
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+/* ---------- sections ---------- */
+.rec-sections {
+  margin-top: 8px;
+}
+.rec-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.rec-section-label {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+.rec-section[data-open='true'] .rec-section-label {
+  color: var(--ink);
+}
+.rec-section-side {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rec-section-count {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+/* A 6 × 6 chevron: rotated, never laid out — the row cannot move. */
+.rec-chevron {
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--ink-3);
+  border-right: 1px solid var(--ink-3);
+  transform: rotate(45deg);
+  transition: transform var(--dur-tick) var(--ease-out);
+}
+.rec-section[data-open='true'] .rec-chevron {
+  transform: rotate(135deg);
+}
+
+/* ---------- rows ---------- */
+.rec-rows {
+  display: block;
+}
+.rec-row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  text-align: left;
+  min-height: 52px;
+  cursor: pointer;
+}
+.rec-row[data-kind='history'] {
+  min-height: 52px;
+  cursor: default;
+}
+.rec-row-facts,
+.rec-row-specimen {
+  display: block;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.rec-row-specimen {
+  margin-top: 2px;
+  font-family: var(--ui);
+  font-size: var(--fs-label);
+  line-height: 1.35;
+  color: var(--ink-3);
+  /* The pair wraps to two lines, then ellipsises: the row grows, it never clips a word. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.rec-row[data-own='true'] .rec-row-facts {
+  color: var(--ink);
+}
+.rec-fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--live);
+  text-align: left;
+  cursor: pointer;
+}
+.rec-fold-end {
+  color: var(--ink-3);
+  cursor: default;
+}
+.rec-fold-end button {
+  margin-left: auto;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+/* ---------- the form's body, the receipt, a filing in full ---------- */
+.rec-sheet .seam-form {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--rule);
+  margin-top: 8px;
+}
+.rec-receipt-body,
+.rec-filing {
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+.rec-receipt {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink);
+}
+.rec-line {
+  margin: 0;
+  min-height: 24.8px;
+  display: flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+.rec-quiet {
+  color: var(--ink-3);
+}
+.rec-filing-facts {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+.rec-filing-text {
+  margin: 8px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink);
+}
+.rec-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+/* The quiet marker a long paragraph gets instead of a scroll that would hide the line. */
+.rec-marker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+/* The empty record: one sentence, no headers, no zeros. */
+.rec-empty {
+  margin: 8px 0 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--ink-3);
+}
+
+/* ---------- ADR-044: the sentence is the door ---------- */
+/*
+ * The mark is the sentence span itself: solid `--live` while the record is open, dotted
+ * `--ink-3` after it closes, none once another sentence is touched. Text decoration is
+ * painted, never laid out — the paragraph's glyphs do not move by a pixel.
+ */
+.p [data-touch] {
+  text-decoration: underline 1px var(--live);
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: auto;
+  cursor: pointer;
+}
+.p [data-touch][data-mark='last'],
+.p [data-touch][data-mark='frozen'] {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--ink-3);
+}
+/* The sentence door is the paragraph's keyboard control: a real button that wraps the
+   sentence's text only (the filing numerals are its siblings). One tab stop per paragraph —
+   the first sentence — and the rest are reachable with the arrow keys. */
+.p .sentence-door:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}

@@ -14,10 +14,7 @@
 /** A node whose inline style CSSOM exposes; the DOM's `HTMLElement` fits as it is. */
 type StyledNode = { style: { minHeight: string } };
 type FillNode = { style: { width: string } };
-type PanelNode = { style: { top: string; left: string; width: string; maxHeight: string } };
 
-/** The measured box of the anchored paragraph-chain panel. */
-export type PanelBox = { top: number; left: number; width: number; maxHeight: number };
 
 /** Reserve the slot's height before its chapter arrives (`lib/layout.ts` owns the number). */
 export function reserveHeight(element: StyledNode | null, pixels: number): void {
@@ -33,13 +30,4 @@ export function placeFill(element: FillNode | null, percent: number): void {
   if (element === null) return;
   const bounded = Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
   element.style.width = `${bounded}%`;
-}
-
-/** Place (or, with `null`, unplace) the anchored panel from its measured box. */
-export function placePanel(element: PanelNode | null, box: PanelBox | null): void {
-  if (element === null) return;
-  element.style.top = box === null ? '' : `${box.top}px`;
-  element.style.left = box === null ? '' : `${box.left}px`;
-  element.style.width = box === null ? '' : `${box.width}px`;
-  element.style.maxHeight = box === null ? '' : `${box.maxHeight}px`;
 }

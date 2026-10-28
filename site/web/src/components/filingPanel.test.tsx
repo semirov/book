@@ -135,16 +135,18 @@ describe('the filing panel’s state line (BOOK-90)', () => {
   });
 });
 
-describe('the card is out of the page’s flow before it is placed (BOOK-168)', () => {
-  it('stands `position: fixed` from its first paint — it can never extend the document', () => {
-    // Measured in a real Chromium (owner, 2026-10-28): the card is portaled to `document.body` and
-    // was static until `placePanel` wrote its box, so the unplaced card stood at the document's
-    // end — its own focus scrolled the page to the colophon and the door's landing was lost. The
-    // base rule is fixed now, and the placement only writes geometry on top of it.
+describe('the card is a block in the page’s flow (BOOK-128 #3852)', () => {
+  it('is not fixed, does not cap its height and does not scroll', () => {
+    // BOOK-168's fixed card was measured in a real Chromium because a portaled static box stood
+    // at the document's end. BOOK-128 #3852 deleted the layer: the card is a sibling after the
+    // paragraph or the discussion row, so there is no placement and no origin to fall to.
     const base = firstDeclarations(panelsCss, '.filing-panel');
-    expect(base).toMatch(/position:\s*fixed/u);
-    // Fixed at the viewport's origin before the placement lands, never at a static body position.
-    expect(base).toMatch(/top:\s*0;/u);
-    expect(base).toMatch(/left:\s*0;/u);
+    expect(base).not.toMatch(/position:\s*fixed/u);
+    expect(base).toContain('position: static');
+    expect(base).toContain('max-height: none');
+    expect(base).toContain('overflow: visible');
+    expect(base).not.toContain('z-index');
+    expect(base).not.toMatch(/animation:\s*seam-fade/u);
+    expect(base).toContain('animation: none');
   });
 });

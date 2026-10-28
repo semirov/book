@@ -1,10 +1,8 @@
 /**
- * BOOK-128 comment #3815 — the margin's reader blocks: a word's record and a phrase's facts.
- *
- * They are not panels and they do not live in `panels.css`: nothing here is filled, raised or
- * closed. Both are notes of the ledger `marginalia.css` already runs — the same 40 px tie from
- * the prose's right edge, the same `--note-fit` width, the same 6/0/8 padding — so the page has
- * one margin geometry, not two.
+ * BOOK-128 #3815 / #3863 (review M6) — the **legacy** reader blocks: the shipped strip's word
+ * body and the chronicle's phrase block. Neither is a panel, and neither is the reading path's
+ * record any more (`record.css` is): they are plain blocks in the flow, so they are not filled,
+ * raised, closed or placed, and they do not enter the page's margin ledger.
  *
  * **The one rule every reader panel obeys from here on** (BOOK-128 comment #3815): a panel that
  * grows in this margin **never scrolls** (`overflow: visible`, no `max-height`), **never casts a
@@ -12,16 +10,18 @@
  * Its content is cut by the copy — three facts and one sentence — never by a scrollbar, and its
  * height is whatever the text is: the page's pass measures it, nothing is assumed.
  *
- * Both blocks share the note's geometry: the tie starts 40 px right of the prose's right edge,
- * the width is `--note-fit`, the padding is the note's 6/0/8, and the one hairline is the top
- * border. `--rule-2` (the seam's own ink) marks the seam's body; `--rule` marks a block that is
- * its own place. No fill, no border box, no `z-index`.
+ * Both blocks keep the note's register — 6/0/8 padding and one hairline — and nothing else:
+ * the tie, the `--note-fit` width and the absolute placement are deleted with the layer they
+ * served. `--rule-2` marks the seam's body; `--rule` marks a block that is its own place.
  */
 .prov-block,
 .sentence-block {
-  position: absolute;
-  left: calc(100% + var(--note-gap));
-  width: var(--note-fit);
+  /* BOOK-128 #3852 — the reader blocks are in the flow: the absolute positioning past the
+     prose, the `--note-fit` width and the `opacity: 0` that waited for the margin pass are
+     gone with the layer they served. What is left is one note's box: a 6/0/8 padding and one
+     `--rule-2` hairline. `.rec` is the accordion that carries them on the reading path. */
+  position: static;
+  width: auto;
   margin: 0;
   padding: 6px 0 8px;
   border: 0;
@@ -33,20 +33,12 @@
   text-align: left;
   white-space: normal;
   hyphens: manual;
-  opacity: 0;
-  transition: opacity var(--dur-tick) var(--ease-out);
-}
-.prov-block[data-placed='true'],
-.sentence-block[data-placed='true'] {
   opacity: 1;
+  transition: none;
 }
-/* The seat is the phrase block's coordinate space: zero height, so the paragraph below it does
-   not move when the block mounts, and `left: 100%` still means the prose's right edge. */
-.sentence-seat {
-  position: relative;
-  height: 0;
-  margin: 0;
-}
+/* BOOK-128 #3852 — the seat's `height: 0` is gone with the absolute block it existed for: a
+   zero-height box with `left: 100%` has nothing to position against now that the block is in
+   the flow. */
 
 /* BOOK-128 comment #3815 — the flow variant: the same block where there is **no margin
    channel** (a past chapter on the chronicle, any page without the pass). It keeps the note's
@@ -172,10 +164,6 @@
     border-top: 1px solid var(--rule);
     opacity: 1;
     transition: none;
-  }
-  .sentence-seat {
-    position: static;
-    height: auto;
   }
   /* The phrase's 44 px row: the block's own head, so the body opens under a target the thumb
      can hit and the paragraph above it never re-flows. Its own padding is the row's, not the

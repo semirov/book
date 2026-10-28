@@ -28,12 +28,17 @@ function inQuery(selector: string): boolean {
 }
 
 describe('the phrase’s block, in the margin and in the flow', () => {
-  it('is a margin item by default: absolute past the prose, transparent until the pass places it', () => {
+  it('is a block in the flow: the margin geometry and its invisible wait are deleted', () => {
+    // BOOK-128 comment #3852 — the reader blocks are no longer placed past the prose; the
+    // accordion (`record.css`) carries them, and the same nodes stand in the document's flow
+    // wherever they are still mounted on their own.
     const base = rules(reader).find(([selector]) => selector.split(',').some((token) => token.trim() === '.sentence-block'))?.[1] ?? '';
-    expect(base).toContain('position: absolute');
-    expect(base).toContain('left: calc(100% + var(--note-gap))');
-    expect(base).toContain('width: var(--note-fit)');
-    expect(base).toContain('opacity: 0');
+    expect(base).toContain('position: static');
+    expect(base).toContain('width: auto');
+    expect(base).toContain('opacity: 1');
+    expect(base).not.toContain('position: absolute');
+    expect(base).not.toContain('var(--note-fit)');
+    expect(base).not.toContain('opacity: 0');
   });
 
   it('is the document’s own flow in the flow variant, outside every query', () => {

@@ -18,15 +18,10 @@ import { ProseParagraph } from './ProseParagraph.tsx';
  * BOOK-128 comment #3815 — «откуда это слово» is **reader**: three facts and one sentence
  * beside the strip that opened them, never a floating panel.
  *
- * What is proven here:
- *   - one case per hand the book can print (the table in `lib/provenance.test.ts` is the words;
- *     this file proves the block renders them and nothing else);
- *   - a filing standing on the word is a real `<a>` that opens the site's one card, and the
- *     layer owns no `<button>` of its own;
- *   - the block never scrolls, never prints an id, never uppercases a word, and never carries a
- *     shadow or a close;
- *   - at ≤1023 it grows in flow under the strip's 44 px row; closing it returns the strip to
- *     its row and focus to the door.
+ * What is proven here: one case per hand the book can print (the words are
+ * `lib/provenance.test.ts`); a filing on the word is a real `<a>` that opens the site's one
+ * card; the block never scrolls, prints no id, uppercases no word and carries no shadow or
+ * close; in flow it grows under the row and a close returns the strip and the focus.
  *
  * jsdom has no layout: the geometry claims are read off the stylesheets (a rule, not a pixel)
  * and the state claims off the DOM. Where a number is claimed (44 px, the 40 px tie, the
@@ -444,8 +439,11 @@ describe('the block obeys the margin’s one rule', () => {
     expect(rule).toContain('box-shadow: none');
     expect(rule).toContain('background: none');
     expect(rule).toContain('border-top: 1px solid var(--rule-2)');
-    expect(rule).toContain('left: calc(100% + var(--note-gap))');
-    expect(rule).toContain('width: var(--note-fit)');
+    // BOOK-128 #3852 — no margin geometry any more: the block is in the document's flow, and
+    // the accordion (`record.css`) is what carries it on the reading path.
+    expect(rule).not.toContain('left: calc(100% + var(--note-gap))');
+    expect(rule).not.toContain('width: var(--note-fit)');
+    expect(rule).toContain('position: static');
     expect(rule).not.toContain('z-index');
     expect(rule).not.toContain('max-height');
     expect(node?.querySelector('.prov-close')).toBeNull();
@@ -477,7 +475,7 @@ describe('the block obeys the margin’s one rule', () => {
     expect(seamCss).toMatch(/\.seam \{[^}]*border-top: 1px solid var\(--rule-2\)/u);
   });
 
-  it('is placed by the page pass, not by a second geometry', async () => {
+  it('no longer enters the margin ledger: no item, no placement (review M6)', async () => {
     // The pass marks only positioned items; the block in flow keeps no `top` of its own.
     await act(async () => {
       root?.render(
@@ -488,8 +486,8 @@ describe('the block obeys the margin’s one rule', () => {
         />,
       );
     });
-    expect(block()?.hasAttribute('data-margin-item')).toBe(true);
-    expect(block()?.getAttribute('data-margin-item')).toBe('prov');
+    // The block is the legacy strip's own flow body: the page's margin pass has no claim on it.
+    expect(block()?.hasAttribute('data-margin-item')).toBe(false);
     await settle();
     // jsdom computes `position: static`, so the pass skips it — exactly what the phone does.
     expect(block()?.getAttribute('data-placed')).toBeNull();
