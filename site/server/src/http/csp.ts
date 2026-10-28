@@ -63,6 +63,10 @@ export function buildCsp(config: CspSource, scriptHashes: readonly string[] = []
     "form-action 'self'",
     "frame-ancestors 'none'",
     "manifest-src 'self'",
+    // BOOK-157: the offline shell is a same-origin worker and nothing else. Without this the
+    // directive falls back to `default-src 'self'`, which says the same thing — but a directive
+    // that is named cannot be lost to a future `default-src` edit.
+    "worker-src 'self'",
   ].join('; ');
 }
 

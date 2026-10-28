@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './App.tsx';
 import { LegalPage } from './components/LegalPage.tsx';
+import { Offline, isOffline } from './components/Offline.tsx';
 import { bootAnalytics } from './lib/analytics.ts';
 import { disarmAfterMount } from './lib/bootSignal.ts';
+import { startPwa } from './lib/pwa.ts';
 import { staticPage } from './lib/route.ts';
 import './styles/tokens.css';
 import './styles/base.css';
@@ -53,9 +55,16 @@ void bootAnalytics();
 // its own.
 const page = staticPage(window.location.pathname);
 
+// BOOK-157: an offline document (the shell's constant, `data-offline="1"`) or a browser that
+// knows it is offline renders one written sentence instead of a catalogue request that cannot
+// succeed. Decided before anything mounts, so no panel and no wait is painted first — and it
+// outranks the two static documents too: `/privacy` and `/rules` are served files, and with no
+// network neither of them can be read either.
+const offline = isOffline();
+
 createRoot(container).render(
   <StrictMode>
-    <div className="canvas">{page === null ? <App /> : <LegalPage page={page} />}</div>
+    <div className="canvas">{offline ? <Offline /> : page === null ? <App /> : <LegalPage page={page} />}</div>
   </StrictMode>,
 );
 
@@ -64,3 +73,6 @@ createRoot(container).render(
 // `#root` is still empty, and a render that never commits would be a blank page. Optional on
 // purpose: a shell served before the guard existed has no `__bootGuard`, and that must not throw.
 disarmAfterMount({ container, guard: () => window.__bootGuard?.ok() });
+// BOOK-157: the offline shell registers on `load` or the first interaction, never before and
+// never awaited — a registration must not delay or arm anything the reader is looking at.
+startPwa();

@@ -16,7 +16,8 @@
 #     F023 release check on the built bundle) — a red gate deploys nothing;
 #   * the prod launchd job must already be pointed at this root, otherwise it refuses: silently
 #     updating a clone that prod does not run would report a green deploy of nothing;
-#   * BOOK-119: two real-artifact proofs run after the build. A red one publishes nothing and
+#   * BOOK-119: two real-artifact proofs run after the build, and BOOK-157 adds a third over the
+#     same bytes (the manifest, its icons and the service worker). A red one publishes nothing and
 #     restarts nothing. The build is then published as an immutable release and `current` is
 #     swapped *before* the restart, so the shell a browser gets always has its own assets;
 #   * before the restart it reads the box's load and says so (a long window is explained, never
@@ -37,6 +38,9 @@
 #     the publish;
 #   * it then checks that the running site serves the frozen frame (BOOK-107): a site that
 #     answers /healthz but serves other text is unhealthy, and rolls back the same way;
+#   * and that an install is possible (BOOK-157): `/manifest.webmanifest` is `+json` and parses,
+#     `/sw.js` is `text/javascript` with `cache-control: no-cache`. A red smoke takes the frame
+#     check's red path and `last-good` is not written;
 #   * a checkout that predates the frame check (BOOK-107) deploys without it — the step says so,
 #     so an old ref can still be deployed and rolled back to;
 #   * a failed health or frame check rolls the clone back to the previously deployed commit,
@@ -130,6 +134,7 @@ PLAIN_COMMIT=""
 ROLLBACK_WHY=""
 PERCENT=0
 FRAME="n/a"
+PWA="n/a"
 KICKSTART_T0=""
 
 # Where the run is, so a death names it. `REASON_PRINTED` keeps two reporters from both speaking,
@@ -273,6 +278,16 @@ frame_check() {
   node "$ROOT/site/scripts/frame-check.mjs" "${args[@]}"
 }
 
+# BOOK-157: the two files an install reads must be served as what they are — the manifest as
+# `application/manifest+json`, the worker as `text/javascript` with `cache-control: no-cache` (a
+# `no-store` worker cannot be registered, and a worker a cache may keep outlives its release).
+# Both defects are invisible in a browser, so the deploy refuses to call the site healthy on
+# `/healthz` alone. Absent in a checkout older than BOOK-157: skip loudly, as the frame check does.
+pwa_check() {
+  [ -f "$ROOT/site/scripts/pwa-smoke.mjs" ] || { say "this checkout predates the PWA smoke (BOOK-157) — skipping"; return 0; }
+  node "$ROOT/site/scripts/pwa-smoke.mjs" --server "$(site_url)"
+}
+
 # The green end of any path: the site serves the build of this run, so check the canon, record it
 # and exit 0. `keep` leaves `last-good` alone — the release `current` names is then not this
 # build's (a late answer after a rollback had already published the previous release).
@@ -284,14 +299,25 @@ finish_green() { # (optional: keep)
   # this deploy being unhealthy, so both take the red path below — never `exit 0`.
   if frame_check; then
     FRAME="ok"
-    if [ "${1:-}" != "keep" ]; then
-      mkdir -p "$STATE_DIR"
-      echo "$GOOD" > "$STATE_DIR/last-good"
-      if [ -n "$RELEASE" ] && [ "$RELEASE" != "unknown" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
+    STEP="pwa"
+    say "checking the installable shell: manifest and service worker"
+    # Exit 0 is the only success here too. A manifest answered as a page, or a worker a cache may
+    # keep past its release, is an install that silently does not happen — the same red path the
+    # frame check takes, never `exit 0`.
+    if pwa_check; then
+      PWA="ok"
+      if [ "${1:-}" != "keep" ]; then
+        mkdir -p "$STATE_DIR"
+        echo "$GOOD" > "$STATE_DIR/last-good"
+        if [ -n "$RELEASE" ] && [ "$RELEASE" != "unknown" ]; then echo "$RELEASE" > "$STATE_DIR/last-good-release"; fi
+      fi
+      audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=ok pwa=$PWA restart=$(restart_field) $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+      say "healthy: $SHORT at $URL; time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms, visible downtime ${RESTART_MS} ms, load ${LOAD_PER_CORE}/core, probe=$PROBE_USED, lock=$LOCK"
+      exit 0
     fi
-    audit "ok mode=$MODE ref=$REF sha=$GOOD prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=ok restart=$(restart_field) $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
-    say "healthy: $SHORT at $URL; time-to-first-200 ${HEALTH_MS} ms = ${PERCENT}% of ${BUDGET_MS} ms, visible downtime ${RESTART_MS} ms, load ${LOAD_PER_CORE}/core, probe=$PROBE_USED, lock=$LOCK"
-    exit 0
+    PWA="fail"
+    say "the running site does not serve the installable shell (manifest, service worker)"
+    return 1
   fi
   FRAME="fail"
   say "the running site does not serve the frozen frame"
@@ -389,7 +415,7 @@ node "$ROOT/site/bin/validate.mjs" --strict || die "manuscript validation is red
 # bytes: a red proof means an asset URL would not survive the next publish or the guard would
 # not speak — and then nothing is published and nothing is restarted.
 STEP="gate: proof"
-say "gate: proof (old asset survives a publish; the guard speaks without a bundle)"
+say "gate: proof (old asset survives a publish; the guard speaks without a bundle; the manifest and the worker describe this build)"
 npm run proof || die "proof is red — nothing was published or restarted"
 
 # BOOK-46: the F023 release check on the bytes this deploy is about to publish. `verify` above ran
@@ -530,6 +556,16 @@ if [ "$FRAME" = "fail" ]; then
     die "prod answers $PLAIN_COMMIT but does not serve the frozen frame (health=$HEALTH after ${HEALTH_MS} ms) — a rollback would restart code that already answers and change nothing about the canon; nothing was restarted. A human must look at the canon"
   fi
   die "prod answers nothing at $URL and the frame cannot be checked (health=$HEALTH after ${HEALTH_MS} ms) — a rollback would restart on a guess; nothing was restarted. A human must look"
+fi
+
+# A broken install is neither a canon problem nor a reason to start a second restart: the site
+# serves the book, and the manifest or the worker is what does not answer. A rollback here would
+# trade one tree's install for another's — the previous release may have no worker at all, a
+# version that already had one may have the same defect — so nothing is restarted again, and the
+# deploy stays red for a human to look at `/sw.js` and `/manifest.webmanifest`.
+if [ "$PWA" = "fail" ]; then
+  audit "rollback-refused mode=$MODE ref=$REF sha=$BUILT_COMMIT prev=${PREV:0:7} release=$RELEASE health=$HEALTH frame=$FRAME pwa=fail restart=$(restart_field) $(audit_tail "$RESTART_MS" "$HEALTH_MS" "$PERCENT" "$BASELINE")"
+  die "prod answers ${PLAIN_COMMIT:-nothing} but does not serve the installable shell (manifest, service worker) — nothing was restarted; a human must look at $URL/sw.js and $URL/manifest.webmanifest"
 fi
 
 # A rollback that did not reach its own commit has nothing better behind it: the generic path

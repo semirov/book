@@ -45,6 +45,14 @@ addEventListener('error',e,1);addEventListener('unhandledrejection',V);addEventL
 window.__bootGuard={ok:O}})();</script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!--
+      BOOK-157 — the installable shell. The manifest is the day paper the `<meta name="theme-color">`
+      above already carries: a manifest file cannot vary by `prefers-color-scheme`, and `/theme.js`
+      below sets the night bar after first paint. The touch icon is the same 192 px plate the
+      manifest declares (iOS ignores the manifest's icons and asks for this link).
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <!--
       A blocking same-origin file: the theme must be set before the first paint, and it stays a
       file so the guard above is the shell's only inline script (one hash, one policy).
     -->

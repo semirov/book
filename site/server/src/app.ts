@@ -174,12 +174,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   // script of the shell *being sent*; everything else carries the base header, no hash.
   const served = servedRoot(options.config.webDist);
   const shellHashes = createShellHashes({ warn: (message) => app.log.warn(message) });
-  app.addHook('onSend', async (_request, reply, payload) => {
+  app.addHook('onSend', async (request, reply, payload) => {
     const contentType = String(reply.getHeader('content-type') ?? '');
     const hashes = contentType.startsWith('text/html') ? shellHashes.hashesFor(served) : [];
     reply.header('content-security-policy', buildCsp(options.config, hashes));
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'same-origin');
+    // BOOK-157: the worker's type is named, not looked up. `mime-db` still answers `.js` with
+    // the obsolete `application/javascript`; RFC 9239 registers `text/javascript` as the one type
+    // for JavaScript, the deploy smoke asserts that value, and naming it here cannot drift with a
+    // dependency bump. Only the file itself: a 404 for it keeps the JSON answer's own type.
+    if ((request.url.split('?')[0] ?? '') === '/sw.js' && reply.statusCode < 400) {
+      reply.header('content-type', 'text/javascript; charset=utf-8');
+    }
     return payload;
   });
 
@@ -233,13 +240,22 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     // not-found context when it registers, so a handler set afterwards would never see the
     // plugin's `callNotFound` (Fastify's default 404 would answer instead).
     app.setNotFoundHandler((request, reply) => {
+      const path = request.url.split('?')[0] ?? '';
       if (request.url.startsWith('/api/') || request.url === '/healthz') {
         return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such route' });
+      }
+      // BOOK-157: the files an install reads are files or nothing. Falling through to the shell
+      // would answer a service worker with HTML — a silent dead end, because the browser parses
+      // it, refuses it, and leaves the page without a worker — a manifest with a page, and an
+      // icon the manifest names with a page a browser shows as a broken image. A miss is 404
+      // JSON, exactly like an asset miss.
+      if (path === '/sw.js' || path === '/manifest.webmanifest' || path.startsWith('/icons/')) {
+        return reply.code(404).send({ code: 'NOT_FOUND', message: 'no such file' });
       }
       // BOOK-119: a missing bundle is where the white screen came from. Under `/assets/` the
       // answer is a retained release's copy or 404 JSON — the shell would parse as JavaScript,
       // throw, and leave the page blank. Every other unknown path stays the shell.
-      if ((request.url.split('?')[0] ?? '').startsWith('/assets/')) {
+      if (path.startsWith('/assets/')) {
         return answerAssetMiss(request, reply, options.config.webDist);
       }
       // One page: every unknown path is the shell, the SPA scrolls to its own anchor. Its
