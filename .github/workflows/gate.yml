@@ -14,7 +14,9 @@ name: Gate
 #             Always runs, both events.
 #   tests     only in `full` mode: the whole suite as 4 shards, each writing a blob report; the
 #             shard collects coverage but does not judge it (a quarter of a suite cannot meet the
-#             floors, so its threshold flags are zeroed for this run only).
+#             floors, so its threshold flags are zeroed for this run only). A shard builds
+#             `@book/shared` first: it no longer runs `typecheck`, and the CLIs some tests spawn
+#             import that package through its `dist` entry.
 #   coverage  only in `full` mode: merges the 4 blobs into ONE run and applies the floors from
 #             `site/vitest.config.ts` (lines/functions/statements 80, branches 75) to it.
 #   affected  only in `affected` mode (pull requests): `npm run test:affected` on the selection.
@@ -138,7 +140,8 @@ jobs:
 
       # `--coverage` so the shard's coverage travels in the blob; the floors are zeroed for this
       # run only, because a shard sees a quarter of the suite and would fail every one of them.
-      # The real floors are applied once, by `coverage`, to the merged run.
+      # The real floors are applied once, by `coverage`, to the merged run. `--reporter=default`
+      # sits beside the blob so a red shard's log names the failing test, not just its blob.
       - name: Shard ${{ matrix.shard }}/4
         working-directory: site
         run: >-
@@ -161,6 +164,9 @@ jobs:
           # `.vitest-reports` starts with a dot: upload-artifact@v4 ignores hidden files by
           # default (it matches the path itself), which would upload nothing and fail the step.
           include-hidden-files: true
+          # A re-run of the same run leaves attempt 1's artifacts in place; without `overwrite`
+          # the upload fails with a 409 and a flake can only be cleared by pushing a commit.
+          overwrite: true
           retention-days: 1
           # `always()` + warn: a red shard must still publish its blob, so the failure can be read
           # out of the report; a blob that never appeared is caught by the count check in `coverage`.
@@ -197,8 +203,8 @@ jobs:
       - name: All four shards reported
         working-directory: site
         run: |
-          # `ls` exits non-zero when nothing matches and the runner's bash runs with `-o pipefail`;
-          # without `|| true` the step dies on that line instead of naming the count.
+          # `ls` exits non-zero when nothing matches and `run:` is `bash -e`; without `|| true`
+          # the step dies on that line instead of naming the count.
           count="$(ls -1 .vitest-reports/blob-*.json 2>/dev/null | wc -l | tr -d ' ')" || true
           test "$count" -eq 4 || { echo "coverage: expected 4 blob reports, found $count"; exit 1; }
 
