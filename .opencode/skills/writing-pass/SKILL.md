@@ -58,19 +58,20 @@ the cycle cap publishes the step with its finding (editor) or stops it (consulta
 ## 4. Close the step
 
 ```sh
-node bin/engine.mjs done <leaseId> --seams seams.json --note "ch12 · 21.4k in / 3.1k out ≈ $0.020" \
-  --model deepseek/deepseek-v4-pro --tokens-in 21400 --tokens-out 3100
+node bin/engine.mjs done <leaseId> --seams '[{"boundary":"ch13","reason":"ch12 ends where ch13 opens"}]' \
+  --note "ch12 · 21.4k in / 3.1k out ≈ $0.020" --model deepseek/deepseek-v4-pro \
+  --tokens-in 21400 --tokens-out 3100
 ```
 
 `--model` is **required** on `verdict`, `done` and `seen`, and it must be the pipeline's model
 (`site/config/pipeline.json`): the engine refuses anything else with `MODEL_REQUIRED` or
-`MODEL_NOT_PIPELINE`, so «prod is Pro» is a fact on the row, not a hope. `seams.json` is
-`[{boundary, reason}]`: a step claims only its own lower edge or the one above it
-(`ch` / `ch+1`, `front` at ch01, `ending` at ch67); anything else is `INVALID_SEAM`. The note is ≤200
-chars and carries the **real** tokens of this pass at the memo rate ($0.0000020 per output token,
-`process/ROLE_PROMPTS.md` §4) — estimate from the session, never invent. The result
-`{outcome: holds|rewritten|evaluated|published_with_finding|escalated}` closes the step; then the pass
-appends its memo line to `process/write.log.md` (created if absent):
+`MODEL_NOT_PIPELINE`, so «prod is Pro» is a fact on the row, not a hope. `--seams` is inline JSON
+`[{boundary, reason}]` (a path still reads, for an operator session): a step claims only its own lower
+edge or the one above it (`ch` / `ch+1`, `front` at ch01, `ending` at ch67); anything else is
+`INVALID_SEAM`. The note is ≤200 chars and carries the **real** tokens of this pass at the memo rate
+($0.0000020 per output token, `process/ROLE_PROMPTS.md` §4) — estimate from the session, never invent.
+The result `{outcome: holds|rewritten|evaluated|published_with_finding|escalated}` closes the step;
+then the pass appends its memo line to `process/write.log.md` (created if absent):
 `PASS N — lane <Пn | Оn | финал>, wrote chNN. | est cost so far: $Y`.
 
 ## 5. Bounds
