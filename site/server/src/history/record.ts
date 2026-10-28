@@ -41,17 +41,21 @@ export type RecordFilter = {
 };
 
 /**
- * One row per reader change: `source_comment IS NOT NULL` is the whole reader test (BOOK-56),
- * the join to `comments` gives the alias, and the correlated `MAX(hseq)` picks the change's
- * last log entry — the one the scrubber names. An event `hseq` is unique, so the join cannot
- * multiply a change into a chain.
+ * One row per reader change: a change whose source comment exists and is not `hidden` is the
+ * whole reader test (BOOK-56, BOOK-101). The join to `comments` gives the alias, and the
+ * correlated `MAX(hseq)` picks the change's last log entry — the one the scrubber names. An
+ * event `hseq` is unique, so the join cannot multiply a change into a chain.
+ *
+ * BOOK-101 — a hidden comment is a filing the operator withdrew from the page, so its change
+ * has no public line, and the author's alias never reaches this DTO through it. The record
+ * prints a person's act only while that person's words are still on the page.
  */
 const SELECT_RECORD = `SELECT c.id AS change_id, c.seq, c.chapter, c.premise, c.status, c.outcome, c.reason,
        co.author AS alias, e.hseq, e.at
   FROM changes c
   JOIN comments co ON co.id = c.source_comment
   JOIN events e ON e.hseq = (SELECT MAX(inner_e.hseq) FROM events inner_e WHERE inner_e.change_id = c.id)
-  WHERE c.source_comment IS NOT NULL`;
+  WHERE c.source_comment IS NOT NULL AND co.status <> 'hidden'`;
 
 /**
  * The public reason, bounded and normalised once; an empty string is no reason at all.

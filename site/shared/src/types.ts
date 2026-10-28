@@ -180,8 +180,8 @@ export type StateSnapshot = {
   };
   /**
    * BOOK-56 — the one derived fact every history surface reads (chronicle, cascade,
-   * provenance, revision apparatus, authors, discussion). Computed from
-   * `changes.source_comment IS NOT NULL`; while `live` is false those surfaces are not
+   * provenance, revision apparatus, authors, discussion). Computed from the reader changes
+   * whose filing is not hidden (BOOK-101); while `live` is false those surfaces are not
    * rendered at all, rather than hidden.
    */
   history: HistoryStateDto;

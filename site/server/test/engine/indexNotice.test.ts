@@ -7,7 +7,7 @@ import { reconcile } from '../../src/ingest/reconcile.ts';
 import { readIndex } from '../../src/index/store.ts';
 import { publishIndexNotices } from '../../src/engine/indexNotice.ts';
 import * as store from '../../src/engine/store.ts';
-import { readEventRow, toHistoryFrame } from '../../src/history/events.ts';
+import { readEventRow, toHistoryEvent } from '../../src/history/events.ts';
 import { chapterText, createEngineFixture, runStubStep } from './helpers.ts';
 
 type Fixture = ReturnType<typeof createEngineFixture>;
@@ -36,7 +36,7 @@ function changeOf(fixture: Fixture, id: string): store.ChangeRow {
 function summaryOf(fixture: Fixture, hseq: number): string {
   const row = readEventRow(fixture.db, hseq);
   if (row === undefined) throw new Error('the statement row is missing');
-  return toHistoryFrame(row).summary;
+  return toHistoryEvent(row).summary;
 }
 
 describe('a closed change speaks once about a moved document (BOOK-18 §3)', () => {
@@ -52,7 +52,7 @@ describe('a closed change speaks once about a moved document (BOOK-18 §3)', () 
       expect(rows).toHaveLength(1);
       const row = readEventRow(fixture.db, rows[0]?.hseq ?? 0);
       if (row === undefined) throw new Error('the statement row is missing');
-      const event = toHistoryFrame(row);
+      const event = toHistoryEvent(row);
       expect(event).toMatchObject({ kind: 'document.status', chapter: null, changeId: change.id });
       // The surface the text uses, not the normalised key.
       expect(event.summary).toBe('статус документа Приказ № 4 изменён в главе 2');

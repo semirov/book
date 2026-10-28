@@ -2,12 +2,18 @@
  * Reading the log as a public projection (§6F.1, §6F.7).
  *
  * `log.ts` is the only writer of `events`; this module is the only reader that turns a row
- * into the shape the WS frame and the historical views use. The public record itself is
+ * into the shape the historical views and the socket use. The public record itself is
  * `record.ts` (BOOK-65): a log row is machinery, not an entry. The event's `payload` is bounded
  * and public by construction (§6F.1 rule 6), and nothing here selects `gate_verdicts`.
+ *
+ * BOOK-102 — the `history:event` frame is a bare tick (`toHistoryFrame`): an event's kind,
+ * chapter, author and summary never travel to every open client. `toHistoryEvent` keeps the
+ * full description of a row for the log's own vocabulary; no production surface emits it
+ * (BOOK-65 removed the event list, BOOK-102 narrowed the socket), and the log's tests read a
+ * row through it. Removing it is a separate ticket.
  */
 
-import type { HistoryAuthorKind, HistoryEventDto, HistoryKind } from '@book/shared';
+import type { HistoryAuthorKind, HistoryEventDto, HistoryEventFrame, HistoryKind } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { publicAlias } from '../util/alias.ts';
@@ -128,7 +134,10 @@ export function toHistoryEvent(row: EventRow): HistoryEventDto {
   };
 }
 
-/** The frame of one event: the row already carries its change number and its summary. */
-export function toHistoryFrame(row: EventRow): HistoryEventDto {
-  return toHistoryEvent(row);
+/**
+ * The frame of one event: a bare tick — its moment, and nothing to read (BOOK-102). The public
+ * socket says *that* the clock moved; the record is read over REST, where the narration lives.
+ */
+export function toHistoryFrame(row: { hseq: number; at: string }): HistoryEventFrame {
+  return { hseq: row.hseq, at: row.at };
 }
