@@ -6,12 +6,11 @@
  * injected, so a test drives a real pass through a fixture engine and a scripted provider.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
-import { chapterLabel, type WriterAssignment } from '@book/shared';
+import type { WriterAssignment } from '@book/shared';
 
-import { chapterPath, readChapter } from '../engine/text.ts';
+import { readChapter } from '../engine/text.ts';
 import { sha256Hex } from '../util/hash.ts';
 import type { EngineClient, GateAssignmentView, LandView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
@@ -19,10 +18,11 @@ import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRu
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
 import type { WriteMode } from './mode.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 import type { PatchReceipt } from './transcript.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
-import { restorePreSnapshot } from './revert.ts';
+import { createLaneIo } from './laneIo.ts';
 import type { CallKind, CallRecord } from './transcript.ts';
 import { rightsRunner } from './rightsGate.ts';
 import { writeTranscript } from './transcript.ts';
@@ -53,7 +53,6 @@ export const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOU
 export type ProviderCall = (request: ProviderRequest) => Promise<ProviderResult>;
 
 export type Answer = ReturnType<typeof validateAnswer>;
-
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
   return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
@@ -120,8 +119,13 @@ export type Lane = {
   /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
   model(): string | null;
   setPrompt(sections: number, sha256: string | null, prefixSha256: string | null): void;
-  /** BOOK-173: the write mode the pass actually ran, and the patch it applied (when it did). */
-  setMode(mode: WriteMode | null, patch: PatchReceipt | null): void;
+  /**
+   * BOOK-173 §2/§4: the mode the pass ran, the patch it applied and the character edits that keep
+   * sentence ids. Every call clears `sentences` — no attempt inherits the previous one's edits.
+   */
+  setMode(mode: WriteMode | null, patch: PatchReceipt | null, sentences?: ReadonlyArray<SentencePatchEdit> | null): void;
+  /** BOOK-173 §4: the mode this pass wrote in; null before `setMode` and on a resume. */
+  mode(): WriteMode | null;
   setEstimate(value: PassEstimate): void;
 };
 
@@ -139,10 +143,16 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let promptPrefix: string | null = null;
   let mode: WriteMode | null = null;
   let patch: PatchReceipt | null = null;
+  let sentences: ReadonlyArray<SentencePatchEdit> | null = null;
   let estimate: PassEstimate | null = null;
   // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
   let failure: Failure | null = null;
   let note: string | null = null;
+  // BOOK-173 §2/§4: the landing's three facts, read at the call — the file work lives in `laneIo`.
+  const io = createLaneIo({
+    bookRoot, dataDir: input.dataDir, chapter, leaseId: job.leaseId, engine, log: input.log,
+    write: () => ({ mode, sentences, estimateUsd: estimate === null ? null : estimate.usd }),
+  });
 
   /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
    *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
@@ -306,44 +316,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     };
   }
 
-  /** `land`: a `STEP_CLOSED` or `FRAME_CHANGED` answer takes the text back (BOOK-137). */
-  async function land(): Promise<LandView> {
-    try {
-      return await engine.land(job.leaseId);
-    } catch (error) {
-      const code = codeOf(error);
-      const back =
-        code === 'STEP_CLOSED' || code === 'FRAME_CHANGED'
-          ? restorePreSnapshot(input.dataDir, bookRoot, chapter)
-          : null;
-      if (back) input.log(`[writer] land ${code ?? 'refused'}: снимок до прохода ${back.restored ? 'возвращён' : 'не найден'}`);
-      throw new PassRefusal(reasonOf(error), codeOf(error));
-    }
-  }
-
-  /** Atomic: a reader never sees half a chapter, and `land` reads a whole file. */
-  function writeText(value: string): void {
-    const target = chapterPath(bookRoot, chapter);
-    const staging = `${target}.tmp`;
-    writeFileSync(staging, value, 'utf8');
-    renameSync(staging, target);
-  }
-
-  /** The pre-image, before the writer touches anything: what a revert puts back. */
-  function preSnapshot(at: number): void {
-    const dir = join(input.dataDir, 'writer', 'pre');
-    mkdirSync(dir, { recursive: true });
-    const current = readChapter(bookRoot, chapter);
-    const stamp = {
-      chapter,
-      state: current.exists ? 'present' : 'absent',
-      sha: current.exists ? sha256Hex(current.raw) : null,
-      at,
-    };
-    if (current.exists) writeFileSync(join(dir, `ch${chapterLabel(chapter)}.md`), current.raw, 'utf8');
-    writeFileSync(join(dir, `ch${chapterLabel(chapter)}.json`), `${JSON.stringify(stamp, null, 2)}\n`, 'utf8');
-  }
-
   /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
   function transcript(result: PassResult): void {
     try {
@@ -437,8 +409,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
-    // A revision is a whole chapter, whatever the filing said: the mode follows the text.
+    // A revision is a whole chapter, whatever the filing said: the mode follows the text, and the
+    // patch's character edits belong to the attempt they came from — a revision states none.
     mode = 'rewrite';
+    sentences = null;
     const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
     const revised = await reviseAnswer({
       rebuilt,
@@ -448,8 +422,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       log: input.log,
     });
     if (revised === null) return null;
-    writeText(revised);
-    await land();
+    io.writeText(revised);
+    await io.land();
     return revised;
   }
 
@@ -460,9 +434,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     remember: (value) => {
       if (value !== null) failure = value;
     },
-    writeText,
-    land,
-    preSnapshot,
+    writeText: io.writeText,
+    land: io.land,
+    preSnapshot: io.preSnapshot,
     transcript,
     check,
     runGate: (role) => runGate(role),
@@ -481,14 +455,16 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     usage: () => all,
     writerTokens: () => ({ ...written }),
     model: () => laneModel(),
+    mode: () => mode,
     setPrompt: (sections, sha, prefix) => {
       promptSections = sections;
       promptSha256 = sha;
       promptPrefix = prefix;
     },
-    setMode: (nextMode, nextPatch) => {
+    setMode: (nextMode, nextPatch, nextSentences) => {
       mode = nextMode;
       patch = nextPatch;
+      sentences = nextSentences ?? null;
     },
     setEstimate: (value) => {
       estimate = value;

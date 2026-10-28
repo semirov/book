@@ -81,10 +81,30 @@ const rippleBody = z.object({
   changeId: id,
 });
 
+/**
+ * BOOK-173 §2: one entry per block a patch named, as the **character edit** the ingest needs to
+ * keep sentence ids across the write (`sentences/transform.ts`). A shape check only: whether the
+ * edit is consistent with the file is the ingest's question, and it answers by refusing to publish.
+ */
+const sentenceEdit = z.object({
+  blockId: z.string().min(1).max(120),
+  newBlockId: z.string().min(1).max(120),
+  oldText: z.string().min(1).max(20_000),
+  newText: z.string().max(40_000),
+  from: z.number().int().min(0),
+  oldFragment: z.string().max(2_000),
+  newFragment: z.string().max(4_000),
+});
+
 const landBody = z.object({
   leaseId: id,
   noWrite: z.boolean().optional(),
   rev: z.number().int().min(0).max(1_000_000).optional(),
+  /** The patch this landing applies; absent for a rewrite, a draft or a front sheet. */
+  sentences: z.array(sentenceEdit).max(8).optional(),
+  /** BOOK-173 §4: the mode the pass ran, and the estimate it was opened with. */
+  mode: z.enum(['patch', 'rewrite']).optional(),
+  estimateUsd: z.number().min(0).max(100).optional(),
 });
 
 const verdictBody = z.object({
@@ -115,6 +135,12 @@ const doneBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
   /** BOOK-117: `operator` closes on the model that answered; the default is the pinned lane. */
   provenance: z.enum(['pipeline', 'operator']).optional(),
+  /**
+   * BOOK-173 §4/§5: how the pass wrote. A `rewrite` whose text is byte-identical to the pre-image
+   * closes the change as `no-op` — the silent no-op of a rewrite must be a visible fact, not a
+   * success. A step with no plan (a draft) records the mode here, on its close.
+   */
+  mode: z.enum(['patch', 'rewrite']).optional(),
 });
 
 /** BOOK-62: `seen` closes a prose step too, so it carries the same model and token fields. */
@@ -157,6 +183,8 @@ const enqueueBody = z.object({
   anchor: z
     .object({
       blockIds: z.array(z.string()).max(8),
+      /** ADR-044 — the sentence rows the change is aimed at; optional for every older caller. */
+      sentenceIds: z.array(z.string()).max(8).optional(),
       quote: z.string().max(280),
       prefix: z.string().max(40),
       suffix: z.string().max(40),
@@ -246,7 +274,16 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   });
   app.post('/internal/land', async (request) => {
     const body = landBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.land(body.leaseId, { noWrite: body.noWrite, rev: body.rev }) };
+    return {
+      ok: true,
+      data: options.engine.land(body.leaseId, {
+        noWrite: body.noWrite,
+        rev: body.rev,
+        sentences: body.sentences,
+        mode: body.mode,
+        estimateUsd: body.estimateUsd,
+      }),
+    };
   });
   app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});
@@ -294,6 +331,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
         provenance: body.provenance,
+        mode: body.mode,
       }),
     };
   });

@@ -419,7 +419,9 @@ describe('the first reader change turns every surface on (AC3)', () => {
     expect(html).toContain('правка · №7');
     expect(html).not.toContain('class="prov-rows"');
     expect(html).not.toContain('class="chain');
-    expect(html).toContain('class="prov"');
+    // ADR-044 / BOOK-128 #3863 — the `…` surface is gone: the keyboard door prints nothing.
+    expect(html).not.toContain('class="prov"');
+    expect(html).toContain('tabindex="0"');
   });
 
   it('renders the authors list and the discussion, and no second door into the chronicle', () => {

@@ -18,6 +18,7 @@
  */
 
 import { readChapter } from '../engine/text.ts';
+import { parseChapter } from '../ingest/parseChapter.ts';
 import type { Lane } from './passLane.ts';
 import type { BuiltPrompt } from './prompt.ts';
 import type { ModeChoice, ModeReason, WriteMode } from './mode.ts';
@@ -26,9 +27,11 @@ import type { PatchPrompt } from './patch/prompt.ts';
 import { declaredPatchMode, parsePatchAnswer } from './patch/protocol.ts';
 import { applyPatch } from './patch/apply.ts';
 import { danglingReference, factsIntact, neighbourDigests, neighbourMoved } from './patch/integrity.ts';
+import { sentenceEditsOf } from './patch/sentences.ts';
 import { continueDraft, draftAnswer } from './answer.ts';
 import { finalize } from './prose.ts';
 import { headOf, openSession, repairInstruction } from './session.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 import type { PatchReceipt } from './transcript.ts';
 
 /** How much already-written prose a repair is shown: context, never a second chapter. */
@@ -37,7 +40,15 @@ const REPAIR_TAIL_CHARS = 1_500;
 export type PatchSummary = PatchReceipt;
 
 export type WriteOutcome =
-  | { ok: true; text: string; mode: WriteMode; modeReason: ModeReason; patch: PatchSummary | null }
+  | {
+      ok: true;
+      text: string;
+      mode: WriteMode;
+      modeReason: ModeReason;
+      patch: PatchSummary | null;
+      /** BOOK-173 §2: the patch's character edits — the ingest keeps sentence ids with them. */
+      sentences: SentencePatchEdit[];
+    }
   | { ok: false; code: string; detail: string; cause: 'failed' | 'refused'; mode: WriteMode; patch: PatchSummary | null };
 
 export type WritePhaseInput = {
@@ -63,7 +74,7 @@ function tailContext(text: string): string {
 
 /** What an attempt that ran to an answer produced; `rewrite` is not an answer, it is a request. */
 type OutcomeAttempt =
-  | { kind: 'applied'; text: string; patch: PatchSummary }
+  | { kind: 'applied'; text: string; patch: PatchSummary; sentences: SentencePatchEdit[] }
   | { kind: 'refused'; code: string; detail: string; cause: 'failed' | 'refused' };
 
 type Attempt = OutcomeAttempt | { kind: 'rewrite' };
@@ -131,9 +142,19 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
         cause: 'failed',
       };
     }
+    // BOOK-173 §2: the patch, as a character edit of the sentence ledger. Computed from the same
+    // two texts the applier produced, so the block, the offset and the fragments are the applier's
+    // own — never re-derived from a hash, and never guessed.
+    const text = finalize(checked.text);
+    const sentences = sentenceEditsOf({
+      before: beforeBlocks,
+      after: parseChapter(chapter, text).blocks,
+      edits: parsed.patch.edits,
+    });
     return {
       kind: 'applied',
-      text: finalize(checked.text),
+      text,
+      sentences,
       patch: {
         edits: parsed.patch.edits.length,
         changedChars: applied.changedChars,
@@ -168,7 +189,13 @@ async function rewrite(input: WritePhaseInput): Promise<OutcomeAttempt> {
     { chapter: input.chapter, text: finalize(started.answer.text), max: input.continueMax, session: started.session },
     input.log,
   );
-  return { kind: 'applied', text, patch: { edits: 0, changedChars: 0, fraction: 0, facts: 0, note: null, dangling: null } };
+  return {
+    kind: 'applied',
+    text,
+    // A rewrite states no character edit: it never knew where inside a paragraph it moved anything.
+    sentences: [],
+    patch: { edits: 0, changedChars: 0, fraction: 0, facts: 0, note: null, dangling: null },
+  };
 }
 
 /**
@@ -197,5 +224,7 @@ export async function writeChapter(input: WritePhaseInput): Promise<WriteOutcome
     mode: mode.mode,
     modeReason: mode.reason,
     patch: mode.mode === 'patch' ? attempt.patch : null,
+    // The edits travel only for a patch that actually landed: a rewrite has none to state.
+    sentences: mode.mode === 'patch' ? attempt.sentences : [],
   };
 }

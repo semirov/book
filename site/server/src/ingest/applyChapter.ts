@@ -23,6 +23,8 @@ import {
 import { insertRevision } from '../db/repo/revisions.ts';
 import { recordBlockRevision, type BlockOverwrite } from '../history/blocks.ts';
 import { appendEvent } from '../history/log.ts';
+import { reconcileChapterSentences } from '../sentences/ingest.ts';
+import { applySentencePatch, type SentencePatchEdit } from '../sentences/transform.ts';
 import { toIso } from '../util/time.ts';
 import { writeSnapshot } from '../versions/snapshots.ts';
 import { type BlockDiff, diffBlocks } from './diffBlocks.ts';
@@ -59,6 +61,15 @@ export type ApplyChapterInput = {
    * so a crash leaves neither the revision nor the plan — the two are one write.
    */
   onPublished?: (published: { n: number; rev: number }) => void;
+  /**
+   * BOOK-173 §2, ADR-044 §2.2 — the patch this publish is *applying*, as one character edit per
+   * block the writer named. A patch is the only write that knows where inside a paragraph it
+   * changed anything, so it is the only write that may **keep sentence ids** across the change:
+   * `applySentencePatch` re-segments the block and re-attaches ids by `text_hash` in this same
+   * transaction. Absent for an observed file write (the watcher's, the boot scan's) — nobody there
+   * is applying anything, so the reconcile below is the whole story (ADR-044 §3.1).
+   */
+  sentences?: ReadonlyArray<SentencePatchEdit>;
 };
 
 export type AppliedChapter = {
@@ -161,6 +172,9 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
         updatedAt: observedAt,
       });
       replaceBlocks(db, n, 1, parsed.blocks);
+      // ADR-044: a published chapter has sentences from the moment it exists — the reader may
+      // file against one before the next boot scan runs.
+      reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
       const snapshot = writeSnapshot(input.dataDir, n, parsed.sha256, parsed.text);
       const hseq = appendEvent(
         db,
@@ -260,6 +274,26 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
       updatedAt: observedAt,
     });
     replaceBlocks(db, n, rev, parsed.blocks);
+    // ADR-044 §2.2 / BOOK-173 §2 — **the unit rule**. A landing that carries the patch it is
+    // applying re-segments the blocks it named and re-attaches sentence ids by `text_hash`, in this
+    // transaction: a word fix keeps the id, an inserted full stop splits (left keeps it, right born
+    // with `split_from`), a removed one merges, a deleted sentence erases. Only the blocks the
+    // patch named are touched; every other block's rows are where they were.
+    if (input.sentences !== undefined && input.sentences.length > 0) {
+      applySentencePatch({
+        db,
+        chapter: n,
+        changeId: cause.changeId,
+        at: observedAt,
+        edits: input.sentences,
+      });
+    }
+    // ADR-044: the paragraphs this revision dropped have their sentences closed, the ones it
+    // holds are segmented — inside the same transaction, so a failed publish leaves neither.
+    // After `applySentencePatch` the edited blocks' rows already live under their new block ids, so
+    // this reconcile finds the old ids empty (no close) and the new ones populated (no birth): the
+    // ids the patch kept are exactly the ids the sentences keep.
+    reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
     const snapshot = writeSnapshot(input.dataDir, n, parsed.sha256, parsed.text);
     const hseq = appendEvent(
       db,
@@ -382,6 +416,7 @@ function projectBasis(
 ): ApplyChapterResult {
   const rev = existing?.rev ?? 0;
   const run = db.transaction(() => {
+    const before: BlockRow[] = existing === undefined ? EMPTY_BLOCKS : listBlocks(db, n);
     upsertChapterRow(db, {
       n,
       rev,
@@ -395,15 +430,28 @@ function projectBasis(
     });
     // The chapter row must exist first: `blocks` references it.
     replaceBlocks(db, n, rev, parsed.blocks);
+    // A basis slot is one paragraph the reader sees: it gets its sentence like any other text, and
+    // the prose it replaced closes.
+    reconcileChapterSentences(db, { chapter: n, before, after: parsed.blocks, at: observedAt });
   });
   run();
   return { status: 'emptied', n };
 }
 
-/** Remove a chapter whose file disappeared. Files win, always (§18). */
+/**
+ * Remove a chapter whose file disappeared. Files win, always (§18).
+ *
+ * The sentences go with it: the chapter's paragraphs are closed first (`erased_at`), inside one
+ * transaction, so a filing that hung on one of them is not left pointing at a live row of text
+ * nobody can read any more. The rows themselves stay — a sentence is history (ADR-044 §2.4).
+ */
 export function removeChapter(db: Db, n: number): { status: 'removed'; n: number } | { status: 'absent'; n: number } {
   const existing = getChapterRow(db, n);
   if (existing === undefined) return { status: 'absent', n };
-  db.prepare('DELETE FROM chapters WHERE n = ?').run(n);
+  const run = db.transaction(() => {
+    reconcileChapterSentences(db, { chapter: n, before: listBlocks(db, n), after: [], at: toIso(Date.now()) });
+    db.prepare('DELETE FROM chapters WHERE n = ?').run(n);
+  });
+  run();
   return { status: 'removed', n };
 }

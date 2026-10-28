@@ -12,6 +12,8 @@
  * instead of silently meaning something else.
  */
 
+import { splitSentences as sharedSentences } from '@book/shared';
+
 import type {
   ChapterIndex,
   DocumentReference,
@@ -24,8 +26,6 @@ import type {
   TimeMarkerKind,
 } from './types.ts';
 
-/** Deterministic sentence split: a full stop (or ?!…) followed by whitespace. */
-const SENTENCE_BREAK = /(?<=[.!?…])\s+/u;
 /** A run of capitalised words: «Ковалёв», «Анна Петровна», «Северное управление». */
 const CAPITALISED = /\p{Lu}\p{Ll}*(?:[ -]\p{Lu}\p{Ll}*)*/gu;
 
@@ -169,8 +169,13 @@ function wordsOf(value: string): string[] {
   return value.split(/[ -]+/u).filter((part) => part.length > 0);
 }
 
+/**
+ * One paragraph → its sentences as text, in order. The split itself is the shared segmenter
+ * (BOOK-DOC-74 §3.4); the index keeps this shape because every rule below reads a sentence as
+ * a string.
+ */
 export function splitSentences(text: string): string[] {
-  return text.split(SENTENCE_BREAK).map((part) => part.trim()).filter((part) => part.length > 0);
+  return sharedSentences(text).map((span) => span.text);
 }
 
 /** The lowercase words of the text — the evidence that a capitalised word is a common noun. */

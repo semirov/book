@@ -126,6 +126,15 @@ export type CommentAnchor = {
   quote: string | null;
   prefix: string | null;
   suffix: string | null;
+  /**
+   * ADR-044 — the sentence the quote sits in, and the reader's selection inside it (code points
+   * from the sentence's start, `selEnd` exclusive). All three are absent/null when the filing has
+   * no resolved sentence: a row written before v25, a quote that straddles a boundary, or an id
+   * whose sentence has since been merged or erased. The block anchor is then the whole anchor.
+   */
+  sentenceId?: string | null;
+  selStart?: number | null;
+  selEnd?: number | null;
   /** False when the quoted block no longer exists in the current chapter revision. */
   resolved: boolean;
 };

@@ -54,6 +54,10 @@ CREATE TABLE IF NOT EXISTS edges (
                               CHECK (on_component IN ('value','identity','status','existence')),
   evidence     TEXT NOT NULL DEFAULT '',
   origin       TEXT NOT NULL DEFAULT 'backfill' CHECK (origin IN ('backfill','writer','owner')),
+  -- ADR-044: the sentence that carries the claim this edge was read from. Null for a row written
+  -- before v25; declared here so a fresh install (this constant) and a v25 install upgraded to v26
+  -- build the same table — v25 adds the column only when the table already exists.
+  sentence_id  TEXT,
   created_at   TEXT NOT NULL,
   CHECK (from_fact <> to_fact)
 );
@@ -71,12 +75,14 @@ CREATE TRIGGER IF NOT EXISTS facts_retire_edges
 `;
 
 /**
- * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v24.
+ * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v26.
  *
  * `closure` is the plan without its patches, `patches` the list the writer produces per chapter,
  * `bounds` the caps frozen at estimate, `iterations` the append-only journal of the fixpoint. The
  * diff is deliberately absent: the readable before/after comes from `block_versions` by `blockId`,
- * so the text keeps one home.
+ * so the text keeps one home. `mode` and `price_usd` travel with the plan because a plan is what a
+ * change was written under: the mode the pass ran and the money it was estimated at, replaced by
+ * the actual at close.
  *
  * **One row per change, and the journal is the budget.** `UNIQUE (change_id)` is what makes the
  * bounds cumulative per change rather than per plan: a re-land of the same step updates this row
@@ -102,6 +108,13 @@ CREATE TABLE IF NOT EXISTS change_plans (
   change_id    TEXT NOT NULL REFERENCES changes(id),
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   outcome      TEXT NOT NULL CHECK (outcome IN ('local','ripple','wide')),
+  -- BOOK-173 §4: how the change was written — the mode the pass ran, recorded with the plan so
+  -- the answer «did this patch or rewrite?» is a row and not a log line. Null for a plan written
+  -- before v26; a change with no plan at all records its mode on the close (step.closed).
+  mode         TEXT CHECK (mode IN ('patch','rewrite')),
+  -- BOOK-173 §4: the estimate frozen at planning, replaced by the pass's actual at close. Null
+  -- means «never priced», never «free» — the same rule cost_priced follows (BOOK-23).
+  price_usd    REAL,
   closure      TEXT NOT NULL,
   patches      TEXT NOT NULL,
   bounds       TEXT NOT NULL,
@@ -127,6 +140,9 @@ CREATE TABLE IF NOT EXISTS facts (
   kind                  TEXT NOT NULL CHECK (kind IN ('document','decision','testimony','erasure','state')),
   statement             TEXT NOT NULL,
   term                  TEXT,                       -- canonical surface form used for mention binding
+  -- ADR-044: the sentence that carries this statement. Null for a row written before v25; no
+  -- REFERENCES clause (SQLite cannot add one by ALTER, and fresh and migrated installs must match).
+  sentence_id           TEXT,
   valid_from_chapter    INTEGER NOT NULL CHECK (valid_from_chapter BETWEEN 1 AND 67),
   invalidated_at        TEXT,                       -- ISO time; null while valid
   invalidated_by_change TEXT REFERENCES changes(id),
@@ -167,6 +183,8 @@ CREATE TABLE IF NOT EXISTS mentions (
   fact_id            TEXT REFERENCES facts(id),
   thread_id          TEXT REFERENCES threads(id),
   resolved_by_change TEXT,
+  -- ADR-044: the sentence that carries this mention; null for a row written before v25.
+  sentence_id        TEXT,
   -- ADR-043 D3: an asserted fact and a consumed one are different records. Stage 2 sets 'use'.
   role               TEXT CHECK (role IN ('assert','use')),
   witness            TEXT NOT NULL DEFAULT '',   -- the exact text at [start,end)
@@ -190,6 +208,8 @@ CREATE TABLE IF NOT EXISTS literals (
   span_id      TEXT,
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   mention_kind TEXT NOT NULL CHECK (mention_kind IN ('document','date')),
+  -- ADR-044: the sentence that carries this literal; null for a row written before v25.
+  sentence_id  TEXT,
   start        INTEGER NOT NULL,
   end          INTEGER NOT NULL
 );

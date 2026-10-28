@@ -36,6 +36,8 @@ import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
 import './styles/reader.css';
+// BOOK-128 #3852 — the accordion, after the sheets whose blocks it absorbs.
+import './styles/record.css';
 // BOOK-156 — the grip's band, its reserve and its veil; after the registers it sits over.
 import './styles/foot-jumps.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's

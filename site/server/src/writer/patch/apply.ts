@@ -17,6 +17,13 @@
  * Pure by contract — no fs, no db, no clock, no env: the same inputs always give the same bytes.
  * The checks are pure in `patchCheck` too (a row list in, a verdict out), which is why the writer
  * can reuse them without a database.
+ *
+ * **The applier is exact, and the exactness is the product.** `oldText` matches the block byte for
+ * byte, exactly once (`patchCheck.resolveEdits` states the rule and why a fuzzy applier would be
+ * worse than a refusal); nothing here normalises the text it is about to replace — no NFC, no
+ * `ё`→`е`, no quote folding, no CRLF squeezing, no trimming. A patch whose `oldText` differs from
+ * the block by one space is refused with its own code and applied nowhere: an edit at a guessed
+ * offset writes bytes nobody named, and the prose gates would read them as plausible.
  */
 
 import { CHAPTER_CHARS, isChapterNumber } from '@book/shared';

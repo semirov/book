@@ -47,7 +47,7 @@ import {
   sameSequence,
 } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
-import { normalizeProvenance, requirePipelineModel, type Provenance } from './model.ts';
+import { normalizeProvenance, requirePipelineModel } from './model.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
 import { reap, type ReapReport } from './reap.ts';
@@ -56,37 +56,16 @@ import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
 import { readChapter, readFront } from './text.ts';
 import { writerAssignment } from './trace.ts';
-import { refuse, type EngineDeps, type PremiseCause } from './types.ts';
+import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
 import { createRightsGate } from './rightsGate.ts';
 import { ensureRightsScan } from './rightsScan.ts';
 import { createWriteOps } from './write.ts';
+import type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
 
 export type { EnqueueInput } from './queue.ts';
-
-export type DoneOptions = {
-  seams: unknown;
-  note?: string;
-  /** ADR-038: required in the type, so `tsc` lists every caller of a close. */
-  model: string;
-  tokensIn?: number;
-  tokensOut?: number;
-  now?: number;
-  /** BOOK-117: `pipeline` (the lane, ADR-038 applies) or `operator` (a repair, its own model). */
-  provenance?: Provenance;
-};
-/** BOOK-62: `seen` closes a prose step through the same path, so it takes the same options. */
-export type SeenOptions = Omit<DoneOptions, 'seams' | 'note'>;
-
-/** ADR-038 §2: a stop reports the same triple; BOOK-117 adds `cause` (broken ≠ refused). */
-export type EscalateOptions = {
-  model?: string | null;
-  tokensIn?: number;
-  tokensOut?: number;
-  now?: number;
-  cause?: PremiseCause;
-};
+export type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
 
 export type NextInput = { for?: string; role?: GateRole | 'rights'; session: string };
 
@@ -323,6 +302,11 @@ export function createEngine(deps: EngineDeps) {
 
     // BOOK-76: precedence — the ending's GAP, then the physics pass, then a prose finding.
     const gateStop: 'ending' | 'science' | null = endingGap ? 'ending' : scienceBlocked ? 'science' : null;
+    // BOOK-173 §5, the silent no-op: a rewrite can return the chapter byte for byte (measured on
+    // ch03: 69 s, 10 010 tokens, nothing applied), and it used to close the change `applied` — the
+    // reader's record saying «внесено» about a chapter nobody moved. The measure is `unchanged`:
+    // the pre-image `start` captured (`step.start_sha`, `pre_blocks`) against what landed.
+    const noOp = unchanged && options.mode === 'rewrite';
     let outcome: StepOutcome = gateStop !== null ? 'escalated' : editorBlocked ? 'published_with_finding' : step.pass === 'ending' ? 'evaluated' : unchanged ? 'holds' : 'rewritten';
     let escalation: CascadeOutcome | null = gateStop === null ? null : gateStop === 'ending' ? 'escalated:ending' : 'escalated:science';
 
@@ -357,10 +341,15 @@ export function createEngine(deps: EngineDeps) {
         note: note ? note.slice(0, NOTE_MAX_CHARS) : null,
         model,
         provenance,
+        // A step without a plan (a draft) says how it wrote here; a change with a plan keeps it
+        // on `change_plans.mode`.
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
         // The writer's own tokens: each gate's verdict row is added once, by `closeStep`.
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,
-        changeOutcome: change?.outcome === 'adapted' ? 'adapted' : 'applied',
+        // A no-op is filed, paid for and not applied: `comments/acceptance.ts` keeps it out of
+        // LANDED_OUTCOMES, `rippleOutcomeFor` upgrades only `applied`, the cascade reads `holds`.
+        changeOutcome: noOp ? 'no-op' : change?.outcome === 'adapted' ? 'adapted' : 'applied',
         // BOOK-76: a science stop carries its own public sentence (`escalated:science`).
         changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? 'починка вышла за границы правки — нужно решение' : null,
         escalation,

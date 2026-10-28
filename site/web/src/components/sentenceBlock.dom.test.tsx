@@ -9,6 +9,7 @@ import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
 import { marginFits, noteWidth } from '../lib/marginPass.ts';
 import { anchorFor } from '../lib/seam.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
+import { resetRecordMemory } from '../lib/record.ts';
 import { useParagraphChain } from '../useParagraphChain.ts';
 import { mediaBlocks, rules } from './cssRules.ts';
 import { SentenceBlock } from './SentenceBlock.tsx';
@@ -82,6 +83,7 @@ let container: HTMLDivElement;
 
 beforeEach(() => {
   resetParagraphChainCache();
+  resetRecordMemory();
   vi.stubGlobal('IntersectionObserver', class {
     observe(): void {}
     unobserve(): void {}
@@ -92,7 +94,10 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => closeSeam());
+  await act(async () => {
+    closeSeam();
+    resetRecordMemory();
+  });
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';
@@ -236,8 +241,10 @@ describe('the block obeys the margin’s one rule', () => {
     const rule = rules(reader).find(([selector]) => selector.split(',').some((token) => token.trim() === '.sentence-block'))?.[1] ?? '';
     expect(rule).toContain('overflow: visible');
     expect(rule).toContain('box-shadow: none');
-    expect(rule).toContain('left: calc(100% + var(--note-gap))');
-    expect(rule).toContain('width: var(--note-fit)');
+    // BOOK-128 #3852 — the margin geometry is deleted with the placement pass.
+    expect(rule).not.toContain('left: calc(100% + var(--note-gap))');
+    expect(rule).not.toContain('width: var(--note-fit)');
+    expect(rule).toContain('position: static');
     expect(rule).not.toContain('z-index');
     expect(rule).not.toContain('max-height');
     // Only the margin variant enters the page's ledger (BOOK-128 #3815).
@@ -258,19 +265,17 @@ describe('the block obeys the margin’s one rule', () => {
     expect(block()?.getAttribute('style')).toBeNull();
   });
 
-  it('is a margin item at ≥1024 over a zero-height seat, and a 44 px row at ≤1023', () => {
-    const seat = rules(reader).find(([selector]) => selector.trim() === '.sentence-seat')?.[1] ?? '';
-    expect(seat).toContain('position: relative');
-    expect(seat).toContain('height: 0');
+  it('keeps the 44 px row at ≤1023, and drops the zero-height seat entirely', () => {
+    // BOOK-128 #3852 — the seat existed to give an absolute block a coordinate space; the
+    // block is in the flow now, so neither the seat's rule nor its sibling margin may return.
+    expect(rules(reader).find(([selector]) => selector.trim() === '.sentence-seat')).toBeUndefined();
     const phone = mediaBlocks(reader, 'max-width: 1023px').join('\n');
     expect(phone).toContain('.sentence-block');
     expect(phone).toContain('position: static');
     expect(phone).toMatch(/\.sentence-label \{[^}]*min-height: 44px/u);
-    // The strip's own row keeps its margin when the seat stands between it and the paragraph.
-    expect(seamCss).toMatch(/\.sentence-seat \+ \.seam/u);
   });
 
-  it('at 1440 the item starts 40 px right of the prose and stays inside the viewport', () => {
+  it('the note arithmetic the deleted margin used still holds its own tokens', () => {
     // The design's arithmetic, with the tokens the sheet uses: a centred 640 px measure at 1440
     // ends at 1040, the tie starts at 1080, the note's used width is 188, and 8 px of air stay
     // between the item and the frame (BOOK-91 / BOOK-DOC-47 §7). Pure, so it needs no layout.
@@ -317,44 +322,57 @@ describe('the door in the prose opens the block, and takes it away', () => {
       document.querySelector<HTMLElement>(selector)?.click();
       for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
     });
+    // The record opens when the log has answered, on its own frame: the door's press is not
+    // the commit that draws the block, so each turn is its own act (React flushes between).
+    for (let turn = 0; turn < 6; turn += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    }
   }
 
   it('opens beside the phrase, closes on its own door, and hands focus back', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
     await mountParagraph();
-    const door = document.querySelector<HTMLElement>('.prov');
+    const door = document.querySelector<HTMLElement>('.p .sentence-door');
     expect(door, 'the phrase’s door is rendered while history is live').not.toBeNull();
     expect(door?.getAttribute('aria-expanded')).toBe('false');
 
-    await press('.prov');
+    await press('.p .sentence-door');
 
-    const opened = block();
+    // BOOK-128 #3852 — the keyboard door opens the page's **record**, the same block a touch
+    // opens, as the paragraph's next sibling; there is no second surface beside it.
+    const opened = document.querySelector<HTMLElement>('.rec');
     expect(opened).not.toBeNull();
-    // It sits after the paragraph, in the seat the pass places — never inside the prose.
-    const seat = document.querySelector('.sentence-seat');
-    expect(seat?.contains(opened)).toBe(true);
-    expect(document.querySelector('p.p')?.nextElementSibling).toBe(seat);
-    expect(document.querySelector('.prov')?.getAttribute('aria-expanded')).toBe('true');
-    expect(document.querySelector('.chain, .prov-panel, .filing-panel')).toBeNull();
+    expect(opened?.getAttribute('data-acc')).toBe('open');
+    expect(document.querySelector('p.p')?.nextElementSibling).toBe(opened);
+    expect(document.querySelector('.p .sentence-door')?.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('.chain, .prov-panel, .filing-panel, .sentence-block')).toBeNull();
 
-    await press('.prov');
-    expect(block()).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector('.prov'));
+    await press('.p .sentence-door');
+    expect(document.querySelector('.rec')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.p .sentence-door'));
   });
 
   it('Escape puts it away without touching the paragraph', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
     await mountParagraph();
-    await press('.prov');
-    expect(block()).not.toBeNull();
+    await press('.p .sentence-door');
+    expect(document.querySelector('.rec')).not.toBeNull();
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
     });
-    expect(block()).toBeNull();
+    // The close is 150 ms of height; the store lets go of the range only when it reaches 0.
+    for (let turn = 0; turn < 6; turn += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+    }
+    expect(document.querySelector('.rec')).toBeNull();
     expect(document.querySelector('p.p')?.textContent).toContain('Её освещал яркий свет.');
-    expect(document.activeElement).toBe(document.querySelector('.prov'));
+    expect(document.activeElement).toBe(document.querySelector('.p .sentence-door'));
   });
 
   it('treats its own door as part of the layer: a press on it closes nothing by itself', async () => {
@@ -413,7 +431,7 @@ describe('the door in the prose opens the block, and takes it away', () => {
         />,
       );
     });
-    expect(document.querySelector('.prov')).toBeNull();
+    expect(document.querySelector('.p .sentence-door')).toBeNull();
     expect(block()).toBeNull();
   });
 
@@ -424,15 +442,22 @@ describe('the door in the prose opens the block, and takes it away', () => {
     await act(async () => {
       openSeam({ chapter: 8, blockId: BLOCK_ID, key: 'ch8:phrase', anchor, origin: container });
     });
-    await press('.prov');
-    expect(document.querySelector('.seam')).not.toBeNull();
-    expect(block()).not.toBeNull();
+    await press('.p .sentence-door');
+    // One block on the page: opening the record takes the strip's place, never beside it.
+    expect(document.querySelector('.seam')).toBeNull();
+    expect(document.querySelector('.rec')).not.toBeNull();
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
     });
-    // The phrase's block owns the first Escape; the strip is closed by its own ✕.
-    expect(block()).toBeNull();
-    expect(document.querySelector('.seam')).not.toBeNull();
+    for (let turn = 0; turn < 6; turn += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      });
+    }
+    // The block leaves, and the strip it replaced is not resurrected behind it: the reader's
+    // next act is the paragraph, not a surface they had already closed.
+    expect(document.querySelector('.rec')).toBeNull();
+    expect(document.querySelector('.seam')).toBeNull();
   });
 });

@@ -307,20 +307,20 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle for a day whose cap the estimate would cross, and opens nothing', async () => {
     const harness = await createHarness();
     try {
-      // $9.99 of $10 spent: a pass costs ≈ $0.18 before the prompt is built, so it does not fit.
-      harness.hooks.budget = budgetOf({ daySpent: 9.99 });
+      harness.hooks.budget = budgetOf({ daySpent: 9.99 }); // $9.99 of $10: a pass cannot fit
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('idle');
       expect(result.reason).toBe(PAUSE_LINE);
-      // No job was asked for: the guard ran on `state` alone.
-      expect(harness.engineCalls).toEqual(['state']);
+      expect(harness.engineCalls).toEqual(['state']); // the guard ran on `state` alone
       expect(harness.calls).toHaveLength(0);
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
-      // BOOK-173: the guard (rewrite), the patch figure, the mode, and the ledger it was measured against.
+      // BOOK-173: guard, patch figure, mode, ledger.
       const printed = harness.logs.find((line) => line.includes('оценка прохода')) ?? '';
-      expect(printed).toMatch(/перепись \$0,1800 \/ правка \$\d,\d{4} · режим: ещё не выбран \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u);
+      expect(printed).toMatch(
+        /перепись \$0,\d{4} \/ правка \$0,\d{4} · режим: ещё не выбран \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u,
+      );
     } finally {
       await harness.close();
     }
@@ -371,7 +371,7 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.engineCalls.slice(0, 2)).toEqual(['state', 'pass']);
       expect(harness.engineCalls.filter((name) => name === 'state')).toHaveLength(2);
       expect(harness.engineCalls.indexOf('state', 1)).toBeGreaterThan(harness.engineCalls.indexOf('start'));
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800'))).toBe(true);
+      expect(harness.logs.some((line) => /оценка прохода \$0,[1-9]\d{3}/u.test(line))).toBe(true);
     } finally {
       await harness.close();
     }

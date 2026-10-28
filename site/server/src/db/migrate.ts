@@ -5,7 +5,8 @@ import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
-import { migrateV24 } from './migrateV24.ts';
+import { migrateV25 } from './migrateV25.ts';
+import { migrateV26 } from './migrateV26.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -305,10 +306,9 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // BOOK-117 (owner, 2026-10-28): who ran a pass. A 'pipeline' step is the writer lane on the
-    // pinned model; an 'operator' step is a repair that closes on the model it actually used.
-    // The ledger keeps the same word, so the money and the history agree about the provenance.
-    // v21, not v20: BOOK-158 took 20 first, and an install may already have run it.
+    // BOOK-117 (owner, 2026-10-28): who ran a pass — the writer lane on the pinned model, or a
+    // repair closing on the model it used. The ledger keeps the same word. v21, not v20: BOOK-158
+    // took 20 first and an install may already have run it.
     to: 21,
     up(db) {
       addColumn(db, 'steps', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
@@ -319,17 +319,17 @@ const MIGRATIONS: Migration[] = [
     // BOOK-176 (BOOK-DOC-69): the span ledger. `block_versions` gains the edit list of a version,
     // the ledger tables and the full-text mirror are created from the same constants a fresh
     // install uses, and every live block gets a legacy span so «the block as it stands» is
-    // readable history rather than an exception. Idempotent to the statement.
+    // readable history rather than an exception.
     to: 22,
     up(db) {
       migrateV22(db);
     },
   },
-  // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
+  // The author marker (owner, 2026-10-28): the column, the decision, the backfill — in its own file.
   { to: 23, up: migrateV23 },
-  // BOOK-173: the ripple's graph. v24, not v23 — the author marker took 23 first on `main`, and an
-  // install already at 23 would never run the step that creates `edges`/`change_plans`.
-  { to: 24, up: migrateV24 },
+  // The sentence (ADR-044) took 25; BOOK-173's graph and plan follow as v26 — never v24.
+  { to: 25, up: migrateV25 },
+  { to: 26, up: migrateV26 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

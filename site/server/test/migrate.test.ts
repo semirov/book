@@ -30,7 +30,7 @@ describe('migrate — the current schema', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(24);
+    expect(SCHEMA_VERSION).toBe(26);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -73,6 +73,8 @@ describe('migrate — the current schema', () => {
     // BOOK-176 / BOOK-DOC-69: the ledger tables, the version's span list and the full-text mirror.
     expect(columns(db, 'block_versions')).toContain('spans');
     expect(present).toEqual(expect.arrayContaining(['facts', 'threads', 'thread_events', 'mentions', 'literals', 'blocks_fts']));
+    for (const t of ['comments', 'facts', 'literals', 'mentions']) expect(columns(db, t)).toContain('sentence_id');
+    expect(columns(db, 'comments')).toEqual(expect.arrayContaining(['sel_start', 'sel_end']));
     db.close();
   });
 

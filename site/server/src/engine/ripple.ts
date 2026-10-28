@@ -29,6 +29,7 @@ import {
   parkPlan,
   storePlan,
   PLAN_CLAIM_TTL_MS,
+  type PlanContext,
   type PlanOutcome,
   type RipplePlan,
 } from '../ledger/graph/plan.ts';
@@ -128,7 +129,12 @@ function seedFactsOf(db: Db, touched: readonly string[]): string[] {
  * transaction (`settleLanding`), so the plan reads the blocks this landing wrote and not the ones
  * it replaced.
  */
-export function planLanding(deps: EngineDeps, step: store.StepRow, revAfter: number): LandingPlan | null {
+export function planLanding(
+  deps: EngineDeps,
+  step: store.StepRow,
+  revAfter: number,
+  context: PlanContext = {},
+): LandingPlan | null {
   if (step.pass !== 'change' || step.chapter === null) return null;
   const { db } = deps;
   const chapter = step.chapter;
@@ -151,7 +157,12 @@ export function planLanding(deps: EngineDeps, step: store.StepRow, revAfter: num
   // One row per change (§3, `change_plans`): a re-land of this step updates the row and keeps the
   // journal — the newest closure, the oldest caps, and the spend that already happened — so the
   // bounds are cumulative per change and a re-plan cannot reset them.
-  const planId = storePlan(db, plan, toIso(deps.clock.now()));
+  // BOOK-173 §4: the plan carries the mode the pass ran and the estimate it was opened with — the
+  // close replaces the estimate with the actual (`pricePlanAfterPass`).
+  const planId = storePlan(db, plan, toIso(deps.clock.now()), {
+    mode: context.mode ?? null,
+    priceUsd: context.priceUsd ?? null,
+  });
   return { plan, planId };
 }
 
@@ -172,12 +183,17 @@ export function planLanding(deps: EngineDeps, step: store.StepRow, revAfter: num
  * seed would delete the edges the closure was just computed over. A cascade chapter's plan is the
  * origin's (one row per change), so a ripple landing retires and never re-plans.
  */
-export function settleLanding(deps: EngineDeps, step: store.StepRow, rev: number): LandingPlan | null {
+export function settleLanding(
+  deps: EngineDeps,
+  step: store.StepRow,
+  rev: number,
+  context: PlanContext = {},
+): LandingPlan | null {
   if (step.chapter === null) return null;
   const { db } = deps;
   const chapter = step.chapter;
   rebindMentions(db, chapter);
-  const planned = planLanding(deps, step, rev);
+  const planned = planLanding(deps, step, rev, context);
   if (step.pass === 'change' || step.pass === 'cascade') {
     const change = changeForStep(db, step);
     if (change !== undefined) {

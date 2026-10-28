@@ -44,6 +44,7 @@ import type { CaptchaVerifier } from '../captcha/verify.ts';
 import type { Config } from '../config.ts';
 import type { Db } from '../db/db.ts';
 import type { IdentityRow } from '../db/repo/identities.ts';
+import { resolveQuoteSentence } from '../sentences/anchor.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { newCommentId } from '../util/ulid.ts';
 import {
@@ -204,6 +205,18 @@ export class CommentService {
 
     const anchor = resolveAnchor(this.db, input);
     if (anchor.ok === false) return anchor.failure;
+    // ADR-044: the filing hangs on the sentence its quote sits in, when that quote resolves to
+    // exactly one stored sentence. No resolution is not a refusal — the block anchor is the
+    // legacy path, and an old block has no sentences to resolve against.
+    const sentence =
+      anchor.anchor.blockId === null
+        ? null
+        : resolveQuoteSentence(this.db, {
+            blockId: anchor.anchor.blockId,
+            quote: anchor.anchor.quote,
+            prefix: anchor.anchor.prefix,
+            suffix: anchor.anchor.suffix,
+          });
     // BOOK-137: how this filing sits against the frozen frame, taken once, stored once. The
     // mark is data about the reader's aim; the sentence's letters are protected at a landing.
     const frame = classifyFrame({
@@ -287,6 +300,10 @@ export class CommentService {
         quote: anchor.anchor.quote,
         prefix: anchor.anchor.prefix,
         suffix: anchor.anchor.suffix,
+        // ADR-044: the sentence and the reader's selection inside it, or null for the block anchor.
+        sentenceId: sentence?.sentenceId ?? null,
+        selStart: sentence?.selStart ?? null,
+        selEnd: sentence?.selEnd ?? null,
         author: sanitizeAuthor(context.identity.display_name),
         body: body.text,
         proposedText,

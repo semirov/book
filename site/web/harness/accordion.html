@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>accordion harness</title>
+    <style>
+      .harness-tail {
+        height: 2400px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      BOOK-128 comment #3852 — the CDP harness page.
+
+      This is not a route of the site: it mounts the real `ProseParagraph` (and through it the
+      real `Record`) with a written chapter's own fixture, the site's own stylesheets and the
+      site's own tokens. A browser can then measure what jsdom cannot — the paragraph's line
+      boxes and the block's height at fixed moments of the disclosure. `scripts/accordion-cdp.mjs`
+      drives it over CDP and prints the numbers; the numbers, not this page, decide pass/fail.
+    -->
+    <main class="canvas">
+      <article class="page ch" id="ch-1" data-n="1" data-rev="1" aria-label="глава 1">
+        <div class="ch-h">
+          <span class="ch-id"><span class="ch-n">01</span></span>
+        </div>
+        <div id="mount"></div>
+        <p class="p after" id="after" data-block-id="ch01#after">
+          Свет был включён до меня. Об этом никто не говорил, и никто не спрашивал.
+        </p>
+      </article>
+    </main>
+    <!-- A page tall enough to scroll the tail paragraph to the top: the anchor contract is
+         measured with the block opening above the viewport. -->
+    <div class="harness-tail" aria-hidden="true"></div>
+    <script type="module" src="/harness/accordion.tsx"></script>
+  </body>
+</html>

@@ -388,11 +388,14 @@ export function listChanges(db: Db, filter: ChangeFilter = {}): ChangeSummaryDto
 /** The decision frame's outcome vocabulary, derived from the row (§10.3a). */
 export function decisionOutcome(
   change: Pick<ChangeRow, 'status' | 'outcome'> | Pick<ChangeDto, 'status' | 'outcome'>,
-): 'applied' | 'adapted' | 'dropped' | 'superseded' | 'escalated' | 'failed' {
+): 'applied' | 'adapted' | 'no-op' | 'dropped' | 'superseded' | 'escalated' | 'failed' {
   if (change.status === 'escalated') return 'escalated';
   if (change.status === 'failed') return 'failed';
   if (change.status === 'void') return change.outcome === 'superseded' ? 'superseded' : 'dropped';
   if (change.outcome === 'adapted') return 'adapted';
+  // BOOK-173 §5: a rewrite that moved no byte is a filed change that was not applied. The reader's
+  // record is the one surface where «внесена» would be a lie told to the person who filed it.
+  if (change.outcome === 'no-op') return 'no-op';
   return 'applied';
 }
 

@@ -132,6 +132,52 @@ describe('applyPatch — where the proof fails, the code is the ledger’s', () 
     ).toBe('OLD_TEXT_AMBIGUOUS');
   });
 
+  /**
+   * BOOK-173 §5 / ADR-044 §2.2 — **the no-fuzzy rule**, in one test with the five cases a
+   * «helpful» applier would have swallowed: a space nobody typed, a CRLF where the file has LF, a
+   * `ё` where the writer typed `е`, a curly quote where the book has a straight one, and the same
+   * text in another Unicode normalisation. Each is refused with the ledger's own code and none is
+   * applied: the measured failure this protects against is a rewrite that returns the chapter
+   * byte-identical (ch03: 69 s, 10 010 output tokens, nothing applied), so an applier that guessed
+   * would write bytes nobody named and the gates would read them as plausible.
+   */
+  it('a patch whose oldText does not match byte-for-byte is refused, never normalised, never fuzzy-matched (the silent no-op of a rewrite, BOOK-173)', () => {
+    // «й» carries a canonical decomposition, so its NFD form is a different byte string; «ё» has
+    // none, which is exactly why the case below is a character substitution and not a form.
+    const quote = 'Мой дом стоял у реки.';
+    const text = chapterText([para('один'), `${quote} ${para('два', 560)}`, para('три'), para('четыре')]);
+    const block = blocksOf(12, text)[1];
+    if (block === undefined) throw new Error('bad sample');
+    expect(text).toContain(quote);
+
+    const near: Array<[string, string]> = [
+      ['one extra space', 'Мой  дом стоял у реки.'],
+      ['CRLF instead of LF', 'Мой дом стоял у реки.\r\n'],
+      ['«ё» for «е»', 'Мой дом стоял у рёки.'],
+      ['a curly quote for a straight one', '«Мой дом стоял у реки.»'],
+      ['a normalised Unicode form', quote.normalize('NFD')],
+    ];
+    for (const [label, oldText] of near) {
+      // The NFD case must really be a different byte string, or it proves nothing.
+      if (label === 'a normalised Unicode form') expect(oldText).not.toBe(quote);
+      const result = applyPatch({
+        chapter: 12,
+        text,
+        patch: patch([{ blockId: block.id, oldText, newText: 'Часы шли по кругу.' }]),
+      });
+      expect(result.ok, label).toBe(false);
+      expect(codeOf(result), label).toBe('OLD_TEXT_NOT_FOUND');
+    }
+    // And the exact bytes still apply: the five refusals above are about matching, not the quote.
+    const exact = applyPatch({
+      chapter: 12,
+      text,
+      patch: patch([{ blockId: block.id, oldText: quote, newText: 'Часы шли по кругу.' }]),
+    });
+    expect(exact.ok).toBe(true);
+    if (exact.ok) expect(exact.text).toContain('Часы шли по кругу. Абзац два.');
+  });
+
   it('PATCH_INVALID for an empty pre-image, a duplicate id and a no-op', () => {
     const { text, blocks } = sample();
     const block = blocks[1];

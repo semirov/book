@@ -1,18 +1,14 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { placePanel } from '../lib/cssom.ts';
 import { changeLines } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
 import { filingNumber } from '../lib/filings.ts';
 import { failedAttempt } from '../lib/marginalia.ts';
-import { placePopover, samePlacement, viewportOf, type AnchorRect, type PopoverPlacement } from '../lib/popover.ts';
+import type { AnchorRect } from '../lib/popover.ts';
 import { reviseView } from '../lib/revise.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
 import { ReviseNote } from './ReviseNote.tsx';
-
-/** Measure before paint in the browser; do nothing during a server render (tests). */
-const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /** What the shell owns, whatever it is showing. */
 export type FilingContext = {
@@ -59,36 +55,15 @@ export type FilingContext = {
  * `Escape` — never by a second surface it invented.
  */
 export function SeamPanel(props: FilingContext) {
-  const { anchor, onClose, rootClass } = props;
+  const { onClose, rootClass } = props;
   const panel = useRef<HTMLElement>(null);
-  const [placement, setPlacement] = useState<PopoverPlacement | null>(null);
-
-  // The placement mechanism is the site's one (§2.6): measured once per open, and again when
-  // the body changes — the anchor rect is the same, so the card stays over the phrase.
-  useMeasuredLayout(() => {
-    if (anchor === null) return;
-    const node = panel.current;
-    if (node === null || typeof window === 'undefined') return;
-    // BOOK-137 — the box is the **visual** viewport, not the layout one: on a phone the URL
-    // bar and the keyboard take room from it, and a card clamped to `innerWidth/innerHeight`
-    // opened below the fold.
-    const viewport = viewportOf();
-    const size = { width: Math.min(420, viewport.width - 24), height: node.scrollHeight };
-    const next = placePopover(anchor, size, viewport);
-    setPlacement((current) => (samePlacement(current, next) ? current : next));
-  }, [anchor, props.comment]);
-
-  useMeasuredLayout(() => {
-    placePanel(panel.current, placement);
-  }, [placement]);
 
   // §7: focus moves into the card on open. The caller returns focus to the trigger when the
   // card closes, which is the only moment the strip gets its rows back.
   //
-  // BOOK-168 (owner, 2026-10-28) — **the focus never moves the page**. The card lives in a portal
-  // on `document.body`, so a browser that scrolls the newly focused node into view answers the
-  // door's landing with a second scroll: the page jumps to the body's end and the reader lands at
-  // the colophon. The card is placed from its rect (`placePanel`), never scrolled to.
+  // BOOK-168 (owner, 2026-10-28) — **the focus never moves the page**: the card is a block in
+  // the flow now (BOOK-128 #3852), and `preventScroll` still keeps the door's landing where the
+  // reader put it.
   useEffect(() => {
     panel.current?.focus({ preventScroll: true });
   }, []);
@@ -104,7 +79,7 @@ export function SeamPanel(props: FilingContext) {
 
   return (
     <aside
-      className={`${rootClass}${placement === null ? '' : ' filing-panel-anchored'}`}
+      className={rootClass}
       role="dialog"
       aria-modal="false"
       aria-label={`замечание ${filingNumber(props.comment)}`}

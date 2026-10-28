@@ -92,7 +92,11 @@ export function wordOffsetIn(target: HTMLElement, x: number, y: number): number 
     within = range?.startOffset ?? 0;
   }
   if (node === null || !target.contains(node)) return null;
-  // A sentence span holds one text node, so the caret offset inside it is the offset inside
-  // the sentence; the block offset is that plus the sentence's own start.
-  return start + Math.min(within, (target.textContent ?? '').length);
+  // BOOK-128 #3852 — the sentence span is no longer a single text node: the touched range is
+  // its own `<span data-touch>`. The caret offset is therefore measured from the sentence's
+  // own start with a Range, never taken as an index into one node.
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.setEnd(node, within);
+  return start + Math.min(range.toString().length, (target.textContent ?? '').length);
 }

@@ -3,7 +3,8 @@
  *
  * The dangerous direction is a **rewrite silently downgraded to a patch**: a filed change of
  * outcome becomes cosmetics and closes done (§7). So the default is the wider mode, and only a
- * filing that says it is about a phrase — on a chapter that exists — may patch.
+ * filing that says it is about a phrase — or whose anchor names a sentence the book still holds —
+ * may patch, and only on a chapter that exists (BOOK-DOC-65 §4).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -32,6 +33,30 @@ describe('chooseMode — the design’s table, row by row', () => {
     }
   });
 
+  it('patches a filing anchored on a live sentence, with no phrase scope in the row', () => {
+    // BOOK-173 §3: v25 gave the filing a sentence id; a change aimed at one may patch it even when
+    // the row stored before it said nothing about a phrase.
+    expect(chooseMode({ pass: 'change', scopeHint: null, sentenceAnchor: true }, true)).toEqual({
+      mode: 'patch',
+      reason: 'sentence-anchor',
+    });
+    // A dead anchor is not a licence to patch: the pass rewrites.
+    expect(chooseMode({ pass: 'change', scopeHint: null, sentenceAnchor: false }, true)).toEqual({
+      mode: 'rewrite',
+      reason: 'no-scope',
+    });
+    // Chapter scope beats the anchor: the filing asked for the whole chapter.
+    expect(chooseMode({ pass: 'change', scopeHint: 'chapter', sentenceAnchor: true }, true)).toEqual({
+      mode: 'rewrite',
+      reason: 'chapter-scope',
+    });
+    // And an empty slot is still an empty slot, anchor or not.
+    expect(chooseMode({ pass: 'change', scopeHint: null, sentenceAnchor: true }, false)).toEqual({
+      mode: 'rewrite',
+      reason: 'slot-empty',
+    });
+  });
+
   it('never patches a draft pass, even on a written chapter', () => {
     expect(chooseMode({ pass: 'draft', scopeHint: 'phrase' }, true)).toEqual({ mode: 'rewrite', reason: 'slot-empty' });
   });
@@ -55,5 +80,6 @@ describe('the stage line — one fact, no new stage names', () => {
     expect(modeLine({ mode: 'rewrite', reason: 'slot-empty' })).toBe('режим: перепись (слот пуст)');
     expect(modeLine({ mode: 'rewrite', reason: 'model' })).toBe('режим: перепись (просит модель)');
     expect(modeLine({ mode: 'rewrite', reason: 'revision' })).toBe('режим: перепись (замечания гейта)');
+    expect(modeLine({ mode: 'patch', reason: 'sentence-anchor' })).toBe('режим: правка (заявка привязана к предложению)');
   });
 });

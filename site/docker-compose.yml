@@ -12,19 +12,31 @@
 #              with a bearer token read from the data dir.
 #   writer     the writing lane (`--loop`); no port, no healthcheck (see below).
 #
-# State: the data dir is the HOST path, bind-mounted at /data. Measured on this box (bookworm-slim +
-# better-sqlite3 as uid 501): WAL set, 300 inserts 4 ms, `wal_checkpoint(TRUNCATE)` busy=0, two
-# concurrent writer containers × 400 rows → 800 rows, `integrity_check ok`, and the same under
-# `--read-only --tmpfs /tmp`. The host path keeps `deploy/backup.sh`, the launchd fallback and the
-# rollback free of any data migration. The manuscript is read-only into site and engine; the writer
-# gets one rw mount of `manuscript/` only.
+# State: the data dir is a NAMED VOLUME (`book-data`), mounted at /data in all three services. It is
+# deliberately NOT a host bind mount (BOOK-183): SQLite in WAL mode shares its `-shm` through the OS,
+# and a macOS bind mount into the OrbStack VM is two kernels — the page cache of one is not the other,
+# and a host `sqlite3` write while `site` held the same file produced `SQLITE_IOERR_SHORT_READ`
+# (2026-10-28). Inside the VM the volume is one kernel and one filesystem (`btrfs` on /dev/vdb1).
+# Measured on this box (bookworm-slim + better-sqlite3 as uid 501): WAL set, 300 inserts 4 ms,
+# `wal_checkpoint(TRUNCATE)` busy=0, two concurrent writer containers × 400 rows → 800 rows,
+# `integrity_check ok`, and the same under `--read-only --tmpfs /tmp`.
+#
+# So every stateful operation runs INSIDE the container: `deploy/backup.sh` (compose runtime) calls
+# `bin/backup.mjs` through `docker compose exec site`, admin/restore/feedback go through
+# `deploy/admin.sh`, and the DB is never opened by a host process. `deploy/entrypoint.sh` refuses to
+# start a role when /data is a host bind mount (exit 78).
+#
+# The manuscript stays a host bind on purpose: it is text that git owns, not SQLite, and a second
+# kernel reading it cannot tear it. The only other host bind for state is `/backups` (rw), which is
+# the backup destination and nothing else: `book-data` is the store, `~/book-site-backups` the copies.
 name: book
 
 x-book: &book
   image: ${BOOK_IMAGE_TAG:-book:dev}
   restart: unless-stopped
-  # The host data dir is owned by uid 501 (filipp): the process runs as its owner, so the 0600
-  # files stay readable by the launchd fallback and nothing is ever created as root.
+  # Every file in the data volume is written by uid 501 (filipp) — the migration seeds the volume with
+  # `chown -R 501:20` — so the service and the launchd fallback (after a flip-back export) read the
+  # same 0600 files, and nothing is ever created as root.
   user: "501:20"
   read_only: true
   cap_drop:
@@ -62,7 +74,11 @@ services:
     volumes:
       # The manuscript is read-only here: only the writer writes prose (§6.2).
       - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
-      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      # BOOK-183: the store is the named volume, never a host path (see the header).
+      - book-data:/data
+      # The ONLY host bind for state, and only for backups: `bin/backup.mjs` writes here and the
+      # owner reads the copies from the host. Nothing else may open a database through it.
+      - ${BOOK_BACKUPS_DIR:-/Users/filipp/book-site-backups}:/backups
       # The single-instance lock files: deliberately OUTSIDE the data dir, so the BOOK-107 isolation
       # guard, the backup snapshots and the launchd fallback never see a file that changes.
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
@@ -126,7 +142,7 @@ services:
     # No `ports:` on purpose: the internal API is never proxied and never reachable from the LAN.
     volumes:
       - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
-      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      - book-data:/data
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
       # BOOK-172: the engine boots through `loadConfig()`, which in production refuses to start
       # without a session secret and an IP salt. Same two 0600 files as the site.
@@ -186,7 +202,7 @@ services:
       # The one rw mount into the manuscript: the writer's own output. A nested mount wins over the
       # read-only parent, so the rest of the tree stays unreadable-for-write.
       - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}/manuscript:/book/manuscript:rw
-      - ${BOOK_DATA_DIR:-/Users/filipp/book-site-data}:/data
+      - book-data:/data
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
       - ${BOOK_DEEPSEEK_KEY_FILE:-/Users/filipp/.config/book/deepseek.key}:/run/secrets/deepseek_key:ro
     environment:
@@ -212,3 +228,14 @@ services:
     # for WRITER_PAUSE_MS (15 min) — an mtime probe would mark it unhealthy and `up -d` would then
     # recreate a healthy process. Its liveness is the container state plus the engine's lease
     # (LEASE_TTL_MS 120 s) and step wall (STEP_WALL_MS 45 min); see the runbook in BOOK-172.
+
+volumes:
+  # BOOK-183: one named volume, a stable name across projects (a rehearsal passes
+  # BOOK_DATA_VOLUME=book-183-data), created and seeded ONCE by `deploy/migrate-to-volume.sh`.
+  # Inside the VM it is `btrfs` on /dev/vdb1 — one kernel, one page cache. OrbStack also mirrors it on
+  # the host at `~/OrbStack/docker/volumes/<name>/`, which is writable (measured: touch/rm, and a new
+  # database can be created there) yet must never be opened: a normal second open of the live WAL
+  # database fails "unable to open database file (14)", `?immutable=1` only reads a snapshot, and a
+  # byte-level write is still possible. The guard cannot stop a deliberate host write, only the bind.
+  book-data:
+    name: ${BOOK_DATA_VOLUME:-book-data}

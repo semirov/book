@@ -4,6 +4,7 @@ export * from './pages.ts';
 export * from './types.ts';
 export * from './protocol.ts';
 export * from './change.ts';
+export * from './writeMode.ts';
 export * from './history.ts';
 export * from './authors.ts';
 export * from './cost.ts';
@@ -16,6 +17,7 @@ export * from './decisions.ts';
 export * from './injection.ts';
 export * from './intent.ts';
 export * from './stage.ts';
+export * from './sentences.ts';
 
 /**
  * The validator is used by the site's integrity panel and by the commit gate, so the parts

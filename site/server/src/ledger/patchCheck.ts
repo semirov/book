@@ -156,6 +156,23 @@ export function shapeRefusal(patch: Patch): ApplyPatchResult | null {
   return null;
 }
 
+/**
+ * **The only match is exact — never normalised, never fuzzy.** `oldText` must occur **byte for
+ * byte** inside the block it names, exactly once; anything else is `OLD_TEXT_NOT_FOUND` or
+ * `OLD_TEXT_AMBIGUOUS`, and the patch is refused before a single row moves. The one occurrence is
+ * then spliced out by its own offsets: the applier edits characters, it never re-derives a span
+ * from a hash and never trims, folds `ё`→`е`, straightens a quote, unifies CRLF or applies a
+ * Unicode NFC form to the text it is about to replace.
+ *
+ * **Why the refusal is the design, not a limitation.** A rewrite can return the chapter
+ * byte-identical (measured, BOOK-173: ch03, 69 s, 10 010 output tokens, nothing applied), so the
+ * writer's own answer is not evidence that a change happened. A fuzzy applier would instead write
+ * bytes nobody named — a different sentence, a different claim — and the gates would read them as
+ * plausible: the editor reads prose, not provenance, so a near-match applied silently is exactly
+ * the failure the ledger cannot detect. Normalising would be worse in one more way: the offsets
+ * the patch states are the offsets the **sentence rows** are measured in (ADR-044 §2.2), so a
+ * folded character would re-key the very sentences the patch was filed about.
+ */
 /** Resolve each edit against the chapter's current blocks; a refusal leaves nothing to undo. */
 export function resolveEdits(
   blocks: ReadonlyArray<BlockRow>,

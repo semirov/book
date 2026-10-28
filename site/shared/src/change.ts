@@ -40,13 +40,10 @@ export type ChangeOutcome =
    */
   | 'rights'
   | 'gate_timeout'
-  /**
-   * BOOK-137: the filing touched the frozen frame and was accepted as **paperwork** — a
-   * document, not an edit. The row is `done` with no step and no ripple, and the canon
-   * sentence's letters are untouched.
-   */
+  /** BOOK-137: the filing touched the frozen frame — paperwork, not an edit: no step, no ripple. */
   | 'registered'
-  | 'ripple'; // BOOK-173: the closure stood — each consequence is its own normal pass; `wide` closes escalated
+  | 'ripple' // BOOK-173: the closure stood — each consequence is its own normal pass; `wide` closes escalated
+  | 'no-op'; // BOOK-173 §5: a rewrite that moved no byte — filed, paid for, never applied (BOOK-DOC-65)
 
 export type SeamBoundary = number | 'front' | 'ending';
 
@@ -79,7 +76,7 @@ export type ChangeEvent = {
   seq: number; // the FIFO ticket, immutable
   kind: ChangeKind;
   chapter: number; // 1..TOTAL_CHAPTERS — the point of change
-  anchor: null | { blockIds: string[]; quote: string; prefix: string; suffix: string };
+  anchor: null | { blockIds: string[]; sentenceIds?: string[]; quote: string; prefix: string; suffix: string };
   intent: string; // ≤200 chars, what must become true
   proposedText: string | null;
   source: { commentId: string | null; sessionId: string | null };
@@ -288,6 +285,8 @@ export type WriterAssignment = {
   interventionKind: InterventionKind | null;
   /** BOOK-173 — `change.scope_hint`; `null` only when the step has no change at all. */
   scopeHint: ScopeHint | null;
+  /** BOOK-173 §3: the anchor names a sentence row that is still live, so the pass may patch it. */
+  sentenceAnchor: boolean;
   /**
    * BOOK-7 — set on the first pass of a chapter that carries a reader's premise: the writer
    * takes it or refuses it with one plain reason, never silently ignores it. Null otherwise.

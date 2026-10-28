@@ -210,6 +210,7 @@ describe('the seam marks the paragraph and lays its strip after it (BOOK-68)', (
 
 describe('a tap on a sentence (BOOK-68)', () => {
   it('opens the seam on the sentence it landed in and still leaves the paragraph whole', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
     await render();
     const span = [...document.querySelectorAll<HTMLElement>('.p [data-s]')][2];
     expect(span).toBeDefined();
@@ -222,11 +223,20 @@ describe('a tap on a sentence (BOOK-68)', () => {
     const paragraph = document.querySelector('p.p');
     expect(paragraph).not.toBeNull();
     expect(document.querySelector('.p-parted')).toBeNull();
-    // The tap resolved the third sentence, not the first: the strip names its first word.
-    expect(document.querySelector('.seam')?.getAttribute('data-block')).toBe(BLOCK_ID);
-    expect(document.querySelector('.seam-word')?.textContent).toBe('«Он»');
-    // The tapped sentence is the marked one, and the paragraph still holds every character.
-    expect(paragraph?.querySelector('.is-anchored')).toBe(span);
+    // BOOK-128 #3852 — the tap opened the accordion on the third sentence's first word, and
+    // the mark is inside that very sentence, never a second copy of the text.
+    expect(document.querySelector('.rec')).not.toBeNull();
+    // ADR-044 — the sentence is the unit, and its **door** is the marked node: the control
+    // wraps the sentence's text only, the filing numerals stand outside it.
+    const mark = span?.querySelector<HTMLElement>('.sentence-door[data-touch]') ?? null;
+    expect(mark).not.toBeNull();
+    expect(mark?.textContent).toBe(span?.getAttribute('data-quote'));
+    expect(mark?.getAttribute('role')).toBe('button');
+    expect(mark?.getAttribute('aria-expanded')).toBe('true');
+    // The word under the caret is underlined inside the record's quote, not on the page.
+    expect(document.querySelector('.rec-word')?.textContent).toBe('Он');
+    // The paragraph still holds every character, and the block is its next sibling.
+    expect(paragraph?.nextElementSibling?.className).toContain('rec');
     expect(proseText(paragraph)).toBe(TEXT);
   });
 });

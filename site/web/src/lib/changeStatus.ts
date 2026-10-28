@@ -197,6 +197,9 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
   // BOOK-173: the patch is in the book and its consequences are their own chapters — «идёт» would
   // say the change is still being written, which it is not.
   if (outcome === 'ripple') return 'внесено · следствия идут';
+  // BOOK-173 §5: the silent no-op, in one factual line — a rewrite that changed nothing is not
+  // «внесено», and the reader is owed the fact rather than a word that reads like a landing.
+  if (outcome === 'no-op') return 'перепись не изменила ни одного байта';
   return 'идёт';
 }
 

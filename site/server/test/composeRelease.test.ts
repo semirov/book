@@ -106,11 +106,15 @@ if [ "$1" = "inspect" ] && [ "$2" = "-f" ]; then
   exit 0
 fi
 if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_IMAGE_MISSING:-0}" = "1" ] && exit 1; exit 0; fi
+# BOOK-183: the data volume preflight. 'volume inspect' is the volume's existence; the one-shot
+# 'test -f /v/book.db' is its content. FAKE_VOLUME_MISSING/FAKE_VOLUME_EMPTY are the two refusals.
+if [ "$1" = "volume" ] && [ "$2" = "inspect" ]; then [ "\${FAKE_VOLUME_MISSING:-0}" = "1" ] && exit 1; exit 0; fi
+if [ "$1" = "run" ]; then [ "\${FAKE_VOLUME_EMPTY:-0}" = "1" ] && exit 1; exit 0; fi
 case "$*" in
   *" compose version"*) echo "Docker Compose version v5.5.0"; exit 0 ;;
   *" config -q"*) exit 0 ;;
   *" ps -q "*) printf 'id-%s\\n' "\${!#}"; exit 0 ;;
-  *" image ls "*) exit 0 ;;
+  *"image ls "*) [ "\${FAKE_IMAGE_LS_EMPTY:-0}" = "1" ] || printf '2026-10-28 18:00:00 +0300 MSK book:0000000\\n'; exit 0 ;;
   *" build site"*) exit 0 ;;
   *" up -d "*)
     printf '%s\\n' "\${BOOK_IMAGE_TAG:-}" > "${stateDir}/current"
@@ -206,6 +210,8 @@ function envFor(root: string, stateDir: string, bin: string, siteUrl: string): R
     BOOK_STATE_DIR: stateDir,
     // The script creates this bind source and checks its owner: it must never be the box's own.
     BOOK_LOCKS_DIR: join(stateDir, 'locks'),
+    // BOOK-183: the /backups bind source the release creates. It must never be the box's real one.
+    BOOK_BACKUPS_DIR: join(stateDir, 'backups'),
     BOOK_COMPOSE_FILE: COMPOSE,
     BOOK_PROJECT: 'book-test',
     BOOK_SITE_URL: siteUrl,
@@ -241,6 +247,37 @@ describe('the container release: lock, exit codes, rollback', () => {
     const result = await release(['--ref', 'HEAD'], envFor(root, stateDir, bin, siteUrl));
     expect(result.code, result.out).toBe(3);
     expect(result.out).toContain('another deploy is running');
+    const log = readFileSync(join(stateDir, 'docker.log'), 'utf8');
+    expect(log).not.toContain('build site');
+    expect(log).not.toContain('up -d');
+  });
+
+  it('b2) refuses a stack on a missing data volume: exit 1, named reason, nothing built or started', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const result = await release(['--ref', 'HEAD'], {
+      ...envFor(root, stateDir, bin, 'http://127.0.0.1:9'),
+      FAKE_VOLUME_MISSING: '1',
+    });
+    expect(result.code, result.out).toBe(1);
+    expect(result.out).toContain('does not exist');
+    expect(result.out).toContain('migrate-to-volume.sh');
+    const log = readFileSync(join(stateDir, 'docker.log'), 'utf8');
+    expect(log).not.toContain('build site');
+    expect(log).not.toContain('up -d');
+  });
+
+  it('b3) refuses a stack on a volume with no book.db: exit 1, named reason, nothing built or started', async () => {
+    const root = gitRoot();
+    const stateDir = temp('book-172-state-');
+    const bin = fakeDocker(stateDir);
+    const result = await release(['--ref', 'HEAD'], {
+      ...envFor(root, stateDir, bin, 'http://127.0.0.1:9'),
+      FAKE_VOLUME_EMPTY: '1',
+    });
+    expect(result.code, result.out).toBe(1);
+    expect(result.out).toContain('holds no book.db');
     const log = readFileSync(join(stateDir, 'docker.log'), 'utf8');
     expect(log).not.toContain('build site');
     expect(log).not.toContain('up -d');

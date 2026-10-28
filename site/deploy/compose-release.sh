@@ -32,7 +32,10 @@
 #   * THE GATE DOES NOT RACE THE WRITER (BOOK-159): no `npm`, no `node`, no manuscript check and no
 #     host process against the data dir run here. Docker and curl only. The full test suite is CI's
 #     (gate.yml); the deploy's own gate is the container health gate plus five HTTP smokes;
-#   * the data dir is only ever mounted by the stack, never by a test: this script never mounts it;
+#   * the data dir is the named volume `${BOOK_DATA_VOLUME:-book-data}`, never a host bind (BOOK-183):
+#     a volume without `book.db` is refused with a named reason BEFORE anything is built or started, and
+#     a rollback does not run either — a stack on an empty volume is a 500, not a deploy. Only a
+#     one-shot `-v <volume>:/v:ro` is used to READ it (the same volume, inside the VM: one kernel).
 #   * `/locks` (the entrypoint's single-instance lock dir) is created here if it is missing, owned by
 #     this uid and 0755 — Docker would create the bind source as root and every service would exit 75.
 #
@@ -70,6 +73,10 @@ PREV_IMAGE_FILE="${STATE_DIR}/previous-image"
 # uid: left to Docker the source appears owned by root, uid 501 cannot write it, and every service
 # exits 75 on its own lock file.
 LOCKS_DIR="${BOOK_LOCKS_DIR:-$HOME/.local/state/book-locks}"
+# BOOK-183: the store is the volume; `/backups` is the only host bind for state and this script creates
+# its source (Docker would create it as root, and the container runs as uid 501).
+DATA_VOLUME="${BOOK_DATA_VOLUME:-book-data}"
+BACKUPS_DIR="${BOOK_BACKUPS_DIR:-$HOME/book-site-backups}"
 
 MODE="deploy"
 REF="main"
@@ -201,6 +208,39 @@ ensure_locks_dir() {
     die "$LOCKS_DIR is owned by '$owner', not '$(id -un)' (Docker created it as root on an earlier run) — remove it with 'sudo rm -rf $LOCKS_DIR' and re-run"
   fi
   say "locks: $LOCKS_DIR (0755, owner $owner)"
+}
+
+# The `/backups` bind source must exist and be writable by the container's uid (501), or the nightly
+# backup writes nothing. Same shape as `ensure_locks_dir`.
+ensure_backups_dir() {
+  local owner=""
+  mkdir -p "$BACKUPS_DIR" 2>/dev/null || die "cannot create $BACKUPS_DIR — the backup runs inside the container (uid 501) and must be able to write it"
+  owner="$(stat -c '%U' "$BACKUPS_DIR" 2>/dev/null || stat -f '%Su' "$BACKUPS_DIR" 2>/dev/null || echo unknown)"
+  if [ "$owner" != "$(id -un)" ]; then
+    die "$BACKUPS_DIR is owned by '$owner', not '$(id -un)' — fix it with 'sudo chown -R $(id -un) $BACKUPS_DIR' and re-run"
+  fi
+  say "backups: $BACKUPS_DIR (owner $owner)"
+}
+
+# BOOK-183: the release never seeds and never starts on an empty volume. Both are named refusals with
+# exit 1, and by then nothing has been built, started or rolled back.
+data_volume_preflight() {
+  local image=""
+  STEP="preflight: volume"
+  "$DOCKER" volume inspect "$DATA_VOLUME" >/dev/null 2>&1 \
+    || die "the data volume ${DATA_VOLUME} does not exist — seed it once with site/deploy/migrate-to-volume.sh (BOOK-183); nothing was started and nothing was rolled back"
+  image="${BOOK_PROBE_IMAGE:-}"
+  [ -n "$image" ] || image="$(cat "$LAST_GOOD_IMAGE" 2>/dev/null || true)"
+  [ -n "$image" ] || image="$(running_image)"
+  # Last resort: the newest image of this repo on disk. A first release after a migration has no
+  # recorded last-good yet, and the volume still has to be read before anything is built.
+  [ -n "$image" ] || image="$("$DOCKER" image ls "$IMAGE_REPO" --format '{{.CreatedAt}} {{.Repository}}:{{.Tag}}' 2>/dev/null | sort -r | awk 'NF > 1 && $NF !~ /:<none>$/ { print $NF; exit }')"
+  if [ -z "$image" ]; then
+    die "no image on disk to read volume ${DATA_VOLUME} with (last-good-image and the running site are both empty); nothing was started and nothing was rolled back"
+  fi
+  "$DOCKER" run --rm --entrypoint sh -v "$DATA_VOLUME":/v:ro "$image" -c 'test -f /v/book.db' >/dev/null 2>&1 \
+    || die "volume ${DATA_VOLUME} holds no book.db — the stack would serve 500s, so it was not started (seed it with site/deploy/migrate-to-volume.sh or 'site/deploy/flip.sh --to compose'); nothing was started and nothing was rolled back"
+  say "volume: ${DATA_VOLUME} (holds book.db; read with ${image})"
 }
 
 # The lock is the deploy's, except when a flip already holds it and runs this script as its child:
@@ -388,15 +428,23 @@ red() { # (why)
 # --- status (read-only) -------------------------------------------------------------------------
 status() {
   say "runtime=compose project=$PROJECT file=$COMPOSE_FILE"
+  say "data-volume: ${DATA_VOLUME}"
   dc ps || true
   health_read "${SITE_URL}/healthz"
   say "healthz: status=${R_STATUS} commit=${R_COMMIT:-none} err=${R_ERR:-none} ok=${R_OK} at ${SITE_URL}"
+  # What /data really is inside the running site: the type and source from the container's own mount
+  # table. `btrfs /dev/vdb1` is the volume; `virtiofs mac` would be a host bind, which the entrypoint
+  # now refuses (BOOK-183) — so this line is the positive proof, not the guard.
   local id="" image=""
   for name in site engine writer; do
     id="$(dc ps -q "$name" 2>/dev/null | head -n 1 || true)"
     [ -n "$id" ] || { say "$name: no container"; continue; }
     image="$("$DOCKER" inspect -f '{{.Config.Image}}' "$id" 2>/dev/null || true)"
     say "$name: container=${id:0:12} image=${image:-unknown}"
+    if [ "$name" = "site" ]; then
+      data_mount="$("$DOCKER" exec "$id" sh -c "grep ' /data ' /proc/self/mountinfo | head -n 1" 2>/dev/null || true)"
+      say "site /data: ${data_mount:-no mountinfo entry for /data (is the container up?)}"
+    fi
   done
   say "last-good-image: $(cat "$LAST_GOOD_IMAGE" 2>/dev/null || echo none)"
   say "previous-image: $(cat "$PREV_IMAGE_FILE" 2>/dev/null || echo none)"
@@ -455,6 +503,9 @@ if [ "$MODE" = "rollback" ]; then
   STEP="lock"
   take_lock
   ensure_locks_dir
+  ensure_backups_dir
+  # A rollback swaps the image; the data it serves must already be there.
+  data_volume_preflight
   # The tree must match the image a flip-back would serve: an operator reading `git -C $ROOT HEAD`
   # after a rollback must see the code that answers, not the commit the rollback moved away from.
   STEP="rollback"
@@ -506,6 +557,8 @@ say "target ${SHA7} (${REF}), image ${IMAGE_TAG}"
 STEP="validate"
 dc config -q || die "docker compose config is invalid"
 ensure_locks_dir
+ensure_backups_dir
+data_volume_preflight
 
 STEP="build"
 if bounded "$BUILD_TIMEOUT" env BOOK_BUILD_COMMIT="$SHA7" BOOK_IMAGE_TAG="$IMAGE_TAG" bash -c \

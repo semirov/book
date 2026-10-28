@@ -2,20 +2,24 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../../../src/db/db.ts';
 import { migrate } from '../../../src/db/migrate.ts';
-import { migrateV24 } from '../../../src/db/migrateV24.ts';
+import { migrateV25 } from '../../../src/db/migrateV25.ts';
+import { migrateV26 } from '../../../src/db/migrateV26.ts';
 import { LEDGER_REQUIRED_TABLES, SCHEMA_VERSION } from '../../../src/db/schema.ts';
 import { assertDependency } from '../../../src/ledger/graph/edges.ts';
-import { seedChange } from '../helpers.ts';
+import { seedChange, seedChapter } from '../helpers.ts';
 import { claimPlan, parkPlan, storePlan, type RipplePlan } from '../../../src/ledger/graph/plan.ts';
 
 /**
- * The v24 shape a fresh install and an upgraded one must share (BOOK-173).
+ * The v26 shape a fresh install and every upgraded one must share (BOOK-173).
  *
- * The failure this file exists for is the review's blocker: `main` already had a v23 (the author
- * marker, `migrateV23.ts`), so a ledger step that also claimed 23 never ran on a server already at
- * 23 — it booted without `edges` and `change_plans` and every ripple was `local`. The two upgrade
- * paths are proven here: **v22 → v24** (an engine that never saw either step) and **v23 → v24**
- * (a server that has the author marker and must still get the graph).
+ * The failure this file exists for is the review's blocker, twice over. `main` already had a v23
+ * (the author marker), so a ledger step that claimed 23 never ran on a server already at 23 — it
+ * booted without `edges` and `change_plans` and every ripple was `local`. Then `main` took **25**
+ * for the sentence (ADR-044) while this branch held 24, and `main` has no v24 at all: a step
+ * numbered 24 would have been skipped by every install at 25 or above, silently, because
+ * `user_version` only moves forward. The step is therefore **v26**, and all four paths are proven
+ * here: **fresh → 26**, **v22 → 26**, **v23 → 26** and **v25 → 26**, with the v25 sentence objects
+ * compared row for row before and after.
  */
 const GRAPH_OBJECTS = [
   'edges',
@@ -67,16 +71,36 @@ function shapeAsV23(db: Db): void {
   db.pragma('user_version = 23');
 }
 
+/**
+ * …and into the v25 one `main` ships: the sentence layer is there, the graph and the plan are not.
+ * The sentences are left exactly as v25 wrote them — that is the point of the comparison below.
+ */
+function shapeAsV25(db: Db): void {
+  db.exec('DROP TRIGGER IF EXISTS facts_retire_edges');
+  db.exec('DROP VIEW IF EXISTS fact_dependency');
+  db.exec('DROP TABLE IF EXISTS change_plans');
+  db.exec('DROP TABLE IF EXISTS edges');
+  db.exec('DELETE FROM facts');
+  db.pragma('user_version = 25');
+}
+
+const PLAN_COLUMNS = ['mode', 'price_usd'] as const;
+
+function planColumns(db: Db): string[] {
+  const names = (db.pragma('table_info(change_plans)') as Array<{ name: string }>).map((row) => row.name);
+  return [...PLAN_COLUMNS].filter((column) => names.includes(column));
+}
+
 let db: Db;
 
 afterEach(() => {
   db.close();
 });
 
-describe('migration v24 — the ripple graph on a fresh install', () => {
-  it('creates edges, change_plans and the owner-named view, and reaches version 24', () => {
+describe('migration v26 — the ripple graph on a fresh install', () => {
+  it('creates edges, change_plans and the owner-named view, and reaches version 26', () => {
     db = openDatabase(':memory:');
-    expect(SCHEMA_VERSION).toBe(24);
+    expect(SCHEMA_VERSION).toBe(26);
     expect(migrate(db).to).toBe(SCHEMA_VERSION);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
@@ -119,11 +143,17 @@ describe('migration v24 — the ripple graph on a fresh install', () => {
         origin: 'backfill',
       },
     ]);
+    // BOOK-173 §4: the plan of a change carries the mode it ran and the money it was priced at.
+    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
+    // ADR-044: the edge may name the sentence the claim was read from — on a fresh install too.
+    expect((db.pragma('table_info(edges)') as Array<{ name: string }>).map((row) => row.name)).toContain(
+      'sentence_id',
+    );
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 });
 
-describe('migration v24 — the same shape on an upgraded install', () => {
+describe('migration v26 — the same shape on an upgraded install', () => {
   it('builds the same objects from a v22 database, and stays idempotent', () => {
     db = openDatabase(':memory:');
     migrate(db);
@@ -139,7 +169,7 @@ describe('migration v24 — the same shape on an upgraded install', () => {
 
     // A second boot has nothing to do, and the step itself is idempotent for a build that re-runs it.
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
-    expect(() => migrateV24(db)).not.toThrow();
+    expect(() => migrateV26(db)).not.toThrow();
     expect(objectsOf(db)).toEqual(fresh);
   });
 
@@ -163,6 +193,76 @@ describe('migration v24 — the same shape on an upgraded install', () => {
     expect(() => assertDependency(db, { from: 'f:ghost', to: 'f:ghost2', chapter: 1, kind: 'follows' })).toThrow(
       /FOREIGN KEY/u,
     );
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('runs on a server already at v25 (the sentence) and touches no sentence row at all', () => {
+    db = openDatabase(':memory:');
+    migrate(db);
+    const fresh = objectsOf(db);
+    const chapter = seedChapter(db, {
+      chapter: 12,
+      texts: ['Он перечитал записку дважды. Ничего не изменилось.', 'Почерк был чужой.'],
+      title: 'Записка',
+      at: AT,
+    });
+    expect(chapter).toHaveLength(2);
+    // The sentence step as `main` ran it: every live block segmented once, no touch invented.
+    migrateV25(db);
+    const sentencesBefore = db.prepare('SELECT * FROM sentences ORDER BY id').all();
+    expect(sentencesBefore.length).toBeGreaterThan(0);
+
+    shapeAsV25(db);
+    expect(objectsOf(db)).toEqual([]);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(25);
+    // The sentence layer is the one thing a v25 install already has: it must survive untouched.
+    expect(db.prepare('SELECT * FROM sentences ORDER BY id').all()).toEqual(sentencesBefore);
+
+    expect(migrate(db)).toEqual({ from: 25, to: SCHEMA_VERSION });
+    expect(objectsOf(db)).toEqual(fresh);
+    // Row for row: no id re-derived, no hash moved, no span re-cut, no touch invented by v26.
+    expect(db.prepare('SELECT * FROM sentences ORDER BY id').all()).toEqual(sentencesBefore);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM sentence_touches').get()).toEqual({ n: 0 });
+    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+  });
+
+  it('widens a change_plans table an earlier build created, keeping every plan row', () => {
+    db = openDatabase(':memory:');
+    migrate(db);
+    seedChange(db, { id: 'chg_plan', chapter: 12, at: AT });
+    db.exec('DROP TABLE change_plans');
+    // The pre-v26 shape: the same table without `mode` and `price_usd`.
+    db.exec(`
+      CREATE TABLE change_plans (
+        id           TEXT PRIMARY KEY,
+        change_id    TEXT NOT NULL REFERENCES changes(id),
+        chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+        outcome      TEXT NOT NULL CHECK (outcome IN ('local','ripple','wide')),
+        closure      TEXT NOT NULL,
+        patches      TEXT NOT NULL,
+        bounds       TEXT NOT NULL,
+        iterations   TEXT NOT NULL DEFAULT '[]',
+        parked_at    TEXT,
+        park_reason  TEXT,
+        claimed_at   TEXT,
+        claimed_by   TEXT,
+        created_at   TEXT NOT NULL
+      )`);
+    db.prepare(
+      `INSERT INTO change_plans (id, change_id, chapter, outcome, closure, patches, bounds, created_at)
+       VALUES ('pln_old', 'chg_plan', 12, 'local', '{}', '[]', '{}', ?)`,
+    ).run(AT);
+    db.exec('CREATE UNIQUE INDEX change_plans_change ON change_plans(change_id)');
+    expect(planColumns(db)).toEqual([]);
+    db.pragma('user_version = 25');
+
+    expect(migrate(db)).toEqual({ from: 25, to: SCHEMA_VERSION });
+    // The row is history — the plan a change was priced with — and it keeps its id and its closure.
+    expect(db.prepare('SELECT id, change_id, outcome, mode, price_usd FROM change_plans').all()).toEqual([
+      { id: 'pln_old', change_id: 'chg_plan', outcome: 'local', mode: null, price_usd: null },
+    ]);
+    expect(planColumns(db)).toEqual(['mode', 'price_usd']);
     expect(db.pragma('foreign_key_check')).toEqual([]);
   });
 });

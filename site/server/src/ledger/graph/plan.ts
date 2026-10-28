@@ -22,7 +22,7 @@
  * closure intact, never to a smaller closure.
  */
 
-import { partOf } from '@book/shared';
+import { partOf, type WriteMode } from '@book/shared';
 
 import type { Db } from '../../db/db.ts';
 import { toIso } from '../../util/time.ts';
@@ -308,17 +308,22 @@ type PlanRow = {
  * The caller runs this inside the landing's transaction (`engine/ripple.ts`), so a crash lands
  * neither the revision nor the plan.
  */
-export function storePlan(db: Db, plan: RipplePlan, at?: string): string {
+export function storePlan(db: Db, plan: RipplePlan, at?: string, context: PlanContext = {}): string {
   const id = `pln_${ulid()}`;
   db.prepare(
     `INSERT INTO change_plans
-       (id, change_id, chapter, outcome, closure, patches, bounds, iterations, created_at)
-     VALUES (@id, @changeId, @chapter, @outcome, @closure, @patches, @bounds, '[]', @at)
+       (id, change_id, chapter, outcome, closure, patches, bounds, iterations, mode, price_usd, created_at)
+     VALUES (@id, @changeId, @chapter, @outcome, @closure, @patches, @bounds, '[]', @mode, @priceUsd, @at)
      ON CONFLICT(change_id) DO UPDATE SET
        chapter = excluded.chapter,
        outcome = excluded.outcome,
        closure = excluded.closure,
        patches = excluded.patches,
+       -- BOOK-173 §4: the mode and the estimate of the landing that produced this reading; the
+       -- close replaces price_usd with the actual (pricePlanAfterPass). A caller that states
+       -- neither (an operator re-plan, a door that does not price) keeps what the row has.
+       mode = COALESCE(excluded.mode, change_plans.mode),
+       price_usd = COALESCE(excluded.price_usd, change_plans.price_usd),
        parked_at = NULL,
        park_reason = NULL,
        claimed_at = NULL,
@@ -331,9 +336,31 @@ export function storePlan(db: Db, plan: RipplePlan, at?: string): string {
     closure: JSON.stringify({ ...plan, patches: [] }),
     patches: JSON.stringify(plan.patches),
     bounds: JSON.stringify(plan.bounds),
+    mode: context.mode ?? null,
+    priceUsd: context.priceUsd ?? null,
     at: at ?? toIso(Date.now()),
   });
   return planRowIdOf(db, plan.changeId) ?? id;
+}
+
+/** What a plan is frozen with beyond its closure (BOOK-173 §4). */
+export type PlanContext = {
+  /** `patch` or `rewrite` — how the pass wrote what this plan walks. */
+  mode?: WriteMode | null;
+  /** The pass's estimate at planning; the actual replaces it when the pass closes. */
+  priceUsd?: number | null;
+};
+
+/**
+ * The money a plan was actually spent on: the pass ledger row of the step that produced it. Called
+ * at close, inside the close's transaction, so `price_usd` ends as the actual and never as an
+ * estimate the book never paid.
+ */
+export function pricePlanAfterPass(db: Db, changeId: string, usd: number): boolean {
+  if (!Number.isFinite(usd) || usd < 0) return false;
+  return (
+    db.prepare('UPDATE change_plans SET price_usd = ? WHERE change_id = ?').run(usd, changeId).changes === 1
+  );
 }
 
 /** The row id a change's plan lives under — one row per change, whatever wrote it first. */

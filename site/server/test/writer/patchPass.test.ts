@@ -117,6 +117,33 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
     }
   });
 
+  it('records the mode and the price with the plan, and the actual replaces the estimate at close', async () => {
+    const harness = await written();
+    try {
+      const before = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const target = before.blocks[1];
+      if (target === undefined) throw new Error('the fixture chapter has no second block');
+      harness.script.push(answer(target.id, 'Гуси шли по льду.', 'Часы шли по кругу.'), 'HOLDS', 'HOLDS');
+
+      const result = await harness.run({ lanes: ['fwd'] });
+      expect(result.status).toBe('closed');
+      // BOOK-173 §4: the plan of a change carries how the pass wrote and what it was priced at —
+      // one row, written inside the landing's transaction.
+      const plan = harness.fixture.db
+        .prepare('SELECT mode, price_usd FROM change_plans ORDER BY created_at DESC LIMIT 1')
+        .get() as { mode: string | null; price_usd: number | null } | undefined;
+      expect(plan?.mode).toBe('patch');
+      const spend = harness.fixture.db
+        .prepare('SELECT usd FROM pass_spend WHERE pass_id = ?')
+        .get(result.stepId ?? '') as { usd: number } | undefined;
+      expect(spend?.usd).toBeGreaterThan(0);
+      // The close replaced the estimate with the pass's actual: the plan is not a second ledger.
+      expect(plan?.price_usd).toBe(spend?.usd);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it('obeys a model that answers mode:"rewrite": a rewrite in the same pass, no patch retry', async () => {
     const harness = await written();
     try {

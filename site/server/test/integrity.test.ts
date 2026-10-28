@@ -121,6 +121,50 @@ describe('the integrity panel (§13.4 point 5, §17)', () => {
     }
   });
 
+  it('reports sentence drift and logs one line per drifted block (ADR-044)', async () => {
+    const { fixture, app } = await boot({
+      token: 'right-token',
+      chapters: { 'ch02.md': longProse(['Второй абзац.']) },
+    });
+    const driftKeys = (): number =>
+      (fixture.db.prepare(`SELECT COUNT(*) AS n FROM meta WHERE k LIKE 'sentences.drift:%'`).get() as { n: number }).n;
+    const report = async (): Promise<IntegrityReport> => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/integrity',
+        headers: { authorization: 'Bearer right-token' },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json() as IntegrityReport;
+    };
+    try {
+      // The book the ingest published has sentences for every live block, and they agree.
+      const clean = await report();
+      expect(clean.segmentDrift.blocks).toBeGreaterThan(0);
+      expect(clean.segmentDrift.drifted).toBe(0);
+      expect(driftKeys()).toBe(0);
+
+      // One stored span moves behind the table's back: the check reports it, once.
+      const sentence = fixture.db
+        .prepare('SELECT id FROM sentences ORDER BY block_id, idx LIMIT 1')
+        .get() as { id: string };
+      fixture.db.prepare('UPDATE sentences SET start = start + 1 WHERE id = ?').run(sentence.id);
+      const corrupted = (fixture.db.prepare('SELECT start FROM sentences WHERE id = ?').get(sentence.id) as {
+        start: number;
+      }).start;
+
+      expect((await report()).segmentDrift.drifted).toBe(1);
+      expect(driftKeys()).toBe(1);
+      // The report reads the rows: a second call adds no second line and repairs nothing.
+      expect((await report()).segmentDrift.drifted).toBe(1);
+      expect(driftKeys()).toBe(1);
+      expect(fixture.db.prepare('SELECT start FROM sentences WHERE id = ?').get(sentence.id)).toEqual({ start: corrupted });
+    } finally {
+      await app.close();
+      fixture.close();
+    }
+  });
+
   it('shows a restore as ungated and counts it under attribution, before reconcile', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     const first = longProse(['Первый абзац главы.']);

@@ -18,6 +18,7 @@ import {
   REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
   type Relevance,
+  type WriteMode,
 } from '@book/shared';
 
 import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapter.ts';
@@ -25,6 +26,7 @@ import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
 import { frameIntact } from '../ingest/frameGuard.ts';
 import { getFrontRow } from '../db/repo/front.ts';
 import type { RipplePlan } from '../ledger/graph/plan.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
@@ -47,7 +49,21 @@ export type StartOptions = {
   now?: number;
 };
 
-export type LandOptions = { noWrite?: boolean; rev?: number; now?: number };
+export type LandOptions = {
+  noWrite?: boolean;
+  rev?: number;
+  now?: number;
+  /**
+   * BOOK-173 §2: the patch this landing applies, as one character edit per block — what lets the
+   * ingest keep sentence ids across the write (`sentences/transform.ts`). Absent for a rewrite, a
+   * draft or a front sheet: none of them knows where inside a paragraph the text moved.
+   */
+  sentences?: ReadonlyArray<SentencePatchEdit>;
+  /** BOOK-173 §4: the mode the pass ran, recorded with the plan (or, with no plan, on the close). */
+  mode?: WriteMode;
+  /** BOOK-173 §4: the pass's estimate, frozen with the plan and replaced by the actual at close. */
+  estimateUsd?: number;
+};
 
 export type LandResult = {
   landed: true;
@@ -91,6 +107,7 @@ function ingestLanding(
   deps: EngineDeps,
   step: store.StepRow,
   at: number,
+  options: LandOptions,
 ): IngestOutcome {
   const dataDir = deps.config.dataDir;
   if (step.pass === 'front') {
@@ -123,8 +140,9 @@ function ingestLanding(
     raw: chapter.raw,
     mtimeMs: at,
     nowMs: at,
+    ...(options.sentences === undefined ? {} : { sentences: options.sentences }),
     onPublished: ({ rev }) => {
-      planned = settleLanding(deps, step, rev);
+      planned = settleLanding(deps, step, rev, { mode: options.mode, priceUsd: options.estimateUsd });
     },
   });
   // BOOK-173 review round 3, fix 1: `onPublished` runs only when **this** call publishes. If the
@@ -134,7 +152,9 @@ function ingestLanding(
   // per change, so this second door writes no second plan; it only closes the hole.
   if (result.status === 'unchanged' && (step.pass === 'change' || step.pass === 'cascade')) {
     const current = currentRev(deps.db, n);
-    planned = deps.db.transaction(() => settleLanding(deps, step, current))();
+    planned = deps.db.transaction(() =>
+      settleLanding(deps, step, current, { mode: options.mode, priceUsd: options.estimateUsd }),
+    )();
   }
   // BOOK-137: the second read is weaker than the guard's. Nothing was published, and the caller
   // must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
@@ -394,7 +414,7 @@ export function createWriteOps(deps: EngineDeps) {
     const changedFromStart = step.start_sha === null || sha !== step.start_sha;
     // The revision is published here, with its `hseq` and its cause (§6F.1, §6F.2).
     const ingested: IngestOutcome = changedFromStart
-      ? ingestLanding(deps, step, at)
+      ? ingestLanding(deps, step, at, options)
       : { rev: null, changed: false, frameRejected: false, planned: null };
     // BOOK-137, second read: the guard above read the file once and the ingest reads it again,
     // so a file that moved in between publishes nothing. The guard's question is asked of the

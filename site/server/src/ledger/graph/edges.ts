@@ -24,6 +24,7 @@
  */
 
 import type { Db } from '../../db/db.ts';
+import { resolveSentenceCovering } from '../../sentences/store.ts';
 import { toIso } from '../../util/time.ts';
 import { ulid } from '../../util/ulid.ts';
 import type { FactRow } from '../facts.ts';
@@ -204,7 +205,7 @@ export function rebindMentions(db: Db, chapter: number): number {
     )
     .all(chapter) as Array<{ id: number; blockId: string; witness: string }>;
   const liveIds = new Set(live.map((block) => block.id));
-  const update = db.prepare('UPDATE mentions SET block_id = ?, start = ?, end = ? WHERE id = ?');
+  const update = db.prepare('UPDATE mentions SET block_id = ?, start = ?, end = ?, sentence_id = ? WHERE id = ?');
   let moved = 0;
   for (const row of rows) {
     if (liveIds.has(row.blockId)) continue;
@@ -212,7 +213,13 @@ export function rebindMentions(db: Db, chapter: number): number {
       const at = block.text.indexOf(row.witness);
       if (at < 0) continue;
       const start = Array.from(block.text.slice(0, at)).length;
-      update.run(block.id, start, start + Array.from(row.witness).length, row.id);
+      const end = start + Array.from(row.witness).length;
+      // ADR-044 §4 / BOOK-173 §2.4: the mention follows the **sentence** to the row the patch
+      // re-attached, with the new offsets. No live sentence covers the span (it straddles a split,
+      // or its row was erased) → no id: the mention keeps its block anchor, which is the legacy
+      // fallback. An id is never invented and never kept past its row.
+      const sentence = resolveSentenceCovering(db, { blockId: block.id, start, end });
+      update.run(block.id, start, end, sentence === null ? null : sentence.id, row.id);
       moved += 1;
       break;
     }

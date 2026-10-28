@@ -28,6 +28,8 @@ const STATE: Record<MyDecisionDto['outcome'], { copy: string; tone: DecisionTone
   // BOOK-137 — a filing on the canon sentence was decided as paperwork: «рассмотрено», never
   // «внесена», because no letter of the sentence changed. The reason on the line says the mode.
   registered: { copy: STATE_WORDS.registered, tone: 'done' },
+  // BOOK-173 §5 — the rewrite came back unchanged: considered, paid for, and not one byte moved.
+  'no-op': { copy: 'правка не внесена · перепись не изменила ни одного байта', tone: 'stopped' },
   queued: { copy: 'принято · ждёт очереди', tone: 'live' },
   escalated: { copy: 'правка остановлена · ждёт решения автора', tone: 'live' },
   dropped: { copy: 'правка снята', tone: 'stopped' },

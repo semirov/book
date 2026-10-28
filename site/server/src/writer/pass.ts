@@ -1,32 +1,27 @@
 /**
- * One writer pass, end to end (`docs/writer-lane.md` §1, §5–§6).
- *
+ * One writer pass, end to end (`docs/writer-lane.md` §1, §5–§6). The order:
  * ```
  * state → money guard (estimate vs the caps) → assignment → queued → start → pre-snapshot
- *   → prompt → read → belt (re-estimate the real prompt) → model call(s) → validate (one retry
- *   with the reason) → continuation calls → atomic write → land → gates (verdict ×2, at most one
- *   revision cycle) → landed → done
+ *   → prompt → read → belt (re-estimate) → model call(s) → validate (one retry with the reason)
+ *   → continuation calls → atomic write → land → gates (verdict ×2, one revision) → landed → done
  * ```
  *
- * Everything the pass touches is injected: the engine client, the model transport, the clock and
- * the logger. The pass holds no database, no socket and no key of its own; the talking lives in
- * `passLane.ts`, the prompts and the answer contracts in `prompt.ts` / `gates.ts`.
+ * Everything the pass touches is injected — engine, transport, clock, log. It holds no database,
+ * no socket, no key; the talking lives in `passLane.ts`, the prompts in `prompt.ts` / `gates.ts`.
  *
  * A refusal the engine states (`CHAPTER_WRITTEN`, `PASS_LEASED`, `TOKENS_EXHAUSTED`) is returned,
  * never thrown. The bound this file enforces is money, not tokens: the estimate (`estimate.ts`)
  * is checked before the pass is opened and again, from the real prompt, before the first call.
- * A failure after the lease parks the pass — `escalate` with one plain sentence plus a `refused`
- * stage carrying it, never silently dropped. Past the first landing a failure is auxiliary
- * instead (owner, 2026-10-28): a stage, a transcript or an engine transport that fails is logged
- * and remembered, never escalated over text that landed; the close is the fact that must land.
+ * A failure after the lease parks the pass — `escalate` with one sentence, never silently dropped.
+ * Past the first landing a failure is auxiliary (owner, 2026-10-28): logged and remembered, never
+ * escalated over text that landed; the close is the fact that must land.
  *
- * `landed` carries the pass's whole money line (writer calls and gate calls); `done` carries the
- * writer's own tokens only, because the engine adds each gate's from its verdict rows.
+ * `landed` carries the pass's money line (writer + gate calls); `done` the writer's tokens only.
  */
 
 import { readFileSync } from 'node:fs';
 
-import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { isChapterNumber, type BudgetDto, type WriteMode, type WriterAssignment } from '@book/shared';
 
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
@@ -36,14 +31,14 @@ import { createLane, assignmentData, type GateRun, type PassResult, type Provide
 import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
 import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
-import { chooseMode, RIPPLE_MODE, type ModeChoice } from './mode.ts';
+import { chooseMode, RIPPLE_MODE, type ModeChoice, type ModeInput } from './mode.ts';
 import { afterPatch } from './ripple/afterPatch.ts';
 import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
 import { codeOf, failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
-import { stageSummary } from './stages.ts';
+import { NO_OP_LINE, stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
 
 export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
@@ -52,11 +47,8 @@ export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
 const MAX_REVISIONS = 1;
 
 /**
- * BOOK-145: a step the engine already took away is not a failure of this pass.
- *
- * A step wall, a released lease, a step the engine closed itself: the text may be landed and the
- * step is simply not ours any more. The lane says so in one line, asks `next` again immediately
- * and never tries to close the dead step — a park there would be a second, false story.
+ * BOOK-145: a step the engine already took away is not a failure of this pass — a step wall, a
+ * released lease, a step closed under us. One line, `next` again, and never a park on a dead step.
  */
 const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
@@ -74,7 +66,7 @@ export type PassDeps = {
   chapter?: number | null;
   /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
   lanes?: Array<'fwd' | 'bwd' | 'filing'>;
-  /** BOOK-173 §7: this pass serves one chapter of a ripple — opened by the engine's ripple door. */
+  /** BOOK-173 §7: this pass serves one ripple chapter — opened by the engine's ripple door. */
   ripple?: { chapter: number; changeId: string; reason: string; claim: string };
 };
 
@@ -219,7 +211,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   }
 
   try {
-    // 3. `queued`: the engine opened the step; the writer is the one that says so.
+    // 3. `queued`: the engine opened the step — the writer is the one that says so.
     await lane.emit({
       stage: 'queued',
       chapter,
@@ -234,7 +226,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     const resume = job.landed === true;
     let text = '';
     // What the writing phase needs from above: the mode and the rewrite prompt it falls back to.
-    let choice: ModeChoice = chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, false);
+    const modeInput: ModeInput = { pass: job.pass, scopeHint: job.scopeHint, sentenceAnchor: job.sentenceAnchor };
+    let choice: ModeChoice = chooseMode(modeInput, false);
     let rewritePrompt: BuiltPrompt | null = null;
 
     if (!resume) {
@@ -256,7 +249,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // 5. The mode (§4), the prompt, and the stage that says both were assembled.
       //    The rewrite prompt is built even in patch mode: the model may decline in one step.
       const own = readChapter(bookRoot, chapter);
-      choice = deps.ripple === undefined ? chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, isWrittenChapter(own)) : RIPPLE_MODE;
+      choice = deps.ripple === undefined ? chooseMode(modeInput, isWrittenChapter(own)) : RIPPLE_MODE;
       let built: BuiltPrompt;
       let patchPrompt: PatchPrompt | null = null;
       try {
@@ -340,7 +333,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         });
       }
       text = written.text;
-      lane.setMode(written.mode, written.patch);
+      // BOOK-173 §2: the patch's characters edits travel to `land`, which is what keeps ids.
+      lane.setMode(written.mode, written.patch, written.sentences);
 
       // 8. The write, and the landing that makes it a revision.
       try {
@@ -354,6 +348,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       } catch (error) {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
+      // BOOK-173 §5: the silent no-op, said out loud — a pass that spent ten thousand tokens and
+      // moved no byte must not read in the log like a landing.
+      if (lane.mode() === 'rewrite' && text === beforeText) deps.log(`[writer] ${NO_OP_LINE}, глава ${String(chapter)}`);
       const reaction = await afterPatch({ plan: landing.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
       if (reaction.kind === 'park') return await lane.park({ detail: reaction.sentence, ...(reaction.cause === undefined ? {} : { cause: reaction.cause }) });
       // A landing drops the verdicts of the previous revision: every gate is asked again.
@@ -443,10 +440,11 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       at: now(),
     });
 
-    // 11. `done`: the writer's tokens only (the engine adds each gate's). A landed step closes on
-    //     what it has: `STEP_CLOSED` is that close, a transport failure gets one more try.
+    // 11. `done`: the writer's tokens only (the engine adds each gate's). `STEP_CLOSED` is the
+    //     close this pass asked for; a transport failure gets one more try.
     let closed: DoneView | null = null;
     let closeFailure: Failure | null = null;
+    const passMode: WriteMode | null = lane.mode();
     for (let attempt = 0; attempt < 2 && closed === null; attempt += 1) {
       try {
         closed = await engine.done({
@@ -456,6 +454,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
           tokensIn: lane.writerTokens().in,
           tokensOut: lane.writerTokens().out,
           seams: [],
+          // BOOK-173 §4: how this pass wrote — the one thing the engine cannot state itself.
+          ...(passMode === null ? {} : { mode: passMode }),
         });
       } catch (error) {
         closeFailure = failureOf(error);

@@ -277,6 +277,18 @@ export function recordCloseSpend(
 }
 
 /**
+ * The money a closed pass actually cost, read from the ledger row it wrote (BOOK-173 §4). Null when
+ * the pass never reached the ledger — a close before the ledger existed, or a step that spent
+ * nothing worth a row — and null is «not measured», never «free»: the plan's estimate then stands.
+ */
+export function passUsdOf(db: Db, passId: string): number | null {
+  const row = db.prepare('SELECT usd FROM pass_spend WHERE pass_id = ?').get(passId) as
+    | { usd: number | null }
+    | undefined;
+  return row?.usd ?? null;
+}
+
+/**
  * Write the pass's one ledger row, inside the close's own transaction.
  *
  * `INSERT OR IGNORE` on `pass_id`: a re-close is not a second charge. The provider's cache

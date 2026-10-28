@@ -223,6 +223,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         chapter: comment.chapter,
         anchor: JSON.stringify({
           blockIds: comment.block_id === null ? [] : [comment.block_id],
+          // ADR-044: the sentence the filing hangs on, so the writer's handles name a row rather
+          // than a re-derived split. Empty for a row written before v25 or a straddling quote.
+          sentenceIds: comment.sentence_id === null ? [] : [comment.sentence_id],
           quote: comment.quote,
           prefix: comment.prefix,
           suffix: comment.suffix,
@@ -320,6 +323,7 @@ function register(
     chapter: comment.chapter,
     anchor: JSON.stringify({
       blockIds: comment.block_id === null ? [] : [comment.block_id],
+      sentenceIds: comment.sentence_id === null ? [] : [comment.sentence_id],
       quote: comment.quote,
       prefix: comment.prefix,
       suffix: comment.suffix,

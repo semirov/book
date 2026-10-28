@@ -27,6 +27,7 @@ import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
 import type { PremiseCause } from '../engine/types.ts';
 import type { RipplePlan } from '../ledger/graph/plan.ts';
+import type { SentencePatchEdit } from '../sentences/transform.ts';
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -178,6 +179,20 @@ export type DoneInput = {
   tokensIn?: number;
   tokensOut?: number;
   seams?: unknown[];
+  /** BOOK-173 §4/§5: how the pass wrote — `rewrite` on an unchanged text is a `no-op`. */
+  mode?: 'patch' | 'rewrite';
+};
+
+/** What a landing may say beyond the lease (BOOK-173 §2, §4). */
+export type LandInput = {
+  /**
+   * The patch this landing applies, one entry per block: the character edit the ingest needs to
+   * keep sentence ids across the write. Absent for a rewrite, a draft or a front sheet.
+   */
+  sentences?: ReadonlyArray<SentencePatchEdit>;
+  /** The mode the pass ran and the estimate it was opened with — recorded with the plan. */
+  mode?: 'patch' | 'rewrite';
+  estimateUsd?: number;
 };
 
 /** What an escalation reports about the model calls it made before it parked (BOOK-117). */
@@ -201,7 +216,7 @@ export type EngineClient = {
   /** BOOK-173: one chapter of a ripple already planned — its own step, lease and gates. */
   openRipple(chapter: number, session: string, changeId: string): Promise<WriterAssignment>;
   start(leaseId: string): Promise<StartView>;
-  land(leaseId: string): Promise<LandView>;
+  land(leaseId: string, input?: LandInput): Promise<LandView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
   verdictRights(body: RightsVerdictInput): Promise<{ verdict: 'CLEAR' | 'REFUSED'; action: 'close' | 'escalate'; closed: boolean }>;
   done(body: DoneInput): Promise<DoneView>;
@@ -320,7 +335,13 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     openRipple: async (chapter, session, changeId) =>
       (await post('/internal/ripple/open', { chapter, session, changeId })) as WriterAssignment,
     start: async (leaseId) => (await post('/internal/start', { leaseId })) as StartView,
-    land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
+    land: async (leaseId, input) =>
+      (await post('/internal/land', {
+        leaseId,
+        ...(input?.sentences === undefined ? {} : { sentences: input.sentences }),
+        ...(input?.mode === undefined ? {} : { mode: input.mode }),
+        ...(input?.estimateUsd === undefined ? {} : { estimateUsd: input.estimateUsd }),
+      })) as LandView,
     nextRightsGate: async (session) =>
       (await post('/internal/next', { role: 'rights', session })) as RightsAssignmentView | null,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,

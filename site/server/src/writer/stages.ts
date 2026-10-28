@@ -64,10 +64,18 @@ const MODE_REASONS: Record<ModeReason, string> = {
   'slot-empty': 'слот пуст',
   'chapter-scope': 'заявка про главу',
   'phrase-scope': 'заявка про фразу',
+  // BOOK-173 §3: the filing is anchored on a sentence the book still holds — the unit rule's door.
+  'sentence-anchor': 'заявка привязана к предложению',
   'no-scope': 'заявка не про фразу',
   model: 'просит модель',
   revision: 'замечания гейта',
 };
+
+/**
+ * BOOK-173 §5: the one factual line a no-op pass owes. It is the change card's word and the lane
+ * log's line — the same sentence, because two words for one fact is how a record starts lying.
+ */
+export const NO_OP_LINE = 'перепись не изменила ни одного байта';
 
 export function modeLine(choice: ModeChoice): string {
   return `режим: ${choice.mode === 'patch' ? 'правка' : 'перепись'} (${MODE_REASONS[choice.reason]})`;

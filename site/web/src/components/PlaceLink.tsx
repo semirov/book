@@ -1,5 +1,5 @@
 import type { CommentDto } from '@book/shared';
-import { useId, useRef, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getComment } from '../api.ts';
@@ -36,9 +36,14 @@ import { FilingPanel } from './FilingPanel.tsx';
  *
  * The card is the page's one panel (`useFiling`), drawn by the link that opened it — `owner` is
  * this link, not the paragraph: a chapter the reader has not loaded has no paragraph to draw
- * a card from, and two doors to one filing must never raise two boxes. It lives in a portal on
- * `document.body`, so a door inside a `<p>` (a quote) or a grid cell (the chronicle's place)
- * still leaves a valid document and gets the one fixed placement every panel has.
+ * a card from, and two doors to one filing must never raise two boxes.
+ *
+ * BOOK-128 #3863 / review M5 — **the card is a block after the row, never inside it.** A link
+ * inside a `<p>` (a quote) or a flex row (the chronicle's `li.chr-row`) cannot hold an `<aside>`:
+ * the content model is invalid and the card would become a flex item. So the card is portalled
+ * into a seat element the component inserts **after** the nearest `p`/`li` (`.place-seat`), and
+ * the seat is removed when the card closes. This is the one surface that cannot be a sentence
+ * record: a discussion row has no paragraph and no sentence, so it keeps a sibling card.
  *
  * Closing returns focus to the link itself: the page's strip was never touched, so the door is
  * the only thing to hand back to the reader.
@@ -184,6 +189,31 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
     void settle(place, null);
   };
 
+  /** The card's block seat: a sibling after the row, never a child of the paragraph. */
+  const [seat, setSeat] = useState<HTMLElement | null>(null);
+  const openId = open === null || open.comment === null ? null : open.comment.id;
+  useEffect(() => {
+    if (openId === null) {
+      setSeat(null);
+      return;
+    }
+    const host = link.current?.closest('p, li') ?? null;
+    // The seat must be **valid where it lands**: inside an `<ol>`/`<ul>` (the chronicle's
+    // register rows) it is an `<li>`; anywhere else it is a `<div>`.
+    const list = host?.parentElement?.tagName;
+    const node = document.createElement(list === 'OL' || list === 'UL' ? 'li' : 'div');
+    node.className = 'place-seat';
+    if (host?.parentElement != null) host.after(node);
+    else document.body.appendChild(node);
+    setSeat(node);
+    return () => {
+      node.remove();
+      setSeat(null);
+    };
+    // The seat is the card's identity: a new filing is a new seat, a close removes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
+
   return (
     <>
       <a
@@ -194,7 +224,7 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
       >
         {children}
       </a>
-      {open === null || open.comment === null
+      {seat === null || open === null || open.comment === null
         ? null
         : createPortal(
             <FilingPanel
@@ -203,7 +233,7 @@ export function PlaceLink({ place, children, onOpenChange, className, onLoadChap
               placeNote={open.note ?? null}
               onClose={closePanel}
             />,
-            document.body,
+            seat,
           )}
     </>
   );
