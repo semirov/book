@@ -8,13 +8,13 @@ import {
   framePaperworkReason,
   normalizeFrameMark,
 } from '../src/frame.ts';
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, frameSentenceOf } from '../src/book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, frameSentenceOf } from '../src/book.ts';
 import { RETRO_MODES } from '../src/change.ts';
 
 /**
  * BOOK-137 — one classifier for "how does this filing sit against the book's frame".
  *
- * The sentences are the canon ones (`book.ts`), never a copy: ch01 opens with the first, ch67
+ * The sentences are the canon ones (`book.ts`), never a copy: ch01 opens with the first, ch42
  * closes with the last. `touched` is about the sentence, `adjacent` about its paragraph,
  * `untouched` about everything else — and a chapter with no frame is never touched.
  */
@@ -37,18 +37,18 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
     expect(mark({ chapter: 1, quote: 'пустую комнату' })).toBe('touched');
     // The other direction: the reader quoted more than the sentence — it still contains it.
     expect(mark({ chapter: 1, quote: `${FRAME} ${AFTER}` })).toBe('touched');
-    // ch67's closer is a sentence of its own, and the rule is the same at the other end.
-    expect(mark({ chapter: 67, quote: FRAME_LAST_SENTENCE, blockIndex: 2, blockText: FRAME_LAST_SENTENCE })).toBe(
+    // ch42's closer is a sentence of its own, and the rule is the same at the other end.
+    expect(mark({ chapter: 42, quote: FRAME_LAST_SENTENCE, blockIndex: 2, blockText: FRAME_LAST_SENTENCE })).toBe(
       'touched',
     );
-    expect(mark({ chapter: 67, quote: 'не осталось глаз' })).toBe('touched');
+    expect(mark({ chapter: 42, quote: 'не осталось глаз' })).toBe('touched');
   });
 
   it('is `adjacent` for prose in the frame’s own paragraph, and for an empty quote on it', () => {
     expect(mark({ chapter: 1, quote: AFTER, blockIndex: 0, blockText: `${FRAME} ${AFTER}` })).toBe('adjacent');
-    // The frame's block is index 0 on ch01 and the last one on ch67.
+    // The frame's block is index 0 on ch01 and the last one on ch42.
     expect(mark({ chapter: 1, blockIndex: 0, blockText: `${FRAME} ${AFTER}` })).toBe('adjacent');
-    expect(mark({ chapter: 67, blockIndex: 2, blockText: `Он сел у окна. ${FRAME_LAST_SENTENCE}`, blockCount: 3 })).toBe(
+    expect(mark({ chapter: 42, blockIndex: 2, blockText: `Он сел у окна. ${FRAME_LAST_SENTENCE}`, blockCount: 3 })).toBe(
       'adjacent',
     );
     // A rewrapped paragraph still holds the sentence: whitespace is not text.
@@ -56,7 +56,7 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
   });
 
   it('is `adjacent` for the paragraph beside the frame — the one inside the chapter', () => {
-    // ch01 opens on the frame, so the paragraph after it is the neighbour; ch67 closes on it,
+    // ch01 opens on the frame, so the paragraph after it is the neighbour; ch42 closes on it,
     // so the paragraph before it is. The tap there is an ordinary edit, and the record says it
     // sat beside the sentence rather than 50 paragraphs away.
     expect(mark({ chapter: 1, blockIndex: 1, blockText: 'Свет был включён до меня.', blockCount: 3 })).toBe(
@@ -65,8 +65,8 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
     expect(mark({ chapter: 1, blockIndex: 1, blockText: 'Свет был включён до меня.', blockCount: 4 })).toBe(
       'adjacent',
     );
-    expect(mark({ chapter: 67, blockIndex: 1, blockText: 'Часы на стене шли.', blockCount: 3 })).toBe('adjacent');
-    expect(mark({ chapter: 67, blockIndex: 2, blockText: 'Часы на стене шли.', blockCount: 4 })).toBe('adjacent');
+    expect(mark({ chapter: 42, blockIndex: 1, blockText: 'Часы на стене шли.', blockCount: 3 })).toBe('adjacent');
+    expect(mark({ chapter: 42, blockIndex: 2, blockText: 'Часы на стене шли.', blockCount: 4 })).toBe('adjacent');
   });
 
   it('is `untouched` from the third block on, and for every chapter without a frame', () => {
@@ -76,7 +76,7 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
     expect(
       mark({ chapter: 1, quote: 'Свет был включён до меня.', blockIndex: 3, blockText: 'Свет был включён до меня.', blockCount: 4 }),
     ).toBe('untouched');
-    expect(mark({ chapter: 67, blockIndex: 0, blockText: 'Первый абзац финала.', blockCount: 3 })).toBe('untouched');
+    expect(mark({ chapter: 42, blockIndex: 0, blockText: 'Первый абзац финала.', blockCount: 3 })).toBe('untouched');
     // A chapter with no frame sentence is never touched, even by prose that looks like it.
     expect(mark({ chapter: 2, quote: FRAME, blockIndex: 0, blockText: FRAME })).toBe('untouched');
     expect(mark({ chapter: 2, blockIndex: 0, blockCount: 1 })).toBe('untouched');
@@ -84,7 +84,7 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
 
   it('reads a chapter-level filing as untouched, and a chapter with no paragraphs safely', () => {
     expect(mark({ chapter: 1, blockCount: 1 })).toBe('untouched');
-    expect(mark({ chapter: 67, blockCount: 0 })).toBe('untouched');
+    expect(mark({ chapter: 42, blockCount: 0 })).toBe('untouched');
   });
 
   it('keeps one mark vocabulary and one default paperwork mode', () => {
@@ -110,7 +110,7 @@ describe('classifyFrame — the mark a filing carries (BOOK-137)', () => {
 
   it('names the canon sentences it classifies against, and no others', () => {
     expect(frameSentenceOf(1)).toBe(FRAME);
-    expect(frameSentenceOf(67)).toBe(FRAME_LAST_SENTENCE);
+    expect(frameSentenceOf(TOTAL_CHAPTERS)).toBe(FRAME_LAST_SENTENCE);
     expect(frameSentenceOf(2)).toBeNull();
   });
 });

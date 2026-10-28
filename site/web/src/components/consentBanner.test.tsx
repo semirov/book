@@ -21,7 +21,7 @@ import { ConsentBanner } from './ConsentBanner.tsx';
  */
 
 const state = {
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
 } as unknown as StateSnapshot;
 const imprint = { author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT };
 

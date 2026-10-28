@@ -1,7 +1,7 @@
 /**
  * BOOK-109 — the freshness policy, asserted at the wire.
  *
- * The owner's phone kept printing the old ch01/ch67 while this host served the canon, so the
+ * The owner's phone kept printing the old ch01/ch42 while this host served the canon, so the
  * two permissions a cache lives on — `max-age` (do not ask) and `304` (keep what you have) —
  * are gone from everything but Vite's content-hashed assets. This file is the contract:
  * `/api/*` and HTML are `no-store` and never answer `304`; the static files whose tags follow
@@ -34,7 +34,7 @@ let app: FastifyInstance | null = null;
 let webDist: string | null = null;
 
 async function boot(options: { ui?: boolean; env?: Record<string, string> } = {}): Promise<void> {
-  fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch67.md': CHAPTER_LAST });
+  fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch42.md': CHAPTER_LAST });
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
   webDist = mkdtempSync(join(tmpdir(), 'book-web-'));
@@ -83,7 +83,7 @@ describe('the API is never cached (BOOK-109)', () => {
     await boot();
     const urls = [
       '/api/chapters/1',
-      '/api/chapters/67',
+      '/api/chapters/42',
       '/api/state',
       '/api/chapters',
       '/api/front',
@@ -102,7 +102,7 @@ describe('the API is never cached (BOOK-109)', () => {
 
     // The tags stay: they name the projection, a proxy log still reads them, and a client may
     // compare them — they just never licence a reuse.
-    for (const url of ['/api/chapters/1', '/api/chapters/67', '/api/state', '/api/front', '/api/cost']) {
+    for (const url of ['/api/chapters/1', '/api/chapters/42', '/api/state', '/api/front', '/api/cost']) {
       const response = await app!.inject({ method: 'GET', url });
       expect(response.headers.etag, url).toBeTruthy();
     }

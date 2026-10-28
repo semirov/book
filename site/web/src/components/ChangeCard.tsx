@@ -16,6 +16,7 @@ import { WING_WORDS, wingOfChapter } from '../lib/cascade.ts';
 import { changeDeedLine } from '../lib/deed.ts';
 import { costLine, focusHash } from '../lib/focus.ts';
 import { formatCharsShort, formatTime } from '../lib/format.ts';
+import { applyStickyOffsets } from '../lib/headerOffset.ts';
 import { scienceLine } from '../lib/science.ts';
 
 /**
@@ -50,6 +51,16 @@ export function ChangeCard({
     announced.current = change.id;
     track('record_open', {});
   }, [change.id]);
+
+  // The card is a band over the viewport's bottom edge, so it owns the anchor's bottom offset
+  // while it is on the page. Measured when it opens **and when it closes**: a card that closes
+  // without a resize would otherwise leave the footer reserving room for a box that is gone.
+  useEffect(() => {
+    applyStickyOffsets(document);
+    return () => {
+      applyStickyOffsets(document);
+    };
+  }, []);
 
   // BOOK-16: the kind, as the plain word a reader already knows from the rules page.
   const kindWord = interventionKindLabel(change.interventionKind);
@@ -180,7 +191,7 @@ export function ChangeCard({
 
 /**
  * «вниз» / «вверх» / «здесь» — which wing reached this chapter, from the change's origin.
- * The first sheet and the finale are not wings: a ripple evaluates chapter 67, it never walks
+ * The first sheet and the finale are not wings: a ripple evaluates chapter 42, it never walks
  * the up wing into it, so the ending step is named «финал» and the front step «обложка».
  */
 function stepWingCopy(step: ChangeStepDto, origin: number): string {

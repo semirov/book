@@ -46,7 +46,7 @@ export type DeriveInput = {
   now: Date;
   version: number;
   front?: FrontFact;
-  /** Slots that hold only their basis sentence (ch01/ch67); a subset of `empty` (BOOK-6). */
+  /** Slots that hold only their basis sentence (ch01/ch42); a subset of `empty` (BOOK-6). */
   basis?: number[];
   /** Engine facts (queue, ripple, unresolved seams, live lease); absent in degraded mode. */
   overlay?: EngineOverlay;
@@ -72,7 +72,11 @@ export type DeriveInput = {
 export type ProjectedState = Omit<StateSnapshot, 'budget'>;
 
 export function deriveState(input: DeriveInput): ProjectedState {
-  const facts = [...input.facts].filter((fact) => fact.blocks > 0).sort((a, b) => a.n - b.n);
+  // A fact outside the book is storage, not a chapter: a row written before the cut (chapter 65)
+  // must never reach the catalog or bias the meeting arithmetic below.
+  const facts = [...input.facts]
+    .filter((fact) => fact.blocks > 0 && isChapterNumber(fact.n))
+    .sort((a, b) => a.n - b.n);
   const readerChanges = Math.max(0, Math.trunc(input.readerChanges ?? 0));
   // A reader change is a record too, so it starts the chronicle even if the caller did not say
   // so; the log's first row is the other, smaller way for a book to have begun.
@@ -153,7 +157,7 @@ export function deriveState(input: DeriveInput): ProjectedState {
   };
 }
 
-/** Exactly 67 entries, always (§7.2 rule 11); `title` comes only from a chapter's line 1. */
+/** Exactly `TOTAL_CHAPTERS` entries, always (§7.2 rule 11); `title` comes only from line 1. */
 export function buildToc(facts: readonly ChapterFact[]): TocEntry[] {
   const byNumber = new Map(facts.filter((fact) => fact.blocks > 0).map((fact) => [fact.n, fact]));
   return allChapterNumbers().map((n) => {

@@ -367,7 +367,7 @@ export function sheetCopy(
 
 // ── the ring field ───────────────────────────────────────────────────────────
 
-/** A local window around the ripple, so 7–9 do not collapse into one pixel of a 67-chapter scale. */
+/** A local window around the ripple, so 7–9 do not collapse into one pixel of a 42-chapter scale. */
 export function focusScale(chapters: readonly number[], pad = 2): { from: number; to: number } {
   const valid = chapters.filter((n) => Number.isInteger(n) && n >= 1 && n <= TOTAL_CHAPTERS);
   if (valid.length === 0) return { from: 1, to: 5 };

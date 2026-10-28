@@ -14,6 +14,7 @@
 import {
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
+  TOTAL_CHAPTERS,
   normalizeSeamBoundary,
   parseSeams,
   seamTouchesChapter,
@@ -265,7 +266,7 @@ export function createEngine(deps: EngineDeps) {
       });
     }
     for (const seam of seams) {
-      const chapter = step.chapter ?? (step.pass === 'front' ? 1 : 67);
+      const chapter = step.chapter ?? (step.pass === 'front' ? 1 : TOTAL_CHAPTERS);
       if (seamTouchesChapter(seam.boundary, chapter)) continue;
       if (step.pass === 'cascade') {
         // C2: a repair that needs a chapter outside this step's own reach is not a malformed
@@ -308,7 +309,7 @@ export function createEngine(deps: EngineDeps) {
         ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
         : chapter !== null && sameSequence(blockHashes(chapter.blocks), preBlocksOf(step).map((block) => block.hash));
 
-    // ADR-024: a GAP on the ending escalates — the fix is never another rewrite of chapter 67.
+    // ADR-024: a GAP on the ending escalates — the fix is never another rewrite of the last chapter.
     const endingGap =
       step.pass === 'ending' &&
       gates.some(

@@ -1,10 +1,10 @@
 /**
  * Drafting is not a change and does not enter the FIFO lane (ARCHITECTURE.md §6A.9, §6A.10).
  *
- * Two fronts write away from the two fixed points: `fwd` writes 1→34, `bwd` writes 67→35.
- * The engine only decides *which* slot is next and refuses a draft that would break C1
- * (a neighbour that does not exist yet), the meeting point (the fronts may not cross) or
- * the volume of work in flight. A draft is pulled in the gaps of the lane.
+ * Two fronts write away from the two fixed points toward the meeting point, each pulling the
+ * first slot it has not written yet. The engine only decides *which* slot is next and refuses
+ * a draft that would break C1 (a neighbour that does not exist yet), the meeting point (the
+ * fronts may not cross) or the volume of work in flight. A draft is pulled in the gaps of the lane.
  */
 
 import { FORWARD_LAST, TOTAL_CHAPTERS } from '@book/shared';

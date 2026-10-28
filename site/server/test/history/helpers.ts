@@ -1,3 +1,5 @@
+import { TOTAL_CHAPTERS } from '@book/shared';
+
 import type { Db } from '../../src/db/db.ts';
 import { reconcile, type ReconcileReport } from '../../src/ingest/reconcile.ts';
 import { toIso } from '../../src/util/time.ts';
@@ -35,10 +37,10 @@ export function chapterFile(n: number, paragraphs: string[] = [], title?: string
   return longProse(paragraphs, title ?? `Глава ${n}`);
 }
 
-/** A 67-chapter book, one paragraph each — the invariant the time-travel check runs on. */
+/** The whole book, one paragraph each — the invariant the time-travel check runs on. */
 export function fullBook(): Record<string, string> {
   const files: Record<string, string> = { '00-front.md': FRONT };
-  for (let n = 1; n <= 67; n += 1) {
+  for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) {
     files[`ch${String(n).padStart(2, '0')}.md`] = `Глава ${n}\n\nАбзац главы ${n}: служебный текст для проверки, он не из книги.`;
   }
   return files;

@@ -6,7 +6,7 @@
  * file. What has to go is the book's *content and progress*: the projection of every written
  * chapter, the whole engine ledger, the log, the readers' filings and the rate state. After
  * the reset the book must be indistinguishable from one that was never written — ch01 and
- * ch67 still hold their frozen frame sentence as one readable paragraph each, and that is a
+ * ch42 still hold their frozen frame sentence as one readable paragraph each, and that is a
  * `basis` slot, not a written chapter.
  *
  * Rules this module keeps:
@@ -133,7 +133,7 @@ export class ManuscriptWrittenError extends Error {
 
 /**
  * The frame slot is prose, not the frozen sentence: the book would lose its canon. Unlike a
- * written chapter, ch01/ch67 are committed canon, so `git checkout` is the right remedy here —
+ * written chapter, ch01/ch42 are committed canon, so `git checkout` is the right remedy here —
  * it is the engine's output that is untracked, not the frame.
  */
 export class FrameNotBasisError extends Error {
@@ -280,9 +280,12 @@ function wipe(db: Db): void {
  * append-only triggers back.
  */
 function assertWiped(db: Db, expectedVersion: number): void {
-  const slots = (db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE n IN (1, 67) AND basis = 1').get() as {
-    n: number;
-  }).n;
+  // The two frame slots, by number: 1 and `TOTAL_CHAPTERS` (BOOK-155 moved the finale to 42).
+  const slots = (
+    db
+      .prepare('SELECT COUNT(*) AS n FROM chapters WHERE n IN (?, ?) AND basis = 1')
+      .get(FRAME_SLOTS[0], FRAME_SLOTS[1]) as { n: number }
+  ).n;
   if (slots !== FRAME_SLOTS.length) {
     throw new Error(`reset: the frame slots are not basis rows (${String(slots)} of 2)`);
   }

@@ -1,4 +1,4 @@
-import type { Finding, WriterAssignment } from '@book/shared';
+import { TOTAL_CHAPTERS, type Finding, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { acquireLease } from '../../src/engine/leases.ts';
@@ -269,24 +269,26 @@ describe('the cycle cap (§6B.4 rules 2–3)', () => {
 });
 
 describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
+  const LAST = TOTAL_CHAPTERS;
+
   function endingFixture() {
     return createEngineFixture({
       chapters: {
-        65: chapterText('Перед финалом', ['Свет в коридоре щёлкнул и погас.']),
-        66: chapterText('Ночь', ['Служебная строка.', 'Никто не спал.']),
-        67: chapterText('Финал', ['Свет погас окончательно.']),
+        [LAST - 2]: chapterText('Перед финалом', ['Свет в коридоре щёлкнул и погас.']),
+        [LAST - 1]: chapterText('Ночь', ['Служебная строка.', 'Никто не спал.']),
+        [LAST]: chapterText('Финал', ['Свет погас окончательно.']),
       },
     });
   }
 
-  it('reaches chapter 67 as an evaluation step and records it', () => {
+  it('reaches the last chapter as an evaluation step and records it', () => {
     const fixture = endingFixture();
     try {
-      const change = fixture.engine.enqueue({ kind: 'operator', chapter: 66, intent: 'связать ночь с финалом' });
+      const change = fixture.engine.enqueue({ kind: 'operator', chapter: LAST - 1, intent: 'связать ночь с финалом' });
       const origin = runStubStep(fixture, {
         title: 'Ночь',
         blocks: ['Служебная строка.', 'Никто не спал.'],
-        seams: [{ boundary: 67, reason: 'финал должен продолжать эту ночь' }],
+        seams: [{ boundary: LAST, reason: 'финал должен продолжать эту ночь' }],
       });
       expect(origin?.assignment.pass).toBe('change');
 
@@ -295,13 +297,13 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
         { title: 'Перед финалом', blocks: ['Свет в коридоре щёлкнул и погас.'], seams: [] },
         'bwd',
       );
-      expect(down?.assignment.chapter).toBe(65);
+      expect(down?.assignment.chapter).toBe(LAST - 2);
 
       const ending = runStubStep(fixture, { seams: [] });
       expect(ending?.assignment.pass).toBe('ending');
-      expect(ending?.assignment.chapter).toBe(67);
+      expect(ending?.assignment.chapter).toBe(LAST);
       expect(ending?.result.outcome).toBe('evaluated');
-      expect(fixture.readChapter(67)).toContain('Свет погас окончательно.');
+      expect(fixture.readChapter(LAST)).toContain('Свет погас окончательно.');
 
       const trace = fixture.engine.trace(change.id);
       if (trace?.kind !== 'change') throw new Error('expected a change trace');
@@ -315,15 +317,15 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
   it('lets the backward lane draft the ending — the ending must be written', () => {
     const fixture = endingFixture();
     try {
-      // ch67 already exists in this fixture, so the backward lane's next draft is 64.
+      // The last three slots exist in this fixture, so the backward lane's next draft is LAST-3.
       const assignment = fixture.engine.next({ for: 'bwd', session: 'writer-bwd' }) as WriterAssignment | null;
       expect(assignment?.pass).toBe('draft');
-      expect(assignment?.chapter).toBe(64);
+      expect(assignment?.chapter).toBe(LAST - 3);
       const fresh = createEngineFixture();
       try {
         const first = fresh.engine.next({ for: 'bwd', session: 'writer-bwd' }) as WriterAssignment;
         expect(first.pass).toBe('draft');
-        expect(first.chapter).toBe(67);
+        expect(first.chapter).toBe(LAST);
       } finally {
         fresh.close();
       }
@@ -332,14 +334,14 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
     }
   });
 
-  it('a GAP on the ending escalates instead of revising chapter 67', () => {
+  it('a GAP on the ending escalates instead of revising the last chapter', () => {
     const fixture = endingFixture();
     try {
-      fixture.engine.enqueue({ kind: 'operator', chapter: 66, intent: 'связать ночь с финалом' });
+      fixture.engine.enqueue({ kind: 'operator', chapter: LAST - 1, intent: 'связать ночь с финалом' });
       runStubStep(fixture, {
         title: 'Ночь',
         blocks: ['Служебная строка.', 'Никто не спал.'],
-        seams: [{ boundary: 67, reason: 'финал должен продолжать эту ночь' }],
+        seams: [{ boundary: LAST, reason: 'финал должен продолжать эту ночь' }],
       });
       runStubStep(fixture, { title: 'Перед финалом', blocks: ['Свет в коридоре щёлкнул и погас.'], seams: [] }, 'bwd');
       const ending = fixture.engine.next({ for: 'bwd', session: 'writer-bwd' }) as WriterAssignment;
@@ -359,9 +361,9 @@ describe('the ending is evaluated, never rewritten (ADR-024, §6C.4)', () => {
   });
 });
 
-describe('C3 — a ripple may never lease chapter 67', () => {
+describe('C3 — a ripple may never lease the last chapter', () => {
   it('refuses a cascade lease on the ending', () => {
-    const fixture = createEngineFixture({ chapters: { 67: chapterText('Финал', ['Свет погас.']) } });
+    const fixture = createEngineFixture({ chapters: { [TOTAL_CHAPTERS]: chapterText('Финал', ['Свет погас.']) } });
     try {
       const stepId = 'stp_frozen';
       store.insertStep(fixture.db, {
@@ -371,7 +373,7 @@ describe('C3 — a ripple may never lease chapter 67', () => {
         wave: 1,
         lane: 'forward',
         pass: 'cascade',
-        chapter: 67,
+        chapter: TOTAL_CHAPTERS,
         boundary: 'ending',
         seamsIn: '[]',
         revBefore: 1,

@@ -42,6 +42,7 @@ const ENTRY: CatalogEntry = {
   blocks: 3,
   written: true,
   basis: false,
+  opening: null,
   writtenAt: '2026-10-20T09:20:00Z',
   updatedAt: '2026-10-20T09:20:00Z',
   direction: 'forward',

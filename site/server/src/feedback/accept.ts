@@ -7,13 +7,13 @@
  * the site's decisions tailer call this one function, so a change has exactly one shape no
  * matter which process wrote it, and re-running a decision is a no-op.
  *
- * BOOK-137: a filing that **touched** the frozen frame (ch01's opening sentence, ch67's
+ * BOOK-137: a filing that **touched** the frozen frame (ch01's opening sentence, ch42's
  * finale) is accepted as paperwork: a `changes` row with `frame='touched'`, a paperwork mode,
  * `status='done'` and `outcome='registered'` — no step, no ripple, no lane. The sentence's
  * letters are not touched by anything here; the land guard (`engine/write.ts`) is what keeps
  * them, and this row is the record that the world was told so. A filing beside the frame is an
  * ordinary change that carries its mark — and a filing beside the frame on a **basis-only** slot
- * (ch01/ch67, the frame is the whole text) is refused with `FROZEN_FRAME`, the queue's own answer,
+ * (ch01/ch42, the frame is the whole text) is refused with `FROZEN_FRAME`, the queue's own answer,
  * because there is no prose to rewrite and no anchor to place.
  *
  * Insert and link happen in one transaction: a crash can never leave a queued change with

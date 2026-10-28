@@ -16,7 +16,7 @@ import type {
   SeamBoundary,
   StateSnapshot,
 } from '@book/shared';
-import { parseSeams } from '@book/shared';
+import { TOTAL_CHAPTERS, isChapterNumber, parseSeams } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import {
@@ -134,18 +134,27 @@ export function readOpenCascade(db: Db): StateSnapshot['cascade'] {
   if (cascade === undefined) return null;
   const change = db.prepare('SELECT * FROM changes WHERE id = ?').get(cascade.change_id) as ChangeRow | undefined;
   if (change === undefined) return null;
+  // BOOK-155 — the ribbon's origin is an anchor (`#ch-N`). A change filed against a number the
+  // book no longer has has no place to point at, so the public ripple is not drawn at all: the
+  // row stays storage, and the reading surface is never told about a chapter that is not there.
+  if (!isChapterNumber(change.chapter)) return null;
 
   const steps = stepsOfCascade(db, cascade.id);
   const budget = safeJson<{ maxSteps?: number; maxWallMs?: number }>(cascade.budget) ?? {};
   const inFlight = steps.find((step) => step.outcome === null) ?? null;
-  const lanes = steps.filter((step) => step.pass === 'cascade' && step.chapter !== null);
+  // Only steps inside the book's range name a chapter (BOOK-155): the same rule `wingsOf` uses.
+  const lanes = steps.filter((step) => step.pass === 'cascade' && step.chapter !== null && isChapterNumber(step.chapter));
   const forward = lanes.filter((step) => step.lane === 'forward').map((step) => step.chapter as number);
   const backward = lanes.filter((step) => step.lane === 'backward').map((step) => step.chapter as number);
   const touched = new Set<number>([change.chapter]);
-  for (const step of steps) if (step.chapter !== null) touched.add(step.chapter);
+  for (const step of steps) if (step.chapter !== null && isChapterNumber(step.chapter)) touched.add(step.chapter);
   const rewritten = new Set<number>();
   for (const step of steps) {
-    if (step.chapter !== null && (step.outcome === 'rewritten' || step.outcome === 'published_with_finding')) {
+    if (
+      step.chapter !== null &&
+      isChapterNumber(step.chapter) &&
+      (step.outcome === 'rewritten' || step.outcome === 'published_with_finding')
+    ) {
       rewritten.add(step.chapter);
     }
   }
@@ -156,6 +165,16 @@ export function readOpenCascade(db: Db): StateSnapshot['cascade'] {
     }
   }
   const maxWallMs = budget.maxWallMs ?? 1_800_000;
+  // A step in flight inside the book names its chapter; one at a number the book no longer has
+  // names none, so the ribbon draws no rings rather than a cursor over a missing chapter.
+  const stepChapter =
+    inFlight === null
+      ? null
+      : inFlight.pass === 'front'
+        ? 'front'
+        : inFlight.chapter !== null && isChapterNumber(inFlight.chapter)
+          ? inFlight.chapter
+          : null;
 
   return {
     id: cascade.id,
@@ -172,7 +191,7 @@ export function readOpenCascade(db: Db): StateSnapshot['cascade'] {
     seams: [...seams].map(([boundary, reason]) => ({ boundary, reason })),
     wing: inFlight === null ? null : inFlight.lane === 'backward' ? 'downward' : inFlight.lane === 'forward' ? 'upward' : null,
     lane: inFlight?.lane ?? null,
-    stepChapter: inFlight === null ? null : inFlight.pass === 'front' ? 'front' : inFlight.chapter,
+    stepChapter,
     startedAt: cascade.opened_at,
     budget: {
       steps: steps.length,
@@ -237,7 +256,7 @@ function boundaryFromStep(step: StepRow): SeamBoundary {
 
 function chapterBoundary(text: string, chapter: number): SeamBoundary {
   const numeric = Number.parseInt(text, 10);
-  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 67) return numeric === 1 ? 'front' : numeric;
+  if (Number.isInteger(numeric) && numeric >= 1 && numeric <= TOTAL_CHAPTERS) return numeric === 1 ? 'front' : numeric;
   return chapter === 1 ? 'front' : Math.max(2, chapter);
 }
 

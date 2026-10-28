@@ -16,7 +16,7 @@ import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, parseChapterTitle } from '../../shared/src/book.ts';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, OPENING_CHAPTER, TOTAL_CHAPTERS, parseChapterTitle } from '../../shared/src/book.ts';
 
 /** The two sentences, under the names the checks use. */
 export const FRAME = {
@@ -47,7 +47,7 @@ export function startsWithFrame(text, frame = FRAME.first) {
   return actual === expected || actual.startsWith(`${expected} `);
 }
 
-/** The prose ends with the frame. ch67 closes the book on these words. */
+/** The prose ends with the frame. The finale closes the book on these words. */
 export function endsWithFrame(text, frame = FRAME.last) {
   const actual = flat(text);
   const expected = flat(frame);
@@ -73,15 +73,15 @@ function matched(label, kind, frame, text, fallback) {
 }
 
 /**
- * `manuscript/ch01.md` must open with the frame and `manuscript/ch67.md` must close with it.
+ * `manuscript/ch01.md` must open with the frame and the finale (`ch42.md`) must close with it.
  * The title line is stripped by `parseChapterTitle`, so a written chapter with a title above
  * the frame still passes; a missing file is a mismatch, never a crash.
  */
 export function checkManuscript({ repoRoot, readFile = readFileSync, fileExists = existsSync }) {
   const checks = [];
   for (const { label, n, kind } of [
-    { label: 'manuscript ch01 first line', n: 1, kind: 'first' },
-    { label: 'manuscript ch67 last line', n: 67, kind: 'last' },
+    { label: `manuscript ${chapterName(OPENING_CHAPTER)} first line`, n: OPENING_CHAPTER, kind: 'first' },
+    { label: `manuscript ${chapterName(TOTAL_CHAPTERS)} last line`, n: TOTAL_CHAPTERS, kind: 'last' },
   ]) {
     const name = `manuscript/${chapterName(n)}.md`;
     const frame = kind === 'first' ? FRAME.first : FRAME.last;
@@ -98,7 +98,51 @@ export function checkManuscript({ repoRoot, readFile = readFileSync, fileExists 
     const block = kind === 'first' ? blocks[0] : blocks[blocks.length - 1];
     checks.push(matched(label, kind, frame, block ?? '', `empty file: ${name}`));
   }
+  checks.push(checkChapterOneTitle({ repoRoot, readFile, fileExists }));
   return checks;
+}
+
+/**
+ * The owner's contract for ch01, checked on the file itself: **the frozen sentence must remain
+ * the chapter's first prose line, and the heading above it must be read as the chapter's title**.
+ *
+ * `checkManuscript` strips line 1 with `parseChapterTitle`, so a frame check alone passes with or
+ * without the heading — it cannot tell a titled chapter from a headless file that merely reads
+ * well. This check reads the heading from the manuscript (line 1, never an invented copy) and
+ * asserts two facts:
+ *
+ *   - line 1 is a title: `parseChapterTitle(...).title` is not `null` and equals that line — a
+ *     file whose heading was deleted fails here, because the frame line is prose (BOOK-32);
+ *   - the first paragraph under it is still the frozen sentence — the frame stays prose.
+ */
+function checkChapterOneTitle({ repoRoot, readFile, fileExists }) {
+  const label = `manuscript ${chapterName(OPENING_CHAPTER)} title line`;
+  const name = `manuscript/${chapterName(OPENING_CHAPTER)}.md`;
+  const path = join(repoRoot, name);
+  if (!fileExists(path)) {
+    return { label, ok: false, parts: [{ expected: FRAME.first, actual: `no such file: ${name}` }] };
+  }
+  const raw = readFile(path, 'utf8');
+  // The heading the file carries: line 1, read the way a reader reads it.
+  const heading = String(raw ?? '').split('\n')[0].trim();
+  const parsed = parseChapterTitle(OPENING_CHAPTER, raw);
+  const firstProse = paragraphsOf(parsed.body)[0] ?? '';
+  const parts = [];
+  if (parsed.title === null) {
+    parts.push({
+      expected: heading.length > 0 ? heading : 'a heading line above the frozen sentence',
+      actual: 'line 1 is not read as a title (the parser read it as prose)',
+    });
+  } else if (parsed.title !== heading) {
+    parts.push({ expected: heading, actual: parsed.title });
+  }
+  if (!startsWithFrame(firstProse, FRAME.first)) {
+    parts.push({
+      expected: FRAME.first,
+      actual: firstProse.length > 0 ? firstProse : `no prose under the heading: ${name}`,
+    });
+  }
+  return { label, ok: parts.length === 0, parts };
 }
 
 /** One chapter answer: its blocks, or the reason the site did not give any. */
@@ -141,16 +185,16 @@ function answerCheck(label, kind, frame, answer) {
 }
 
 /**
- * The running site serves the frame: ch01's first block opens with it and ch67's last block
- * closes with it. A non-200 answer is a mismatch whose `actual` is the status and the code.
+ * The running site serves the frame: ch01's first block opens with it and the finale's last
+ * block closes with it. A non-200 answer is a mismatch whose `actual` is the status and the code.
  */
 export async function checkServer({ baseUrl, fetchImpl = fetch, budgetMs = TOTAL_TIMEOUT_MS }) {
   const deadline = Date.now() + budgetMs;
   const first = await fetchChapter(baseUrl, 1, fetchImpl, deadline);
-  const last = await fetchChapter(baseUrl, 67, fetchImpl, deadline);
+  const last = await fetchChapter(baseUrl, TOTAL_CHAPTERS, fetchImpl, deadline);
   return [
     answerCheck('site /api/chapters/1', 'first', FRAME.first, first),
-    answerCheck('site /api/chapters/67', 'last', FRAME.last, last),
+    answerCheck(`site /api/chapters/${String(TOTAL_CHAPTERS)}`, 'last', FRAME.last, last),
   ];
 }
 
@@ -170,8 +214,8 @@ export function readDataDirFrame({ dataDir, DatabaseImpl = Database }) {
   const failed = (reason) => ({
     dataDir: dir,
     ch01First: null,
-    ch67First: null,
-    ch67Last: null,
+    lastFirst: null,
+    lastLast: null,
     lastScanAt: null,
     check: { label: `data dir ${dir}`, ok: false, parts: [{ expected: FRAME.first, actual: reason }] },
   });
@@ -183,8 +227,8 @@ export function readDataDirFrame({ dataDir, DatabaseImpl = Database }) {
   }
   try {
     const ch01First = blockText(db, 1, 'ASC');
-    const ch67First = blockText(db, 67, 'ASC');
-    const ch67Last = blockText(db, 67, 'DESC');
+    const lastFirst = blockText(db, TOTAL_CHAPTERS, 'ASC');
+    const lastLast = blockText(db, TOTAL_CHAPTERS, 'DESC');
     const scan = db.prepare(`SELECT v FROM meta WHERE k = 'last_scan_at'`).get();
     const lastScanAt = typeof scan?.v === 'string' ? scan.v : null;
 
@@ -192,16 +236,20 @@ export function readDataDirFrame({ dataDir, DatabaseImpl = Database }) {
     if (!startsWithFrame(ch01First ?? '')) {
       parts.push({ label: 'ch01 first block', expected: FRAME.first, actual: ch01First ?? 'no block for chapter 1' });
     }
-    if (!endsWithFrame(ch67Last ?? '')) {
-      parts.push({ label: 'ch67 last block', expected: FRAME.last, actual: ch67Last ?? 'no block for chapter 67' });
+    if (!endsWithFrame(lastLast ?? '')) {
+      parts.push({
+        label: `ch${String(TOTAL_CHAPTERS)} last block`,
+        expected: FRAME.last,
+        actual: lastLast ?? `no block for chapter ${String(TOTAL_CHAPTERS)}`,
+      });
     }
     // A single failure prints exactly one `expected`/`actual` pair; the label only disambiguates.
     const partList = parts.length > 1 ? parts : parts.map(({ expected, actual }) => ({ expected, actual }));
     return {
       dataDir: dir,
       ch01First,
-      ch67First,
-      ch67Last,
+      lastFirst,
+      lastLast,
       lastScanAt,
       check: { label: `data dir ${dir}`, ok: parts.length === 0, parts: partList },
     };

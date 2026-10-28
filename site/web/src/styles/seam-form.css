@@ -153,7 +153,7 @@
 
 /* ---------- the empty chapter: one row (BOOK-90 A, BOOK-112) ---------- */
 /* `02 ······················ ждёт` — numeral, dotted field, state word. The row is the column's
-   full width (a full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-line` idiom)
+   full width (a full-width hit area) and the sanctioned BOOK-88 inset (the `.toc-link` idiom)
    makes its content end on the prose's right edge: `--measure` never sizes a box. Three tracks
    on one line: the numeral, the `1fr` field that gives way, and the word the row prints while
    the slot is held (BOOK-111). That third track is also the page number's slot (BOOK-89), so a
@@ -171,7 +171,7 @@
   margin: 0;
   padding: 0;
   /* The whole difference between the row (the column's content) and the prose, floored at
-     zero on a row narrower than the measure — the same arithmetic as `.toc-line`. It comes
+     zero on a row narrower than the measure — the same arithmetic as `.toc-link`. It comes
      after the `padding` shorthand, which would otherwise reset it. */
   padding-inline-end: max(0px, calc(100% - var(--measure)));
   border: 0;

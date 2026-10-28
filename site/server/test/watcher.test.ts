@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS, type CatalogEntry } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { listCatalog } from '../src/db/repo/chapters.ts';
@@ -89,10 +89,10 @@ afterEach(async () => {
 describe('watcher path classifier', () => {
   const root = '/book/manuscript';
 
-  it('sees chapters 1..67 and the first sheet', () => {
+  it('sees chapters 1..42 and the first sheet', () => {
     expect(chapterNumberOf('ch01.md')).toBe(1);
-    expect(chapterNumberOf('ch67.md')).toBe(67);
-    expect(chapterNumberOf('ch68.md')).toBeNull();
+    expect(chapterNumberOf('ch42.md')).toBe(TOTAL_CHAPTERS);
+    expect(chapterNumberOf('ch43.md')).toBeNull();
     expect(chapterNumberOf('ch1.md')).toBeNull();
     expect(chapterNumberOf('00-front.md')).toBeNull();
   });
@@ -120,7 +120,8 @@ describe('watcher: a chapter appears', () => {
     const created = await waitFor(() => harness!.events.find((event) => event.type === 'chapter:created'));
     expect(created).toMatchObject({
       type: 'chapter:created',
-      data: { n: 1, rev: 1, title: 'Тестовая глава', part: 1, direction: 'forward', attributed: false },
+      // ch01 is the opening: it stands outside the parts, so `part` is null (BOOK-155).
+      data: { n: 1, rev: 1, title: 'Тестовая глава', part: null, direction: 'forward', attributed: false },
     });
     if (created.type !== 'chapter:created') throw new Error('narrowing');
     expect(created.data.chars).toBeGreaterThan(0);
@@ -239,19 +240,24 @@ describe('watcher: a chapter is edited', () => {
 
   it('keeps one block when the basis sentence is rewritten to the same file (BOOK-6)', async () => {
     await start();
-    harness!.fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    harness!.fixture.write('ch42.md', FRAME_LAST_SENTENCE);
     await waitFor(() =>
       harness!.events.find((event) => event.type === 'state:updated' && event.data.chapters.written.length === 0),
     );
-    expect(catalog()[66]).toMatchObject({ n: 67, written: false, basis: true, blocks: 1 });
+    expect(catalog()[TOTAL_CHAPTERS - 1]).toMatchObject({
+      n: TOTAL_CHAPTERS,
+      written: false,
+      basis: true,
+      blocks: 1,
+    });
 
     // A save that changes nothing visible (a trailing newline) must not duplicate the block.
-    harness!.fixture.write('ch67.md', `${FRAME_LAST_SENTENCE}\n`);
+    harness!.fixture.write('ch42.md', `${FRAME_LAST_SENTENCE}\n`);
     await new Promise((resolve) => setTimeout(resolve, 400));
 
-    const blocks = harness!.fixture.db.prepare('SELECT text FROM blocks WHERE chapter = 67').all() as Array<{
-      text: string;
-    }>;
+    const blocks = harness!.fixture.db
+      .prepare('SELECT text FROM blocks WHERE chapter = ?')
+      .all(TOTAL_CHAPTERS) as Array<{ text: string }>;
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.text).toBe(FRAME_LAST_SENTENCE);
     expect(harness!.events.filter((event) => event.type === 'chapter:created')).toHaveLength(0);
@@ -259,21 +265,20 @@ describe('watcher: a chapter is edited', () => {
 
   it('does not stamp an empty write on a slot that holds only its basis sentence (BOOK-6)', async () => {
     await start();
-    harness!.fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    harness!.fixture.write('ch42.md', FRAME_LAST_SENTENCE);
     await waitFor(() =>
       harness!.events.find(
-        (event) => event.type === 'state:updated' && event.data.chapters.basis.includes(67),
+        (event) => event.type === 'state:updated' && event.data.chapters.basis.includes(TOTAL_CHAPTERS),
       ),
     );
 
-    harness!.fixture.write('ch67.md', '');
+    harness!.fixture.write('ch42.md', '');
     await new Promise((resolve) => setTimeout(resolve, 400));
 
     // The frame has no prose to lose: an empty file is just an empty slot, not a torn save.
-    const row = harness!.fixture.db.prepare('SELECT parse_error, block_count FROM chapters WHERE n = 67').get() as {
-      parse_error: string | null;
-      block_count: number;
-    };
+    const row = harness!.fixture.db
+      .prepare('SELECT parse_error, block_count FROM chapters WHERE n = ?')
+      .get(TOTAL_CHAPTERS) as { parse_error: string | null; block_count: number };
     expect(row.parse_error).toBeNull();
     expect(row.block_count).toBe(1);
     expect(harness!.events.some((event) => event.type === 'chapter:revision')).toBe(false);

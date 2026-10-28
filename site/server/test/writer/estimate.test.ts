@@ -72,7 +72,7 @@ describe('estimatePassUsd — one pass, priced before it runs', () => {
   it('never prices an unbuilt pass below the same pass built from the real prompt', () => {
     const built = buildWriterPrompt({
       bookRoot: BOOK_ROOT,
-      assignment: { chapter: 65, pass: 'draft', intent: null, interventionKind: null, premise: null, expectation: null },
+      assignment: { chapter: 40, pass: 'draft', intent: null, interventionKind: null, premise: null, expectation: null },
     });
     const promptChars = built.system.length + built.user.length;
     const fromPrompt = estimatePassUsd({ pricing, promptChars, continueMax: 2 });

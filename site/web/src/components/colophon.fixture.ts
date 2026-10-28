@@ -8,7 +8,7 @@ import type { StateSnapshot } from '@book/shared';
 import { vi } from 'vitest';
 
 export const state = {
-  chapters: { total: 67, written: [], empty: [], count: 0, totalChars: 0 },
+  chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
 } as unknown as StateSnapshot;
 
 /** The theme is read from the document at first paint; the test renders without a browser. */

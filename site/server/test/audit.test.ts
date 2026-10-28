@@ -30,7 +30,7 @@ async function boot(): Promise<Harness> {
         'Документы лежат в архиве. Это служебный текст.',
         'Тестовый абзац номер два. Это служебный текст.',
       ]),
-      'ch67.md': longProse(['Служебный текст для проверки.']),
+      'ch42.md': longProse(['Служебный текст для проверки.']),
     },
   });
   dir = mkdtempSync(join(tmpdir(), 'book-audit-'));
@@ -72,7 +72,7 @@ function seed(h: Harness, id: string, chapter = 8): void {
     chapter,
     blockId: null,
     blockIndex: null,
-    baseRev: chapter === 67 ? null : 1,
+    baseRev: chapter === 42 ? null : 1,
     quote: null,
     prefix: null,
     suffix: null,
@@ -237,13 +237,13 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(late.out.join('\n')).toContain('already decided');
   });
 
-  it('accepts a chapter-67 filing as paperwork, and asks for the audit first (BOOK-137)', async () => {
+  it('accepts a filing on the finale as paperwork, and asks for the audit first (BOOK-137)', async () => {
     const h = await boot();
-    // BOOK-137: ch67 is no longer a door closed at the decision. A filing on the finale is
+    // BOOK-137: the finale is not a door closed at the decision. A filing on it is
     // accepted — as paperwork when it touches the frame's sentence, never as text. The audit
     // gate still comes first: a row with no `FITS` cannot become a document either.
     const id = 'cmt_01JB7FROZEN0000000000067';
-    seed(h, id, 67);
+    seed(h, id, 42);
 
     const unaudited = cli(h, 'decide', id, 'accepted', '--reason', 'смягчить финал', '--intent', 'смягчить последний абзац');
     expect(unaudited.code).toBe(1);

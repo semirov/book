@@ -16,7 +16,7 @@
  */
 
 import type { Imprint, LegalDenylist, ValidatorFinding } from '@book/shared';
-import { CHAPTER_CHARS, runValidation, type ValidateResult } from '@book/shared';
+import { CHAPTER_CHARS, TOTAL_CHAPTERS, runValidation, type ValidateResult } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { scanManuscript } from '../ingest/scanManuscript.ts';
@@ -116,10 +116,15 @@ export function readIntegrity(db: Db, options: IntegrityOptions): IntegrityRepor
   const result = validate(options, denylist);
 
   // A slot is written when it has prose: a basis-only or zero-block row is an empty slot (BOOK-6).
+  // BOOK-155 — the aggregate is about the book, so a row left from the 67-chapter book (chapter 65,
+  // which the `chapters` CHECK keeps as storage) is not counted: it would report a chapter and
+  // characters the reader can never see.
   const written = db
-    .prepare('SELECT COUNT(*) AS n FROM chapters WHERE block_count > 0 AND basis = 0')
-    .get() as CountRow;
-  const totalChars = db.prepare('SELECT COALESCE(SUM(chars), 0) AS n FROM chapters').get() as CountRow;
+    .prepare('SELECT COUNT(*) AS n FROM chapters WHERE n BETWEEN 1 AND ? AND block_count > 0 AND basis = 0')
+    .get(TOTAL_CHAPTERS) as CountRow;
+  const totalChars = db
+    .prepare('SELECT COALESCE(SUM(chars), 0) AS n FROM chapters WHERE n BETWEEN 1 AND ?')
+    .get(TOTAL_CHAPTERS) as CountRow;
   const thin = result.chapters.filter((chapter) => chapter.chars < THIN_LIMIT).map((chapter) => chapter.n);
 
   const unattributed = db.prepare('SELECT COUNT(*) AS n FROM revisions WHERE attributed = 0').get() as CountRow;

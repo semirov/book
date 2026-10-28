@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, type CatalogEntry } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, partOf, TOTAL_CHAPTERS, type CatalogEntry } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { basisSentenceOf, chapterMatchesEntry } from './basis.ts';
@@ -6,16 +6,17 @@ import { basisSentenceOf, chapterMatchesEntry } from './basis.ts';
 function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
     n,
-    part: (n <= 22 ? 1 : n <= 44 ? 2 : n <= 66 ? 3 : 4) as CatalogEntry['part'],
+    part: partOf(n),
     title: null,
     rev: 0,
     chars: 0,
     blocks: 1,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
-    direction: n <= 34 ? 'forward' : 'backward',
+    direction: n <= 21 ? 'forward' : 'backward',
     ...overrides,
   };
 }
@@ -28,7 +29,7 @@ function basisSlot(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEnt
 describe('basisSentenceOf', () => {
   it('prints the frozen frame of a basis-only slot (BOOK-6)', () => {
     expect(basisSentenceOf(basisSlot(1))).toBe(FRAME_FIRST_SENTENCE);
-    expect(basisSentenceOf(basisSlot(67))).toBe(FRAME_LAST_SENTENCE);
+    expect(basisSentenceOf(basisSlot(TOTAL_CHAPTERS))).toBe(FRAME_LAST_SENTENCE);
   });
 
   it('says nothing for an empty slot', () => {

@@ -1,5 +1,5 @@
 /* ============================================================================
-   BOOK — chapters, paragraphs, the опись, the 0/67 plate, the discussion
+   BOOK — chapters, paragraphs, the опись, the 0/42 plate, the discussion
    seam, the colophon.
    ============================================================================ */
 
@@ -7,9 +7,14 @@
    (72 = 2.38 lines at the ≥1024 leading), over the `.ch-h` hairline. Pages are virtual, so
    there is no page box and no page mark at the header: the running folio carries the number
    the moment the chapter's boundary is crossed. The narrow steps are declared below the
-   prose rule, so the first `max-width: 599px` block of this sheet stays the phone's `.p`. */
+   prose rule, so the first `max-width: 599px` block of this sheet stays the phone's `.p`.
+   The air is a **margin**, not padding (owner, 2026-10-28): a section's border box begins at
+   its heading, so `scroll-margin-top: var(--offset-top)` lands the heading itself at the
+   sticky head's lower edge instead of 72 px below it. `flow-root` keeps the section's own
+   margins from collapsing with its children's, exactly as the padding did. */
 .ch {
-  padding-top: 72px;
+  display: flow-root;
+  margin-top: 72px;
 }
 .ch-h {
   display: flex;
@@ -290,7 +295,12 @@
 }
 
 /* ---------- colophon ---------- */
+/* The footer keeps its distance from the band the page fixes over the bottom edge (the
+   capacity plate, an open card or chain): `--offset-bottom` is that band's measured height
+   plus the breathing space, written by `lib/headerOffset.ts`. A jump to the end of the book
+   therefore never lands its last line under the band. */
 .colophon {
+  scroll-margin-bottom: var(--offset-bottom);
   margin-top: 52px;
   border-top: 1px solid var(--ink);
   /* Block-only: the colophon is the column (BOOK-88 final). */

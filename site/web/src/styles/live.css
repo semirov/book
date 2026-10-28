@@ -16,7 +16,7 @@
   }
 }
 
-/* ---------- оглавление: four parts, 67 rows, no invented labels ---------- */
+/* ---------- оглавление: four parts, 42 rows, no invented labels ---------- */
 .toc {
   /* BOOK-88 final: the strip is the column — the canvas supplies the gutters, so this is
      block-only padding. */
@@ -28,7 +28,7 @@
      *is* the prose's, so a row runs from the prose's left edge to the prose's right edge (640
      at 1440, 622.4 at 768, 342 at 390) and reads as part of the same document.
      `display: grid` is the one-column layout itself, and no rule may add a second track, so
-     the 67 rows read as a single flow from part I to part IV. */
+     the 42 rows read as a single flow from the opening to part IV and the finale. */
   display: grid;
   grid-template-columns: 1fr;
   align-items: start;
@@ -55,15 +55,16 @@
   text-transform: uppercase;
   color: var(--ink-3);
 }
-/* With a single column the label is child 1 and part I is child 2: only part I starts flush
-   with the label; parts II–IV keep their 32px of air between them. */
-.toc-part:nth-child(2) .toc-part-h {
-  padding-top: 0;
-}
+/* BOOK-155: with a single column the label is child 1, the opening row (ch01) is child 2 and
+   part I is child 3 — the frame row sits directly under the label, and every part heading keeps
+   its 32px of air. */
 
-/* An empty row is its numeral: 26px — a quiet column, not a disabled control (WCAG 2.5.8). */
-.toc-row-empty {
-  height: 26px;
+/* An empty row is a link like every other row (owner, 2026-10-28), and its one word is
+   «Пусто»: the row keeps its own quiet class — a chapter with nothing to read — and the
+   numeral keeps the full ink of a slot the reader reads (WCAG 2.5.8: the target is the row's
+   44 px, never a 26 px stub). */
+.toc-row-empty .toc-text {
+  color: var(--ink-3);
 }
 .toc-num {
   font-family: var(--mono);
@@ -80,20 +81,11 @@
   color: var(--ink);
 }
 
-/* The same columns for a row that opens nothing. BOOK-89: the third track is the page — a
-   fixed 3ch so a 2-digit and a 3-digit number cannot move the title's left edge (36 + 14).
-   The row is the column since BOOK-88's final frame, so the page cell already closes on the
-   prose's right edge: no inset, no second measure (BOOK-89's `100% − measure` inset is a
-   no-op and is gone). */
-.toc-line {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 3ch;
-  column-gap: 14px;
-  align-items: baseline;
-  height: 26px;
-}
-
-/* A row with text opens its chapter: numeral, title line (or frozen sentence), page. */
+/* Every row opens its chapter (owner, 2026-10-28): numeral, text, page — one grid, and the
+   `.toc-line` stub a dead row used to be is gone. BOOK-89: the third track is the page, a
+   fixed 3ch so a 2-digit and a 3-digit number cannot move the text's left edge (36 + 14).
+   The row is the column since BOOK-88's final frame, so the page cell closes on the prose's
+   own right edge: no inset, no second measure. */
 .toc-link {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 3ch;
@@ -163,9 +155,11 @@
 }
 
 /* ---------- empty chapter slots: one row, quiet, always present (BOOK-90 A) ---------- */
-/* No `.ch-h`, no big numeral, no meta line: the row in `seam-form.css` is the whole slot. */
+/* No `.ch-h`, no big numeral, no meta line: the row in `seam-form.css` is the whole slot.
+   The row's air is a margin for the same reason `.ch`'s is (owner, 2026-10-28): the section's
+   border box begins at the row, so a contents tap lands the row itself under the head. */
 .ch-empty {
-  padding-top: 16px;
+  margin-top: 16px;
 }
 
 /* ---------- printing (§11.5): only the active paragraph is left-aligned ---------- */

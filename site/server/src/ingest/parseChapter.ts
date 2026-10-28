@@ -8,8 +8,9 @@
  * are rewritten.
  *
  * Two exceptions, both decided before the title rule:
- * · a file that is exactly its basis sentence (ch01/ch67) is one paragraph with no title and
- *   no `chars` — the frozen frame is prose to read, not written prose (§BOOK-6);
+ * · a file that is exactly its basis sentence (ch01/ch42) — optionally under its own heading,
+ *   which stays the title — is one paragraph with no `chars`: the frozen frame is prose to
+ *   read, not written prose (§BOOK-6, owner 2026-10-28);
  * · a chapter that opens on its frame (ch01 writing on after it) is untitled, and the frame is
  *   its first paragraph — `parseChapterTitle`, so the reader never prints the frame as a
  *   heading (BOOK-32).
@@ -46,7 +47,7 @@ export type ParsedChapter = {
   chars: number;
   blocks: ParsedBlock[];
   /**
-   * The file is exactly its basis sentence (ch01/ch67): the frozen frame is prose, not a
+   * The file is exactly its basis sentence (ch01/ch42): the frozen frame is prose, not a
    * title, and it is not written prose — one block, no title, no `chars` (§BOOK-6).
    */
   basis: boolean;
@@ -74,20 +75,28 @@ export function blockId(n: number, normalizedText: string, duplicate: number): s
 }
 
 /**
- * A file that is exactly its basis sentence (ch01/ch67, BOOK-6). The frozen frame is the
- * chapter's one paragraph, not its title line — and it adds no `chars`, because the basis
- * sentence is not written prose and must not count towards the book. Its text is owned by
- * `FRAME_FIRST_SENTENCE`/`FRAME_LAST_SENTENCE` and checked by F029, never drafted here.
+ * A file that holds nothing but its basis sentence (ch01/ch42, BOOK-6), optionally under its
+ * own heading. The frozen frame is the chapter's one paragraph, not its title line — and it
+ * adds no `chars`, because the basis sentence is not written prose and must not count towards
+ * the book. Its text is owned by `FRAME_FIRST_SENTENCE`/`FRAME_LAST_SENTENCE` and checked by
+ * F029, never drafted here.
+ *
+ * A heading above the sentence is the chapter's own title and stays one — ch01 carries
+ * «Замечаний нет» — so the contents and the chapter header can print it, while `written` stays
+ * false and `chars` stays 0.
  */
 function parseBasis(n: number, text: string, sha256: string): ParsedChapter {
-  const sentence = text.trim();
+  // The shared title decision: a heading above the sentence is the chapter's title, and a
+  // file that opens on the frame has none (BOOK-32).
+  const line = parseChapterTitle(n, text);
+  const sentence = line.body.trim();
   const normalized = normalizeForHash(sentence);
   return {
     n,
-    title: null,
+    title: line.title,
     titleProblems: [],
     text,
-    body: text,
+    body: line.body,
     sha256,
     basis: true,
     chars: 0,
@@ -105,7 +114,8 @@ function parseBasis(n: number, text: string, sha256: string): ParsedChapter {
 export function parseChapter(n: number, raw: string): ParsedChapter {
   const text = normalizeBookText(raw);
   // A basis-only slot is decided before the title line: the frame sentence is prose here,
-  // and reading it as a title is what made the slot look empty (§BOOK-6).
+  // and reading it as a title is what made the slot look empty (§BOOK-6). Its heading line is
+  // still read — the slot may carry one above the sentence.
   if (isBasisOnly(n, raw)) {
     // Whitespace is not identity: the basis projection is identical for a re-saved file, so
     // a trailing newline does not re-project it or bump `updated_at`.

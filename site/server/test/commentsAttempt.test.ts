@@ -8,7 +8,7 @@ import { longProse } from './helpers.ts';
  * One state per filing, derived from the comment row plus one fact: does its
  * chapter have text.
  *
- * The prod contradiction this file pins: chapter 65 was written, its premise's linked change
+ * The prod contradiction this file pins: chapter 34 was written, its premise's linked change
  * ended `void`/`dropped` with «модель не ответила: PROVIDER_SHAPE», and every public surface
  * printed the engine's code as the reader's answer — «замысел не взят» over a chapter that
  * exists. A failed attempt is not a state: it leaves the filing where it was and reaches the
@@ -19,7 +19,7 @@ import { longProse } from './helpers.ts';
 
 const SHAPE_CODE = 'PROVIDER_SHAPE';
 const TIMEOUT_CODE = 'ENGINE_TIMEOUT';
-const ACCEPTED_LINE = 'принято: глава 65 отвечает на вопрос процедурой, а не объяснением';
+const ACCEPTED_LINE = 'принято: глава 34 отвечает на вопрос процедурой, а не объяснением';
 const SHAPE_REASON = `модель не ответила: ${SHAPE_CODE}`;
 const TIMEOUT_REASON = `движок отказал: ${TIMEOUT_CODE}: the engine did not answer within 10000 ms`;
 
@@ -30,12 +30,12 @@ afterEach(async () => {
   harness = null;
 });
 
-/** Chapter 65 is written here; chapter 9 is not — the two facts the state is read from. */
+/** Chapter 34 is written here; chapter 9 is not — the two facts the state is read from. */
 async function boot(): Promise<Harness> {
   harness = await bootComments({
     chapters: {
       'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
-      'ch65.md': longProse(['Тестовый абзац главы шестьдесят пять. Служебный текст, не книга.']),
+      'ch34.md': longProse(['Тестовый абзац главы тридцать четыре. Служебный текст, не книга.']),
     },
   });
   return harness;
@@ -107,22 +107,22 @@ function seedChange(h: Harness, seed: ChangeSeed): void {
   }
 }
 
-/** The prod shape: an accepted premise, a failed attempt behind it, chapter 65 written. */
+/** The prod shape: an accepted premise, a failed attempt behind it, chapter 34 written. */
 function seedLandedPremise(h: Harness): void {
   seedFiling(h, {
-    id: 'cmt_65',
-    chapter: 65,
+    id: 'cmt_34',
+    chapter: 34,
     status: 'accepted',
     reason: ACCEPTED_LINE,
   });
   seedChange(h, {
-    id: 'chg_65',
-    chapter: 65,
+    id: 'chg_34',
+    chapter: 34,
     premise: 1,
     status: 'void',
     outcome: 'dropped',
     reason: SHAPE_REASON,
-    commentId: 'cmt_65',
+    commentId: 'cmt_34',
     finishedAt: '2026-10-25T12:10:00Z',
   });
 }
@@ -149,12 +149,12 @@ describe('one state per filing: the row plus one fact', () => {
   it('a premise whose chapter is written is applied, not rejected by a failed attempt', async () => {
     const h = await boot();
     seedLandedPremise(h);
-    const filing = first(await listComments(h, 65));
+    const filing = first(await listComments(h, 34));
     expect(filing).toMatchObject({
-      id: 'cmt_65',
+      id: 'cmt_34',
       premise: true,
       status: 'applied',
-      applied: { chapter: 65, rev: chapterRev(h, 65) },
+      applied: { chapter: 34, rev: chapterRev(h, 34) },
       attempt: null,
       reason: ACCEPTED_LINE,
     });
@@ -227,34 +227,34 @@ describe('one state per filing: the row plus one fact', () => {
 
   it('carries no receipt when a premise decided against a written chapter', async () => {
     const h = await boot();
-    // Chapter 65 has text, but this row refused the filing: the row's own word is the state, and
+    // Chapter 34 has text, but this row refused the filing: the row's own word is the state, and
     // a receipt would claim the reader's words entered an edition they did not shape.
-    seedFiling(h, { id: 'cmt_65r', chapter: 65, status: 'rejected', reason: 'вне рамок: канон' });
+    seedFiling(h, { id: 'cmt_34r', chapter: 34, status: 'rejected', reason: 'вне рамок: канон' });
     seedChange(h, {
-      id: 'chg_65r',
-      chapter: 65,
+      id: 'chg_34r',
+      chapter: 34,
       premise: 1,
       status: 'void',
       outcome: 'dropped',
       reason: SHAPE_REASON,
-      commentId: 'cmt_65r',
+      commentId: 'cmt_34r',
     });
-    expect(first(await listComments(h, 65))).toMatchObject({ status: 'rejected', applied: null, attempt: null });
+    expect(first(await listComments(h, 34))).toMatchObject({ status: 'rejected', applied: null, attempt: null });
   });
 
   it('carries no receipt when a human sentence superseded a premise on a written chapter', async () => {
     const h = await boot();
-    seedFiling(h, { id: 'cmt_65s', chapter: 65, status: 'accepted', reason: ACCEPTED_LINE });
+    seedFiling(h, { id: 'cmt_34s', chapter: 34, status: 'accepted', reason: ACCEPTED_LINE });
     seedChange(h, {
-      id: 'chg_65s',
-      chapter: 65,
+      id: 'chg_34s',
+      chapter: 34,
       premise: 1,
       status: 'void',
       outcome: 'superseded',
       reason: 'у главы уже есть замысел',
-      commentId: 'cmt_65s',
+      commentId: 'cmt_34s',
     });
-    expect(first(await listComments(h, 65))).toMatchObject({
+    expect(first(await listComments(h, 34))).toMatchObject({
       status: 'superseded',
       applied: null,
       reason: 'у главы уже есть замысел',
@@ -265,19 +265,19 @@ describe('one state per filing: the row plus one fact', () => {
     const h = await boot();
     // `void` with no reason is not a refusal: the writer said nothing, and the chapter's text
     // is the answer — the attempt-free counterpart of the prod shape above.
-    seedFiling(h, { id: 'cmt_65q', chapter: 65, status: 'accepted', reason: ACCEPTED_LINE });
+    seedFiling(h, { id: 'cmt_34q', chapter: 34, status: 'accepted', reason: ACCEPTED_LINE });
     seedChange(h, {
-      id: 'chg_65q',
-      chapter: 65,
+      id: 'chg_34q',
+      chapter: 34,
       premise: 1,
       status: 'void',
       outcome: 'dropped',
       reason: null,
-      commentId: 'cmt_65q',
+      commentId: 'cmt_34q',
     });
-    expect(first(await listComments(h, 65))).toMatchObject({
+    expect(first(await listComments(h, 34))).toMatchObject({
       status: 'applied',
-      applied: { chapter: 65, rev: chapterRev(h, 65) },
+      applied: { chapter: 34, rev: chapterRev(h, 34) },
       attempt: null,
       reason: ACCEPTED_LINE,
     });
@@ -322,14 +322,14 @@ describe('the public reason of a change is a sentence, never a code', () => {
   /** Two prod-like changes: a premise whose attempt came back off-shape, and a timeout. */
   function seedTwo(h: Harness): void {
     seedLandedPremise(h);
-    seedFiling(h, { id: 'cmt_65b', chapter: 65, status: 'accepted', reason: null });
+    seedFiling(h, { id: 'cmt_34b', chapter: 34, status: 'accepted', reason: null });
     seedChange(h, {
-      id: 'chg_65b',
-      chapter: 65,
+      id: 'chg_34b',
+      chapter: 34,
       status: 'escalated',
       outcome: 'gate_timeout',
       reason: TIMEOUT_REASON,
-      commentId: 'cmt_65b',
+      commentId: 'cmt_34b',
       finishedAt: '2026-10-25T12:20:00Z',
     });
   }
@@ -346,7 +346,7 @@ describe('the public reason of a change is a sentence, never a code', () => {
       expect(summary.reason ?? '').not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
     }
 
-    for (const id of ['chg_65', 'chg_65b']) {
+    for (const id of ['chg_34', 'chg_34b']) {
       const card = await h.app.inject({ method: 'GET', url: `/api/changes/${id}` });
       expect(card.statusCode).toBe(200);
       const change = card.json() as ChangeDto;
@@ -367,8 +367,8 @@ describe('the public reason of a change is a sentence, never a code', () => {
     const h = await boot();
     seedTwo(h);
     const summaries = (await h.app.inject({ method: 'GET', url: '/api/changes' })).json() as ChangeSummaryDto[];
-    const landed = summaries.find((row) => row.id === 'chg_65');
-    const failed = summaries.find((row) => row.id === 'chg_65b');
+    const landed = summaries.find((row) => row.id === 'chg_34');
+    const failed = summaries.find((row) => row.id === 'chg_34b');
     // The premise's chapter has text; the escalated ordinary change claims nothing.
     expect(landed?.premiseLanded).toBe(true);
     expect(failed?.premiseLanded).toBe(false);
@@ -380,8 +380,8 @@ describe('the public reason of a change is a sentence, never a code', () => {
     const h = await boot();
     seedTwo(h);
     const summaries = (await h.app.inject({ method: 'GET', url: '/api/changes' })).json() as ChangeSummaryDto[];
-    expect(summaries.find((row) => row.id === 'chg_65')?.sourceCommentId).toBe('cmt_65');
-    expect(summaries.find((row) => row.id === 'chg_65b')?.sourceCommentId).toBe('cmt_65b');
+    expect(summaries.find((row) => row.id === 'chg_34')?.sourceCommentId).toBe('cmt_34');
+    expect(summaries.find((row) => row.id === 'chg_34b')?.sourceCommentId).toBe('cmt_34b');
     seedFiling(h, { id: 'cmt_authorless', chapter: 9, status: 'accepted' });
     seedChange(h, { id: 'chg_authorless', chapter: 9, status: 'done', outcome: 'applied', commentId: null });
     const again = (await h.app.inject({ method: 'GET', url: '/api/changes' })).json() as ChangeSummaryDto[];
@@ -399,10 +399,10 @@ describe('the public reason of a change is a sentence, never a code', () => {
     expect(response.statusCode).toBe(200);
     const record = response.json() as MyDecisionsDto;
     expect(record.items[0]).toMatchObject({
-      commentId: 'cmt_65',
+      commentId: 'cmt_34',
       premise: true,
       outcome: 'applied',
-      chapters: [65],
+      chapters: [34],
       reason: ACCEPTED_LINE,
     });
     expect(JSON.stringify(record)).not.toContain(SHAPE_CODE);

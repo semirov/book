@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useReading } from './pageTrack.ts';
+import { ANCHOR_EPS, useReading } from './pageTrack.ts';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -18,6 +18,13 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 type Box = { top: number; height: number };
 
 const VIEWPORT = 800;
+
+/**
+ * Where the reading line sits, from the viewport's top: the head's offset the page publishes
+ * (`--offset-top`) plus `ANCHOR_EPS`. The page's own number, written here the way
+ * `applyStickyOffsets` writes it — never the hook's second copy of the head's height.
+ */
+const LINE_FROM_TOP = 64 + ANCHOR_EPS;
 
 const catalog: ChapterLength[] = [
   { n: 1, chars: 2 * PAGE_CHARS }, // two pages: 3600 characters
@@ -95,9 +102,9 @@ function shown(): string {
   return container.textContent ?? '';
 }
 
-/** The reading line is 66 from the top: a scroll of `line - 66` puts it at document `line`. */
+/** The reading line is `LINE_FROM_TOP` from the top: that scroll puts the line at document `line`. */
 function lineTo(line: number): void {
-  Object.defineProperty(window, 'scrollY', { configurable: true, value: line - 66 });
+  Object.defineProperty(window, 'scrollY', { configurable: true, value: line - LINE_FROM_TOP });
   act(() => {
     window.dispatchEvent(new Event('scroll'));
   });
@@ -111,6 +118,11 @@ function resize(): void {
 
 beforeEach(() => {
   document.body.innerHTML = BOOK;
+  // The page publishes its measured head's offset, exactly as `applyStickyOffsets` does on a
+  // real page: jsdom reads no stylesheet, so the token is what `headOffset()` sees. Without it
+  // the hook falls back to the head it can measure — there is none here — and the line would
+  // sit at the breathing space alone.
+  document.documentElement.style.setProperty('--offset-top', `${String(LINE_FROM_TOP - ANCHOR_EPS)}px`);
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: VIEWPORT });
   Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
   Object.assign(window, {

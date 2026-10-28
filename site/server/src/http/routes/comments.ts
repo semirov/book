@@ -14,7 +14,7 @@
  * cooldown) or `reopenAt` (the next UTC day), so the page prints the wait the server means.
  */
 
-import type { CommentPage, PostCommentInput, ReviseCommentInput } from '@book/shared';
+import { TOTAL_CHAPTERS, type CommentPage, type PostCommentInput, type ReviseCommentInput } from '@book/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { CommentService } from '../../comments/service.ts';
@@ -87,8 +87,8 @@ export function registerCommentRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const query = request.query as Record<string, unknown>;
     let chapter: number | undefined;
     if (query.chapter !== undefined) {
-      const parsed = queryInteger(query.chapter, 1, 67);
-      if (parsed === null) return invalid(reply, 'chapter must be 1..67');
+      const parsed = queryInteger(query.chapter, 1, TOTAL_CHAPTERS);
+      if (parsed === null) return invalid(reply, `chapter must be 1..${TOTAL_CHAPTERS}`);
       chapter = parsed;
     }
     let limit = 20;
@@ -205,8 +205,8 @@ function parsePostBody(
   if (body === null || typeof body !== 'object') return { error: 'body must be a JSON object' };
   const value = body as Record<string, unknown>;
 
-  const chapter = integer(value.chapter, 1, 67);
-  if (chapter === null) return { error: 'chapter must be 1..67' };
+  const chapter = integer(value.chapter, 1, TOTAL_CHAPTERS);
+  if (chapter === null) return { error: `chapter must be 1..${TOTAL_CHAPTERS}` };
   if (typeof value.body !== 'string') return { error: 'body must be a string' };
   // BOOK-64: no token is required — the gate is the session above and the rate limits below.
   // A token is accepted only in the shape it would have if a challenge returns.

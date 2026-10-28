@@ -100,7 +100,7 @@ describe('BOOK-137 B2 — a manuscript that still holds prose', () => {
     const target = await h.live({
       files: {
         'ch01.md': longProse(['Глава первая. Теперь это обычная глава, а не кадр.']),
-        'ch67.md': FRAME_LAST_SENTENCE,
+        'ch42.md': FRAME_LAST_SENTENCE,
         'ch08.md': longProse(['Служебный абзац.']),
       },
     });
@@ -127,7 +127,7 @@ describe('BOOK-137 B2 — a manuscript that still holds prose', () => {
     const frame = target.db.prepare('SELECT n, block_count, basis FROM chapters ORDER BY n').all();
     expect(frame).toEqual([
       { n: 1, block_count: 1, basis: 1 },
-      { n: 67, block_count: 1, basis: 1 },
+      { n: 42, block_count: 1, basis: 1 },
     ]);
   });
 });

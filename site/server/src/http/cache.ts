@@ -2,8 +2,8 @@
  * BOOK-109 — nothing that carries prose may be kept by a client or a proxy; static files whose
  * bytes name them may.
  *
- * The owner's phone kept showing the *old* ch01/ch67 while this host served the canon: the
- * files, `/api/chapters/1|67`, the HTML and the bundle were all correct, so the copy the phone
+ * The owner's phone kept showing the *old* ch01/ch42 while this host served the canon: the
+ * files, `/api/chapters/1|42`, the HTML and the bundle were all correct, so the copy the phone
  * printed had to come from a cache. A `304` is exactly the permission to keep that copy, and
  * `max-age` is the permission not to ask at all — neither is safe for a book that is written
  * in public, where the same URL answers with new prose minutes later.
@@ -17,7 +17,7 @@
  *     `304` would tell a client to reuse exactly the copy this pass exists to eliminate.
  *
  *     BOOK-60 adds one exact path to that set: `/book.fb2`. Its ETag names the edition hash —
- *     computed from the stored file hashes of the front matter and all 67 chapters — and, since
+ *     computed from the stored file hashes of the front matter and every chapter — and, since
  *     BOOK-133, the cover's sha256, so a `304` there can only ever name the same paragraphs and
  *     the same image the client already holds. The exemption is safe *because* the name is the
  *     content; a tag that named anything else would put the stale-prose defect straight back.

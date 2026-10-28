@@ -17,14 +17,14 @@ import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 /**
  * BOOK-137 — the frame may be touched, never changed.
  *
- * A reader may file on ch01's opening sentence and on ch67's finale; the server answers 201,
+ * A reader may file on ch01's opening sentence and on the finale's closing one; the server answers 201,
  * the filing carries the mark `touched`, and the manuscript file stays byte-identical. An
  * accepted filing on the sentence becomes **paperwork**: a `done` change with
  * `outcome='registered'`, a paperwork mode, no step and no ripple — and the thread says
  * «рассмотрено», never «внесено».
  *
  * The two files below carry the canon sentences exactly as `manuscript/ch01.md` and
- * `manuscript/ch67.md` do: a title line, the frame at the edge of the prose, and a paragraph
+ * `manuscript/ch42.md` do: a title line, the frame at the edge of the prose, and a paragraph
  * beside it.
  */
 
@@ -39,12 +39,12 @@ const CH01 = [
   '',
   'Записку оставили на столе.',
 ].join('\n');
-const CH67 = ['Финал', '', 'Свет был включён до меня, и это было странно.', '', FRAME_LAST_SENTENCE].join('\n');
+const CH42 = ['Финал', '', 'Свет был включён до меня, и это было странно.', '', FRAME_LAST_SENTENCE].join('\n');
 
 let harness: Harness | null = null;
 let dir: string | null = null;
 
-async function boot(chapters: Record<string, string> = { 'ch01.md': CH01, 'ch67.md': CH67 }): Promise<Harness> {
+async function boot(chapters: Record<string, string> = { 'ch01.md': CH01, 'ch42.md': CH42 }): Promise<Harness> {
   harness = await bootComments({ chapters });
   dir = mkdtempSync(join(tmpdir(), 'book-frame-'));
   return harness;
@@ -79,7 +79,7 @@ function blockOf(h: Harness, chapter: number, index: number): { id: string; text
   };
 }
 
-/** The frame's own paragraph on ch67: the chapter closes on it, so it is the last block. */
+/** The frame's own paragraph on the finale: the chapter closes on it, so it is the last block. */
 function lastBlockOf(h: Harness, chapter: number): { id: string; text: string; idx: number } {
   return h.db
     .prepare('SELECT id, text, idx FROM blocks WHERE chapter = ? ORDER BY idx DESC LIMIT 1')
@@ -116,15 +116,15 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     expect(commentRow(h, response.json().comment.id)).toMatchObject({ frame: 'touched', status: 'new' });
   });
 
-  it('answers 201 to a proposed text on ch67 and leaves the finale byte-identical', async () => {
+  it('answers 201 to a proposed text on the finale and leaves it byte-identical', async () => {
     const h = await boot();
-    const before = file(h, 'ch67.md');
-    const closer = lastBlockOf(h, 67);
+    const before = file(h, 'ch42.md');
+    const closer = lastBlockOf(h, 42);
 
     const response = await post(
       h,
       commentBody({
-        chapter: 67,
+        chapter: 42,
         blockId: closer.id,
         quote: FRAME_LAST_SENTENCE,
         body: 'Последняя фраза слишком прямая.',
@@ -134,9 +134,9 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     );
 
     expect(response.statusCode).toBe(201);
-    expect(response.json().comment).toMatchObject({ chapter: 67, frame: 'touched', status: 'new' });
+    expect(response.json().comment).toMatchObject({ chapter: 42, frame: 'touched', status: 'new' });
     expect(response.json().comment.proposedText).toBe('Свет погас, потому что стало поздно.');
-    expect(file(h, 'ch67.md')).toBe(before);
+    expect(file(h, 'ch42.md')).toBe(before);
   });
 
   it('records an accepted touched filing as paperwork — done, registered, no step, no ripple', async () => {
@@ -191,13 +191,13 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     expect(file(h, 'ch01.md')).toBe(before);
   });
 
-  it('keeps ch67’s paperwork on the same terms', async () => {
+  it('keeps the finale’s paperwork on the same terms', async () => {
     const h = await boot();
-    const before = file(h, 'ch67.md');
-    const closer = lastBlockOf(h, 67);
+    const before = file(h, 'ch42.md');
+    const closer = lastBlockOf(h, 42);
     const posted = await post(
       h,
-      commentBody({ chapter: 67, blockId: closer.id, quote: FRAME_LAST_SENTENCE, body: 'Финал слишком быстрый.' }),
+      commentBody({ chapter: 42, blockId: closer.id, quote: FRAME_LAST_SENTENCE, body: 'Финал слишком быстрый.' }),
     );
     const id = posted.json().comment.id as string;
 
@@ -208,13 +208,13 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     const comment = commentRow(h, id);
     expect(comment.status).toBe('registered');
     expect(changeRow(h, String(comment.change_id))).toMatchObject({
-      chapter: 67,
+      chapter: 42,
       frame: 'touched',
       frame_mode: 'оформление',
       status: 'done',
       outcome: 'registered',
     });
-    expect(file(h, 'ch67.md')).toBe(before);
+    expect(file(h, 'ch42.md')).toBe(before);
   });
 
   it('records a filing beside the frame as adjacent, and keeps it an ordinary change', async () => {
@@ -487,10 +487,10 @@ describe('the change record tells the truth about the paperwork', () => {
 describe('the deploy gate’s own frame check', () => {
   it('passes on the real repository after the whole scenario', () => {
     // `npm run frame:check` in test form: the same module `deploy.sh` runs reads the real
-    // manuscript and answers one object per source. Nothing here writes a file.
+    // manuscript and answers one object per source — ch01's line, ch01's heading, the finale's.
     const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
     const checks = checkManuscript({ repoRoot }) as Array<{ label: string; ok: boolean; parts: unknown[] }>;
-    expect(checks).toHaveLength(2);
+    expect(checks).toHaveLength(3);
     for (const check of checks) {
       expect(check.parts, check.label).toEqual([]);
       expect(check.ok, check.label).toBe(true);

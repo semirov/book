@@ -36,6 +36,7 @@ const ENTRY: CatalogEntry = {
   blocks: 0,
   written: false,
   basis: false,
+  opening: null,
   writtenAt: null,
   updatedAt: null,
   direction: 'forward',

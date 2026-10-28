@@ -3,7 +3,7 @@
  * in-memory snapshot of the repository.
  *
  * F001 naming · F002 stray files / range · F004 retired (v3) · F005 the legal denylist
- * · F006 67 chapters · F007 chapter length · F009 markdown in prose (warn) · F020 imprint
+ * · F006 chapter count · F007 chapter length · F009 markdown in prose (warn) · F020 imprint
  * · F021 front matter · F022 chapter title line · F029 the frozen frame.
  *
  * Vocabulary is not policed here: F003 (forbidden words) and F008 (process words) are
@@ -117,7 +117,7 @@ export function collectManuscript(options: ValidateOptions): {
         }
       }
       findings.push(
-        finding('F001', 'error', file.name, 1, 'chapter file name is not chNN.md (NN zero-padded, 01..67)'),
+        finding('F001', 'error', file.name, 1, 'chapter file name is not chNN.md (NN zero-padded, 01..42)'),
       );
       continue;
     }
@@ -136,9 +136,20 @@ export function collectManuscript(options: ValidateOptions): {
 
     const text = normalizeText(file.text);
     if (isEmptySlot(parsed.n, text)) {
-      // An empty slot is a valid state (§BOOK-6): no title line, no chars, no length. The
-      // file may be zero-byte or hold only its basis sentence (ch01/ch67).
-      chapters.push({ n: parsed.n, file: file.name, text, title: null, titleProblems: [], blocks: [], chars: 0, empty: true });
+      // An empty slot is a valid state (§BOOK-6): no chars, no length, no blocks. The file may
+      // be zero-byte or hold only its basis sentence (ch01/ch42) — and that sentence may sit
+      // under its own heading, which is the chapter's title (owner, 2026-10-28), so the slot
+      // reports it exactly as `parseChapter`/`projectBasis` do. One decision, one implementation.
+      chapters.push({
+        n: parsed.n,
+        file: file.name,
+        text,
+        title: parseChapterTitle(parsed.n, file.text).title,
+        titleProblems: [],
+        blocks: [],
+        chars: 0,
+        empty: true,
+      });
       continue;
     }
 
@@ -164,7 +175,7 @@ export function collectManuscript(options: ValidateOptions): {
 
 function checkLength(chapter: ChapterFile): Finding[] {
   // An empty slot has no length: the band applies to a written chapter only (§BOOK-6). A
-  // slot holding nothing but the frozen frame of ch01/ch67 is `empty`, so it never reaches
+  // slot holding nothing but the frozen frame of ch01/ch42 is `empty`, so it never reaches
   // either end of the band.
   if (chapter.empty) return [];
   if (chapter.chars > CHAPTER_CHARS.max) {

@@ -12,7 +12,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { TOTAL_TIMEOUT_MS, checkServer } from '../../scripts/lib/frame.mjs';
@@ -49,7 +49,7 @@ async function run(...args: string[]): Promise<RunResult> {
   return { status, stdout, stderr };
 }
 
-/** `manuscript/ch67.md` as the repository holds it: the canon is read, never retyped here. */
+/** `manuscript/ch42.md` as the repository holds it: the canon is read, never retyped here. */
 function canonOf(name: string): string {
   return readFileSync(join(REPO, 'manuscript', name), 'utf8');
 }
@@ -97,9 +97,12 @@ async function serveCanon(): Promise<string> {
       );
       return;
     }
-    if (url === '/api/chapters/67') {
+    if (url === `/api/chapters/${String(TOTAL_CHAPTERS)}`) {
       response.end(
-        JSON.stringify({ n: 67, blocks: [{ id: 'ch67#a', i: 0, text: FRAME_LAST_SENTENCE, hash: 'x' }] }),
+        JSON.stringify({
+          n: TOTAL_CHAPTERS,
+          blocks: [{ id: 'ch42#a', i: 0, text: FRAME_LAST_SENTENCE, hash: 'x' }],
+        }),
       );
       return;
     }
@@ -111,7 +114,7 @@ async function serveCanon(): Promise<string> {
 /** A migrated `book.db` with one block per frame chapter — the shape the service reads. */
 function writeBookDb(
   dataDir: string,
-  texts: { ch01First: string; ch67Last: string; lastScanAt: string | null },
+  texts: { ch01First: string; lastLast: string; lastScanAt: string | null },
 ): void {
   const db = openDatabase(databaseFile(dataDir));
   migrate(db);
@@ -121,12 +124,12 @@ function writeBookDb(
      VALUES (?, 1, NULL, 'sha', 0, 1, ?, ?)`,
   );
   chapter.run(1, at, at);
-  chapter.run(67, at, at);
+  chapter.run(TOTAL_CHAPTERS, at, at);
   const block = db.prepare(
     `INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev) VALUES (?, ?, 0, ?, 'hash', 1, 1)`,
   );
   block.run('ch01#a', 1, texts.ch01First);
-  block.run('ch67#b', 67, texts.ch67Last);
+  block.run('ch42#b', TOTAL_CHAPTERS, texts.lastLast);
   if (texts.lastScanAt !== null) {
     db.prepare(`INSERT INTO meta (k, v) VALUES ('last_scan_at', ?)`).run(texts.lastScanAt);
   }
@@ -139,20 +142,40 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('frame: manuscript ch01 first line — ok');
-    expect(result.stdout).toContain('frame: manuscript ch67 last line — ok');
+    expect(result.stdout).toContain('frame: manuscript ch01 title line — ok');
+    expect(result.stdout).toContain('frame: manuscript ch42 last line — ok');
     expect(result.stdout).toContain('frame: isolation guard — ok');
-    expect(result.stdout).toContain('frame: ok — 3 checks');
+    expect(result.stdout).toContain('frame: ok — 4 checks');
   });
 
   it('fails with expected/actual when ch01 does not open with the frame', async () => {
-    const root = repoWith({ 'ch01.md': `${WRONG_FIRST}\n`, 'ch67.md': canonOf('ch67.md') });
+    const root = repoWith({ 'ch01.md': `${WRONG_FIRST}\n`, 'ch42.md': canonOf('ch42.md') });
     const result = await run('--repo-root', root);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame: manuscript ch01 first line — MISMATCH');
     expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
     expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
-    expect(result.stdout).toContain('frame: manuscript ch67 last line — ok');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 3 checks');
+    expect(result.stdout).toContain('frame: manuscript ch42 last line — ok');
+    expect(result.stdout).toContain('frame: FAILED — 2 of 4 checks');
+  });
+
+  it('fails when ch01 loses its heading, even though the frame is still its first prose line', async () => {
+    // The owner's contract, checked on the file: line 1 must be the heading the parser reads as
+    // the title. A file whose heading was deleted opens on the frozen sentence, which
+    // `parseChapterTitle` reads as prose (BOOK-32) — so it has no title, and the check says so.
+    const root = repoWith({
+      'ch01.md': `${FRAME_FIRST_SENTENCE}\n\nЕщё абзац главы без заголовка.\n`,
+      'ch42.md': canonOf('ch42.md'),
+    });
+    const result = await run('--repo-root', root);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('frame: manuscript ch01 title line — MISMATCH');
+    expect(result.stdout).toContain(
+      'frame:   actual:   line 1 is not read as a title (the parser read it as prose)',
+    );
+    // The frame itself is intact and still prose: only the heading above it is gone.
+    expect(result.stdout).toContain('frame: manuscript ch01 first line — ok');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 4 checks');
   });
 
   it('accepts a rewrapped frame under a title, and fails on one changed word', async () => {
@@ -163,16 +186,16 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
       '--repo-root',
       repoWith({
         'ch01.md': `Тестовая глава\n\n${rewrapped} И дальше идёт текст главы.\n`,
-        'ch67.md': `Текст главы до финала.\n\n${FRAME_LAST_SENTENCE}\n`,
+        'ch42.md': `Текст главы до финала.\n\n${FRAME_LAST_SENTENCE}\n`,
       }),
     );
     expect(passes.status).toBe(0);
     expect(passes.stdout).toContain('frame: manuscript ch01 first line — ok');
-    expect(passes.stdout).toContain('frame: manuscript ch67 last line — ok');
+    expect(passes.stdout).toContain('frame: manuscript ch42 last line — ok');
 
     // One word is enough to make it not the canon.
     const changed = FRAME_FIRST_SENTENCE.replace('яркий', 'тусклый');
-    const fails = await run('--repo-root', repoWith({ 'ch01.md': `${changed}\n`, 'ch67.md': canonOf('ch67.md') }));
+    const fails = await run('--repo-root', repoWith({ 'ch01.md': `${changed}\n`, 'ch42.md': canonOf('ch42.md') }));
     expect(fails.status).toBe(1);
     expect(fails.stdout).toContain(`frame:   actual:   ${changed}`);
   });
@@ -181,7 +204,7 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     const result = await run('--repo-root', tmpDir('book-frame-empty-'));
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   no such file: manuscript/ch01.md');
-    expect(result.stdout).toContain('frame: FAILED — 2 of 3 checks');
+    expect(result.stdout).toContain('frame: FAILED — 3 of 4 checks');
   });
 
   it('fails when the running site serves a first block that is not the frame', async () => {
@@ -190,8 +213,10 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
         response.end(JSON.stringify({ n: 1, blocks: [{ id: 'ch01#a', i: 0, text: WRONG_FIRST, hash: 'x' }] }));
         return;
       }
-      if (url === '/api/chapters/67') {
-        response.end(JSON.stringify({ n: 67, blocks: [{ id: 'ch67#a', i: 0, text: FRAME_LAST_SENTENCE, hash: 'x' }] }));
+      if (url === `/api/chapters/${String(TOTAL_CHAPTERS)}`) {
+        response.end(
+          JSON.stringify({ n: TOTAL_CHAPTERS, blocks: [{ id: 'ch42#a', i: 0, text: FRAME_LAST_SENTENCE, hash: 'x' }] }),
+        );
         return;
       }
       response.statusCode = 404;
@@ -202,8 +227,8 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     expect(result.stdout).toContain('frame: site /api/chapters/1 — MISMATCH');
     expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
     expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
-    expect(result.stdout).toContain('frame: site /api/chapters/67 — ok');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
+    expect(result.stdout).toContain('frame: site /api/chapters/42 — ok');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 6 checks');
   });
 
   it('reports a non-200 answer as the status and the code', async () => {
@@ -214,7 +239,7 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     const result = await run('--repo-root', REPO, '--server', base);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   404 NOT_WRITTEN');
-    expect(result.stdout).toContain('frame: FAILED — 2 of 5 checks');
+    expect(result.stdout).toContain('frame: FAILED — 2 of 6 checks');
   });
 
   it('reports an unreachable site as a mismatch with the reason', async () => {
@@ -222,41 +247,41 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     const result = await run('--repo-root', REPO, '--server', 'http://127.0.0.1:1');
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   unreachable:');
-    expect(result.stdout).toContain('frame: FAILED — 2 of 5 checks');
+    expect(result.stdout).toContain('frame: FAILED — 2 of 6 checks');
   });
 
   it('reads the data dir read-only and prints what it holds, including the last ingest', async () => {
     const dataDir = tmpDir('book-frame-data-');
     const at = '2026-10-27T16:42:53Z';
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, ch67Last: FRAME_LAST_SENTENCE, lastScanAt: at });
+    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: at });
 
     const result = await run('--repo-root', REPO, '--data-dir', dataDir);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
     expect(result.stdout).toContain(`frame:   ch01 first block: ${FRAME_FIRST_SENTENCE}`);
-    expect(result.stdout).toContain(`frame:   ch67 last block:  ${FRAME_LAST_SENTENCE}`);
+    expect(result.stdout).toContain(`frame:   ch42 last block:  ${FRAME_LAST_SENTENCE}`);
     expect(result.stdout).toMatch(new RegExp(`frame:   last ingest:\\s+${at}`, 'u'));
-    expect(result.stdout).toContain('frame: ok — 4 checks');
+    expect(result.stdout).toContain('frame: ok — 5 checks');
   });
 
   it('names every failing block of the data dir when both ends are wrong', async () => {
     const dataDir = tmpDir('book-frame-wrong-');
-    writeBookDb(dataDir, { ch01First: WRONG_FIRST, ch67Last: 'Совсем другой финал.', lastScanAt: null });
+    writeBookDb(dataDir, { ch01First: WRONG_FIRST, lastLast: 'Совсем другой финал.', lastScanAt: null });
     const result = await run('--repo-root', REPO, '--data-dir', dataDir);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(`frame: data dir ${dataDir} — MISMATCH`);
     expect(result.stdout).toContain('frame:   ch01 first block:');
-    expect(result.stdout).toContain('frame:   ch67 last block:');
+    expect(result.stdout).toContain('frame:   ch42 last block:');
     expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
     expect(result.stdout).toContain('frame:   actual:   Совсем другой финал.');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 4 checks');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
   });
 
   it('is a mismatch, not a crash, when the data dir has no database', async () => {
     const result = await run('--repo-root', REPO, '--data-dir', tmpDir('book-frame-nodb-'));
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   cannot open');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 4 checks');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
   });
 
   it('is a mismatch, not a crash, when book.db is not a database', async () => {
@@ -266,34 +291,34 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(`frame: data dir ${dataDir} — MISMATCH`);
     expect(result.stdout).toMatch(/frame:   actual:   cannot (open|read)/u);
-    expect(result.stdout).toContain('frame: FAILED — 1 of 4 checks');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
   });
 
   it('answers the owner form `--url=… --data=…` with the six-check readout', async () => {
     const base = await serveCanon();
     const dataDir = tmpDir('book-frame-alias-');
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, ch67Last: FRAME_LAST_SENTENCE, lastScanAt: null });
+    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: null });
     const result = await run('--repo-root', REPO, `--url=${base}`, `--data=${dataDir}`);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('frame: site /api/chapters/1 — ok');
-    expect(result.stdout).toContain('frame: site /api/chapters/67 — ok');
+    expect(result.stdout).toContain('frame: site /api/chapters/42 — ok');
     expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
     expect(result.stdout).toContain(`frame:   ch01 first block: ${FRAME_FIRST_SENTENCE}`);
-    expect(result.stdout).toContain(`frame:   ch67 first block: ${FRAME_LAST_SENTENCE}`);
-    expect(result.stdout).toContain(`frame:   ch67 last block:  ${FRAME_LAST_SENTENCE}`);
+    expect(result.stdout).toContain(`frame:   ch42 first block: ${FRAME_LAST_SENTENCE}`);
+    expect(result.stdout).toContain(`frame:   ch42 last block:  ${FRAME_LAST_SENTENCE}`);
     expect(result.stdout).toContain('frame:   last ingest:');
-    expect(result.stdout).toContain('frame: ok — 6 checks');
+    expect(result.stdout).toContain('frame: ok — 7 checks');
   });
 
   it('accepts the space-separated aliases `--url <url> --data <dir>`', async () => {
     const base = await serveCanon();
     const dataDir = tmpDir('book-frame-alias-space-');
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, ch67Last: FRAME_LAST_SENTENCE, lastScanAt: null });
+    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: null });
     const result = await run('--repo-root', REPO, '--url', base, '--data', dataDir);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
-    expect(result.stdout).toContain('frame: ok — 6 checks');
+    expect(result.stdout).toContain('frame: ok — 7 checks');
   });
 
   it('bounds both chapters by one deadline: a hanging site is `timeout`, the second request is not made', async () => {

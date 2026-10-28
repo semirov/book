@@ -11,7 +11,7 @@
  * then the chapter is gated by that step's two verdicts and nothing here matters any more.
  */
 
-import type { ValidatorFinding } from '@book/shared';
+import { TOTAL_CHAPTERS, type ValidatorFinding } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { readIntegrity } from '../integrity/service.ts';
@@ -53,8 +53,8 @@ export function reconcileRestore(deps: EngineDeps, input: RestoreReconcileInput)
   const db: Db = deps.db;
   const now = input.now ?? deps.clock.now();
   const chapter = input.chapter;
-  if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) {
-    refuse('INVALID_CHAPTER', 422, 'chapter must be an integer between 1 and 67');
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) {
+    refuse('INVALID_CHAPTER', 422, `chapter must be an integer between 1 and ${String(TOTAL_CHAPTERS)}`);
   }
   const because = input.because.trim().slice(0, BECAUSE_MAX_CHARS);
   if (because.length === 0) refuse('INVALID_REASON', 422, 'reconcile needs --because: the operator’s own words');

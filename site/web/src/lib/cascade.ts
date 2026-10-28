@@ -3,7 +3,7 @@
  *
  * Pure geometry and a small reducer, so "the consequence runs in both directions at once"
  * can be asserted without a DOM. A ripple has **two wings** — down toward chapter 1 and up
- * toward chapter 67 — and each wing carries its own wave, state and reached chapters, taken
+ * toward chapter 42 — and each wing carries its own wave, state and reached chapters, taken
  * from the real cascade DTO (`state.cascade`, `cascade:progress`, `change:decided`) and never
  * from a timer. A wing that never opened is `waiting` with nothing reached: no rings.
  *
@@ -53,7 +53,7 @@ export type Ribbon = {
   outcome: string | null;
   touched: number[];
   rewritten: number[];
-  /** Both wings at once: the downward frontier toward 1, the upward one toward 67. */
+  /** Both wings at once: the downward frontier toward 1, the upward one toward 42. */
   wings: CascadeWingsDto;
   /** The chapter of the step in flight; null when the ripple is between steps. */
   step: number | null;
@@ -68,7 +68,7 @@ function waitingWings(origin: number): CascadeWingsDto {
   return { down: wing(), up: wing() };
 }
 
-/** `down` runs toward chapter 1, `up` toward 67 — the two directions of one consequence. */
+/** `down` runs toward chapter 1, `up` toward 42 — the two directions of one consequence. */
 export type Wing = 'down' | 'up';
 
 export const WING_WORDS: Record<Wing, string> = { down: 'вниз', up: 'вверх' };

@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { getChapterRow, listBlocks } from '../src/db/repo/chapters.ts';
@@ -54,11 +54,11 @@ describe('frameIntact — the canon sentence, character for character (BOOK-137)
     expect(frameIntact(1, `${FRAME_FIRST_SENTENCE.replace('Её', 'Её\n')}\n\nТекст.\n`)).toBe(false);
   });
 
-  it('closes ch67 on the last sentence, and leaves a chapter with no frame alone', () => {
-    expect(frameIntact(67, `Финал\n\nОн сел.\n\n${FRAME_LAST_SENTENCE}\n`)).toBe(true);
-    expect(frameIntact(67, `Финал\n\nОн сел.\n\n${WEAKENED_LAST}\n`)).toBe(false);
+  it('closes the finale on the last sentence, and leaves a chapter with no frame alone', () => {
+    expect(frameIntact(TOTAL_CHAPTERS, `Финал\n\nОн сел.\n\n${FRAME_LAST_SENTENCE}\n`)).toBe(true);
+    expect(frameIntact(TOTAL_CHAPTERS, `Финал\n\nОн сел.\n\n${WEAKENED_LAST}\n`)).toBe(false);
     // The closer is the *last* thing: prose after it would move the sentence away from the end.
-    expect(frameIntact(67, `Финал\n\n${FRAME_LAST_SENTENCE}\n\nОн сел.\n`)).toBe(false);
+    expect(frameIntact(TOTAL_CHAPTERS, `Финал\n\n${FRAME_LAST_SENTENCE}\n\nОн сел.\n`)).toBe(false);
     expect(frameIntact(2, 'Глава\n\nЛюбой текст, даже без рамки.\n')).toBe(true);
   });
 });
@@ -89,12 +89,15 @@ describe('applyChapterFile — a moved frame publishes nothing (BOOK-137)', () =
     }
   });
 
-  it('refuses a weakened ch67 with no chapter row at all (a first sight)', () => {
+  it('refuses a weakened finale with no chapter row at all (a first sight)', () => {
     const f = createFixture();
     try {
-      expect(publish(f, 67, `Финал\n\n${WEAKENED_LAST}\n`)).toEqual({ status: 'frame-rejected', n: 67 });
-      expect(getChapterRow(f.db, 67)).toBeUndefined();
-      expect(revisionCount(f, 67)).toBe(0);
+      expect(publish(f, TOTAL_CHAPTERS, `Финал\n\n${WEAKENED_LAST}\n`)).toEqual({
+        status: 'frame-rejected',
+        n: TOTAL_CHAPTERS,
+      });
+      expect(getChapterRow(f.db, TOTAL_CHAPTERS)).toBeUndefined();
+      expect(revisionCount(f, TOTAL_CHAPTERS)).toBe(0);
       expect(eventCount(f)).toBe(0);
     } finally {
       f.close();
@@ -123,7 +126,10 @@ describe('applyChapterFile — a moved frame publishes nothing (BOOK-137)', () =
       expect(listBlocks(f.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
       expect(revisionCount(f, 1)).toBe(0);
       // The closer behaves the same way.
-      expect(publish(f, 67, `${FRAME_LAST_SENTENCE}\n`, 2_000)).toEqual({ status: 'emptied', n: 67 });
+      expect(publish(f, TOTAL_CHAPTERS, `${FRAME_LAST_SENTENCE}\n`, 2_000)).toEqual({
+        status: 'emptied',
+        n: TOTAL_CHAPTERS,
+      });
     } finally {
       f.close();
     }

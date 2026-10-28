@@ -1,11 +1,11 @@
 /**
  * The writing engine's vocabulary (ARCHITECTURE.md §6A.2, §6A.7, §6A.8, §6B.3).
  *
- * One source for three consumers — the engine, the site and `bin/engine.mjs` — so a
- * change, a step, a seam and a verdict cannot mean two things in two processes.
- * Platform-neutral: types and pure helpers only, no I/O.
+ * One source for three consumers — the engine, the site and `bin/engine.mjs` — so a change, a
+ * step, a seam or a verdict cannot mean two things in two processes; platform-neutral, no I/O.
  */
 
+import { TOTAL_CHAPTERS } from './book.ts';
 import type { InterventionKind } from './intervention.ts';
 import type { Lane } from './types.ts';
 
@@ -78,7 +78,7 @@ export type ChangeEvent = {
   id: string; // 'chg_01JB7Z…' (ULID)
   seq: number; // the FIFO ticket, immutable
   kind: ChangeKind;
-  chapter: number; // 1..67 — the point of change
+  chapter: number; // 1..TOTAL_CHAPTERS — the point of change
   anchor: null | { blockIds: string[]; quote: string; prefix: string; suffix: string };
   intent: string; // ≤200 chars, what must become true
   proposedText: string | null;
@@ -161,7 +161,7 @@ export type Step = {
   wing: 'downward' | 'upward' | null;
   chapter: number | 'front';
   pass: StepPass;
-  /** n means boundary (n−1 | n); 'front' = front|1; 'ending' = 67|ending. */
+  /** n means boundary (n−1 | n); 'front' = front|1; 'ending' = TOTAL_CHAPTERS|ending. */
   boundary: SeamBoundary;
   outcome: StepOutcome;
   revBefore: number | null;
@@ -262,7 +262,7 @@ export type PremiseAssignment = {
 
 /**
  * BOOK-7 — the public line for an intervention aimed at a frozen frame slot (ch01's opening
- * sentence, ch67's finale). The frame is never a target, and the reader is told why.
+ * sentence, ch42's finale). The frame is never a target, and the reader is told why.
  */
 export const PREMISE_FROZEN_REASON = 'фраза этой главы неподвижна — замысел к ней не принимается';
 
@@ -412,12 +412,12 @@ export type ChangeTrace = {
  */
 export function normalizeSeamBoundary(value: unknown): SeamBoundary | null {
   if (value === 'front' || value === 'ending') return value;
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 67) {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= TOTAL_CHAPTERS) {
     return value === 1 ? 'front' : value;
   }
   if (typeof value === 'string' && /^\d{1,2}$/u.test(value)) {
     const n = Number(value);
-    if (n >= 1 && n <= 67) return n === 1 ? 'front' : n;
+    if (n >= 1 && n <= TOTAL_CHAPTERS) return n === 1 ? 'front' : n;
   }
   return null;
 }
@@ -429,7 +429,7 @@ export function normalizeSeamBoundary(value: unknown): SeamBoundary | null {
  */
 export function seamTouchesChapter(boundary: SeamBoundary, chapter: number): boolean {
   if (boundary === 'front') return chapter === 1;
-  if (boundary === 'ending') return chapter === 67;
+  if (boundary === 'ending') return chapter === TOTAL_CHAPTERS;
   return boundary === chapter || boundary === chapter + 1;
 }
 

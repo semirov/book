@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { CHAPTER_CHARS, type WriterAssignment } from '@book/shared';
+import { CHAPTER_CHARS, TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { SITE_ROOT } from '../../src/config.ts';
@@ -138,7 +138,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
 
   it('admits a change, hands out the job, and admits a written ending', async () => {
     const fixture = createEngineFixture({
-      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']), 67: chapterText('Финал', ['Свет погас.']) },
+      chapters: { 1: chapterText('Начало', ['Тестовый абзац.']), [TOTAL_CHAPTERS]: chapterText('Финал', ['Свет погас.']) },
     });
     const app = await buildControl({ engine: fixture.engine, token: TOKEN, logger: false });
     const auth = { authorization: `Bearer ${TOKEN}` };
@@ -171,12 +171,12 @@ describe('the internal API (§4.2, §6A.11)', () => {
       expect(trace.statusCode).toBe(200);
       expect(trace.json().data).toMatchObject({ kind: 'change', change: { change: { id: change.id } } });
 
-      // A written ch67 takes an ordinary change (BOOK-137): the frame is guarded at the landing.
+      // A written last chapter takes an ordinary change (BOOK-137): the frame is guarded at landing.
       const ending = await app.inject({
         method: 'POST',
         url: '/internal/changes',
         headers: auth,
-        payload: { kind: 'reader_edit', chapter: 67, intent: 'пусть кто-то спасётся' },
+        payload: { kind: 'reader_edit', chapter: TOTAL_CHAPTERS, intent: 'пусть кто-то спасётся' },
       });
       expect(ending.json()).toMatchObject({ ok: true, data: { status: 'pending' } });
 

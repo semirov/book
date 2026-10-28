@@ -14,6 +14,7 @@
  * than a promise: the scheduler has no expression that could plan a distant chapter.
  */
 
+import { TOTAL_CHAPTERS } from '@book/shared';
 import type {
   CascadeBudget,
   CascadeOutcome,
@@ -74,7 +75,7 @@ type WingState = {
   last: CascadeStepFact | null;
   /** The last step reported no new seam: the wing is done, nothing further to repair. */
   held: boolean;
-  /** The wing stepped onto the edge of the book (chapter 1 or 67). */
+  /** The wing stepped onto the edge of the book (chapter 1 or `TOTAL_CHAPTERS`). */
   reachedEdge: boolean;
   /** The next chapter exists but is empty: the ripple stops at the drafting frontier (§6A.10). */
   atFrontier: boolean;
@@ -122,7 +123,7 @@ function wingState(steps: CascadeStepFact[], origin: number, direction: 'downwar
       : direction === 'downward'
         ? Math.min(...own.map((step) => chapterOf(step) ?? origin))
         : Math.max(...own.map((step) => chapterOf(step) ?? origin));
-  const edge = direction === 'downward' ? 1 : 67;
+  const edge = direction === 'downward' ? 1 : TOTAL_CHAPTERS;
   return {
     steps: own,
     frontier,
@@ -260,10 +261,10 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
   const upDone = up.held || up.reachedEdge;
   if (lagOk && !upDone) {
     const next = up.frontier + 1;
-    if (next === 67) {
-      // ADR-024: a ripple that reaches the end evaluates it — it never rewrites chapter 67.
+    if (next === TOTAL_CHAPTERS) {
+      // ADR-024: a ripple that reaches the end evaluates it — it never rewrites the last chapter.
       upNeedsEnding = endingStep === undefined;
-    } else if (next <= 67 && context.written.has(next) && !touched.has(next)) {
+    } else if (next <= TOTAL_CHAPTERS && context.written.has(next) && !touched.has(next)) {
       const breach = crosses(1);
       if (breach !== null) {
         budgetStop('escalated:budget', budgetReason(breach, budget));
@@ -278,10 +279,10 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
           seamsIn: seamsFor(steps, next, originSeams),
         });
       }
-    } else if (next <= 67 && touched.has(next)) {
+    } else if (next <= TOTAL_CHAPTERS && touched.has(next)) {
       budgetStop('escalated:oscillation', CLOSE_COPY.oscillation);
-    } else if (next > 67) {
-      // Chapter 67 is reached: the ending is evaluated, never rewritten (ADR-024).
+    } else if (next > TOTAL_CHAPTERS) {
+      // The last chapter is reached: the ending is evaluated, never rewritten (ADR-024).
     } else {
       up.atFrontier = true;
     }
@@ -321,7 +322,7 @@ export function planCascade(facts: CascadeFacts, context: PlanContext): CascadeP
     }
     boundary.push({
       pass: 'ending',
-      chapter: 67,
+      chapter: TOTAL_CHAPTERS,
       isFront: false,
       lane: null,
       wave: currentWave,

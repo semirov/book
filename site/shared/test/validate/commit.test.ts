@@ -10,12 +10,12 @@ import {
 
 describe('F010 — one book file per commit (§13.1)', () => {
   it('recognises a chapter file and the first sheet, and nothing else', () => {
-    for (const path of ['manuscript/ch01.md', 'manuscript/ch67.md', 'manuscript/00-front.md']) {
+    for (const path of ['manuscript/ch01.md', 'manuscript/ch42.md', 'manuscript/00-front.md']) {
       expect(isBookFile(path)).toBe(true);
     }
     for (const path of [
       'manuscript/ch00.md',
-      'manuscript/ch68.md',
+      'manuscript/ch43.md',
       'manuscript/ch1.md',
       'manuscript/notes.md',
       'manuscript/archive/ch01.md',

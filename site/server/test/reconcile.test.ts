@@ -1,7 +1,7 @@
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getChapterRow, listBlocks, listCatalog } from '../src/db/repo/chapters.ts';
@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe('reconcile — empty manuscript', () => {
-  it('boots with 67 unwritten slots and no error', () => {
+  it('boots with every slot unwritten and no error', () => {
     fixture = createFixture();
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.scanned).toBe(0);
@@ -36,12 +36,12 @@ describe('reconcile — empty manuscript', () => {
     expect(report.readErrors).toEqual([]);
 
     const catalog = listCatalog(fixture.db);
-    expect(catalog).toHaveLength(67);
+    expect(catalog).toHaveLength(TOTAL_CHAPTERS);
     expect(catalog.every((entry) => !entry.written && entry.rev === 0)).toBe(true);
 
     const state = new StateService(fixture.db).snapshot();
     expect(state.chapters.count).toBe(0);
-    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.chapters.empty).toHaveLength(TOTAL_CHAPTERS);
   });
 
   it('survives a missing manuscript directory', () => {
@@ -50,7 +50,7 @@ describe('reconcile — empty manuscript', () => {
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.scanned).toBe(0);
     expect(report.missing).toBe(true);
-    expect(listCatalog(fixture.db)).toHaveLength(67);
+    expect(listCatalog(fixture.db)).toHaveLength(TOTAL_CHAPTERS);
   });
 
   it('keeps the last known text when the directory disappears (a bad mount, §6.2)', () => {
@@ -109,7 +109,7 @@ describe('reconcile — first sighting', () => {
   });
 
   it('leaves a stray PLAN.md and an archive directory alone', () => {
-    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'PLAN.md': '# План 67 глав' });
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'PLAN.md': '# План 42 глав' });
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
     expect(report.created).toEqual([1]);
     expect(report.ignored).toContain('PLAN.md');
@@ -175,21 +175,21 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.count).toBe(0);
     expect(state.chapters.totalChars).toBe(0);
-    expect(state.chapters.empty).toHaveLength(67);
+    expect(state.chapters.empty).toHaveLength(TOTAL_CHAPTERS);
 
     // The history is not blanked: the old revisions are still there.
     expect(listRevisions(fixture.db, 1).length).toBeGreaterThan(0);
   });
 
   it('projects a basis-only file on its first sight, before any chapter existed', () => {
-    fixture = createFixture({ 'ch67.md': FRAME_LAST_SENTENCE });
+    fixture = createFixture({ 'ch42.md': FRAME_LAST_SENTENCE });
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
-    expect(report.emptied).toEqual([67]);
+    expect(report.emptied).toEqual([TOTAL_CHAPTERS]);
     expect(report.created).toEqual([]);
-    expect(getChapterRow(fixture.db, 67)).toMatchObject({ rev: 0, block_count: 1, chars: 0, basis: 1 });
-    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
-    expect(listRevisions(fixture.db, 67)).toEqual([]);
+    expect(getChapterRow(fixture.db, TOTAL_CHAPTERS)).toMatchObject({ rev: 0, block_count: 1, chars: 0, basis: 1 });
+    expect(listBlocks(fixture.db, TOTAL_CHAPTERS).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+    expect(listRevisions(fixture.db, TOTAL_CHAPTERS)).toEqual([]);
     const state = new StateService(fixture.db).snapshot();
     expect(state.chapters.written).toEqual([]);
     expect(state.chapters.totalChars).toBe(0);
@@ -233,14 +233,14 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
     expect(again.unchanged).toEqual([1]);
   });
 
-  it('takes the empty book end to end: ch01 and ch67 hold one sentence each', () => {
-    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch67.md': CHAPTER_TWO, '00-front.md': FRONT });
+  it('takes the empty book end to end: ch01 and the finale hold one sentence each', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE, 'ch42.md': CHAPTER_TWO, '00-front.md': FRONT });
     reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
     fixture.write('ch01.md', FRAME_FIRST_SENTENCE);
-    fixture.write('ch67.md', FRAME_LAST_SENTENCE);
+    fixture.write('ch42.md', FRAME_LAST_SENTENCE);
     const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
-    expect(report.emptied).toEqual([1, 67]);
+    expect(report.emptied).toEqual([1, TOTAL_CHAPTERS]);
 
     const state = new StateService(fixture.db).snapshot();
     expect(state.chapters.written).toEqual([]);
@@ -248,7 +248,7 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
     expect(state.chapters.totalChars).toBe(0);
     expect(state.front.title).toBe('Без названия');
     expect(listBlocks(fixture.db, 1).map((block) => block.text)).toEqual([FRAME_FIRST_SENTENCE]);
-    expect(listBlocks(fixture.db, 67).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
+    expect(listBlocks(fixture.db, TOTAL_CHAPTERS).map((block) => block.text)).toEqual([FRAME_LAST_SENTENCE]);
   });
 
   it('still guards a zero-byte write: an empty file keeps the old text (§6.2)', () => {
@@ -272,6 +272,46 @@ describe('reconcile — a slot that holds only its basis sentence (BOOK-6)', () 
     expect(getChapterRow(fixture.db, 1)).toMatchObject({ basis: 0, rev: 1, chars: parseChapter(1, withFrame(1, CHAPTER_ONE)).chars });
     expect(listCatalog(fixture.db)[0]).toMatchObject({ written: true, basis: false });
     expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([1]);
+  });
+});
+
+describe('reconcile — storage outside the book’s range (BOOK-155)', () => {
+  it('skips a ch65.md in the manuscript root: not ingested, not deleted, not an error', () => {
+    fixture = createFixture({ 'ch01.md': CHAPTER_ONE });
+    // A leftover from the 67-chapter book: the scan cannot see it, so nothing is published and
+    // the file stays exactly where the owner left it.
+    writeFileSync(join(fixture.manuscript, 'ch65.md'), CHAPTER_TWO, 'utf8');
+
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    expect(report.ignored).toContain('ch65.md');
+    expect(report.readErrors).toEqual([]);
+    expect(report.created).toEqual([1]);
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 65)).toBeUndefined();
+    expect(listCatalog(fixture.db).some((entry) => entry.n === 65)).toBe(false);
+    expect(existsSync(join(fixture.manuscript, 'ch65.md'))).toBe(true);
+    expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([1]);
+  });
+
+  it('keeps a row written before the cut instead of reading it as a vanished file', () => {
+    fixture = createFixture();
+    const parsed = parseChapter(65, CHAPTER_TWO);
+    fixture.db
+      .prepare(
+        `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at)
+         VALUES (65, 3, 'Глава 65', ?, ?, 2, 0, '2026-09-01T09:00:00Z', '2026-09-01T09:00:00Z')`,
+      )
+      .run(parsed.sha256, parsed.chars);
+
+    const report = reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
+
+    // The scan cannot see chapter 65, so "files win" must not read it as a deletion.
+    expect(report.removed).toEqual([]);
+    expect(getChapterRow(fixture.db, 65)).toMatchObject({ n: 65, rev: 3 });
+    // …and the book never serves it.
+    expect(listCatalog(fixture.db).some((entry) => entry.n === 65)).toBe(false);
+    expect(new StateService(fixture.db).snapshot().chapters.written).toEqual([]);
   });
 });
 

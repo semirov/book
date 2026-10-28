@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { chapterMentions, validateIntent, validateReason } from '@book/shared';
+import { TOTAL_CHAPTERS, chapterMentions, validateIntent, validateReason } from '@book/shared';
 
 describe('--intent validation (§12.3)', () => {
   it('accepts a concrete goal about the comment’s own chapter', () => {
@@ -33,12 +33,12 @@ describe('--intent validation (§12.3)', () => {
     }
   });
 
-  it('judges an intent for chapter 67 by its words, not by the chapter (BOOK-137)', () => {
+  it('judges an intent for the finale by its words, not by the chapter (BOOK-137)', () => {
     // The finale is protected where text is written, not at the intent. These two sentences
     // would have been refused for their chapter alone before BOOK-137; now one is a valid goal
     // and the other is refused for what it asks, exactly as it would be in any other chapter.
-    expect(validateIntent('убрать повтор в последнем абзаце', 67)).toMatchObject({ ok: true });
-    expect(validateIntent('убрать повтор в главе 12', 67)).toMatchObject({
+    expect(validateIntent('убрать повтор в последнем абзаце', TOTAL_CHAPTERS)).toMatchObject({ ok: true });
+    expect(validateIntent('убрать повтор в главе 12', TOTAL_CHAPTERS)).toMatchObject({
       ok: false,
       code: 'INTENT_OTHER_CHAPTER',
     });

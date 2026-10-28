@@ -5,6 +5,13 @@
  * They are declared once, here, so a fresh install and an upgraded install cannot drift
  * apart — the failure mode this file exists to prevent is a column that exists in tests (a
  * fresh install) and not on the server (an upgrade).
+ *
+ * **Why the chapter CHECK still says `BETWEEN 1 AND 67` although the book is 42 chapters
+ * (BOOK-155):** a row written before the cut (chapter 65) is real prose and must survive. SQLite
+ * cannot narrow a CHECK without rebuilding the table, and a rebuild would reject that row. So
+ * the column stays a **storage** bound and the book's own range (`TOTAL_CHAPTERS`) is enforced
+ * where the book is read: the ingest, the routes and the engine. Nothing outside 1..42 is
+ * served or projected.
  */
 
 /**
@@ -12,6 +19,8 @@
  * It is a named constant because migration v7 has to build the *same* table (SQLite cannot
  * add a CHECK to an existing column), and a migrated install must be indistinguishable from
  * a fresh one.
+ *
+ * The `n` CHECK is a storage bound, not the book's length — see the header.
  */
 export const CHAPTERS_TABLE_SQL = `CREATE TABLE chapters (
   n           INTEGER PRIMARY KEY CHECK (n BETWEEN 1 AND 67),
@@ -22,7 +31,8 @@ export const CHAPTERS_TABLE_SQL = `CREATE TABLE chapters (
   block_count INTEGER NOT NULL,
   basis       INTEGER NOT NULL DEFAULT 0 CHECK (basis IN (0,1)),
                                                -- 1 = the file is exactly its basis sentence (BOOK-6):
-                                               -- one block to read, no title, no chars, not written
+                                               -- one block to read, chars 0, not written; a heading
+                                               -- above the sentence is still the title (owner, 2026-10-28)
   written_at  TEXT    NOT NULL,                -- first sighting
   updated_at  TEXT    NOT NULL,
   parse_error TEXT

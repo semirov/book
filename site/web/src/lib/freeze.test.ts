@@ -12,14 +12,14 @@ import { frameTextOf, isFrameParagraph } from './freeze.ts';
 describe('the frame is a sentence (BOOK-137)', () => {
   it('names the one canon sentence of ch01 and ch67, and no other chapter has one', () => {
     expect(frameTextOf(1)).toBe(FRAME_FIRST_SENTENCE);
-    expect(frameTextOf(67)).toBe(FRAME_LAST_SENTENCE);
+    expect(frameTextOf(42)).toBe(FRAME_LAST_SENTENCE);
     expect(frameTextOf(2)).toBeNull();
     expect(frameTextOf(65)).toBeNull();
   });
 
   it('recognises the basis slot as the frame paragraph', () => {
     expect(isFrameParagraph(1, FRAME_FIRST_SENTENCE)).toBe(true);
-    expect(isFrameParagraph(67, FRAME_LAST_SENTENCE)).toBe(true);
+    expect(isFrameParagraph(42, FRAME_LAST_SENTENCE)).toBe(true);
     // A rewrapped line is the same sentence: whitespace is not text.
     expect(isFrameParagraph(1, `  ${FRAME_FIRST_SENTENCE.replace(/ /gu, '\n')}  `)).toBe(true);
   });
@@ -34,7 +34,7 @@ describe('the frame is a sentence (BOOK-137)', () => {
   it('never freezes a chapter whose text is not the sentence — ch65 included', () => {
     // Prod's own API has ch65 as `basis: false, written: true`; no path may close it.
     expect(isFrameParagraph(65, 'Свет был включён до меня, и это было странно.')).toBe(false);
-    expect(isFrameParagraph(67, FRAME_FIRST_SENTENCE)).toBe(false);
+    expect(isFrameParagraph(42, FRAME_FIRST_SENTENCE)).toBe(false);
     expect(isFrameParagraph(8, FRAME_LAST_SENTENCE)).toBe(false);
   });
 });

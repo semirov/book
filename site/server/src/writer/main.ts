@@ -15,6 +15,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { TOTAL_CHAPTERS } from '@book/shared';
+
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
 import { createEngineClient } from './client.ts';
@@ -81,8 +83,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (flags.has('chapter')) {
     const raw = flags.get('chapter');
     const value = typeof raw === 'string' ? Number(raw) : Number.NaN;
-    if (!Number.isInteger(value) || value < 1 || value > 67) {
-      return { ok: false, error: '--chapter must be an integer between 1 and 67' };
+    if (!Number.isInteger(value) || value < 1 || value > TOTAL_CHAPTERS) {
+      return { ok: false, error: `--chapter must be an integer between 1 and ${String(TOTAL_CHAPTERS)}` };
     }
     chapter = value;
   }

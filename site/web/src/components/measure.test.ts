@@ -162,15 +162,14 @@ describe('the page has one column (BOOK-88/BOOK-91)', () => {
 
 describe('the TOC row is a register like every other (BOOK-88, BOOK-89)', () => {
   it('closes the page cell on the row’s own right edge, and fits at 390', () => {
-    const line = declarationsIn('../styles/live.css', '.toc-line');
     const link = declarationsIn('../styles/live.css', '.toc-link');
     const page = declarationsIn('../styles/live.css', '.toc-page');
     // BOOK-89: the page cell ends on the prose axis. The row *is* the column since the final
     // frame, so the old `100% − measure` inset is a no-op — it is gone, and the cell closes on
-    // the row's own right edge, which is the paragraph's.
-    for (const rule of [line, link]) expect(rule.has('padding-inline-end')).toBe(false);
-    expect(line.get('grid-template-columns')).toBe('36px minmax(0, 1fr) 3ch');
-    expect(line.get('height')).toBe('26px');
+    // the row's own right edge, which is the paragraph's. Every row is this one link now
+    // (owner, 2026-10-28): the `.toc-line` stub a dead row used to be no longer exists.
+    expect(link.has('padding-inline-end')).toBe(false);
+    expect(link.get('grid-template-columns')).toBe('36px minmax(0, 1fr) 3ch');
     expect(link.get('min-height')).toBe('44px');
     expect(link.get('padding')).toBe('10px 0');
     expect(page.get('inline-size')).toBe('3ch');
@@ -178,7 +177,7 @@ describe('the TOC row is a register like every other (BOOK-88, BOOK-89)', () => 
     // The leaf and the leader at 390: 390 − 2 × 24 = 342 px of column, and the fixed tracks —
     // the 36 px numeral, two 14 px gaps and the 3ch page slot at the 12 px mono (0.6 em) —
     // leave the title 256 px, so neither the leaf nor the dotted leader is squeezed.
-    const gap = Number.parseFloat(line.get('column-gap') ?? '0');
+    const gap = Number.parseFloat(link.get('column-gap') ?? '0');
     const micro = tokenPx('--fs-micro', { file: TOKENS });
     expect({ gap, micro }).toEqual({ gap: 14, micro: 12 });
     expect(390 - 2 * tokenPx('--gut', { query: 'phone', file: BASE }) - (36 + 2 * gap + 3 * 0.6 * micro)).toBeCloseTo(256.4, 1);

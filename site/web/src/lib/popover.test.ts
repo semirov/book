@@ -15,7 +15,7 @@ describe('placePopover', () => {
   });
 
   it('flips above an anchor near the bottom when there is no room below', () => {
-    // The last paragraph of chapter 67: the anchor sits eight pixels above the fold.
+    // The last paragraph of chapter 42: the anchor sits eight pixels above the fold.
     const anchor = { top: 800, left: 32, width: 20, height: 20 };
     const placement = placePopover(anchor, { width: 366, height: 300 }, PHONE);
     expect(placement.side).toBe('above');

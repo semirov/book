@@ -111,13 +111,13 @@ const STATE: StateSnapshot = {
   engine: { status: 'unknown', heartbeatAt: null, laneId: null },
   phase: 'draft',
   front: { title: 'Бланк', about: null, rev: 1, updatedAt: '2026-10-27T10:00:00Z' },
-  chapters: { total: 67, written: [1, 2], empty: [3, 4, 21], count: 2, totalChars: 24_000, basis: [] },
+  chapters: { total: 42, written: [1, 2], empty: [3, 4, 21], count: 2, totalChars: 24_000, basis: [] },
   cursors: {
-    forward: { lane: 'forward', from: 1, to: 67, cursor: 2, next: 3, status: 'idle', lastPassAt: null, lastPass: null },
-    backward: { lane: 'backward', from: 67, to: 1, cursor: 3, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
+    forward: { lane: 'forward', from: 1, to: 42, cursor: 2, next: 3, status: 'idle', lastPassAt: null, lastPass: null },
+    backward: { lane: 'backward', from: 42, to: 1, cursor: 3, next: 2, status: 'idle', lastPassAt: null, lastPass: null },
   },
   toc: [],
-  meeting: { forwardFront: 2, backwardFront: 67, gap: 0, converged: false, seam: 'not_reached' },
+  meeting: { forwardFront: 2, backwardFront: 42, gap: 0, converged: false, seam: 'not_reached' },
   cascade: null,
   queue: {
     depth: 0,

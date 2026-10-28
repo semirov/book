@@ -359,12 +359,12 @@ describe('the public reason a row may print', () => {
     // A failed attempt is not a verdict on the filing, and its handle is not copy.
     fixture = createFixture();
     const db = fixture.db;
-    const row = seedChange(db, { index: 1, chapter: 65, label: 'Аня' });
+    const row = seedChange(db, { index: 1, chapter: 34, label: 'Аня' });
     db.prepare("UPDATE changes SET status = 'void', outcome = 'dropped', reason = ? WHERE id = ?").run(
       'модель не ответила: PROVIDER_SHAPE',
       row.changeId,
     );
-    appendEvent(db, { kind: 'change.decided', changeId: row.changeId, chapter: 65 }, BASE_MS);
+    appendEvent(db, { kind: 'change.decided', changeId: row.changeId, chapter: 34 }, BASE_MS);
 
     const [item] = readRecord(db).items;
     expect(item?.reason).toBe('модель ответила не по форме — заявка остаётся в очереди');
@@ -373,7 +373,7 @@ describe('the public reason a row may print', () => {
 });
 
 /**
- * The prod shape of the chronicle: chapter 65 was written, its premise's linked change ended
+ * The prod shape of the chronicle: chapter 34 was written, its premise's linked change ended
  * `void`/`dropped` with «модель не ответила: PROVIDER_SHAPE», and the record row said
  * «замысел … снят» with the attempt's line over a chapter that exists. The chapter's own text
  * is the landing (`comments/repo.ts`), so the row carries that fact and no failure copy; the
@@ -385,14 +385,14 @@ describe('a premise the book landed (BOOK-7)', () => {
     const local = fixture;
     ingest(
       local,
-      'ch65.md',
-      longProse(['Абзац главы шестьдесят пять. Это служебный текст, он не является текстом книги.'], 'Глава 65'),
+      'ch34.md',
+      longProse(['Абзац главы тридцать четыре. Это служебный текст, он не является текстом книги.'], 'Глава 34'),
     );
-    const seeded = seedChange(local.db, { index: 1, chapter: 65, label: 'Аня' });
+    const seeded = seedChange(local.db, { index: 1, chapter: 34, label: 'Аня' });
     local.db
       .prepare("UPDATE changes SET premise = 1, status = 'void', outcome = 'dropped', reason = ? WHERE id = ?")
       .run('модель не ответила: PROVIDER_SHAPE', seeded.changeId);
-    appendEvent(local.db, { kind: 'change.decided', changeId: seeded.changeId, chapter: 65 }, BASE_MS);
+    appendEvent(local.db, { kind: 'change.decided', changeId: seeded.changeId, chapter: 34 }, BASE_MS);
 
     const [entry] = readRecord(local.db).items;
     expect(entry?.premise).toBe(true);
@@ -418,27 +418,27 @@ describe('a premise the book landed (BOOK-7)', () => {
   });
 
   it('gives both premises on one chapter the same landing', () => {
-    // The page reads a chapter's text once and reuses it: two premise entries on chapter 65
+    // The page reads a chapter's text once and reuses it: two premise entries on chapter 34
     // both carry the landing, and the second answer comes from the page's own map.
     fixture = createFixture();
     const local = fixture;
     ingest(
       local,
-      'ch65.md',
-      longProse(['Абзац главы шестьдесят пять. Это служебный текст, он не является текстом книги.'], 'Глава 65'),
+      'ch34.md',
+      longProse(['Абзац главы тридцать четыре. Это служебный текст, он не является текстом книги.'], 'Глава 34'),
     );
     const seeded = [
-      seedChange(local.db, { index: 1, chapter: 65, label: 'Аня' }),
+      seedChange(local.db, { index: 1, chapter: 34, label: 'Аня' }),
       // A second live lease on one chapter is impossible by schema; the row is moved after the
       // fact, which is all the record reads.
       seedChange(local.db, { index: 2, chapter: 9, label: 'Марк' }),
     ];
-    local.db.prepare('UPDATE changes SET chapter = 65 WHERE id = ?').run(seeded[1]?.changeId);
+    local.db.prepare('UPDATE changes SET chapter = 34 WHERE id = ?').run(seeded[1]?.changeId);
     seeded.forEach((change, position) => {
       local.db
         .prepare("UPDATE changes SET premise = 1, status = 'void', outcome = 'dropped', reason = ? WHERE id = ?")
         .run('модель не ответила: PROVIDER_SHAPE', change.changeId);
-      appendEvent(local.db, { kind: 'change.decided', changeId: change.changeId, chapter: 65 }, BASE_MS + position * 1_000);
+      appendEvent(local.db, { kind: 'change.decided', changeId: change.changeId, chapter: 34 }, BASE_MS + position * 1_000);
     });
 
     const items = readRecord(local.db).items;

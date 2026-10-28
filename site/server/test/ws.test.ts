@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { WebSocket } from 'ws';
+import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
@@ -141,7 +142,7 @@ describe('the upgrade origin (audit m9)', () => {
 });
 
 describe('hello', () => {
-  it('is the first frame and carries all 67 slots, the first sheet and the state', async () => {
+  it('is the first frame and carries every slot, the first sheet and the state', async () => {
     await boot();
     const client = await harness!.connect();
     const hello = await waitFor(() => client.frames.find((frame) => frame.type === 'hello'));
@@ -155,8 +156,11 @@ describe('hello', () => {
       // The byline count is in the first frame, so a reconnect heals page 1 (BOOK-DOC-4).
       authors: { count: 0, measuredAt: expect.any(String) },
     });
-    expect((hello.data.catalog as unknown[]).length).toBe(67);
-    expect((hello.data.state as Record<string, unknown>).chapters).toMatchObject({ total: 67, count: 0 });
+    expect((hello.data.catalog as unknown[]).length).toBe(TOTAL_CHAPTERS);
+    expect((hello.data.state as Record<string, unknown>).chapters).toMatchObject({
+      total: TOTAL_CHAPTERS,
+      count: 0,
+    });
     expect(hello.data.viewer).toEqual({ signedIn: false, displayName: null });
     expect(hello.data.comments).toEqual({ open: 0 });
   });

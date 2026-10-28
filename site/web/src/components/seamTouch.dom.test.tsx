@@ -34,6 +34,7 @@ function entryFor(n: number): CatalogEntry {
     blocks: 40,
     written: true,
     basis: false,
+    opening: null,
     writtenAt: '2026-10-25T09:20:00Z',
     updatedAt: '2026-10-25T09:20:00Z',
     direction: 'forward',

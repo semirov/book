@@ -8,25 +8,34 @@
  * chapter whose prose is silently counted as its title.
  */
 
-export const TOTAL_CHAPTERS = 67;
+export const TOTAL_CHAPTERS = 42;
+
+/**
+ * The chapter that opens the book. Like the finale it stands outside the parts, and it is the
+ * one that carries the first frozen sentence — named here so `scripts/lib/frame.mjs` reads the
+ * number instead of restating it.
+ */
+export const OPENING_CHAPTER = 1;
 
 /** Last chapter of the forward drafting lane. */
-export const FORWARD_LAST = 34;
+export const FORWARD_LAST = 21;
 /** First chapter of the backward drafting lane. */
-export const BACKWARD_FIRST = 35;
+export const BACKWARD_FIRST = 22;
 
 export type Direction = 'forward' | 'backward';
 export type Part = 1 | 2 | 3 | 4;
 
 /**
- * Four numbered parts, no content meaning (§6C.1). The split is a numbering convention:
- * three components (TOC, catalog, lane boundaries) must agree on it and only one is a UI.
+ * Four numbered parts of ten chapters each, no content meaning (§6C.1). The split is a
+ * numbering convention: three components (TOC, catalog, lane boundaries) must agree on it and
+ * only one is a UI. Chapter 1 (the opening) and chapter `TOTAL_CHAPTERS` (the finale) stand
+ * outside the parts, so the ranges start at 2 and end at `TOTAL_CHAPTERS - 1`.
  */
 export const PART_RANGES: ReadonlyArray<{ part: Part; from: number; to: number }> = [
-  { part: 1, from: 1, to: 22 },
-  { part: 2, from: 23, to: 44 },
-  { part: 3, from: 45, to: 66 },
-  { part: 4, from: 67, to: 67 },
+  { part: 1, from: 2, to: 11 },
+  { part: 2, from: 12, to: 21 },
+  { part: 3, from: 22, to: 31 },
+  { part: 4, from: 32, to: 41 },
 ];
 
 /** The only length numbers in the system (§6D.1, ADR-025 amended by ADR-031). */
@@ -46,15 +55,18 @@ export const CHAPTER_CHARS = {
 } as const;
 
 /**
- * One page of prose (BOOK-89): 67 characters per line × 27 lines at PT Serif 18/30.24 in the
- * 600px measure ≈ 1800 — a normal A5 page. The page is a projection of the text, never a
+ * One page of prose (BOOK-89): PAGE_CHARS characters per line × 27 lines at PT Serif 18/30.24 in
+ * the 600px measure ≈ 1800 — a normal A5 page. The page is a projection of the text, never a
  * stored field: `shared/src/pages.ts` turns it into chapter start pages, the TOC and the
  * reader's folio read those numbers, and no other module owns a second count.
  */
 export const PAGE_CHARS = 1800;
 
-/** «67 pages» to «1000 pages» (§6D.1); F026 binds it at closure (M7). */
-export const BOOK_CHARS = { min: 107_200, max: 1_675_000 } as const;
+/** Floor and ceiling of the whole book (§6D.1); F026 binds it at closure (M7). */
+export const BOOK_CHARS = {
+  min: TOTAL_CHAPTERS * CHAPTER_CHARS.floor,
+  max: TOTAL_CHAPTERS * CHAPTER_CHARS.max,
+} as const;
 
 export const TITLE_MAX_CHARS = 80;
 export const ABOUT_MIN_CHARS = 300;
@@ -77,7 +89,7 @@ export const IMPRINT_COPYRIGHT = '© Филипп Семиров';
 
 /**
  * The frozen frame (F029) — the one piece of text the owner fixed himself: chapter 1 opens
- * with it and chapter 67 closes with it. Nobody edits these sentences: not the writer, not
+ * with it and chapter 42 closes with it. Nobody edits these sentences: not the writer, not
  * a ripple, not a reader's change. One copy, so the validator and the engine cannot disagree
  * about what "the frame" is.
  */
@@ -92,23 +104,61 @@ export function frameSentenceOf(n: number): string | null {
 }
 
 /**
- * A slot with no prose at all: the file is absent/empty, or it holds only its basis sentence
- * (ch01/ch67 — issue BOOK-6). Such a slot is a **valid state**, not a finding: it has no
- * title line, no `chars` and no length band. A chapter with any other text is written.
+ * The prose of a slot that holds nothing but its frozen sentence, or null.
+ *
+ * **The one definition of a basis slot** (ingest and validator both call it): an optional
+ * valid title line — the heading a slot may carry, like any chapter — is stripped, and what
+ * remains must be *exactly* the frame sentence. Not "starts with": a chapter that opens on
+ * the frame and writes on is written prose, not a basis slot.
+ *
+ * The title line is not stripped when it *is* the chapter's own frame (a ch42 that opens on
+ * it is malformed, F029, and its line is prose — BOOK-32), so that file keeps its old answer.
  */
-export function isEmptySlot(n: number, raw: string): boolean {
-  const text = normalizeBookText(raw).trim();
-  if (text.length === 0) return true;
-  return text === frameSentenceOf(n);
+function basisProse(n: number, raw: string): string | null {
+  const frame = frameSentenceOf(n);
+  if (frame === null) return null;
+  const text = normalizeBookText(raw);
+  // The slot as it has been written so far: the frozen sentence and nothing else.
+  if (text.trim() === frame) return frame;
+  const first = (text.split('\n')[0] ?? '').trim();
+  // A chapter that opens on the frame is untitled prose (BOOK-32): the line is not a heading.
+  if (isFrameLine(n, first)) return null;
+  // An optional heading above the sentence — ch01 carries one and stays a basis slot.
+  const body = parseTitleLine(text).body.trim();
+  return body === frame ? frame : null;
 }
 
 /**
- * The file is exactly its basis sentence — an emptied slot, not an empty write between two
- * saves. The ingest may blank such a chapter instead of keeping the old revision (§6.2).
+ * A slot with no prose at all: the file is absent/empty, or it holds only its basis sentence
+ * — with or without a heading above it (ch01/ch42 — issue BOOK-6). Such a slot is a **valid
+ * state**, not a finding: it has no `chars` and no length band. A chapter with any other text
+ * is written.
+ */
+export function isEmptySlot(n: number, raw: string): boolean {
+  if (normalizeBookText(raw).trim().length === 0) return true;
+  return basisProse(n, raw) !== null;
+}
+
+/**
+ * The file is exactly its basis sentence, optionally under its own heading — an emptied slot,
+ * not an empty write between two saves. The ingest may blank such a chapter instead of
+ * keeping the old revision (§6.2).
  */
 export function isBasisOnly(n: number, raw: string): boolean {
-  const frame = frameSentenceOf(n);
-  return frame !== null && normalizeBookText(raw).trim() === frame;
+  return basisProse(n, raw) !== null;
+}
+
+/**
+ * A chapter's opening as a contents row may print it: its first five words, with `…` when the
+ * prose goes on, and `null` for a slot that holds no text. Derived from the first block, never
+ * stored — the contents show the book's own words when it has no title to show.
+ */
+export function openingOf(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null;
+  const words = text.trim().split(/\s+/u).filter((word) => word.length > 0);
+  if (words.length === 0) return null;
+  const head = words.slice(0, 5).join(' ');
+  return words.length > 5 ? `${head}…` : head;
 }
 
 export type Imprint = {
@@ -148,15 +198,18 @@ export function directionOf(n: number): Direction {
   return n <= FORWARD_LAST ? 'forward' : 'backward';
 }
 
-/** The TOC volume of a chapter: 1–22 → 1, 23–44 → 2, 45–66 → 3, 67 → 4. */
-export function partOf(n: number): Part {
+/**
+ * The part of a chapter: 2–11 → 1, 12–21 → 2, 22–31 → 3, 32–41 → 4. The opening (1) and the
+ * finale (`TOTAL_CHAPTERS`) stand outside the parts, so they answer `null`.
+ */
+export function partOf(n: number): Part | null {
   for (const range of PART_RANGES) {
     if (n >= range.from && n <= range.to) return range.part;
   }
-  return 1;
+  return null;
 }
 
-/** All 67 chapter numbers, ascending. */
+/** All the book's chapter numbers, ascending. */
 export function allChapterNumbers(): number[] {
   return Array.from({ length: TOTAL_CHAPTERS }, (_, i) => i + 1);
 }
@@ -248,7 +301,7 @@ function flatLine(value: string): string {
 /**
  * Line 1 is the chapter's frame, not its title, when it equals the frozen sentence or extends
  * it with more prose on the same line (BOOK-32). ch01 may open with the frame and write on;
- * a ch67 that opens with it is malformed (the frame ends that chapter), and F029 is the rule
+ * a ch42 that opens with it is malformed (the frame ends that chapter), and F029 is the rule
  * that says so — the line is prose in either case. The frame lives once, in this file.
  */
 function isFrameLine(n: number, line: string): boolean {

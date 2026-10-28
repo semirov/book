@@ -190,7 +190,7 @@ describe('ranges and labels', () => {
   it('names a seam by the boundary it is', () => {
     expect(boundaryLabel(8)).toBe('7 | 8');
     expect(boundaryLabel('front')).toBe('обложка | 1');
-    expect(boundaryLabel('ending')).toBe('67 | финал');
+    expect(boundaryLabel('ending')).toBe('42 | финал');
   });
 
   it('maps relevance and outcomes to honest copy', () => {

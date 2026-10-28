@@ -33,7 +33,7 @@ export type StageSpan = {
 export type PassStageEvent = {
   /** The engine's step id — one pass, one id. */
   passId: string;
-  /** 1..67. */
+  /** 1..TOTAL_CHAPTERS. */
   chapter: number;
   /** Monotonic inside the pass, from 1. */
   stageSeq: number;

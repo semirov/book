@@ -19,7 +19,7 @@ export function registerStateRoutes(app: FastifyInstance, deps: RouteDeps): void
   });
 
   app.get('/api/chapters', async (_request, reply) => {
-    // All 67 slots, always: the опись is rendered from this without a request per slot.
+    // Every slot, always: the опись is rendered from this without a request per slot.
     return reply.send(listCatalog(deps.db));
   });
 }

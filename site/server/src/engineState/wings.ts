@@ -2,7 +2,7 @@
  * A ripple's two wings as public data (ARCHITECTURE.md §11.7, BOOK-DOC-4).
  *
  * The consequence spreads in both directions at once — rings toward chapter 1 and toward
- * chapter 67 — and the reader may follow either wing. That shape is a **fact of the recorded
+ * the last chapter — and the reader may follow either wing. That shape is a **fact of the recorded
  * steps**, so it is derived here once and carried by the snapshot, the progress frame and the
  * change DTO. Nothing in this module invents motion: a wing that never opened reports
  * `waiting` with no reached chapters, and the ribbon therefore draws no rings for it.
@@ -12,7 +12,7 @@
  */
 
 import type { CascadeStatus, CascadeWingDto, CascadeWingsDto } from '@book/shared';
-import { parseSeams } from '@book/shared';
+import { isChapterNumber, parseSeams } from '@book/shared';
 
 import { safeJson } from './rows.ts';
 
@@ -54,10 +54,16 @@ function wingOf(
   status: CascadeStatus,
 ): CascadeWingDto {
   const lane = DIRECTION_LANE[direction];
-  const own = steps.filter((step) => step.pass === 'cascade' && step.lane === lane && step.chapter !== null);
+  // BOOK-155 — a step recorded at a number the book no longer has (chapter 65) is storage, not
+  // part of the ripple this book is showing: the wing never names an anchor that does not exist.
+  // A ripple that only ever reached such rows therefore reports `waiting` and draws no rings.
+  const own = steps.filter(
+    (step): step is WingStep & { chapter: number } =>
+      step.pass === 'cascade' && step.lane === lane && step.chapter !== null && isChapterNumber(step.chapter),
+  );
   if (own.length === 0) return { frontier: origin, wave: 0, state: 'waiting', reached: [] };
 
-  const chapters = own.map((step) => step.chapter as number);
+  const chapters = own.map((step) => step.chapter);
   const frontier = direction === 'down' ? Math.min(...chapters) : Math.max(...chapters);
   const wave = own.reduce((max, step) => Math.max(max, step.wave), 0);
   const reached = [...new Set(chapters)].sort((left, right) => (direction === 'down' ? right - left : left - right));

@@ -8,7 +8,7 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 
 import type { Db } from '../src/db/db.ts';
 import { upsertIdentity } from '../src/db/repo/identities.ts';
@@ -28,7 +28,7 @@ export const SEEDED_STATE_VERSION = 813;
 export function bookFiles(): Record<string, string> {
   return {
     'ch01.md': FRAME_FIRST_SENTENCE,
-    'ch67.md': FRAME_LAST_SENTENCE,
+    [`ch${String(TOTAL_CHAPTERS).padStart(2, '0')}.md`]: FRAME_LAST_SENTENCE,
     'ch08.md': longProse(['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
   };
 }

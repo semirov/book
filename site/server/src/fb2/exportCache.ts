@@ -24,7 +24,7 @@
 
 import { statSync } from 'node:fs';
 
-import type { Imprint } from '@book/shared';
+import { isChapterNumber, type Imprint } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { listBlocks, listChapterRows } from '../db/repo/chapters.ts';
@@ -78,12 +78,16 @@ function inputOf(source: ExportSource, revision: number, cover: CoverImage): Fb2
     revision,
     // BOOK-133: the image travels as data; this module owns reading it, never the renderer.
     cover: { id: COVER_ID, contentType: COVER_TYPE, base64: cover.base64 },
-    chapters: listChapterRows(source.db).map((row) => ({
-      n: row.n,
-      title: row.title,
-      // An absent row and a row with no blocks both render as `<empty-line/>` (§3).
-      paragraphs: listBlocks(source.db, row.n).map((block) => paragraphText(block.text)),
-    })),
+    // A row outside the book's range is storage, not a chapter (BOOK-155): the file the reader
+    // downloads holds the book, never a leftover row.
+    chapters: listChapterRows(source.db)
+      .filter((row) => isChapterNumber(row.n))
+      .map((row) => ({
+        n: row.n,
+        title: row.title,
+        // An absent row and a row with no blocks both render as `<empty-line/>` (§3).
+        paragraphs: listBlocks(source.db, row.n).map((block) => paragraphText(block.text)),
+      })),
   };
 }
 

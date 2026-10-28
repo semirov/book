@@ -271,7 +271,7 @@ export function writingOrderViolation(intent: string): string | null {
 }
 
 /**
- * BOOK-137: a chapter is no longer refused for being the last one. ch67 used to be closed here
+ * BOOK-137: a chapter is no longer refused for being the last one. ch42 used to be closed here
  * («финал заморожен»), which made a filing on the finale undecidable — the reader's paperwork
  * could never be recorded. The ending is protected where text is: a ripple never rewrites it
  * (`engine/queue.ts`, `engine/lease`), a landing must keep the canon sentence (`engine/write.ts`)

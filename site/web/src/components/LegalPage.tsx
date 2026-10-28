@@ -1,4 +1,4 @@
-import { EDIT_MAX_CHARS, INTERVENTION_KIND_LIST } from '@book/shared';
+import { EDIT_MAX_CHARS, INTERVENTION_KIND_LIST, TOTAL_CHAPTERS } from '@book/shared';
 import { useEffect } from 'react';
 
 import { track } from '../lib/analytics.ts';
@@ -260,7 +260,7 @@ function Rules() {
             правка расходится одной волной по соседним главам — вперёд и назад; вторая волна
             бывает только решением владельца;
           </li>
-          <li>глава 67 заморожена: правки читателей туда не входят;</li>
+          <li>глава {TOTAL_CHAPTERS} заморожена: правки читателей туда не входят;</li>
           <li>ваше показанное имя видят другие читатели.</li>
         </ul>
       </section>

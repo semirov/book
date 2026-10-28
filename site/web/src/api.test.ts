@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe('getState / getChapters', () => {
   it('reads JSON over REST', async () => {
-    respond({ version: 3, chapters: { total: 67 } });
+    respond({ version: 3, chapters: { total: 42 } });
     await expect(getState()).resolves.toMatchObject({ version: 3 });
 
     respond([{ n: 1, written: false }]);

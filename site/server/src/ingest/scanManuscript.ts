@@ -2,7 +2,7 @@
  * Read the manuscript directory (ARCHITECTURE.md §6.1). Read-only by construction: nothing
  * in this module opens a file for writing.
  *
- * Only `chNN.md` with NN in 01..67 is a chapter, and `00-front.md` is the first sheet
+ * Only `chNN.md` with NN in 01..42 is a chapter, and `00-front.md` is the first sheet
  * (title + annotation). Everything else is reported to the caller (`ignored`) and left to
  * the validator (F001/F002) — the site must never fail to boot because a stray file
  * appeared in the repository.
@@ -77,6 +77,8 @@ export function scanManuscript(bookRoot: string): ScanResult {
       continue;
     }
     const n = Number.parseInt(match[1] ?? '', 10);
+    // Outside the book: skipped as a stray file, never ingested and never deleted (the file
+    // stays where the owner put it, and the validator's F002 reports it).
     if (n < 1 || n > TOTAL_CHAPTERS) {
       result.ignored.push(name);
       continue;

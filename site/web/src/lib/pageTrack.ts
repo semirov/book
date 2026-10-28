@@ -13,8 +13,8 @@
  * Two pixels is that rounding, not a threshold. A chapter opens a page at its first pixel, so
  * the chapter changes at once — no hysteresis; the page keeps one line of it.
  *
- * The one exception is the document's end: nothing lies below the last chapter, so `#ch-67`
- * leaves it mid-screen with the line still inside ch60. A reader who has reached the end of
+ * The one exception is the document's end: nothing lies below the last chapter, so `#ch-42`
+ * leaves it mid-screen with the line still inside ch35. A reader who has reached the end of
  * the book is reading its end — the last chapter, on that chapter's last page.
  *
  * Two layers live here:
@@ -24,10 +24,16 @@
  *   - `useReading(catalog)` — the glue: one passive `scroll` listener, one
  *     `requestAnimationFrame` per frame, a chapter's blocks measured once per box, and state
  *     written only when `{ n, page }` actually changes.
+ *
+ * The head's offset is **not** a number of its own: the reading line reads `offsetTopOfPage()`
+ * from `headerOffset.ts`, the same measurement a contents tap and a `#ch-N` jump land on, so the
+ * line and the anchor cannot disagree about where the head ends.
  */
 
 import { PAGE_CHARS, pageAt, type ChapterLength } from '@book/shared';
 import { useEffect, useRef, useState } from 'react';
+
+import { offsetOf, offsetTopOfPage } from './headerOffset.ts';
 
 /**
  * One line of prose: `PAGE_CHARS` over the 27 lines a page holds ≈ 67 characters. This is the
@@ -44,20 +50,19 @@ export const LINE_CHARS = Math.round(PAGE_CHARS / 27);
  */
 export const ANCHOR_EPS = 2;
 
-/** The head's offset when the token cannot be read (tests, SSR, a sheet without it). */
-const HEAD_FALLBACK = 64;
-
-/** The sticky head's height, from the sheet's own token — never a number copied from it. */
+/**
+ * The head's offset — the one measurement `headerOffset.ts` writes on the page and a jump lands
+ * on. There is no second number here: the fallback for a page the hook has not measured is the
+ * same function's fallback (the head's own height plus the breathing space), and a headless
+ * environment has no head at all.
+ */
 export function headOffset(): number {
-  if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return HEAD_FALLBACK;
-  const raw = getComputedStyle(document.documentElement).getPropertyValue('--offset-top');
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) && value > 0 ? value : HEAD_FALLBACK;
+  return typeof document === 'undefined' ? offsetOf(0) : offsetTopOfPage(document);
 }
 
 /** The reading line, measured from the top of the viewport: the head, plus the anchor's eps. */
 export function readingLine(offset: number): number {
-  const head = Number.isFinite(offset) && offset > 0 ? offset : HEAD_FALLBACK;
+  const head = Number.isFinite(offset) && offset > 0 ? offset : headOffset();
   return head + ANCHOR_EPS;
 }
 
@@ -151,8 +156,8 @@ export function atDocumentEnd(scroll: number, viewportHeight: number, scrollHeig
  * characters of that chapter the reader has passed. Null where no chapter owns the line.
  *
  * At the end of the document the last chapter owns the reader (BOOK-104): nothing lies below
- * it, so its top can never reach the line — `#ch-67` scrolls to the document's end and leaves
- * the last slot around mid-screen, with the line still inside ch60. A reader who has scrolled
+ * it, so its top can never reach the line — `#ch-42` scrolls to the document's end and leaves
+ * the last slot around mid-screen, with the line still inside ch35. A reader who has scrolled
  * to the end of the book is reading its end, and the page there is that chapter's last one.
  */
 function measuredReading(
@@ -212,7 +217,7 @@ function documentRect(element: Element): { top: number; height: number } {
  * renders. The chapter is `null` where none owns the line — the cover, page 2, the contents,
  * the end matter: a number appears only where a page exists.
  *
- * Mounted once, next to the head. Cost per frame: one rect per slot (67 numbers on a clean
+ * Mounted once, next to the head. Cost per frame: one rect per slot (42 numbers on a clean
  * layout) and the blocks of one chapter, measured only when that chapter's own box changed.
  * No block outside the chapter the reader is in is measured, and the pair is committed only
  * when the chapter or the page moved.

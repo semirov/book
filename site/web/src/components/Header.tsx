@@ -2,6 +2,7 @@ import type { CatalogEntry, StateSnapshot } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import { useStickyOffsets } from '../lib/headerOffset.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { PageNumber } from './PageNumber.tsx';
@@ -54,6 +55,9 @@ export function Header({
   const { n, page } = useReading(catalog);
   const title = titleOf(catalog, n);
   const slot = useRef<HTMLSpanElement>(null);
+  /** The sticky head's own box: the anchor contract measures it (BOOK-155, owner 2026-10-28). */
+  const head = useRef<HTMLElement>(null);
+  useStickyOffsets(head);
   const [clipped, setClipped] = useState<string | null>(null);
   const slotKey = n === null ? '' : `${n}:${title ?? ''}`;
   // A title that does not fit the head is dropped for the number alone, never ellipsized.
@@ -74,7 +78,7 @@ export function Header({
   }, []);
 
   return (
-    <header className="top">
+    <header className="top" ref={head}>
       <div className="page sheet top-in">
         <div className="top-row">
           {/* The book's own title and nothing else: no «Книга ·», no count (BOOK-112). */}

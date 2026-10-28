@@ -6,7 +6,13 @@
  * pull a write helper into a request path.
  */
 
-import { normalizeSeamBoundary, type InterventionKind, type SeamBoundary, type StepPass } from '@book/shared';
+import {
+  TOTAL_CHAPTERS,
+  normalizeSeamBoundary,
+  type InterventionKind,
+  type SeamBoundary,
+  type StepPass,
+} from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 
@@ -140,7 +146,7 @@ export function boundaryOf(text: string, pass: StepPass, chapter: number | null)
   const parsed = normalizeSeamBoundary(text);
   if (parsed !== null) return parsed;
   if (pass === 'front') return 'front';
-  if (chapter === 67) return 'ending';
+  if (chapter === TOTAL_CHAPTERS) return 'ending';
   return chapter === null ? 'front' : Math.max(2, chapter);
 }
 

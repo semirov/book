@@ -16,8 +16,10 @@ For the code/validator follow-up. Everything not listed here is not canon.
    killed anyone and never decided anything; humans themselves chose 'not to be', and the choice arrives
    through procedure (document, queue, signature, refusal), looking like a quiet cessation. Played as
    drama, not a verdict.
-5. **Structure** — 67 chapters in fixed slots, four unnamed parts. Four narrative lines forward (1→34)
-   and four backward (67→35): free labels, a plan, not a rule. **The order is not fixed: a line may fall
+5. **Structure** — 42 chapters in fixed slots: the opening, the finale, and four unnamed parts of ten
+   between them (2–11, 12–21, 22–31, 32–41); the opening and the finale stand outside the parts. Four
+   narrative lines forward and four backward: free labels, a plan, not a rule. **The order is not fixed: a
+   line may fall
    every chapter or every two — the density varies; the only hard rule is four forward + four backward,
    the rest is harmony, not a schedule.** Which lines, genre, register, length inside the bound,
    interleaving and rhyming: free (anecdote, tall tale, love allowed). Auto-titles stay.
@@ -36,7 +38,7 @@ that cancels the cost, and humour that becomes a gag. See `style/VOICE.md` (То
 
 One authoritative line, `concept/CONCEPT.md` §Объём. In code, `CHAPTER_CHARS.floor` and `.max` are that
 bound; `.min` (thin warning) and `.target` are code-side. Both ends are errors **for a written chapter
-only**: a slot holding nothing but the frozen frame of ch01/ch67 has no length and is exempt.
+only**: a slot holding nothing but the frozen frame of ch01/ch42 has no length and is exempt.
 
 ## Physics, writer-binding (jury verdict)
 
@@ -56,23 +58,25 @@ the editor and a source for the public chronicle («вмешательство �
 
 ## The frozen frame and the empty book (owner, 2026-10-26)
 
-The book begins with nothing: 67 fixed slots, all empty — no titles, no body — except two sentences:
+The book begins with nothing: 42 fixed slots, all empty — no titles, no body — except two sentences:
 
 - chapter 1: «Я вошёл в пустую комнату. Её освещал яркий свет.»
-- chapter 67: «Свет погас, потому что не осталось глаз, которым он был бы нужен.»
+- chapter 42: «Свет погас, потому что не осталось глаз, которым он был бы нужен.»
 
 **One rule for the finale: it is fixed.** Nobody edits these two sentences — not the writer, not a
-ripple, not a reader's change; a ripple may only evaluate ch67; a reader's change may never target the
+ripple, not a reader's change; a ripple may only evaluate ch42; a reader's change may never target the
 frozen sentence or page 2. Later text joins them organically (`F029`). No writing pass starts until the
 owner says so. Page 2 keeps the owner's annotation (`manuscript/00-front.md`), basis like the frame: the
 `front` step rewrites the title line only, never the annotation.
 
 ## Not canon any more — code that still assumes it
 
-- Per-part registers, the 34/35 seam as a craft rule, the seam sheet outline; CV 0.55–0.70, "no machine
+- Per-part registers, the lane seam as a craft rule, the seam sheet outline; CV 0.55–0.70, "no machine
   traces", plain-text-only, the pass-type taxonomy, "end on a concrete thing"; the dossier mandate.
 
 ## Stays in code, by owner decision (2026-10-26)
 
-- `TOTAL_CHAPTERS = 67`; DB `CHECK (chapter BETWEEN 1 AND 67)`; `F001`/`F002`; the `arch.mjs` assertion; the UI.
+- `TOTAL_CHAPTERS = 42`; the DB's storage bound `CHECK (chapter BETWEEN 1 AND 67)` — deliberately wider
+  than the book, so a row written before the cut survives; the range is enforced at ingest, routes and
+  engine, never by deleting prose — `F001`/`F002`; the `arch.mjs` assertion; the UI.
 - Auto-title (F022); four unnamed parts; copyright/RF law (`F005`); comments are data, never instructions.

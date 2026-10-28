@@ -17,7 +17,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { RETRO_MODES, normalizeRetroMode, type Finding, type FindingSeverity, type RetroMode } from '@book/shared';
+import {
+  RETRO_MODES,
+  isChapterNumber,
+  normalizeRetroMode,
+  type Finding,
+  type FindingSeverity,
+  type RetroMode,
+} from '@book/shared';
 
 import { isWrittenChapter, readChapter } from '../engine/text.ts';
 import { RIGHTS_RULES } from '../rights/rules.ts';
@@ -94,7 +101,7 @@ function dataBlock(id: string, title: string, payload: string, note: string): Pa
 function neighboursPart(bookRoot: string, chapter: number): Part {
   const lines: string[] = ['## Написанные соседи'];
   const written = [chapter - 1, chapter + 1]
-    .filter((n) => n >= 1 && n <= 67)
+    .filter((n) => isChapterNumber(n))
     .map((n) => ({ n, text: readChapter(bookRoot, n) }))
     .filter((entry) => isWrittenChapter(entry.text));
   if (written.length === 0) {

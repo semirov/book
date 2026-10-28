@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { WriterAssignment } from '@book/shared';
+import { TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { acquireLease } from '../../src/engine/leases.ts';
@@ -63,9 +63,9 @@ describe('the editor assignment carries an index slice (BOOK-18 §2)', () => {
       const slice = JSON.parse(readFileSync(gate.indexSlice ?? '', 'utf8')) as IndexSlice;
       expect(slice.chapter).toBe(chapter);
       expect(slice.chapters.map((entry) => entry.n)).toEqual(
-        [chapter - 1, chapter, chapter + 1].filter((n) => n >= 1 && n <= 67),
+        [chapter - 1, chapter, chapter + 1].filter((n) => n >= 1 && n <= TOTAL_CHAPTERS),
       );
-      expect(slice.chapters.length).toBeLessThan(67);
+      expect(slice.chapters.length).toBeLessThan(TOTAL_CHAPTERS);
       // The dispatch is also where the artifact is rebuilt (never inside a close).
       expect(readIndex(fixture.dataDir)?.manuscriptHash).toBe(slice.manuscriptHash);
     } finally {

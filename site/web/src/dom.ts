@@ -1,10 +1,23 @@
 /** Browser helpers kept out of `lib/` so the reducers and pacing logic stay testable. */
 
-export function scrollToChapter(n: number): void {
+import { offsetTopOfPage } from './lib/headerOffset.ts';
+
+/**
+ * Land chapter `n` at the mouth of the reading area: `#ch-N`'s top at the sticky head's
+ * **measured** lower edge plus the site's breathing space (the same sum `scroll-margin-top`
+ * receives from `headerOffset.ts`), never at a literal that the head can outgrow. The
+ * arithmetic is document coordinates — the section's rect plus the scroll already passed —
+ * because `scrollIntoView` would re-apply a margin we have already applied.
+ *
+ * Returns whether the section exists: a caller keeps the browser's own `#ch-N` jump (and
+ * therefore does **not** `preventDefault`) when it does not.
+ */
+export function scrollToChapter(n: number): boolean {
   const target = document.getElementById(`ch-${n}`);
-  if (target === null) return;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  if (target === null) return false;
+  const top = Math.max(0, target.getBoundingClientRect().top + window.scrollY - offsetTopOfPage());
+  window.scrollTo({ top, behavior: reducedMotion() ? 'auto' : 'smooth' });
+  return true;
 }
 
 export function reducedMotion(): boolean {

@@ -6,7 +6,7 @@
  * verdict is summarised as «замечание сохранено» (§6F.1 rule 5, §6F.7).
  */
 
-import { readerReason, type HistoryKind } from '@book/shared';
+import { TOTAL_CHAPTERS, readerReason, type HistoryKind } from '@book/shared';
 
 import { AUTHOR_LABEL, OUT_OF_PROCESS_LABEL, OPERATOR_LABEL } from '../ingest/attribution.ts';
 
@@ -160,7 +160,7 @@ export function summarize(subject: SummarySubject): string {
         ? [...new Set(
             subject.payload.chapters.filter(
               (value): value is number =>
-                typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 67,
+                typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= TOTAL_CHAPTERS,
             ),
           )].sort((left, right) => left - right)
         : [];

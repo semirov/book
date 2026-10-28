@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { databaseFile, openDatabase } from '../server/src/db/db.ts';
 import { assertDataDirIsolation, isProductionEnv, productionDataDirs } from '../server/src/dataDirGuard.ts';
 import { readRestoreSource } from '../server/src/history/restore.ts';
+import { TOTAL_CHAPTERS } from '../shared/src/book.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const USAGE =
@@ -59,7 +60,10 @@ function chapterNumber(flags) {
   const raw = flags.get('chapter');
   if (raw === undefined) throw new Error('--chapter N is required');
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 67) throw new Error('--chapter must be an integer between 1 and 67');
+  // The book's last chapter (`TOTAL_CHAPTERS`); the site refuses the rest.
+  if (!Number.isInteger(n) || n < 1 || n > TOTAL_CHAPTERS) {
+    throw new Error(`--chapter must be an integer between 1 and ${String(TOTAL_CHAPTERS)}`);
+  }
   return n;
 }
 

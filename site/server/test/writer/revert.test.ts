@@ -17,7 +17,7 @@ import { revertChapter } from '../../src/writer/revert.ts';
 import { sha256Hex } from '../../src/util/hash.ts';
 import { chapterAnswer, chapterRow, createHarness, type Harness } from './harness.ts';
 
-const CHAPTER = 65;
+const CHAPTER = 40;
 
 function chapterFile(harness: Harness): string {
   return join(harness.bookRoot, 'manuscript', `ch${String(CHAPTER)}.md`);
@@ -37,9 +37,9 @@ async function landedChange(harness: Harness, original: string): Promise<string>
   harness.fixture.engine.enqueue({
     kind: 'operator',
     chapter: CHAPTER,
-    intent: 'в главе 65 появляется документ о допуске',
+    intent: 'в главе 40 появляется документ о допуске',
   });
-  harness.script.push(chapterAnswer('Глава шестьдесят пять', 'новый'), 'HOLDS', 'HOLDS');
+  harness.script.push(chapterAnswer('Глава сорок', 'новый'), 'HOLDS', 'HOLDS');
   const result = await harness.run({ lanes: ['fwd'] });
   expect(result.status).toBe('closed');
   expect(readFileSync(chapterFile(harness), 'utf8')).toContain('новый');
@@ -48,7 +48,7 @@ async function landedChange(harness: Harness, original: string): Promise<string>
 
 describe('revertChapter', () => {
   it('puts an existing chapter back byte for byte from the writer’s pre-snapshot', async () => {
-    const original = chapterAnswer('Глава шестьдесят пять', 'исходный');
+    const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
       await landedChange(harness, original);
@@ -110,14 +110,14 @@ describe('revertChapter', () => {
   });
 
   it('falls back to the previous revision when the writer left no pre-snapshot', async () => {
-    const original = chapterAnswer('Глава шестьдесят пять', 'исходный');
+    const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
       await landedChange(harness, original);
       const passed = readFileSync(chapterFile(harness), 'utf8');
       // A pass from before this lane, or a snapshot cleaned by hand: only the site's history is left.
       rmSync(join(harness.dataDir, 'writer', 'pre'), { recursive: true, force: true });
-      expect(existsSync(join(harness.dataDir, 'writer', 'pre', 'ch65.json'))).toBe(false);
+      expect(existsSync(join(harness.dataDir, 'writer', 'pre', 'ch40.json'))).toBe(false);
 
       const outcome = await revertChapter({
         chapter: CHAPTER,
@@ -154,7 +154,7 @@ describe('revertChapter', () => {
   });
 
   it('leaves the file alone on a dry run and still reports what it would do', async () => {
-    const original = chapterAnswer('Глава шестьдесят пять', 'исходный');
+    const original = chapterAnswer('Глава сорок', 'исходный');
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
       await landedChange(harness, original);

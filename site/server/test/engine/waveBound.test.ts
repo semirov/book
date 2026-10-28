@@ -1,5 +1,4 @@
-import type { WriterAssignment } from '@book/shared';
-import { CASCADE_MAX_WAVE } from '@book/shared';
+import { CASCADE_MAX_WAVE, TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { createEngineFixture, DEFAULT_ABOUT, driveStub, type Fixture } from './helpers.ts';
@@ -63,7 +62,7 @@ function runRipple(
     if (assignment.pass === 'draft') throw new Error('the harness was handed a draft step');
     driven.push(assignment);
     const chapter = assignment.chapter;
-    const keep = continues(assignment) && chapter !== 'front' && chapter !== 67;
+    const keep = continues(assignment) && chapter !== 'front' && chapter !== TOTAL_CHAPTERS;
     driveStub(
       fixture,
       assignment,
@@ -154,9 +153,13 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3, BOOK-59)', ()
 
   it('a ripple resting in wave 1 at the end records wave 1, not 2', () => {
     const fixture = createEngineFixture();
-    book(fixture, 55, 67);
+    book(fixture, TOTAL_CHAPTERS - 12, TOTAL_CHAPTERS);
     try {
-      const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 66, intent: 'связать сцены' });
+      const change = fixture.engine.enqueue({
+        kind: 'accepted_comment',
+        chapter: TOTAL_CHAPTERS - 1,
+        intent: 'связать сцены',
+      });
       // Both wings rest at their first step; the upward one only has the ending to evaluate.
       const driven = runRipple(fixture, change.id, (assignment) => assignment.pass === 'change');
 

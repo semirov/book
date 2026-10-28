@@ -72,7 +72,7 @@ export type DocumentReference = {
 };
 
 /**
- * One chapter's slice of the index. A slot holding only its basis sentence (ch01/ch67) or
+ * One chapter's slice of the index. A slot holding only its basis sentence (ch01/ch42) or
  * nothing is `written: false` and carries empty collections: the frozen frame is not prose
  * to index (BOOK-6).
  */

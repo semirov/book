@@ -26,11 +26,13 @@ function comment(overrides: Partial<CommentDto> & { id: string; chapter: number;
 }
 
 describe('canTakePremise', () => {
-  it('takes ch02..ch66 that have no text, and neither frozen nor written chapters', () => {
+  it('takes ch02..ch41 that have no text, and neither frozen nor written chapters', () => {
     expect(canTakePremise({ n: 2, written: false, basis: false })).toBe(true);
-    expect(canTakePremise({ n: 66, written: false, basis: false })).toBe(true);
+    expect(canTakePremise({ n: 41, written: false, basis: false })).toBe(true);
     expect(canTakePremise({ n: 1, written: false, basis: true })).toBe(false);
-    expect(canTakePremise({ n: 67, written: false, basis: true })).toBe(false);
+    expect(canTakePremise({ n: 42, written: false, basis: true })).toBe(false);
+    // The finale is outside the range, basis flag or not.
+    expect(canTakePremise({ n: 42, written: false, basis: false })).toBe(false);
     expect(canTakePremise({ n: 8, written: true, basis: false })).toBe(false);
     expect(canTakePremise({ n: 1, written: false, basis: false })).toBe(false);
   });
@@ -93,9 +95,9 @@ describe('premiseRow', () => {
   it('gives an unwritten chapter’s pending filing the word it waits under (BOOK-111)', () => {
     // The prod incident: `premise: true, status: 'new'`, no change yet — the row said nothing,
     // so the empty slot read as empty and the next tap came back 409 DUPLICATE.
-    const pending = comment({ id: 'cmt_pending', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
+    const pending = comment({ id: 'cmt_pending', chapter: 40, createdAt: '2026-10-27T18:04:17Z' });
     expect(pending.premise).toBe(true);
-    expect(premiseRow({ n: 65, written: false, basis: false }, pending)).toMatchObject({
+    expect(premiseRow({ n: 40, written: false, basis: false }, pending)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
       word: 'ждёт',
     });
@@ -104,52 +106,52 @@ describe('premiseRow', () => {
   it('says under the row that the attempt came back empty, and only then (BOOK-136)', () => {
     const failed = comment({
       id: 'cmt_failed',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       attempt: 'failed',
     });
     // The word is «ждёт»; the line under it is the deck's one sentence, in the deck's words.
-    expect(premiseRow({ n: 65, written: false, basis: false }, failed)).toMatchObject({
+    expect(premiseRow({ n: 40, written: false, basis: false }, failed)).toMatchObject({
       word: 'ждёт',
       note: FAILED_ATTEMPT_LINE,
     });
     // A plain wait owes no note: the word is the whole fact.
-    const waiting = comment({ id: 'cmt_wait', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
-    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.note).toBeNull();
+    const waiting = comment({ id: 'cmt_wait', chapter: 40, createdAt: '2026-10-27T18:04:17Z' });
+    expect(premiseRow({ n: 40, written: false, basis: false }, waiting)?.note).toBeNull();
     // A landed premise keeps its receipt: the attempt behind it is stale news.
     const landed = comment({
       id: 'cmt_landed',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',
-      applied: { chapter: 65, rev: 7 },
+      applied: { chapter: 40, rev: 7 },
       attempt: 'failed',
     });
-    expect(premiseRow({ n: 65, written: true, basis: false }, landed)?.note).toBeNull();
+    expect(premiseRow({ n: 40, written: true, basis: false }, landed)?.note).toBeNull();
     // A refusal decided itself: its own sentence is the line, never the attempt's.
     const refused = comment({
       id: 'cmt_refused',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'rejected',
       reason: 'не беру: не из этой сцены',
       attempt: 'failed',
     });
-    expect(premiseRow({ n: 65, written: false, basis: false }, refused)?.note).toBeNull();
+    expect(premiseRow({ n: 40, written: false, basis: false }, refused)?.note).toBeNull();
   });
 
   it('gives a refused premise its reason and its way back (BOOK-158)', () => {
     const NOW = Date.parse('2026-10-28T12:00:00Z');
     const refused = comment({
       id: 'cmt_refused',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'rejected',
       reason: 'не беру: не из этой сцены',
       hint: 'сформулируйте одно событие этой главы, которого ещё нет в тексте',
       revise: { allowed: true, at: null, attemptsLeft: 2, closed: false, blocked: null },
     });
-    const row = premiseRow({ n: 65, written: false, basis: false }, refused, [], NOW);
+    const row = premiseRow({ n: 40, written: false, basis: false }, refused, [], NOW);
     // The row is where the premise lives, so it owes the refusal's own sentence.
     expect(row?.reason).toBe('не беру: не из этой сцены');
     expect(row?.revise).toEqual({
@@ -159,16 +161,16 @@ describe('premiseRow', () => {
     });
 
     // A premise that merely waits says nothing about a refusal.
-    const waiting = comment({ id: 'cmt_wait', chapter: 65, createdAt: '2026-10-27T18:04:17Z' });
-    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.reason).toBeNull();
-    expect(premiseRow({ n: 65, written: false, basis: false }, waiting)?.revise).toBeNull();
+    const waiting = comment({ id: 'cmt_wait', chapter: 40, createdAt: '2026-10-27T18:04:17Z' });
+    expect(premiseRow({ n: 40, written: false, basis: false }, waiting)?.reason).toBeNull();
+    expect(premiseRow({ n: 40, written: false, basis: false }, waiting)?.revise).toBeNull();
   });
 
   it('has no row for a written chapter without a premise, and none for a frozen slot', () => {
-    const frozen = comment({ id: 'cmt_f', chapter: 67, createdAt: '2026-10-20T09:00:00Z' });
+    const frozen = comment({ id: 'cmt_f', chapter: 42, createdAt: '2026-10-20T09:00:00Z' });
     expect(premiseRow({ n: 7, written: true, basis: false }, null)).toBeNull();
     expect(premiseRow({ n: 1, written: false, basis: true }, null)).toBeNull();
-    expect(premiseRow({ n: 67, written: false, basis: true }, frozen)).toBeNull();
+    expect(premiseRow({ n: 42, written: false, basis: true }, frozen)).toBeNull();
   });
 
   it('keeps the row for a premise that entered a written chapter (BOOK-137)', () => {
@@ -176,18 +178,18 @@ describe('premiseRow', () => {
     // block in the thread. The row is the filing's only home, written or not.
     const landed = comment({
       id: 'cmt_landed',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',
-      applied: { chapter: 65, rev: 7 },
+      applied: { chapter: 40, rev: 7 },
     });
-    expect(premiseRow({ n: 65, written: true, basis: false }, landed)).toMatchObject({
-      n: 65,
+    expect(premiseRow({ n: 40, written: true, basis: false }, landed)).toMatchObject({
+      n: 40,
       commentId: 'cmt_landed',
       word: 'внесено',
     });
     // Still no row for a written chapter that never held a premise.
-    expect(premiseRow({ n: 65, written: true, basis: false }, null)).toBeNull();
+    expect(premiseRow({ n: 40, written: true, basis: false }, null)).toBeNull();
   });
 
   it('puts the latest attempt on the row: one number, and nothing when none is loaded', () => {
@@ -226,13 +228,13 @@ describe('premiseRow', () => {
   it('shortens a long premise to its first line, written or not (BOOK-77)', () => {
     const long = comment({
       id: 'cmt_long',
-      chapter: 65,
+      chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',
-      applied: { chapter: 65, rev: 7 },
+      applied: { chapter: 40, rev: 7 },
       body: `${'смена переходит на ночь '.repeat(6)}и остаётся там`,
     });
-    const row = premiseRow({ n: 65, written: true, basis: false }, long);
+    const row = premiseRow({ n: 40, written: true, basis: false }, long);
     expect(row?.quote?.length).toBe(90);
     expect(row?.quote?.endsWith('…')).toBe(true);
   });

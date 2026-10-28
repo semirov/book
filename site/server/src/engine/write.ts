@@ -16,6 +16,7 @@ import {
   INTENT_MAX_CHARS,
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
+  TOTAL_CHAPTERS,
   type Relevance,
 } from '@book/shared';
 
@@ -200,7 +201,7 @@ export function createWriteOps(deps: EngineDeps) {
     const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
     if (step.pass === 'front' && !front?.exists) refuse('FRONT_MISSING', 409, 'the first sheet does not exist yet');
     // A draft starts from nothing; every other pass revises text that must already exist.
-    // A basis-only slot (ch01/ch67) is that same nothing — its frozen sentence is not prose.
+    // A basis-only slot (ch01/ch42) is that same nothing — its frozen sentence is not prose.
     if (step.pass !== 'draft' && chapter !== null && !isWrittenChapter(chapter)) {
       refuse('CHAPTER_EMPTY', 409, `глава ${step.chapter} ещё не написана`);
     }
@@ -228,11 +229,15 @@ export function createWriteOps(deps: EngineDeps) {
     const at = options.now ?? deps.clock.now();
     const { step } = leaseStep(leaseId);
     if (step.pass === 'ending' && options.noWrite !== true) {
-      refuse('ENDING_FROZEN', 409, 'chapter 67 is evaluated, never rewritten (ADR-024)');
+      refuse('ENDING_FROZEN', 409, `chapter ${String(TOTAL_CHAPTERS)} is evaluated, never rewritten (ADR-024)`);
     }
-    // F025, second door: even a mis-planned `cascade` step may not land inside chapter 67.
-    if (step.pass === 'cascade' && step.chapter === 67) {
-      refuse('ENDING_FROZEN', 409, 'a ripple evaluates chapter 67; it never rewrites it (ADR-024, F025)');
+    // F025, second door: even a mis-planned `cascade` step may not land inside the last chapter.
+    if (step.pass === 'cascade' && step.chapter === TOTAL_CHAPTERS) {
+      refuse(
+        'ENDING_FROZEN',
+        409,
+        `a ripple evaluates chapter ${String(TOTAL_CHAPTERS)}; it never rewrites it (ADR-024, F025)`,
+      );
     }
     if (step.pass === 'draft' && options.noWrite === true) {
       refuse('NOT_WRITTEN', 409, 'a draft must write its slot');
@@ -300,7 +305,7 @@ export function createWriteOps(deps: EngineDeps) {
     } else if (chapter.chars < CHAPTER_CHARS.floor) {
       // Canon: the floor is a limit, not a hint, and this is the second choke point (the
       // validator is the first). A basis-only slot never reaches this branch — it is not a
-      // written chapter — so the frozen frame of ch01/ch67 keeps its exemption. The engine
+      // written chapter — so the frozen frame of ch01/ch42 keeps its exemption. The engine
       // refuses; it never pads the text to pass a limit.
       refuse(
         'CHAPTER_TOO_SHORT',

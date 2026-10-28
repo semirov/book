@@ -6,7 +6,7 @@ import { boundaryLabel } from '../lib/changeStatus.ts';
  * The cascade ribbon (ARCHITECTURE §11.7, BOOK-DOC-4): the change's consequence as two wings.
  *
  * The ripple is visible in both directions at once — rings spreading down toward chapter 1
- * and up toward chapter 67 — and the reader may follow either wing. Each wing prints its own
+ * and up toward chapter 42 — and the reader may follow either wing. Each wing prints its own
  * wave, its state and the chapters it reached, from the cascade DTO; a wing that never opened
  * prints nothing and is skipped (BOOK-137): the reading surface never prints the machinery's
  * own condition. Rings appear only while a step is in flight, so no animation exists without

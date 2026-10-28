@@ -1,7 +1,7 @@
 import { appendFileSync, copyFileSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { renderFb2, type Fb2Input } from '../../src/fb2/serialize.ts';
@@ -202,7 +202,7 @@ describe('the cover in the size (BOOK-133 / BOOK-138)', () => {
     expect(body).not.toHaveProperty('exportBytes');
     expect(body).toMatchObject({ title: null, about: null });
     expect(body.rev).toEqual(expect.any(Number));
-    expect(body.toc).toHaveLength(67);
+    expect(body.toc).toHaveLength(TOTAL_CHAPTERS);
     expect(body.authors).toMatchObject({ count: 0 });
     expect(typeof body.revision).toBe('number');
 
@@ -267,7 +267,7 @@ describe('the empty book (BOOK-138 §5)', () => {
     // No chapter was written, so no slot carries prose: every one is the titled empty section
     // of BOOK-DOC-41 §3 — and no invented placeholder paragraph anywhere.
     const sections = [...file.body.matchAll(/<section [\s\S]*?<\/section>/gu)].map((match) => match[0]);
-    expect(sections).toHaveLength(67);
+    expect(sections).toHaveLength(TOTAL_CHAPTERS);
     for (const section of sections) {
       expect(section).toMatch(/^<section id="ch\d+"><title><p>Глава \d+<\/p><\/title><empty-line\/><\/section>$/u);
     }

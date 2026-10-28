@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { chapterStartPages, PAGE_CHARS, totalPages, type ChapterLength } from '@book/shared';
+import { chapterStartPages, PAGE_CHARS, TOTAL_CHAPTERS, totalPages, type ChapterLength } from '@book/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { BREATHING_PX } from './headerOffset.ts';
 import {
   ANCHOR_EPS,
   atDocumentEnd,
@@ -23,16 +24,19 @@ import {
  */
 
 describe('readingLine', () => {
-  it('sits at the head’s offset plus the anchor’s rounding: 66 at the 64 px fallback', () => {
+  it('sits at the head’s offset plus the anchor’s rounding: 66 at a 64 px head', () => {
     expect(readingLine(64)).toBe(64 + ANCHOR_EPS);
     expect(readingLine(64)).toBe(66);
     expect(readingLine(80)).toBe(82);
   });
 
-  it('falls back to the 64 px head, never to a negative or a fractions-of-nothing line', () => {
-    expect(readingLine(Number.NaN)).toBe(66);
-    expect(readingLine(0)).toBe(66);
-    expect(readingLine(-40)).toBe(66);
+  it('falls back to the page’s own measurement, never to a negative or a fractions-of-nothing line', () => {
+    // There is no head and no token on this page (jsdom lays nothing out), so the fallback is
+    // `offsetTopOfPage()` itself: the breathing space and nothing else. No second literal.
+    expect(headOffset()).toBe(BREATHING_PX);
+    expect(readingLine(Number.NaN)).toBe(BREATHING_PX + ANCHOR_EPS);
+    expect(readingLine(0)).toBe(BREATHING_PX + ANCHOR_EPS);
+    expect(readingLine(-40)).toBe(BREATHING_PX + ANCHOR_EPS);
   });
 });
 
@@ -44,11 +48,13 @@ describe('headOffset', () => {
     expect(headOffset()).toBe(80);
   });
 
-  it('keeps 64 when the token cannot be read', () => {
+  it('reads the page’s fallback when the token cannot be read', () => {
+    // One source: an unreadable token falls back to the head’s own measured height — no head
+    // here, so the breathing space alone — never to a number copied out of the sheet.
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
-    expect(headOffset()).toBe(64);
+    expect(headOffset()).toBe(BREATHING_PX);
     vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'auto' }));
-    expect(headOffset()).toBe(64);
+    expect(headOffset()).toBe(BREATHING_PX);
   });
 });
 
@@ -196,9 +202,9 @@ describe('atDocumentEnd', () => {
 });
 
 describe('readingAt', () => {
-  it('prints the slot number as the page on an all-empty 67-slot book: one page per chapter', () => {
-    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
-    const slots = emptySlots(67);
+  it('prints the slot number as the page on an all-empty 42-slot book: one page per chapter', () => {
+    const catalog: ChapterLength[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => ({ n: index + 1, chars: 0 }));
+    const slots = emptySlots(TOTAL_CHAPTERS);
     for (const slot of slots) {
       const reading = readingAt(catalog, slots, slot.top + ANCHOR_EPS, spansByChapter({}));
       expect(reading?.n).toBe(slot.n);
@@ -207,7 +213,7 @@ describe('readingAt', () => {
     }
     // Nothing above the first slot and nothing below the last.
     expect(readingAt(catalog, slots, 499, spansByChapter({}))).toBeNull();
-    expect(readingAt(catalog, slots, 500 + 67 * 90, spansByChapter({}))).toBeNull();
+    expect(readingAt(catalog, slots, 500 + TOTAL_CHAPTERS * 90, spansByChapter({}))).toBeNull();
   });
 
   it('pages a written chapter from its own prose: start + floor(chars / PAGE_CHARS), clamped', () => {
@@ -244,30 +250,30 @@ describe('readingAt', () => {
   });
 
   it('ends the book at the document’s end: the last chapter, on its own last page', () => {
-    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
-    const slots = emptySlots(67);
-    const line = slots[59]!.top + ANCHOR_EPS; // inside ch60: what `#ch-67` really leaves
+    const catalog: ChapterLength[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => ({ n: index + 1, chars: 0 }));
+    const slots = emptySlots(TOTAL_CHAPTERS);
+    const line = slots[TOTAL_CHAPTERS - 8]!.top + ANCHOR_EPS; // inside ch35: what `#ch-42` really leaves
 
     // Without the end rule the line names the chapter it is in — the reported defect.
-    expect(readingAt(catalog, slots, line, spansByChapter({}))?.n).toBe(60);
+    expect(readingAt(catalog, slots, line, spansByChapter({}))?.n).toBe(35);
 
     // At the end of the document the last chapter owns the reader, and its page is the page
     // the contents prints: an empty chapter's last page is its start page.
     const end = readingAt(catalog, slots, line, spansByChapter({}), null, true);
-    expect(end).toEqual({ n: 67, chars: 0, page: 67 });
-    expect(end?.page).toBe(chapterStartPages(catalog).get(67));
+    expect(end).toEqual({ n: TOTAL_CHAPTERS, chars: 0, page: TOTAL_CHAPTERS });
+    expect(end?.page).toBe(chapterStartPages(catalog).get(TOTAL_CHAPTERS));
 
     // Without any slot there is no chapter to end on.
     expect(readingAt(catalog, [], line, spansByChapter({}), null, true)).toBeNull();
   });
 
   it('prints a written last chapter’s last page at the end, never its start', () => {
-    const catalog: ChapterLength[] = Array.from({ length: 67 }, (_, index) => ({ n: index + 1, chars: 0 }));
-    catalog[66] = { n: 67, chars: 2 * PAGE_CHARS };
-    const slots = emptySlots(67);
+    const catalog: ChapterLength[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => ({ n: index + 1, chars: 0 }));
+    catalog[TOTAL_CHAPTERS - 1] = { n: TOTAL_CHAPTERS, chars: 2 * PAGE_CHARS };
+    const slots = emptySlots(TOTAL_CHAPTERS);
 
     const end = readingAt(catalog, slots, slots[10]!.top, spansByChapter({}), null, true);
-    expect(end?.n).toBe(67);
+    expect(end?.n).toBe(TOTAL_CHAPTERS);
     // `pageAt` over the chapter's full length is the book's last page — no second arithmetic.
     expect(end?.page).toBe(totalPages(catalog));
   });

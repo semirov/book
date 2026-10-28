@@ -201,12 +201,12 @@ function frameProblem(chapter: number, blocks: readonly string[], body: string):
   }
   if (chapter === TOTAL_CHAPTERS) {
     if (!endsWithLast) return `chapter ${String(chapter)} must end on the frozen last sentence`;
-    if (countOf(flatBody, last) !== 1) return 'the frozen last sentence appears more than once in chapter 67';
-    if (countOf(flatBody, first) > 0) return 'chapter 67 must not carry the frozen first sentence';
+    if (countOf(flatBody, last) !== 1) return `the frozen last sentence appears more than once in chapter ${String(chapter)}`;
+    if (countOf(flatBody, first) > 0) return `chapter ${String(chapter)} must not carry the frozen first sentence`;
     return null;
   }
   if (countOf(flatBody, first) > 0 || countOf(flatBody, last) > 0) {
-    return 'the answer retypes a frozen frame sentence: those belong to chapters 01 and 67';
+    return `the answer retypes a frozen frame sentence: those belong to chapters 01 and ${String(TOTAL_CHAPTERS)}`;
   }
   return null;
 }

@@ -20,7 +20,7 @@ import type {
   HistoryTimelineDto,
   ParagraphChainDto,
 } from '@book/shared';
-import { isChapterNumber } from '@book/shared';
+import { TOTAL_CHAPTERS, isChapterNumber } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { chapterAt, bookAt, resolveMoment } from '../../history/book.ts';
@@ -33,7 +33,7 @@ import type { RouteDeps } from '../deps.ts';
 const chapterParams = {
   type: 'object',
   required: ['n'],
-  properties: { n: { type: 'integer', minimum: 1, maximum: 67 } },
+  properties: { n: { type: 'integer', minimum: 1, maximum: TOTAL_CHAPTERS } },
   additionalProperties: false,
 } as const;
 
@@ -99,7 +99,7 @@ export function registerHistoryRoutes(app: FastifyInstance, deps: RouteDeps): vo
     const to = resolveMoment(db, request.query.at ?? null);
     const chapter = positive(request.query.chapter);
     if (chapter !== undefined && !isChapterNumber(chapter)) {
-      return reply.code(422).send({ code: 'INVALID_CHAPTER', message: 'chapter must be 1..67' });
+      return reply.code(422).send({ code: 'INVALID_CHAPTER', message: `chapter must be 1..${TOTAL_CHAPTERS}` });
     }
     const body: HistoryDiffDto = readDiff(db, from, to, chapter);
     return reply.send(body);

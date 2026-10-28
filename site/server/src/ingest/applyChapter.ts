@@ -68,8 +68,8 @@ export type AppliedChapter = {
   diff: BlockDiff;
   patch: PatchOp[];
   patchTruncated: boolean;
-  /** Position of the chapter in the book, for `chapter:created`. */
-  part: Part;
+  /** Part of the chapter in the book, for `chapter:created`; null for the opening and the finale. */
+  part: Part | null;
   direction: Lane;
   /** The log entry this revision produced, and who caused it (§6F.1). */
   hseq: number;
@@ -84,13 +84,13 @@ export type ApplyChapterResult =
   /** Zero blocks: an empty slot in progress, or a truncate-then-write the caller must guard. */
   | { status: 'empty'; n: number }
   /**
-   * The file's frame is not the book's frame (ch01/ch67, BOOK-137): **nothing was published** —
+   * The file's frame is not the book's frame (ch01/ch42, BOOK-137): **nothing was published** —
    * no revision, no `rev` bump, no block replace, no log entry, no snapshot. The projection
    * keeps serving the canon sentence; the caller reports the refusal and moves on.
    */
   | { status: 'frame-rejected'; n: number }
   /**
-   * The file now holds only its basis sentence (ch01/ch67): the slot is projected as that
+   * The file now holds only its basis sentence (ch01/ch42): the slot is projected as that
    * one paragraph and stays unwritten — a legitimately empty slot, not an empty write
    * between two saves (§6.2, BOOK-6). The history is not touched.
    */
@@ -115,7 +115,7 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
     existing.basis === (parsed.basis ? 1 : 0) &&
     existing.block_count === parsed.blocks.length;
   if (unchanged) return { status: 'unchanged', n };
-  // A slot that holds only its basis sentence (ch01/ch67, BOOK-6) is projected as the one
+  // A slot that holds only its basis sentence (ch01/ch42, BOOK-6) is projected as the one
   // paragraph the reader must see — and as nothing else: no revision, no log entry, no
   // snapshot, because nobody wrote it and it is not a chapter.
   if (parsed.basis) return projectBasis(db, n, existing, parsed, observedAt);
@@ -356,10 +356,14 @@ function isConstraintError(error: unknown): boolean {
 /**
  * Project a slot that is exactly its basis sentence (§BOOK-6), whether it was emptied down
  * to that sentence or first seen with it. The frozen sentence becomes the chapter's one
- * paragraph — the reader must see the opening of chapter 1 and the close of chapter 67 — and
+ * paragraph — the reader must see the opening of chapter 1 and the close of chapter 42 — and
  * nothing else changes: `chars = 0`, `basis = 1`, `written` stays false everywhere, and
  * there is no revision, log entry or snapshot, because nobody wrote it. A former chapter's
  * append-only history stays as it is.
+ *
+ * The slot's own heading is kept as `chapters.title` (the owner's «Замечаний нет» above the
+ * frozen first sentence): the contents and the chapter header print it, and it is a title,
+ * not a length — `chars` stays 0, so F007's floor never sees it.
  */
 function projectBasis(
   db: Db,
@@ -373,7 +377,7 @@ function projectBasis(
     upsertChapterRow(db, {
       n,
       rev,
-      title: null,
+      title: parsed.title,
       sha256: parsed.sha256,
       chars: 0,
       blockCount: parsed.blocks.length,

@@ -11,7 +11,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import {
@@ -102,14 +102,39 @@ describe('buildWriterPrompt — the instruction part', () => {
     }
   });
 
-  it('names the chapter place: n of 67, the part, the lane', () => {
+  it('names the chapter place: n of 42, the part, the lane', () => {
     const forward = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: 10 }) });
-    expect(forward.user).toContain('Глава 10 из 67. Часть 1 (главы 1–22).');
+    expect(forward.user).toContain('Глава 10 из 42. Часть 1 (главы 2–11).');
     expect(forward.user).toContain('Полоса: вперёд.');
 
     const backward = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: 40 }) });
-    expect(backward.user).toContain('Глава 40 из 67. Часть 2 (главы 23–44).');
+    expect(backward.user).toContain('Глава 40 из 42. Часть 4 (главы 32–41).');
     expect(backward.user).toContain('Полоса: назад.');
+  });
+
+  it('places the opening and the finale outside the four parts (BOOK-155)', () => {
+    // Chapter 1 and the last chapter are real assignments that stand outside PART_RANGES: the
+    // prompt says so instead of failing or inventing a part for them.
+    const first = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: 1 }) });
+    expect(first.user).toContain('Глава 1 из 42 — открытие книги, вне частей.');
+    expect(first.user).not.toContain('Часть');
+
+    const last = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: TOTAL_CHAPTERS }) });
+    expect(last.user).toContain('Глава 42 из 42 — финал, вне частей.');
+    expect(last.user).not.toContain('Часть');
+    // The neighbours stay inside 1..42: nothing after the finale, nothing before the opening.
+    expect(last.user).not.toContain('### Глава 43');
+    expect(first.user).not.toContain('### Глава 0');
+  });
+
+  it('names 42 as the total for chapter 8 and quotes both neighbours inside the range (BOOK-155)', () => {
+    const root = tempBook();
+    for (const n of [7, 9]) chapter(root, n, `Глава ${String(n)}\n\nАбзац главы ${String(n)}.`);
+    const prompt = buildWriterPrompt({ bookRoot: root, assignment: assignment({ chapter: 8 }) });
+    expect(prompt.user).toContain('Глава 8 из 42. Часть 1 (главы 2–11).');
+    expect(prompt.user).toContain('### Глава 7');
+    expect(prompt.user).toContain('### Глава 9');
+    expect(prompt.user).not.toContain('Глава 42');
   });
 
   it('quotes each frozen frame sentence exactly once, and gives this chapter its rule', () => {
@@ -125,7 +150,7 @@ describe('buildWriterPrompt — the instruction part', () => {
     expect(countOf(firstAll, FRAME_LAST_SENTENCE)).toBe(1);
     expect(first.user).toContain('эта глава начинается с первой фразы');
 
-    const last = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: 67 }) });
+    const last = buildWriterPrompt({ bookRoot: tempBook(), assignment: assignment({ chapter: TOTAL_CHAPTERS }) });
     expect(last.user).toContain('эта глава заканчивается последней фразой');
   });
 });
@@ -256,7 +281,11 @@ describe('buildWriterPrompt — the output contract and the hash', () => {
 
   it('refuses an assignment that is not a chapter or has no pass', () => {
     const root = tempBook();
-    for (const bad of [assignment({ chapter: 0 }), assignment({ chapter: 68 }), assignment({ chapter: 10, pass: ' ' })]) {
+    for (const bad of [
+      assignment({ chapter: 0 }),
+      assignment({ chapter: TOTAL_CHAPTERS + 1 }),
+      assignment({ chapter: 10, pass: ' ' }),
+    ]) {
       try {
         buildWriterPrompt({ bookRoot: root, assignment: bad });
       } catch (error) {

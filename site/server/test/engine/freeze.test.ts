@@ -1,4 +1,4 @@
-import type { WriterAssignment } from '@book/shared';
+import { TOTAL_CHAPTERS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { insertRevision } from '../../src/db/repo/revisions.ts';
@@ -9,11 +9,11 @@ function seedCascadeRevisionOfTheEnding(fixture: ReturnType<typeof createEngineF
   fixture.db
     .prepare(
       `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
-       VALUES (67, 1, 'Конец', 'sha-67', 100, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
+       VALUES (?, 1, 'Конец', 'sha-last', 100, 1, '2026-10-25T09:00:00Z', '2026-10-25T09:00:00Z')`,
     )
-    .run();
+    .run(TOTAL_CHAPTERS);
   insertRevision(fixture.db, {
-    chapter: 67,
+    chapter: TOTAL_CHAPTERS,
     rev: 2,
     at: '2026-10-25T09:30:00Z',
     kind: 'rewrite',
@@ -24,7 +24,7 @@ function seedCascadeRevisionOfTheEnding(fixture: ReturnType<typeof createEngineF
     added: 0,
     changed: 1,
     removed: 0,
-    snapshot: 'versions/ch67/sha-67.md',
+    snapshot: 'versions/ch42/sha-last.md',
     attributed: true,
     logNote: null,
   });
@@ -40,7 +40,7 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
     }
   });
 
-  it('refuses to close a step on top of a cascade revision of chapter 67', () => {
+  it('refuses to close a step on top of a cascade revision of the last chapter', () => {
     const fixture = createEngineFixture();
     try {
       const assignment = fixture.engine.next({ for: 'fwd', session: 'writer-fwd' }) as WriterAssignment | null;
@@ -80,64 +80,65 @@ describe('F025 — the ending is frozen (§6C.4, ADR-024)', () => {
     }
   });
 
-  it('evaluates the ending instead of rewriting it when a ripple reaches chapter 67', () => {
+  it('evaluates the ending instead of rewriting it when a ripple reaches the last chapter', () => {
+    const last = TOTAL_CHAPTERS;
     const fixture = createEngineFixture({
       chapters: {
-        65: chapterText('Глава 65', ['Служебный текст для проверки, он не является текстом книги.']),
-        66: chapterText('Глава 66', ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
-        67: chapterText('Глава 67', ['Служебный текст для проверки.']),
+        [last - 2]: chapterText('Глава предпоследняя', ['Служебный текст для проверки, он не является текстом книги.']),
+        [last - 1]: chapterText('Глава сорок первая', ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.']),
+        [last]: chapterText('Глава сорок вторая', ['Служебный текст для проверки.']),
       },
     });
     try {
       fixture.engine.enqueue({
         kind: 'operator',
-        chapter: 66,
+        chapter: last - 1,
         intent: 'абзац должен измениться к утру',
       });
 
       const origin = runStubStep(
         fixture,
         {
-          title: 'Глава 66',
+          title: 'Глава сорок первая',
           blocks: ['Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', 'Изменённый абзац.'],
-          seams: [{ boundary: 67, reason: 'следующая глава начинается с того же утра' }],
+          seams: [{ boundary: last, reason: 'следующая глава начинается с того же утра' }],
         },
         'fwd',
       );
       expect(origin?.assignment.pass).toBe('change');
 
-      // The ripple walks down to 65 and then evaluates the ending. It never writes ch67.
+      // The ripple walks down one chapter and then evaluates the ending. It never writes it.
       const down = runStubStep(
         fixture,
         {
-          title: 'Глава 65',
+          title: 'Глава предпоследняя',
           blocks: ['Служебный текст для проверки, он не является текстом книги.', 'Изменённый абзац.'],
           seams: [],
         },
         'bwd',
       );
       expect(down?.assignment.pass).toBe('cascade');
-      expect(down?.assignment.chapter).toBe(65);
+      expect(down?.assignment.chapter).toBe(last - 2);
 
       const ending = runStubStep(fixture, { seams: [] });
       expect(ending?.assignment.pass).toBe('ending');
-      expect(ending?.assignment.chapter).toBe(67);
+      expect(ending?.assignment.chapter).toBe(last);
       // The ending step is evaluated, not written: its file is already final.
       expect(ending?.revisions).toBe(0);
 
       const endingStep = fixture.db
         .prepare(`SELECT pass, chapter, outcome FROM steps WHERE step_id = ?`)
         .get(ending?.stepId ?? '') as { pass: string; chapter: number | null; outcome: string | null };
-      expect(endingStep).toMatchObject({ pass: 'ending', chapter: 67, outcome: 'evaluated' });
+      expect(endingStep).toMatchObject({ pass: 'ending', chapter: last, outcome: 'evaluated' });
 
-      // F025, the assertion itself: no revision of chapter 67 came from a cascade.
+      // F025, the assertion itself: no revision of the last chapter came from a cascade.
       const cascadeRevisions = fixture.db
-        .prepare(`SELECT COUNT(*) AS n FROM revisions WHERE chapter = 67 AND cause_kind = 'cascade'`)
-        .get() as { n: number };
+        .prepare(`SELECT COUNT(*) AS n FROM revisions WHERE chapter = ? AND cause_kind = 'cascade'`)
+        .get(last) as { n: number };
       expect(cascadeRevisions.n).toBe(0);
       const cascadeStepsOnTheEnding = fixture.db
-        .prepare(`SELECT COUNT(*) AS n FROM steps WHERE chapter = 67 AND pass = 'cascade'`)
-        .get() as { n: number };
+        .prepare(`SELECT COUNT(*) AS n FROM steps WHERE chapter = ? AND pass = 'cascade'`)
+        .get(last) as { n: number };
       expect(cascadeStepsOnTheEnding.n).toBe(0);
     } finally {
       fixture.close();

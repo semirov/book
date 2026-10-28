@@ -8,6 +8,8 @@
  * true of the first sheet: `00-front.md` is the only source of the cover and page 2.
  */
 
+import { isChapterNumber } from '@book/shared';
+
 import type { Db } from '../db/db.ts';
 import { deleteChapterRow, listChapterRows } from '../db/repo/chapters.ts';
 import { getFrontRow } from '../db/repo/front.ts';
@@ -27,7 +29,7 @@ export type ReconcileReport = {
   /** Slots that hold only their basis sentence: projected as one paragraph, still unwritten (BOOK-6). */
   emptied: number[];
   /**
-   * Files whose frame is not the book's frame (ch01/ch67, BOOK-137): nothing was published from
+   * Files whose frame is not the book's frame (ch01/ch42, BOOK-137): nothing was published from
    * them, the projection keeps the sentence it serves, and the boot goes on.
    */
   frameRejected: number[];
@@ -94,6 +96,10 @@ export function reconcile(db: Db, options: ReconcileOptions): ReconcileReport {
 
     const onDisk = new Set(scan.chapters.map((chapter) => chapter.n));
     for (const row of listChapterRows(db)) {
+      // A row outside the book's range is storage, not a projection: the scan cannot see it by
+      // design (`scanManuscript` skips `ch65.md`), so it must not be read as a vanished file
+      // and deleted. It is never served either — see `deriveState` (BOOK-155).
+      if (!isChapterNumber(row.n)) continue;
       if (!onDisk.has(row.n)) {
         deleteChapterRow(db, row.n);
         report.removed.push(row.n);

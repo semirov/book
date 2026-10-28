@@ -46,7 +46,7 @@ export function readFront(bookRoot: string): ParsedFront & { exists: boolean; ra
 /**
  * A chapter that may carry prose edits: the file exists and holds real paragraphs.
  *
- * A basis-only slot (ch01/ch67, one frozen sentence, BOOK-6) reads as one paragraph but is
+ * A basis-only slot (ch01/ch42, one frozen sentence, BOOK-6) reads as one paragraph but is
  * an empty slot for every process fact — no change may be admitted against it, no pass may
  * start on it, and nothing may take its frame as landed text. One predicate, so the engine
  * cannot mean two things by "written".
@@ -70,7 +70,7 @@ export function isBasisSlot(slot: { basis: boolean | number } | undefined): bool
   return slot !== undefined && slot.basis !== false && slot.basis !== 0;
 }
 
-/** Chapter numbers the cascade may walk into: written, in 1..67. */
+/** Chapter numbers the cascade may walk into: written, in 1..`TOTAL_CHAPTERS`. */
 export function writtenChapters(bookRoot: string): Set<number> {
   const written = new Set<number>();
   for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) {

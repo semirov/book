@@ -40,19 +40,20 @@ describe('scanManuscript', () => {
   });
 
   it('returns chapters in order', () => {
-    const created = fixture({ 'ch67.md': 'Конец.', 'ch01.md': 'Начало.' });
+    const created = fixture({ 'ch42.md': 'Конец.', 'ch01.md': 'Начало.' });
     const result = scanManuscript(created.root);
-    expect(result.chapters.map((chapter) => chapter.n)).toEqual([1, 67]);
+    expect(result.chapters.map((chapter) => chapter.n)).toEqual([1, 42]);
     expect(result.chapters[0]?.fileName).toBe('ch01.md');
   });
 
   it('ignores stray files, directories and out-of-range numbers', () => {
-    const created = fixture({ 'ch05.md': 'Глава.', 'PLAN.md': '# План', 'ch68.md': 'Вне книги.' });
+    // BOOK-155: the first number past the book is a stray file, never a chapter.
+    const created = fixture({ 'ch05.md': 'Глава.', 'PLAN.md': '# План', 'ch43.md': 'Вне книги.' });
     mkdirSync(join(created.manuscript, 'archive'));
     mkdirSync(join(created.manuscript, 'ch09.md'));
     const result = scanManuscript(created.root);
     expect(result.chapters.map((chapter) => chapter.n)).toEqual([5]);
-    expect(result.ignored).toEqual(expect.arrayContaining(['PLAN.md', 'ch68.md', 'archive', 'ch09.md']));
+    expect(result.ignored).toEqual(expect.arrayContaining(['PLAN.md', 'ch43.md', 'archive', 'ch09.md']));
   });
 
   it('carries the file mtime, so the reader sees the writing time', () => {

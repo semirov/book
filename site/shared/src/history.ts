@@ -108,7 +108,7 @@ export type HistoryRecordDto = {
   at: string;
   /** The change's public iteration number — «правка 7». */
   seq: number;
-  /** 1..67: the chapter the change was filed against. */
+  /** 1..TOTAL_CHAPTERS: the chapter the change was filed against. */
   chapter: number;
   /** BOOK-7: a chapter's premise is not «правка N»; the row's word says so. */
   premise: boolean;

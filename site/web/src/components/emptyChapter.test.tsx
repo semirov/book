@@ -34,6 +34,7 @@ function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
     blocks: 0,
     written: false,
     basis: false,
+    opening: null,
     writtenAt: null,
     updatedAt: null,
     direction: 'forward',
@@ -95,7 +96,7 @@ describe('one row, one numeral, no interface copy', () => {
 
 describe('the row’s geometry is the prose’s geometry', () => {
   it('ends the row’s content on the prose edge without sizing the box by the measure', () => {
-    // BOOK-88's one rule: `--measure` never sizes a box. The `.toc-line` inset is the
+    // BOOK-88's one rule: `--measure` never sizes a box. The `.toc-link` inset is the
     // sanctioned way for a full-width row to close on the prose's right edge.
     const row = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-row');
     expect(row).not.toContain('max-width');
@@ -123,8 +124,10 @@ describe('the row’s geometry is the prose’s geometry', () => {
     const seam = declarations(sheets['../styles/seam.css'] ?? '', '.ch-empty .seam');
     expect(seam).toContain('display: block');
     expect(seam).toContain('margin: 8px 0 12px');
-    // The next slot does not add its own top air on top of the strip's 12 px margin.
-    expect(sheets['../styles/seam.css'] ?? '').toMatch(/\.ch-empty:has\(> \.seam\) \+ \.ch-empty \{[^}]*padding-top: 0/u);
+    // The next slot does not add its own top air on top of the strip's 12 px margin. The air is
+    // a margin since owner 2026-10-28: the section's border box begins at its row, so a contents
+    // tap lands the row itself under the sticky head.
+    expect(sheets['../styles/seam.css'] ?? '').toMatch(/\.ch-empty:has\(> \.seam\) \+ \.ch-empty \{[^}]*margin-top: 0/u);
   });
 
   it('draws the field as a dotted leader that ends the row, with no right-hand label', () => {

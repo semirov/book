@@ -38,7 +38,7 @@ describe('F029 — the frozen frame', () => {
     const result = run([
       FRONT,
       framed(1, `${FRAME_FIRST_SENTENCE} Потом он сел и стал ждать.`),
-      framed(67, `Всё стихло к утру. ${FRAME_LAST_SENTENCE}`),
+      framed(42, `Всё стихло к утру. ${FRAME_LAST_SENTENCE}`),
     ]);
     expect(found(result)).toEqual([]);
   });
@@ -49,7 +49,7 @@ describe('F029 — the frozen frame', () => {
 
     const closing = run([
       FRONT,
-      framed(67, 'Всё стихло.\nСвет погас, потому что не осталось\nглаз, которым он был бы нужен.'),
+      framed(42, 'Всё стихло.\nСвет погас, потому что не осталось\nглаз, которым он был бы нужен.'),
     ]);
     expect(found(closing)).toEqual([]);
   });
@@ -72,16 +72,16 @@ describe('F029 — the frozen frame', () => {
     expect(found(result)[0]?.message).toContain('found «Тестовый абзац пришёл на работу раньше всех.»');
   });
 
-  it('rejects ch67 without the last sentence', () => {
-    const result = run([FRONT, framed(67, 'Всё стихло, но кто-то остался.')]);
+  it('rejects ch42 without the last sentence', () => {
+    const result = run([FRONT, framed(42, 'Всё стихло, но кто-то остался.')]);
     expect(found(result)).toEqual([
-      expect.objectContaining({ severity: 'error', file: 'ch67.md', message: expect.stringContaining('must end with') }),
+      expect.objectContaining({ severity: 'error', file: 'ch42.md', message: expect.stringContaining('must end with') }),
     ]);
     expect(found(result)[0]?.message).toContain('found «Всё стихло, но кто-то остался.»');
   });
 
   it('reports the tail of a long closing paragraph', () => {
-    const result = run([FRONT, framed(67, `${'Слово '.repeat(40)}и всё стихло.`)]);
+    const result = run([FRONT, framed(42, `${'Слово '.repeat(40)}и всё стихло.`)]);
     const message = found(result)[0]?.message ?? '';
     expect(message).toContain('…');
     expect(message).toContain('и всё стихло.»');
@@ -91,7 +91,7 @@ describe('F029 — the frozen frame', () => {
     const result = run([
       FRONT,
       { name: 'ch01.md', text: FRAME_FIRST_SENTENCE },
-      { name: 'ch67.md', text: FRAME_LAST_SENTENCE },
+      { name: 'ch42.md', text: FRAME_LAST_SENTENCE },
     ]);
     expect(found(result)).toEqual([]);
   });
@@ -152,10 +152,10 @@ describe('F029 — the frozen frame', () => {
     expect(found(result)[0]?.message).toContain('found «Её освещал яркий свет.»');
   });
 
-  it('rejects a ch67 frame on the first line: the frame ends that chapter', () => {
-    const result = run([FRONT, { name: 'ch67.md', text: `${FRAME_LAST_SENTENCE}\n\nОн сел у окна.` }]);
+  it('rejects a ch42 frame on the first line: the frame ends that chapter', () => {
+    const result = run([FRONT, { name: 'ch42.md', text: `${FRAME_LAST_SENTENCE}\n\nОн сел у окна.` }]);
     expect(found(result)).toEqual([
-      expect.objectContaining({ severity: 'error', file: 'ch67.md', message: expect.stringContaining('must end with') }),
+      expect.objectContaining({ severity: 'error', file: 'ch42.md', message: expect.stringContaining('must end with') }),
     ]);
   });
 
@@ -176,7 +176,7 @@ describe('F029 — the frozen frame', () => {
 
     const closing = run([
       FRONT,
-      { name: 'ch67.md', text: 'Всё стихло к утру.\n\nСвет погас, потому что не осталось\nглаз, которым он был бы нужен.' },
+      { name: 'ch42.md', text: 'Всё стихло к утру.\n\nСвет погас, потому что не осталось\nглаз, которым он был бы нужен.' },
     ]);
     expect(found(closing)).toEqual([]);
     expect(withRule(closing, 'F022')).toEqual([]);
@@ -191,28 +191,28 @@ describe('F029 — the frozen frame', () => {
     expect(found(late)[0]?.message).toContain('found «Потом он сел.»');
   });
 
-  it('accepts prose, a blank line and the closing frame (ch67)', () => {
-    const result = run([FRONT, { name: 'ch67.md', text: `Он сел у окна.\n\n${FRAME_LAST_SENTENCE}` }]);
+  it('accepts prose, a blank line and the closing frame (ch42)', () => {
+    const result = run([FRONT, { name: 'ch42.md', text: `Он сел у окна.\n\n${FRAME_LAST_SENTENCE}` }]);
     expect(found(result)).toEqual([]);
   });
 
   it('rejects a changed word in the closing frame without a title line', () => {
     const result = run([
       FRONT,
-      { name: 'ch67.md', text: 'Он сел у окна.\n\nСвет погас, потому что не осталось глаз, которым он был бы не нужен.' },
+      { name: 'ch42.md', text: 'Он сел у окна.\n\nСвет погас, потому что не осталось глаз, которым он был бы не нужен.' },
     ]);
     expect(found(result)).toEqual([
-      expect.objectContaining({ severity: 'error', file: 'ch67.md', message: expect.stringContaining('must end with') }),
+      expect.objectContaining({ severity: 'error', file: 'ch42.md', message: expect.stringContaining('must end with') }),
     ]);
   });
 
   it('rejects a closing frame that is not the last sentence', () => {
-    const result = run([FRONT, { name: 'ch67.md', text: `Он сел у окна.\n\n${FRAME_LAST_SENTENCE} Потом стало тихо.` }]);
+    const result = run([FRONT, { name: 'ch42.md', text: `Он сел у окна.\n\n${FRAME_LAST_SENTENCE} Потом стало тихо.` }]);
     expect(found(result)).toHaveLength(1);
     expect(found(result)[0]?.message).toContain('must end with');
   });
 
-  it('accepts a manuscript without ch67', () => {
+  it('accepts a manuscript without ch42', () => {
     const result = run([FRONT, framed(1, `${FRAME_FIRST_SENTENCE} Потом он сел.`)]);
     expect(found(result)).toEqual([]);
   });

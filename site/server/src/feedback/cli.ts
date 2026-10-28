@@ -37,6 +37,7 @@
 import {
   EDIT_DAY_MS,
   holdsInternalCode,
+  TOTAL_CHAPTERS,
   interventionKindLabel,
   normalizeInterventionKind,
   normalizeRetroMode,
@@ -172,8 +173,8 @@ function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   let chapter: number | undefined;
   if (parsed.flags.has('chapter')) {
     const raw = Number.parseInt(parsed.flags.get('chapter') ?? '', 10);
-    if (!Number.isInteger(raw) || raw < 1 || raw > 67) {
-      io.print('refused: --chapter must be 1..67');
+    if (!Number.isInteger(raw) || raw < 1 || raw > TOTAL_CHAPTERS) {
+      io.print(`refused: --chapter must be 1..${TOTAL_CHAPTERS}`);
       return 2;
     }
     chapter = raw;
@@ -439,7 +440,7 @@ function parseRev(raw: string | undefined): { chapter: number; rev: number } | n
   if (match === null) return null;
   const chapter = Number.parseInt(match[1] ?? '', 10);
   const rev = Number.parseInt(match[2] ?? '', 10);
-  if (!Number.isInteger(chapter) || chapter < 1 || chapter > 67) return null;
+  if (!Number.isInteger(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) return null;
   if (!Number.isInteger(rev) || rev < 0) return null;
   return { chapter, rev };
 }

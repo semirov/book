@@ -13,7 +13,7 @@ import { longProse } from './helpers.ts';
 
 /**
  * M5 acceptance: a comment becomes a queued change only through a **valid intent**, an
- * intent naming another chapter is refused, a filing on chapter 67 is batched and decided
+ * intent naming another chapter is refused, a filing on the finale is batched and decided
  * like any other (BOOK-137), the batch is the only thing a model sees, and a decision line is
  * applied once.
  */
@@ -28,7 +28,7 @@ async function boot(options: Parameters<typeof bootComments>[0] = {}): Promise<H
         'Тестовый абзац номер один. Это служебный текст, он не является текстом книги.',
         'Тестовый абзац номер два. Это служебный текст.',
       ]),
-      'ch67.md': longProse(['Служебный текст для проверки.']),
+      'ch42.md': longProse(['Служебный текст для проверки.']),
     },
     ...options,
   });
@@ -61,12 +61,12 @@ async function comment(h: Harness, body = 'В абзаце дважды «абз
 }
 
 /** A filing on the last chapter, the way a reader makes one. */
-function post67(h: Harness) {
+function post42(h: Harness) {
   return h.app.inject({
     method: 'POST',
     url: '/api/comments',
     headers: h.headers(),
-    payload: commentBody({ chapter: 67, body: 'Финал стоит сделать теплее.' }),
+    payload: commentBody({ chapter: 42, body: 'Финал стоит сделать теплее.' }),
   });
 }
 
@@ -121,12 +121,12 @@ describe('feedback.mjs inbox — the only thing a model sees', () => {
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM feedback_batches').get()).toEqual({ n: 0 });
   });
 
-  it('batches a chapter-67 filing like any other (BOOK-137)', async () => {
+  it('batches a filing on the finale like any other (BOOK-137)', async () => {
     const h = await boot();
-    // BOOK-137: ch67 is no longer closed to the reader. A filing on the finale enters triage
-    // and may be accepted — as paperwork when it touches the canon sentence.
-    expect((await post67(h)).statusCode).toBe(201);
-    const batched = cli(h, 'inbox', '--chapter', '67');
+    // BOOK-137: the finale is not closed to the reader. A filing on it enters triage and may
+    // be accepted — as paperwork when it touches the canon sentence.
+    expect((await post42(h)).statusCode).toBe(201);
+    const batched = cli(h, 'inbox', '--chapter', '42');
     expect(batched.code).toBe(0);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM feedback_batches').get()).toEqual({ n: 1 });
   });
@@ -213,7 +213,7 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     expect(() => readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8')).toThrow();
   });
 
-  it('accepts a decision on chapter 67, and leaves the text alone (BOOK-137)', async () => {
+  it('accepts a decision on the finale, and leaves the text alone (BOOK-137)', async () => {
     const h = await boot();
     // BOOK-137: the finale is no longer refused at the decision. A filing on it is accepted —
     // the sentence's letters are kept at the landing, and a filing that touches them becomes
@@ -222,7 +222,7 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     insertComment(h.db, {
       id,
       identityId: h.identity.id,
-      chapter: 67,
+      chapter: 42,
       blockId: null,
       blockIndex: null,
       baseRev: null,

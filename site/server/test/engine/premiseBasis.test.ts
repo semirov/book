@@ -1,4 +1,4 @@
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, PREMISE_FROZEN_REASON } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, PREMISE_FROZEN_REASON, TOTAL_CHAPTERS } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { admitPremise } from '../../src/engine/premise.ts';
@@ -7,7 +7,7 @@ import { newChangeId } from '../../src/util/ulid.ts';
 import { AT, accept, change, codeOf, fixtureOf, seed } from './premiseHelpers.ts';
 
 /**
- * BOOK-137 — a basis-only slot (ch01/ch67) is its frame sentence and nothing else.
+ * BOOK-137 — a basis-only slot (the opening and the finale) is its frame sentence and nothing else.
  *
  * All three creators of a `changes` row — the engine's queue, the acceptance path and the premise
  * sweep — say the same thing about it: the frame is the whole text, so a filing there has no prose
@@ -18,15 +18,17 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
   it('refuses a chapter-level acceptance on a basis slot, as the queue does — never a premise', () => {
     const fixture = fixtureOf();
     try {
-      // The real basis files: the ingest projects ch01/ch67 as rows (rev 0, one block).
+      // The real basis files: the ingest projects ch01/ch42 as rows (rev 0, one block).
       fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
+      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       expect(
-        fixture.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all(),
+        fixture.db
+          .prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, ?) ORDER BY n')
+          .all(TOTAL_CHAPTERS),
       ).toEqual([
         { n: 1, rev: 0, basis: 1, block_count: 1 },
-        { n: 67, rev: 0, basis: 1, block_count: 1 },
+        { n: TOTAL_CHAPTERS, rev: 0, basis: 1, block_count: 1 },
       ]);
 
       const answers = [
@@ -36,7 +38,7 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
           seed(fixture.db, { chapter: 1, proposedText: 'Начать иначе.', kind: 'decision' }),
           'переписать начало',
         ),
-        accept(fixture.db, seed(fixture.db, { chapter: 67 }), 'переписать финал'),
+        accept(fixture.db, seed(fixture.db, { chapter: TOTAL_CHAPTERS }), 'переписать финал'),
       ];
       expect(answers).toEqual([
         { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON },
@@ -47,16 +49,18 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
       // No premise was created and neither sentence moved.
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
       expect(
-        fixture.db.prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, 67) ORDER BY n').all(),
+        fixture.db
+          .prepare('SELECT n, rev, basis, block_count FROM chapters WHERE n IN (1, ?) ORDER BY n')
+          .all(TOTAL_CHAPTERS),
       ).toEqual([
         { n: 1, rev: 0, basis: 1, block_count: 1 },
-        { n: 67, rev: 0, basis: 1, block_count: 1 },
+        { n: TOTAL_CHAPTERS, rev: 0, basis: 1, block_count: 1 },
       ]);
 
       // The engine's own admission path gives the same answer for the same reason.
       const basisRefusal = (n: number): string | null =>
         codeOf(() => fixture.engine.enqueue({ kind: 'reader_edit', chapter: n, intent: 'иначе' }));
-      expect([1, 67].map(basisRefusal)).toEqual(['FROZEN_FRAME', 'FROZEN_FRAME']);
+      expect([1, TOTAL_CHAPTERS].map(basisRefusal)).toEqual(['FROZEN_FRAME', 'FROZEN_FRAME']);
     } finally {
       fixture.close();
     }
@@ -66,7 +70,7 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
     const fixture = fixtureOf();
     try {
       fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(67, FRAME_LAST_SENTENCE);
+      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       // Rows from before the refusal existed: a premise is filed straight onto a basis slot and
       // onto an empty ch05, which is what BOOK-7 keeps waiting for its first draft.

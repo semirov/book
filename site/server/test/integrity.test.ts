@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { FRAME_FIRST_SENTENCE, type AuthorsDto } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, TOTAL_CHAPTERS, type AuthorsDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 import { describe, expect, it } from 'vitest';
 
@@ -97,7 +97,7 @@ describe('the integrity panel (§13.4 point 5, §17)', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json() as IntegrityReport;
 
-      expect(body.chapters).toMatchObject({ written: 2, total: 67 });
+      expect(body.chapters).toMatchObject({ written: 2, total: TOTAL_CHAPTERS });
       expect(body.chapters.totalChars).toBeGreaterThan(0);
       // F007: a 6 500-character chapter is thin, and the panel says which ones.
       expect(body.chapters.thin).toEqual([1, 2]);

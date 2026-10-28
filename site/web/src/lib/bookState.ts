@@ -8,15 +8,7 @@
  * refresh, and every chapter event is applied by `rev`, never by arrival order.
  */
 
-import type {
-  CatalogEntry,
-  ChapterCreatedPayload,
-  ChapterRevisionPayload,
-  FrontDto,
-  FrontUpdatedPayload,
-  HelloPayload,
-  StateSnapshot,
-} from '@book/shared';
+import { openingOf, type CatalogEntry, type ChapterCreatedPayload, type ChapterRevisionPayload, type FrontDto, type FrontUpdatedPayload, type HelloPayload, type PatchOp, type StateSnapshot } from '@book/shared';
 
 import { newestAuthorsCount } from './authorsCount.ts';
 
@@ -172,6 +164,7 @@ function entryFromCreated(previous: CatalogEntry | null, created: ChapterCreated
     written: true,
     // A created chapter is prose: a basis-only slot is never announced as `chapter:created`.
     basis: false,
+    opening: null,
     writtenAt: previous?.writtenAt ?? created.createdAt,
     updatedAt: created.createdAt,
     direction: created.direction,
@@ -182,6 +175,19 @@ export function withChapterCreated(data: BookData, created: ChapterCreatedPayloa
   const previous = catalogEntryForChapter(data.catalog, created.n);
   if (previous !== null && previous.rev > created.rev) return data;
   return { ...data, catalog: withCatalogEntry(data.catalog, entryFromCreated(previous, created)) };
+}
+
+/**
+ * The contents' excerpt after a live revision (owner, 2026-10-28): the patch carries the new
+ * first block when it touched it, the previous excerpt stands when the first block was left
+ * alone, and a first block that was removed leaves nothing to trust until the next catalog read
+ * — a stale sentence is not that chapter's opening any more.
+ */
+function openingAfter(previous: string | null, patch: readonly PatchOp[]): string | null {
+  const first = patch.find((op) => op.op !== 'remove' && op.i === 0 && op.text !== undefined);
+  if (first?.text !== undefined) return openingOf(first.text);
+  if (patch.some((op) => op.op === 'remove' && op.i === 0)) return null;
+  return previous;
 }
 
 function entryFromRevision(previous: CatalogEntry | null, revision: ChapterRevisionPayload): CatalogEntry | null {
@@ -195,6 +201,7 @@ function entryFromRevision(previous: CatalogEntry | null, revision: ChapterRevis
     // A revision means prose: a slot that was showing only its basis sentence is now a
     // chapter, and the frame paragraph no longer stands for it (BOOK-6).
     basis: false,
+    opening: openingAfter(previous.opening ?? null, revision.patch),
     updatedAt: revision.updatedAt,
   };
 }

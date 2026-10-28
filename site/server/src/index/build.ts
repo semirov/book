@@ -46,7 +46,7 @@ const MEMO = new Map<string, ChapterIndex>();
 /** One chapter's facts from its raw file text (also used for a historical snapshot). */
 export function indexChapterText(n: number, raw: string): ChapterIndex {
   const parsed = parseChapter(n, raw);
-  // A slot holding only its basis sentence (ch01/ch67) is not prose: nothing to index.
+  // A slot holding only its basis sentence (ch01/ch42) is not prose: nothing to index.
   const written = parsed.blocks.length > 0 && !parsed.basis;
   const key = `${n}:${written ? 1 : 0}:${parsed.sha256}`;
   const cached = MEMO.get(key);

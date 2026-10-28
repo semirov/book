@@ -7,7 +7,7 @@
  * whole-book aggregates: the count is the last version of every paragraph joined to
  * `identities`, the outlay is every step's tokens priced by the rate table. A repeated request
  * must not pay for either, so each answer is remembered under this key and invalidated by it.
- * Every part is a small indexed read — a 67-row `chapters` sum, the `block_versions_hseq` index
+ * Every part is a small indexed read — a `chapters` sum, the `block_versions_hseq` index
  * and the reader list — never a scan of the block history.
  *
  * One definition for two routes (BOOK-114): the title page and the cost line answer for the same

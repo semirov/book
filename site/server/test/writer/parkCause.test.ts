@@ -19,7 +19,7 @@ import { readerSentences } from '../../src/writer/reasons.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
-const CHAPTER = 65;
+const CHAPTER = 40;
 
 const changeRow = (harness: Harness, id: string): Record<string, unknown> | undefined =>
   harness.fixture.db.prepare('SELECT status, outcome, reason FROM changes WHERE id = ?').get(id) as
@@ -30,7 +30,7 @@ describe('a parked pass tells a broken call from a refusal', () => {
   it('parks a failed gate call as `failed`, and the premise of the written chapter stays applied', async () => {
     const harness = await createHarness();
     try {
-      const changeId = harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer());
       const answered = harness.provider;
       let calls = 0;
@@ -56,11 +56,11 @@ describe('a parked pass tells a broken call from a refusal', () => {
       expect(result.reason).toContain('модель ответила не по форме');
       expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
       // The chapter the broken pass wrote is the first edition the premise entered.
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch65.md'))).toBe(true);
+      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch40.md'))).toBe(true);
       expect(changeRow(harness, changeId)).toEqual({
         status: 'done',
         outcome: 'applied',
-        reason: 'вошло в первую редакцию главы 65',
+        reason: 'вошло в первую редакцию главы 40',
       });
       // The step is still an escalation — the pass broke — and one stage carries the sentence.
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
@@ -73,7 +73,7 @@ describe('a parked pass tells a broken call from a refusal', () => {
   it('parks the model’s own refusal as `refused`, and the premise is dropped with that note', async () => {
     const harness = await createHarness();
     try {
-      const changeId = harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
       const result = await harness.run({ chapter: CHAPTER });
 
@@ -92,7 +92,7 @@ describe('a parked pass tells a broken call from a refusal', () => {
   it('asks a gate for the gate budget and the writer for the writing budget', async () => {
     const harness = await createHarness({ env: { WRITER_MAX_TOKENS_PER_CALL: '8000', WRITER_GATE_TOKENS: '16000' } });
     try {
-      harness.premised(CHAPTER, 'в главе 65 появляется документ о допуске');
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       const result = await harness.run({ chapter: CHAPTER });
 
