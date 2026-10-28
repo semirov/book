@@ -107,8 +107,8 @@ export type PassDeps = {
   dryRun?: boolean;
   /** `--chapter N`: open that chapter's first pass instead of the lane's next slot. */
   chapter?: number | null;
-  /** Lanes to ask for the next job, in order. Forward first: the book is written forward. */
-  lanes?: Array<'fwd' | 'bwd'>;
+  /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
+  lanes?: Array<'fwd' | 'bwd' | 'filing'>;
 };
 
 /** Run one pass. Returns a typed result and never throws. */
@@ -168,7 +168,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       picked = await engine.pass(deps.chapter, config.session);
     } else {
       picked = null;
-      for (const lane of deps.lanes ?? ['fwd', 'bwd']) {
+      // BOOK-166: work is asked for by filing, never by chapter order.
+      for (const lane of deps.lanes ?? ['filing']) {
         picked = await engine.next(lane, config.session);
         if (picked !== null) break;
       }
@@ -178,16 +179,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     return { status: 'refused', reason: reasonOf(error) };
   }
   if (picked === null) return { status: 'idle', reason: 'пока нечего писать: заявок нет' };
-  // BOOK-166: a pass exists only to serve a filing. A draft step the engine still hands out
-  // without one is refused here, never written: the lane does not invent work.
   const filed = picked.changeId !== null && picked.changeId !== undefined
     ? true
     : (picked as { premise?: unknown }).premise !== null && (picked as { premise?: unknown }).premise !== undefined;
-  // A resumed landed step continues at the gates (BOOK-117): it writes nothing, so the
-  // filing rule does not refuse it — only the opening of a new draft does.
+  // A resumed landed step continues at the gates (BOOK-117): it writes nothing.
   if (picked.pass === 'draft' && !filed && picked.landed !== true) {
-    deps.log('[writer] NO_FILING_FOR_CHAPTER: проход без заявки — не пишу');
-    return { status: 'refused', reason: 'глава не заказана заявкой — книга пишется только при воздействиях' };
+    // A step without a filing is skipped, not spun on: ask the door once (BOOK-166).
+    deps.log(`[writer] NO_FILING_FOR_CHAPTER: глава ${String(picked.chapter)} без заявки — пропускаю, спрашиваю дверь`);
+    const filedAgain = await engine.next('filing', config.session);
+    if (filedAgain === null || (filedAgain.pass === 'draft' && filedAgain.premise == null && filedAgain.changeId == null)) {
+      return { status: 'idle', reason: 'пока нечего писать: заявок нет' };
+    }
+    picked = filedAgain;
   }
 
   const job: WriterAssignment = picked;

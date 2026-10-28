@@ -150,8 +150,7 @@ export function createEngine(deps: EngineDeps) {
   }
 
   /**
-   * BOOK-61 — the conditional rights gate lives in its own module (`rightsGate.ts`): a
-   * different question, a different enum, and its own close. The engine only wires it in.
+   * BOOK-61 — the conditional rights gate lives in `rightsGate.ts`: its own question, enum and close.
    */
   const rights = createRightsGate(deps);
 
@@ -163,10 +162,10 @@ export function createEngine(deps: EngineDeps) {
     // flagged, and it is offered before any writer claim (it belongs to a landed step).
     if (input.role === 'rights') return rights.next(input.session);
     if (input.role) return nextGate(input.role, input.session);
-    if (input.for !== 'fwd' && input.for !== 'bwd') {
-      refuse('INVALID_LANE', 422, 'either --for fwd|bwd or --role editor|consultant|rights is required');
+    if (input.for !== 'fwd' && input.for !== 'bwd' && input.for !== 'filing') {
+      refuse('INVALID_LANE', 422, 'either --for fwd|bwd|filing or --role editor|consultant|rights is required');
     }
-    const lane: DraftLane = input.for;
+    const lane: DraftLane | 'filing' = input.for;
 
     // §6A.9 / BOOK-6: writing is the owner's switch. While `DRAFTING` is off no writer
     // assignment is handed out — not a draft, not an open step, not a queued change — so an
@@ -179,6 +178,8 @@ export function createEngine(deps: EngineDeps) {
     }
     const open = queue.claimOpenStep(input.session, lane);
     if (open) return open;
+    // BOOK-166: `filing` is the door — the oldest undecided filing; fwd/bwd only for a direct walk.
+    if (lane === 'filing') return queue.claimFiling(input.session);
     if (store.listOpenCascades(db).length === 0) {
       const claimed = queue.claimHead(input.session);
       if (claimed) return claimed;

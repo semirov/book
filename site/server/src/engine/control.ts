@@ -55,7 +55,7 @@ const id = z.string().min(1).max(80);
 
 const nextBody = z
   .object({
-    for: z.enum(['fwd', 'bwd']).optional(),
+    for: z.enum(['fwd', 'bwd', 'filing']).optional(),
     // BOOK-61: `rights` is Gate B, offered only for a step whose scan flagged.
     role: z.enum(['editor', 'consultant', 'rights']).optional(),
     session,
