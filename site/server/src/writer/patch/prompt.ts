@@ -27,7 +27,19 @@ export type PatchPrompt = {
   blocks: Array<{ id: string; text: string }>;
 };
 
-export type PatchPromptInput = { bookRoot: string; chapter: number; assignment: WriterAssignmentData };
+/**
+ * BOOK-173 §3: what an ordinary patch does not have — the consequence being repaired. It is data
+ * for the model (a fenced block, like the intent), and it never travels in the cache prefix: the
+ * ripple chapter's prefix is the same canon → role → protocol the origin pass already cached.
+ */
+export type RippleContext = { changeId: string; reason: string; claim: string };
+
+export type PatchPromptInput = {
+  bookRoot: string;
+  chapter: number;
+  assignment: WriterAssignmentData;
+  ripple?: RippleContext | null;
+};
 
 function part(id: string, body: string): PromptPart {
   return { section: { id, chars: body.length, sha256: sha256Hex(body) }, body };
@@ -61,6 +73,22 @@ function blocksSection(blocks: ReadonlyArray<{ id: string; text: string }>): Pro
   return part('chapter', lines.join('\n'));
 }
 
+/** The synthetic assignment of a ripple chapter: why this chapter, and the claim that went false. */
+function rippleSection(ripple: RippleContext): PromptPart {
+  const body = [
+    '## Правка-следствие (данные)',
+    '```ripple',
+    `change: ${ripple.changeId}`,
+    `reason: ${ripple.reason}`,
+    `claim: ${ripple.claim}`,
+    '```',
+    'Это не заявка читателя: это следствие уже принятой правки выше по книге. Приведённое утверждение',
+    'стало ложным или потеряло опору. Правь ровно столько, сколько нужно, чтобы оно перестало быть',
+    'ложным; остальное в главе не трогай. Если правка невозможна без переписывания главы — верни "rewrite".',
+  ].join('\n');
+  return part('ripple', body);
+}
+
 function reminderSection(): PromptPart {
   return part(
     'reminder',
@@ -79,16 +107,18 @@ export function buildPatchPrompt(input: PatchPromptInput): PatchPrompt {
   }
   const blocks = parseChapter(input.chapter, own.raw).blocks.map((block) => ({ id: block.id, text: block.text }));
   const prefix: PromptPart[] = [...canonParts(input.bookRoot), roleSection(input.bookRoot), protocolSection()];
-  const tail: PromptPart[] = [
+  const tail: Array<PromptPart | null> = [
     placeSection(input.chapter),
     frameSection(input.chapter),
     blocksSection(blocks),
+    input.ripple === null || input.ripple === undefined ? null : rippleSection(input.ripple),
     assignmentSection(input.assignment),
     reminderSection(),
   ];
+  const present = tail.filter((entry): entry is PromptPart => entry !== null);
   const system = prefix.map((entry) => entry.body).join('\n\n');
-  const user = tail.map((entry) => entry.body).join('\n\n');
-  const sections: PromptSection[] = [...prefix, ...tail].map((entry) => entry.section);
+  const user = present.map((entry) => entry.body).join('\n\n');
+  const sections: PromptSection[] = [...prefix, ...present].map((entry) => entry.section);
   return {
     system,
     user,

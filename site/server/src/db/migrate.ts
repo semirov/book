@@ -5,6 +5,7 @@ import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
+import { migrateV24 } from './migrateV24.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -326,6 +327,9 @@ const MIGRATIONS: Migration[] = [
   },
   // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
   { to: 23, up: migrateV23 },
+  // BOOK-173: the ripple's graph. v24, not v23 — the author marker took 23 first on `main`, and an
+  // install already at 23 would never run the step that creates `edges`/`change_plans`.
+  { to: 24, up: migrateV24 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

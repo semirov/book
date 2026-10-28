@@ -17,10 +17,10 @@
  * the terms a reader accepted (`comments.terms_version`, `comments.terms_sha`) and the moment a
  * landed variant was entered (`comments.accepted_at`, `comments.accepted_terms_version`), so
  * «which terms did the reader accept?» has an answer years later; BOOK-158 adds the attempt
- * ledger (`comment_attempts`) and `triage` to the ledger's pass vocabulary, so a refusal can be
- * explained, revised and charged without spending the reader's daily edit); BOOK-176 adds the span ledger (BOOK-DOC-69) and v23 adds `identities.is_author` — the imprint's own reader (owner, 2026-10-28).
+ * ledger (`comment_attempts`) and `triage` to the pass vocabulary; BOOK-176 adds the span ledger
+ * (BOOK-DOC-69); v23 adds `identities.is_author` (owner, 2026-10-28), v24 the ripple's graph.
  * Text tables are a projection of the manuscript files; the engine tables are the only home of
- * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
+ * process facts. Every table §8 names exists here; the retired `obligations` one does not.
  *
  * **The `chapter` CHECKs below stay `BETWEEN 1 AND 67` although the book is 42 chapters
  * (BOOK-155).** A row written before the cut (chapter 65) is real prose and must survive;
@@ -30,7 +30,7 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 /**
  * Two standalone table definitions live in `tables.ts` because both the full schema here and

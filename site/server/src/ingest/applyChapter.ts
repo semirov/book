@@ -53,6 +53,12 @@ export type ApplyChapterInput = {
   attributed?: boolean;
   /** An explicit cause for a write that is not a step (a restore). */
   cause?: WriteCause;
+  /**
+   * BOOK-173: run inside **this** transaction, after the revision and its blocks are written.
+   * The engine's `land` uses it to re-bind the chapter's mentions and to freeze the ripple plan,
+   * so a crash leaves neither the revision nor the plan — the two are one write.
+   */
+  onPublished?: (published: { n: number; rev: number }) => void;
 };
 
 export type AppliedChapter = {
@@ -207,6 +213,7 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
         cause,
         actor,
       });
+      input.onPublished?.({ n, rev: 1 });
       return {
         status: 'created',
         n,
@@ -311,6 +318,7 @@ export function applyChapterFile(input: ApplyChapterInput): ApplyChapterResult {
       actor,
     });
 
+    input.onPublished?.({ n, rev });
     return {
       status: 'revised',
       kind,

@@ -30,13 +30,14 @@ import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/sh
 
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
-import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
+import type { DoneView, EngineClient, EngineStateView, LandView, StartView } from './client.ts';
 import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
 import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
-import { chooseMode, type ModeChoice } from './mode.ts';
+import { chooseMode, RIPPLE_MODE, type ModeChoice } from './mode.ts';
+import { afterPatch } from './ripple/afterPatch.ts';
 import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
@@ -73,6 +74,8 @@ export type PassDeps = {
   chapter?: number | null;
   /** How to ask for work. `filing` is the door (BOOK-166); fwd/bwd stay for a direct walk. */
   lanes?: Array<'fwd' | 'bwd' | 'filing'>;
+  /** BOOK-173 §7: this pass serves one chapter of a ripple — opened by the engine's ripple door. */
+  ripple?: { chapter: number; changeId: string; reason: string; claim: string };
 };
 
 /** Run one pass. Returns a typed result and never throws. */
@@ -128,7 +131,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   // 2. The assignment: a named chapter, or the lane's next slot.
   let picked: WriterAssignment | null;
   try {
-    if (deps.chapter !== null && deps.chapter !== undefined) {
+    if (deps.ripple !== undefined) {
+      picked = await engine.openRipple(deps.ripple.chapter, config.session, deps.ripple.changeId);
+    } else if (deps.chapter !== null && deps.chapter !== undefined) {
       picked = await engine.pass(deps.chapter, config.session);
     } else {
       picked = null;
@@ -251,13 +256,13 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // 5. The mode (§4), the prompt, and the stage that says both were assembled.
       //    The rewrite prompt is built even in patch mode: the model may decline in one step.
       const own = readChapter(bookRoot, chapter);
-      choice = chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, isWrittenChapter(own));
+      choice = deps.ripple === undefined ? chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, isWrittenChapter(own)) : RIPPLE_MODE;
       let built: BuiltPrompt;
       let patchPrompt: PatchPrompt | null = null;
       try {
         const data = assignmentData(job);
         rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data });
-        if (choice.mode === 'patch') patchPrompt = buildPatchPrompt({ bookRoot, chapter, assignment: data });
+        if (choice.mode === 'patch') patchPrompt = buildPatchPrompt({ bookRoot, chapter, assignment: data, ripple: deps.ripple ?? null });
         built = patchPrompt ?? rewritePrompt;
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
@@ -343,11 +348,14 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       } catch {
         return await lane.park({ detail: 'не удалось записать главу' });
       }
+      let landing: LandView;
       try {
-        await lane.land();
+        landing = await lane.land();
       } catch (error) {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
+      const reaction = await afterPatch({ plan: landing.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
+      if (reaction.kind === 'park') return await lane.park({ detail: reaction.sentence, ...(reaction.cause === undefined ? {} : { cause: reaction.cause }) });
       // A landing drops the verdicts of the previous revision: every gate is asked again.
       answered.editor = false;
       answered.consultant = false;

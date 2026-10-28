@@ -55,6 +55,10 @@ const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
   { key: 'thread_events', label: 'thread_events', sql: 'SELECT COUNT(*) AS n FROM thread_events' },
   { key: 'mentions', label: 'mentions', sql: 'SELECT COUNT(*) AS n FROM mentions' },
   { key: 'literals', label: 'literals', sql: 'SELECT COUNT(*) AS n FROM literals' },
+  // BOOK-173: the graph and the plans are content too — a reset that left an edge behind would
+  // name a fact the wipe removed.
+  { key: 'edges', label: 'edges', sql: 'SELECT COUNT(*) AS n FROM edges' },
+  { key: 'change_plans', label: 'change_plans', sql: 'SELECT COUNT(*) AS n FROM change_plans' },
   { key: 'overwrites', label: 'overwrites', sql: 'SELECT COUNT(*) AS n FROM overwrites' },
   { key: 'contributions', label: 'contributions', sql: 'SELECT COUNT(*) AS n FROM contributions' },
   {

@@ -25,7 +25,7 @@ function errorOf(argv: string[]): string {
 
 describe('parseArgs', () => {
   it('runs once by default', () => {
-    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null });
+    expect(cliOf([])).toEqual({ mode: 'run', once: true, loop: false, dryRun: false, chapter: null, changeId: null });
     expect(cliOf(['--once'])).toMatchObject({ mode: 'run', once: true, loop: false });
   });
 

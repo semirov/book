@@ -49,7 +49,6 @@ describe('migration v23 — the author marker', () => {
   it('adds the column to a fresh install, unmarked, and records that the book has no author yet', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(23);
     const column = columns(db, 'identities').find((entry) => entry.name === 'is_author');
     expect(column).toMatchObject({ notnull: 1, dflt_value: '0' });
     // Zero identities: nobody is guessed into the role, and the decision is on the record.
@@ -67,14 +66,14 @@ describe('migration v23 — the author marker', () => {
     shapeAsV22(db);
     identity(db, 'idt_only', 'Филипп Семиров');
 
-    expect(migrate(db)).toEqual({ from: 22, to: 23 });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(23);
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect(marked(db)).toEqual(['idt_only']);
     expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('single:idt_only');
 
     // A second boot does nothing at all: no re-guess, no rewritten decision.
     db.prepare('UPDATE identities SET is_author = 0 WHERE id = ?').run('idt_only');
-    expect(migrate(db)).toEqual({ from: 23, to: 23 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect(marked(db)).toEqual([]);
     expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('single:idt_only');
     // Even the step itself, run by hand, does not re-mark: the `meta` decision is the guard.
@@ -90,7 +89,7 @@ describe('migration v23 — the author marker', () => {
     identity(db, 'idt_one', 'Филипп Семиров');
     identity(db, 'idt_two', 'Аня');
 
-    expect(migrate(db)).toEqual({ from: 22, to: 23 });
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
     expect(marked(db)).toEqual([]);
     expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('none:multiple:2');
     db.close();
@@ -104,7 +103,7 @@ describe('migration v23 — the author marker', () => {
     db.prepare('UPDATE identities SET is_author = 1 WHERE id = ?').run('idt_two');
     shapeAsV22ColumnOnly(db);
 
-    expect(migrate(db)).toEqual({ from: 22, to: 23 });
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
     expect(marked(db)).toEqual(['idt_two']);
     expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('existing');
     db.close();
@@ -118,7 +117,7 @@ describe('migration v23 — the author marker', () => {
     // An operator decision already on record — e.g. «several readers, no author» — stands.
     setMeta(db, AUTHOR_MARKER_KEY, 'none:multiple:3');
 
-    expect(migrate(db)).toEqual({ from: 22, to: 23 });
+    expect(migrate(db)).toEqual({ from: 22, to: SCHEMA_VERSION });
     expect(marked(db)).toEqual([]);
     expect(getMeta(db, AUTHOR_MARKER_KEY)).toBe('none:multiple:3');
     db.close();

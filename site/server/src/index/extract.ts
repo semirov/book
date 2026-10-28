@@ -97,8 +97,12 @@ const TIME_RULES: Array<{ kind: TimeMarkerKind; re: RegExp }> = [
   { kind: 'daypart', re: word('утром|вечером|ночью|днём|днем|к утру|к вечеру') },
 ];
 
-/** The papers the index knows: a generic “документ” plus the office's own nouns. */
-const DOCUMENT_NOUNS = [
+/**
+ * The papers the index knows: a generic “документ” plus the office's own nouns. Exported because
+ * the ledger's ripple reads the same closed list (`ledger/graph/components.ts`): a second copy
+ * would let the index and the graph disagree about what a document is.
+ */
+export const DOCUMENT_NOUNS = [
   'служебная записка',
   'докладная записка',
   'постановление',

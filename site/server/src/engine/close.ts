@@ -36,10 +36,17 @@ import {
 } from './cascade.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { settleDraftPremise } from './premise.ts';
+import { rippleOutcomeFor } from './ripple.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
 import { isWritten } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
+
+/**
+ * The ripple's own door, re-exported from the module that opens steps: the engine's step module is
+ * this one (`openCascade` is here), so `service.ts` has one import for both ways a step opens.
+ */
+export { openRippleStep } from './ripple.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
 
@@ -118,6 +125,9 @@ export function closeChange(
   reason: string | null,
   now: number,
 ): void {
+  // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied` — the consequences
+  // are their own chapters and the change page says so. The plan row is the evidence.
+  const settled = rippleOutcomeFor(deps.db, change.id, outcome) as ChangeOutcome;
   // Tokens and the model are frozen here, once (§6D.5); cost stays the placeholder zero and the
   // row is not priced, so BOOK-23 reads it as «not measured» (`measuredRub`), never as free.
   const steps = store.stepsOfChange(deps.db, change.id);
@@ -126,7 +136,7 @@ export function closeChange(
   const writerModel = steps.find((step) => step.pass === 'change' && step.model !== null)?.model ?? null;
   store.updateChange(deps.db, change.id, {
     status,
-    outcome,
+    outcome: settled,
     reason,
     finished_at: toIso(now),
     tokens_in: tokensIn,
@@ -137,14 +147,14 @@ export function closeChange(
   // record is written here, once, from the change's own outcome (`recordAcceptance` is silent
   // for anything that did not land, and for a change that is not a reader's).
   recordAcceptance(deps.db, change.id, toIso(now));
-  appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome, reason }, now);
+  appendChangeEvent(deps.db, change.id, status === 'escalated' ? 'escalated' : 'decided', { outcome: settled, reason }, now);
   appendEvent(
     deps.db,
     {
       kind: 'change.decided',
       changeId: change.id,
       cascadeId: change.cascade_id,
-      payload: { status, outcome, reason },
+      payload: { status, outcome: settled, reason },
     },
     now,
   );

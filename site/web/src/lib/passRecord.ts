@@ -296,7 +296,8 @@ function absentView(chapter: number | null, chapterTitle: string | null): PassRe
 function finalWordOf(change: Pick<PassRecordChange, 'status' | 'outcome'>): string {
   const landed =
     change.status === 'done' &&
-    (change.outcome === 'applied' || change.outcome === 'adapted' || change.outcome === 'finding');
+    // BOOK-173: a ripple landed its patch — its consequences are other passes, not a refusal here.
+    (change.outcome === 'applied' || change.outcome === 'adapted' || change.outcome === 'finding' || change.outcome === 'ripple');
   return landed ? PASS_LANDED : PASS_REFUSED;
 }
 

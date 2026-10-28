@@ -25,7 +25,7 @@ export type PatchPrompt = {
   prefixSha256: string;
   promptSha256: string;
   sections: PatchSection[];
-  blocks: string[];
+  blocks: Array<{ id: string; text: string }>;
 };
 
 export type PatchParse = { ok: true; patch: unknown } | { ok: false; code: string; detail: string };

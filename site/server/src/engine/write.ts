@@ -24,6 +24,7 @@ import { applyChapterFile, type ApplyChapterResult } from '../ingest/applyChapte
 import { applyFrontFile, type ApplyFrontResult } from '../ingest/applyFront.ts';
 import { frameIntact } from '../ingest/frameGuard.ts';
 import { getFrontRow } from '../db/repo/front.ts';
+import type { RipplePlan } from '../ledger/graph/plan.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
@@ -31,6 +32,7 @@ import { closeStep, currentRev } from './close.ts';
 import { changeForStep, measureDelta, safeJson } from './helpers.ts';
 import { liveLease, releaseLease } from './leases.ts';
 import { needsWriterDecision, withWriterDecision } from './relevance.ts';
+import { settleLanding, type LandingPlan } from './ripple.ts';
 import { scanStepDelta } from './rightsScan.ts';
 import * as store from './store.ts';
 import { isWrittenChapter, readChapter, readFront } from './text.ts';
@@ -54,6 +56,11 @@ export type LandResult = {
   changed: boolean;
   deltaRatio: number;
   blocksTouched: number;
+  /**
+   * BOOK-173: the change's ripple plan, computed here because the ledger lives here (§3, §7).
+   * Additive: absent on a `noWrite` landing and on every pass that is not a point patch.
+   */
+  plan?: RipplePlan | null;
 };
 
 /**
@@ -63,7 +70,16 @@ export type LandResult = {
 const FRAME_CHANGED_MESSAGE = 'рамка книги: фраза этой главы не меняется — правка остаётся бумагой';
 
 /** What the ingest published for a landing — and whether it refused the frame outright. */
-type IngestOutcome = { rev: number | null; changed: boolean; frameRejected: boolean };
+type IngestOutcome = {
+  rev: number | null;
+  changed: boolean;
+  frameRejected: boolean;
+  /**
+   * BOOK-173: the plan frozen **inside** the ingest's transaction, if this landing earned one.
+   * Carried out of the transaction so `land` can answer with it without writing anything else.
+   */
+  planned: LandingPlan | null;
+};
 
 /**
  * §6F.1: a landing is a revision, and a revision exists in the same transaction as its log
@@ -79,7 +95,7 @@ function ingestLanding(
   const dataDir = deps.config.dataDir;
   if (step.pass === 'front') {
     const front = readFront(deps.bookRoot);
-    if (!front.exists) return { rev: null, changed: false, frameRejected: false };
+    if (!front.exists) return { rev: null, changed: false, frameRejected: false, planned: null };
     const result: ApplyFrontResult = applyFrontFile({
       db: deps.db,
       dataDir,
@@ -87,27 +103,50 @@ function ingestLanding(
       mtimeMs: at,
       nowMs: at,
     });
-    return { rev: result.rev, changed: result.status !== 'unchanged', frameRejected: false };
+    return { rev: result.rev, changed: result.status !== 'unchanged', frameRejected: false, planned: null };
   }
-  if (step.chapter === null) return { rev: null, changed: false, frameRejected: false };
-  const chapter = readChapter(deps.bookRoot, step.chapter);
-  if (!chapter.exists) return { rev: null, changed: false, frameRejected: false };
+  if (step.chapter === null) return { rev: null, changed: false, frameRejected: false, planned: null };
+  const n = step.chapter;
+  const chapter = readChapter(deps.bookRoot, n);
+  if (!chapter.exists) return { rev: null, changed: false, frameRejected: false, planned: null };
+  // BOOK-173 review, fix 3: the plan is not a follow-up write. `onPublished` runs inside the
+  // ingest's own transaction (`applyChapterFile`'s `db.transaction`), after the revision, its log
+  // entry and the new `blocks` rows exist — so the plan commits with the landing or neither does.
+  // The mention re-bind, the retirement of overrun claims and the plan itself are `settleLanding`
+  // (`engine/ripple.ts`); the same call runs them again, in a transaction of its own, when the
+  // site's watcher published these bytes first.
+  let planned: LandingPlan | null = null;
   const result: ApplyChapterResult = applyChapterFile({
     db: deps.db,
     dataDir,
-    n: step.chapter,
+    n,
     raw: chapter.raw,
     mtimeMs: at,
     nowMs: at,
+    onPublished: ({ rev }) => {
+      planned = settleLanding(deps, step, rev);
+    },
   });
+  // BOOK-173 review round 3, fix 1: `onPublished` runs only when **this** call publishes. If the
+  // watcher (same process, `ingest/watcher.ts`) or a concurrent land already published the same
+  // bytes, the ingest answers `unchanged` and the ledger was never settled — the change then
+  // closed `applied` with no plan and the ripple was silently skipped. `storePlan` is idempotent
+  // per change, so this second door writes no second plan; it only closes the hole.
+  if (result.status === 'unchanged' && (step.pass === 'change' || step.pass === 'cascade')) {
+    const current = currentRev(deps.db, n);
+    planned = deps.db.transaction(() => settleLanding(deps, step, current))();
+  }
   // BOOK-137: the second read is weaker than the guard's. Nothing was published, and the caller
   // must answer `FRAME_CHANGED` rather than invent a revision for text the site never served.
-  if (result.status === 'frame-rejected') return { rev: null, changed: false, frameRejected: true };
+  if (result.status === 'frame-rejected') return { rev: null, changed: false, frameRejected: true, planned: null };
   if (result.status === 'created' || result.status === 'revised') {
-    return { rev: result.rev, changed: true, frameRejected: false };
+    return { rev: result.rev, changed: true, frameRejected: false, planned };
   }
+  // `unchanged`: the site already published these bytes — the revision exists, and the ledger was
+  // settled by the fallback above, so the plan is still this landing's answer.
+  if (result.status === 'unchanged') return { rev: null, changed: false, frameRejected: false, planned };
   // `empty`/`emptied`: an empty write between two saves publishes no revision either.
-  return { rev: null, changed: false, frameRejected: false };
+  return { rev: null, changed: false, frameRejected: false, planned: null };
 }
 
 export function createWriteOps(deps: EngineDeps) {
@@ -356,7 +395,7 @@ export function createWriteOps(deps: EngineDeps) {
     // The revision is published here, with its `hseq` and its cause (§6F.1, §6F.2).
     const ingested: IngestOutcome = changedFromStart
       ? ingestLanding(deps, step, at)
-      : { rev: null, changed: false, frameRejected: false };
+      : { rev: null, changed: false, frameRejected: false, planned: null };
     // BOOK-137, second read: the guard above read the file once and the ingest reads it again,
     // so a file that moved in between publishes nothing. The guard's question is asked of the
     // file as it stands now — the detail says whether it already flipped back — and the step
@@ -396,6 +435,11 @@ export function createWriteOps(deps: EngineDeps) {
       },
       at,
     );
+    // BOOK-173 §7: the plan is priced here, in the engine, because the ledger is here. It was
+    // frozen inside the ingest's transaction (`ingestLanding`), so nothing is written at this
+    // point; the writer receives it on this response and reacts; the model call it leads to is the
+    // writer's (§9: the engine never calls a model). A landing that moved nothing has no plan.
+    const planned = ingested.planned;
     return {
       landed: true,
       revAfter,
@@ -403,6 +447,7 @@ export function createWriteOps(deps: EngineDeps) {
       changed: changedFromStart,
       deltaRatio: measured.ratio,
       blocksTouched: measured.touched,
+      ...(planned === null ? {} : { plan: planned.plan }),
     };
   }
 

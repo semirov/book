@@ -31,8 +31,12 @@
 import type { Db } from '../db/db.ts';
 import { appendCommentEvent } from './repo.ts';
 
-/** The outcomes a landed change is closed with; anything else is not a landing. */
-const LANDED_OUTCOMES = new Set(['applied', 'adapted']);
+/**
+ * The outcomes a landed change is closed with; anything else is not a landing. BOOK-173: `ripple`
+ * is a landing too — the point patch is in the book, and the consequences are later chapters, not a
+ * reason for the reader's variant to disappear from the acceptance record.
+ */
+const LANDED_OUTCOMES = new Set(['applied', 'adapted', 'ripple']);
 
 type AcceptanceFacts = {
   source_comment: string | null;

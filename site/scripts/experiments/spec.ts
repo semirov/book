@@ -23,15 +23,25 @@ export const SITE_ROOT = resolve(BOOK_ROOT, 'site');
  */
 export const DATA_DIR = (process.env.EXPERIMENTS_DIR ?? '').trim() || resolve(SITE_ROOT, '.data', 'experiments');
 
-/** The hard stop: the projected total on the peak basis may not cross this (`spend_cap`). */
-export const CAP_USD = 1.75;
+/**
+ * The hard stop: the projected total on the peak basis may not cross this (`spend_cap`). Raised to
+ * 1.95 by the owner (hard cap $2.00) when the A/B run had spent $1.13 peak and the gate cap turned
+ * out to be the harness's 8 000, not the lane's 32 000.
+ */
+export const CAP_USD = 1.95;
 /** The provider doubles all three rates in its peak window (BOOK-DOC-65 §6). */
 export const PEAK_MULTIPLIER = 2;
 
 /** One writing attempt per mode, one gate pass per landed result — caps, not targets. */
 export const A_MAX_TOKENS = 24_000;
 export const B_MAX_TOKENS = 12_000;
-export const GATE_MAX_TOKENS = 8_000;
+/**
+ * Production sends `WRITER_GATE_TOKENS` 32 000, because a gate reasons before it answers: at 8 000
+ * ten of twelve gate calls ended `finish_reason: length` and parsed as nothing. 24 000 is the
+ * experiment's own ceiling (the owner's budget bound), and a truncation at it is recorded as
+ * `GATE_TRUNCATED`, never as a gate that had no answer.
+ */
+export const GATE_MAX_TOKENS = 24_000;
 export const CACHE_MAX_TOKENS = 64;
 export const SMOKE_MAX_TOKENS = 8;
 
@@ -65,7 +75,8 @@ export type FilingLabel = 'ch01' | 'ch03' | 'ch06';
  * Nothing that identifies a reader travels: `intent`, `kind`, `scopeHint` are the whole spec.
  */
 export type Filing = {
-  label: FilingLabel;
+  /** `ch01`… for the three real filings, `ctl05` for the seeded control. */
+  label: string;
   chapter: number;
   /** `changes.id`, for the report only — it is never sent to the model. */
   id: string;
@@ -74,6 +85,12 @@ export type Filing = {
   scopeHint: 'phrase';
   intent: string;
   proposedText: string | null;
+  /**
+   * `changes.anchor` as it was filed (block ids and the quote). The ids are revision-bound, so a
+   * run re-resolves them against today's text and falls back to the quote, then to the most
+   * distinctive token of the intent — `ch06` has no anchor at all.
+   */
+  anchor: { blockIds: string[]; quote: string | null } | null;
 };
 
 export const FILINGS: readonly Filing[] = [
@@ -85,6 +102,7 @@ export const FILINGS: readonly Filing[] = [
     scopeHint: 'phrase',
     intent: 'Он забыл документы дома',
     proposedText: 'Он забыл документы дома',
+    anchor: { blockIds: ['ch01#fd0484bd'], quote: '— Заявителем лично.' },
   },
   {
     label: 'ch03',
@@ -94,6 +112,7 @@ export const FILINGS: readonly Filing[] = [
     scopeHint: 'phrase',
     intent: 'Гуси',
     proposedText: 'Часы и хлеб',
+    anchor: { blockIds: ['ch03#2b5119bc'], quote: 'Я посмотрел на часы: девять сорок две.' },
   },
   {
     label: 'ch06',
@@ -104,6 +123,8 @@ export const FILINGS: readonly Filing[] = [
     intent:
       'Приём заявления открывает протокол 14-УП: подпись заявителя оспорена, и до заключения он не вправе заверять копии.',
     proposedText: null,
+    // An operator filing carries no anchor: the block is found from the intent's own token.
+    anchor: null,
   },
 ] as const;
 

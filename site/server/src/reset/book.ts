@@ -185,10 +185,14 @@ const WIPE_BEFORE_COMMENTS = [
   'mentions',
   'thread_events',
   'threads',
+  // BOOK-173: an edge names two facts, so it must go before them.
+  'edges',
   'facts',
 ] as const;
 
 const WIPE_AFTER_COMMENTS = [
+  // BOOK-173: a plan names the change it priced, so it leaves before the change does.
+  'change_plans',
   'comments',
   'changes',
   'feedback_batches',

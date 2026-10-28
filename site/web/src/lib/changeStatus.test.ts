@@ -99,6 +99,8 @@ describe('the thread’s two lines', () => {
     expect(progressLine(paperwork)).toBe('принято → рассмотрено');
     expect(stampCopy(paperwork)).toBe('рассмотрено');
     expect(outcomeCopy('registered')).toBe('рассмотрено');
+    // BOOK-173: a ripple is landed with its consequences still owed — never plain «идёт».
+    expect(outcomeCopy('ripple')).toBe('внесено · следствия идут');
   });
 
   it('always states why a change was dropped', () => {

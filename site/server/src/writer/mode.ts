@@ -33,6 +33,13 @@ export function chooseMode(input: ModeInput, written: boolean): ModeChoice {
   return { mode: 'rewrite', reason: 'no-scope' };
 }
 
+/**
+ * BOOK-173 §7: a ripple chapter is a consequence, not a filing — it always patches, whatever the
+ * origin change's scope was, because the closure named one claim to repair and a rewrite would
+ * replace a whole chapter to fix a sentence.
+ */
+export const RIPPLE_MODE: ModeChoice = { mode: 'patch', reason: 'phrase-scope' };
+
 /** A gate-driven revision: always a whole chapter, whatever the filing said (§4). */
 export const REVISION_MODE: ModeChoice = { mode: 'rewrite', reason: 'revision' };
 

@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs';
 import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
 import type { PremiseCause } from '../engine/types.ts';
+import type { RipplePlan } from '../ledger/graph/plan.ts';
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -121,6 +122,11 @@ export type LandView = {
   changed: boolean;
   deltaRatio: number;
   blocksTouched: number;
+  /**
+   * BOOK-173: the plan the engine froze at the landing (absent when nothing was planned). The
+   * writer reacts to it — it never computes a closure of its own, because it owns no ledger.
+   */
+  plan?: RipplePlan | null;
 };
 
 export type VerdictView = {
@@ -192,6 +198,8 @@ export type EngineClient = {
   /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */
   nextRightsGate(session: string): Promise<RightsAssignmentView | null>;
   pass(chapter: number, session: string): Promise<WriterAssignment>;
+  /** BOOK-173: one chapter of a ripple already planned — its own step, lease and gates. */
+  openRipple(chapter: number, session: string, changeId: string): Promise<WriterAssignment>;
   start(leaseId: string): Promise<StartView>;
   land(leaseId: string): Promise<LandView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
@@ -309,6 +317,8 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     nextGate: async (role, session) =>
       (await post('/internal/next', { role, session })) as GateAssignmentView | null,
     pass: async (chapter, session) => (await post('/internal/pass', { chapter, session })) as WriterAssignment,
+    openRipple: async (chapter, session, changeId) =>
+      (await post('/internal/ripple/open', { chapter, session, changeId })) as WriterAssignment,
     start: async (leaseId) => (await post('/internal/start', { leaseId })) as StartView,
     land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
     nextRightsGate: async (session) =>

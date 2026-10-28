@@ -24,7 +24,7 @@ import {
 import { appendEvent } from '../history/log.ts';
 import { ensureSlice } from '../index/store.ts';
 import { toIso } from '../util/time.ts';
-import { closeStep } from './close.ts';
+import { closeStep, openRippleStep } from './close.ts';
 import { reportIndexFailure } from './indexNotice.ts';
 import { type DraftLane } from './draft.ts';
 import {
@@ -471,10 +471,10 @@ export function createEngine(deps: EngineDeps) {
 
   return {
     next,
-    /** BOOK-117 §4: a named chapter's first pass — the same step, premise and lease the lane hands out. */
-    openChapterPass: (chapter: number, session: string): WriterAssignment | null => {
+    /** BOOK-117 §4 + BOOK-173 §7: a chapter's pass; with a `changeId`, one chapter of its ripple. */
+    openChapterPass: (chapter: number, session: string, changeId?: string): WriterAssignment | null => {
       if (!session || session.length > 64) refuse('INVALID_SESSION', 422, 'a session name is required');
-      return queue.openPass(session, chapter, deps.clock.now());
+      return changeId === undefined ? queue.openPass(session, chapter, deps.clock.now()) : openRippleStep(deps, { changeId, chapter, session });
     },
     start: write.start,
     land: write.land,

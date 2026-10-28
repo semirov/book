@@ -218,6 +218,13 @@ describe('a change with no stored stage: the row is the truth that is left', () 
     expect(view.cost).toBe(`126${NBSP}099${NBSP}токенов${MIDDOT}цена не задана`);
   });
 
+  it('reads a ripple as landed: its consequences are other passes, not a refusal', () => {
+    const view = passRecordView(
+      input({ stages: [], change: { ...input().change!, status: 'done', outcome: 'ripple' } }),
+    );
+    expect(view.finalWord).toBe('внесено');
+  });
+
   it('reads a running change with no stored stage from its own start, never a stage', () => {
     const view = passRecordView(
       input({

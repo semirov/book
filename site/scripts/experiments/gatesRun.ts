@@ -51,28 +51,33 @@ export type GateCtx = {
   force: boolean;
   call: CallModel;
   reusable: (name: string, promptSha256: string) => boolean;
-  /** The landed text of a mode's artifact, or null when that mode refused. */
-  landedOf: (mode: 'A' | 'B', filing: Filing) => string | null;
 };
 
 /**
- * One gate per role, one attempt each. A gate that cannot read its answer is `GATE_UNPARSED` in
- * the table — the same refusal the lane would make, not a missing cell.
+ * One gate per role per chapter, one attempt each. A gate that cannot read its answer is
+ * `GATE_UNPARSED` in the table — the same refusal the lane would make, not a missing cell.
+ *
+ * The chapter is part of the artifact's name because a ripple lands in more than one: the filing's
+ * own chapter and every mandatory chapter the plan named are judged separately, as production
+ * dispatches them.
  */
-export async function runGatesFor(ctx: GateCtx, mode: 'A' | 'B', filing: Filing): Promise<void> {
-  const landed = ctx.landedOf(mode, filing);
-  if (landed === null) return;
+export async function runGatesFor(
+  ctx: GateCtx,
+  mode: 'A' | 'B',
+  filing: Filing,
+  target: { chapter: number; text: string },
+): Promise<void> {
   for (const role of GATE_ROLES) {
-    const name = `gates-${mode}-${filing.label}-${role}.json`;
+    const name = `gates-${mode}-${filing.label}-ch${String(target.chapter).padStart(2, '0')}-${role}.json`;
     const built = gatePromptFor({
       bookRoot: ctx.bookRoot,
       role,
-      chapter: filing.chapter,
+      chapter: target.chapter,
       intent: { value: filing.intent, untrusted: true } as Untrusted<string>,
-      landedText: landed,
+      landedText: target.text,
     });
     if (!ctx.force && ctx.reusable(name, built.promptSha256)) {
-      process.stdout.write(`[gates ${mode} ${filing.label} ${role}] resumed\n`);
+      process.stdout.write(`[gates ${mode} ${filing.label} ch${String(target.chapter)} ${role}] resumed\n`);
       continue;
     }
 
@@ -85,7 +90,7 @@ export async function runGatesFor(ctx: GateCtx, mode: 'A' | 'B', filing: Filing)
           { role: 'user', content: built.user },
         ],
         GATE_MAX_TOKENS,
-        `gate ${mode} ${filing.label} ${role}`,
+        `gate ${mode} ${filing.label} ch${String(target.chapter)} ${role}`,
       );
     } catch (error) {
       if (error instanceof SpendCapError) throw error;
@@ -93,10 +98,12 @@ export async function runGatesFor(ctx: GateCtx, mode: 'A' | 'B', filing: Filing)
     }
 
     const parsed = result === null ? null : parseGateAnswer(result.text, role);
+    // A gate that was cut at the token cap did not answer: its code is the evidence, not a verdict.
+    const truncated = result !== null && result.finishReason === 'length' && parsed !== null && !parsed.ok;
     saveArtifact(name, {
       command: 'gates',
-      id: `${mode}-${filing.label}-${role}`,
-      run: { mode, chapter: filing.chapter, filing: filing.label, role, filingId: filing.id },
+      id: `${mode}-${filing.label}-ch${String(target.chapter)}-${role}`,
+      run: { mode, chapter: target.chapter, filing: filing.label, role, filingId: filing.id },
       request: {
         model: ctx.pin.model,
         apiModel: ctx.pin.apiModel,
@@ -123,7 +130,16 @@ export async function runGatesFor(ctx: GateCtx, mode: 'A' | 'B', filing: Filing)
           ? { ok: false, code: failure ?? 'CALL_FAILED', findings: [] }
           : parsed.ok
             ? { ok: true, verdict: parsed.verdict, findings: parsed.findings }
-            : { ok: false, code: parsed.code, reason: parsed.reason, findings: [] },
+            : truncated
+              ? {
+                  ok: false,
+                  code: 'GATE_TRUNCATED',
+                  reason: parsed.reason,
+                  finishReason: result?.finishReason ?? null,
+                  tokens: { in: result?.usage.promptTokens ?? 0, out: result?.usage.completionTokens ?? 0 },
+                  findings: [],
+                }
+              : { ok: false, code: parsed.code, reason: parsed.reason, findings: [] },
       metrics: {
         usdBook: result?.cost.usdBook ?? null,
         usdPeak: result?.cost.usdPeak ?? null,

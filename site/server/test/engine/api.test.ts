@@ -336,7 +336,7 @@ describe('the internal API (§4.2, §6A.11)', () => {
         fixture.close();
       }
     }
-  });
+  }, 20_000); // fourteen node spawns: 5 s is enough alone, not under the whole suite's load
 
   it('refuses an intervention without an auditor FITS (BOOK-9)', async () => {
     const fixture = createEngineFixture({

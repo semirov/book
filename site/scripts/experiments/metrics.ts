@@ -19,6 +19,7 @@
 
 import type { ParsedBlock } from '../../server/src/ingest/parseChapter.ts';
 import { sha256Hex } from '../../server/src/util/hash.ts';
+import { estimateTokens, PEAK_MULTIPLIER } from './spec.ts';
 
 export type Rates = { per: number; input: number; output: number; cacheRead: number };
 export type Usage = { in: number; out: number; cachedIn: number };
@@ -36,6 +37,14 @@ export function costOf(usage: Usage, rates: Rates, multiplier = 1): number {
       usage.out * rates.output * multiplier) /
     rates.per;
   return round6(usd);
+}
+
+/**
+ * The worst case of one call on the peak basis: an over-stated input and the whole output cap.
+ * The cap is checked against this before a call, so «it might cost more» is answered by refusing.
+ */
+export function estimateUsd(chars: number, maxTokens: number, rates: Rates): number {
+  return costOf({ in: estimateTokens(chars), out: maxTokens, cachedIn: 0 }, rates, PEAK_MULTIPLIER);
 }
 
 export function peakRates(rates: Rates): Rates {

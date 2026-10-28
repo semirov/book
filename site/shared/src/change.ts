@@ -45,7 +45,8 @@ export type ChangeOutcome =
    * document, not an edit. The row is `done` with no step and no ripple, and the canon
    * sentence's letters are untouched.
    */
-  | 'registered';
+  | 'registered'
+  | 'ripple'; // BOOK-173: the closure stood — each consequence is its own normal pass; `wide` closes escalated
 
 export type SeamBoundary = number | 'front' | 'ending';
 

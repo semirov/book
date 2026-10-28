@@ -21,6 +21,101 @@
  */
 
 /**
+ * The graph of the ripple (BOOK-173, BOOK-DOC-75 §1.2) — migration v24.
+ *
+ * `edges` is the dependency the ledger did not have: «this fact stands on that one». `chapter` is
+ * where the relation is *told*, not where either endpoint lives; `on_component` is the component
+ * of the source the target actually consumes (`value` · `identity` · `status` · `existence`) —
+ * the one column that turns «the path proves its premise changed» into a query instead of a
+ * judgement. `origin` says who wrote the row: the deterministic backfill, the writer's plan, or
+ * the owner's own act. A duplicate is the same statement: the unique index is the idempotency key
+ * `assertDependency` relies on.
+ *
+ * `fact_dependency` is the owner's name for this relation (BOOK-173 addendum §2). It is a view,
+ * not a second table: one row per edge, no copy to drift.
+ *
+ * **Growth, and why there is no pruner.** An edge is retired, never aged out: when a fact is
+ * invalidated the trigger below deletes the rows that name it, because a walk over a retired
+ * premise is a plan that lies. The backfill re-asserts a row when the link is still told in the
+ * text (that is what makes a re-run idempotent), and it skips facts that are invalidated, so a
+ * retired link does not come back. What reads `edges`: `walk`/`allEdges` (the closure of every
+ * plan), `fact_dependency` (the owner's review query) and `drainablePlans` indirectly through the
+ * frozen `closure`. Row rate: one row per told relation per chapter, the whole book measured at
+ * ~1.1 per fact, so a book-sized run is thousands of rows and a reset is the only wipe.
+ */
+export const LEDGER_GRAPH_SQL = `
+CREATE TABLE IF NOT EXISTS edges (
+  id           TEXT PRIMARY KEY,
+  from_fact    TEXT NOT NULL REFERENCES facts(id),
+  to_fact      TEXT NOT NULL REFERENCES facts(id),
+  chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  kind         TEXT NOT NULL CHECK (kind IN ('follows','fulfils','references','contradicts')),
+  on_component TEXT NOT NULL DEFAULT 'value'
+                              CHECK (on_component IN ('value','identity','status','existence')),
+  evidence     TEXT NOT NULL DEFAULT '',
+  origin       TEXT NOT NULL DEFAULT 'backfill' CHECK (origin IN ('backfill','writer','owner')),
+  created_at   TEXT NOT NULL,
+  CHECK (from_fact <> to_fact)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS edges_pair ON edges(from_fact, to_fact, kind, chapter);
+CREATE INDEX IF NOT EXISTS edges_from ON edges(from_fact);
+CREATE INDEX IF NOT EXISTS edges_to ON edges(to_fact);
+CREATE VIEW IF NOT EXISTS fact_dependency AS
+  SELECT from_fact, to_fact, chapter, kind, on_component, evidence, origin FROM edges;
+CREATE TRIGGER IF NOT EXISTS facts_retire_edges
+  AFTER UPDATE OF invalidated_at ON facts
+  WHEN new.invalidated_at IS NOT NULL
+  BEGIN
+    DELETE FROM edges WHERE from_fact = new.id OR to_fact = new.id;
+  END;
+`;
+
+/**
+ * The frozen plan of a change (BOOK-173, BOOK-DOC-75 §3) — migration v24.
+ *
+ * `closure` is the plan without its patches, `patches` the list the writer produces per chapter,
+ * `bounds` the caps frozen at estimate, `iterations` the append-only journal of the fixpoint. The
+ * diff is deliberately absent: the readable before/after comes from `block_versions` by `blockId`,
+ * so the text keeps one home.
+ *
+ * **One row per change, and the journal is the budget.** `UNIQUE (change_id)` is what makes the
+ * bounds cumulative per change rather than per plan: a re-land of the same step updates this row
+ * and appends to `iterations` instead of writing a second plan, so «what has this change already
+ * spent?» is one journal sum and a cap cannot be reset by planning again. The row is written in
+ * the landing's own transaction, so a crash lands neither the revision nor the plan.
+ *
+ * `parked_at`/`park_reason` are the one way a plan stops: `RIPPLE_REFUSED` after two refusals of
+ * the same node, `CLOSURE_UNSTABLE`, a `wide` outcome, or a verification that did not hold. The
+ * reason is a sentence for the author; `drainablePlans` excludes a parked row, so nothing retries
+ * a plan the book already gave up on. `claimed_at`/`claimed_by` are the lane claim of the process
+ * that is draining it, so two `--ripple` runs never take the same plan.
+ *
+ * **Growth.** One row per change and it is never pruned: the retire paths are the launch reset
+ * (which empties the book) and a backfill/rebuild, both of which delete the whole table. Expected
+ * rate is the lane's own: at most one row per filed change and one journal entry per chapter,
+ * tens a day at the `maxPassesPerDay` ceiling — a book-sized table is thousands of rows, not
+ * millions, which is why a pruner would be a second way to lose the budget.
+ */
+export const CHANGE_PLANS_SQL = `
+CREATE TABLE IF NOT EXISTS change_plans (
+  id           TEXT PRIMARY KEY,
+  change_id    TEXT NOT NULL REFERENCES changes(id),
+  chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  outcome      TEXT NOT NULL CHECK (outcome IN ('local','ripple','wide')),
+  closure      TEXT NOT NULL,
+  patches      TEXT NOT NULL,
+  bounds       TEXT NOT NULL,
+  iterations   TEXT NOT NULL DEFAULT '[]',
+  parked_at    TEXT,
+  park_reason  TEXT,
+  claimed_at   TEXT,
+  claimed_by   TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS change_plans_change ON change_plans(change_id);
+`;
+
+/**
  * The ordinary tables of the ledger, their indexes and the one guard the decision names.
  * Order matters only for readability: `facts` and `threads` come first because `mentions` and
  * `thread_events` reference them; SQLite resolves the references when a row is written.
@@ -99,7 +194,7 @@ CREATE TABLE IF NOT EXISTS literals (
   end          INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS literals_value ON literals(literal, chapter);
-`;
+${LEDGER_GRAPH_SQL}${CHANGE_PLANS_SQL}`;
 
 /**
  * The full-text mirror `searchBlocks` reads. `content='blocks'` keeps the prose in one place
@@ -131,6 +226,8 @@ export const LEDGER_REQUIRED_TABLES = [
   'mentions',
   'literals',
   'blocks_fts',
+  'edges',
+  'change_plans',
 ] as const;
 
 /**
@@ -140,6 +237,7 @@ export const LEDGER_REQUIRED_TABLES = [
  */
 export const LEDGER_REQUIRED_TRIGGERS = [
   'facts_no_delete',
+  'facts_retire_edges',
   'blocks_fts_ai',
   'blocks_fts_ad',
   'blocks_fts_au',

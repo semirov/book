@@ -162,7 +162,7 @@ describe('the terms a submission records (BOOK-58)', () => {
   });
 
   it('records a landed variant once, with the terms it accepted (AC1, AC4)', async () => {
-    for (const outcome of ['applied', 'adapted'] as const) {
+    for (const outcome of ['applied', 'adapted', 'ripple'] as const) {
       await withHarness(async (harness) => {
         const id = await post(harness, FILING);
         fitForTriage(harness, id);

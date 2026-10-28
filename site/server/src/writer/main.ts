@@ -11,7 +11,8 @@
  * per stage, and the hashes a revert compares. What it never prints: a prompt, the key, a body.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,32 +25,40 @@ import { runPass, type PassResult } from './pass.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
 import { revertChapter } from './revert.ts';
+import { openDatabase, databaseFile } from '../db/db.ts';
+import { runBackfillCli } from './backfillRun.ts';
+import { runPlanCli, runRippleCli } from './rippleCli.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 export const USAGE = [
-  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop]',
+  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--backfill-ledger]',
   '',
   '  --once            one pass, then exit (default)',
   '  --chapter N       open the first pass for chapter N instead of the lane’s next slot',
   '  --dry-run         resolve config, assignment and prompt; no engine, no model, no writes',
   '  --revert --chapter N  put the chapter back to its pre-pass state, verify the sha, reconcile',
   '  --loop            one pass, then pause (WRITER_PAUSE_MS), until SIGTERM',
+  '  --ripple          drain the oldest ripple still owed work (BOOK-173), then exit',
+  '  --plan ID         print the reviewable table of change ID’s ripple plan; nothing is written',
+  '  --backfill-ledger read the written chapters into the ledger graph (facts, mentions, edges)',
   '  --help            this text',
 ].join('\n');
 
 export type Cli = {
-  mode: 'run' | 'revert' | 'help';
+  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'backfill';
   once: boolean;
   loop: boolean;
   dryRun: boolean;
   chapter: number | null;
+  /** `--plan <changeId>`: the change whose frozen ripple plan is printed. */
+  changeId: string | null;
 };
 
 export type ParsedArgs = { ok: true; cli: Cli } | { ok: false; error: string };
 
-const VALUE_FLAGS = new Set(['chapter']);
-const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help']);
+const VALUE_FLAGS = new Set(['chapter', 'plan']);
+const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help', 'ripple', 'backfill-ledger']);
 
 /**
  * Arguments as data, so the one thing a CLI test can prove without a process is that an unknown
@@ -77,7 +86,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     flags.set(name, value);
   }
 
-  if (flags.has('help')) return { ok: true, cli: { mode: 'help', once: true, loop: false, dryRun: false, chapter: null } };
+  if (flags.has('help')) {
+    return { ok: true, cli: { mode: 'help', once: true, loop: false, dryRun: false, chapter: null, changeId: null } };
+  }
 
   let chapter: number | null = null;
   if (flags.has('chapter')) {
@@ -89,14 +100,42 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     chapter = value;
   }
 
+  const plan = flags.get('plan');
+  if (plan !== undefined && typeof plan !== 'string') return { ok: false, error: '--plan needs a change id' };
+  const changeId = typeof plan === 'string' ? plan : null;
+
   const revert = flags.has('revert');
+  const ripple = flags.has('ripple');
+  const backfill = flags.has('backfill-ledger');
   const loop = flags.has('loop');
   const once = flags.has('once');
   if (revert && chapter === null) return { ok: false, error: '--revert needs --chapter N' };
   if (loop && once) return { ok: false, error: '--once and --loop are two different shapes' };
   if (loop && revert) return { ok: false, error: '--loop cannot revert' };
+  if (ripple && revert) return { ok: false, error: '--ripple and --revert are two different shapes' };
+  if (ripple && chapter !== null) return { ok: false, error: '--ripple chooses its own chapter from the plan' };
+  if (changeId !== null && (revert || ripple || loop || backfill)) {
+    return { ok: false, error: '--plan prints a table; it runs nothing' };
+  }
+  // A ledger backfill reads files and writes rows: it is neither a pass nor a drain, and it takes
+  // no chapter — the whole book is the unit.
+  if (backfill && (revert || ripple || loop || chapter !== null || once || flags.has('dry-run'))) {
+    return { ok: false, error: '--backfill-ledger runs alone: no chapter, no pass, no drain' };
+  }
 
-  return { ok: true, cli: { mode: revert ? 'revert' : 'run', once: !loop, loop, dryRun: flags.has('dry-run'), chapter } };
+  const mode = backfill
+    ? 'backfill'
+    : changeId !== null
+      ? 'plan'
+      : ripple
+        ? 'ripple'
+        : revert
+          ? 'revert'
+          : 'run';
+  return {
+    ok: true,
+    cli: { mode, once: !loop, loop, dryRun: flags.has('dry-run'), chapter, changeId },
+  };
 }
 
 /** The two paths the pass writes under, resolved the way the site resolves them. */
@@ -172,12 +211,17 @@ export type MainDeps = {
   /** Injected in tests: a scripted model transport. */
   provider?: (request: Parameters<typeof callProvider>[0]) => Promise<ProviderResult>;
   now?: () => number;
+  /** Injected in tests: who claims a ripple plan (`hostname:pid` in production). */
+  claimedBy?: string;
 };
 
 export async function main(deps: MainDeps = {}): Promise<number> {
   const env = deps.env ?? process.env;
   const log = deps.log ?? ((line: string) => console.log(line));
   const now = deps.now ?? (() => Date.now());
+  // Who holds a ripple plan while it is drained: the claim is released on exit, and a claim left
+  // by a killed process expires after `PLAN_CLAIM_TTL_MS`.
+  const claimedBy = deps.claimedBy ?? `${hostname()}:${String(process.pid)}`;
 
   const parsed = parseArgs(deps.argv ?? process.argv.slice(2));
   if (!parsed.ok) {
@@ -189,6 +233,23 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   if (cli.mode === 'help') {
     console.log(USAGE);
     return 0;
+  }
+
+  if (cli.mode === 'backfill') {
+    // BOOK-173 (review fix 2): the graph's only production caller. It reads files and rows, so it
+    // runs before the lane's config — an operator repairing the ledger must not need a model key,
+    // and no engine is opened. `backfillRun.ts` owns the resolution and the counts.
+    const { bookRoot, dataDir } = pathsOf(env);
+    try {
+      assertDataDirIsolation(
+        { dataDir, adminTokenFile: '', engineTokenFile: '', feedbackDir: '' },
+        isProductionEnv(env),
+      );
+    } catch (error) {
+      console.error(`writer: ${error instanceof Error ? error.message : 'data dir refused'}`);
+      return 2;
+    }
+    return runBackfillCli({ dataDir, bookRoot, now, log, error: (line) => console.error(line) });
   }
 
   let config: WriterConfig;
@@ -273,6 +334,23 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   } catch (error) {
     console.error(`writer: ${error instanceof Error ? error.message : 'engine token refused'}`);
     return 2;
+  }
+
+  // BOOK-173: `--plan` prints the frozen plan of one change, `--ripple` drains the oldest one
+  // still owed work. Both live in `rippleCli.ts`; the interface (0 / 1 / 2) is documented there.
+  if (cli.mode === 'plan' || cli.mode === 'ripple') {
+    const file = databaseFile(dataDir);
+    if (!existsSync(file)) {
+      console.error('writer: базы нет — плана нет');
+      return 2;
+    }
+    const db = openDatabase(file);
+    try {
+      if (cli.mode === 'plan') return runPlanCli({ db, changeId: cli.changeId, log });
+      return await runRippleCli({ db, config, bookRoot, dataDir, engine, provider, now, log, claimedBy });
+    } finally {
+      db.close();
+    }
   }
 
   const pass = (): Promise<PassResult> =>

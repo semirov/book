@@ -11,6 +11,10 @@
  * Artifacts go to `site/.data/experiments/selftest/` (`EXPERIMENTS_DIR`), never among the real
  * rows; the wait between a warm and a hit is 10 ms (`EXPERIMENTS_WAIT_MS`), because the fake
  * ignores the cache.
+ *
+ * Two phases, because the run has two shapes: `all` measures the three filings, `all --control`
+ * measures the seeded promise/deadline fixture that makes a ripple happen at all. Both are driven
+ * through the CLI's own `main()`, with `EXPERIMENTS_NO_MAIN=1` so the import does not run it.
  */
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -72,31 +76,52 @@ function stream(text: string, usage: Record<string, unknown>): Response {
 
 const calls: Array<{ maxTokens: number; system: string; chars: number }> = [];
 
+const DATE = /(\d{2})\.(\d{2})\.(\d{4})/u;
+
 /**
- * A patch a real applier will accept: one middle block, `oldText` copied from the prompt's own
- * printed block, `newText` = `oldText` plus a word — nothing removed, so no fact and no dangling
- * reference can be manufactured by the fixture. The frame block is skipped (ch01 opens on it).
+ * A patch a real applier will accept: one block, `oldText` copied from the prompt's own printed
+ * block. A block that carries a date gets the date moved by a week — that is what makes the plan
+ * see a `value` move and the ripple happen; without one, `oldText` plus a word, so nothing is
+ * removed and no fact or dangling reference can be manufactured by the fixture.
  */
 function patchFrom(body: string): string {
   const lines = body.split('\n');
-  let seen = 0;
+  const blocks: Array<{ id: string; text: string }> = [];
   for (let index = 0; index < lines.length; index += 1) {
     const match = /^### (ch\d+#\S+)$/u.exec(lines[index] ?? '');
     if (match === null) continue;
-    seen += 1;
-    if (seen === 1) continue;
-    const blockText = (lines[index + 1] ?? '').trim();
-    if (blockText.length < 60) continue;
-    const oldText = blockText.slice(0, 40);
+    const text = (lines[index + 1] ?? '').trim();
+    if (text.length > 0) blocks.push({ id: match[1] ?? '', text });
+  }
+  // A date first: moving it is what makes the plan see a `value` move and the ripple happen.
+  for (const block of blocks.slice(1)) {
+    const date = DATE.exec(block.text);
+    if (date === null) continue;
+    const day = Math.min(28, Number(date[1]) + 7);
     return JSON.stringify({
       mode: 'patch',
-      edits: [{ blockId: match[1], oldText, newText: `${oldText} Точка.` }],
+      edits: [
+        { blockId: block.id, oldText: date[0], newText: `${String(day).padStart(2, '0')}.${date[2] ?? '01'}.${date[3] ?? '2065'}` },
+      ],
+      facts: [],
+      note: 'selftest fixture: a date moved',
+    });
+  }
+  // Otherwise `oldText` plus a word: nothing removed, so no fact and no dangling reference is
+  // manufactured by the fixture, and the applier's invariants stay satisfied.
+  for (const block of blocks.slice(1)) {
+    if (block.text.length < 60) continue;
+    const oldText = block.text.slice(0, 40);
+    return JSON.stringify({
+      mode: 'patch',
+      edits: [{ blockId: block.id, oldText, newText: `${oldText} Точка.` }],
       facts: [],
       note: 'selftest fixture',
     });
   }
   return JSON.stringify({ mode: 'rewrite', edits: [], facts: [], note: 'no patchable block found' });
 }
+
 
 async function fakeFetch(_url: string | URL | Request, init?: RequestInit): Promise<Response> {
   const request = JSON.parse(String(init?.body ?? '{}')) as {
@@ -114,10 +139,10 @@ async function fakeFetch(_url: string | URL | Request, init?: RequestInit): Prom
     request.max_tokens === 64 ? 'ok' : gate ? 'HOLDS' : patchAnswer ? patchFrom(body) : chapterText(body.includes('Глава 1 из 42'));
   const cachedIn = request.max_tokens === 64 ? Math.floor(chars / 8) : 0;
   return stream(text, {
-    prompt_tokens: Math.floor(chars / 3),
-    completion_tokens: Math.floor(text.length / 3),
+    prompt_tokens: Math.floor(chars / 6),
+    completion_tokens: Math.floor(text.length / 6),
     prompt_cache_hit_tokens: cachedIn,
-    prompt_cache_miss_tokens: Math.floor(chars / 3) - cachedIn,
+    prompt_cache_miss_tokens: Math.max(0, Math.floor(chars / 6) - cachedIn),
     prompt_tokens_details: { cached_tokens: cachedIn },
   });
 }
@@ -138,10 +163,18 @@ async function main(): Promise<void> {
   process.env.EXPERIMENTS_DIR = STATE_DIR;
   process.env.EXPERIMENTS_WAIT_MS = '10';
   process.env.DEEPSEEK_API_KEY_FILE = KEY_FILE;
+  process.env.EXPERIMENTS_NO_MAIN = '1';
   globalThis.fetch = fakeFetch as unknown as typeof fetch;
-  process.argv = ['node', 'run.ts', 'all'];
+  const { main } = await import('./run.ts');
 
-  await import('./run.ts');
+  // Phase 1: the three filings. Phase 2: the seeded fixture that makes a ripple happen.
+  process.argv = ['node', 'run.ts', 'all'];
+  await main();
+  process.argv = ['node', 'run.ts', 'all', '--control'];
+  await main();
+  // Phase 3: the dry run — the closure table must exist even with zero calls.
+  process.argv = ['node', 'run.ts', '--dry'];
+  await main();
 
   const summary = readJson(join(STATE_DIR, 'summary.json'));
   const failures: string[] = [];
@@ -150,21 +183,41 @@ async function main(): Promise<void> {
   };
   expect('summary.json written', summary !== null);
   const rows = Array.isArray(summary?.rows) ? (summary?.rows as unknown[]) : [];
-  expect('six A/B rows (blocked rows included)', rows.length === 6);
+  expect('the A/B rows are there (three filings × two modes, plus the control)', rows.length >= 6);
   const cache = Array.isArray(summary?.cache) ? (summary?.cache as unknown[]) : [];
-  expect('eight cache calls', cache.length === 8);
+  expect('seven cache calls (W1, H0, H1, H2, H3, H4a, H4b)', cache.length === 7);
   expect('no secret in the summary', !JSON.stringify(summary ?? {}).includes('selftest-not-a-key'));
   expect('calls were made through the seam', calls.length > 0);
   const a = readJson(join(STATE_DIR, 'ab-A-ch01.json'));
   expect('A artifact has a landed text', typeof (a?.landed as { text?: unknown } | undefined)?.text === 'string');
   expect('A artifact has metrics', typeof a?.metrics === 'object' && a?.metrics !== null);
-  const gate = readJson(join(STATE_DIR, 'gates-A-ch01-editor.json'));
-  expect('the editor gate parsed HOLDS', (gate?.parsed as { verdict?: unknown } | undefined)?.verdict === 'HOLDS');
+  const editor = readJson(join(STATE_DIR, 'gates-A-ch01-ch01-editor.json'));
+  expect('the editor gate parsed HOLDS', (editor?.parsed as { verdict?: unknown } | undefined)?.verdict === 'HOLDS');
   const b = readJson(join(STATE_DIR, 'ab-B-ch03.json'));
   expect('B applied a patch and validated it', typeof (b?.landed as { text?: unknown } | undefined)?.text === 'string');
   expect('B is not blocked', typeof b?.blocked !== 'string');
 
-  const total = 8;
+  // The plan step: every A/B row carries a closure, and the closure is the plan's own numbers.
+  const closure = (b?.closure ?? {}) as Record<string, unknown>;
+  expect('B row carries a closure', typeof closure.closureNodes === 'number' && typeof closure.outcome === 'string');
+  const plan = readJson(join(STATE_DIR, 'control-B-ch05.json'));
+  expect('the control plan is a ripple', (plan?.plan as { outcome?: unknown } | undefined)?.outcome === 'ripple');
+  expect('the control rippled into a second chapter', Array.isArray((plan?.ripple as { chapters?: unknown } | undefined)?.chapters) && ((plan?.ripple as { chapters: unknown[] }).chapters.length > 0));
+  const wide = readJson(join(STATE_DIR, 'wide-ctl05.json'));
+  expect('the wide row projects one chapter over the closure', typeof (wide?.metrics as { wideProjectionUsd?: unknown } | undefined)?.wideProjectionUsd === 'number');
+  const gate = readJson(join(STATE_DIR, 'gates-B-ctl05-ch05-editor.json'));
+  expect('the control chapter is gated', (gate?.parsed as { verdict?: unknown } | undefined)?.verdict === 'HOLDS');
+  // The dry run writes the closures it printed: the research answer needs no model call.
+  const dry = (() => {
+    try {
+      return readFileSync(join(STATE_DIR, 'summary-dry.md'), 'utf8');
+    } catch {
+      return '';
+    }
+  })();
+  expect('the dry run writes the closure table', dry.includes('## closure') && dry.includes('ctl05'));
+
+  const total = 16;
   for (const name of failures) process.stdout.write(`selftest FAILED: ${name}\n`);
   process.stdout.write(
     `selftest: ${String(total - failures.length)}/${String(total)} checks passed · ${String(calls.length)} fake calls · artifacts in site/.data/experiments/selftest/\n`,

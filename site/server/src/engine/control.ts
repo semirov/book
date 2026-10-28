@@ -74,6 +74,13 @@ const startBody = z.object({
 /** BOOK-117 §4: a first pass for one named chapter, because a lane only offers its own next slot. */
 const passBody = z.object({ chapter: z.number().int().min(1).max(TOTAL_CHAPTERS), session });
 
+/** BOOK-173: a ripple chapter's door — the change that stood the closure, and one chapter of it. */
+const rippleBody = z.object({
+  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
+  session,
+  changeId: id,
+});
+
 const landBody = z.object({
   leaseId: id,
   noWrite: z.boolean().optional(),
@@ -224,6 +231,14 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
   app.post('/internal/pass', async (request) => {
     const body = passBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.openChapterPass(body.chapter, body.session) };
+  });
+  /**
+   * BOOK-173 §7: one chapter of a ripple. Its own step (`pass: 'cascade'`), its own lease and its
+   * own gates — a long ripple is a sequence of normal passes, not one process that walks a book.
+   */
+  app.post('/internal/ripple/open', async (request) => {
+    const body = rippleBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.openChapterPass(body.chapter, body.session, body.changeId) };
   });
   app.post('/internal/start', async (request) => {
     const body = startBody.parse(request.body ?? {});

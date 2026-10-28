@@ -96,6 +96,24 @@ export const readerSentences = {
   frameChanged:
     'рамка книги — фраза этой главы не меняется, текст возвращён к прежнему',
   stepClosed: 'шаг закрылся, пока текст писался — текст возвращён к прежнему',
+  /**
+   * BOOK-173: the ripple's own refusals. Each is a sentence about the book, not a code: «две
+   * попытки» is what the author needs to know, `RIPPLE_REFUSED` is what the log carries.
+   */
+  notARipple: 'эта правка не тянет за собой другие главы — волна не открыта',
+  planMissing: 'плана у этой правки нет — волну не с чего начинать',
+  notPlanned: 'эта глава не названа планом — волне нечего в ней делать',
+  neighbourMissing: 'соседняя глава ещё не написана — волне некуда идти',
+  invalidChapter: 'такой главы в книге нет',
+  wideNeedsAuthor: 'правка задевает слишком много — решает автор, волна не открыта',
+  rippleRefused: 'соседняя глава дважды не приняла правку — волна остановлена, нужен автор',
+  chapterRefused: 'глава не приняла правку — попытка записана, волна повторит',
+  closureUnstable: 'замыкание не сходится — волна остановлена, нужен автор',
+  closureBound: 'замыкание вышло за границы правки — решает автор',
+  closureDrift: 'замыкание разъехалось с планом — волна остановлена, нужен автор',
+  irreversibleLost: 'глава изменилась и не держит необратимого — нужен автор',
+  laneLost: 'полоса потеряна, пока писалась глава — правка остаётся в очереди',
+  judgeVeto: 'судья причин не подтвердил замыкание — волна остановлена, нужен автор',
 } as const;
 
 /**
@@ -121,6 +139,24 @@ function sentenceFor(code: string): string | null {
   if (code === 'RIGHTS_REQUIRED' || code === 'RIGHTS_NOT_REQUIRED') return readerSentences.rightsMissing;
   if (code === 'FRAME_CHANGED') return readerSentences.frameChanged;
   if (code === 'STEP_CLOSED') return readerSentences.stepClosed;
+  // BOOK-173: the ripple. Every new engine refusal and every drainer stop has a sentence here,
+  // so no code word reaches a note, a stage summary or `change_plans.park_reason`.
+  if (code === 'NOT_A_RIPPLE') return readerSentences.notARipple;
+  if (code === 'PLAN_MISSING') return readerSentences.planMissing;
+  if (code === 'NOT_PLANNED') return readerSentences.notPlanned;
+  if (code === 'NEIGHBOUR_MISSING') return readerSentences.neighbourMissing;
+  if (code === 'INVALID_CHAPTER') return readerSentences.invalidChapter;
+  if (code === 'WIDE_NEEDS_AUTHOR') return readerSentences.wideNeedsAuthor;
+  if (code === 'RIPPLE_REFUSED') return readerSentences.rippleRefused;
+  if (code === 'CHAPTER_REFUSED') return readerSentences.chapterRefused;
+  if (code === 'CLOSURE_UNSTABLE') return readerSentences.closureUnstable;
+  if (code === 'CLOSURE_BOUND') return readerSentences.closureBound;
+  if (code === 'CLOSURE_DRIFT' || code === 'FACT_DANGLING' || code === 'CAUSE_UNSUPPORTED') {
+    return readerSentences.closureDrift;
+  }
+  if (code === 'IRREVERSIBLE_LOST') return readerSentences.irreversibleLost;
+  if (code === 'LANE_LOST') return readerSentences.laneLost;
+  if (code === 'JUDGE_VETO') return readerSentences.judgeVeto;
   return null;
 }
 

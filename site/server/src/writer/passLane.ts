@@ -13,7 +13,7 @@ import { chapterLabel, type WriterAssignment } from '@book/shared';
 
 import { chapterPath, readChapter } from '../engine/text.ts';
 import { sha256Hex } from '../util/hash.ts';
-import type { EngineClient, GateAssignmentView } from './client.ts';
+import type { EngineClient, GateAssignmentView, LandView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
 import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
@@ -43,6 +43,8 @@ export type PassResult = {
   costUsd?: number;
   /** BOOK-166: the *filing* was refused (auditor said no, frozen chapter) — the queue moves on. */
   filingRefused?: boolean;
+  /** The closed code behind a stop, for the caller that journals it (BOOK-173); never in a note. */
+  code?: string;
 };
 
 /** A step the engine already took away: a scheduling event, never a prose event. */
@@ -103,7 +105,8 @@ export type Lane = {
   /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
   remember(failure: Failure | null): void;
   writeText(value: string): void;
-  land(): Promise<void>;
+  /** BOOK-173: `land` answers with the plan the engine froze — the pass reacts to it. */
+  land(): Promise<LandView>;
   preSnapshot(at: number): void;
   transcript(result: PassResult): void;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
@@ -192,7 +195,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiKey: config.apiKey,
         apiModel: config.apiModel,
         messages,
-        maxTokens: Math.min(kind.startsWith('gate:') ? config.gateTokens : config.maxTokensPerCall, remaining),
+        // The causality judge is a bounded question, not a writing turn: it gets the gate's cap.
+        maxTokens: Math.min(kind.startsWith('gate:') || kind === 'judge' ? config.gateTokens : config.maxTokensPerCall, remaining),
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
@@ -257,6 +261,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         stepId: job.stepId,
         changeId: job.changeId,
         reason: 'lease released by the engine — taking the next filing',
+        code,
       };
     }
     const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
@@ -292,6 +297,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
+      ...(code === null ? {} : { code }),
       ...(why.cause === 'refused' ? { filingRefused: true } : {}),
       // The reader's sentence, not the code word (the code lives in the log and transcript).
       reason: sentence,
@@ -301,9 +307,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   }
 
   /** `land`: a `STEP_CLOSED` or `FRAME_CHANGED` answer takes the text back (BOOK-137). */
-  async function land(): Promise<void> {
+  async function land(): Promise<LandView> {
     try {
-      await engine.land(job.leaseId);
+      return await engine.land(job.leaseId);
     } catch (error) {
       const code = codeOf(error);
       const back =

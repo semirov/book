@@ -194,6 +194,9 @@ export function outcomeCopy(outcome: ChangeOutcome | null): string {
   // «внесено», and never the auditor's word for a refusal about the law.
   if (outcome === 'rights') return 'не принято';
   if (outcome === 'gate_timeout') return 'остановлено: проверка не ответила';
+  // BOOK-173: the patch is in the book and its consequences are their own chapters — «идёт» would
+  // say the change is still being written, which it is not.
+  if (outcome === 'ripple') return 'внесено · следствия идут';
   return 'идёт';
 }
 

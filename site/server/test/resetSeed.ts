@@ -142,6 +142,20 @@ export function seedBook(target: Fixture): string {
     `INSERT INTO literals (literal, raw, block_id, span_id, chapter, mention_kind, start, end)
      VALUES ('2065-09-14', '14.09.2065', 'ch08#seed0001', 'bkd_seed:1:0', 8, 'date', 0, 10)`,
   ).run();
+  // BOOK-173: one edge and its plan. A reset must remove the graph before the facts it names and
+  // the plan before the change it priced, or the wipe commits a dangling reference.
+  db.prepare(
+    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, created_at)
+     VALUES ('fct_two', 8, 'state', 'Второе служебное утверждение.', 'второй термин', 8, ?)`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
+     VALUES ('edg_seed', 'fct_one', 'fct_two', 8, 'follows', 'value', 'служебная связь', 'backfill', ?)`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO change_plans (id, change_id, chapter, outcome, closure, patches, bounds, iterations, created_at)
+     VALUES ('pln_seed', 'chg_one', 8, 'ripple', '{}', '[]', '{}', '[]', ?)`,
+  ).run(AT);
   const rate = db.prepare('INSERT INTO rate_events (key, ts) VALUES (?, ?)');
   rate.run(`edit:id:${owner}`, 1_760_000_000_000);
   rate.run('edit:ip:hash-one', 1_760_000_000_000);
@@ -187,6 +201,9 @@ export const CONTENT_KEYS = [
   'thread_events',
   'mentions',
   'literals',
+  // BOOK-173: the ripple's graph and its plans.
+  'edges',
+  'change_plans',
   'overwrites',
   'contributions',
   'contribution_history',
@@ -223,11 +240,13 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     front_revisions: 0,
     block_lineage: count(db, 'SELECT COUNT(*) AS n FROM block_lineage'),
     block_versions: count(db, 'SELECT COUNT(*) AS n FROM block_versions'),
-    facts: 1,
+    facts: 2,
     threads: 1,
     thread_events: 1,
     mentions: 1,
     literals: 1,
+    edges: 1,
+    change_plans: 1,
     overwrites: 0,
     contributions: 1,
     contribution_history: 1,
