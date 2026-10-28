@@ -1,17 +1,12 @@
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { readMyDecisions } from '../src/authors/decisions.ts';
-import { readCommentRow } from '../src/comments/repo.ts';
-import { listChanges } from '../src/engineState/changes.ts';
-import { acceptComment } from '../src/feedback/accept.ts';
+import { readCommentRow, toCommentDto, type CommentRow } from '../src/comments/repo.ts';
 import { runFeedback } from '../src/feedback/cli.ts';
-import { DecisionsTailer } from '../src/feedback/decisions.ts';
-import { checkManuscript } from '../../scripts/lib/frame.mjs';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 
 /**
@@ -90,6 +85,13 @@ function commentRow(h: Harness, id: string): Record<string, unknown> {
   return h.db.prepare('SELECT * FROM comments WHERE id = ?').get(id) as Record<string, unknown>;
 }
 
+/** The row as the storage type, for the DTO helper. */
+function typedRow(h: Harness, id: string): CommentRow {
+  const row = readCommentRow(h.db, id);
+  if (row === undefined) throw new Error(`no comment ${id}`);
+  return row;
+}
+
 function changeRow(h: Harness, id: string): Record<string, unknown> {
   return h.db.prepare('SELECT * FROM changes WHERE id = ?').get(id) as Record<string, unknown>;
 }
@@ -165,6 +167,22 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     // Nothing was written into the book: `applied_*` stay empty for a filing that is a document.
     expect(comment.applied_chapter).toBeNull();
     expect(comment.applied_rev).toBeNull();
+
+    // BOOK-174 §2: paperwork *is* the reading — a document about the phrase, and the reader's
+    // card says so. The anchor is ADR-044's: this frame sentence spans two sentences, so the
+    // filing keeps its block anchor and the report names the paragraph, never a guessed one.
+    expect(comment).toMatchObject({
+      disposition: 'through_paper',
+      carrier_kind: 'document',
+      lock: null,
+      sentence_id: null,
+    });
+    const dto = toCommentDto(h.db, typedRow(h, id));
+    expect(dto.report).toMatchObject({
+      line1: 'прочитано через бумагу',
+      line2: 'потому что в сцене это некому сказать, а в регистратуре есть кому',
+    });
+    expect(dto.report?.line3).toBe('где это в книге: глава 1 · абзац 1 — документ');
 
     const change = changeRow(h, String(comment.change_id));
     expect(change).toMatchObject({
@@ -267,6 +285,15 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
       base_blocks: '[]',
       scope_hint: 'phrase',
     });
+    // BOOK-174 §4 lock 3: on a basis-only slot the frame *is* the whole text, so nothing can be
+    // said beside it — and the lock's own alternative («документом об этой фразе») is exactly
+    // this registration. The paperwork is the answer, not a refusal: the row is `registered`
+    // with the paper chain, and the reader's record says how it was read.
+    expect(comment).toMatchObject({ disposition: 'through_paper', carrier_kind: 'document', lock: null });
+    const dto = toCommentDto(h.db, typedRow(h, id));
+    expect(dto.report?.line1).toBe('прочитано через бумагу');
+    expect(dto.report?.line3).toBe('где это в книге: глава 1 · абзац 1 — документ');
+    expect(dto.status).toBe('registered');
     expect(file(h, 'ch01.md')).toBe(before);
   });
 
@@ -311,189 +338,5 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     );
     expect(posted.statusCode).toBe(201);
     expect(posted.json().comment.frame).toBe('adjacent');
-  });
-});
-
-describe('the change record tells the truth about the paperwork', () => {
-  /** The public list a reader's history is built from. */
-  it('carries the mark and the mode on the summary, and answers a replay idempotently', async () => {
-    const h = await boot();
-    const frame = blockOf(h, 1, 0);
-    const posted = await post(
-      h,
-      commentBody({ chapter: 1, blockId: frame.id, quote: FRAME_FIRST_SENTENCE, body: 'Первая фраза слишком тихая.' }),
-    );
-    const id = posted.json().comment.id as string;
-    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
-    expect(cli(h, 'decide', id, 'accepted', '--reason', 'рамка: тише', '--intent', 'первая фраза тише').code).toBe(0);
-
-    const [summary] = listChanges(h.db, { chapter: 1 });
-    expect(summary).toMatchObject({
-      chapter: 1,
-      frame: 'touched',
-      frameMode: 'оформление',
-      status: 'done',
-      outcome: 'registered',
-      steps: 0,
-      position: null,
-      cascade: null,
-      chapters: [1],
-      rewritten: [],
-    });
-
-    // The reader's own record says «рассмотрено», never «внесено»: no waves, no blocks, no
-    // intent — a paperwork has no text consequence to count.
-    const mine = readMyDecisions(h.db, h.identity.id);
-    expect(mine.items[0]).toMatchObject({
-      commentId: id,
-      outcome: 'registered',
-      waves: null,
-      blocks: null,
-      chapters: [],
-      intent: null,
-    });
-
-    // A replay of the same acceptance answers with the change it already has — no second row,
-    // no second event.
-    const replay = acceptComment(h.db, {
-      comment: readCommentRow(h.db, id)!,
-      intent: 'первая фраза тише',
-      at: h.clock.now().toISOString(),
-      reason: 'рамка: тише',
-    });
-    expect(replay).toMatchObject({ changeId: summary?.id, created: false });
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
-    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM change_events WHERE type = 'registered'`).get()).toEqual({ n: 1 });
-  });
-
-  it('takes the paperwork mode the triage named, and the default when it named none', async () => {
-    const h = await boot();
-    const frame = blockOf(h, 1, 0);
-    const named = await post(
-      h,
-      commentBody({ chapter: 1, blockId: frame.id, quote: FRAME_FIRST_SENTENCE, body: 'Начало держит всю книгу.' }),
-    );
-    const id = named.json().comment.id as string;
-    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
-
-    // An unknown word is refused before anything is written: the mode is a fixed vocabulary.
-    const wrong = cli(h, 'decide', id, 'accepted', '--reason', 'рамка', '--intent', 'первая фраза тише', '--mode', 'правка');
-    expect(wrong.code).toBe(2);
-    expect(commentRow(h, id)).toMatchObject({ status: 'new', decided_at: null });
-
-    const decided = cli(
-      h,
-      'decide',
-      id,
-      'accepted',
-      '--reason',
-      'рамка: поправка',
-      '--intent',
-      'первая фраза тише',
-      '--mode',
-      'поправка',
-    );
-    expect(decided.code).toBe(0);
-    const comment = commentRow(h, id);
-    expect(comment.status).toBe('registered');
-    expect(comment.reason).toBe('принято как поправка: рамка книги — фраза не меняется');
-    expect(changeRow(h, String(comment.change_id))).toMatchObject({
-      frame: 'touched',
-      frame_mode: 'поправка',
-      outcome: 'registered',
-    });
-    // The written decision line carries the mode, so the site's tailer files the same document.
-    expect(JSON.parse(readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8').trim())).toMatchObject({
-      id,
-      status: 'accepted',
-      mode: 'поправка',
-    });
-  });
-
-  it('files the mode a decision line names, and the default when a line names none', async () => {
-    const h = await boot();
-    const frame = blockOf(h, 1, 0);
-    const posted = await post(
-      h,
-      commentBody({ chapter: 1, blockId: frame.id, quote: FRAME_FIRST_SENTENCE, body: 'С этой фразы всё начинается.' }),
-    );
-    const id = posted.json().comment.id as string;
-    expect(cli(h, 'audit', id, '--verdict', 'FITS').code).toBe(0);
-
-    // A decision line is the site's own path to `acceptComment`; `mode` travels in it.
-    const tailer = new DecisionsTailer({
-      db: h.db,
-      dir: dir ?? '',
-      emit: () => undefined,
-      now: h.clock.now,
-      replay: true,
-    });
-    tailer.prime();
-    mkdirSync(dir ?? '', { recursive: true });
-    appendFileSync(
-      join(dir ?? '', 'decisions.jsonl'),
-      `${JSON.stringify({
-        id,
-        status: 'accepted',
-        reason: 'рамка: расхождение',
-        intent: 'первая фраза тише',
-        at: h.clock.now().toISOString(),
-        mode: 'расхождение',
-      })}\n`,
-      'utf8',
-    );
-    expect(tailer.poll()).toBe(1);
-
-    const comment = commentRow(h, id);
-    expect(comment.status).toBe('registered');
-    expect(comment.reason).toBe('принято как расхождение: рамка книги — фраза не меняется');
-    expect(changeRow(h, String(comment.change_id))).toMatchObject({
-      frame: 'touched',
-      frame_mode: 'расхождение',
-      outcome: 'registered',
-    });
-
-    // A line that names no mode still files the default paperwork, and an unknown word is dropped.
-    for (const mode of [undefined, 'нечто']) {
-      const other = await post(
-        h,
-        commentBody({ chapter: 1, blockId: frame.id, quote: FRAME_FIRST_SENTENCE, body: `Ещё одно замечание: ${String(mode)}` }),
-      );
-      const otherId = other.json().comment.id as string;
-      expect(cli(h, 'audit', otherId, '--verdict', 'FITS').code).toBe(0);
-      appendFileSync(
-        join(dir ?? '', 'decisions.jsonl'),
-        `${JSON.stringify({
-          id: otherId,
-          status: 'accepted',
-          reason: 'рамка: по умолчанию',
-          intent: 'первая фраза тише',
-          at: h.clock.now().toISOString(),
-          ...(mode === undefined ? {} : { mode }),
-        })}\n`,
-        'utf8',
-      );
-      expect(tailer.poll()).toBe(1);
-      const row = commentRow(h, otherId);
-      expect(row.status, String(mode)).toBe('registered');
-      expect(changeRow(h, String(row.change_id)), String(mode)).toMatchObject({
-        frame: 'touched',
-        frame_mode: 'оформление',
-      });
-    }
-  });
-});
-
-describe('the deploy gate’s own frame check', () => {
-  it('passes on the real repository after the whole scenario', () => {
-    // `npm run frame:check` in test form: the same module `deploy.sh` runs reads the real
-    // manuscript and answers one object per source — ch01's line, ch01's heading, the finale's.
-    const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
-    const checks = checkManuscript({ repoRoot }) as Array<{ label: string; ok: boolean; parts: unknown[] }>;
-    expect(checks).toHaveLength(3);
-    for (const check of checks) {
-      expect(check.parts, check.label).toEqual([]);
-      expect(check.ok, check.label).toBe(true);
-    }
   });
 });

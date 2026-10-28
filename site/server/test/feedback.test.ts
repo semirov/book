@@ -278,16 +278,21 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     expect(line).toMatchObject({ id, status: 'rejected', changeId: null });
   });
 
-  it('refuses a second decision (first decision wins) and an unknown id', async () => {
+  it('refuses a second decision, and an unknown id', async () => {
     const h = await boot();
     const id = await comment(h);
     cli(h, 'inbox');
+    // BOOK-174: the first line escalates it; a re-run is a retry, not an answer.
     expect(cli(h, 'decide', id, 'rejected', '--reason', 'не по тексту').code).toBe(0);
     const second = cli(h, 'decide', id, 'rejected', '--reason', 'ещё раз');
     expect(second.code).toBe(1);
-    expect(second.out.join('\n')).toContain('already decided');
+    expect(second.out.join('\n')).toContain('waits for the author');
+    // The author's answer is named, and after it the row is closed for good.
+    expect(cli(h, 'decide', id, 'rejected', '--reason', 'автор: нет', '--as', 'author').code).toBe(0);
+    expect(cli(h, 'decide', id, 'rejected', '--reason', 'ещё раз', '--as', 'author').code).toBe(1);
     expect(cli(h, 'decide', 'cmt_missing', 'rejected', '--reason', 'нет такого').code).toBe(1);
   });
+
 
   it('spends one edit budget per accepted filing, a note and an intervention alike (BOOK-158)', async () => {
     const h = await boot();
@@ -444,10 +449,7 @@ describe('decisions tailing — the site turns a file line into an event', () =>
     expect(tailer.poll()).toBe(1);
     // A filing is never thrown away outside a lock: the author decides, and the frame says so.
     expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'escalated' });
-    expect(emitted[0]).toMatchObject({
-      type: 'comment:decision',
-      data: { status: 'escalated', reason: 'можно ли оформить это бумагой?' },
-    });
+    expect(emitted[0]).toMatchObject({ type: 'comment:decision', data: { status: 'escalated', reason: 'можно ли оформить это бумагой?' } });
   });
 
   it('applies a rejected line idempotently and announces batches', async () => {

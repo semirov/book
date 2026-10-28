@@ -4,7 +4,6 @@ import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 import { migrateV22 } from '../../src/db/migrateV22.ts';
-import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 import { searchBlocks } from '../../src/ledger/search.ts';
 import { blockHashOf, seedChapter } from './helpers.ts';
 

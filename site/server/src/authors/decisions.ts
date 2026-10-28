@@ -60,7 +60,10 @@ type DecisionRow = {
   change_reason: string | null;
   change_intent: string | null;
   change_finished_at: string | null;
-  /** BOOK-174 — how the filing was read; null for a row written before v24. */
+  /** ADR-044 — the filing's own sentence and its filed paragraph; null = the block anchor. */
+  block_id: string | null;
+  block_idx: number | null;
+  /** BOOK-174 — how the filing was read; null for a row written before v27. */
   disposition: string | null;
   lock: string | null;
   carrier_kind: string | null;
@@ -87,6 +90,8 @@ const DECISIONS_SQL = `
          c.reason        AS comment_reason,
          c.created_at    AS comment_created_at,
          c.decided_at    AS decided_at,
+         c.block_id      AS block_id,
+         c.block_idx     AS block_idx,
          c.disposition   AS disposition,
          c.lock          AS lock,
          c.carrier_kind  AS carrier_kind,
@@ -179,7 +184,7 @@ function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto
     decidedAt,
     // BOOK-174: the reader's own line carries the reading of their filing, derived from the
     // stored chain — the same three lines the filing's own record prints.
-    report: dispositionFieldsOf(row).report,
+    report: dispositionFieldsOf(db, row).report,
   };
 }
 

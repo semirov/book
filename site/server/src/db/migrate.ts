@@ -12,13 +12,13 @@ import { migrateV27 } from './migrateV27.ts';
 type Migration = { to: number; up: (db: Db) => void };
 
 /**
- * Apply schema migrations in order, then probe the result. `user_version` is the
- * migration cursor; later milestones append steps rather than editing this one.
+ * Apply schema migrations in order, then probe the result. `user_version` is the migration
+ * cursor; later milestones append steps rather than editing this one.
  *
- * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision
- * 1/2 is a projection of the manuscript or an engine table that has never been written
- * before M3, and the retired `obligations`/`cascade_stages` tables must disappear. Files
- * win for text (§18), so a field install of the skeleton loses only its projection.
+ * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a
+ * projection of the manuscript or an engine table that has never been written before M3, and the
+ * retired `obligations`/`cascade_stages` tables must disappear. Files win for text (§18), so a
+ * field install of the skeleton loses only its projection.
  */
 const MIGRATIONS: Migration[] = [
   {
@@ -317,10 +317,8 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
     },
   },
-  // BOOK-176 (BOOK-DOC-69): the span ledger. `block_versions` gains the edit list of a version,
-  // the ledger tables and the full-text mirror are created from the same constants a fresh
-  // install uses, and every live block gets a legacy span so «the block as it stands» is
-  // readable history rather than an exception. Idempotent to the statement.
+  // BOOK-176 (BOOK-DOC-69): the span ledger, the mirror and a legacy span per live block, from
+  // the same constants a fresh install uses. Idempotent to the statement.
   { to: 22, up: migrateV22 },
   // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
   { to: 23, up: migrateV23 },
@@ -329,8 +327,7 @@ const MIGRATIONS: Migration[] = [
   { to: 25, up: migrateV25 },
   // BOOK-189: the push tables — subscriptions, the claim and the outbox (26: 24 stays ADR-043's).
   { to: 26, up: migrateV26 },
-  // The disposition of a filing (BOOK-174): `migrateV27.ts` holds the chain and the counts table.
-  // 27, not 24: the cursor skips every step at or below `user_version`, and v24 is ADR-043's.
+  // BOOK-174: the chain and the counters (27 — v24 is ADR-043's, and the cursor has passed it).
   { to: 27, up: migrateV27 },
 ];
 

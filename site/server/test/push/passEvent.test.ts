@@ -121,7 +121,7 @@ describe('sendPassEvent — landed', () => {
   });
 
   it('notifies nobody for a comment that does not exist', () => {
-    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: 'cmt_missing', rejected: true }, T0)).toEqual({
+    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: 'cmt_missing', report: null }, T0)).toEqual({
       queued: false,
       reason: 'no-recipient',
     });
@@ -295,11 +295,63 @@ describe('sendPassEvent — decisions', () => {
     seedDevice(db, author, 'https://push.example.com/anya');
     const filing = seedComment(db, author, 24);
 
-    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: filing, rejected: true }, T0)).toEqual({
+    // A row nobody read this way (a gate's hold, a legacy line) keeps the old sentence.
+    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: filing, report: null }, T0)).toEqual({
       queued: true,
       chapter: 24,
     });
     expect(outbox(db)[0]?.title).toBe('правка по главе 24 отклонена');
     expect(claims(db)).toEqual([{ identity_id: author, chapter: 24, kind: 'decision' }]);
+  });
+
+  it('speaks the reading, never «отклонена», when a disposition decided the filing (BOOK-174)', () => {
+    const author = seedIdentity(db, 'Аня');
+    seedDevice(db, author, 'https://push.example.com/anya');
+    const filing = seedComment(db, author, 25);
+
+    expect(
+      sendPassEvent(
+        db,
+        {
+          kind: 'commentDecision',
+          commentId: filing,
+          report: {
+            line1: 'ждёт решения автора',
+            line2: 'потому что эта правка меняет не слово, а исход',
+            line3: 'решает автор',
+          },
+        },
+        T0,
+      ),
+    ).toEqual({ queued: true, chapter: 25 });
+    const row = outbox(db)[0];
+    // The title is the book's own word and the body is where the filing stands — no identity,
+    // no comment id, no token: a lock screen is public.
+    expect(row?.title).toBe('ждёт решения автора');
+    expect(row?.body).toBe('решает автор');
+    expect(row?.title).not.toContain('отклонена');
+    expect(JSON.stringify(row)).not.toContain(filing);
+  });
+
+  it('speaks a lock as «не принято», and never as a refusal of the reader', () => {
+    const author = seedIdentity(db, 'Аня');
+    seedDevice(db, author, 'https://push.example.com/anya');
+    const filing = seedComment(db, author, 26);
+
+    sendPassEvent(
+      db,
+      {
+        kind: 'commentDecision',
+        commentId: filing,
+        report: {
+          line1: 'не принято',
+          line2: 'потому что это не ваш текст',
+          line3: 'сработает иначе: перескажите своими в пяти словах',
+        },
+      },
+      T0,
+    );
+    expect(outbox(db)[0]?.title).toBe('не принято');
+    expect(outbox(db)[0]?.title).not.toContain('отклонена');
   });
 });

@@ -12,7 +12,7 @@ import { FilingPanel } from './FilingPanel.tsx';
  *
  * Three lines, on the filing's own card and on the reader's own list, and they are the ones the
  * server derived from the stored chain — line 1 the reading, line 2 why, line 3 where it stands
- * in the book. A filing read before v24 has no report at all, and the card prints nothing for it.
+ * in the book. A filing read before v27 has no report at all, and the card prints nothing for it.
  */
 
 const REPORT: DispositionReport = {

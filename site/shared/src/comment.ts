@@ -238,7 +238,7 @@ export type CommentDto = {
   applied: null | { chapter: number; rev: number };
   /**
    * BOOK-174 §5 — how this filing was read (`as_said`, `through_paper`, `refused_in_world`,
-   * `inadmissible`, `escalated`); `null` for a row stored before v24, which was never read
+   * `inadmissible`, `escalated`); `null` for a row stored before v27, which was never read
    * this way. Declared optional so a page that does not render it yet still typechecks.
    */
   disposition?: Disposition | null;

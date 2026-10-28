@@ -1,5 +1,6 @@
 import {
   DEFAULT_FRAME_MODE,
+  DISPOSITION_WORDS,
   FAILED_ATTEMPT_LINE,
   framePaperworkReason,
   RETRO_MODES,
@@ -45,8 +46,9 @@ export const STATE_WORDS: Readonly<Record<State, string>> = {
   landed: 'внесено',
   registered: 'рассмотрено',
   // BOOK-174 — the ladder could not place the filing and no lock applies: it is decided (the
-  // author will decide it) and it is not a refusal. The word says whose turn it is.
-  escalated: 'ждёт решения автора',
+  // author will decide it) and it is not a refusal. The word is the shared one, so the margin
+  // and the report cannot drift apart.
+  escalated: DISPOSITION_WORDS.escalated,
 };
 
 /**

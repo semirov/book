@@ -49,7 +49,7 @@ import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { newChangeId } from '../util/ulid.ts';
 import type { DispositionDecision, DispositionProposal } from './disposition.ts';
-import { chooseFor, storeChain } from './dispositionStore.ts';
+import { chooseFor, paperDecisionOf, storeChain } from './dispositionStore.ts';
 
 export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
@@ -164,8 +164,21 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // BOOK-137: a filing that touches the frozen frame is accepted as paperwork — recorded,
     // done, and never handed to the lane. The mark comes from the row (or, for a pre-v16 row,
     // from the same classifier over the anchor).
+    //
+    // BOOK-174 §2: paperwork **is** the reading. A touched filing is never «as said» (the
+    // sentence's letters do not move) and never refused (memo §4: a touched filing anywhere
+    // else is §2) — it is a document about the phrase, and that document is the lock's own
+    // alternative («документом об этой фразе»). So the chain is written here, from the sentence
+    // the filing carries, and not from the decision line's proposal.
+    //
+    // The basis-only corner (ch01/ch42/annotation, where the frame *is* the whole text) is
+    // answered here too, before the `frame` lock below: a filing that touches the frame needs no
+    // prose to stand in, and the lock's own alternative is exactly this registration. Refusing
+    // it would take away the one answer BOOK-174 §4 offers for that slot; a filing *beside* the
+    // frame on such a slot still meets `isBasisSlot` below and the lock.
     const mark = frameMarkOf(db, comment, chapter);
     if (mark === 'touched') {
+      const paper = paperDecisionOf(db, comment);
       return register(db, {
         comment,
         chapter,
@@ -176,6 +189,7 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
         mode: input.frameMode ?? DEFAULT_FRAME_MODE,
         batch: input.batch ?? null,
         baseRev: positiveRev(input.baseRev),
+        decision: paper,
       });
     }
 
@@ -332,6 +346,8 @@ function register(
     mode: RetroMode;
     batch: string | null;
     baseRev: number | null;
+    /** BOOK-174 §2 — the reading a touched filing is registered under: a document, as paper. */
+    decision: DispositionDecision;
   },
 ): AcceptResult {
   const { comment, chapter } = input;
@@ -385,6 +401,7 @@ function register(
         SET status = 'registered', decided_at = ?, reason = ?, batch_id = COALESCE(?, batch_id), change_id = ?
       WHERE id = ?`,
   ).run(input.at, reason, input.batch, input.changeId, comment.id);
+  storeChain(db, comment.id, input.decision);
   appendCommentEvent(db, comment.id, 'decided', input.at, {
     status: 'registered',
     changeId: input.changeId,

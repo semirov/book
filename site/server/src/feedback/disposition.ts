@@ -2,7 +2,10 @@
  * The chooser — the deterministic arbiter of how a filing is read (BOOK-174 comment #3888).
  *
  * The **semantic** reading comes from the triage decision line: a model says which of the four
- * answers the filing asks for. This module never invents one. What it does is enforce the
+ * answers the filing asks for. This module never invents one — and it never invents a place
+ * either: the sentence a reading is recorded against is the filing's own ADR-044 anchor
+ * (`comments.sentence_id`), and the two numbers the report prints come from the block and the
+ * live sentence row. What it does is enforce the
  * ladder's order (`as_said` → `through_paper` → `refused_in_world` → `inadmissible`), the
  * licence of each rung, the four locks, the anti-cheat caps and the escalation — so a decision
  * line cannot buy a refusal the book cannot back, and a filing that cannot be placed goes to
@@ -13,8 +16,8 @@
  *   1. **Locks first.** A rights refusal, the law (`guard === 'legal'` / `illegal-content`), a
  *      basis-only chapter (the frame is the whole text) or a decision that names the finale:
  *      `inadmissible` under that lock. These are the only refusals that exist.
- *   2. **The ladder over the proposal.** `as_said` holds when the quote resolves to exactly one
- *      sentence and the filing changes no repeated literal without a carrier. `through_paper`
+ *   2. **The ladder over the proposal.** `as_said` holds when the filing carries one live
+ *      sentence (ADR-044) and changes no repeated literal without a carrier. `through_paper`
  *      needs a carrier from the closed six, ≥5 words of the reader's own wording kept verbatim
  *      and ≥1 fact changed. `refused_in_world` needs the four facts of a real refusal and the
  *      caps' leave.
@@ -30,7 +33,7 @@ import {
   DISPOSITION_REASONS,
   ESCALATION_QUESTION,
   LOCK_REASONS,
-  formatSentenceId,
+  STAMP_MAX_CHARS,
   normalizeCarrierKind,
   normalizeDisposition,
   normalizeDispositionLock,
@@ -38,8 +41,6 @@ import {
   type Disposition,
   type DispositionLock,
 } from '@book/shared';
-
-import { locateSentence } from './sentenceLocator.ts';
 
 export type DispositionProposal = {
   /** Absent means `as_said`: the gates already passed, so the words are taken as said. */
@@ -80,7 +81,7 @@ export type DispositionDecision = {
   /** Line 2 of the report: the closed clause, or the lock's own why. */
   reason: string;
   quoteKept: string | null;
-  /** `b<blockIdx>.s<sentenceIdx>` (0-based, stored); null when nothing resolved. */
+  /** The filing's own ADR-044 anchor (`snt_…`); null when it kept its block anchor. */
   sentenceId: string | null;
   blockIndex: number | null;
   sentenceIndex: number | null;
@@ -95,7 +96,11 @@ export type ChooseDispositionInput = {
   chapterIsBasis: boolean;
   chapter: number;
   blockText: string | null;
+  /** The paragraph's stored idx, and the live sentence's idx — the two numbers the report prints. */
   blockIndex: number | null;
+  sentenceIndex: number | null;
+  /** ADR-044: the filing's own sentence id, or null when it kept its block anchor. */
+  sentenceId: string | null;
   quote: string | null;
   body: string;
   proposedText: string | null;
@@ -144,12 +149,16 @@ export function lockOf(
 
 /**
  * The `as_said` criterion: one sentence to stand in, and nothing that already exists being
- * changed blind. A filing with no quote makes no sentence claim — there is nothing it could
- * make false — so it holds; a quote the block cannot place does not.
+ * changed blind.
+ *
+ * The sentence is the filing's own ADR-044 anchor: `sentenceId` is what the posting path
+ * resolved, so «exactly one sentence» is a stored fact rather than a second opinion about the
+ * typography. A filing with no quote makes no sentence claim — there is nothing it could make
+ * false — so it holds; a quote whose sentence did not resolve does not.
  */
-function asSaidHolds(input: ChooseDispositionInput, wording: string, located: number | null): boolean {
+export function asSaidHolds(input: ChooseDispositionInput, wording: string = filingWording(input)): boolean {
   const quote = input.quote === null ? '' : input.quote.trim();
-  if (quote.length > 0 && input.blockText !== null && located === null) return false;
+  if (quote.length > 0 && input.blockText !== null && input.sentenceId === null) return false;
   return !repeatsLiteral(input, wording);
 }
 
@@ -191,13 +200,16 @@ function carrierLicence(input: ChooseDispositionInput, wording: string): Licence
  */
 function inWorldHolds(input: ChooseDispositionInput): boolean {
   const proposal = input.proposal;
+  const stamp = (proposal.stamp ?? '').trim();
   const complete =
     filled(proposal.establishedFact) &&
     filled(proposal.namedPerson) &&
     filled(proposal.namedInstance) &&
     filled(proposal.cost) &&
-    // The stamp is what line 3 quotes: a refusal without its formula has nothing to print.
-    filled(proposal.stamp);
+    // The stamp is what line 3 quotes: a refusal without its formula has nothing to print, and a
+    // formula past `STAMP_MAX_CHARS` would not fit the line the reader is owed.
+    filled(proposal.stamp) &&
+    stamp.length <= STAMP_MAX_CHARS;
   if (!complete) return false;
   return (
     input.caps.inWorldInChapterByReader === 0 &&
@@ -206,18 +218,20 @@ function inWorldHolds(input: ChooseDispositionInput): boolean {
   );
 }
 
-/** One sentence's worth of stored anchor, or nothing when no sentence resolved. */
-function anchorOf(
-  input: ChooseDispositionInput,
-  located: number | null,
-): { sentenceId: string | null; blockIndex: number | null; sentenceIndex: number | null } {
-  if (located === null || input.blockIndex === null) {
-    return { sentenceId: null, blockIndex: null, sentenceIndex: null };
-  }
+/**
+ * The anchor a decision records: the filing's own sentence id and the two numbers the report
+ * prints. Nothing is derived from the text here — ADR-044 resolved the sentence at posting time,
+ * and a second opinion about where a quote sits is exactly the guess that decision forbids.
+ */
+function anchorOf(input: ChooseDispositionInput): {
+  sentenceId: string | null;
+  blockIndex: number | null;
+  sentenceIndex: number | null;
+} {
   return {
-    sentenceId: formatSentenceId(input.blockIndex, located),
+    sentenceId: input.sentenceId,
     blockIndex: input.blockIndex,
-    sentenceIndex: located,
+    sentenceIndex: input.sentenceId === null ? null : input.sentenceIndex,
   };
 }
 
@@ -227,8 +241,8 @@ type Landing = {
   quoteKept: string | null;
 };
 
-function landed(input: ChooseDispositionInput, located: number | null, landing: Landing): DispositionDecision {
-  const anchor = anchorOf(input, located);
+function landed(input: ChooseDispositionInput, landing: Landing, asSaidHeld: boolean): DispositionDecision {
+  const anchor = anchorOf(input);
   return {
     disposition: landing.disposition,
     lock: null,
@@ -240,8 +254,11 @@ function landed(input: ChooseDispositionInput, located: number | null, landing: 
     sentenceIndex: anchor.sentenceIndex,
     escalated: false,
     question: null,
-    // The declined plan is named only when it really existed: one sentence resolved.
-    alternate: landing.disposition === 'through_paper' && anchor.sentenceId !== null,
+    // The declined plan is named only when it really existed: the `as_said` rung held **and**
+    // there was a sentence for it to stand in. A filing whose sentence never resolved had no such
+    // plan — its words could not have been taken as said even if nothing else pushed back — and
+    // naming it there would be decoration, not a choice.
+    alternate: landing.disposition === 'through_paper' && asSaidHeld && anchor.sentenceId !== null,
   };
 }
 
@@ -320,20 +337,19 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
   if (lock !== null) return lockDecision(lock);
 
   const wording = filingWording(input);
-  const located = locateSentence(input.blockText, input.quote);
-  const asSaid = asSaidHolds(input, wording, located);
+  const asSaid = asSaidHolds(input, wording);
   const licence = carrierLicence(input, wording);
 
   const asSaidOutcome = (): DispositionDecision =>
-    landed(input, located, { disposition: 'as_said', carrierKind: null, quoteKept: null });
+    landed(input, { disposition: 'as_said', carrierKind: null, quoteKept: null }, asSaid);
   const paperOutcome = (): DispositionDecision | null =>
     licence === null
       ? null
-      : landed(input, located, {
-          disposition: 'through_paper',
-          carrierKind: licence.carrierKind,
-          quoteKept: licence.quoteKept,
-        });
+      : landed(
+          input,
+          { disposition: 'through_paper', carrierKind: licence.carrierKind, quoteKept: licence.quoteKept },
+          asSaid,
+        );
   /** Rung 2, else rung 1, else the author: a failed carrier never falls to a bin. */
   const oneRungUp = (): DispositionDecision => paperOutcome() ?? (asSaid ? asSaidOutcome() : escalationDecision());
 
@@ -342,11 +358,11 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
       return asSaid ? asSaidOutcome() : oneRungUp();
     case 'refused_in_world':
       if (inWorldHolds(input)) {
-        return landed(input, located, {
-          disposition: 'refused_in_world',
-          carrierKind: null,
-          quoteKept: (input.proposal.stamp ?? '').trim(),
-        });
+        return landed(
+          input,
+          { disposition: 'refused_in_world', carrierKind: null, quoteKept: (input.proposal.stamp ?? '').trim() },
+          asSaid,
+        );
       }
       // One rung up: the paper it could be, then the words as said, then the author.
       return oneRungUp();

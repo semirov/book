@@ -72,7 +72,8 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
 
     const row = readCommentRow(h.db, id);
     expect(row).toMatchObject({ status: 'accepted', disposition: 'as_said', lock: null, carrier_kind: null });
-    expect(row?.sentence_id).toBe('b0.s0');
+    // ADR-044's anchor, the filing's own — never a place string the reading invented.
+    expect(row?.sentence_id).toMatch(/^snt_/u);
     // The DTO renders the real anchor: block_idx is 0-based in storage, 1-based on the page.
     const dto = toCommentDto(h.db, row!);
     expect(dto.disposition).toBe('as_said');
@@ -108,10 +109,11 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
   it('escalates an acceptance the ladder cannot place, and writes no change', async () => {
     const h = await boot();
     const id = await filed(h);
-    // A quote that spans two sentences can be taken as said by nothing, and no carrier is named.
+    // ADR-044's «never guess»: a quote that resolves to no single sentence keeps the block
+    // anchor, so the filing carries no sentence — and nothing can be said to stand in one.
     h.db
-      .prepare('UPDATE comments SET quote = ? WHERE id = ?')
-      .run('Тестовый абзац номер один. Это служебный текст, он не является текстом книги.', id);
+      .prepare('UPDATE comments SET sentence_id = NULL, sel_start = NULL, sel_end = NULL WHERE id = ?')
+      .run(id);
 
     const accepted = acceptComment(h.db, {
       comment: readCommentRow(h.db, id)!,
@@ -140,7 +142,6 @@ describe('a content rejection outside a lock escalates (BOOK-174)', () => {
       disposition: 'escalated',
       reason: ESCALATION_QUESTION,
       lock: null,
-      sentence_id: null,
       change_id: null,
     });
     expect(row?.decided_at).not.toBeNull();
@@ -437,3 +438,9 @@ describe('the finale lock is the one a decision may name (BOOK-174 §4)', () => 
     expect(emitted.find((event) => event.type === 'comment:decision')?.data).toMatchObject({ status: 'rejected' });
   });
 });
+
+/**
+ * Blocker from the review: an escalated filing is not a dead end. The author answers with the
+ * same `decide` every other decision goes through — `accepted` places it (an ordinary change),
+ * `rejected` ends it — and a replayed line changes nothing.
+ */

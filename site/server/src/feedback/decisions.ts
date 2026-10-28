@@ -20,6 +20,7 @@ import {
   validateIntent,
   validateInterventionKind,
   type CommentDecisionPayload,
+  type DispositionReport,
   type RetroMode,
 } from '@book/shared';
 
@@ -72,7 +73,11 @@ export type DecisionsTailerOptions = {
    * wait for an answer that the queue has already given. Accepted lines are not announced here;
    * their change is, when it is decided.
    */
-  notify?: (commentId: string) => void;
+  /**
+   * BOOK-189/BOOK-174 — the reader's push, once per filing. The report travels with it: it is the
+   * answer the notification speaks, and a filing with no reading (a gate's hold) passes `null`.
+   */
+  notify?: (commentId: string, report: DispositionReport | null) => void;
 };
 
 const OFFSET_KEY = 'feedback_decisions_offset';
@@ -84,7 +89,7 @@ export class DecisionsTailer {
   private readonly emit: DecisionEmit;
   private readonly now: () => Date;
   private readonly replay: boolean;
-  private readonly notify: ((commentId: string) => void) | null;
+  private readonly notify: ((commentId: string, report: DispositionReport | null) => void) | null;
   private offset = 0;
   private batchCursor: string | null = null;
 
@@ -130,7 +135,12 @@ export class DecisionsTailer {
     if (comment === undefined) return 0;
 
     const at = typeof decision.at === 'string' ? decision.at : this.now().toISOString();
-    if (comment.decided_at !== null) {
+    // BOOK-174: an escalated filing waits for the author, and the author answers through the same
+    // file every other decision travels in. Exactly one second line is accepted — an `accepted`
+    // one — and a `rejected` line on an escalated row is the escalation's own line re-read, so a
+    // replay stays a no-op.
+    const secondDecision = comment.status === 'escalated' && decision.status === 'accepted';
+    if (comment.decided_at !== null && !secondDecision) {
       // First decision wins. A replay of the same decision is announced once more (the CLI
       // writes the DB state before the tailer reads the line, so this is the normal path);
       // a different decision is recorded and ignored.
@@ -162,7 +172,7 @@ export class DecisionsTailer {
       // writes the row before it appends the line, so the re-announce branch above is where a
       // refused filing's author is heard. The push claim (`push_log`) makes a re-read of the same
       // line a duplicate instead of a second notification.
-      if (decision.status === 'rejected') this.notify?.(comment.id);
+      if (decision.status === 'rejected') this.notify?.(comment.id, this.reportOf(comment));
       return 1;
     }
 
@@ -301,14 +311,18 @@ export class DecisionsTailer {
       changeId: null,
       queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
       source: 'llm',
-      report: reportOfDecision(result.decision, comment.chapter),
+      report: reportOfDecision(this.db, result.decision, comment),
     } satisfies CommentDecisionPayload);
+    // BOOK-189: the row is decided and the socket has spoken; the push goes out once, after both.
+    // A filing with no change never gets a close to announce it, so this is its only answer — and
+    // BOOK-174 makes the answer the reading, not a word about a refusal.
+    this.notify?.(comment.id, reportOfDecision(this.db, result.decision, comment));
   }
 
-  /** The report of a row that already carries a chain; null for a row read before v24. */
-  private reportOf(row: CommentRow): CommentDecisionPayload['report'] {
+  /** The report of a row that already carries a chain; null for a row read before v27. */
+  private reportOf(row: CommentRow): DispositionReport | null {
     const stored = storedDecision(row);
-    return stored === null ? null : reportOfDecision(stored, row.chapter);
+    return stored === null ? null : reportOfDecision(this.db, stored, row);
   }
 
   /** A gate's own refusal: unchanged by BOOK-174, and it stores no disposition chain. */
@@ -334,8 +348,9 @@ export class DecisionsTailer {
     } satisfies CommentDecisionPayload);
     // BOOK-189: the row is decided and the reader has been told on the socket; the push goes out
     // once, after both. A refused filing has no change to be decided later, so this is the only
-    // moment its author can hear the answer.
-    this.notify?.(comment.id);
+    // moment its author can hear the answer. A gate's refusal stores no chain: the push speaks
+    // the old sentence for it and nothing pretends a reading happened.
+    this.notify?.(comment.id, null);
   }
 
   private announceBatches(): number {
