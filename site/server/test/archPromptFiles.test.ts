@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 
+import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -186,9 +187,10 @@ describe('F023 — the guard survives a reflow (BOOK-46)', () => {
   it('treats the frozen frame as public text, not as a leak (M2)', () => {
     const [ch01, ch42] = PUBLIC_TEXT;
     if (ch01 === undefined || ch42 === undefined) throw new Error('PUBLIC_TEXT lost a frozen-frame sentence');
-    // (a) the allowlist cannot drift away from the book it excuses.
-    expect(readFileSync(join(BOOK_ROOT, 'manuscript', 'ch01.md'), 'utf8')).toContain(ch01);
-    expect(readFileSync(join(BOOK_ROOT, 'manuscript', 'ch42.md'), 'utf8')).toContain(ch42);
+    // (a) the allowlist cannot drift away from the canon it excuses: both sentences are the
+    // constants, and since BOOK-187 the constants are the only copy (the text is rows).
+    expect(ch01).toBe(FRAME_FIRST_SENTENCE);
+    expect(ch42).toBe(FRAME_LAST_SENTENCE);
 
     const extra = 'the sentence after it is the part the site must never print, on any page.';
     const root = mkdtempSync(join(tmpdir(), 'book-f023-frame-'));

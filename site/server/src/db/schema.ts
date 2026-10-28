@@ -30,9 +30,12 @@
  * disposition chain to the comment and its counters. BOOK-187 adds the book's own state (v28 —
  * ADR-043 G6, ADR-041 §2.2): the canon frame, the lane's counters, the redacted transcripts and
  * the block deltas live in `bookStateTables.ts` (`V28_TABLES_SQL`), and the text lives in rows.
- * Text tables are a projection of the rows; the engine tables are the only home
- * of process facts. Every table §8 names exists here, and the retired `obligations` table does
- * not (§23.5, ADR-023).
+ * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
+ * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
+ * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
+ * only door a file may still come through. The engine tables are the only home of process
+ * facts. Every table §8 names exists here, and the retired `obligations` table does not
+ * (§23.5, ADR-023).
  *
  * **The `chapter` CHECKs below stay `BETWEEN 1 AND 67` although the book is 42 chapters
  * (BOOK-155).** A row written before the cut (chapter 65) is real prose and must survive;

@@ -8,7 +8,7 @@
  * this test's own adapter over the files it writes. No repo logic is stubbed.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -72,6 +72,37 @@ function fenceOfSection1(source: string): string {
 
 function countOf(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
+}
+
+/** A canon phrase is at most this many words: a longer quoted run is a transplanted line. */
+const CANON_PHRASE_WORDS = 6;
+
+/** Quotes a prompt may carry as written: the frame is public text on both sides (F023, BOOK-46). */
+const QUOTE_ALLOWLIST = [FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE];
+
+/** Every «…» run of a text, as its inner string. */
+function quotedRuns(text: string): string[] {
+  return (text.match(/«[^»]+»/gu) ?? []).map((run) => run.slice(1, -1));
+}
+
+const wordsOf = (text: string): string[] => text.split(/\s+/u).filter((word) => word.length > 0);
+
+/**
+ * The longest run of the prose's own consecutive words that appears inside one of the quotes:
+ * a paragraph reintroduced as an example is the finding, whatever it says.
+ */
+function longestProseRunOf(quotes: readonly string[], prose: readonly string[]): number {
+  const source = prose.flatMap(wordsOf);
+  let longest = 0;
+  for (const quoted of quotes) {
+    const words = wordsOf(quoted);
+    for (let start = 0; start + longest < source.length; start += 1) {
+      let run = 0;
+      while (run < words.length && source[start + run] === words[run]) run += 1;
+      longest = Math.max(longest, run);
+    }
+  }
+  return longest;
 }
 
 afterAll(() => {
@@ -375,23 +406,39 @@ describe('§1 stays a universal contract', () => {
     const fragments = section.match(/«[^»]+»/gu) ?? [];
     expect(fragments.length).toBeGreaterThan(0);
     for (const fragment of fragments) {
-      expect(fragment.split(/\s+/u).filter(Boolean).length).toBeLessThanOrEqual(6);
+      expect(fragment.split(/\s+/u).filter(Boolean).length).toBeLessThanOrEqual(CANON_PHRASE_WORDS);
     }
 
-    // And no quoted phrase may be a line the manuscript already has. A missing manuscript directory
-    // fails loudly (readdirSync throws) on purpose: a guard that skips itself proves nothing.
-    const manuscriptDir = join(REPO, 'manuscript');
-    const manuscript = readdirSync(manuscriptDir)
-      .filter((file) => /^ch\d+\.md$/u.test(file))
-      .map((file) => readFileSync(join(manuscriptDir, file), 'utf8'))
-      .join('\n');
-    expect(manuscript.length).toBeGreaterThan(0);
-    for (const fragment of fragments) {
-      const inner = fragment.slice(1, -1);
-      // One-word quotes («Cheaper», «сейчас») are ordinary vocabulary, not a transplanted line.
-      if (inner.split(/\s+/u).filter(Boolean).length < 2) continue;
-      expect(manuscript).not.toContain(inner);
-    }
+    // The book's prose is not in this tree any more (BOOK-187: the rows are the home), so the
+    // property is proved on a fixture chapter this test writes: the prompt carries its paragraphs
+    // as data, and no section may hand a run of them back as a quoted example. The one-word
+    // exemption is the test's own (a word is vocabulary, not a line); the frame is allowlisted
+    // because it is published text on both sides (F023, BOOK-46).
+    const root = tempBook();
+    const fixture = [
+      'Служебный абзац переноса: эта строка проверяет, что длинная цитата в разделе подсказки ловится гейтом.',
+      'Служебный второй абзац примера: подсказка не пересказывает прозу главы и не берёт её в кавычки.',
+      'Служебный третий абзац примера: перенесённая строка читалась бы как образец для подражания.',
+    ];
+    chapter(root, 10, `Служебная глава\n\n${fixture.join('\n\n')}`);
+    const prompt = buildWriterPrompt({
+      bookRoot: root,
+      chapterText: textOf(root),
+      assignment: assignment({ chapter: 10 }),
+    });
+    // The data really reached the prompt: a guard over text that never got there proves nothing.
+    for (const paragraph of fixture) expect(prompt.user).toContain(paragraph);
+
+    const quoted = quotedRuns(`${prompt.system}\n\n${prompt.user}`).filter(
+      (inner) => !QUOTE_ALLOWLIST.includes(inner) && wordsOf(inner).length >= 2,
+    );
+    expect(longestProseRunOf(quoted, fixture)).toBeLessThanOrEqual(CANON_PHRASE_WORDS);
+    // And the guard is not vacuous: the same paragraph, reintroduced as a quote, is a finding.
+    expect(longestProseRunOf([fixture[1] ?? ''], fixture)).toBeGreaterThan(CANON_PHRASE_WORDS);
+
+    // The live leg — does one of the real book's paragraphs stand in a prompt section? — has no
+    // CI copy now: it is a review question at import time, and the deploy gate
+    // `node bin/validate.mjs --from-db "$DATA_DIR"` checks the rows' own rules, not the quotes.
   });
 
   it('carries no illustration from chapter 1 — no names, no numbers, no prose', () => {
