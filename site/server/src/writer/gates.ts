@@ -29,10 +29,7 @@ import {
 import { isWrittenChapter, readChapter } from '../engine/text.ts';
 import { RIGHTS_RULES } from '../rights/rules.ts';
 import { sha256Hex } from '../util/hash.ts';
-import { PromptError, rolePromptOf, type PromptSection } from './prompt.ts';
-
-/** The canon the writer reads, and so the canon a gate judges against (`prompt.ts` CANON_FILES). */
-const CANON_FILES = ['concept/CONCEPT.md', 'concept/CLIMAX.md', 'style/VOICE.md', 'outline/PLAN.md'] as const;
+import { PromptError, canonParts, rolePromptOf, type PromptPart, type PromptSection } from './prompt.ts';
 
 const MAX_FINDINGS = 60;
 const MAX_LINE_CHARS = 600;
@@ -53,6 +50,8 @@ export type GatePromptInput = {
 export type BuiltGatePrompt = {
   system: string;
   user: string;
+  /** BOOK-173 §5: sha256 of the exact `system` string — the same number writer and gates share. */
+  prefixSha256: string;
   promptSha256: string;
   sections: PromptSection[];
 };
@@ -63,7 +62,7 @@ export type GateParse =
   | { ok: true; verdict: 'HOLDS' | 'GAP'; findings: GateFinding[] }
   | { ok: false; code: 'GATE_UNPARSED'; reason: string };
 
-type Part = { section: PromptSection; body: string };
+type Part = PromptPart;
 
 function part(id: string, body: string): Part {
   return { section: { id, chars: body.length, sha256: sha256Hex(body) }, body };
@@ -80,10 +79,6 @@ function readText(path: string, label: string): string {
 function roleSection(bookRoot: string, role: GateRoleName): Part {
   const source = readText(join(bookRoot, 'process', 'ROLE_PROMPTS.md'), 'process/ROLE_PROMPTS.md');
   return part('role', rolePromptOf(source, role === 'editor' ? '2' : '3'));
-}
-
-function canonParts(bookRoot: string): Part[] {
-  return CANON_FILES.map((file) => part(`canon:${file}`, `### ${file}\n\n${readText(join(bookRoot, file), file)}`));
 }
 
 /** The same fence rule as the writer's assignment block: a payload cannot close its own fence. */
@@ -129,25 +124,29 @@ function contractPart(role: GateRoleName): Part {
   );
 }
 
-function assemble(system: string, parts: Part[]): BuiltGatePrompt {
-  const user = parts.map((entry) => entry.body).join('\n\n');
+function assemble(prefixParts: Part[], tailParts: Part[]): BuiltGatePrompt {
+  const system = prefixParts.map((entry) => entry.body).join('\n\n');
+  const user = tailParts.map((entry) => entry.body).join('\n\n');
   return {
     system,
     user,
+    prefixSha256: sha256Hex(system),
     promptSha256: sha256Hex(`${system}\n\n${user}`),
-    sections: [{ id: 'role', chars: system.length, sha256: sha256Hex(system) }, ...parts.map((entry) => entry.section)],
+    sections: [...prefixParts, ...tailParts].map((entry) => entry.section),
   };
 }
 
 /**
- * The gate's message. The landed text is quoted whole and is labelled as the thing judged —
- * not as instructions, and not as the writer's own account (a gate that trusts the account is
- * a gate that blesses text it has not read).
+ * The gate's message. The canon + the role + the contract are the prefix — the same canon the
+ * writer reads, byte for byte, so all three roles share the cacheable part (§5). The landed
+ * text is quoted whole in the tail and is labelled as the thing judged — not as instructions,
+ * and not as the writer's own account (a gate that trusts the account is a gate that blesses
+ * text it has not read).
  */
 export function buildGatePrompt(input: GatePromptInput): BuiltGatePrompt {
   const role = roleSection(input.bookRoot, input.role);
-  const parts: Part[] = [
-    ...canonParts(input.bookRoot),
+  const prefix: Part[] = [...canonParts(input.bookRoot), role, contractPart(input.role)];
+  const tail: Part[] = [
     part('landed', ['## Просмотренная глава', `Глава ${String(input.chapter)} — текст на диске, дословно:`, '', input.landedText.trim()].join('\n')),
     neighboursPart(input.bookRoot, input.chapter),
     dataBlock(
@@ -167,9 +166,8 @@ export function buildGatePrompt(input: GatePromptInput): BuiltGatePrompt {
             'Производный указатель этой главы и соседей: эвристика, а не канон; расхождение — повод для замечания, не приговор.',
           ),
         ]),
-    contractPart(input.role),
   ];
-  return assemble(role.body, parts);
+  return assemble(prefix, tail);
 }
 
 const SEVERITY_WORDS = new Set<FindingSeverity>(['blocker', 'major', 'minor']);
@@ -334,7 +332,7 @@ export function buildRightsPrompt(input: {
       ].join('\n'),
     ),
   ];
-  return assemble(system, parts);
+  return assemble([part('role', system)], parts);
 }
 
 const RIGHTS_VERDICTS = new Set(['CLEAR', 'REFUSED']);

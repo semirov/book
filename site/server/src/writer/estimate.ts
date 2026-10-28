@@ -28,9 +28,19 @@ import { CHAPTER_CHARS } from '@book/shared';
 
 import { costUsd, type PipelinePricing } from './pipeline.ts';
 import { writerRolePrompt } from './prompt.ts';
+import type { WriteMode } from './mode.ts';
 
 /** Measured (see the file header): 1 599 characters = 686 completion tokens on the pinned model. */
 export const CHARS_PER_TOKEN = 2.3;
+
+/**
+ * BOOK-173 §4 — the patch's own arithmetic. A patch is small in *characters* only: measured
+ * gate answers (1 027-char verdict → 10 161 out; 740 → 19 097) show the model bills thought,
+ * not prose, so the patch price carries a reasoning allowance and is never the guard.
+ */
+export const PATCH_CHARS_PER_TOKEN = 2.6;
+export const PATCH_NEW_CHARS_PER_EDIT = 300;
+export const REASONING_ALLOWANCE = 8_000;
 
 /** Two written neighbours at most, each `CHAPTER_CHARS.max`. */
 const NEIGHBOUR_ALLOWANCE = 2 * CHAPTER_CHARS.max;
@@ -69,8 +79,14 @@ export function canonChars(bookRoot: string): number {
 
 /** One pass's estimate: the money, the calls it assumes, and the assumptions it was built on. */
 export type PassEstimate = {
-  /** Rounded **up** to the cent: the check errs on the safe side. */
+  /** The **guard** — the rewrite figure, rounded up to the cent: the check errs on the safe side. */
   usd: number;
+  /** Today's arithmetic, kept as the upper bound the caps are checked against. */
+  usdRewrite: number;
+  /** The patch figure, for the money line only: never a guard, never a cap decision. */
+  usdPatch: number;
+  /** The mode the writer will run in, when the assignment is already known. */
+  mode: WriteMode | null;
   calls: number;
   tokensIn: number;
   tokensOut: number;
@@ -86,12 +102,23 @@ export type EstimateInput = {
   bookRoot?: string;
   /** Continuation calls the run may make (`WRITER_CONTINUE_MAX`). */
   continueMax?: number;
+  /** BOOK-173: the chosen write mode, once the assignment is known. */
+  mode?: WriteMode | null;
+  /** Patch assumptions: edits per answer and characters per edit (`WRITER_PATCH_MAX_EDITS`). */
+  patchEdits?: number;
+  patchNewChars?: number;
+  /** `WRITER_REASONING_ALLOWANCE`: completion tokens a patch call bills before its JSON. */
+  reasoningAllowance?: number;
 };
 
 /**
  * One pass, priced before it runs: writing calls (a draft, its retry, its continuations, plus
  * the revision cycle) at a whole chapter's completion, and the gate calls at the prompt with the
  * landed chapter in it. Prompt tokens are counted per call, because every call carries a prompt.
+ *
+ * Two prices, one guard. `usdRewrite` is the upper bound and `usdPatch` the display figure; the
+ * cap line reads `usd` (= `usdRewrite`), so an in-pass escalation to a rewrite can never cross
+ * an unforeseen cap.
  */
 export function estimatePassUsd(input: EstimateInput): PassEstimate {
   const continueMax = input.continueMax ?? 0;
@@ -111,8 +138,20 @@ export function estimatePassUsd(input: EstimateInput): PassEstimate {
   const tokensOut = writingCalls * outPerWriting + gateCalls * GATE_OUT_TOKENS;
   const raw = costUsd(input.pricing, { in: tokensIn, out: tokensOut, cachedIn: 0 });
 
+  // The patch: one call, the chapter in the prompt, reasoning before the JSON.
+  const patchEdits = input.patchEdits ?? 8;
+  const patchNewChars = input.patchNewChars ?? PATCH_NEW_CHARS_PER_EDIT;
+  const reasoningAllowance = input.reasoningAllowance ?? REASONING_ALLOWANCE;
+  const patchTokensIn = Math.ceil(promptChars / PATCH_CHARS_PER_TOKEN);
+  const patchTokensOut = Math.ceil((patchEdits * patchNewChars) / PATCH_CHARS_PER_TOKEN) + reasoningAllowance;
+  const patchRaw = costUsd(input.pricing, { in: patchTokensIn, out: patchTokensOut, cachedIn: 0 });
+
+  const usdRewrite = Math.ceil(raw * 100) / 100;
   return {
-    usd: Math.ceil(raw * 100) / 100,
+    usd: usdRewrite,
+    usdRewrite,
+    usdPatch: Math.round(patchRaw * 10_000) / 10_000,
+    mode: input.mode ?? null,
     calls: writingCalls + gateCalls,
     tokensIn,
     tokensOut,
@@ -125,6 +164,12 @@ export function estimatePassUsd(input: EstimateInput): PassEstimate {
       promptTokens,
       gateTokensIn: gateTokens,
       outPerWritingCall: outPerWriting,
+      patchCharsPerToken: PATCH_CHARS_PER_TOKEN,
+      patchEdits,
+      patchNewChars,
+      reasoningAllowance,
+      patchTokensIn,
+      patchTokensOut,
     },
   };
 }

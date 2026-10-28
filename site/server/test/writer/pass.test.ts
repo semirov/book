@@ -66,8 +66,7 @@ describe('runPass — one pass, end to end', () => {
       // 2. The step is closed with the pinned model and the summed tokens (writer + both gates).
       const step = stepRow(harness.fixture, result.stepId ?? '');
       expect(step).toMatchObject({ outcome: 'rewritten', model: 'deepseek/deepseek-v4-pro', cycle: 0 });
-      expect(step?.tokens_in).toBe(3_000);
-      expect(step?.tokens_out).toBe(600);
+      expect({ in: step?.tokens_in, out: step?.tokens_out }).toEqual({ in: 3_000, out: 600 });
 
       const spend = spendRow(harness, result.stepId ?? '');
       expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
@@ -259,7 +258,7 @@ describe('runPass — one pass, end to end', () => {
       // The first draft (start + return) and two continuations, each (start + return).
       expect(drafting).toHaveLength(6);
       expect(drafting[2]?.summary).toContain('продолжение');
-      expect(harness.calls[1]?.messages.at(-1)?.content).toContain('Продолжи прозу ровно с этого места.');
+      expect(harness.calls[1]?.messages.at(-1)?.content).toContain('Продолжи прозу ровно с того места, где она остановилась.');
       const written = readFileSync(join(harness.bookRoot, 'manuscript', 'ch40.md'), 'utf8');
       expect(written).toContain('Дописанный абзац.');
       expect(written).toContain('Дописанный абзац продолжается');
@@ -319,8 +318,9 @@ describe('runPass — one pass, end to end', () => {
       expect(harness.calls).toHaveLength(0);
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_stages').get()).toEqual({ n: 0 });
-      // The estimate is printed, with the day and the book it was measured against.
-      expect(harness.logs.some((line) => line.includes('оценка прохода $0,1800 (день 9,99 / 10,00, книга 9,99 / 1\u00A0000,00)'))).toBe(true);
+      // BOOK-173: the guard (rewrite), the patch figure, the mode, and the ledger it was measured against.
+      const printed = harness.logs.find((line) => line.includes('оценка прохода')) ?? '';
+      expect(printed).toMatch(/перепись \$0,1800 \/ правка \$\d,\d{4} · режим: ещё не выбран \(день 9,99 \/ 10,00, книга 9,99 \/ 1\u00A0000,00\)/u);
     } finally {
       await harness.close();
     }

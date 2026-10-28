@@ -3,6 +3,9 @@
  * Evidence, not the pass — a transcript that cannot be written never fails a pass, and the
  * prompt is carried as its hash beside the sections' own, so the file is not a second copy of
  * the canon. No key, no address, no reader identity: the body is the caller's.
+ *
+ * BOOK-173 §5: every call also carries its cache split (`cachedIn`, inside `usage.in`) and the
+ * prefix it was sent under, so the pass proves whether the cache-first layout hit at all.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -19,7 +22,21 @@ export type CallRecord = {
   user: string;
   answer: string;
   usage: PipelineUsage;
+  /** BOOK-173: the input the provider served from its cache, and the prefix it was sent under. */
+  cachedIn: number;
+  prefixSha256: string;
 };
+
+/** BOOK-173's additions to the receipt's body: the mode chosen and the patch that was applied. */
+export type PatchReceipt = {
+  edits: number;
+  changedChars: number;
+  fraction: number;
+  facts: number;
+  note: string | null;
+  dangling: 'no-predecessor' | null;
+};
+
 export function writeTranscript(dataDir: string, passId: string, body: unknown): void {
   const dir = join(dataDir, 'writer', 'transcripts');
   mkdirSync(dir, { recursive: true });

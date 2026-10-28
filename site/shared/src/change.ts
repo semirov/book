@@ -1,8 +1,7 @@
 /**
- * The writing engine's vocabulary (ARCHITECTURE.md §6A.2, §6A.7, §6A.8, §6B.3).
- *
- * One source for three consumers — the engine, the site and `bin/engine.mjs` — so a change, a
- * step, a seam or a verdict cannot mean two things in two processes; platform-neutral, no I/O.
+ * The writing engine's vocabulary (ARCHITECTURE.md §6A.2, §6A.7, §6A.8, §6B.3): one source for
+ * the engine, the site and `bin/engine.mjs`, so a change, a step, a seam or a verdict cannot
+ * mean two things in two processes; platform-neutral, no I/O.
  */
 
 import { TOTAL_CHAPTERS } from './book.ts';
@@ -127,6 +126,14 @@ export function normalizeRetroMode(raw: unknown): RetroMode | null {
     : null;
 }
 
+/** BOOK-173 — how wide a filing is: a span inside a written chapter, or the chapter itself. */
+export type ScopeHint = 'phrase' | 'chapter';
+
+/** A closed set: an unknown value is `null`, never a guess — the width decides the write mode. */
+export function normalizeScopeHint(raw: unknown): ScopeHint | null {
+  return raw === 'phrase' || raw === 'chapter' ? raw : null;
+}
+
 export type Finding = {
   severity: FindingSeverity;
   /** 'глава 9, абзац 14' + a quote of ≤10 words. */
@@ -240,20 +247,17 @@ export type Cascade = {
 };
 
 /**
- * BOOK-44 — a reader-written value travels marked. The mark sits *inside* the value, so a
- * nested read cannot lose it and a model sees `"untrusted": true` next to the words.
- * A copy that is not evidence for a model (a stage line, a summary) is unwrapped with `.value`
- * at its own call site.
+ * BOOK-44 — a reader-written value travels marked. The mark sits *inside* the value, so a nested
+ * read cannot lose it and a model sees `"untrusted": true` next to the words. A copy that is not
+ * evidence for a model (a stage line, a summary) is unwrapped with `.value` at its call site.
  */
 export type Untrusted<T> = { value: T; untrusted: true };
 
 /**
- * BOOK-7 — a chapter's premise: a reader's intervention on a slot that has no text yet.
- *
- * It is not prose and not a rewrite of a paragraph: it is one goal for the chapter's first
- * edition. `intent` is the change's validated public sentence (no author label, no comment
- * body) — a reader's sentence, marked so a nested read cannot lose the mark; `kind` is the
- * world-fact the reader brought, when they declared one.
+ * BOOK-7 — a chapter's premise: a reader's intervention on a slot with no text yet. It is not
+ * prose and not a rewrite of a paragraph but one goal for the first edition. `intent` is the
+ * change's validated public sentence (no author label, no comment body), marked so a nested
+ * read cannot lose the mark; `kind` is the world-fact the reader brought, when they named one.
  */
 export type PremiseAssignment = {
   intent: Untrusted<string>;
@@ -281,6 +285,8 @@ export type WriterAssignment = {
   intent: Untrusted<string> | null;
   /** BOOK-16 — which of the four world-facts the intervention brought; null when unknown. */
   interventionKind: InterventionKind | null;
+  /** BOOK-173 — `change.scope_hint`; `null` only when the step has no change at all. */
+  scopeHint: ScopeHint | null;
   /**
    * BOOK-7 — set on the first pass of a chapter that carries a reader's premise: the writer
    * takes it or refuses it with one plain reason, never silently ignores it. Null otherwise.
@@ -406,9 +412,8 @@ export type ChangeTrace = {
 // ── seam helpers ─────────────────────────────────────────────────────────────
 
 /**
- * `n` means the boundary (n−1 | n). Boundary 1 and the sentinel `'front'` are the same
- * seam (the first sheet touches chapter 1), so `1` normalises to `'front'` — one seam,
- * one name, in every table and every report.
+ * `n` means the boundary (n−1 | n). Boundary 1 and the sentinel `'front'` are the same seam
+ * (the first sheet touches chapter 1), so `1` normalises to `'front'` — one name everywhere.
  */
 export function normalizeSeamBoundary(value: unknown): SeamBoundary | null {
   if (value === 'front' || value === 'ending') return value;
@@ -441,13 +446,9 @@ export function seamReason(raw: unknown, max = 200): string {
 // ── the reader's line for a failed attempt ──────────────────────────────────
 
 /**
- * A failed attempt is **not** a filing's state: the lane tried the filing, the model answered
- * off-shape, the engine timed out, and the filing is still waiting for its turn. The reader is
- * told that in one sentence, and the engine's own word for the failure never leaves the server.
- *
- * This is the deck's line for the most common failure (a model that answered in the wrong
- * shape); the other two are the engine's silence and any failure whose code the reader has no
- * business reading.
+ * A failed attempt is **not** a filing's state: the lane tried it, the model answered off-shape
+ * or the engine timed out, and the filing still waits its turn. The reader is told that in one
+ * sentence; the engine's own word for the failure never leaves the server.
  */
 export const FAILED_ATTEMPT_LINE = 'модель ответила не по форме — заявка остаётся в очереди';
 export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
@@ -456,9 +457,8 @@ export const ATTEMPT_LINE = 'попытка не удалась — заявка
 /**
  * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`), or one of the two
  * lowercase handles the engine writes (`provider_shape`, `engine_timeout`). A lowercase snake
- * word is **not** a code by shape alone — «глава про west_wing» is a human sentence — so only
- * the known handles and the upper-case shape are refused. A sentence with capitals and no
- * underscore («Gate-Timeout», «глава 65 не готова») is a sentence.
+ * word is **not** a code by shape alone — «глава про west_wing» is a human sentence; nor is a
+ * sentence with capitals and no underscore («Gate-Timeout», «глава 65 не готова»).
  */
 const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:provider_shape|engine_timeout)\b/u;
 
@@ -468,9 +468,8 @@ export function holdsInternalCode(raw: unknown): boolean {
 }
 
 /**
- * Any stored reason as the reader may see it: `null` when there is none, the sentence itself
- * when it is one, and the fixed failure line when the text carries an internal code. Never a
- * code, never an empty string — the UI branches on `attempt`, not on a missing sentence.
+ * Any stored reason as the reader may see it: `null` when there is none, the sentence itself when
+ * it is one, the fixed failure line when it carries a code. Never a code, never an empty string.
  */
 export function readerReason(raw: unknown): string | null {
   const text = seamReason(raw);

@@ -46,8 +46,20 @@ export function apiModelOf(pipeline: Pipeline): string {
   return apiModelOfCore(pipeline);
 }
 
-/** This pass's money, from the book's one rate table. */
+/**
+ * This pass's money, from the book's one rate table (BOOK-173 §5).
+ *
+ * The provider's `prompt_tokens` is hit + miss, so cached input stays **inside** `in` and has
+ * to be split before billing: the cached part is charged at `cacheRead`, the rest at `input`.
+ * With `cachedIn: 0` the arithmetic is exactly today's — a number that cannot go down hides
+ * whether the cache-first layout works at all.
+ */
 export function costUsd(pricing: PipelinePricing, usage: PipelineUsage): number {
-  const usd = (usage.in / pricing.per) * pricing.input + (usage.out / pricing.per) * pricing.output;
+  const cachedIn = Math.max(0, Math.min(usage.cachedIn, usage.in));
+  const fresh = usage.in - cachedIn;
+  const usd =
+    (fresh / pricing.per) * pricing.input +
+    (cachedIn / pricing.per) * pricing.cacheRead +
+    (usage.out / pricing.per) * pricing.output;
   return Math.round(usd * 1_000_000) / 1_000_000;
 }

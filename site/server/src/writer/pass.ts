@@ -26,19 +26,21 @@
 
 import { readFileSync } from 'node:fs';
 
-import { CHAPTER_CHARS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
 import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient, EngineStateView, StartView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
-import { createLane, finalize, mergeContinuation, charsOf, assignmentData, type Answer, type GateRun, type Lane, type PassResult, type ProviderCall } from './passLane.ts';
+import { createLane, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
-import { buildContinuePrompt, buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
+import { chooseMode, type ModeChoice } from './mode.ts';
+import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import type { WriterMessage } from './provider.ts';
 import { failureOf, isTransportFailure, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
 import { changedSpans } from './span.ts';
 import { stageSummary } from './stages.ts';
@@ -83,7 +85,9 @@ function capLine(budget: BudgetDto, usd: number): string | null {
 function estimateLine(estimate: PassEstimate, budget: BudgetDto): string {
   const day = `${formatUsd(budget.day.spentUsd)} / ${formatUsd(budget.day.capUsd)}`;
   const book = `${formatUsd(budget.book.spentUsd)} / ${formatUsd(budget.book.capUsd)}`;
-  return `[writer] оценка прохода $${usd4(estimate.usd)} (день ${day}, книга ${book})`;
+  // BOOK-173: the guard is always the rewrite figure; the patch figure is display only.
+  const mode = estimate.mode === null ? 'режим: ещё не выбран' : `режим: ${estimate.mode === 'patch' ? 'правка' : 'перепись'}`;
+  return `[writer] оценка прохода $${usd4(estimate.usd)} · перепись $${usd4(estimate.usdRewrite)} / правка $${usd4(estimate.usdPatch)} · ${mode} (день ${day}, книга ${book})`;
 }
 
 export type PassDeps = {
@@ -101,49 +105,6 @@ export type PassDeps = {
   /** Lanes to ask for the next job, in order. Forward first: the book is written forward. */
   lanes?: Array<'fwd' | 'bwd'>;
 };
-
-/** The model's first answer, with one retry that carries the reason it was refused. */
-async function draftAnswer(lane: Lane, built: BuiltPrompt): Promise<Answer> {
-  const request: WriterMessage[] = [
-    { role: 'system', content: built.system },
-    { role: 'user', content: built.user },
-  ];
-  const first = await lane.ask('draft', request, 'draft');
-  const checked = lane.check(first.text, first.finishReason);
-  if (checked.ok) return checked;
-  const second = await lane.ask('repair', [
-    ...request,
-    { role: 'assistant', content: first.text.slice(0, 1_500) },
-    {
-      role: 'user',
-      content: `## Отказ\n\nПредыдущий ответ не прошёл проверку: ${checked.reason}.\nВерни главу заново, целиком: первая строка — название, вторая — пустая, дальше проза. Причину отказа учти.`,
-    },
-  ]);
-  return lane.check(second.text, second.finishReason);
-}
-
-/** Continuations keep writing until the chapter reaches the thin line or the budget stops it. */
-async function continueDraft(lane: Lane, input: { bookRoot: string; chapter: number; text: string; max: number }): Promise<string> {
-  let text = input.text;
-  let continuations = 0;
-  while (continuations < input.max && charsOf(input.chapter, text) < CHAPTER_CHARS.min) {
-    const continuation = buildContinuePrompt({ bookRoot: input.bookRoot, written: text });
-    const more = await lane.ask(
-      'continue',
-      [
-        { role: 'system', content: continuation.system },
-        { role: 'user', content: continuation.user },
-      ],
-      'continue',
-    );
-    const next = lane.check(mergeContinuation(input.chapter, text, more.text), more.finishReason);
-    // A continuation that breaks a rule is dropped: the chapter that validates already stands.
-    if (!next.ok || next.text.length <= text.length) break;
-    text = finalize(next.text);
-    continuations += 1;
-  }
-  return text;
-}
 
 /** Run one pass. Returns a typed result and never throws. */
 export async function runPass(deps: PassDeps): Promise<PassResult> {
@@ -268,6 +229,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     // A resumed step already has its text on disk: the lane continues at the gates, not at the pen.
     const resume = job.landed === true;
     let text = '';
+    // What the writing phase needs from above: the mode and the rewrite prompt it falls back to.
+    let choice: ModeChoice = chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, false);
+    let rewritePrompt: BuiltPrompt | null = null;
 
     if (!resume) {
       // 4. `start`, then the pre-image — before a single byte of the chapter changes.
@@ -285,14 +249,22 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       }
       beforeText = readChapter(bookRoot, chapter).exists ? readFileSync(chapterPath(bookRoot, chapter), 'utf8') : '';
 
-      // 5. The prompt, and the stage that says it was assembled.
+      // 5. The mode (§4), the prompt, and the stage that says both were assembled.
+      //    The rewrite prompt is built even in patch mode: the model may decline in one step.
+      const own = readChapter(bookRoot, chapter);
+      choice = chooseMode({ pass: job.pass, scopeHint: job.scopeHint }, isWrittenChapter(own));
       let built: BuiltPrompt;
+      let patchPrompt: PatchPrompt | null = null;
       try {
-        built = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
+        const data = assignmentData(job);
+        rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data });
+        if (choice.mode === 'patch') patchPrompt = buildPatchPrompt({ bookRoot, chapter, assignment: data });
+        built = patchPrompt ?? rewritePrompt;
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
-      lane.setPrompt(built.sections.length, built.promptSha256);
+      lane.setPrompt(built.sections.length, built.promptSha256, built.prefixSha256);
+      lane.setMode(choice.mode, null);
       const neighbours = [chapter - 1, chapter + 1].filter(
         (n) => isChapterNumber(n) && isWrittenChapter(readChapter(bookRoot, n)),
       );
@@ -305,6 +277,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
           sections: built.sections.length,
           chars: built.system.length + built.user.length,
           neighbours,
+          mode: choice,
         }),
         model: null,
         at: now(),
@@ -320,6 +293,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
               pricing: config.pipeline.pricing,
               promptChars: built.system.length + built.user.length,
               continueMax: config.continueMax,
+              mode: choice.mode,
+              patchEdits: config.patchMaxEdits,
+              reasoningAllowance: config.reasoningAllowance,
             });
             lane.setEstimate(real);
             const crossed = capLine(fresh, real.usd);
@@ -335,20 +311,31 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         }
       }
 
-      // 7. The model: one answer, one retry with the reason, then the continuation calls.
-      const checked = await draftAnswer(lane, built);
-      if (!checked.ok) {
-        // Only the model's own refusal of the work refuses the premise; a failed call, a cut
-        // answer or a broken shape is a pass that broke, never the reader's intervention declined.
+      // 7. The writing phase (`writePhase.ts`): patch or rewrite, one session, one attempt.
+      //    Only the model's own refusal of the work refuses the premise; a failed call, a cut
+      //    answer or a broken patch is a pass that broke.
+      const written = await writeChapter({
+        lane,
+        bookRoot,
+        chapter,
+        mode: choice,
+        rewrite: rewritePrompt as BuiltPrompt,
+        patch: patchPrompt,
+        continueMax: config.continueMax,
+        patchMaxFraction: config.patchMaxFraction,
+        patchMaxEdits: config.patchMaxEdits,
+      });
+      if (!written.ok) {
+        lane.setMode(written.mode, written.patch);
         return await lane.park({
-          code: checked.code,
-          detail: `ответ модели не прошёл проверку: ${checked.code}: ${checked.reason}`.slice(0, 300),
+          code: written.code,
+          detail: written.detail,
           fallback: readerFallbacks.gate,
-          cause: checked.code === 'ANSWER_REFUSAL' ? 'refused' : 'failed',
+          cause: written.cause,
         });
       }
-      text = finalize(checked.text);
-      text = await continueDraft(lane, { bookRoot, chapter, text, max: config.continueMax });
+      text = written.text;
+      lane.setMode(written.mode, written.patch);
 
       // 8. The write, and the landing that makes it a revision.
       try {
@@ -434,6 +421,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         blocks: parsed.blocks.length,
         tokensIn: usage.in,
         tokensOut: usage.out,
+        tokensCachedIn: usage.cachedIn,
         costUsd: passCost,
       }),
       model: config.model,

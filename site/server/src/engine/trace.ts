@@ -21,7 +21,7 @@ import type {
   WriterAssignment,
 } from '@book/shared';
 import {
-  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, parseSeams } from '@book/shared';
+  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, normalizeScopeHint, parseSeams } from '@book/shared';
 
 import type { StepRow, VerdictRow } from './store.ts';
 import * as store from './store.ts';
@@ -201,6 +201,8 @@ export function writerAssignment(
           },
     expectation: step.pass === 'draft' ? { chars: { min: CHAPTER_CHARS.min, max: CHAPTER_CHARS.max } } : null,
     intent: change ? { value: change.intent, untrusted: true } : null,
+    // BOOK-173: the filing's own width, from the change row; a step without a change has none.
+    scopeHint: change === undefined ? null : normalizeScopeHint(change.scope_hint),
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.
     interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),

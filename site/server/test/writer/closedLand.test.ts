@@ -52,7 +52,7 @@ describe('the writer takes its text back when the step closed under it', () => {
     const harness = await createHarness({ chapters: { [CHAPTER]: original } });
     try {
       harness.ingest(CHAPTER);
-      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 40 появляется документ о допуске' });
+      harness.fixture.engine.enqueue({ kind: 'operator', chapter: CHAPTER, intent: 'в главе 40 появляется документ о допуске', scopeHint: 'chapter' });
       harness.script.push(chapterAnswer('Глава сорок', 'новый'));
       closeStepBeforeLand(harness);
 

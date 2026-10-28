@@ -14,7 +14,8 @@ import { TOTAL_CHAPTERS } from '@book/shared';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { buildGatePrompt, parseGateAnswer } from '../../src/writer/gates.ts';
-import { PromptError, rolePromptOf } from '../../src/writer/prompt.ts';
+import { PromptError, buildWriterPrompt, canonText, rolePromptOf } from '../../src/writer/prompt.ts';
+import { sha256Hex } from '../../src/util/hash.ts';
 
 const dirs: string[] = [];
 
@@ -168,26 +169,45 @@ describe('buildGatePrompt', () => {
       indexSlice: '{"chapter":9,"entities":[]}',
     });
 
+    // BOOK-173 §5: canon → role → contract are the prefix; the evidence is the tail.
     expect(prompt.system).toContain('# EDITOR');
     expect(prompt.system).not.toContain('# SCIENCE CONSULTANT');
-    expect(prompt.user).toContain('канон концепции');
+    expect(prompt.system).toContain('канон концепции');
+    expect(prompt.system).toContain('severity · location · defect · fix');
+    expect(prompt.user).not.toContain('канон концепции');
     expect(prompt.user).toContain('Просмотренный текст главы.');
     expect(prompt.user).toContain('Написанный сосед.');
     expect(prompt.user).toContain('"intent": "документ о допуске"');
     expect(prompt.user).toContain('## Указатель');
-    expect(prompt.user).toContain('severity · location · defect · fix');
+    expect(prompt.prefixSha256).toBe(sha256Hex(prompt.system));
     expect(prompt.sections.map((section) => section.id)).toEqual([
-      'role',
       'canon:concept/CONCEPT.md',
       'canon:concept/CLIMAX.md',
       'canon:style/VOICE.md',
       'canon:outline/PLAN.md',
+      'role',
+      'contract',
       'landed',
       'neighbours',
       'assignment',
       'index',
-      'contract',
     ]);
+  });
+
+  it('gives writer, editor and consultant the same canon prefix, byte for byte', () => {
+    const root = book();
+    const writer = buildWriterPrompt({
+      bookRoot: root,
+      assignment: { chapter: 9, pass: 'change', intent: null, interventionKind: null, premise: null, expectation: null },
+    });
+    const editor = buildGatePrompt({ bookRoot: root, role: 'editor', chapter: 9, assignment: {}, landedText: 'Глава девять\n\nТекст.', indexSlice: null });
+    const consultant = buildGatePrompt({ bookRoot: root, role: 'consultant', chapter: 9, assignment: {}, landedText: 'Глава девять\n\nТекст.', indexSlice: null });
+    const canon = canonText(root);
+    for (const prompt of [writer, editor, consultant]) expect(prompt.system.startsWith(canon)).toBe(true);
+    // The canon part ends exactly where the role fence begins: one shared prefix up to the role.
+    expect(writer.system.indexOf('# WRITER')).toBe(canon.length + 2);
+    expect(editor.system.indexOf('# EDITOR')).toBe(canon.length + 2);
+    expect(consultant.system.indexOf('# SCIENCE CONSULTANT')).toBe(canon.length + 2);
   });
 
   it('gives the consultant §3 and no index slice', () => {

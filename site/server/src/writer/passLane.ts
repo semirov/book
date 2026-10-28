@@ -12,13 +12,15 @@ import { join } from 'node:path';
 import { chapterLabel, type WriterAssignment } from '@book/shared';
 
 import { chapterPath, readChapter } from '../engine/text.ts';
-import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import { sha256Hex } from '../util/hash.ts';
 import type { EngineClient, GateAssignmentView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
 import { buildGatePrompt, parseGateAnswer, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
+import type { WriteMode } from './mode.ts';
+import { finalize } from './prose.ts';
+import type { PatchReceipt } from './transcript.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { restorePreSnapshot } from './revert.ts';
@@ -53,32 +55,6 @@ export type Answer = ReturnType<typeof validateAnswer>;
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
   return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
-}
-
-function stripFence(value: string): string {
-  const text = value.trim();
-  const match = /^```[a-zA-Z]*\n([\s\S]*?)\n?```$/u.exec(text);
-  return match?.[1] === undefined ? text : match[1].trim();
-}
-
-/** The prose of a continuation, with a repeated title line dropped and a stray fence stripped. */
-export function mergeContinuation(chapter: number, written: string, raw: string): string {
-  const addition = stripFence(normalizeChapterText(raw)).trim();
-  if (addition.length === 0) return written;
-  const title = parseChapter(chapter, written).title;
-  const first = (addition.split('\n')[0] ?? '').trim();
-  const body = title !== null && first === title ? addition.slice(first.length).trimStart() : addition;
-  if (body.length === 0) return written;
-  return `${written.trimEnd()}\n\n${body}`;
-}
-
-/** The bytes that land: the validated text, one trailing newline, nothing else touched. */
-export function finalize(text: string): string {
-  return `${text.trimEnd()}\n`;
-}
-
-export function charsOf(chapter: number, text: string): number {
-  return parseChapter(chapter, text).chars;
 }
 
 /** The assignment as the prompt may quote it (`prompt.ts` narrows it the same way). */
@@ -139,7 +115,9 @@ export type Lane = {
   writerTokens(): { in: number; out: number };
   /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
   model(): string | null;
-  setPrompt(sections: number, sha256: string | null): void;
+  setPrompt(sections: number, sha256: string | null, prefixSha256: string | null): void;
+  /** BOOK-173: the write mode the pass actually ran, and the patch it applied (when it did). */
+  setMode(mode: WriteMode | null, patch: PatchReceipt | null): void;
   setEstimate(value: PassEstimate): void;
 };
 
@@ -154,6 +132,9 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   let mismatch: { declared: string; reported: string } | null = null;
   let promptSections = 0;
   let promptSha256: string | null = null;
+  let promptPrefix: string | null = null;
+  let mode: WriteMode | null = null;
+  let patch: PatchReceipt | null = null;
   let estimate: PassEstimate | null = null;
   // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
   let failure: Failure | null = null;
@@ -228,15 +209,19 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     if (mismatch === null && result.responseModel !== config.model && result.responseModel !== config.apiModel) {
       mismatch = { declared: config.model, reported: result.responseModel };
     }
+    const system = messages.find((message) => message.role === 'system')?.content ?? '';
     calls.push({
       kind,
-      system: messages.find((message) => message.role === 'system')?.content ?? '',
+      system,
       user: messages
         .filter((message) => message.role !== 'system')
         .map((message) => message.content)
         .join('\n\n'),
       answer: result.text,
       usage: result.usage,
+      // BOOK-173 §5: the call's cache split and the prefix it was sent under, per call.
+      cachedIn: result.usage.cachedIn,
+      prefixSha256: sha256Hex(system),
     });
     if (purpose !== undefined) {
       await emit({
@@ -342,6 +327,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       writeTranscript(input.dataDir, job.stepId, {
         chapter, at: now(), model: config.model, apiModel: config.apiModel,
         reportedModel: reported, modelMismatch: mismatch, promptSha256,
+        cachePrefix: promptPrefix, mode, patch,
         sections: promptSections, estimate, note, failure,
         result: { status: result.status, reason: result.reason ?? null },
         calls,
@@ -425,6 +411,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
+    // A revision is a whole chapter, whatever the filing said: the mode follows the text.
+    mode = 'rewrite';
     const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
     const rows = findings
       .slice(0, MAX_FINDINGS_IN_PROMPT)
@@ -484,9 +472,14 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     usage: () => all,
     writerTokens: () => ({ ...written }),
     model: () => laneModel(),
-    setPrompt: (sections, sha) => {
+    setPrompt: (sections, sha, prefix) => {
       promptSections = sections;
       promptSha256 = sha;
+      promptPrefix = prefix;
+    },
+    setMode: (nextMode, nextPatch) => {
+      mode = nextMode;
+      patch = nextPatch;
     },
     setEstimate: (value) => {
       estimate = value;
