@@ -29,7 +29,7 @@ export { liveChapter } from '../lib/grip.ts';
  *
  * The door is a **cut under a veil, never a scroll** (#3797 §3): any programmatic scroll
  * across a chapter drags the eye through text the reader did not ask for, and it fires the
- * grip's own 48 px rule mid-transition. `scrollToChapter` (smooth) is never called here.
+ * grip's own 48 px rule mid-transition. `scrollToChapter` is never called here.
  */
 
 export type FootJumpsChange = { id: string; decidedAt: string | null; enqueuedAt: string };

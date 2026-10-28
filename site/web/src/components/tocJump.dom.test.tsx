@@ -165,7 +165,8 @@ beforeEach(async () => {
   scrollY = 0;
   scrollTo.mockClear();
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(prefers-reduced-motion: reduce)',
+    // No reduced-motion preference: a jump is the landing's own rule, not the reader's setting.
+    matches: false,
     media: query,
     onchange: null,
     addEventListener: () => undefined,
@@ -206,6 +207,8 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
     await act(async () => rowOf(2).click());
 
     expect(scrollTo).toHaveBeenCalledTimes(1);
+    // One jump to the reading line, with no travel in between.
+    expect(scrollTo.mock.calls[0]?.[0]?.behavior).toBe('auto');
     const headerBottom = document.querySelector<HTMLElement>('.top')!.getBoundingClientRect().bottom;
     const landing = heading!.getBoundingClientRect().top;
     expect(Math.abs(landing - (headerBottom + BREATHING_PX))).toBeLessThanOrEqual(2);
@@ -223,7 +226,8 @@ describe('a tap on a contents row lands the chapter at the head’s lower edge',
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo.mock.calls[0]?.[0]).toMatchObject({
       top: chapterTop(4) - (HEADER_PX + BREATHING_PX),
-      // The fixture asks for reduced motion: an instant landing, never an animation.
+      // A jump, never an animation: measured in a real Chromium, a smooth landing from the
+      // colophon moved 5 px in 1.8 s and the tap read as a tap that did nothing.
       behavior: 'auto',
     });
     expect(scrollY).toBe(chapterTop(4) - (HEADER_PX + BREATHING_PX));

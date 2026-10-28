@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * BOOK-168 — a copied *place* names the paragraph (`#ch-3-b12`), and the address bar can change
  * while the page is open: both land with the page's own measurement, once, and a fragment that
- * moved nothing is not reported as an open.
+ * moved nothing is not reported as an open. A cold place fragment jumps to the chapter's mouth
+ * first (which starts the chapter's own read) and lands the paragraph when it arrives; a
+ * back/forward re-runs the landing for the hash it names.
  */
 
 vi.mock('./analytics.ts', async (importOriginal) => {
@@ -32,6 +34,8 @@ function Probe({ ready }: { ready: boolean }) {
 let container: HTMLDivElement;
 let root: Root;
 const scroll = vi.fn();
+/** The frames the page has not spent yet: a landing's wait is driven here, one frame at a time. */
+let frames: FrameRequestCallback[] = [];
 
 function box(element: HTMLElement, top: number, height: number): HTMLElement {
   element.getBoundingClientRect = () =>
@@ -56,12 +60,25 @@ function chapter(n: number, blockIndex: number | null = null): void {
 async function settle(): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
-    for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+    for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+  });
+}
+
+/** Spend the frames a landing is waiting for: the page's clock, one frame at a time. */
+async function pump(times: number): Promise<void> {
+  await act(async () => {
+    for (let index = 0; index < times; index += 1) {
+      const due = frames;
+      frames = [];
+      for (const callback of due) callback(index * 16);
+      for (let turn = 0; turn < 4; turn += 1) await Promise.resolve();
+    }
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  frames = [];
   vi.stubGlobal('matchMedia', () => ({ matches: false, media: '', addEventListener: () => undefined, removeEventListener: () => undefined }));
   // The jump is one `window.scrollTo` at the measured offset (`dom.ts` `scrollToChapter`): the
   // page, not the element, owns the arithmetic now.
@@ -69,6 +86,10 @@ beforeEach(() => {
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
   Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
   Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 0 });
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -118,8 +139,32 @@ describe('useDeepLink', () => {
 
     expect(scroll).toHaveBeenCalledTimes(1);
     // The paragraph's top (1 400) at the reading line: no head on this page, so the breathing
-    // space alone (8 px) — the same sum `landingScroll` states as numbers.
-    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 1392, behavior: 'smooth' });
+    // space alone (8 px) — the same sum `landingScroll` states as numbers. One jump, no travel.
+    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 1392, behavior: 'auto' });
+    expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 3 });
+  });
+
+  it('jumps to the chapter’s mouth first when the paragraph has not been read yet', async () => {
+    // A cold load: the chapter is on the page, its prose is not. The chapter's own read starts
+    // when the slot comes near the viewport, so the landing goes there and waits.
+    window.location.hash = '#ch-3-b12';
+    chapter(3);
+
+    await act(async () => root.render(<Probe ready />));
+    await settle();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.calls[0]?.[0]).toEqual({ top: 992, behavior: 'auto' });
+    expect(track).not.toHaveBeenCalled();
+
+    // The read commits the paragraph a few frames later: the landing finishes on it.
+    const paragraph = document.createElement('p');
+    paragraph.id = 'ch-3-b12';
+    box(paragraph, 1400, 40);
+    document.getElementById('ch-3')?.append(paragraph);
+    await pump(3);
+
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.mock.calls[1]?.[0]).toEqual({ top: 1392, behavior: 'auto' });
     expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 3 });
   });
 
@@ -135,6 +180,31 @@ describe('useDeepLink', () => {
 
     expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 5 });
     expect(scroll).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-runs the landing once for a back/forward, and not twice for the same hash', async () => {
+    chapter(7);
+
+    await act(async () => root.render(<Probe ready />));
+    await settle();
+    expect(scroll).not.toHaveBeenCalled();
+
+    // Back/forward: the browser fires `popstate`, and the hash it restored is landed once.
+    history.replaceState(null, '', '#ch-7');
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await settle();
+    expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 7 });
+    expect(scroll).toHaveBeenCalledTimes(1);
+
+    // The same hash again (another popstate on the same entry): nothing to act on.
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    await settle();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledTimes(1);
   });
 
   it('claims no open for a fragment that moved nothing', async () => {

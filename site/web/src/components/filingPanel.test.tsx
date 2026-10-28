@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { commentStatusLine } from '../lib/commentView.ts';
+import panelsCss from '../styles/panels.css?raw';
+import { firstDeclarations } from './cssRules.ts';
 import { FilingPanel } from './FilingPanel.tsx';
 
 /**
@@ -130,5 +132,19 @@ describe('the filing panel’s state line (BOOK-90)', () => {
     expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
     // The same card without the loaded change still says it: the line is the deck's.
     expect(render(row)).toContain(FAILED_ATTEMPT_LINE);
+  });
+});
+
+describe('the card is out of the page’s flow before it is placed (BOOK-168)', () => {
+  it('stands `position: fixed` from its first paint — it can never extend the document', () => {
+    // Measured in a real Chromium (owner, 2026-10-28): the card is portaled to `document.body` and
+    // was static until `placePanel` wrote its box, so the unplaced card stood at the document's
+    // end — its own focus scrolled the page to the colophon and the door's landing was lost. The
+    // base rule is fixed now, and the placement only writes geometry on top of it.
+    const base = firstDeclarations(panelsCss, '.filing-panel');
+    expect(base).toMatch(/position:\s*fixed/u);
+    // Fixed at the viewport's origin before the placement lands, never at a static body position.
+    expect(base).toMatch(/top:\s*0;/u);
+    expect(base).toMatch(/left:\s*0;/u);
   });
 });

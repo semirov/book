@@ -32,9 +32,11 @@ export const OWN_BLOCK_TOP = 3320;
 
 /** The scroll the page asked for, as `window.scrollY`. */
 export const scrollState = { y: 0 };
-export const scrollTo = vi.fn((options: ScrollToOptions) => {
+/** What the page does with a scroll request: it moves there. */
+export function jumpTo(options: ScrollToOptions): void {
   scrollState.y = Number(options.top ?? 0);
-});
+}
+export const scrollTo = vi.fn(jumpTo);
 
 export function rect(top: number, height: number): DOMRect {
   return {
@@ -166,9 +168,10 @@ export function openPlacePage(): PlacePage {
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: VIEWPORT.height });
   Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollState.y });
   vi.stubGlobal('scrollTo', scrollTo);
-  // The fixture asks for an instant landing: the arithmetic is what these files measure.
+  // The fixture asks for no reduced-motion preference, so the instant landing is the code's own
+  // rule and not the reader's setting (owner, 2026-10-28).
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(prefers-reduced-motion: reduce)',
+    matches: false,
     media: query,
     onchange: null,
     addEventListener: () => undefined,
@@ -193,9 +196,14 @@ export function openPlacePage(): PlacePage {
       root ??= createRoot(container);
       await act(async () => root?.render(node));
     },
-    settle: async (turns = 8) => {
+    settle: async (turns = 4) => {
       await act(async () => {
-        for (let turn = 0; turn < turns; turn += 1) await Promise.resolve();
+        // A landing's wait is a chain of frames and microtasks: one task turn drains the whole
+        // chain (every frame here resolves immediately), so the door is done when this returns.
+        for (let turn = 0; turn < turns; turn += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          await Promise.resolve();
+        }
       });
     },
     close: async () => {

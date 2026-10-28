@@ -13,10 +13,11 @@ import { chapterLinkFromHash } from './route.ts';
  *
  * BOOK-168 — the same fragment may name a paragraph (`#ch-3-b12`, the href a place door
  * carries) and the address bar may change while the page is open: a pasted link, a door's
- * copy, the browser's own "open in this tab". Both are handled here, and both land with the
- * page's one measurement (`landFragment`): the paragraph once its chapter has been read, the
- * chapter's mouth when it never arrives, and nothing at all for a chapter that is not on this
- * page. A hash that has already been acted on is not acted on twice.
+ * copy, the browser's own "open in this tab", and a back/forward (`hashchange`, `popstate`).
+ * All of them land with the page's one measurement (`landFragment`): the paragraph once its
+ * chapter has been read — the landing jumps to the chapter first, which is what starts the
+ * read — the chapter's mouth when it never arrives, and nothing at all for a chapter that is
+ * not on this page. A hash that has already been acted on is not acted on twice.
  *
  * The hook is separate from `App` because the page is at its line budget: the act is small,
  * the book is what the file is for.
@@ -41,8 +42,10 @@ export function useDeepLink(ready: boolean): void {
     };
     open();
     window.addEventListener('hashchange', open);
+    window.addEventListener('popstate', open);
     return () => {
       window.removeEventListener('hashchange', open);
+      window.removeEventListener('popstate', open);
     };
   }, [ready]);
 }

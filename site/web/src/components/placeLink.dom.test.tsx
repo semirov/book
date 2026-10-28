@@ -14,10 +14,12 @@ import {
   PLATE_PX,
   VIEWPORT,
   comment,
+  jumpTo,
   mountPage,
   openPlacePage,
   placeBox,
   rect,
+  scrollState,
   scrollTo,
   closePlacePage,
   type PlacePage,
@@ -210,8 +212,71 @@ describe('a filing whose paragraph was rewritten', () => {
     await page.settle();
 
     expect(onLoadChapter).toHaveBeenCalledWith(3);
-    expect(scrollTo).toHaveBeenCalledTimes(1);
-    expect(scrollTo).toHaveBeenCalledWith({ top: BLOCK_TOP - OFFSET_TOP, behavior: 'auto' });
+    // The chapter's mouth first — the jump that starts its read — then the paragraph itself.
+    expect(scrollTo.mock.calls.map((call) => call[0]?.top)).toEqual([
+      CHAPTER_TOP[3] - OFFSET_TOP,
+      BLOCK_TOP - OFFSET_TOP,
+    ]);
+    expect(scrollTo.mock.calls.every((call) => call[0]?.behavior === 'auto')).toBe(true);
+    expect(currentFiling()?.comment?.id).toBe('cmt_1');
+    expect(currentFiling()?.rect.top).toBe(document.getElementById('ch-3-b3')!.getBoundingClientRect().top);
+    expect(panel()?.querySelector('.filing-place-note')).toBeNull();
+  });
+
+  it('opens the card after the landing, never before the page has moved', async () => {
+    mountPage();
+    await page.render(<PlaceLink place={comment()}>«Я посмотрел на часы.»</PlaceLink>);
+    // What the card looked like at the moment the page moved: nothing was open yet.
+    const openAtScroll: unknown[] = [];
+    scrollTo.mockImplementation((options: ScrollToOptions) => {
+      openAtScroll.push(currentFiling());
+      jumpTo(options);
+    });
+    try {
+      await act(async () => { linkOf().click(); });
+    } finally {
+      scrollTo.mockImplementation(jumpTo);
+    }
+
+    expect(openAtScroll).toEqual([null]);
+    expect(panel()).not.toBeNull();
+  });
+
+  it('lets a second tap take the landing: one card, one paragraph landing', async () => {
+    mountPage();
+    const late = comment({
+      anchor: { blockId: 'ch03#b3', blockIndex: 3, quote: 'Свет был не для меня.', prefix: null, suffix: null, resolved: true },
+    });
+    // The read is held open, so the first door is still waiting when the second tap arrives.
+    const pending: Array<() => void> = [];
+    const onLoadChapter = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        pending.push(resolve);
+      });
+    await page.render(
+      <PlaceLink place={late} onLoadChapter={onLoadChapter}>
+        «Свет был не для меня.»
+      </PlaceLink>,
+    );
+    const link = linkOf();
+
+    await act(async () => { link.click(); });
+    await act(async () => { link.click(); });
+    expect(pending).toHaveLength(2);
+
+    // The read commits the paragraph, and both doors wake up: only the newest may land.
+    const block = document.createElement('p');
+    block.id = 'ch-3-b3';
+    block.dataset.blockId = 'ch03#b3';
+    placeBox(block, BLOCK_TOP, 40);
+    document.getElementById('ch-3')?.append(block);
+    for (const release of pending) release();
+    await page.settle();
+
+    const landings = scrollTo.mock.calls.map((call) => call[0]?.top);
+    // One chapter jump per tap (the second tap is a new landing), one paragraph landing in all.
+    expect(landings.filter((top) => top === BLOCK_TOP - OFFSET_TOP)).toHaveLength(1);
+    expect(document.querySelectorAll('.filing-panel')).toHaveLength(1);
     expect(currentFiling()?.comment?.id).toBe('cmt_1');
     expect(panel()?.querySelector('.filing-place-note')).toBeNull();
   });
@@ -271,12 +336,47 @@ describe('the landing never leaves the target under the footer grip', () => {
   });
 });
 
-describe('the landing honours the reader’s motion setting', () => {
-  it('asks for a smooth travel when no reduced-motion preference is set', async () => {
+describe('the landing is a jump, not a journey', () => {
+  it('asks for an instant scroll even when the reader has no reduced-motion preference', async () => {
     mountPage();
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query }));
     await page.render(<PlaceLink place={comment()}>«Я посмотрел на часы.»</PlaceLink>);
     await act(async () => { linkOf().click(); });
-    expect(scrollTo).toHaveBeenCalledWith({ top: BLOCK_TOP - OFFSET_TOP, behavior: 'smooth' });
+    // Measured in a real Chromium: a smooth landing over 108 000 px moved 5 px in 1.8 s and the
+    // card opened at the colophon. The landing is one jump, so the rect the card gets is final.
+    expect(scrollTo).toHaveBeenCalledWith({ top: BLOCK_TOP - OFFSET_TOP, behavior: 'auto' });
+    expect(currentFiling()?.rect.top).toBe(document.getElementById('ch-3-b12')!.getBoundingClientRect().top);
+  });
+});
+
+describe('the card never moves the page it was opened on', () => {
+  it('takes focus without scrolling: the landing stands, and nothing asks the page to move again', async () => {
+    mountPage();
+    await page.render(<PlaceLink place={comment()}>«Я посмотрел на часы: девять сорок две.»</PlaceLink>);
+
+    // Measured in a real Chromium (owner, 2026-10-28): the card is portaled to `document.body`,
+    // and its own focus — a plain `focus()` scrolls the node into view — moved the page from the
+    // landed paragraph (scrollY 16 420) to the end of the document (scrollY 112 652) with no
+    // second `scrollTo`. Every focus the open performs is recorded here, with its options.
+    const focuses: Array<FocusOptions | undefined> = [];
+    const realFocus = HTMLElement.prototype.focus;
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLElement, options?: FocusOptions): void {
+        focuses.push(options);
+        realFocus.call(this, options);
+      });
+    try {
+      await act(async () => { linkOf().click(); });
+    } finally {
+      spy.mockRestore();
+    }
+
+    // One scroll: the landing. The card's focus is the only other act, and it owns no scroll.
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollState.y).toBe(BLOCK_TOP - OFFSET_TOP);
+    expect(focuses).toEqual([{ preventScroll: true }]);
+    // And the focus still went into the card: the page may not move, the reader still arrives.
+    expect(document.activeElement).toBe(panel());
   });
 });
