@@ -69,11 +69,10 @@ describe('runPass — one pass, end to end', () => {
       expect(step?.tokens_in).toBe(3_000);
       expect(step?.tokens_out).toBe(600);
 
-      // 2b. The ledger row is priced on the pin, equal to the cost of the usage the step summed.
       const spend = spendRow(harness, result.stepId ?? '');
       expect(spend).toMatchObject({ model: harness.config.model, priced: 1 });
       expect(Number(spend?.usd)).toBeGreaterThan(0);
-      // Writer (3 000/600) plus the two prose gates (1 000/200 each): the step's whole pass.
+      // 2b. The ledger is priced on the pin: writer (3 000/600) + two prose gates (1 000/200 each).
       expect(Number(spend?.usd)).toBe(costUsd(harness.config.pipeline.pricing, { in: 5_000, out: 1_000, cachedIn: 0 }));
 
       // 3. The premise settles as applied — the change is not a cascade.
@@ -308,7 +307,7 @@ describe('runPass — one pass, end to end', () => {
   it('answers idle for a day whose cap the estimate would cross, and opens nothing', async () => {
     const harness = await createHarness();
     try {
-      // $9.99 of $10 spent: a pass costs ≈ $0.20 before the prompt is built, so it does not fit.
+      // $9.99 of $10 spent: a pass costs ≈ $0.18 before the prompt is built, so it does not fit.
       harness.hooks.budget = budgetOf({ daySpent: 9.99 });
       const result = await harness.run({ chapter: CHAPTER });
 
