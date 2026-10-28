@@ -82,7 +82,7 @@ export function RowsList({
       ) : null}
       {rows.over > 0 ? (
         <div className="rec-fold rec-fold-end">
-          <span>{`показаны 6 из ${String(total)}`}</span>
+          <span>{`показаны ${String(rows.rows.length)} из ${String(total)}`}</span>
           {lifted ? (
             <button type="button" onClick={onFold}>
               свернуть

@@ -118,7 +118,7 @@ describe('the way out (BOOK-115)', () => {
     // The row's last child is the button — the name and the separator come before it.
     expect(inner.trimEnd().endsWith('</button>')).toBe(true);
     expect(inner.indexOf('Филипп')).toBeLessThan(inner.indexOf('<button'));
-    // The name keeps its case in the source; the register's uppercase is CSS.
+    // The name keeps its case in the source, and the page has no case transform to change it.
     expect(inner).not.toContain('ВЫЙТИ');
   });
 
@@ -335,9 +335,11 @@ describe('the logout row’s sheet (BOOK-115)', () => {
     // The button takes the row's face through the reset — `button { font: inherit }` — so the
     // word is mono without a second `font-family` on `.logout`.
     expect(unionDeclarations(sheets['../styles/base.css'] ?? '', 'button')).toContain('font: inherit');
-    // The house error ink, one line under the row, at the 12 px floor.
+    // The house error ink, one line under the row: a refusal is a sentence a reader reads, so
+    // serif 15 (BOOK-128 #3900) — the row above it stays the marks' mono 12.
     const error = unionDeclarations(book, '.colophon .logout-error');
-    expect(error).toContain('font-size: var(--fs-micro)');
+    expect(error).toContain('font-family: var(--serif)');
+    expect(error).toContain('font-size: var(--fs-note)');
     expect(error).toContain('color: var(--revise)');
     // The focus ring is the global `:focus-visible`; the row does not replace it.
     expect(book).not.toMatch(/\.logout[^{]*\{[^}]*outline:\s*none/u);
@@ -413,9 +415,9 @@ describe('the download row’s sheet (BOOK-138)', () => {
     expect(rule).toContain('align-items: center');
     expect(rule).toContain('text-decoration: underline');
     expect(rule).toContain('text-underline-offset: 4px');
-    // The footer is `.colophon`, whose label register is uppercase with 0.12em tracking
-    // (`base.css`). The one component must not shout in one place and whisper in the other:
-    // its own register is stated here, and the rule that scopes to `.page` is what paints.
+    // The footer's rows carry the colophon's own registers (BOOK-128 #3900): the imprint and the
+    // rights are serif prose, the marks are mono 12. This control states its voice either way —
+    // the rule that scopes to `.page` is what paints.
     expect(rule).toContain('text-transform: none');
     expect(rule).toContain('letter-spacing: 0.02em');
     expect(rule).not.toMatch(/(?:^|;)\s*padding/u);

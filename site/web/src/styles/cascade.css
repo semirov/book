@@ -42,17 +42,18 @@
 }
 .change-card-n {
   flex: 1;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
+/* The card's one close: the row's mark face and size (§2). */
 .change-card-x {
   min-width: 44px;
   min-height: 44px;
   margin: -10px -12px -10px 0;
-  font-size: 18px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink-2);
 }
 .intent {
@@ -67,11 +68,10 @@
 }
 .intent footer {
   margin-top: 5px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-style: normal;
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .change-facts {
@@ -82,20 +82,20 @@
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
 }
+/* BOOK-128 #3900 §1 (audit #42) — every pair stacks: the fact on a mono 12 line, what it says
+   under it. A label never stands beside a serif value again. */
 .change-facts div {
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
+  display: block;
 }
 .change-facts dt {
-  flex: 0 0 88px;
-  font-family: var(--label);
+  display: block;
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .change-facts dd {
+  display: block;
   margin: 0;
   font-family: var(--serif);
   font-size: var(--fs-note);
@@ -107,10 +107,10 @@
   padding: 6px 0;
   border-top: 1px solid var(--rule);
   border-bottom: 1px solid var(--rule);
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 1.5;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   color: var(--ink-2);
 }
 .change-evidence {
@@ -124,10 +124,9 @@
 .change-sub {
   display: block;
   margin: 12px 0 4px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .change-steps ol,
@@ -136,17 +135,24 @@
   padding: 0;
   list-style: none;
 }
+/* BOOK-128 #3900 §1 (audit #42) — every pair stacks: the marks (glyph, label, wing, delta,
+   door) on one mono 12 line, the serif 14 reason under it. A serif value never stands beside a
+   mono mark. */
 .change-steps li,
 .change-seams li {
+  display: block;
+  padding: 5px 0;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink);
+}
+.step-facts,
+.seam-facts {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 8px;
-  padding: 5px 0;
-  border-top: 1px solid var(--rule);
-  font-family: var(--serif);
-  font-size: var(--fs-label);
-  color: var(--ink);
 }
 .change-steps li.is-live {
   color: var(--live);
@@ -163,27 +169,26 @@
 }
 .step-wing {
   flex: 0 0 auto;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
-.step-why {
-  flex: 1 1 100%;
+.step-why,
+.seam-reason {
+  display: block;
   font-family: var(--serif);
   font-style: italic;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-meta);
   color: var(--ink-3);
 }
 .step-open {
   flex: 0 0 auto;
   min-height: 32px;
   padding: 0 6px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
 }
 .step-delta {
@@ -201,16 +206,11 @@
   font-size: var(--fs-micro);
   color: var(--ink-3);
 }
-.seam-reason {
-  flex: 1;
-  font-style: italic;
-}
 .seam-state {
   flex: 0 0 auto;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--revise);
 }
 .change-foot {
@@ -223,10 +223,9 @@
   border-top: 1px solid var(--ink);
 }
 .change-outcome {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink);
 }
 .change-reason {
@@ -247,10 +246,9 @@
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   text-decoration: none;
@@ -266,10 +264,9 @@
   min-height: 44px;
   margin-top: 4px;
   text-decoration: none;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
   border-bottom: 1px solid var(--rule-2);
 }

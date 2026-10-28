@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>line fonts harness</title>
+    <!--
+      BOOK-128 comment #3900 §2 — the one-line gallery's own page.
+
+      Not a route of the site: it mounts the real components and the real stylesheets, one
+      section per audited line, and `scripts/line-fonts-cdp.mjs` measures what a browser lays
+      out. The gallery's captions are the harness's chrome, not the book's text: they are set
+      at one register of their own so they can never be read as a product line.
+    -->
+    <style>
+      .harness-canvas {
+        padding: 0 0 120px;
+      }
+      .harness-line {
+        margin: 0 0 40px;
+        border-top: 1px dashed #9aa0a3;
+      }
+      .harness-h {
+        margin: 8px 0 4px;
+        font-family: 'PT Mono', ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #4a5257;
+        letter-spacing: 0.02em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/harness/lines.tsx"></script>
+  </body>
+</html>

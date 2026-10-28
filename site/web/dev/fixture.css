@@ -29,10 +29,12 @@
   line-height: 1;
   color: var(--ink-2);
 }
+/* The before/after fixture is dressed in the shipped faces (BOOK-128 #3900): the retired
+   `--label`/`--ui` faces and the uppercase are gone here too, so the dev sheet cannot keep a
+   register the product no longer has. */
 .before-ch .ch-meta {
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  font-family: var(--mono);
+  letter-spacing: 0;
   font-size: var(--fs-micro);
   color: var(--ink-3);
 }
@@ -66,17 +68,16 @@
   border-bottom: 1px dotted var(--rule);
 }
 .before-ch .premise-label {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .before-ch .premise-hint {
   margin: 2px 0 0;
   max-width: none;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.4;
   color: var(--ink-3);
 }

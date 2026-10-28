@@ -114,6 +114,7 @@ describe('the register’s counters', () => {
     const html = renderToStaticMarkup(
       <Discussion
         depth={3}
+        complete
         comments={[comment({ id: 'cmt_1' }), comment({ id: 'cmt_2' }), comment({ id: 'cmt_3' })]}
         live
       />,
@@ -123,9 +124,9 @@ describe('the register’s counters', () => {
   });
 
   it('uses the singular and the plural count forms', () => {
-    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[comment({ id: 'cmt_1' })]} live />))).toContain(
-      '1 замечание',
-    );
+    expect(
+      text(renderToStaticMarkup(<Discussion depth={1} complete comments={[comment({ id: 'cmt_1' })]} live />)),
+    ).toContain('1 замечание');
     expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} live />))).toContain('в очереди 1 правка');
     expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} live />))).toContain('в очереди 5 правок');
   });
@@ -137,10 +138,44 @@ describe('the register’s counters', () => {
   });
 
   it('states the zeros as sentences, never as counts of nothing', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} live />);
+    const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />);
     expect(text(html)).toContain('замечаний нет');
     expect(text(html)).toContain('в очереди пусто');
     for (const wrong of ['0 замечаний', 'в очереди 0', '0 правок']) expect(text(html), wrong).not.toContain(wrong);
+  });
+
+  /**
+   * BOOK-128 #3900 §1 — a count is honest only over a complete feed. The API has no total, so
+   * `complete` is `nextBefore === null`; without it the register prints no number at all and
+   * the label «обсуждение» stands alone. The default is the safe one: a caller that does not
+   * know says nothing.
+   */
+  it('prints no number over a partial page, and the label stands alone', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} comments={[comment({ id: 'cmt_1' })]} live />);
+    const plain = text(html);
+    expect(plain).not.toContain('1 замечание');
+    expect(plain).not.toContain('замечание');
+    expect(plain).toContain('обсуждение');
+    // The empty label alone, with no zero sentence either: the page is a window, not a total.
+    const empty = text(renderToStaticMarkup(<Discussion depth={0} comments={[]} live />));
+    expect(empty).not.toContain('замечаний нет');
+    // The row itself is still printed: only the count is withheld.
+    expect(html).toContain('class="comments"');
+    expect(html).toContain('data-comment-id="cmt_1"');
+  });
+
+  it('prints the count over a complete page, zero included as a sentence', () => {
+    const one = text(renderToStaticMarkup(<Discussion depth={0} complete comments={[comment({ id: 'cmt_1' })]} live />));
+    expect(one).toContain('1 замечание');
+    const none = text(renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />));
+    expect(none).toContain('замечаний нет');
+  });
+
+  it('replaces the withheld count with the status sentence while the feed waits', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} stage="skeleton" comments={[]} live />);
+    expect(html).toContain('замечания читаются');
+    expect(html).not.toContain('замечаний нет');
+    expect(html.match(/role="status"/gu)).toHaveLength(1);
   });
 
   it('keeps the empty register quiet without naming a «замечание» as a premise', () => {
@@ -188,7 +223,7 @@ describe('the register while its feed is landing', () => {
   });
 
   it('goes back to the count when the feed lands: no status, no form, no busy claim', () => {
-    const html = markup([comment()], 'quiet');
+    const html = renderToStaticMarkup(<Discussion depth={0} stage="quiet" complete comments={[comment()]} live />);
     expect(html).toContain('1 замечание');
     expect(html).toContain('class="comments"');
     expect(html).not.toContain('role="status"');
@@ -278,6 +313,7 @@ describe('one state per filing on the register', () => {
     const html = renderToStaticMarkup(
       <Discussion
         depth={0}
+        complete
         comments={[
           // A premise whose chapter 65 has text: it entered the first edition, and its home is
           // the chapter's own row — the thread prints no block for it.
@@ -326,7 +362,7 @@ describe('one state per filing on the register', () => {
   });
 
   it('an empty queue is one sentence and no list', () => {
-    const html = renderToStaticMarkup(<Discussion depth={0} comments={[]} changes={[]} live />);
+    const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} changes={[]} live />);
     const plain = text(html);
     expect(plain).toContain('в очереди пусто');
     expect(plain).toContain('замечаний нет');

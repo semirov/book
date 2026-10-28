@@ -256,28 +256,34 @@ describe('the region speaks only when the state changes', () => {
 });
 
 describe('the head’s height does not move', () => {
-  it('is one 12 px line in a row whose tallest line is the brand’s 17.55 px', () => {
+  it('is one 12 px line in a row whose tallest line is the brand’s 16.2 px', () => {
     const css = sheets['../styles/head-status.css'] ?? '';
     const line = firstDeclarations(css, '.head-status');
     expect(line).toContain('font-size: var(--fs-micro)');
-    // The row's own 12 px label line: 1.35, exactly as `.folio` and the chapter slot carry it.
+    // The row's own 12 px mark line: 1.35, exactly as `.folio` and the chapter slot carry it.
     expect(line).toContain('line-height: 1.35');
     expect(line).toContain('flex: none');
     expect(line).toContain('margin-inline-start: auto');
     expect(line).toContain('min-width: 0');
-    // No box of its own: the 12 px label line *is* the element, so nothing is taller than it.
+    // No box of its own: the 12 px mark line *is* the element, so nothing is taller than it.
     expect(line).not.toMatch(/(?:^|;)\s*(?:min-)?height\s*:/u);
     expect(line).not.toMatch(/(?:^|;)\s*(?:min-)?inline-size\s*:/u);
     expect(line).not.toMatch(/(?:^|;)\s*padding/u);
     expect(line).not.toMatch(/(?:^|;)\s*border/u);
-    // The row's tallest item is the brand: --fs-label (13 px) at line-height 1.35 = 17.55 px.
+    // BOOK-128 #3900: the brand and the chapter slot are marks too — mono 12 at line-height
+    // 1.35 = 16.2 px, the same box the status carries. The row is one register, so a status
+    // arriving cannot be the tallest line either.
     const labels = unionDeclarations(sheets['../styles/base.css'] ?? '', '.top-row');
-    expect(labels).toContain('font-size: var(--fs-label)');
+    expect(labels).toContain('font-family: var(--mono)');
+    expect(labels).toContain('font-size: var(--fs-micro)');
     expect(labels).toContain('line-height: 1.35');
-    expect(sheets['../styles/tokens.css'] ?? '').toContain('--fs-label: 13px');
-    // 13 × 1.35 = 17.55 px against the status's 12 × 1.35 = 16.2 px: the row's height is the
-    // brand's and the status cannot touch it.
-    expect(13 * 1.35).toBeGreaterThan(12 * 1.35);
+    expect(sheets['../styles/tokens.css'] ?? '').toContain('--fs-micro: 12px');
+    // 12 × 1.35 = 16.2 px for the brand, the slot and the status alike: no head item may
+    // reinstate a second size, or the row would grow by one line when a status arrives.
+    expect(unionDeclarations(sheets['../styles/chrome.css'] ?? '', '.brand')).not.toMatch(/font-size/u);
+    expect(unionDeclarations(sheets['../styles/running-head.css'] ?? '', '.top-chapter')).toContain(
+      'font-size: var(--fs-micro)',
+    );
     // The folio's own box below 768 is 16.2 px — under the row's 17.55 px too, so it cannot be
     // what grows when the status appears (it is fixed and out of flow above 768).
     const folio = firstDeclarations(sheets['../styles/live.css'] ?? '', '.folio');

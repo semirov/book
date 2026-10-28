@@ -62,19 +62,23 @@
   padding: 0;
   scroll-margin-bottom: 48dvh;
 }
+/* ---------- the strip: the quote on its own line, the marks under it ----------
+   BOOK-128 #3900 §1 (audit #15) — four faces in one 44 px row are gone: the word (serif
+   italic 15) takes the full width on line 1, and the door, the draft, the action and the ✕
+   stand on line 2 in the mark face. `flex-wrap` is the whole mechanism; the acts keep the
+   44 px minimum as their own targets, so the second line is still a touch row. */
 .seam-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 0 8px;
   min-height: 44px;
   padding: 0 8px;
 }
 .seam-word {
-  flex: 0 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding-top: 8px;
   font-family: var(--serif);
   font-style: italic;
   font-size: var(--fs-note);
@@ -116,10 +120,9 @@
   padding: 0 0 0 12px;
   border: 0;
   background: none;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   text-decoration: none;
   cursor: pointer;
@@ -132,6 +135,7 @@
   color: var(--ink-3);
   text-decoration: none;
 }
+/* The strip's one close, in the row's mark face and size (§2). */
 .seam-close {
   flex: none;
   width: 44px;
@@ -140,18 +144,21 @@
   padding: 0;
   border: 0;
   background: none;
+  font-family: var(--mono);
   color: var(--ink-3);
-  font-size: 15px;
+  font-size: var(--fs-micro);
   cursor: pointer;
 }
+/* The strip's notes and the licence are sentences a reader reads: serif 15 (§2). */
 .seam-note,
 .seam-hint,
 .seam-licence {
   margin: 0;
   padding: 0 8px 8px;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  line-height: 1.4;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 /* BOOK-137 — the frame's warning. The same note register, in the reader's own ink: it is a
@@ -201,14 +208,13 @@
   color: var(--live);
 }
 /* The state word of a strip row (BOOK-111): the row must say that the filing exists and
-   waits — the aria-label alone is not visible to a reader looking at the page. Label register,
-   ink like the row's own micro text. */
+   waits — the aria-label alone is not visible to a reader looking at the page. A mark, in the
+   row's own mono 12 (§2, audit #17). */
 .seam-filing-word {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 1.2;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   white-space: nowrap;
   color: var(--ink-3);
 }
@@ -270,11 +276,11 @@
 .seam-signin p {
   margin: 0;
 }
+/* A form label is a mark: mono 12, lowercase, no tracking (§2). */
 .field-label {
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .seam-input,
@@ -312,9 +318,10 @@
   outline: 2px solid var(--live);
   outline-offset: 2px;
 }
+/* The refusal is a sentence: serif 15, the house error ink (§2). */
 .seam-error {
-  font-family: var(--ui);
-  font-size: var(--fs-meta);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.45;
   color: var(--revise);
 }
@@ -328,10 +335,9 @@
   margin-left: 6px;
   border: 0;
   background: none;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   cursor: pointer;
 }
@@ -341,8 +347,9 @@
   border-radius: 0;
   background: var(--ink);
   color: var(--paper);
-  font-family: var(--ui);
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   cursor: pointer;
 }
 .seam-submit:disabled {
@@ -359,6 +366,8 @@
    entry, the card): the hint spans the line, the door sits under it, and the sentence that
    closes the door stands beside the disabled control. No new ink and no new size — it is the
    same micro register as the record's other quiet lines. */
+/* BOOK-158: the refusal's own block — the hint and the reason are sentences a reader reads,
+   so serif 15 (§2); the door under them is a mark and states its own mono 12. */
 .revise {
   display: flex;
   flex-wrap: wrap;
@@ -369,9 +378,10 @@
 .revise-why {
   flex-basis: 100%;
   margin: 0;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
-  line-height: 1.4;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .revise .seam-inline-action {
@@ -403,15 +413,17 @@
   overflow: hidden;
   white-space: nowrap;
 }
+/* BOOK-128 #3900 §1 (audit #16) — one line, one face: the word keeps its «» and takes the
+   mark register, so the collapsed line is mono 12 from end to end. */
 .seam-prov-word {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: var(--fs-note);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 1.45;
+  letter-spacing: 0.02em;
   color: var(--ink-2);
 }
 .seam-prov-trail {
@@ -425,19 +437,13 @@
   white-space: nowrap;
 }
 
-/* ---------- below 768: one 44 px row, and the body grows under it ----------
-   BOOK-128 comment #3815 — the strip is the word's whole row at the phone too: `слово · откуда
-   это слово · вмешаться · ✕`, 44 px, with the word ellipsised when the space runs out. The body
-   the door opens is a **sibling** of this row, so nothing below can stretch it or re-flow it.
-
-   The frozen strip is the one exception, and it is BOOK-111's stack, kept deliberately: its
-   door is a phrase («рамка книги · не меняется») and its link is another («рамка книги →»), so
-   four items would not fit 366 px and the owner's own rule stands — «better several lines than
-   glued together with a line break». One line per role, the quote whole, then the actions. */
+/* ---------- below 768: the same two lines, tighter, and the body grows under them ----------
+   BOOK-128 comment #3815 — the body the door opens is a **sibling** of the row, so nothing
+   below can stretch it or re-flow it. The row itself is already the stack of #3900 §1: the
+   quote whole on line 1, the marks under it. The frozen strip needs no own order any more —
+   its longer acts simply wrap onto a second marks line, which is the owner's own rule
+   («better several lines than glued together with a line break»). */
 @media (max-width: 767px) {
-  .seam-row {
-    flex-wrap: nowrap;
-  }
   /* A premise's state word is not a control: it is one line, not a 44 px target. */
   span.seam-prov {
     min-height: 0;
@@ -456,38 +462,5 @@
   }
   .seam-inline-action {
     white-space: nowrap;
-  }
-
-  .seam[data-frozen='true'] .seam-row {
-    flex-wrap: wrap;
-  }
-  .seam[data-frozen='true'] .seam-prov {
-    order: 1;
-    flex: 0 0 100%;
-  }
-  .seam[data-frozen='true'] .seam-word {
-    order: 2;
-    flex: 0 0 100%;
-    min-width: 0;
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
-  }
-  .seam[data-frozen='true'] .seam-draft {
-    order: 3;
-    flex: 0 0 100%;
-    white-space: normal;
-  }
-  .seam[data-frozen='true'] .seam-cta,
-  .seam[data-frozen='true'] .seam-frozen {
-    order: 4;
-    flex: 0 1 auto;
-    margin-left: 0;
-    padding-left: 0;
-    white-space: nowrap;
-  }
-  .seam[data-frozen='true'] .seam-close {
-    order: 5;
-    margin-left: auto;
   }
 }

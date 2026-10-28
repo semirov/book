@@ -22,7 +22,11 @@
   color: var(--ink-2);
 }
 
-/* The heading: one line, its height reserved while the answer is still on its way. */
+/* The heading is the page's first line: it is a line of marks (stage · chapter · time), so it
+   keeps the mono 12 of the figures it names (§2, audit #34: the mono stays for the stage words,
+   the times and the cost figures; only `.pr-span`/`.pr-cost` are sentences). Its line box stays
+   reserved while the answer is on its way (one 20 px line), so the body may arrive under it
+   without moving it. */
 .pr-head {
   margin: 0;
   min-height: 20px;
@@ -30,6 +34,7 @@
   font-size: var(--fs-micro);
   font-weight: 400;
   line-height: 20px;
+  letter-spacing: 0.02em;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
@@ -100,14 +105,22 @@
 
 /* ---------- the pair, the money, the foot ---------- */
 
-/* «было» → «стало»: one arrow, typographic quotes, the page's own measure. */
+/* «было» → «стало»: one arrow, typographic quotes, the page's own measure — a sentence a
+   reader reads, so serif 15, not the mono the page's facts carry (§2, audit #34). */
 .pr-span {
   margin: 14px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
   color: var(--ink);
 }
-/* One cost sentence with nouns; the money is the book's own `0,08 $` or «цена не задана». */
+/* One cost sentence with nouns; the money is the book's own `0,08 $` or «цена не задана» —
+   the sentence is serif 15 and the figures keep their tabular mono. */
 .pr-cost {
   margin: 6px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
@@ -132,6 +145,9 @@
   color: var(--ink);
   text-decoration: underline;
 }
+/* The way out under the record. The audit (#34) reads these two as sentences; the markup says
+   otherwise — each `<p>` wraps one door word («к главе 7 →», «к оглавлению») and nothing else, so
+   they stay the page's marks: the mono 12 they inherit from `.pass-record`. */
 .pr-next,
 .pr-absent {
   margin: 14px 0 0;

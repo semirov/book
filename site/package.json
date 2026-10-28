@@ -37,7 +37,8 @@
     "verify": "npm run typecheck && npm run arch && npm run test && npm run frame:check",
     "test:model": "node model-lane/run.mjs",
     "test:model:pass": "node model-lane/pass.mjs",
-    "accordion:cdp": "node scripts/accordion-cdp.mjs"
+    "accordion:cdp": "node scripts/accordion-cdp.mjs",
+    "line:fonts": "node scripts/line-fonts-cdp.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

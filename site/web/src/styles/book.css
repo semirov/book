@@ -16,20 +16,14 @@
   display: flow-root;
   margin-top: 72px;
 }
+/* BOOK-128 §1 (audit 7) — the numeral is one line, the meta a second; the hairline is shared. */
 .ch-h {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
+  display: block;
   border-top: 1px solid var(--ink);
   padding-top: 10px;
   margin-bottom: 24px;
 }
-.ch-id {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-}
+.ch-id { display: block; }
 .ch-n {
   font-family: var(--serif);
   font-weight: 700;
@@ -38,24 +32,23 @@
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
 }
-/* The header's meta line is a container, not a chip (BOOK-70): it holds two spans whose voices
-   differ and reserves no space of its own — the row's height is the 26 px numeral beside it, so
-   a chip that appears or disappears moves nothing. */
+/* Not a chip (BOOK-70): its own line under the numeral, left-aligned, one mark face. */
 .ch-meta {
+  display: block;
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
-  text-align: right;
+  letter-spacing: 0;
+  text-align: left;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
-/* S chip: «печатается» — a state, in the label's voice, live while the text is arriving. */
+/* S chip: «печатается» — mono 12, lowercase, live while the text arrives. */
 .ch-print {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   line-height: 1.35;
-  text-transform: uppercase;
   white-space: nowrap;
   color: var(--live);
 }
@@ -83,7 +76,6 @@
   overflow-wrap: break-word;
   white-space: pre-line;
 }
-.p:last-child,
 /* The phone reads ragged-right: a justified 342px column with auto hyphenation opens rivers
    («Доста- / точно,   чтобы система»). The desktop keeps the justified measure; BOOK-DOC-35 §3
    writes that as the base and the phone as the exception, not the other way round. */
@@ -105,24 +97,29 @@
   }
 }
 
+/* The chapter's own state line (§2, audit #9): the sentence is prose, the retry is a mark, and
+   the two never share a line — BOOK-197 stacks them, as `.state-line` does. */
 .ch-fail {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
   padding: 18px 0 4px;
-  font-family: var(--label);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  letter-spacing: 0;
+  line-height: 1.5;
   color: var(--ink-3);
 }
+/* The retry is the line's one mark: mono 12, lowercase, on its own line. */
 .ch-fail button {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--live);
   border-bottom: 1px solid currentColor;
   min-height: 44px;
-  display: inline-flex;
-  align-items: center;
 }
 
 /* ---------- comments: the thread a filing is decided in ---------- */
@@ -140,7 +137,7 @@
 .comment {
   border-left: 2px solid var(--rule);
   padding-left: 12px;
-  font-family: var(--ui);
+  font-family: var(--serif);
   font-size: var(--fs-note);
   line-height: 1.55;
 }
@@ -150,19 +147,19 @@
 .comment.tone-stopped {
   border-left-color: var(--rule-2);
 }
+/* One mark line (§2, audit #19): `имя · глава 5 · 28.10, 14:42` — mono 12. */
 .comment-meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .comment-author {
-  text-transform: none;
   letter-spacing: 0;
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
 }
 /* BOOK-30 — a reader's ink is a class, not a style attribute: no colour value in the
    markup, one themeable rule per palette slot (shared/src/comment.ts). */
@@ -197,9 +194,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* The entry's state line (word, kind, explaining sentence): prose 15 (§2). */
 .comment-line {
   margin: 0;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.45;
   color: var(--ink-2);
 }
 .comment-reason {
@@ -244,13 +244,13 @@
 }
 .sec-h .lbl {
   color: var(--ink);
-  letter-spacing: 0.14em;
-  font-size: var(--fs-label);
+  letter-spacing: 0;
+  font-size: var(--fs-micro);
 }
 /* A count chip: the number carries its noun, sits on one line, and prints no zero (BOOK-70). */
 .sec-meta {
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -265,27 +265,26 @@
 .talks {
   padding-top: 46px;
 }
+/* §2 — the queue word is a mark (mono 12); the teaching line is serif 15 on its own line. */
 .qline {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  display: block;
   padding: 12px 0 0;
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
+  line-height: 1.5;
   color: var(--ink-3);
 }
 .qline span:last-child {
-  text-transform: none;
-  letter-spacing: 0.02em;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
-  color: var(--ink-3);
+  display: block;
+  margin-top: 2px;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
 }
 .fine {
-  font-family: var(--ui);
-  text-transform: none;
+  font-family: var(--serif);
   letter-spacing: 0;
-  font-size: var(--fs-meta);
+  font-size: var(--fs-note);
   line-height: 1.5;
   color: var(--ink-3);
   margin-top: 10px;
@@ -305,8 +304,12 @@
   padding: 14px 0 44px;
   display: grid;
   gap: 8px;
-  font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
+  /* Imprint, motto, rights: sentences, serif 15 (§2, audit #30–31). The row's marks (total,
+     build, cost, gift, session) state their own mono 12 below. */
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.55;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .colophon .row {
@@ -316,9 +319,7 @@
   gap: 12px;
   align-items: center;
 }
-/* BOOK-94: the imprint line is a sentence now, and it wraps without a one-word last line.
-   The register does not change: the shared `.colophon` rules keep the micro floor, the
-   uppercase transform and the tracking. */
+/* BOOK-94: the imprint line wraps without a one-word last line; serif 15 (#3900). */
 .colophon .imprint-line {
   text-wrap: pretty;
 }
@@ -330,10 +331,18 @@
 .colophon .legal-line a {
   color: var(--ink-3);
 }
-/* BOOK-109: the build the page is — a data mark, so the micro rung and the quiet ink. The
-   label register's uppercase is not its voice: «сборка 5558449 · 27.10 20:52» is read as it is. */
+/* BOOK-128 §1 (audit 30) — the sentence, then its total under it: serif 15, then mono 12. */
+.colophon .row-print { display: block; }
+.colophon .row-print > span {
+  display: block;
+}
+.colophon .row-print .mono { margin-top: 2px; }
+/* BOOK-109: the build the page is — a data mark: mono 12, the micro rung and the quiet ink.
+   «сборка 5558449 · 27.10 20:52» is read as it is. */
 .colophon .build-stamp {
+  font-family: var(--mono);
   font-size: var(--fs-micro);
+  line-height: 1.35;
   color: var(--ink-3);
   text-transform: none;
 }
@@ -347,6 +356,7 @@
   letter-spacing: 0.03em;
   text-transform: none;
   font-size: var(--fs-micro);
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
 /* BOOK-126 — the gift row's one link: the register's lowercase line at the 12 px floor, mono
@@ -358,6 +368,7 @@
   min-height: 44px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
+  line-height: 1.35;
   letter-spacing: 0.02em;
   text-transform: none;
   color: var(--ink-3);
@@ -367,6 +378,7 @@
 .colophon .cost-line {
   font-family: var(--mono);
   font-size: var(--fs-micro);
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: var(--ink-3);
@@ -374,14 +386,13 @@
 .colophon .cost-line > span {
   white-space: nowrap;
 }
-/* BOOK-115 — the way out: the reader's own name keeps its case (the register's uppercase is
-   for the marks, not for a person), and the verb is a word in the row, not a framed control.
-   The row is mono at the 12 px floor — the book's data voice, not the label's — so the name
-   and the button are read as one measurement of the session, and the tracking follows the
-   case: 0,12em belongs to the capitals. */
+/* BOOK-115 — the way out: the reader's own name keeps its case, and the verb is a word in the
+   row, not a framed control. The row is mono at the 12 px floor — the book's mark voice — so the
+   name and the button are read as one measurement of the session. */
 .colophon .logout-row {
   font-family: var(--mono);
   font-size: var(--fs-micro);
+  line-height: 1.35;
   text-transform: none;
   letter-spacing: 0.03em;
 }
@@ -393,24 +404,23 @@
   text-decoration: none;
   text-transform: none;
 }
-/* The refusal is one line under the row, in the house error ink — the same voice as a seam
-   that could not be applied, not a dialog and not a colour of its own. Mono keeps its own case
-   everywhere else in the sheets, and a sentence of refusal is read, not stamped. */
+/* The refusal: a sentence read, not stamped — serif 15 in the house error ink (§2). */
 .colophon .logout-error {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.02em;
-  text-transform: none;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  letter-spacing: 0;
   color: var(--revise);
 }
 .theme {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  font-family: var(--mono);
   color: var(--ink-2);
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   font-size: var(--fs-micro);
-  text-transform: uppercase;
+  line-height: 1.35;
   min-height: 44px;
 }
 .switch {
