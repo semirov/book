@@ -237,9 +237,12 @@ scene.
 
 ## 4. Dispatch, permissions, handoff
 
-Writer reads canon + lane + written neighbours + one assignment, writes only `manuscript/chNN.md`; editor
+Writer reads canon + lane + written neighbours + one assignment, writes only `manuscript/chNN.md` and its memo
+line in `process/write.log.md`; editor
 reads `book/` and returns verdict + findings as its message; the consultant reads the changed piece and
 returns findings the same way. Neither of the two writes anything; only the writer is visible.
+The tool list is the boundary, not the lease: file tools scoped to `manuscript/**` and the `process/write.log.md` memo,
+the engine CLI only — no network, no MCP, no general shell, no `execute`: `~/.config/opencode/agents/writer.md` (BOOK-47).
 
 **Dispatch.** An intervention is triaged by the auditor first (`FITS`/`OFF`; `OFF` is refused to the reader
 with its reason). Then `subagent`, agent `writer`, brief = the invariants, §1 verbatim, the lane and the slot. Order:
