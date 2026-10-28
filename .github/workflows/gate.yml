@@ -129,6 +129,13 @@ jobs:
         working-directory: site
         run: npm ci
 
+      # `@book/shared` resolves through its `dist` entry; `npm run typecheck` used to build it
+      # before the suite ran. The shards do not typecheck, so they build it themselves — without
+      # this the CLIs a few tests spawn die on `ERR_MODULE_NOT_FOUND` for `@book/shared`.
+      - name: Build @book/shared
+        working-directory: site
+        run: npm run build -w @book/shared
+
       # `--coverage` so the shard's coverage travels in the blob; the floors are zeroed for this
       # run only, because a shard sees a quarter of the suite and would fail every one of them.
       # The real floors are applied once, by `coverage`, to the merged run.
@@ -222,6 +229,12 @@ jobs:
       - name: Install (npm ci, lockfile is the contract)
         working-directory: site
         run: npm ci
+
+      # Same reason as the shards: the CLIs a few server tests spawn import `@book/shared`,
+      # which resolves through `shared/dist`.
+      - name: Build @book/shared
+        working-directory: site
+        run: npm run build -w @book/shared
 
       - name: Affected tests (changed packages + the core set)
         working-directory: site
