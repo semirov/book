@@ -33,10 +33,11 @@ import {
   checkRuntime,
   execDocker,
   execGitLsFiles,
+  flat,
   manuscriptProse,
-  oneLine,
   openReadonlyDefault,
   reasonOf,
+  resolveRepoRoot,
   sha256,
 } from './adminDoctorHost.mjs';
 
@@ -130,24 +131,31 @@ function checkDbHome(ctx) {
     const reason = 'the doctor answer carries no data dir section';
     return { verdict: 'fail', evidence: reason, failures: [reason] };
   }
-  const denied = dataDir.denied;
-  const stray = dataDir.stray;
-  if (!Array.isArray(denied) || !Array.isArray(stray)) {
+  const failures = [];
+  // The route says so itself when the directory could not be read: empty lists then prove nothing.
+  const dataError = typeof dataDir.error === 'string' && dataDir.error.trim().length > 0 ? dataDir.error.trim() : null;
+  if (dataError !== null) failures.push(`the data dir could not be listed: ${dataError}`);
+  const denied = Array.isArray(dataDir.denied) ? dataDir.denied : null;
+  const stray = Array.isArray(dataDir.stray) ? dataDir.stray : null;
+  if ((denied === null || stray === null) && dataError === null) {
     const reason = 'the data dir answer carries no denied/stray lists';
     return { verdict: 'fail', evidence: reason, failures: [reason] };
   }
-  const failures = [];
-  for (const path of denied) failures.push(`the data dir holds ${String(path)} — the engine's state has no home here`);
-  for (const path of stray) failures.push(`the data dir has a stray entry ${String(path)} — not on the allow-list`);
+  for (const path of denied ?? []) failures.push(`the data dir holds ${String(path)} — the engine's state has no home here`);
+  for (const path of stray ?? []) failures.push(`the data dir has a stray entry ${String(path)} — not on the allow-list`);
 
-  const prose = manuscriptProse(ctx.repoRoot);
-  for (const name of prose) failures.push(`manuscript/${name} holds prose — a boot scan would put it back`);
+  // The manuscript half needs the tree: a root that is not a checkout fails the row by name.
+  let prose = null;
+  if (ctx.repoError !== null) failures.push(ctx.repoError);
+  else {
+    prose = manuscriptProse(ctx.repoRoot);
+    for (const name of prose) failures.push(`manuscript/${name} holds prose — a boot scan would put it back`);
+  }
 
-  const dataPart =
-    denied.length === 0 && stray.length === 0
-      ? 'data dir clean'
-      : `data dir: ${String(denied.length)} denied, ${String(stray.length)} stray`;
-  const prosePart = prose.length === 0 ? 'manuscript/ no prose' : `manuscript/ ${String(prose.length)} file(s) hold prose`;
+  const clean = (denied?.length ?? 0) === 0 && (stray?.length ?? 0) === 0 && dataError === null;
+  const dataPart = clean ? 'data dir clean' : `data dir: ${String(denied?.length ?? 0)} denied, ${String(stray?.length ?? 0)} stray`;
+  const prosePart =
+    prose === null ? 'manuscript/ not read' : prose.length === 0 ? 'manuscript/ no prose' : `manuscript/ ${String(prose.length)} file(s) hold prose`;
   const evidence = `${dataPart} · ${prosePart}`;
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
@@ -180,10 +188,18 @@ async function checkFrame(ctx) {
   try {
     const { checkServer } = await import('../scripts/lib/frame.mjs');
     const answers = await checkServer({ baseUrl: String(ctx.target), fetchImpl: ctx.fetchImpl });
-    for (const answer of answers) {
+    for (const [index, answer] of answers.entries()) {
       if (answer.ok === true) continue;
       const part = Array.isArray(answer.parts) ? answer.parts[0] : null;
-      failures.push(`${answer.label}: ${oneLine(part?.actual ?? 'no answer', 60)}`);
+      if (part === null || part.actual === undefined) {
+        failures.push(`frame ${answer.label}: no answer`);
+        continue;
+      }
+      // The served text is the book's words: a failure reports its digest and its length, never
+      // the text itself — not in the table, not in `--json`, not truncated.
+      const servedText = flat(part.actual);
+      const digest = sha256(servedText).slice(0, 8);
+      failures.push(`frame ${answer.label}: served sha ${digest} (len ${String(servedText.length)}) ≠ baked ${digests[index] ?? '?'}`);
     }
     served = answers.length > 0 && answers.every((answer) => answer.ok === true);
   } catch (error) {
@@ -253,8 +269,14 @@ function checkGraph(ctx) {
   if (graph === null) {
     return { verdict: 'fail', evidence: 'the doctor answer carries no graph section', failures: ['the doctor answer carries no graph section'] };
   }
-  if (graph.shipped !== true) {
+  if (graph.shipped === false) {
     return { verdict: 'not_shipped', evidence: 'fact_dependency absent — stage 3 not in this image (warning)', failures: [] };
+  }
+  // Only an explicit `true` is a shipped graph: a missing or wrong-typed flag is an unknown, and
+  // an unknown must not read as «stage 3 is here and healthy».
+  if (graph.shipped !== true) {
+    const reason = 'the doctor answer does not say whether the graph shipped';
+    return { verdict: 'fail', evidence: reason, failures: [reason] };
   }
   const failures = [];
   for (const label of ['facts', 'threads', 'edges']) {
@@ -271,8 +293,15 @@ function checkGraph(ctx) {
 
 /** 8 — no prose is tracked by git; a host without a checkout has nothing to track. */
 async function checkGitProse(ctx) {
+  // A root that is not a checkout cannot answer «nothing tracked»: that is a tree never read.
+  if (ctx.repoError !== null) return { verdict: 'fail', evidence: ctx.repoError, failures: [ctx.repoError] };
   const tracked = await ctx.gitLsFiles(ctx.repoRoot);
   if (tracked === null) return { verdict: 'pass', evidence: 'no git checkout — nothing tracked', failures: [] };
+  // `git` is here and refused: a failure with its reason, never the pass an empty answer gives.
+  if (!Array.isArray(tracked)) {
+    const reason = `git could not answer: ${String(tracked?.error ?? 'unknown')}`;
+    return { verdict: 'fail', evidence: reason, failures: [reason] };
+  }
   if (tracked.length === 0) return { verdict: 'pass', evidence: 'no manuscript files tracked', failures: [] };
   const named = tracked.slice(0, 3).join(', ');
   const more = tracked.length > 3 ? ' …' : '';
@@ -327,7 +356,9 @@ export async function runDoctor(options = {}) {
   const now = (options.now ?? (() => Date.now()))();
   const target = options.target;
   const token = options.token ?? '';
-  const repoRoot = options.repoRoot ?? ((env.BOOK_REPO_ROOT ?? '').trim() || resolve(SITE_ROOT, '..'));
+  // The tree is believed only when it looks like a book checkout: a wrong root answers «no prose,
+  // nothing tracked» about a tree that was never read, which is the one answer that must not pass.
+  const repo = resolveRepoRoot(options.repoRoot ?? ((env.BOOK_REPO_ROOT ?? '').trim() || resolve(SITE_ROOT, '..')));
   const backupRoot = options.backupRoot ?? ((env.BACKUP_ROOT ?? '').trim() || join(homedir(), 'book-site-backups'));
   const drillLog = options.drillLog ?? ((env.LOG_FILE ?? '').trim() || join(homedir(), 'Library', 'Logs', 'book-backup.log'));
 
@@ -348,7 +379,8 @@ export async function runDoctor(options = {}) {
     now,
     target,
     token,
-    repoRoot,
+    repoRoot: repo.root,
+    repoError: repo.error,
     backupRoot,
     drillLog,
     fetchImpl,
@@ -401,5 +433,3 @@ export function printDoctorReport(report, options = {}) {
   console.log(failed === 0 ? 'ready' : `not ready — ${String(failed)} check(s) failed`);
 }
 
-/** The two host readers the tests drive directly: the volume rule and the mountinfo line. */
-export { judgeVolume, parseMountInfo } from './adminDoctorHost.mjs';

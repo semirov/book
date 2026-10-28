@@ -36,8 +36,8 @@ export type DoctorOptions = {
   drillLog?: string;
   docker?: DockerCall;
   fetchImpl?: FetchLike;
-  /** `null` means "not a git checkout"; `[]` means "tracked nothing". */
-  gitLsFiles?: (repoRoot: string) => Promise<string[] | null>;
+  /** `null` — no checkout; `{error}` — git refused; `[]` — tracked nothing. */
+  gitLsFiles?: (repoRoot: string) => Promise<string[] | { error: string } | null>;
   now?: () => number;
   openReadonly?: (file: string) => Promise<SqliteHandle> | SqliteHandle;
 };
@@ -45,11 +45,3 @@ export type DoctorOptions = {
 export function parseDoctorArgs(argv: string[]): ParsedDoctor | { kind: 'help' };
 export function runDoctor(options: DoctorOptions): Promise<DoctorReport>;
 export function printDoctorReport(report: DoctorReport, options?: { json?: boolean }): void;
-export function parseMountInfo(
-  text: string,
-  mountPoint?: string,
-): { root: string; fstype: string; source: string } | null;
-export function judgeVolume(
-  mount: { root?: string; fstype?: string } | null,
-  options?: { hostDataDir?: string },
-): { ok: boolean; reason: string | null };

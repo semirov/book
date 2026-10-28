@@ -12,7 +12,7 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, parseChapterTitle } from '../shared/src/book.ts';
@@ -20,7 +20,7 @@ import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, parseChapterTitle } from '..
 const DAY_MS = 24 * 3_600_000;
 
 /** Whitespace is not text (the same rule `scripts/lib/frame.mjs` applies): one line, trimmed. */
-function flat(value) {
+export function flat(value) {
   return String(value ?? '')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -76,9 +76,10 @@ export function execDocker(args) {
 }
 
 /**
- * `git -C <repoRoot> ls-files manuscript`. `null` means "this tree is not a git checkout" — a
- * host without git stages nothing, so the row passes with that evidence; `[]` means "tracked
- * nothing", which is the state the launch wants.
+ * `git -C <repoRoot> ls-files manuscript`. The answer is discriminated because the two empty
+ * answers mean opposite things: `null` — there is no `.git` here, so a host without git stages
+ * nothing and the row passes with that evidence; `{error}` — git is here and could not answer,
+ * which must never pass; `[]` — tracked nothing, the state the launch wants.
  */
 export function execGitLsFiles(repoRoot) {
   return new Promise((done) => {
@@ -86,9 +87,10 @@ export function execGitLsFiles(repoRoot) {
       done(null);
       return;
     }
-    execFile('git', ['-C', repoRoot, 'ls-files', 'manuscript'], { encoding: 'utf8', timeout: 20_000 }, (error, stdout) => {
+    execFile('git', ['-C', repoRoot, 'ls-files', 'manuscript'], { encoding: 'utf8', timeout: 20_000 }, (error, stdout, stderr) => {
       if (error !== null) {
-        done(null);
+        const said = oneLine(String(stderr ?? '').split('\n')[0] ?? '');
+        done({ error: said.length > 0 ? said : `git exited ${String(typeof error.code === 'number' ? error.code : 1)}` });
         return;
       }
       done(
@@ -155,11 +157,14 @@ export async function callJson({ fetchImpl, url, token, method = 'GET', body = n
 /* -------------------------------------------------------------- host facts, pure readers -- */
 
 /**
- * The `/data` line of `/proc/self/mountinfo`:
+ * The `/data` lines of `/proc/self/mountinfo`:
  * `id parent maj:min root mountpoint options [optional…] - fstype source superopts`.
- * Returns the two fields that tell a volume from a host bind.
+ * Mountinfo is in mount order, so a bind stacked over a volume comes later: the **last** match
+ * is the mount the container actually sees, and every match with the same target is a thing that
+ * was mounted there.
  */
-export function parseMountInfo(text, mountPoint = '/data') {
+export function parseMountInfos(text, mountPoint = '/data') {
+  const found = [];
   for (const line of String(text ?? '').split('\n')) {
     const at = line.indexOf(' - ');
     if (at < 0) continue;
@@ -167,20 +172,30 @@ export function parseMountInfo(text, mountPoint = '/data') {
     const right = line.slice(at + 3).trim().split(/\s+/u);
     if (left.length < 5 || right.length < 2) continue;
     if (left[4] !== mountPoint) continue;
-    return { root: left[3], fstype: right[0], source: right[1] };
+    found.push({ root: left[3], fstype: right[0], source: right[1] });
   }
-  return null;
+  return found;
+}
+
+/** The effective mount: the last line that mounts `mountPoint` (for readers that want one). */
+export function parseMountInfo(text, mountPoint = '/data') {
+  const found = parseMountInfos(text, mountPoint);
+  return found.length === 0 ? null : found[found.length - 1];
 }
 
 /** FUSE-flavoured filesystems are a host filesystem seen through a mount, not a volume. */
 const HOST_BIND_FS = /^(virtiofs|9p|cifs|smb|nfs.*|fuse.*)$/u;
 /** The host's own trees, mounted into a container, are a bind whatever the filesystem says. */
 const HOST_PATH_PREFIX = /^\/(Users|Volumes|home)\//u;
+/** OrbStack `/docker/volumes/<name>/_data`, Docker `/var/lib/docker/volumes/<name>/_data`. */
+const VOLUME_ROOT = '/volumes/';
 
 /**
- * BOOK-188 check 1: `/data` must be a volume. A `virtiofs` root is the Mac's disk, and a root
- * under `/Users`, `/Volumes`, `/home` or the host data dir is a bind whatever the filesystem
- * says; a block filesystem under a `/volumes/` path is OrbStack's/Docker's volume store.
+ * BOOK-188 check 1: `/data` must be a volume, and the rule is positive — a bind is recognised by
+ * its filesystem (`virtiofs`, `fuse*`, `9p`, `nfs*`, `cifs`, `smb`), by a host path
+ * (`/Users`, `/Volumes`, `/home`) or by the host data dir; a volume is recognised by living in a
+ * volume store's `/volumes/` root. Anything else is not a volume either: it is a path on some
+ * host filesystem, and BOOK-183 removes it.
  */
 export function judgeVolume(mount, { hostDataDir = '' } = {}) {
   const fstype = String(mount?.fstype ?? '').toLowerCase();
@@ -190,7 +205,19 @@ export function judgeVolume(mount, { hostDataDir = '' } = {}) {
   if (HOST_PATH_PREFIX.test(root)) return bind(fstype || 'host path');
   const dir = String(hostDataDir ?? '').replace(/\/+$/u, '');
   if (dir.length > 0 && (root === dir || root.startsWith(`${dir}/`))) return bind('the host data dir');
+  if (!root.includes(VOLUME_ROOT)) return { ok: false, reason: `not a volume root: ${root} (${fstype || 'unknown'}) — BOOK-183` };
   return { ok: true, reason: null };
+}
+
+/**
+ * The working tree the two prose rows read. `site/..` (or `BOOK_REPO_ROOT`) is believed only when
+ * it looks like a book checkout — a `manuscript/` dir or a `.git` — because a wrong root answers
+ * "no prose, nothing tracked" about a tree that was never read.
+ */
+export function resolveRepoRoot(root) {
+  const path = String(root ?? '');
+  if (existsSync(join(path, 'manuscript')) || existsSync(join(path, '.git'))) return { root: path, error: null };
+  return { root: path, error: `BOOK_REPO_ROOT is not a book checkout: ${path}` };
 }
 
 /** The newest `<backupRoot>/daily/*​/book.db` by mtime, or `null` when there is none. */
@@ -216,6 +243,24 @@ function newestJobLine(text, job) {
     if (line.includes(`job=${job}`)) return line.trim();
   }
   return null;
+}
+
+/** How much of an append-only log a preflight reads: the drill lines live at the end. */
+const LOG_TAIL_BYTES = 64 * 1024;
+
+/** The last `bytes` of a file, or its whole text when it is shorter. A missing file throws. */
+function readTail(file, bytes = LOG_TAIL_BYTES) {
+  const size = statSync(file).size;
+  const start = Math.max(0, size - bytes);
+  const length = size - start;
+  const buffer = Buffer.alloc(length);
+  const handle = openSync(file, 'r');
+  try {
+    if (length > 0) readSync(handle, buffer, 0, length, start);
+  } finally {
+    closeSync(handle);
+  }
+  return buffer.toString('utf8');
 }
 
 /** The paragraphs of a chapter body, the way the ingest splits them: blank line, flattened. */
@@ -308,13 +353,15 @@ export async function checkRuntime(ctx) {
   const mountAnswer = await dockerCall(ctx.docker, ['exec', site, 'cat', '/proc/self/mountinfo'], failures, `docker exec ${site} cat /proc/self/mountinfo`);
   let mount = null;
   if (mountAnswer !== null) {
-    mount = parseMountInfo(mountAnswer.stdout, '/data');
-    if (mount === null) {
-      failures.push('no /data line in /proc/self/mountinfo');
-    } else {
-      const judged = judgeVolume(mount, { hostDataDir: ctx.hostDataDir });
+    // Every `/data` line is judged: a bind stacked over a volume appears later in mount order,
+    // and a check that read only the first line would vouch for a mount nobody sees.
+    const mounts = parseMountInfos(mountAnswer.stdout, '/data');
+    if (mounts.length === 0) failures.push('no /data line in /proc/self/mountinfo');
+    for (const line of mounts) {
+      const judged = judgeVolume(line, { hostDataDir: ctx.hostDataDir });
       if (!judged.ok) failures.push(judged.reason);
     }
+    mount = mounts.length === 0 ? null : mounts[mounts.length - 1];
   }
 
   const evidence = [
@@ -371,7 +418,7 @@ export async function checkBackups(ctx) {
   let drillPart = 'drill unknown';
   let log = null;
   try {
-    log = readFileSync(ctx.drillLog, 'utf8');
+    log = readTail(ctx.drillLog);
   } catch {
     failures.push(`no drill log at ${ctx.drillLog}`);
   }

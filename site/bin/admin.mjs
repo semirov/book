@@ -46,11 +46,12 @@ import { networkInterfaces } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_URL = 'http://127.0.0.1:8091';
 import { parseDoctorArgs, printDoctorReport, runDoctor } from './adminDoctor.mjs';
 import { parsePassArgs, runPassStart } from './adminPass.mjs';
 import { post } from './adminPost.mjs';
+
+const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_URL = 'http://127.0.0.1:8091';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 

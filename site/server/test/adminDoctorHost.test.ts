@@ -7,13 +7,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { FRAME_FIRST_SENTENCE } from '@book/shared';
 
-import { callJson, manuscriptProse } from '../../bin/adminDoctorHost.mjs';
+import { callJson, judgeVolume, manuscriptProse, parseMountInfo, parseMountInfos, resolveRepoRoot } from '../../bin/adminDoctorHost.mjs';
 import type { FetchLike } from '../../bin/adminDoctorHost.mjs';
+import { BIND_MOUNTINFO, READY_MOUNTINFO } from './adminDoctorFixtures.ts';
 
 /**
- * BOOK-188 — the two readings the host module owns and the CLI tests only see through a fixture:
- * the manuscript-is-prose rule (a chapter's heading is a title, not prose — BOOK-32) and the one
- * HTTP call's budget, because a server that never answers must not hang a preflight.
+ * BOOK-188 — the readings the host module owns: the volume rule and the mountinfo lines, the
+ * working-tree resolver, the manuscript-is-prose rule (a heading is a title, not prose — BOOK-32)
+ * and the one HTTP call's budget, because a server that never answers must not hang a preflight.
  */
 
 const dirs: string[] = [];
@@ -49,6 +50,43 @@ async function listen(handler: (request: IncomingMessage, response: ServerRespon
   if (address === null || typeof address === 'string') throw new Error('the stub has no port');
   return new URL(`http://127.0.0.1:${String(address.port)}/api/admin/doctor`);
 }
+
+describe('the mountinfo lines and the volume rule', () => {
+  it('reads every /data line, and the last one is the effective mount', () => {
+    expect(parseMountInfo(READY_MOUNTINFO)).toEqual({ root: '/docker/volumes/book-data/_data', fstype: 'btrfs', source: '/dev/vdb' });
+    expect(parseMountInfo(BIND_MOUNTINFO)).toEqual({ root: '/Users/tester/book-data', fstype: 'virtiofs', source: 'data' });
+    // A volume first, a bind stacked over it later: the container sees the bind.
+    const stacked = `${READY_MOUNTINFO}\n37 35 0:33 /Users/tester/book-data /data rw - virtiofs data rw`;
+    expect(parseMountInfos(stacked).map((line) => line.fstype)).toEqual(['btrfs', 'virtiofs']);
+    expect(parseMountInfo(stacked)?.fstype).toBe('virtiofs');
+    expect(parseMountInfo('22 1 254:1 / / rw - overlay overlay rw')).toBeNull();
+    expect(parseMountInfo('')).toBeNull();
+  });
+
+  it('accepts a volume root and refuses a bind, a host path and a plain host directory', () => {
+    expect(judgeVolume({ root: '/docker/volumes/book-data/_data', fstype: 'btrfs' }).ok).toBe(true);
+    expect(judgeVolume({ root: '/var/lib/docker/volumes/book-data/_data', fstype: 'ext4' }).ok).toBe(true);
+    // The Mac's disk through a FUSE filesystem: a bind whatever the path says.
+    expect(judgeVolume({ root: '/docker/volumes/x/_data', fstype: 'virtiofs' }).ok).toBe(false);
+    expect(judgeVolume({ root: '/Users/tester/book-data', fstype: 'ext4' }).ok).toBe(false);
+    expect(judgeVolume({ root: '/Volumes/Book/book-data', fstype: 'ext4' }).ok).toBe(false);
+    expect(judgeVolume({ root: '/home/tester/book-data', fstype: 'ext4' }).ok).toBe(false);
+    expect(judgeVolume({ root: '/srv/book-data/live', fstype: 'ext4' }, { hostDataDir: '/srv/book-data' }).ok).toBe(false);
+    // A block filesystem outside a volume store is not a volume: the rule is positive.
+    const plain = judgeVolume({ root: '/opt/book-data', fstype: 'ext4' });
+    expect(plain.ok).toBe(false);
+    expect(plain.reason).toBe('not a volume root: /opt/book-data (ext4) — BOOK-183');
+  });
+});
+
+describe('resolveRepoRoot — a wrong root is not an empty tree', () => {
+  it('believes a root with manuscript/ or .git, and names the one that has neither', () => {
+    expect(resolveRepoRoot(repoWith({})).error).toBeNull();
+    const bare = mkdtempSync(join(tmpdir(), 'book-doctor-noroot-'));
+    dirs.push(bare);
+    expect(resolveRepoRoot(bare)).toEqual({ root: bare, error: `BOOK_REPO_ROOT is not a book checkout: ${bare}` });
+  });
+});
 
 describe('manuscriptProse — a chapter heading is a title, not prose', () => {
   it('passes a chapter that is a heading plus the frozen sentence', () => {

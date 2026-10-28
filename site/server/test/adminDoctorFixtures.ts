@@ -34,7 +34,7 @@ export const READY_MOUNTINFO = [
 /** The Mac's disk seen through the OrbStack VM — the bind BOOK-183 removes. */
 export const BIND_MOUNTINFO = [
   '22 1 254:1 / / rw,relatime - overlay overlay rw',
-  '36 35 0:32 /Users/filipp/book-site-data /data rw,relatime master:1 - virtiofs data rw',
+  '36 35 0:32 /Users/tester/book-data /data rw,relatime master:1 - virtiofs data rw',
 ].join('\n');
 
 const servers: Server[] = [];

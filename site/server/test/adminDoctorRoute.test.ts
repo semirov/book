@@ -75,7 +75,7 @@ describe('GET /api/admin/doctor', () => {
       build: { commit: string; version: string };
       schema: { userVersion: number; expected: number };
       dumps: { preMigration: unknown };
-      dataDir: { path: string; entries: string[]; denied: string[]; stray: string[]; tokens: unknown };
+      dataDir: { path: string; entries: string[]; denied: string[]; stray: string[]; tokens: unknown; error: string | null };
       frame: { source: string; rows: Array<{ chapter: number; position: string; sha256: string }> };
       graph: { shipped: boolean };
     };
@@ -86,6 +86,7 @@ describe('GET /api/admin/doctor', () => {
     expect(body.dataDir.path).toBe(target.dataDir);
     expect(body.dataDir.denied).toEqual([]);
     expect(body.dataDir.tokens).toEqual({ admin: false, engine: false });
+    expect(body.dataDir.error).toBeNull();
     expect(body.frame.source).toBe('basis');
     expect(body.frame.rows.map((row) => row.chapter)).toEqual([1, 42]);
     expect(body.frame.rows.every((row) => /^[0-9a-f]{64}$/u.test(row.sha256))).toBe(true);

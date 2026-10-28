@@ -58,6 +58,12 @@ export type DataDirInspection = {
   /** Top-level entries outside the allow-list; `writer` is reported through `denied` only. */
   stray: string[];
   tokens: { admin: boolean; engine: boolean };
+  /**
+   * The errno of a directory that could not be listed, or `null`. An unlistable data dir is a
+   * fact the preflight must be able to fail on — a throw here would turn the whole doctor
+   * answer into a 500 and hide the schema and frame rows that are still readable.
+   */
+  error: string | null;
 };
 
 export type FrameRow = { chapter: number; position: 'first' | 'last'; sha256: string };
@@ -129,6 +135,31 @@ export function inspectSchema(db: Db): SchemaInspection {
 /** Test seam: a factory lets a test count opens without touching the real file's bytes. */
 export type DumpDeps = { DatabaseImpl?: typeof Database };
 
+type DumpFact = { integrity: string; userVersion: number | null };
+
+/**
+ * The last few integrity answers, keyed by `file|mtimeMs|bytes`. `PRAGMA integrity_check` is
+ * synchronous and walks the whole file: on a launch-sized dump it would block the site's event
+ * loop for every poll of the preflight. An unchanged file (same path, mtime and size) cannot have
+ * a different answer, so it is not re-read; a touched or replaced dump misses by construction.
+ * Bounded and FIFO: eight entries is more than the handful of dumps a launch leaves behind, and a
+ * cache that grew with the data dir would be a leak in the process that must stay small.
+ */
+const DUMP_CACHE_LIMIT = 8;
+const dumpCache = new Map<string, DumpFact>();
+
+function dumpFactOf(key: string, file: string, DatabaseImpl: typeof Database): DumpFact {
+  const cached = dumpCache.get(key);
+  if (cached !== undefined) return cached;
+  const fact = readDump(file, DatabaseImpl);
+  if (dumpCache.size >= DUMP_CACHE_LIMIT) {
+    const oldest = dumpCache.keys().next().value;
+    if (oldest !== undefined) dumpCache.delete(oldest);
+  }
+  dumpCache.set(key, fact);
+  return fact;
+}
+
 /** The dump a migration would have left: newest by mtime, opened read-only, never written. */
 export function inspectDumps(dataDir: string, deps: DumpDeps = {}): DumpsInspection {
   const dir = join(dataDir, 'backups');
@@ -150,7 +181,8 @@ export function inspectDumps(dataDir: string, deps: DumpDeps = {}): DumpsInspect
   });
   const newest = found.sort((left, right) => right.mtimeMs - left.mtimeMs)[0];
   if (newest === undefined) return { preMigration: null };
-  return { preMigration: { ...newest, ...readDump(newest.file, deps.DatabaseImpl ?? Database) } };
+  const key = `${newest.file}|${String(newest.mtimeMs)}|${String(newest.bytes)}`;
+  return { preMigration: { ...newest, ...dumpFactOf(key, newest.file, deps.DatabaseImpl ?? Database) } };
 }
 
 /** `integrity_check` and `user_version` of one file, read-only; a broken file is a value here. */
@@ -176,11 +208,24 @@ function readDump(file: string, DatabaseImpl: typeof Database): { integrity: str
  * The data dir is the home of the book, and only the book: the allow-list above, the two token
  * files by presence, and the three forbidden writer paths by name. Nothing is read inside a
  * subdirectory — a name is enough to report a stray, and a transcript is not ours to enumerate.
+ *
+ * A directory that cannot be listed (a wrong mount, a file where the volume should be) is a
+ * reported `error`, not a throw: the preflight has to be able to say *which* fact is unavailable,
+ * and a 500 would also swallow the schema and frame rows that are still readable.
  */
 export function inspectDataDir(dataDir: string): DataDirInspection {
-  const dirents = readdirSync(dataDir, { withFileTypes: true })
-    .map((entry) => ({ name: entry.name, directory: entry.isDirectory() }))
-    .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  const tokens = {
+    admin: exists(join(dataDir, 'admin.token')),
+    engine: exists(join(dataDir, 'engine.token')),
+  };
+  let dirents: Array<{ name: string; directory: boolean }>;
+  try {
+    dirents = readdirSync(dataDir, { withFileTypes: true })
+      .map((entry) => ({ name: entry.name, directory: entry.isDirectory() }))
+      .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  } catch (error) {
+    return { path: dataDir, entries: [], denied: [], stray: [], tokens, error: codeOf(error) };
+  }
   const deniedTop = new Set(DENIED_PATHS.map((path) => path.split('/')[0] ?? path));
   return {
     path: dataDir,
@@ -192,10 +237,8 @@ export function inspectDataDir(dataDir: string): DataDirInspection {
       .filter((entry) => !deniedTop.has(entry.name))
       .filter((entry) => !allowedEntry(entry.name, entry.directory))
       .map((entry) => entry.name),
-    tokens: {
-      admin: exists(join(dataDir, 'admin.token')),
-      engine: exists(join(dataDir, 'engine.token')),
-    },
+    tokens,
+    error: null,
   };
 }
 

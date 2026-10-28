@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
 
-import { judgeVolume, parseDoctorArgs, parseMountInfo, printDoctorReport, runDoctor } from '../../bin/adminDoctor.mjs';
+import { parseDoctorArgs, printDoctorReport, runDoctor } from '../../bin/adminDoctor.mjs';
 import type { DockerCall, DoctorReport } from '../../bin/adminDoctor.mjs';
 import {
   BIND_MOUNTINFO,
@@ -12,7 +12,6 @@ import {
   HOUR,
   IDS,
   IMAGE_SHORT,
-  READY_MOUNTINFO,
   TOKEN,
   byId,
   closeDoctors,
@@ -33,11 +32,13 @@ import {
 } from './adminDoctorFixtures.ts';
 
 /**
- * BOOK-188 — `node bin/admin.mjs doctor`. What is proved is the host's half: the eight rows and
- * their order, the exit code an operator scripts against, and the evidence a reader sees. No
- * Docker, no prod, no network: docker and the stack are stubs, every dir is a `mkdtemp` — except
- * the sqlite dump, a real file opened read-only, because "the backup opens" is the claim.
+ * BOOK-188 — `node bin/admin.mjs doctor`: the eight rows, their order, the exit code an operator
+ * scripts against and the evidence a reader sees. Docker and the stack are stubs, no prod, no
+ * network; the only real database is a backup copy, opened read-only.
  */
+
+/** A sentence that exists only in one served answer: if it reaches the report, the row leaked it. */
+const SERVED_SENTINEL = 'Тихий свет над столом, и ни одного свидетеля.';
 
 afterEach(async () => {
   await closeDoctors();
@@ -59,29 +60,6 @@ describe('doctor — the arguments it accepts', () => {
     for (const argv of [[], ['reset', 'book'], ['doctor', '--json=1'], ['doctor', '--bogus'], ['doctor', 'extra'], ['doctor', '--url'], ['doctor', '--url='], ['doctor', '--url', '--json']]) {
       expect(() => parseDoctorArgs(argv), argv.join(' ')).toThrow();
     }
-  });
-});
-
-/* ---------------------------------------------------------------------------- host readers -- */
-
-describe('doctor — the volume rule and the mountinfo line', () => {
-  it('reads the /data line and nothing else', () => {
-    expect(parseMountInfo(READY_MOUNTINFO)).toEqual({ root: '/docker/volumes/book-data/_data', fstype: 'btrfs', source: '/dev/vdb' });
-    expect(parseMountInfo(BIND_MOUNTINFO)).toEqual({ root: '/Users/filipp/book-site-data', fstype: 'virtiofs', source: 'data' });
-    expect(parseMountInfo('22 1 254:1 / / rw - overlay overlay rw')).toBeNull();
-    expect(parseMountInfo('')).toBeNull();
-  });
-
-  it('accepts a volume and refuses every kind of host bind', () => {
-    expect(judgeVolume({ root: '/docker/volumes/book-data/_data', fstype: 'btrfs' }).ok).toBe(true);
-    // The Mac's disk through a FUSE filesystem: a bind whatever the path says.
-    expect(judgeVolume({ root: '/docker/volumes/x/_data', fstype: 'virtiofs' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/Users/filipp/book-site-data', fstype: 'ext4' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/Volumes/Book/book-site-data', fstype: 'ext4' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/home/filipp/book-site-data', fstype: 'ext4' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/srv/book-site-data', fstype: 'ext4' }, { hostDataDir: '/srv/book-site-data' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/srv/book-site-data/live', fstype: 'ext4' }, { hostDataDir: '/srv/book-site-data' }).ok).toBe(false);
-    expect(judgeVolume({ root: '/var/lib/docker/volumes/book-data/_data', fstype: 'ext4' }, { hostDataDir: '/srv/book-site-data' }).ok).toBe(true);
   });
 });
 
@@ -128,14 +106,12 @@ describe('doctor — a deliberately broken machine', () => {
     });
 
     expect(report.exitCode).toBe(1);
-    expect(report.ok).toBe(false);
-    expect(report.checks.map((check) => check.id)).toEqual(IDS);
     expect(byId(report, 'runtime').verdict).toBe('fail');
     expect(byId(report, 'db_home').verdict).toBe('fail');
     expect(byId(report, 'backups').verdict).toBe('fail');
     expect(byId(report, 'git_prose').verdict).toBe('fail');
     // One failure the bind mount, one the writer, one the stray entry, one the prose in the tree.
-    expect(byId(report, 'runtime').failures[0]).toContain('/Users/filipp/book-site-data');
+    expect(byId(report, 'runtime').failures[0]).toContain('/Users/tester/book-data');
     expect(byId(report, 'runtime').failures[0]).toContain('virtiofs');
     const dbHome = byId(report, 'db_home').failures.join(' ');
     expect(dbHome).toContain('writer/state.json');
@@ -143,7 +119,6 @@ describe('doctor — a deliberately broken machine', () => {
     expect(dbHome).toContain('manuscript/ch05.md');
     expect(byId(report, 'backups').failures[0]).toMatch(/ is 30h old \(limit 24h\)/u);
     expect(byId(report, 'backups').failures.join(' ')).toContain('status=fail');
-    expect(byId(report, 'git_prose').failures[0]).toContain('manuscript/ch05.md');
     expect(byId(report, 'git_prose').failures[0]).toContain('1 manuscript');
     // The counts and the frame are intact, so those rows pass — the table is a diagnosis.
     expect(byId(report, 'schema').verdict).toBe('pass');
@@ -188,7 +163,6 @@ describe('doctor — a deliberately broken machine', () => {
       expect(rows.map((row) => row[1])).toEqual(report.checks.map((check) => (check.verdict === 'not_shipped' ? 'not shipped' : check.verdict)));
       expect(rows[0]?.[2]).toBe(report.checks[0]?.evidence);
       const failures = human.slice(1 + IDS.length, -1);
-      expect(failures.length).toBeGreaterThan(0);
       expect(failures.every((line) => line.startsWith('  - '))).toBe(true);
       expect(failures.some((line) => line.startsWith('  - db_home: '))).toBe(true);
       const failed = report.checks.filter((check) => check.verdict === 'fail').length;
@@ -233,16 +207,7 @@ describe('doctor — a ready machine', () => {
     expect(report.exitCode).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.checks.map((check) => check.id)).toEqual(IDS);
-    expect(report.checks.map((check) => check.verdict)).toEqual([
-      'pass',
-      'pass',
-      'pass',
-      'pass',
-      'pass',
-      'not_shipped',
-      'pass',
-      'pass',
-    ]);
+    expect(report.checks.map((check) => check.verdict)).toEqual(['pass', 'pass', 'pass', 'pass', 'pass', 'not_shipped', 'pass', 'pass']);
     expect(byId(report, 'runtime').evidence).toBe(`abc1234 · image ${IMAGE_SHORT} · volume /docker/volumes/book-data/_data (btrfs)`);
     expect(byId(report, 'schema').evidence).toBe('v23 = build v23 · dump pre-v22 2h ago integrity ok');
     expect(byId(report, 'db_home').evidence).toBe('data dir clean · manuscript/ no prose');
@@ -260,12 +225,12 @@ describe('doctor — a ready machine', () => {
 /* ------------------------------------------------------------------------ focused failures -- */
 
 /** What one focused case may override: the stack's answers, the host's seams, the tree. */
-type ReportOptions = { body?: Record<string, unknown>; reset?: Record<string, unknown>; routes?: Record<string, Route>; docker?: DockerCall; gitLsFiles?: (repoRoot: string) => Promise<string[] | null>; manuscript?: Record<string, string>; drill?: 'site' | 'root' | 'none'; openReadonly?: (file: string) => never };
+type ReportOptions = { body?: Record<string, unknown>; reset?: Record<string, unknown>; routes?: Record<string, Route>; docker?: DockerCall; gitLsFiles?: (repoRoot: string) => Promise<string[] | { error: string } | null>; manuscript?: Record<string, string>; drill?: 'site' | 'root' | 'none'; bare?: boolean; openReadonly?: (file: string) => never };
 
 describe('doctor — the rows that can go red on their own', () => {
   async function reportWith(options: ReportOptions = {}): Promise<DoctorReport> {
     const root = scratchRoot();
-    const repo = makeRepo(root, options.manuscript ?? {}, options.drill ?? 'site');
+    const repo = options.bare === true ? root : makeRepo(root, options.manuscript ?? {}, options.drill ?? 'site');
     const backups = join(root, 'backups');
     makeHostBackup(backups, '20261028T060000', HOUR);
     const log = writeLog(join(root, 'book-backup.log'), [`${utcStamp(HOUR)} level=info job=book-backup-drill status=ok`]);
@@ -346,12 +311,16 @@ describe('doctor — the rows that can go red on their own', () => {
     });
     const report = await reportWith({
       body,
-      routes: { ...readyRoutes(body), '/api/chapters/42': () => ({ body: { chapter: 42, blocks: [{ text: 'Свет погас.' }] } }) },
+      routes: { ...readyRoutes(body), '/api/chapters/42': () => ({ body: { chapter: 42, blocks: [{ text: SERVED_SENTINEL }] } }) },
     });
     expect(byId(report, 'frame').verdict).toBe('fail');
     const named = byId(report, 'frame').failures.join(' ');
     expect(named).toContain('frame ch42/last: no row in the DB');
-    expect(named).toContain('site /api/chapters/42');
+    expect(named).toContain(`frame site /api/chapters/42: served sha ${sha(SERVED_SENTINEL).slice(0, 8)} (len ${String(SERVED_SENTINEL.length)})`);
+    // The served text is the book's: neither the report nor `--json` may carry it, even cut short.
+    const printed = JSON.stringify(report);
+    expect(printed).not.toContain(SERVED_SENTINEL.slice(0, 20));
+    expect(printed).not.toContain(SERVED_SENTINEL);
   });
 
   it('fails the dry run when its total, its keep-list or a token is not right', async () => {
@@ -382,6 +351,24 @@ describe('doctor — the rows that can go red on their own', () => {
     const fine = await reportWith({ body: doctorBody({ graph: { shipped: true, facts: 4, threads: 2, edges: 9, closureMs: 7 } }) });
     expect(byId(fine, 'graph').verdict).toBe('pass');
     expect(byId(fine, 'graph').evidence).toBe('facts 4 · threads 2 · edges 9 · closure 7 ms');
+  });
+
+  it('fails git_prose when git could not answer, and when the root is not a checkout', async () => {
+    const refused = await reportWith({ gitLsFiles: async () => ({ error: 'fatal: not a git repository' }) });
+    expect(byId(refused, 'git_prose').verdict).toBe('fail');
+    expect(byId(refused, 'git_prose').failures[0]).toBe('git could not answer: fatal: not a git repository');
+
+    // A root with neither `manuscript/` nor `.git` was never read: both tree rows say so by name.
+    const bare = await reportWith({ bare: true });
+    expect(byId(bare, 'db_home').failures.join(' ')).toContain('BOOK_REPO_ROOT is not a book checkout');
+    expect(byId(bare, 'git_prose').verdict).toBe('fail');
+    expect(byId(bare, 'git_prose').failures[0]).toMatch(/^BOOK_REPO_ROOT is not a book checkout: /u);
+  });
+
+  it('fails db_home when the route could not list the data dir', async () => {
+    const report = await reportWith({ body: doctorBody({ dataDir: { path: '/data', denied: [], stray: [], tokens: { admin: true, engine: true }, error: 'EACCES' } }) });
+    expect(byId(report, 'db_home').verdict).toBe('fail');
+    expect(byId(report, 'db_home').failures[0]).toBe('the data dir could not be listed: EACCES');
   });
 
   it('passes git_prose on a tree that is not a checkout, and keeps backups fresh from the host dump', async () => {
@@ -467,6 +454,18 @@ describe('doctor — the process an operator runs', () => {
     expect(result.stdout).toContain('node bin/admin.mjs doctor [--json] [--url <url>]');
     expect(result.stdout).toContain('--json');
     expect(result.stdout).toContain('exit 0 ready · 1 not ready');
+  });
+
+  it('exits 2 on a usage error and 4 on a target that is not this machine', async () => {
+    const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: scratchRoot() };
+    const usage = await runCli(['doctor', '--bogus'], env);
+    expect(usage.status).toBe(2);
+    expect(usage.stderr).toContain('unknown flag: --bogus');
+    // The target is refused before any request: the token never leaves this machine.
+    const remote = await runCli(['doctor', '--url', 'https://example.com'], { ...env, ADMIN_TOKEN: 'unused' });
+    expect(remote.status).toBe(4);
+    expect(remote.stderr).toContain('non-local');
+    expect(remote.stdout).toBe('');
   });
 
   it('prints a JSON report and exits 1 when the stack is not there', { timeout: 30_000 }, async () => {

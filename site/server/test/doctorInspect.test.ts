@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE } from '@book/shared';
-import type BetterSqlite3 from 'better-sqlite3';
+import Database from 'better-sqlite3';
 
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { SCHEMA_VERSION } from '../src/db/schema.ts';
@@ -59,6 +59,16 @@ function scratchDb(dir: string): Db {
   const db = openDatabase(join(dir, 'book.db'));
   scratchDbs.push(db);
   return db;
+}
+
+/** A factory that counts every open and hands back the real read-only connection. */
+function countingOpen(): { impl: typeof Database; opens: () => number } {
+  let opens = 0;
+  const Counting = function (this: unknown, file: string, options: Database.Options): unknown {
+    opens += 1;
+    return new Database(file, options);
+  };
+  return { impl: Counting as unknown as typeof Database, opens: () => opens };
 }
 
 describe('inspectSchema', () => {
@@ -191,10 +201,60 @@ describe('inspectDumps', () => {
         throw Object.assign(new Error('not opened on purpose'), { code: 'SQLITE_CANTOPEN' });
       }
     }
-    const result = inspectDumps(dir, { DatabaseImpl: Spy as unknown as typeof BetterSqlite3 });
+    const result = inspectDumps(dir, { DatabaseImpl: Spy as unknown as typeof Database });
     expect(seen).toEqual([{ readonly: true, fileMustExist: true }]);
     expect(result.preMigration?.integrity).toBe('unreadable:SQLITE_CANTOPEN');
     expect(result.preMigration?.userVersion).toBeNull();
+  });
+
+  it('memoises the integrity check by file, mtime and size', () => {
+    const fixture = framed();
+    fixture.db.pragma('wal_checkpoint(TRUNCATE)');
+    const backups = join(fixture.dataDir, 'backups');
+    mkdirSync(backups);
+    const dump = join(backups, 'pre-v22-20261028T120000Z.db');
+    copyFileSync(join(fixture.dataDir, 'book.db'), dump);
+    const counter = countingOpen();
+
+    const first = inspectDumps(fixture.dataDir, { DatabaseImpl: counter.impl });
+    const second = inspectDumps(fixture.dataDir, { DatabaseImpl: counter.impl });
+    expect(first.preMigration?.integrity).toBe('ok');
+    expect(second.preMigration).toEqual(first.preMigration);
+    // The second poll of the preflight must not read the dump again.
+    expect(counter.opens()).toBe(1);
+
+    // A touched file is a different file: the key carries mtime, so the answer is re-read.
+    utimesSync(dump, new Date(), new Date(Date.now() + 60_000));
+    const third = inspectDumps(fixture.dataDir, { DatabaseImpl: counter.impl });
+    expect(counter.opens()).toBe(2);
+    expect(third.preMigration?.integrity).toBe('ok');
+  });
+
+  it('keeps at most eight answers, so the cache cannot grow with the data dir', () => {
+    const fixture = framed();
+    fixture.db.pragma('wal_checkpoint(TRUNCATE)');
+    const backups = join(fixture.dataDir, 'backups');
+    mkdirSync(backups);
+    const dumps = Array.from({ length: 9 }, (_unused, index) =>
+      join(backups, `pre-v22-2026102${String(index + 1)}T000000Z.db`),
+    );
+    for (const dump of dumps) copyFileSync(join(fixture.dataDir, 'book.db'), dump);
+    const counter = countingOpen();
+
+    // Each dump becomes the newest in turn, so every call adds a fresh key.
+    for (const [index, dump] of dumps.entries()) {
+      const when = new Date(Date.now() + index * 1_000);
+      utimesSync(dump, when, when);
+      inspectDumps(fixture.dataDir, { DatabaseImpl: counter.impl });
+    }
+    expect(counter.opens()).toBe(9);
+
+    // The first key was evicted by the ninth insert: touching that dump is a miss again.
+    const [firstDump] = dumps;
+    if (firstDump === undefined) throw new Error('no dump');
+    utimesSync(firstDump, new Date(), new Date(Date.now() + 60_000));
+    inspectDumps(fixture.dataDir, { DatabaseImpl: counter.impl });
+    expect(counter.opens()).toBe(10);
   });
 });
 
@@ -226,6 +286,7 @@ describe('inspectDataDir', () => {
     expect(report.denied).toEqual(['writer/state.json', 'writer/pre']);
     expect(report.stray).toEqual([]);
     expect(report.tokens).toEqual({ admin: true, engine: true });
+    expect(report.error).toBeNull();
     // Names, never values.
     const printed = JSON.stringify(report);
     expect(printed).not.toContain('admin-secret-value');
@@ -251,6 +312,25 @@ describe('inspectDataDir', () => {
     writeFileSync(join(dir, 'writer', 'draft.md'), 'prose');
     expect(inspectDataDir(dir).stray).toEqual([]);
     expect(inspectDataDir(dir).denied).toEqual([]);
+  });
+
+  it('reports a data dir it cannot list as an error instead of throwing', () => {
+    const missing = join(tempDir('data-dir-missing-'), 'no-such-dir');
+    expect(() => inspectDataDir(missing)).not.toThrow();
+    const report = inspectDataDir(missing);
+    expect(report.error).toBe('ENOENT');
+    expect(report.path).toBe(missing);
+    expect(report.entries).toEqual([]);
+    expect(report.denied).toEqual([]);
+    expect(report.stray).toEqual([]);
+    expect(report.tokens).toEqual({ admin: false, engine: false });
+  });
+
+  it('reports a file where the data dir should be as an error too', () => {
+    const dir = tempDir('data-dir-file-');
+    const asFile = join(dir, 'not-a-dir');
+    writeFileSync(asFile, 'this is a file');
+    expect(inspectDataDir(asFile).error).toBe('ENOTDIR');
   });
 });
 
