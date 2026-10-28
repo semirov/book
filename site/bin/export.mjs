@@ -12,7 +12,8 @@
  *
  * The volume: `--data-dir`, else `DATA_DIR` (the site's own config default). The imprint, the
  * origin and the cover path come from the same config the site reads, so an export names the
- * same edition `/book.fb2` serves.
+ * same edition `/book.fb2` serves. The database is opened **read-only** (`{readonly: true,
+ * fileMustExist: true}`) — an export creates nothing, and a missing `book.db` is an error.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -40,7 +41,7 @@ async function main() {
   }
   const { parseExportArgs, runExport } = await import(pathToFileURL(entry).href);
   const { loadConfig } = await import(pathToFileURL(join(DIST, 'config.js')).href);
-  const { databaseFile, openDatabase } = await import(pathToFileURL(join(DIST, 'db', 'db.js')).href);
+  const { databaseFile } = await import(pathToFileURL(join(DIST, 'db', 'db.js')).href);
   const { loadImprint } = await import(pathToFileURL(join(DIST, 'imprint.js')).href);
 
   const args = parseExportArgs(process.argv.slice(2));
@@ -51,7 +52,12 @@ async function main() {
   const config = loadConfig(
     args.dataDir === null ? process.env : { ...process.env, DATA_DIR: resolve(args.dataDir) },
   );
-  const db = openDatabase(databaseFile(config.dataDir));
+  // BOOK-187 review: the export READS the volume. `openDatabase` sets WAL and would create a file
+  // where there is none — so an export into a typo'd path would leave an empty database behind.
+  // Read-only, must-exist, exactly as `scripts/frame-check.mjs` opens it.
+  const { default: Database } = await import('better-sqlite3');
+  const file = databaseFile(config.dataDir);
+  const db = new Database(file, { readonly: true, fileMustExist: true });
   try {
     return runExport(
       args,

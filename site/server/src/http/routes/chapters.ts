@@ -2,7 +2,7 @@ import { TOTAL_CHAPTERS, isChapterNumber, type ChapterDto } from '@book/shared';
 import type { FastifyInstance } from 'fastify';
 
 import { getChapterRow, listBlocks } from '../../db/repo/chapters.ts';
-import { frameOf } from '../../db/repo/frame.ts';
+import { frameBlockOf, frameOf } from '../../db/repo/frame.ts';
 import { chapterEtag } from '../../util/etag.ts';
 import { checkFrameDrift, framePositionOf, frameSource } from '../frameDrift.ts';
 import type { RouteDeps } from '../deps.ts';
@@ -41,7 +41,31 @@ export function registerChapterRoutes(app: FastifyInstance, deps: RouteDeps): vo
       // A basis-only slot is not one: it carries the frozen frame as its one paragraph and
       // is served like prose, while the catalog keeps it `written: false` (BOOK-6). The cache
       // policy is the app's (`http/cache.ts`), so the 404 carries none of its own (BOOK-109).
-      return reply.code(404).send({ code: 'NOT_WRITTEN', message: 'chapter is not written yet' });
+      //
+      // BOOK-187 AC3: before the book has a chapter, ch01 and ch42 are still those sentences —
+      // so the **row** is served as the slot's one basis block. A fresh v28 volume has no
+      // `chapters` row at all, and a constant compiled into the image is not a source: what a
+      // reader is given here is what the volume says, which is what `book_frame` is for. No
+      // drift check on this branch: the block *is* the row that check would compare it with.
+      const position = framePositionOf(n);
+      const frame = position === null ? null : frameBlockOf(deps.db, n, position);
+      if (frame === null) {
+        return reply.code(404).send({ code: 'NOT_WRITTEN', message: 'chapter is not written yet' });
+      }
+      const basisBody: ChapterDto = {
+        n,
+        title: null,
+        rev: 0,
+        chars: 0,
+        basis: true,
+        blocks: [{ id: frame.id, i: 0, text: frame.text, hash: frame.hash }],
+        // Nothing was written: a basis sentence is not prose, so it has no written moment.
+        writtenAt: null,
+        updatedAt: null,
+      };
+      // The tag names the projection like every other answer (BOOK-6): rev 0 and `basis`.
+      reply.header('etag', `"${chapterEtag(n, 0, true)}"`);
+      return reply.send(basisBody);
     }
 
     const blocks = listBlocks(deps.db, n);

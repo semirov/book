@@ -152,29 +152,15 @@ function readPlanningFiles(root) {
  * line, a blank line and the paragraphs, exactly the projection the applier writes. A slot with
  * no row or no blocks writes no file — an empty slot is absence, and every rule already reads
  * absence as an empty slot.
+ *
+ * The connection is the project's own driver (`better-sqlite3`, the server's dependency), opened
+ * `{readonly: true, fileMustExist: true}`: `node:sqlite` is still experimental and prints its
+ * warning on a later tick, so a Node without that module — or with the warning on stderr — must
+ * not be how the deploy gate fails. Nothing is created by this read.
  */
-/**
- * `node:sqlite` announces itself as experimental on first use, on stderr, and it does so on a
- * later tick — so the line lands *after* the import resolves and survives any scoped listener.
- * `--json` consumers must not have to skip a line nobody asked for, so the one warning this
- * process may drop is that one; every other warning still prints, in node's own shape.
- */
-function dropSqliteWarning() {
-  process.removeAllListeners('warning');
-  process.on('warning', (warning) => {
-    if (warning.name === 'ExperimentalWarning' && /SQLite/u.test(warning.message)) return;
-    console.error(`${warning.name}: ${warning.message}`);
-  });
-}
-
-async function loadSqlite() {
-  dropSqliteWarning();
-  return import('node:sqlite');
-}
-
 async function projectRowsTo(dbFile, dir) {
-  const { DatabaseSync } = await loadSqlite();
-  const db = new DatabaseSync(dbFile, { readOnly: true });
+  const { default: Database } = await import('better-sqlite3');
+  const db = new Database(dbFile, { readonly: true, fileMustExist: true });
   const chapters = db
     .prepare(
       `SELECT c.n AS n, c.title AS title, COUNT(b.id) AS blocks

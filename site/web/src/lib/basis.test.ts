@@ -32,6 +32,19 @@ describe('basisSentenceOf', () => {
     expect(basisSentenceOf(basisSlot(TOTAL_CHAPTERS))).toBe(FRAME_LAST_SENTENCE);
   });
 
+  it('prefers the served block over the compiled constant (BOOK-187 AC3)', () => {
+    // The volume is the source: a row edited by hand is what the reader must see, and the
+    // constant is only the fallback the offline shell prints before the answer arrives.
+    const edited = `${FRAME_FIRST_SENTENCE} (правка владельца)`;
+    expect(basisSentenceOf(basisSlot(1), { basis: true, blocks: [{ id: 'ch01#abc', i: 0, text: edited, hash: 'abc' }] })).toBe(edited);
+    // No usable payload — no blocks, or a chapter that is not a basis projection: the constant.
+    expect(basisSentenceOf(basisSlot(1), { basis: true, blocks: [] })).toBe(FRAME_FIRST_SENTENCE);
+    expect(basisSentenceOf(basisSlot(1), { basis: false, blocks: [{ id: 'ch01#abc', i: 0, text: 'текст', hash: 'abc' }] })).toBe(
+      FRAME_FIRST_SENTENCE,
+    );
+    expect(basisSentenceOf(basisSlot(1), null)).toBe(FRAME_FIRST_SENTENCE);
+  });
+
   it('says nothing for an empty slot', () => {
     expect(basisSentenceOf(entry(2, { blocks: 0 }))).toBeNull();
   });

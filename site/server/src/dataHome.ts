@@ -69,7 +69,7 @@ export function absoluteOf(root: string, rel: string): string {
 const PROSE = [/(?:^|\/)[^/]+\.md$/iu, /(?:^|\/)[^/]+\.txt$/iu, /(?:^|\/)ch\d+[^/]*$/iu];
 
 /** The writer's own files: BOOK-187 moved them into `writer_state`/`pass_transcripts` rows. */
-const WRITER_LEFTOVERS = ['writer/state.json', 'writer/pre', 'writer/transcripts'];
+const WRITER_LEFTOVERS = ['writer/state.json', 'writer/pre', 'writer/transcripts', 'writer'];
 
 /**
  * The volume's allow-list — exactly the names `book.db`'s directory may hold, each with the
@@ -90,6 +90,10 @@ export const DATA_ALLOW: ReadonlyArray<{ name: string; match: RegExp; reason: st
 /** The volume's allow-listed **directories**; everything inside one of them is that directory's business. */
 export const DATA_ALLOW_DIRS: ReadonlyArray<{ name: string; reason: string }> = [
   { name: 'backups', reason: 'dumps: the pre-migration copies boot verifies (ADR-043 G9)' },
+  {
+    name: 'backup',
+    reason: 'legacy dumps (singular, from before BOOK-187); `bin/home-migrate.mjs` folds it into `backups/`',
+  },
   { name: 'archive', reason: 'retired files an operator moved aside instead of deleting' },
   { name: 'versions', reason: 'the cold backup of revisions (content-addressed snapshots)' },
   { name: 'index', reason: 'derived slices: a cache of rows, rebuilt on demand' },
@@ -127,7 +131,7 @@ function writerProblem(root: string, entry: HomeEntry): HomeProblem | null {
   return {
     code: 'WRITER_LEFTOVER',
     path,
-    message: `${path} is the writer's own file — the lane's state and its transcripts are rows (BOOK-187); ${leftover} may not exist`,
+    message: `${path} is the writer's own file — the lane's state and its transcripts are rows (BOOK-187); ${leftover} may not exist — run bin/home-migrate.mjs --apply once`,
   };
 }
 
@@ -145,7 +149,7 @@ function allowedProblem(root: string, entry: HomeEntry, files: ReadonlySet<strin
   return {
     code: 'NOT_ALLOWED',
     path,
-    message: `${path} is not in the volume's allow-list — /data holds the book and its dumps and nothing else (${DATA_ALLOW.map((entry) => entry.name).concat(DATA_ALLOW_DIRS.map((entry) => `${entry.name}/`)).join(', ')})`,
+    message: `${path} is not in the volume's allow-list — /data holds the book and its dumps and nothing else (${DATA_ALLOW.map((entry) => entry.name).concat(DATA_ALLOW_DIRS.map((entry) => `${entry.name}/`)).join(', ')}); a leftover of the old writer is removed by bin/home-migrate.mjs --apply once`,
   };
 }
 
@@ -154,7 +158,8 @@ function allowedProblem(root: string, entry: HomeEntry, files: ReadonlySet<strin
  * path; an empty answer is a home that holds what it may.
  *
  *   a. `manuscript/` holds no prose (an absent or empty directory passes);
- *   b. the data dir holds no writer file (`writer/state.json`, `writer/pre/`, `writer/transcripts/`);
+ *   b. the data dir holds no writer file (`writer/` itself, `writer/state.json`,
+ *      `writer/pre/`, `writer/transcripts/`) — `bin/home-migrate.mjs` removes them once;
  *   c. every entry under the data dir is in the allow-list.
  */
 export function dataHomeProblems(input: {

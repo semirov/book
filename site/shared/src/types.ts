@@ -290,8 +290,13 @@ export type ChapterDto = {
   /** True when the whole chapter is its basis sentence: prose to read, not a written chapter. */
   basis: boolean;
   blocks: BlockDto[];
-  writtenAt: string;
-  updatedAt: string;
+  /**
+   * BOOK-187 AC3: the moment the prose was written — `null` on a basis-only slot served from
+   * `book_frame` before the chapter has a row, because nothing was written. A written chapter
+   * always carries both.
+   */
+  writtenAt: string | null;
+  updatedAt: string | null;
 };
 
 export type ApiErrorBody = {

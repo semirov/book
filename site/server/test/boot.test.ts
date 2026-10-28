@@ -12,7 +12,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -121,6 +121,32 @@ describe('bootDatabase — a fresh volume (BOOK-187)', () => {
     const { db } = await boot(dataDir, { buildInfo: stamp({ imageDigest: null, promptBundleSha: null }) });
     expect(getMeta(db, 'image_digest')).toBe('');
     expect(getMeta(db, 'prompt_bundle')).toBeNull();
+    db.close();
+  });
+
+  it('writes the volume marker once, and never overwrites it (BOOK-187)', async () => {
+    const dataDir = tempDir();
+    const first = await boot(dataDir);
+    first.db.close();
+    const marker = join(dataDir, '.book-volume');
+    expect(readFileSync(marker, 'utf8')).toBe(`${String(SCHEMA_VERSION)}\n`);
+    // 0644: a readable fact about the volume, never a secret.
+    expect(statSync(marker).mode & 0o777).toBe(0o644);
+
+    // The marker is the volume's own record: a later boot does not rewrite it.
+    writeFileSync(marker, '24\n');
+    const second = await boot(dataDir);
+    second.db.close();
+    expect(readFileSync(marker, 'utf8')).toBe('24\n');
+  });
+
+  it('serves without the marker when the volume cannot take the line', async () => {
+    const dataDir = tempDir();
+    // A directory where the marker goes: `wx` fails, the boot says one line and still serves.
+    mkdirSync(join(dataDir, '.book-volume'));
+    const { db, lines } = await boot(dataDir);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
+    expect(lines.join('\n')).toContain('BOOK_VOLUME');
     db.close();
   });
 });

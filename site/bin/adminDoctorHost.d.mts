@@ -14,11 +14,7 @@ export type CallResult = { status: number; ok: boolean; body: unknown } | { erro
 /** A read-only sqlite handle: the one method the doctor needs, plus `close`. */
 export type SqliteHandle = { prepare: (sql: string) => { get: () => unknown }; close: () => void };
 
-/** `null` — the tree is not a git checkout; `{error}` — git refused; array — what is tracked. */
-export type GitAnswer = string[] | { error: string } | null;
-export type GitLsFiles = (repoRoot: string) => Promise<GitAnswer>;
-
-/** The working tree, with the reason it cannot be read when it is not a book checkout. */
+/** The tree the preflight still reads (the drill script beside it); no checkout is required. */
 export type RepoRootAnswer = { root: string; error: string | null };
 
 /** One `/proc/self/mountinfo` line for a mount point: the two fields that tell volume from bind. */
@@ -36,7 +32,6 @@ export function sha256(text: unknown): string;
 export function ageOfMs(ms: number): string;
 
 export function execDocker(args: string[]): Promise<DockerAnswer>;
-export function execGitLsFiles(repoRoot: string): Promise<GitAnswer>;
 export function openReadonlyDefault(file: string): Promise<SqliteHandle>;
 
 export function callJson(options: {
@@ -53,7 +48,6 @@ export function parseMountInfos(text: string, mountPoint?: string): MountLine[];
 export function parseMountInfo(text: string, mountPoint?: string): MountLine | null;
 export function judgeVolume(mount: { root?: string; fstype?: string } | null, options?: { hostDataDir?: string }): VolumeJudgement;
 export function resolveRepoRoot(root: string): RepoRootAnswer;
-export function manuscriptProse(repoRoot: string): string[];
 
 /** The two rows that read the host: the container facts and the backup/drill facts. */
 export function checkRuntime(ctx: unknown): Promise<CheckAnswer>;

@@ -25,7 +25,7 @@
  * is no retry loop here and no attempt to heal by deleting data.
  */
 
-import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import Database from 'better-sqlite3';
@@ -38,6 +38,12 @@ import { SCHEMA_VERSION } from './schema.ts';
 
 /** `/data/backups` — inside the volume, next to the database it copies (ADR-043 G9). */
 export const BACKUPS_DIR = 'backups';
+/**
+ * `/data/.book-volume` — the marker the allow-list names (ADR-043 §3 row 12). Its content is the
+ * schema version the volume was last booted at, mode 0644: a readable fact that this directory is
+ * a book volume and not a mistyped path, never a secret.
+ */
+export const VOLUME_MARKER = '.book-volume';
 /** How many pre-migration dumps stay in the volume; older ones go, newest kept. */
 export const KEEP_DUMPS = 3;
 
@@ -194,6 +200,24 @@ function writeStamps(
 }
 
 /**
+ * `<data>/.book-volume` — the allow-list's «volume marker», written once. Content is the schema
+ * version, mode 0644. `wx` means "create, never overwrite": an existing marker is the volume's
+ * own record of the boot that made it, and a later boot does not rewrite history.
+ */
+export function writeVolumeMarker(dataDir: string, version: number = SCHEMA_VERSION): void {
+  const path = join(dataDir, VOLUME_MARKER);
+  try {
+    writeFileSync(path, `${String(version)}\n`, { flag: 'wx', mode: 0o644 });
+  } catch (error) {
+    // EEXIST on a *file* is the normal second boot. A directory of that name is not a marker:
+    // it is one line in the log, because a volume that grew a `.book-volume/` is worth a look.
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === 'EEXIST' && statSync(path).isFile()) return;
+    throw error;
+  }
+}
+
+/**
  * The whole boot, in order, with nothing skipped. The returned connection is open and migrated;
  * a refusal throws, and the caller exits 1.
  */
@@ -222,6 +246,17 @@ export async function bootDatabase(options: BootOptions): Promise<Db> {
     }
     const migration = migrate(db);
     writeStamps(db, migration, stamp, at, log);
+    // BOOK-187: the allow-list names `.book-volume`, so the volume writes it — a marker that
+    // nothing ever created would be a rule about a fiction. A refusal above writes none, and a
+    // volume that cannot take the line still serves: the book is the database, not the marker.
+    try {
+      writeVolumeMarker(dataDir);
+    } catch (error) {
+      log(
+        `BOOK_VOLUME: ${join(dataDir, VOLUME_MARKER)} could not be written ` +
+          `(${error instanceof Error ? error.message : String(error)}) — the volume still serves`,
+      );
+    }
     return db;
   } catch (error) {
     db.close();

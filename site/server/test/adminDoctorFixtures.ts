@@ -25,7 +25,7 @@ export const IMAGE_SHORT = '0123456789ab';
 export const HOUR = 3_600_000;
 
 /** The rows, in the order the contract fixes. */
-export const IDS = ['runtime', 'schema', 'db_home', 'frame', 'reset_dry_run', 'graph', 'backups', 'git_prose'];
+export const IDS = ['runtime', 'schema', 'db_home', 'frame', 'reset_dry_run', 'graph', 'backups'];
 
 export const READY_MOUNTINFO = [
   '22 1 254:1 / / rw,relatime - overlay overlay rw',

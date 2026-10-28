@@ -90,6 +90,17 @@ describe('rule b — the writer owns no file', () => {
       `${DATA}/writer/transcripts/stp_one.json`,
     ]);
     expect(found[0]?.message).toContain('writer/pre');
+    // BOOK-187 review: the message is a remedy, not just a verdict — the operator reads one line
+    // and knows what to run.
+    for (const problem of found) expect(problem.message).toContain('bin/home-migrate.mjs --apply');
+  });
+
+  it('names `writer/` itself, so a leftover of an older lane is one specific line', () => {
+    const found = problems(['writer/unknown.txt']);
+    expect(found.map((problem) => problem.code)).toEqual(['WRITER_LEFTOVER']);
+    expect(found[0]?.path).toBe(`${DATA}/writer/unknown.txt`);
+    expect(found[0]?.message).toContain(`${DATA}/writer/unknown.txt`);
+    expect(found[0]?.message).toContain('run bin/home-migrate.mjs --apply once');
   });
 
   it('fails on the directories themselves, even empty', () => {
@@ -129,11 +140,34 @@ describe('rule c — the volume is the book and nothing else', () => {
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ code: 'NOT_ALLOWED', path: `${DATA}/notes.txt` });
     expect(found[0]?.message).toContain(`${DATA}/notes.txt`);
+    // The remedy travels in the message: a leftover of the old writer is one command away.
+    expect(found[0]?.message).toContain('bin/home-migrate.mjs --apply once');
+  });
+
+  it('keeps the legacy singular `backup/` allowed, with the reason the cutover exists', () => {
+    const legacy = DATA_ALLOW_DIRS.find((entry) => entry.name === 'backup');
+    expect(legacy?.reason).toContain('legacy');
+    expect(legacy?.reason).toContain('bin/home-migrate.mjs');
   });
 
   it('fails on a new nested file by the deepest path, and on a stray empty directory', () => {
     expect(problems(['tmp/a']).map((problem) => problem.path)).toEqual([`${DATA}/tmp/a`]);
     expect(problems(['tmp/']).map((problem) => problem.path)).toEqual([`${DATA}/tmp`]);
+  });
+
+  it('names a depth-1 directory that holds nothing, and a file no allowed directory contains', () => {
+    // M: an empty directory is still a second thing in the volume — the walker sees it and the
+    // message names it, not its (absent) contents.
+    const empty = problems(['book.db', 'tmp/']);
+    expect(empty.map((problem) => problem.code)).toEqual(['NOT_ALLOWED']);
+    expect(empty[0]?.path).toBe(`${DATA}/tmp`);
+    expect(empty[0]?.message).toContain(`${DATA}/tmp`);
+
+    // A file below the top level is a finding unless an allow-listed directory holds it — and
+    // then the deepest path is what an operator can act on.
+    expect(problems(['nested/deep/x.txt']).map((problem) => problem.path)).toEqual([`${DATA}/nested/deep/x.txt`]);
+    expect(problems(['archive/nested/x.txt'])).toEqual([]);
+    expect(problems(['index/slices/ch08.json'])).toEqual([]);
   });
 
   it('names the whole allow-list, so a failure says what would have passed', () => {
@@ -197,7 +231,10 @@ describe('the walker and the whole check', () => {
       writeFileSync(join(root, 'data', 'writer', 'state.json'), '{"passes":3}', 'utf8');
       const report = checkDataHome({ dataDir: join(root, 'data'), manuscriptDir: join(root, 'manuscript') });
       expect(report.ok).toBe(false);
+      // BOOK-187: the writer's directory itself is named too — a volume with `writer/` in it is
+      // not a volume the cutover has finished with, whatever the directory happens to hold.
       expect(report.problems.map((problem) => problem.path)).toEqual([
+        join(root, 'data', 'writer'),
         join(root, 'data', 'writer', 'state.json'),
         join(root, 'manuscript', 'ch03.md'),
       ]);
@@ -253,7 +290,8 @@ describe('bin/home-check.mjs', () => {
       expect(result.code).toBe(1);
       expect(result.out).toContain(join(root, 'data', 'writer', 'state.json'));
       expect(result.out).toContain(join(root, 'manuscript', 'ch04.md'));
-      expect(result.out).toContain('2 problem(s)');
+      // Three: the writer's directory, the file inside it, and the prose.
+      expect(result.out).toContain('3 problem(s)');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -11,6 +11,7 @@
  */
 
 import type { Db } from '../db.ts';
+import { sha256Hex } from '../../util/hash.ts';
 
 /** Which end of the chapter the row is: the opening sentence or the closing one. */
 export type FramePosition = 'first' | 'last';
@@ -40,4 +41,20 @@ export function frameSha(db: Db, chapter: number, position: FramePosition): stri
     | { sha256: string }
     | undefined;
   return row?.sha256 ?? null;
+}
+
+/** One frame as the wire's paragraph: the text plus the id and hash `BlockDto` carries. */
+export type FrameBlock = { id: string; text: string; hash: string };
+
+/**
+ * The frame row as a served paragraph (BOOK-187 AC3): a fresh volume has no `chapters` row, so
+ * the frame's own row is the slot's one basis block — the volume is what the reader is given,
+ * not a constant compiled into the image. The id and hash are derived from the served text, so
+ * two answers of the same row carry the same identity; `null` when the slot has no row.
+ */
+export function frameBlockOf(db: Db, chapter: number, position: FramePosition): FrameBlock | null {
+  const text = frameOf(db, chapter, position);
+  if (text === null) return null;
+  const hash = sha256Hex(text).slice(0, 8);
+  return { id: `ch${String(chapter).padStart(2, '0')}#${hash}`, text, hash };
 }

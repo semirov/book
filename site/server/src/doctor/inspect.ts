@@ -1,11 +1,12 @@
 /**
  * BOOK-188 — the database and filesystem facts the launch preflight reads, and nothing else.
  *
- * The doctor itself is a host CLI (`bin/admin.mjs doctor`), because five of its eight checks are
- * host facts (docker, mountinfo, the working tree, host backups, git). It must never open
- * `book.db` from the host while the stack runs (BOOK-183: two kernels on one WAL file), so its
- * DB facts come through `GET /api/admin/doctor` and are read by the process that already holds
- * the connection. This module is that reading half: pure functions over a `Db` and the data dir.
+ * The doctor itself is a host CLI (`bin/admin.mjs doctor`), because part of its rows are host
+ * facts (docker, mountinfo, host backups, the drill log) and none needs a checkout since BOOK-187.
+ * It must never open `book.db` from the host while the stack runs (BOOK-183: two kernels on one
+ * WAL file), so its DB facts come through `GET /api/admin/doctor` and are read by the process
+ * that already holds the connection. This module is that reading half: pure functions over a
+ * `Db` and the data dir.
  *
  * Every function is read-only, and every answer is a count, a path, a boolean or a digest:
  *
@@ -17,9 +18,10 @@
  *   * nothing here decides «ready» or «not ready» — that is the CLI's verdict, and a module that
  *     guessed it would be a second place for the rule to live.
  *
- * The two features this module knows are *not* shipped on this branch (`book_frame` from
- * BOOK-187, `fact_dependency` from BOOK-185) are detected by their presence, never required:
- * an absent table is a reported state, and the route answers instead of failing.
+ * `book_frame` is the frame's home since v28 (BOOK-187): the rows ship with the schema and are
+ * the text the site serves, so the module reads them. Stage 3's `fact_dependency` (BOOK-185) is
+ * still not shipped on this branch and is detected by its presence, never required: an absent
+ * table is a reported state, and the route answers instead of failing.
  */
 
 import { createHash } from 'node:crypto';
@@ -92,6 +94,9 @@ const ALLOWED_FILE_PATTERNS: readonly RegExp[] = [
 ];
 const ALLOWED_DIRS: readonly string[] = [
   'backups',
+  // BOOK-187: the singular legacy dump directory, which `bin/home-migrate.mjs` folds into
+  // `backups/`. Allowed here so the preflight does not call it a stray before the cutover runs.
+  'backup',
   'archive',
   'versions',
   'index',

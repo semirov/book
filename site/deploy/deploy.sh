@@ -12,6 +12,10 @@
 #   site/deploy/deploy.sh --rollback              # one command back to the last known good
 #
 # What it guarantees:
+#   * the cutover runs first in the switch (BOOK-187 AC12): the writer lane is unloaded, the old
+#     writer's files are folded away by `bin/home-migrate.mjs --apply`, and only then does the home
+#     guard read the volume — the old image recreates `writer/state.json` on its next pass, so the
+#     order is not cosmetic;
 #   * the gate runs here too (typecheck, arch, tests, coverage floor, build, the volume's home
 #     guard, the text as stored in the database, and the F023 release check on the built
 #     bundle) — a red gate deploys nothing;
@@ -162,6 +166,8 @@ done
 
 BUDGET_MS=$((HEALTH_TIMEOUT * 1000))
 GRACE_MS=$((HEALTH_GRACE * 1000))
+WRITER_LABEL="${BOOK_WRITER_LABEL:-dev.book-writer}"
+WRITER_PLIST="${HOME}/Library/LaunchAgents/${WRITER_LABEL}.plist"
 
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 say() { printf '%s deploy: %s\n' "$(now)" "$*"; }
@@ -181,7 +187,7 @@ audit() {
 # run can never end with `lock: released` alone. A usage error (before this point) takes no lock and
 # writes no audit; a refusal (exit 3) is a notice, not a failure.
 trap 'fail_on_err "$LINENO" "$BASH_COMMAND"' ERR
-trap 'fail_on_exit; lock_release' EXIT
+trap 'fail_on_exit; writer_restore; lock_release' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
@@ -235,6 +241,45 @@ health_url() {
 # the text gate and the home guard both need it, and neither may pass by absence.
 data_dir_of_service() {
   plist_field EnvironmentVariables.DATA_DIR 2>/dev/null || true
+}
+
+# --- the volume cutover (BOOK-187 AC12) ---------------------------------------------------------
+#
+# A volume that served the pre-BOOK-187 image still holds the old writer's files, and the gate
+# below refuses to pass while they are there. The order of the cutover is **not cosmetic**: the
+# old writer recreates `writer/state.json` on its very next pass, so a migration that ran while
+# the lane was up would be undone seconds later and the gate after it would read a volume that
+# was already dirty again. So: stop the lane, migrate, *then* read the volume.
+#
+# `launchctl bootout`, not `stop`: the job carries KeepAlive, so a signal is answered by a
+# respawn within the throttle — the lane has to be unloaded, and `writer_restore` puts it back on
+# every exit path (a green deploy, a die, a Ctrl-C), because a lane left down is a book left
+# unwritten. A job that was not loaded is not ours to start: the flag stays 0 and nothing is
+# bootstrapped at the end.
+WRITER_STOPPED=0
+writer_stop() {
+  local status=0 out=""
+  out="$(launchctl bootout "gui/$(id -u)/$WRITER_LABEL" 2>&1)" || status=$?
+  if [ "$status" -eq 0 ]; then
+    WRITER_STOPPED=1
+    say "cutover: the writer lane ($WRITER_LABEL) is stopped — the old image must not recreate writer/state.json behind the migration"
+    return 0
+  fi
+  say "cutover: $WRITER_LABEL was not loaded (${out:-no output}) — nothing to stop"
+}
+
+writer_restore() {
+  [ "${WRITER_STOPPED:-0}" = "1" ] || return 0
+  WRITER_STOPPED=0
+  if [ ! -f "$WRITER_PLIST" ]; then
+    say "cutover: no plist at $WRITER_PLIST — the writer lane stays stopped; bootstrap it by hand"
+    return 0
+  fi
+  if launchctl bootstrap "gui/$(id -u)" "$WRITER_PLIST" >/dev/null 2>&1; then
+    say "cutover: the writer lane is loaded again ($WRITER_LABEL)"
+  else
+    say "cutover: the writer lane could not be bootstrapped — run: launchctl bootstrap gui/$(id -u) $WRITER_PLIST"
+  fi
 }
 
 site_url() {
@@ -412,6 +457,12 @@ npm run verify || die "gate (verify) is red — nothing was deployed or restarte
 STEP="gate: home"
 DATA_DIR_SITE="$(data_dir_of_service)"
 [ -n "$DATA_DIR_SITE" ] || die "the service names no DATA_DIR — a deploy without the volume cannot check the book; nothing was deployed or restarted"
+# The switch opens here, with the cutover (BOOK-187 AC12) — not after the gate: the reader of the
+# volume must meet a volume that no longer has a writer in it, and the old image writes one.
+writer_stop
+say "cutover: home-migrate --apply on $DATA_DIR_SITE (dry run first, then the one-way fold)"
+node "$ROOT/site/bin/home-migrate.mjs" --data-dir "$DATA_DIR_SITE" || die "the volume cutover dry run refused (its reason is above) — nothing was deployed or restarted"
+node "$ROOT/site/bin/home-migrate.mjs" --data-dir "$DATA_DIR_SITE" --apply || die "the volume cutover refused (its reason is above; nothing in the volume was changed) — nothing was deployed or restarted"
 say "gate: home (the volume and manuscript/ hold only what they may)"
 node "$ROOT/site/bin/home-check.mjs" --data-dir "$DATA_DIR_SITE" || die "the data dir holds something it may not (every path above is named) — nothing was deployed or restarted"
 STEP="gate: coverage"
