@@ -315,7 +315,9 @@ smoke() {
 # to be recorded as last-good. `--entrypoint node` is deliberate — the image's entrypoint is the
 # per-role single-instance lock wrapper (`deploy/entrypoint.sh`), which is for the long-running
 # role; a one-shot CLI must not take that lock (and would exit 75 on it). `--no-deps` keeps
-# `dc run` from starting the engine behind a check.
+# `dc run` from starting the engine behind a check. `home-check` is given the volume only — the
+# image carries no book tree since BOOK-187, and a missing `manuscript/` is the normal state
+# there, not a finding.
 #
 # A red command is a red deploy BEFORE green, and it goes through the existing rollback path: the
 # migration is idempotent and refuses anything it cannot name, so a second attempt would fail the
@@ -347,7 +349,9 @@ home_gate() {
     HOME_WHY="bin/home-migrate.mjs --apply refused (its last line is above); the old writer's files are still in the volume"
     return 1
   fi
-  if ! home_run "home-check" bin/home-check.mjs --data-dir /data --manuscript /book/manuscript; then
+  # No `--manuscript`: the image carries no book tree (BOOK-187) and a missing `manuscript/`
+  # passes by design — the volume is the only home of the text.
+  if ! home_run "home-check" bin/home-check.mjs --data-dir /data; then
     HOME_WHY="$HOME_FAILED"
     return 1
   fi
@@ -598,7 +602,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   say "dry run: lock $(lock_report) — this run takes nothing"
   if ! resolve_ref "$REF"; then die "cannot resolve '$REF' in $ROOT"; fi
   say "dry run: would build ${IMAGE_REPO}:${SHA} (commit $(sha7 "$SHA"), timeout ${BUILD_TIMEOUT}s), record prev=$(running_image), up -d --wait, gate ${SITE_URL}/healthz for $(sha7 "$SHA") (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms), smoke 5 reads"
-  say "dry run: then, in that image on the volume, dc run --rm -T --no-deps --entrypoint node site bin/home-migrate.mjs --apply, then ... bin/home-check.mjs --data-dir /data --manuscript /book/manuscript; a red one rolls back and last-good is not written"
+  say "dry run: then, in that image on the volume, dc run --rm -T --no-deps --entrypoint node site bin/home-migrate.mjs --apply, then ... bin/home-check.mjs --data-dir /data; a red one rolls back and last-good is not written"
   exit 0
 fi
 

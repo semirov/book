@@ -16,10 +16,13 @@
  *
  * **Dry run is the default**, and it changes nothing at all: it reads the directory tree and
  * opens no database, so it cannot even leave a `-wal` behind. `--apply` first proves the volume is
- * this book: `book.db` opens read-only, reports `user_version >= 28` (the schema `book_frame` is
- * seeded in), holds a `front_matter` row and at least one written chapter. Any of those missing is
- * a refusal with the reason and **nothing is touched** — a volume that is not the book is not
- * ours to clean.
+ * this book by its **rows**, not by its version: `book.db` opens read-only, holds a `front_matter`
+ * row with a title and at least one written chapter (`chapters.block_count > 0`) — both exist
+ * since v1, so the proof holds on the v25 volume a live host still has. A schema NEWER than this
+ * build is refused (`SCHEMA_FUTURE`: an older image does not clean a newer book); an older one is
+ * the case this script exists for, and this step runs **before** the boot that would migrate it.
+ * Any check failing is a refusal with the reason and **nothing is touched** — a volume that is not
+ * the book is not ours to clean.
  *
  * The writer half is a closed list: the three paths BOOK-187 retired are removed and the then
  * empty `writer/` with them; **anything else under `writer/` is a refusal**, printed by path, and
@@ -37,6 +40,8 @@
 import { existsSync, mkdirSync, readdirSync, rmdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+
+import { SCHEMA_VERSION } from '../server/src/db/schema.ts';
 
 /** The files BOOK-187 retired: `state.json` is a file, `pre/` and `transcripts/` are trees. */
 const WRITER_FILES = ['state.json'];
@@ -107,21 +112,33 @@ async function verifyVolume(dataDir) {
   }
   try {
     const version = Number(db.pragma('user_version', { simple: true }) ?? 0);
-    if (!Number.isFinite(version) || version < 28) {
+    if (!Number.isFinite(version)) {
+      return { ok: false, reason: `${file} reports no usable user_version — the volume is not this book` };
+    }
+    // A FUTURE schema is the one thing this script must never touch: a newer image wrote that
+    // volume, and a cutover against rules this build does not know is how a book is corrupted
+    // (the same refusal boot makes, and for the same reason). An OLDER one is exactly the case
+    // this script exists for — a v25 volume on the live host has to be foldable before the boot
+    // that migrates it, or the deploy deadlocks in front of its own gate.
+    if (version > SCHEMA_VERSION) {
       return {
         ok: false,
-        reason: `${file} is at schema v${String(version)}, the cutover needs v28 or later (BOOK-187 seeds book_frame there)`,
+        reason:
+          `${file} is at schema v${String(version)}, this build understands v${String(SCHEMA_VERSION)} ` +
+          '(SCHEMA_FUTURE: an older image does not clean a newer book)',
       };
     }
-    const front = db.prepare('SELECT COUNT(*) AS n FROM front_matter').get();
+    // The book is proved by its ROWS, not by its version: `front_matter` and `chapters` exist
+    // since v1, so a title row and one written chapter are evidence any version can carry.
+    const front = db.prepare('SELECT COUNT(*) AS n FROM front_matter WHERE length(trim(title)) > 0').get();
     if (Number(front?.n ?? 0) === 0) {
-      return { ok: false, reason: `${file} holds no front_matter row — the volume is not this book` };
+      return { ok: false, reason: `${file} holds no front_matter row with a title — the volume is not this book` };
     }
     const written = db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE block_count > 0').get();
     if (Number(written?.n ?? 0) === 0) {
       return { ok: false, reason: `${file} holds no written chapter — the volume is not this book` };
     }
-    return { ok: true };
+    return { ok: true, version };
   } catch (error) {
     return { ok: false, reason: `${file} could not be read (${reasonOf(error)})` };
   } finally {

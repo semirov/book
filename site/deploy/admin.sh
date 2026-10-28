@@ -14,7 +14,8 @@
 #
 # It dispatches on `$STATE_DIR/runtime` (written by `flip.sh`), the same way `backup.sh` does:
 #   compose  `docker compose exec -T site node /app/bin/<tool>.mjs …` — the container's env already
-#            carries DATA_DIR=/data, BOOK_ROOT=/book and the token paths, so nothing is restated here;
+#            carries DATA_DIR=/data and the token paths, so nothing is restated here (BOOK-187: no
+#            BOOK_ROOT — the image's root is the canon's home);
 #   launchd  the tree serves prod from the host data dir: `node bin/<tool>.mjs …` from `site/`, with
 #            DATA_DIR defaulting to the prod host path when the shell does not set it.
 #

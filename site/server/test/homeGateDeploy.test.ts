@@ -28,7 +28,9 @@ describe('compose-release.sh — the home gate', () => {
     expect(script).toContain(
       'bin/home-migrate.mjs --apply',
     );
-    expect(script).toContain('bin/home-check.mjs --data-dir /data --manuscript /book/manuscript');
+    // No `--manuscript`: the image carries no book tree (BOOK-187), and a missing one passes.
+    expect(script).toContain('bin/home-check.mjs --data-dir /data');
+    expect(script).not.toContain('--manuscript /book/manuscript');
     expect(script).toMatch(/dc run --rm -T --no-deps --entrypoint node site "\$@"/);
     // `--no-deps` is what keeps the engine from being started by a check.
     expect(script).toContain('--no-deps');
@@ -53,7 +55,9 @@ describe('compose-release.sh — the home gate', () => {
 
   it('keeps a dry run honest: the plan names both commands', () => {
     expect(script).toContain('dc run --rm -T --no-deps --entrypoint node site bin/home-migrate.mjs --apply');
-    expect(script).toContain('bin/home-check.mjs --data-dir /data --manuscript /book/manuscript');
+    // No `--manuscript`: the image carries no book tree (BOOK-187), and a missing one passes.
+    expect(script).toContain('bin/home-check.mjs --data-dir /data');
+    expect(script).not.toContain('--manuscript /book/manuscript');
   });
 });
 

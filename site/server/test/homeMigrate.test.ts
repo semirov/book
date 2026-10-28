@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SITE_ROOT } from '../src/config.ts';
 import { openDatabase } from '../src/db/db.ts';
 import { migrate } from '../src/db/migrate.ts';
+import { SCHEMA_VERSION } from '../src/db/schema.ts';
 
 const exec = promisify(execFile);
 
@@ -192,21 +193,39 @@ describe('bin/home-migrate.mjs — what it refuses', () => {
     expect(existsSync(join(dataDir, 'backup', 'old.db'))).toBe(true);
   });
 
-  it('refuses a v27 database and names the version', async () => {
+  it('folds an OLDER schema: the row proof is what decides, not the version', async () => {
+    // The deploy deadlock this test exists for: the launchd cutover runs BEFORE the restart that
+    // migrates the volume, so a live v25 volume must be foldable — refusing it would gate the
+    // deploy behind the boot it precedes. Rows exist since v1, so the proof holds.
     const dataDir = oldVolume();
     const db = openDatabase(join(dataDir, 'book.db'));
-    db.pragma('user_version = 27');
+    db.pragma('user_version = 25');
+    db.close();
+
+    const result = await run(['--data-dir', dataDir, '--apply']);
+
+    expect(result.code, result.out).toBe(0);
+    expect(existsSync(join(dataDir, 'writer', 'state.json'))).toBe(false);
+    expect(readFileSync(join(dataDir, 'backups', 'old.db'), 'utf8')).toBe('legacy dump bytes\n');
+  });
+
+  it('refuses a FUTURE schema with SCHEMA_FUTURE semantics, and touches nothing', async () => {
+    const dataDir = oldVolume();
+    const db = openDatabase(join(dataDir, 'book.db'));
+    db.pragma(`user_version = ${String(SCHEMA_VERSION + 1)}`);
     db.close();
 
     const result = await run(['--data-dir', dataDir, '--apply']);
 
     expect(result.code).toBe(1);
-    expect(result.out).toContain('v27');
-    expect(result.out).toContain('v28');
+    expect(result.out).toContain(`v${String(SCHEMA_VERSION + 1)}`);
+    expect(result.out).toContain(`v${String(SCHEMA_VERSION)}`);
+    expect(result.out).toContain('SCHEMA_FUTURE');
     expect(existsSync(join(dataDir, 'writer', 'state.json'))).toBe(true);
+    expect(existsSync(join(dataDir, 'backup', 'old.db'))).toBe(true);
   });
 
-  it('refuses a v28 database with no front-matter row', async () => {
+  it('refuses a database with no front-matter row', async () => {
     const dataDir = oldVolume();
     const db = openDatabase(join(dataDir, 'book.db'));
     db.prepare('DELETE FROM front_matter').run();
@@ -219,7 +238,20 @@ describe('bin/home-migrate.mjs — what it refuses', () => {
     expect(existsSync(join(dataDir, 'writer', 'state.json'))).toBe(true);
   });
 
-  it('refuses a v28 database with no written chapter', async () => {
+  it('refuses a database whose front row has no title', async () => {
+    const dataDir = oldVolume();
+    const db = openDatabase(join(dataDir, 'book.db'));
+    db.prepare("UPDATE front_matter SET title = '   ' WHERE id = 1").run();
+    db.close();
+
+    const result = await run(['--data-dir', dataDir, '--apply']);
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('no front_matter row with a title');
+    expect(existsSync(join(dataDir, 'writer', 'state.json'))).toBe(true);
+  });
+
+  it('refuses a database with no written chapter', async () => {
     const dataDir = oldVolume();
     const db = openDatabase(join(dataDir, 'book.db'));
     db.prepare('DELETE FROM chapters').run();

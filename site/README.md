@@ -113,8 +113,9 @@ One image (`book:<40-char sha>`, never `latest`), three services from it — `si
 (`server/dist/index.js`, published on the Mac's LAN address for Caddy on the home-server), `engine`
 (`server/dist/engine.js`, no published port) and `writer` (`server/dist/writer/main.js --loop`, no
 port). The data dir is the **named volume** `book-data` mounted at `/data` in all three services, never
-a host bind (BOOK-183 — see "State is a volume" below); the manuscript is read-only into `site` and
-`engine`, and only `manuscript/` is writable into `writer`.
+a host bind (BOOK-183 — see "State is a volume" below). **No service mounts a book tree** (BOOK-187):
+the canon (prompts, concept, style, the plan) is baked into the image at its root and the text is rows,
+so there is no `manuscript/` to mount — read-only or writable — in any of the three.
 Secrets are files: the environment carries **paths** (`SESSION_SECRET_FILE`, `IP_SALT_FILE`,
 `YANDEX_CLIENT_ID_FILE`, `YANDEX_CLIENT_SECRET_FILE`, `CAPTCHA_SECRET_FILE` only when a captcha is
 chosen) and the values live in `0600` files mounted at `/run/secrets/…`. `site` and `engine` both get
@@ -359,10 +360,11 @@ cp -a "$HOME/book-site-backups/daily/$(ls "$HOME/book-site-backups/daily" | tail
 docker compose -p book cp site:/data/engine.token "$R/host-data/engine.token" 2>/dev/null || true
 docker compose -p book cp site:/data/admin.token  "$R/host-data/admin.token"  2>/dev/null || true
 chmod 0600 "$R/host-data/engine.token" "$R/host-data/admin.token" 2>/dev/null || true
-rsync -a --exclude .git "$HOME/projects/book/" "$R/book/"         # a copy: the writer writes here
+# No book tree is copied or mounted any more (BOOK-187): the image carries the canon, the text is
+# rows in the volume, and the writer writes no file.
 
 export BOOK_SITE_PUBLISH=127.0.0.1:18095 BOOK_DATA_VOLUME=book-183-data BOOK_BACKUPS_DIR="$R/backups" \
-       BOOK_MANUSCRIPT="$R/book" BOOK_SECRETS_DIR="$HOME/projects/book/site/secrets" \
+       BOOK_SECRETS_DIR="$HOME/projects/book/site/secrets" \
        BOOK_LOCKS_DIR="$R/locks" BOOK_PROJECT=book-183-rehearsal BOOK_STATE_DIR="$R/state" \
        BOOK_IMAGE_TAG=book-183:<sha> BOOK_HOST_DATA_DIR="$R/host-data"
 # BOOK_DATA_VOLUME names a volume of the rehearsal's own: pointed at `book-data` it would seed — or

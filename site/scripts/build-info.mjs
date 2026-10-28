@@ -64,6 +64,10 @@ const PROMPT_FILES = [
   'concept/CLIMAX.md',
   'style/VOICE.md',
   'config/pipeline.json',
+  // BOOK-187: `outline/PLAN.md` is quoted whole into the same system message (`prompt.ts`
+  // `CANON_FILES`, `gates.ts`), so a digest that left it out would name rules the pass reads
+  // without naming them. Appended, never reordered: the order is part of every recorded bundle.
+  'outline/PLAN.md',
 ];
 
 const NO_GIT = (process.env.BOOK_BUILD_NO_GIT ?? '').trim() === '1';

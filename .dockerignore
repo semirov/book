@@ -1,0 +1,14 @@
+# The book root as a build context (BOOK-187): `site/docker-compose.yml` passes this directory to
+# the image build as the `canon` additional context, and an image carries the canon and nothing
+# else from it (ADR-043 G3). Everything else here — `.git`, docs, shots, the site tree itself —
+# is not canon: it must not be sent to the builder, and it must never end up in an image.
+*
+!process
+!process/ROLE_PROMPTS.md
+!concept
+!concept/CONCEPT.md
+!concept/CLIMAX.md
+!style
+!style/VOICE.md
+!outline
+!outline/PLAN.md

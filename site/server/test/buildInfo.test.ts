@@ -55,13 +55,18 @@ type BuildInfo = {
   imageDigest: string | null;
 };
 
-/** The five files of the bundle, in the order the digest names them (ADR-043 G3). */
+/**
+ * The files of the bundle, in the order the digest names them (ADR-043 G3). `outline/PLAN.md` is
+ * quoted into the same system message as the four canon files (BOOK-187), so the digest names it
+ * too — a rule the pass reads is not a rule the bundle may leave out.
+ */
 const PROMPT_FILES = [
   'process/ROLE_PROMPTS.md',
   'concept/CONCEPT.md',
   'concept/CLIMAX.md',
   'style/VOICE.md',
   'config/pipeline.json',
+  'outline/PLAN.md',
 ];
 
 /**
@@ -84,7 +89,7 @@ function expectedBundle(root: string): string {
   return createHash('sha256').update(`${lines.join('\n')}\n`, 'utf8').digest('hex');
 }
 
-/** The five bundle files, written under `root` at their logical paths. */
+/** The bundle files, written under `root` at their logical paths. */
 function writePromptTree(root: string, skip?: string): void {
   const bodies: Record<string, string> = {
     'process/ROLE_PROMPTS.md': '# Роли\n\nРоль писателя.\n',
@@ -92,6 +97,7 @@ function writePromptTree(root: string, skip?: string): void {
     'concept/CLIMAX.md': '# Кульминация\n',
     'style/VOICE.md': '# Голос\n',
     'config/pipeline.json': '{ "model": "test" }\n',
+    'outline/PLAN.md': '# План\n',
   };
   for (const [relpath, body] of Object.entries(bodies)) {
     if (relpath === skip) continue;
