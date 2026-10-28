@@ -77,6 +77,19 @@ export type EngineStateView = {
 };
 
 /** What a gate session receives (`engine/gates.ts` `GateAssignment`), narrowed to what we read. */
+/** Gate B's assignment: its own shape (a rule, no prose findings), `rule: null` for a clean scan. */
+export type RightsAssignmentView = {
+  stepId: string;
+  role: 'rights';
+  session: string;
+  pass: string;
+  chapter: number | null;
+  landedSha: string | null;
+  rule: string | null;
+  block: number | null;
+  expiresAt: string;
+};
+
 export type GateAssignmentView = {
   stepId: string;
   role: 'editor' | 'consultant';
@@ -139,6 +152,18 @@ export type VerdictInput = {
   tokensOut?: number;
 };
 
+/** BOOK-61: Gate B answers another question with another enum; `rule` accompanies a REFUSED. */
+export type RightsVerdictInput = {
+  stepId: string;
+  role: 'rights';
+  session: string;
+  verdict: 'CLEAR' | 'REFUSED';
+  rule?: string | null;
+  model?: string;
+  tokensIn?: number;
+  tokensOut?: number;
+};
+
 export type DoneInput = {
   leaseId: string;
   note?: string;
@@ -162,10 +187,13 @@ export type EngineClient = {
   next(lane: 'fwd' | 'bwd', session: string): Promise<WriterAssignment | null>;
   /** A gate's dispatch for a landed step, or null when neither role is waiting. */
   nextGate(role: 'editor' | 'consultant', session: string): Promise<GateAssignmentView | null>;
+  /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */
+  nextRightsGate(session: string): Promise<RightsAssignmentView | null>;
   pass(chapter: number, session: string): Promise<WriterAssignment>;
   start(leaseId: string): Promise<StartView>;
   land(leaseId: string): Promise<LandView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
+  verdictRights(body: RightsVerdictInput): Promise<{ verdict: 'CLEAR' | 'REFUSED'; action: 'close' | 'escalate'; closed: boolean }>;
   done(body: DoneInput): Promise<DoneView>;
   /** `cause` says whether the pass broke or the model refused the work (`engine/types.ts`). */
   escalate(leaseId: string, because: string, spend?: EscalateSpend, cause?: PremiseCause): Promise<DoneView>;
@@ -281,7 +309,11 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     pass: async (chapter, session) => (await post('/internal/pass', { chapter, session })) as WriterAssignment,
     start: async (leaseId) => (await post('/internal/start', { leaseId })) as StartView,
     land: async (leaseId) => (await post('/internal/land', { leaseId })) as LandView,
+    nextRightsGate: async (session) =>
+      (await post('/internal/next', { role: 'rights', session })) as RightsAssignmentView | null,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,
+    verdictRights: async (body) =>
+      (await post('/internal/verdict', body)) as { verdict: 'CLEAR' | 'REFUSED'; action: 'close' | 'escalate'; closed: boolean },
     done: async (body) => (await post('/internal/done', body)) as DoneView,
     escalate: async (leaseId, because, spend, cause) =>
       (await post(

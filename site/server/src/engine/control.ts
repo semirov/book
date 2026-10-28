@@ -117,6 +117,7 @@ const escalateBody = z.object({
   /** `failed` when the pass broke rather than refused the work; a broken pass is not a refusal. */
   cause: z.enum(['refused', 'failed']).optional(),
 });
+const reopenBody = z.object({ stepId: id, because: z.string().max(200).optional() });
 const beatBody = z.object({ leaseId: id });
 const traceBody = z.object({ id });
 const nothing = z.object({}).optional();
@@ -287,6 +288,11 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         cause: body.cause,
       }),
     };
+  });
+  /** BOOK-117: reopen a landed, escalated step so the gates it now satisfies can close it. */
+  app.post('/internal/reopen', async (request) => {
+    const body = reopenBody.parse(request.body ?? {});
+    return { ok: true, data: options.engine.reopen(body.stepId, body.because ?? '') };
   });
   app.post('/internal/beat', async (request) => {
     const body = beatBody.parse(request.body ?? {});

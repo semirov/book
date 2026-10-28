@@ -8,6 +8,18 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { PipelineUsage } from './pipeline.ts';
+
+/** One model call of a pass, as the receipt records it. */
+export type CallKind = 'draft' | 'repair' | 'continue' | 'gate:editor' | 'gate:consultant' | 'gate:rights';
+
+export type CallRecord = {
+  kind: CallKind;
+  system: string;
+  user: string;
+  answer: string;
+  usage: PipelineUsage;
+};
 export function writeTranscript(dataDir: string, passId: string, body: unknown): void {
   const dir = join(dataDir, 'writer', 'transcripts');
   mkdirSync(dir, { recursive: true });

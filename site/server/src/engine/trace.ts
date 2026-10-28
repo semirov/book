@@ -214,6 +214,7 @@ export function writerAssignment(
     verdicts: {
       editor: store.getVerdict(deps.db, step.step_id, 'editor') !== undefined,
       consultant: store.getVerdict(deps.db, step.step_id, 'consultant') !== undefined,
+      rights: store.getVerdict(deps.db, step.step_id, 'rights') !== undefined,
     },
     budget:
       cascade && budget
