@@ -12,6 +12,7 @@
  */
 
 import {
+  CHANGE_RECORD_PREFIX,
   TOTAL_CHAPTERS,
   chapterLabel,
   type BlockDto,
@@ -28,7 +29,7 @@ import { changeNumber, relevanceCopy, stampCopy } from './changeStatus.ts';
 import { NBSP, formatNumber, formatTime, plural } from './format.ts';
 
 /** The only deep link the focus view needs; Cyrillic is part of the URL on purpose. */
-export const FOCUS_PREFIX = 'правка-';
+export const FOCUS_PREFIX = CHANGE_RECORD_PREFIX;
 
 export function focusHash(changeId: string): string {
   return `#${FOCUS_PREFIX}${changeId}`;

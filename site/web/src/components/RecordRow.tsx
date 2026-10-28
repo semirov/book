@@ -1,55 +1,63 @@
 import type { HistoryRecordDto } from '@book/shared';
 
-import { recordReason, recordWord } from '../lib/changeStatus.ts';
-import { momentText } from '../lib/history.ts';
+import { recordReason, recordStateWord } from '../lib/changeStatus.ts';
+import { momentText, recordHeading, spanText } from '../lib/history.ts';
 
 /**
- * BOOK-65 — one public record entry: **one change, one line**, and one way in.
+ * The one word each cause gets: whose act the entry is, in a word.
  *
- * The row carries exactly six facts — the change's number, its date and time, the reader's
- * alias, the place, one outcome word and the button that opens the card. Nothing from the log
- * is printed: no event summary, no event kind, no five-word deed chain, no second «прицел»
- * control. Clicking the row does not move the moment either; the moment moves only through
- * `MomentControl`, so a tap on the entry always means the card.
+ * «правка читателя» is a person's filing the book accepted; «проход» is a pass over the book,
+ * a machine change or a landed stage with no change row. Neither names a model, a role or a
+ * stage — the chronicle prints the change, not the machinery that produced it.
+ */
+export const CAUSE_WORDS = { reader: 'правка читателя', pass: 'проход' } as const;
+
+/**
+ * BOOK-65 — one public record entry: **one change to the book**, once, and one way in.
  *
- * The final wording of the number and the outcome belongs to BOOK-59's copy pass.
+ * The row carries the change's moment, its place (`глава 9 · Название`, from the server's own
+ * `chapters` read), the pair the book wrote — «было» → «стало», only where an honest pair
+ * exists — whether the change entered the text at all («не внесено» when it did not, with the
+ * public reason it was stopped for), whose act it was, and the door to its record. It prints no
+ * number, no alias, no event kind, no stage, no model and no price: the chronicle is the book's
+ * past, not the workshop's logbook.
+ *
+ * The door is an **anchor**, built by the server from the same id the record behind it uses
+ * (`#правка-<changeId>` · `#проход-<changeId | passId>`), so a row and its record cannot name
+ * one entry two ways. Clicking the row does not move the moment either; the moment moves only
+ * through `MomentControl`.
  */
 export type RecordRowProps = {
   record: HistoryRecordDto;
-  onOpenChange: (changeId: string) => void;
 };
 
-export function RecordRow({ record, onOpenChange }: RecordRowProps) {
-  const word = recordWord(record);
+export function RecordRow({ record }: RecordRowProps) {
+  const state = recordStateWord(record);
   const reason = recordReason(record);
-  // BOOK-7 + BOOK-65: a premise is the chapter's starting point, so its noun is «замысел», not
-  // «правка» — but every entry still carries its number: «замысел 9», never a bare noun.
-  const number = record.premise ? `замысел ${record.seq}` : `правка ${record.seq}`;
-  const place = `глава ${record.chapter}`;
+  const heading = recordHeading(record);
+  const cause = CAUSE_WORDS[record.cause];
   const date = momentText(record.at);
-  const label = `${date}, ${number}, ${place}, ${record.alias}, ${word}${
-    reason === null ? '' : `, ${reason}`
-  } — открыть карточку правки`;
+  const span = record.span === null ? null : spanText(record.span);
+  const reader = record.cause === 'reader';
+  const face = reader ? 'прицел' : 'запись';
+  const label = [date, heading, span, state, reason, cause].filter((part) => part !== null).join(', ');
 
   return (
-    // BOOK-77 (audit F1): the alias is a reader's display name, so the row is masked on its own.
+    // BOOK-77 (audit F1): the reader's words may sit in a span, so the row is masked on its own.
     <li className="chr-row ym-hide-content">
       <span className="chr-date">{date}</span>
-      <span className="chr-seq">{number}</span>
-      <span className="chr-place">{place}</span>
-      <span className="chr-alias">{record.alias}</span>
-      <span className="chr-outcome">
-        {word}
-        {reason === null ? null : <span className="chr-reason">{reason}</span>}
-      </span>
-      <button
-        type="button"
+      <span className="chr-place">{heading}</span>
+      {span === null ? null : <span className="chr-span">{span}</span>}
+      {state === null ? null : <span className="chr-state">{state}</span>}
+      {reason === null ? null : <span className="chr-reason">{reason}</span>}
+      <span className="chr-cause">{cause}</span>
+      <a
         className="chr-change"
-        aria-label={label}
-        onClick={() => onOpenChange(record.changeId)}
+        href={record.recordHref}
+        aria-label={`${label} — открыть ${reader ? 'прицел правки' : 'запись прохода'}`}
       >
-        карточка
-      </button>
+        {face}
+      </a>
     </li>
   );
 }

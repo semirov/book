@@ -66,17 +66,22 @@ function impact(costRub: number | null): ChangeImpactDto {
 }
 
 const record: HistoryRecordDto = {
+  id: 'chg_1',
   hseq: 7,
   at: '2026-10-25T12:05:00Z',
   seq: 7,
   chapter: 8,
+  chapterTitle: null,
   premise: false,
   premiseLanded: false,
   alias: 'Аня',
+  cause: 'reader',
   status: 'done',
   outcome: 'applied',
   reason: null,
   changeId: 'chg_1',
+  recordHref: '#правка-chg_1',
+  span: null,
 };
 
 /** The three public surfaces a reader meets a change on: card, focus view, chronicle row. */
@@ -94,7 +99,7 @@ function surfaces(cost: ChangeCostDto | null, costRub: number | null): string {
         onClose={() => undefined}
       live />,
     ),
-    renderToStaticMarkup(<RecordRow record={record} onOpenChange={() => undefined} />),
+    renderToStaticMarkup(<RecordRow record={record} />),
   ].join('\n');
 }
 

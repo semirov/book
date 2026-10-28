@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   directionOf,
+  type HistoryTimelineDto,
   partOf,
   TOTAL_CHAPTERS,
   type CatalogEntry,
@@ -192,7 +193,7 @@ function page(current: StateSnapshot): string {
         chronicle={chronicle}
       />
       {chronicle ? (
-        <Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} started={chronicle} live={live} />
+        <Chronicle catalog={catalog} frontRev={1} tick={0} started={chronicle} live={live} />
       ) : null}
       <ProvenancePanel
         view={provenanceView({ word: 'пустую', chapter: 8, variant: 'machine', share: { kind: 'none' }, chain: CHAIN, at: null, history: 'ready', live })}
@@ -335,14 +336,51 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
     expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toBe(`начало книги${`21.10.2026${MID}09:12`}`);
     expect(container.textContent).toContain('перематывать пока нечего: книга ещё не правила читателем');
-    // Not a change dressed as one: no number, no author, no card, no moment to move.
+    // Not a change dressed as one: no number, no author, no door, no moment to move.
     expect(container.querySelector('.chr-seq')?.textContent).toBe('начало книги');
     expect(container.querySelector('.chr-change')).toBeNull();
-    expect(container.querySelector('.chr-alias')).toBeNull();
     expect(container.querySelector('.scrub')).toBeNull();
     expect(container.querySelector('.chr-ends')).toBeNull();
     expect(container.querySelectorAll('button')).toHaveLength(0);
     expect(container.textContent).not.toContain('пока ничего не записано');
+  });
+
+  it('lists a pass while `history.live` is false: the record is not the reader’s flag', async () => {
+    // BOOK-56's `live` gates the reader-driven apparatus (the chain, the authors, the traces).
+    // The chronicle lists the book's changes whatever caused them, so a begun book whose only
+    // entries are passes still has a record to read.
+    const container = mountChronicle({
+      ...timeline(),
+      items: [
+        {
+          id: 'pass:stp_1',
+          hseq: 7,
+          at: '2026-10-21T06:12:00Z',
+          seq: null,
+          chapter: 2,
+          chapterTitle: null,
+          premise: false,
+          premiseLanded: false,
+          alias: null,
+          cause: 'pass',
+          status: null,
+          outcome: null,
+          reason: null,
+          changeId: null,
+          recordHref: `#проход-stp_1`,
+          span: null,
+        },
+      ],
+    });
+    await settle();
+
+    const rows = container.querySelectorAll('li.chr-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.querySelector('.chr-cause')?.textContent).toBe('проход');
+    expect(rows[0]?.querySelector('.chr-change')?.getAttribute('href')).toBe('#проход-stp_1');
+    expect(container.textContent).not.toContain('перематывать пока нечего');
+    // The reader-driven surfaces are still off, as `live` says.
+    expect(container.querySelector('.chain')).toBeNull();
   });
 });
 
@@ -381,24 +419,25 @@ function answer(body: unknown): Response {
 
 let root: Root | null = null;
 
+/** The chronicle's own answer: the log's first moment and no entry. */
+function timeline(): HistoryTimelineDto {
+  return {
+    lastHseq: 7,
+    lastAt: '2026-10-21T06:12:00Z',
+    firstAt: '2026-10-21T06:12:00Z',
+    at: '2026-10-25T12:00:00Z',
+    items: [],
+    nextBefore: null,
+  };
+}
+
 /** The chronicle alone, mounted: its one starting record is the log's own first moment. */
-function mountChronicle(): HTMLElement {
-  vi.stubGlobal('fetch', () =>
-    Promise.resolve(
-      answer({
-        lastHseq: 7,
-        lastAt: '2026-10-21T06:12:00Z',
-        firstAt: '2026-10-21T06:12:00Z',
-        at: '2026-10-25T12:00:00Z',
-        items: [],
-        nextBefore: null,
-      }),
-    ),
-  );
+function mountChronicle(page: HistoryTimelineDto = timeline()): HTMLElement {
+  vi.stubGlobal('fetch', () => Promise.resolve(answer(page)));
   const container = document.body.appendChild(document.createElement('div'));
   root = createRoot(container);
   act(() => {
-    root?.render(<Chronicle catalog={catalog} frontRev={1} tick={0} onOpenChange={noop} started live={false} />);
+    root?.render(<Chronicle catalog={catalog} frontRev={1} tick={0} started live={false} />);
   });
   return container;
 }

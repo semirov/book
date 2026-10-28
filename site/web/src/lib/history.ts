@@ -7,7 +7,7 @@
  * (BOOK-65), so these helpers read a `HistoryRecordDto`, not a log row.
  */
 
-import type { BookAtDto, CatalogEntry, HistoryRecordDto } from '@book/shared';
+import type { BookAtDto, CatalogEntry, HistoryRecordDto, HistoryRecordSpan } from '@book/shared';
 
 import { MIDDOT, NBSP, formatDate, formatTime } from './format.ts';
 
@@ -118,8 +118,30 @@ export function stepMoment(items: HistoryRecordDto[], value: number, direction: 
   return higher ?? hseqs.at(-1) ?? value;
 }
 
-/** The paragraph chain's copy the server sends; this is the panel's fallback head. */
-export function chainHead(chain: { alive: boolean; chapter: number }): string {
+/**
+ * `глава 9 · Название` — the one heading of a record entry.
+ *
+ * The chronicle row and the record behind its door read it from here, so the two cannot call
+ * one entry by two different places: the title travels from the server (`chapterTitle`, read
+ * from `chapters` when the answer is built), never from a second fetch or a client guess.
+ */
+export function recordHeading(record: Pick<HistoryRecordDto, 'chapter' | 'chapterTitle'>): string {
+  const title = record.chapterTitle?.trim() ?? '';
+  return title.length === 0 ? `глава ${record.chapter}` : `глава ${record.chapter} · ${title}`;
+}
+
+/**
+ * `«было» → «стало»` — one span, one separator, one arrow, typographic quotes.
+ *
+ * The server only sends a span when the book holds an honest pair, so this function invents
+ * nothing; it is the one place the pair becomes copy, so a row cannot grow a second arrow or a
+ * doubled quote.
+ */
+export function spanText(span: HistoryRecordSpan): string {
+  return `«${span.before}» → «${span.after}»`;
+}
+
+/** The paragraph chain's copy the server sends; this is the panel's fallback head. */export function chainHead(chain: { alive: boolean; chapter: number }): string {
   return chain.alive ? `эта строка сейчас в тексте · глава ${chain.chapter}` : `эта строка убрана · глава ${chain.chapter}`;
 }
 

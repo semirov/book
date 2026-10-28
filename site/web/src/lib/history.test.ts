@@ -8,22 +8,29 @@ import {
   momentLabel,
   momentParts,
   momentText,
+  recordHeading,
+  spanText,
   stepMoment,
 } from './history.ts';
 
 function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecordDto {
   return {
+    id: 'chg_7',
     hseq: 1,
     at: '2026-10-25T09:00:00Z',
     seq: 7,
     chapter: 9,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Аня',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
     changeId: 'chg_7',
+    recordHref: '#правка-chg_7',
+    span: null,
     ...overrides,
   };
 }
@@ -65,6 +72,29 @@ function pastAt(rows: Array<{ n: number; rev: number; chars?: number; title?: st
 function at(date: string, time: string): string {
   return `${date}${NBSP}·${NBSP}${time}`;
 }
+
+/**
+ * The entry's two pieces of copy (BOOK-65): the heading a row and its record share, and the one
+ * way a span becomes a line. Both are pure, so no browser is needed to pin them.
+ */
+describe('an entry’s heading and its span', () => {
+  it('prints the chapter and its own title line, or the number alone', () => {
+    expect(recordHeading({ chapter: 9, chapterTitle: 'Тестовая глава' })).toBe('глава 9 · Тестовая глава');
+    expect(recordHeading({ chapter: 9, chapterTitle: null })).toBe('глава 9');
+    // An empty title line is no title, not a dangling separator.
+    expect(recordHeading({ chapter: 9, chapterTitle: '   ' })).toBe('глава 9');
+  });
+
+  it('prints one span with typographic quotes, one arrow and no doubled punctuation', () => {
+    expect(spanText({ before: 'старый фонарь', after: 'новый фонарь' })).toBe(
+      '«старый фонарь» → «новый фонарь»',
+    );
+    const line = spanText({ before: 'было так.', after: 'стало иначе.' });
+    expect(line).toBe('«было так.» → «стало иначе.»');
+    expect(line.match(/→/gu)).toHaveLength(1);
+    expect(line).not.toMatch(/[.,]{2}/u);
+  });
+});
 
 describe('the moment’s readout (BOOK-DOC-50 §2)', () => {
   /** Newest first, as the timeline sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12. */

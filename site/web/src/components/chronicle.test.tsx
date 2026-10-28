@@ -6,7 +6,6 @@ import { NBSP } from '../lib/format.ts';
 import { Chronicle, ChronicleRecords } from './Chronicle.tsx';
 import { MomentControl } from './MomentControl.tsx';
 import { ParagraphChain } from './ParagraphChain.tsx';
-import { RecordRow } from './RecordRow.tsx';
 import { ViewSwitch } from './ViewSwitch.tsx';
 import { firstDeclarations, hasRule, mediaBlockList, unionDeclarations } from './cssRules.ts';
 
@@ -74,43 +73,58 @@ const noop = (): void => undefined;
 /** Newest first, as the record sends them: 27.10 15:40 · 26.10 09:00 · 21.10 09:12 (MSK). */
 const ITEMS: HistoryRecordDto[] = [
   {
+    id: 'chg_9',
     hseq: 10,
     at: '2026-10-27T12:40:00Z',
     seq: 9,
     chapter: 9,
+    chapterTitle: 'Тестовая глава',
     premise: false,
     premiseLanded: false,
     alias: 'Аня',
+    cause: 'reader',
     status: 'done',
     outcome: 'applied',
     reason: null,
     changeId: 'chg_9',
+    recordHref: '#правка-chg_9',
+    span: { before: 'старый фонарь', after: 'новый фонарь' },
   },
   {
+    id: 'pass:stp_7',
     hseq: 7,
     at: '2026-10-26T06:00:00Z',
-    seq: 7,
+    seq: null,
     chapter: 9,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
-    alias: 'Марк',
-    status: 'processing',
+    alias: null,
+    cause: 'pass',
+    status: null,
     outcome: null,
     reason: null,
-    changeId: 'chg_7',
+    changeId: null,
+    recordHref: '#проход-stp_7',
+    span: { before: 'первый абзац', after: 'первый абзац, переписанный' },
   },
   {
+    id: 'chg_4',
     hseq: 4,
     at: '2026-10-21T06:12:00Z',
     seq: 4,
     chapter: 8,
+    chapterTitle: null,
     premise: false,
     premiseLanded: false,
     alias: 'Аня',
+    cause: 'reader',
     status: 'pending',
     outcome: null,
     reason: null,
     changeId: 'chg_4',
+    recordHref: '#правка-chg_4',
+    span: null,
   },
 ];
 
@@ -118,106 +132,6 @@ const MID = `${NBSP}·${NBSP}`;
 
 /** Every stylesheet as text: the readout row's wrap is a layout rule jsdom cannot compute. */
 const sheets = import.meta.glob<string>('../styles/*.css', { query: '?raw', import: 'default', eager: true });
-
-describe('one public record entry (BOOK-65)', () => {
-  it('carries the six facts of the change and exactly one way into the card', () => {
-    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
-
-    expect(html).toContain('правка 7');
-    expect(html).toContain(`26.10.2026${MID}09:00`);
-    expect(html).toContain('глава 9');
-    expect(html).toContain('Марк');
-    expect(html).toContain('идёт');
-    // One control, and the only link is the card — no «прицел», no second door.
-    expect(html.match(/<button/gu)).toHaveLength(1);
-    expect(html).not.toContain('прицел');
-    expect(html).not.toContain('chr-deed');
-    expect(html).toContain('карточка');
-  });
-
-  it('prints no event vocabulary at all, even when a row is handed one', () => {
-    // The record DTO has no event fields; this row proves the component would not print them
-    // if one leaked in. The deed words are the five this pass removed from the list.
-    const leaked = {
-      ...ITEMS[1]!,
-      kind: 'change.decided',
-      summary: 'правка 7 внесена',
-      cascadeId: 'csc_1',
-      stepId: 'stp_1',
-      intent: 'в этом абзаце дважды «фонарь» — оставить один',
-      deed: 'зарегистрировано · заведено дело · внесены изменения · причина установлена',
-    } as unknown as HistoryRecordDto;
-    const html = renderToStaticMarkup(<RecordRow record={leaked} onOpenChange={noop} />);
-
-    for (const gone of [
-      'правка 7 внесена',
-      'заведено дело',
-      'внесены изменения',
-      'причина установлена',
-      'дважды «фонарь»',
-      'change.decided',
-      'csc_1',
-      'stp_1',
-    ]) {
-      expect(html, `the record row must not print «${gone}»`).not.toContain(gone);
-    }
-  });
-
-  it('names the row for assistive tech with the same six facts, and no event vocabulary', () => {
-    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
-    expect(html).toContain(
-      `aria-label="26.10.2026${MID}09:00, правка 7, глава 9, Марк, идёт — открыть карточку правки"`,
-    );
-  });
-});
-
-describe('a refused change on the record (BOOK-65)', () => {
-  it('prints its one outcome word and the public reason after it', () => {
-    const refused: HistoryRecordDto = {
-      ...ITEMS[0]!,
-      status: 'void',
-      outcome: 'dropped',
-      reason: 'текст успел измениться',
-    };
-    const html = renderToStaticMarkup(<RecordRow record={refused} onOpenChange={noop} />);
-    expect(html).toContain('снято');
-    expect(html).toContain('текст успел измениться');
-    // The reason is a tail on the same entry, not a second line of body copy.
-    expect(html).not.toContain('причина');
-  });
-
-  it('prints the word alone when a stopped change carries no reason', () => {
-    const stopped: HistoryRecordDto = { ...ITEMS[0]!, status: 'escalated', outcome: 'origin', reason: null };
-    const html = renderToStaticMarkup(<RecordRow record={stopped} onOpenChange={noop} />);
-    expect(html).toContain('остановлено');
-    expect(html).not.toContain('chr-reason');
-  });
-});
-
-describe('a premise on the record (BOOK-7, BOOK-65)', () => {
-  it('carries its own number and speaks of a «замысел», agreeing with the noun', () => {
-    const premise: HistoryRecordDto = { ...ITEMS[0]!, premise: true, status: 'done', outcome: 'applied' };
-    const html = renderToStaticMarkup(<RecordRow record={premise} onOpenChange={noop} />);
-    expect(html).toContain('замысел 9');
-    expect(html).toContain('учтён');
-    // The number is present on every entry: a premise is not an exception to AC5.
-    expect(html).toContain('<span class="chr-seq">замысел 9</span>');
-  });
-});
-
-describe('the record row is dated (BOOK-DOC-50 §5)', () => {
-  it('carries the record’s own date and time, whole, and never splits them', () => {
-    const html = renderToStaticMarkup(<RecordRow record={ITEMS[1]!} onOpenChange={noop} />);
-    // The date is one run in the markup and one unbreakable run in the base rule of the sheet.
-    expect(html).toContain(`<span class="chr-date">26.10.2026${MID}09:00</span>`);
-    const chronicle = sheets['../styles/chronicle.css'] ?? '';
-    expect(hasRule(chronicle, '.chr-date')).toBe(true);
-    expect(firstDeclarations(chronicle, '.chr-date')).toContain('white-space: nowrap');
-    // …and the row wraps between facts, so a phone reads it as a list, not a cut date.
-    expect(hasRule(chronicle, '.chr-row')).toBe(true);
-    expect(firstDeclarations(chronicle, '.chr-row')).toContain('flex-wrap: wrap');
-  });
-});
 
 describe('the moment’s control (BOOK-DOC-50 §2–§5)', () => {
   it('prints a dated readout, the record counter and both dated ends', () => {
@@ -366,7 +280,7 @@ describe('the chronicle’s surface (§11.10)', () => {
 
   it('renders no filter chips and no tick strip, and no readout before an answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} started live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} started live />,
     );
     // BOOK-DOC-50 §9: the chips filtered the list while the rail kept the whole log.
     for (const chip of ['всё', 'правки', 'черновики', 'первая страница', 'перезаписи']) {
@@ -439,7 +353,7 @@ describe('the one starting record of a begun book (BOOK-56)', () => {
   const begun = { lastHseq: 3, lastAt: '2026-10-21T06:12:00Z', firstAt: '2026-10-21T06:12:00Z', at: '2026-10-25T12:00:00Z', items: [], nextBefore: null } as HistoryTimelineDto;
 
   it('prints the quiet line and one «начало книги» row with the log’s first moment', () => {
-    const html = renderToStaticMarkup(<ChronicleRecords timeline={begun} failed={false} onOpenChange={noop} />);
+    const html = renderToStaticMarkup(<ChronicleRecords timeline={begun} failed={false} />);
     expect(html).toContain('перематывать пока нечего: книга ещё не правила читателем');
     expect(html).toContain('class="chr-timeline"');
     expect(html).toContain('<li class="chr-row">');
@@ -457,20 +371,20 @@ describe('the one starting record of a begun book (BOOK-56)', () => {
 
   it('keeps «пока ничего не записано» for an empty log and claims nothing after a failure', () => {
     const empty = renderToStaticMarkup(
-      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed={false} onOpenChange={noop} />,
+      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed={false} />,
     );
     expect(empty).toContain('пока ничего не записано');
     expect(empty).not.toContain('начало книги');
     // A failed read is not an absence: the sentence belongs to an answer that came back.
     const failed = renderToStaticMarkup(
-      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed onOpenChange={noop} />,
+      <ChronicleRecords timeline={{ ...begun, firstAt: null }} failed />,
     );
     expect(failed).not.toContain('пока ничего не записано');
   });
 
   it('leaves the record list exactly as it is once a reader change exists', () => {
     const html = renderToStaticMarkup(
-      <ChronicleRecords timeline={{ ...begun, items: ITEMS, lastHseq: 10 }} failed={false} onOpenChange={noop} />,
+      <ChronicleRecords timeline={{ ...begun, items: ITEMS, lastHseq: 10 }} failed={false} />,
     );
     expect(html.match(/<li/gu)).toHaveLength(3);
     expect(html).not.toContain('перематывать пока нечего');
@@ -488,7 +402,7 @@ describe('the one starting record of a begun book (BOOK-56)', () => {
 describe('the chronicle while the timeline is in flight', () => {
   it('is busy from the request and prints no absence before the answer', () => {
     const html = renderToStaticMarkup(
-      <Chronicle catalog={CATALOG} frontRev={1} tick={0} onOpenChange={noop} started live />,
+      <Chronicle catalog={CATALOG} frontRev={1} tick={0} started live />,
     );
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('role="status"');

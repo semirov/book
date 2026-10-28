@@ -57,18 +57,21 @@ export type ChronicleProps = {
   frontRev: number;
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
-  onOpenChange: (changeId: string) => void;
   /**
    * BOOK-56: `state.history.started` — the log holds its first record, so the chronicle
    * exists from the book's start. Its one starting row is not a history surface and needs
    * no reader change.
    */
   started: boolean;
-  /** BOOK-56: `state.history.live`; without a reader change the record list stays empty and the chain off. */
+  /**
+   * BOOK-56: `state.history.live` — the **reader-driven** flag. It gates the reader's
+   * apparatus (here: the paragraph chain's reader names), never the record list: the
+   * chronicle lists every change to the book, a reader's filing and a pass alike.
+   */
   live: boolean;
 };
 
-export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live }: ChronicleProps) {
+export function Chronicle({ catalog, frontRev, tick, started, live }: ChronicleProps) {
   const [timeline, setTimeline] = useState<HistoryTimelineDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [thumb, setThumb] = useState<number | null>(null);
@@ -321,7 +324,7 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
           </>
         )
       ) : (
-        <ChronicleRecords timeline={timeline} failed={failed} onOpenChange={onOpenChange} />
+        <ChronicleRecords timeline={timeline} failed={failed} />
       )}
       {failed ? (
         <div className="state-line">
@@ -351,28 +354,29 @@ export function Chronicle({ catalog, frontRev, tick, onOpenChange, started, live
 /**
  * The record list under the head (BOOK-65, BOOK-56).
  *
- * Three states, and each one says only what the answer holds. Records: one row per change.
- * A begun book with no reader change: the log's first moment is the one record, «начало
- * книги», and one quiet line says there is nothing to rewind yet. An empty log: the record
- * is empty, and that is a fact about an answer, never printed after a failed read.
+ * Three states, and each one says only what the answer holds. Records: one row per change to
+ * the book — a reader's accepted filing or a pass — regardless of `history.live`, which is the
+ * reader-driven gate of the other surfaces. A begun book whose record is empty: the log's first
+ * moment is the one row, «начало книги», and one quiet line says there is nothing to rewind
+ * yet; that line needs the answer's empty list, so it cannot stand over a change the server
+ * has and the page forgot. An empty log: the record is empty, and that is a fact about an
+ * answer, never printed after a failed read.
  */
 export function ChronicleRecords({
   timeline,
   failed,
-  onOpenChange,
 }: {
   timeline: HistoryTimelineDto;
   /** The last read failed: an absence is not claimed on top of it. */
   failed: boolean;
-  onOpenChange: (changeId: string) => void;
 }) {
   if (timeline.items.length > 0) {
     return (
       <ol className="chr-timeline">
         {timeline.items.map((record) => (
-          // BOOK-65: the key is the change, not its moment — `hseq` moves when any event
+          // BOOK-65: the key is the entry, not its moment — `hseq` moves when any event
           // lands for that change, and a remount would drop keyboard focus on a live tick.
-          <RecordRow key={record.changeId} record={record} onOpenChange={onOpenChange} />
+          <RecordRow key={record.id} record={record} />
         ))}
       </ol>
     );

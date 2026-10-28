@@ -10,13 +10,15 @@ import type { ChangeOutcome, ChangeStatus } from './change.ts';
 import type { BlockDto } from './types.ts';
 
 /**
- * BOOK-56 — the one fact that decides whether the book has a past to show.
+ * BOOK-56 — the one fact that decides whether a reader's history exists.
  *
  * It is derived on the server from the changes a reader filed through the interface: a change
  * exists because a reader asked for it, and a filing the operator hid (BOOK-101) counts for
- * nothing. A machine revision (`source_comment IS NULL`) is not a reader's history, and the
- * first visible reader change turns every history surface on with no code change and no
- * deploy. The DTO is additive; `PROTOCOL_VERSION` stays valid.
+ * nothing. A machine revision (`source_comment IS NULL`) is not a reader's act, so it never
+ * turns this flag on. The flag is the gate of the reader-driven apparatus (the authors'
+ * series, the discussion, the revision traces); the chronicle itself lists the book's changes
+ * whatever caused them — see `HistoryRecordDto`. The DTO is additive; `PROTOCOL_VERSION`
+ * stays valid.
  */
 export type HistoryStateDto = {
   /** True once the log holds at least one change caused by a reader's filing. */
@@ -87,47 +89,104 @@ export type HistoryEventDto = {
 };
 
 /**
- * The public record: **one change a person made through the interface**, once (BOOK-65).
+ * Who caused a change: a reader whose filing the book accepted, or a pass over the book
+ * (a machine change with no filing behind it, or a landed stage that has no change row).
+ */
+export type HistoryRecordCause = 'reader' | 'pass';
+
+/**
+ * The one door of a reader's change — the focus view: `#правка-<changeId>`. The web's deep
+ * link (`web/src/lib/focus.ts`) reads the same constant, so the row and the door cannot drift.
+ */
+export const CHANGE_RECORD_PREFIX = 'правка-';
+
+/**
+ * The one door of a pass: `#проход-<changeId | passId>`. The row emits it and the pass record
+ * behind it keys on the same id and the same heading; the record component itself is a
+ * separate ticket, so this constant is what keeps the two from inventing different links.
+ */
+export const PASS_RECORD_PREFIX = 'проход-';
+
+/** The entry id of a pass that has no `changes` row behind it: `pass:<passId>`. */
+export function passEntryId(passId: string): string {
+  return `pass:${passId}`;
+}
+
+/**
+ * The one pair a record entry prints as `«было» → «стало»`.
  *
- * The chronicle is no longer a projection of the log. Every event — a front revision, a gate
- * dispatch, a wave, a lease, a join, a hide — is the machinery talking, and printing it turned
- * the bookkeeping into a public line. A record reads the `changes` table instead, joined to
- * the comment a reader filed: a change exists because a person asked for it, so one change is
- * exactly one entry, and a machine-only pass has nothing to show.
+ * A pass takes it from its landed stage (that stage was written next to the text it replaced);
+ * a reader's change takes `before` from the words the reader pointed at and `after` from the
+ * paragraph the change wrote, and only while that paragraph is still the live text. Where no
+ * honest pair exists the entry carries `null` — it never invents a span.
+ */
+export type HistoryRecordSpan = { before: string; after: string };
+
+/**
+ * The public record: **the changes to the book**, whoever caused them, once each.
+ *
+ * A change is an accepted reader filing or a pass that wrote a chapter. The chronicle used to
+ * read only `changes` joined to a visible comment, so a pass that wrote a chapter without a
+ * `changes` row (the live book holds 15 `landed` rows for 13 passes, and only four of them
+ * carry a change) was missing from the very surface that narrates the book's past. The record
+ * is the union of the two sources now: every `changes` row that is not a hidden filing, and
+ * every landed pass that carries no change row, one entry per change.
  *
  * `events` still feeds the change card, the diff, the paragraph chain and the authors' series;
  * the `history:event` frame carries no event at all any more (BOOK-102). It appears here only
- * as the moment: `hseq` is the change's last log entry, because the scrubber and
- * `GET /api/history/at/:hseq` already speak in `hseq`. There is no `kind`, no cascade, no step
- * and no event summary in this DTO — the public record must have no event vocabulary to print.
+ * as the moment: `hseq` is the change's last log entry (the pass's last `events.step_id` row),
+ * because the scrubber and `GET /api/history/at/:hseq` already speak in `hseq`. There is no
+ * `kind`, no cascade and no event summary in this DTO — the public record has no event
+ * vocabulary to print.
  */
 export type HistoryRecordDto = {
-  /** The moment key: the `hseq` of the change's last log entry. */
+  /**
+   * The entry's one identity: the change's id for a change, `pass:<passId>` for a pass that
+   * has no change row (`passEntryId`). Two entries are never the same row of the book.
+   */
+  id: string;
+  /** The moment key: the entry's last log row; `0` when a pass left no log row at all. */
   hseq: number;
-  /** ISO-8601 UTC of that same entry, display only. Ordering is `hseq`, never this. */
+  /** ISO-8601 UTC of that same moment, display only. Ordering is `hseq`, never this. */
   at: string;
-  /** The change's public iteration number — «правка 7». */
-  seq: number;
-  /** 1..TOTAL_CHAPTERS: the chapter the change was filed against. */
+  /** The change's public iteration number — «правка 7»; null for a pass with no change row. */
+  seq: number | null;
+  /** 1..TOTAL_CHAPTERS: the chapter the change was filed against or the pass wrote. */
   chapter: number;
+  /** The chapter's title line at read time; null when the chapter has no title row. */
+  chapterTitle: string | null;
   /** BOOK-7: a chapter's premise is not «правка N»; the row's word says so. */
   premise: boolean;
   /**
    * BOOK-7 — the book's own fact about a premise: its chapter has text, so the premise entered
    * the first edition, whatever the attempt behind it went on to say. Derived on the server
    * from the chapter row, the same way the thread and the card read it (`comments/repo.ts`),
-   * so the record cannot print «снят» about a chapter that exists. Always `false` for a
-   * change that is not a premise.
+   * so the record cannot print «снят» about a chapter that exists. Always `false` for an entry
+   * that is not a premise.
    */
   premiseLanded: boolean;
-  /** The display name of the reader who filed it, snapshotted on the comment. */
-  alias: string;
-  status: ChangeStatus;
+  /**
+   * The display name of the reader who filed it, snapshotted on the comment — or `null` for a
+   * pass: a machine has no name on the page. The row prints the cause, not the name; the
+   * record behind the door prints this where it has one.
+   */
+  alias: string | null;
+  /** Who caused the change: an accepted reader filing, or a pass over the book. */
+  cause: HistoryRecordCause;
+  /** The change's own state; null for a pass with no change row (it landed, nothing waits). */
+  status: ChangeStatus | null;
   outcome: ChangeOutcome | null;
   /** The public one-liner of a refused or stopped change; null otherwise. */
   reason: string | null;
-  /** The one way in: the change card. */
-  changeId: string;
+  /** The change behind the entry — the door's key; null for a pass that has no change row. */
+  changeId: string | null;
+  /**
+   * The one way in, built from the same id the record behind the door uses:
+   * `#правка-<changeId>` for a reader's change, `#проход-<changeId | passId>` for a pass.
+   */
+  recordHref: string;
+  /** `«было» → «стало»`; `null` when the book holds no honest pair behind this entry. */
+  span: HistoryRecordSpan | null;
 };
 
 export type HistoryTimelineDto = {
@@ -141,8 +200,8 @@ export type HistoryTimelineDto = {
   lastAt: string | null;
   /**
    * The book's first logged moment: the starting record's date (`начало книги`), or `null`
-   * only on an empty log. A started book shows one record — its beginning — before any reader
-   * has changed the text; the first reader change adds the changes themselves.
+   * only on an empty log. A started book with no entry yet shows one record — its beginning;
+   * every change to the text (a reader's filing, a pass) adds entries beside it.
    */
   firstAt: string | null;
   at: string;

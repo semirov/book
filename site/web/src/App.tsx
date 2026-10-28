@@ -424,7 +424,6 @@ export function App() {
           catalog={catalog}
           frontRev={front.rev}
           tick={historyTick}
-          onOpenChange={card.open}
           started={chronicle}
           live={history}
         />
