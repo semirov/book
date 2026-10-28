@@ -29,9 +29,16 @@
 #     (`BOOK_HEALTH_GRACE`, 60 s), polling `/healthz` for the commit the IMAGE carries; a rollback
 #     needs two independent negatives (`lib.sh:rollback_allowed`), never one slow read;
 #   * a bounded image build (`BOOK_BUILD_TIMEOUT`, 1200 s);
-#   * THE GATE DOES NOT RACE THE WRITER (BOOK-159): no `npm`, no `node`, no manuscript check and no
-#     host process against the data dir run here. Docker and curl only. The full test suite is CI's
-#     (gate.yml); the deploy's own gate is the container health gate plus five HTTP smokes;
+#   * BOOK-187 AC12: once the new image is up and healthy, the volume is cut over INSIDE that image
+#     (`bin/home-migrate.mjs --apply`, then `bin/home-check.mjs`) and only then may the run be called
+#     green. It is safe here — `up -d --wait` already replaced the old writer and the new one writes no
+#     files — and a red one takes the ordinary rollback path: `last-good` is not written. `--rollback`
+#     skips it on purpose, because an image older than BOOK-187 does not carry the commands;
+#   * THE GATE DOES NOT RACE THE WRITER (BOOK-159): no `npm`, no node on the HOST, no manuscript
+#     check and no host process against the data dir run here — Docker and curl only, and the one
+#     node that runs (the home gate) runs in a container, on the same volume, one kernel. The full
+#     test suite is CI's (gate.yml); the deploy's own gate is the container health gate, five HTTP
+#     smokes and the volume's home gate;
 #   * the data dir is the named volume `${BOOK_DATA_VOLUME:-book-data}`, never a host bind (BOOK-183):
 #     a volume without `book.db` is refused with a named reason BEFORE anything is built or started, and
 #     a rollback does not run either — a stack on an empty volume is a 500, not a deploy. Only a
@@ -89,6 +96,7 @@ PREV_SHA7=""
 SMOKE_WHY=""
 SERVICE_WHY=""
 GATE_REFUSED=""
+HOME_WHY=""
 STEP="start"
 REASON_PRINTED=0
 AUDIT_WRITTEN=0
@@ -289,6 +297,61 @@ smoke() {
   case "$ct" in *+json*) ;; *) SMOKE_WHY="/manifest.webmanifest content-type '${ct:-none}'"; return 1 ;; esac
   cc="$(curl -sSI --max-time 5 "${SITE_URL}/sw.js" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p' | head -n 1)"
   case "$cc" in *no-cache*) ;; *) SMOKE_WHY="/sw.js cache-control '${cc:-none}'"; return 1 ;; esac
+  return 0
+}
+
+# --- the volume's home gate (BOOK-187 AC12) -----------------------------------------------------
+#
+# The deploy that matters is the container one, and until this step nothing here read the volume's
+# shape: a volume that served the pre-BOOK-187 image still holds `writer/state.json`, `writer/pre/`
+# and `writer/transcripts/`, and the site would keep serving while every backup copied them.
+#
+# The order is safe in a way the launchd path's is not: `dc up -d --wait` has ALREADY replaced the
+# old writer container, and the new writer writes no files at all (BOOK-187) — there is no old lane
+# left to stop, so the cutover can run here, after the image is up and before green is recorded.
+#
+# Both commands run INSIDE the new image, on the same volume, with the service's own environment
+# (`DATA_DIR=/data`): one kernel, the reader SQLite expects (BOOK-183), and the code that is about
+# to be recorded as last-good. `--entrypoint node` is deliberate — the image's entrypoint is the
+# per-role single-instance lock wrapper (`deploy/entrypoint.sh`), which is for the long-running
+# role; a one-shot CLI must not take that lock (and would exit 75 on it). `--no-deps` keeps
+# `dc run` from starting the engine behind a check.
+#
+# A red command is a red deploy BEFORE green, and it goes through the existing rollback path: the
+# migration is idempotent and refuses anything it cannot name, so a second attempt would fail the
+# same way and hide the reason.
+HOME_FAILED="the volume holds something it may not (every path above is named) — run bin/home-migrate.mjs --apply once"
+
+# One one-shot CLI on the site image and the volume. Output is streamed (the operator reads the
+# path home-check prints) and the last non-empty line is repeated as one `home:` line, because a red
+# deploy is read from the audit and the log, not from a wall of container output.
+home_run() { # (label, argv…)
+  local label="$1" log code=0 last=""
+  shift
+  log="$(mktemp "${TMPDIR:-/tmp}/book-home-XXXXXX")"
+  # `-T` and `</dev/null`: a `run` that attaches stdin would keep the deploy's own input open (or
+  # consume it in CI) and can hang; nothing interactive belongs in a gate.
+  dc run --rm -T --no-deps --entrypoint node site "$@" </dev/null 2>&1 | tee "$log" || code=$?
+  if [ "$code" -ne 0 ]; then
+    last="$(sed '/^[[:space:]]*$/d' "$log" | tail -n 1)"
+    say "home: ${label} exited ${code}: ${last:-no output}"
+  fi
+  rm -f "$log"
+  return "$code"
+}
+
+home_gate() {
+  STEP="home"
+  say "home: the volume's cutover in ${IMAGE_TAG} — bin/home-migrate.mjs --apply, then bin/home-check.mjs (BOOK-187 AC12)"
+  if ! home_run "home-migrate --apply" bin/home-migrate.mjs --apply; then
+    HOME_WHY="bin/home-migrate.mjs --apply refused (its last line is above); the old writer's files are still in the volume"
+    return 1
+  fi
+  if ! home_run "home-check" bin/home-check.mjs --data-dir /data --manuscript /book/manuscript; then
+    HOME_WHY="$HOME_FAILED"
+    return 1
+  fi
+  say "home: ok — the volume holds the book and its dumps and nothing else"
   return 0
 }
 
@@ -535,6 +598,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
   say "dry run: lock $(lock_report) — this run takes nothing"
   if ! resolve_ref "$REF"; then die "cannot resolve '$REF' in $ROOT"; fi
   say "dry run: would build ${IMAGE_REPO}:${SHA} (commit $(sha7 "$SHA"), timeout ${BUILD_TIMEOUT}s), record prev=$(running_image), up -d --wait, gate ${SITE_URL}/healthz for $(sha7 "$SHA") (budget ${BUDGET_MS} ms + grace ${GRACE_MS} ms), smoke 5 reads"
+  say "dry run: then, in that image on the volume, dc run --rm -T --no-deps --entrypoint node site bin/home-migrate.mjs --apply, then ... bin/home-check.mjs --data-dir /data --manuscript /book/manuscript; a red one rolls back and last-good is not written"
   exit 0
 fi
 
@@ -575,6 +639,12 @@ say "previous image: ${PREV_IMAGE:-none}${PREV_SHA7:+ (${PREV_SHA7})}"
 gate_code=0
 up_and_gate "$IMAGE_TAG" "$SHA7" || gate_code=$?
 if [ "$gate_code" -eq 0 ]; then
+  # BOOK-187 AC12: the stack is up on the new image and healthy; the volume is cut over by that
+  # image before the run may be called green. A red one takes the same rollback path as any gate:
+  # the cutover is idempotent, so a silent retry would only repeat a refusal.
+  if ! home_gate; then
+    red "the home gate is red on ${IMAGE_TAG}: ${HOME_WHY}"
+  fi
   STEP="green"
   printf '%s\n' "$IMAGE_TAG" >"$LAST_GOOD_IMAGE"
   PERCENT=0

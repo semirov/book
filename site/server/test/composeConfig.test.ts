@@ -46,6 +46,7 @@ const skip = plugin ? false : 'docker compose is not available on this box';
 
 type Service = {
   image?: string;
+  build?: { context?: string; dockerfile?: string; additional_contexts?: Record<string, string> };
   user?: string;
   read_only?: boolean;
   cap_drop?: string[];
@@ -236,6 +237,19 @@ describe.skipIf(skip)('the compose topology', () => {
     for (const name of ['site', 'engine', 'writer']) {
       expect((config.services[name]?.environment ?? {}).BOOK_ROLE, name).toBe(name);
     }
+  });
+
+  it('carries the canon into the image from the book root (BOOK-187, ADR-043 G3)', () => {
+    const config = loaded(REHEARSAL);
+    // The prompts/concept/style live one level above `site/`; the image is their only home at
+    // runtime, and `scripts/build-info.mjs` refuses to bake a bundle it cannot hash. So the build
+    // names the book root as the `canon` additional context — outside `site/`, inside the image.
+    const additional = config.services.site?.build?.additional_contexts ?? {};
+    expect(Object.keys(additional)).toEqual(['canon']);
+    expect(additional.canon).toBe(resolve(SITE, '..'));
+    // The engine and the writer run the same image: no second context, no second canon.
+    expect(config.services.engine?.build).toBeUndefined();
+    expect(config.services.writer?.build).toBeUndefined();
   });
 
   it('starts the writer only after a healthy engine, and holds no other service behind another', () => {

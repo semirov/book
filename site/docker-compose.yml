@@ -58,6 +58,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # BOOK-187 / ADR-043 G3: the canon (prompts, concept, style) lives one level above `site/`,
+      # and the image is its only home at runtime. A named additional context carries those files
+      # into the build (the Dockerfile copies them to the image's root, where the writer and
+      # `scripts/build-info.mjs` look for them); without it no image can be built at all — the
+      # bundle digest refuses to be a bundle of nothing.
+      additional_contexts:
+        canon: ..
       args:
         # BOOK-109/BOOK-172: the commit the image reports on `/healthz`. Passed by
         # compose-release.sh as `<sha7>`; unset is honest (`dev`) and never happens in a release.

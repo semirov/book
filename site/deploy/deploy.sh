@@ -257,6 +257,11 @@ data_dir_of_service() {
 # unwritten. A job that was not loaded is not ours to start: the flag stays 0 and nothing is
 # bootstrapped at the end.
 WRITER_STOPPED=0
+# The sentence both runtimes say when the volume holds something it may not (BOOK-187 AC12): the
+# same words in `deploy.sh` and `compose-release.sh`, and the remedy is in it — the operator reads
+# one line and knows the command.
+HOME_FAILED="the volume holds something it may not (every path above is named) — run bin/home-migrate.mjs --apply once"
+
 writer_stop() {
   local status=0 out=""
   out="$(launchctl bootout "gui/$(id -u)/$WRITER_LABEL" 2>&1)" || status=$?
@@ -464,7 +469,7 @@ say "cutover: home-migrate --apply on $DATA_DIR_SITE (dry run first, then the on
 node "$ROOT/site/bin/home-migrate.mjs" --data-dir "$DATA_DIR_SITE" || die "the volume cutover dry run refused (its reason is above) — nothing was deployed or restarted"
 node "$ROOT/site/bin/home-migrate.mjs" --data-dir "$DATA_DIR_SITE" --apply || die "the volume cutover refused (its reason is above; nothing in the volume was changed) — nothing was deployed or restarted"
 say "gate: home (the volume and manuscript/ hold only what they may)"
-node "$ROOT/site/bin/home-check.mjs" --data-dir "$DATA_DIR_SITE" || die "the data dir holds something it may not (every path above is named) — nothing was deployed or restarted"
+node "$ROOT/site/bin/home-check.mjs" --data-dir "$DATA_DIR_SITE" || die "$HOME_FAILED — nothing was deployed or restarted"
 STEP="gate: coverage"
 say "gate: coverage"
 npm run test:coverage || die "coverage floor not met — nothing was deployed or restarted"
