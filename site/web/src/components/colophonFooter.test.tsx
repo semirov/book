@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { costLine, costMoney } from '../lib/bookCost.ts';
 import { Colophon } from './Colophon.tsx';
+import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
 import { BASE, TOKENS, tokenPx } from './measure.guard.ts';
 
 /**
@@ -28,35 +29,13 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   eager: true,
 });
 
-/** The declarations of every rule whose selector is exactly `selector`, joined. */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'gu'))]
-    .map((match) => match[1] ?? '')
-    .join(';');
-}
-
 /** One declaration of a rule as a number of px, `em` resolved against the rule's own size. */
 function px(css: string, selector: string, property: string, emPx: number): number {
-  const raw = new RegExp(`(?:^|;)\\s*${property}:\\s*([\\d.]+)(em|px)`, 'u').exec(declarations(css, selector));
+  const raw = new RegExp(`(?:^|;)\\s*${property}:\\s*([\\d.]+)(em|px)`, 'u').exec(
+    unionDeclarations(css, selector),
+  );
   const value = Number.parseFloat(raw?.[1] ?? '0');
   return raw?.[2] === 'em' ? value * emPx : value;
-}
-
-/** The body of `@media (<query>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, query: string): string {
-  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
-  if (start < 0) return '';
-  const open = css.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, index);
-    }
-  }
-  return '';
 }
 
 const state = {
@@ -244,7 +223,8 @@ describe('the gift row’s sheet (BOOK-126)', () => {
   // and no box of its own: the row is the column, and the underline is the house treatment.
   it('is mono, micro and quiet, with the 44 px target and no padding of its own', () => {
     const book = sheets['../styles/book.css'] ?? '';
-    const rule = declarations(book, '.colophon .donate');
+    expect(hasRule(book, '.colophon .donate')).toBe(true);
+    const rule = unionDeclarations(book, '.colophon .donate');
     expect(rule).toContain('font-family: var(--mono)');
     expect(rule).toContain('font-size: var(--fs-micro)');
     expect(rule).toContain('color: var(--ink-3)');
@@ -266,22 +246,35 @@ describe('the cost line’s sheet (BOOK-114)', () => {
   // break: the number is one word and the currency travels with its figure.
   it('is mono, micro and tabular, with unbreakable fragments', () => {
     const book = sheets['../styles/book.css'] ?? '';
-    const line = declarations(book, '.colophon .cost-line');
+    const line = unionDeclarations(book, '.colophon .cost-line');
+    expect(hasRule(book, '.colophon .cost-line')).toBe(true);
     expect(line).toContain('font-family: var(--mono)');
     expect(line).toContain('font-size: var(--fs-micro)');
     expect(line).toContain('color: var(--ink-3)');
     expect(line).toContain('font-variant-numeric: tabular-nums');
-    expect(declarations(book, '.colophon .cost-line > span')).toContain('white-space: nowrap');
+    expect(unionDeclarations(book, '.colophon .cost-line > span')).toContain('white-space: nowrap');
     // No box of its own: the row is the column, and the line adds no padding or margin.
     expect(line).not.toMatch(/(?:^|;)\s*padding/u);
     expect(line).not.toMatch(/(?:^|;)\s*margin/u);
     expect(line).not.toMatch(/overflow:/u);
-    // No width step touches it: the line reads the same at 390 and at 1440.
-    for (const [file, css] of Object.entries(sheets)) {
-      for (const [, query] of css.matchAll(/@media\s*\(([^)]*)\)\s*\{/gu)) {
-        const body = mediaBody(css, query ?? '');
-        expect(declarations(body, '.colophon .cost-line'), `${file} @media (${query})`).toBe('');
-      }
+    // No width step touches it: the line reads the same at 390 and at 1440 — in every block of
+    // every query, not only the first. `book.css` writes `(max-width: 599px)` twice, and a
+    // reader that answered with the first block would scan it twice and the second one never;
+    // `mediaBlockList` enumerates them all, and its count against the sheet's own `@media` count
+    // is what proves no block went unread.
+    const blocks = Object.entries(sheets).flatMap(([file, css]) =>
+      mediaBlockList(css).map((block) => ({ file, ...block })),
+    );
+    expect(blocks).toHaveLength(
+      Object.values(sheets).reduce(
+        (count, css) => count + [...css.matchAll(/@media\s*\([^)]*\)\s*\{/gu)].length,
+        0,
+      ),
+    );
+    // The query the 390 claim rests on is stated at all: a missing one throws here.
+    mediaBlocks(book, 'max-width: 599px');
+    for (const { file, query, body } of blocks) {
+      expect(unionDeclarations(body, '.colophon .cost-line'), `${file} @media (${query})`).toBe('');
     }
   });
 
@@ -328,11 +321,11 @@ describe('the logout row’s sheet (BOOK-115)', () => {
   // focus ring. The button takes the row's face through `font: inherit` (base.css).
   it('is mono and micro, and gives the button a 44 px target', () => {
     const book = sheets['../styles/book.css'] ?? '';
-    const row = declarations(book, '.colophon .logout-row');
+    const row = unionDeclarations(book, '.colophon .logout-row');
     expect(row).toContain('font-family: var(--mono)');
     expect(row).toContain('font-size: var(--fs-micro)');
     expect(row).toContain('text-transform: none');
-    const button = declarations(book, '.colophon .logout');
+    const button = unionDeclarations(book, '.colophon .logout');
     expect(button).toContain('display: inline-flex');
     expect(button).toContain('align-items: center');
     expect(button).toContain('min-height: 44px');
@@ -341,9 +334,9 @@ describe('the logout row’s sheet (BOOK-115)', () => {
     expect(button).toContain('text-transform: none');
     // The button takes the row's face through the reset — `button { font: inherit }` — so the
     // word is mono without a second `font-family` on `.logout`.
-    expect(declarations(sheets['../styles/base.css'] ?? '', 'button')).toContain('font: inherit');
+    expect(unionDeclarations(sheets['../styles/base.css'] ?? '', 'button')).toContain('font: inherit');
     // The house error ink, one line under the row, at the 12 px floor.
-    const error = declarations(book, '.colophon .logout-error');
+    const error = unionDeclarations(book, '.colophon .logout-error');
     expect(error).toContain('font-size: var(--fs-micro)');
     expect(error).toContain('color: var(--revise)');
     // The focus ring is the global `:focus-visible`; the row does not replace it.
@@ -409,7 +402,10 @@ describe('the download row’s sheet (BOOK-138)', () => {
   // underline, with no box of its own; the 44 px target states itself at the phone width.
   it('is mono, micro and underlined, with the 44 px phone target and no padding box', () => {
     const chrome = sheets['../styles/chrome.css'] ?? '';
-    const rule = declarations(chrome, '.page .export-link');
+    // The base rule itself, above the queries: `firstDeclarations` is the shared reader's
+    // answer for "the rule the sheet states first", and `hasRule` makes its absence loud.
+    expect(hasRule(chrome, '.page .export-link')).toBe(true);
+    const rule = firstDeclarations(chrome, '.page .export-link');
     expect(rule).toContain('font-family: var(--mono)');
     expect(rule).toContain('font-size: var(--fs-micro)');
     expect(rule).toContain('color: var(--ink-2)');
@@ -433,15 +429,17 @@ describe('the download row’s sheet (BOOK-138)', () => {
 
   it('states the 44 px target inside the phone query, and no width step above it', () => {
     const chrome = sheets['../styles/chrome.css'] ?? '';
-    // `chrome.css` holds more than one phone block (the table of contents and the export), and
-    // `mediaBody` answers with the first; this finds the block that declares the selector.
-    const escaped = '.page .export-link'.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-    const phone =
-      new RegExp(`@media \\(max-width: 599px\\)\\s*\\{[^{}]*${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(chrome)?.[1] ?? '';
-    expect(phone).toContain('min-height: 44px');
+    // `chrome.css` holds more than one phone block (the sheet's own spread, then the export's
+    // target), and the target is stated in the second one: every block of the query is read,
+    // not the first, and exactly one of them states the selector — two would be two targets.
+    const phones = mediaBlocks(chrome, 'max-width: 599px');
+    const stated = phones.map((body) => unionDeclarations(body, '.page .export-link'));
+    expect(stated.filter((decl) => decl !== '')).toHaveLength(1);
+    expect(stated.join(';')).toContain('min-height: 44px');
     // The base rule — the first rule of that selector, above the query — states no height: the
     // target is a phone rule, like the gift row's.
-    const base = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(chrome)?.[1] ?? '';
+    expect(hasRule(chrome, '.page .export-link')).toBe(true);
+    const base = firstDeclarations(chrome, '.page .export-link');
     expect(base).toContain('display: inline-flex');
     expect(base).not.toMatch(/(?:^|;)\s*min-height/u);
   });
