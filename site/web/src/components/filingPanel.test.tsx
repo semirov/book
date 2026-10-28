@@ -132,25 +132,3 @@ describe('the filing panel’s state line (BOOK-90)', () => {
     expect(render(row)).toContain(FAILED_ATTEMPT_LINE);
   });
 });
-
-/**
- * BOOK-84 — the card the duplicate door opens wears the word the strip above the form says.
- *
- * A premise is not a remark to text that does not exist yet: its card used to be titled
- * «замечание №4Q7» in the visible head and in the accessible name — the exact two places a
- * screen reader and a reader hear the card named. A filing on real text keeps its own word.
- */
-describe('what the card calls the filing (BOOK-84)', () => {
-  it('calls a premise a «замысел» in its title and its accessible name', () => {
-    const html = render(comment({ premise: true, chapter: 9 }));
-    expect(html).toContain('<span class="filing-title">замысел №4Q7</span>');
-    expect(html).toContain('aria-label="замысел №4Q7"');
-    expect(html).not.toMatch(/замечание №4Q7/iu);
-  });
-
-  it('keeps «замечание» for a filing on the text', () => {
-    const html = render(comment());
-    expect(html).toContain('<span class="filing-title">замечание №4Q7</span>');
-    expect(html).toContain('aria-label="замечание №4Q7"');
-  });
-});

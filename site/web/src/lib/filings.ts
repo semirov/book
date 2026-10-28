@@ -128,17 +128,6 @@ export function filingNumber(comment: Pick<CommentDto, 'id'>): string {
   return `№${tail.length === 3 ? tail : `0${tail}`.slice(-3)}`;
 }
 
-/**
- * BOOK-84 — what a filing is **called** wherever its numeral is printed: a chapter with no text
- * takes a premise, and a premise is not a remark to text that does not exist yet. The strip above
- * the form says so («это замысел главы, а не замечание к тексту»), the refusal below it obeys
- * (`refusalCopy`), and the card the refusal's door opens wears the same word in its title and its
- * accessible name. One literal, so the card cannot disagree with the row it came from.
- */
-export function filingName(comment: Pick<CommentDto, 'premise'>): string {
-  return comment.premise ? 'замысел' : 'замечание';
-}
-
 export type SentenceFilings = {
   blockId: string;
   quote: string | null;
