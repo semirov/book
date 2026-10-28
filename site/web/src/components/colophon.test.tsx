@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { COLOPHON_MOTTO, Colophon } from './Colophon.tsx';
 import { state, stubDocument } from './colophon.fixture.ts';
+import { hasRule, mediaBlockList, mediaBlocks, rules, unionDeclarations } from './cssRules.ts';
 
 /** Every stylesheet as text, keyed by path: whether the source link is printed is a rule
  *  across the set, not of one sheet (`bookMatter.test.tsx` reads the sheets the same way). */
@@ -18,34 +19,31 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   eager: true,
 });
 
+/** One sheet of the globbed set. A missing key is an error, not an empty string to assert on. */
+function sheet(path: string): string {
+  const text = sheets[path];
+  if (text === undefined) throw new Error(`the sheet set does not carry ${path}`);
+  return text;
+}
+
 /**
- * The declarations of every rule whose selector is exactly `selector`: the colophon's link is
- * dressed by two consecutive blocks in `chrome.css` (the underline, then the 24 px target),
- * so the helper reads the union rather than the first match.
+ * The declarations that take a box or its words off the page — the whole family, not the three
+ * that first came to mind: the box (`display`, `visibility`), its content (`overflow`, even the
+ * `clip` value, and `clip-path`), its height (`max-height: 0`), its ink (`opacity: 0`) and the
+ * trick that pushes the words out of the box (`text-indent`).
  */
-function declarations(css: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  return [...css.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{([^}]*)\\}`, 'gu'))]
-    .map((match) => match[1] ?? '')
-    .join(';');
-}
+const HIDES = [
+  /display:\s*none/u,
+  /visibility:\s*(?:hidden|collapse)/u,
+  /overflow(?:-[xy])?:\s*(?:hidden|clip)\b/u,
+  /max-height:\s*0(?:px)?(?![.\d%])/u,
+  /clip-path:\s*(?!\s*none\b)/u,
+  /\bopacity:\s*0(?:\.0*)?(?![.\d])/u,
+  /text-indent:\s*-/u,
+] as const;
 
-/** The body of `@media (<query>) { … }`, with nested braces balanced. */
-function mediaBody(css: string, query: string): string {
-  const start = css.search(new RegExp(`@media \\(${query}\\)\\s*\\{`, 'u'));
-  if (start < 0) return '';
-  const open = css.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return css.slice(open + 1, index);
-    }
-  }
-  return '';
-}
-
+/** The width steps that would undo what the test above claims, on top of `HIDES`. */
+const NARROWS = [/flex-wrap:\s*nowrap/u, /min-height:\s*0(?:px)?(?![.\d%])/u] as const;
 
 /** The imprint row's own `<span>`, so a match cannot come from another row of the colophon. */
 function imprintLine(html: string): string {
@@ -245,6 +243,8 @@ describe('the source link in the end matter (BOOK-78)', () => {
     expect(attrs).not.toContain('#');
     expect(attrs).not.toContain('utm_');
     expect(attrs).not.toMatch(/metrika|ym-|data-|onclick|title=/u);
+    // The page's only `utm_` surface is that anchor, so the page is claimed too: a second
+    // tracked link would honour the exact-href count above and still be a campaign.
     expect(html).not.toContain('utm_');
   });
 
@@ -252,12 +252,14 @@ describe('the source link in the end matter (BOOK-78)', () => {
   // the colophon's shared uppercase transform is presentation, so the source says lowercase.
   it('carries the truthful label in the owner\'s words, and nothing beside it', () => {
     const html = renderColophon();
-    const { label } = sourceAnchor(html);
+    const { attrs, label } = sourceAnchor(html);
     expect(label).toBe('исходный код сайта открыт');
     // The words in the source, before CSS uppercases the register.
     expect(webSources['./Colophon.tsx']).toContain('исходный код сайта открыт');
-    // One fact and nothing more: no trademark, no count, no star, no cheer, no tooltip.
-    expect(html).not.toContain('GitHub');
+    // One fact and nothing more: no trademark, no count, no star, no cheer, no tooltip. The
+    // claim is about the link — its attributes and its label — not about every byte of the page.
+    expect(attrs).not.toContain('GitHub');
+    expect(label).not.toContain('GitHub');
     expect(html).not.toContain('звёзд');
     expect(html).not.toContain('★');
     expect(label).not.toContain('!');
@@ -280,42 +282,71 @@ describe('the source link in the end matter (BOOK-78)', () => {
   });
 
   // BOOK-78 AC1 — «reachable at 390 and 1440» without a browser. This test claims the
-  // stylesheet, not pixels: the anchor is printed (the test above), the row wraps so the extra
+  // sheets, not pixels: the anchor is printed (the test above), the row wraps so the extra
   // item can fall to the next line at 390, the anchor is a 24 px underlined target at both
-  // widths, and no rule in the sheet set hides or clips it at any width. It does not prove the
-  // layout, only that nothing in the sheets takes the link away.
+  // widths, and no *`.colophon`* rule — in the flat sheet or in any width step — hides or
+  // clips the row, or undoes its wrap. Ancestor selectors are out of scope on purpose:
+  // `body { overflow-x: hidden }` is the page's measure, not a clipping of this row, and the
+  // same properties on `.sr-only` are that utility's job. It does not prove the layout, only
+  // that nothing written for the colophon takes the link away.
   it('keeps its wrap, its 24 px target and never hides the row, from the sheets', () => {
-    const book = sheets['../styles/book.css'] ?? '';
-    const chrome = sheets['../styles/chrome.css'] ?? '';
-    expect(declarations(book, '.colophon .row')).toContain('display: flex');
-    expect(declarations(book, '.colophon .row')).toContain('flex-wrap: wrap');
-    expect(declarations(chrome, '.colophon a')).toContain('display: inline-flex');
-    expect(declarations(chrome, '.colophon a')).toContain('min-height: 24px');
-    expect(declarations(chrome, '.colophon a')).toContain('text-decoration: underline');
+    const book = sheet('../styles/book.css');
+    const chrome = sheet('../styles/chrome.css');
+    const row = unionDeclarations(book, '.colophon .row');
+    const link = unionDeclarations(chrome, '.colophon a');
+    // The union is read from real rules: the negative sweep below walks rules that exist.
+    expect(hasRule(book, '.colophon .row')).toBe(true);
+    expect(hasRule(chrome, '.colophon a')).toBe(true);
+    expect(row).toContain('display: flex');
+    expect(row).toContain('flex-wrap: wrap');
+    expect(link).toContain('display: inline-flex');
+    expect(link).toContain('min-height: 24px');
+    expect(link).toContain('text-decoration: underline');
 
-    // The sheet set, rule by rule: no `.colophon` rule hides a box or clips its content.
-    const rules = (css: string): Array<[string, string]> =>
-      [...css.replace(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}]+)\{([^{}]*)\}/gu)].map((match) => [
-        (match[1] ?? '').replace(/\s+/gu, ' ').trim(),
-        match[2] ?? '',
-      ]);
+    // The list is not a broom: `clip-path: none` states that nothing is clipped, so only a
+    // clipping value is forbidden. (The lookahead swallows the space on purpose: without it the
+    // `\s*` in front backtracks into a match on `none`.)
+    expect(HIDES.some((pattern) => pattern.test('clip-path: none'))).toBe(false);
+    expect(HIDES.some((pattern) => pattern.test('clip-path: inset(100%)'))).toBe(true);
+
+    // The sheet set, rule by rule, flat and nested alike — `rules()` reads a rule wherever the
+    // sheet writes it, and a selector list is one rule naming several selectors. No rule written
+    // for `.colophon` hides the box, clips it, takes its words off the page, or undoes the row's
+    // wrap: `flex-wrap: nowrap` in the flat sheet is the same defect as one inside a width step.
     for (const [file, css] of Object.entries(sheets)) {
       for (const [selector, body] of rules(css)) {
         if (!/\.colophon\b/u.test(selector)) continue;
-        const where = `${file}: ${selector}`;
-        expect(body, where).not.toMatch(/display:\s*none/u);
-        expect(body, where).not.toMatch(/visibility:\s*hidden/u);
-        expect(body, where).not.toMatch(/overflow:\s*hidden/u);
+        for (const forbidden of [...HIDES, ...NARROWS]) {
+          expect(body, `${file}: ${selector}`).not.toMatch(forbidden);
+        }
       }
-      // And no width step re-lays the row or strips the link — the wrap is the same at 390
-      // and at 1440, because no query touches either selector.
-      for (const [, query] of css.matchAll(/@media\s*\(([^)]*)\)\s*\{/gu)) {
-        const body = mediaBody(css, query ?? '');
-        for (const selector of ['.colophon .row', '.colophon a']) {
-          const where = `${file} @media (${query}) ${selector}`;
-          expect(declarations(body, selector), where).not.toMatch(
-            /display:\s*none|visibility:\s*hidden|overflow:\s*hidden|flex-wrap:\s*nowrap|min-height:\s*0/u,
-          );
+    }
+
+    // Every width step, every block of it: `book.css` writes `(max-width: 599px)` twice, and a
+    // reader that answered with the first block would scan it twice and the second one never.
+    // `mediaBlockList` enumerates them all; `mediaBlocks` throws when the phone query the 390
+    // claim rests on is absent, so these two calls are the loud failure for a missing block —
+    // a length assertion would only restate the throw.
+    mediaBlocks(book, 'max-width: 599px');
+    mediaBlocks(chrome, 'max-width: 599px');
+    const blocks = Object.entries(sheets).flatMap(([file, css]) =>
+      mediaBlockList(css).map((block) => ({ file, ...block })),
+    );
+    // The enumeration is complete, not one-block-per-query: every `@media` of every sheet is a
+    // block the sweep below reads.
+    expect(blocks).toHaveLength(
+      Object.values(sheets).reduce(
+        (count, css) => count + [...css.matchAll(/@media\s*\([^)]*\)\s*\{/gu)].length,
+        0,
+      ),
+    );
+    // And inside a block the selectors are matched as tokens, so a rule that names the row in a
+    // list beside another selector (`.colophon .row, .colophon a { … }`) is read, not skipped.
+    for (const { file, query, body } of blocks) {
+      for (const selector of ['.colophon .row', '.colophon a']) {
+        const found = unionDeclarations(body, selector);
+        for (const forbidden of [...HIDES, ...NARROWS]) {
+          expect(found, `${file} @media (${query}) ${selector}`).not.toMatch(forbidden);
         }
       }
     }
@@ -359,8 +390,8 @@ describe('the build stamp in the end matter (BOOK-109)', () => {
   });
 
   it('dresses the stamp as a data mark: the micro rung and the quiet ink', () => {
-    const book = sheets['../styles/book.css'] ?? '';
-    const rule = declarations(book, '.colophon .build-stamp');
+    const book = sheet('../styles/book.css');
+    const rule = unionDeclarations(book, '.colophon .build-stamp');
     expect(rule).toContain('font-size: var(--fs-micro)');
     expect(rule).toContain('color: var(--ink-3)');
     // The label register's uppercase is inherited from `.colophon`; the stamp reads as it is.
