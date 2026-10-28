@@ -192,10 +192,17 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     }
   });
 
-  it('has exactly four words, and none of them is a phrase', () => {
+  it('has one word per state, and none of them is a phrase', () => {
     // BOOK-137 added the paperwork state: «рассмотрено» is a decision about a record, and
     // «внесено» stays what the text says — the two are never used for one another.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
+    expect(Object.values(STATE_WORDS)).toEqual([
+      'ждёт',
+      'идёт',
+      'внесено',
+      'рассмотрено',
+      // BOOK-174 — the escalated filing's own word; it is a state, not a gate's line.
+      'ждёт решения автора',
+    ]);
     for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }

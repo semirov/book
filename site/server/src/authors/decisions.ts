@@ -37,8 +37,9 @@ import {
   type MyDecisionsDto,
 } from '@book/shared';
 
-import type { Db } from '../db/db.ts';
+import { dispositionFieldsOf } from '../comments/dispositionReport.ts';
 import { premiseLanded } from '../comments/repo.ts';
+import type { Db } from '../db/db.ts';
 import { decisionOutcome, publicIntent } from '../engineState/changes.ts';
 import { safeJson } from '../engineState/rows.ts';
 import { computeShares } from '../history/erosion.ts';
@@ -59,6 +60,15 @@ type DecisionRow = {
   change_reason: string | null;
   change_intent: string | null;
   change_finished_at: string | null;
+  /** ADR-044 — the filing's own sentence and its filed paragraph; null = the block anchor. */
+  block_id: string | null;
+  block_idx: number | null;
+  /** BOOK-174 — how the filing was read; null for a row written before v27. */
+  disposition: string | null;
+  lock: string | null;
+  carrier_kind: string | null;
+  quote_kept: string | null;
+  sentence_id: string | null;
   waves: number | null;
   chapters_touched: string | null;
   blocks_changed: number | null;
@@ -80,6 +90,13 @@ const DECISIONS_SQL = `
          c.reason        AS comment_reason,
          c.created_at    AS comment_created_at,
          c.decided_at    AS decided_at,
+         c.block_id      AS block_id,
+         c.block_idx     AS block_idx,
+         c.disposition   AS disposition,
+         c.lock          AS lock,
+         c.carrier_kind  AS carrier_kind,
+         c.quote_kept    AS quote_kept,
+         c.sentence_id   AS sentence_id,
          ch.id           AS change_id,
          ch.premise      AS change_premise,
          ch.status       AS change_status,
@@ -165,6 +182,9 @@ function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto
     // A refusal has no share of its own to show: the number is absent, never zero.
     shareAtDecision: measured ? shareThen(db, identityId, decidedAt) : null,
     decidedAt,
+    // BOOK-174: the reader's own line carries the reading of their filing, derived from the
+    // stored chain — the same three lines the filing's own record prints.
+    report: dispositionFieldsOf(db, row).report,
   };
 }
 
@@ -186,6 +206,9 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
     if (holdsInternalCode(row.change_reason)) return 'queued';
   }
   if (row.change_id === null || row.change_status === null) {
+    // BOOK-174: an escalated filing is not a refusal and not a drop — the author decides, and
+    // the record says so in the words the page already has for it.
+    if (row.comment_status === 'escalated') return 'escalated';
     return row.comment_status === 'rejected' ? 'refused' : 'dropped';
   }
   if (WAITING.has(row.change_status)) return 'queued';

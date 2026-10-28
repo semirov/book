@@ -95,6 +95,10 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       return comment.refusal === 'rights'
         ? lineOf(word, filingConsequence(comment), 'stopped')
         : lineOf(word, joinDetail(filingConsequence(comment), comment.reason), 'stopped');
+    case 'escalated':
+      // BOOK-174: decided, not refused — the word «ждёт решения автора» and the question the
+      // filing now asks, which is its own stored line.
+      return lineOf(word, comment.reason, 'live');
     case 'quarantined':
       // HELD: the word «проверяется» and the hold's own line, never the guard's taxonomy.
       return lineOf(word, filingConsequence(comment), 'stopped');

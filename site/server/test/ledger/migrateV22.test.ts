@@ -153,8 +153,8 @@ describe('migration v22 — the ledger on an upgraded install', () => {
       'ledger_gap',
     );
 
-    // The cursor goes to the head of the build, not to 22: v23 (the author marker) and v25 (the
-    // sentence) run on the same upgrade.
+    // The cursor goes to the head of the build, not to 22: v23 (the author marker), v25 (the
+    // sentence), v26 (the push tables) and v27 (the disposition chain) run on the same upgrade.
     expect(migrate(db)).toEqual({ from: 21, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect((db.pragma('table_info(block_versions)') as Array<{ name: string }>).map((c) => c.name)).toEqual(

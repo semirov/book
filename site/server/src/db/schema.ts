@@ -25,6 +25,8 @@
  * `sentence_id` carrier (plus the reader's selection offsets on a comment). Those carriers
  * deliberately carry **no foreign key** — SQLite cannot add one by `ALTER TABLE`, so a migrated
  * install would refuse what a fresh one accepts; the writer enforces the reference instead.
+ * v26 adds the three push tables (`push_subscriptions`, `push_log`, `push_outbox`, BOOK-189):
+ * a device list, a one-per-chapter claim and the queue the site process drains.
  * Text tables are a projection of the manuscript files; the engine tables are the only home of
  * process facts. Every table §8 names exists here, and the retired `obligations` table does not (§23.5, ADR-023).
  *
@@ -36,20 +38,24 @@
  * next to `CHAPTERS_TABLE_SQL`.
  */
 
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 27;
 
 /**
- * Two standalone table definitions live in `tables.ts` because both the full schema here and
- * an incremental migration need them (§13.3, §6F.3, BOOK-6); they are re-exported so a reader
- * of the schema still finds every table in one place.
+ * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
+ * `events`, the gate tables, the attempt ledger, `comments` and the disposition counters) live in
+ * `tables.ts` (§13.3, §6F.3, BOOK-6, BOOK-174); they are re-exported so a reader of the schema
+ * still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 import { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export {
   BLOCK_VERSIONS_TABLE_SQL,
   COMMENT_ATTEMPTS_TABLE_SQL,
+  COMMENTS_TABLE_SQL,
+  DISPOSITION_COUNTS_TABLE_SQL,
   PASS_STAGES_TABLE_SQL,
   PASS_SPEND_TABLE_SQL,
   CHAPTERS_COLUMNS,
@@ -63,6 +69,7 @@ export {
   chaptersTableSql,
 } from './tables.ts';
 export { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+export { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 export { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
 export const SCHEMA_SQL = `
@@ -207,76 +214,13 @@ CREATE TABLE lane (                                -- single row; the FIFO mutex
 );
 INSERT INTO lane (id, holder, heartbeat_at) VALUES (1, NULL, NULL);
 
-CREATE TABLE comments (
-  id           TEXT PRIMARY KEY,               -- 'cmt_01JB7…' (ULID, sortable)
-  identity_id  TEXT NOT NULL REFERENCES identities(id),   -- Yandex subject (ADR-021)
-  chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
-  block_id     TEXT,                           -- null = chapter-level
-  block_idx    INTEGER,                        -- position at posting time (display only)
-  base_rev     INTEGER,                        -- the revision the quote came from (§6A.7, M5)
-  quote        TEXT,                           -- exact text at posting time (≤280 chars)
-  prefix       TEXT,                           -- ≤40 chars before the quote
-  suffix       TEXT,                           -- ≤40 chars after
-  -- ADR-044: the sentence the quote sits in, and the reader's selection inside it. Null is the
-  -- legacy block anchor — a row written before v25, or a quote that straddles a boundary.
-  -- No REFERENCES clause: see the note at the top of this file.
-  sentence_id  TEXT,
-  sel_start    INTEGER,                        -- code points from the sentence's start
-  sel_end      INTEGER,                        -- exclusive; null/null = the whole sentence
-  author       TEXT NOT NULL,                  -- display name snapshot at posting time, ≤32 chars
-  body         TEXT NOT NULL,                  -- ≤1200 chars, normalized
-  proposed_text TEXT,                          -- a reader's suggested wording; data, never applied verbatim
-  -- BOOK-16: the intervention's kind — one of four world-facts, required with proposed_text
-  -- for a new row. Null is valid for a note and for every row stored before BOOK-16.
-  intervention_kind TEXT CHECK (intervention_kind IN ('document','decision','testimony','erasure')),
-  body_sha     TEXT NOT NULL,                  -- sha256(normalized body), for dedupe
-  flags        TEXT NOT NULL DEFAULT '[]',     -- JSON guard flags; advisory, travels in a batch
-  ip_hash      TEXT NOT NULL,                  -- HMAC-SHA256(salt, ip or /64)
-  status       TEXT NOT NULL,                  -- new|batched|delivered|accepted|applied|registered|superseded|rejected|quarantined|expired|hidden
-  -- BOOK-137: the mark the classifier gave this filing at posting time (null before v16).
-  frame        TEXT CHECK (frame IN ('touched','adjacent','untouched')),
-  guard        TEXT,                           -- null|'legal'|'instruction'|'spam'|'dup'
-  created_at   TEXT NOT NULL,
-  delivered_at TEXT,                           -- when it entered a batch
-  decided_at   TEXT,                           -- triage accept/reject
-  reason       TEXT,                           -- public one-liner (≤200 chars), Russian
-  batch_id     TEXT,
-  change_id    TEXT REFERENCES changes(id),    -- the queued change, when accepted
-  applied_chapter INTEGER,
-  applied_rev  INTEGER,
-  -- BOOK-9: the auditor's verdict, written once, before triage. FITS is the
-  -- only permission a change has; OFF also refuses the comment in the same act.
-  audit_verdict TEXT CHECK (audit_verdict IN ('FITS','OFF')),
-  audit_reason  TEXT,                          -- the auditor's plain reason (≤200 chars), never a taxonomy
-  audited_at    TEXT,
-  audited_by    TEXT,                          -- the operator/session label, ≤64 chars
-  -- BOOK-61 Gate A: a hold and who decided it. held_rule is the filter's own id (INJ-…), so
-  -- the operator sees why the row stopped; the public line stays «проверяется», never the
-  -- taxonomy. A released row keeps these columns as the record of the hold.
-  held_rule    TEXT,
-  held_by      TEXT CHECK (held_by IN ('filter','classifier','operator')),
-  held_at      TEXT,
-  -- BOOK-61 Gate B: the rights verdict of a filing. One column per writer, first verdict wins;
-  -- rights_source says what decided — the deterministic scan, the rights gate, an operator.
-  rights_verdict TEXT CHECK (rights_verdict IN ('CLEAR','REFUSED')),
-  rights_rule    TEXT,
-  rights_at      TEXT,
-  rights_by      TEXT,
-  rights_source  TEXT CHECK (rights_source IN ('scan','model','operator')),
-  -- BOOK-58: the terms a submission accepted, written once at posting from the shared copy
-  -- (shared/src/terms.ts), and the moment a landed variant was entered into the book. The
-  -- acceptance columns are the row's own record: accepted_terms_version copies the row's
-  -- terms_version, so a later text change cannot rewrite what a reader once accepted.
-  terms_version TEXT,
-  terms_sha     TEXT,
-  accepted_at   TEXT,
-  accepted_terms_version TEXT,
-  idem_key     TEXT UNIQUE
-);
+${COMMENTS_TABLE_SQL}
 CREATE INDEX comments_chapter ON comments(chapter, created_at);
 CREATE INDEX comments_status  ON comments(status, created_at);
 CREATE INDEX comments_ip      ON comments(ip_hash, created_at);
 CREATE INDEX comments_identity ON comments(identity_id, created_at);
+
+${DISPOSITION_COUNTS_TABLE_SQL}
 
 CREATE TABLE comment_events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,6 +326,8 @@ ${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger an
 
 ${SENTENCE_TABLES_SQL}                  -- ADR-044: the sentence rows and their touch ledger
 
+${PUSH_TABLES_SQL}                     -- BOOK-189: push subscriptions, the claim and the outbox
+
 CREATE TABLE overwrites (                      -- explicit «переписано в T правкой X» (§6F.3)
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   block_id     TEXT NOT NULL,
@@ -450,6 +396,7 @@ export const REQUIRED_TABLES = [
   'comments',
   'comment_events',
   'comment_attempts',
+  'disposition_counts',
   'feedback_batches',
   'identities',
   'sessions',
@@ -468,6 +415,7 @@ export const REQUIRED_TABLES = [
   'meta',
   ...LEDGER_REQUIRED_TABLES,
   ...SENTENCE_REQUIRED_TABLES,
+  ...PUSH_REQUIRED_TABLES,
 ] as const;
 
 /** §6F.1: the log is append-only; a missing trigger means the promise is not kept (F027). */

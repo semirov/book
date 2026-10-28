@@ -17,6 +17,7 @@ import {
   stripFilings,
   threadFilings,
   upsertFiling,
+  withDecisionReport,
   wordFilingOf,
 } from './filings.ts';
 import { placeHref } from './place.ts';
@@ -257,5 +258,39 @@ describe('one filing, one entry (BOOK-137)', () => {
     const linked = { ...NEW, changeId: 'chg_old' };
     expect(filingAttempt(linked, [])).toEqual({ id: 'chg_old', number: null, seq: null });
     expect(linked.changeId).not.toBeNull();
+  });
+});
+
+/**
+ * BOOK-174 — a `comment:decision` frame carries the reading of the filing it names. It is
+ * applied to the row with that id only, and only when it really adds something: a frame about
+ * a filing this page does not hold, or one that changes nothing, returns `null` (no render).
+ */
+describe('the decision frame’s report (BOOK-174)', () => {
+  const report = {
+    line1: 'прочитано как сказано',
+    line2: 'потому что рядом нет предложения, которое от этого станет ложным',
+    line3: 'где это в книге: глава 8 · абзац 3 · предложение 1',
+  };
+
+  it('carries the report onto the row it names and leaves the others alone', () => {
+    const first = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
+    const second = comment({ id: 'cmt_B', createdAt: '2026-10-25T12:01:00Z' });
+    const next = withDecisionReport([first, second], {
+      id: 'cmt_A',
+      status: 'accepted',
+      reason: 'принято',
+      decidedAt: '2026-10-25T12:30:00Z',
+      disposition: 'as_said',
+      report,
+    });
+    expect(next?.[0]).toMatchObject({ status: 'accepted', reason: 'принято', disposition: 'as_said', report });
+    expect(next?.[1]).toBe(second);
+  });
+
+  it('answers null when the frame names no row on screen, or adds nothing', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
+    expect(withDecisionReport([row], { id: 'cmt_missing', report })).toBeNull();
+    expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
   });
 });

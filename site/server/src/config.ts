@@ -184,6 +184,13 @@ const schema = z.object({
   engineTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'engine.token')),
   /** Test/CLI convenience only: an inline token never belongs in a deployed environment. */
   engineToken: z.string().default(''),
+  /**
+   * BOOK-189 — the VAPID key that signs Web Push messages. It is **not** a `readMountedSecret`
+   * entry on purpose: a deployment without push is a normal site, so an absent file is «push is
+   * off» rather than a boot failure. `push/vapid.ts` reads it once and reports a stable code for
+   * anything else; no other module opens it.
+   */
+  vapidFile: z.string().default('/run/secrets/vapid'),
   watchPollMs: z.coerce.number().int().min(50).default(700),
   /** Collapses a truncate-then-write burst into one revision (§6.2). */
   watchCoalesceMs: z.coerce.number().int().min(0).default(1_500),
@@ -338,6 +345,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxConcurrentProcesses: env.ENGINE_MAX_CONCURRENT_PROCESSES,
     engineTokenFile: env.ENGINE_TOKEN_FILE,
     engineToken: env.ENGINE_TOKEN,
+    vapidFile: env.VAPID_FILE,
     watchPollMs: env.WATCH_POLL_MS,
     watchCoalesceMs: env.WATCH_COALESCE_MS,
     emptyWriteGraceMs: env.EMPTY_WRITE_GRACE_MS,

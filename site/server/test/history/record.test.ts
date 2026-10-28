@@ -211,7 +211,9 @@ function acceptThroughInterface(local: Fixture, at = '2026-10-25T10:00:00Z'): { 
     at,
     reason: 'принято',
   });
-  if ('error' in result) throw new Error(result.error);
+  if (!('changeId' in result)) {
+    throw new Error(`acceptance refused: ${'error' in result ? result.error : 'escalated'}`);
+  }
   return { changeId: result.changeId, at };
 }
 

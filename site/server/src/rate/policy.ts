@@ -67,6 +67,30 @@ export function hideSpecs(identityId: string): LimitSpec[] {
   return [{ key: hideIdentityKey(identityId), limit: HIDE_TOGGLE_PER_HOUR, windowMs: COMMENT_HOUR_MS }];
 }
 
+/**
+ * BOOK-189 — subscribing is a write, and a write a script can repeat: every call mints a row and
+ * may evict a device, and the drain then has one more endpoint to talk to. The budget is checked
+ * twice, like every other write (§14): the reader, because one person with many networks is one
+ * abuser, and the network, because a script has not signed in at all. 20 an hour is far above a
+ * reader's list (five devices and a retry or two) and far below a loop.
+ */
+export const PUSH_WRITE_PER_HOUR = 20;
+
+export function pushIdentityKey(identityId: string): string {
+  return `push:id:${identityId}`;
+}
+
+export function pushIpKey(ipHash: IpHasher, ipKey: string): string {
+  return `push:ip:${ipHash(ipKey)}`;
+}
+
+export function pushSpecs(ipHash: IpHasher, ipKey: string, identityId: string): LimitSpec[] {
+  return [
+    { key: pushIdentityKey(identityId), limit: PUSH_WRITE_PER_HOUR, windowMs: COMMENT_HOUR_MS },
+    { key: pushIpKey(ipHash, ipKey), limit: PUSH_WRITE_PER_HOUR, windowMs: COMMENT_HOUR_MS },
+  ];
+}
+
 export function oauthIpKey(ipHash: IpHasher, ipKey: string): string {
   return `oauth:ip:${ipHash(ipKey)}`;
 }

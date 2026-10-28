@@ -175,6 +175,12 @@ describe('feedback.mjs release — HELD back to new, and into the next batch', (
     // BOOK-43: the audit trail keeps the rule that stopped the row, not only the flags.
     expect(row).toMatchObject({ status: 'new', held_by: 'operator', held_rule: 'INJ-IMPERATIVE', guard: 'instruction' });
     expect(JSON.parse(row?.flags ?? '[]')).toEqual(['possible-instruction']);
+    // BOOK-174: nothing was read while the row was held, so a release carries no chain either.
+    expect(
+      fixture.db
+        .prepare('SELECT disposition, lock, carrier_kind, quote_kept FROM comments WHERE id = ?')
+        .get(id),
+    ).toEqual({ disposition: null, lock: null, carrier_kind: null, quote_kept: null });
     const releasedEvent = events(id).find((event) => event.type === 'released');
     expect(releasedEvent?.meta).toContain('это описание акта, не указание');
 

@@ -239,6 +239,13 @@ describe('feedback.mjs release — one releasable rights refusal', () => {
       rights_source: 'operator',
       rights_rule: 'RIGHTS-QUOTE',
     });
+    // BOOK-174: the lock that refused the old words is gone with them — the row is undecided
+    // again, and the next batch judges it from scratch.
+    expect(
+      fixture.db
+        .prepare('SELECT disposition, lock, carrier_kind, quote_kept FROM comments WHERE id = ?')
+        .get(id),
+    ).toEqual({ disposition: null, lock: null, carrier_kind: null, quote_kept: null });
     const event = events(id).find((entry) => entry.type === 'released');
     expect(event?.meta).toContain('RIGHTS-QUOTE');
 

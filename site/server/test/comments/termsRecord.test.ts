@@ -84,7 +84,9 @@ function accept(harness: Harness, commentId: string): string {
     at: harness.clock.now().toISOString(),
     reason: 'входит в книгу',
   });
-  if (!('changeId' in result)) throw new Error(`acceptance refused: ${result.code ?? result.error}`);
+  if (!('changeId' in result)) {
+    throw new Error(`acceptance refused: ${'error' in result ? (result.code ?? result.error) : 'escalated'}`);
+  }
   return result.changeId;
 }
 

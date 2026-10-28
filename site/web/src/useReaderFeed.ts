@@ -2,7 +2,7 @@ import type { ChangeSummaryDto, CommentDto, MyDecisionsDto } from '@book/shared'
 import { useCallback, useRef, useState } from 'react';
 
 import { getChanges, getChapterComments, getComments, getMyDecisions } from './api.ts';
-import { upsertFiling } from './lib/filings.ts';
+import { decisionFrameOf, upsertFiling, withDecisionReport } from './lib/filings.ts';
 import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib/ownDecisions.ts';
 
 /**
@@ -142,6 +142,25 @@ export function useReaderFeed() {
     });
   }, []);
 
+  /**
+   * BOOK-174 — a decision frame carries the reading of the filing it names. The row already on
+   * screen takes it at once (the open card must not go on saying «ждёт»); a frame about a row
+   * this page does not hold changes nothing, and `refreshComments` is still the durable truth.
+   */
+  const noteDecision = useCallback((data: unknown) => {
+    const frame = decisionFrameOf(data);
+    if (frame === null) return;
+    setComments((current) => withDecisionReport(current, frame) ?? current);
+    setChapterFeed((current) => {
+      const chapter = frame.chapter;
+      if (chapter === undefined) return current;
+      const feed = current[chapter];
+      if (feed === undefined) return current;
+      const items = withDecisionReport(feed.items, frame);
+      return items === null ? current : { ...current, [chapter]: { ...feed, items } };
+    });
+  }, []);
+
   const refreshDecisions = useCallback(async () => {
     try {
       const next = await getMyDecisions();
@@ -185,5 +204,6 @@ export function useReaderFeed() {
     refreshChapter,
     refreshLoaded,
     noteRecord,
+    noteDecision,
   };
 }

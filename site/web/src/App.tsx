@@ -124,7 +124,7 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, commentsComplete, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord } =
+  const { changes, comments, commentsComplete, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
     useReaderFeed();
   // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
   const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
@@ -296,7 +296,9 @@ export function App() {
           case 'comment:decision': {
             // A decision frame is a broadcast; only the viewer's own comment earns a reload
             // of the durable record. Everybody else's is simply the thread's business.
+            // BOOK-174: the frame carries the reading, onto the open record at once.
             noteRecord({ kind: 'frame', type: frame.type, data: frame.data });
+            noteDecision(frame.data);
             void refreshComments(commentFrameChapter(frame.data) ?? undefined);
             break;
           }

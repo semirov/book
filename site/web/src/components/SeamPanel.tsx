@@ -8,6 +8,7 @@ import { failedAttempt } from '../lib/marginalia.ts';
 import type { AnchorRect } from '../lib/popover.ts';
 import { reviseView } from '../lib/revise.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
+import { DispositionLines } from './DispositionLines.tsx';
 import { ReviseNote } from './ReviseNote.tsx';
 
 /** What the shell owns, whatever it is showing. */
@@ -165,6 +166,8 @@ function FilingBody({
           ✕
         </button>
       </div>
+      {/* BOOK-174 — the reading comes first: what the filing became, then the filing itself. */}
+      {comment.report == null ? null : <DispositionLines report={comment.report} />}
       <p className="filing-meta">
         {comment.author} · {commentStamp(comment.createdAt)} · глава {String(comment.chapter).padStart(2, '0')}
       </p>
