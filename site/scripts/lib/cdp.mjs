@@ -136,6 +136,22 @@ export class Cdp {
     this.listeners.set(method, held);
   }
 
+  /** One page expression, by value: the harness drives the page through this. */
+  async evaluate(expression, awaitPromise = true) {
+    const result = await this.send('Runtime.evaluate', {
+      expression,
+      awaitPromise,
+      returnByValue: true,
+      userGesture: true,
+    });
+    if (result.exceptionDetails !== undefined) {
+      throw new Error(
+        result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? 'evaluate failed',
+      );
+    }
+    return result.result?.value;
+  }
+
   send(method, params = {}) {
     this.nextId += 1;
     const id = this.nextId;
