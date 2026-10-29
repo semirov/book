@@ -148,7 +148,9 @@ describe('hello', () => {
     const hello = await waitFor(() => client.frames.find((frame) => frame.type === 'hello'));
     expect(hello.v).toBe(1);
     expect(hello.seq).toBe(1);
-    expect(hello.data.protocolVersion).toBe(3);
+    // BOOK-DOC-84: the frame set is v4 (25 types, `chapter:applied` among them).
+    expect(hello.data.protocolVersion).toBe(4);
+    expect(hello.data.live).toBeDefined();
     expect(hello.data.limits).toMatchObject({ commentsPerHour: 10, maxConnections: 100, perIp: 20 });
     expect(hello.data.front).toMatchObject({
       title: 'Без названия',

@@ -42,8 +42,8 @@ async function boot(): Promise<void> {
     stateThrottleMs: 0,
     resolveViewer: (request) =>
       request.headers.cookie === 'book_session=known'
-        ? { signedIn: true, displayName: 'Аня' }
-        : { signedIn: false, displayName: null },
+        ? { viewer: { signedIn: true, displayName: 'Аня' }, identityId: 'idt_1' }
+        : { viewer: { signedIn: false, displayName: null }, identityId: null },
   });
   app = await buildApp({ config, db: fixture.db, state, wsHub: hub, version: 'test', logger: false });
   await app.ready();

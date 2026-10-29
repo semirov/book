@@ -42,6 +42,8 @@ function decided(over: Partial<ChangeDecidedPayload> = {}): ChangeDecidedPayload
     relevance: null,
     tokens: { total: 0 },
     decidedAt: '2026-10-29T09:00:00Z',
+    at: Date.parse('2026-10-29T09:00:00Z'),
+    eventSeq: 3,
     ...over,
   };
 }

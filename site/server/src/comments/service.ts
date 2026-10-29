@@ -78,6 +78,8 @@ import { sanitizeAuthor } from './sanitize.ts';
 import type { RateLimiter } from '../rate/limiter.ts';
 import { commentSpecs } from '../rate/policy.ts';
 import { applyRights, scanFiling } from '../rights/apply.ts';
+import { emitFilingUpdate } from '../feedback/filingFrame.ts';
+import { filingStateOf } from './filingState.ts';
 
 export type CommentServiceDeps = {
   db: Db;
@@ -86,7 +88,7 @@ export type CommentServiceDeps = {
   captcha: CaptchaVerifier;
   now?: () => Date;
   ipHash?: (ipKey: string) => string;
-  emit?: (type: 'comment:added', data: unknown) => void;
+  emit?: (type: 'comment:added' | 'filing:update', data: unknown) => void;
   idFactory?: (nowMs: number) => string;
 };
 
@@ -105,7 +107,7 @@ export class CommentService {
   private readonly captcha: CaptchaVerifier;
   private readonly now: () => Date;
   private readonly ipHash: (ipKey: string) => string;
-  private readonly emit: ((type: 'comment:added', data: unknown) => void) | undefined;
+  private readonly emit: ((type: 'comment:added' | 'filing:update', data: unknown) => void) | undefined;
   private readonly idFactory: (nowMs: number) => string;
 
   constructor(deps: CommentServiceDeps) {
@@ -350,6 +352,15 @@ export class CommentService {
 
     const dto = toCommentDto(this.db, row, nowMs);
     this.emit?.('comment:added', commentAddedPayload(dto));
+    // BOOK-DOC-84 #17: a filing the gates stopped before triage says so at once — «на проверке»
+    // is state with a frame, not a fact only a refetch could learn.
+    emitFilingUpdate(this.db, (type, data) => this.emit?.(type, data), {
+      commentId: row.id,
+      chapter: row.chapter,
+      state: row.status === 'quarantined' ? 'quarantined' : row.held_rule !== null ? 'held' : filingStateOf(row.status),
+      changeId: row.change_id,
+      at: Date.parse(dto.createdAt),
+    });
     return { ok: true, status: 201, body: { comment: dto, remaining: this.budget(context.identity.id, context.ipKey), queue: { depth: this.queueState().depth } } };
   }
 

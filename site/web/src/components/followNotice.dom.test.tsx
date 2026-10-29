@@ -75,6 +75,8 @@ const DECIDED: ChangeDecidedPayload = {
   relevance: null,
   tokens: { total: 100 },
   decidedAt: '2026-10-29T09:00:00Z',
+  at: Date.parse('2026-10-29T09:00:00Z'),
+  eventSeq: 3,
 };
 
 const ENTRY: CatalogEntry = {

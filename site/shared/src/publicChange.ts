@@ -14,6 +14,7 @@
 
 import type { FrameMark } from './frame.ts';
 import type { InterventionKind } from './intervention.ts';
+import type { QueuePendingDto } from './types.ts';
 import type {
   AppliesVerdict,
   AnchorState,
@@ -242,6 +243,12 @@ export type QueueDto = {
   head: null | { id: string; chapter: number; enqueuedAt: string; waitMs: number };
   processing: null | { id: string; chapter: number; startedAt: string; stage: string };
   lastDecidedAt: string | null;
+  /**
+   * BOOK-DOC-84 #3/#36 — the waiting filings themselves, in lane order (≤ `queueSoftCap`).
+   * The position is a snapshot fact now: the 10 s `/api/queue` poll is deleted, and this list is
+   * what `live.queue` and `state.queue` carry on every carrier.
+   */
+  pending?: QueuePendingDto[];
 };
 
 /** `/healthz`'s engine block: `absent` means no process has ever beaten (§9, §18). */
@@ -257,6 +264,14 @@ export type EngineStatePayload = {
   since: string | null;
   reason: string | null;
   queue: { depth: number };
+  /**
+   * BOOK-DOC-84 §5 — the day's pass bound, announced as a fact: «на сегодня всё · 4 из 4
+   * проходов». Read from `writer_state` and the lane's own `WRITER_MAX_PASSES_PER_DAY`.
+   */
+  passesToday: number;
+  maxPasses: number;
+  /** ISO of the last spending pass, `null` when none has run. */
+  writerAt: string | null;
 };
 
 export type ChangeQueuedPayload = {
@@ -269,6 +284,9 @@ export type ChangeQueuedPayload = {
   queue: { depth: number; ahead: number };
   base: { rev: number };
   scopeHint: 'phrase' | 'chapter';
+  /** BOOK-DOC-84 §2.1 #9 — ms epoch of the row, and the apply cursor of the change domain. */
+  at: number;
+  eventSeq: number;
 };
 
 export type ChangeProcessingPayload = {
@@ -277,6 +295,10 @@ export type ChangeProcessingPayload = {
   startedAt: string;
   attempt: number;
   relevance: PublicRelevance | null;
+  /** BOOK-DOC-84 §2.1 #10 — the queue position at the claim, so the page does not refetch. */
+  queue: { ahead: number };
+  at: number;
+  eventSeq: number;
 };
 
 export type ChangeStalePayload = {
@@ -285,6 +307,9 @@ export type ChangeStalePayload = {
   evidence: string[];
   options: Array<'adapt' | 'drop'>;
   survivesAs: string | null;
+  /** BOOK-DOC-84 §2.1 #12 — the row's own moment and the change domain's apply cursor. */
+  at: number;
+  eventSeq: number;
 };
 
 export type ChangeDecidedPayload = {
@@ -306,6 +331,9 @@ export type ChangeDecidedPayload = {
   relevance: null | { grade: RelevanceGrade };
   tokens: { total: number };
   decidedAt: string;
+  /** BOOK-DOC-84 §2.1 #13 — ms epoch of the decision and the change domain's apply cursor. */
+  at: number;
+  eventSeq: number;
 };
 
 /** One frame per cascade stage; the ribbon's only animation source (§10.3a, §11.7). */

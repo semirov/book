@@ -447,7 +447,6 @@ export class ManuscriptWatcher {
   }
 }
 
-/** `front:updated` carries only what a reader can act on (§10.3). */
 function frontCausePayload(cause: WriteCause): FrontUpdatedPayload['cause'] {
   return {
     kind: cause.kind,
@@ -477,6 +476,7 @@ function revisionPayload(chapter: AppliedChapter & { kind: 'edit' | 'rewrite' | 
   return {
     n: chapter.n,
     rev: chapter.rev,
+    hseq: chapter.hseq,
     title: chapter.title,
     chars: chapter.chars,
     delta: chapter.delta,

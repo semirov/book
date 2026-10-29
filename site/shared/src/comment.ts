@@ -357,6 +357,12 @@ export type CommentAddedPayload = {
   status: CommentStatus;
   reason: string | null;
   createdAt: string;
+  /**
+   * BOOK-DOC-84 #18 — the whole stored row, sanitized and bounded like every DTO. The frame
+   * used to be only a trigger (`GET /api/comments` carried the row); the thread inserts this
+   * DTO instead, so a second tab and the poster see the same row without a refetch.
+   */
+  comment: CommentDto;
 };
 
 /**
@@ -418,6 +424,13 @@ export type CommentDecisionPayload = {
    * claim). `retryAt` is the hour the next read is bought, `null` when no attempt is scheduled.
    */
   attempt?: { state: 'failed'; retryAt: string | null };
+  /**
+   * BOOK-DOC-84 #19 — the filing's tries left today, from the attempt ledger. The row of the
+   * record prints «осталось N попыток» from the frame, not from a second GET.
+   */
+  attemptsLeft: number;
+  /** BOOK-DOC-84 #19 — ms epoch of the decision (the `decidedAt` ISO, in ms). */
+  at: number;
 };
 
 export type FeedbackBatchPayload = {

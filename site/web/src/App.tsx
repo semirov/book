@@ -1,6 +1,5 @@
 import type {
   AuthorsCountDto,
-  BlockRevisingPayload,
   CascadeProgressPayload,
   ChangeDecidedPayload,
   ChangeProcessingPayload,
@@ -35,7 +34,7 @@ import { RecordMode, recordModeOf } from './components/RecordMode.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
-import { applyRevisingMark } from './lib/revisingMark.ts';
+import { revisingOf } from './lib/revisingMark.ts';
 import { useAgeGate } from './lib/useAgeGate.ts';
 import { useStages } from './lib/useStages.ts';
 import {
@@ -85,7 +84,6 @@ export function App() {
   const [failed, setFailed] = useState(false);
   const [connection, setConnection] = useState<SocketStatus>('connecting');
   const [revisions, setRevisions] = useState<Record<number, ChapterRevisionPayload>>({});
-  const [revising, setRevising] = useState<Record<number, BlockRevisingPayload>>({});
   /** BOOK-167: the stage log — the passes in flight, and the paragraph they paint. */
   const stages = useStages();
   const [fresh, setFresh] = useState<number | null>(null);
@@ -207,7 +205,6 @@ export function App() {
             setRibbon(ribbonFromState(hello.state));
             setNotice(null);
             setRevisions({});
-            setRevising({});
             stages.reset();
             setFresh(null);
             setFailed(false);
@@ -264,38 +261,6 @@ export function App() {
             break;
           }
           case 'authors:update': applyAuthorsCount(frame.data as AuthorsCountDto); break;
-          case 'cursor:moved': {
-            const cursor = frame.data as {
-              lane: 'forward' | 'backward';
-              chapter: number;
-              blockId: string | null;
-              blockIndex: number | null;
-              at: string;
-            };
-            setData((current) => {
-              if (current === null) return current;
-              return {
-                ...current,
-                state: {
-                  ...current.state,
-                  current: {
-                    lane: cursor.lane,
-                    chapter: cursor.chapter,
-                    kind: 'draft',
-                    blockId: cursor.blockId,
-                    blockIndex: cursor.blockIndex,
-                    since: cursor.at,
-                  },
-                },
-              };
-            });
-            break;
-          }
-          case 'block:revising':
-            applyRevisingMark(frame.data as BlockRevisingPayload, setRevising, (run, ms) => {
-              timers.current.push(window.setTimeout(run, ms));
-            });
-            break;
           case 'history:event': {
             // BOOK-102: the frame is a bare tick, `{ hseq, at }` — no narration. The page says
             // «the log moved» and re-reads the record it prints.

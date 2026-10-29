@@ -113,6 +113,9 @@ describe('reduceRibbon', () => {
     startedAt: '2026-10-25T12:00:00Z',
     attempt: 1,
     relevance: null,
+    queue: { ahead: 0 },
+    at: Date.parse('2026-10-25T12:00:00Z'),
+    eventSeq: 2,
   };
   const down: CascadeProgressPayload = {
     cascadeId: 'csc_1',
@@ -175,6 +178,8 @@ describe('reduceRibbon', () => {
     relevance: { grade: 'fresh' },
     tokens: { total: 100 },
     decidedAt: '2026-10-25T12:05:00Z',
+    at: Date.parse('2026-10-25T12:05:00Z'),
+    eventSeq: 5,
   };
 
   it('walks the origin, the downward wing and the upward wing in both directions', () => {

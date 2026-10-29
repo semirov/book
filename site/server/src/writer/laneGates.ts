@@ -92,6 +92,17 @@ export function createGates(input: GateInput): Gates {
       role,
       note: gate.note,
     };
+    // BOOK-DOC-84 D3: the gate call gets its start row — the head words «сейчас проверяют»
+    // stand on a stage the moment the call begins, not only when the answer arrives.
+    await deps.emit({
+      stage: 'verdict',
+      chapter,
+      passId: job.stepId,
+      changeId: job.changeId,
+      summary: stageSummary.verdictStarted({ role }),
+      model: config.model,
+      at: input.now(),
+    });
     const gateAnswer = await askGateAnswer({
       role,
       build: (hint) =>

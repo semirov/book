@@ -24,7 +24,9 @@ import type { CommentDecisionPayload } from '@book/shared';
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { readQueue } from '../engineState/reader.ts';
 import type { Db } from '../db/db.ts';
-import { TRIAGE_MAX_TRIES, latestAttempt } from '../comments/attempts.ts';
+import { TRIAGE_MAX_TRIES, attemptCounts, latestAttempt } from '../comments/attempts.ts';
+import { filingStateOf } from '../comments/filingState.ts';
+import { emitFilingUpdate } from './filingFrame.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { acceptComment } from './accept.ts';
 import type { DecisionEmit } from './decisions.ts';
@@ -136,6 +138,7 @@ function emitDecision(
   status: 'accepted' | 'registered' | 'rejected',
   at: string,
 ): void {
+  const nowMs = nowOf(options)().getTime();
   options.emit('comment:decision', {
     id: row.id,
     chapter: row.chapter,
@@ -145,11 +148,22 @@ function emitDecision(
     batchId: row.batch_id,
     changeId: row.change_id,
     queue: {
-      depth: readQueue(options.db, nowOf(options)().getTime()).depth,
+      depth: readQueue(options.db, nowMs).depth,
       ahead: queueAhead(options.db, row.change_id),
     },
     source: 'llm',
+    // BOOK-DOC-84 #19: the record line prints the tries left from the frame itself.
+    attemptsLeft: attemptCounts(options.db, row.id, nowMs).attemptsLeft,
+    at: Date.parse(at),
   } satisfies CommentDecisionPayload);
+  // BOOK-DOC-84 #17: the filing's own row — accepted, registered or refused — as a frame.
+  emitFilingUpdate(options.db, options.emit, {
+    commentId: row.id,
+    chapter: row.chapter,
+    state: filingStateOf(status),
+    changeId: row.change_id,
+    at: Date.parse(at),
+  });
 }
 
 /**

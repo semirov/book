@@ -62,7 +62,10 @@ export type WriterConfigRedacted = {
   continueMax: number;
   dailyTokens: number;
   maxPassesPerDay: number;
+  /** BOOK-DOC-84 D4: the idle poll — how long the lane sleeps when nothing waits. */
   pauseMs: number;
+  /** BOOK-DOC-84 D4: the breath between two passes while a filing is pending (3 000 ms). */
+  breathMs: number;
   /** BOOK-206: the triage cadence — a filing is claimed every 5 s, prose keeps `pauseMs`. */
   triagePollMs: number;
   /** The reading call's cap: one verdict and one reading, a reasoning call like a gate's. */
@@ -224,7 +227,11 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     continueMax: integer(env, 'WRITER_CONTINUE_MAX', 2, 0),
     dailyTokens: integer(env, 'WRITER_DAILY_TOKENS', 1_500_000, 1),
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),
+    // BOOK-DOC-84 D4: the pause is the **idle** poll only. A chain with a waiting filing starts
+    // the next pass after `breathMs` — long enough for the applied frame, the print's first
+    // frames and the close to arrive in order, short enough to be invisible.
     pauseMs: integer(env, 'WRITER_PAUSE_MS', 900_000, 0),
+    breathMs: integer(env, 'WRITER_BREATH_MS', 3_000, 0),
     // BOOK-206: the two cadences. A filing is picked up within five seconds and prose still waits
     // its fifteen minutes; a triage call is a gate-sized answer, never a chapter.
     triagePollMs: integer(env, 'TRIAGE_POLL_MS', 5_000, 100),

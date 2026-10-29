@@ -146,7 +146,20 @@ export type StateSnapshot = {
     head: null | { id: string; chapter: number; enqueuedAt: string; waitMs: number };
     processing: null | { id: string; chapter: number; startedAt: string; stage: string };
     lastDecidedAt: string | null;
+    /**
+     * BOOK-DOC-84 §2.1 #3 — the waiting filings, in lane order, at most `queueSoftCap` of them.
+     * It replaces the deleted 10 s `/api/queue` poll: the position travels with the snapshot, so
+     * a reconnect and a fresh page agree without a second request. Optional only because a
+     * snapshot assembled by hand (a web fixture) predates the field; the server always sends it.
+     */
+    pending?: QueuePendingDto[];
   };
+  /**
+   * BOOK-DOC-84 §2.1 #3/#22 — the lane's day: how many passes it ran, its bound, and when it
+   * last ran. Read from `writer_state`, never computed by the site. Optional for the same reason
+   * as `queue.pending`.
+   */
+  lane?: LaneDayDto;
   revising: Array<{
     chapter: number;
     blockIds: string[];
@@ -191,6 +204,26 @@ export type StateSnapshot = {
    * the field, and a client renders the line when it is there.
    */
   budget?: BudgetDto;
+};
+
+/** One waiting filing, as the queue block and `live.queue` carry it (BOOK-DOC-84 §2.1 #3). */
+export type QueuePendingDto = {
+  id: string;
+  chapter: number;
+  /** The lane's own FIFO order (`changes.seq`). */
+  seq: number;
+  /** Pending filings older than this one; the number the page prints as «впереди N». */
+  ahead: number;
+  kind: string;
+  enqueuedAt: string;
+};
+
+/** The lane's day (`writer_state`): passes that spent money today, the bound, the last one. */
+export type LaneDayDto = {
+  passesToday: number;
+  maxPasses: number;
+  /** ISO of the last spending pass, `null` when none has run. */
+  writerAt: string | null;
 };
 
 /** One row of `GET /api/chapters` — all `TOTAL_CHAPTERS` slots, always. */

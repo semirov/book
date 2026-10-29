@@ -15,12 +15,17 @@
 import {
   parseSeams,
   readerReason,
+  type ChangeAdaptedPayload,
+  type EngineStatePayload,
   type ServerEventType,
   type StateSnapshot,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
+import { ChapterNarrator } from './chapterFrames.ts';
 import { filingCloseFrame, filingFailureFrame } from './filingFrame.ts';
+import { PassNarrator } from './passFrames.ts';
+
 import {
   chaptersOfChange,
   decisionOutcome,
@@ -33,7 +38,7 @@ import {
   readStepRow,
 } from './changes.ts';
 import { toHistoryFrame } from '../history/events.ts';
-import { readEngineHealth, readQueue, stepsOfCascade } from './reader.ts';
+import { readEngineHealth, readLaneDay, readQueue, stepsOfCascade } from './reader.ts';
 import { boundaryOf, chapterOfStep, countRows, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
 import { wingsOf, wingSteps } from './wings.ts';
 
@@ -50,6 +55,14 @@ export type EngineBridgeOptions = {
   replay?: boolean;
   /** Per-cascade coalescing, 1 000 ms in production (§10.3a). */
   progressThrottleMs?: number;
+  /**
+   * The data dir the revision snapshots live under (BOOK-DOC-84 #6): `chapter:applied` derives
+   * its patch and span from them. Absent (a test that only narrates rows) means no snapshot can
+   * be read, and the frame is honestly `patchTruncated`.
+   */
+  dataDir?: string;
+  /** The lane's day bound, announced by `engine:state` (§5); the writer's own default is 4. */
+  maxPasses?: number;
 };
 
 type ChangeEventRow = {
@@ -93,6 +106,9 @@ export class EngineBridge {
   private readonly now: () => number;
   private readonly replay: boolean;
   private readonly progressThrottleMs: number;
+  private readonly maxPasses: number;
+  private readonly chapters: ChapterNarrator;
+  private readonly passes: PassNarrator;
   private readonly pendingProgress = new Map<string, { payload: unknown; at: number }>();
   private readonly lastProgressAt = new Map<string, number>();
 
@@ -113,6 +129,10 @@ export class EngineBridge {
     this.now = options.now ?? (() => Date.now());
     this.replay = options.replay === true;
     this.progressThrottleMs = options.progressThrottleMs ?? 1_000;
+    this.maxPasses = options.maxPasses ?? 4;
+    const emit: BridgeEmit = (type, data) => this.emit(type, data);
+    this.chapters = new ChapterNarrator({ db: this.db, dataDir: options.dataDir ?? '', emit });
+    this.passes = new PassNarrator({ db: this.db, emit });
   }
 
   start(): void {
@@ -140,11 +160,15 @@ export class EngineBridge {
       this.eventCursor = 0;
       this.commentCursor = 0;
       this.historyCursor = 0;
+      this.chapters.prime(true);
+      this.passes.prime(true);
     } else {
       const change = this.db.prepare('SELECT MAX(id) AS id FROM change_events').get() as { id: number | null };
       const event = this.db.prepare('SELECT MAX(hseq) AS hseq FROM events').get() as { hseq: number | null };
       // BOOK-206 B5: a restart must not replay yesterday's cap failures as today's news.
       const comment = this.db.prepare('SELECT MAX(id) AS id FROM comment_events').get() as { id: number | null };
+      this.chapters.prime(false);
+      this.passes.prime(false);
       this.changeCursor = change.id ?? 0;
       this.eventCursor = event.hseq ?? 0;
       this.commentCursor = comment.id ?? 0;
@@ -159,11 +183,15 @@ export class EngineBridge {
     let changed = false;
 
     const engine = this.narrateEngine(nowMs);
+    // The write first: a print is clocked from it, and the pass's own frames follow it.
+    const revisions = this.chapters.tick();
+    const passes = this.passes.tick();
     const cascades = this.drainCascade(nowMs) + this.flushProgress(nowMs);
     const changes = this.drainChanges(nowMs);
     const filing = this.drainFilingEvents(nowMs);
     const history = this.drainHistory();
-    changed = engine || cascades > 0 || changes > 0 || filing > 0 || history > 0;
+    changed =
+      engine || revisions > 0 || passes > 0 || cascades > 0 || changes > 0 || filing > 0 || history > 0;
 
     if (changed && this.snapshot !== null) {
       this.emit('state:updated', { ...this.snapshot(), reason: 'engine' });
@@ -177,12 +205,18 @@ export class EngineBridge {
     const health = readEngineHealth(this.db, nowMs);
     if (health.status === this.status) return false;
     this.status = health.status;
-    this.emit('engine:state', {
+    const lane = readLaneDay(this.db, nowMs, this.maxPasses);
+    const payload: EngineStatePayload = {
       status: health.status,
       since: health.heartbeatAt,
       reason: engineReason(health.status),
       queue: { depth: readQueue(this.db, nowMs).depth },
-    });
+      // BOOK-DOC-84 §5: the day's bound, announced as a fact — «на сегодня всё · 4 из 4».
+      passesToday: lane.passesToday,
+      maxPasses: lane.maxPasses,
+      writerAt: lane.writerAt,
+    };
+    this.emit('engine:state', payload);
     return true;
   }
 
@@ -203,7 +237,7 @@ export class EngineBridge {
         continue;
       }
       if (row.type === 'queued') {
-        this.emit('change:queued', this.queuedPayload(change, nowMs));
+        this.emit('change:queued', this.queuedPayload(change, row, nowMs));
         emitted += 1;
       } else if (row.type === 'processing') {
         this.emit('change:processing', {
@@ -212,6 +246,10 @@ export class EngineBridge {
           startedAt: change.started_at ?? row.at,
           attempt: change.attempts + 1,
           relevance: readRelevance(change.relevance),
+          // BOOK-DOC-84 #10: the place in line at the claim, so the page does not refetch.
+          queue: { ahead: this.aheadOf(change) },
+          at: Date.parse(row.at),
+          eventSeq: row.id,
         });
         emitted += 1;
       } else if (row.type === 'stale') {
@@ -223,10 +261,25 @@ export class EngineBridge {
           evidence: relevance?.evidence ?? [],
           options: ['adapt', 'drop'],
           survivesAs: relevance?.reason ?? null,
+          at: Date.parse(row.at),
+          eventSeq: row.id,
         });
         emitted += 1;
+      } else if (row.type === 'adapted') {
+        const meta = safeJson<{ intent?: string; reason?: string }>(row.meta);
+        const payload: ChangeAdaptedPayload = {
+          id: change.id,
+          chapter: change.chapter,
+          // The narrowed intent is the change's own public text (BOOK-DOC-84 #11).
+          intent: publicIntent(meta?.intent ?? change.intent),
+          reason: meta?.reason ?? readerReason(change.reason) ?? '',
+          at: Date.parse(row.at),
+          eventSeq: row.id,
+        };
+        this.emit('change:adapted', payload);
+        emitted += 1;
       } else if (row.type === 'decided' || row.type === 'escalated' || row.type === 'cancelled') {
-        this.emit('change:decided', this.decidedPayload(change, row.at, nowMs));
+        this.emit('change:decided', this.decidedPayload(change, row, nowMs));
         emitted += 1;
         // BOOK-219/BOOK-206 B2 — the change's own word is not the filing's: the open page moves a
         // filing row only on `comment:decision`, so a close that decided the filing speaks here
@@ -243,12 +296,18 @@ export class EngineBridge {
     return emitted;
   }
 
-  private queuedPayload(change: ChangeRow, nowMs: number) {
-    const ahead = countRows(
+  /** Pending filings older than this change: its place in the lane's line. */
+  private aheadOf(change: ChangeRow): number {
+    if (change.premise === 1) return 0;
+    return countRows(
       this.db,
       `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`,
       change.seq,
     );
+  }
+
+  private queuedPayload(change: ChangeRow, row: ChangeEventRow, nowMs: number) {
+    const ahead = this.aheadOf(change);
     return {
       id: change.id,
       seq: change.seq,
@@ -259,10 +318,12 @@ export class EngineBridge {
       queue: { depth: readQueue(this.db, nowMs).depth, ahead },
       base: { rev: change.base_rev },
       scopeHint: change.scope_hint,
+      at: Date.parse(row.at),
+      eventSeq: row.id,
     };
   }
 
-  private decidedPayload(change: ChangeRow, at: string, nowMs: number) {
+  private decidedPayload(change: ChangeRow, row: ChangeEventRow, nowMs: number) {
     const dto = readChange(this.db, change.id, nowMs);
     const cascade = dto?.cascade ?? null;
     return {
@@ -289,7 +350,9 @@ export class EngineBridge {
             },
       relevance: dto?.relevance === null || dto?.relevance === undefined ? null : { grade: dto.relevance.grade },
       tokens: { total: change.tokens_in + change.tokens_out },
-      decidedAt: change.finished_at ?? at,
+      decidedAt: change.finished_at ?? row.at,
+      at: Date.parse(row.at),
+      eventSeq: row.id,
     };
   }
 

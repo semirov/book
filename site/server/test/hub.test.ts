@@ -167,9 +167,9 @@ describe('backpressure', () => {
     hub.publish('state:updated', { version: 2, reason: 'file' });
     expect(socket.sent).toHaveLength(0);
 
-    // A small narrative frame is still sent: it is what the reader needs to know.
-    hub.publish('chapter:created', { n: 1 });
-    expect(socket.frames().map((frame) => frame.type)).toEqual(['chapter:created']);
+    // A projection is coalescible too: it is skipped, and the snapshot heals it.
+    hub.publish('cascade:progress', { cascadeId: 'csc_1' });
+    expect(socket.frames()).toHaveLength(0);
 
     socket.bufferedAmount = 0;
     hub.tick();
@@ -180,6 +180,70 @@ describe('backpressure', () => {
     hub.publish('state:updated', { version: 3, reason: 'file' });
     expect(socket.frames()).toHaveLength(1);
     close();
+  });
+});
+
+describe('transition frames (BOOK-DOC-84 §3.4/§3.5)', () => {
+  it('delivers five transitions inside one second: none is coalesced', async () => {
+    const { hub, socket, close } = rig({ stateThrottleMs: 30, now: () => new Date(0) });
+    try {
+      await flush();
+      socket.sent = [];
+      for (let index = 0; index < 5; index += 1) hub.publish('pass:stage', { passId: 'stp_1', stageSeq: index + 1 });
+      const frames = socket.frames();
+      expect(frames).toHaveLength(5);
+      expect(frames.map((frame) => frame.type)).toEqual(['pass:stage', 'pass:stage', 'pass:stage', 'pass:stage', 'pass:stage']);
+      expect(frames.map((frame) => frame.seq)).toEqual([2, 3, 4, 5, 6]);
+    } finally {
+      close();
+    }
+  });
+
+  it('coalesces five state:updated into one snapshot', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { hub, socket, close } = rig({ stateThrottleMs: 30, now: () => new Date(0) });
+    try {
+      await flush();
+      socket.sent = [];
+      for (let version = 2; version <= 6; version += 1) hub.publish('state:updated', { version, reason: 'engine' });
+      await vi.advanceTimersByTimeAsync(30);
+      const frames = socket.frames();
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({ type: 'state:updated', data: { version: 6 } });
+    } finally {
+      close();
+      vi.useRealTimers();
+    }
+  });
+
+  it('closes 1011 SLOW when a transition meets a back-pressure bound', async () => {
+    const { hub, socket, close } = rig({ backpressureBytes: 100 });
+    try {
+      await flush();
+      socket.sent = [];
+      socket.bufferedAmount = 500;
+      hub.publish('chapter:applied', { n: 5, rev: 2 });
+      expect(socket.closed.at(-1)).toEqual({ code: 1011, reason: 'SLOW' });
+      expect(socket.frames()).toHaveLength(0);
+      expect(hub.connectionCount()).toBe(0);
+    } finally {
+      close();
+    }
+  });
+
+  it('publishSnapshot reaches every connection and carries the live block', async () => {
+    const { hub, socket, close } = rig();
+    try {
+      await flush();
+      socket.sent = [];
+      hub.publishSnapshot('manual', 9);
+      const frames = socket.frames();
+      expect(frames).toHaveLength(1);
+      expect(frames[0]).toMatchObject({ type: 'state:snapshot', data: { reason: 'manual', since: 9 } });
+      expect(frames[0]?.data).toHaveProperty('live');
+    } finally {
+      close();
+    }
   });
 });
 

@@ -212,6 +212,39 @@ async function countPass(engine: EngineClient, day: string, log: (line: string) 
   }
 }
 
+/**
+ * BOOK-DOC-84 §7 IFACE — is a filing waiting? The lane's own `state()` answers it (`queue.pending`),
+ * and an engine that cannot answer is **not** a licence to spin: one line, and the idle poll.
+ * Asking the door (`next`) would open a pass, which is the thing this question is about.
+ */
+async function filingPending(engine: EngineClient, log: (line: string) => void): Promise<boolean> {
+  try {
+    const view = await engine.state();
+    // A premise filing is the writer's work (BOOK-166) and is not a queued change; a chain's
+    // next pass is taken on the breath, and only a lane with nothing at all sleeps the poll.
+    return view.queue.pending > 0 || view.queue.filings > 0;
+  } catch (error) {
+    log(`[writer] очередь не прочитана: ${reasonOf(error)} — пауза до следующего опроса`);
+    return false;
+  }
+}
+
+/**
+ * BOOK-DOC-84 §7 IFACE — how long the loop waits after one pass: the **idle** poll when nothing
+ * waits, the breath when a filing does. Pure, so the pacing is a test with no clock in it.
+ */
+export function proseDelayMs(
+  status: PassResult['status'],
+  pending: boolean,
+  config: { breathMs: number; pauseMs: number },
+): number {
+  if (pending && status !== 'idle') return config.breathMs;
+  return config.pauseMs;
+}
+
+/** §7 IFACE: three consecutive parks stop the lane (exit 1) — the brake D4 keeps. */
+export const PARK_LIMIT = 3;
+
 /** A pass that spent money counts toward the day, closed or parked. */
 function spent(result: PassResult): boolean {
   return result.status === 'closed' || result.status === 'parked';
@@ -405,11 +438,13 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     });
 
   log(
-    `[writer] loop: триаж каждые ${String(config.triagePollMs)} мс, пауза прозы ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`,
+    `[writer] loop: триаж каждые ${String(config.triagePollMs)} мс, вдох между проходами ${String(config.breathMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`,
   );
   // BOOK-206: two cadences. A filing is read every `triagePollMs`; prose still waits its own
   // pause, and triage never touches `writer_state` — a reader's filing does not eat a pass.
   let proseDueAt = now();
+  // §7 IFACE: three consecutive parks exit 1 — the brake D4 keeps in place of the old pause.
+  let parks = 0;
   while (!stopping) {
     // A missing prompt file (or any other triage fault) is a line and a pause, never a dead lane:
     // prose is the writer's job and a filing is not worth stopping it for.
@@ -429,12 +464,27 @@ export async function main(deps: MainDeps = {}): Promise<number> {
         log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
         proseDueAt = now() + config.pauseMs;
       } else {
-        const result = await pass();
+        let result: PassResult;
+        try {
+          result = await pass();
+        } catch (error) {
+          // §7 IFACE: a throw is exit 2 — the supervisor restarts, nothing is retried in place.
+          log(`[writer] проход упал: ${reasonOf(error)}`);
+          return 2;
+        }
         if (spent(result)) await countPass(engine, counter.day, log);
         if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
-        // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
-        // the next filing is asked for in the same cycle, without the pacing pause.
-        proseDueAt = now() + (result.status === 'gone' || result.filingRefused === true ? 0 : config.pauseMs);
+        parks = result.status === 'parked' ? parks + 1 : 0;
+        if (parks >= PARK_LIMIT) {
+          log('[writer] писатель остановлен после трёх отказов');
+          return 1;
+        }
+        // BOOK-DOC-84 D4: no artificial silence while work waits. A closed pass is followed by
+        // the next pending filing after the breath; a refused or gone pass takes the next one on
+        // the same breath; only an idle pass (nothing to write, a paused day, the day's cap)
+        // sleeps the idle poll.
+        const pending = result.status === 'idle' ? false : await filingPending(engine, log);
+        proseDueAt = now() + proseDelayMs(result.status, pending, config);
       }
     }
     // The fast cadence sleeps too: the lane is supervised, not a busy loop.

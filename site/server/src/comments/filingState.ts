@@ -18,7 +18,7 @@
  * it is not, so the page can tell «ждёт» from «идёт» without inventing a queue).
  */
 
-import type { CommentStatus } from '@book/shared';
+import type { CommentStatus, FilingState } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { decided, isStopped, OWN_STATES, STOPPED_STATUS } from './states.ts';
@@ -154,4 +154,31 @@ export function linkedChangeStatus(change: FilingChange | undefined): 'pending' 
   if (change.status === 'pending') return 'pending';
   if (change.status === 'processing') return 'processing';
   return null;
+}
+
+/**
+ * BOOK-DOC-84 #17 — the storage word of a filing, as the frame's own vocabulary. The reader's
+ * line prints one of seven words; a `batched`/`delivered` row is still `new` (the lane has not
+ * decided it), and `superseded` is a refusal like `rejected` (another premise took the place).
+ * One mapping, because the live block and `filing:update` must never disagree about a row.
+ */
+export function filingStateOf(status: string): FilingState {
+  switch (status) {
+    case 'accepted':
+    case 'applied':
+      return 'accepted';
+    case 'registered':
+      return 'registered';
+    case 'rejected':
+    case 'superseded':
+      return 'refused';
+    case 'quarantined':
+      return 'quarantined';
+    case 'expired':
+    case 'hidden':
+      return 'expired';
+    default:
+      // `new`, `batched`, `delivered`, `escalated` and every pre-v16 word: still waiting.
+      return 'new';
+  }
 }

@@ -114,6 +114,16 @@ export async function runRightsGate(deps: RightsRunDeps): Promise<RightsGateRun>
     return { closed: answer.closed, verdict: 'CLEAR' };
   }
 
+  // BOOK-DOC-84 D3: Gate B's model call gets the same start row as the other two gates.
+  await deps.emit({
+    stage: 'verdict',
+    chapter,
+    passId,
+    changeId,
+    summary: stageSummary.verdictStarted({ role: 'rights' }),
+    model: config.model,
+    at: now(),
+  });
   const prompt = buildRightsPrompt({
     bookRoot: deps.bookRoot,
     chapter,

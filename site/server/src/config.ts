@@ -87,6 +87,12 @@ const schema = z.object({
    */
   editSubmissionsPerDay: z.coerce.number().int().min(1).default(1),
   queueSoftCap: z.coerce.number().int().min(1).default(15),
+  /**
+   * BOOK-DOC-84 §5 — the lane's day bound, announced (`engine:state{passesToday,maxPasses}`) and
+   * carried by the snapshot's `lane`. The writer enforces it (`WRITER_MAX_PASSES_PER_DAY`); the
+   * site only reports it, from the same variable and the same default.
+   */
+  writerMaxPasses: z.coerce.number().int().min(1).default(4),
   /** The file exchange with triage (§12.2, §12.6): batches and `decisions.jsonl`. */
   feedbackDir: z.string().default(resolve(SITE_ROOT, 'data', 'feedback')),
   // ── identity (ADR-021) ── placeholders until the owner registers the OAuth app ──
@@ -313,6 +319,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     commentsPerHourIdentity: env.COMMENTS_PER_HOUR_IDENTITY,
     editSubmissionsPerDay: env.EDIT_SUBMISSIONS_PER_DAY,
     queueSoftCap: env.QUEUE_SOFT_CAP,
+    writerMaxPasses: env.WRITER_MAX_PASSES_PER_DAY,
     feedbackDir: env.FEEDBACK_DIR ?? (env.EXCHANGE_DIR === undefined ? undefined : resolve(env.EXCHANGE_DIR, 'feedback')),
     // BOOK-205: the pair is OPTIONAL — compose always declares both mounts, so a host that carries
     // neither file mounts an empty directory, which loadConfig reads as "sign-in off" (one warning,

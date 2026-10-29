@@ -345,7 +345,8 @@ describe('the site decisions tailer is gated too', () => {
     expect(row.status).toBe('rejected');
     expect(String(row.reason)).toContain('проверку');
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
-    expect(emitted.map((event) => event.type)).toEqual(['comment:decision']);
+    // BOOK-DOC-84 #17: the refusal speaks twice — the decision and the filing's own row.
+    expect(emitted.map((event) => event.type)).toEqual(['comment:decision', 'filing:update']);
     expect(emitted[0]?.data).toMatchObject({ status: 'rejected', changeId: null });
   });
 });

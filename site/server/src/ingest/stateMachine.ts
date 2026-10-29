@@ -139,7 +139,10 @@ export function deriveState(input: DeriveInput): ProjectedState {
       head: null,
       processing: null,
       lastDecidedAt: null,
+      pending: [],
     },
+    // BOOK-DOC-84 #3/#22: the lane's day travels with the snapshot; degraded mode has no lane.
+    ...(input.overlay === undefined ? {} : { lane: input.overlay.lane }),
     revising: [],
     current: input.overlay?.current ?? null,
     unresolved: input.overlay?.unresolved ?? [],

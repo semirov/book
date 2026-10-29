@@ -137,6 +137,14 @@ export const stageSummary = {
     ]),
 
   /**
+   * BOOK-DOC-84 D3 — the gate call has **started**. A 381 s gate is real work, and the only
+   * honest way to say so on the page is a stage at the call's start: without it the head words
+   * «сейчас проверяют» had no row to stand on until the answer arrived.
+   */
+  verdictStarted: (input: { role: 'editor' | 'consultant' | 'rights' }): string =>
+    line([`${input.role === 'rights' ? 'права' : roleName(input.role)}: запрос к модели`]),
+
+  /**
    * Gate B's one line. A clean scan says so plainly («скан чистый, модель не звана»): the record
    * must show that the rights question was answered, not that it was skipped.
    */

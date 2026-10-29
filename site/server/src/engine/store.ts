@@ -220,6 +220,9 @@ export function countPending(db: Db): number {
   ).n;
 }
 
+/** BOOK-DOC-84 D4 — pending premises: the writer's work, which `countPending` excludes. */
+export const countPendingFilings = (db: Db): number => (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 1`).get() as { n: number }).n;
+
 export function countProcessing(db: Db): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM changes WHERE status = 'processing'`).get() as { n: number }).n;
 }
@@ -464,7 +467,7 @@ export function listDispatches(db: Db, stepId: string): DispatchRow[] {
   return db.prepare('SELECT * FROM gate_dispatches WHERE step_id = ?').all(stepId) as DispatchRow[];
 }
 
-/** The beat's rule for a reading gate: a live dispatch moves out, an expired one belongs to the reaper. */
+/** A live dispatch moves out; an expired one belongs to the reaper. */
 export function extendDispatches(db: Db, stepId: string, atIso: string, expiresAt: string): void {
   db.prepare('UPDATE gate_dispatches SET expires_at = ? WHERE step_id = ? AND expires_at > ?').run(expiresAt, stepId, atIso);
 }
@@ -475,7 +478,7 @@ export function readLane(db: Db): LaneRow {
   return db.prepare('SELECT * FROM lane WHERE id = 1').get() as LaneRow;
 }
 
-/** The FIFO mutex: at most one holder, and claiming is a conditional UPDATE, not a check. */
+/** The FIFO mutex: one holder; claiming is a conditional UPDATE, not a check. */
 export function claimLaneRow(db: Db, holder: string, at: string): boolean {
   return (
     db.prepare('UPDATE lane SET holder = ?, heartbeat_at = ? WHERE id = 1 AND holder IS NULL').run(holder, at)
@@ -490,10 +493,7 @@ export function heartbeatLaneRow(db: Db, holder: string, at: string): boolean {
 }
 
 export function releaseLaneRow(db: Db, holder: string): boolean {
-  return db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1 AND holder = ?').run(holder)
-    .changes === 1;
+  return db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1 AND holder = ?').run(holder).changes === 1;
 }
 
-export function forceReleaseLane(db: Db): void {
-  db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1').run();
-}
+export const forceReleaseLane = (db: Db): void => { db.prepare('UPDATE lane SET holder = NULL, heartbeat_at = NULL WHERE id = 1').run(); };

@@ -72,6 +72,8 @@ export type StepRow = {
   wave: number;
   lane: 'forward' | 'backward' | null;
   pass: StepPass;
+  /** BOOK-7 — the chapter-level premise a draft consumes (null for every other pass). */
+  premise_change: string | null;
   chapter: number | null;
   boundary: string;
   outcome:

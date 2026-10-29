@@ -376,7 +376,7 @@ const APPLIED: ChapterDto = {
 /** The frame the site publishes: one replaced paragraph, and the change behind it. */
 function landed(overrides: Partial<ChapterRevisionPayload> = {}): ChapterRevisionPayload {
   return {
-    n: 1, rev: 2, title: null, chars: 100, delta: NEW_TEXT.length - LOADED.blocks[1]!.text.length, kind: 'edit',
+    n: 1, rev: 2, hseq: 7, title: null, chars: 100, delta: NEW_TEXT.length - LOADED.blocks[1]!.text.length, kind: 'edit',
     patch: [{ op: 'replace', id: 'ch01#bbbb2222', i: 1, newId: 'ch01#dddd4444', text: NEW_TEXT }], patchTruncated: false,
     attributed: true, updatedAt: '2026-10-20T09:21:00Z',
     cause: { changeId: 'chg_01J9Z8K4Q7', cascadeId: null, wave: null, lane: null, direction: null, stepId: null, seamsIn: [], seamsOut: [] },

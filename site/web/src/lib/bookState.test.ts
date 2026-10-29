@@ -106,6 +106,14 @@ const hello: HelloPayload = {
     chapters: { total: TOTAL_CHAPTERS, written: [1], empty: catalog.slice(1).map((row) => row.n), count: 1, totalChars: 10, basis: [] },
     toc: catalog.map((row) => (row.n === 1 ? { ...row, title: 'Начало', written: true, rev: 1 } : row)),
   }),
+  live: {
+    at: '2026-10-25T12:00:00Z',
+    passes: [],
+    applied: null,
+    queue: { depth: 0, pending: [] },
+    filings: [],
+    lane: { passesToday: 0, maxPasses: 4, writerAt: null },
+  },
   currentChapter: null,
   comments: { open: 0 },
 };
@@ -324,6 +332,7 @@ describe('chapter events', () => {
     const revision: ChapterRevisionPayload = {
       n: 2,
       rev: 2,
+      hseq: 3,
       title: 'Новая',
       chars: 130,
       delta: 10,
@@ -357,6 +366,7 @@ describe('chapter events', () => {
     const revision = (patch: ChapterRevisionPayload['patch']): ChapterRevisionPayload => ({
       n: 2,
       rev: 2,
+      hseq: 6,
       title: null,
       chars: 400,
       delta: 0,
@@ -394,6 +404,7 @@ describe('chapter events', () => {
     const revision: ChapterRevisionPayload = {
       n: 1,
       rev: 1,
+      hseq: 1,
       title: 'Начало',
       chars: 120,
       delta: 120,
