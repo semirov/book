@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { STATE_WORDS } from '../lib/marginalia.ts';
 import { PREMISE_HINT, premiseAction, premiseFiling } from '../lib/premise.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
@@ -51,6 +52,7 @@ class IdleObserver {
 const PENDING: CommentDto = {
   attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+  number: 1,
   chapter: 7,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -289,7 +291,7 @@ describe('the premise strip in an empty chapter', () => {
 
   it('a pending chapter-level filing is the chapter’s premise', async () => {
     // BOOK-111 — the prod row: `premise: true, status: 'new'`, no change yet. The row must
-    // print the reader's quote and the word «ждёт», and the tap must open THAT filing's card,
+    // print the reader's quote and the state word, and the tap must open THAT filing's card,
     // never the form (a second premise would be refused by the server).
     await act(async () => {
       root?.render(
@@ -311,7 +313,7 @@ describe('the premise strip in an empty chapter', () => {
     const row = container.querySelector<HTMLElement>('#ch-7 .premise-row');
     expect(row?.getAttribute('data-state')).toBe('held');
     expect(row?.querySelector('.premise-quote')?.textContent).toBe('«а как это работает»');
-    expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
+    expect(row?.querySelector('.premise-label')?.textContent).toBe(STATE_WORDS.accepted);
     expect(premiseAction(premiseFiling([PENDING], 7)).kind).toBe('card');
 
     await act(async () => row?.click());

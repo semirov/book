@@ -12,7 +12,11 @@
  * 20 s, a second 30 s, and it stays there.
  */
 
-export const CAPACITY_PLATE = 'Все места заняты. Вы в очереди: кто-то уйдёт — и вы войдёте.';
+/**
+ * BOOK-218 — the plate's sentence lives in `@book/shared`'s `stateWords.ts`: the reader waits for
+ * a seat, and the word «очередь» is not the book's.
+ */
+export { CAPACITY_PLATE } from '@book/shared';
 export const CAPACITY_STATE = 'Чтение идёт. Подключится само, когда освободится место.';
 export const CAPACITY_RETRY_MS = 20_000;
 

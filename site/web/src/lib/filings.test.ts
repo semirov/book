@@ -5,6 +5,7 @@ import {
   earlierAttempts,
   filingAttempt,
   filingInk,
+  filingNum,
   filingNumber,
   filingQuote,
   filingsForBlock,
@@ -21,6 +22,7 @@ import {
   wordFilingOf,
   type CommentDecisionFrame,
 } from './filings.ts';
+import { STATE_WORDS } from './marginalia.ts';
 import { placeHref } from './place.ts';
 
 /** A filing with the one fact only a frame can bring (BOOK-206 B1). */
@@ -30,8 +32,13 @@ type FilingsOverrides = Partial<CommentDto> & {
   retryAt?: string | null;
 };
 
+let filed = 0;
+
+/** BOOK-218 — every filing carries its own number; the counter keeps them distinct in a file. */
 function comment(overrides: FilingsOverrides): CommentDto {
+  filed += 1;
   return {
+    number: filed,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 2, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -68,24 +75,24 @@ const STALE = comment({
 
 describe('filingInk', () => {
   it('gives every state one of the deck’s words and a rule shape, never colour alone', () => {
-    // BOOK-90: the word is the vocabulary's (waiting · working · landed); the shape and the
-    // ink stay this table's. BOOK-189: an `accepted` filing waits until its change is in hand,
-    // and a refusal says «отклонено» — the fact is on line two.
-    expect(filingInk(NEW)).toEqual({ word: 'ждёт', rule: 'dotted', tone: 'quiet' });
-    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'ждёт', rule: 'solid', tone: 'live' });
+    // BOOK-90: the word is the vocabulary's (waiting · reading · written · landed); the shape
+    // and the ink stay this table's. BOOK-218: an `accepted` filing is «принято» until the
+    // linked change says the machine is writing, then «пишется».
+    expect(filingInk(NEW)).toEqual({ word: STATE_WORDS.waiting, rule: 'dotted', tone: 'quiet' });
+    expect(filingInk({ status: 'accepted' })).toEqual({ word: STATE_WORDS.accepted, rule: 'solid', tone: 'live' });
     expect(filingInk({ status: 'accepted', changeStatus: 'processing' })).toEqual({
-      word: 'идёт',
+      word: STATE_WORDS.writing,
       rule: 'solid',
       tone: 'live',
     });
-    expect(filingInk({ status: 'applied' })).toEqual({ word: 'внесено', rule: 'none', tone: 'done' });
-    expect(filingInk({ status: 'rejected' })).toEqual({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
-    expect(filingInk({ status: 'superseded' }).rule).toBe('solid');
-    expect(filingInk({ status: 'batched' }).word).toBe('идёт');
+    expect(filingInk({ status: 'applied' })).toEqual({ word: STATE_WORDS.landed, rule: 'none', tone: 'done' });
+    expect(filingInk({ status: 'rejected' })).toEqual({ word: STATE_WORDS.refused, rule: 'solid', tone: 'stopped' });
+    expect(filingInk({ status: 'superseded' })).toEqual({ word: STATE_WORDS.dropped, rule: 'solid', tone: 'stopped' });
+    expect(filingInk({ status: 'batched' }).word).toBe(STATE_WORDS.reading);
   });
 
   it('falls back to the quiet wait for a state a build does not know', () => {
-    expect(filingInk({ status: 'something' as CommentDto['status'] }).word).toBe('ждёт');
+    expect(filingInk({ status: 'something' as CommentDto['status'] }).word).toBe(STATE_WORDS.waiting);
   });
 
   it('gives a paperwork filing a solid rule and the done ink (BOOK-137)', () => {
@@ -106,7 +113,7 @@ describe('filingsForBlock', () => {
     const older = comment({ id: 'cmt_01J9Z8K8DD', createdAt: '2026-10-18T09:00:00Z' });
     const latest = comment({ id: 'cmt_01J9Z8K9EE', createdAt: '2026-10-23T09:00:00Z' });
     const [group] = filingsForBlock([older, NEW, latest], 'ch08#aa11bb22');
-    expect(group?.number).toBe(filingNumber(latest));
+    expect(group?.number).toBe(filingNum(latest));
     expect(group?.extra).toBe(2);
     expect(stripFilings(group!).shown).toHaveLength(2);
     expect(stripFilings(group!).more).toBe(1);
@@ -139,9 +146,11 @@ describe('sortFilings and the overflow line', () => {
 });
 
 describe('the mark and its quote', () => {
-  it('prints a three-character record suffix, never an invented ordinal', () => {
-    expect(filingNumber({ id: 'cmt_01J9Z8K4Q7' })).toBe('№4Q7');
-    expect(filingNumber({ id: 'ab' })).toBe('№0AB');
+  it('prints the filing’s own number, never an id cut', () => {
+    // BOOK-218 — «замечание 12» for every card and row, `12` for the mark and the note.
+    expect(filingNumber({ number: 12 })).toBe('замечание 12');
+    expect(filingNum({ number: 12 })).toBe('12');
+    expect(filingNumber({ number: 1 })).not.toMatch(/[A-Z]/u);
   });
 
   it('shortens a long quote and says so when the paragraph moved', () => {
@@ -235,12 +244,12 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(threadFilings([])).toEqual([]);
   });
 
-  it('the word’s filing carries its change number, and the record’s own when the window misses it', () => {
-    // `№12` is the change's number, unpadded; with no attempt in the window the record keeps
-    // its own suffix (`№A7K`) — the schema has no filing sequence to print instead.
+  it('the word’s filing carries its change number, and the filing’s own when the window misses it', () => {
+    // `12` is the change's number, unpadded; with no attempt in the window the provenance keeps
+    // the filing's own public number (BOOK-218) — no `№`, no cut id.
     const attempt = summary({ id: 'chg_12', seq: 12 });
     expect(wordFilingOf(NEW, [attempt])).toEqual({
-      number: filingNumber(NEW),
+      number: filingNum(NEW),
       seq: 12,
       state: 'ждёт',
       href: placeHref(NEW),
@@ -280,14 +289,8 @@ describe('one filing, one entry (BOOK-137)', () => {
  * applied to the row with that id only, and only when it really adds something: a frame about
  * a filing this page does not hold, or one that changes nothing, returns `null` (no render).
  */
-describe('the decision frame’s report (BOOK-174)', () => {
-  const report = {
-    line1: 'прочитано как сказано',
-    line2: 'потому что рядом нет предложения, которое от этого станет ложным',
-    line3: 'где это в книге: глава 8 · абзац 3 · предложение 1',
-  };
-
-  it('carries the report onto the row it names and leaves the others alone', () => {
+describe('the decision frame’s reading (BOOK-174)', () => {
+  it('carries the reading onto the row it names and leaves the others alone', () => {
     const first = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
     const second = comment({ id: 'cmt_B', createdAt: '2026-10-25T12:01:00Z' });
     const next = withDecisionReport([first, second], {
@@ -295,16 +298,21 @@ describe('the decision frame’s report (BOOK-174)', () => {
       status: 'accepted',
       reason: 'принято',
       decidedAt: '2026-10-25T12:30:00Z',
-      disposition: 'as_said',
-      report,
+      disposition: 'through_paper',
+      carrierKind: 'document',
     });
-    expect(next?.[0]).toMatchObject({ status: 'accepted', reason: 'принято', disposition: 'as_said', report });
+    expect(next?.[0]).toMatchObject({
+      status: 'accepted',
+      reason: 'принято',
+      disposition: 'through_paper',
+      carrierKind: 'document',
+    });
     expect(next?.[1]).toBe(second);
   });
 
   it('answers null when the frame names no row on screen, or adds nothing', () => {
     const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
-    expect(withDecisionReport([row], { id: 'cmt_missing', report })).toBeNull();
+    expect(withDecisionReport([row], { id: 'cmt_missing', disposition: 'as_said' })).toBeNull();
     expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
   });
 });
@@ -316,7 +324,6 @@ describe('the decision frame’s report (BOOK-174)', () => {
  * and the frame must name the chapter whose prose the page has to read again.
  */
 describe('the landing frame (BOOK-219)', () => {
-  const report = { line1: 'прочитано как сказано', line2: 'потому что так и было', line3: 'глава 8 · абзац 3' };
   const landing: CommentDecisionFrame = {
     id: 'cmt_A',
     chapter: 8,
@@ -325,7 +332,7 @@ describe('the landing frame (BOOK-219)', () => {
     decidedAt: '2026-10-25T13:00:00Z',
     changeId: 'chg_landed',
     applied: { chapter: 8, rev: 4 },
-    report,
+    disposition: 'as_said',
   };
 
   it('moves the row to applied with its receipt and its reading', () => {
@@ -338,7 +345,7 @@ describe('the landing frame (BOOK-219)', () => {
       decidedAt: '2026-10-25T13:00:00Z',
       changeId: 'chg_landed',
       applied: { chapter: 8, rev: 4 },
-      report,
+      disposition: 'as_said',
     });
   });
 
@@ -420,10 +427,10 @@ describe('the mark’s ink for a closed change (BOOK-206 B2)', () => {
       status: 'rejected',
       reason: 'правка остановлена — текст остался прежним',
     });
-    expect(filingInk(stopped)).toMatchObject({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
+    expect(filingInk(stopped)).toMatchObject({ word: 'не принято', rule: 'solid', tone: 'stopped' });
     // The live row keeps the live ink and its word.
     expect(
       filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' })),
-    ).toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'live' });
+    ).toMatchObject({ word: STATE_WORDS.accepted, rule: 'solid', tone: 'live' });
   });
 });

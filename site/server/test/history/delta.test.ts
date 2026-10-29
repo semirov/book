@@ -317,7 +317,7 @@ describe('the applier writes the delta with the version', () => {
       `INSERT INTO block_versions
          (block_uid, ver, chapter, rev, hseq, block_id, text_hash, chars, op, prev_ver, replaced_by,
           change_id, step_id, actor_kind, actor_label, identity_id, at, spans, text)
-       VALUES (?, 2, 8, 2, 2, ?, ?, 30, 'revised', 1, NULL, NULL, NULL, 'writer', 'печатник', NULL, ?, '[]', '')`,
+       VALUES (?, 2, 8, 2, 2, ?, ?, 30, 'revised', 1, NULL, NULL, NULL, 'writer', 'машина', NULL, ?, '[]', '')`,
     ).run(first.uid, first.id, 'deadbeef', AT);
     db.prepare('UPDATE chapters SET rev = 2 WHERE n = 8').run();
 

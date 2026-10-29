@@ -20,7 +20,7 @@
  * way back is taken here too, before the park.
  */
 
-import type { WriterAssignment } from '@book/shared';
+import { PASS_STOPS, type WriterAssignment } from '@book/shared';
 
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { DoneView, EngineClient } from './client.ts';
@@ -121,7 +121,7 @@ export async function closePass(input: ClosePassInput): Promise<PassResult> {
     const why: Failure =
       closeFailure?.code === 'VERDICTS_REQUIRED' && input.failed !== null
         ? input.failed
-        : (closeFailure ?? input.failed ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
+        : (closeFailure ?? input.failed ?? { code: null, detail: PASS_STOPS.stepNotClosed });
     // BOOK-219: a close that never happened leaves no `done`, so the invariant applies here too —
     // the chapter goes back to where the pass found it, and the note says which of the two
     // happened instead of a queue claim over a live revision.
@@ -133,7 +133,7 @@ export async function closePass(input: ClosePassInput): Promise<PassResult> {
       landing: input.landing,
       landed: input.landed,
       text,
-      why: 'шаг не закрылся',
+      why: 'глава не закрылась',
       log,
     });
     return await lane.park({

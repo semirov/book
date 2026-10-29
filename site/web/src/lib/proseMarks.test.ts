@@ -18,6 +18,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: {
       blockId: BLOCK,
@@ -69,6 +70,7 @@ describe('the marks of a paragraph', () => {
     const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
     const landed = comment({
       id: 'cmt_01J9Z8K4Q8',
+      number: 2,
       status: 'applied',
       applied: { chapter: 8, rev: 4 },
       anchor: { ...comment().anchor, quote: 'горел всю ночь' },
@@ -86,5 +88,18 @@ describe('the marks of a paragraph', () => {
 
   it('keys the block for the margin pass by id and status', () => {
     expect(proseMarks(TEXT, [comment()], BLOCK).key).toBe('cmt_01J9Z8K4Q7:new');
+  });
+
+  it('lists one alive filing once when the same wording stands twice in the paragraph', () => {
+    // BOOK-218 — the same sentence twice is one group, reached from two runs. The marks are
+    // drawn once, and the phone strip's rows are the filing once too: a duplicate here is a
+    // duplicate React key in the strip (`one filing, one mark`).
+    const marks = proseMarks(
+      'Свет был яркий. Свет был яркий.',
+      [comment({ anchor: { ...comment().anchor, quote: 'Свет был яркий.' } })],
+      BLOCK,
+    );
+    expect(marks.marks.size).toBe(2);
+    expect(marks.alive.map((item) => item.id)).toEqual(['cmt_01J9Z8K4Q7']);
   });
 });

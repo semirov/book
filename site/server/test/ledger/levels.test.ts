@@ -60,7 +60,7 @@ describe('level 1 — the paragraph record always answers', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM mentions').get()).toEqual({ n: 0 });
 
     const before = paragraphRecord(db, { chapter: 8, blockUid: block.uid });
-    expect(before).toMatchObject({ blockUid: block.uid, ver: 1, hand: 'печатник', actorKind: 'writer' });
+    expect(before).toMatchObject({ blockUid: block.uid, ver: 1, hand: 'машина', actorKind: 'writer' });
     expect(before?.history).toHaveLength(1);
 
     patch(db, fixture.dataDir, block.uid, 'альфа', 'омега');
@@ -147,7 +147,7 @@ describe('replay — an unknown delta is not a stale text', () => {
       `INSERT INTO block_versions
          (block_uid, ver, chapter, rev, hseq, block_id, text_hash, chars, op, prev_ver, replaced_by,
           change_id, step_id, actor_kind, actor_label, identity_id, at, spans, text)
-       VALUES (?, 2, 8, 2, 2, ?, ?, ?, 'revised', 1, NULL, NULL, NULL, 'writer', 'печатник', NULL, ?,
+       VALUES (?, 2, 8, 2, 2, ?, ?, ?, 'revised', 1, NULL, NULL, NULL, 'writer', 'машина', NULL, ?,
                '[]', '')`,
     ).run(
       first.uid,

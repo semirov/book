@@ -1,8 +1,9 @@
-import type { ChangeDto, CommentDto } from '@book/shared';
+import { isOutcomeLine, type ChangeDto, type CommentDto } from '@book/shared';
 
 import { changeNumber, outcomeCopy, stepLabel } from './changeStatus.ts';
 import { commentStamp } from './commentView.ts';
-import { changeWord } from './marginalia.ts';
+import { formatTime } from './format.ts';
+import { changeWord, draftingLine } from './marginalia.ts';
 
 /**
  * The change's own vocabulary for the record's `правка` section.
@@ -59,11 +60,19 @@ const LANDED: ReadonlySet<string> = new Set(['applied', 'adapted', 'registered',
  */
 export function changeVerdict(change: ChangeDto): string {
   if (change.outcome !== null && LANDED.has(change.outcome)) return outcomeCopy(change.outcome);
-  if (change.status === 'pending' || change.status === 'processing' || change.status === 'stale') {
+  // BOOK-218 line 7 — the chapter is being drafted now, from the moment the writer took it on,
+  // on the site's own clock. A change with no recorded start says the word without a moment.
+  if (change.status === 'processing') {
+    return draftingLine(change.startedAt === null ? null : formatTime(change.startedAt));
+  }
+  if (change.status === 'pending' || change.status === 'stale') {
     return 'правка ещё не внесена';
   }
   const reason = change.reason?.trim() ?? '';
-  return reason.length === 0 ? 'правка не внесена' : `правка не внесена: ${reason}`;
+  if (reason.length === 0) return 'правка не внесена';
+  // An outcome line already carries its verdict word: prefixing it would be two verdicts at once.
+  if (isOutcomeLine(reason)) return reason;
+  return `правка не внесена: ${reason}`;
 }
 
 export function changeView(

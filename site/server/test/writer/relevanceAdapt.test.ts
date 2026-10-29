@@ -112,7 +112,7 @@ describe('the writer answers a moved base itself', () => {
     });
     expect(opened).toEqual({
       ok: false,
-      failure: { code: 'LEASE_RELEASED', detail: 'движок отказал: LEASE_RELEASED: lease released by the engine' },
+      failure: { code: 'LEASE_RELEASED', detail: 'машина отказала: LEASE_RELEASED: lease released by the engine' },
     });
   });
 

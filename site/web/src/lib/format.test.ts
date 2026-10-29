@@ -1,3 +1,4 @@
+import { queueLine } from '@book/shared';
 import type { CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -65,11 +66,15 @@ describe('times and dates', () => {
 });
 
 describe('queueLabel', () => {
-  it('states the queue as a fact, with the noun it counts', () => {
-    expect(queueLabel(0)).toBe('в очереди пусто');
-    expect(queueLabel(1)).toBe('в очереди 1 правка');
-    expect(queueLabel(4)).toBe('в очереди 4 правки');
-    expect(queueLabel(11)).toBe('в очереди 11 правок');
+  it('states the work as a fact, with the noun it counts (BOOK-218 §5)', () => {
+    expect(queueLabel(0)).toBe(queueLine(0));
+    expect(queueLabel(1)).toBe(queueLine(1));
+    expect(queueLabel(4)).toBe(queueLine(4));
+    expect(queueLabel(11)).toBe(queueLine(11));
+    expect(queueLabel(0)).toBe('правок в работе нет');
+    expect(queueLabel(1)).toBe('в работе 1 правка');
+    expect(queueLabel(4)).toBe('в работе 4 правки');
+    expect(queueLabel(11)).toBe('в работе 11 правок');
   });
 
   it('never counts nothing and never says «замечание» — the queue is made of правки', () => {
@@ -110,7 +115,7 @@ describe('formatFileSize', () => {
 
 /**
  * The queue line and the list come from one fact. The prod register said «в
- * очереди пусто» above two rows it presented as waiting, because the line printed a lane depth
+ * ждёт своей главы» above two rows it presented as waiting, because the line printed a lane depth
  * the rows had already left (or never entered). BOOK-137: the entries are filings only — a
  * change is an attempt inside its filing's entry, so counting it beside the filing would count
  * one thing twice — and a premise never holds a queue place.

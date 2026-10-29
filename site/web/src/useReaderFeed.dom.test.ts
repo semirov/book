@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { filingMarginalia } from './lib/marginalia.ts';
+import { STATE_LINES, STATE_WORDS, filingMarginalia } from './lib/marginalia.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 
 /**
@@ -21,6 +21,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const POSTED: CommentDto = {
   attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+  number: 1,
   chapter: 65,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -201,14 +202,14 @@ describe('the live record (BOOK-206 B1)', () => {
     for (const row of [feed.comments[0], feed.chapterFeed[65]?.items[0]]) {
       expect(row?.status).toBe('applied');
       expect(filingMarginalia(row as CommentDto).word).toBe('внесено');
-      expect(filingMarginalia(row as CommentDto).consequence).toBe('глава 65 · ревизия 2');
+      expect(filingMarginalia(row as CommentDto).consequence).toBe('в главу 65. это вторая редакция');
     }
   });
 
   it('a scheduled retry replaces «в очереди» with the server’s sentence, on both feeds', () => {
     act(() => feed.acceptComment({ ...accepted, changeStatus: 'pending' }));
     const before = filingMarginalia(feed.comments[0] as CommentDto);
-    expect(before.consequence).toBe('в очереди на запись');
+    expect(before.consequence).toBe(STATE_LINES.accepted);
 
     act(() =>
       feed.noteDecision({
@@ -222,7 +223,7 @@ describe('the live record (BOOK-206 B1)', () => {
 
     for (const row of [feed.comments[0], feed.chapterFeed[65]?.items[0]]) {
       const marginalia = filingMarginalia(row as CommentDto);
-      expect(marginalia.word).toBe('ждёт');
+      expect(marginalia.word).toBe(STATE_WORDS.accepted);
       expect(marginalia.consequence).toBe('провайдер не ответил — повтор в 12:05');
       expect(marginalia.consequence).not.toContain('в очереди');
     }

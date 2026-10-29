@@ -55,9 +55,9 @@ function seedFiling(h: Harness, seed: FilingSeed): void {
     .prepare(
       `INSERT INTO comments
          (id, identity_id, chapter, block_id, block_idx, base_rev, author, body, body_sha, flags,
-          ip_hash, status, guard, created_at, decided_at, reason)
+          ip_hash, status, guard, created_at, decided_at, reason, number)
        VALUES (?, ?, ?, NULL, NULL, 0, 'Аня', 'А как?', ?, '[]', 'ip', ?, NULL,
-               '2026-10-25T11:00:00Z', ?, ?)`,
+               '2026-10-25T11:00:00Z', ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     )
     .run(
       seed.id,

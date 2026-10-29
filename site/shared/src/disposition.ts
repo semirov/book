@@ -8,21 +8,17 @@
  * itself, at the floor if nothing above it is licensed (BOOK-206, ADR-045 §5). There is no
  * fifth state and no author's door: a filing is never parked for a person.
  *
- * This file is the **one source** of the words a reader sees: the closed reason clauses, the
- * closed carrier labels, the lock lines and the lock alternatives. They are table entries and
- * never generated text — a generated reason leaks a verdict and can contradict yesterday's —
- * so no surface may spell its own version of them.
+ * This file owns the **facts** of a reading: the four answers, the six carriers, the four
+ * locks, and the stored chain. The **sentence** a reader sees is made in `stateWords.ts`
+ * (`outcomeLine`) — one line per outcome, never a three-line report: a reader must not be
+ * told two verdicts at once (owner, 2026-10-29).
  *
- * The report is exactly three lines, ≤200 characters each, no codes, no findings, no gate:
- *
- *   прочитано как сказано
- *   потому что рядом нет предложения, которое от этого станет ложным
- *   где это в книге: глава 12 · абзац 4 · предложение 2
- *
- * Line 3 exists only when the sentence exists; `inadmissible` lands nothing, so its third line
- * is the lock's alternative. The anchor is **1-based for the reader**: the stored `block_idx`
- * and the sentence index are 0-based.
+ * `outcomeOfChain` is the one place that turns a stored chain into that outcome: a lock
+ * decides its own sentence, our failure carries no reading, and a reading is only ever an
+ * accepted edit.
  */
+
+import { outcomeLine, type Outcome } from './stateWords.ts';
 
 /** The four answers, and no fifth: the ladder is total and nothing waits for a person. */
 export type Disposition = 'as_said' | 'through_paper' | 'refused_in_world' | 'inadmissible';
@@ -52,69 +48,29 @@ export const CARRIER_KINDS: readonly CarrierKind[] = [
 
 export const DISPOSITION_LOCKS: readonly DispositionLock[] = ['rights', 'harm', 'frame', 'finale'];
 
-/** The carrier as the third line names it: a reader's word, never the id. */
-export const CARRIER_LABELS: Readonly<Record<CarrierKind, string>> = {
-  document: 'документ',
-  speech: 'чья-то речь',
-  registry_discrepancy: 'расхождение в реестре',
-  numbered_object: 'предмет с номером',
-  unheeded_joke: 'шутка, которую никто не подхватил',
-  obligatory_joke: 'анекдот по протоколу',
-};
-
-/** Line 2 of a landed reading — one closed clause per disposition, never generated. */
-export const DISPOSITION_REASONS: Readonly<Record<Disposition, string>> = {
-  as_said: 'потому что рядом нет предложения, которое от этого станет ложным',
-  through_paper: 'потому что в сцене это некому сказать, а в регистратуре есть кому',
-  refused_in_world: 'потому что в книге это уже установлено — мир может только ответить',
-  inadmissible: 'потому что это отменяет исход',
-};
-
-/** Line 2 of a refusal: the lock's own why. */
-export const LOCK_REASONS: Readonly<Record<DispositionLock, string>> = {
-  rights: 'потому что это не ваш текст',
-  harm: 'потому что это угроза человеку или чужие личные данные',
-  frame: 'потому что у этой главы нет прозы, только фраза, и фраза не двигается',
-  finale: 'потому что это отменяет исход',
-};
-
-/** Line 3 of a refusal: what works instead. Every refusal owes one. */
-export const LOCK_ALTERNATIVES: Readonly<Record<DispositionLock, string>> = {
-  rights:
-    'перескажите своими в пяти словах — пересказ войдёт в бланк, в протокол или в чью-то реплику',
-  harm: 'оставьте страх и уберите адрес — бумага умеет говорить «гражданин» и «объект»',
-  frame: 'та же мысль — в любую написанную главу, или документом об этой фразе',
-  finale:
-    'те же слова — как заявление, которое отклоняют, или как вера героя, который ошибается',
-};
-
-/** Line 1 of each reading. `through_paper` has a second form — see `dispositionReport`. */
-export const DISPOSITION_WORDS: Readonly<Record<Disposition, string>> = {
-  as_said: 'прочитано как сказано',
-  through_paper: 'прочитано через бумагу',
-  refused_in_world: 'прочитано как отказ в мире',
-  inadmissible: 'не принято',
-};
-
-/** The one reading that names the plan it declined: both plans really existed. */
-export const THROUGH_PAPER_NOT_AS_SAID = 'прочитано через бумагу, а не как сказано';
-
-/** The bound every line of the report keeps (§5). */
-export const REPORT_LINE_MAX_CHARS = 200;
-
 /**
- * How long the refusing formula may be. Line 3 is «где это в книге: глава 42 · абзац 12 ·
- * предложение 3 — «…»» — 62 characters of anchor and quotes at the book's longest — so a stamp
- * of 120 leaves the whole line inside `REPORT_LINE_MAX_CHARS`. A formula past it is not this
- * chapter's formula: the chooser refuses it and the reading goes one rung up.
+ * The one line a stored chain owes a reader. `inadmissible` names a lock; a chain without a
+ * lock is a verdict this build cannot complete, and the honest answer is our failure — never an
+ * invented refusal. Every accepted reading gets the reading's own line.
  */
-export const STAMP_MAX_CHARS = 120;
+export function outcomeOfChain(chain: Pick<DispositionChain, 'disposition' | 'lock' | 'carrierKind'>): Outcome {
+  if (chain.disposition === 'inadmissible') {
+    return chain.lock === null ? { kind: 'failure', failure: 'ourFailure' } : { kind: 'lock', lock: chain.lock };
+  }
+  return { kind: 'reading', reading: chain.disposition, carrierKind: chain.carrierKind };
+}
 
-export type DispositionReport = { line1: string; line2: string; line3: string };
+/** The reader's sentence for a stored chain — exactly one line. */
+export function chainLine(chain: Pick<DispositionChain, 'disposition' | 'lock' | 'carrierKind'>): string {
+  return outcomeLine(outcomeOfChain(chain));
+}
+
+/** How long the refusing formula may be: the chooser licenses a stamp under this bound. */
+export const STAMP_MAX_CHARS = 120;
 
 /**
  * A stored chain: the five columns a filing keeps about how it was read. Old rows carry
- * `disposition: null` and have no report at all — the absence is the fact.
+ * `disposition: null` and have no chain at all — the absence is the fact.
  */
 export type DispositionChain = {
   disposition: Disposition;
@@ -138,7 +94,7 @@ function oneOf<T extends string>(value: string | null | undefined, allowed: read
  * A stored word, or null. BOOK-206 removed the ladder's old fifth state, so a row written
  * before it may still carry `disposition='escalated'`: that word is **not** a chain any more
  * (the boot migration re-opens every such row), and returning null is what keeps an old row a
- * page that renders — no chain, no report, no crash.
+ * page that renders — no chain, no sentence, no crash.
  */
 export function normalizeDisposition(value: string | null | undefined): Disposition | null {
   return oneOf(value, DISPOSITIONS);
@@ -150,139 +106,4 @@ export function normalizeCarrierKind(value: string | null | undefined): CarrierK
 
 export function normalizeDispositionLock(value: string | null | undefined): DispositionLock | null {
   return oneOf(value, DISPOSITION_LOCKS);
-}
-
-/** Where a reading stands in the book, as the two numbers a caller already holds. */
-export type DispositionAnchor = {
-  chapter: number;
-  /** The paragraph's stored `idx` — 0-based, printed 1-based. */
-  blockIndex: number | null;
-  /** The live sentence's `idx` (ADR-044) — 0-based, printed 1-based. */
-  sentenceIndex: number | null;
-};
-
-/**
- * `где это в книге: глава 12 · абзац 4 · предложение 2` — the anchor in the reader's numbering.
- * A filing that landed without a live sentence keeps its chapter and paragraph: the place it
- * concerns is still true, and naming a sentence that was never found would not be.
- */
-export function anchorLine(anchor: DispositionAnchor): string {
-  let line = `где это в книге: глава ${String(anchor.chapter)}`;
-  if (anchor.blockIndex !== null) line += ` · абзац ${String(anchor.blockIndex + 1)}`;
-  if (anchor.blockIndex !== null && anchor.sentenceIndex !== null) {
-    line += ` · предложение ${String(anchor.sentenceIndex + 1)}`;
-  }
-  return line;
-}
-
-/**
- * The three lines of one reading, from the deciding fact alone.
- *
- * `sentenceResolved` is "the quote resolved to exactly one sentence" — the `as_said` plan really
- * existed — and it is the only thing that turns the `through_paper` heading into its second
- * form. It is derived from stored data (ADR-044's sentence id), never from a second flag.
- *
- * **The length bound is an assertion, not a trim.** Every clause here is a closed constant and
- * the only caller-supplied text is the refusing stamp, which the chooser licenses under
- * `STAMP_MAX_CHARS`; a line that came out longer would mean one of those two promises broke, and
- * a silently truncated report would say less than the book decided. So this throws — a stored
- * row is formatted through `chainReport`, which keeps old data readable by cutting the stamp to
- * the bound first.
- */
-export function dispositionReport(input: {
-  disposition: Disposition;
-  lock?: DispositionLock | null;
-  carrierKind?: CarrierKind | null;
-  chapter: number;
-  blockIndex?: number | null;
-  sentence?: number | null;
-  sentenceResolved: boolean;
-  stamp?: string | null;
-}): DispositionReport {
-  const report = {
-    line1: headingOf(input),
-    line2: clauseOf(input.disposition, input.lock ?? null),
-    line3: thirdLineOf(input),
-  };
-  for (const [name, line] of Object.entries(report)) {
-    if (line.length > REPORT_LINE_MAX_CHARS) {
-      throw new Error(`disposition report ${name} is ${String(line.length)} characters, bound ${String(REPORT_LINE_MAX_CHARS)}`);
-    }
-  }
-  return report;
-}
-
-function headingOf(input: { disposition: Disposition; sentenceResolved: boolean }): string {
-  if (input.disposition === 'through_paper' && input.sentenceResolved) return THROUGH_PAPER_NOT_AS_SAID;
-  return DISPOSITION_WORDS[input.disposition];
-}
-
-/** The lock's own why when one spoke; the disposition's closed clause otherwise. */
-function clauseOf(disposition: Disposition, lock: DispositionLock | null): string {
-  if (disposition === 'inadmissible' && lock !== null) return LOCK_REASONS[lock];
-  return DISPOSITION_REASONS[disposition];
-}
-
-function thirdLineOf(input: {
-  disposition: Disposition;
-  lock?: DispositionLock | null;
-  carrierKind?: CarrierKind | null;
-  chapter: number;
-  blockIndex?: number | null;
-  sentence?: number | null;
-  stamp?: string | null;
-}): string {
-  if (input.disposition === 'inadmissible') {
-    // A lock always names itself; a chain without one is data this build cannot complete, and
-    // the reader is owed the place instead of an invented alternative.
-    const lock = input.lock ?? null;
-    if (lock === null) {
-      return anchorLine({ chapter: input.chapter, blockIndex: input.blockIndex ?? null, sentenceIndex: null });
-    }
-    return `сработает иначе: ${LOCK_ALTERNATIVES[lock]}`;
-  }
-  const anchor = anchorLine({
-    chapter: input.chapter,
-    blockIndex: input.blockIndex ?? null,
-    sentenceIndex: input.sentence ?? null,
-  });
-  if (input.disposition === 'through_paper') {
-    const carrier = input.carrierKind ?? null;
-    return carrier === null ? anchor : `${anchor} — ${CARRIER_LABELS[carrier]}`;
-  }
-  if (input.disposition === 'refused_in_world') {
-    const stamp = (input.stamp ?? '').trim();
-    return stamp.length === 0 ? anchor : `${anchor} — «${stamp}»`;
-  }
-  return anchor;
-}
-
-/**
- * The stamp a stored row may print. New decisions are licensed under the same bound by the
- * chooser; this cut is only for data written by another build, so a page cannot go blank over a
- * formula that is one character too long (`dispositionReport` still refuses to invent one).
- */
-function clampStamp(stamp: string): string {
-  const flat = stamp.trim();
-  return flat.length <= STAMP_MAX_CHARS ? flat : `${flat.slice(0, STAMP_MAX_CHARS - 1)}…`;
-}
-
-/** The report of a **stored** chain: the row's own reading, whichever surface asks for it. */
-export function chainReport(
-  chain: DispositionChain,
-  anchor: DispositionAnchor,
-  sentenceResolved: boolean,
-): DispositionReport {
-  return dispositionReport({
-    disposition: chain.disposition,
-    lock: chain.lock,
-    carrierKind: chain.carrierKind,
-    chapter: anchor.chapter,
-    blockIndex: anchor.blockIndex,
-    sentence: anchor.sentenceIndex,
-    sentenceResolved,
-    // Only here may a stamp be cut: a row written by another build must still render. A new
-    // decision is licensed under the same bound, so `dispositionReport` never truncates one.
-    stamp: chain.disposition === 'refused_in_world' ? clampStamp(chain.quoteKept ?? '') : null,
-  });
 }

@@ -37,7 +37,6 @@ import {
   type MyDecisionsDto,
 } from '@book/shared';
 
-import { dispositionFieldsOf } from '../comments/dispositionReport.ts';
 import { filingChanges, decisiveChange } from '../comments/filingState.ts';
 import { isStopped, stoppedLine } from '../comments/states.ts';
 import { premiseLanded } from '../comments/repo.ts';
@@ -143,7 +142,7 @@ const SHARE_THEN_SQL = `
    WHERE identity_id = ? AND day <= ?
    ORDER BY day DESC LIMIT 1`;
 
-/** Statuses that are a promise, not a result: the reader's line says «ждёт очереди». */
+/** Statuses that are a promise, not a result: the reader's line says the edit waits its chapter. */
 const WAITING = new Set<string>(['pending', 'processing', 'stale']);
 
 export function readMyDecisions(db: Db, identityId: string): MyDecisionsDto {
@@ -227,9 +226,6 @@ function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto
     // A refusal has no share of its own to show: the number is absent, never zero.
     shareAtDecision: measured ? shareThen(db, identityId, decidedAt) : null,
     decidedAt,
-    // BOOK-174: the reader's own line carries the reading of their filing, derived from the
-    // stored chain — the same three lines the filing's own record prints.
-    report: dispositionFieldsOf(db, row).report,
   };
 }
 

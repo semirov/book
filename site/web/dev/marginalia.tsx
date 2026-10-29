@@ -22,7 +22,6 @@ import '../src/styles/live.css';
 import '../src/styles/cascade.css';
 import '../src/styles/ribbon.css';
 import '../src/styles/chronicle.css';
-import '../src/styles/focus.css';
 import '../src/styles/seam.css';
 import '../src/styles/panels.css';
 import '../src/styles/seam-form.css';

@@ -22,7 +22,7 @@ export type ProseMarks = {
   groups: SentenceFilings[];
   /** The group that marks each sentence, by the sentence's start offset. */
   marks: Map<number, SentenceFilings>;
-  /** Every alive filing, in reading order: the phone strip's rows. */
+  /** Every alive filing, in reading order, each one **once**: the phone strip's rows. */
   alive: CommentDto[];
   /** `id:status` for the block — the margin pass's memo key. */
   key: string;
@@ -48,6 +48,8 @@ export function proseMarks(text: string, comments: readonly CommentDto[], blockI
   }
   const marks = new Map<number, SentenceFilings>();
   const alive: CommentDto[] = [];
+  /** BOOK-218 — one filing is one row: a repeated wording reaches the group twice. */
+  const listed = new Set<string>();
   for (const sentence of sentences) {
     // The anchor quote is clamped to the server's bound, so a long sentence is matched by the
     // same clamp the filing was made with — not by its raw text (BOOK-33).
@@ -55,7 +57,11 @@ export function proseMarks(text: string, comments: readonly CommentDto[], blockI
     const group = groups.find((item) => item.quote !== null && item.quote === quote) ?? moved.get(sentence.start);
     if (group === undefined) continue;
     marks.set(sentence.start, group);
-    alive.push(...group.all.filter(isAlive));
+    for (const comment of group.all.filter(isAlive)) {
+      if (listed.has(comment.id)) continue;
+      listed.add(comment.id);
+      alive.push(comment);
+    }
   }
   const key = groups.map((group) => group.all.map((comment) => `${comment.id}:${comment.status}`).join(',')).join('|');
   return { sentences, groups, marks, alive, key };

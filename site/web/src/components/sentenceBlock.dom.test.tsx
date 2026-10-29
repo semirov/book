@@ -129,7 +129,7 @@ describe('the phrase’s three facts', () => {
         <SentenceBlock chain={REVISED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={() => undefined} onClose={() => undefined} />,
       );
     });
-    expect(facts()).toEqual(['печатник · 28.10, 12:08', 'меняется', 'правка №12 · внесена 12:08']);
+    expect(facts()).toEqual(['машина', 'меняется', 'правка №12 · внесена 12:08']);
     // The one word above them, and the sentence in the book's quote style.
     expect(block()?.querySelector('.sentence-label')?.textContent).toBe('фраза');
     expect(block()?.querySelector('.sentence-quote')?.textContent).toBe('«Её освещал яркий свет.»');
@@ -141,7 +141,7 @@ describe('the phrase’s three facts', () => {
         <SentenceBlock chain={INTRODUCED} loading={false} failed={false} quote="Её освещал яркий свет." frame="none" place="flow" onRetry={() => undefined} onClose={() => undefined} />,
       );
     });
-    expect(facts()).toEqual(['печатник · 28.10, 12:08', 'меняется', 'правок не было']);
+    expect(facts()).toEqual(['машина', 'меняется', 'правок не было']);
   });
 
   it('the canon sentence says «рамка книги» and cannot change', async () => {

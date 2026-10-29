@@ -75,8 +75,8 @@ describe('the BOOK-61 gates (schema v15)', () => {
        VALUES ('idn_1', 'yandex-1', 'Аня', '2026-10-25T11:00:00Z', '2026-10-25T11:00:00Z')`,
     ).run();
     db.prepare(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-       VALUES ('cmt_old', 'idn_1', 8, 'Аня', 'Старое замечание.', 'a', 'f', 'new', '2026-10-25T12:00:00Z')`,
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+       VALUES ('cmt_old', 'idn_1', 8, 'Аня', 'Старое замечание.', 'a', 'f', 'new', '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     ).run();
 
     // Shape a v14 install (main's head): the narrow gate tables, no Gate A/B columns, no scan.
@@ -151,8 +151,8 @@ describe('the BOOK-61 gates (schema v15)', () => {
       // The four CHECKed columns: a value outside each vocabulary is the database's refusal.
       const insertComment = db.prepare(
         `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at,
-           held_by, rights_source)
-         VALUES (?, 'idn_1', 8, 'Аня', 'x', 'b', 'f', 'new', '2026-10-25T12:00:00Z', ?, ?)`,
+           held_by, rights_source, number)
+         VALUES (?, 'idn_1', 8, 'Аня', 'x', 'b', 'f', 'new', '2026-10-25T12:00:00Z', ?, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
       );
       expect(() => insertComment.run('cmt_bad_1', 'robot', null)).toThrow(/CHECK/u);
       expect(() => insertComment.run('cmt_bad_2', null, 'guess')).toThrow(/CHECK/u);

@@ -58,8 +58,8 @@ function identityId(fixture: Fixture, yandexSub: string, displayName: string): s
 function comment(fixture: Fixture, id: string, owner: string, ipHash: string): void {
   fixture.db
     .prepare(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-       VALUES (?, ?, 8, 'Аня', 'Служебное замечание.', ?, ?, 'new', '2026-10-25T12:00:00Z')`,
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+       VALUES (?, ?, 8, 'Аня', 'Служебное замечание.', ?, ?, 'new', '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     )
     .run(id, owner, `sha-${id}`, ipHash);
 }

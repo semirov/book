@@ -1,6 +1,7 @@
 import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { HeadSocket } from '../lib/headStatus.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
 import type { Stages } from '../lib/useStages.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
@@ -44,6 +45,7 @@ export function Opening({
   live,
   chronicle,
   stages,
+  socket,
   reading,
 }: {
   front: FrontDto;
@@ -65,6 +67,8 @@ export function Opening({
   chronicle?: boolean;
   /** BOOK-156 #3814: the page's stage log — the running head says the book is being written. */
   stages?: Stages;
+  /** BOOK-218: the page's socket status — with no live line the head says `связи нет`. */
+  socket?: HeadSocket;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
 }) {
@@ -89,6 +93,7 @@ export function Opening({
         onOpenChange={onOpenChange}
         live={live}
         stages={stages}
+        socket={socket}
         reading={reading}
       />
       <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />

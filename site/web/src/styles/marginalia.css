@@ -21,10 +21,8 @@
  */
 
 /* ---------- the mark at the sentence (≥1024: numeral; <1024: tick) ---------- */
-.filing-mark-slot {
-  position: static;
-  display: inline;
-}
+/* BOOK-218 — the mark is a margin item like the note: the prose's `.p` is its positioned
+   ancestor, so `left: 100%` is the prose's right edge and the pass owns `top`. */
 .filing-mark {
   position: absolute;
   /* The mark's target stands *after* the air: its box is the numeral's room, not the gap. */
@@ -138,14 +136,6 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
-.margin-note-word {
-  overflow: hidden;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.2;
-  letter-spacing: 0;
-  white-space: nowrap;
-}
 .margin-note-quote {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -171,18 +161,8 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* The row's second sentence is prose — serif 15, clamped to two lines. */
-.margin-note-next {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  margin-top: 4px;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  line-height: 1.35;
-  color: var(--ink-2);
-}
+/* BOOK-218 — the note is a pointer: number, quote, who. It prints no state word and no next
+   line, so there is no second prose block in the margin. */
 
 /* ---------- the measured guard (BOOK-DOC-47 §7) ----------
    The margin is measured from the prose's right edge; when `right + 56 + width + 8` does not fit

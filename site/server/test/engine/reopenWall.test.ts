@@ -72,7 +72,7 @@ describe('reopen — the step wall of a fresh window', () => {
       const step = stepRow(fixture, assignment.stepId);
       expect(step.outcome).toBe('escalated');
       expect(step.reopened_at).toBe(reopenedAt);
-      expect(String(step.note)).toContain('не закрылся за отведённое время');
+      expect(String(step.note)).toContain('не закрылась за отведённое время');
     } finally {
       fixture.close();
     }

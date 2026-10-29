@@ -21,6 +21,7 @@ const TAXONOMY = ['FITS', 'OFF', 'аудитор', 'редактор', 'конс
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_1',
+    number: 1,
     chapter: 8,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -118,7 +119,7 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
     const html = renderToStaticMarkup(<Discussion depth={1} comments={[comment()]} live />);
     // The kind sits in front of the decision, one word, inside the same line.
     expect(html).toContain('<span class="comment-kind">свидетельство · </span>внесено');
-    expect(html).toContain('глава 8 · ревизия 4');
+    expect(html).toContain('в главу 8. это четвёртая редакция');
     expect(html).not.toContain('право на ваш текст');
     expect(html).not.toContain('идёт');
   });

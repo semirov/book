@@ -12,7 +12,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DISPOSITION_REASONS, LOCK_REASONS } from '@book/shared';
+import { LOCK_LINES, READING_LINES } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { insertComment, readCommentRow, toCommentDto, type CommentRow } from '../../src/comments/repo.ts';
@@ -78,11 +78,9 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
     // The DTO renders the real anchor: block_idx is 0-based in storage, 1-based on the page.
     const dto = toCommentDto(h.db, row!);
     expect(dto.disposition).toBe('as_said');
-    expect(dto.report).toMatchObject({
-      line1: 'прочитано как сказано',
-      line2: DISPOSITION_REASONS.as_said,
-      line3: 'где это в книге: глава 8 · абзац 1 · предложение 1',
-    });
+    // The reading is a fact on the row; the page makes its one line from it.
+    expect(dto.carrierKind).toBeNull();
+    expect(READING_LINES.as_said).toBe('прочитали как сказано — ваши слова остались в этом самом предложении');
   });
 
   it('accepts a through_paper reading as an ordinary change — the step writes the document', async () => {
@@ -101,10 +99,8 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
     expect(row).toMatchObject({ status: 'accepted', disposition: 'through_paper', carrier_kind: 'document' });
     expect(row?.quote_kept).toBe(KEPT);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
-    // Both plans existed: the report names the one that was declined.
-    const report = toCommentDto(h.db, row!).report;
-    expect(report?.line1).toBe('прочитано через бумагу, а не как сказано');
-    expect(report?.line3).toBe('где это в книге: глава 8 · абзац 1 · предложение 1 — документ');
+    // The place the carrier named travels as a fact, so the reader's line names it.
+    expect(toCommentDto(h.db, row!).carrierKind).toBe('document');
   });
 
   it('lands an acceptance the ladder cannot license on the as_said floor, on its block anchor', async () => {
@@ -168,8 +164,8 @@ describe('a rejection outside a lock writes nothing (BOOK-206)', () => {
     expect(locked.code).toBe(0);
     const row = readCommentRow(h.db, id);
     expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'harm', change_id: null });
-    expect(row?.reason).toBe(LOCK_REASONS.harm);
-    expect(toCommentDto(h.db, row!).report).toMatchObject({ line1: 'не принято', line2: LOCK_REASONS.harm });
+    expect(row?.reason).toBe(LOCK_LINES.harm);
+    expect(toCommentDto(h.db, row!).disposition).toBe('inadmissible');
   });
 });
 
@@ -343,12 +339,9 @@ describe('a refusal is a lock (BOOK-174)', () => {
     ).toBe(0);
     const row = readCommentRow(h.db, id);
     expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'rights' });
-    expect(toCommentDto(h.db, row!).report).toEqual({
-      line1: 'не принято',
-      line2: 'потому что это не ваш текст',
-      line3:
-        'сработает иначе: перескажите своими в пяти словах — пересказ войдёт в бланк, в протокол или в чью-то реплику',
-    });
+    // Gate B's own reason is the verdict line: one sentence, its word leading, and the rule's
+    // detail inside it — never a second verdict beside it.
+    expect(toCommentDto(h.db, row!).reason).toBe('не принято: пересказ чужого текста без источника');
   });
 
   it('keeps a gate that has not spoken out of the ladder entirely', async () => {
@@ -369,7 +362,7 @@ describe('a refusal is a lock (BOOK-174)', () => {
 });
 
 describe('the decision line carries the reading (BOOK-174)', () => {
-  it('applies a proposal from decisions.jsonl and emits the report with the frame', async () => {
+  it('applies a proposal from decisions.jsonl and emits the reading with the frame', async () => {
     const h = await boot();
     const id = await filed(h);
     const emitted: Array<{ type: string; data: unknown }> = [];
@@ -399,13 +392,7 @@ describe('the decision line carries the reading (BOOK-174)', () => {
     const row = readCommentRow(h.db, id);
     expect(row).toMatchObject({ disposition: 'through_paper', carrier_kind: 'document', quote_kept: KEPT });
     const frame = emitted.find((event) => event.type === 'comment:decision');
-    expect(frame?.data).toMatchObject({
-      status: 'accepted',
-      report: {
-        line1: 'прочитано через бумагу, а не как сказано',
-        line3: 'где это в книге: глава 8 · абзац 1 · предложение 1 — документ',
-      },
-    });
+    expect(frame?.data).toMatchObject({ status: 'accepted', disposition: 'through_paper', carrierKind: 'document' });
   });
 
   it('drops a disposition word this build does not know instead of guessing one', async () => {
@@ -469,11 +456,7 @@ describe('the finale lock is the one a decision may name (BOOK-174 §4)', () => 
     const row = readCommentRow(h.db, id);
     expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'finale', change_id: null });
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
-    expect(toCommentDto(h.db, row!).report).toEqual({
-      line1: 'не принято',
-      line2: 'потому что это отменяет исход',
-      line3: 'сработает иначе: те же слова — как заявление, которое отклоняют, или как вера героя, который ошибается',
-    });
+    expect(toCommentDto(h.db, row!).reason).toBe(LOCK_LINES.finale);
     // BOOK-206 B2: a lock refusal never became a change — the receipt is present and null.
     expect(emitted.find((event) => event.type === 'comment:decision')?.data).toMatchObject({
       status: 'rejected',

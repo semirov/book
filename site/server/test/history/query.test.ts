@@ -28,7 +28,7 @@ describe('the paragraph chain of a removed line (§6F.3)', () => {
       expect(chain).not.toBeNull();
       expect(chain?.alive).toBe(false);
       expect(chain?.versions.map((version) => version.op)).toEqual(['introduced', 'erased']);
-      expect(chain?.line).toMatch(/^убрано в \d{2}:\d{2} правкой 2 \(Марк\) · было: правка 1 \(Аня\)$/u);
+      expect(chain?.line).toMatch(/^убрано в \d{2}:\d{2} правкой 002 \(Марк\) · было: правка 001 \(Аня\)$/u);
 
       // By uid works as well as by the content-derived id.
       const byUid = readParagraphChain(fixture.db, chain?.blockUid ?? '');
@@ -93,7 +93,7 @@ describe('a paragraph rewritten by the writing process itself (§6F.3)', () => {
 
       const blockId = (fixture.db.prepare('SELECT id FROM blocks WHERE chapter = 7').get() as { id: string }).id;
       const chain = readParagraphChain(fixture.db, blockId);
-      expect(chain?.line).toMatch(/^переписано в \d{2}:\d{2} правкой 1 \(автор\) · было: правка 1 \(автор\)$/u);
+      expect(chain?.line).toMatch(/^переписано в \d{2}:\d{2} правкой 001 \(автор\) · было: правка 001 \(автор\)$/u);
       expect(chain?.versions[1]?.actor).toMatchObject({ kind: 'writer', label: 'автор' });
     } finally {
       fixture.close();

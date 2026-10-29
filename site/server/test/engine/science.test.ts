@@ -101,7 +101,7 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       // (iv) the change ends escalated/science, with the public sentence and its own alert.
       expect(trace.change.change.status).toBe('escalated');
       expect(trace.change.change.outcome).toBe('science');
-      expect(trace.change.change.reason).toBe('не входит в книгу — правка ждёт решения');
+      expect(trace.change.change.reason).toMatch(/^не дошло: /u);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('science');
 
       // The state overlay names the same stop, so a reload does not turn it into a finding.

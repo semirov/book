@@ -1,6 +1,7 @@
 import type { MyDecisionDto, MyDecisionsDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { STATE_LINES, STATE_WORDS } from './marginalia.ts';
 import {
   blocksCopy,
   chaptersCopy,
@@ -143,7 +144,8 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
 
   it('says an accepted change is still waiting, not a result', () => {
     const line = decisionLine(applied({ outcome: 'queued', waves: null, blocks: null, chapters: [], intent: null }), 0.004);
-    expect(line.text).toBe('принято · ждёт очереди');
+    // BOOK-218 — the module's own line under the word (never a second copy of it).
+    expect(line.text).toBe(`${STATE_WORDS.accepted} · ${STATE_LINES.accepted}`);
     expect(line.tone).toBe('live');
   });
 });

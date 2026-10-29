@@ -1,5 +1,4 @@
-import type { WriterAssignment } from '@book/shared';
-import { FRAME_FIRST_SENTENCE } from '@book/shared';
+import { FRAME_FIRST_SENTENCE, TOO_MANY_FILINGS, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { buildControl } from '../../src/engine/control.ts';
@@ -89,8 +88,9 @@ describe('the FIFO lane (§6A.3)', () => {
     try {
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'раз' });
       fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'два' });
+      // BOOK-218: the refusal is the reader's sentence, and the reader is told to try later.
       expect(() => fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 1, intent: 'три' })).toThrow(
-        /очередь правок заполнена/u,
+        TOO_MANY_FILINGS,
       );
     } finally {
       fixture.close();
@@ -278,7 +278,7 @@ describe('cascade stops that are not geometry (§6A.6)', () => {
       };
       expect(row.status).toBe('escalated');
       expect(row.outcome).toBe('origin');
-      expect(row.reason).toContain('позади волны');
+      expect(row.reason).toMatch(/^не дошло: /u);
     } finally {
       fixture.close();
     }

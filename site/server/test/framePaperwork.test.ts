@@ -178,11 +178,8 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
       sentence_id: null,
     });
     const dto = toCommentDto(h.db, typedRow(h, id));
-    expect(dto.report).toMatchObject({
-      line1: 'прочитано через бумагу',
-      line2: 'потому что в сцене это некому сказать, а в регистратуре есть кому',
-    });
-    expect(dto.report?.line3).toBe('где это в книге: глава 1 · абзац 1 — документ');
+    // The reading and its carrier are the stored facts; the page makes the one line.
+    expect(dto).toMatchObject({ disposition: 'through_paper', carrierKind: 'document' });
 
     const change = changeRow(h, String(comment.change_id));
     expect(change).toMatchObject({
@@ -291,9 +288,7 @@ describe('a filing on the frozen frame is taken, and changes nothing', () => {
     // with the paper chain, and the reader's record says how it was read.
     expect(comment).toMatchObject({ disposition: 'through_paper', carrier_kind: 'document', lock: null });
     const dto = toCommentDto(h.db, typedRow(h, id));
-    expect(dto.report?.line1).toBe('прочитано через бумагу');
-    expect(dto.report?.line3).toBe('где это в книге: глава 1 · абзац 1 — документ');
-    expect(dto.status).toBe('registered');
+    expect(dto).toMatchObject({ disposition: 'through_paper', carrierKind: 'document', status: 'registered' });
     expect(file(h, 'ch01.md')).toBe(before);
   });
 

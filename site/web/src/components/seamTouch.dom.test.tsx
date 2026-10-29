@@ -44,6 +44,7 @@ function entryFor(n: number): CatalogEntry {
 function comment(blockId: string, overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -224,12 +225,12 @@ describe('a thumb on the page (BOOK-111)', () => {
       await Promise.resolve();
     });
     expect(document.querySelector('.seam-form')).toBeNull();
-    expect(document.querySelector('.seam-receipt')?.textContent).toContain('зарегистрировано');
-    expect(document.querySelector('.seam-receipt')?.textContent).toContain('ждёт');
+    expect(document.querySelector('.seam-receipt')?.textContent).toContain('принято · замечание 1');
+    expect(document.querySelector('.seam-receipt')?.textContent).toContain('принято · замечание 1');
     expect(posted).toHaveBeenCalledTimes(1);
     // The receipt survives a graze: it is a fact, not a toast.
     await act(async () => tap(document.querySelector('.p') as HTMLElement));
-    expect(document.querySelector('.seam-receipt')?.textContent).toContain('зарегистрировано');
+    expect(document.querySelector('.seam-receipt')?.textContent).toContain('принято · замечание 1');
   });
 
   it('a scroll never closes an overlay', async () => {

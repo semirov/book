@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { chainReport, normalizeDisposition } from '@book/shared';
+import { chainLine, normalizeDisposition } from '@book/shared';
 
 import { insertComment, readCommentRow, toCommentDto } from '../../src/comments/repo.ts';
 import { upsertIdentity } from '../../src/db/repo/identities.ts';
@@ -61,7 +61,7 @@ describe('a legacy escalated row renders, and claims nothing', () => {
 
       const row = readCommentRow(h.db, OWNER)!;
       const dto = toCommentDto(h.db, row, Date.parse(AT));
-      expect(dto).toMatchObject({ id: OWNER, status: 'escalated', disposition: null, report: null });
+      expect(dto).toMatchObject({ id: OWNER, status: 'escalated', disposition: null });
       // No word of the removed door: no state, no third line, no report. The row's stored
       // sentence stays data — it is what the reader was told — but it heads nothing.
       const printed = JSON.stringify(dto);
@@ -72,15 +72,11 @@ describe('a legacy escalated row renders, and claims nothing', () => {
     }
   });
 
-  it('refuses to render a chain whose stored word is unknown', () => {
-    // `chainReport` is only ever called with a stored word the build knows; the guard that keeps
+  it('renders a chain whose stored word the build knows as one line', () => {
+    // `chainLine` is only ever called with a stored word the build knows; the guard that keeps
     // it that way is the type, and the value above is dropped before it can reach this call.
-    expect(() =>
-      chainReport(
-        { disposition: 'as_said', lock: null, carrierKind: null, quoteKept: null, sentenceId: null },
-        { chapter: 8, blockIndex: 0, sentenceIndex: 0 },
-        true,
-      ),
-    ).not.toThrow();
+    expect(
+      chainLine({ disposition: 'as_said', lock: null, carrierKind: null }),
+    ).toBe('прочитали как сказано — ваши слова остались в этом самом предложении');
   });
 });

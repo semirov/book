@@ -3,7 +3,7 @@ import { FRAME_FIRST_SENTENCE, FRAME_WARNING, type CommentDto } from '@book/shar
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { HELD_LINE } from '../lib/marginalia.ts';
+import { STATE_LINES } from '../lib/marginalia.ts';
 import {
   BLOCK_ID,
   ENTRY,
@@ -191,17 +191,18 @@ describe('the posted filing enters the page at once (BOOK-111)', () => {
     return { posted, receipt: document.querySelector('.seam-receipt')?.textContent ?? '' };
   }
 
-  it('hands the DTO to the page and says «ждёт» on the receipt, with no reload', async () => {
+  it('hands the DTO to the page and says the act and the filing on the receipt, with no reload', async () => {
     const dto: CommentDto = {
       ...comment({ status: 'new' }),
       id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
     };
     const { posted, receipt } = await submitWith(dto);
-    // The form is closed and the receipt is the fact: the id is not printed, the word is.
+    // The form is closed and the receipt is the fact: the id is not printed, the filing's own
+    // number is — and one state, not two (BOOK-218).
     expect(document.querySelector('.seam-form')).toBeNull();
     expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('receipt');
-    expect(receipt).toContain('зарегистрировано');
-    expect(receipt).toContain('ждёт');
+    expect(receipt).toBe('принято · замечание 1');
+    expect(receipt).not.toContain('ждёт');
     expect(receipt).not.toContain('cmt_');
     // BOOK-111: the caller gets the whole row, not its id — that is what fills the feed.
     expect(posted).toHaveBeenCalledWith(dto);
@@ -209,10 +210,9 @@ describe('the posted filing enters the page at once (BOOK-111)', () => {
 
   it('adds the check line to the receipt when the filing is held', async () => {
     const { receipt } = await submitWith(comment({ status: 'quarantined' }));
-    // BOOK-111 §5: a held filing is never silent — the receipt says what happens before triage.
-    // BOOK-61: the check line is the gate's fixed sentence (`HELD_LINE`), one copy for the page.
-    expect(receipt).toContain('ждёт');
-    expect(receipt).toContain(HELD_LINE);
+    // BOOK-111 §5: a held filing is never silent — the receipt says a person looks at it.
+    // BOOK-218: the line is the deck's own (`STATE_LINES.held`), one copy for the page.
+    expect(receipt).toContain(STATE_LINES.held);
   });
 });
 

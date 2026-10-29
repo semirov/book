@@ -90,7 +90,7 @@ describe('Gate B in the lane', () => {
 
       const result = await harness.run({ chapter: CHAPTER });
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('права');
+      expect(result.reason).toMatch(/^не дошло: /u);
       const step = stepRow(harness.fixture, result.stepId ?? '');
       expect(step?.outcome).toBe('escalated');
       expect(rightsVerdict(harness)?.rule).toBe('RIGHTS-QUOTE');
@@ -113,7 +113,7 @@ describe('Gate B in the lane', () => {
 
       const result = await harness.run({ chapter: CHAPTER });
       expect(result.status).toBe('parked');
-      expect((result.reason ?? '').toLowerCase()).toContain('права');
+      expect(result.reason ?? '').toMatch(/^не дошло: /u);
       expect(rightsVerdict(harness)).toBeNull();
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
     } finally {

@@ -63,6 +63,7 @@ function revise(overrides: Partial<CommentRevise> = {}): CommentRevise {
 function refusedPremise(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+    number: 1,
     chapter: 40,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -94,6 +95,7 @@ function refusedBlock(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     ...refusedPremise(),
     id: 'cmt_block',
+    number: 2,
     premise: false,
     interventionKind: 'testimony',
     anchor: { blockId: BLOCK_ID, blockIndex: 1, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
@@ -399,6 +401,7 @@ describe('the revise form (BOOK-158)', () => {
   it('a held filing gets the hint and no revise button at all', async () => {
     const held = refusedBlock({
       id: 'cmt_held',
+      number: 3,
       status: 'quarantined',
       refusal: 'held',
       hint: 'уберите из текста указания в адрес модели',

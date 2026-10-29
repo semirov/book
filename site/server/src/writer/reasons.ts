@@ -11,6 +11,8 @@
  * line by line by a test.
  */
 
+import { STOP_REASONS, stopReasonKey, type StopReason } from '@book/shared';
+
 import type { PremiseCause } from '../engine/types.ts';
 
 import { EngineRefusalError, isEngineTransportCode } from './client.ts';
@@ -32,13 +34,13 @@ export function reasonOf(error: unknown): string {
   if (error instanceof PassRefusal) return error.message;
   if (error instanceof EngineRefusalError) {
     const detail = error.message.trim();
-    return detail.length === 0 ? `движок отказал: ${error.code}` : `движок отказал: ${error.code}: ${detail}`.slice(0, 300);
+    return detail.length === 0 ? `машина отказала: ${error.code}` : `машина отказала: ${error.code}: ${detail}`.slice(0, 300);
   }
   if (error instanceof Error && 'code' in error && typeof (error as { code: unknown }).code === 'string') {
-    return `модель не ответила: ${(error as { code: string }).code}`;
+    return `машина не ответила: ${(error as { code: string }).code}`;
   }
-  if (error instanceof Error) return `сбой прохода: ${error.name}`;
-  return 'сбой прохода';
+  if (error instanceof Error) return `сбой машины: ${error.name}`;
+  return 'сбой машины';
 }
 
 /** The machine code an error carries, when it carries one (`null` for a plain sentence). */
@@ -93,52 +95,31 @@ const MAX_CHARS = 200;
  * surface — `comments/states.ts`) — nothing retries it, so «заявка остаётся в очереди» and
  * «заявка ждёт решения» are both lies. Every sentence therefore names what happened to the text
  * and says «правка остановлена»: the word `follow.ts` prints for `escalated`.
+ *
+ * BOOK-218: the sentences themselves live in `@book/shared`'s `stateWords.ts` — this table only
+ * names the key each code maps to.
  */
-export const readerSentences = {
-  shape: 'модель ответила не по форме — правка остановлена',
-  modelTimeout: 'модель не ответила вовремя — правка остановлена',
-  modelDown: 'модель недоступна — правка остановлена',
-  truncated: 'ответ модели оборвался — правка остановлена',
-  refusal: 'модель отказалась писать — правка остановлена',
-  answerRejected: 'ответ модели не прошёл проверку — правка остановлена',
-  engineDown: 'движок не ответил — правка остановлена',
+export const readerSentences: Readonly<Record<Exclude<StopReason, 'stopped' | 'gate'>, string>> = {
+  shape: STOP_REASONS.shape,
+  modelTimeout: STOP_REASONS.modelTimeout,
+  modelDown: STOP_REASONS.modelDown,
+  truncated: STOP_REASONS.truncated,
+  refusal: STOP_REASONS.refusal,
+  answerRejected: STOP_REASONS.answerRejected,
+  engineDown: STOP_REASONS.engineDown,
   /** `land` on a step the engine has already closed: nothing was written, so nothing is left. */
-  rightsMissing:
-    'права на текст не подтверждены — правка остановлена',
-  frameChanged:
-    'рамка книги — фраза этой главы не меняется, текст не опубликован, правка остановлена',
-  stepClosed: 'шаг закрылся, пока текст писался — текст не опубликован, правка остановлена',
-  /**
-   * BOOK-219: a pass landed its text, the gate never answered, and the pass put the chapter back
-   * to the revision it started from. Nothing new is live, and the change is stopped.
-   */
-  reverted: 'проверка не ответила — текст возвращён к прежней редакции, правка остановлена',
-  /**
-   * The same pass, and the way back failed: the new text **stands**, unverified. Saying the
-   * filing merely waits would hide a published revision; the note says which one, honestly.
-   */
-  unverified: 'проверка не ответила — новый текст стоит без проверки, правка остановлена',
-  /**
-   * BOOK-61/BOOK-219: Gate B refused the text. The pass takes its own landing back first, so the
-   * reader is never told a refused revision stands — and when the way back fails, the note says
-   * the text stands with no rights answer instead of hiding it.
-   */
-  rightsReverted: 'права на текст не подтверждены — текст возвращён к прежней редакции, правка остановлена',
-  rightsUnverified: 'права на текст не подтверждены — новый текст стоит без проверки прав, правка остановлена',
-  /**
-   * BOOK-219: the engine refused the close itself after the gates answered. The pass took its own
-   * landing back (or could not): the reader hears which, never the queue over text that may still
-   * be live.
-   */
-  closeReverted: 'шаг не закрылся — текст возвращён к прежней редакции, правка остановлена',
-  closeStanding: 'шаг не закрылся — новый текст стоит без подтверждения, правка остановлена',
-  /**
-   * A `done` whose answer was lost twice: the close may have happened (the reader may already be
-   * told) or not, and a restore would contradict a close that did. Nothing is taken back, and the
-   * sentence says exactly that instead of claiming either fact.
-   */
-  closeUncertain: 'закрытие шага не подтверждено — новый текст стоит, правка остановлена',
-} as const;
+  rightsMissing: STOP_REASONS.rightsMissing,
+  frameChanged: STOP_REASONS.frameChanged,
+  stepClosed: STOP_REASONS.stepClosed,
+  /** BOOK-219: a landing taken back after a silent gate, or the text it could not take back. */
+  reverted: STOP_REASONS.reverted,
+  unverified: STOP_REASONS.unverified,
+  rightsReverted: STOP_REASONS.rightsReverted,
+  rightsUnverified: STOP_REASONS.rightsUnverified,
+  closeReverted: STOP_REASONS.closeReverted,
+  closeStanding: STOP_REASONS.closeStanding,
+  closeUncertain: STOP_REASONS.closeUncertain,
+};
 
 /**
  * The fallbacks the pass itself passes in: a code the table does not know still owes the reader a
@@ -146,24 +127,15 @@ export const readerSentences = {
  */
 export const readerFallbacks = {
   /** Any coded failure with no words of its own. */
-  stopped: 'проход остановлен — правка остановлена',
+  stopped: STOP_REASONS.stopped,
   /** The gates could not be asked: the model's answer never became a verdict. */
-  gate: 'ответ модели не прошёл проверку — правка остановлена',
+  gate: STOP_REASONS.gate,
 } as const;
 
 function sentenceFor(code: string): string | null {
-  if (code === 'PROVIDER_SHAPE') return readerSentences.shape;
-  if (code === 'PROVIDER_TIMEOUT') return readerSentences.modelTimeout;
-  if (code === 'PROVIDER_UNREACHABLE' || code.startsWith('PROVIDER_HTTP_')) return readerSentences.modelDown;
-  if (code === 'ANSWER_TRUNCATED') return readerSentences.truncated;
-  if (code === 'ANSWER_REFUSAL') return readerSentences.refusal;
-  if (code.startsWith('ANSWER_')) return readerSentences.answerRejected;
-  if (code === 'ENGINE_TIMEOUT' || code === 'ENGINE_UNREACHABLE') return readerSentences.engineDown;
-  if (code === 'DB_BUSY') return readerSentences.engineDown;
-  if (code === 'RIGHTS_REQUIRED' || code === 'RIGHTS_NOT_REQUIRED') return readerSentences.rightsMissing;
-  if (code === 'FRAME_CHANGED') return readerSentences.frameChanged;
-  if (code === 'STEP_CLOSED') return readerSentences.stepClosed;
-  return null;
+  const key = stopReasonKey(code);
+  if (key === null || key === 'stopped' || key === 'gate') return null;
+  return readerSentences[key];
 }
 
 /** The reader's sentence for a code; `fallback` for anything that has none. */

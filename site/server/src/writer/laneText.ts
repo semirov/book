@@ -7,7 +7,7 @@
  * these, so a caller still imports from one place.
  */
 
-import { type WriterAssignment } from '@book/shared';
+import { PASS_STOPS, type WriterAssignment } from '@book/shared';
 
 import { normalizeChapterText, parseChapter } from '../ingest/parseChapter.ts';
 import type { WriterAssignmentData } from './prompt.ts';
@@ -42,7 +42,7 @@ export function charsOf(chapter: number, text: string): number {
 /** The assignment as the prompt may quote it (`prompt.ts` narrows it the same way). */
 export function assignmentData(assignment: WriterAssignment): WriterAssignmentData {
   if (typeof assignment.chapter !== 'number') {
-    throw new PassRefusal('этот проход не про главу — его ведёт другая полоса, а не писатель');
+    throw new PassRefusal(PASS_STOPS.notAChapter);
   }
   return {
     chapter: assignment.chapter,

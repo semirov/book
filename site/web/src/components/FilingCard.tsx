@@ -1,13 +1,12 @@
-import type { ChangeSummaryDto, CommentDto } from '@book/shared';
+import { outcomeLine, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { useEffect, useRef } from 'react';
 
 import { changeLines } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp, commentStatusLine } from '../lib/commentView.ts';
-import { failedAttempt } from '../lib/marginalia.ts';
+import { failedAttempt, outcomeOf, STATE_WORDS } from '../lib/marginalia.ts';
 import { filingNumber } from '../lib/filings.ts';
 import { reviseView } from '../lib/revise.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
-import { DispositionLines } from './DispositionLines.tsx';
 import { ReviseNote } from './ReviseNote.tsx';
 
 /**
@@ -65,7 +64,7 @@ export function FilingCard({
       className={FILING_PANEL_CLASS}
       role="dialog"
       aria-modal="false"
-      aria-label={`замечание ${filingNumber(comment)}`}
+      aria-label={filingNumber(comment)}
       data-context="filing"
       ref={panel}
       tabIndex={-1}
@@ -105,6 +104,10 @@ export function FilingContent({
   onRevise?: (comment: CommentDto, origin: HTMLElement) => void;
 }) {
   const line = commentStatusLine(comment);
+  // BOOK-218 — the reading appears only when the edit was accepted and written; a lock or our
+  // failure is already the state line, and printing it twice is the defect this replaces.
+  const outcome = outcomeOf(comment);
+  const readingLine = outcome !== null && outcome.kind === 'reading' ? outcomeLine(outcome) : null;
   const quote = anchorCopy(comment);
   const ink = line.tone === 'live' ? 'ink-live' : 'ink-quiet';
   const reading = premiseReading(comment, premiseIntent, line.detail);
@@ -121,12 +124,12 @@ export function FilingContent({
   return (
     <>
       <div className="filing-head">
-        <span className="filing-title">замечание {filingNumber(comment)}</span>
+        <span className="filing-title">{filingNumber(comment)}</span>
         <button type="button" className="filing-close" onClick={onClose} aria-label="закрыть">
           ✕
         </button>
       </div>
-      {comment.report == null ? null : <DispositionLines report={comment.report} />}
+      {readingLine === null ? null : <p className="filing-resolution-head">{readingLine}</p>}
       <p className="filing-meta">
         {comment.author} · {commentStamp(comment.createdAt)} · глава {String(comment.chapter).padStart(2, '0')}
       </p>
@@ -163,6 +166,7 @@ function premiseReading(
   detail: string | null,
 ): string | null {
   if (premiseIntent === null || comment.premise !== true || comment.status === 'applied') return detail;
-  const intake = `принято в основу: ${premiseIntent}`;
+  // BOOK-218 — the module's word for the fact, never a second literal of it.
+  const intake = `${STATE_WORDS.accepted} в основу: ${premiseIntent}`;
   return failedAttempt(comment) && detail !== null ? `${detail} · ${intake}` : intake;
 }

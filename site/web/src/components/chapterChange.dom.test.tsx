@@ -48,6 +48,7 @@ const CHANGE: ChangeDto = {
 const FILING: CommentDto = {
   attempt: null,
   id: 'cmt_1',
+  number: 2,
   chapter: 8,
   anchor: { blockId: null, blockIndex: null, quote: 'у комнаты должна быть своя дверь', prefix: null, suffix: null, resolved: false },
   author: 'Аня',

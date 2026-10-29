@@ -69,6 +69,7 @@ function block(n: number, index: number, docTop: number): HTMLElement {
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_1',
+    number: 1,
     chapter: 3,
     anchor: { blockId: 'ch03#b12', blockIndex: 12, quote: 'Я посмотрел на часы: девять сорок две.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',

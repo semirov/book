@@ -20,7 +20,9 @@
  * owns both (5); every prose selector still named by the one prose rule, which is what pins a
  * future child (6); no declaration value carrying a `rem` length (8), because `rem` follows the
  * reader's root font size and the reading geometry must not. The four-viewport arithmetic, on
- * `tokenPx`, is check 7, in the test.
+ * `tokenPx`, is check 7, in the test. Check 9 (`marginChannelProblems`) is the margin's two
+ * objects: the mark is an item of the channel now, so its 40 × 44 target and its edge are held
+ * by the same guard as the note's (BOOK-218).
  *
  * Not policed, on purpose: `ch` copy caps (58ch genre/promise, 62ch a chronicle row) bound a
  * sentence, not the page — and the overlays, which are laid over the page and keep their own
@@ -99,6 +101,122 @@ export type OverlayRule = { selector: string; property: string; value: string; w
 
 export const OVERLAYS: readonly OverlayRule[] = [];
 
+/**
+ * BOOK-218 — the margin channel's two objects, as the sheet must state them. The mark used to be
+ * placed by its own component, which is how it ended up on the prose line and over the note
+ * above it; it is an item of the ledger now, and its geometry is the channel's contract: both
+ * objects start at the prose's right edge — the mark after the air
+ * (`left: calc(100% + var(--mark-air, 16px))`), the note one `--note-gap` further out — the mark
+ * is a 40 × 44 target at ≥1024 and a 24 × 44 tick below, and neither is fixed or shadowed above
+ * 1023. Every token carries the design's number as its fallback (BOOK-208). A row names the
+ * selector, the file and its declarations.
+ */
+export type MarginChannelRule = {
+  selector: string;
+  file: string;
+  declarations: ReadonlyArray<readonly [string, string]>;
+  why: string;
+};
+
+export const MARGIN_CHANNEL: readonly MarginChannelRule[] = [
+  {
+    selector: '.filing-mark',
+    file: '../styles/marginalia.css',
+    declarations: [
+      ['position', 'absolute'],
+      ['left', 'calc(100% + var(--mark-air, 16px))'],
+      ['width', 'var(--mark-hit, 40px)'],
+      ['height', '44px'],
+      ['margin', '0'],
+    ],
+    why: 'the mark is an item of the margin channel: absolute at the prose’s right edge, a 40 × 44 target, placed by the ledger',
+  },
+  {
+    selector: '.margin-note',
+    file: '../styles/marginalia.css',
+    declarations: [
+      ['position', 'absolute'],
+      ['left', 'calc(100% + var(--note-gap, 56px))'],
+      ['width', 'var(--note-fit, var(--note-w, 188px))'],
+    ],
+    why: 'the note hangs beyond the mark’s target, at the width the channel can hold (BOOK-91)',
+  },
+];
+
+/** The 1023 px step's overrides: the numeral leaves the text and the target narrows. */
+export const MARGIN_CHANNEL_NARROW: readonly MarginChannelRule[] = [
+  {
+    selector: '.filing-mark',
+    file: '../styles/marginalia.css',
+    declarations: [
+      ['width', '24px'],
+      ['padding-left', '2px'],
+    ],
+    why: 'below 1024 the gutter cannot hold the numeral: the mark is the 24 × 44 tick and the number lives in the strip',
+  },
+  {
+    selector: '.filing-mark-num',
+    file: '../styles/marginalia.css',
+    declarations: [['display', 'none']],
+    why: 'the numeral is painted only where the channel holds it',
+  },
+];
+
+/** A rule whose subject is the selector, in the given file. */
+function rulesOfSelector(rules: Rule[], file: string, selector: string): Rule[] {
+  return rules.filter((rule) => rule.file === file && isNamed(rule, selector));
+}
+
+/**
+ * 9 — the margin channel's geometry (`MARGIN_CHANNEL`, `MARGIN_CHANNEL_NARROW`): every named
+ * declaration is in the sheet, the mark is never `position: fixed` or shadowed, and no
+ * transition moves its geometry.
+ */
+export function marginChannelProblems(rules: Rule[]): string[] {
+  const problems: string[] = [];
+  for (const row of [...MARGIN_CHANNEL, ...MARGIN_CHANNEL_NARROW]) {
+    const found = rulesOfSelector(rules, row.file, row.selector);
+    if (found.length === 0) {
+      problems.push(`${row.selector} is not in ${row.file} — ${row.why}`);
+      continue;
+    }
+    for (const [property, value] of row.declarations) {
+      const held = found.some((rule) => squash(rule.declarations.get(property) ?? '') === squash(value));
+      if (!held) {
+        problems.push(`${row.file}: ${row.selector} does not state ${property}: ${value} — ${row.why}`);
+      }
+    }
+  }
+  // The prose is the containing block: a positioned sentence span would make `left: 100%` the
+  // middle of the line — the mark back on the text.
+  if (!rules.some((rule) => exactly(rule, '.p') && squash(rule.declarations.get('position') ?? '') === 'relative')) {
+    problems.push('.p does not state position: relative — the channel is measured from the prose’s right edge');
+  }
+  for (const rule of rules) {
+    if (rule.declarations.has('position') && rule.parts.some((part) => squash(part).includes('[data-s]'))) {
+      problems.push(`${where(rule, 'position', rule.declarations.get('position') ?? '')} — a sentence span is no containing block: the mark’s left: 100% is the prose’s right edge`);
+    }
+  }
+  for (const selector of ['.filing-mark', '.margin-note']) {
+    for (const rule of rulesOfSelector(rules, '../styles/marginalia.css', selector)) {
+      const fixed = rule.declarations.get('position');
+      if (fixed !== undefined && squash(fixed) === 'fixed') {
+        problems.push(`${where(rule, 'position', fixed)} — the margin channel has no fixed layer above 1023`);
+      }
+      if (rule.declarations.has('box-shadow')) {
+        problems.push(`${where(rule, 'box-shadow', rule.declarations.get('box-shadow') ?? '')} — a channel object is not raised above the page`);
+      }
+      for (const [property, value] of rule.declarations) {
+        if (property !== 'transition') continue;
+        if (/\b(top|height|width|left|inset)\b/u.test(value)) {
+          problems.push(`${where(rule, property, value)} — no transition on the channel's geometry; opacity only, once`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 /** The only rules allowed to centre themselves with a horizontal `auto` margin: the canvas
  *  (once) and the one box outside it. `.title-ripple::after` is a 46 px decoration under the
  *  cover title, not a text box. */
@@ -176,8 +294,7 @@ const outsideRow = (rule: Rule) =>
 const isAuto = (rule: Rule, property: string): boolean =>
   squash(rule.declarations.get(property) ?? '') === 'auto';
 
-/** 3 — every register is exactly the measure; any other `max-width` is a copy cap, a listed
- *  overlay or the one box outside the canvas, and no register states a `width` of its own. */
+/** 3 — every register is exactly the measure; any other `max-width` is a copy cap, a listed overlay or the one box outside the canvas, and no register states a `width` of its own. */
 function boxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
@@ -234,10 +351,7 @@ function boxProblems(rules: Rule[]): string[] {
   return problems;
 }
 
-/** 4 — the measure is the column: only `.page`, `.ribbon` and the prose rule state it, only as
- *  a `max-width`; the measure-plus-two-gutters box is the canvas's own bound (BOOK-91), and
- *  belongs elsewhere only to the box outside the canvas (BOOK-128 #3815 removed the overlay
- *  exception the phrase's floating panel used to need). */
+/** 4 — the measure is the column: only `.page`, `.ribbon` and the prose rule state it, only as a `max-width`; the measure-plus-two-gutters box is the canvas's own bound (BOOK-91). */
 function measureBoxProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
@@ -268,8 +382,7 @@ function measureBoxProblems(rules: Rule[]): string[] {
   return problems;
 }
 
-/** 5 — the canvas owns the centring and the gutters: a register's horizontal margin is `0`, its
- *  inline padding is `0`, and no descendant of a register re-adds `var(--gut)`. */
+/** 5 — the canvas owns the centring and the gutters: no register margin or inline padding, and no descendant re-adds `var(--gut)`. */
 function frameProblems(rules: Rule[]): string[] {
   const problems: string[] = [];
   for (const rule of rules) {
@@ -357,6 +470,7 @@ export function layoutProblemsOf(rules: Rule[]): string[] {
     ...measureBoxProblems(rules),
     ...frameProblems(rules),
     ...proseProblems(rules),
+    ...marginChannelProblems(rules),
     ...rootScaleProblems(rules),
   ];
 }

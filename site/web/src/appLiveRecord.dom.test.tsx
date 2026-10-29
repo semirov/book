@@ -13,6 +13,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App.tsx';
+import { STATE_LINES } from './lib/marginalia.ts';
 
 /**
  * BOOK-206 audit B1 — the live record moves without a reload.
@@ -86,6 +87,7 @@ const FRONT: FrontDto = {
 /** The reader's own filing the writer has just taken: accepted, its change still pending. */
 const ACCEPTED: CommentDto = {
   id: 'cmt_own',
+  number: 1,
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 2, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -256,7 +258,7 @@ afterEach(() => {
 describe('the live record (BOOK-206 B1)', () => {
   it('moves the accepted row to «внесено» on the landing frame, with no reload', async () => {
     await mount();
-    expect(rowLine()).toContain('в очереди на запись');
+    expect(rowLine()).toContain(STATE_LINES.accepted);
 
     // The server's durable row already says applied when the frame asks the page to re-read.
     filing = APPLIED;

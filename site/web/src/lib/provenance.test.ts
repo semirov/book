@@ -17,13 +17,14 @@ import {
 /**
  * BOOK-128 comment #3815 — «откуда это слово» is three facts and one sentence.
  *
- * One case per hand the book can print, in the book's own words: `печатник` for a pass (never
+ * One case per hand the book can print, in the book's own words: `машина` for a pass (never
  * «автор» — false on a book a shift wrote), `рамка книги` and `основание книги` for the two
  * frozen surfaces, a reader's name for their own version, `правка вне процесса` for a version
  * the log cannot assign, and `правка · №…` when a reader's filing stands on the word.
  */
 
-const FILING = { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b3' };
+// BOOK-218 — the filing's own public number, printed bare: no `№`, no cut id.
+const FILING = { number: '1', seq: null, state: 'ждёт', href: '#ch-8-b3' };
 /** The same filing once its attempt is in the page's window: the change number is its number. */
 const ATTEMPT = { ...FILING, seq: 12 };
 
@@ -39,13 +40,13 @@ function facts(overrides: Partial<WordInput> = {}): ReturnType<typeof wordFacts>
 }
 
 describe('the word’s hand — one row per thing the log can say', () => {
-  it('a pass wrote it: «печатник», the moment, no trace, and the one gloss', () => {
+  it('a pass wrote it: «машина», the moment, no trace, and the one gloss', () => {
     const view = facts();
     expect(view.hand).toBe(PASS_HAND);
-    expect(view.hand).toBe('печатник');
+    expect(view.hand).toBe('машина');
     expect(view.when).toBe('с 28.10.2026, 12:08');
     expect(view.trace).toBe('следа нет');
-    expect(view.gloss).toBe('печатник — смена, которая пишет книгу; рамку держит автор.');
+    expect(view.gloss).toBe('машина внесла правку; рамку держит автор.');
     expect(view.filing).toBeNull();
   });
 
@@ -67,7 +68,7 @@ describe('the word’s hand — one row per thing the log can say', () => {
   it('a reader’s version carries their own name, and no gloss to explain them', () => {
     const view = facts({ variant: 'reader', actor: 'Аня', share: { kind: 'own', share: 0.004, survivedRevisions: 4 } });
     expect(view.hand).toBe('Аня');
-    expect(view.trace).toBe('пережила 4 ревизии');
+    expect(view.trace).toBe('пережила 4 редакции');
     expect(view.gloss).toBeNull();
   });
 
@@ -80,24 +81,24 @@ describe('the word’s hand — one row per thing the log can say', () => {
   });
 
   it('a filing standing on the word names the record and states where it stands', () => {
+    // BOOK-218 — the filing has its own noun: «замечание 12»; a change is «правка 012».
     const view = facts({ variant: 'reader', actor: 'Аня', filing: FILING });
-    expect(view.hand).toBe('правка · №A7K');
-    expect(view.trace).toBe('№A7K · ждёт');
+    expect(view.hand).toBe('замечание 1');
+    expect(view.trace).toBe('замечание 1 · ждёт');
     expect(view.filing).toEqual(FILING);
     // A record that stands on the word is not the pass's word: the gloss is not printed.
     expect(view.gloss).toBeNull();
   });
 
-  it('a filing that became a change prints that change’s number, unpadded, in hand and trace', () => {
-    // The owner's spec: `правка · №12` beside the word, `№12 · ждёт` on its trace. The number is
-    // the change's (the schema has no filing sequence) and it is never padded to `012`.
+  it('a filing that became a change prints that change’s number in the change’s own noun', () => {
+    // BOOK-218 — the object named is the change: `правка 012` beside the word, `правка 012 · ждёт`
+    // on its trace. A filing that never became one keeps its own noun: «замечание 1».
     const view = facts({ variant: 'reader', actor: 'Аня', filing: ATTEMPT });
-    expect(view.hand).toBe('правка · №12');
-    expect(view.trace).toBe('№12 · ждёт');
-    expect(view.trace).not.toContain('012');
-    expect(facts({ filing: { ...ATTEMPT, state: 'рассмотрено' } }).trace).toBe('№12 · рассмотрено');
-    // The same filing with no attempt in the window keeps the record's own suffix.
-    expect(facts({ filing: FILING }).trace).toBe('№A7K · ждёт');
+    expect(view.hand).toBe('правка 012');
+    expect(view.trace).toBe('правка 012 · ждёт');
+    expect(facts({ filing: { ...ATTEMPT, state: 'рассмотрено' } }).trace).toBe('правка 012 · рассмотрено');
+    // The same filing with no attempt in the window keeps the filing's own public number.
+    expect(facts({ filing: FILING }).trace).toBe('замечание 1 · ждёт');
   });
 
   it('says no moment rather than inventing one when the date cannot be read', () => {
@@ -109,7 +110,7 @@ describe('the word’s hand — one row per thing the log can say', () => {
   });
 
   it('a decided filing says so in the same line', () => {
-    expect(facts({ filing: { ...FILING, state: 'рассмотрено' } }).trace).toBe('№A7K · рассмотрено');
+    expect(facts({ filing: { ...FILING, state: 'рассмотрено' } }).trace).toBe('замечание 1 · рассмотрено');
   });
 });
 
@@ -119,9 +120,9 @@ describe('the trace — three statements that must never swap', () => {
   });
 
   it('prints the viewer’s own curve, and only the viewer’s', () => {
-    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 4 })).toBe('пережила 4 ревизии');
-    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 1 })).toBe('пережила 1 ревизию');
-    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 5 })).toBe('пережила 5 ревизий');
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 4 })).toBe('пережила 4 редакции');
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 1 })).toBe('пережила 1 редакцию');
+    expect(traceLine({ kind: 'own', share: 0.004, survivedRevisions: 5 })).toBe('пережила 5 редакций');
   });
 
   it('says a foreign curve is not measured for this reader, not that it is absent', () => {
@@ -185,7 +186,7 @@ describe('the variant both layers read from one chain', () => {
 });
 
 describe('no machine copy comes back', () => {
-  it('no hand but «печатник» may print the gloss', () => {
+  it('no hand but «машина» may print the gloss', () => {
     const hands = [
       facts({ variant: 'frozen', frozenOf: 'frame' }),
       facts({ variant: 'frozen', frozenOf: 'basis' }),

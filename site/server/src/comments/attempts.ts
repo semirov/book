@@ -475,7 +475,7 @@ export const HINT_RIGHTS_QUOTE = 'приведите название и дат�
 export const HINT_RIGHTS_PARAPHRASE = 'перескажите своими словами, без чужой формулировки';
 export const HINT_RIGHTS_OTHER = 'подтвердите право на текст или перескажите своими словами';
 export const HINT_AUDITOR = 'сформулируйте одно событие этой главы, которого ещё нет в тексте';
-export const HINT_HELD = 'уберите из текста указания в адрес модели';
+export const HINT_HELD = 'уберите из текста указания в адрес машины';
 export const HINT_GENERIC = 'переформулируйте так, чтобы это было одним событием этой главы';
 /** A one-line hint is read beside the refusal; past this it is a paragraph, not a hint. */
 export const HINT_MAX_CHARS = 160;

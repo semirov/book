@@ -51,6 +51,7 @@ const SEAM_QUOTE = 'Я вошёл в пустую комнату.';
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: SEAM_QUOTE, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -154,7 +155,7 @@ function blockClasses(): string[] {
 }
 
 describe('the word’s facts as the block prints them — one case per hand', () => {
-  it('a pass wrote it: «печатник», the moment, no trace, and the one sentence', async () => {
+  it('a pass wrote it: «машина», the moment, no trace, and the one sentence', async () => {
     await act(async () => {
       root?.render(
         <ProvenanceBlock
@@ -166,10 +167,10 @@ describe('the word’s facts as the block prints them — one case per hand', ()
     });
 
     expect(lines()).toEqual([
-      'печатник',
+      'машина',
       'с 28.10.2026, 12:08',
       'следа нет',
-      'печатник — смена, которая пишет книгу; рамку держит автор.',
+      'машина внесла правку; рамку держит автор.',
     ]);
   });
 
@@ -213,7 +214,7 @@ describe('the word’s facts as the block prints them — one case per hand', ()
         />,
       );
     });
-    expect(lines()).toEqual(['Аня', 'с 28.10.2026, 12:08', 'пережила 4 ревизии']);
+    expect(lines()).toEqual(['Аня', 'с 28.10.2026, 12:08', 'пережила 4 редакции']);
   });
 
   it('a version nobody claims says «правка вне процесса» and no trace it cannot know', async () => {
@@ -238,7 +239,7 @@ describe('the word’s facts as the block prints them — one case per hand', ()
             actor: null,
             at: '2026-10-28T09:08:00Z',
             share: { kind: 'none' },
-            filing: { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b0' },
+            filing: { number: '1', seq: null, state: 'ждёт', href: '#ch-8-b0' },
           })}
           failed={false}
           onFiling={() => undefined}
@@ -248,10 +249,10 @@ describe('the word’s facts as the block prints them — one case per hand', ()
     const door = block()?.querySelector<HTMLAnchorElement>('.prov-door');
     expect(door?.tagName).toBe('A');
     expect(door?.getAttribute('href')).toBe('#ch-8-b0');
-    expect(door?.textContent).toBe('№A7K · ждёт');
+    expect(door?.textContent).toBe('замечание 1 · ждёт');
     expect(block()?.querySelector('button')).toBeNull();
     // The hand names the record that stands on the word.
-    expect(block()?.querySelector('.prov-hand')?.textContent).toBe('правка · №A7K');
+    expect(block()?.querySelector('.prov-hand')?.textContent).toBe('замечание 1');
   });
 
   it('a failed read is one line, and the block still exists', async () => {
@@ -349,7 +350,7 @@ describe('the strip’s body: one row, then the facts under it', () => {
     });
 
     const door = block()?.querySelector<HTMLAnchorElement>('.prov-door');
-    expect(door?.textContent).toBe('№4Q7 · ждёт');
+    expect(door?.textContent).toBe('замечание 1 · ждёт');
     expect(door?.getAttribute('href')).toBe('#ch-8-b0');
 
     await act(async () => {
@@ -389,7 +390,7 @@ describe('the block obeys the margin’s one rule', () => {
             actor: null,
             at: '2026-10-28T09:08:00Z',
             share: { kind: 'none' },
-            filing: { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b0' },
+            filing: { number: '1', seq: null, state: 'ждёт', href: '#ch-8-b0' },
           })}
           failed={false}
           onFiling={() => undefined}

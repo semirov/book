@@ -17,7 +17,7 @@
  * question, with another enum, and one gate's word never stands for another's.
  */
 
-import { NOTE_MAX_CHARS, REASON_MAX_CHARS } from '@book/shared';
+import { NOTE_MAX_CHARS, REASON_MAX_CHARS, STATE_WORDS } from '@book/shared';
 
 import { appendEvent } from '../history/log.ts';
 import { rightsRefusalLine } from '../rights/rules.ts';
@@ -81,7 +81,7 @@ export function createRightsGate(deps: EngineDeps) {
 
     // The table makes this total: `recordRightsVerdict` refuses a REFUSED without a rule that
     // has a sentence. The fallback keeps the type closed — it is never a default verdict.
-    const sentence = (recorded.rule === null ? null : rightsRefusalLine(recorded.rule)) ?? 'не принято';
+    const sentence = (recorded.rule === null ? null : rightsRefusalLine(recorded.rule)) ?? STATE_WORDS.refused;
     closeStep(
       deps,
       step.step_id,

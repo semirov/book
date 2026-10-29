@@ -46,7 +46,7 @@
  * sender logs counts, the engine logs nothing about push.
  */
 
-import type { DispositionReport } from '@book/shared';
+import { pushAccepted, pushLanded, pushRefused } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { toIso } from '../util/time.ts';
@@ -61,7 +61,7 @@ export type PassEvent =
    * no identity, no comment id and no token, and the refusing stamp is the chapter's own formula,
    * so they are the one thing a lock screen may say about it.
    */
-  | { kind: 'commentDecision'; commentId: string; report: DispositionReport | null };
+  | { kind: 'commentDecision'; commentId: string; reason: string | null };
 
 export type PassEventResult =
   | { queued: false; reason: 'no-recipient' | 'no-device' | 'duplicate' | 'throttled' | 'error' }
@@ -69,9 +69,6 @@ export type PassEventResult =
 
 /** The book's own title, used as the notification's body: a push says «Бланк» and the chapter. */
 const BODY = 'Бланк';
-
-/** The loudest word a notification may use about a filing, and only when nothing read it. */
-const REFUSED_TITLE = 'правка по главе {n} отклонена';
 
 /** How many push claims one reader may take in one UTC day. */
 export const PUSH_DAILY_LIMIT = 3;
@@ -184,27 +181,24 @@ function recipientOf(db: Db, event: PassEvent): Recipient | null {
  */
 function copyOf(event: PassEvent, recipient: Recipient): OutboxCopy | null {
   const n = recipient.chapter;
-  if (event.kind === 'landed') return { title: `глава ${String(n)} написана`, chapter: n, body: BODY };
+  if (event.kind === 'landed') return { title: pushLanded(n), chapter: n, body: BODY };
   if (event.kind === 'commentDecision') {
-    // BOOK-174/BOOK-206: the book's own word leads — the rung's line («прочитано…», «не принято») for
-    // a filing the ladder placed — and «отклонена» is kept for a row nobody read this way at all (a
-    // gate's hold). A disposition that is not a lock must never read as a refusal.
-    return event.report === null
-      ? { title: REFUSED_TITLE.replace('{n}', String(n)), chapter: n, body: BODY }
-      : { title: event.report.line1, chapter: n, body: event.report.line3 };
+    // BOOK-218: one line, and a reading only when the edit was accepted. A row nobody read this
+    // way at all (a gate's hold) keeps the refusal word and no invented reading.
+    return { title: event.reason ?? pushRefused(n), chapter: n, body: BODY };
   }
 
   if (recipient.status === 'done') {
     if (recipient.outcome === 'applied' || recipient.outcome === 'adapted') {
-      return { title: `глава ${String(n)} написана`, chapter: n, body: BODY };
+      return { title: pushLanded(n), chapter: n, body: BODY };
     }
     if (recipient.outcome === 'registered') {
-      return { title: `правка по главе ${String(n)} принята`, chapter: n, body: BODY };
+      return { title: pushAccepted(n), chapter: n, body: BODY };
     }
     return null;
   }
   if (recipient.status === 'void') {
-    return { title: REFUSED_TITLE.replace('{n}', String(n)), chapter: n, body: BODY };
+    return { title: pushRefused(n), chapter: n, body: BODY };
   }
   // escalated, failed, stale, processing, pending — the engine has not finished answering.
   return null;

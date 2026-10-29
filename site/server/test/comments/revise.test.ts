@@ -195,7 +195,7 @@ describe('a revision is judged by the same gates as a new filing', () => {
     expect(response.statusCode).toBe(200);
     const dto = response.json().comment as { status: string; refusal: string | null; hint: string | null };
     expect(dto).toMatchObject({ status: 'quarantined', refusal: 'held' });
-    expect(dto.hint).toBe('уберите из текста указания в адрес модели');
+    expect(dto.hint).toBe('уберите из текста указания в адрес машины');
     // The lock's refusal closed attempt 1; the guard's hold closed the revision as `held`.
     expect(attempts(h, id)).toEqual([
       { n: 1, outcome: 'refused' },

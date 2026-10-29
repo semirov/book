@@ -21,7 +21,7 @@ import type { CommentDecisionPayload, CommentStatus } from '@book/shared';
 
 import { readCommentRow, toCommentDto, type CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
-import { reportOfDecision, storedDecision } from '../feedback/dispositionStore.ts';
+
 import type { ChangeRow } from './rows.ts';
 
 /**
@@ -45,9 +45,6 @@ export function filingFrameOf(
   attempt?: CommentDecisionPayload['attempt'],
 ): CommentDecisionPayload {
   const dto = toCommentDto(db, comment, nowMs);
-  // The reading travels with the frame exactly as the row stores it (BOOK-174 §5); a row with no
-  // chain has no reading, and nothing here invents one.
-  const stored = storedDecision(comment);
   return {
     id: dto.id,
     chapter: dto.chapter,
@@ -58,8 +55,8 @@ export function filingFrameOf(
     decidedAt: dto.decidedAt ?? at,
     batchId: comment.batch_id,
     changeId: dto.changeId,
-    report: stored === null ? null : reportOfDecision(db, stored, comment),
-    disposition: stored?.disposition ?? null,
+    disposition: dto.disposition ?? null,
+    carrierKind: dto.carrierKind ?? null,
     // The receipt is the one storage derives for the filing: the chapter it entered and that
     // chapter's revision. `null` for anything that did not land — present, never omitted, so a
     // consumer can tell «nothing landed» from «this frame forgot to say» (BOOK-206 B2).

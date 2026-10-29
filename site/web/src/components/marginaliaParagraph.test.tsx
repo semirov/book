@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { STATE_LINES } from '../lib/marginalia.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
@@ -36,6 +37,7 @@ const ENTRY: CatalogEntry = {
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 1, quote: QUOTE, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -79,17 +81,20 @@ describe('a filing in the paragraph', () => {
   it('hangs the note inside the paragraph, at the anchored sentence, with no interaction', () => {
     const html = render([comment()]);
     expect(html).toContain('class="margin-note');
-    expect(html).toContain('ждёт');
-    expect(html).toContain('попадёт в триаж');
+    // BOOK-218 — the note is a pointer; the mark beside it carries the word for a screen reader.
+    expect(html).toContain('aria-label="замечание 1 · ждёт"');
+    expect(html).not.toContain(STATE_LINES.waiting);
     // The note is inside the sentence span whose quote it cites: the sentence opens, the note
     // follows it before the span closes.
     const sentence = html.indexOf('data-quote="Её освещал яркий свет."');
     const note = html.indexOf('class="margin-note');
     expect(sentence).toBeGreaterThan(-1);
     expect(note).toBeGreaterThan(sentence);
-    // The mark sits between the sentence and the note: the note hangs at the same sentence.
-    expect(html.indexOf('class="filing-mark-slot')).toBeGreaterThan(sentence);
-    expect(html.indexOf('class="filing-mark-slot')).toBeLessThan(note);
+    // The mark sits between the sentence and the note: the note hangs at the same sentence,
+    // and both are items of the margin's own ledger (`data-margin-item`).
+    expect(html.indexOf('class="filing-mark filing-alive')).toBeGreaterThan(sentence);
+    expect(html.indexOf('class="filing-mark filing-alive')).toBeLessThan(note);
+    expect(html).toContain('data-margin-item="mark"');
   });
 
   it('puts the phone strip after every sentence, as the paragraph’s last child', () => {
@@ -149,6 +154,7 @@ describe('a filing in the paragraph', () => {
     const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
     const landed = comment({
       id: 'cmt_01J9Z8K4Q8',
+      number: 2,
       status: 'applied',
       applied: { chapter: 8, rev: 4 },
       anchor: { ...comment().anchor, quote: 'горел всю ночь' },
@@ -189,7 +195,7 @@ describe('a filing in the paragraph', () => {
   it('draws the accepted mark, not a note, for a landed change', () => {
     const html = render([comment({ status: 'applied', applied: { chapter: 8, rev: 4 } })]);
     expect(html).toContain('filing-tick');
-    expect(html).toContain('открыть запись');
+    expect(html).toContain('aria-label="замечание 1 · внесено"');
     expect(html).not.toContain('margin-note');
     expect(html).not.toContain('phone-strip');
   });

@@ -58,8 +58,8 @@ describe('migrate — the one rights backfill', () => {
        VALUES ('idn_1', 'yandex-1', 'Аня', '2026-10-25T11:00:00Z', '2026-10-25T11:00:00Z')`,
     ).run();
     const insert = db.prepare(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-       VALUES (?, 'idn_1', 8, 'Аня', ?, ?, 'f', ?, '2026-10-25T12:00:00Z')`,
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+       VALUES (?, 'idn_1', 8, 'Аня', ?, ?, 'f', ?, '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     );
     insert.run('cmt_new_person', PERSON, 'a', 'new');
     insert.run('cmt_batched_person', PERSON, 'b', 'batched');

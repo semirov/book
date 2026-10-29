@@ -140,13 +140,13 @@ describe('the word’s margin and a missing paragraph history (BOOK-68)', () => 
 
     await actAndSettle(() => release(notFound()));
     // A 404 is an answer: the pass wrote the chapter, and the log holds no change on it.
-    expect(block()).toContain('печатник');
+    expect(block()).toContain('машина');
     expect(block()).toContain('вне правок');
     expect(block()).toContain('следа нет');
     expect(block()).not.toContain('написан целиком');
     expect(block()).not.toContain('читательских правок');
     // The one sentence is the gloss of the hand, and it is the owner's, word for word.
-    expect(block()).toContain('печатник — смена, которая пишет книгу; рамку держит автор.');
+    expect(block()).toContain('машина внесла правку; рамку держит автор.');
   });
 
   it('asks once when the reader reopens the block on the same historyless block', async () => {
@@ -157,14 +157,14 @@ describe('the word’s margin and a missing paragraph history (BOOK-68)', () => 
     await openParagraph();
 
     await openWord();
-    expect(block()).toContain('печатник');
+    expect(block()).toContain('машина');
     expect(chainCalls()).toBe(1);
 
     await actAndSettle(() => (document.querySelector('.seam-prov') as HTMLElement).click());
     expect(document.querySelector('.prov-block')).toBeNull();
 
     await openWord();
-    expect(block()).toContain('печатник');
+    expect(block()).toContain('машина');
     expect(chainCalls()).toBe(1);
   });
 
@@ -180,20 +180,21 @@ describe('the word’s margin and a missing paragraph history (BOOK-68)', () => 
 
     await openWord();
     expect(block()).toBe('история не прочиталась');
-    expect(block()).not.toContain('печатник');
+    expect(block()).not.toContain('машина');
 
     // A failure is not memoised: closing and reopening asks again and prints the answer.
     await actAndSettle(() => (document.querySelector('.seam-prov') as HTMLElement).click());
     await openWord();
     expect(attempts).toBe(2);
-    expect(block()).toContain('печатник');
+    expect(block()).toContain('машина');
   });
 
-  it('a filing standing on the word carries the number of the change it became, unpadded', async () => {
+  it('a filing standing on the word names the change it became, in the change’s noun', async () => {
     // The filing's own number is its latest attempt's change number (the schema has no filing
     // sequence), printed `№12` — the owner's spec, never the record's suffix and never `012`.
     const filing: CommentDto = {
       id: 'cmt_01J9Z8K4Q7',
+      number: 1,
       chapter: 8,
       anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Я вошёл в пустую комнату.', prefix: null, suffix: null, resolved: false },
       author: 'Аня',
@@ -259,9 +260,11 @@ describe('the word’s margin and a missing paragraph history (BOOK-68)', () => 
     });
 
     await openWord();
-    expect(block()).toContain('правка · №12');
-    expect(block()).toContain('№12 · ждёт');
-    expect(block()).not.toContain('012');
+    // BOOK-218 — the change keeps its own padded number under its own noun; a filing would be
+    // «замечание 12», and no id ever appears.
+    expect(block()).toContain('правка 012');
+    expect(block()).toContain('правка 012 · ждёт');
+    expect(block()).not.toContain('замечание');
     expect(block()).not.toContain('4Q7');
   });
 

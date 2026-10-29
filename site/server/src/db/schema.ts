@@ -51,7 +51,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 32;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
@@ -59,7 +59,7 @@ export const SCHEMA_VERSION = 31;
  * `tables.ts` (§13.3, §6F.3, BOOK-6, BOOK-174), BOOK-187's four in `bookStateTables.ts`; they are
  * re-exported so a reader of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_NUMBER_INDEX_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { V28_REQUIRED_TABLES, V28_TABLES_SQL } from './bookStateTables.ts';
 import { FACTS_KEY_INDEX_SQL, LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
@@ -229,6 +229,7 @@ CREATE TABLE lane (                                -- single row; the FIFO mutex
 INSERT INTO lane (id, holder, heartbeat_at) VALUES (1, NULL, NULL);
 
 ${COMMENTS_TABLE_SQL}
+${COMMENTS_NUMBER_INDEX_SQL}
 CREATE INDEX comments_chapter ON comments(chapter, created_at);
 CREATE INDEX comments_status  ON comments(status, created_at);
 CREATE INDEX comments_ip      ON comments(ip_hash, created_at);

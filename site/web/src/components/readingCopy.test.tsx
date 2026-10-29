@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { STATE_WORDS } from '../lib/marginalia.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { spineMarkers } from '../lib/spine.ts';
 import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
@@ -153,7 +154,7 @@ const WAITING_RIBBON: Ribbon = {
 
 const PREMISE: CommentDto = {
   attempt: null,
-  id: 'cmt_premise',
+  id: 'cmt_premise', number: 1,
   chapter: 3,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -396,21 +397,21 @@ const SENTENCE_MODE: ParagraphChainMode = {
 };
 
 describe('the reading surface prints the book, not the product', () => {
-  it('prints no status, count or explanation in the running head', async () => {
+  it('prints the book’s own one-word state in the running head, and no count', async () => {
     await mount();
     expectNoInterfaceCopy('.top');
-    // No pass in flight, so no status line at all: the foot's grip carries that fact.
-    expect(container.querySelector('.head-status')).toBeNull();
+    // BOOK-218 — with nothing in flight the head says `тихо`, and it says nothing else.
+    expect(container.querySelector('.head-status')?.textContent).toBe('тихо');
+    expect(container.querySelectorAll('.head-status')).toHaveLength(1);
   });
 
-  it('prints the one permitted status — the book is being written — and nothing else', async () => {
+  it('prints the one permitted status — the chapter is being written — and nothing else', async () => {
     await mount(liveStages(), LIVE_NOW);
-    // The exception, literally: the owner's words, the chapter the pass is writing and the
-    // stage's own time in Moscow. It is a state line, not a chip: it exists only while a pass
-    // runs, and the idle case above proves it is not a permanent row.
-    expect(surface('.top')).toContain('сейчас пишется');
+    // The exception, literally: the owner's word, one line, and no chapter and no clock beside
+    // it. It is a state line, not a chip.
+    expect(surface('.top')).toContain('главу пишут');
     expect(surface('.top')).not.toContain('глава 1 · 14:21');
-    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('live');
+    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('drafting');
     // The rest of the rule stands under the exception: no count, no row's state word, none of
     // the chips the audits removed — the book, the chapter and the folio are still the head.
     expectNoInterfaceCopy('.top');
@@ -441,7 +442,7 @@ describe('the reading surface prints the book, not the product', () => {
     // reader who already filed reads the slot as empty and is refused as a duplicate.
     const labels = [...container.querySelectorAll('.premise-label')];
     expect(labels).toHaveLength(1);
-    expect(labels[0]?.textContent).toBe('ждёт');
+    expect(labels[0]?.textContent).toBe(STATE_WORDS.accepted);
     // A row of the flow never prints the state word `замысел`. A premise's quote is the
     // reader's own words, though, and the rule allows them — so quotes are stripped here.
     const flow = (container.querySelector('main')?.cloneNode(true) as Element | null) ?? null;

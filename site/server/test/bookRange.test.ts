@@ -85,8 +85,8 @@ function seedReaderChange(target: Fixture, index: number, chapter: number, at: s
     `INSERT INTO identities (id, yandex_sub, display_name, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(identityId, `sub-${index}`, `Читатель ${index}`, at, at);
   db.prepare(
-    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES (?, ?, ?, ?, 'абзац слишком часто повторяется', ?, 'iph', 'accepted', ?)`,
+    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES (?, ?, ?, ?, 'абзац слишком часто повторяется', ?, 'iph', 'accepted', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(commentId, identityId, chapter, `Читатель ${index}`, `sha-${index}`, at);
   db.prepare(
     `INSERT INTO changes (id, kind, chapter, intent, source_comment, base_rev, base_sha256, base_blocks,

@@ -41,7 +41,7 @@ const REVISED = sentenceFacts({ chain: chain([version()]), frame: 'none' });
 
 describe('the phrase’s three facts', () => {
   it('a pass wrote it: hand and moment, mutating, and the change that landed', () => {
-    expect(REVISED.hand).toBe('печатник · 28.10, 12:08');
+    expect(REVISED.hand).toBe('машина');
     expect(REVISED.mutable).toBe('меняется');
     expect(REVISED.trail).toBe('правка №12 · внесена 12:08');
   });
@@ -49,7 +49,7 @@ describe('the phrase’s three facts', () => {
   it('an introduced block has no change behind it: «правок не было»', () => {
     // The introduction is still a version with a moment: the hand keeps it, only the trail
     // says that no change has landed since.
-    expect(PASS.hand).toBe('печатник · 20.10, 12:00');
+    expect(PASS.hand).toBe('машина');
     expect(PASS.trail).toBe(NO_REWRITES);
     expect(PASS.trail).toBe('правок не было');
   });
@@ -65,7 +65,7 @@ describe('the phrase’s three facts', () => {
 
   it('a reader’s version with no change behind it keeps their name, never the pass', () => {
     // The log numbers no change here, so there is no «правка · №…» to print — but the hand is
-    // still the reader's: `печатник` would credit the shift with a reader's sentence, which is
+    // still the reader's: `машина` would credit the shift with a reader's sentence, which is
     // the one thing `provenance.ts` `handOf` refuses to do for a word.
     const facts = sentenceFacts({
       chain: chain([

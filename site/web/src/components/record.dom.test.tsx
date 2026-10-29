@@ -43,7 +43,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
-    id: 'cmt_01J9Z8K4Q7',
+    id: 'cmt_01J9Z8K4Q7', number: 1,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -80,7 +80,7 @@ const chain = (versions: number): string => {
       changeId: null,
       changeSeq: null,
       stepId: null,
-      actor: { kind: 'writer', label: 'печатник', identityId: 'id1' },
+      actor: { kind: 'writer', label: 'машина', identityId: 'id1' },
       replacedBy: null,
     },
     {
@@ -96,11 +96,11 @@ const chain = (versions: number): string => {
       changeId: 'chg_12',
       changeSeq: 12,
       stepId: null,
-      actor: { kind: 'writer', label: 'печатник', identityId: 'id1' },
+      actor: { kind: 'writer', label: 'машина', identityId: 'id1' },
       replacedBy: null,
     },
   ].slice(0, versions);
-  return JSON.stringify({ blockUid: 'u1', blockId: BLOCK_ID, chapter: 8, alive: true, versions: rows, line: 'печатник' });
+  return JSON.stringify({ blockUid: 'u1', blockId: BLOCK_ID, chapter: 8, alive: true, versions: rows, line: 'машина' });
 };
 
 let root: Root | null = null;
@@ -334,13 +334,14 @@ describe('the record: the sentence is the door', () => {
     expect(document.querySelectorAll('.rec-close')).toHaveLength(1);
   });
 
-  it('prints the sections in the order of the design: quote, hand, head, замечания, история', async () => {
+  it('prints the sections in the order of the design: quote, what, head, замечания, история', async () => {
     await mount([comment()]);
     await tapSentence(1);
     const sheet = document.querySelector('.rec-sheet');
     const order = [...(sheet?.children ?? [])].map((node) => node.className);
     expect(order[0]).toContain('rec-quote');
-    expect(order[1]).toContain('rec-hand');
+    // BOOK-218 — the head is the reader's: `правка 12 · ваша · 29.10, 12:07`, not the hand.
+    expect(order[1], 'the head names the filing, not the hand').toContain('rec-what');
     expect(order[2]).toContain('rec-head');
     // An answered-empty chain has no history to print: a section with nothing is not a section.
     const sections = [...document.querySelectorAll('.rec-section-label')].map((node) => node.textContent);
@@ -381,7 +382,7 @@ describe('the record: the sentence is the door', () => {
     expect(labels).toEqual(['замечания', 'история']);
     await press('.rec-section:last-of-type');
     const row = document.querySelector('.rec-row[data-kind="history"]');
-    expect(row?.textContent).toContain('печатник');
+    expect(row?.textContent).toContain('машина');
     expect(row?.textContent).toContain('правка 012');
     expect(row?.textContent).toContain('пара не записана');
   });

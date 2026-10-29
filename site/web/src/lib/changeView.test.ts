@@ -60,6 +60,7 @@ const change: ChangeDto = {
 const filing: CommentDto = {
   attempt: null,
   id: 'cmt_1',
+  number: 2,
   chapter: 8,
   anchor: { blockId: 'ch08#a', blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -102,9 +103,10 @@ describe('the change in the record’s register', () => {
     for (const gone of ['не принято', 'мин', 'сек', 'ждал', 'читал', 'писал', 'сверял']) {
       expect(view.verdict, gone).not.toContain(gone);
     }
-    // A change still running says only that it is not in the book yet.
+    // BOOK-218 line 7 — a change the writer has taken says the chapter is being drafted, from
+    // the moment it was taken on the site's clock.
     expect(changeView({ ...change, status: 'processing', outcome: null, reason: null }, null, null).verdict).toBe(
-      'правка ещё не внесена',
+      'главу пишут — начали в 15:00',
     );
     // A stopped change with no public reason states the fact once.
     expect(changeView({ ...stopped, reason: null }, null, null).verdict).toBe('правка не внесена');

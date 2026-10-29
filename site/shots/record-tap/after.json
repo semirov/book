@@ -1,0 +1,1449 @@
+{
+  "label": "after",
+  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+  "page": "http://127.0.0.1:5173/harness/accordion.html",
+  "widths": {
+    "390": [
+      {
+        "name": "a",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 89,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 282
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 0
+          }
+        }
+      },
+      {
+        "name": "b",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 425
+          },
+          "notice": {
+            "rec": 1,
+            "acc": "open",
+            "body": "notice",
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 181,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 244
+          },
+          "line": "у этой фразы уже есть заявка — открыть её?",
+          "openExisting": 1,
+          "form": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 280,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 145
+          }
+        }
+      },
+      {
+        "name": "c",
+        "pass": true,
+        "detail": {
+          "first": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "second": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 1
+          }
+        }
+      },
+      {
+        "name": "d",
+        "pass": true,
+        "detail": {
+          "a": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "b": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 110,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 261
+          },
+          "quote": "«Свет был включён до меня — и никто не сказал об этом.»"
+        }
+      },
+      {
+        "name": "e",
+        "pass": true,
+        "detail": {
+          "sending": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передаётся",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 1043,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -672
+          },
+          "closed": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 110,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "reopened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "formAgain": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 110,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 261
+          },
+          "settled": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 110,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 261
+          }
+        }
+      },
+      {
+        "name": "f",
+        "pass": true,
+        "detail": {
+          "signedIn": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 89,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 282
+          },
+          "signedOut": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": "войдите через Яндекс, чтобы оставить замечаниевойти через Яндекс →Читать можно без входа. Автор замечания виден другим читателям.",
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 89,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 282
+          }
+        }
+      },
+      {
+        "name": "g",
+        "pass": true,
+        "detail": {
+          "shifted": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 400,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -29
+          },
+          "cta": {
+            "x": 274,
+            "y": 89
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 400,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -29
+          }
+        }
+      },
+      {
+        "name": "1",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 425
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 0
+          }
+        }
+      },
+      {
+        "name": "2",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "head": "запись о фразе",
+          "hand": null,
+          "labels": [
+            "история"
+          ]
+        }
+      },
+      {
+        "name": "3",
+        "pass": true,
+        "detail": {
+          "small": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 371
+          },
+          "long": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          }
+        }
+      },
+      {
+        "name": "4",
+        "pass": true,
+        "detail": {
+          "after": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "meta": "width=device-width, initial-scale=1"
+        }
+      },
+      {
+        "name": "5",
+        "pass": true,
+        "detail": {
+          "hit": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": "26",
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 425
+          },
+          "band": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": "grip",
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 425
+          },
+          "afterBand": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "BUTTON",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 425
+          }
+        }
+      },
+      {
+        "name": "6",
+        "pass": true,
+        "detail": {
+          "count": 4,
+          "seen": [
+            {
+              "index": 0,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 1,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 2,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 3,
+              "rec": 1,
+              "acc": "open"
+            }
+          ],
+          "failures": []
+        }
+      },
+      {
+        "name": "h",
+        "pass": true,
+        "detail": {
+          "history": {
+            "before": 356.41,
+            "after": 356.92,
+            "delta": 0.51
+          },
+          "sections": {
+            "before": 356.92,
+            "after": 356.92,
+            "delta": 0
+          },
+          "note": {
+            "before": 356.81,
+            "after": 357.47,
+            "delta": 0.66
+          },
+          "noteBack": {
+            "before": 356.47,
+            "after": 356.81,
+            "delta": 0.34
+          },
+          "notice": {
+            "before": 257.42,
+            "after": 257.42,
+            "delta": 0
+          }
+        }
+      }
+    ],
+    "1440": [
+      {
+        "name": "a",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 0
+          }
+        }
+      },
+      {
+        "name": "b",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "notice": {
+            "rec": 1,
+            "acc": "open",
+            "body": "notice",
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "line": "у этой фразы уже есть заявка — открыть её?",
+          "openExisting": 1,
+          "form": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 82,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 182
+          }
+        }
+      },
+      {
+        "name": "c",
+        "pass": true,
+        "detail": {
+          "first": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "second": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 1
+          }
+        }
+      },
+      {
+        "name": "d",
+        "pass": true,
+        "detail": {
+          "a": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "b": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "quote": "«Свет был включён до меня — и никто не сказал об этом.»"
+        }
+      },
+      {
+        "name": "e",
+        "pass": true,
+        "detail": {
+          "sending": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передаётся",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 688,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -424
+          },
+          "closed": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "reopened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "formAgain": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "settled": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "Черновик под отправкой.",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          }
+        }
+      },
+      {
+        "name": "f",
+        "pass": true,
+        "detail": {
+          "signedIn": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "не меняется",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "signedOut": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": "войдите через Яндекс, чтобы оставить замечаниевойти через Яндекс →Читать можно без входа. Автор замечания виден другим читателям.",
+            "stateWord": "не меняется",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          }
+        }
+      },
+      {
+        "name": "g",
+        "pass": true,
+        "detail": {
+          "shifted": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 294,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -30
+          },
+          "cta": {
+            "x": 948,
+            "y": 67
+          },
+          "after": {
+            "rec": 1,
+            "acc": "open",
+            "body": "form",
+            "form": true,
+            "firstField": "seam-body-1",
+            "focused": "seam-body-1",
+            "firstFieldFocused": true,
+            "draft": "",
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": "передать",
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 294,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": -30
+          }
+        }
+      },
+      {
+        "name": "1",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "mounts": {
+            "added": 1,
+            "removed": 0
+          }
+        }
+      },
+      {
+        "name": "2",
+        "pass": true,
+        "detail": {
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "head": "запись о фразе",
+          "hand": null,
+          "labels": [
+            "история"
+          ]
+        }
+      },
+      {
+        "name": "3",
+        "pass": true,
+        "detail": {
+          "small": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "внесено · правка 012",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "long": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          }
+        }
+      },
+      {
+        "name": "4",
+        "pass": true,
+        "detail": {
+          "after": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "meta": "width=device-width, initial-scale=1"
+        }
+      },
+      {
+        "name": "5",
+        "pass": true,
+        "detail": {
+          "hit": {
+            "rec": 0,
+            "acc": null,
+            "body": null,
+            "form": false,
+            "firstField": null,
+            "focused": "BODY",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": null,
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": "26",
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": null
+          },
+          "opened": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "band": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "SPAN",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": "grip",
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          },
+          "afterBand": {
+            "rec": 1,
+            "acc": "open",
+            "body": "list",
+            "form": false,
+            "firstField": null,
+            "focused": "BUTTON",
+            "firstFieldFocused": false,
+            "draft": null,
+            "signin": null,
+            "stateWord": "ждёт",
+            "submit": null,
+            "touchAction": "manipulation",
+            "scale": 1,
+            "at": null,
+            "scrollY": 0,
+            "innerHeight": 780,
+            "grip": 24,
+            "recordTop": 264
+          }
+        }
+      },
+      {
+        "name": "6",
+        "pass": true,
+        "detail": {
+          "count": 4,
+          "seen": [
+            {
+              "index": 0,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 1,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 2,
+              "rec": 1,
+              "acc": "open"
+            },
+            {
+              "index": 3,
+              "rec": 1,
+              "acc": "open"
+            }
+          ],
+          "failures": []
+        }
+      },
+      {
+        "name": "h",
+        "pass": true,
+        "detail": {
+          "history": {
+            "before": 356.16,
+            "after": 356.47,
+            "delta": 0.31
+          },
+          "sections": {
+            "before": 356.47,
+            "after": 356.47,
+            "delta": 0
+          },
+          "note": {
+            "before": 356.19,
+            "after": 356.31,
+            "delta": 0.12
+          },
+          "noteBack": {
+            "before": 356.31,
+            "after": 357.19,
+            "delta": 0.88
+          },
+          "notice": {
+            "before": 256.97,
+            "after": 256.97,
+            "delta": 0
+          }
+        }
+      }
+    ]
+  },
+  "shot": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-state-words/site/shots/record-tap/after-note.png",
+  "pass": true
+}

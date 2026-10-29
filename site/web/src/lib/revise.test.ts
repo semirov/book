@@ -30,6 +30,7 @@ function revise(overrides: Partial<CommentRevise> = {}): CommentRevise {
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_refused',
+    number: 1,
     chapter: 8,
     anchor: {
       blockId: 'ch08#aa11bb22',

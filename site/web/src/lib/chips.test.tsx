@@ -16,7 +16,8 @@ import { TitleSheet } from '../components/TitleSheet.tsx';
  * Every string this pass defines, with the surface that prints it and its character length.
  * The cap is the form audit's: a chip of tier `state`, `count` or `ref` is at most 24 characters
  * — one line, never ellipsized, never two voices. A `sentence` (a clause or a receipt) may run
- * to 90, and a `line` is the ribbon's own line, which is not a chip and carries no cap.
+ * to 90, and a `line` is a line of the ribbon or of the register, which is not a chip and
+ * carries no cap.
  *
  * The filing states are not hand-copied: `FILING_PINS` is produced by `commentStatusLine` itself
  * (status × premise × whether a record exists), so the table and the panel cannot disagree about
@@ -35,9 +36,9 @@ export type ChipPin = {
 };
 
 export const CHIP_PINS: readonly ChipPin[] = [
-  { surface: 'discussion · .qline', condition: 'an empty queue', text: 'в очереди пусто', length: 15, tier: 'count' },
-  { surface: 'discussion · .qline', condition: 'three changes waiting', text: 'в очереди 3 правки', length: 18, tier: 'count' },
-  { surface: 'discussion · .qline', condition: 'eleven changes waiting', text: 'в очереди 11 правок', length: 19, tier: 'count' },
+  { surface: 'discussion · .qline', condition: 'nothing is in work', text: 'правок в работе нет', length: 19, tier: 'line' },
+  { surface: 'discussion · .qline', condition: 'three filings in work', text: 'в работе 3 правки', length: 17, tier: 'line' },
+  { surface: 'discussion · .qline', condition: 'eleven filings in work', text: 'в работе 11 правок', length: 18, tier: 'line' },
   { surface: 'discussion · .sec-meta', condition: 'no filings', text: 'замечаний нет', length: 13, tier: 'count' },
   { surface: 'discussion · .sec-meta', condition: 'three filings', text: '3 замечания', length: 11, tier: 'count' },
   { surface: 'ribbon · wing state', condition: 'the wing has finished', text: 'остановилось', length: 12, tier: 'state' },
@@ -98,6 +99,7 @@ const CAP = { state: 24, count: 24, ref: 24, sentence: 90 } as const;
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K5A4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -187,8 +189,9 @@ describe('the chip table (BOOK-70)', () => {
   it('pins the filing states the audits named: one word of the deck, always a chip', () => {
     // BOOK-189 — «отклонено» is a state now, and it is the same word C's gate already printed;
     // it joins the three the audits named rather than adding a sixth vocabulary.
+    // BOOK-218 — the states a row can stand in, one word each, and every one of them a chip.
     const states = [...new Set(FILING_PINS.map((pin) => pin.state))].sort();
-    expect(states).toEqual(['внесено', 'ждёт', 'идёт', 'отклонено']);
+    expect(states).toEqual(['внесено', 'ждёт', 'идёт', 'не принято', 'принято', 'проверяется', 'скрыто', 'снято']);
     for (const pin of FILING_PINS) {
       expect(pin.form, pin.state).toBe('chip');
       expect(pin.state.length, pin.state).toBeLessThanOrEqual(CHIP_MAX_CHARS);
@@ -264,10 +267,11 @@ describe('the removed chips are gone from their surfaces', () => {
     vi.unstubAllGlobals();
   });
 
-  it('prints no state line in the header — the chip is gone, not emptied', () => {
+  it('prints the book’s title and its one idle word in the header — no chip, no count', () => {
     const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live reading={{ n: null, page: null }} />);
-    // BOOK-112: the head prints the book's own title and nothing else.
-    expect(textOf(html)).toBe('Книга');
+    // BOOK-112, BOOK-218: the head prints the book's own title and one word about now.
+    expect(textOf(html)).toBe('Книгатихо');
+    expect(html).toContain('data-kind="idle"');
     expect(html).not.toContain('class="live"');
     expect(html).not.toContain('глав ещё нет');
     expect(html).not.toContain('class="queue"');
@@ -293,7 +297,7 @@ describe('the removed chips are gone from their surfaces', () => {
     // §1: the zero is a claim about the whole thread, so it is printed over a complete page.
     const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />);
     expect(html).toContain('замечаний нет');
-    expect(html).toContain('в очереди пусто');
+    expect(html).toContain(queueLabel(0));
     expect(html).not.toContain('0 замечаний');
   });
 

@@ -32,6 +32,7 @@
 import {
   COMMENT_DEDUPE_WINDOW_MS,
   TERMS_VERSION,
+  TOO_MANY_FILINGS,
   acceptedTermsText,
   classifyFrame,
   type CommentBudget,
@@ -148,7 +149,8 @@ export class CommentService {
         ok: false,
         status: 503,
         code: 'QUEUE_FULL',
-        message: 'очередь правок заполнена — попробуйте позже',
+        // BOOK-218 — the reader's sentence, not the machinery's: one constant both sides read.
+        message: TOO_MANY_FILINGS,
         retryAfterMs: queue.retryAfterMs,
       };
     }

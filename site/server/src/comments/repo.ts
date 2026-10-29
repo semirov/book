@@ -39,6 +39,11 @@ export { premiseLanded } from './states.ts';
 
 export type CommentRow = {
   id: string;
+  /**
+   * BOOK-218 — the filing's own public number (`comments.number`, written at insert and never
+   * renumbered): what the page prints as «замечание 12», without a second query.
+   */
+  number: number;
   identity_id: string;
   chapter: number;
   block_id: string | null;
@@ -142,14 +147,22 @@ export type NewCommentRow = {
   termsSha?: string | null;
 };
 
+/**
+ * BOOK-218 — the filing's public number is assigned **here**, in the insert itself: the
+ * `COALESCE(MAX(number), 0) + 1` subselect is part of the statement, and one statement is the
+ * transaction SQLite runs it in — so no second writer can slip between the maximum and the
+ * write, and the unique index never sees a duplicate. 1-based, monotonic, never reused (a hidden
+ * row keeps its number).
+ */
 export function insertComment(db: Db, comment: NewCommentRow): void {
   db.prepare(
     `INSERT INTO comments
-       (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, sentence_id,
+       (id, number, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix, sentence_id,
         sel_start, sel_end, author, body, proposed_text, intervention_kind, body_sha, flags, ip_hash, status,
         frame, guard, created_at, reason, idem_key, terms_version, terms_sha)
      VALUES
-       (@id, @identityId, @chapter, @blockId, @blockIndex, @baseRev, @quote, @prefix, @suffix,
+       (@id, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments), @identityId, @chapter, @blockId,
+        @blockIndex, @baseRev, @quote, @prefix, @suffix,
         @sentenceId, @selStart, @selEnd, @author, @body, @proposedText, @interventionKind, @bodySha,
         @flags, @ipHash, @status, @frame, @guard, @createdAt, @reason, @idemKey, @termsVersion, @termsSha)`,
   ).run({
@@ -413,9 +426,11 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     status === 'rejected' && !stopped ? reviseState(db, row, nowMs) : unrevisedState();
   // BOOK-174: how the filing was read, from the five stored columns — the report is derived
   // here, once, so every surface prints the same three lines.
-  const { disposition, report } = dispositionFieldsOf(db, row);
+  const { disposition, carrierKind } = dispositionFieldsOf(db, row);
   return {
     id: row.id,
+    // BOOK-218: the reader's number, from the stored column — never an id cut, never a rowid.
+    number: row.number,
     chapter: row.chapter,
     anchor: resolveAnchor(db, row),
     author: row.author,
@@ -457,10 +472,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     // A landed filing has no receipt columns of its own — the chapter it entered and that
     // chapter's revision are the receipt. Never invented: no chapter row, no `applied`.
     applied: landedReceipt ?? changeReceipt ?? rowReceipt,
-    // BOOK-174: `null` for every row written before v27 — no reading was ever recorded, and
-    // the report is derived from the chain rather than from a second flag.
+    // BOOK-174: `null` for every row written before v27 — no reading was ever recorded.
     disposition,
-    report,
+    carrierKind,
   };
 }
 
