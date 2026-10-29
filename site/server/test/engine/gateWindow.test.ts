@@ -21,7 +21,8 @@ import { toIso } from '../../src/util/time.ts';
 import { chapterText, createEngineFixture, type Fixture } from './helpers.ts';
 
 /** The sentence the reaper writes, built from the window it actually ran with. */
-const sentenceOf = (minutes: number): string => `гейт не ответил за ${String(minutes)} мин — проход остановлен`;
+const sentenceOf = (minutes: number): string =>
+  `проверка не ответила за ${String(minutes)} мин — текст возвращён к прежней редакции, заявка отклонена`;
 
 function fixtureWith(gateTtlMs?: string): Fixture {
   return createEngineFixture({
@@ -75,7 +76,7 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
     }
   });
 
-  it('escalates a dispatch past the window with a sentence, never a code', () => {
+  it('refuses a dispatch past the window with a sentence, never a code', () => {
     const fixture = fixtureWith();
     try {
       const assignment = landedStep(fixture);
@@ -97,9 +98,9 @@ describe('the gate window (GATE_TTL_MS) is a budget for reading', () => {
         outcome: string;
         reason: string;
       };
-      expect(change.status).toBe('escalated');
-      expect(change.outcome).toBe('gate_timeout');
-      expect(change.reason).toBe(sentenceOf(20));
+      // The gate window is a refusal: the text is back to its pre-pass revision, the change is
+      // void·dropped, and the sentence is the reader's own copy of the same fact.
+      expect(change).toEqual({ status: 'void', outcome: 'dropped', reason: sentenceOf(20) });
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
       expect(dispatchOf(fixture, assignment.stepId)).toBeUndefined();
     } finally {

@@ -253,7 +253,7 @@ describe('the conditional gate — a flag makes the rights verdict mandatory', (
 });
 
 describe('REFUSED — the step stops and the change carries the sentence', () => {
-  it('closes escalated:rights with changes.outcome=rights and the rule’s own line', () => {
+  it('refuses the change with the rule’s own line and puts the text back', () => {
     const fixture = createEngineFixture({ chapters: { 2: chapterText('Глава 2', [CLEAN]) } });
     try {
       const change = fixture.engine.enqueue({ kind: 'operator', chapter: 2, intent: 'переписать сцену с актом' });
@@ -267,7 +267,9 @@ describe('REFUSED — the step stops and the change carries the sentence', () =>
       expect(refused.result).toMatchObject({ verdict: 'REFUSED', action: 'escalate', closed: true });
 
       const row = store.getChange(fixture.db, change.id);
-      expect(row).toMatchObject({ status: 'escalated', outcome: 'rights', reason: RIGHTS_COPY.quote });
+      // A refusal is one of the two ends: void·dropped with the gate's sentence (no `escalated`),
+      // and the chapter it wrote is back to the revision it started from.
+      expect(row).toMatchObject({ status: 'void', outcome: 'dropped', reason: RIGHTS_COPY.quote });
       // The card's word and the change's reason are the public surface: the sentence, not a verdict.
       expect(row?.reason).toBe('не принято: чужая цитата без источника');
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('rights');
@@ -295,7 +297,7 @@ describe('REFUSED — the step stops and the change carries the sentence', () =>
       // No comment row was touched by the text-surface refusal — there is none in this fixture,
       // and the change's own record is the only place the refusal lands.
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM comments').get()).toEqual({ n: 0 });
-      expect(store.getChange(fixture.db, change.id)?.status).toBe('escalated');
+      expect(store.getChange(fixture.db, change.id)?.status).toBe('void');
     } finally {
       fixture.close();
     }

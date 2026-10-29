@@ -17,6 +17,10 @@
  *
  * The hint is one line per gate, chosen from the stored verdict columns, never from the text of
  * the reason: a model can write a reason, a string test is not a verdict (`repo.ts` `refusalOf`).
+ *
+ * The **triage** bound — the claim, the backoffs and the refusal of a read that never happened —
+ * lives beside this ledger in `triage.ts`: it is a queue, this is what the ledger says about a
+ * reader's tries.
  */
 
 import type { CommentRefusal, CommentRevise } from '@book/shared';
@@ -107,8 +111,9 @@ export function openAttempt(db: Db, commentId: string): { n: number } | undefine
     .get(commentId) as { n: number } | undefined;
 }
 
-// The claim, the schedule and the one stored verdict live in `triageLedger.ts` (the arch bound);
-// they are re-exported here, so every call site still imports one module.
+// The claim, the schedule, the one stored verdict and the ladder's counters live in
+// `triageLedger.ts` (the arch bound); they are re-exported here, so every call site still
+// imports one module for the ledger.
 export * from './triageLedger.ts';
 
 /** The comment columns a state is read from; a locked row has no identity of its own. */

@@ -371,6 +371,13 @@ export const FAILED_ATTEMPT_LINE = 'машина не смогла внести 
 /** An attempt that came back with nothing usable: one sentence, and the filing still waits. */
 export const ATTEMPT_LINE = 'попытка не удалась — правка ждёт';
 
+/**
+ * BOOK-219 — the sentence a filing ends with when no read could answer it: no code, no hour, no
+ * queue, and no promise of another try. The row is `rejected`, so the word above the line is
+ * «не принято»; the sentence says the read, not the idea, was what failed.
+ */
+export const TRIAGE_REFUSED_LINE = 'прочитать заявку не удалось — заявка отклонена';
+
 /** A note (no kind, no proposed text) never lands text: its terminal is «замечание сохранено». */
 export const NOTE_SAVED_LINE = 'замечание сохранено';
 

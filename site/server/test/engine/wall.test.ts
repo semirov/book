@@ -181,9 +181,10 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
     }
   });
 
-  it('stops extending at the wall, then the reaper escalates the step and releases the lease', () => {
+  it('stops extending at the wall, then the reaper refuses the step', () => {
     const fixture = chapterOneFixture();
     try {
+      const before = fixture.readChapter(1);
       const assignment = landedPass(fixture);
       const wallAt = wallOf(fixture, assignment.stepId);
       const wallIso = toIso(wallAt);
@@ -207,15 +208,13 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       expect(lease.released_at).not.toBeNull();
       expect(lease.release_reason).toBe('escalated');
 
-      const change = fixture.db.prepare('SELECT status, outcome, reason FROM changes').get() as {
-        status: string;
-        outcome: string;
-        reason: string;
-      };
-      expect(change.status).toBe('escalated');
-      expect(change.outcome).toBe('gate_timeout');
-      expect(change.reason).toMatch(/^не дошло: /u);
+      const change = fixture.db.prepare('SELECT status, outcome, reason FROM changes').get() as Record<string, string>;
+      expect(change.status).toBe('void');
+      expect(change.outcome).toBe('dropped');
+      expect(change.reason).toContain('отведённое время');
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
+      // The wall is a refusal: the chapter is back to the text the pass found.
+      expect(fixture.readChapter(1)).toBe(before);
 
       // A walled step is stopped, never re-issued: the next poll never hands it out again.
       const reissued = fixture.engine.next({ for: 'fwd', session: 'writer-2' }) as WriterAssignment | null;

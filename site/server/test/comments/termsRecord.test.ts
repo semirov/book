@@ -2,7 +2,7 @@ import { RIGHTS_ASSIGNMENT, SUBMIT_LINE, TERMS_VERSION, acceptedTermsText } from
 import { describe, expect, it } from 'vitest';
 
 import { insertComment, readCommentRow } from '../../src/comments/repo.ts';
-import { closeChange } from '../../src/engine/close.ts';
+import { closeChange } from '../../src/engine/changeClose.ts';
 import * as store from '../../src/engine/store.ts';
 import type { EngineDeps } from '../../src/engine/types.ts';
 import { acceptComment } from '../../src/feedback/accept.ts';

@@ -66,6 +66,9 @@ describe('land on a closed step', () => {
 
       fixture.clock.advance(fixture.config.stepWallMs + 60_000);
       expect(fixture.engine.reap().stepWalls).toEqual([assignment.stepId]);
+      // The refusal put the chapter back: exactly one new revision (the restore) and no more.
+      const afterRefusal = revisions(fixture, 1);
+      expect(afterRefusal).toBe(before + 1);
 
       // A newer text is on disk — bytes no gate hashed, because the step is already closed.
       fixture.writeChapterBlocks(1, 'Начало', ['Первый абзац.', 'Поздний абзац.']);
@@ -75,7 +78,7 @@ describe('land on a closed step', () => {
 
       // Refused is refused: the revision the gate never saw is not published, and the step keeps
       // the revision it had when the reaper stopped it.
-      expect(revisions(fixture, 1)).toBe(before);
+      expect(revisions(fixture, 1)).toBe(afterRefusal);
       expect(store.getStep(fixture.db, assignment.stepId)?.rev_after).toBe(revBefore);
     } finally {
       fixture.close();

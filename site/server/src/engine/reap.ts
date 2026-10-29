@@ -1,20 +1,32 @@
 /**
  * The reaper (ARCHITECTURE.md §6A.11, §6B.4 rule 5, §6B.7).
  *
- * A dead session must never block a chapter, and a dead gate must never hold a step open
- * forever. Every 15 s (and at the start of every `next`) the engine expires leases, takes a
- * write that landed without being reported, re-issues a job whose session vanished, and
- * escalates a step whose gate never answered. Nothing is silently restarted: each action is
- * an event, so "the engine recovered" is auditable like everything else.
+ * A dead session must never block a chapter, a dead gate must never hold a step open forever,
+ * and a queued filing must never wait forever either. Every 15 s (and at the start of every
+ * `next`) the engine expires leases, takes a write that landed without being reported, re-issues
+ * a job whose session vanished, stops a step whose gate or wall ran out — and refuses a change
+ * the queue never reached. Nothing is silently restarted: each action is an event, so "the
+ * engine recovered" is auditable like everything else.
+ *
+ * Every stop here is the **refusal** (`refuse.ts`): the text goes back to its pre-pass revision,
+ * the change ends `void · dropped` with a sentence, and no filing is left in a state that has no
+ * answer. This tick is the enforcer of the queue's deadline and of the money stop.
  */
-
-import { FAILURE_LINES, parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import type { Db } from '../db/db.ts';
+import { budgetCapsOf, budgetSnapshot } from '../budget.ts';
 import { toIso } from '../util/time.ts';
-import { closeStep, currentRev } from './close.ts';
-import { lastLeaseOfStep, releaseLease, stampEscalatedRelease, stepWallOf } from './leases.ts';
+import { currentRev } from './close.ts';
+import { releaseLease, stepWallOf } from './leases.ts';
+import {
+  BUDGET_STOP_REASON,
+  gateWindowReason,
+  lostSessionReason,
+  queueDeadlineReason,
+  refuseChange,
+  stepWallReason,
+} from './refuse.ts';
 import * as store from './store.ts';
 import { changeForStep } from './helpers.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
@@ -35,6 +47,10 @@ export type ReapReport = {
   /** Steps whose session vanished and whose job is re-issued by the next poll. */
   reissued: string[];
   gateTimeouts: string[];
+  /** The queue's own deadline and the money stop: changes this tick refused. */
+  refused: string[];
+  /** Refusals that could not be made (`TEXT_STUCK`) — a stuck chapter, reported not swallowed. */
+  refusalFailures: Array<{ changeId: string; code: string }>;
   laneReleased: string | null;
 };
 
@@ -103,15 +119,17 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     recovered: [],
     reissued: [],
     gateTimeouts: [],
+    refused: [],
+    refusalFailures: [],
     laneReleased: null,
   };
 
   // ── the step wall (BOOK-34) ───────────────────────────────────────────────
   // The engine beats a step's lease by itself while the step is open, so a lease expiry is no
   // longer the thing that bounds a step. The wall is: past the step's window (`stepWallOf` —
-  // its opening, or its reopen if that is later) + STEP_WALL_MS the step is stopped and
-  // escalated, and its lease released, however healthy the session looks. A walled step is
-  // escalated, never re-issued — three attempts at 45 minutes each is a loop.
+  // its opening, or its reopen if that is later) + STEP_WALL_MS the step is stopped and its
+  // text put back, however healthy the session looks. A walled step is refused, never re-issued
+  // — three attempts at 45 minutes each is a loop.
   for (const step of store.listOpenSteps(db)) {
     // §10.8: a desperate attempt is a dispatch (180 s), not work, and its short bound runs from
     // the attempt's own lease — never from the step's opening, or the wall would close the sixth
@@ -144,29 +162,20 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
       report.stepWalls.push(step.step_id);
       continue;
     }
-    const lease = store.liveLeaseForStep(db, step.step_id) ?? lastLeaseOfStep(db, step.step_id);
     try {
-      closeStep(
-        deps,
-        step.step_id,
-        {
-          outcome: 'escalated',
-          seamsOut: parseSeams(null),
-          // The note is read by an operator and copied to a page: a sentence, never a constant.
-          note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
-          model: null,
-          tokensIn: 0,
-          tokensOut: 0,
-          // The existing wall vocabulary: a step that did not close in time is a stop, and its
-          // draft premise stays queued to the next pass rather than being read as a refusal.
-          escalation: 'escalated:gate_timeout',
-          changeReason: FAILURE_LINES.outOfTime,
-        },
+      refuseChange(deps, {
+        stepId: step.step_id,
+        // The reader's sentence: the pass outlived its window, so its text does not stand.
+        because: stepWallReason(Math.round(wall / 60_000)),
+        // The note is read by an operator and copied to a page: the step's own words, not the
+        // filing's, so the two rows still tell one story each (BOOK-34's wall).
+        note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
+        cause: 'escalated:gate_timeout',
+        // A draft that wrote its chapter keeps it: a stop by the clock is not a refusal of the
+        // work, and its premise is settled by the text (BOOK-7).
+        premiseCause: 'failed',
         now,
-      );
-      // The stop owns the lease: one the reaper already released as `expired` must now read
-      // `escalated`, or the step and its lease tell two different stories (§BOOK-34).
-      if (lease) stampEscalatedRelease(db, lease.id);
+      });
       report.stepWalls.push(step.step_id);
     } catch (error) {
       // One wedged step must not stop the tick (nor the boot): the lease, gate and lane passes
@@ -257,20 +266,13 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         continue;
       }
       if (attempts > 4) {
-        closeStep(
-          deps,
-          step.step_id,
-          {
-            outcome: 'escalated',
-            seamsOut: [],
-            note: 'the session did not bring the step back',
-            model: null,
-            tokensIn: 0,
-            tokensOut: 0,
-            escalation: 'escalated:gate_timeout',
-          },
+        refuseChange(deps, {
+          stepId: step.step_id,
+          because: lostSessionReason(false),
+          cause: 'escalated:gate_timeout',
+          premiseCause: 'failed',
           now,
-        );
+        });
         report.gateTimeouts.push(step.step_id);
         continue;
       }
@@ -285,15 +287,13 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
 
     // Landed, but the session vanished: the gates may continue under a fresh lease.
     if (attempts > 4) {
-      closeStep(deps, step.step_id, {
-        outcome: 'escalated',
-        seamsOut: parseSeams(null),
-        note: 'the session did not come back to close the step',
-        model: null,
-        tokensIn: 0,
-        tokensOut: 0,
-        escalation: 'escalated:gate_timeout',
-      }, now);
+      refuseChange(deps, {
+        stepId: step.step_id,
+        because: lostSessionReason(true),
+        cause: 'escalated:gate_timeout',
+        premiseCause: 'failed',
+        now,
+      });
       continue;
     }
     report.reissued.push(step.step_id);
@@ -302,7 +302,6 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   // ── gates that never answered ─────────────────────────────────────────────
   // The window is the reading budget (`GATE_TTL_MS`), and the sentence says how long it was: an
   // operator reads a minute count, never a config name, and the code stays in the event payload.
-  const gateTimeoutNote = `гейт не ответил за ${String(Math.round(deps.config.gateTtlMs / 60_000))} мин — проход остановлен`;
   const staleDispatches = db
     .prepare('SELECT * FROM gate_dispatches WHERE expires_at <= ?')
     .all(at) as Array<{ step_id: string; role: 'editor' | 'consultant' | 'rights' }>;
@@ -311,17 +310,52 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
     store.deleteDispatch(db, dispatch.step_id, dispatch.role);
     if (!step || step.outcome !== null) continue;
     if (store.getVerdict(db, dispatch.step_id, dispatch.role)) continue;
-    closeStep(deps, step.step_id, {
-      outcome: 'escalated',
-      seamsOut: parseSeams(null),
-      note: gateTimeoutNote,
-      model: null,
-      tokensIn: 0,
-      tokensOut: 0,
-      escalation: 'escalated:gate_timeout',
-      changeReason: gateTimeoutNote,
-    }, now);
+    refuseChange(deps, {
+      stepId: step.step_id,
+      because: gateWindowReason(Math.round(deps.config.gateTtlMs / 60_000)),
+      cause: 'escalated:gate_timeout',
+      premiseCause: 'failed',
+      now,
+    });
     report.gateTimeouts.push(step.step_id);
+  }
+
+  // ── the queue's own deadline, and the money stop ──────────────────────────
+  // The finite queue (owner's invariant, 2026-10-29): a filing that never reached a pass cannot
+  // wait forever. This tick is the enforcer — no model, no operator.
+  const deadline = deps.config.queueDeadlineMs;
+  const hours = Math.round(deadline / 3_600_000);
+  // The book's cap ends writing for good (a day's pause lifts at 00:00 UTC, a book's does not),
+  // so a queued filing is refused at once instead of being parked behind a stop.
+  const money = budgetSnapshot(db, budgetCapsOf(deps.config), now);
+  const drafting = db.prepare(
+    `SELECT 1 AS one FROM steps WHERE outcome IS NULL AND pass = 'draft' AND chapter = ?`,
+  );
+  for (const change of store.listPending(db)) {
+    if (change.status !== 'pending') continue;
+    // A pass is running on that chapter right now: the premise is the pass's own filing, and the
+    // step wall (45 min) bounds it. Refusing it under the session would decide a filing nobody
+    // has answered yet — `reconcilePremises` keeps the same rule.
+    if (drafting.get(change.chapter) !== undefined) continue;
+    const age = now - Date.parse(change.enqueued_at);
+    // A timestamp nobody can read is not a reason to keep a filing: it reads as overdue.
+    const overdue = !Number.isFinite(age) || age >= deadline;
+    const stopped = money.state === 'stop';
+    if (!stopped && !overdue) continue;
+    try {
+      refuseChange(deps, {
+        changeId: change.id,
+        because: stopped ? BUDGET_STOP_REASON : queueDeadlineReason(hours),
+        cause: stopped ? 'escalated:budget' : 'escalated:gate_timeout',
+        now,
+      });
+      report.refused.push(change.id);
+    } catch (error) {
+      report.refusalFailures.push({
+        changeId: change.id,
+        code: isEngineError(error) ? error.code : 'UNKNOWN',
+      });
+    }
   }
 
   // ── a lane whose holder died ──────────────────────────────────────────────

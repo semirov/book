@@ -113,7 +113,9 @@ describe('the wave bound on the shipped budget (BOOK-DOC-4 rule 3, BOOK-59)', ()
 
       // The stop is the normal way to go deeper: a decision line, not a budget failure.
       const row = changeRow(fixture, change.id);
-      expect(row.status).toBe('escalated');
+      // A stop is the refusal (owner's invariant): the change has no `escalated` place to wait in.
+      expect(row.status).toBe('void');
+      expect(row.outcome).toBe('dropped');
       expect(row.reason).toBe('правка сделала одну волну — вторая волна только по решению владельца');
       const cascade = cascadeOf(fixture, change.id);
       expect(cascade.status).toBe('escalated');

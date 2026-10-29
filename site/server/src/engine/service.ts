@@ -9,7 +9,6 @@
 import {
   FAILURE_LINES,
   NOTE_MAX_CHARS,
-  REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
   normalizeSeamBoundary,
   parseSeams,
@@ -45,6 +44,7 @@ import { beatLease, openStepForClose, releaseLease } from './leases.ts';
 import { normalizeProvenance, requirePipelineModel } from './model.ts';
 import { reconcilePremises } from './premise.ts';
 import { createQueue } from './queue.ts';
+import { refuseChange, stopCauseOf, type RefuseInput } from './refuse.ts';
 import { reap, type ReapReport } from './reap.ts';
 import { closeUnfiledDraft } from './filings.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
@@ -257,24 +257,26 @@ export function createEngine(deps: EngineDeps) {
       if (seamTouchesChapter(seam.boundary, chapter)) continue;
       if (step.pass === 'cascade') {
         // C2: a repair that needs a chapter outside this step's own reach is not a malformed
-        // report — it is an escalation with the pair recorded (§6A.6).
-        closeStep(
-          deps,
-          step.step_id,
-          {
-            outcome: 'escalated',
-            seamsOut: seams,
-            note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
-            model,
-            tokensIn: options.tokensIn ?? 0,
-            tokensOut: options.tokensOut ?? 0,
-            escalation: 'escalated:origin',
-            changeReason: FAILURE_LINES.ourFailure,
-            expiredLeaseId: expired ? lease.id : null,
-          },
-          at,
-        );
-        return { stepId: step.step_id, outcome: 'escalated', cascadeId: step.cascade_id, changeStatus: 'escalated' };
+        // report — it is a refusal with the pair recorded (§6A.6). Its text goes back with it.
+        const stopped = refuseChange(deps, {
+          stepId: step.step_id,
+          because: 'починка требует главы позади волны — нужно решение',
+          note: (note ?? `починка требует главы за пределами ${chapter}`).slice(0, NOTE_MAX_CHARS),
+          now: at,
+          cause: 'escalated:origin',
+          seamsOut: seams,
+          model,
+          tokensIn: options.tokensIn ?? 0,
+          tokensOut: options.tokensOut ?? 0,
+          provenance,
+          expiredLeaseId: expired ? lease.id : null,
+        });
+        return {
+          stepId: step.step_id,
+          outcome: 'escalated',
+          cascadeId: stopped.cascadeId,
+          changeStatus: stopped.changeStatus,
+        };
       }
       refuse('INVALID_SEAM', 422, `step ${step.step_id} cannot claim seam ${String(seam.boundary)}`);
     }
@@ -393,40 +395,32 @@ export function createEngine(deps: EngineDeps) {
 
   // ── escalate / beat ───────────────────────────────────────────────────────
 
+  /**
+   * The writer's own stop — one of the two ends a filing has (owner's invariant, 2026-10-29).
+   * It is the refusal (`refuse.ts`), never an `escalated` change: the text this pass landed goes
+   * back to the pre-pass revision, the change closes `void · dropped` with the writer's public
+   * sentence, and the reader hears «не принято» in words. `cause: 'failed'` still says the pass
+   * broke rather than refused the work: a draft that wrote its chapter keeps that edition.
+   */
   function escalate(leaseId: string, because: string, options: EscalateOptions = {}): DoneResult {
     const at = options.now ?? deps.clock.now();
-    const { lease, step, expired } = leaseStep(leaseId);
-    const reason = because.toLowerCase();
-    const outcome: CascadeOutcome = reason.includes('budget')
-      ? 'escalated:budget'
-      : reason.includes('oscillation')
-        ? 'escalated:oscillation'
-        : reason.includes('delta')
-          ? 'escalated:delta'
-          : reason.includes('ending')
-            ? 'escalated:ending'
-            : reason.includes('timeout')
-              ? 'escalated:gate_timeout'
-              : 'escalated:origin';
-    const result = closeStep(
-      deps,
-      step.step_id,
-      {
-        outcome: 'escalated',
-        seamsOut: [],
-        note: because.slice(0, NOTE_MAX_CHARS),
-        model: options.model ?? null,
-        tokensIn: options.tokensIn ?? 0,
-        tokensOut: options.tokensOut ?? 0,
-        provenance: options.provenance,
-        escalation: outcome,
-        changeReason: because.slice(0, REASON_MAX_CHARS),
-        premiseCause: options.cause ?? 'refused',
-        expiredLeaseId: expired ? lease.id : null,
-      },
-      at,
-    );
-    return { stepId: step.step_id, outcome: 'escalated', cascadeId: result.cascadeId, changeStatus: 'escalated' };
+    const result = refuseChange(deps, {
+      leaseId,
+      because,
+      now: at,
+      cause: stopCauseOf(because),
+      premiseCause: options.cause ?? 'refused',
+      model: options.model ?? null,
+      tokensIn: options.tokensIn ?? 0,
+      tokensOut: options.tokensOut ?? 0,
+      provenance: options.provenance ?? null,
+    });
+    return {
+      stepId: result.stepId ?? '',
+      outcome: 'escalated',
+      cascadeId: result.cascadeId,
+      changeStatus: result.changeStatus,
+    };
   }
 
   function beat(leaseId: string): Record<string, unknown> {
@@ -480,6 +474,8 @@ export function createEngine(deps: EngineDeps) {
     done,
     seen,
     escalate,
+    /** The refusal's own door (owner's invariant): one step or one queued change, one sentence. */
+    refuse: (input: RefuseInput) => refuseChange(deps, input),
     reopen: (stepId: string, because: string) => reopenStep(deps, stepId, because),
     beat,
     enqueue: queue.enqueue,

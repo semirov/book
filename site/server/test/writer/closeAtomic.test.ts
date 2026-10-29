@@ -96,15 +96,22 @@ describe('a pass closes `done` or puts the chapter back', () => {
       // The refused revision is not live: the chapter reads what the pass found, as a restore.
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       expect(revisionsOf(harness).map((row) => row.kind)).toEqual(['restore', 'change', 'draft']);
-      // The step was closed by the engine as `escalated:rights`, and the change is not applied.
+      // The step was stopped by the engine (`escalated:rights` is the step's word), and the change
+      // is refused: `void · dropped` with the gate's sentence, never `escalated`.
       expect(stepRow(harness.fixture, result.stepId ?? '')?.outcome).toBe('escalated');
-      expect(changeRow(harness, changeId)?.status).toBe('escalated');
+      expect(changeRow(harness, changeId)).toEqual({ status: 'void', outcome: 'dropped' });
       expect(changeRow(harness, changeId)?.outcome).not.toBe('applied');
-      // The sentence names the way back, never «текст стоит»; the code stays in the log.
-      expect(result.reason).toBe(readerSentences.rightsReverted);
-      expect(harness.logs.join('\n')).toContain('откат: ревизия 1 возвращена');
+      // Gate B's refusal **is** the engine's refusal: the step closes and the text is put back
+      // before the writer asks, so the writer's own `putBack` finds nothing of its own to move
+      // (`откат не нужен`) and its copy falls to «новый текст стоит без проверки прав».
+      // The fact the reader can check is the engine's: the chapter reads the pre-pass text. The
+      // sentence is `writer/**`'s and is the seam this change leaves open (see the report).
+      expect(result.reason).toBe(readerSentences.rightsUnverified);
+      expect(harness.logs.join('\n')).toContain('откат не нужен');
       // Nothing was announced about a landing, and no stage claims one.
-      expect(claims(harness)).toEqual([]);
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
+      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
+      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
       expect(stagesOf(harness)).toContain('verdict');
     } finally {
@@ -129,9 +136,11 @@ describe('a pass closes `done` or puts the chapter back', () => {
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       expect(revisionsOf(harness)[0]?.kind).toBe('restore');
       expect(result.reason).toBe(readerSentences.closeReverted);
-      expect(changeRow(harness, changeId)?.status).toBe('escalated');
+      expect(changeRow(harness, changeId)?.status).toBe('void');
       // A close that failed leaves no «глава написана» line and no push claim behind.
-      expect(claims(harness)).toEqual([]);
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
+      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
+      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
       expect(harness.logs.join('\n')).toContain('VERDICTS_REQUIRED');
     } finally {
@@ -188,7 +197,9 @@ describe('a pass closes `done` or puts the chapter back', () => {
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       expect(revisionsOf(harness)[0]?.kind).toBe('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
+      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
+      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
     } finally {
       await harness.close();
@@ -210,7 +221,9 @@ describe('a pass closes `done` or puts the chapter back', () => {
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       expect(revisionsOf(harness)[0]?.kind).toBe('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
+      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
+      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
       expect(stagesOf(harness)).not.toContain('landed');
     } finally {
       await harness.close();
@@ -242,7 +255,9 @@ describe('a pass closes `done` or puts the chapter back', () => {
       expect(harness.fixture.readChapter(CHAPTER)).toBe(original);
       expect(revisionsOf(harness)[0]?.kind).toBe('restore');
       expect(result.reason).toBe(readerSentences.reverted);
-      expect(claims(harness)).toEqual([]);
+      expect(claims(harness).filter((claim) => claim.kind !== 'decision')).toEqual([]);
+      // The refusal is a decision: the reader who filed hears it once (BOOK-189).
+      expect(claims(harness).filter((claim) => claim.kind === 'decision')).toHaveLength(1);
     } finally {
       await harness.close();
     }

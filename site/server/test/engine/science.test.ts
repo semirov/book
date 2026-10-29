@@ -1,4 +1,4 @@
-import type { Finding, WriterAssignment } from '@book/shared';
+import { FAILURE_LINES, type Finding, type WriterAssignment } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import type { GateAssignment } from '../../src/engine/gates.ts';
@@ -10,7 +10,7 @@ import { PIPELINE_MODEL, chapterText, createEngineFixture, runStubStep } from '.
  *
  * The stub consultant answers `GAP` with a blocker on every revision. Past the cycle cap the
  * step is stopped, never published, the ripple closes `escalated:science`, nothing further
- * opens, and the change ends `escalated`/`science` with an alert of its own kind. Below the
+ * opens, and the change is refused (`void · dropped`) with the physics stop's own alert. Below the
  * cap the same verdict refuses a close (`BLOCKER_UNRESOLVED`) instead of letting the writer
  * walk away from it. The mirror (an editor blocker still publishing with its finding) is
  * today's case in `gates.test.ts`.
@@ -56,6 +56,11 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       },
     });
     try {
+      const before: Record<number, string | null> = {
+        5: fixture.readChapter(5),
+        6: fixture.readChapter(6),
+        7: fixture.readChapter(7),
+      };
       const change = fixture.engine.enqueue({ kind: 'accepted_comment', chapter: 6, intent: 'убрать абзац' });
       const origin = runStubStep(fixture, {
         title: 'Середина',
@@ -98,14 +103,20 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       expect(cascade.steps).toHaveLength(3);
       expect(cascade.steps.every((step) => step.step.outcome !== null)).toBe(true);
 
-      // (iv) the change ends escalated/science, with the public sentence and its own alert.
-      expect(trace.change.change.status).toBe('escalated');
-      expect(trace.change.change.outcome).toBe('science');
-      expect(trace.change.change.reason).toMatch(/^не дошло: /u);
+      // (iv) the change is refused with the physics stop's own words and alert. BOOK-218 owns
+      // the sentence (`CLOSE_COPY.science`), BOOK-219 owns the sink: no `escalated` change.
+      expect(trace.change.change.status).toBe('void');
+      expect(trace.change.change.outcome).toBe('dropped');
+      expect(trace.change.change.reason).toBe(FAILURE_LINES.ourFailure);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('science');
 
-      // The state overlay names the same stop, so a reload does not turn it into a finding.
-      expect(readUnresolved(fixture.db).map((entry) => entry.reason)).toContain('science');
+      // Every chapter the refused ripple wrote is back to its pre-pass revision: a refusal
+      // means no text of the change stands.
+      for (const chapter of [5, 6, 7]) {
+        expect(fixture.readChapter(chapter)).toBe(before[chapter]);
+      }
+      // The state overlay still names the seam: the cascade carries its own stop vocabulary.
+      expect(readUnresolved(fixture.db).map((entry) => entry.changeId)).toContain(change.id);
     } finally {
       fixture.close();
     }
@@ -144,7 +155,8 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       // The prose finding is published only when the physics pass holds; here it does not, so
       // the ripple stops on the physics word and no step carries `published_with_finding`.
       expect(cascade.outcome).toBe('escalated:science');
-      expect(trace.change.change.outcome).toBe('science');
+      expect(trace.change.change.status).toBe('void');
+      expect(trace.change.change.outcome).toBe('dropped');
       expect(cascade.steps.map((step) => step.step.outcome)).not.toContain('published_with_finding');
     } finally {
       fixture.close();

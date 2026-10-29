@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { TRIAGE_REFUSED_LINE } from '@book/shared';
+
 import { appendCommentEvent } from '../src/comments/repo.ts';
 import { createEngine } from '../src/engine/service.ts';
 import { EngineBridge } from '../src/engineState/bridge.ts';
@@ -343,5 +345,77 @@ describe('BOOK-DOC-84 §10.1 — `filing:reading`, one frame per attempt', () =>
     h.clock.advance(60_000);
     engine.tick();
     expect(frames.filter((frame) => frame.type === 'filing:reading')).toEqual([]);
+  });
+});
+
+describe('BOOK-206 B5 — a refused read reaches the page as a decision', () => {
+  it('drains `triage.failed` of a refused triage and `triage.abandoned`, once each', async () => {
+    const h = await boot();
+    const id = await post(h);
+    // The engine's refusal, as `refuseTriage` leaves it: the row is decided, the attempt settled,
+    // and no hour is named anywhere — the filing has left every queue.
+    const at = '2026-10-25T12:10:00.000Z';
+    h.db.prepare(`UPDATE comments SET status = 'rejected', reason = ?, decided_at = ? WHERE id = ?`).run(
+      TRIAGE_REFUSED_LINE,
+      at,
+      id,
+    );
+    h.db
+      .prepare(`UPDATE comment_attempts SET outcome = 'refused', tries = 3, next_at = NULL WHERE comment_id = ?`)
+      .run(id);
+    const frames: Frame[] = [];
+    const engine = bridge(h, frames, { replay: true });
+
+    appendCommentEvent(h.db, id, 'triage.failed', at, {
+      code: 'TRIAGE_DEADLINE',
+      attempt: 1,
+      try: 3,
+      cap: true,
+      retryAt: null,
+      reason: TRIAGE_REFUSED_LINE,
+    });
+
+    engine.tick();
+
+    const refused = frames.find((frame) => frame.type === 'comment:decision')?.data;
+    expect(refused).toMatchObject({
+      id,
+      chapter: 8,
+      // The row's own sentence is the one the DTO prints — never «остаётся в очереди».
+      status: 'rejected',
+      reason: TRIAGE_REFUSED_LINE,
+      changeId: null,
+      applied: null,
+    });
+    expect(refused?.attempt).toEqual({ state: 'failed', retryAt: null });
+    // A refused triage has no queue word and no hour in its frame: the page prints the refusal,
+    // and nothing on it can be read as a wait.
+    const printed = JSON.stringify(refused);
+    expect(printed).not.toContain('в очереди');
+    expect(printed).not.toContain('ждёт');
+    expect(printed).not.toContain('00:00');
+
+    // A second failure kind on the same refusal is still one frame with no hour: the abandoned
+    // claim carries none, and the settled attempt row has none either.
+    appendCommentEvent(h.db, id, 'triage.abandoned', '2026-10-25T12:20:00.000Z', {
+      attempt: 2,
+      tries: 3,
+      detail: 'claim-abandoned',
+    });
+    const seen = frames.length;
+    engine.tick();
+
+    const abandoned = frames
+      .slice(seen)
+      .filter((frame) => frame.type === 'comment:decision')
+      .map((frame) => frame.data);
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]).toMatchObject({ status: 'rejected', reason: TRIAGE_REFUSED_LINE });
+    expect(abandoned[0]?.attempt).toEqual({ state: 'failed', retryAt: null });
+
+    // One frame per transition: the cursor has already passed both rows.
+    const after = frames.length;
+    engine.tick();
+    expect(frames.slice(after).filter((frame) => frame.type === 'comment:decision')).toEqual([]);
   });
 });

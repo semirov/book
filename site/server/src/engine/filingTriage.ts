@@ -12,33 +12,34 @@
  *     against an envelope rebuilt from rows, one `INSERT OR IGNORE` money row, and one write of
  *     `comment_attempts.verdict` + `comments.audit_*`. A second answer for the same attempt is
  *     `{stored:false, already:true}` and charges nothing.
- *   · `POST /internal/triage/fail {commentId, n, code}` — the try was spent, not the filing:
- *     the backoff goes on the attempt row, one `comment_events('triage.failed')` records the
- *     code, and at the cap the row is **not** left out of every query: the attempt goes back to
- *     the next UTC midnight with a fresh budget, the row's line names the time, and an engine
- *     alert makes the rate visible (BOOK-206 B5). A claim that expired with its process is
- *     settled the same way, once, with a `triage.abandoned` marker (M4). The row stays `new`.
+ *   · `POST /internal/triage/fail {commentId, n, code}` — the try was spent, not the filing: the
+ *     backoff goes on the attempt row and one `comment_events('triage.failed')` records the code.
+ *     The third failure widens the reading (`as-document`), the fifth hands over to the
+ *     deterministic sixth (`desperate`, no model call). The refusals fire from `next` for the rows
+ *     no `fail` reaches — a cap nobody can place, claims that died with their processes, and a
+ *     filing past `TRIAGE_DEADLINE_MS`: the attempt is settled, the row `rejected` with
+ *     `TRIAGE_REFUSED_LINE`, one alert raised. No filing is left `new` waiting for a provider that
+ *     is down.
  *
- * What never happens here: a filing is never refused, never escalated and never deleted. The
- * ladder that places it lives in `feedback/disposition.ts` and runs in the site (ADR-045 §5).
+ * What never happens here: a filing is never refused for its **words** (that is gate B, gate C and
+ * the ladder in `feedback/disposition.ts`) — this refusal is about a read that never happened.
  */
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { normalizeInterventionKind, validateIntent } from '@book/shared';
+import { TRIAGE_REFUSED_LINE, normalizeInterventionKind, validateIntent } from '@book/shared';
 
 import { assertBudgetAllowsPass, budgetCapsOf } from '../budget.ts';
 import {
   TRIAGE_MAX_TRIES,
   claimTriage,
-  clearRetryLine,
   dueTriage,
   readAttempt,
-  rescheduleTomorrow,
   scheduleRetry,
   triageBackoffMs,
 } from '../comments/attempts.ts';
+import { overdueTriage, refuseTriage } from '../comments/triage.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 import { buildEnvelope, withWorld, type FilingEnvelope } from '../feedback/envelope.ts';
@@ -84,9 +85,10 @@ export type TriageVerdictResult =
   | { stored: false; already: true };
 
 /**
- * One failed try's answer. `cap` is the day's last try — and, since BOOK-206 B5, not a terminal:
- * the engine has already put the attempt back to the next UTC midnight (`nextAt`) with a fresh
- * budget, so `tries` in the result is the spent count and the row is due again tomorrow.
+ * One failed try's answer. `cap` is the fifth and last bought call: the sixth is
+ * **desperate** and needs no model, and the row leaves every queue when that one is settled — the
+ * attempt refused, the row `rejected`, `nextAt: null`. Below the cap `nextAt` is the hour the
+ * backoff allows the next try.
  */
 export type TriageFailResult = {
   tries: number;
@@ -147,10 +149,10 @@ export function triageAskOf(db: Db, row: CommentRow): { envelope: FilingEnvelope
 type CappedAttempt = { commentId: string; n: number; tries: number; claimUntil: string | null };
 
 /**
- * BOOK-206 B5/M4 — the rows no query reaches any more: the latest attempt still waits for an
- * answer, its tries are all spent and no claim is live. A writer killed after `next` three times
- * lands here (the claims expired, no `fail` was ever called), as does a row an older build left
- * at the cap; without this sweep both are excluded from `dueTriage` forever, silently.
+ * The rows no query reaches any more: the latest attempt still waits for an answer, its tries are
+ * all spent and no claim is live. A writer killed after `next` three times lands here (the claims
+ * expired, no `fail` was ever called), as does a row an older build left at the cap; without this
+ * sweep both are excluded from `dueTriage` forever, silently.
  */
 function cappedAttempts(db: Db, now: string, limit = 8): CappedAttempt[] {
   return db
@@ -181,8 +183,11 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
 
   function next(session: string): TriageNextResult {
     const at = deps.clock.now();
+    const now = iso(at);
+    // The refusals run **before** the money guard: one buys nothing, and a paused day must not
+    // turn a deadline into an open-ended wait. Only the claim is the guard's business.
+    refuseEnded(now);
     try {
-      // The money guard runs before any row is read: a paused day hands out no triage.
       assertBudgetAllowsPass(db, caps, at);
     } catch (error) {
       if (error instanceof Error && 'code' in error && String((error as { code: unknown }).code).startsWith('BUDGET_')) {
@@ -190,14 +195,9 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       }
       throw error;
     }
-    const now = iso(at);
-    // BOOK-206 M4/B5: a row whose claims all expired (a writer killed under the call) never
-    // called `fail`, so nothing else would ever reach it. It gets the next day, once, with an
-    // alert — the same honest shape the cap takes.
-    settleAbandoned(now);
     for (const candidate of dueTriage(db, now)) {
       // The try about to be spent is the last one, and the claim before it expired rather than
-      // ended in `fail`: the previous claims were abandoned with the process (M4).
+      // ended in `fail`: its previous claims died with their process (M4).
       if (
         candidate.tries >= TRIAGE_MAX_TRIES - 1 &&
         candidate.claimUntil !== null &&
@@ -233,21 +233,10 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
 
   /**
    * One alert per attempt, ever: a marker event makes the writer's 5 s cadence silent after the
-   * first, and `comment_events` is also where the site's bridge reads the fact. The detail names
-   * the shape (`claim-abandoned`, `cap-abandoned`), never a model's words.
+   * first. The detail names the shape (`claim-abandoned`, `cap-abandoned`), never a model's words.
    */
   function noteAbandoned(commentId: string, n: number, tries: number, at: string, detail: string): void {
-    const prior = db
-      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.abandoned'`)
-      .all(commentId) as Array<{ meta: string | null }>;
-    const seen = prior.some((event) => {
-      try {
-        return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === n;
-      } catch {
-        return false;
-      }
-    });
-    if (seen) return;
+    if (abandonedSeen(commentId, n)) return;
     appendCommentEvent(db, commentId, 'triage.abandoned', at, { attempt: n, tries, detail });
     recordAlert(deps, {
       kind: 'triage' satisfies EngineAlert['kind'],
@@ -259,14 +248,83 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
     });
   }
 
-  /** Give every capped attempt its next day: `tries` 0, `next_at` 00:00 UTC, the sentence written. */
-  function settleAbandoned(now: string): void {
+  /** Has this attempt's abandoned claim already been named? One marker, one alert. */
+  function abandonedSeen(commentId: string, n: number): boolean {
+    const prior = db
+      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.abandoned'`)
+      .all(commentId) as Array<{ meta: string | null }>;
+    return prior.some((event) => {
+      try {
+        return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === n;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Refuse every attempt whose read can no longer happen — the cap with no answer, or the total
+   * deadline with none. One sink, one sentence, one alert; no model is asked.
+   */
+  function refuseEnded(now: string): void {
     for (const capped of cappedAttempts(db, now)) {
       // An expired claim is a process that died under the call; no claim at all is an older build
-      // that left the row at the cap. Both are abandoned, and both are named as such.
-      noteAbandoned(capped.commentId, capped.n, capped.tries, now, capped.claimUntil === null ? 'cap-abandoned' : 'claim-abandoned');
-      rescheduleTomorrow(db, { commentId: capped.commentId, n: capped.n, nowMs: Date.parse(now) });
+      // that left the row at the cap. An abandonment the loop already alerted is not told twice.
+      const detail = capped.claimUntil === null ? 'cap-abandoned' : 'claim-abandoned';
+      const alert = abandonedSeen(capped.commentId, capped.n)
+        ? null
+        : `triage ${capped.commentId} #${String(capped.n)}: refused, ${detail}`;
+      refuseWith(capped.commentId, capped.n, now, { code: 'TRIAGE_CAP', detail }, alert);
     }
+    for (const overdue of overdueTriage(db, now)) {
+      refuseWith(
+        overdue.commentId,
+        overdue.n,
+        now,
+        { code: 'TRIAGE_DEADLINE' },
+        `triage ${overdue.commentId} #${String(overdue.n)}: refused, deadline passed`,
+      );
+    }
+  }
+
+  /**
+   * The refusal sink: the attempt settled `refused` and the row `rejected` in one transaction with
+   * the `triage.failed` event the bridge drains (`retryAt: null` — the row has left every queue).
+   * `true` only for the caller that moved the row, so a sweep racing a claim, a replayed `fail` or
+   * a placed row writes nothing; `alertDetail: null` keeps a fact already told from being told twice.
+   */
+  function refuseWith(
+    commentId: string,
+    n: number,
+    at: string,
+    fact: { code: string; detail?: string },
+    alertDetail: string | null,
+  ): boolean {
+    const meta = {
+      code: fact.code.slice(0, 60),
+      attempt: n,
+      try: TRIAGE_MAX_TRIES,
+      cap: true,
+      retryAt: null,
+      reason: TRIAGE_REFUSED_LINE,
+      ...(fact.detail === undefined ? {} : { detail: fact.detail }),
+    };
+    const refused = db.transaction((): boolean => {
+      if (!refuseTriage(db, { commentId, n, at })) return false;
+      appendCommentEvent(db, commentId, 'triage.failed', at, meta);
+      return true;
+    })();
+    if (refused && alertDetail !== null) {
+      recordAlert(deps, {
+        kind: 'triage' satisfies EngineAlert['kind'],
+        at,
+        changeId: null,
+        cascadeId: null,
+        stepId: null,
+        detail: alertDetail,
+      });
+    }
+    return refused;
   }
 
   function verdict(input: {
@@ -310,9 +368,6 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         )
         .run(JSON.stringify(stored), at, input.commentId, input.n).changes;
       if (written !== 1) return { stored: false, already: true };
-      // BOOK-206 B5: the reading the rescheduled sentence promised has happened — the line goes,
-      // and the row waits for its placement like any filing (the acceptance writes its own).
-      clearRetryLine(db, input.commentId);
       // Gate C's own columns: first answer wins, and a recorded verdict is never rewritten.
       db.prepare(
         `UPDATE comments
@@ -360,6 +415,11 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
     return db.transaction((): TriageFailResult => {
       const attempt = readAttempt(db, input.commentId, input.n);
       if (attempt === undefined) refuse('UNKNOWN_ATTEMPT', 404, `no attempt ${String(input.n)}`);
+      // A settled attempt is already answered — refused, placed or held — and a late report is the
+      // same failure, never a fourth call: no event, no charge, no second alert.
+      if (attempt.outcome !== 'submitted' || attempt.verdict !== null) {
+        return { tries: attempt.tries, nextAt: attempt.next_at, cap: attempt.outcome === 'refused', already: true };
+      }
       // A retried report is the same failure: the *try* already has its event and its backoff,
       // and a second one would count one broken call twice. The next try is a new key.
       const prior = db
@@ -367,7 +427,7 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         .all(input.commentId) as Array<{ meta: string | null }>;
       const metas = prior.map((event) => {
         try {
-          return JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number; cap?: boolean };
+          return JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number };
         } catch {
           return {};
         }
