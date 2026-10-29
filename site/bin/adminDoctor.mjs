@@ -1,7 +1,7 @@
 /**
  * bin/adminDoctor.mjs — BOOK-188: `node bin/admin.mjs doctor [--json] [--url <url>]`.
  *
- * One command the owner runs before saying «скидываем»: eight one-line verdicts with evidence
+ * One command the owner runs before saying «скидываем»: seven one-line verdicts with evidence
  * (a path, a count or a digest — never a secret), exit 0 when the machine is ready to be reset
  * and opened, 1 when it is not, and the table names what is not.
  *
@@ -11,7 +11,8 @@
  *   - the stack's facts arrive through the admin token (`GET /api/admin/doctor`, and the reset
  *     dry run) — this CLI never opens `book.db` itself (BOOK-183: two kernels in WAL);
  *   - the host's facts are read here and in `adminDoctorHost.mjs`: docker, the container's
- *     `/proc/self/mountinfo`, the working tree, the host backups and the drill log, `git ls-files`.
+ *     `/proc/self/mountinfo`, the host backups and the drill log. No row needs a checkout
+ *     (BOOK-187): the prose guard is `bin/home-check.mjs`, and this host may have no `.git`.
  *
  * Read-only by construction: `docker inspect`/`exec cat`, `fetch`, and sqlite opened
  * `{readonly: true, fileMustExist: true}`. Nothing is created, nothing is written, no state is
@@ -32,9 +33,7 @@ import {
   checkBackups,
   checkRuntime,
   execDocker,
-  execGitLsFiles,
   flat,
-  manuscriptProse,
   openReadonlyDefault,
   reasonOf,
   resolveRepoRoot,
@@ -45,7 +44,7 @@ const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** BOOK-185: the ancestors closure has to answer faster than a reader blinks. */
 const CLOSURE_LIMIT_MS = 50;
 
-/** The eight rows, their fixed order and the words the table prints. */
+/** The seven rows (BOOK-187 deleted the eighth), their fixed order and the words the table prints. */
 const LABELS = {
   runtime: 'runtime',
   schema: 'schema',
@@ -54,7 +53,6 @@ const LABELS = {
   reset_dry_run: 'reset dry-run',
   graph: 'graph',
   backups: 'backups',
-  git_prose: 'no prose in git',
 };
 
 /** `doctor [--json] [--url <url>]` — and nothing else. Junk throws; the caller exits 2. */
@@ -122,7 +120,13 @@ function checkSchema(ctx) {
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
 
-/** 3 — the data dir is the home: no writer's state, no stray entry, no prose in the tree. */
+/**
+ * 3 — the data dir is the home: no writer's state, no stray entry.
+ *
+ * BOOK-187 removed the manuscript half of this row: the text is rows, «does `manuscript/` hold
+ * prose» is asked by `bin/home-check.mjs` at deploy time (it names the path), and asking it here
+ * made the preflight fail on any host without a checkout.
+ */
 function checkDbHome(ctx) {
   if (ctx.payload === null) return payloadMissing(ctx, 'db_home');
   const dataDir = ctx.payload.dataDir ?? null;
@@ -144,19 +148,8 @@ function checkDbHome(ctx) {
   for (const path of denied ?? []) failures.push(`the data dir holds ${String(path)} — the engine's state has no home here`);
   for (const path of stray ?? []) failures.push(`the data dir has a stray entry ${String(path)} — not on the allow-list`);
 
-  // The manuscript half needs the tree: a root that is not a checkout fails the row by name.
-  let prose = null;
-  if (ctx.repoError !== null) failures.push(ctx.repoError);
-  else {
-    prose = manuscriptProse(ctx.repoRoot);
-    for (const name of prose) failures.push(`manuscript/${name} holds prose — a boot scan would put it back`);
-  }
-
   const clean = (denied?.length ?? 0) === 0 && (stray?.length ?? 0) === 0 && dataError === null;
-  const dataPart = clean ? 'data dir clean' : `data dir: ${String(denied?.length ?? 0)} denied, ${String(stray?.length ?? 0)} stray`;
-  const prosePart =
-    prose === null ? 'manuscript/ not read' : prose.length === 0 ? 'manuscript/ no prose' : `manuscript/ ${String(prose.length)} file(s) hold prose`;
-  const evidence = `${dataPart} · ${prosePart}`;
+  const evidence = clean ? 'data dir clean' : `data dir: ${String(denied?.length ?? 0)} denied, ${String(stray?.length ?? 0)} stray`;
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
 
@@ -291,29 +284,17 @@ function checkGraph(ctx) {
   return { verdict: failures.length === 0 ? 'pass' : 'fail', evidence: failures.length === 0 ? evidence : failures[0], failures };
 }
 
-/** 8 — no prose is tracked by git; a host without a checkout has nothing to track. */
-async function checkGitProse(ctx) {
-  // A root that is not a checkout cannot answer «nothing tracked»: that is a tree never read.
-  if (ctx.repoError !== null) return { verdict: 'fail', evidence: ctx.repoError, failures: [ctx.repoError] };
-  const tracked = await ctx.gitLsFiles(ctx.repoRoot);
-  if (tracked === null) return { verdict: 'pass', evidence: 'no git checkout — nothing tracked', failures: [] };
-  // `git` is here and refused: a failure with its reason, never the pass an empty answer gives.
-  if (!Array.isArray(tracked)) {
-    const reason = `git could not answer: ${String(tracked?.error ?? 'unknown')}`;
-    return { verdict: 'fail', evidence: reason, failures: [reason] };
-  }
-  if (tracked.length === 0) return { verdict: 'pass', evidence: 'no manuscript files tracked', failures: [] };
-  const named = tracked.slice(0, 3).join(', ');
-  const more = tracked.length > 3 ? ' …' : '';
-  return {
-    verdict: 'fail',
-    evidence: `${String(tracked.length)} tracked: ${named}${more}`,
-    failures: [`git tracks ${String(tracked.length)} manuscript file(s): ${named}${more}`],
-  };
-}
-
 /* ---------------------------------------------------------------------------- the run -- */
 
+/**
+ * The rows, in the order the operator reads them.
+ *
+ * BOOK-187 deleted the eighth («no prose in git»): it called `git ls-files manuscript` on the
+ * machine, which a host serving the book from a volume need not have — and the prose guard it
+ * stood for now lives in `bin/home-check.mjs` (`server/src/dataHome.ts`), which the deploy runs
+ * and which names the offending path. The book's own row facts are asked of the volume, by the
+ * `frame` and `schema` rows above.
+ */
 const CHECKS = [
   ['runtime', checkRuntime],
   ['schema', checkSchema],
@@ -322,7 +303,6 @@ const CHECKS = [
   ['reset_dry_run', checkReset],
   ['graph', checkGraph],
   ['backups', checkBackups],
-  ['git_prose', checkGitProse],
 ];
 
 /** A check that throws is a failed check with its reason — never a stack trace and no report. */
@@ -387,7 +367,6 @@ export async function runDoctor(options = {}) {
     project: (env.BOOK_PROJECT ?? '').trim() || 'book',
     hostDataDir: (env.DATA_DIR ?? '').trim(),
     docker: options.docker ?? execDocker,
-    gitLsFiles: options.gitLsFiles ?? execGitLsFiles,
     openReadonly: options.openReadonly ?? openReadonlyDefault,
     payload: payloadError === null ? answer.body : null,
     payloadError,

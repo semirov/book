@@ -16,7 +16,10 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { databaseFile, openDatabase } from '../../src/db/db.ts';
+import { runBackfillCli } from '../../src/writer/backfillRun.ts';
 import { main, parseArgs } from '../../src/writer/main.ts';
+import { runPlanCli, runRippleCli } from '../../src/writer/rippleCli.ts';
 import { chapterAnswer, createHarness, TOKEN } from './harness.ts';
 
 function cliOf(argv: string[]) {
@@ -30,6 +33,24 @@ function errorOf(argv: string[]): string {
   if (parsed.ok) throw new Error(`expected the arguments to be refused: ${argv.join(' ')}`);
   return parsed.error;
 }
+
+describe('the writer refuses the ledger commands and points at the operator tool', () => {
+  it('answers 2 with the command it names, and opens no database', async () => {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (line: unknown) => lines.push(String(line));
+    try {
+      for (const argv of [['--backfill-ledger'], ['--ripple'], ['--plan', 'chg_1'], ['--audit-samples']]) {
+        const code = await main({ argv, env: {} });
+        expect(code).toBe(2);
+      }
+    } finally {
+      console.error = original;
+    }
+    expect(lines.join('\n')).toContain('node site/bin/ledger.mjs backfill');
+    expect(lines.join('\n')).toContain('node site/bin/ledger.mjs ripple');
+  });
+});
 
 describe('parseArgs — --backfill-ledger', () => {
   it('is its own mode, and takes no chapter and no pass', () => {
@@ -47,11 +68,12 @@ describe('main --backfill-ledger', () => {
     try {
       harness.ingest(20);
       const lines: string[] = [];
-      const first = await main({
-        argv: ['--backfill-ledger'],
-        env: harness.env,
+      const first = runBackfillCli({
+        dataDir: harness.dataDir,
+        bookRoot: harness.bookRoot,
         now: () => harness.fixture.clock.now(),
         log: (line) => lines.push(line),
+        error: (line) => lines.push(line),
       });
       expect(first).toBe(0);
       const summary = lines.find((line) => line.includes('бэкфилл:'));
@@ -69,11 +91,12 @@ describe('main --backfill-ledger', () => {
 
       // The second run is the idempotency proof: same rows, zero written.
       const again: string[] = [];
-      const second = await main({
-        argv: ['--backfill-ledger'],
-        env: harness.env,
+      const second = runBackfillCli({
+        dataDir: harness.dataDir,
+        bookRoot: harness.bookRoot,
         now: () => harness.fixture.clock.now(),
         log: (line) => again.push(line),
+        error: (line) => again.push(line),
       });
       expect(second).toBe(0);
       expect(again.find((line) => line.includes('бэкфилл:'))).toContain('фактов 0, рёбер 0, упоминаний 0');
@@ -91,11 +114,12 @@ describe('main --backfill-ledger', () => {
     try {
       // The ledger without the graph: a v22 database, which must be refused, not written into.
       harness.fixture.db.exec('DROP TABLE edges');
-      const code = await main({
-        argv: ['--backfill-ledger'],
-        env: harness.env,
+      const code = runBackfillCli({
+        dataDir: harness.dataDir,
+        bookRoot: harness.bookRoot,
         now: () => harness.fixture.clock.now(),
         log: () => undefined,
+        error: (line) => errors.push(line),
       });
       expect(code).toBe(2);
       expect(errors.join('\n')).toContain('нет таблицы edges');
@@ -112,12 +136,13 @@ describe('main --backfill-ledger', () => {
     const original = console.error;
     console.error = (line: unknown) => errors.push(String(line));
     try {
-      // The book root and the key stay the harness's: only the data dir is empty.
-      const code = await main({
-        argv: ['--backfill-ledger'],
-        env: { ...harness.env, DATA_DIR: empty },
+      // The book root stays the harness's: only the data dir is empty.
+      const code = runBackfillCli({
+        dataDir: empty,
+        bookRoot: harness.bookRoot,
         now: () => harness.fixture.clock.now(),
         log: () => undefined,
+        error: (line) => errors.push(line),
       });
       expect(code).toBe(2);
       expect(errors.join('\n')).toContain('базы нет');
@@ -134,12 +159,14 @@ describe('the ripple commands’ exit codes', () => {
     const harness = await createHarness();
     try {
       const lines: string[] = [];
-      const missing = await main({
-        argv: ['--plan', 'chg_not_planned'],
-        env: harness.env,
-        now: () => harness.fixture.clock.now(),
-        log: (line) => lines.push(line),
-      });
+      const db = openDatabase(databaseFile(harness.dataDir));
+      const missing = (() => {
+        try {
+          return runPlanCli({ db, changeId: 'chg_not_planned', log: (line) => lines.push(line) });
+        } finally {
+          db.close();
+        }
+      })();
       expect(missing).toBe(1);
       expect(lines.join('\n')).toContain('не найден');
     } finally {
@@ -151,12 +178,24 @@ describe('the ripple commands’ exit codes', () => {
     const harness = await createHarness();
     try {
       const lines: string[] = [];
-      const empty = await main({
-        argv: ['--ripple'],
-        env: harness.env,
-        now: () => harness.fixture.clock.now(),
-        log: (line) => lines.push(line),
-      });
+      const emptyDb = openDatabase(databaseFile(harness.dataDir));
+      const empty = await (async () => {
+        try {
+          return await runRippleCli({
+            db: emptyDb,
+            config: harness.config,
+            bookRoot: harness.bookRoot,
+            dataDir: harness.dataDir,
+            engine: harness.client,
+            provider: harness.provider,
+            now: () => harness.fixture.clock.now(),
+            log: (line) => lines.push(line),
+            claimedBy: 'proc-empty',
+          });
+        } finally {
+          emptyDb.close();
+        }
+      })();
       expect(empty).toBe(0);
       expect(lines.join('\n')).toContain('незакрытых планов нет');
 
@@ -179,13 +218,24 @@ describe('the ripple commands’ exit codes', () => {
         )
         .run();
       const parked: string[] = [];
-      const code = await main({
-        argv: ['--ripple'],
-        env: harness.env,
-        now: () => harness.fixture.clock.now(),
-        log: (line) => parked.push(line),
-        claimedBy: `${TOKEN}:1`,
-      });
+      const volume = openDatabase(databaseFile(harness.dataDir));
+      const code = await (async () => {
+        try {
+          return await runRippleCli({
+            db: volume,
+            config: harness.config,
+            bookRoot: harness.bookRoot,
+            dataDir: harness.dataDir,
+            engine: harness.client,
+            provider: harness.provider,
+            now: () => harness.fixture.clock.now(),
+            log: (line) => parked.push(line),
+            claimedBy: `${TOKEN}:1`,
+          });
+        } finally {
+          volume.close();
+        }
+      })();
       expect(code).toBe(1);
       expect(parked.join('\n')).toContain('припаркован');
       expect(parked.join('\n')).toContain('дважды не приняла правку');

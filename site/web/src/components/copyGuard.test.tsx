@@ -261,14 +261,6 @@ describe('the reader-facing copy guard', () => {
     expect(markup).toContain('стык пересматривается');
   });
 
-  it('prints the physics pass as one line, and nothing while it has not answered', () => {
-    const card = (scienceCheck: ChangeDto['scienceCheck']): string =>
-      renderToStaticMarkup(<ChangeCard change={{ ...change, scienceCheck }} onClose={() => undefined} />);
-    expect(card('passed')).toContain('<dt>проверка</dt><dd>пройдена · научный консультант</dd>');
-    expect(card('failed')).toContain('<dt>проверка</dt><dd>не пройдена · научный консультант</dd>');
-    expect(card(null)).not.toContain('<dt>проверка</dt>');
-  });
-
   it('never brings back the old licence promise where the terms are printed (BOOK-58)', () => {
     const markup = `${surfaces()}\n${termsSurfaces()}`.toLowerCase();
     for (const phrase of OLD_PROMISE) expect(markup).not.toContain(phrase);

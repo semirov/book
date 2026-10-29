@@ -36,8 +36,6 @@ export type DoctorOptions = {
   drillLog?: string;
   docker?: DockerCall;
   fetchImpl?: FetchLike;
-  /** `null` — no checkout; `{error}` — git refused; `[]` — tracked nothing. */
-  gitLsFiles?: (repoRoot: string) => Promise<string[] | { error: string } | null>;
   now?: () => number;
   openReadonly?: (file: string) => Promise<SqliteHandle> | SqliteHandle;
 };

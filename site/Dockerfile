@@ -19,6 +19,17 @@ COPY web/package.json web/
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+# BOOK-187 / ADR-043 G3: the image is the canon's home, not the host's. The prompts, the concept
+# and the voice arrive through the `canon` additional context (the book root, one level above
+# `site/`) and land at the image's root — where `scripts/build-info.mjs` hashes them for the bundle
+# and where the writer reads them at runtime. Without them the build refuses: a bundle that cannot
+# be hashed is not a bundle.
+# The five files the writer's prompt and the gates read under `bookRoot` (`prompt.ts`
+# `CANON_FILES` + §1 of the role prompt), at the paths they ask for: the image's root.
+COPY --from=canon process/ROLE_PROMPTS.md /process/ROLE_PROMPTS.md
+COPY --from=canon concept/CONCEPT.md concept/CLIMAX.md /concept/
+COPY --from=canon style/VOICE.md /style/VOICE.md
+COPY --from=canon outline/PLAN.md /outline/PLAN.md
 # BOOK-109: the sha the image reports. The build context carries no `.git`, so `build-info.mjs`
 # cannot read the tree; `--build-arg BOOK_BUILD_COMMIT=<sha7>` (compose-release.sh always passes it)
 # names it. Without the arg the image says `dev` — honest, and its identity is the stamp the
@@ -43,6 +54,12 @@ COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/web ./web
 COPY --from=build --chown=node:node /app/config ./config
 COPY --from=build --chown=node:node /app/bin ./bin
+# BOOK-187 / ADR-043 G3: the canon travels with the image (it is what the writer and the bundle
+# digest read at runtime), copied from the build stage's root rather than re-fetched.
+COPY --from=build --chown=root:root /process /process
+COPY --from=build --chown=root:root /concept /concept
+COPY --from=build --chown=root:root /style /style
+COPY --from=build --chown=root:root /outline /outline
 # BOOK-109: the stamp `npm run build` wrote (prebuild) — the image's own identity, and what
 # `/healthz` answers with. Copied, not regenerated: the runtime stage has no build step.
 COPY --from=build --chown=node:node /app/build-info.json ./build-info.json
@@ -52,8 +69,9 @@ COPY --from=build --chown=node:node /app/build-info.json ./build-info.json
 # value — nothing about the image's identity arrives at runtime.
 COPY --chown=root:root deploy/entrypoint.sh deploy/healthcheck.mjs /app/deploy/
 RUN chmod 0755 /app/deploy/entrypoint.sh
-# The data dir is a bind mount in production (host-owned uid 501); the directory only has to exist
-# in the image so a run without the mount still starts and fails loudly on the data guard.
+# The data dir is the named volume in production (BOOK-183; host-owned uid 501 inside it); the
+# directory only has to exist in the image so a run without the volume still starts and fails
+# loudly on the data guard.
 RUN mkdir -p /data
 ARG BOOK_BUILD_COMMIT=""
 # The commit as an image label: `docker image ls --filter label=book.commit` is how the release

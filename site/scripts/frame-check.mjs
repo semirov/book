@@ -1,41 +1,48 @@
 #!/usr/bin/env node
 /**
- * scripts/frame-check.mjs — the frozen frame (F029) must be what the site serves (BOOK-107).
+ * scripts/frame-check.mjs — the frozen frame (F029) must be what the site serves (BOOK-107,
+ * BOOK-187).
  *
- * The canon lives once, in `shared/src/book.ts`. The owner twice saw ch01 and the finale serve text
- * that is not the canon while the manuscript, the data dir and the backups held only the canon;
- * this check answers "what does each of those places actually say now" in one read-only pass,
- * so a deploy can refuse to call a site healthy on trust of `/healthz` alone.
+ * The canon lives once, in `shared/src/book.ts`. The owner twice saw ch01 and the finale serve
+ * text that is not the canon while the manuscript, the data dir and the backups held only the
+ * canon; this check answers «what does each of those places actually say now» in one read-only
+ * pass. Since v28 there is no file in the chain (ADR-043 G6): the letters are compared with the
+ * `book_frame` rows in the volume, the rows are compared with the blocks they are carried by, and
+ * both are compared with what the running site answers.
  *
- *   node scripts/frame-check.mjs                       # the manuscript + the guard
- *   node scripts/frame-check.mjs --server http://127.0.0.1:8091 --data-dir ~/book-site-data
+ *   node scripts/frame-check.mjs                       # $DATA_DIR / ~/book-site-data + the guard
+ *   node scripts/frame-check.mjs --server http://127.0.0.1:8091
  *   node scripts/frame-check.mjs --data-dir /path --json
  *
  * Exit codes (the contract `deploy.sh` reads):
  *   0 — every check passed
- *   1 — at least one mismatch: canon text differs, a chapter file is missing, the site is
- *       unreachable, an answer is not 200
+ *   1 — at least one mismatch: the constant differs from the row, a row is missing, the served or
+ *       stored text lost the sentence, the site is unreachable, an answer is not 200
  *   2 — bad usage only (an unknown flag, or a flag without a value)
  *
- * It owns no state: it writes nothing, opens sqlite `{readonly: true, fileMustExist: true}`,
- * and prints no secret — only paths, statuses and the two sentences.
+ * It owns no state: it writes nothing, opens sqlite `{readonly: true, fileMustExist: true}`, and
+ * prints no secret — only paths, statuses and the two sentences. A checkout with no volume has no
+ * `book.db`; the DB legs then say so and are skipped rather than failed, because there is no book
+ * to be wrong here (CI, a developer's tree). Given a database, every leg must pass.
  */
 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { assertDataDirIsolation, productionDataDirs } from '../server/src/dataDirGuard.ts';
-import { checkManuscript, checkServer, readDataDirFrame } from './lib/frame.mjs';
+import { DEFAULT_PRODUCTION_DATA_DIR, assertDataDirIsolation, productionDataDirs } from '../server/src/dataDirGuard.ts';
+import { checkFrame, checkServer } from './lib/frame.mjs';
 
 const USAGE =
-  'usage: node scripts/frame-check.mjs [--repo-root <dir>] [--server|--url <url>] [--data-dir|--data <dir>] [--json]';
+  'usage: node scripts/frame-check.mjs [--server|--url <url>] [--data-dir|--data <dir>] [--json]';
 
-/** `site/..`: the repository root that holds `manuscript/`. */
-const DEFAULT_REPO_ROOT = resolve(import.meta.dirname, '..', '..');
+/** Where the volume is when nobody says: `$DATA_DIR`, then the deploy host's own data dir. */
+function defaultDataDir() {
+  const fromEnv = (process.env.DATA_DIR ?? '').trim();
+  return fromEnv.length > 0 ? fromEnv : DEFAULT_PRODUCTION_DATA_DIR;
+}
 
 /** The value flags, and the short names the owner asks for (`--url`, `--data`). */
 const VALUE_FLAGS = new Map([
-  ['--repo-root', 'repoRoot'],
   ['--server', 'server'],
   ['--url', 'server'],
   ['--data-dir', 'dataDir'],
@@ -48,7 +55,7 @@ function bail(message) {
 }
 
 function parseArgs(argv) {
-  const options = { repoRoot: DEFAULT_REPO_ROOT, server: null, dataDir: null, json: false };
+  const options = { server: null, dataDir: null, json: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const equals = arg.indexOf('=');
@@ -134,21 +141,30 @@ function printReadout(readout) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const checks = [...checkManuscript({ repoRoot: options.repoRoot }), isolationCheck()];
+  const dataDir = resolve(options.dataDir ?? defaultDataDir());
+  const frame = checkFrame({ dataDir });
+  const checks = [...frame.checks, isolationCheck()];
   if (options.server !== null) checks.push(...(await checkServer({ baseUrl: options.server })));
 
-  let readout = null;
-  if (options.dataDir !== null) {
-    readout = readDataDirFrame({ dataDir: resolve(options.dataDir) });
-    checks.push(readout.check);
-  }
-
-  const failed = checks.filter((check) => !check.ok);
   if (options.json) {
     process.stdout.write(
-      `${JSON.stringify({ ok: failed.length === 0, checks, readout: readout === null ? null : { ...readout, check: undefined } }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          ok: checks.every((check) => check.ok),
+          checks,
+          dataDir,
+          absent: frame.absent === true,
+          readout: frame.readout,
+        },
+        null,
+        2,
+      )}\n`,
     );
   } else {
+    if (frame.absent) {
+      // No volume: there is no book to be wrong, so this is a fact, not a mismatch (CI, a tree).
+      console.log(`frame:   no database at ${join(dataDir, 'book.db')} — the frame rows are checked on a volume`);
+    }
     for (const check of checks) {
       if (check.ok) {
         console.log(`frame: ${check.label} — ok`);
@@ -163,11 +179,13 @@ async function main() {
         console.log(`frame:   actual:   ${part.actual}`);
       }
     }
-    if (readout !== null && readout.check.ok) printReadout(readout);
-    if (failed.length === 0) console.log(`frame: ok — ${String(checks.length)} checks`);
-    else console.log(`frame: FAILED — ${String(failed.length)} of ${String(checks.length)} checks`);
+    if (frame.readout !== null) printReadout(frame.readout);
+    const failed = checks.filter((check) => !check.ok);
+    const count = (n) => `${String(n)} ${n === 1 ? 'check' : 'checks'}`;
+    if (failed.length === 0) console.log(`frame: ok — ${count(checks.length)}`);
+    else console.log(`frame: FAILED — ${String(failed.length)} of ${count(checks.length)}`);
   }
-  process.exitCode = failed.length === 0 ? 0 : 1;
+  process.exitCode = checks.every((check) => check.ok) ? 0 : 1;
 }
 
 await main();

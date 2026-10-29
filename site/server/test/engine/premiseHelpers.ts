@@ -1,7 +1,7 @@
 import type { InterventionKind } from '@book/shared';
 
 import { insertComment, readCommentRow } from '../../src/comments/repo.ts';
-import { acceptComment } from '../../src/feedback/accept.ts';
+import { acceptComment, type AcceptResult } from '../../src/feedback/accept.ts';
 import type { Db } from '../../src/db/db.ts';
 import { createEngineFixture, type Fixture } from './helpers.ts';
 
@@ -61,13 +61,27 @@ export function seed(
   return id;
 }
 
-export function accept(db: Db, id: string, intent: string) {
+/** The raw answer of an acceptance, for the test that asserts the refusal itself. */
+export function acceptResult(db: Db, id: string, intent: string): AcceptResult {
   return acceptComment(db, {
     comment: readCommentRow(db, id)!,
     intent,
     at: AT,
     reason: 'входит в книгу',
   });
+}
+
+/** The accepted change, or a thrown refusal — a fixture never escalates a filing it seeds. */
+export function accept(
+  db: Db,
+  id: string,
+  intent: string,
+): { changeId: string; created: boolean; superseded?: boolean } {
+  const result = acceptResult(db, id, intent);
+  if (!('changeId' in result)) {
+    throw new Error(`accept refused: ${'error' in result ? result.error : 'escalated'}`);
+  }
+  return result;
 }
 
 export function change(db: Db, id: string): Record<string, unknown> {
@@ -87,6 +101,6 @@ export function codeOf(run: () => unknown): string | null {
 /** Chapters 1..4 written, so the forward lane's next draft slot is chapter 5. */
 export function fourWritten(fixture: Fixture): void {
   for (let n = 1; n <= 4; n += 1) {
-    fixture.writeChapterBlocks(n, `Глава ${n}`, [`Служебный абзац главы ${n}. Он не является текстом книги.`]);
+    fixture.seedChapterBlocks(n, `Глава ${n}`, [`Служебный абзац главы ${n}. Он не является текстом книги.`]);
   }
 }

@@ -3,11 +3,14 @@
  * bin/index.mjs — the derived index, visible and rebuildable without the engine.
  *
  *   index.mjs show     → the artifact's path, hash and counts; exit 1 when it is missing
- *   index.mjs rebuild  → rebuild from manuscript/ and replace the artifact; exit 1 on failure
+ *   index.mjs rebuild  → rebuild from the rows of the volume and replace the artifact; exit 1 on failure
  *
- * Environment: BOOK_ROOT and DATA_DIR, with the same defaults as the site config
- * (`site/..` and `site/.data`). `show` always prints the data directory it looked in, so a
- * mis-set DATA_DIR is visible instead of silently yielding «no slice».
+ * BOOK-187: the index summarises `chapters`/`blocks` (the book's only home), so this CLI opens
+ * `DATA_DIR/book.db` and hands the connection in — there is no directory of files to read.
+ *
+ * Environment: DATA_DIR, with the same default as the site config (`site/.data`). `show` always
+ * prints the data directory it looked in, so a mis-set DATA_DIR is visible instead of silently
+ * yielding «no slice».
  */
 
 import { existsSync } from 'node:fs';
@@ -23,16 +26,20 @@ async function main() {
     console.error('index: the server is not built — run `npm run build -w @book/server` first');
     return 1;
   }
-  const [{ loadConfig }, { runIndex }] = await Promise.all([
-    import(pathToFileURL(join(DIST, 'config.js')).href),
-    import(pathToFileURL(entry).href),
-  ]);
+  const { loadConfig } = await import(pathToFileURL(join(DIST, 'config.js')).href);
+  const { runIndex } = await import(pathToFileURL(entry).href);
+  const { databaseFile, openDatabase } = await import(pathToFileURL(join(DIST, 'db', 'db.js')).href);
   const config = loadConfig();
-  return runIndex(
-    process.argv.slice(2),
-    { log: (line) => console.log(line), error: (line) => console.error(line) },
-    { bookRoot: config.bookRoot, dataDir: config.dataDir },
-  );
+  const db = openDatabase(databaseFile(config.dataDir));
+  try {
+    return runIndex(
+      process.argv.slice(2),
+      { log: (line) => console.log(line), error: (line) => console.error(line) },
+      { db, dataDir: config.dataDir },
+    );
+  } finally {
+    db.close();
+  }
 }
 
 main()

@@ -1,64 +1,40 @@
 /**
- * Migration v26 (BOOK-173, BOOK-DOC-75) — the graph a consequence walks on, and the plan of a
- * change with the mode and the price it was written in.
+ * v26 — the three push tables (BOOK-189). No backfill, no column, no rebuilt table: a push
+ * subscription is something a reader creates after this build ships, and there is nothing on
+ * disk to convert.
  *
- * The step is **additive and touches no row that exists**:
+ * **26, not 24** — 24 is ADR-043's, still unwritten, and this step must never take a number a
+ * migration that lands later may claim. The cursor is a list of steps, not a count: v25
+ * (`migrateV25.ts`, ADR-044's sentence) is the step before this one, and a database that went
+ * from 23 to 25 only gains the push tables when it reaches 26.
  *
- *   · `edges` — «this fact stands on that one», with the component of the source the target
- *     consumes (`on_component`) and who wrote the row (`origin`). `fact_dependency`, the owner's
- *     name for the relation, is a view over it, so the name a reader was promised is queryable
- *     without a second copy of the data;
- *   · `change_plans` — the frozen plan of a change: the closure without its patches, the patches
- *     the writer produced, the caps frozen at estimate, the fixpoint's iteration journal, the
- *     lane claim and the park — plus, from this version, `mode` (`patch`|`rewrite`) and
- *     `price_usd`: the estimate frozen with the plan, replaced by the actual when the pass
- *     closes, so a change carries how it was written and what it cost rather than leaving both
- *     to a log line.
- *   · the verification record of that plan (BOOK-DOC-80): `tier1_verdict`, `tier1_usd`,
- *     `gates_mode`, and the safeguard's queue — `sample_requested`, `sampled_at`,
- *     `sample_verdict`. All nullable (or defaulted to 0) because every plan written before this
- *     step was verified by the full pair and has nothing to say here.
+ * It lives here rather than inline in `migrate.ts` for the same reason the v22 ledger step
+ * does: the statements are shared with the fresh-install schema (`pushTables.ts`), so the two
+ * shapes cannot drift, and the reasoning about *why* there are three tables is written once.
  *
- * Both statements live in `ledgerTables.ts` next to the tables v22 created, so a fresh install
- * (which reads them from `SCHEMA_SQL`) and an upgraded one (which reads them from here) build the
- * same objects — table for table, index for index, view for view. Every statement is
- * `IF NOT EXISTS` and every column is added only when `table_info` lacks it, so a database that
- * already ran this step, a fresh one that got the tables before the migration ran, and an install
- * that carries the tables in their pre-`mode` shape all converge on the same schema.
- *
- * **v26, not v24.** This step was written as v24 while `main` was at v23; the sentence (ADR-044,
- * BOOK-182) then took **25** on `main` while this branch held 24, and `main` has no v24 at all.
- * `user_version` only moves forward: an install already at 25 would never run a step numbered 24,
- * so it would boot without `edges` or `change_plans` — a server that answers every consequence
- * with nothing. Renumbering to 26 is what makes the four upgrade paths (22, 23, 25, fresh) all
- * arrive at the same schema.
+ * Idempotent by the table guard: a fresh install has already been created with them by
+ * `SCHEMA_SQL`, and a second run of the step must be a no-op rather than a `table exists`
+ * error. The indexes are re-run unconditionally — a table is not proof its indexes survived.
  */
 
 import type { Db } from './db.ts';
-import { CHANGE_PLANS_SQL, LEDGER_GRAPH_SQL } from './ledgerTables.ts';
-
-/** Columns `change_plans` gains in this step, for an install that created the table earlier. */
-const COLUMN_ADDITIONS: ReadonlyArray<readonly [column: string, definition: string]> = [
-  ['mode', "TEXT CHECK (mode IN ('patch','rewrite'))"],
-  ['price_usd', 'REAL'],
-  // BOOK-DOC-80: the verification record and the sample queue of a `local only` change.
-  ['tier1_verdict', "TEXT CHECK (tier1_verdict IN ('HOLDS','GAP','UNSURE','TIER1_UNPARSED'))"],
-  ['tier1_usd', 'REAL'],
-  ['gates_mode', "TEXT CHECK (gates_mode IN ('local only','full','local_only_rechecked'))"],
-  ['sample_requested', 'INTEGER NOT NULL DEFAULT 0'],
-  ['sampled_at', 'TEXT'],
-  ['sample_verdict', "TEXT CHECK (sample_verdict IN ('ok','gap','error'))"],
-];
-
-function addColumn(db: Db, table: string, column: string, definition: string): void {
-  const columns = new Set(
-    (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name),
-  );
-  if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-}
+import {
+  PUSH_INDEXES_SQL,
+  PUSH_LOG_TABLE_SQL,
+  PUSH_OUTBOX_TABLE_SQL,
+  PUSH_SUBSCRIPTIONS_TABLE_SQL,
+} from './pushTables.ts';
 
 export function migrateV26(db: Db): void {
-  db.exec(LEDGER_GRAPH_SQL);
-  db.exec(CHANGE_PLANS_SQL);
-  for (const [column, definition] of COLUMN_ADDITIONS) addColumn(db, 'change_plans', column, definition);
+  if (!tableExists(db, 'push_subscriptions')) db.exec(PUSH_SUBSCRIPTIONS_TABLE_SQL);
+  if (!tableExists(db, 'push_log')) db.exec(PUSH_LOG_TABLE_SQL);
+  if (!tableExists(db, 'push_outbox')) db.exec(PUSH_OUTBOX_TABLE_SQL);
+  // Unconditionally, after the tables: a partial earlier run can leave a table without its
+  // indexes, and a probe that only looks for tables would call that a healthy database while the
+  // claim and the due-row scan fall back to a full scan. Every statement is `IF NOT EXISTS`.
+  db.exec(PUSH_INDEXES_SQL);
+}
+
+function tableExists(db: Db, name: string): boolean {
+  return db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name) !== undefined;
 }

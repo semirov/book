@@ -1,12 +1,13 @@
 import type { CatalogEntry, CommentDto, ComposerInfo, ParagraphChainDto, ViewerDto } from '@book/shared';
 import { FRAME_WARNING } from '@book/shared';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { track } from '../lib/analytics.ts';
 import { holdAnchor } from '../lib/anchorHold.ts';
 import { emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { filingNumber, sortFilings } from '../lib/filings.ts';
+import { filingNumber, isAlive, sortFilings } from '../lib/filings.ts';
 import { offsetTopOfPage } from '../lib/headerOffset.ts';
+import { keepPlace } from '../lib/keepPlace.ts';
 import { filingConsequence } from '../lib/marginalia.ts';
 import { knownParagraphChain, loadParagraphChain } from '../lib/paragraphChainCache.ts';
 import {
@@ -21,7 +22,7 @@ import {
 } from '../lib/recState.ts';
 import { seamKey, type SeamAnchor } from '../lib/seam.ts';
 import { InterventionForm } from './InterventionForm.tsx';
-import { FilingBody, RowsList, SectionHeader } from './RecordParts.tsx';
+import { ExistingFilingNotice, FilingBody, QuoteBody, RowsList, SectionHeader } from './RecordParts.tsx';
 
 /**
  * BOOK-128 comments #3863 / #3862 — **the sentence's record**: one block, in the flow, after
@@ -68,7 +69,7 @@ function reduceMotion(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
-type Body = 'list' | 'form' | 'receipt' | 'filing';
+type Body = 'list' | 'form' | 'notice' | 'receipt' | 'filing';
 type Section = 'interventions' | 'history';
 
 export function Record({
@@ -113,6 +114,10 @@ export function Record({
   const releaseAnchor = useRef<(() => void) | null>(null);
   const closingTimer = useRef<number | null>(null);
   const settledScroll = useRef(false);
+  /** The head row and the sheet: the stable places `keepPlace` measures, and the CTA's focus. */
+  const headRef = useRef<HTMLDivElement>(null);
+  const ctaRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (knownParagraphChain(blockId).known) return;
@@ -179,6 +184,8 @@ export function Record({
     const block = document.querySelector<HTMLElement>('.rec');
     const line = document.querySelector<HTMLElement>('.p [data-touch]');
     if (block === null) return;
+    // The block's top lands on the bottom band's edge (the page's own 24 px of foot), so its
+    // first control is above the band the reader cannot tap through.
     const bottom = window.innerHeight - 24;
     const top = block.getBoundingClientRect().top;
     // The block is already on screen (or has nowhere to go): the policy does nothing, and the
@@ -231,6 +238,14 @@ export function Record({
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
+      // BOOK-128 #3862 — the form is the first layer: Escape puts it away and leaves the block
+      // open with the draft untouched; a second Escape closes the block.
+      if (body === 'form' || body === 'notice') {
+        setBody('list');
+        // The word `вмешаться` is the control again: focus follows the state, not the page.
+        window.requestAnimationFrame(() => ctaRef.current?.focus({ preventScroll: true }));
+        return;
+      }
       if (body === 'filing') {
         setBody('list');
         setOpenFiling(null);
@@ -248,7 +263,12 @@ export function Record({
   };
 
   const own = (comment: CommentDto): boolean => isOwn(comment, viewer.displayName);
-  const sorted = filings === null ? [] : sortFilings(filings);
+  /** The record speaks about **one sentence**: a block-group filing counts only on its quote. */
+  const sorted = (filings === null ? [] : sortFilings(filings)).filter(
+    (comment) => anchor === null || comment.anchor.quote === anchor.quote,
+  );
+  /** The sentence already has a live filing: `вмешаться` must say so, never silently nothing. */
+  const aliveFiling = sorted.find(isAlive) ?? null;
   const state: RecordState = recordStateOf({
     filings: sorted,
     own,
@@ -263,20 +283,11 @@ export function Record({
   const historyWindowed = rowWindow(historyList, lifted);
   const quote = anchor?.quote ?? '';
 
-  /** The quote with the touched word underlined — decoration only, no box, no second node. */
-  const quoteBody = (): ReactNode => {
-    if (word === null || anchor === null) return quote;
-    const from = word.start - anchor.sentence.start;
-    const to = word.end - anchor.sentence.start;
-    if (from < 0 || to > quote.length || to <= from) return quote;
-    return (
-      <>
-        {quote.slice(0, from)}
-        <span className="rec-word">{quote.slice(from, to)}</span>
-        {quote.slice(to)}
-      </>
-    );
-  };
+  /**
+   * The quote with the touched word underlined — `RecordParts.QuoteBody` draws it; the word is
+   * decoration inside the quote and never a second node.
+   */
+  const quoteStart = anchor?.sentence.start ?? null;
 
   const markerScroll = (): void => {
     releaseHold();
@@ -288,6 +299,30 @@ export function Record({
   };
 
   const headState = receipt !== null ? `ждёт · ${filingNumber(receipt)}` : state.word;
+  /**
+   * BOOK-128 #3862 — `вмешаться` is one act, never a toggle: a tap opens the form in the same
+   * block; a live filing is said out loud first instead of a silent nothing.
+   */
+  const openIntervention = (): void => {
+    keepPlace(headRef.current, () => setBody(aliveFiling === null ? 'form' : 'notice'));
+  };
+
+  /** The notice's door: the filing that already stands on this sentence, in the same body. */
+  const openAliveFiling = (): void => {
+    if (aliveFiling === null) return;
+    keepPlace(sheetRef.current, () => {
+      setOpenFiling(aliveFiling);
+      setBody('filing');
+    });
+  };
+
+  /** One section open at a time; the pressed header stays under the finger. */
+  const toggleSection = (next: Section, control: HTMLElement | null): void => {
+    keepPlace(control, () => {
+      setSection((current) => (current === next ? null : next));
+      setLifted(false);
+    });
+  };
 
   return (
     <div
@@ -302,7 +337,7 @@ export function Record({
       <div className="rec-clip" inert={phase === 'open' ? undefined : true}>
         <div className="rec-inner">
           <div className="rec-gap" aria-hidden="true" />
-          <div className="rec-sheet">
+          <div className="rec-sheet" ref={sheetRef}>
             {marker ? (
               <button type="button" className="rec-marker" onClick={markerScroll}>
                 запись ниже ↓
@@ -314,25 +349,25 @@ export function Record({
             {chainFailed ? (
               <p className="rec-line rec-quiet">история не прочиталась</p>
             ) : (
-              <blockquote className="rec-quote">«{quoteBody()}»</blockquote>
+              <blockquote className="rec-quote">
+                «<QuoteBody quote={quote} word={word} sentenceStart={quoteStart} />»
+              </blockquote>
             )}
             <p className="rec-hand">{hand.line}</p>
 
-            <div className="rec-head">
+            <div className="rec-head" ref={headRef}>
               <span className="rec-state" data-ink={state.ink}>
                 {state.situation === 'writing' ? <span className="rec-caret" aria-hidden="true" /> : null}
                 {headState === null ? null : <span>{headState}</span>}
               </span>
-              {body === 'form' ? (
+              {body === 'form' || (body === 'notice' && aliveFiling !== null) ? (
                 <span className="rec-act-word">вмешаться</span>
               ) : (
                 <button
+                  ref={ctaRef}
                   type="button"
                   className="rec-cta"
-                  onClick={() => {
-                    setBody('form');
-                    track('form_open', {});
-                  }}
+                  onClick={openIntervention}
                 >
                   вмешаться
                 </button>
@@ -368,6 +403,13 @@ export function Record({
                   onPosted(comment);
                 }}
               />
+            ) : body === 'notice' && aliveFiling !== null ? (
+              <ExistingFilingNotice
+                onOpen={openAliveFiling}
+                onNew={() => {
+                  keepPlace(headRef.current, () => setBody('form'));
+                }}
+              />
             ) : body === 'receipt' && receipt !== null ? (
               <div className="rec-receipt-body">
                 <p className="rec-receipt" role="status">
@@ -377,7 +419,15 @@ export function Record({
                 {state.line === null ? null : <p className="rec-line rec-quiet">{state.line}</p>}
               </div>
             ) : body === 'filing' && openFiling !== null ? (
-              <FilingBody comment={openFiling} onBack={() => { setBody('list'); setOpenFiling(null); }} />
+              <FilingBody
+                comment={openFiling}
+                onBack={() => {
+                  keepPlace(sheetRef.current, () => {
+                    setBody('list');
+                    setOpenFiling(null);
+                  });
+                }}
+              />
             ) : state.empty ? (
               <p className="rec-empty">{state.line}</p>
             ) : (
@@ -390,21 +440,24 @@ export function Record({
                       label="замечания"
                       count={countOf(rows)}
                       open={section === 'interventions'}
-                      onPress={() => {
-                        setSection((current) => (current === 'interventions' ? null : 'interventions'));
-                        setLifted(false);
-                      }}
+                      onPress={(control) => toggleSection('interventions', control)}
                     />
                     {section === 'interventions' ? (
                       <RowsList
                         rows={windowed}
                         lifted={lifted}
-                        onLift={() => setLifted(true)}
-                        onFold={() => setLifted(false)}
+                        onLift={() => {
+                          keepPlace(sheetRef.current, () => setLifted(true));
+                        }}
+                        onFold={() => {
+                          keepPlace(sheetRef.current, () => setLifted(false));
+                        }}
                         total={rows.length}
                         onOpen={(row) => {
-                          setOpenFiling(row.comment);
-                          setBody('filing');
+                          keepPlace(sheetRef.current, () => {
+                            setOpenFiling(row.comment);
+                            setBody('filing');
+                          });
                         }}
                       />
                     ) : null}
@@ -416,17 +469,18 @@ export function Record({
                       label="история"
                       count={countOf(historyList)}
                       open={section === 'history'}
-                      onPress={() => {
-                        setSection((current) => (current === 'history' ? null : 'history'));
-                        setLifted(false);
-                      }}
+                      onPress={(control) => toggleSection('history', control)}
                     />
                     {section === 'history' ? (
                       <RowsList
                         rows={historyWindowed}
                         lifted={lifted}
-                        onLift={() => setLifted(true)}
-                        onFold={() => setLifted(false)}
+                        onLift={() => {
+                          keepPlace(sheetRef.current, () => setLifted(true));
+                        }}
+                        onFold={() => {
+                          keepPlace(sheetRef.current, () => setLifted(false));
+                        }}
                         total={historyList.length}
                         history
                       />

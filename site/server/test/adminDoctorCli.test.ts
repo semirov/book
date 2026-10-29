@@ -32,7 +32,7 @@ import {
 } from './adminDoctorFixtures.ts';
 
 /**
- * BOOK-188 — `node bin/admin.mjs doctor`: the eight rows, their order, the exit code an operator
+ * BOOK-188 — `node bin/admin.mjs doctor`: the rows, their order, the exit code an operator
  * scripts against and the evidence a reader sees. Docker and the stack are stubs, no prod, no
  * network; the only real database is a backup copy, opened read-only.
  */
@@ -102,24 +102,20 @@ describe('doctor — a deliberately broken machine', () => {
       drillLog: log,
       docker: dockerStub({ mountinfo: BIND_MOUNTINFO }),
       fetchImpl: fetchLike,
-      gitLsFiles: async () => ['manuscript/ch05.md'],
     });
 
     expect(report.exitCode).toBe(1);
     expect(byId(report, 'runtime').verdict).toBe('fail');
     expect(byId(report, 'db_home').verdict).toBe('fail');
     expect(byId(report, 'backups').verdict).toBe('fail');
-    expect(byId(report, 'git_prose').verdict).toBe('fail');
-    // One failure the bind mount, one the writer, one the stray entry, one the prose in the tree.
+    // One failure the bind mount, one the writer, one the stray entry, one the drill line.
     expect(byId(report, 'runtime').failures[0]).toContain('/Users/tester/book-data');
     expect(byId(report, 'runtime').failures[0]).toContain('virtiofs');
     const dbHome = byId(report, 'db_home').failures.join(' ');
     expect(dbHome).toContain('writer/state.json');
     expect(dbHome).toContain('notes.txt');
-    expect(dbHome).toContain('manuscript/ch05.md');
     expect(byId(report, 'backups').failures[0]).toMatch(/ is 30h old \(limit 24h\)/u);
     expect(byId(report, 'backups').failures.join(' ')).toContain('status=fail');
-    expect(byId(report, 'git_prose').failures[0]).toContain('1 manuscript');
     // The counts and the frame are intact, so those rows pass — the table is a diagnosis.
     expect(byId(report, 'schema').verdict).toBe('pass');
     expect(byId(report, 'reset_dry_run').verdict).toBe('pass');
@@ -142,7 +138,6 @@ describe('doctor — a deliberately broken machine', () => {
       drillLog: join(root, 'no-such.log'),
       docker: dockerStub(),
       fetchImpl: fetchLike,
-      gitLsFiles: async () => [],
     });
 
     const lines: string[] = [];
@@ -201,23 +196,21 @@ describe('doctor — a ready machine', () => {
       drillLog: log,
       docker: dockerStub(),
       fetchImpl: fetchLike,
-      gitLsFiles: async () => [],
     });
 
     expect(report.exitCode).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.checks.map((check) => check.id)).toEqual(IDS);
-    expect(report.checks.map((check) => check.verdict)).toEqual(['pass', 'pass', 'pass', 'pass', 'pass', 'not_shipped', 'pass', 'pass']);
+    expect(report.checks.map((check) => check.verdict)).toEqual(['pass', 'pass', 'pass', 'pass', 'pass', 'not_shipped', 'pass']);
     expect(byId(report, 'runtime').evidence).toBe(`abc1234 · image ${IMAGE_SHORT} · volume /docker/volumes/book-data/_data (btrfs)`);
     expect(byId(report, 'schema').evidence).toBe('v23 = build v23 · dump pre-v22 2h ago integrity ok');
-    expect(byId(report, 'db_home').evidence).toBe('data dir clean · manuscript/ no prose');
+    expect(byId(report, 'db_home').evidence).toBe('data dir clean');
     expect(byId(report, 'frame').evidence).toBe(`ch01 ${sha(FRAME_FIRST_SENTENCE).slice(0, 8)} · ch42 ${sha(FRAME_LAST_SENTENCE).slice(0, 8)} · served ok`);
     expect(byId(report, 'reset_dry_run').evidence).toBe('2 counters · 412 rows · kept identities 3 · front_matter 1 · tokens admin+engine');
     expect(byId(report, 'graph').evidence).toBe('fact_dependency absent — stage 3 not in this image (warning)');
     expect(byId(report, 'graph').failures).toEqual([]);
     // The host dump is the newest, so it is the file that was actually opened read-only.
     expect(byId(report, 'backups').evidence).toBe(`${hostDump} 1h integrity ok · drill last run ${drillAt} (2h ago) status=ok`);
-    expect(byId(report, 'git_prose').evidence).toBe('no manuscript files tracked');
     for (const check of report.checks) expect(check.failures, check.id).toEqual([]);
   });
 });
@@ -225,7 +218,7 @@ describe('doctor — a ready machine', () => {
 /* ------------------------------------------------------------------------ focused failures -- */
 
 /** What one focused case may override: the stack's answers, the host's seams, the tree. */
-type ReportOptions = { body?: Record<string, unknown>; reset?: Record<string, unknown>; routes?: Record<string, Route>; docker?: DockerCall; gitLsFiles?: (repoRoot: string) => Promise<string[] | { error: string } | null>; manuscript?: Record<string, string>; drill?: 'site' | 'root' | 'none'; bare?: boolean; openReadonly?: (file: string) => never };
+type ReportOptions = { body?: Record<string, unknown>; reset?: Record<string, unknown>; routes?: Record<string, Route>; docker?: DockerCall; manuscript?: Record<string, string>; drill?: 'site' | 'root' | 'none'; bare?: boolean; openReadonly?: (file: string) => never };
 
 describe('doctor — the rows that can go red on their own', () => {
   async function reportWith(options: ReportOptions = {}): Promise<DoctorReport> {
@@ -243,7 +236,6 @@ describe('doctor — the rows that can go red on their own', () => {
       drillLog: log,
       docker: options.docker ?? dockerStub(),
       fetchImpl: fetchLike,
-      gitLsFiles: options.gitLsFiles ?? (async () => []),
       ...(options.openReadonly === undefined ? {} : { openReadonly: options.openReadonly }),
     });
   }
@@ -353,16 +345,25 @@ describe('doctor — the rows that can go red on their own', () => {
     expect(byId(fine, 'graph').evidence).toBe('facts 4 · threads 2 · edges 9 · closure 7 ms');
   });
 
-  it('fails git_prose when git could not answer, and when the root is not a checkout', async () => {
-    const refused = await reportWith({ gitLsFiles: async () => ({ error: 'fatal: not a git repository' }) });
-    expect(byId(refused, 'git_prose').verdict).toBe('fail');
-    expect(byId(refused, 'git_prose').failures[0]).toBe('git could not answer: fatal: not a git repository');
-
-    // A root with neither `manuscript/` nor `.git` was never read: both tree rows say so by name.
+  it('asks nothing of a checkout: the host with no manuscript/ and no .git still passes db_home', async () => {
+    // BOOK-187: the prose and git rows are gone — a host serving the book from a volume may have
+    // neither, and the guard that names a prose path is bin/home-check.mjs.
     const bare = await reportWith({ bare: true });
-    expect(byId(bare, 'db_home').failures.join(' ')).toContain('BOOK_REPO_ROOT is not a book checkout');
-    expect(byId(bare, 'git_prose').verdict).toBe('fail');
-    expect(byId(bare, 'git_prose').failures[0]).toMatch(/^BOOK_REPO_ROOT is not a book checkout: /u);
+    expect(byId(bare, 'db_home').verdict).toBe('pass');
+    expect(bare.checks.map((check) => check.id)).not.toContain('git_prose');
+    // A root that is not there at all is still named: the drill script lives under it.
+    const root = scratchRoot();
+    const stack = await stubServer(readyRoutes());
+    const missing = await runDoctor({
+      target: new URL(stack.base),
+      token: TOKEN,
+      repoRoot: join(root, 'nowhere'),
+      backupRoot: join(root, 'backups'),
+      drillLog: join(root, 'absent.log'),
+      docker: dockerStub(),
+      fetchImpl: fetchLike,
+    });
+    expect(byId(missing, 'backups').failures.join(' ')).toContain('BOOK_REPO_ROOT is not a directory');
   });
 
   it('fails db_home when the route could not list the data dir', async () => {
@@ -371,11 +372,7 @@ describe('doctor — the rows that can go red on their own', () => {
     expect(byId(report, 'db_home').failures[0]).toBe('the data dir could not be listed: EACCES');
   });
 
-  it('passes git_prose on a tree that is not a checkout, and keeps backups fresh from the host dump', async () => {
-    const noGit = await reportWith({ gitLsFiles: async () => null });
-    expect(byId(noGit, 'git_prose').verdict).toBe('pass');
-    expect(byId(noGit, 'git_prose').evidence).toBe('no git checkout — nothing tracked');
-
+  it('keeps backups fresh from the host dump when the volume has none', async () => {
     // With no in-volume dump the newest backup is the host copy, so the row still passes.
     const report = await reportWith({ body: doctorBody({ dumps: { preMigration: null } }) });
     expect(byId(report, 'backups').verdict).toBe('pass');
@@ -387,7 +384,7 @@ describe('doctor — the rows that can go red on their own', () => {
     const repo = makeRepo(root);
     const stack = await stubServer(readyRoutes(doctorBody({ dumps: { preMigration: null } })));
     const run = (backupRoot: string) =>
-      runDoctor({ target: new URL(stack.base), token: TOKEN, repoRoot: repo, backupRoot, drillLog: join(root, 'absent.log'), docker: dockerStub(), fetchImpl: fetchLike, gitLsFiles: async () => [] });
+      runDoctor({ target: new URL(stack.base), token: TOKEN, repoRoot: repo, backupRoot, drillLog: join(root, 'absent.log'), docker: dockerStub(), fetchImpl: fetchLike, });
 
     const named = byId(await run(join(root, 'empty-backups')), 'backups').failures.join(' ');
     expect(named).toContain('no backup found');
@@ -421,7 +418,7 @@ describe('doctor — the rows that can go red on their own', () => {
     expect(byId(report, 'backups').failures.join(' ')).toContain('integrity unreadable: file is not a database');
   });
 
-  it('says the doctor route refused the token, and still answers with all eight rows', async () => {
+  it('says the doctor route refused the token, and still answers with every row', async () => {
     const routes: Record<string, Route> = {
       '/healthz': () => ({ body: { ok: true, commit: COMMIT } }),
       '/api/admin/doctor': () => ({ status: 401, body: { code: 'UNAUTHORIZED' } }),
@@ -431,7 +428,7 @@ describe('doctor — the rows that can go red on their own', () => {
     expect(report.checks).toHaveLength(IDS.length);
     expect(byId(report, 'schema').failures[0]).toContain('refused (401)');
     // The host's own rows still run: a refused token is one fact, not a reason to stop.
-    expect(byId(report, 'git_prose').verdict).toBe('pass');
+    expect(report.checks).toHaveLength(IDS.length);
   });
 });
 

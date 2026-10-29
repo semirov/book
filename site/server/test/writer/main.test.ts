@@ -3,13 +3,23 @@
  * refusal with exit 2, never a quietly ignored flag that runs something else.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { main, parseArgs, readPassState } from '../../src/writer/main.ts';
-import { chapterAnswer, createHarness } from './harness.ts';
+import { EngineRefusalError, type EngineClient } from '../../src/writer/client.ts';
+import { main, parseArgs } from '../../src/writer/main.ts';
+import { chapterAnswer, createHarness, type Harness } from './harness.ts';
+
+/** The row `writer_state` holds, as the test reads it — the counter that was `state.json`. */
+const counterRow = (harness: Harness): { day: string; passes: number; last_pass_at: string | null } | undefined =>
+  harness.fixture.db.prepare('SELECT day, passes, last_pass_at FROM writer_state WHERE id = 1').get() as
+    | { day: string; passes: number; last_pass_at: string | null }
+    | undefined;
+
+/** The fixture's day, as the writer names it. */
+const todayOf = (harness: Harness): string => new Date(harness.fixture.clock.now()).toISOString().slice(0, 10);
 
 function cliOf(argv: string[]) {
   const parsed = parseArgs(argv);
@@ -111,14 +121,15 @@ describe('main', () => {
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
-      expect(existsSync(join(harness.bookRoot, 'manuscript', 'ch20.md'))).toBe(true);
+      expect(harness.fixture.readChapter(20)).not.toBeNull();
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
       expect(lines.some((line) => line.includes('queued'))).toBe(true);
-      const state = JSON.parse(readFileSync(join(harness.dataDir, 'writer', 'state.json'), 'utf8')) as {
-        date: string;
-        passes: number;
-      };
-      expect(state.passes).toBe(1);
-      expect(state.date).toBe(new Date(harness.fixture.clock.now()).toISOString().slice(0, 10));
+      // BOOK-187 AC5: the counter is the row, and the writer wrote no file at all.
+      const state = counterRow(harness);
+      expect(state?.passes).toBe(1);
+      expect(state?.day).toBe(todayOf(harness));
+      expect(state?.last_pass_at).not.toBeNull();
+      expect(existsSync(join(harness.dataDir, 'writer'))).toBe(false);
     } finally {
       await harness.close();
     }
@@ -127,11 +138,14 @@ describe('main', () => {
   it('exits 0 and calls nothing once the day’s passes are spent', async () => {
     const harness = await createHarness({ env: { WRITER_MAX_PASSES_PER_DAY: '1' } });
     try {
-      const today = new Date(harness.fixture.clock.now()).toISOString().slice(0, 10);
-      const statePath = join(harness.dataDir, 'writer', 'state.json');
-      mkdirSync(join(harness.dataDir, 'writer'), { recursive: true });
-      writeFileSync(statePath, `${JSON.stringify({ date: today, passes: 1 })}\n`, 'utf8');
-      expect(readPassState(harness.dataDir, today).passes).toBe(1);
+      const today = todayOf(harness);
+      harness.fixture.db
+        .prepare(
+          `INSERT INTO writer_state (id, day, passes, last_pass_at, pause_until, updated_at)
+           VALUES (1, ?, 1, NULL, NULL, ?)`,
+        )
+        .run(today, `${today}T09:00:00Z`);
+      expect((await harness.client.writerState(today)).passes).toBe(1);
 
       // BOOK-166: the book is written only on a filing — the CLI asks for a chapter a reader filed.
       harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
@@ -147,9 +161,43 @@ describe('main', () => {
       expect(code).toBe(0);
       expect(lines.join('\n')).toContain('проходов на сегодня уже 1 из 1');
       expect(harness.calls).toHaveLength(0);
-      // A counter for another day is a fresh day.
-      writeFileSync(statePath, `${JSON.stringify({ date: '2026-01-01', passes: 9 })}\n`, 'utf8');
-      expect(readPassState(harness.dataDir, today).passes).toBe(0);
+      // A row for another day is a fresh day: the read is the caller's clock, never a reset job.
+      harness.fixture.db.prepare(`UPDATE writer_state SET day = '2026-01-01', passes = 9 WHERE id = 1`).run();
+      expect((await harness.client.writerState(today)).passes).toBe(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('runs the pass when the counter cannot be read, and says so in one line', async () => {
+    const harness = await createHarness();
+    try {
+      harness.premised(40, 'в главе 40 появляется документ о допуске');
+      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // An engine that cannot answer the counter must not stop the lane: the money budget is the
+      // engine's own, and a read that fails only means this process counts the day from zero.
+      const engine = new Proxy(harness.client, {
+        get(target, property, receiver) {
+          const value = Reflect.get(target, property, receiver) as unknown;
+          if (typeof value !== 'function' || property !== 'writerState' && property !== 'recordPass') return value;
+          return (): never => {
+            throw new EngineRefusalError('ENGINE_UNREACHABLE', 'the engine is unreachable', 0);
+          };
+        },
+      }) as EngineClient;
+      const lines: string[] = [];
+      const code = await main({
+        argv: ['--once', '--chapter', '40'],
+        env: harness.env,
+        provider: harness.provider,
+        engine,
+        now: () => harness.fixture.clock.now(),
+        log: (line) => lines.push(line),
+      });
+      expect(code).toBe(0);
+      expect(lines.some((line) => line.includes('счётчик дня не прочитан'))).toBe(true);
+      expect(lines.some((line) => line.includes('не записан в счётчик дня'))).toBe(true);
+      expect(harness.fixture.readChapter(40)).not.toBeNull();
     } finally {
       await harness.close();
     }
@@ -158,20 +206,28 @@ describe('main', () => {
 
 describe('main — --revert and --dry-run', () => {
   it('reverts a landed chapter and exits 0', async () => {
-    const harness = await createHarness();
+    const base = chapterAnswer('Глава двадцать', 'исходный');
+    const harness = await createHarness({ chapters: { 20: base } });
     try {
-      harness.premised(65, 'замысел главы 65: читатель просит начать с документа');
-      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // A change over a chapter that already exists: the pass publishes revision 2, the revert
+      // brings revision 1 back as revision 3 (BOOK-187).
+      // Whole-chapter scope: the pass rewrites, so the revert has a second revision to undo.
+      harness.fixture.engine.enqueue({
+        kind: 'operator',
+        chapter: 20,
+        intent: 'в главе 20 появляется документ',
+        scopeHint: 'chapter',
+      });
+      harness.script.push(chapterAnswer('Глава двадцать', 'новый'), 'HOLDS', 'HOLDS');
       const first = await main({
-        argv: ['--once', '--chapter', '20'],
+        argv: ['--once'],
         env: harness.env,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
         log: () => undefined,
       });
       expect(first).toBe(0);
-      const target = join(harness.bookRoot, 'manuscript', 'ch20.md');
-      expect(existsSync(target)).toBe(true);
+      expect(harness.fixture.readChapter(20)).toContain('новый');
 
       const lines: string[] = [];
       const code = await main({
@@ -182,8 +238,42 @@ describe('main — --revert and --dry-run', () => {
         log: (line) => lines.push(line),
       });
       expect(code).toBe(0);
-      expect(existsSync(target)).toBe(false);
-      expect(lines.join('\n')).toContain('удалён');
+      expect(harness.fixture.readChapter(20)).toBe(base);
+      expect(lines.join('\n')).toContain('новая ревизия 3 (было 2)');
+      expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('keeps the lane’s state in rows: writer_state and pass_transcripts, and no writer/ file', async () => {
+    const harness = await createHarness({ chapters: { 30: chapterAnswer('Глава тридцать', 'исходный') } });
+    try {
+      harness.fixture.engine.enqueue({
+        kind: 'operator',
+        chapter: 30,
+        intent: 'в главе 30 появляется документ',
+        scopeHint: 'chapter',
+      });
+      harness.script.push(chapterAnswer('Глава тридцать', 'новый'), 'HOLDS', 'HOLDS');
+      const code = await main({
+        argv: ['--once'],
+        env: harness.env,
+        provider: harness.provider,
+        now: () => harness.fixture.clock.now(),
+        log: () => undefined,
+      });
+      expect(code).toBe(0);
+      // The counter is a row (`writer_state`), written through the engine.
+      expect(harness.fixture.db.prepare('SELECT passes FROM writer_state WHERE id = 1').get()).toEqual({ passes: 1 });
+      // The receipt is rows (`pass_transcripts`), redacted at write.
+      const rows = harness.fixture.db
+        .prepare('SELECT role, content_redacted FROM pass_transcripts')
+        .all() as Array<{ role: string; content_redacted: string }>;
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) expect(row.content_redacted).not.toContain('Глава тридцать');
+      // BOOK-187: the old homes — state.json, pre/ and transcripts/ — are gone, not moved.
+      expect(existsSync(join(harness.dataDir, 'writer'))).toBe(false);
     } finally {
       await harness.close();
     }

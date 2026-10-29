@@ -1,3 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
@@ -14,9 +17,11 @@ const B_REWRITTEN = 'Второй тестовый абзац: дельта, э�
 const D = 'Четвёртый тестовый абзац: каппа, лямбда и мю.';
 
 function ingest(fixture: Fixture, title: string, blocks: string[]): void {
-  // The chain is measured, not landed: no `land` gate runs here, so the text is exactly the
-  // blocks the test wrote — never padded to a page.
-  fixture.writeChapter(1, `${title}\n\n${blocks.join('\n\n')}\n`);
+  // The chain is measured by the **one-shot import**, which is the one door a manuscript file
+  // may still come through (ADR-043 §3 row 4): the text here is exactly the blocks the test
+  // wrote — never padded to a page, never staged for a landing.
+  mkdirSync(fixture.manuscript, { recursive: true });
+  writeFileSync(join(fixture.manuscript, 'ch01.md'), `${title}\n\n${blocks.join('\n\n')}\n`, 'utf8');
   // The site's ingest is what writes a revision; the engine's `land` calls the same
   // function, and so does the boot scan (a single choke point, §6F.1).
   reconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });

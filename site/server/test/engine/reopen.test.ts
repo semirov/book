@@ -88,7 +88,7 @@ describe('reopen — an escalated, landed step', () => {
       fixture.engine.land(assignment.leaseId);
       fixture.engine.escalate(assignment.leaseId, 'гейт прав не ответил');
       // The chapter moved after the close: the step no longer describes the text.
-      fixture.writeChapterBlocks(assignment.chapter as number, 'Глава', ['Другой текст главы.', 'И ещё один.']);
+      fixture.seedChapterBlocks(assignment.chapter as number, 'Глава', ['Другой текст главы.', 'И ещё один.']);
       expect(() => fixture.engine.reopen(assignment.stepId, 'нет')).toThrow(/переоткрывать нечего/u);
     } finally {
       fixture.close();

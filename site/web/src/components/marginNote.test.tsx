@@ -167,14 +167,16 @@ describe('the mark at the sentence', () => {
 });
 
 describe('AC4 — one vocabulary, three surfaces', () => {
+  // BOOK-189: `accepted` is not a word of its own — it waits until its change is in hand — and
+  // a refusal is «отклонено», never «ждёт».
   const table: Array<[CommentDto['status'], string]> = [
     ['new', STATE_WORDS.waiting],
     ['batched', STATE_WORDS.working],
     ['delivered', STATE_WORDS.working],
-    ['accepted', STATE_WORDS.working],
+    ['accepted', STATE_WORDS.waiting],
     ['applied', STATE_WORDS.landed],
     ['superseded', STATE_WORDS.waiting],
-    ['rejected', STATE_WORDS.waiting],
+    ['rejected', STATE_WORDS.refused],
     ['quarantined', STATE_WORDS.waiting],
     ['expired', STATE_WORDS.waiting],
     ['hidden', STATE_WORDS.waiting],
@@ -192,10 +194,60 @@ describe('AC4 — one vocabulary, three surfaces', () => {
     }
   });
 
-  it('has exactly four words, and none of them is a phrase', () => {
-    // BOOK-137 added the paperwork state: «рассмотрено» is a decision about a record, and
-    // «внесено» stays what the text says — the two are never used for one another.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
+  it('prints «идёт» on an accepted filing only while the writer is at it', () => {
+    const working = comment({ status: 'accepted', changeStatus: 'processing' });
+    for (const html of [
+      renderToStaticMarkup(<MarginNote comment={working} onOpen={noop} />),
+      renderToStaticMarkup(<PhoneStrip comments={[working]} skipQuote={null} onOpen={noop} />),
+      renderToStaticMarkup(<FilingPanel comment={working} anchor={null} onClose={noop} />),
+    ]) {
+      expect(html).toContain(`>${STATE_WORDS.working}<`);
+    }
+  });
+
+  it('says a gate’s word once, and a landing’s receipt once (BOOK-189)', () => {
+    const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
+    // B stores its own word in front of the rule's sentence; the row heads the line with it, so
+    // the word appears once and the sentence keeps standing after it.
+    const refused = comment({
+      status: 'rejected',
+      refusal: 'rights',
+      reason: 'не принято: пересказ чужого текста без источника',
+    });
+    const refusedNote = renderToStaticMarkup(<MarginNote comment={refused} onOpen={noop} />);
+    const refusedStrip = renderToStaticMarkup(<PhoneStrip comments={[refused]} skipQuote={null} onOpen={noop} />);
+    const refusedPanel = renderToStaticMarkup(<FilingPanel comment={refused} anchor={null} onClose={noop} />);
+    for (const html of [refusedNote, refusedStrip, refusedPanel]) expect(count(html, 'не принято')).toBe(1);
+    // The strip is a word and a door; the note and the card own the sentence beside the word.
+    for (const html of [refusedNote, refusedPanel]) {
+      expect(html).toContain('пересказ чужого текста без источника');
+    }
+
+    // A landed filing: one «внесено» (the word), then the word-free receipt of every surface.
+    const landed = comment({ status: 'applied', applied: { chapter: 7, rev: 4 } });
+    const landedNote = renderToStaticMarkup(<MarginNote comment={landed} onOpen={noop} />);
+    const landedStrip = renderToStaticMarkup(<PhoneStrip comments={[landed]} skipQuote={null} onOpen={noop} />);
+    const landedPanel = renderToStaticMarkup(<FilingPanel comment={landed} anchor={null} onClose={noop} />);
+    for (const html of [landedNote, landedStrip, landedPanel]) expect(count(html, 'внесено')).toBe(1);
+    // The receipt is the same line on the note and the card; the strip is the word and a door.
+    for (const html of [landedNote, landedPanel]) {
+      expect(html).toContain('глава 7 · ревизия 4');
+      expect(html).not.toContain('право на ваш текст');
+    }
+  });
+
+  it('has one word per state, and none of them is a phrase', () => {
+    // BOOK-137 added «рассмотрено» (a decision about a record), BOOK-174 «ждёт решения автора»
+    // (the ladder's own word) and BOOK-189 «отклонено» (a refusal): none of them is a phrase,
+    // and «внесено» stays what the text says.
+    expect(Object.values(STATE_WORDS)).toEqual([
+      'ждёт',
+      'идёт',
+      'внесено',
+      'рассмотрено',
+      'ждёт решения автора',
+      'отклонено',
+    ]);
     for (const wrong of ['ждёт рассмотрения', 'в проходе триажа', 'в основе', 'ждёт очереди', 'фраза не изменилась']) {
       expect(Object.values(STATE_WORDS)).not.toContain(wrong);
     }

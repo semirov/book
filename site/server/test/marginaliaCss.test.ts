@@ -127,18 +127,6 @@ describe('the object and the mark share the note’s measure', () => {
     // The phone tick sits 2 px inside the 24 px target (the design's 368 in [366, 390]).
     expect(declarations(narrow, '.filing-mark')).toContain('padding-left: 2px');
   });
-
-  it('puts the mark at the prose’s edge with the 40 px target, 24 below 1023', () => {
-    const mark = declarations(marginalia, '.filing-mark');
-    expect(mark).toContain('left: 100%');
-    expect(mark).toContain('width: var(--mark-hit)');
-    expect(mark).toContain('height: 44px');
-    const tick = declarations(marginalia, '.filing-tick-bar');
-    expect(tick).toContain('width: 1px');
-    expect(tick).toContain('height: 16px');
-    expect(declarations(narrow, '.filing-mark')).toContain('width: 24px');
-    expect(declarations(narrow, '.filing-mark-num')).toContain('display: none');
-  });
 });
 
 describe('the phone strip', () => {

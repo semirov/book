@@ -13,7 +13,7 @@
  * the fixture database is written.
  */
 
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -25,6 +25,7 @@ import { recordVerification } from '../../../src/ledger/graph/verification.ts';
 import type { WriterConfig } from '../../../src/writer/config.ts';
 import type { ProviderRequest, ProviderResult } from '../../../src/writer/provider.ts';
 import { AUDIT_WATERMARK_KEY, runAuditSamples } from '../../../src/writer/verify/audit.ts';
+import { seedChapter } from '../../ledger/helpers.ts';
 import { inertProse } from '../inert.ts';
 
 const AT = '2026-10-28T12:00:00Z';
@@ -63,9 +64,13 @@ function fixture(chapterText: string | null = null): Fixture {
     mkdirSync(resolve(target, '..'), { recursive: true });
     copyFileSync(join(BOOK_ROOT, file), target);
   }
-  if (chapterText !== null) writeFileSync(join(root, 'manuscript', `ch${String(CHAPTER)}.md`), chapterText, 'utf8');
   const db = openDatabase(':memory:');
   migrate(db);
+  // BOOK-187: the book is rows, so the fixture publishes the chapter the audit reads.
+  if (chapterText !== null) {
+    const [title, ...blocks] = chapterText.trim().split('\n\n');
+    seedChapter(db, { chapter: CHAPTER, title: title ?? '', texts: blocks, at: AT });
+  }
   return {
     db,
     bookRoot: root,
@@ -293,7 +298,9 @@ describe('an audit that could not read', () => {
 
   it('keeps a sample whose chapter is gone queued, and says so', async () => {
     const changeId = queuedSample(fixtureNow.db, 10);
-    rmSync(join(fixtureNow.bookRoot, 'manuscript', `ch${String(CHAPTER)}.md`));
+    // BOOK-187: the chapter is gone when its rows are — there is no file to remove.
+    fixtureNow.db.prepare('DELETE FROM blocks WHERE chapter = ?').run(CHAPTER);
+    fixtureNow.db.prepare('DELETE FROM chapters WHERE n = ?').run(CHAPTER);
     const lines: string[] = [];
     const code = await runAuditSamples({
       db: fixtureNow.db,

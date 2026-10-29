@@ -264,13 +264,23 @@ describe('the revision object of a landed change', () => {
 
 describe('the revision object of a filing that has not landed', () => {
   it('shows the word, the next line and the quote — no было/стало table', async () => {
+    // BOOK-189 — an accepted filing the writer has not reached waits in the lane; the object
+    // says the same thing the thread does.
     await mount(comment({ status: 'accepted', applied: null, changeId: null }));
-    expect(text()).toContain('идёт');
-    expect(text()).toContain('правка в очереди на запись');
+    expect(text()).toContain('ждёт');
+    expect(text()).toContain('в очереди на запись');
+    expect(text()).not.toContain('идёт');
     expect(text()).toContain('«Её освещал яркий свет.»');
     expect(text()).not.toContain('было');
     expect(text()).not.toContain('стало');
     expect(container.querySelector('.revision-door')).toBeNull();
     expect(api.getChange).not.toHaveBeenCalled();
+  });
+
+  it('says «пишется» only while the writer is at this filing', async () => {
+    await mount(comment({ status: 'accepted', applied: null, changeId: null, changeStatus: 'processing' }));
+    expect(text()).toContain('идёт');
+    expect(text()).toContain('пишется');
+    expect(text()).not.toContain('в очереди');
   });
 });

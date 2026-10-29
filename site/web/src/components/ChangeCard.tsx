@@ -141,19 +141,21 @@ export function ChangeCard({
           <ol>
             {change.steps.map((step) => (
               <li key={`${step.seq}-${step.at}`} className={step.outcome === null ? 'is-live' : ''}>
-                <span className="step-glyph" aria-hidden="true">
-                  {wingGlyph(step)}
+                <span className="step-facts">
+                  <span className="step-glyph" aria-hidden="true">
+                    {wingGlyph(step)}
+                  </span>
+                  <span className="step-label">{stepLabel(step)}</span>
+                  <span className="step-wing">{stepWingCopy(step, change.chapter)}</span>
+                  <span className="step-delta">
+                    {step.charsDelta === null ? '' : `${step.charsDelta > 0 ? '+' : ''}${formatCharsShort(step.charsDelta)}`}
+                  </span>
+                  {typeof step.chapter === 'number' && onOpenChapter !== undefined ? (
+                    <button type="button" className="step-open" onClick={() => onOpenChapter(step.chapter as number)}>
+                      к главе
+                    </button>
+                  ) : null}
                 </span>
-                <span className="step-label">{stepLabel(step)}</span>
-                <span className="step-wing">{stepWingCopy(step, change.chapter)}</span>
-                <span className="step-delta">
-                  {step.charsDelta === null ? '' : `${step.charsDelta > 0 ? '+' : ''}${formatCharsShort(step.charsDelta)}`}
-                </span>
-                {typeof step.chapter === 'number' && onOpenChapter !== undefined ? (
-                  <button type="button" className="step-open" onClick={() => onOpenChapter(step.chapter as number)}>
-                    к главе
-                  </button>
-                ) : null}
                 {stepWhy(step) === null ? null : <span className="step-why">{stepWhy(step)}</span>}
               </li>
             ))}
@@ -167,9 +169,11 @@ export function ChangeCard({
           <ul>
             {change.cascade.seams.map((seam) => (
               <li key={String(seam.boundary)} className={seam.resolved ? '' : 'is-open'}>
-                <span className="seam-boundary">{boundaryLabel(seam.boundary)}</span>
+                <span className="seam-facts">
+                  <span className="seam-boundary">{boundaryLabel(seam.boundary)}</span>
+                  {seam.resolved ? null : <span className="seam-state">стык пересматривается</span>}
+                </span>
                 <span className="seam-reason">{seam.reason}</span>
-                {seam.resolved ? null : <span className="seam-state">стык пересматривается</span>}
               </li>
             ))}
           </ul>

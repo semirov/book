@@ -66,7 +66,8 @@ describe('the six situations', () => {
   it('внесено — the text includes the accepted change, and the line says where it went', () => {
     const result = state({ filings: [filing({ status: 'applied', applied: { chapter: 67, rev: 4 } })] });
     expect(result.word).toBe('внесено');
-    expect(result.line).toBe('в главу 67 · ревизия 4');
+    // BOOK-189 — the one receipt shape of every surface: «глава 67 · ревизия 4».
+    expect(result.line).toBe('глава 67 · ревизия 4');
     expect(result.ink).toBe('ink');
   });
 
@@ -86,10 +87,40 @@ describe('the six situations', () => {
     expect(result.empty).toBe(true);
   });
 
-  it('the deck’s `идёт` — accepted, not yet written', () => {
-    const result = state({ filings: [filing({ status: 'accepted' })] });
-    expect(result.word).toBe('идёт');
-    expect(result.line).toBe('в очереди на запись');
+  it('the deck’s `идёт` — accepted, and only while the writer is at it', () => {
+    // BOOK-189: the row's word stops at triage; the linked change says whether the writer holds
+    // it now. `pending` waits, `processing` is «идёт» with the one line «пишется».
+    const working = state({ filings: [filing({ status: 'accepted', changeStatus: 'processing' })] });
+    expect(working.word).toBe('идёт');
+    expect(working.line).toBe('пишется');
+  });
+
+  it('ждёт — an accepted filing the lane has not reached yet', () => {
+    const pending = state({ filings: [filing({ status: 'accepted', changeStatus: 'pending' })] });
+    expect(pending.word).toBe('ждёт');
+    expect(pending.line).toBe('в очереди на запись');
+    // A row written before BOOK-189 carries no field: it is not a queue place either.
+    const legacy = state({ filings: [filing({ status: 'accepted' })] });
+    expect(legacy.word).toBe('ждёт');
+    expect(legacy.line).toBe('в очереди на запись');
+    // The reader's own filing says whose it is, in the same word.
+    const own = state({ filings: [filing({ status: 'accepted', author: 'Филипп' })], own: (c) => c.author === 'Филипп' });
+    expect(own.word).toBe('ждёт');
+    expect(own.line).toBe('ваша — в очереди');
+  });
+
+  it('prints the same three words as the thread: внесено · ждёт · отклонено', () => {
+    // BOOK-189 — one fixture, three filings, three words, and the receipt under the landing.
+    const rows = [
+      filing({ id: 'cmt_a', status: 'applied', applied: { chapter: 67, rev: 4 } }),
+      filing({ id: 'cmt_p', status: 'accepted', changeStatus: 'pending' }),
+      filing({ id: 'cmt_r', status: 'rejected', refusal: 'auditor', reason: 'вне книги: этот мир не просит чудес' }),
+    ];
+    const words = rows.map((row) => state({ filings: [row] }));
+    expect(words[0]).toMatchObject({ word: 'внесено', line: 'глава 67 · ревизия 4', situation: 'landed' });
+    expect(words[1]).toMatchObject({ word: 'ждёт', line: 'в очереди на запись', situation: 'waiting' });
+    expect(words[2]).toMatchObject({ word: 'отклонено', line: ': вне книги: этот мир не просит чудес', situation: 'refused' });
+    expect(JSON.stringify(words[0])).not.toContain('идёт');
   });
 
   it('the deck’s hold — a quarantined filing waits for a person', () => {

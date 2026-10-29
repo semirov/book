@@ -25,9 +25,12 @@ import { readFileSync } from 'node:fs';
 
 import type { BudgetDto, Finding, WriterAssignment } from '@book/shared';
 
+import type { ChapterTextView } from '../engine/text.ts';
 import type { PremiseCause } from '../engine/types.ts';
 import type { RipplePlan } from '../ledger/graph/plan.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
+
+export type { ChapterTextView };
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -93,6 +96,18 @@ export type RightsAssignmentView = {
   expiresAt: string;
 };
 
+/**
+ * BOOK-173 §7: the plan a gate judges the change against, as the engine returns it — the closure
+ * without its patches, the patches the writer produced and the caps frozen at estimate.
+ */
+export type GatePlanView = {
+  outcome: string;
+  nodes: unknown[];
+  edges: unknown[];
+  patches: unknown[];
+  bounds: Record<string, unknown>;
+};
+
 export type GateAssignmentView = {
   stepId: string;
   role: 'editor' | 'consultant';
@@ -104,8 +119,47 @@ export type GateAssignmentView = {
   landedSha: string | null;
   note: string | null;
   indexSlice: string | null;
+  /** BOOK-173 §7: the plan of the step's change; `null` when the step has none. */
+  plan: GatePlanView | null;
   expiresAt: string;
 };
+
+/** `--revert` as a restore revision: what the engine published, and what it replaced. */
+export type RestoreView = { rev: number; sha: string; previousRev: number };
+
+/**
+ * BOOK-187 AC5: the lane's counter, as the engine's row answers it. A day other than the row's
+ * reads as a fresh day (`passes: 0`), so the writer never has to reset anything at midnight.
+ */
+export type WriterStateView = { day: string; passes: number; lastPassAt: string | null; pauseUntil: string | null };
+
+/** What `recordPass` sends: one pass counted, and optionally when the lane may run again. */
+export type RecordPassInput = { day: string; spent: boolean; pauseUntil?: string | null };
+
+/**
+ * BOOK-187 AC7: the redacted receipt of a pass, as the writer built it. The shape is `transcript.ts`'s
+ * `TranscriptRow` seen from the wire side; `storeTranscript` is where the two meet, so the compiler
+ * keeps them equal without the modules importing each other.
+ */
+export type TranscriptRowInput = {
+  seq: number;
+  at: number;
+  role:
+    | 'draft'
+    | 'repair'
+    | 'continue'
+    | 'gate:editor'
+    | 'gate:consultant'
+    | 'gate:rights'
+    | 'judge'
+    | 'tier1';
+  tokensIn: number;
+  tokensOut: number;
+  promptBundle: string | null;
+  content: string;
+};
+
+export type TranscriptStored = { stored: number; pruned: number };
 
 export type StartView = {
   leaseId: string;
@@ -190,8 +244,17 @@ export type DoneInput = {
   };
 };
 
-/** What a landing may say beyond the lease (BOOK-173 §2, §4). */
+/**
+ * What `land` sends — the writer's text, held in memory and never written to a file (BOOK-187),
+ * and what a landing may say beyond the lease (BOOK-173 §2, §4).
+ */
 export type LandInput = {
+  /** The text this landing publishes; absent means «re-land the rows». */
+  text?: string;
+  /** The first sheet's whole text, for a `front` step — the same rule as `text`. */
+  frontRaw?: string;
+  noWrite?: boolean;
+  rev?: number;
   /**
    * The patch this landing applies, one entry per block: the character edit the ingest needs to
    * keep sentence ids across the write. Absent for a rewrite, a draft or a front sheet.
@@ -224,6 +287,10 @@ export type EngineClient = {
   openRipple(chapter: number, session: string, changeId: string): Promise<WriterAssignment>;
   start(leaseId: string): Promise<StartView>;
   land(leaseId: string, input?: LandInput): Promise<LandView>;
+  /** The text a prompt may quote, from rows only: `{ n, title, exists, basis, chars, text }`. */
+  text(chapters: number[]): Promise<{ chapters: ChapterTextView[] }>;
+  /** Bring back a revision as a **new** revision (`cause_kind = 'restore'`), never a file. */
+  restore(chapter: number, rev?: number): Promise<RestoreView>;
   verdict(body: VerdictInput): Promise<VerdictView>;
   verdictRights(body: RightsVerdictInput): Promise<{ verdict: 'CLEAR' | 'REFUSED'; action: 'close' | 'escalate'; closed: boolean }>;
   done(body: DoneInput): Promise<DoneView>;
@@ -232,6 +299,20 @@ export type EngineClient = {
   beat(leaseId: string): Promise<{ leaseId: string; expiresAt: string }>;
   reconcile(chapter: number, because: string): Promise<unknown>;
   stage(event: Record<string, unknown>): Promise<unknown>;
+  /**
+   * BOOK-187 AC5: the lane's day, read from `writer_state` through the engine — the writer keeps
+   * no file and no database handle. Another day reads as a fresh one.
+   */
+  writerState(day: string): Promise<WriterStateView>;
+  /** Count one pass (one transaction engine-side) and answer the resulting row. */
+  recordPass(input: RecordPassInput): Promise<WriterStateView>;
+  /** BOOK-187 AC7: store the pass's redacted receipt once, after the outcome is known. */
+  transcript(input: { passId: string; rows: readonly TranscriptRowInput[] }): Promise<TranscriptStored>;
+  /**
+   * BOOK-DOC-80: the process's boot marker, the flag the sample queue consumes. A row (`meta`),
+   * written through the engine because the writer holds no database handle.
+   */
+  writerBoot(): Promise<{ marked: boolean }>;
 };
 
 function readToken(options: EngineClientOptions): string {
@@ -345,10 +426,18 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     land: async (leaseId, input) =>
       (await post('/internal/land', {
         leaseId,
+        ...(input?.text === undefined ? {} : { text: input.text }),
+        ...(input?.frontRaw === undefined ? {} : { frontRaw: input.frontRaw }),
+        ...(input?.noWrite === undefined ? {} : { noWrite: input.noWrite }),
+        ...(input?.rev === undefined ? {} : { rev: input.rev }),
         ...(input?.sentences === undefined ? {} : { sentences: input.sentences }),
         ...(input?.mode === undefined ? {} : { mode: input.mode }),
         ...(input?.estimateUsd === undefined ? {} : { estimateUsd: input.estimateUsd }),
       })) as LandView,
+    text: async (chapters) =>
+      (await post('/internal/text', { chapters })) as { chapters: ChapterTextView[] },
+    restore: async (chapter, rev) =>
+      (await post('/internal/restore', { chapter, ...(rev === undefined ? {} : { rev }) })) as RestoreView,
     nextRightsGate: async (session) =>
       (await post('/internal/next', { role: 'rights', session })) as RightsAssignmentView | null,
     verdict: async (body) => (await post('/internal/verdict', body)) as VerdictView,
@@ -369,5 +458,17 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
       (await post('/internal/beat', { leaseId })) as { leaseId: string; expiresAt: string },
     reconcile: async (chapter, because) => post('/internal/reconcile', { chapter, because }),
     stage: async (event) => post('/internal/stage', event),
+    // AC5: one read, one write, both keyed by the caller's day and never by a file.
+    writerState: async (day) =>
+      (await send('GET', `/internal/writer-state?day=${encodeURIComponent(day)}`, null)) as WriterStateView,
+    recordPass: async (input) =>
+      (await post('/internal/writer-state', {
+        day: input.day,
+        spent: input.spent,
+        ...(input.pauseUntil === undefined ? {} : { pauseUntil: input.pauseUntil }),
+      })) as WriterStateView,
+    transcript: async (input) =>
+      (await post('/internal/transcript', { passId: input.passId, rows: input.rows })) as TranscriptStored,
+    writerBoot: async () => (await post('/internal/writer-boot', {})) as { marked: boolean },
   };
 }

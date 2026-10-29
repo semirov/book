@@ -34,6 +34,18 @@
     <!-- A page tall enough to scroll the tail paragraph to the top: the anchor contract is
          measured with the block opening above the viewport. -->
     <div class="harness-tail" aria-hidden="true"></div>
+    <!-- The page's real foot (BOOK-156), so a tap at the viewport's bottom edge is measured
+         against the same band the phone has: the prose must open above it, and the band must
+         keep its own act. Markup and styles are the shipped ones; only the module is absent. -->
+    <nav class="foot-jumps" aria-label="переходы" tabindex="-1" data-open="false">
+      <div class="canvas">
+        <div class="page foot-jumps-in">
+          <button class="foot-jumps-open" type="button" tabindex="-1" aria-hidden="true"></button>
+          <a class="foot-jump" href="#toc"><span class="foot-jump-word">оглавление</span></a>
+          <a class="foot-jump" href="#discussion"><span class="foot-jump-word">обсуждение</span></a>
+        </div>
+      </div>
+    </nav>
     <script type="module" src="/harness/accordion.tsx"></script>
   </body>
 </html>

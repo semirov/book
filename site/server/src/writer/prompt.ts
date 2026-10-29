@@ -40,8 +40,27 @@ import {
 } from '@book/shared';
 import type { Untrusted } from '@book/shared';
 
-import { isWrittenChapter, readChapter } from '../engine/text.ts';
+import { isWrittenView, type ChapterTextView } from '../engine/text.ts';
 import { sha256Hex } from '../util/hash.ts';
+
+/**
+ * The chapter text a prompt may quote, injected: `POST /internal/text` answers this shape, and the
+ * writer holds no database and no manuscript (BOOK-187). The canon, the role prompt and the
+ * pipeline pin are still read from `bookRoot` — they are image files, not prose (ADR-043 G3).
+ */
+export type ChapterTextLookup = (n: number) => ChapterTextView;
+
+/** A slot nothing has written yet — the answer for a chapter the engine does not hold. */
+export function noChapterText(n: number): ChapterTextView {
+  return { n, title: null, exists: false, basis: false, chars: 0, text: '' };
+}
+
+/** What the prompt prints for a chapter: its title line, then its body (as the file used to read). */
+export function chapterQuote(view: ChapterTextView): string {
+  const body = view.text.trim();
+  if (view.title === null) return body;
+  return `${view.title}\n\n${body}`.trim();
+}
 
 /**
  * The assignment as the engine returns it, narrowed to the fields the prompt may quote.
@@ -58,7 +77,12 @@ export type WriterAssignmentData = {
   expectation: null | { chars: { min: number; max: number } };
 };
 
-export type WriterPromptInput = { bookRoot: string; assignment: WriterAssignmentData };
+export type WriterPromptInput = {
+  bookRoot: string;
+  assignment: WriterAssignmentData;
+  /** The text of any chapter the prompt quotes: the neighbours and the target itself. */
+  chapterText: ChapterTextLookup;
+};
 
 export type PromptSection = { id: string; chars: number; sha256: string };
 
@@ -226,18 +250,16 @@ export function frameSection(chapter: number): Part {
   return part('frame', body);
 }
 
-function neighboursSection(bookRoot: string, chapter: number): Part {
+function neighboursSection(chapterText: ChapterTextLookup, chapter: number): Part {
   const lines: string[] = ['## Написанные соседи'];
   const candidates = [chapter - 1, chapter + 1].filter((n) => isChapterNumber(n));
-  const written = candidates
-    .map((n) => ({ n, text: readChapter(bookRoot, n) }))
-    .filter((entry) => isWrittenChapter(entry.text));
+  const written = candidates.map((n) => chapterText(n)).filter((view) => isWrittenView(view));
 
   if (written.length === 0) {
     lines.push('соседних глав ещё нет');
   } else {
-    for (const entry of written) {
-      lines.push(`### Глава ${String(entry.n)}`, '', entry.text.text.trim());
+    for (const view of written) {
+      lines.push(`### Глава ${String(view.n)}`, '', chapterQuote(view));
     }
   }
   return part('neighbours', lines.join('\n'));
@@ -247,10 +269,10 @@ function neighboursSection(bookRoot: string, chapter: number): Part {
  * The target's own text, context only when it exists: an empty slot must not be presented as
  * prose, and a basis-only frame is not the chapter's text (§BOOK-6).
  */
-function ownTextSection(bookRoot: string, chapter: number): Part | null {
-  const own = readChapter(bookRoot, chapter);
-  if (!isWrittenChapter(own)) return null;
-  return part('own-text', ['## Текущий текст этой главы', '', own.text.trim()].join('\n'));
+function ownTextSection(chapterText: ChapterTextLookup, chapter: number): Part | null {
+  const own = chapterText(chapter);
+  if (!isWrittenView(own)) return null;
+  return part('own-text', ['## Текущий текст этой главы', '', chapterQuote(own)].join('\n'));
 }
 
 /** The assignment, quoted as the engine returned it — only these fields, in this order. */
@@ -343,15 +365,17 @@ function checkAssignment(assignment: WriterAssignmentData): void {
 }
 
 export function buildWriterPrompt(input: WriterPromptInput): BuiltPrompt {
-  const { bookRoot, assignment } = input;
+  const { bookRoot, assignment, chapterText } = input;
   checkAssignment(assignment);
   const role = roleSection(bookRoot);
-  const own = ownTextSection(bookRoot, assignment.chapter);
+  const own = ownTextSection(chapterText, assignment.chapter);
+  // Cache-first (BOOK-173 §5): canon + role + protocol are the prefix every pass shares, and
+  // the chapter's own evidence is the tail.
   const prefix = [...canonParts(bookRoot), role, protocolSection()];
   const tail = [
     placeSection(assignment.chapter),
     frameSection(assignment.chapter),
-    neighboursSection(bookRoot, assignment.chapter),
+    neighboursSection(chapterText, assignment.chapter),
     ...(own === null ? [] : [own]),
     assignmentSection(assignment),
     reminderSection(),

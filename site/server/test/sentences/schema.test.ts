@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
+import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 
 const CARRIERS = ['comments', 'facts', 'literals', 'mentions'] as const;
 
@@ -48,9 +49,9 @@ describe('v25 — fresh install equals a migrated one', () => {
     const upgraded = openDatabase(':memory:');
     migrate(upgraded);
     shapeAsV24(upgraded);
-    // The cursor runs to the head of the build: v26 (the ripple's graph) rides along and changes
-    // none of the sentence shapes this test compares.
-    expect(migrate(upgraded)).toEqual({ from: 24, to: 26 });
+    // The cursor runs to the head of the build: v26–v29 ride along and change none of the
+    // sentence shapes this test compares.
+    expect(migrate(upgraded)).toEqual({ from: 24, to: SCHEMA_VERSION });
 
     for (const table of CARRIERS) {
       expect(columnShape(upgraded, table)).toEqual(columnShape(fresh, table));

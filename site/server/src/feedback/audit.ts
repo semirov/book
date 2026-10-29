@@ -6,9 +6,11 @@
  * refused, and the conditional `UPDATE … WHERE audit_verdict IS NULL AND decided_at IS NULL`
  * is what makes "first verdict wins" true even if two operators run at the same moment.
  *
- * `OFF` is one act with the refusal: the verdict and the reader's public reason are written
- * in a single transaction, so there is no window in which a refused intervention looks
- * acceptable. `acceptComment` reads the same column and refuses anything that is not `FITS`.
+ * `OFF` is one act with the answer, in a single transaction, so there is no window in which a
+ * refused intervention looks acceptable. BOOK-174: that answer is not a bare refusal any more —
+ * it goes through `disposeRejection` like every other content rejection, so an `OFF` on a
+ * `legal`/`illegal-content` filing becomes the harm lock and every other `OFF` escalates to the
+ * author. `acceptComment` still reads the same column and refuses anything that is not `FITS`.
  *
  * The verdict's name never leaves the operator surface: the reader sees `reason` and `status`.
  */
@@ -20,8 +22,9 @@ import {
   type CommentAuditVerdict,
 } from '@book/shared';
 
-import { appendCommentEvent } from '../comments/repo.ts';
+import { readCommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
+import { disposeRejection } from './dispositionStore.ts';
 
 export type AuditVerdict = CommentAuditVerdict;
 
@@ -143,14 +146,18 @@ export function recordAudit(db: Db, input: RecordAuditInput): RecordAuditResult 
     }
 
     if (input.verdict === 'OFF') {
-      // Same transaction as the verdict: the refusal cannot exist without it, or without
-      // the reason the reader is owed.
-      db.prepare(`UPDATE comments SET status = 'rejected', decided_at = ?, reason = ? WHERE id = ?`).run(
-        input.at,
-        publicAuditReason(reason),
-        input.commentId,
-      );
-      appendCommentEvent(db, input.commentId, 'decided', input.at, { status: 'rejected' });
+      // Same transaction as the verdict: the answer cannot exist without it. The auditor's own
+      // sentence stays in the event (an operator can look it up); the reader is owed the book's
+      // word — the harm lock's clause, or the author's question.
+      const row = readCommentRow(db, input.commentId);
+      if (row !== undefined) {
+        disposeRejection(db, {
+          comment: row,
+          at: input.at,
+          batch: row.batch_id,
+          note: publicAuditReason(reason),
+        });
+      }
     }
 
     return { ok: true, verdict: input.verdict };

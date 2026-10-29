@@ -14,9 +14,10 @@
  * either shape: the comment ids are already public objects of the thread.
  */
 
+import type { DispositionReport } from './disposition.ts';
+
 /** The endpoint's bound: the newest 20 decisions of one reader, never a history dump. */
 export const MY_DECISIONS_LIMIT = 20;
-
 /** How many own undecided comments the client is told about, as its key to a live frame. */
 export const MY_OPEN_LIMIT = 10;
 
@@ -92,6 +93,12 @@ export type MyDecisionDto = {
    */
   shareAtDecision: MeasuredShareDto | null;
   decidedAt: string;
+  /**
+   * BOOK-174 — how the filing was read, in the same three lines its own record prints (line 1
+   * says the reading, line 2 why, line 3 where it stands). `null`/absent for a filing written
+   * before the disposition existed.
+   */
+  report?: DispositionReport | null;
 };
 
 /** The reader's own record (`GET /api/me/decisions`), newest first. */

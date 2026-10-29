@@ -1,5 +1,6 @@
 import {
   DEFAULT_FRAME_MODE,
+  DISPOSITION_WORDS,
   FAILED_ATTEMPT_LINE,
   framePaperworkReason,
   RETRO_MODES,
@@ -8,52 +9,63 @@ import {
   type RetroMode,
 } from '@book/shared';
 
-import { RECEIPT_RIGHTS, receiptLine } from './terms.ts';
+import { receiptLine } from './terms.ts';
 import { clampQuote, splitSentences } from './seam.ts';
 
 /**
  * BOOK-90 — marginalia: one vocabulary for the marks in the margin.
  *
- * The book has **four** state words and no fifth: «ждёт» (alive, waiting), «идёт» (alive, in
- * the machinery), «внесено» (landed in the text) and — BOOK-137 — «рассмотрено» (decided as
- * **paperwork**: the record exists, the sentence's letters did not change). Every surface that
- * prints a state — the margin note, the phone strip, the filing panel, the thread, the change
- * card's stamp — reads them here, so the same row cannot be «в процессе» in one place and
- * «идёт» in another.
+ * The book has **six** state words and no seventh: «ждёт» (alive, waiting), «идёт» (alive, in
+ * the machinery), «внесено» (landed in the text), «рассмотрено» (BOOK-137: decided as
+ * **paperwork** — the record exists, the sentence's letters did not change), «ждёт решения
+ * автора» (BOOK-174: the ladder could not place it and the author decides) and «отклонено»
+ * (BOOK-189: the filing was refused, and nothing is coming). Every surface that prints a
+ * state — the margin note, the phone strip, the filing panel, the thread, the change card's
+ * stamp — reads them here, so the same row cannot be «в процессе» in one place and «идёт» in
+ * another.
  *
- * The textual states and the paperwork one are exclusive: «рассмотрено» is never printed for a
- * filing that was applied to text, and «внесено» never for one that was not.
+ * «Рассмотрено» is never printed for a filing applied to text, and «внесено» never for one that
+ * was not. A refusal is a state of its own — it never waits, never reads as a queue place — and
+ * an escalated filing is decided yet not refused: it waits for the author, in its own word.
  *
- * The word alone does not carry the facts: a refusal, a superseded anchor, a held check and
- * an expired pass are all «ждёт», and the second line (`consequence`) says which one it is.
- * That is the owner's rule — waiting is not history — and it is why the deck below is part of
- * the vocabulary and not of a component.
+ * The word alone does not carry the facts: a superseded anchor, a held check and an expired pass
+ * are all «ждёт», and the second line (`consequence`) says which one — the deck is vocabulary.
  *
- * The code's comment status `accepted` («принято, правка в очереди») is a change now: it is
- * `идёт`, not `внесено`. Only `applied` is `внесено`; only `registered` is «рассмотрено».
+ * The code's comment status `accepted` («принято, правка в очереди») is a place in the writer's
+ * work, not a state of its own: it is `идёт` only while the linked change is `processing`, and
+ * `ждёт` while the lane has not reached it (BOOK-189). Only `applied` is «внесено»; only
+ * `registered` is «рассмотрено»; only `rejected` is «отклонено».
  */
 
-export type State = 'waiting' | 'working' | 'landed' | 'registered';
+export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'escalated' | 'refused';
 
 /** The deck's one line for a premise that waits for the chapter's first pass (one source). */
 export const PREMISE_PENDING = 'принято в основу, до первой редакции';
 
-/** The state words. Nothing else may print a state (BOOK-90, Part II; BOOK-137). */
+/** The state words. Nothing else may print a state (BOOK-90, Part II; BOOK-137, BOOK-189). */
 export const STATE_WORDS: Readonly<Record<State, string>> = {
   waiting: 'ждёт',
   working: 'идёт',
   landed: 'внесено',
   registered: 'рассмотрено',
+  // BOOK-174 — the ladder could not place the filing and no lock applies: it is decided (the
+  // author will decide it) and it is not a refusal. The word is the shared one, so the margin
+  // and the report cannot drift apart.
+  escalated: DISPOSITION_WORDS.escalated,
+  // BOOK-189 — a refusal is its own state; `filingMarginalia` heads it with the gate's word.
+  refused: 'отклонено',
 };
 
 /**
- * BOOK-61 — the **gate's** word, one per refusal, and never a fourth state word.
+ * BOOK-61 — the **gate's** word, one per refusal. A gate's word heads the line of a refused
+ * filing: the state says where the row stands in the book's machinery, and these say which gate
+ * stopped it. «Не принято» (B, the law) is never «отклонено» (C, the auditor) and neither is
+ * «проверяется» (A, a hold before a model read it) — the reader must be able to tell the three
+ * apart, and an operator reads `held_rule`/`rights_rule`/`audit_verdict` instead.
  *
- * A filing stopped by a gate is still «ждёт» (or «идёт», or «внесено»): the state word says
- * where the row stands in the book's machinery, and these say which gate stopped it. «Не
- * принято» (B, the law) is never «отклонено» (C, the auditor) and neither is «проверяется»
- * (A, a hold before a model read it) — the reader must be able to tell the three apart, and an
- * operator reads `held_rule`/`rights_rule`/`audit_verdict` instead.
+ * BOOK-189: the auditor's word is also the deck's refusal state (`STATE_WORDS.refused`) — a
+ * refusal is decided, so it is a state of its own and this word heads it. B's «не принято» and
+ * A's «проверяется» are not states: they qualify a row that still waits for a person.
  */
 export type GateWord = 'held' | 'rights' | 'auditor';
 
@@ -67,8 +79,8 @@ export const GATE_WORDS: Readonly<Record<GateWord, string>> = {
 export const HELD_LINE = 'замечание сохранено и ждёт человека — из него пока не делают правку';
 
 /**
- * BOOK-137 — the paperwork's second line: the mode it was filed as, and the one fact that
- * matters — the sentence did not change. One source for the filing and the change alike.
+ * BOOK-137 — the paperwork's second line: the mode it was filed as, and the one fact that matters
+ * — the sentence did not change. One source for the filing and the change alike.
  */
 export function registrationLine(mode: RetroMode = DEFAULT_FRAME_MODE): string {
   return `${mode} · фраза не изменилась`;
@@ -78,7 +90,7 @@ export type Marginalia = {
   state: State;
   /** The state word, lowercase: the label register uppercases it in CSS. */
   word: string;
-  /** The deck's second line: what happens next, or what befell the filing (≤46 chars). */
+  /** The deck's second line: what happens next, or what befell the filing (≤46 chars); `''` = none. */
   consequence: string;
 };
 
@@ -87,6 +99,13 @@ type FilingFacts = Pick<CommentDto, 'status'> & {
   interventionKind?: CommentDto['interventionKind'];
   applied?: CommentDto['applied'];
   chapter?: number;
+  /**
+   * BOOK-189 — the linked change's own place: the writer has the filing in hand (`processing`)
+   * or the lane holds it (`pending`). `null`/absent for a filing that landed, was refused, or
+   * that no change ever held. It is the only fact that separates «идёт» from «ждёт» on an
+   * `accepted` row: the row's word alone cannot say whether the writer is there yet.
+   */
+  changeStatus?: CommentDto['changeStatus'];
   /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
   refusal?: CommentDto['refusal'];
   /**
@@ -119,14 +138,37 @@ function chapterOf(comment: FilingFacts): number {
 }
 
 /**
- * The mode a `registered` comment was filed as. The comment row carries the server's public
- * one-liner (`CommentDto.reason`) and no mode of its own, so the word is read back through
- * the one function that writes that line — never through a second template.
+ * The mode a `registered` comment was filed as: the row carries the server's public one-liner
+ * (`CommentDto.reason`) and no mode of its own, so it is read back through the one function that
+ * writes that line, never through a second template.
  */
 function registrationMode(comment: FilingFacts): RetroMode {
   if (comment.frameMode !== undefined && comment.frameMode !== null) return comment.frameMode;
   const reason = comment.reason ?? '';
   return RETRO_MODES.find((mode) => framePaperworkReason(mode) === reason) ?? DEFAULT_FRAME_MODE;
+}
+
+/** The gate's own word for a refusal: B's law, C's auditor — never a fourth gate invented here. */
+function refusalWord(comment: FilingFacts): string {
+  return comment.refusal === 'rights' ? GATE_WORDS.rights : GATE_WORDS.auditor;
+}
+
+/** A refusal's detail without its own gate word: strip one «не принято: » prefix. */
+export function refusalDetail(comment: FilingFacts): string | null {
+  const reason = comment.reason ?? null;
+  if (reason === null || reason.length === 0) return null;
+  const prefix = `${GATE_WORDS.rights}: `;
+  // A bare word is the row's own again, and a sentence that carries the word in front of it is
+  // the word plus its rule sentence: both are handled, anything else is printed as stored.
+  if (comment.refusal !== 'rights') return reason;
+  if (reason === GATE_WORDS.rights) return null;
+  return reason.startsWith(prefix) ? reason.slice(prefix.length) || null : reason;
+}
+
+/** A landing's word-free receipt «глава N · ревизия R»; null when none was recorded. */
+export function landedReceiptLine(applied: CommentDto['applied'] | undefined): string | null {
+  if (applied === null || applied === undefined) return null;
+  return `глава ${applied.chapter} · ревизия ${applied.rev}`;
 }
 
 /** The state family of a filing, before any of the words are chosen. */
@@ -136,14 +178,23 @@ export function filingState(comment: FilingFacts): State {
   switch (comment.status) {
     case 'applied':
       return 'landed';
-    // BOOK-137: a filing on the canon sentence was accepted as paperwork. Nothing was written,
-    // so it is never «внесено» — and it is decided, so it is never «ждёт» or «идёт».
+    // BOOK-137: accepted as paperwork — nothing was written, and it is decided, so not «ждёт».
     case 'registered':
       return 'registered';
+    // BOOK-174: escalated is decided and not refused — the author's turn, said in its own words.
+    case 'escalated':
+      return 'escalated';
+    // BOOK-189: a refusal is a decision, not a queue place. It never reads as waiting.
+    case 'rejected':
+      return 'refused';
     case 'batched':
     case 'delivered':
-    case 'accepted':
       return 'working';
+    case 'accepted':
+      // The row's own word stops at triage: only the linked change says whether the writer is
+      // at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
+      // A failed attempt carries no `changeStatus` and waits with the deck's sentence.
+      return comment.changeStatus === 'processing' ? 'working' : 'waiting';
     default:
       return 'waiting';
   }
@@ -151,8 +202,7 @@ export function filingState(comment: FilingFacts): State {
 
 /**
  * Filing states that decided themselves: the row's own word is the last one, and a refusal is
- * never retold as an attempt that came back empty. The same set the server keeps
- * (`comments/repo.ts`), so no surface invents one the other does not have.
+ * never retold as an attempt that came back empty. The same set the server keeps (`states.ts`).
  */
 const OWN_DECISION: ReadonlySet<CommentDto['status']> = new Set<CommentDto['status']>([
   'rejected',
@@ -162,12 +212,9 @@ const OWN_DECISION: ReadonlySet<CommentDto['status']> = new Set<CommentDto['stat
 ]);
 
 /**
- * BOOK-136 — an attempt that came back empty, on a filing that did **not** decide itself.
- *
- * The one condition behind the deck's sentence, read by every surface that has to say it
- * (the line, the row's note, the card's fact): a failed attempt is not a state and not a
- * refusal, so a refusal and a landing keep their own line — the attempt behind them is not
- * the reader's answer.
+ * BOOK-136 — an attempt that came back empty, on a filing that did **not** decide itself: it is
+ * not a state and not a refusal, so a refusal and a landing keep their own line, and the attempt
+ * behind them is never the reader's answer (the line, the row's note, the card's fact).
  */
 export function failedAttempt(comment: FilingFacts): boolean {
   return (
@@ -203,20 +250,25 @@ export function filingConsequence(comment: FilingFacts): string {
     case 'delivered':
       return 'читает триаж';
     case 'accepted':
-      return isNote(comment) ? 'замечание в очереди' : 'правка в очереди на запись';
+      // BOOK-189: one line for each side of the writer's work. «пишется» is the writer at this
+      // filing; «в очереди на запись» is the lane holding it. An `accepted` row carries no queue
+      // word at all — the queue is counted by the writer, never by a comment status.
+      return comment.changeStatus === 'processing' ? 'пишется' : 'в очереди на запись';
     case 'applied': {
+      // A note moved no text and transferred no right: its terminal stays «замечание сохранено».
       if (isNote(comment)) return 'замечание сохранено';
-      const applied = comment.applied;
-      return applied === null || applied === undefined
-        ? RECEIPT_RIGHTS
-        : receiptLine(String(applied.chapter).padStart(2, '0'));
+      // BOOK-189 — one word-free receipt; a row stored before it has none, and none is invented.
+      return landedReceiptLine(comment.applied) ?? '';
     }
+    case 'escalated':
+      // BOOK-174: nothing landed, so there is no receipt — the fact is whose turn it is.
+      return 'решает автор';
     case 'superseded':
       return 'снято: текст успел измениться';
     case 'rejected':
-      // BOOK-61: B prints its fixed sentence (stored in `reason`), C's word stands alone and
-      // `commentView` appends the auditor's own reason beside it.
-      return comment.refusal === 'rights' ? (comment.reason ?? GATE_WORDS.rights) : GATE_WORDS.auditor;
+      // BOOK-61: the state word is the gate's own, so the line carries the reason alone —
+      // `refusalDetail` strips B's word from its stored sentence, never printing it twice.
+      return refusalDetail(comment) ?? refusalWord(comment);
     case 'quarantined':
       // A hold's line, never the guard's taxonomy: the rule an operator reads is `held_rule`.
       return `${GATE_WORDS.held}: ${HELD_LINE}`;
@@ -232,7 +284,10 @@ export function filingConsequence(comment: FilingFacts): string {
 /** One filing's whole marginalia: the word and the line that keeps it honest. */
 export function filingMarginalia(comment: FilingFacts): Marginalia {
   const state = filingState(comment);
-  return { state, word: STATE_WORDS[state], consequence: filingConsequence(comment) };
+  // BOOK-61, BOOK-189 — a refusal heads its line with the gate's own word: «не принято» for the
+  // law, «отклонено» for the auditor. The state is `refused`, the word is the gate's.
+  const word = state === 'refused' ? refusalWord(comment) : STATE_WORDS[state];
+  return { state, word, consequence: filingConsequence(comment) };
 }
 
 /** The state family of a change. `pending` is a queue place, i.e. in the machinery: `идёт`. */

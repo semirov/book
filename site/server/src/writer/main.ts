@@ -11,24 +11,20 @@
  * per stage, and the hashes a revert compares. What it never prints: a prompt, the key, a body.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { hostname } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { TOTAL_CHAPTERS } from '@book/shared';
 
 import { WriterConfigError, loadWriterConfig, type WriterConfig } from './config.ts';
 import { assertDataDirIsolation, isProductionEnv } from '../dataDirGuard.ts';
-import { createEngineClient } from './client.ts';
+import { createEngineClient, type EngineClient } from './client.ts';
 import { runPass, type PassResult } from './pass.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
+import { reasonOf } from './reasons.ts';
 import { revertChapter } from './revert.ts';
-import { openDatabase, databaseFile } from '../db/db.ts';
-import { runBackfillCli } from './backfillRun.ts';
-import { runPlanCli, runRippleCli } from './rippleCli.ts';
-import { markWriterBootAt, runAuditCli } from './verify/cli.ts';
+import { markWriterBoot } from './verify/cli.ts';
 
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -189,6 +185,7 @@ function configLines(config: WriterConfig): string[] {
     `[writer] конвейер ${config.pipelinePath}, ключ из ${config.keySource === 'file' ? 'файла' : 'переменной окружения'}`,
     `[writer] движок ${config.engineUrl}, сессия ${config.session}`,
     `[writer] границы: ${String(config.timeoutMs)} мс на вызов, ${String(config.maxTokensPerPass)} токенов на проход, ${String(config.maxPassesPerDay)} проходов в сутки`,
+    `[writer] режим по умолчанию ${config.modeDefault}${config.modeDefault === 'rewrite' ? ' (WRITER_MODE_DEFAULT: переключатель владельца)' : ''}`,
   ];
 }
 
@@ -201,32 +198,34 @@ function tokenLine(config: WriterConfig): string {
   return `[writer] токены: ${String(config.dailyTokens)} за сутки — информация, не граница (граница — деньги)`;
 }
 
-type PassState = { date: string; passes: number };
-
-function statePath(dataDir: string): string {
-  return join(dataDir, 'writer', 'state.json');
-}
-
-/** The supervised lane's own counter: what this process spent today, and nothing else. */
-export function readPassState(dataDir: string, today: string): PassState {
-  try {
-    const parsed = JSON.parse(readFileSync(statePath(dataDir), 'utf8')) as Partial<PassState>;
-    if (parsed.date === today && typeof parsed.passes === 'number' && Number.isInteger(parsed.passes)) {
-      return { date: today, passes: Math.max(0, parsed.passes) };
-    }
-  } catch {
-    // A missing or unreadable counter is a fresh day, not a crash.
-  }
-  return { date: today, passes: 0 };
-}
-
-function writePassState(dataDir: string, state: PassState): void {
-  mkdirSync(dirname(statePath(dataDir)), { recursive: true });
-  writeFileSync(statePath(dataDir), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
-}
-
 function todayUtc(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
+}
+
+/**
+ * The lane's day counter, read from the engine (BOOK-187 AC5): the writer process holds no
+ * database and writes no `writer/state.json` — the row is `writer_state`, and the engine is its
+ * only door. An engine that cannot answer is not a licence to spend: the money budget is the
+ * engine's own and is enforced there, so a failed read only means this process counts the day
+ * from zero (one line says so).
+ */
+async function dayCounter(engine: EngineClient, day: string, log: (line: string) => void): Promise<{ day: string; passes: number }> {
+  try {
+    const view = await engine.writerState(day);
+    return { day: view.day, passes: Number.isInteger(view.passes) && view.passes > 0 ? view.passes : 0 };
+  } catch (error) {
+    log(`[writer] счётчик дня не прочитан: ${reasonOf(error)} — день считается пустым, деньги по-прежнему считает движок`);
+    return { day, passes: 0 };
+  }
+}
+
+/** Count one pass that spent money. Bookkeeping: a failed write is a line, not a failed pass. */
+async function countPass(engine: EngineClient, day: string, log: (line: string) => void): Promise<void> {
+  try {
+    await engine.recordPass({ day, spent: true });
+  } catch (error) {
+    log(`[writer] проход не записан в счётчик дня: ${reasonOf(error)}`);
+  }
 }
 
 /** A pass that spent money counts toward the day, closed or parked. */
@@ -240,19 +239,15 @@ export type MainDeps = {
   log?: (line: string) => void;
   /** Injected in tests: a scripted model transport. */
   provider?: (request: Parameters<typeof callProvider>[0]) => Promise<ProviderResult>;
+  /** Injected in tests: the engine client, so a lane whose counter is unreachable can be proven. */
+  engine?: EngineClient;
   now?: () => number;
-  /** Injected in tests: who claims a ripple plan (`hostname:pid` in production). */
-  claimedBy?: string;
 };
 
 export async function main(deps: MainDeps = {}): Promise<number> {
   const env = deps.env ?? process.env;
   const log = deps.log ?? ((line: string) => console.log(line));
   const now = deps.now ?? (() => Date.now());
-  // Who holds a ripple plan while it is drained: the claim is released on exit, and a claim left
-  // by a killed process expires after `PLAN_CLAIM_TTL_MS`.
-  const claimedBy = deps.claimedBy ?? `${hostname()}:${String(process.pid)}`;
-
   const parsed = parseArgs(deps.argv ?? process.argv.slice(2));
   if (!parsed.ok) {
     console.error(`writer: ${parsed.error}`);
@@ -265,21 +260,12 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     return 0;
   }
 
-  if (cli.mode === 'backfill') {
-    // BOOK-173 (review fix 2): the graph's only production caller. It reads files and rows, so it
-    // runs before the lane's config — an operator repairing the ledger must not need a model key,
-    // and no engine is opened. `backfillRun.ts` owns the resolution and the counts.
-    const { bookRoot, dataDir } = pathsOf(env);
-    try {
-      assertDataDirIsolation(
-        { dataDir, adminTokenFile: '', engineTokenFile: '', feedbackDir: '' },
-        isProductionEnv(env),
-      );
-    } catch (error) {
-      console.error(`writer: ${error instanceof Error ? error.message : 'data dir refused'}`);
-      return 2;
-    }
-    return runBackfillCli({ dataDir, bookRoot, now, log, error: (line) => console.error(line) });
+  if (cli.mode === 'backfill' || cli.mode === 'plan' || cli.mode === 'ripple' || cli.mode === 'audit') {
+    // The writer holds no database handle (BOOK-187, BOOK-183): every command that needs the
+    // ledger is an operator tool in `site/bin/ledger.mjs`, which opens the volume itself the way
+    // `bin/restore.mjs` and `bin/index.mjs` do.
+    console.error(`writer: --${cli.mode} is an operator command — node site/bin/ledger.mjs ${cli.mode}`);
+    return 2;
   }
 
   let config: WriterConfig;
@@ -305,10 +291,6 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   // The process's own line about tokens: printed once, information only (§6).
   log(tokenLine(config));
 
-  // BOOK-DOC-80: the boot marker the sample queue consumes — the first `local only` change of this
-  // process is always re-read by the editor. Written once, and only when none is standing (a marker
-  // left by a process that filed nothing is still owed its one sample).
-  if (cli.mode === 'run' || cli.mode === 'ripple') markWriterBootAt(dataDir, log);
 
   // The engine client is built where it is used: a dry run must not need a token to exist.
   const engineOf = (): ReturnType<typeof createEngineClient> => {
@@ -324,8 +306,6 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     try {
       outcome = await revertChapter({
         chapter: cli.chapter ?? 0,
-        bookRoot,
-        dataDir,
         engine: engineOf(),
         dryRun: cli.dryRun,
         log,
@@ -345,6 +325,8 @@ export async function main(deps: MainDeps = {}): Promise<number> {
       log(`[writer] dry-run: книга ${bookRoot}, данные ${dataDir}`);
       return 0;
     }
+    // A dry run has no engine of its own (the usage line below promises no engine call), so the
+    // prompt is built as if nothing had been written yet: it shows the shape, not the rows.
     const plan = dryRunPlan({ bookRoot, chapter: cli.chapter });
     log(JSON.stringify({ dryRun: true, assignment: plan.assignment }, null, 2));
     log(`[writer] dry-run ${plan.summary}; модель не звана, файлы не тронуты`);
@@ -363,36 +345,18 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     deps.provider ??
     ((request) => callProvider(request));
 
-  // BOOK-DOC-80: the sample drain. It reads chapters, calls the editor and compares the answer
-  // with the word the change was closed on; its interface (0 / 1 / 2) is in `verify/audit.ts`.
-  if (cli.mode === 'audit') {
-    return await runAuditCli({ dataDir, config, bookRoot, provider, log, now, limit: cli.audit });
-  }
-
-  let engine: ReturnType<typeof createEngineClient>;
+  let engine: EngineClient;
   try {
-    engine = engineOf();
+    engine = deps.engine ?? engineOf();
   } catch (error) {
     console.error(`writer: ${error instanceof Error ? error.message : 'engine token refused'}`);
     return 2;
   }
 
-  // BOOK-173: `--plan` prints the frozen plan of one change, `--ripple` drains the oldest one
-  // still owed work. Both live in `rippleCli.ts`; the interface (0 / 1 / 2) is documented there.
-  if (cli.mode === 'plan' || cli.mode === 'ripple') {
-    const file = databaseFile(dataDir);
-    if (!existsSync(file)) {
-      console.error('writer: базы нет — плана нет');
-      return 2;
-    }
-    const db = openDatabase(file);
-    try {
-      if (cli.mode === 'plan') return runPlanCli({ db, changeId: cli.changeId, log });
-      return await runRippleCli({ db, config, bookRoot, dataDir, engine, provider, now, log, claimedBy });
-    } finally {
-      db.close();
-    }
-  }
+  // BOOK-DOC-80: the boot marker the sample queue consumes — the first `local only` change of
+  // this process is always re-read by the editor. A row written through the engine (the writer
+  // holds no database): a marker left by a process that filed nothing is still owed its sample.
+  await markWriterBoot(engine, log);
 
   const pass = (): Promise<PassResult> =>
     runPass({
@@ -408,13 +372,13 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     });
 
   if (!cli.loop) {
-    const counter = readPassState(dataDir, todayUtc(now()));
+    const counter = await dayCounter(engine, todayUtc(now()), log);
     if (counter.passes >= config.maxPassesPerDay) {
       log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
       return 0;
     }
     const result = await pass();
-    if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
+    if (spent(result)) await countPass(engine, counter.day, log);
     if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
     return EXIT[result.status];
   }
@@ -447,12 +411,12 @@ export async function main(deps: MainDeps = {}): Promise<number> {
 
   log(`[writer] loop: пауза ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`);
   while (!stopping) {
-    const counter = readPassState(dataDir, todayUtc(now()));
+    const counter = await dayCounter(engine, todayUtc(now()), log);
     if (counter.passes >= config.maxPassesPerDay) {
       log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
     } else {
       const result = await pass();
-      if (spent(result)) writePassState(dataDir, { date: counter.date, passes: counter.passes + 1 });
+      if (spent(result)) await countPass(engine, counter.day, log);
       if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
       // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
       // the next filing is asked for in the same cycle, without the pacing pause.

@@ -14,8 +14,12 @@ import { TOTAL_CHAPTERS, validateIntent, validateInterventionKind } from '@book/
 
 import { tokenMatches } from '../util/secret.ts';
 import type { Db } from '../db/db.ts';
+import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
 import { normalizeVerification, verificationSchema } from '../ledger/graph/verification.ts';
+import * as bodies from './bodySchemas.ts';
+import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
+import { registerWriterDoors } from './writerDoors.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -49,10 +53,24 @@ export type ControlOptions = {
    * projection (a cold database) the vocabulary is empty and the new-entity rule is skipped.
    */
   vocabulary?: (chapter: number) => readonly string[];
+  /**
+   * BOOK-187 AC7: how long a redacted transcript row is kept (`TRANSCRIPT_RETENTION_DAYS`,
+   * validated in `config.ts`). An app built without a config — a REST-only test — keeps the
+   * ADR's 30 days rather than an unbounded table.
+   */
+  transcriptRetentionDays?: number;
 };
 
-const session = z.string().min(1).max(64);
-const id = z.string().min(1).max(80);
+const { session, id } = bodies;
+
+/**
+ * BOOK-187: the text now travels in the body, so one route needs more room than Fastify's 64 KB
+ * default. A chapter is at most `CHAPTER_CHARS.max` (30 000) characters and 60 000 is the door's
+ * own bound; in UTF-8 that is under 240 KB, and a quarter of a megabyte is the whole envelope.
+ */
+const TEXT_CHARS_MAX = 60_000;
+const LAND_BODY_LIMIT = 512 * 1024;
+
 
 const nextBody = z
   .object({
@@ -75,34 +93,16 @@ const startBody = z.object({
 /** BOOK-117 §4: a first pass for one named chapter, because a lane only offers its own next slot. */
 const passBody = z.object({ chapter: z.number().int().min(1).max(TOTAL_CHAPTERS), session });
 
-/** BOOK-173: a ripple chapter's door — the change that stood the closure, and one chapter of it. */
-const rippleBody = z.object({
-  chapter: z.number().int().min(1).max(TOTAL_CHAPTERS),
-  session,
-  changeId: id,
-});
-
-/**
- * BOOK-173 §2: one entry per block a patch named, as the **character edit** the ingest needs to
- * keep sentence ids across the write (`sentences/transform.ts`). A shape check only: whether the
- * edit is consistent with the file is the ingest's question, and it answers by refusing to publish.
- */
-const sentenceEdit = z.object({
-  blockId: z.string().min(1).max(120),
-  newBlockId: z.string().min(1).max(120),
-  oldText: z.string().min(1).max(20_000),
-  newText: z.string().max(40_000),
-  from: z.number().int().min(0),
-  oldFragment: z.string().max(2_000),
-  newFragment: z.string().max(4_000),
-});
-
 const landBody = z.object({
   leaseId: id,
+  /** The writer's own text: the engine never reads a manuscript file (BOOK-187). */
+  text: z.string().max(TEXT_CHARS_MAX).optional(),
+  /** The first sheet's whole text, for a `front` step. */
+  frontRaw: z.string().max(TEXT_CHARS_MAX).optional(),
   noWrite: z.boolean().optional(),
   rev: z.number().int().min(0).max(1_000_000).optional(),
   /** The patch this landing applies; absent for a rewrite, a draft or a front sheet. */
-  sentences: z.array(sentenceEdit).max(8).optional(),
+  sentences: z.array(bodies.sentenceEdit).max(8).optional(),
   /** BOOK-173 §4: the mode the pass ran, and the estimate it was opened with. */
   mode: z.enum(['patch', 'rewrite']).optional(),
   estimateUsd: z.number().min(0).max(100).optional(),
@@ -155,9 +155,8 @@ const seenBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
 });
 /**
- * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them,
- * and one that claims nothing keeps the null/0 default. The triple is the same shape `done` takes.
- * BOOK-117 adds `cause`: a broken pass is not a refusal of the reader's intervention.
+ * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them, one
+ * that claims nothing keeps the null/0 default. BOOK-117 adds `cause` — a broken pass is no refusal.
  */
 const escalateBody = z.object({
   leaseId: id,
@@ -186,8 +185,7 @@ const enqueueBody = z.object({
   anchor: z
     .object({
       blockIds: z.array(z.string()).max(8),
-      /** ADR-044 — the sentence rows the change is aimed at; optional for every older caller. */
-      sentenceIds: z.array(z.string()).max(8).optional(),
+      sentenceIds: z.array(z.string()).max(8).optional(), // ADR-044: the rows the change is aimed at
       quote: z.string().max(280),
       prefix: z.string().max(40),
       suffix: z.string().max(40),
@@ -200,9 +198,9 @@ const enqueueBody = z.object({
 });
 
 /**
- * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the
- * summary/span bounds and the `truncated` flag are `stage.ts`'s job, so the door and the
- * store cannot drift. `chapter` and `changeId` are not in the body: they are the step's.
+ * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the summary/span
+ * bounds and the `truncated` flag are `stage.ts`'s job, so the door and the store cannot drift.
+ * `chapter` and `changeId` are not in the body: they are the step's.
  */
 const stageBody = z.object({
   passId: id,
@@ -251,6 +249,8 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     ok: true,
     version: options.version ?? '0.0.0',
     state: options.engine.state(),
+    // BOOK-187 AC5: the lane's counters, straight from the row; null before the first pass.
+    writer: options.db === undefined ? null : readWriterSummary(options.db),
   }));
 
   app.get('/internal/state', async () => ({ ok: true, data: options.engine.state() }));
@@ -263,23 +263,17 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     const body = passBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.openChapterPass(body.chapter, body.session) };
   });
-  /**
-   * BOOK-173 §7: one chapter of a ripple. Its own step (`pass: 'cascade'`), its own lease and its
-   * own gates — a long ripple is a sequence of normal passes, not one process that walks a book.
-   */
-  app.post('/internal/ripple/open', async (request) => {
-    const body = rippleBody.parse(request.body ?? {});
-    return { ok: true, data: options.engine.openChapterPass(body.chapter, body.session, body.changeId) };
-  });
   app.post('/internal/start', async (request) => {
     const body = startBody.parse(request.body ?? {});
     return { ok: true, data: options.engine.start(body.leaseId, { decision: body.decision, reason: body.reason, intent: body.intent }) };
   });
-  app.post('/internal/land', async (request) => {
+  app.post('/internal/land', { bodyLimit: LAND_BODY_LIMIT }, async (request) => {
     const body = landBody.parse(request.body ?? {});
     return {
       ok: true,
       data: options.engine.land(body.leaseId, {
+        text: body.text,
+        frontRaw: body.frontRaw,
         noWrite: body.noWrite,
         rev: body.rev,
         sentences: body.sentences,
@@ -288,6 +282,8 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       }),
     };
   });
+  // BOOK-173/BOOK-187: the lane's three text doors, in their own module.
+  registerWriterDoors(app, { engine: options.engine });
   app.post('/internal/verdict', async (request, reply) => {
     const body = verdictBody.parse(request.body ?? {});
     if (body.role === 'rights') {
@@ -468,6 +464,9 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
       throw error;
     }
   });
+
+  // BOOK-187 AC5/AC7: the writer lane's counter and its redacted receipts, under the same guard.
+  registerLaneStoreRoutes(app, { db: options.db, transcriptRetentionDays: options.transcriptRetentionDays });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {

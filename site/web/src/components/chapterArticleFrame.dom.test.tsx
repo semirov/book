@@ -146,12 +146,22 @@ async function mountWritten(entry: CatalogEntry, body: ChapterDto): Promise<HTML
   return container;
 }
 
+/**
+ * One tap, as the browser sends it: `pointerdown` → `pointerup` → `click` (`detail: 1`). The
+ * click belongs to the same gesture and must not replay the opening (the owner's phone defect).
+ */
+function gesture(span: HTMLElement): void {
+  span.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 4, clientY: 4, pointerId: 1, isPrimary: true }));
+  span.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4, pointerId: 1, isPrimary: true }));
+  span.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 4, clientY: 4, detail: 1 }));
+}
+
 /** A tap on the first sentence of one block — the pointer the strip is meant to answer. */
 async function tapBlock(container: HTMLElement, blockId: string): Promise<void> {
   const span = container.querySelector<HTMLElement>(`[data-block-id="${blockId}"] [data-s]`);
   if (span === null) throw new Error(`no sentence span in ${blockId}`);
   await act(async () => {
-    span.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4 }));
+    gesture(span);
   });
 }
 
@@ -190,7 +200,7 @@ async function tapWord(container: HTMLElement, blockId: string, word: string, fa
   if (at < 0) throw new Error(`«${word}» is not in the tapped sentence`);
   stubCaret(span, at + 1, fallback);
   await act(async () => {
-    span.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 4, clientY: 4 }));
+    gesture(span);
   });
 }
 

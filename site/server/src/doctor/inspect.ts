@@ -1,11 +1,12 @@
 /**
  * BOOK-188 — the database and filesystem facts the launch preflight reads, and nothing else.
  *
- * The doctor itself is a host CLI (`bin/admin.mjs doctor`), because five of its eight checks are
- * host facts (docker, mountinfo, the working tree, host backups, git). It must never open
- * `book.db` from the host while the stack runs (BOOK-183: two kernels on one WAL file), so its
- * DB facts come through `GET /api/admin/doctor` and are read by the process that already holds
- * the connection. This module is that reading half: pure functions over a `Db` and the data dir.
+ * The doctor itself is a host CLI (`bin/admin.mjs doctor`), because part of its rows are host
+ * facts (docker, mountinfo, host backups, the drill log) and none needs a checkout since BOOK-187.
+ * It must never open `book.db` from the host while the stack runs (BOOK-183: two kernels on one
+ * WAL file), so its DB facts come through `GET /api/admin/doctor` and are read by the process
+ * that already holds the connection. This module is that reading half: pure functions over a
+ * `Db` and the data dir.
  *
  * Every function is read-only, and every answer is a count, a path, a boolean or a digest:
  *
@@ -17,9 +18,10 @@
  *   * nothing here decides «ready» or «not ready» — that is the CLI's verdict, and a module that
  *     guessed it would be a second place for the rule to live.
  *
- * The two features this module knows are *not* shipped on this branch (`book_frame` from
- * BOOK-187, `fact_dependency` from BOOK-185) are detected by their presence, never required:
- * an absent table is a reported state, and the route answers instead of failing.
+ * `book_frame` is the frame's home since v28 (BOOK-187): the rows ship with the schema and are
+ * the text the site serves, so the module reads them. Stage 3's `fact_dependency` (BOOK-185) is
+ * still not shipped on this branch and is detected by its presence, never required: an absent
+ * table is a reported state, and the route answers instead of failing.
  */
 
 import { createHash } from 'node:crypto';
@@ -30,6 +32,7 @@ import { performance } from 'node:perf_hooks';
 import { OPENING_CHAPTER, TOTAL_CHAPTERS } from '@book/shared';
 import Database from 'better-sqlite3';
 
+import { absoluteOf, classifyDataEntry, DENIED_PATHS, readVolumeMarker } from '../dataHome.ts';
 import type { Db } from '../db/db.ts';
 import { SCHEMA_VERSION } from '../db/schema.ts';
 
@@ -53,9 +56,15 @@ export type DataDirInspection = {
   path: string;
   /** Top-level names, sorted: names only, never a content listing of a subdirectory. */
   entries: string[];
-  /** The three forbidden paths that exist, relative to the data dir (`writer/state.json`…). */
+  /**
+   * The writer paths that exist, relative to the data dir (`writer/state.json`…), or `['writer']`
+   * when the directory is there with none of them inside.
+   */
   denied: string[];
-  /** Top-level entries outside the allow-list; `writer` is reported through `denied` only. */
+  /**
+   * Top-level entries outside the allow-list, as **absolute paths** — what the operator types
+   * next. `writer` is reported through `denied` only.
+   */
   stray: string[];
   tokens: { admin: boolean; engine: boolean };
   /**
@@ -80,38 +89,14 @@ export type GraphInspection =
   | { shipped: true; facts: number; threads: number; edges: number; closureMs: number | null };
 
 /**
- * The one allow-list of the data dir (BOOK-187 AC12). It lives here as a constant, not as caller
- * input: a check that asked the caller what counts as «home» would agree with any stray file.
+ * **The allow-list is imported, never copied.** `server/src/dataHome.ts` owns the volume's shape —
+ * the marker's two shapes included — and `bin/home-check.mjs`, the deploy gate, reads the same
+ * module. Two lists were how the live volume's `.book-volume` came to be a stray in the doctor and
+ * a marker in the guard (BOOK-187).
  */
-const ALLOWED_FILES: readonly string[] = ['book.db', 'book.db-wal', 'book.db-shm'];
-const ALLOWED_FILE_PATTERNS: readonly RegExp[] = [
-  /^[^/]+\.token$/u,
-  /^book-before-.+\.db$/u,
-  /^book-reset-.+\.db$/u,
-  /^cover\./u,
-];
-const ALLOWED_DIRS: readonly string[] = [
-  'backups',
-  'archive',
-  'versions',
-  'index',
-  'exchange',
-  'logs',
-  'locks',
-];
-
-/** The three paths the launch forbids in the data dir: prose never lives next to the rows. */
-export const DENIED_PATHS: readonly string[] = ['writer/state.json', 'writer/pre', 'writer/transcripts'];
 
 /** `pre-v22-20261028T120000Z.db` — the dump a migration leaves before it changes the schema. */
 const DUMP_FILE = /^pre-v.+\.db$/u;
-
-/** For the container's own filesystem check: a directory is not a file and vice versa. */
-function allowedEntry(name: string, isDirectory: boolean): boolean {
-  if (isDirectory) return ALLOWED_DIRS.includes(name);
-  if (ALLOWED_FILES.includes(name)) return true;
-  return ALLOWED_FILE_PATTERNS.some((pattern) => pattern.test(name));
-}
 
 function exists(path: string): boolean {
   try {
@@ -205,9 +190,12 @@ function readDump(file: string, DatabaseImpl: typeof Database): { integrity: str
 }
 
 /**
- * The data dir is the home of the book, and only the book: the allow-list above, the two token
- * files by presence, and the three forbidden writer paths by name. Nothing is read inside a
- * subdirectory — a name is enough to report a stray, and a transcript is not ours to enumerate.
+ * The data dir is the home of the book, and only the book: the allow-list `dataHome.ts` owns (the
+ * deploy guard's own list, not a second copy), the two token files by presence, and the writer's
+ * paths by name — `writer/` itself included, so a volume that holds only an empty one is refused
+ * here as it is by `bin/home-check.mjs`. Nothing is read inside a subdirectory — a name is enough
+ * to report a stray, and a transcript is not ours to enumerate. The volume marker is the one entry
+ * judged by its content, and it is read **once**, read-only, so the answer is a snapshot.
  *
  * A directory that cannot be listed (a wrong mount, a file where the volume should be) is a
  * reported `error`, not a throw: the preflight has to be able to say *which* fact is unavailable,
@@ -226,17 +214,23 @@ export function inspectDataDir(dataDir: string): DataDirInspection {
   } catch (error) {
     return { path: dataDir, entries: [], denied: [], stray: [], tokens, error: codeOf(error) };
   }
+  const markerContent = readVolumeMarker(dataDir);
   const deniedTop = new Set(DENIED_PATHS.map((path) => path.split('/')[0] ?? path));
+  const deniedPresent = DENIED_PATHS.filter((path) => exists(join(dataDir, path)));
+  // `writer` is never a stray: it is reported through `denied`, the same fact the deploy guard
+  // states — `writer/` itself is a leftover, so a volume holding only an empty `writer/` is not
+  // clean just because none of the three paths is there (BOOK-187 review).
+  const writerPresent = dirents.some((entry) => entry.name === 'writer');
   return {
     path: dataDir,
     entries: dirents.map((entry) => entry.name),
-    denied: DENIED_PATHS.filter((path) => exists(join(dataDir, path))),
-    // `writer` is never a stray: it is reported through `denied`, and a `writer/` with none of
-    // the three paths is a leftover of an older writer, not a second home for the book.
+    denied: deniedPresent.length > 0 || !writerPresent ? deniedPresent : ['writer'],
     stray: dirents
       .filter((entry) => !deniedTop.has(entry.name))
-      .filter((entry) => !allowedEntry(entry.name, entry.directory))
-      .map((entry) => entry.name),
+      .filter(
+        (entry) => !classifyDataEntry({ name: entry.name, directory: entry.directory, markerContent }).ok,
+      )
+      .map((entry) => absoluteOf(dataDir, entry.name)),
     tokens,
     error: null,
   };

@@ -90,7 +90,7 @@ export async function runRippleCli(input: RippleCliInput): Promise<number> {
       db: input.db,
       planRowId: oldest.planRowId,
       plan: oldest.plan,
-      frameOk: frameProbe(input.bookRoot),
+      frameOk: frameProbe(input.db),
       now: input.now,
       runChapter: (chapter, nodes) =>
         runDrainChapter(

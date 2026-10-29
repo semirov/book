@@ -199,13 +199,16 @@ export function attemptState(db: Db, comment: AttemptComment, nowMs: number): At
   const reopenAt = new Date(utcDayEnd(nowMs)).toISOString();
 
   const decidedMs = comment.decided_at === null ? Number.NaN : Date.parse(comment.decided_at);
+  // BOOK-174: an escalated filing waits for the author exactly as long as a refused one waits
+  // for its cooldown — the reader's way back is the same door, and the counters are the same.
+  const reworkable = comment.status === 'rejected' || comment.status === 'escalated';
   const cooldownUntil =
-    comment.status === 'rejected' && Number.isFinite(decidedMs)
+    reworkable && Number.isFinite(decidedMs)
       ? new Date(decidedMs + REFUSAL_COOLDOWN_MS).toISOString()
       : null;
 
   let blocked: AttemptBlock | null = null;
-  if (comment.status === 'rejected') {
+  if (reworkable) {
     if (cooldownUntil !== null && nowMs < Date.parse(cooldownUntil)) blocked = 'cooldown';
     else if (closedToday) blocked = 'attempts';
     else if (identityToday >= ATTEMPTS_PER_IDENTITY_DAY) blocked = 'identity';
@@ -220,7 +223,7 @@ export function attemptState(db: Db, comment: AttemptComment, nowMs: number): At
     reopenAt,
     identityToday,
     networkToday,
-    allowed: comment.status === 'rejected' && blocked === null,
+    allowed: reworkable && blocked === null,
     blocked,
   };
 }

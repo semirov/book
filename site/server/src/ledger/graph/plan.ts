@@ -174,6 +174,11 @@ function blockOfFacts(db: Db): Map<string, string> {
   return map;
 }
 
+/** The caps a plan is frozen with when nothing named its own — the closed bound of BOOK-DOC-75. */
+export function defaultBounds(): PlanBounds {
+  return capsOf({});
+}
+
 function capsOf(input: PlanCaps): PlanBounds {
   return {
     chars: input.chars ?? RIPPLE_MAX_CHANGED_CHARS,

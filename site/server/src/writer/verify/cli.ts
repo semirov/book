@@ -2,35 +2,30 @@
  * The two CLI edges of tiered verification (BOOK-173, BOOK-DOC-80): the boot marker a writer
  * process writes once, and the `--audit-samples` command.
  *
- * They live beside the audit rather than in `main.ts` because `main.ts` is the argument parser and
- * is at the file-size wall; both need the database the writer shares with the engine, which is why
- * each opens it for exactly its own call and closes it again.
+ * The **writer** writes no database (BOOK-187, BOOK-183): the boot marker goes through the
+ * engine's control route (`POST /internal/writer-boot`) like every other lane store. The sample
+ * audit is an operator command (`site/bin/ledger.mjs audit`), so it is the one place here that
+ * opens the volume — the way `bin/restore.mjs` and `bin/index.mjs` do, outside the writer process.
  */
 
 import { existsSync } from 'node:fs';
 
 import { databaseFile, openDatabase } from '../../db/db.ts';
-import { markWriterBoot } from '../../ledger/graph/verification.ts';
-import { ulid } from '../../util/ulid.ts';
+import type { EngineClient } from '../client.ts';
 import type { WriterConfig } from '../config.ts';
 import type { ProviderCall } from '../passLane.ts';
+import { reasonOf } from '../reasons.ts';
 import { runAuditSamples } from './audit.ts';
 
 /**
- * Write the per-process marker, when there is a database to write it into. A missing file is a
- * fresh install: the marker will be written by the first process that finds one.
+ * Write the per-process marker through the engine. A failed marker is a line, never a refusal: a
+ * pass whose text can land must not park because the safeguard's bookkeeping did not.
  */
-export function markWriterBootAt(dataDir: string, log: (line: string) => void): void {
-  const file = databaseFile(dataDir);
-  if (!existsSync(file)) return;
-  let db;
+export async function markWriterBoot(engine: EngineClient, log: (line: string) => void): Promise<void> {
   try {
-    db = openDatabase(file);
-    markWriterBoot(db, ulid());
+    await engine.writerBoot();
   } catch (error) {
-    log(`[writer] boot marker не записан: ${error instanceof Error ? error.message.slice(0, 120) : 'ошибка'}`);
-  } finally {
-    db?.close();
+    log(`[writer] boot marker не записан: ${reasonOf(error)}`);
   }
 }
 
@@ -45,7 +40,7 @@ export type AuditCliInput = {
   limit: number | null;
 };
 
-/** `--audit-samples [N]`: `0` drained, `1` something was flagged, `2` it could not run. */
+/** `ledger.mjs audit [N]`: `0` drained, `1` something was flagged, `2` it could not run. */
 export async function runAuditCli(input: AuditCliInput): Promise<number> {
   const file = databaseFile(input.dataDir);
   if (!existsSync(file)) {

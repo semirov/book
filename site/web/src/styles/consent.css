@@ -7,10 +7,10 @@
    `0` pinned it to the viewport edge). The actions wrap, so 390 px keeps the two buttons and
    the link on their own lines.
    BOOK-88, type: the sentence is prose at `--fs-note`; the actions are ONE action register —
-   `--fs-micro` in `--mono`, uppercase, 0.1em — the book's label voice. There is no third size
-   in the strip. `.consent-body` is the notice's prose block: `base.css` caps it at
-   `var(--measure)` with the one prose rule (a no-op now, kept as the pin), so the text and
-   both hairlines stand on the column, flush left. */
+   `--fs-micro` in `--mono`, lowercase as written, no tracking — the book's mark voice. There
+   is no third size in the strip. `.consent-body` is the notice's prose block: `base.css` caps
+   it at `var(--measure)` with the one prose rule (a no-op now, kept as the pin), so the text
+   and both hairlines stand on the column, flush left. */
 .consent {
   margin: 30px 0 6px;
   padding: 0;
@@ -34,13 +34,12 @@
   margin-top: 12px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }
 /* The register is stated on the controls as well as on the row: Chrome's UA sheet resets
-   `text-transform` and `letter-spacing` on form controls, so an inherited value never reaches
-   the button — that is why the two actions used to read as browser defaults in sentence case.
-   The primary and the secondary differ in ink alone; size, weight and family are shared. */
+   `letter-spacing` on form controls, so an inherited value never reaches the button — that is
+   why the two actions used to read as browser defaults. The primary and the secondary differ
+   in ink alone; size, weight and family are shared. */
 .consent-choice,
 .consent-link {
   display: inline-flex;
@@ -48,8 +47,7 @@
   min-height: 44px;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -70,6 +68,34 @@
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+/* BOOK-189 — the colophon's notifications row, beside «изменить» because it is the same kind of
+   control: the reader's own answer about what this browser is allowed to do. The row keeps the
+   data voice (mono, the 12 px floor, its own case), the verb is a word in the row at the 44 px
+   touch target, and the setting itself stays in the register's quiet ink. Book.css owns the
+   colophon's rows and is at its line budget; these four rules must not split it. */
+.colophon .push-row {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+.colophon .push-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  text-decoration: none;
+  text-transform: none;
+}
+.colophon .push-toggle[disabled] {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* The retry line sits in the row it belongs to: one failed attempt, in the house error ink,
+   and the setting beside it does not move. */
+.colophon .push-error {
+  color: var(--revise);
+}
 /* The same line on /privacy: the place where a reader can change the choice later. */
 .consent-line {
   margin: 14px 0;
@@ -78,12 +104,11 @@
 }
 /* BOOK-88: this line is the strip's actions, on another page — the two buttons beside the state
    are one action register, so the state states the same register itself (family, size, case,
-   tracking) instead of falling back to the legal page's label voice at 0.08em. Ink alone
-   separates it from «Разрешить»: it is a state, not an action. */
+   tracking) instead of falling back to the legal page's prose. Ink alone separates it from
+   «Разрешить»: it is a state, not an action. */
 .consent-state {
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }

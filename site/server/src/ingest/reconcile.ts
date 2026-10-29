@@ -1,11 +1,16 @@
 /**
- * Full rescan of the manuscript into SQLite (ADR-002: files are the only source of truth
- * for text). Boot runs this once; the watcher runs the same per-file logic on every
- * change, so a rescan and a live write cannot disagree.
+ * The one-shot import: an existing file tree → rows (ADR-041 §1, BOOK-187 AC2).
  *
- * A chapter that disappeared from the directory is removed from the projection — files
- * win, always (§18) — while its text stays recoverable from `data/versions/`. The same is
- * true of the first sheet: `00-front.md` is the only source of the cover and page 2.
+ * **This is the only module allowed to read a manuscript directory, and it is unreachable from
+ * a normal boot.** The book's text lives in `chapters`/`blocks`, so a restart has nothing to
+ * rescan; an operator runs this deliberately, once, to bring a tree of chapter files into a
+ * volume (a migration, a restored checkout, a fixture in a test). Nothing else in `server/src`
+ * may open a chapter file: `scripts/arch.mjs`'s text-home rule fails such an import.
+ *
+ * The import is idempotent by text: a file whose bytes match the row is `unchanged`, a changed
+ * one is a revision. A chapter that disappeared from the directory is removed from the
+ * projection — files win, always (§18) — while its text stays recoverable from `data/versions/`.
+ * The same is true of the first sheet: `00-front.md` is the only source of the cover and page 2.
  */
 
 import { isChapterNumber } from '@book/shared';

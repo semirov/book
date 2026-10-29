@@ -7,7 +7,7 @@
  * asserted too: a chapter the plan does not name, and a change that is not a ripple.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -69,21 +69,23 @@ describe('a ripple chapter', () => {
         .prepare('SELECT pass, chapter, outcome FROM steps WHERE step_id = ?')
         .get(result.stepId ?? '') as { pass: string; chapter: number; outcome: string };
       expect(step).toEqual({ pass: 'cascade', chapter: RIPPLE_CHAPTER, outcome: 'rewritten' });
-      // The prose moved where the plan said it would, and only there.
-      const text = readFileSync(join(harness.bookRoot, 'manuscript', 'ch12.md'), 'utf8');
+      // The prose moved where the plan said it would, and only there — in the rows.
+      const text = harness.fixture.readChapter(RIPPLE_CHAPTER);
       expect(text).toContain('аннулирован');
       expect(text).not.toContain('Допуск всё ещё выдан');
-
-      // The synthetic assignment is a fenced data block, not prose: id, reason and the claim.
-      const transcript = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`), 'utf8'),
-      ) as { mode: string; calls: Array<{ kind: string; user: string }> };
-      expect(transcript.mode).toBe('patch');
-      const draft = transcript.calls.find((call) => call.kind === 'draft');
-      expect(draft?.user).toContain('```ripple');
-      expect(draft?.user).toContain(`change: ${changeId}`);
-      expect(draft?.user).toContain('reason: CAUSE_CHANGED:edg_doc_12');
-      expect(draft?.user).toContain('claim: «Допуск всё ещё выдан, и смена стоит.»');
+      // BOOK-187: the receipt is rows, and no pass wrote a file under the data dir.
+      expect(existsSync(join(harness.dataDir, 'writer'))).toBe(false);
+      const receipts = harness.fixture.db
+        .prepare('SELECT role, content_redacted FROM pass_transcripts WHERE pass_id = ? ORDER BY seq')
+        .all(result.stepId ?? '') as Array<{ role: string; content_redacted: string }>;
+      expect(receipts.map((row) => row.role)).toContain('draft');
+      // The pass's own facts travel on its last row, so the mode is read there.
+      const lastRow = receipts.at(-1);
+      const draft = JSON.parse(lastRow?.content_redacted ?? '{}') as { pass?: { mode?: string } };
+      // The mode the pass ran is a fact of the receipt, and the prompt itself is only a hash.
+      expect(draft.pass?.mode).toBe('patch');
+      expect(receipts.map((row) => row.content_redacted).join('')).not.toContain('```ripple');
+      expect(receipts.map((row) => row.content_redacted).join('')).not.toContain('Допуск всё ещё выдан');
       // Its prefix is the pass's prefix: the origin pass's cache still pays for it.
       expect(harness.fixture.db.prepare('SELECT outcome FROM changes WHERE id = ?').get(changeId)).toEqual({
         outcome: 'ripple',

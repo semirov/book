@@ -7,10 +7,11 @@ import { BASE, PROSE, TOKENS, layoutProblems, replaced, seeded, sheets, tokenPx 
 /**
  * BOOK-88 — the consent strip carries two type registers, not three.
  *
- * The rule (owner, screenshot): the sentence is prose at `--fs-note`; the two buttons and the
- * privacy link are one action register — `--fs-micro` in `--mono`, uppercase, tracked — the
- * book's label voice, never a browser default. The primary differs from the secondary in ink
- * alone (`--ink` vs `--ink-3`), and every action keeps a 44 px tap target where the row wraps.
+ * The rule (owner, screenshot; BOOK-128 #3900): the sentence is prose at `--fs-note`; the two
+ * buttons and the privacy link are one action register — `--fs-micro` in `--mono`, lowercase as
+ * written, no tracking — the book's mark voice, never a browser default. The primary differs
+ * from the secondary in ink alone (`--ink` vs `--ink-3`), and every action keeps a 44 px tap
+ * target where the row wraps.
  *
  * This file reads `consent.css` as text: the strip's declarations are resolved per selector in
  * file order, so the evidence is the cascade a browser would apply, not a line the author meant
@@ -25,8 +26,8 @@ const ELSEWHERE = ['consent-line', 'consent-state', 'analytics-change'] as const
 
 /** Exactly two sizes: the promise's, and the action register's floor. */
 const SIZES = { sentence: 'var(--fs-note)', action: 'var(--fs-micro)' } as const;
-/** The one voice of an action. A different family, size or case is a second register. */
-const REGISTER = ['font-family', 'font-size', 'letter-spacing', 'text-transform'] as const;
+/** The one voice of an action. A different family, size or tracking is a second register. */
+const REGISTER = ['font-family', 'font-size', 'letter-spacing'] as const;
 
 const classesOf = (rule: Rule): string[] =>
   rule.parts.flatMap((part) => [...part.matchAll(/\.([\w-]+)/gu)].map((match) => match[1] ?? ''));
@@ -77,9 +78,12 @@ const fontSizes = (set: SheetSet): string[] => [
   ),
 ];
 
-/** A tracking value in em, or NaN when it is not a relative one. */
-const trackingEm = (value: string | undefined): number =>
-  value !== undefined && value.endsWith('em') ? Number.parseFloat(value) : Number.NaN;
+/** A tracking value in em, or NaN when it is not a relative one. `0` is zero, whatever the unit. */
+const trackingEm = (value: string | undefined): number => {
+  if (value === undefined) return Number.NaN;
+  if (value === '0') return 0;
+  return value.endsWith('em') ? Number.parseFloat(value) : Number.NaN;
+};
 
 /** The px of a `min-height`, or NaN. */
 const px = (value: string | undefined): number =>
@@ -139,26 +143,36 @@ function typeProblems(set: SheetSet): string[] {
     );
   }
   if (actions.get('font-family') !== 'var(--mono)') {
-    problems.push('consent.css: the actions are not in var(--mono) — the book action voice is the mono label register');
+    problems.push('consent.css: the actions are not in var(--mono) — the book action voice is the mono mark register');
   }
-  if (actions.get('text-transform') !== 'uppercase') {
-    problems.push('consent.css: the actions do not declare text-transform: uppercase');
+  // The mark register is lowercase as written (BOOK-128 #3900 §3): a case transform is a second
+  // voice, and the guard names it rather than the caps it would print.
+  if (actions.has('text-transform')) {
+    problems.push(
+      `consent.css: the actions declare text-transform: ${actions.get('text-transform') ?? ''} — the mark register is lowercase as written`,
+    );
   }
-  if (!(trackingEm(actions.get('letter-spacing')) >= 0.08)) {
-    problems.push(`consent.css: the actions declare no tracked letter-spacing (got ${actions.get('letter-spacing') ?? 'nothing'})`);
+  if (trackingEm(actions.get('letter-spacing')) !== 0) {
+    problems.push(
+      `consent.css: the actions declare tracking (got ${actions.get('letter-spacing') ?? 'nothing'}) — the mark register is set at 0`,
+    );
   }
 
-  // The UA sheet resets both on a form control, so an inherited value never arrives: the button
-  // has to state them itself, or it reads as a browser default in sentence case.
-  for (const property of ['text-transform', 'letter-spacing'] as const) {
-    if (!stated(set, '.consent-choice', property)) {
-      problems.push(
-        `consent.css: .consent-choice does not state ${property} — Chrome's UA sheet resets it on a form control, so the action falls out of the register`,
-      );
-    }
+  // The UA sheet resets the tracking on a form control, so an inherited value never arrives: the
+  // button has to state it itself, or its label reads as a browser default.
+  if (!stated(set, '.consent-choice', 'letter-spacing')) {
+    problems.push(
+      "consent.css: .consent-choice does not state letter-spacing — Chrome's UA sheet resets it on a form control, so the action falls out of the register",
+    );
   }
   for (const selector of ['.consent-choice', '.consent-link'] as const) {
     const rule = declared(set, selector);
+    // A case transform on an action is the retired register returning (BOOK-128 #3900 §3).
+    if (rule.has('text-transform')) {
+      problems.push(
+        `consent.css: ${selector} declares text-transform: ${rule.get('text-transform') ?? ''} — the mark register is lowercase as written`,
+      );
+    }
     for (const property of REGISTER) {
       if (rule.get(property) !== actions.get(property)) {
         problems.push(
@@ -291,8 +305,8 @@ describe('the consent strip carries two type registers (BOOK-88)', () => {
   });
 
   it('fires on a third size in the strip', () => {
-    // The seeded violation: a third rung (13 px) on the section itself, which is the label
-    // voice of the forms. The strip may not borrow a size from anywhere else in the book.
+    // The seeded violation: a third rung (13 px) on the section itself. The strip may not borrow
+    // a size from anywhere else in the book.
     const third = typeProblems(seeded(SHEET, '.consent { font-size: var(--fs-label); }'));
     expect(third).toContain(
       'consent.css: a third size in the strip — font-size: var(--fs-label); the strip has exactly two: var(--fs-note) for the sentence and var(--fs-micro) for the actions',
@@ -305,22 +319,29 @@ describe('the consent strip carries two type registers (BOOK-88)', () => {
     expect(divergent.some((problem) => problem.includes('the secondary action differs by more than ink'))).toBe(true);
   });
 
-  it('fires when a button stops undoing the UA reset', () => {
+  it('fires when a button stops stating the register, or states the old one', () => {
     // A later rule putting the UA values back: the property is stated, and wrong.
-    const bare = typeProblems(seeded(SHEET, '.consent-choice { text-transform: none; letter-spacing: normal; }'));
-    expect(
-      bare.some((problem) => problem.includes('.consent-choice text-transform is none, the actions are uppercase')),
-    ).toBe(true);
-    expect(bare.some((problem) => problem.includes('letter-spacing'))).toBe(true);
+    const bare = typeProblems(seeded(SHEET, '.consent-choice { letter-spacing: normal; }'));
+    expect(bare.some((problem) => problem.includes('.consent-choice letter-spacing is normal, the actions are 0'))).toBe(true);
 
-    // And the real bug: the declarations are simply not on the button (only on the row), which
-    // the cascade hides — `stated` is what catches it.
+    // The row itself declaring tracking is the same defect, named as the register's own rule.
+    const row = typeProblems(seeded(SHEET, '.consent-actions { letter-spacing: 0.1em; }'));
+    expect(row.some((problem) => problem.includes('the mark register is set at 0'))).toBe(true);
+
+    // A case transform is the retired register returning: named, not silently printed.
+    const shout = typeProblems(seeded(SHEET, '.consent-choice { text-transform: uppercase; }'));
+    expect(
+      shout.some((problem) => problem.includes('.consent-choice declares text-transform: uppercase')),
+    ).toBe(true);
+
+    // And the real bug: the declaration is simply not on the button (only on the row), which the
+    // cascade hides — `stated` is what catches it.
     const inherited = typeProblems(
-      replaced(SHEET, 'text-transform: uppercase;\n  text-decoration: underline;', 'text-decoration: underline;'),
+      replaced(SHEET, 'letter-spacing: 0;\n  text-decoration: underline;', 'text-decoration: underline;'),
     );
     expect(
       inherited.some((problem) =>
-        problem.includes('.consent-choice does not state text-transform'),
+        problem.includes('.consent-choice does not state letter-spacing'),
       ),
     ).toBe(true);
   });
@@ -334,22 +355,23 @@ describe('/privacy carries the same one action register (BOOK-88)', () => {
     const state = resolvedFrom(rulesOf(SHEET, blankComments(sheets[SHEET] ?? ''))).get(squash(LEGAL_STATE));
     expect(state?.get('font-family')).toBe('var(--mono)');
     expect(state?.get('font-size')).toBe('var(--fs-micro)');
-    expect(state?.get('text-transform')).toBe('uppercase');
-    expect(trackingEm(state?.get('letter-spacing'))).toBeCloseTo(0.1, 5);
+    // Lowercase as written: no case transform at all (BOOK-128 #3900 §3).
+    expect(state?.has('text-transform')).toBe(false);
+    expect(trackingEm(state?.get('letter-spacing'))).toBe(0);
     expect(state?.get('color')).toBe('var(--ink-3)');
   });
 
-  it('fires when the state falls back to the page voice', () => {
-    // The reported defect, seeded verbatim: 12 px PT Sans Narrow at 0.08em beside two 12 px
-    // PT Mono buttons at 0.1em — two action voices on one line.
+  it('fires when the state falls back to a page voice', () => {
+    // The reported defect, re-seeded with the canon's own two faces: the serif at 0.08em beside
+    // two 12 px PT Mono buttons at 0 — two voices on one line.
     const fallback = legalProblems(
-      seeded(SHEET, '.consent-state { font-family: var(--label); letter-spacing: 0.08em; }'),
+      seeded(SHEET, '.consent-state { font-family: var(--serif); letter-spacing: 0.08em; }'),
     );
     expect(fallback).toContain(
-      "consent.css: /privacy's .consent-state font-family is var(--label), its actions are var(--mono) — the line carries one action register",
+      "consent.css: /privacy's .consent-state font-family is var(--serif), its actions are var(--mono) — the line carries one action register",
     );
     expect(
-      fallback.some((problem) => problem.includes('.consent-state letter-spacing is 0.08em, its actions are 0.1em')),
+      fallback.some((problem) => problem.includes('.consent-state letter-spacing is 0.08em, its actions are 0')),
     ).toBe(true);
   });
 

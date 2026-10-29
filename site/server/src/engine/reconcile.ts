@@ -67,7 +67,6 @@ export function reconcileRestore(deps: EngineDeps, input: RestoreReconcileInput)
   }
 
   const report = readIntegrity(db, {
-    bookRoot: deps.config.bookRoot,
     denylistPath: deps.config.denylistPath,
     imprint: imprintOrNull(deps) ?? { author: '', copyright: '', publisher: null, year: 'auto' },
     nowMs: now,

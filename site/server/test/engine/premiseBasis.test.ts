@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { admitPremise } from '../../src/engine/premise.ts';
 import { reconcile as ingestReconcile } from '../../src/ingest/reconcile.ts';
 import { newChangeId } from '../../src/util/ulid.ts';
-import { AT, accept, change, codeOf, fixtureOf, seed } from './premiseHelpers.ts';
+import { AT, acceptResult, change, codeOf, fixtureOf, seed } from './premiseHelpers.ts';
 
 /**
  * BOOK-137 — a basis-only slot (the opening and the finale) is its frame sentence and nothing else.
@@ -19,8 +19,8 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
     const fixture = fixtureOf();
     try {
       // The real basis files: the ingest projects ch01/ch42 as rows (rev 0, one block).
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       expect(
         fixture.db
@@ -32,13 +32,13 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
       ]);
 
       const answers = [
-        accept(fixture.db, seed(fixture.db, { chapter: 1 }), 'переписать первую фразу'),
-        accept(
+        acceptResult(fixture.db, seed(fixture.db, { chapter: 1 }), 'переписать первую фразу'),
+        acceptResult(
           fixture.db,
           seed(fixture.db, { chapter: 1, proposedText: 'Начать иначе.', kind: 'decision' }),
           'переписать начало',
         ),
-        accept(fixture.db, seed(fixture.db, { chapter: TOTAL_CHAPTERS }), 'переписать финал'),
+        acceptResult(fixture.db, seed(fixture.db, { chapter: TOTAL_CHAPTERS }), 'переписать финал'),
       ];
       expect(answers).toEqual([
         { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON },
@@ -69,8 +69,8 @@ describe('BOOK-137 — a basis slot refuses a filing in every writer of `changes
   it('settles a premise left on a basis slot at reconcile, and keeps an empty chapter’s', () => {
     const fixture = fixtureOf();
     try {
-      fixture.writeChapter(1, FRAME_FIRST_SENTENCE);
-      fixture.writeChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
+      fixture.seedChapter(1, FRAME_FIRST_SENTENCE);
+      fixture.seedChapter(TOTAL_CHAPTERS, FRAME_LAST_SENTENCE);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
       // Rows from before the refusal existed: a premise is filed straight onto a basis slot and
       // onto an empty ch05, which is what BOOK-7 keeps waiting for its first draft.

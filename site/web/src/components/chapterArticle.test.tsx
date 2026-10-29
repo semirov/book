@@ -4,6 +4,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { ChapterArticle } from './ChapterArticle.tsx';
+import { firstDeclarations } from './cssRules.ts';
+
+/** Every stylesheet as text: the failed row's shape is a claim about the sheet. */
+const sheets = import.meta.glob<string>('../styles/*.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 
 function entry(n: number, overrides: Partial<CatalogEntry> = {}): CatalogEntry {
   return {
@@ -91,5 +99,21 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
     expect(unwritten).not.toContain('ch-data');
     expect(unwritten).not.toContain('ch-meta');
     expect(unwritten).toContain('class="premise-row"');
+  });
+
+  // BOOK-197 (§2, audit #9): a failed read's sentence and its retry never share a line — the row
+  // is a block and the retry is a block-level control under it, still a 44 px target.
+  it('stacks the failed read: the sentence, then its one retry', () => {
+    const book = sheets['../styles/book.css'] ?? '';
+    const fail = firstDeclarations(book, '.ch-fail');
+    const retry = firstDeclarations(book, '.ch-fail button');
+    expect(fail).toContain('display: block');
+    expect(fail).toContain('font-family: var(--serif)');
+    expect(fail).toContain('font-size: var(--fs-note)');
+    expect(retry).toContain('display: flex');
+    expect(retry).toContain('margin-top: 4px');
+    expect(retry).toContain('font-family: var(--mono)');
+    expect(retry).toContain('font-size: var(--fs-micro)');
+    expect(retry).toContain('min-height: 44px');
   });
 });

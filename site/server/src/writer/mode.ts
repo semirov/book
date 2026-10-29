@@ -38,7 +38,9 @@ export type ModeReason =
   | 'sentence-anchor'
   | 'no-scope'
   | 'model'
-  | 'revision';
+  | 'revision'
+  /** `WRITER_MODE_DEFAULT=rewrite`: the owner's kill switch, before any other rule. */
+  | 'default-rewrite';
 
 export type ModeChoice = { mode: WriteMode; reason: ModeReason };
 
@@ -49,8 +51,13 @@ export type ModeInput = {
   sentenceAnchor?: boolean;
 };
 
-/** The table, in one place. `written` is the chapter's own fact, not the step's. */
-export function chooseMode(input: ModeInput, written: boolean): ModeChoice {
+/**
+ * The table, in one place. `written` is the chapter's own fact, not the step's; `defaultMode` is
+ * `WRITER_MODE_DEFAULT` — `patch` unless the owner has flipped the kill switch, which forces the
+ * whole-chapter path for every pass before any other rule is read.
+ */
+export function chooseMode(input: ModeInput, written: boolean, defaultMode: WriteMode = 'patch'): ModeChoice {
+  if (defaultMode === 'rewrite') return { mode: 'rewrite', reason: 'default-rewrite' };
   if (input.pass === 'draft' || !written) return { mode: 'rewrite', reason: 'slot-empty' };
   if (input.scopeHint === 'chapter') return { mode: 'rewrite', reason: 'chapter-scope' };
   if (input.scopeHint === 'phrase') return { mode: 'patch', reason: 'phrase-scope' };

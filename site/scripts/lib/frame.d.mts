@@ -1,6 +1,6 @@
 /**
- * Types for `scripts/lib/frame.mjs` (BOOK-107) — the pure checks the frame smoke runs, imported
- * by `server/test/frameCheck.test.ts`. Only the surface the tests use is declared.
+ * Types for `scripts/lib/frame.mjs` (BOOK-107, BOOK-187) — the pure checks the frame smoke runs,
+ * imported by `server/test/frameCheck.test.ts`. Only the surface the tests use is declared.
  */
 
 export type FrameCheck = {
@@ -9,13 +9,19 @@ export type FrameCheck = {
   parts: Array<{ label?: string; expected: string; actual: string }>;
 };
 
-export type DataDirFrame = {
-  dataDir: string;
+export type FrameReadout = {
   ch01First: string | null;
   lastFirst: string | null;
   lastLast: string | null;
   lastScanAt: string | null;
-  check: FrameCheck;
+};
+
+export type DatabaseFrame = {
+  dataDir: string;
+  /** True when there is no `book.db` at all: a checkout or CI, nothing to check. */
+  absent: boolean;
+  readout: FrameReadout | null;
+  checks: FrameCheck[];
 };
 
 export type ChapterAnswer = { blocks?: Array<{ text?: string }>; error?: string };
@@ -24,15 +30,12 @@ export const FRAME: { first: string; last: string };
 export const CHAPTER_TIMEOUT_MS: number;
 export const TOTAL_TIMEOUT_MS: number;
 
-export function flat(value: unknown): string;
-export function startsWithFrame(text: unknown, frame?: string): boolean;
-export function endsWithFrame(text: unknown, frame?: string): boolean;
+export function sha256(value: unknown): string;
 
-export function checkManuscript(options: {
-  repoRoot: string;
-  readFile?: (path: string, encoding: 'utf8') => string;
-  fileExists?: (path: string) => boolean;
-}): FrameCheck[];
+export function checkFrame(options: {
+  dataDir: string;
+  DatabaseImpl?: new (file: string, options: { readonly: boolean; fileMustExist: boolean }) => unknown;
+}): DatabaseFrame;
 
 export function checkServer(options: {
   baseUrl: string;
@@ -40,5 +43,3 @@ export function checkServer(options: {
   budgetMs?: number;
   now?: () => number;
 }): Promise<FrameCheck[]>;
-
-export function readDataDirFrame(options: { dataDir: string }): DataDirFrame;

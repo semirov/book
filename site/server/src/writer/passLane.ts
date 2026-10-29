@@ -1,59 +1,66 @@
 /**
  * What the pass needs from the outside world, per chapter: the model calls, the stages, the
- * pre-image, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
+ * text, the transcript and the two gates (`docs/writer-lane.md` §1–§2, §5).
  *
  * `pass.ts` decides *what happens and in which order*; this file does the talking. Everything is
  * injected, so a test drives a real pass through a fixture engine and a scripted provider.
+ *
+ * **The writer writes nowhere** (BOOK-187, ADR-043 §3 row 4): the answer is held in memory and
+ * one `land` call carries it. There is no pre-image, because nothing was touched before the
+ * landing — a refusal leaves the rows exactly as they were, which is the pre-image.
  */
 
 import { readFileSync } from 'node:fs';
 
-import type { WriterAssignment } from '@book/shared';
+import { type WriterAssignment } from '@book/shared';
 
-import { readChapter } from '../engine/text.ts';
 import { sha256Hex } from '../util/hash.ts';
-import type { EngineClient, GateAssignmentView, LandView } from './client.ts';
-import type { PassEstimate } from './estimate.ts';
-import { buildGatePrompt, type GateFinding, type GateRoleName, type RightsGateRun } from './gates.ts';
-import { costUsd, type PipelineUsage } from './pipeline.ts';
-import { buildWriterPrompt, type WriterAssignmentData } from './prompt.ts';
-import type { WriteMode } from './mode.ts';
+import type { ChapterTextView } from '../engine/text.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
-import type { PatchReceipt } from './transcript.ts';
-import type { ProviderRequest, ProviderResult, WriterMessage } from './provider.ts';
+import type { GateAssignmentView, LandView } from './client.ts';
+import type { PassEstimate } from './estimate.ts';
+import { buildGatePrompt, type GateFinding, type GateRoleName } from './gates.ts';
+import type { WriteMode } from './mode.ts';
+import { costUsd, type PipelineUsage } from './pipeline.ts';
+import {
+  buildWriterPrompt,
+  chapterQuote,
+  noChapterText,
+  type ChapterTextLookup,
+  type WriterAssignmentData,
+} from './prompt.ts';
+import type { ProviderResult, WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
-import { createLaneIo } from './laneIo.ts';
-import type { CallKind, CallRecord } from './transcript.ts';
+import {
+  storeTranscript,
+  type CallKind,
+  type CallRecord,
+  type CallVerdict,
+  type PatchReceipt,
+  type PromptSectionFact,
+} from './transcript.ts';
 import type { GatesRecord } from './verify/run.ts';
 import { rightsRunner } from './rightsGate.ts';
-import { writeTranscript } from './transcript.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
 import { askGateAnswer } from './gateAnswer.ts';
 import { reviseAnswer } from './answer.ts';
-import type { WriterConfig } from './config.ts';
 
-export type PassStatus = 'closed' | 'idle' | 'parked' | 'refused' | 'gone';
-
-export type PassResult = {
-  status: PassStatus;
-  stepId?: string;
-  changeId?: string | null;
-  reason?: string;
-  tokens?: { in: number; out: number };
-  costUsd?: number;
-  /** BOOK-166: the *filing* was refused (auditor said no, frozen chapter) — the queue moves on. */
-  filingRefused?: boolean;
-  /** The closed code behind a stop, for the caller that journals it (BOOK-173); never in a note. */
-  code?: string;
-};
+import type { Answer, AskOptions, GateRun, Lane, LaneInput, PassResult } from './laneTypes.ts';
 
 /** A step the engine already took away: a scheduling event, never a prose event. */
 export const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
-export type ProviderCall = (request: ProviderRequest) => Promise<ProviderResult>;
-
-export type Answer = ReturnType<typeof validateAnswer>;
+export type {
+  Answer,
+  AskOptions,
+  GateRun,
+  Lane,
+  LaneInput,
+  PassResult,
+  PassStatus,
+  ProviderCall,
+} from './laneTypes.ts';
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
   return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
@@ -84,83 +91,28 @@ function sliceText(path: string | null): string | null {
   }
 }
 
-export type LaneInput = {
-  config: WriterConfig;
-  bookRoot: string;
-  dataDir: string;
-  engine: EngineClient;
-  provider: ProviderCall;
-  now: () => number;
-  log: (line: string) => void;
-};
-
-export type GateRun = { revise: boolean; findings: GateFinding[] };
-
-/** A call's own bound: Tier 1 is a small question and says so (`TIER1_MAX_TOKENS`). */
-export type AskOptions = { maxTokens?: number };
-
-
-export type Lane = {
-  emit(input: StageEmitInput): Promise<void>;
-  ask(kind: CallKind, messages: WriterMessage[], purpose?: 'draft' | 'repair' | 'continue', options?: AskOptions): Promise<ProviderResult>;
-  /** Park the pass: one reader's sentence, one `refused` stage; `cause` defaults to `failed`. */
-  park(why: ParkInput): Promise<PassResult>;
-  /** Remember a failure the pass survived: the transcript is where a survived failure is proved. */
-  remember(failure: Failure | null): void;
-  writeText(value: string): void;
-  /** BOOK-173: `land` answers with the plan the engine froze — the pass reacts to it. */
-  land(): Promise<LandView>;
-  preSnapshot(at: number): void;
-  transcript(result: PassResult): void;
-  /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
-  check(value: string, finishReason?: string | null): Answer;
-  /** One gate; `refusal` is the reason a previous answer was not parsed, shown to the model once. */
-  runGate(role: GateRoleName, refusal?: string | null): Promise<GateRun>;
-  runRightsGate(): Promise<RightsGateRun>;
-  reviseText(findings: GateFinding[]): Promise<string | null>;
-  usage(): PipelineUsage;
-  writerTokens(): { in: number; out: number };
-  /** The pin (`provider/model`) once a call happened, `null` before one — never the wire id. */
-  model(): string | null;
-  setPrompt(sections: number, sha256: string | null, prefixSha256: string | null): void;
-  /**
-   * BOOK-173 §2/§4: the mode the pass ran, the patch it applied and the character edits that keep
-   * sentence ids. Every call clears `sentences` — no attempt inherits the previous one's edits.
-   */
-  setMode(mode: WriteMode | null, patch: PatchReceipt | null, sentences?: ReadonlyArray<SentencePatchEdit> | null): void;
-  /** BOOK-173 §4: the mode this pass wrote in; null before `setMode` and on a resume. */
-  mode(): WriteMode | null;
-  setEstimate(value: PassEstimate): void;
-  /** BOOK-DOC-80: the gates record — the transcript carries it and the close writes it down. */
-  setGates(value: GatesRecord): void;
-};
-
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
   const { config, engine, bookRoot, now } = input;
   const sink: StageSink = { stage: (event) => engine.stage(event) };
   const calls: CallRecord[] = [];
   const written = { in: 0, out: 0 };
   let all: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
-  let reported: string | null = null;
-  // ADR-038 §2's honest limit: other weights are evidence, not a refusal.
-  let mismatch: { declared: string; reported: string } | null = null;
-  let promptSections = 0;
+  /** The prompt's sections as facts (AC7): ids, hashes, lengths — the receipt's only census. */
+  let sections: PromptSectionFact[] = [];
   let promptSha256: string | null = null;
+  /** BOOK-173 §5: the prefix the pass was built with — the cache identity the receipt carries. */
   let promptPrefix: string | null = null;
+  // BOOK-173 §2/§4: the mode, the patch and the character edits the landing carries.
   let mode: WriteMode | null = null;
   let patch: PatchReceipt | null = null;
   let sentences: ReadonlyArray<SentencePatchEdit> | null = null;
   let estimate: PassEstimate | null = null;
-  // BOOK-DOC-80: which tiers judged the pass — recorded so `change_plans` and the transcript agree.
+  // BOOK-DOC-80: which tiers judged the pass — recorded so `change_plans` and the receipt agree.
   let gates: GatesRecord | null = null;
-  // The two voices of a stop: the code and its detail for the transcript, the sentence for the note.
+  // The code of a stop, for the receipt; the sentence the reader gets is built in `park`.
   let failure: Failure | null = null;
-  let note: string | null = null;
-  // BOOK-173 §2/§4: the landing's three facts, read at the call — the file work lives in `laneIo`.
-  const io = createLaneIo({
-    bookRoot, dataDir: input.dataDir, chapter, leaseId: job.leaseId, engine, log: input.log,
-    write: () => ({ mode, sentences, estimateUsd: estimate === null ? null : estimate.usd }),
-  });
+  /** The rows the prompt quotes, loaded per call: the engine answers, the writer caches. */
+  const views = new Map<number, ChapterTextView>();
 
   /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
    *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
@@ -214,9 +166,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiKey: config.apiKey,
         apiModel: config.apiModel,
         messages,
-        // The causality judge is a bounded question, not a writing turn: it gets the gate's cap.
+        // The causality judge and Tier 1 are bounded questions, not writing turns: the gate's cap.
         maxTokens: Math.min(
-          options?.maxTokens ?? (kind.startsWith('gate:') || kind === 'judge' ? config.gateTokens : config.maxTokensPerCall),
+          options?.maxTokens ??
+            (kind.startsWith('gate:') || kind === 'judge' || kind === 'tier1' ? config.gateTokens : config.maxTokensPerCall),
           remaining,
         ),
         timeoutMs: config.timeoutMs,
@@ -230,15 +183,15 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       written.out += result.usage.out;
     }
     all = addUsage(all, result.usage);
-    reported = result.responseModel;
-    // The pin's own wire id (`apiModelOf`) is the same weights; any other id is the honest-limit
-    // case below: recorded once, and the pass goes on.
-    if (mismatch === null && result.responseModel !== config.model && result.responseModel !== config.apiModel) {
-      mismatch = { declared: config.model, reported: result.responseModel };
+    // ADR-038 §2's honest limit: other weights are evidence, not a refusal — one line, no vertex
+    // id in a row (a receipt names shas and lengths, never a model string in free text).
+    if (result.responseModel !== config.model && result.responseModel !== config.apiModel) {
+      input.log(`[writer] модель ответила другими весами: ${result.responseModel} — проход идёт дальше`);
     }
     const system = messages.find((message) => message.role === 'system')?.content ?? '';
     calls.push({
       kind,
+      at: now(),
       system,
       user: messages
         .filter((message) => message.role !== 'system')
@@ -271,6 +224,38 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   function laneModel(): string | null { return calls.length === 0 ? null : config.model; }
 
+  /**
+   * A gate's verdict, on the call that produced it: the last call, and only when it is that gate's
+   * own. A clean rights scan answers mechanically without a model call, and must not stamp the
+   * consultant's answer with Gate B's `CLEAR`.
+   */
+  function markVerdict(kind: CallKind, verdict: CallVerdict | null): void {
+    const last = calls.at(-1);
+    if (verdict !== null && last !== undefined && last.kind === kind) last.verdict = verdict;
+  }
+
+  /** AC7: the receipt goes once, after the outcome — and a failure there can never change it. */
+  function transcript(result: PassResult): Promise<void> {
+    return storeTranscript({
+      engine,
+      log: input.log,
+      passId: job.stepId,
+      calls,
+      sections,
+      promptBundle: input.promptBundle,
+      failure: result.status === 'closed' ? null : (failure?.code ?? null),
+      // BOOK-173 §5 / BOOK-DOC-80: what the pass states about itself — codes, counts and hashes.
+      facts: {
+        mode,
+        patch,
+        gates,
+        promptSha256,
+        cachePrefix: promptPrefix,
+        estimateUsd: estimate === null ? null : estimate.usd,
+      },
+    });
+  }
+
   /** Park the pass: the note is a sentence, the log line and the transcript carry the code. */
   async function park(why: ParkInput): Promise<PassResult> {
     // A coded failure the table does not know still owes the reader a sentence, not a code word.
@@ -288,7 +273,6 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };
-    note = sentence;
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
     // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
     // each gate's verdict row is added by the close. A park before the first call claims neither.
@@ -315,7 +299,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       model: laneModel(), // no call, no pin: a park before the model ran claims no model, no money
       at: now(),
     });
-    return {
+    const parked: PassResult = {
       status: 'parked',
       stepId: job.stepId,
       changeId: job.changeId,
@@ -326,23 +310,39 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       tokens: { ...written },
       costUsd: costUsd(config.pipeline.pricing, all),
     };
+    // AC7: the receipt is sent once, after the outcome — and cannot change it.
+    await transcript(parked);
+    return parked;
   }
 
-  /** Evidence, not the pass: requests and answers, hashes instead of a second copy of the canon. */
-  function transcript(result: PassResult): void {
+  /**
+   * `land`: the text travels in the request. A refusal touches nothing — the rows keep the text
+   * the site serves — so there is no image to put back (BOOK-187). The answer carries the plan the
+   * engine froze with the revision (BOOK-173 §7), and the mode, the edits and the estimate this
+   * pass states about itself.
+   */
+  async function land(value: string): Promise<LandView> {
     try {
-      writeTranscript(input.dataDir, job.stepId, {
-        chapter, at: now(), model: config.model, apiModel: config.apiModel,
-        reportedModel: reported, modelMismatch: mismatch, promptSha256,
-        cachePrefix: promptPrefix, mode, patch, gates,
-        sections: promptSections, estimate, note, failure,
-        result: { status: result.status, reason: result.reason ?? null },
-        calls,
+      return await engine.land(job.leaseId, {
+        text: value,
+        ...(sentences === null ? {} : { sentences }),
+        ...(mode === null ? {} : { mode }),
+        ...(estimate === null ? {} : { estimateUsd: estimate.usd }),
       });
-    } catch {
-      input.log('[writer] transcript not written');
+    } catch (error) {
+      throw new PassRefusal(reasonOf(error), codeOf(error));
     }
   }
+
+  /** Read the rows a prompt needs in one call; the pass decides what to do with a failure. */
+  async function loadText(chapters: number[]): Promise<void> {
+    const wanted = [...new Set(chapters.filter((n) => Number.isInteger(n) && n >= 1))];
+    if (wanted.length === 0) return;
+    const answer = await engine.text(wanted);
+    for (const view of answer.chapters) views.set(view.n, view);
+  }
+
+  const textOf: ChapterTextLookup = (n) => views.get(n) ?? noChapterText(n);
 
   function check(value: string, finishReason?: string | null): Answer {
     return validateAnswer(value, { chapter, finishReason: finishReason ?? null });
@@ -358,6 +358,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
+    await loadText([chapter]);
     const gateAssignment = {
       chapter,
       pass: job.pass,
@@ -375,7 +376,10 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
           role,
           chapter,
           assignment: gateAssignment,
-          landedText: readChapter(bookRoot, chapter).text,
+          landedText: chapterQuote(textOf(chapter)),
+          chapterText: textOf,
+          // BOOK-173 §7: the dispatched gate judges the text against the plan the engine froze.
+          plan: gate.plan,
           indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
           refusal: hint,
         }),
@@ -402,6 +406,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     answered[role] = true;
+    markVerdict(role === 'editor' ? 'gate:editor' : 'gate:consultant', parsed.verdict);
     await emit({
       stage: 'verdict',
       chapter,
@@ -421,11 +426,8 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
   async function reviseText(findings: GateFinding[]): Promise<string | null> {
-    // A revision is a whole chapter, whatever the filing said: the mode follows the text, and the
-    // patch's character edits belong to the attempt they came from — a revision states none.
-    mode = 'rewrite';
-    sentences = null;
-    const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job) });
+    await loadText([chapter - 1, chapter, chapter + 1]);
+    const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job), chapterText: textOf });
     const revised = await reviseAnswer({
       rebuilt,
       findings,
@@ -434,8 +436,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
       log: input.log,
     });
     if (revised === null) return null;
-    io.writeText(revised);
-    await io.land();
+    await land(revised);
     return revised;
   }
 
@@ -446,38 +447,43 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     remember: (value) => {
       if (value !== null) failure = value;
     },
-    writeText: io.writeText,
-    land: io.land,
-    preSnapshot: io.preSnapshot,
+    loadText,
+    textOf,
+    land,
     transcript,
     check,
     runGate: (role) => runGate(role),
-    runRightsGate: rightsRunner({
-      config,
-      engine,
-      bookRoot,
-      chapter,
-      passId: job.stepId,
-      changeId: job.changeId,
-      now,
-      ask,
-      emit: (event) => emit(event),
-    }),
+    runRightsGate: async () => {
+      const run = await rightsRunner({
+        config,
+        engine,
+        bookRoot,
+        chapter,
+        chapterText: textOf,
+        passId: job.stepId,
+        changeId: job.changeId,
+        now,
+        ask,
+        emit: (event) => emit(event),
+      })();
+      markVerdict('gate:rights', run.verdict);
+      return run;
+    },
     reviseText,
     usage: () => all,
     writerTokens: () => ({ ...written }),
     model: () => laneModel(),
-    mode: () => mode,
-    setPrompt: (sections, sha, prefix) => {
-      promptSections = sections;
-      promptSha256 = sha;
-      promptPrefix = prefix;
+    setPrompt: (value) => {
+      sections = value.sections;
+      promptSha256 = value.promptSha256;
+      promptPrefix = value.prefixSha256;
     },
     setMode: (nextMode, nextPatch, nextSentences) => {
       mode = nextMode;
       patch = nextPatch;
       sentences = nextSentences ?? null;
     },
+    mode: () => mode,
     setEstimate: (value) => {
       estimate = value;
     },

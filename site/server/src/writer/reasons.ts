@@ -90,12 +90,12 @@ export const readerSentences = {
   refusal: 'модель отказалась писать — заявка остаётся в очереди',
   answerRejected: 'ответ модели не прошёл проверку — заявка остаётся в очереди',
   engineDown: 'движок не ответил — проход остановлен, заявка остаётся в очереди',
-  /** `land` on a step the engine has already closed: the bytes go back to the pre-pass snapshot. */
+  /** `land` on a step the engine has already closed: nothing was written, so nothing is left. */
   rightsMissing:
     'права на текст не подтверждены — заявка остаётся в очереди',
   frameChanged:
-    'рамка книги — фраза этой главы не меняется, текст возвращён к прежнему',
-  stepClosed: 'шаг закрылся, пока текст писался — текст возвращён к прежнему',
+    'рамка книги — фраза этой главы не меняется, текст не опубликован',
+  stepClosed: 'шаг закрылся, пока текст писался — текст не опубликован',
   /**
    * BOOK-173: the ripple's own refusals. Each is a sentence about the book, not a code: «две
    * попытки» is what the author needs to know, `RIPPLE_REFUSED` is what the log carries.

@@ -18,7 +18,7 @@ function bookBlocks(n: number): string[] {
 }
 
 function book(fixture: Fixture, from: number, to: number): void {
-  for (let n = from; n <= to; n += 1) fixture.writeChapterBlocks(n, `Глава ${n}`, bookBlocks(n));
+  for (let n = from; n <= to; n += 1) fixture.seedChapterBlocks(n, `Глава ${n}`, bookBlocks(n));
 }
 
 type ChangeRow = { status: string; outcome: string | null; reason: string | null };

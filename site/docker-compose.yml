@@ -26,9 +26,12 @@
 # `deploy/admin.sh`, and the DB is never opened by a host process. `deploy/entrypoint.sh` refuses to
 # start a role when /data is a host bind mount (exit 78).
 #
-# The manuscript stays a host bind on purpose: it is text that git owns, not SQLite, and a second
-# kernel reading it cannot tear it. The only other host bind for state is `/backups` (rw), which is
-# the backup destination and nothing else: `book-data` is the store, `~/book-site-backups` the copies.
+# **No service mounts a book tree at all** (BOOK-187, ADR-043 G1/G3). The canon (prompts, concept,
+# style, the plan) is baked into the image at its root, and the text is rows in the volume: an
+# image that read the HOST's prompts would write a `prompt_bundle` sha naming rules the pass never
+# read, and a writable `manuscript/` path would be a second home for prose the DB owns. The only
+# host binds are operational: `/backups` (rw, the backup destination) and `/locks` (the
+# single-instance lock files, deliberately outside the data dir).
 name: book
 
 x-book: &book
@@ -58,6 +61,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # BOOK-187 / ADR-043 G3: the canon (prompts, concept, style) lives one level above `site/`,
+      # and the image is its only home at runtime. A named additional context carries those files
+      # into the build (the Dockerfile copies them to the image's root, where the writer and
+      # `scripts/build-info.mjs` look for them); without it no image can be built at all — the
+      # bundle digest refuses to be a bundle of nothing.
+      additional_contexts:
+        canon: ..
       args:
         # BOOK-109/BOOK-172: the commit the image reports on `/healthz`. Passed by
         # compose-release.sh as `<sha7>`; unset is honest (`dev`) and never happens in a release.
@@ -72,8 +82,6 @@ services:
       # published on 0.0.0.0 and never reachable from the internet directly.
       - "${BOOK_SITE_PUBLISH:-192.168.1.76:8091}:8080"
     volumes:
-      # The manuscript is read-only here: only the writer writes prose (§6.2).
-      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
       # BOOK-183: the store is the named volume, never a host path (see the header).
       - book-data:/data
       # The ONLY host bind for state, and only for backups: `bin/backup.mjs` writes here and the
@@ -88,7 +96,8 @@ services:
     environment:
       BOOK_ROLE: site
       NODE_ENV: production
-      BOOK_ROOT: /book
+      # No BOOK_ROOT on purpose (BOOK-187): the default is the image's own root (`/`), which is
+      # where the canon is baked — never a host path, which would be a different canon.
       DATA_DIR: /data
       EXCHANGE_DIR: /data/exchange
       ADMIN_TOKEN_FILE: /data/admin.token
@@ -141,7 +150,6 @@ services:
     stop_grace_period: 60s
     # No `ports:` on purpose: the internal API is never proxied and never reachable from the LAN.
     volumes:
-      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
       - book-data:/data
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
       # BOOK-172: the engine boots through `loadConfig()`, which in production refuses to start
@@ -151,7 +159,6 @@ services:
     environment:
       BOOK_ROLE: engine
       NODE_ENV: production
-      BOOK_ROOT: /book
       DATA_DIR: /data
       ENGINE_TOKEN_FILE: /data/engine.token
       HOST: 0.0.0.0
@@ -198,17 +205,14 @@ services:
         max-size: "20m"
         max-file: "5"
     volumes:
-      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}:/book:ro
-      # The one rw mount into the manuscript: the writer's own output. A nested mount wins over the
-      # read-only parent, so the rest of the tree stays unreadable-for-write.
-      - ${BOOK_MANUSCRIPT:-/Users/filipp/projects/book}/manuscript:/book/manuscript:rw
+      # No book tree and no manuscript path: the writer's text is a request body, and the canon it
+      # reads is the one baked into this image (BOOK-187 — the image is the prompts' only home).
       - book-data:/data
       - ${BOOK_LOCKS_DIR:-/Users/filipp/.local/state/book-locks}:/locks
       - ${BOOK_DEEPSEEK_KEY_FILE:-/Users/filipp/.config/book/deepseek.key}:/run/secrets/deepseek_key:ro
     environment:
       BOOK_ROLE: writer
       NODE_ENV: production
-      BOOK_ROOT: /book
       DATA_DIR: /data
       ENGINE_TOKEN_FILE: /data/engine.token
       WRITER_ENGINE_URL: http://engine:8081
@@ -224,6 +228,9 @@ services:
       BOOK_BUDGET_BOOK_USD: ${BOOK_BUDGET_BOOK_USD:-1000}
       WRITER_MAX_PASSES_PER_DAY: ${BOOK_WRITER_MAX_PASSES_PER_DAY:-4}
       WRITER_PAUSE_MS: ${BOOK_WRITER_PAUSE_MS:-900000}
+      # The owner's mode switch (BOOK-173 §4): `patch` is the signed-off default, `rewrite` forces
+      # the whole-chapter path for every ordinary pass until the line is removed.
+      WRITER_MODE_DEFAULT: ${BOOK_WRITER_MODE_DEFAULT:-patch}
     # No healthcheck: the writer holds no port, and an idle lane is healthy while writing nothing
     # for WRITER_PAUSE_MS (15 min) — an mtime probe would mark it unhealthy and `up -d` would then
     # recreate a healthy process. Its liveness is the container state plus the engine's lease

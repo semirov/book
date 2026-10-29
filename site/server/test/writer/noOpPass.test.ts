@@ -9,8 +9,6 @@
  * spent and could not be recovered.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -28,8 +26,9 @@ function para(marker: string, chars = 700): string {
   return `${head}${text.repeat(Math.ceil(chars / text.length) + 1)}`.slice(0, chars);
 }
 
-function chapterFile(harness: Harness): string {
-  return join(harness.bookRoot, 'manuscript', `ch${String(CHAPTER).padStart(2, '0')}.md`);
+/** The chapter as the site serves it: rows, never a file (BOOK-187). */
+function chapterText(harness: Harness, chapter = CHAPTER): string {
+  return harness.fixture.readChapter(chapter) ?? '';
 }
 
 /** A written chapter, ingested, and a **chapter-scope** filing on it: the pass must rewrite. */
@@ -64,7 +63,7 @@ describe('a rewrite that changes nothing is a no-op, not a landing', () => {
     try {
       // The provider hands back the chapter exactly as it stands — the measured case of BOOK-173,
       // verbatim: 69 s of model time and not one byte of the book moved.
-      const preImage = readFileSync(chapterFile(harness), 'utf8');
+      const preImage = chapterText(harness);
       harness.script.push(preImage, 'HOLDS', 'HOLDS');
 
       const result = await harness.run({ lanes: ['fwd'] });
@@ -114,7 +113,7 @@ describe('a rewrite that changes nothing is a no-op, not a landing', () => {
   it('is idempotent: a second identical publish adds neither a revision nor a second plan row', async () => {
     const { harness } = await written();
     try {
-      const raw = readFileSync(chapterFile(harness), 'utf8');
+      const raw = chapterText(harness);
       harness.script.push(raw, 'HOLDS', 'HOLDS');
       const result = await harness.run({ lanes: ['fwd'] });
       if (result.status !== 'closed') throw new Error(`parked: ${harness.logs.join(' | ')}`);

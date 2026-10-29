@@ -31,27 +31,37 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
 
 describe('comment thread copy (§11.6)', () => {
   it('never collapses acceptance into application', () => {
-    // BOOK-90: one of the three words; the fact that word cannot carry is the detail.
+    // BOOK-90: one of the deck's words; the fact that word cannot carry is the detail.
     expect(commentStatusLine(comment({ status: 'new' })).state).toBe('ждёт');
+    // BOOK-189 — `accepted` is a place in the writer's work, not a state: without a linked
+    // change in hand the filing waits, and only `processing` makes it «идёт».
     expect(commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', reason: 'принято' }))).toMatchObject({
-      state: 'идёт',
-      detail: 'замечание в очереди · принято',
+      state: 'ждёт',
+      detail: 'в очереди на запись',
       tone: 'live',
       form: 'chip',
     });
     expect(
+      commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', changeStatus: 'pending' })),
+    ).toMatchObject({ state: 'ждёт', detail: 'в очереди на запись' });
+    expect(
+      commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', changeStatus: 'processing' })),
+    ).toMatchObject({ state: 'идёт', detail: 'пишется', tone: 'live' });
+    // The owner's landed row: one state word and one line — «внесено · глава 8 · ревизия 3».
+    // A stored reason on an applied row is not printed: the receipt is the fact.
+    expect(
       commentStatusLine(comment({ status: 'applied', applied: { chapter: 8, rev: 3 }, reason: 'внесено' })),
     ).toMatchObject({
       state: 'внесено',
-      detail: 'замечание сохранено · внесено',
+      detail: 'глава 8 · ревизия 3',
       tone: 'done',
     });
-    // An intervention moved the right with the text; a note never did.
+    // An intervention and a note are told apart by the state block, not by a second receipt.
     expect(
       commentStatusLine(
         comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 8, rev: 3 } }),
       ).detail,
-    ).toBe('внесено в главу 08 · право на ваш текст перешло автору книги · ревизия 3');
+    ).toBe('глава 8 · ревизия 3');
   });
 
   it('tells a premise’s four states without a queue place (BOOK-7)', () => {
@@ -107,9 +117,9 @@ describe('comment thread copy (§11.6)', () => {
       comment({ status: 'applied', interventionKind: 'testimony', applied: { chapter: 7, rev: 2 }, reason: null }),
     );
     expect(applied).toMatchObject({ state: 'внесено', form: 'chip' });
-    expect(applied.detail).toContain('внесено в главу 07 · право на ваш текст перешло автору книги');
-    expect(commentStatusLine(comment({ status: 'accepted', interventionKind: 'testimony' })).detail).toContain(
-      'правка в очереди на запись',
+    expect(applied.detail).toBe('глава 7 · ревизия 2');
+    expect(commentStatusLine(comment({ status: 'accepted', interventionKind: 'testimony' })).detail).toBe(
+      'в очереди на запись',
     );
     expect(commentStatusLine(comment({ status: 'superseded' })).detail).toContain('снято: текст успел измениться');
     expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('правка не состоялась');
@@ -127,12 +137,25 @@ describe('comment thread copy (§11.6)', () => {
       state: 'ждёт',
       detail: 'правка не состоялась',
     });
+    // BOOK-189 — a refusal is a state of its own: the gate's word heads it, the reason is the
+    // whole line, and nothing in it waits.
     expect(commentStatusLine(comment({ status: 'rejected', reason: 'вне рамок: форма книги' }))).toMatchObject({
-      state: 'ждёт',
-      detail: 'отклонено · вне рамок: форма книги',
+      state: 'отклонено',
+      detail: 'вне рамок: форма книги',
       tone: 'stopped',
       form: 'chip',
     });
+    // A refusal with no stored sentence still says «отклонено», and invents no second line.
+    expect(commentStatusLine(comment({ status: 'rejected', reason: null }))).toMatchObject({
+      state: 'отклонено',
+      detail: null,
+      tone: 'stopped',
+    });
+    // BOOK-189 — a rights reason that is the gate's word alone is not printed again: the state
+    // already says «не принято», and the row owes no second line.
+    expect(
+      commentStatusLine(comment({ status: 'rejected', refusal: 'rights', reason: 'не принято' })),
+    ).toMatchObject({ state: 'не принято', detail: null, tone: 'stopped' });
     expect(commentStatusLine(comment({ status: 'quarantined' }))).toMatchObject({
       state: 'ждёт',
       detail: 'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
@@ -159,15 +182,112 @@ describe('comment thread copy (§11.6)', () => {
   });
 });
 
+describe('one applied, one pending, one refused filing (BOOK-189)', () => {
+  // The owner's prod page: the writer said «пока нечего писать: заявок нет» while two filings
+  // read «идёт · правка в очереди на запись · входит в книгу». One fixture, three rows, the
+  // three words the page owes: «внесено», «ждёт», «отклонено».
+  const applied = comment({
+    id: 'cmt_applied',
+    status: 'applied',
+    interventionKind: 'testimony',
+    changeId: 'chg_done',
+    applied: { chapter: 8, rev: 4 },
+    reason: null,
+  });
+  const pending = comment({
+    id: 'cmt_pending',
+    status: 'accepted',
+    interventionKind: 'testimony',
+    changeId: 'chg_pending',
+    changeStatus: 'pending',
+    reason: 'входит в книгу',
+    applied: null,
+  });
+  const refused = comment({
+    id: 'cmt_refused',
+    status: 'rejected',
+    refusal: 'auditor',
+    reason: 'вне книги: этот мир не просит чудес',
+  });
+
+  it('prints the receipt, the queue place and the refusal, each once', () => {
+    const landed = commentStatusLine(applied);
+    expect(landed.state).toBe('внесено');
+    expect(landed.detail).toBe('глава 8 · ревизия 4');
+    expect(landed.tone).toBe('done');
+    // One «внесено» in the row: the word, never the receipt repeating it.
+    expect(JSON.stringify(landed).split('внесено').length - 1).toBe(1);
+    expect(JSON.stringify(landed)).not.toContain('право на ваш текст');
+
+    const waiting = commentStatusLine(pending);
+    expect(waiting.state).toBe('ждёт');
+    expect(waiting.detail).toBe('в очереди на запись');
+
+    const rejected = commentStatusLine(refused);
+    // A refused filing is «отклонено»: the gate's word is the state, the reason is the line.
+    expect(rejected.state).toBe('отклонено');
+    expect(rejected.detail).toBe('вне книги: этот мир не просит чудес');
+
+    // A legacy landing with no receipt of its own: the word alone. Its stored acceptance
+    // sentence («входит в книгу») is not a fact about a landing, and no empty clause is joined.
+    const legacy = commentStatusLine(
+      comment({ status: 'applied', applied: null, reason: 'входит в книгу', interventionKind: 'testimony' }),
+    );
+    expect(legacy.state).toBe('внесено');
+    expect(legacy.detail).toBeNull();
+    expect(JSON.stringify(legacy)).not.toContain('входит в книгу');
+    expect(JSON.stringify(legacy)).not.toContain('  ');
+  });
+
+  it('never says «идёт» of a landed filing, nor «входит в книгу» of any of them', () => {
+    for (const row of [applied, pending, refused]) {
+      const line = commentStatusLine(row);
+      expect(JSON.stringify(line)).not.toContain('входит в книгу');
+    }
+    expect(JSON.stringify(commentStatusLine(applied))).not.toContain('идёт');
+    expect(JSON.stringify(commentStatusLine(applied))).not.toContain('правка в очереди');
+    expect(JSON.stringify(commentStatusLine(pending))).not.toContain('идёт');
+    // BOOK-189 — a filing with several changes is sent as `applied` (the landing wins over the
+    // escalated attempt `change_id` pointed at), so the row owes the receipt, not a queue place.
+    const many = comment({
+      status: 'applied',
+      interventionKind: 'testimony',
+      changeId: 'chg_applied',
+      applied: { chapter: 3, rev: 2 },
+      reason: null,
+      changeStatus: null,
+      attempt: null,
+    });
+    const line = commentStatusLine(many);
+    expect(line.state).toBe('внесено');
+    expect(line.detail).toBe('глава 3 · ревизия 2');
+    expect(JSON.stringify(line)).not.toMatch(/идёт|правка в очереди|входит в книгу/u);
+    // One «внесено» in the row: the state word, never a second one in the detail.
+    expect(line.state.split('внесено').length - 1).toBe(1);
+    expect(line.detail ?? '').not.toContain('внесено');
+  });
+});
+
 describe('the three refusals, told apart by their own words (BOOK-61)', () => {
-  it('keeps the book’s four state words and adds no fifth', () => {
-    // BOOK-90 is untouched, and BOOK-137 adds the paperwork's own word («рассмотрено»): a gate's
-    // word is not a state, it heads the detail line.
-    expect(Object.values(STATE_WORDS)).toEqual(['ждёт', 'идёт', 'внесено', 'рассмотрено']);
+  it('keeps the book’s state words and adds no gate word to them', () => {
+    // BOOK-90 is untouched, BOOK-137 added the paperwork's word («рассмотрено»), BOOK-174 the
+    // escalated one («ждёт решения автора») and BOOK-189 the refusal («отклонено»). That refusal
+    // word is also C's gate word — a refusal is one word the book already printed; B's «не
+    // принято» and A's «проверяется» are not states, they qualify a wait.
+    expect(Object.values(STATE_WORDS)).toEqual([
+      'ждёт',
+      'идёт',
+      'внесено',
+      'рассмотрено',
+      'ждёт решения автора',
+      'отклонено',
+    ]);
     const gate = Object.values(GATE_WORDS);
     expect(gate).toEqual(['проверяется', 'не принято', 'отклонено']);
     expect(new Set(gate).size).toBe(3);
-    for (const word of gate) expect(Object.values(STATE_WORDS)).not.toContain(word);
+    for (const word of Object.values(STATE_WORDS)) {
+      expect(['проверяется', 'не принято']).not.toContain(word);
+    }
   });
 
   it('heads each refusal with the word of the gate that decided it', () => {
@@ -180,14 +300,24 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
     const rights = commentStatusLine(
       comment({ status: 'rejected', refusal: 'rights', reason: 'не принято: чужая цитата без источника' }),
     );
-    expect(rights).toMatchObject({ state: 'ждёт', tone: 'stopped' });
-    // B prints its fixed sentence and nothing else.
-    expect(rights.detail).toBe('не принято: чужая цитата без источника');
+    expect(rights).toMatchObject({ state: 'не принято', tone: 'stopped' });
+    // B's word heads the row once; its sentence keeps standing after it, whole and unprefixed.
+    expect(rights.detail).toBe('чужая цитата без источника');
+    expect(JSON.stringify(rights).split('не принято')).toHaveLength(2);
 
     const off = commentStatusLine(
       comment({ status: 'rejected', refusal: 'auditor', reason: 'вне книги: этот мир не просит чудес' }),
     );
-    expect(off.detail).toBe('отклонено · вне книги: этот мир не просит чудес');
+    expect(off).toMatchObject({ state: 'отклонено', tone: 'stopped' });
+    expect(off.detail).toBe('вне книги: этот мир не просит чудес');
+  });
+
+  it('prints an escalated filing as the author’s turn, never as a refusal', () => {
+    const line = commentStatusLine(
+      comment({ status: 'escalated', reason: 'можно ли оформить это бумагой?' }),
+    );
+    expect(line).toMatchObject({ state: 'ждёт решения автора', tone: 'live', form: 'chip' });
+    expect(line.detail).toBe('можно ли оформить это бумагой?');
   });
 
   it('reads the gate from the stored verdict, never from the reason text', () => {
@@ -195,7 +325,8 @@ describe('the three refusals, told apart by their own words (BOOK-61)', () => {
     const line = commentStatusLine(
       comment({ status: 'rejected', refusal: null, reason: 'не принято: чужая цитата без источника' }),
     );
-    expect(line.detail).toBe('отклонено · не принято: чужая цитата без источника');
+    expect(line.state).toBe('отклонено');
+    expect(line.detail).toBe('не принято: чужая цитата без источника');
   });
 });
 
@@ -210,9 +341,11 @@ describe('a failed attempt on a filing', () => {
     expect(JSON.stringify(line)).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
   });
 
-  it('leaves an accepted filing in the queue, with the same sentence under the word', () => {
+  it('leaves an accepted filing waiting, with the same sentence under the word', () => {
+    // BOOK-189 — a failed attempt has no `changeStatus`, so the row waits («ждёт») and the
+    // deck's one sentence says why nothing landed.
     const line = commentStatusLine(comment({ status: 'accepted', attempt: 'failed' }));
-    expect(line.state).toBe(STATE_WORDS.working);
+    expect(line.state).toBe(STATE_WORDS.waiting);
     expect(line.detail).toBe(FAILED_ATTEMPT_LINE);
   });
 
@@ -240,11 +373,12 @@ describe('a failed attempt on a filing', () => {
 
   it('never puts the attempt line under a refusal: the row keeps its own sentence', () => {
     // A refused filing is not a failed attempt (BOOK-136): even if the flag reached the page,
-    // the gate’s word and the row’s own reason are the whole line — never «модель … не по форме».
+    // the gate's word and the row's own reason are the whole line — never «модель … не по форме».
     const refused = commentStatusLine(
       comment({ status: 'rejected', reason: 'вне рамок: канон', attempt: 'failed' }),
     );
-    expect(refused.detail).toBe('отклонено · вне рамок: канон');
+    expect(refused.state).toBe('отклонено');
+    expect(refused.detail).toBe('вне рамок: канон');
     expect(refused.detail).not.toContain(FAILED_ATTEMPT_LINE);
     // A row that decided itself has no attempt line for the same reason, held and hidden too.
     for (const status of ['quarantined', 'superseded', 'hidden'] as const) {

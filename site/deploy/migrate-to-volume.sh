@@ -236,6 +236,10 @@ seed() {
     # (a -wal, a -journal, a -shm) would be overlaid onto the incoming pages. Drop them BEFORE the copy,
     # then take the -wal of the source itself as data.
     rm -f /to/book.db-wal /to/book.db-shm /to/book.db-journal
+    # BOOK-187: this copy is a snapshot of the PAST, so a source that still holds the files of the
+    # old writer (writer/, backup/) carries them in. After a seed, run `bin/home-migrate.mjs --apply`
+    # on the volume once — it is the only thing that removes them, and `bin/home-check.mjs` names
+    # them until it does.
     cp -a /from/. /to/
     rm -f /to/book.db-shm
     chown -R 501:20 /to

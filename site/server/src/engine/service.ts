@@ -32,6 +32,7 @@ import {
   blockingVerdict,
   missingVerdicts,
   openDispatch,
+  planEnvelopeOf,
   recordVerdict,
   survivedBlocker,
   type GateAssignment,
@@ -54,7 +55,7 @@ import { reap, type ReapReport } from './reap.ts';
 import { closeUnfiledDraft } from './filings.ts';
 import { reconcileRestore, type RestoreReconcileResult } from './reconcile.ts';
 import * as store from './store.ts';
-import { readChapter, readFront } from './text.ts';
+import { readChapterRows, readFrontRows, textViewsOf, type ChapterTextView } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
@@ -63,6 +64,7 @@ import { createRightsGate } from './rightsGate.ts';
 import { ensureRightsScan } from './rightsScan.ts';
 import { createWriteOps } from './write.ts';
 import type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
+import { restoreRevision, type RestoreInput, type RestoreResult } from './restore.ts';
 
 export type { EnqueueInput } from './queue.ts';
 export type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
@@ -79,7 +81,7 @@ export type DoneResult = {
 export type { EngineState } from './overview.ts';
 
 export function createEngine(deps: EngineDeps) {
-  const { db, config, bookRoot } = deps;
+  const { db, config } = deps;
   const queue = createQueue(deps);
   const write = createWriteOps(deps);
   const overview = createOverview(deps);
@@ -106,14 +108,15 @@ export function createEngine(deps: EngineDeps) {
       const existing = store.getDispatch(db, step.step_id, role);
       if (existing && existing.session !== session && existing.expires_at > iso()) continue;
       try {
-        // BOOK-18: an editor gets a slice of the derived index — this chapter and its
-        // neighbours. The consultant judges physics, not continuity, and gets none.
+        // BOOK-18/BOOK-187: the editor gets a slice built from this connection's rows; the
+        // consultant judges physics, not continuity, and gets none.
         const indexSlice =
           role === 'editor' && step.chapter !== null
-            ? ensureSlice({ bookRoot, dataDir: config.dataDir }, step.chapter, (error) =>
+            ? ensureSlice({ db, dataDir: config.dataDir }, step.chapter, (error) =>
                 reportIndexFailure(deps, step.step_id, error))
             : null;
-        return assignmentOf(step, openDispatch(deps, step, role, session), indexSlice);
+        const dispatch = openDispatch(deps, step, role, session);
+        return assignmentOf(step, dispatch, indexSlice, planEnvelopeOf(db, step));
       } catch (error) {
         if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'GATE_ANSWERED') {
           continue;
@@ -289,8 +292,8 @@ export function createEngine(deps: EngineDeps) {
     const scienceBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'consultant');
     const editorBlocked = survivedBlocker(db, step.step_id, config.gateCycles, step.cycle, 'editor');
 
-    const front = step.pass === 'front' ? readFront(bookRoot) : null;
-    const chapter = step.pass === 'front' || step.chapter === null ? null : readChapter(bookRoot, step.chapter);
+    const front = step.pass === 'front' ? readFrontRows(db) : null;
+    const chapter = step.pass === 'front' || step.chapter === null ? null : readChapterRows(db, step.chapter);
     const unchanged =
       step.pass === 'front'
         ? front !== null && step.start_sha !== null && front.sha256 === step.start_sha
@@ -437,13 +440,6 @@ export function createEngine(deps: EngineDeps) {
 
   // ── reconcile ─────────────────────────────────────────────────────────────
 
-  /**
-   * Two meanings of one word (§13.3): with a chapter, the mark on a restore; without, a sweep.
-   */
-  function reconcileRestoreOf(input: { chapter: number; because: string; actor?: string }): RestoreReconcileResult {
-    return reconcileRestore(deps, input);
-  }
-
   function reconcile(): Record<string, unknown> {
     const report = reap(deps, deps.clock.now());
     const leaked = db
@@ -477,6 +473,9 @@ export function createEngine(deps: EngineDeps) {
     },
     start: write.start,
     land: write.land,
+    /** BOOK-187: rows only — the text a prompt quotes, and a restore as a new revision. */
+    text: (chapters: number[]): { chapters: ChapterTextView[] } => ({ chapters: textViewsOf(db, chapters) }),
+    restore: (input: RestoreInput): RestoreResult => restoreRevision(deps, input),
     verdict,
     verdictRights: rights.verdict,
     done,
@@ -489,7 +488,9 @@ export function createEngine(deps: EngineDeps) {
     state: overview.state,
     trace: overview.trace,
     reconcile,
-    reconcileRestore: reconcileRestoreOf,
+    /** Two meanings of one word (§13.3): with a chapter, the mark on a restore; without, a sweep. */
+    reconcileRestore: (input: { chapter: number; because: string; actor?: string }): RestoreReconcileResult =>
+      reconcileRestore(deps, input),
     heartbeat: overview.heartbeat,
     reap: (): ReapReport => reap(deps, deps.clock.now()),
   };

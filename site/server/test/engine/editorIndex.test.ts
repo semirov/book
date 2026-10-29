@@ -9,7 +9,6 @@ import * as store from '../../src/engine/store.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
 import { readIndex } from '../../src/index/store.ts';
 import type { IndexSlice } from '../../src/index/types.ts';
-import { applyFrontFile } from '../../src/ingest/applyFront.ts';
 import { chapterText, createEngineFixture, DEFAULT_ABOUT, PIPELINE_MODEL, type Fixture } from './helpers.ts';
 
 function landOneChapter(fixture: Fixture): { chapter: number; gate: GateAssignment } {
@@ -20,16 +19,6 @@ function landOneChapter(fixture: Fixture): { chapter: number; gate: GateAssignme
   fixture.engine.land(assignment.leaseId);
   const gate = fixture.engine.next({ role: 'editor', session: 'editor-1' }) as GateAssignment;
   return { chapter, gate };
-}
-
-function seedFrontBasis(fixture: Fixture): void {
-  applyFrontFile({
-    db: fixture.db,
-    dataDir: fixture.dataDir,
-    raw: readFileSync(join(fixture.root, 'manuscript', '00-front.md'), 'utf8'),
-    mtimeMs: fixture.clock.now(),
-    nowMs: fixture.clock.now(),
-  });
 }
 
 function openFrontLease(fixture: Fixture, id: string): string {
@@ -97,7 +86,6 @@ describe('the editor assignment carries an index slice (BOOK-18 §2)', () => {
   it('gives a front step no slice — page 2 is basis, not a chapter to index', () => {
     const fixture = createEngineFixture({ front: { title: 'Без названия', about: DEFAULT_ABOUT } });
     try {
-      seedFrontBasis(fixture);
       const leaseId = openFrontLease(fixture, 'stp_front_1');
       fixture.writeFront('Другое название', DEFAULT_ABOUT);
       fixture.engine.land(leaseId);

@@ -184,6 +184,13 @@ const schema = z.object({
   engineTokenFile: z.string().default(resolve(SITE_ROOT, '.data', 'engine.token')),
   /** Test/CLI convenience only: an inline token never belongs in a deployed environment. */
   engineToken: z.string().default(''),
+  /**
+   * BOOK-189 — the VAPID key that signs Web Push messages. It is **not** a `readMountedSecret`
+   * entry on purpose: a deployment without push is a normal site, so an absent file is «push is
+   * off» rather than a boot failure. `push/vapid.ts` reads it once and reports a stable code for
+   * anything else; no other module opens it.
+   */
+  vapidFile: z.string().default('/run/secrets/vapid'),
   watchPollMs: z.coerce.number().int().min(50).default(700),
   /** Collapses a truncate-then-write burst into one revision (§6.2). */
   watchCoalesceMs: z.coerce.number().int().min(0).default(1_500),
@@ -195,6 +202,12 @@ const schema = z.object({
    * owner saying «пиши».
    */
   drafting: z.enum(['on', 'off']).default('off'),
+  /**
+   * BOOK-187 AC7: how many days a redacted transcript row is kept. Read once at boot and applied
+   * on every write (the insert and the prune share one transaction), so retention is a property
+   * of the process, not a job somebody has to remember. 30 days is the ADR's default.
+   */
+  transcriptRetentionDays: z.coerce.number().int().min(1).max(3650).default(30),
 }).superRefine((config, ctx) => {
   // BOOK-DOC-4 rule 3 is a public promise, so the wave bound is authoritative in code, not in
   // an env file: an old deployment that still says 5 must fail the boot, never tell the client
@@ -338,10 +351,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxConcurrentProcesses: env.ENGINE_MAX_CONCURRENT_PROCESSES,
     engineTokenFile: env.ENGINE_TOKEN_FILE,
     engineToken: env.ENGINE_TOKEN,
+    vapidFile: env.VAPID_FILE,
     watchPollMs: env.WATCH_POLL_MS,
     watchCoalesceMs: env.WATCH_COALESCE_MS,
     emptyWriteGraceMs: env.EMPTY_WRITE_GRACE_MS,
     drafting: env.DRAFTING,
+    transcriptRetentionDays: env.TRANSCRIPT_RETENTION_DAYS,
   });
   if (!parsed.success) {
     const details = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');

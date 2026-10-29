@@ -14,8 +14,19 @@
 
 import { parseChapter } from '../../ingest/parseChapter.ts';
 import { sha256Hex } from '../../util/hash.ts';
-import { isWrittenChapter, readChapter } from '../../engine/text.ts';
-import { PromptError, assignmentSection, canonParts, frameSection, placeSection, roleSection, type PromptPart, type PromptSection, type WriterAssignmentData } from '../prompt.ts';
+import { isWrittenView, type ChapterTextView } from '../../engine/text.ts';
+import {
+  PromptError,
+  assignmentSection,
+  canonParts,
+  chapterQuote,
+  frameSection,
+  placeSection,
+  roleSection,
+  type PromptPart,
+  type PromptSection,
+  type WriterAssignmentData,
+} from '../prompt.ts';
 import { PATCH_BOUNDS, PATCH_MAX_FACTS, PATCH_MAX_FACT_CHARS, PATCH_MAX_NOTE_CHARS } from './protocol.ts';
 
 export type PatchPrompt = {
@@ -38,6 +49,8 @@ export type PatchPromptInput = {
   bookRoot: string;
   chapter: number;
   assignment: WriterAssignmentData;
+  /** The chapter to patch, from the rows (`POST /internal/text`, BOOK-187) — never a file. */
+  own: ChapterTextView;
   ripple?: RippleContext | null;
 };
 
@@ -101,11 +114,11 @@ function reminderSection(): PromptPart {
  * pre-image, and a basis-only slot is the frozen frame.
  */
 export function buildPatchPrompt(input: PatchPromptInput): PatchPrompt {
-  const own = readChapter(input.bookRoot, input.chapter);
-  if (!isWrittenChapter(own)) {
+  const own = input.own;
+  if (!isWrittenView(own)) {
     throw new PromptError('PROMPT_INPUT_INVALID', `chapter ${String(input.chapter)} has no prose to patch`);
   }
-  const blocks = parseChapter(input.chapter, own.raw).blocks.map((block) => ({ id: block.id, text: block.text }));
+  const blocks = parseChapter(input.chapter, chapterQuote(own)).blocks.map((block) => ({ id: block.id, text: block.text }));
   const prefix: PromptPart[] = [...canonParts(input.bookRoot), roleSection(input.bookRoot), protocolSection()];
   const tail: Array<PromptPart | null> = [
     placeSection(input.chapter),

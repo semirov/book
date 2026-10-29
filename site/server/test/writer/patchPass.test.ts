@@ -8,16 +8,13 @@
  * the frame and a patch over the budget both park with their own code and leave the file alone.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import { parseChapter } from '../../src/ingest/parseChapter.ts';
 import { listStages } from '../../src/stages/repo.ts';
-import { sha256Hex } from '../../src/util/hash.ts';
-import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
+import { chapterAnswer, createHarness, receiptsOf, stepRow, type Harness } from './harness.ts';
 import { inertParagraph } from './inert.ts';
 
 const CHAPTER = 12;
@@ -26,8 +23,9 @@ function para(marker: string, chars = 600): string {
   return inertParagraph(marker, chars);
 }
 
-function chapterFile(harness: Harness): string {
-  return join(harness.bookRoot, 'manuscript', `ch${String(CHAPTER).padStart(2, '0')}.md`);
+/** The chapter as the site serves it: rows, never a file (BOOK-187). */
+function chapterText(harness: Harness, chapter = CHAPTER): string {
+  return harness.fixture.readChapter(chapter) ?? '';
 }
 
 /** A written chapter the harness knows about, plus a phrase-scope filing on it. */
@@ -54,7 +52,7 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
   it('lands only the named span, keeps every untouched block byte-identical, and closes the step', async () => {
     const harness = await written();
     try {
-      const before = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const before = parseChapter(CHAPTER, chapterText(harness));
       const target = before.blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       harness.script.push(answer(target.id, 'Гуси шли по льду.', 'Часы шли по кругу.', ['Часы шли по кругу.']), 'HOLDS', 'HOLDS');
@@ -63,7 +61,7 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       expect(result.status).toBe('closed');
 
       // 1. The file: the named span changed, nothing else did.
-      const after = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const after = parseChapter(CHAPTER, chapterText(harness));
       expect(after.text).toContain('Часы шли по кругу.');
       expect(after.text).not.toContain('Гуси шли по льду.');
       expect(after.blocks).toHaveLength(before.blocks.length);
@@ -81,15 +79,21 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       expect(stages[1]?.summary).toContain('режим: правка (заявка про фразу)');
       expect(stages.at(-1)?.summary).toContain('гейты: локально');
 
-      // 3. The transcript: the mode, the prefix every call was sent under, the patch's numbers.
-      const transcript = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`), 'utf8'),
-      ) as {
-        mode: string;
-        cachePrefix: string;
-        patch: { edits: number; changedChars: number; fraction: number; facts: number };
-        gates: { gatesMode: string; why: string | null; tier1Verdict: string | null; tier1Usd: number | null; line: string };
-        calls: Array<{ kind: string; system: string; prefixSha256: string; cachedIn: number }>;
+      // 3. The receipt is rows (BOOK-187 AC7): the mode, the prefix every call was sent under,
+      //    the patch's numbers — and no prompt body anywhere.
+      const { rows: receiptRows, pass: receipt } = receiptsOf(harness, result.stepId ?? '');
+      const transcript = {
+        mode: receipt.mode as string,
+        cachePrefix: receipt.cachePrefix as string,
+        patch: receipt.patch as { edits: number; changedChars: number; fraction: number; facts: number },
+        gates: receipt.gates as {
+          gatesMode: string;
+          why: string | null;
+          tier1Verdict: string | null;
+          tier1Usd: number | null;
+          line: string;
+        },
+        calls: receiptRows.map((row) => ({ kind: row.role, prefixSha256: String(row.facts.prefixSha256) })),
       };
       expect(transcript.mode).toBe('patch');
       // BOOK-DOC-80: the record is not silent about the gates it did not run.
@@ -102,11 +106,10 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       expect(transcript.patch.facts).toBe(1);
       expect(transcript.patch.changedChars).toBe('Часы шли по кругу.'.length);
       expect(transcript.patch.fraction).toBeGreaterThan(0);
-      // The writer's own call is sent under the pass's prefix; the gates have their own.
+      // The writer's own call is sent under the pass's prefix; the judge has its own.
       const draft = transcript.calls.find((call) => call.kind === 'draft');
-      expect(draft?.prefixSha256).toBe(sha256Hex(draft?.system ?? ''));
       expect(draft?.prefixSha256).toBe(transcript.cachePrefix);
-      for (const call of transcript.calls) expect(call.prefixSha256).toBe(sha256Hex(call.system));
+      for (const call of transcript.calls) expect(call.prefixSha256).toMatch(/^[0-9a-f]{64}$/u);
 
       // 4. The close: the change settled as applied, and exactly one model call was made after
       //    the patch — the local judge. No editor, no consultant (BOOK-DOC-80).
@@ -128,7 +131,7 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
   it('records the mode and the price with the plan, and the actual replaces the estimate at close', async () => {
     const harness = await written();
     try {
-      const before = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const before = parseChapter(CHAPTER, chapterText(harness));
       const target = before.blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       harness.script.push(answer(target.id, 'Гуси шли по льду.', 'Часы шли по кругу.'), 'HOLDS', 'HOLDS');
@@ -163,15 +166,13 @@ describe('a phrase-scope filing on a written chapter applies a patch', () => {
       );
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('closed');
-      expect(readFileSync(chapterFile(harness), 'utf8')).toContain('переписано');
+      expect(chapterText(harness)).toContain('переписано');
       const stages = listStages(harness.fixture.db, CHAPTER);
       // The mode the pass chose is «правка»; the model's decline is what the transcript records.
       expect(stages[1]?.summary).toContain('режим: правка (заявка про фразу)');
-      const transcript = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`), 'utf8'),
-      ) as { mode: string; patch: unknown };
-      expect(transcript.mode).toBe('rewrite');
-      expect(transcript.patch).toBeNull();
+      const { pass: receipt } = receiptsOf(harness, result.stepId ?? '');
+      expect(receipt.mode).toBe('rewrite');
+      expect(receipt.patch).toBeNull();
       // The decline was read, not repaired: the second call is the rewrite draft.
       expect(harness.calls).toHaveLength(4);
     } finally {
@@ -185,7 +186,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
     const text = `${FRAME_FIRST_SENTENCE} Я постоял и вышел.\n\n${para('Второй абзац.')}\n\n${para('Третий абзац.')}\n\n${para('Четвёртый абзац.')}\n`;
     const harness = await written({ chapter: 1, text, intent: 'в главе 1 меняется свет' });
     try {
-      const original = readFileSync(join(harness.bookRoot, 'manuscript', 'ch01.md'), 'utf8');
+      const original = chapterText(harness, 1);
       const target = parseChapter(1, original).blocks[0];
       if (target === undefined) throw new Error('the fixture chapter has no first block');
       const bad = answer(target.id, 'яркий свет', 'тусклый свет');
@@ -195,7 +196,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(harness.logs.join('\n')).toContain('FRAME_CHANGED');
-      expect(readFileSync(join(harness.bookRoot, 'manuscript', 'ch01.md'), 'utf8')).toBe(original);
+      expect(chapterText(harness, 1)).toBe(original);
       const stages = listStages(harness.fixture.db, 1);
       expect(stages.at(-1)?.stage).toBe('refused');
       expect(stages.filter((stage) => stage.stage === 'landed')).toHaveLength(0);
@@ -212,7 +213,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
   it('parks with PATCH_REJECTED:<CODE> when the patched chapter breaks a prose rule', async () => {
     const harness = await written();
     try {
-      const original = readFileSync(chapterFile(harness), 'utf8');
+      const original = chapterText(harness);
       const target = parseChapter(CHAPTER, original).blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       harness.script.push(answer(target.id, 'Гуси шли по льду.', '**Часы** шли по кругу.'));
@@ -221,7 +222,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
       expect(result.status).toBe('parked');
       // The one prose judge is `validateAnswer`, reused: its code is named, never re-invented.
       expect(harness.logs.join('\n')).toContain('PATCH_REJECTED:MARKDOWN');
-      expect(readFileSync(chapterFile(harness), 'utf8')).toBe(original);
+      expect(chapterText(harness)).toBe(original);
       // A validator refusal is final: no repair turn, one call only.
       expect(harness.calls).toHaveLength(1);
     } finally {
@@ -232,7 +233,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
   it('parks with PATCH_FACT_LOST when the patch asserts a fact the chapter will not carry', async () => {
     const harness = await written();
     try {
-      const original = readFileSync(chapterFile(harness), 'utf8');
+      const original = chapterText(harness);
       const target = parseChapter(CHAPTER, original).blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       const bad = answer(target.id, 'Гуси шли по льду.', 'Часы шли по кругу.', ['документ о допуске']);
@@ -241,7 +242,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(harness.logs.join('\n')).toContain('PATCH_FACT_LOST');
-      expect(readFileSync(chapterFile(harness), 'utf8')).toBe(original);
+      expect(chapterText(harness)).toBe(original);
     } finally {
       await harness.close();
     }
@@ -251,8 +252,8 @@ describe('a patch that cannot be proved parks instead of landing', () => {
     const text = `Глава двенадцатая\n\n${[para('Первый абзац.'), para('Гуси шли по льду.'), para('Третий абзац.'), para('Четвёртый абзац.')].join('\n\n')}\n`;
     const harness = await written({ text });
     try {
-      writeFileSync(join(harness.bookRoot, 'manuscript', 'ch11.md'), 'Глава одиннадцать\n\nСосед до.\n');
-      const original = readFileSync(chapterFile(harness), 'utf8');
+      harness.fixture.seedChapter(11, 'Глава одиннадцать\n\nСосед до.\n');
+      const original = chapterText(harness);
       const target = parseChapter(CHAPTER, original).blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       // The neighbour lands while the model is being asked: the prompt was built from another book.
@@ -260,14 +261,15 @@ describe('a patch that cannot be proved parks instead of landing', () => {
       harness.hooks.beforeCall = (name) => {
         if (name !== 'beat' || moved) return;
         moved = true;
-        writeFileSync(join(harness.bookRoot, 'manuscript', 'ch11.md'), 'Глава одиннадцать\n\nСосед до — правка.\n');
+        // The neighbour publishes a new revision while the model is being asked (BOOK-187).
+        harness.fixture.seedChapter(11, 'Глава одиннадцать\n\nСосед до — правка.\n');
       };
       harness.script.push(answer(target.id, 'Гуси шли по льду.', 'Часы шли по кругу.'));
 
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(harness.logs.join('\n')).toContain('PATCH_NEIGHBOUR_MOVED');
-      expect(readFileSync(chapterFile(harness), 'utf8')).toBe(original);
+      expect(chapterText(harness)).toBe(original);
     } finally {
       await harness.close();
     }
@@ -279,7 +281,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
     const text = `Глава двенадцатая\n\n${para('Первый абзац.', 800)}\n\n${long}\n\n${para('Третий абзац.', 700)}\n\n${para('Четвёртый абзац.', 700)}\n`;
     const harness = await written({ text });
     try {
-      const original = readFileSync(chapterFile(harness), 'utf8');
+      const original = chapterText(harness);
       const target = parseChapter(CHAPTER, original).blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       // 1 000 of ~4 200 characters is a rewrite of a quarter, not a patch.
@@ -289,7 +291,7 @@ describe('a patch that cannot be proved parks instead of landing', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(harness.logs.join('\n')).toContain('PATCH_BUDGET_EXCEEDED');
-      expect(readFileSync(chapterFile(harness), 'utf8')).toBe(original);
+      expect(chapterText(harness)).toBe(original);
       expect(listStages(harness.fixture.db, CHAPTER).filter((stage) => stage.stage === 'landed')).toHaveLength(0);
     } finally {
       await harness.close();

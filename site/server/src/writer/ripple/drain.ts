@@ -45,7 +45,7 @@ import {
 } from '../../ledger/graph/plan.ts';
 import { frameIntact } from '../../ingest/frameGuard.ts';
 import { toIso } from '../../util/time.ts';
-import { readChapter } from '../../engine/text.ts';
+import { readChapterRows } from '../../engine/text.ts';
 import { readSnapshot } from '../../versions/snapshots.ts';
 import type { EngineClient } from '../client.ts';
 import type { PassResult } from '../passLane.ts';
@@ -445,12 +445,12 @@ export function chapterChangedChars(db: Db, dataDir: string, chapter: number): n
 }
 
 /**
- * The frame probe the verification uses: the chapter as it stands on disk against the frozen
- * frame. A missing file is not a changed frame — it is a chapter the ripple never wrote.
+ * The frame probe the verification uses: the chapter as the rows hold it against the frozen
+ * frame. An unwritten chapter is not a changed frame — it is a chapter the ripple never wrote.
  */
-export function frameProbe(bookRoot: string): (chapter: number) => boolean {
+export function frameProbe(db: Db): (chapter: number) => boolean {
   return (chapter) => {
-    const own = readChapter(bookRoot, chapter);
+    const own = readChapterRows(db, chapter);
     if (!own.exists) return true;
     try {
       return frameIntact(chapter, own.raw);

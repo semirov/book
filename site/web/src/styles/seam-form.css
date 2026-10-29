@@ -35,14 +35,16 @@
   opacity: 0;
   pointer-events: none;
 }
+/* The kind's word is a mark and its meaning is prose (§2): mono 12 for the word, serif 15 for
+   the sentence under it — no third face. */
 .kind-word {
-  font-family: var(--ui);
-  font-size: var(--fs-meta);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   color: var(--ink);
 }
 .kind-meaning {
-  font-family: var(--ui);
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.35;
   color: var(--ink-3);
 }
@@ -64,9 +66,9 @@
 }
 
 /* ---------- the note: a quiet action under the submit (BOOK-57) ---------- */
-/* A note is not a kind and not a second send: it sits under the form's one primary action in
-   the label style of the seam's inline action and in the quiet ink. Its open state is the
-   pressed colour, never a filled button. */
+/* A note is not a kind and not a second send: it sits under the form's one primary action as
+   a mark — mono 12, lowercase (§2). Its open state is the pressed colour, never a filled
+   button. */
 .note-action {
   justify-self: start;
   min-height: 44px;
@@ -74,10 +76,9 @@
   padding: 0;
   border: 0;
   background: none;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  letter-spacing: 0;
   color: var(--ink-3);
   text-align: left;
   cursor: pointer;
@@ -161,11 +162,11 @@
 .premise {
   margin: 0;
 }
+/* BOOK-128 #3900 §1 (audit #38) — two rows, one register each: the marks (numeral, dotted
+   field, state word) share the first line in mono 12; the premise's own words sit under it in
+   serif 15. The button is still the one full-width target. */
 .premise-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  column-gap: 12px;
-  align-items: center;
+  display: block;
   width: 100%;
   min-height: 44px;
   margin: 0;
@@ -179,6 +180,15 @@
   text-align: left;
   cursor: pointer;
 }
+/* The marks line: the numeral, the field that gives way, and the word. Three tracks, one
+   line, and the 44 px the row always had. */
+.premise-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: center;
+  min-height: 44px;
+}
 .premise-n {
   font-family: var(--mono);
   font-size: var(--fs-micro);
@@ -188,39 +198,37 @@
 .premise-field {
   min-width: 0;
 }
-/* An empty field is a leader: it starts after the number and ends on the prose's right edge. */
+/* The field is a leader: it starts after the number and ends on the prose's right edge. */
 .premise-leader {
   height: 1px;
   border-top: 1px dotted var(--rule);
 }
-/* A filled blank keeps the premise's words on the same line, then the page number's slot. */
+/* The premise's words are prose, on their own line under the marks (§2). */
 .premise-quote {
-  overflow: hidden;
-  border-bottom: 1px dotted var(--rule);
+  display: block;
+  margin-top: 2px;
   font-family: var(--serif);
   font-style: italic;
   font-size: var(--fs-note);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.45;
   color: var(--ink-2);
 }
-/* The state word of a held premise (BOOK-111): the deck's word in the label register, ink
-   like the other micro labels. It sits in the third cell, so the `1fr` field gives way. */
+/* The state word of a held premise (BOOK-111): a mark — mono 12, lowercase (§2, audit #38). It
+   sits in the third cell, so the `1fr` field gives way. */
 .premise-label {
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
   line-height: 1.2;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   white-space: nowrap;
   color: var(--ink-3);
 }
 /* BOOK-136: the attempt behind the row came back empty — one quiet sentence under the row,
-   in the label register's ink like the record line below it, never inside the button. */
+   in the record line's ink, never inside the button. Serif 15: it is a sentence (§2). */
 .premise-note {
   margin: 2px 0 0;
-  font-family: var(--label);
-  font-size: var(--fs-micro);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.4;
   color: var(--ink-3);
 }
@@ -242,10 +250,9 @@
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
   text-decoration: underline;
 }
@@ -274,10 +281,9 @@
   padding: 0;
   border: 0;
   background: none;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
   opacity: 0;
   cursor: pointer;

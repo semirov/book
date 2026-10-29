@@ -79,9 +79,8 @@ describe('the drainer’s measures', () => {
   it('treats a missing chapter as an intact frame, and reads a real one', () => {
     fixture = ledgerFixture();
     db = fixture.db;
-    const bookRoot = new URL('../../../../..', import.meta.url).pathname;
-    const probe = frameProbe(bookRoot);
-    expect(probe(12)).toBe(true); // no file at all: a chapter the ripple never wrote
+    const probe = frameProbe(fixture.db);
+    expect(probe(12)).toBe(true); // no rows at all: a chapter the ripple never wrote
   });
 });
 

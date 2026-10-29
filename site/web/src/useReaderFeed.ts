@@ -2,7 +2,7 @@ import type { ChangeSummaryDto, CommentDto, MyDecisionsDto } from '@book/shared'
 import { useCallback, useRef, useState } from 'react';
 
 import { getChanges, getChapterComments, getComments, getMyDecisions } from './api.ts';
-import { upsertFiling } from './lib/filings.ts';
+import { decisionFrameOf, upsertFiling, withDecisionReport } from './lib/filings.ts';
 import { ownCommentIds, readerRecordAction, type ReaderRecordEvent } from './lib/ownDecisions.ts';
 
 /**
@@ -34,6 +34,12 @@ export type ChapterFeed = {
 export function useReaderFeed() {
   const [changes, setChanges] = useState<ChangeSummaryDto[]>([]);
   const [comments, setComments] = useState<CommentDto[]>([]);
+  /**
+   * BOOK-128 #3900 §1 — the register may print a count only over a **complete** feed: the
+   * endpoint has no total, so `nextBefore === null` is the one proof that the 20 loaded rows
+   * are all of them. It starts false and stays false after a failed read (fail closed).
+   */
+  const [commentsComplete, setCommentsComplete] = useState(false);
   const [chapterFeed, setChapterFeed] = useState<Record<number, ChapterFeed>>({});
   const [decisions, setDecisions] = useState<MyDecisionsDto | null>(null);
   /**
@@ -73,9 +79,12 @@ export function useReaderFeed() {
    */
   const refreshComments = useCallback(async (chapter?: number) => {
     try {
-      setComments((await getComments({ limit: 20 })).items);
+      const page = await getComments({ limit: 20 });
+      setComments(page.items);
+      setCommentsComplete(page.nextBefore === null);
     } catch {
-      /* the next comment event or reconnect retries */
+      /* the next comment event or reconnect retries — and an unread page may not be counted */
+      setCommentsComplete(false);
     }
     if (chapter !== undefined) await refreshChapter(chapter);
   }, [refreshChapter]);
@@ -133,6 +142,25 @@ export function useReaderFeed() {
     });
   }, []);
 
+  /**
+   * BOOK-174 — a decision frame carries the reading of the filing it names. The row already on
+   * screen takes it at once (the open card must not go on saying «ждёт»); a frame about a row
+   * this page does not hold changes nothing, and `refreshComments` is still the durable truth.
+   */
+  const noteDecision = useCallback((data: unknown) => {
+    const frame = decisionFrameOf(data);
+    if (frame === null) return;
+    setComments((current) => withDecisionReport(current, frame) ?? current);
+    setChapterFeed((current) => {
+      const chapter = frame.chapter;
+      if (chapter === undefined) return current;
+      const feed = current[chapter];
+      if (feed === undefined) return current;
+      const items = withDecisionReport(feed.items, frame);
+      return items === null ? current : { ...current, [chapter]: { ...feed, items } };
+    });
+  }, []);
+
   const refreshDecisions = useCallback(async () => {
     try {
       const next = await getMyDecisions();
@@ -164,6 +192,7 @@ export function useReaderFeed() {
   return {
     changes,
     comments,
+    commentsComplete,
     chapterFeed,
     decisions,
     threadSettled,
@@ -175,5 +204,6 @@ export function useReaderFeed() {
     refreshChapter,
     refreshLoaded,
     noteRecord,
+    noteDecision,
   };
 }

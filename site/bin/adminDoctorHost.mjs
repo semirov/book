@@ -1,10 +1,14 @@
 /**
  * bin/adminDoctorHost.mjs — the host's half of the BOOK-188 preflight.
  *
- * Five of the eight checks are facts about the machine the operator stands on, not about the
- * running stack: the containers, the image identity, `/proc/self/mountinfo` inside the site,
- * the working tree, the host backups and the drill log. They live here so `adminDoctor.mjs`
- * stays the command (arguments, rows, report) and this file stays the readings.
+ * The checks here are facts about the machine the operator stands on, not about the running
+ * stack: the containers, the image identity, `/proc/self/mountinfo` inside the site, the host
+ * backups and the drill log. They live here so `adminDoctor.mjs` stays the command (arguments,
+ * rows, report) and this file stays the readings.
+ *
+ * **BOOK-187: no row asks about a checkout.** The prose question («does `manuscript/` hold text?»)
+ * and the git one are gone: the text is rows, and the guard that names a prose path at deploy time
+ * is `bin/home-check.mjs` (`server/src/dataHome.ts`), not a host that may have no `.git` at all.
  *
  * Read-only by construction: `docker inspect`/`exec cat`, `readdir`/`readFile`, and sqlite
  * opened `{readonly: true, fileMustExist: true}`. Nothing is created, nothing is written.
@@ -12,10 +16,8 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, parseChapterTitle } from '../shared/src/book.ts';
 
 const DAY_MS = 24 * 3_600_000;
 
@@ -76,32 +78,11 @@ export function execDocker(args) {
 }
 
 /**
- * `git -C <repoRoot> ls-files manuscript`. The answer is discriminated because the two empty
- * answers mean opposite things: `null` — there is no `.git` here, so a host without git stages
- * nothing and the row passes with that evidence; `{error}` — git is here and could not answer,
- * which must never pass; `[]` — tracked nothing, the state the launch wants.
+ * `git -C <repoRoot> ls-files manuscript` is gone (BOOK-187): the prose is rows, and whether a
+ * checkout tracks a `manuscript/` file is no longer a question this doctor can fail on — the
+ * guard that names such a path is `bin/home-check.mjs`, which the deploy runs. What the preflight
+ * still needs the root for is the drill script beside it (`checkBackups`).
  */
-export function execGitLsFiles(repoRoot) {
-  return new Promise((done) => {
-    if (!existsSync(join(repoRoot, '.git'))) {
-      done(null);
-      return;
-    }
-    execFile('git', ['-C', repoRoot, 'ls-files', 'manuscript'], { encoding: 'utf8', timeout: 20_000 }, (error, stdout, stderr) => {
-      if (error !== null) {
-        const said = oneLine(String(stderr ?? '').split('\n')[0] ?? '');
-        done({ error: said.length > 0 ? said : `git exited ${String(typeof error.code === 'number' ? error.code : 1)}` });
-        return;
-      }
-      done(
-        String(stdout)
-          .split('\n')
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0),
-      );
-    });
-  });
-}
 
 /** better-sqlite3 belongs to the server's dependencies and is loaded only when a dump is read. */
 export async function openReadonlyDefault(file) {
@@ -210,14 +191,15 @@ export function judgeVolume(mount, { hostDataDir = '' } = {}) {
 }
 
 /**
- * The working tree the two prose rows read. `site/..` (or `BOOK_REPO_ROOT`) is believed only when
- * it looks like a book checkout — a `manuscript/` dir or a `.git` — because a wrong root answers
- * "no prose, nothing tracked" about a tree that was never read.
+ * The tree the preflight still reads: the drill script beside the deploy root (`checkBackups`).
+ * It is believed when the directory is there — **no checkout is required** (BOOK-187): a host
+ * that serves the book from a volume may have no `.git` and no `manuscript/` at all, and a check
+ * that failed such a host would be asking about a tree instead of about the book.
  */
 export function resolveRepoRoot(root) {
   const path = String(root ?? '');
-  if (existsSync(join(path, 'manuscript')) || existsSync(join(path, '.git'))) return { root: path, error: null };
-  return { root: path, error: `BOOK_REPO_ROOT is not a book checkout: ${path}` };
+  if (existsSync(path)) return { root: path, error: null };
+  return { root: path, error: `BOOK_REPO_ROOT is not a directory: ${path}` };
 }
 
 /** The newest `<backupRoot>/daily/*​/book.db` by mtime, or `null` when there is none. */
@@ -263,37 +245,9 @@ function readTail(file, bytes = LOG_TAIL_BYTES) {
   return buffer.toString('utf8');
 }
 
-/** The paragraphs of a chapter body, the way the ingest splits them: blank line, flattened. */
-function paragraphsOf(text) {
-  return String(text ?? '')
-    .split(/\n\s*\n/u)
-    .map((block) => flat(block))
-    .filter((block) => block.length > 0);
-}
-
-/**
- * A manuscript file is prose when any paragraph is neither frozen sentence: the launch wants
- * files that carry the frame and nothing else. A chapter's heading is a title, not prose
- * (BOOK-32), so `chNN.md` is judged on the body `parseChapterTitle` returns; a file that is not
- * a chapter (`00-front.md`) has no frame at all, so any text in it is prose.
- */
-export function manuscriptProse(repoRoot) {
-  const dir = join(repoRoot, 'manuscript');
-  if (!existsSync(dir)) return [];
-  const keep = new Set([flat(FRAME_FIRST_SENTENCE), flat(FRAME_LAST_SENTENCE)]);
-  const found = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-    const raw = readFileSync(join(dir, entry.name), 'utf8');
-    const chapter = /^ch(\d+)\.md$/u.exec(entry.name)?.[1];
-    if (chapter === undefined) {
-      if (flat(raw).length > 0) found.push(entry.name);
-      continue;
-    }
-    const body = paragraphsOf(parseChapterTitle(Number(chapter), raw).body);
-    if (body.some((block) => !keep.has(block))) found.push(entry.name);
-  }
-  return found;
+/** The drill script beside the deploy root: `<root>/deploy` or `<root>/site/deploy`. */
+function drillScriptUnder(repoRoot) {
+  return [join(repoRoot, 'deploy', 'restore-drill.sh'), join(repoRoot, 'site', 'deploy', 'restore-drill.sh')];
 }
 
 /* ------------------------------------------------------------------------- the checks -- */
@@ -411,8 +365,9 @@ export async function checkBackups(ctx) {
 
   // BOOK-188 says `<repoRoot>/deploy/restore-drill.sh`; in this repository the scripts live in
   // `site/deploy/`, so a repo root (or `site/` itself) is answered by one of the two paths.
-  const drills = [...new Set([join(ctx.repoRoot, 'deploy', 'restore-drill.sh'), join(ctx.repoRoot, 'site', 'deploy', 'restore-drill.sh')])];
-  if (!drills.some((path) => existsSync(path))) {
+  // A root that is not there at all is named first: every path under it would be a miss.
+  if (ctx.repoError !== null) failures.push(ctx.repoError);
+  else if (!drillScriptUnder(ctx.repoRoot).some((path) => existsSync(path))) {
     failures.push(`no restore drill under ${ctx.repoRoot}: deploy/restore-drill.sh or site/deploy/restore-drill.sh`);
   }
   let drillPart = 'drill unknown';

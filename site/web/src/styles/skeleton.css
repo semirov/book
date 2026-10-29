@@ -173,9 +173,9 @@
   width: 4ch;
 }
 .skel-share {
-  font-family: var(--ui);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
 }
@@ -223,6 +223,8 @@
   min-height: min(67.5svh, 720px);
   position: relative;
 }
+/* The boot sentence is prose (§2, audit #51): serif 15, lowercase — the one screen a reader
+   sees when nothing else works prints a sentence, not a stamp. */
 .boot-status {
   position: absolute;
   /* BOOK-88 final: the boot field is a `.page`, i.e. the column itself, so the sentence needs
@@ -231,10 +233,9 @@
   inset-inline: 0;
   top: calc(env(safe-area-inset-top) + 24px);
   margin: 0;
-  font-family: var(--label);
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.5;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--ink-3);
 }

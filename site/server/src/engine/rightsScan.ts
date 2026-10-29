@@ -16,7 +16,7 @@ import { isListRefusal, rightsRefusalLine, RIGHTS_COPY } from '../rights/rules.t
 import { scanRights } from '../rights/scan.ts';
 import { deltaBlocks } from './helpers.ts';
 import * as store from './store.ts';
-import { isWrittenChapter, readChapter } from './text.ts';
+import { isWrittenChapter, readChapterRows } from './text.ts';
 import type { EngineDeps } from './types.ts';
 
 export type LandingScan = {
@@ -84,7 +84,7 @@ export function ensureRightsScan(deps: EngineDeps, step: store.StepRow): store.S
   if (step.rights_scan !== null || step.landed_at === null) return step;
   if (step.chapter === null || step.pass === 'ending') return step;
 
-  const chapter = readChapter(deps.bookRoot, step.chapter);
+  const chapter = readChapterRows(deps.db, step.chapter);
   const scan = isWrittenChapter(chapter) ? scanStepDelta(step, chapter) : null;
   // "Unknown" is not "clear": a step whose text cannot be read at close is flagged, not blessed.
   const stored =

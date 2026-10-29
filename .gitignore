@@ -16,6 +16,10 @@ site/ARCHITECTURE.md
 # Superseded concept drafts (thought trail)
 concept/_drafts/
 
+# The book's text lives in the database (BOOK-187): nothing under manuscript/ may be
+# committed again — no chapter, no export, no scratch copy.
+manuscript/
+
 # Misc
 notes/
 .DS_Store

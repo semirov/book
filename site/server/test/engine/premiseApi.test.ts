@@ -50,11 +50,10 @@ describe('BOOK-7 — premise links and the driver surface', () => {
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       // Posted while the chapter had no text: the comment carries the premise base 0.
       fixture.db.prepare('UPDATE comments SET base_rev = 0 WHERE id = ?').run(id);
-      fixture.writeChapterBlocks(5, 'Глава 5', ['Пятая глава уже написана.', 'Служебный абзац.']);
+      fixture.seedChapterBlocks(5, 'Глава 5', ['Пятая глава уже написана.', 'Служебный абзац.']);
       ingestReconcile(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir });
 
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
       // A written chapter is an ordinary change, against the revision that stands — never 0.
       expect(change(fixture.db, accepted.changeId)).toMatchObject({ premise: 0, base_rev: 1 });
     } finally {
@@ -69,7 +68,6 @@ describe('BOOK-7 — premise links and the driver surface', () => {
       fourWritten(fixture);
       const id = seed(fixture.db, { chapter: 5, proposedText: 'Документ о допуске.', kind: 'document' });
       const accepted = accept(fixture.db, id, 'в главе 5 появляется документ о допуске');
-      if ('error' in accepted) throw new Error(accepted.error);
 
       const nextResponse = await app.inject({
         method: 'POST',

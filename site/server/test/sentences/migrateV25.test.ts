@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import { migrateV25 } from '../../src/db/migrateV25.ts';
+import { SCHEMA_VERSION } from '../../src/db/schema.ts';
 import { sentenceHash } from '../../src/sentences/hash.ts';
 import { seedChapter } from '../ledger/helpers.ts';
 
@@ -97,10 +98,10 @@ describe('migrate v25 — the sentence becomes a stored row', () => {
     const db = v24Database();
     expect(columns(db, 'comments')).not.toContain('sentence_id');
 
-    // The cursor reaches the head of the build; v26 (the ripple's graph) rides along and touches
-    // none of the rows this file asserts about.
-    expect(migrate(db)).toEqual({ from: 24, to: 26 });
-    expect(Number(db.pragma('user_version', { simple: true }))).toBe(26);
+    // The cursor reaches the head of the build; v26–v29 ride along and touch none of the rows
+    // this file asserts about.
+    expect(migrate(db)).toEqual({ from: 24, to: SCHEMA_VERSION });
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const blocks = db.prepare('SELECT id, text FROM blocks ORDER BY chapter, idx').all() as Array<{
       id: string;
@@ -241,7 +242,7 @@ describe('migrate v25 — the sentence becomes a stored row', () => {
       migratedAt: (db.prepare(`SELECT v FROM meta WHERE k = 'sentences.migrated_at'`).get() as { v: string }).v,
     };
 
-    expect(migrate(db)).toEqual({ from: 26, to: 26 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect(count(db, 'SELECT COUNT(*) AS n FROM sentences')).toBe(before.sentences);
     expect(count(db, 'SELECT COUNT(DISTINCT id) AS n FROM sentences')).toBe(before.distinct);
     expect(count(db, 'SELECT COUNT(*) AS n FROM sentence_touches')).toBe(before.touches);

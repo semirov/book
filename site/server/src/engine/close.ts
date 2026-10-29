@@ -9,7 +9,6 @@
  */
 
 import {
-  TOTAL_CHAPTERS,
   parseSeams,
   type CascadeOutcome,
   type CascadeStatus,
@@ -24,6 +23,7 @@ import { passUsdOf, recordCloseSpend, spendOfClose } from '../budget.ts';
 import { budgetFromConfig } from './budget.ts';
 import { publishIndexNotices } from './indexNotice.ts';
 import type { Db } from '../db/db.ts';
+import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
@@ -41,13 +41,10 @@ import { closeVerification } from '../ledger/graph/verification.ts';
 import { rippleOutcomeFor } from './ripple.ts';
 import * as store from './store.ts';
 import { assertEndingFreeze } from './freeze.ts';
-import { isWritten } from './text.ts';
+import { writtenChaptersOf } from './text.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
-/**
- * The ripple's own door, re-exported from the module that opens steps: the engine's step module is
- * this one (`openCascade` is here), so `service.ts` has one import for both ways a step opens.
- */
+/** The ripple's own door: `service.ts` has one import for both ways a step opens. */
 export { openRippleStep } from './ripple.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
@@ -127,8 +124,7 @@ export function closeChange(
   reason: string | null,
   now: number,
 ): void {
-  // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied` — the consequences
-  // are their own chapters and the change page says so. The plan row is the evidence.
+  // BOOK-173 §7: a change that stood a ripple is `ripple`, never `applied`; the plan is evidence.
   const settled = rippleOutcomeFor(deps.db, change.id, outcome) as ChangeOutcome;
   // Tokens and the model are frozen here, once (§6D.5); cost stays the placeholder zero and the
   // row is not priced, so BOOK-23 reads it as «not measured» (`measuredRub`), never as free.
@@ -166,6 +162,10 @@ export function closeChange(
   // §6F.5: the impact is materialized once, at close, and is a projection (§T-impact).
   recordImpact(deps.db, change.id, now);
   releaseLane(deps, change.id);
+  // BOOK-189: the reader who filed for this change hears how it was decided. The row's status
+  // and outcome are written above, so `sendPassEvent` reads the decision it is announcing rather
+  // than guessing it; a failed push is not a failed close (the helper never throws).
+  sendPassEvent(deps.db, { kind: 'decision', changeId: change.id }, now);
 }
 
 // ── cascade close ────────────────────────────────────────────────────────────
@@ -266,8 +266,7 @@ export function advanceCascade(deps: EngineDeps, cascadeId: string, now: number)
     tokens: steps.reduce((sum, step) => sum + step.tokens_in + step.tokens_out, 0),
     steps: steps.map(stepFacts),
   };
-  const written = new Set<number>();
-  for (let n = 1; n <= TOTAL_CHAPTERS; n += 1) if (isWritten(deps.bookRoot, n)) written.add(n);
+  const written = writtenChaptersOf(db);
 
   const plan = planCascade(facts, { nowMs: now, written });
   if (plan.kind === 'wait') return;

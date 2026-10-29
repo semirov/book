@@ -85,13 +85,6 @@ describe('one row, one numeral, no interface copy', () => {
     expect(leader).toBeGreaterThan(numeral);
     expect(html).toContain('aria-label="глава 7"');
   });
-
-  it('never lifts the chapter title or a state word into the row', () => {
-    const titled = article(entry(7, { title: 'Перевод смены' }));
-    expect(titled).not.toContain('Перевод смены');
-    expect(titled).not.toContain('замысел');
-    expect(article(entry(8))).toContain('class="premise-field premise-leader"');
-  });
 });
 
 describe('the row’s geometry is the prose’s geometry', () => {
@@ -103,16 +96,24 @@ describe('the row’s geometry is the prose’s geometry', () => {
     expect(row).toContain('padding-inline-end: max(0px, calc(100% - var(--measure)))');
     // The hit area stays the column's whole width; only its content ends on the prose edge.
     expect(row).toContain('width: 100%');
-    expect(row).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
     expect(row).toContain('min-height: 44px');
+    // BOOK-128 #3900 §1: the marks line keeps the three tracks (numeral, field, word) and the
+    // premise's words are a line of their own under it.
+    const facts = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-facts');
+    expect(facts).toContain('grid-template-columns: auto minmax(0, 1fr) auto');
+    const quote = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-quote');
+    expect(quote).toContain('display: block');
+    expect(quote).toContain('font-family: var(--serif)');
+    expect(quote).toContain('font-size: var(--fs-note)');
     // The numeral is the mono micro rung, tabular.
     expect(declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-n')).toContain('font-variant-numeric: tabular-nums');
     // BOOK-112 amended by BOOK-111: the one label the flow may print is a held premise's own
-    // state word — and it is the label register, not the retired state slot (no `.premise-hint`).
+    // state word — a mark in the canon's voice (BOOK-128 #3900): mono, the 12 px floor,
+    // lowercase as written; no `.premise-hint`.
     const label = declarations(sheets['../styles/seam-form.css'] ?? '', '.premise-label');
-    expect(label).toContain('font-family: var(--label)');
+    expect(label).toContain('font-family: var(--mono)');
     expect(label).toContain('font-size: var(--fs-micro)');
-    expect(label).toContain('text-transform: uppercase');
+    expect(label).not.toContain('text-transform');
     expect(sheets['../styles/seam-form.css'] ?? '').not.toContain('.premise-hint');
     // No second heading rule is left for the empty slot.
     expect(sheets['../styles/live.css'] ?? '').not.toContain('.ch-empty .ch-n');

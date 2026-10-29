@@ -1,27 +1,29 @@
 /**
- * BOOK-107: the frame smoke check, run the way the gates run it — as the CLI, spawned like
- * `deploy.sh` spawns it, never as a function call. What is asserted is the contract `deploy.sh`
- * reads: exit 0 with the readout, exit 1 with `expected`/`actual`, exit 2 for bad usage, and a
- * mismatch (not a crash) for a missing file, a wrong block and a non-200 answer. The cases that
- * drive `checkServer` directly inject the clock, so the deadline is decided, not measured.
+ * BOOK-107 / BOOK-187: the frame smoke check, run the way the gates run it — as the CLI, spawned
+ * like `deploy.sh` spawns it, never as a function call. What is asserted is the contract
+ * `deploy.sh` reads: exit 0 with the readout, exit 1 with `expected`/`actual`, exit 2 for bad
+ * usage, and a mismatch (not a crash) for a wrong row, a missing row, a chapter that lost the
+ * sentence and a non-200 answer. Since v28 the check reads the volume, not the manuscript, so a
+ * checkout with no `book.db` has nothing to fail about — that case is asserted too.
+ *
+ * The cases that drive `checkServer` directly inject the clock, so the deadline is decided, not
+ * measured.
  */
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, TOTAL_CHAPTERS } from '@book/shared';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { CHAPTER_TIMEOUT_MS, TOTAL_TIMEOUT_MS, checkServer } from '../../scripts/lib/frame.mjs';
 import { databaseFile, openDatabase } from '../src/db/db.ts';
 import { migrate } from '../src/db/migrate.ts';
 
 const SITE = resolve(import.meta.dirname, '..', '..');
-const REPO = resolve(SITE, '..');
 const CLI = join(SITE, 'scripts', 'frame-check.mjs');
 
 /** The wrong text of the owner's report: an ordinary morning, not the frozen frame. */
@@ -34,8 +36,11 @@ type RunResult = { status: number; stdout: string; stderr: string };
  * a `spawnSync` here would block the test's own event loop, and the `node:http` stub below
  * could not answer the child.
  */
-async function run(...args: string[]): Promise<RunResult> {
-  const child = spawn(process.execPath, [CLI, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+async function run(args: string[], env: Record<string, string> = {}): Promise<RunResult> {
+  const child = spawn(process.execPath, [CLI, ...args], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, ...env },
+  });
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   let stdout = '';
@@ -50,24 +55,11 @@ async function run(...args: string[]): Promise<RunResult> {
   return { status, stdout, stderr };
 }
 
-/** `manuscript/ch42.md` as the repository holds it: the canon is read, never retyped here. */
-function canonOf(name: string): string {
-  return readFileSync(join(REPO, 'manuscript', name), 'utf8');
-}
-
 const tmpDirs: string[] = [];
 function tmpDir(name: string): string {
   const dir = mkdtempSync(join(tmpdir(), name));
   tmpDirs.push(dir);
   return dir;
-}
-
-/** A repository root with exactly the manuscript files a test asks for. */
-function repoWith(files: Record<string, string>): string {
-  const root = tmpDir('book-frame-root-');
-  mkdirSync(join(root, 'manuscript'), { recursive: true });
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(root, 'manuscript', name), text, 'utf8');
-  return root;
 }
 
 let server: Server | null = null;
@@ -87,8 +79,6 @@ afterEach(() => {
   server?.close();
   server = null;
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  // A case that forgets its own `finally` must not hand a wrapped `AbortSignal.timeout` to the next.
-  vi.restoreAllMocks();
 });
 
 /** A stub that serves the canon for both chapters: `--url` has to answer with a verdict. */
@@ -114,10 +104,13 @@ async function serveCanon(): Promise<string> {
   });
 }
 
-/** A migrated `book.db` with one block per frame chapter — the shape the service reads. */
+/**
+ * A migrated `book.db` — the shape the service reads: v28, so the frame rows are seeded by the
+ * migration, plus one block per frame chapter when the case asks for prose.
+ */
 function writeBookDb(
   dataDir: string,
-  texts: { ch01First: string; lastLast: string; lastScanAt: string | null },
+  texts: { ch01First?: string | null; lastLast?: string | null; lastScanAt?: string | null } = {},
 ): void {
   const db = openDatabase(databaseFile(dataDir));
   migrate(db);
@@ -126,103 +119,194 @@ function writeBookDb(
     `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, written_at, updated_at)
      VALUES (?, 1, NULL, 'sha', 0, 1, ?, ?)`,
   );
-  chapter.run(1, at, at);
-  chapter.run(TOTAL_CHAPTERS, at, at);
   const block = db.prepare(
     `INSERT INTO blocks (id, chapter, idx, text, hash, first_rev, last_rev) VALUES (?, ?, 0, ?, 'hash', 1, 1)`,
   );
-  block.run('ch01#a', 1, texts.ch01First);
-  block.run('ch42#b', TOTAL_CHAPTERS, texts.lastLast);
-  if (texts.lastScanAt !== null) {
+  if (typeof texts.ch01First === 'string') {
+    chapter.run(1, at, at);
+    block.run('ch01#a', 1, texts.ch01First);
+  }
+  if (typeof texts.lastLast === 'string') {
+    chapter.run(TOTAL_CHAPTERS, at, at);
+    block.run('ch42#b', TOTAL_CHAPTERS, texts.lastLast);
+  }
+  if (typeof texts.lastScanAt === 'string') {
     db.prepare(`INSERT INTO meta (k, v) VALUES ('last_scan_at', ?)`).run(texts.lastScanAt);
   }
   db.close();
 }
 
-/**
- * The `AbortSignal.timeout` budgets a stubbed `checkServer` run hands out, in call order. The spy
- * calls through, so the signal the stub receives is still a real `AbortSignal`, not a stand-in.
- */
-function spyOnTimeout(): { budgets: () => number[]; restore: () => void } {
-  const spy = vi.spyOn(AbortSignal, 'timeout');
-  return { budgets: () => spy.mock.calls.map(([ms]) => ms), restore: () => spy.mockRestore() };
-}
-
 describe('frame-check — the CLI contract (BOOK-107)', () => {
-  it('passes on this repository: the manuscript and the guard', async () => {
-    const result = await run('--repo-root', REPO);
+  it('passes on a fresh volume: the two rows, and no prose to place them in', async () => {
+    const dataDir = tmpDir('book-frame-fresh-');
+    writeBookDb(dataDir);
+    const result = await run(['--data-dir', dataDir]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('frame: manuscript ch01 first line — ok');
-    expect(result.stdout).toContain('frame: manuscript ch01 title line — ok');
-    expect(result.stdout).toContain('frame: manuscript ch42 last line — ok');
+    expect(result.stdout).toContain('frame: book_frame 1/first — ok');
+    expect(result.stdout).toContain('frame: book_frame 42/last — ok');
+    expect(result.stdout).toContain('frame: book_frame rows — ok');
     expect(result.stdout).toContain('frame: isolation guard — ok');
+    // No chapter has a block, so no span is checked and nothing is claimed about one.
+    expect(result.stdout).not.toContain('frame span');
     expect(result.stdout).toContain('frame: ok — 4 checks');
   });
 
-  it('fails with expected/actual when ch01 does not open with the frame', async () => {
-    const root = repoWith({ 'ch01.md': `${WRONG_FIRST}\n`, 'ch42.md': canonOf('ch42.md') });
-    const result = await run('--repo-root', root);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('frame: manuscript ch01 first line — MISMATCH');
-    expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
-    expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
-    expect(result.stdout).toContain('frame: manuscript ch42 last line — ok');
-    expect(result.stdout).toContain('frame: FAILED — 2 of 4 checks');
+  it('reads the data dir read-only and prints what it holds, including the last ingest', async () => {
+    const dataDir = tmpDir('book-frame-data-');
+    const at = '2026-10-27T16:42:53Z';
+    writeBookDb(dataDir, { ch01First: `${FRAME_FIRST_SENTENCE} И дальше.`, lastLast: FRAME_LAST_SENTENCE, lastScanAt: at });
+
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`frame:   ch01 first block: ${FRAME_FIRST_SENTENCE} И дальше.`);
+    expect(result.stdout).toContain(`frame:   ch42 last block:  ${FRAME_LAST_SENTENCE}`);
+    expect(result.stdout).toMatch(new RegExp(`frame:   last ingest:\\s+${at}`, 'u'));
+    expect(result.stdout).toContain('frame: frame span ch01 first block — ok');
+    expect(result.stdout).toContain('frame: frame span ch42 last block — ok');
+    expect(result.stdout).toContain('frame: ok — 6 checks');
   });
 
-  it('fails when ch01 loses its heading, even though the frame is still its first prose line', async () => {
-    // The owner's contract, checked on the file: line 1 must be the heading the parser reads as
-    // the title. A file whose heading was deleted opens on the frozen sentence, which
-    // `parseChapterTitle` reads as prose (BOOK-32) — so it has no title, and the check says so.
-    const root = repoWith({
-      'ch01.md': `${FRAME_FIRST_SENTENCE}\n\nЕщё абзац главы без заголовка.\n`,
-      'ch42.md': canonOf('ch42.md'),
-    });
-    const result = await run('--repo-root', root);
+  it('fails when a row does not carry the sentence the image compiles in', async () => {
+    const dataDir = tmpDir('book-frame-wrong-row-');
+    writeBookDb(dataDir);
+    const db = openDatabase(databaseFile(dataDir));
+    db.prepare(`UPDATE book_frame SET text = ? WHERE chapter = 1`).run(WRONG_FIRST);
+    db.close();
+
+    const result = await run(['--data-dir', dataDir]);
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('frame: manuscript ch01 title line — MISMATCH');
-    expect(result.stdout).toContain(
-      'frame:   actual:   line 1 is not read as a title (the parser read it as prose)',
-    );
-    // The frame itself is intact and still prose: only the heading above it is gone.
-    expect(result.stdout).toContain('frame: manuscript ch01 first line — ok');
+    expect(result.stdout).toContain('frame: book_frame 1/first — MISMATCH');
+    expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
+    expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
+    expect(result.stdout).toContain('frame: book_frame 42/last — ok');
     expect(result.stdout).toContain('frame: FAILED — 1 of 4 checks');
   });
 
-  it('accepts a rewrapped frame under a title, and fails on one changed word', async () => {
-    // A soft wrap is whitespace; the comparison collapses it. The title line is the parser's,
-    // not the check's: `parseChapterTitle` reads the frame line as prose (BOOK-32).
-    const rewrapped = FRAME_FIRST_SENTENCE.replace('Её', '\nЕё');
-    const passes = await run(
-      '--repo-root',
-      repoWith({
-        'ch01.md': `Тестовая глава\n\n${rewrapped} И дальше идёт текст главы.\n`,
-        'ch42.md': `Текст главы до финала.\n\n${FRAME_LAST_SENTENCE}\n`,
-      }),
-    );
-    expect(passes.status).toBe(0);
-    expect(passes.stdout).toContain('frame: manuscript ch01 first line — ok');
-    expect(passes.stdout).toContain('frame: manuscript ch42 last line — ok');
+  it('fails when a row is missing, naming which one', async () => {
+    const dataDir = tmpDir('book-frame-missing-row-');
+    writeBookDb(dataDir);
+    const db = openDatabase(databaseFile(dataDir));
+    db.prepare(`DELETE FROM book_frame WHERE chapter = 42`).run();
+    db.close();
 
-    // One word is enough to make it not the canon.
-    const changed = FRAME_FIRST_SENTENCE.replace('яркий', 'тусклый');
-    const fails = await run('--repo-root', repoWith({ 'ch01.md': `${changed}\n`, 'ch42.md': canonOf('ch42.md') }));
-    expect(fails.status).toBe(1);
-    expect(fails.stdout).toContain(`frame:   actual:   ${changed}`);
-  });
-
-  it('treats a missing chapter file as a mismatch, not a crash', async () => {
-    const result = await run('--repo-root', tmpDir('book-frame-empty-'));
+    const result = await run(['--data-dir', dataDir]);
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('frame:   actual:   no such file: manuscript/ch01.md');
-    expect(result.stdout).toContain('frame: FAILED — 3 of 4 checks');
+    expect(result.stdout).toContain('frame: book_frame 42/last — MISMATCH');
+    expect(result.stdout).toContain(`frame:   actual:   no book_frame row for 42/last`);
+    expect(result.stdout).toContain('frame: book_frame rows — MISMATCH');
+    expect(result.stdout).toContain('1/first, 42/last (2 rows)');
+    expect(result.stdout).toContain('1/first (1 rows)');
+    expect(result.stdout).toContain('frame: FAILED — 2 of 4 checks');
   });
 
-  it('fails when the running site serves a first block that is not the frame', async () => {
-    const base = await serve((url, response) => {
+  it('fails when ch01’s first block lost the sentence, and when the finale’s last one did', async () => {
+    const dataDir = tmpDir('book-frame-span-');
+    writeBookDb(dataDir, { ch01First: WRONG_FIRST, lastLast: 'Совсем другой финал.' });
+
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('frame: frame span ch01 first block — MISMATCH');
+    expect(result.stdout).toContain('frame: frame span ch42 last block — MISMATCH');
+    expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
+    expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
+    expect(result.stdout).toContain('frame:   actual:   Совсем другой финал.');
+    expect(result.stdout).toContain('frame: FAILED — 2 of 6 checks');
+  });
+
+  it('fails when a mention marks the frame but its offsets select other words', async () => {
+    const dataDir = tmpDir('book-frame-mention-');
+    writeBookDb(dataDir, { ch01First: `${FRAME_FIRST_SENTENCE} И дальше.` });
+    const db = openDatabase(databaseFile(dataDir));
+    // A row that claims to be the frame, pointing one code point past its first letter.
+    db.prepare(
+      `INSERT INTO mentions (span_id, block_id, chapter, start, end, kind, witness)
+       VALUES ('sp1', 'ch01#a', 1, 1, 3, 'document', ?)`,
+    ).run(FRAME_FIRST_SENTENCE);
+    db.close();
+
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('frame: mention 1/first (mention 1) — MISMATCH');
+    expect(result.stdout).toContain('@ [1, 3)');
+    expect(result.stdout).toContain('frame: FAILED — 1 of 6 checks');
+  });
+
+  it('counts a mention’s offsets in code points, not UTF-16 units', async () => {
+    // An astral character before the sentence is one code point and two UTF-16 units: the offsets
+    // `book_frame` and `mentions` use are the former (`substr()` counts them the same way).
+    const emoji = '\u{1F600} ';
+    const block = `${emoji}${FRAME_LAST_SENTENCE}`;
+    const cpLength = (value: string): number => Array.from(value).length;
+    const dataDir = tmpDir('book-frame-codepoints-');
+    writeBookDb(dataDir, { lastLast: block });
+    const addMention = (start: number): void => {
+      const db = openDatabase(databaseFile(dataDir));
+      db.prepare('DELETE FROM mentions').run();
+      db.prepare(
+        `INSERT INTO mentions (span_id, block_id, chapter, start, end, kind, witness)
+         VALUES ('sp1', 'ch42#b', 42, ?, ?, 'document', ?)`,
+      ).run(start, cpLength(block), FRAME_LAST_SENTENCE);
+      db.close();
+    };
+
+    addMention(cpLength(block) - cpLength(FRAME_LAST_SENTENCE));
+    const right = await run(['--data-dir', dataDir]);
+    expect(right.status).toBe(0);
+    expect(right.stdout).not.toContain('mention 42/last');
+
+    // One unit further is what a UTF-16 offset would give: the row then selects another sentence.
+    addMention(cpLength(block) - cpLength(FRAME_LAST_SENTENCE) + 1);
+    const wrong = await run(['--data-dir', dataDir]);
+    expect(wrong.status).toBe(1);
+    expect(wrong.stdout).toContain('frame: mention 42/last (mention ');
+  });
+
+  it('is a mismatch when book.db is not a database, and says so instead of throwing', async () => {
+    const dataDir = tmpDir('book-frame-garbage-');
+    writeFileSync(join(dataDir, 'book.db'), 'not a database\n', 'utf8');
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(`frame: frame database ${join(dataDir, 'book.db')} — MISMATCH`);
+    expect(result.stdout).toMatch(/frame:   actual:   cannot (open|read)/u);
+    expect(result.stdout).toContain('frame: FAILED — 1 of 2 checks');
+  });
+
+  it('names the missing schema when the volume predates v28', async () => {
+    const dataDir = tmpDir('book-frame-v22-');
+    writeBookDb(dataDir);
+    const db = openDatabase(databaseFile(dataDir));
+    db.exec('DROP TABLE book_frame');
+    db.close();
+
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toMatch(/frame:   actual:   .*has no book_frame table/u);
+    expect(result.stdout).toContain('the frame rows arrive with v28');
+  });
+
+  it('skips the DB legs, without failing, when the data dir holds no book.db', async () => {
+    const dataDir = tmpDir('book-frame-nodb-');
+    const result = await run(['--data-dir', dataDir]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(`frame:   no database at ${join(dataDir, 'book.db')}`);
+    expect(result.stdout).toContain('frame: isolation guard — ok');
+    expect(result.stdout).toContain('frame: ok — 1 check');
+  });
+
+  it('resolves the data dir from $DATA_DIR when no flag is given', async () => {
+    const dataDir = tmpDir('book-frame-env-');
+    writeBookDb(dataDir);
+    const result = await run([], { DATA_DIR: dataDir });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('frame: book_frame rows — ok');
+  });
+
+  /** A stub whose ch01 answer is `first` and whose finale answer is the canon. */
+  async function serveFirstAs(first: string): Promise<string> {
+    return serve((url, response) => {
       if (url === '/api/chapters/1') {
-        response.end(JSON.stringify({ n: 1, blocks: [{ id: 'ch01#a', i: 0, text: WRONG_FIRST, hash: 'x' }] }));
+        response.end(JSON.stringify({ n: 1, blocks: [{ id: 'ch01#a', i: 0, text: first, hash: 'x' }] }));
         return;
       }
       if (url === `/api/chapters/${String(TOTAL_CHAPTERS)}`) {
@@ -234,7 +318,13 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
       response.statusCode = 404;
       response.end(JSON.stringify({ code: 'NOT_FOUND' }));
     });
-    const result = await run('--repo-root', REPO, '--server', base);
+  }
+
+  it('fails when the running site serves a first block that is not the frame', async () => {
+    const base = await serveFirstAs(WRONG_FIRST);
+    const dataDir = tmpDir('book-frame-server-');
+    writeBookDb(dataDir);
+    const result = await run(['--data-dir', dataDir, '--server', base]);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame: site /api/chapters/1 — MISMATCH');
     expect(result.stdout).toContain(`frame:   expected: ${FRAME_FIRST_SENTENCE}`);
@@ -248,7 +338,9 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
       response.statusCode = 404;
       response.end(JSON.stringify({ code: 'NOT_WRITTEN' }));
     });
-    const result = await run('--repo-root', REPO, '--server', base);
+    const dataDir = tmpDir('book-frame-non200-');
+    writeBookDb(dataDir);
+    const result = await run(['--data-dir', dataDir, '--server', base]);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   404 NOT_WRITTEN');
     expect(result.stdout).toContain('frame: FAILED — 2 of 6 checks');
@@ -256,197 +348,44 @@ describe('frame-check — the CLI contract (BOOK-107)', () => {
 
   it('reports an unreachable site as a mismatch with the reason', async () => {
     // Port 1 on loopback: nothing listens, so the answer is a refused connection, not a hang.
-    const result = await run('--repo-root', REPO, '--server', 'http://127.0.0.1:1');
+    const dataDir = tmpDir('book-frame-unreachable-');
+    writeBookDb(dataDir);
+    const result = await run(['--data-dir', dataDir, '--server', 'http://127.0.0.1:1']);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('frame:   actual:   unreachable:');
     expect(result.stdout).toContain('frame: FAILED — 2 of 6 checks');
   });
 
-  it('reads the data dir read-only and prints what it holds, including the last ingest', async () => {
-    const dataDir = tmpDir('book-frame-data-');
-    const at = '2026-10-27T16:42:53Z';
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: at });
-
-    const result = await run('--repo-root', REPO, '--data-dir', dataDir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
-    expect(result.stdout).toContain(`frame:   ch01 first block: ${FRAME_FIRST_SENTENCE}`);
-    expect(result.stdout).toContain(`frame:   ch42 last block:  ${FRAME_LAST_SENTENCE}`);
-    expect(result.stdout).toMatch(new RegExp(`frame:   last ingest:\\s+${at}`, 'u'));
-    expect(result.stdout).toContain('frame: ok — 5 checks');
-  });
-
-  it('names every failing block of the data dir when both ends are wrong', async () => {
-    const dataDir = tmpDir('book-frame-wrong-');
-    writeBookDb(dataDir, { ch01First: WRONG_FIRST, lastLast: 'Совсем другой финал.', lastScanAt: null });
-    const result = await run('--repo-root', REPO, '--data-dir', dataDir);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain(`frame: data dir ${dataDir} — MISMATCH`);
-    expect(result.stdout).toContain('frame:   ch01 first block:');
-    expect(result.stdout).toContain('frame:   ch42 last block:');
-    expect(result.stdout).toContain(`frame:   actual:   ${WRONG_FIRST}`);
-    expect(result.stdout).toContain('frame:   actual:   Совсем другой финал.');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
-  });
-
-  it('is a mismatch, not a crash, when the data dir has no database', async () => {
-    const result = await run('--repo-root', REPO, '--data-dir', tmpDir('book-frame-nodb-'));
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('frame:   actual:   cannot open');
-    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
-  });
-
-  it('is a mismatch, not a crash, when book.db is not a database', async () => {
-    const dataDir = tmpDir('book-frame-garbage-');
-    writeFileSync(join(dataDir, 'book.db'), 'not a database\n', 'utf8');
-    const result = await run('--repo-root', REPO, '--data-dir', dataDir);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain(`frame: data dir ${dataDir} — MISMATCH`);
-    expect(result.stdout).toMatch(/frame:   actual:   cannot (open|read)/u);
-    expect(result.stdout).toContain('frame: FAILED — 1 of 5 checks');
-  });
-
-  it('answers the owner form `--url=… --data=…` with the six-check readout', async () => {
+  it('answers the owner form `--url=… --data=…` with the full readout, as JSON too', async () => {
     const base = await serveCanon();
     const dataDir = tmpDir('book-frame-alias-');
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: null });
-    const result = await run('--repo-root', REPO, `--url=${base}`, `--data=${dataDir}`);
+    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE });
+    const result = await run([`--url=${base}`, `--data=${dataDir}`]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('frame: site /api/chapters/1 — ok');
     expect(result.stdout).toContain('frame: site /api/chapters/42 — ok');
-    expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
     expect(result.stdout).toContain(`frame:   ch01 first block: ${FRAME_FIRST_SENTENCE}`);
     expect(result.stdout).toContain(`frame:   ch42 first block: ${FRAME_LAST_SENTENCE}`);
     expect(result.stdout).toContain(`frame:   ch42 last block:  ${FRAME_LAST_SENTENCE}`);
     expect(result.stdout).toContain('frame:   last ingest:');
-    expect(result.stdout).toContain('frame: ok — 7 checks');
-  });
+    expect(result.stdout).toContain('frame: ok — 8 checks');
 
-  it('accepts the space-separated aliases `--url <url> --data <dir>`', async () => {
-    const base = await serveCanon();
-    const dataDir = tmpDir('book-frame-alias-space-');
-    writeBookDb(dataDir, { ch01First: FRAME_FIRST_SENTENCE, lastLast: FRAME_LAST_SENTENCE, lastScanAt: null });
-    const result = await run('--repo-root', REPO, '--url', base, '--data', dataDir);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain(`frame: data dir ${dataDir} — ok`);
-    expect(result.stdout).toContain('frame: ok — 7 checks');
+    const json = await run([`--data=${dataDir}`, '--json']);
+    expect(json.status).toBe(0);
+    const parsed = JSON.parse(json.stdout) as { ok: boolean; dataDir: string; absent: boolean; checks: unknown[] };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.absent).toBe(false);
+    expect(parsed.dataDir).toBe(resolve(dataDir));
+    expect(parsed.checks).toHaveLength(6);
   });
-
-  it('bounds both chapters by one deadline: a spent budget makes the second chapter `timeout` with no request', async () => {
-    // The clock is injected and the stub spends the whole budget on the first request, so the
-    // second chapter's decision is the `remaining <= 0` arithmetic, not where a real timer lands.
-    const timeout = spyOnTimeout();
-    try {
-      let clock = 0;
-      let calls = 0;
-      const signals: Array<AbortSignal | undefined> = [];
-      const expiring = (_url: string, init: { signal?: AbortSignal }): Promise<Response> => {
-        calls += 1;
-        signals.push(init.signal);
-        clock = 60;
-        return Promise.reject(
-          Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }),
-        );
-      };
-      const checks = await checkServer({
-        baseUrl: 'http://127.0.0.1:1',
-        fetchImpl: expiring,
-        budgetMs: 60,
-        now: () => clock,
-      });
-      expect(checks.map((check) => check.parts[0]?.actual)).toEqual(['timeout', 'timeout']);
-      // Both parts read `timeout` either way; `calls` is what says the second request was not made.
-      expect(calls).toBe(1);
-      expect(signals).toHaveLength(1);
-      expect(signals[0]).toBeInstanceOf(AbortSignal);
-      // The one request went out with the whole budget still ahead of it.
-      expect(timeout.budgets()).toEqual([60]);
-      // The claim in deploy.sh: the whole check fits its 30 s allowance with room for node's start.
-      expect(TOTAL_TIMEOUT_MS).toBeLessThanOrEqual(25_000);
-    } finally {
-      timeout.restore();
-    }
-  });
-
-  it('gives the second chapter only what is left of the budget', async () => {
-    // A budget wide enough for two bounded requests: the first spends 30 ms of it, so the second
-    // is bounded by the 30 ms remaining, not by `CHAPTER_TIMEOUT_MS`.
-    const timeout = spyOnTimeout();
-    try {
-      let clock = 0;
-      let calls = 0;
-      const expiring = (): Promise<Response> => {
-        calls += 1;
-        clock = calls === 1 ? 30 : 60;
-        return Promise.reject(
-          Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }),
-        );
-      };
-      const checks = await checkServer({
-        baseUrl: 'http://127.0.0.1:1',
-        fetchImpl: expiring,
-        budgetMs: 60,
-        now: () => clock,
-      });
-      expect(checks.map((check) => check.parts[0]?.actual)).toEqual(['timeout', 'timeout']);
-      expect(calls).toBe(2);
-      expect(timeout.budgets()).toEqual([60, 30]);
-    } finally {
-      timeout.restore();
-    }
-  });
-
-  it('makes no request at all when the deadline has already passed', async () => {
-    let calls = 0;
-    const neverCalled = (): Promise<Response> => {
-      calls += 1;
-      // If the deadline check regresses, fail here with a readable reason instead of a hang.
-      return Promise.reject(new Error('a request was made with an expired deadline'));
-    };
-    const checks = await checkServer({
-      baseUrl: 'http://127.0.0.1:1',
-      fetchImpl: neverCalled,
-      budgetMs: 0,
-      now: () => 1_000,
-    });
-    expect(checks.map((check) => check.parts[0]?.actual)).toEqual(['timeout', 'timeout']);
-    expect(calls).toBe(0);
-  });
-
-  it('clamps each request to `CHAPTER_TIMEOUT_MS` under the CLI budget', async () => {
-    // What the CLI actually runs: no `budgetMs`, so 25 s is left and every request is clamped to
-    // the per-request bound. A regression to `AbortSignal.timeout(remaining)` would read 25 000.
-    const timeout = spyOnTimeout();
-    try {
-      let calls = 0;
-      const signals: Array<AbortSignal | undefined> = [];
-      const expiring = (_url: string, init: { signal?: AbortSignal }): Promise<Response> => {
-        calls += 1;
-        signals.push(init.signal);
-        return Promise.reject(
-          Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }),
-        );
-      };
-      const checks = await checkServer({
-        baseUrl: 'http://127.0.0.1:1',
-        fetchImpl: expiring,
-        budgetMs: TOTAL_TIMEOUT_MS,
-        now: () => 0,
-      });
-      expect(checks.map((check) => check.parts[0]?.actual)).toEqual(['timeout', 'timeout']);
-      // The clock never moves, so chapter 2 still has the whole 25 s and is attempted too.
-      expect(calls).toBe(2);
-      expect(signals).toHaveLength(2);
-      expect(timeout.budgets()).toEqual([CHAPTER_TIMEOUT_MS, CHAPTER_TIMEOUT_MS]);
-    } finally {
-      timeout.restore();
-    }
-  });
-
-  it('exits 2 on an unknown flag and on a flag without a value', async () => {
-    expect((await run('--nope')).status).toBe(2);
-    expect((await run('--server')).status).toBe(2);
-    expect((await run('--data-dir', '--json')).status).toBe(2);
+  it('exits 2 on an unknown flag, on a flag without a value, and on the retired --repo-root', async () => {
+    expect((await run(['--nope'])).status).toBe(2);
+    expect((await run(['--server'])).status).toBe(2);
+    expect((await run(['--data-dir', '--json'])).status).toBe(2);
+    // BOOK-187: the manuscript is no longer a source of the frame, so its flag is gone.
+    const retired = await run(['--repo-root', SITE]);
+    expect(retired.status).toBe(2);
+    expect(retired.stderr).toContain('unknown argument: --repo-root');
   });
 });

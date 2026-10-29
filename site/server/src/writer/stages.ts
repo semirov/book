@@ -69,6 +69,7 @@ const MODE_REASONS: Record<ModeReason, string> = {
   'no-scope': 'заявка не про фразу',
   model: 'просит модель',
   revision: 'замечания гейта',
+  'default-rewrite': 'переключатель WRITER_MODE_DEFAULT',
 };
 
 /**

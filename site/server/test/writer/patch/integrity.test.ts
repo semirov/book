@@ -25,6 +25,7 @@ import {
   tokens,
 } from '../../../src/writer/patch/integrity.ts';
 import type { PatchAnswer, PatchEdit } from '../../../src/writer/patch/protocol.ts';
+import { textOf } from '../textView.ts';
 
 const dirs: string[] = [];
 
@@ -170,18 +171,18 @@ describe('neighbourDigests — hashes, not a reading', () => {
 
   it('records two hashes, and no hash where there is no neighbour', () => {
     const root = bookRoot();
-    const digests = neighbourDigests(root, 12);
+    const digests = neighbourDigests(textOf(root), 12);
     expect(digests.before).toMatch(/^[0-9a-f]{64}$/u);
     expect(digests.after).toMatch(/^[0-9a-f]{64}$/u);
-    expect(neighbourDigests(root, 2)).toEqual({ before: null, after: null });
-    expect(neighbourDigests(root, 1).before).toBeNull();
+    expect(neighbourDigests(textOf(root), 2)).toEqual({ before: null, after: null });
+    expect(neighbourDigests(textOf(root), 1).before).toBeNull();
   });
 
   it('notices a neighbour that moved between the prompt and the landing', () => {
     const root = bookRoot();
-    const recorded = neighbourDigests(root, 12);
-    expect(neighbourMoved(root, 12, recorded)).toBe(false);
+    const recorded = neighbourDigests(textOf(root), 12);
+    expect(neighbourMoved(textOf(root), 12, recorded)).toBe(false);
     writeFileSync(join(root, 'manuscript', 'ch13.md'), 'Глава тринадцать\n\nСосед после — правка.\n');
-    expect(neighbourMoved(root, 12, recorded)).toBe(true);
+    expect(neighbourMoved(textOf(root), 12, recorded)).toBe(true);
   });
 });

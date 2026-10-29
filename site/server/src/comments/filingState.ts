@@ -1,0 +1,128 @@
+/**
+ * One filing's state, derived from the **changes** it became (BOOK-7, BOOK-136).
+ *
+ * A comment row's `status` stops at triage: `accepted` means «the reader's filing is in», and
+ * nothing on the row moves when the writer picks the change up, lands it or refuses it. The
+ * change is the only record of what became of the text, so `toCommentDto` never copies the
+ * row's word for a filing a change holds.
+ *
+ * A filing can have **several** changes — an escalated attempt, then another that landed — and
+ * `comments.change_id` is only one of them (the live rows point at the escalated attempt). The
+ * state therefore reads the whole set the ledger keeps under `changes.source_comment`, and the
+ * landing, wherever it stands in that order, is the last word.
+ *
+ * BOOK-174 moved the pure words (a premise's landing, a failed attempt, the gate's refusal) to
+ * `states.ts`; this module is what only storage can answer — which of a filing's changes counts
+ * — plus the two facts that follow from it: the public `status` of an ordinary filing, and
+ * `changeStatus` (`pending`/`processing` while the filing is the writer's business, `null` once
+ * it is not, so the page can tell «ждёт» from «идёт» without inventing a queue).
+ */
+
+import type { CommentStatus } from '@book/shared';
+
+import type { Db } from '../db/db.ts';
+import { decided, OWN_STATES } from './states.ts';
+
+/** One change of a filing, as this module reads it: the columns a state is chosen from. */
+export type FilingChange = {
+  id: string;
+  seq: number;
+  premise: number;
+  status: string;
+  outcome: string | null;
+  reason: string | null;
+  /** BOOK-136 — the chapter the change targets; the receipt of a landing names it. */
+  chapter: number;
+};
+
+const CHANGE_COLUMNS = 'id, seq, premise, status, outcome, reason, chapter';
+
+/** The columns of a change, by its id — for a `change_id` no `source_comment` row answers. */
+function byId(db: Db, changeId: string): FilingChange | undefined {
+  return db.prepare(`SELECT ${CHANGE_COLUMNS} FROM changes WHERE id = ?`).get(changeId) as
+    | FilingChange
+    | undefined;
+}
+
+/** BOOK-136 — the outcomes a `done` change is closed with when the text took it. */
+const LANDED_OUTCOMES = new Set(['applied', 'adapted', 'finding']);
+
+/** Did this change land the reader's text? `done` alone is not a landing (`registered`). */
+function isLanding(change: FilingChange): boolean {
+  return change.status === 'done' && change.outcome !== null && LANDED_OUTCOMES.has(change.outcome);
+}
+
+export type FilingChanges = {
+  /** The newest change that landed the reader's text — the receipt and the last word. */
+  landed: FilingChange | undefined;
+  /**
+   * The filing's current attempt: the newest row the ledger holds for it, else the row
+   * `change_id` names. An older attempt is history, whatever `comments.change_id` says.
+   */
+  attempt: FilingChange | undefined;
+};
+
+/**
+ * BOOK-136 — every change a filing became, resolved once.
+ *
+ * The owner's live rows: `comments.change_id` names an `escalated · gate_timeout` attempt while
+ * a later `done · applied` change landed the same text, so a DTO that read only the linked row
+ * kept saying «идёт · правка в очереди на запись» over a chapter already written. Resolution:
+ *
+ *   1. the **landing** is the newest `done` change whose outcome took the text
+ *      (`applied`/`adapted`/`finding`), wherever it sits among the filing's changes;
+ *   2. the **attempt** is the newest change the ledger recorded for this filing, or the linked
+ *      row when the ledger has none (older data, a hand-made link);
+ *   3. `comments.change_id` never outranks a newer attempt, and never outranks a landing.
+ */
+export function filingChanges(db: Db, commentId: string, changeId: string | null): FilingChanges {
+  const rows = db
+    .prepare(`SELECT ${CHANGE_COLUMNS} FROM changes WHERE source_comment = ? ORDER BY seq DESC`)
+    .all(commentId) as FilingChange[];
+  const newest = rows[0];
+  const linked =
+    changeId === null ? undefined : (rows.find((row) => row.id === changeId) ?? byId(db, changeId));
+  const landed = rows.find(isLanding) ?? (linked !== undefined && isLanding(linked) ? linked : undefined);
+  const attempt =
+    newest !== undefined && (linked === undefined || newest.seq >= linked.seq) ? newest : linked;
+  return { landed, attempt };
+}
+
+/**
+ * BOOK-136 — an ordinary filing's public state, from the change that decided it.
+ *
+ * The owner's prod rows: the change was `done applied` and the comment stayed `accepted`, so
+ * the thread printed «идёт · правка в очереди на запись» about text that was already written,
+ * beside a writer that had nothing to do. The row's word is where the filing stands before the
+ * lane touches it, never after:
+ *
+ *   1. a row that decided itself keeps its own word;
+ *   2. `done` + a landing outcome is `applied`; `done` + `registered` is the paperwork row;
+ *   3. `void` + a **human sentence** is a decision: a supersede, or the writer's refusal;
+ *   4. everything else — `pending`, `processing`, `stale`, a `void` with an internal code (a
+ *      failed attempt) — has not decided, so the filing keeps its own word;
+ *   5. no linked change at all: the row's word is the whole record.
+ */
+export function filingStatus(change: FilingChange | undefined, fallback: CommentStatus): CommentStatus {
+  if (OWN_STATES.has(fallback) || change === undefined) return fallback;
+  if (change.status === 'done') {
+    if (change.outcome === 'registered') return 'registered';
+    if (isLanding(change)) return 'applied';
+    return fallback;
+  }
+  if (change.status === 'void' && decided(change.reason)) {
+    return change.outcome === 'superseded' ? 'superseded' : 'rejected';
+  }
+  return fallback;
+}
+
+/**
+ * BOOK-136 — the one fact `status` cannot carry: the writer has the filing in hand or the lane
+ * holds it. Only a live change has it; a landed, refused or failed one is not in anyone's queue.
+ */
+export function linkedChangeStatus(change: FilingChange | undefined): 'pending' | 'processing' | null {
+  if (change === undefined) return null;
+  if (change.status === 'pending') return 'pending';
+  if (change.status === 'processing') return 'processing';
+  return null;
+}

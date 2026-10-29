@@ -79,10 +79,11 @@ describe('inspectSchema', () => {
 });
 
 describe('inspectFrame', () => {
-  it('reads the basis slots and reports the sha256 of the frozen sentences', () => {
+  it('reads the seeded rows and reports the sha256 of the frozen sentences', () => {
     const fixture = framed();
     const frame = inspectFrame(fixture.db);
-    expect(frame.source).toBe('basis');
+    // BOOK-187: a v28 volume carries the two rows, so the table — not the basis slot — answers.
+    expect(frame.source).toBe('book_frame');
     expect(frame.rows).toEqual([
       { chapter: 1, position: 'first', sha256: sha(FRAME_FIRST_SENTENCE) },
       { chapter: 42, position: 'last', sha256: sha(FRAME_LAST_SENTENCE) },
@@ -121,6 +122,8 @@ describe('inspectFrame', () => {
 
   it('falls back to the basis when book_frame has no text column', () => {
     const fixture = framed();
+    // A volume written by a build whose table had no `text`: the row cannot answer, so the slot does.
+    fixture.db.exec('DROP TABLE book_frame');
     fixture.db.exec('CREATE TABLE book_frame (chapter INTEGER NOT NULL, body TEXT NOT NULL)');
     const frame = inspectFrame(fixture.db);
     expect(frame.source).toBe('basis');
@@ -268,10 +271,11 @@ describe('inspectDataDir', () => {
       'book-before-20261001T000000Z.db',
       'book-reset-20261028T120000Z.db',
       'cover.jpg',
+      '.book-volume',
     ]) {
-      writeFileSync(join(dir, name), '');
+      writeFileSync(join(dir, name), name === '.book-volume' ? 'book-volume 1\nschema=28\n' : '');
     }
-    for (const name of ['backups', 'archive', 'versions', 'index', 'exchange', 'logs', 'locks']) {
+    for (const name of ['backups', 'archive', 'versions', 'index', 'exchange', 'backup']) {
       mkdirSync(join(dir, name));
     }
     writeFileSync(join(dir, 'admin.token'), 'admin-secret-value');
@@ -293,25 +297,58 @@ describe('inspectDataDir', () => {
     expect(printed).not.toContain('engine-secret-value');
   });
 
-  it('reports an extra top-level entry as stray and keeps the tokens as booleans', () => {
+  it('accepts the live legacy marker (`28\\n`) and refuses one whose content is not a marker', () => {
+    const dir = tempDir('data-dir-marker-');
+    writeFileSync(join(dir, 'book.db'), '');
+    const marker = join(dir, '.book-volume');
+    writeFileSync(marker, '28\n');
+    expect(inspectDataDir(dir).stray).toEqual([]);
+
+    writeFileSync(marker, 'hello\n');
+    const report = inspectDataDir(dir);
+    // The defect this fix removes: the doctor used to name the volume's own marker a stray.
+    expect(report.stray).toEqual([marker]);
+    expect(report.entries).toContain('.book-volume');
+  });
+
+  it('refuses a directory named `.book-volume`', () => {
+    const dir = tempDir('data-dir-marker-dir-');
+    mkdirSync(join(dir, '.book-volume'));
+    expect(inspectDataDir(dir).stray).toEqual([join(dir, '.book-volume')]);
+  });
+
+  it('reports an extra top-level entry as stray by its absolute path, and keeps the tokens booleans', () => {
     const dir = tempDir('data-dir-stray-');
     writeFileSync(join(dir, 'book.db'), '');
     writeFileSync(join(dir, 'notes.txt'), 'prose that does not belong here');
     mkdirSync(join(dir, 'backups'));
 
     const report = inspectDataDir(dir);
-    expect(report.stray).toEqual(['notes.txt']);
+    expect(report.stray).toEqual([join(dir, 'notes.txt')]);
     expect(report.denied).toEqual([]);
     expect(report.tokens).toEqual({ admin: false, engine: false });
     expect(JSON.stringify(report)).not.toContain('prose that does not belong here');
   });
 
-  it('never reports writer/ as a stray, even without one of the three paths', () => {
+  it('reports an empty writer/ as denied — the same fact the deploy guard states', () => {
     const dir = tempDir('data-dir-writer-');
+    writeFileSync(join(dir, 'book.db'), '');
+    mkdirSync(join(dir, 'writer'));
+    // No denied path is there, but `writer/` itself is a leftover: `writer/` with nothing in it
+    // was `data dir clean` here while `bin/home-check.mjs` refused it (BOOK-187 review).
+    expect(inspectDataDir(dir).stray).toEqual([]);
+    expect(inspectDataDir(dir).denied).toEqual(['writer']);
+  });
+
+  it('never reports writer/ as a stray, and names the paths it holds when they exist', () => {
+    const dir = tempDir('data-dir-writer-files-');
     mkdirSync(join(dir, 'writer'));
     writeFileSync(join(dir, 'writer', 'draft.md'), 'prose');
     expect(inspectDataDir(dir).stray).toEqual([]);
-    expect(inspectDataDir(dir).denied).toEqual([]);
+    expect(inspectDataDir(dir).denied).toEqual(['writer']);
+
+    writeFileSync(join(dir, 'writer', 'state.json'), '{}');
+    expect(inspectDataDir(dir).denied).toEqual(['writer/state.json']);
   });
 
   it('reports a data dir it cannot list as an error instead of throwing', () => {

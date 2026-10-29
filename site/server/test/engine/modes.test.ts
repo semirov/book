@@ -26,9 +26,9 @@ const FINDING: Finding = {
 function fixtureWithBook() {
   const fixture = createEngineFixture();
   // Three written chapters give the ripple somewhere to go in both directions.
-  fixture.writeChapterBlocks(1, 'Начало', ['Тестовый абзац номер один. Это служебный текст.']);
-  fixture.writeChapterBlocks(2, 'Середина', ['Тестовый абзац номер два. Это служебный текст.']);
-  fixture.writeChapterBlocks(3, 'Конец', ['Тестовый абзац номер три. Это служебный текст.']);
+  fixture.seedChapterBlocks(1, 'Начало', ['Тестовый абзац номер один. Это служебный текст.']);
+  fixture.seedChapterBlocks(2, 'Середина', ['Тестовый абзац номер два. Это служебный текст.']);
+  fixture.seedChapterBlocks(3, 'Конец', ['Тестовый абзац номер три. Это служебный текст.']);
   return fixture;
 }
 

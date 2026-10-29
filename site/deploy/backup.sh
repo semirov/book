@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # site/deploy/backup.sh — the ONE command the owner (and `dev.book-backup.plist`) runs for a backup
-# (BOOK-28, BOOK-183). It owns no backup logic: it dispatches on `$STATE_DIR/runtime`, which
-# `flip.sh` writes.
+# (BOOK-28, BOOK-183, BOOK-187). It owns no backup logic: it dispatches on `$STATE_DIR/runtime`,
+# which `flip.sh` writes.
 #
 #   compose  the database lives in the `book-data` volume, so the backup is taken where it lives —
 #            `docker compose exec -T site node /app/bin/backup.mjs --out /backups`. The container
@@ -14,6 +14,18 @@
 #
 # An absent `runtime` file means launchd: it is the default the box had before containers existed,
 # and a missing file must not silently skip the nightly backup.
+#
+# **What is being copied, and what is not.** The book — its text, its readers, its ledger — is
+# rows inside `book.db`: that copy is the backup. `versions/` is the cold backup of *revisions*
+# (content-addressed snapshots keyed by `revisions.snapshot`), so it travels with the database as
+# the second half of the same copy, never as a source of anything. There is no `manuscript/` to
+# copy: since BOOK-187 the text has no file, in the volume or in the repository.
+#
+# Layout (default BACKUP_ROOT=/Users/filipp/book-site-backups):
+#   daily/20261027T044500/book.db          consistent copy, journal_mode=DELETE
+#   daily/20261027T044500/versions/        content-addressed snapshots, complete
+#   daily/20261027T044500/manifest.txt     row counts + versions file count + sha256 list
+#   weekly/2026-W44/                       first successful run of each ISO week
 #
 #   site/deploy/backup.sh                        # a backup, into $BOOK_BACKUPS_DIR/daily/<ts>/
 #   site/deploy/backup.sh --verify <dir>         # integrity + counts of an EXISTING copy (no writes)

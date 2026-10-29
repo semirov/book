@@ -100,9 +100,11 @@ describe('one ripple end to end', () => {
       //      `land`'s second door — a ripple chapter owes a retirement too, never a second plan.
       const engine: EngineClient = {
         ...harness.client,
-        land: (leaseId: string) => {
-          harness.ingest(CH12);
-          return harness.client.land(leaseId);
+        land: (leaseId: string, input) => {
+          // The site's watcher publishes the writer's own bytes first — BOOK-187: the text
+          // travels in the request, so the seam hands the same text to the ingest.
+          if (input?.text !== undefined) harness.fixture.seedChapter(CH12, input.text);
+          return harness.client.land(leaseId, input);
         },
       };
       harness.script.push(
@@ -120,7 +122,7 @@ describe('one ripple end to end', () => {
         db,
         planRowId: stored.planRowId,
         plan: stored.plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(db),
         runChapter: (chapter, nodes) =>
           runDrainChapter(
             {

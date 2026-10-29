@@ -57,6 +57,26 @@ describe('chooseMode — the design’s table, row by row', () => {
     });
   });
 
+  it('honours the owner’s kill switch: WRITER_MODE_DEFAULT=rewrite rewrites every pass', () => {
+    // BOOK-173 §4: the switch is read before any other rule — a phrase filing on a written
+    // chapter with a live anchor still rewrites while it stands.
+    expect(chooseMode({ pass: 'change', scopeHint: 'phrase' }, true, 'rewrite')).toEqual({
+      mode: 'rewrite',
+      reason: 'default-rewrite',
+    });
+    expect(chooseMode({ pass: 'change', scopeHint: null, sentenceAnchor: true }, true, 'rewrite')).toEqual({
+      mode: 'rewrite',
+      reason: 'default-rewrite',
+    });
+    // The signed-off default is unchanged: `patch` is the same table as no argument at all.
+    expect(chooseMode({ pass: 'change', scopeHint: 'phrase' }, true, 'patch')).toEqual(
+      chooseMode({ pass: 'change', scopeHint: 'phrase' }, true),
+    );
+    expect(modeLine({ mode: 'rewrite', reason: 'default-rewrite' })).toBe(
+      'режим: перепись (переключатель WRITER_MODE_DEFAULT)',
+    );
+  });
+
   it('never patches a draft pass, even on a written chapter', () => {
     expect(chooseMode({ pass: 'draft', scopeHint: 'phrase' }, true)).toEqual({ mode: 'rewrite', reason: 'slot-empty' });
   });

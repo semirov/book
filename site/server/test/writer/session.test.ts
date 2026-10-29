@@ -9,14 +9,12 @@
  * the first — a total can only grow in an append-only session, a bill need not.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { sha256Hex } from '../../src/util/hash.ts';
 import { continuationInstruction, headOf, openSession } from '../../src/writer/session.ts';
-import { chapterAnswer, createHarness } from './harness.ts';
+import { chapterAnswer, createHarness, receiptsOf } from './harness.ts';
 
 const SYSTEM = '### канон\n\n# WRITER\n\n## Что вернуть\n\nодно тело главы';
 const USER = '## Место\nглава 12';
@@ -84,12 +82,13 @@ describe('one session per pass — the continuation turn is appended, not rebuil
       // The continuation's own instruction is short: it is a turn, not a second prompt.
       expect((continuation?.messages[3]?.content ?? '').length).toBeLessThan(200);
 
-      const transcript = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`), 'utf8'),
-      ) as { calls: Array<{ kind: string; cachedIn: number; usage: { in: number } }> };
-      const calls = transcript.calls.filter((call) => call.kind !== 'gate:editor' && call.kind !== 'gate:consultant');
+      // BOOK-187 AC7: the receipt is rows — the call's tokens and the cached share are facts.
+      const { rows: receiptRows } = receiptsOf(harness, result.stepId ?? '');
+      const calls = receiptRows
+        .filter((row) => row.role === 'draft' || row.role === 'continue')
+        .map((row) => ({ kind: row.role, uncached: row.tokensIn - Number(row.facts.cachedIn ?? 0) }));
       expect(calls.map((call) => call.kind)).toEqual(['draft', 'continue']);
-      const uncached = calls.map((call) => call.usage.in - call.cachedIn);
+      const uncached = calls.map((call) => call.uncached);
       expect(uncached[1] ?? 0).toBeLessThan((uncached[0] ?? 0) / 10);
     } finally {
       await harness.close();

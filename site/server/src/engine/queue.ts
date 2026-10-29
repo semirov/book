@@ -39,7 +39,7 @@ import { admitPremise, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
-import { isBasisSlot, isWrittenChapter, readChapter } from './text.ts';
+import { isBasisSlot, isWrittenChapter, readChapterRows } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 
@@ -62,7 +62,7 @@ function refusalCode(error: unknown): string | null {
 }
 
 export function createQueue(deps: EngineDeps) {
-  const { db, config, bookRoot } = deps;
+  const { db, config } = deps;
   const iso = (ms: number = deps.clock.now()): string => toIso(ms);
   const caps = budgetCapsOf(config);
   /** BOOK-117: no pass is handed out past a cap, and a refusal touches nothing else. */
@@ -113,7 +113,7 @@ export function createQueue(deps: EngineDeps) {
     if (intent.length > INTENT_MAX_CHARS) {
       refuse('INVALID_INTENT', 422, `intent is ${intent.length} characters, limit is ${INTENT_MAX_CHARS}`);
     }
-    const text = readChapter(bookRoot, chapter);
+    const text = readChapterRows(db, chapter);
     // Read the slot's shape before the predicate narrows the chapter to "written".
     const basisOnly = isBasisSlot(text);
     // BOOK-137: a basis-only slot (ch01/ch42) is its frame sentence and nothing else — no prose
@@ -186,7 +186,7 @@ export function createQueue(deps: EngineDeps) {
 
   /** Deterministic evidence that the base moved — no model, no judgement (§6A.7). */
   function relevanceOf(change: store.ChangeRow): Relevance {
-    const chapter = readChapter(bookRoot, change.chapter);
+    const chapter = readChapterRows(db, change.chapter);
     const anchor = safeJson<{ blockIds?: string[]; quote?: string }>(change.anchor);
     const revNow =
       chapter.sha256 === change.base_sha256
@@ -374,7 +374,7 @@ export function createQueue(deps: EngineDeps) {
     // Writing is the owner's switch (§6A.9, BOOK-6): no pass opens while it is off.
     if (config.drafting !== 'on') refuse('NOT_DRAFTING', 409, 'drafting is off — writing is the owner’s switch');
     // A written chapter changes through the FIFO lane: a first pass would overwrite prose.
-    if (isWrittenChapter(readChapter(bookRoot, chapter))) {
+    if (isWrittenChapter(readChapterRows(db, chapter))) {
       refuse('CHAPTER_WRITTEN', 409, `глава ${chapter} уже написана — она меняется через очередь правок`);
     }
     // BOOK-117: the money bound replaces the token refusal here — a paused day and a stopped
@@ -467,7 +467,7 @@ export function createQueue(deps: EngineDeps) {
     for (const filing of filings) {
       const chapter = filing.chapter;
       // Only an *existing* basis-only slot is frozen; an absent chapter is the normal case.
-      const slot = readChapter(bookRoot, chapter);
+      const slot = readChapterRows(db, chapter);
       if (chapter < 1 || chapter > TOTAL_CHAPTERS || (slot.exists && isBasisSlot(slot))) {
         // A frozen filing is closed with its reason; refusing would block the queue behind it.
         store.updateChange(db, filing.id, {
@@ -479,7 +479,7 @@ export function createQueue(deps: EngineDeps) {
         continue;
       }
       // A written chapter changes through the FIFO lane (`claimHead`), not through a draft.
-      if (isWrittenChapter(readChapter(bookRoot, chapter))) continue;
+      if (isWrittenChapter(readChapterRows(db, chapter))) continue;
       if (store.listOpenSteps(db).some((step) => step.pass === 'draft' && step.chapter === chapter)) continue;
       try {
         budgetGuard(at);

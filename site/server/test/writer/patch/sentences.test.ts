@@ -17,8 +17,6 @@
  * touches with their kind, and the offsets in the new text.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -70,8 +68,9 @@ function touchesOf(harness: Harness, sentenceId: string): string[] {
   ).map((row) => row.kind);
 }
 
-function chapterFile(harness: Harness): string {
-  return join(harness.bookRoot, 'manuscript', `ch${String(CHAPTER).padStart(2, '0')}.md`);
+/** The chapter as the site serves it: rows, never a file (BOOK-187). */
+function servedChapter(harness: Harness, chapter = CHAPTER): string {
+  return harness.fixture.readChapter(chapter) ?? '';
 }
 
 /** A written chapter the harness already ingested (so its sentences exist) and a filing on it. */
@@ -93,7 +92,7 @@ function answer(blockId: string, oldText: string, newText: string): string {
 
 /** The first block's id and the sentence ids it carries **before** the patch. */
 function before(harness: Harness): { blockId: string; rows: Row[] } {
-  const parsed = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+  const parsed = parseChapter(CHAPTER, servedChapter(harness));
   const block = parsed.blocks[0];
   if (block === undefined) throw new Error('the fixture chapter has no first block');
   return { blockId: block.id, rows: rowsOf(harness, block.id) };
@@ -110,7 +109,7 @@ async function runPatch(
   harness.script.push(answer(start.blockId, edit.oldText, edit.newText), 'HOLDS', 'HOLDS', 'HOLDS');
   const result = await harness.run({ lanes: ['fwd'] });
   expect(result.status).toBe('closed');
-  const parsed = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+  const parsed = parseChapter(CHAPTER, servedChapter(harness));
   const patched = parsed.blocks[0];
   if (patched === undefined) throw new Error('the patched chapter has no first block');
   // Every case below asks the same question of the same chapter: the sentences of block 0 now.
@@ -244,7 +243,7 @@ describe('a block patch is a character edit; sentence ids follow', () => {
   it('an untouched block: zero sentence rows written, live or closed', async () => {
     const harness = await written();
     try {
-      const parsed = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const parsed = parseChapter(CHAPTER, servedChapter(harness));
       const other = parsed.blocks[2];
       if (other === undefined) throw new Error('the fixture chapter has no third block');
       const otherRows = rowsOf(harness, other.id);

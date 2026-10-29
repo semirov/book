@@ -24,13 +24,15 @@ import type { ProviderResult } from './provider.ts';
 import { stageSummary } from './stages.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
 import type { PassResult } from './passLane.ts';
-import { readChapter } from '../engine/text.ts';
+import { chapterQuote, type ChapterTextLookup } from './prompt.ts';
 
 export type RightsRunDeps = {
   config: WriterConfig;
   engine: EngineClient;
   bookRoot: string;
   chapter: number;
+  /** The chapter's landed text, from rows only (BOOK-187): the gate judges what the site serves. */
+  chapterText: ChapterTextLookup;
   passId: string;
   changeId: string | null;
   now: () => number;
@@ -115,7 +117,7 @@ export async function runRightsGate(deps: RightsRunDeps): Promise<RightsGateRun>
   const prompt = buildRightsPrompt({
     bookRoot: deps.bookRoot,
     chapter,
-    landedText: readChapter(deps.bookRoot, chapter).text,
+    landedText: chapterQuote(deps.chapterText(chapter)),
     scan: { rule: gate.rule, block: gate.block },
   });
   const answer = await deps.ask('gate:rights', [

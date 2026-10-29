@@ -46,13 +46,18 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
   registered: { rule: 'solid', tone: 'done' },
   superseded: { rule: 'solid', tone: 'stopped' },
   rejected: { rule: 'solid', tone: 'stopped' },
+  // BOOK-174 — escalated is live, not stopped: nothing was refused, the author has yet to read
+  // it. The word «ждёт решения автора» carries the fact; the ink must not say «done».
+  escalated: { rule: 'solid', tone: 'live' },
   quarantined: { rule: 'solid', tone: 'stopped' },
   expired: { rule: 'solid', tone: 'stopped' },
   hidden: { rule: 'none', tone: 'stopped' },
 };
 
 /** State → the ink, the rule shape and the word; unknown states fall to the quiet row. */
-export function filingInk(comment: Pick<CommentDto, 'status'> & { premise?: boolean }): FilingInk {
+export function filingInk(
+  comment: Pick<CommentDto, 'status'> & { premise?: boolean; changeStatus?: CommentDto['changeStatus'] },
+): FilingInk {
   const shape = SHAPES[comment.status] ?? SHAPES.new!;
   return { word: filingMarginalia(comment).word, ...shape };
 }
@@ -188,6 +193,58 @@ export function filingQuote(comment: CommentDto, max = 120): string {
   const flat = quote.replace(/\s+/gu, ' ').trim();
   if (flat.length === 0) return 'абзац изменился';
   return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+}
+
+/**
+ * BOOK-174 — the `comment:decision` frame, read as the one fact it may add to a filing already
+ * on screen: how the filing was read. A decision frame is a broadcast, so it is applied to the
+ * row with the same id only — and only when the report it carries is one the row does not have.
+ * `refreshComments` remains the durable truth; this keeps the open card from saying «ждёт» for
+ * the frame before the reload lands.
+ */
+export type CommentDecisionFrame = {
+  id: string;
+  chapter?: number;
+  status?: CommentDto['status'];
+  reason?: string;
+  decidedAt?: string;
+  disposition?: CommentDto['disposition'];
+  report?: CommentDto['report'];
+};
+
+export function decisionFrameOf(data: unknown): CommentDecisionFrame | null {
+  if (data === null || typeof data !== 'object') return null;
+  const value = data as Partial<CommentDecisionFrame>;
+  return typeof value.id === 'string' && value.id.length > 0 ? (value as CommentDecisionFrame) : null;
+}
+
+/** The feed with the frame's report carried onto its own row, or `null` when nothing changed. */
+export function withDecisionReport(
+  comments: readonly CommentDto[],
+  frame: CommentDecisionFrame,
+): CommentDto[] | null {
+  const at = comments.findIndex((row) => row.id === frame.id);
+  if (at < 0) return null;
+  const row = comments[at] as CommentDto;
+  const next: CommentDto = {
+    ...row,
+    ...(frame.status === undefined ? {} : { status: frame.status }),
+    ...(frame.reason === undefined ? {} : { reason: frame.reason }),
+    ...(frame.decidedAt === undefined ? {} : { decidedAt: frame.decidedAt }),
+    ...(frame.disposition === undefined ? {} : { disposition: frame.disposition }),
+    ...(frame.report === undefined ? {} : { report: frame.report }),
+  };
+  if (
+    next.status === row.status &&
+    next.reason === row.reason &&
+    next.decidedAt === row.decidedAt &&
+    (next.report ?? null) === (row.report ?? null)
+  ) {
+    return null;
+  }
+  const out = [...comments];
+  out[at] = next;
+  return out;
 }
 
 /**

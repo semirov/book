@@ -14,6 +14,15 @@ import { IMPRINT_AUTHOR } from '@book/shared';
 /** What the tab says while the first sheet has no title line. */
 export const FALLBACK_TITLE = 'Книга';
 
+/**
+ * The title the static shell ships in `web/index.html`, before the bundle boots: a reader
+ * without JavaScript and every social card see this one string. It is a **code fallback**, not
+ * a copy of the book — the book's title is `front_matter.title` in the rows (ADR-043), and the
+ * running app overwrites the tab from `/api/front`. `server/test/staticShell.test.ts` compares
+ * the shell with this constant, so the two copies cannot drift.
+ */
+export const SHELL_TITLE = `Бланк — ${IMPRINT_AUTHOR}`;
+
 export function documentTitle(frontTitle: string | null): string {
   const title = frontTitle === null || frontTitle.trim().length === 0 ? FALLBACK_TITLE : frontTitle;
   return `${title} — ${IMPRINT_AUTHOR}`;

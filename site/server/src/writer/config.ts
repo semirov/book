@@ -20,6 +20,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { WriteMode } from '@book/shared';
+
 import { apiModelOf, loadPipeline, type Pipeline } from './pipeline.ts';
 
 /** `site/` — works from `server/src/writer` (tsx) and from `server/dist/writer` (node). */
@@ -72,6 +74,12 @@ export type WriterConfigRedacted = {
   patchMaxEdits: number;
   /** BOOK-173: completion tokens a patch call bills before its JSON (`WRITER_REASONING_ALLOWANCE`). */
   reasoningAllowance: number;
+  /**
+   * The product's mode default (`WRITER_MODE_DEFAULT`): `patch` — a filing on a sentence in a
+   * written chapter — or `rewrite`, the owner's kill switch that forces the whole-chapter path
+   * for every pass while it stands. Printed redacted (it is a switch, not a secret).
+   */
+  modeDefault: WriteMode;
 };
 
 export type WriterConfig = WriterConfigRedacted & {
@@ -97,6 +105,18 @@ function integer(env: NodeJS.ProcessEnv, name: string, fallback: number, min: nu
 function text(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
   const raw = (env[name] ?? '').trim();
   return raw.length === 0 ? fallback : raw;
+}
+
+/**
+ * `WRITER_MODE_DEFAULT`: `patch` (the signed-off default) or `rewrite` — the owner's kill switch,
+ * which forces the whole-chapter path for every pass regardless of scope or anchor. Parsed
+ * strictly: an unknown value is `CONFIG_INVALID`, never a silent fallback to the default.
+ */
+function modeDefault(env: NodeJS.ProcessEnv): WriteMode {
+  const raw = (env.WRITER_MODE_DEFAULT ?? '').trim().toLowerCase();
+  if (raw.length === 0) return 'patch';
+  if (raw === 'patch' || raw === 'rewrite') return raw;
+  throw new WriterConfigError('CONFIG_INVALID', 'WRITER_MODE_DEFAULT must be patch or rewrite');
 }
 
 /** A fraction with a dot, bounded on both sides: `0.15` is a share, not a token count. */
@@ -212,6 +232,7 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     // at most 8 edits in one answer, and the reasoning a thinking model bills before its JSON.
     patchMaxFraction: fraction(env, 'WRITER_PATCH_MAX_FRACTION', 0.15),
     patchMaxEdits: integer(env, 'WRITER_PATCH_MAX_EDITS', 8, 1),
+    modeDefault: modeDefault(env),
     reasoningAllowance: integer(env, 'WRITER_REASONING_ALLOWANCE', 8_000, 0),
   };
 

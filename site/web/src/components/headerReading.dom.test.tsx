@@ -435,7 +435,7 @@ describe('the head’s layout', () => {  it('keeps the brand, the chapter slot a
     expect(chrome).not.toContain('display: contents');
     expect(chrome).toMatch(/\.top-in \.top-row:first-child \{[^}]*gap: 24px/u);
     const css = sheets['../styles/running-head.css'] ?? '';
-    expect(css).toContain('font-family: var(--label)');
+    expect(css).toContain('font-family: var(--mono)');
     expect(css).toContain('font-size: var(--fs-micro)');
     expect(css).toContain('font-variant-numeric: tabular-nums');
     // BOOK-90: the chip is never clipped and has no fixed measure; only the number reserves

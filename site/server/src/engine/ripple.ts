@@ -26,6 +26,7 @@ import { rebindMentions, retireUnassertedFacts } from '../ledger/graph/edges.ts'
 import {
   buildPlan,
   changedChars,
+  defaultBounds,
   parkPlan,
   storePlan,
   PLAN_CLAIM_TTL_MS,
@@ -39,7 +40,7 @@ import { newStepId } from '../util/ulid.ts';
 import { changeForStep, preBlocksOf, boundaryFor } from './helpers.ts';
 import { acquireLease } from './leases.ts';
 import * as store from './store.ts';
-import { readChapter } from './text.ts';
+import { readChapterRows } from './text.ts';
 import { writerAssignment } from './trace.ts';
 import { refuse, type EngineDeps } from './types.ts';
 import { readerReason } from '../writer/reasons.ts';
@@ -147,12 +148,19 @@ export function planLanding(
 
   const touched = [...edited.map((block) => block.id), ...replacedBlocksOf(db, chapter, revAfter)];
   const seeds = seedFactsOf(db, touched);
-  const after = readChapter(deps.bookRoot, chapter).raw;
+  const after = readChapterRows(db, chapter).raw;
   const previous = previousText(deps, chapter, step.rev_before ?? Math.max(0, revAfter - 1));
   // A rewrite is a whole-chapter decision, not a patch: «a patch fixes words; a ripple fixes
   // consequences», and only the first has a point to walk away from. The measure is the writer's
   // own patch bound (§6: 15 % of the chapter's characters changed, not blocks replaced).
-  if (after.length === 0 || changedChars(previous, after) > RIPPLE_PATCH_FRACTION * after.length) return null;
+  if (after.length === 0 || changedChars(previous, after) > RIPPLE_PATCH_FRACTION * after.length) {
+    // BOOK-173 §7: the landing still leaves a **record** — an empty, `local` plan row that says
+    // «no closure was walked, this was not a point patch», keeps the mode and the estimate, and
+    // is what a dispatched gate reads. Nothing drains it (`drainablePlans` wants `ripple`), and
+    // the writer is answered `null`: there is no closure to react to.
+    recordNonPatch(deps, change.id, chapter, context);
+    return null;
+  }
   const plan = buildPlan({ db, changeId: change.id, chapter, seeds, before: previous, after });
   // One row per change (§3, `change_plans`): a re-land of this step updates the row and keeps the
   // journal — the newest closure, the oldest caps, and the spend that already happened — so the
@@ -164,6 +172,35 @@ export function planLanding(
     priceUsd: context.priceUsd ?? null,
   });
   return { plan, planId };
+}
+
+/**
+ * The record a landing that is not a point patch leaves behind (BOOK-173 §7): `local`, no nodes,
+ * no edges, no patches — the bounds are the closed caps, so a later `ripple` reading of the same
+ * change updates this same row (`change_plans` is one row per change).
+ */
+function recordNonPatch(deps: EngineDeps, changeId: string, chapter: number, context: PlanContext): void {
+  storePlan(
+    deps.db,
+    {
+      changeId,
+      chapter,
+      outcome: 'local',
+      proven: false,
+      seeds: [],
+      nodes: [],
+      edges: [],
+      edgeDetail: [],
+      patches: [],
+      closureSize: { nodes: 0, edges: 0, chapters: 1, parts: 1 },
+      chaptersTouched: [chapter],
+      bounds: defaultBounds(),
+      unresolved: [],
+      truncated: false,
+    },
+    toIso(deps.clock.now()),
+    { mode: context.mode ?? null, priceUsd: context.priceUsd ?? null },
+  );
 }
 
 /**
@@ -345,7 +382,7 @@ export function openRippleStep(
   if (!planned.has(input.chapter)) {
     refuse('NOT_PLANNED', 422, `глава ${String(input.chapter)} не названа обязательной ни одним узлом плана`);
   }
-  const own = readChapter(deps.bookRoot, input.chapter);
+  const own = readChapterRows(db, input.chapter);
   if (!own.exists) refuse('NEIGHBOUR_MISSING', 409, `глава ${String(input.chapter)} ещё не написана`);
 
   const at = deps.clock.now();

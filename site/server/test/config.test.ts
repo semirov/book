@@ -32,11 +32,13 @@ describe('loadConfig', () => {
     expect(config.budgetMaxSteps).toBe(13);
     // A wave is a round of both wings: the shipped lag keeps the far wing in that round.
     expect(config.upwardLagWaves).toBe(0);
-    // The folder's *name* is not the invariant: a worktree (`feat-book70-chips`) is a book root
-    // too. What must hold is that the default is the repository holding this `site/`, and that
-    // it really is the book (the manuscript is there).
+    // The folder's *name* is not the invariant: a worktree is a book root too — it is the
+    // repository holding this `site/`. What it must hold is the canon, not a text tree: BOOK-187
+    // made the rows the home of the text and `manuscript/` is not read at runtime.
     expect(config.bookRoot).toBe(resolve(SITE_ROOT, '..'));
-    expect(existsSync(join(config.bookRoot, 'manuscript'))).toBe(true);
+    const canon = ['style/VOICE.md', 'concept/CONCEPT.md', 'concept/CLIMAX.md', 'process/ROLE_PROMPTS.md'];
+    for (const file of canon) expect(existsSync(join(config.bookRoot, file)), file).toBe(true);
+    expect(existsSync(join(SITE_ROOT, 'config', 'pipeline.json'))).toBe(true);
     expect(config.imprintPath.endsWith('config/imprint.json')).toBe(true);
     // ADR-038 §1 and BOOK-117: the pipeline pin and the two money caps, read at boot from one place.
     expect(config.pipelinePath.endsWith('config/pipeline.json')).toBe(true);

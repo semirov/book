@@ -12,7 +12,9 @@
  *   2. no `font-size` literal below 12px, in px or rem (rem is resolved against the root size,
  *      which is measured from `html`/`:root`, default 16). `calc()` is evaluated when every
  *      operand is known; `clamp()` passes on its minimum; anything else must be listed as a
- *      documented exception (the design's own allowed list).
+ *      documented exception (the design's own allowed list). `inherit` states no size of its
+ *      own — it takes the parent's, which this same rule has already floored (BOOK-128 #3900:
+ *      the one inline mix, `.legal code`, keeps the paragraph's face and size).
  *   3. the `font:` shorthand is read too: `font: 11px/1.4 …` sets the size without a
  *      `font-size` declaration and used to slip through.
  *   4. no `@media (min-width: …)`. The regime is adaptive: the base rules are the desktop
@@ -54,6 +56,13 @@ export const LADDER = Object.freeze({
 const DOCUMENTED_RELATIVE = new Set(['0.86em']);
 
 /**
+ * Values that state no size of their own: `inherit` renders at the parent's computed size, and
+ * every parent in the sheets is floored by this same scan, so it cannot smuggle a smaller type
+ * in (BOOK-128 #3900 — `.legal code` keeps the paragraph's 18 px).
+ */
+const INHERITED_SIZE = new Set(['inherit']);
+
+/**
  * BOOK-70 — the chips this pass defines, plus the reference lines the guard can prove, and the
  * one fact each is allowed to state. The registry is the contract: a chip that loses its rule,
  * its size, its voice or its ink fails the build, so the rules of the two audits (form and
@@ -81,7 +90,15 @@ export const CHIP_SELECTORS = Object.freeze([
   { selector: '.ch-print', tier: 'state', fact: 'this chapter is printing now' },
   { selector: '.sec-meta', tier: 'count', fact: 'how many filings there are — or «замечаний нет»' },
   { selector: '.seam-filing-n', tier: 'ref', fact: 'the filing’s own record suffix («№A7K»)' },
-  { selector: '.author-plus', tier: 'ref', fact: 'how many readers’ text survived («+ 3»)' },
+  {
+    selector: '.author-plus',
+    tier: 'ref',
+    // BOOK-128 comment 3900 §1 (audit 3) — «+ 3» sits inside the cover's byline, so it takes
+    // the byline's own 13 px rung and its spacing instead of opening a second size on the line.
+    px: 13,
+    spacing: '0',
+    fact: 'how many readers’ text survived («+ 3»)',
+  },
   { selector: '.seam-filing-stamp', tier: 'ref', fact: 'the moment a filing was made («25.10, 12:04»)' },
   { selector: '.stamp-time', tier: 'ref', fact: 'the moment a decision or a note was recorded' },
   { selector: '.ch-data', tier: 'ref', fact: 'a written chapter’s length and the moment it was last written' },
@@ -224,6 +241,7 @@ export function styleProblems(stylesDir, { requireChips = false } = {}) {
         const size = kind === 'font-size' ? raw : (numeric ?? keyword);
         if (size === undefined) continue;
         if (DOCUMENTED_RELATIVE.has(size)) continue;
+        if (INHERITED_SIZE.has(size)) continue;
         const px = toPx(size, tokens, rootPx);
         if (px === null) report(path, css, index, `${kind}: ${size} cannot be proven ≥${MIN_FONT_PX}px`);
         else if (px < MIN_FONT_PX) report(path, css, index, `${kind}: ${size} is ${px}px, below the ${MIN_FONT_PX}px floor`);
@@ -318,7 +336,7 @@ export function styleProblems(stylesDir, { requireChips = false } = {}) {
     const fail = (message) => problems.push({ file: entry.file, line: entry.line, message: `${selector}: ${message}` });
 
     const size = declarations.get('font-size');
-    const wantPx = tier === 'sentence' ? SENTENCE_PX : CHIP_PX;
+    const wantPx = tier === 'sentence' ? SENTENCE_PX : (chip.px ?? CHIP_PX);
     /** «a state chip» / «a sentence» — the message names the form the rule must hold. */
     const what = tier === 'sentence' ? 'a sentence' : `a ${tier} chip`;
     if (size === undefined) {
@@ -332,7 +350,10 @@ export function styleProblems(stylesDir, { requireChips = false } = {}) {
     if (tier === 'ref') {
       if (declarations.get('font-family') !== 'var(--mono)') fail('a reference chip is mono — font-family: var(--mono)');
       const spacing = declarations.get('letter-spacing') ?? '';
-      if (!/^0?\.02em$/u.test(spacing)) fail(`a reference chip is set at .02em, not ${spacing || 'the inherited spacing'}`);
+      // The registry states the row a reference rides when it is not the mark line's own.
+      const wanted = chip.spacing ?? '.02em';
+      const pattern = wanted === '0' ? /^0?$/u : /^0?\.02em$/u;
+      if (!pattern.test(spacing)) fail(`a reference chip's spacing is ${wanted}, not ${spacing || 'the inherited spacing'}`);
       if (declarations.get('font-variant-numeric') !== 'tabular-nums') fail('a reference chip is tabular');
     }
 

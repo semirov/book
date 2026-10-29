@@ -17,10 +17,9 @@
  * it was charged for stays the same.
  */
 
-import { readChapter } from '../engine/text.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { Lane } from './passLane.ts';
-import type { BuiltPrompt } from './prompt.ts';
+import { chapterQuote, type BuiltPrompt, type ChapterTextLookup } from './prompt.ts';
 import type { ModeChoice, ModeReason, WriteMode } from './mode.ts';
 import { MODEL_REWRITE } from './mode.ts';
 import type { PatchPrompt } from './patch/prompt.ts';
@@ -59,6 +58,8 @@ export type WritePhaseInput = {
   rewrite: BuiltPrompt;
   /** Built only for patch mode; `null` otherwise. */
   patch: PatchPrompt | null;
+  /** The rows a prompt quotes: the target and its neighbours (BOOK-187 — no file is read). */
+  chapterText: ChapterTextLookup;
   continueMax: number;
   patchMaxFraction: number;
   patchMaxEdits: number;
@@ -85,10 +86,11 @@ type Attempt = OutcomeAttempt | { kind: 'rewrite' };
  * chapter, and a second guess at the same base is not worth a call.
  */
 async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promise<Attempt> {
-  const { lane, chapter, bookRoot } = input;
-  const own = readChapter(bookRoot, chapter);
-  const beforeBlocks = own.blocks.map((block) => ({ id: block.id, text: block.text }));
-  const neighbours = neighbourDigests(bookRoot, chapter);
+  const { lane, chapter } = input;
+  const own = input.chapterText(chapter);
+  const ownRaw = chapterQuote(own);
+  const beforeBlocks = parseChapter(chapter, ownRaw).blocks.map((block) => ({ id: block.id, text: block.text }));
+  const neighbours = neighbourDigests(input.chapterText, chapter);
   const session = openSession({ system: prompt.system, user: prompt.user, log: input.log });
 
   let answer = await lane.ask('draft', session.messages(), 'draft');
@@ -100,7 +102,7 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
       const turn = session.append({
         kind: 'repair',
         assistant: headOf(previous),
-        user: repairInstruction(failure.code, failure.detail, tailContext(own.raw)),
+        user: repairInstruction(failure.code, failure.detail, tailContext(ownRaw)),
       });
       if (!turn.ok) return { kind: 'refused', code: turn.code, detail: turn.detail, cause: 'failed' };
       answer = await lane.ask('repair', turn.messages, 'repair');
@@ -113,7 +115,7 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
       failure = { code: parsed.code, detail: parsed.detail };
       continue;
     }
-    const applied = applyPatch({ chapter, text: own.raw, patch: parsed.patch, maxFraction: input.patchMaxFraction });
+    const applied = applyPatch({ chapter, text: ownRaw, patch: parsed.patch, maxFraction: input.patchMaxFraction });
     if (!applied.ok) {
       failure = { code: applied.code, detail: applied.detail };
       continue;
@@ -133,8 +135,10 @@ async function patchAttempt(input: WritePhaseInput, prompt: PatchPrompt): Promis
     if (!checked.ok) {
       return { kind: 'refused', code: `PATCH_REJECTED:${checked.code}`, detail: checked.reason, cause: 'failed' };
     }
-    // The prompt was built from neighbours as they were; a moved one means another book.
-    if (neighbourMoved(bookRoot, chapter, neighbours)) {
+    // The prompt was built from neighbours as they were; a moved one means another book. The
+    // rows are read again, so a neighbour that landed during the call is the check's own fact.
+    await lane.loadText([chapter - 1, chapter + 1]);
+    if (neighbourMoved(input.chapterText, chapter, neighbours)) {
       return {
         kind: 'refused',
         code: 'PATCH_NEIGHBOUR_MOVED',

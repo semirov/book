@@ -17,6 +17,7 @@ import {
   stripFilings,
   threadFilings,
   upsertFiling,
+  withDecisionReport,
   wordFilingOf,
 } from './filings.ts';
 import { placeHref } from './place.ts';
@@ -58,13 +59,19 @@ const STALE = comment({
 });
 
 describe('filingInk', () => {
-  it('gives every state one of the three words and a rule shape, never colour alone', () => {
+  it('gives every state one of the deck’s words and a rule shape, never colour alone', () => {
     // BOOK-90: the word is the vocabulary's (waiting · working · landed); the shape and the
-    // ink stay this table's. A refusal is «ждёт», struck through — the fact is on line two.
+    // ink stay this table's. BOOK-189: an `accepted` filing waits until its change is in hand,
+    // and a refusal says «отклонено» — the fact is on line two.
     expect(filingInk(NEW)).toEqual({ word: 'ждёт', rule: 'dotted', tone: 'quiet' });
-    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'идёт', rule: 'solid', tone: 'live' });
+    expect(filingInk({ status: 'accepted' })).toEqual({ word: 'ждёт', rule: 'solid', tone: 'live' });
+    expect(filingInk({ status: 'accepted', changeStatus: 'processing' })).toEqual({
+      word: 'идёт',
+      rule: 'solid',
+      tone: 'live',
+    });
     expect(filingInk({ status: 'applied' })).toEqual({ word: 'внесено', rule: 'none', tone: 'done' });
-    expect(filingInk({ status: 'rejected' })).toEqual({ word: 'ждёт', rule: 'solid', tone: 'stopped' });
+    expect(filingInk({ status: 'rejected' })).toEqual({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
     expect(filingInk({ status: 'superseded' }).rule).toBe('solid');
     expect(filingInk({ status: 'batched' }).word).toBe('идёт');
   });
@@ -257,5 +264,39 @@ describe('one filing, one entry (BOOK-137)', () => {
     const linked = { ...NEW, changeId: 'chg_old' };
     expect(filingAttempt(linked, [])).toEqual({ id: 'chg_old', number: null, seq: null });
     expect(linked.changeId).not.toBeNull();
+  });
+});
+
+/**
+ * BOOK-174 — a `comment:decision` frame carries the reading of the filing it names. It is
+ * applied to the row with that id only, and only when it really adds something: a frame about
+ * a filing this page does not hold, or one that changes nothing, returns `null` (no render).
+ */
+describe('the decision frame’s report (BOOK-174)', () => {
+  const report = {
+    line1: 'прочитано как сказано',
+    line2: 'потому что рядом нет предложения, которое от этого станет ложным',
+    line3: 'где это в книге: глава 8 · абзац 3 · предложение 1',
+  };
+
+  it('carries the report onto the row it names and leaves the others alone', () => {
+    const first = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
+    const second = comment({ id: 'cmt_B', createdAt: '2026-10-25T12:01:00Z' });
+    const next = withDecisionReport([first, second], {
+      id: 'cmt_A',
+      status: 'accepted',
+      reason: 'принято',
+      decidedAt: '2026-10-25T12:30:00Z',
+      disposition: 'as_said',
+      report,
+    });
+    expect(next?.[0]).toMatchObject({ status: 'accepted', reason: 'принято', disposition: 'as_said', report });
+    expect(next?.[1]).toBe(second);
+  });
+
+  it('answers null when the frame names no row on screen, or adds nothing', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
+    expect(withDecisionReport([row], { id: 'cmt_missing', report })).toBeNull();
+    expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
   });
 });

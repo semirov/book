@@ -29,9 +29,10 @@ import { recordAcceptance } from '../comments/acceptance.ts';
 import { recordImpact } from '../history/impact.ts';
 import type { Db } from '../db/db.ts';
 import { getChapterRow } from '../db/repo/chapters.ts';
+import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
-import { isBasisSlot, isWritten } from './text.ts';
+import { isBasisSlot, isWrittenIn } from './text.ts';
 import type { EngineDeps, PremiseCause } from './types.ts';
 
 /** «у главы уже есть замысел» — the second premise of one chapter, told to its reader. */
@@ -195,7 +196,7 @@ export function settleDraftPremise(
   // A broken pass is not a refusal: the pass wrote the chapter from this premise or it did not
   // write at all. Text is the fact here, so no note is needed to acknowledge it.
   if (outcome === 'escalated' && cause === 'failed') {
-    if (!isWritten(deps.bookRoot, premise.chapter)) return null;
+    if (!isWrittenIn(deps.db, premise.chapter)) return null;
     return settle(deps, premise, 'applied', premiseAppliedReason(premise.chapter), now);
   }
   // A refusal wins over a landing: a writer who escalated said no, even if the file exists and
@@ -203,7 +204,7 @@ export function settleDraftPremise(
   if (outcome === 'escalated' && escalation !== 'escalated:gate_timeout') {
     return settle(deps, premise, 'rejected', words.length === 0 ? PREMISE_NOT_TAKEN_REASON : words, now);
   }
-  if (isWritten(deps.bookRoot, premise.chapter)) {
+  if (isWrittenIn(deps.db, premise.chapter)) {
     // Text alone is not consent: the writer acknowledges the premise in the pass report
     // (`done --note`). A pass that says nothing leaves it queued, and `reconcilePremises`
     // closes it as written without that premise.
@@ -237,7 +238,7 @@ export function reconcilePremises(deps: EngineDeps, now: number = deps.clock.now
       if (settle(deps, premise, 'rejected', PREMISE_FROZEN_REASON, now) !== null) settled += 1;
       continue;
     }
-    if (!isWritten(deps.bookRoot, premise.chapter)) continue;
+    if (!isWrittenIn(deps.db, premise.chapter)) continue;
     if (settle(deps, premise, 'rejected', PREMISE_STALE_REASON, now) !== null) settled += 1;
   }
   return settled;
@@ -275,5 +276,9 @@ function settle(
     now,
   );
   recordImpact(deps.db, premise.id, now);
+  // BOOK-189: the premise's own settlement is what speaks to its reader — the draft step that
+  // consumed it announced nothing at land, exactly so a refusal here could never be contradicted.
+  // Only this branch is reachable after the conditional UPDATE above confirmed the transition.
+  sendPassEvent(deps.db, { kind: 'decision', changeId: premise.id }, now);
   return state;
 }

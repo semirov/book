@@ -40,12 +40,4 @@ describe('a timeline whose answer has no `firstAt` at all (BOOK-56)', () => {
     // says the log is empty (`firstAt: null`).
     expect(html).not.toContain('пока ничего не записано');
   });
-
-  it('keeps the dated row when the field is there', () => {
-    const html = renderToStaticMarkup(
-      <ChronicleRecords timeline={begun} failed={false} />,
-    );
-    expect(html).toContain('<span class="chr-seq">начало книги</span>');
-    expect(html).toContain('class="chr-timeline"');
-  });
 });

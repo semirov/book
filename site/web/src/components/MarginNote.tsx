@@ -54,7 +54,11 @@ export function MarginNote({
       </span>
       <span className="margin-note-quote">«{filingQuote(comment, 120)}»</span>
       <span className="margin-note-who">{who}</span>
-      <span className="margin-note-next">{marginalia.consequence}</span>
+      {/* BOOK-189 — a landed filing whose receipt was never stored has no second line: the
+          word alone is the fact, and an empty span is not a line. */}
+      {marginalia.consequence.length === 0 ? null : (
+        <span className="margin-note-next">{marginalia.consequence}</span>
+      )}
     </button>
   );
 }

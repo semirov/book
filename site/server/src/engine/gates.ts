@@ -18,7 +18,7 @@ import { normalizeRetroMode } from '@book/shared';
 import type { Db } from '../db/db.ts';
 import { isRightsRule, rightsRefusalLine, type RightsRuleId } from '../rights/rules.ts';
 import { toIso } from '../util/time.ts';
-import { readRightsScan } from './helpers.ts';
+import { changeForStep, readRightsScan } from './helpers.ts';
 import { requirePipelineModel } from './model.ts';
 import {
   deleteDispatch,
@@ -46,6 +46,40 @@ export const PROSE_PASSES: ReadonlySet<string> = new Set(['draft', 'change', 'ca
 
 export type MissingVerdict = GateRole | typeof RIGHTS_ROLE;
 
+/**
+ * BOOK-173 §7 / BOOK-DOC-80: the plan a gate judges the change against — the closure without its
+ * patches (`nodes`/`edges`), the patches the writer produced, and the caps frozen at estimate.
+ * `null` only when the step has no plan and the step is not a change/cascade that owed one.
+ */
+export type PlanEnvelope = {
+  outcome: string;
+  nodes: unknown[];
+  edges: unknown[];
+  patches: unknown[];
+  bounds: Record<string, unknown>;
+};
+
+/**
+ * Read the plan of the step's change. A step with no change (a draft, an operator edit) and a
+ * change with no plan row (a no-op landing, a change made before plans existed) answer `null`.
+ */
+export function planEnvelopeOf(db: Db, step: StepRow): PlanEnvelope | null {
+  const change = changeForStep(db, step);
+  if (change === undefined) return null;
+  const row = db
+    .prepare('SELECT outcome, closure, patches, bounds FROM change_plans WHERE change_id = ? ORDER BY created_at DESC, id DESC LIMIT 1')
+    .get(change.id) as { outcome: string; closure: string; patches: string; bounds: string } | undefined;
+  if (row === undefined) return null;
+  const closure = JSON.parse(row.closure) as { nodes?: unknown[]; edges?: unknown[] };
+  return {
+    outcome: row.outcome,
+    nodes: closure.nodes ?? [],
+    edges: closure.edges ?? [],
+    patches: JSON.parse(row.patches) as unknown[],
+    bounds: JSON.parse(row.bounds) as Record<string, unknown>,
+  };
+}
+
 export type GateAssignment = {
   stepId: string;
   role: GateRole;
@@ -63,6 +97,11 @@ export type GateAssignment = {
    * the index could not be built — the slice is optional, never a precondition of a gate.
    */
   indexSlice: string | null;
+  /**
+   * BOOK-173 §7: the plan of the step's change — what the closure said this landing is judged
+   * against. `null` for a step with no plan (see `planEnvelopeOf`).
+   */
+  plan: PlanEnvelope | null;
   expiresAt: string;
 };
 
@@ -115,6 +154,16 @@ export function openDispatch(
   if (step.outcome !== null) refuse('STEP_CLOSED', 409, `step ${step.step_id} is closed`);
   if (step.landed_at === null) {
     refuse('NOT_LANDED', 409, `step ${step.step_id} has no landed text — a gate cannot bless a file it has not seen`);
+  }
+  // BOOK-173 §7: a dispatched gate always sees the plan its change stands on — for a **ripple**.
+  // The engine writes the plan row in the same transaction that gives a change the `ripple`
+  // outcome (`settleLanding`), so a change that says `ripple` and has no plan is an inconsistency:
+  // refuse instead of judging the consequences against nothing. A cascade/change that is not a
+  // ripple (a continuity cascade, a no-op, a pass that never wrote) legitimately has no closure,
+  // and a gate reads it with `plan: null`.
+  const change = step.pass === 'change' || step.pass === 'cascade' ? changeForStep(deps.db, step) : undefined;
+  if (change?.outcome === 'ripple' && planEnvelopeOf(deps.db, step) === null) {
+    refuse('PLAN_MISSING', 409, `change ${change.id} closed as a ripple but has no plan`);
   }
   if (getVerdict(deps.db, step.step_id, role)) {
     refuse('GATE_ANSWERED', 409, `the ${role} gate already answered step ${step.step_id}`);
@@ -284,6 +333,7 @@ export function assignmentOf(
   step: StepRow,
   dispatch: DispatchRow,
   indexSlice: string | null = null,
+  plan: PlanEnvelope | null = null,
 ): GateAssignment {
   return {
     stepId: step.step_id,
@@ -296,6 +346,7 @@ export function assignmentOf(
     landedSha: step.landed_sha,
     note: step.note,
     indexSlice,
+    plan,
     expiresAt: dispatch.expires_at,
   };
 }

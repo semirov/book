@@ -1,11 +1,14 @@
 /**
- * The two CLI edges (BOOK-DOC-80): `--audit-samples` opening its own database, and the boot marker.
+ * The two CLI edges (BOOK-DOC-80): `ledger.mjs audit` opening its own database, and the boot marker.
  *
- * `main.ts` is the argument parser; this module is what the command does. The cases here are the
- * interface a supervisor sees — 0 drained, 1 flagged, 2 could not run — and the marker's one write.
+ * The audit is an **operator** command (`site/bin/ledger.mjs audit`), so it opens the volume the
+ * way `bin/restore.mjs` does; the cases here are the interface a supervisor sees — 0 drained,
+ * 1 flagged, 2 could not run. The marker is the writer's, and it goes through the engine: the
+ * writer process holds no database handle (BOOK-187, BOOK-183), so this file proves the call and
+ * its one rule — a failed marker is a line, never a parked pass.
  */
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -13,10 +16,12 @@ import { describe, expect, it } from 'vitest';
 
 import { databaseFile, openDatabase } from '../../../src/db/db.ts';
 import { migrate } from '../../../src/db/migrate.ts';
-import { pendingWriterBoot, recordVerification } from '../../../src/ledger/graph/verification.ts';
+import { recordVerification } from '../../../src/ledger/graph/verification.ts';
 import type { WriterConfig } from '../../../src/writer/config.ts';
 import type { ProviderRequest, ProviderResult } from '../../../src/writer/provider.ts';
-import { markWriterBootAt, runAuditCli } from '../../../src/writer/verify/cli.ts';
+import { markWriterBoot, runAuditCli } from '../../../src/writer/verify/cli.ts';
+import type { EngineClient } from '../../../src/writer/client.ts';
+import { seedChapter } from '../../ledger/helpers.ts';
 import { inertProse } from '../inert.ts';
 
 const AT = '2026-10-28T12:00:00Z';
@@ -48,9 +53,7 @@ function bookRoot(withChapter: boolean): string {
     mkdirSync(resolve(target, '..'), { recursive: true });
     copyFileSync(join(BOOK_ROOT, file), target);
   }
-  if (withChapter) {
-    writeFileSync(join(root, 'manuscript', `ch${String(CHAPTER)}.md`), `Глава двенадцатая\n\n${inertProse(2_000)}`, 'utf8');
-  }
+  if (withChapter) mkdirSync(join(root, 'manuscript'), { recursive: true });
   return root;
 }
 
@@ -68,6 +71,8 @@ function dataDirWithSample(): string {
      VALUES ('pln_ten', 'chg_ten', ?, 'local', '{}', '[]', '{}', ?)`,
   ).run(CHAPTER, AT);
   recordVerification(db, { changeId: 'chg_ten', chapter: CHAPTER, stepId: 'stp_ten' }, { gatesMode: 'local only', why: null, tier1Verdict: 'HOLDS', tier1Usd: 0.003 }, AT);
+  // BOOK-187: the chapter the audit reads is rows, not a file.
+  seedChapter(db, { chapter: CHAPTER, title: 'Глава двенадцатая', texts: [inertProse(2_000)], at: AT });
   db.close();
   return dataDir;
 }
@@ -136,32 +141,27 @@ describe('--audit-samples', () => {
 });
 
 describe('the boot marker', () => {
-  it('writes once into an existing database, and is a no-op without one', () => {
-    const dataDir = dataDirWithSample();
-    const empty = mkdtempSync(join(tmpdir(), 'book-cli-empty-'));
-    try {
-      markWriterBootAt(empty, () => undefined);
-      expect(existsSync(databaseFile(empty))).toBe(false);
+  it('asks the engine once, and a failed marker is a log line rather than a park', async () => {
+    const calls: string[] = [];
+    const logs: string[] = [];
+    const engine = {
+      writerBoot: async () => {
+        calls.push('writerBoot');
+        return { marked: true };
+      },
+    } as unknown as EngineClient;
 
-      markWriterBootAt(dataDir, () => undefined);
-      const db = openDatabase(databaseFile(dataDir));
-      try {
-        expect(pendingWriterBoot(db)).toBe(true);
-      } finally {
-        db.close();
-      }
-      // A second boot keeps the marker that is already standing: the sample it owes is still owed.
-      markWriterBootAt(dataDir, () => undefined);
-      const again = openDatabase(databaseFile(dataDir));
-      try {
-        const row = again.prepare(`SELECT v FROM meta WHERE k = 'writer_boot'`).get() as { v: string };
-        expect(row.v.length).toBeGreaterThan(0);
-      } finally {
-        again.close();
-      }
-    } finally {
-      rmSync(dataDir, { recursive: true, force: true });
-      rmSync(empty, { recursive: true, force: true });
-    }
+    await markWriterBoot(engine, (line) => logs.push(line));
+    expect(calls).toEqual(['writerBoot']);
+    expect(logs).toEqual([]);
+
+    // An engine that cannot answer is evidence, not a refusal: the pass's text still matters.
+    const broken = {
+      writerBoot: async () => {
+        throw new Error('engine is down');
+      },
+    } as unknown as EngineClient;
+    await markWriterBoot(broken, (line) => logs.push(line));
+    expect(logs.join('\n')).toContain('boot marker не записан');
   });
 });

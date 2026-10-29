@@ -316,8 +316,8 @@ async function cli(args: string[]): Promise<{ code: number; out: string }> {
   }
 }
 
-describe('bin/restore.mjs — the operator rolls back a snapshot (§13.3)', () => {
-  it('lists the revisions, restores a chosen one, and names the next command', async () => {
+describe('bin/restore.mjs — the operator browses revisions, and a restore is a revision (§13.3)', () => {
+  it('lists the revisions, previews a restore, and refuses to write a file', async () => {
     const fixture = createFixture({ '00-front.md': FRONT });
     try {
       ingest(fixture, V1);
@@ -337,16 +337,16 @@ describe('bin/restore.mjs — the operator rolls back a snapshot (§13.3)', () =
       // A dry run writes nothing.
       expect(readFileSync(`${fixture.manuscript}/ch01.md`, 'utf8')).toBe(V2);
 
-      const restore = await cli(['--chapter', '1', '--rev', '1', root, data]);
-      expect(restore.code).toBe(0);
-      expect(restore.out).toContain('восстановлена из rev 1');
-      expect(restore.out).toContain(`engine.mjs reconcile 1 --because "restore rev 1"`);
-      expect(readFileSync(`${fixture.manuscript}/ch01.md`, 'utf8')).toBe(V1);
-
-      // The site then labels it: attributed:false, kind restore, ungated until reconcile.
-      rescan(fixture.db, { bookRoot: fixture.root, dataDir: fixture.dataDir, now: new Date('2026-10-25T09:30:00Z') });
-      expect(latestRevision(fixture)).toMatchObject({ rev: 3, kind: 'restore', cause_kind: 'restore', attributed: 0 });
-      expect(listUngated(fixture.db)).toHaveLength(1);
+      // BOOK-187: the text has no file, so there is nothing to copy a snapshot over. The apply
+      // half names the row path and changes neither the rows nor the tree.
+      const applied = await cli(['--chapter', '1', '--rev', '1', root, data]);
+      expect(applied.code).toBe(2);
+      expect(applied.out).toContain('текст живёт в базе');
+      expect(applied.out).toContain('POST /internal/restore');
+      expect(applied.out).toContain('--revert --chapter 1');
+      expect(readFileSync(`${fixture.manuscript}/ch01.md`, 'utf8')).toBe(V2);
+      expect(latestRevision(fixture)).toMatchObject({ rev: 2, kind: 'edit' });
+      expect(listUngated(fixture.db)).toHaveLength(0);
     } finally {
       fixture.close();
     }

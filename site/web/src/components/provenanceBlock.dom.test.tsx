@@ -399,7 +399,8 @@ describe('the block obeys the margin’s one rule', () => {
       );
     });
     const upper = uppercaseSelectors();
-    expect(upper.length, 'the sheets do uppercase other registers').toBeGreaterThan(0);
+    // Zero, not "some other register": the canon has no uppercase anywhere (BOOK-128 #3900).
+    expect(upper, 'the sheets still uppercase a word').toEqual([]);
     for (const name of blockClasses()) {
       for (const selector of upper) {
         expect(selector.includes(`.${name}`), `${selector} uppercases .${name}`).toBe(false);
@@ -463,15 +464,17 @@ describe('the block obeys the margin’s one rule', () => {
     expect(PROV_BLOCK_CLASS).toContain('ym-hide-content');
   });
 
-  it('keeps the strip one 44 px row at 390, and the body a sibling that cannot stretch it', () => {
+  it('stacks the strip at 390 — the quote on its own line, the marks under it', () => {
     const phone = mediaBlocks(seamCss, 'max-width: 767px').join('\n');
-    // The ordinary row is one line: `nowrap` is stated, so the body under it cannot push the
-    // row's own items apart.
-    expect(phone).toMatch(/\.seam-row \{\s*flex-wrap: nowrap;/u);
+    // #3900 §1: the row wraps for every state — the quote takes the full first line.
+    expect(seamCss).toMatch(/\.seam-row \{[^}]*flex-wrap: wrap;/u);
     expect(seamCss).toMatch(/\.seam-row \{[^}]*min-height: 44px/u);
-    // The frozen strip is BOOK-111's stack — its door and its link are two long phrases.
-    expect(phone).toContain(".seam[data-frozen='true'] .seam-row {\n    flex-wrap: wrap;");
-    // Collapsing back to the row is closing the body: the strip's own box is not touched.
+    expect(seamCss).toMatch(/\.seam-word \{[^}]*flex: 1 1 100%/u);
+    // The marks line is still a touch row: the door and the action keep their 44 px.
+    expect(seamCss).toMatch(/\.seam-prov \{[^}]*min-height: 44px/u);
+    expect(seamCss).toMatch(/\.seam-cta \{[^}]*min-height: 44px/u);
+    expect(seamCss).toMatch(/\.seam-close \{[^}]*height: 44px/u);
+    expect(phone).not.toContain('order:');
     expect(seamCss).toMatch(/\.seam \{[^}]*border-top: 1px solid var\(--rule-2\)/u);
   });
 

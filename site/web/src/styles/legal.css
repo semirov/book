@@ -14,7 +14,7 @@
    document starts at 400), so every child of the document — kicker, title, sections, lead —
    shares
    both edges, and the one prose rule (`.legal > *`) is the cap that pins them. BOOK-92 states
-   rhythm (8 / 12 / 24 / 32) and the label voice — kicker, nav — and the two intents do not
+   rhythm (8 / 12 / 24 / 32) and the mark voice — kicker, nav — and the two intents do not
    fight, because the width is `.page`'s. The one width BOOK-92 did state, the lead's `none`,
    is dropped for the reason below. */
 .legal {
@@ -23,9 +23,10 @@
 }
 .legal .kicker {
   margin: 0 0 8px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
   line-height: 1.35;
+  letter-spacing: 0;
   color: var(--ink-3);
 }
 .legal .title {
@@ -50,12 +51,14 @@
 .legal section {
   margin-top: 32px;
 }
+/* A document's headings are words of the document, not labels (audit #35): serif 18, lowercase,
+   no tracking — the same face and size the chronicle's heading carries. */
 .legal h2 {
   margin: 0 0 12px;
-  font-family: var(--label);
-  font-size: var(--fs-label);
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  font-family: var(--serif);
+  font-size: var(--fs-body);
+  letter-spacing: 0;
+  line-height: 1.35;
   color: var(--ink-2);
 }
 .legal p,
@@ -76,9 +79,12 @@
 .legal li + li {
   margin-top: 8px;
 }
+/* The one place prose carries a token (audit #36): the inline mix is marked with a hairline and
+   keeps the paragraph's face and size, so a line stays one face and one size. */
 .legal code {
-  font-family: var(--mono);
-  font-size: 0.86em;
+  font-family: inherit;
+  font-size: inherit;
+  border-bottom: 1px dotted var(--rule-2);
   color: var(--ink-2);
 }
 .legal-how {
@@ -93,13 +99,13 @@
   font-size: var(--fs-note);
   color: var(--ink-2);
 }
-/* A label, not a paragraph: `.legal .legal-nav` out-specifies both `.legal p` and `.legal p + p`. */
+/* The footer nav is a mark, not a paragraph: `.legal .legal-nav` out-specifies both `.legal p`
+   and `.legal p + p` — mono 12, lowercase, no tracking (BOOK-128 #3900). */
 .legal .legal-nav {
   display: flex;
   gap: 18px;
   margin-top: 24px;
-  font-family: var(--label);
+  font-family: var(--mono);
   font-size: var(--fs-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
 }

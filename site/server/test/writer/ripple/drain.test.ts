@@ -76,7 +76,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: async (chapter, nodes) => {
           touched.push(chapter);
           retire(harness.fixture.db, nodes.map((node) => node.factId), changeId);
@@ -110,7 +110,7 @@ describe('the drainer', () => {
         retire(harness.fixture.db, nodes.map((node) => node.factId), changeId);
         return { landed: true, changedChars: 100, costUsd: 0.12 };
       };
-      const first = await drainRipple({ db: harness.fixture.db, planRowId, plan, frameOk: frameProbe(harness.bookRoot), runChapter: run });
+      const first = await drainRipple({ db: harness.fixture.db, planRowId, plan, frameOk: frameProbe(harness.fixture.db), runChapter: run });
       expect(first.status).toBe('continued');
       expect(first.iterations.map((entry) => entry.chapter)).toEqual([12]);
       expect(first.verification).toBeNull();
@@ -119,7 +119,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan: first.plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: run,
       });
       expect(second.status).toBe('done');
@@ -145,7 +145,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: async (chapter, nodes) => {
           touched.push(chapter);
           retire(harness.fixture.db, nodes.map((node) => node.factId), changeId);
@@ -178,7 +178,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         // A real patch through the ripple door: ch12's paragraph is rewritten, the claim's own
         // words («Допуск всё ещё выдан») stay in it — the case that used to park the plan.
         runChapter: async (chapter) => repairKeepingClaim(harness, changeId, chapter),
@@ -211,7 +211,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: async () => {
           // ch12's claim is repaired and retired, so it leaves the closure; the closure now
           // reaches ch19 by a *different* edge — the cause of its mandatory state moved while the
@@ -251,7 +251,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: async () => ({ landed: false, changedChars: 0, costUsd: 0.03, reason: 'гейты отказали', code: 'RIGHTS_REQUIRED' }),
       });
       expect(first.status).toBe('chapter_refused');
@@ -267,7 +267,7 @@ describe('the drainer', () => {
         db: harness.fixture.db,
         planRowId,
         plan,
-        frameOk: frameProbe(harness.bookRoot),
+        frameOk: frameProbe(harness.fixture.db),
         runChapter: async () => ({ landed: false, changedChars: 0, costUsd: 0.03, reason: 'гейты отказали', code: 'RIGHTS_REQUIRED' }),
       });
       expect(second.status).toBe('parked');

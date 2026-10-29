@@ -12,19 +12,18 @@
  *     model but the one that wrote the patch is asked.
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 import { parseChapter } from '../../../src/ingest/parseChapter.ts';
-import { createHarness, type Harness } from '../harness.ts';
+import { createHarness, receiptsOf, type Harness } from '../harness.ts';
 import { inertParagraph } from '../inert.ts';
 
 const CHAPTER = 12;
 
-function chapterFile(harness: Harness): string {
-  return join(harness.bookRoot, 'manuscript', `ch${String(CHAPTER).padStart(2, '0')}.md`);
+/** The chapter as the site serves it: rows, never a file (BOOK-187). */
+function chapterText(harness: Harness, chapter = CHAPTER): string {
+  return harness.fixture.readChapter(chapter) ?? '';
 }
 
 /** A written chapter with a phrase-scope filing on it. Its first paragraph is the chapter's edge. */
@@ -51,7 +50,7 @@ describe('a patch at the chapter’s edge runs the full pair', () => {
   it('asks the editor and the consultant, and records a full pair with its trigger', async () => {
     const harness = await written();
     try {
-      const before = parseChapter(CHAPTER, readFileSync(chapterFile(harness), 'utf8'));
+      const before = parseChapter(CHAPTER, chapterText(harness));
       const target = before.blocks[0];
       if (target === undefined) throw new Error('the fixture chapter has no first block');
       // The first paragraph begins a few characters after the title: inside the first 600.
@@ -61,9 +60,12 @@ describe('a patch at the chapter’s edge runs the full pair', () => {
       expect(result.status).toBe('closed');
       // One patch call, one local judge, then the pair — the edge is why the pair was asked.
       expect(harness.calls).toHaveLength(4);
-      const transcript = JSON.parse(
-        readFileSync(join(harness.dataDir, 'writer', 'transcripts', `${result.stepId ?? ''}.json`), 'utf8'),
-      ) as { gates: { gatesMode: string; why: string; line: string }; calls: Array<{ kind: string }> };
+      // BOOK-187 AC7: the receipt is rows — one per call, and the pass's facts on the last.
+      const { rows: receiptRows, pass: receipt } = receiptsOf(harness, result.stepId ?? '');
+      const transcript = {
+        gates: receipt.gates as { gatesMode: string; why: string; line: string },
+        calls: receiptRows.map((row) => ({ kind: row.role })),
+      };
       expect(transcript.calls.map((call) => call.kind)).toEqual(['draft', 'tier1', 'gate:editor', 'gate:consultant']);
       expect(transcript.gates.gatesMode).toBe('full');
       expect(transcript.gates.why).toBe('chapter_edge');
@@ -86,7 +88,7 @@ describe('a Tier-0 failure parks before the text is written', () => {
   it('parks with TIER0_FAILED, leaves the file alone and asks no gate', async () => {
     const harness = await written();
     try {
-      const original = readFileSync(chapterFile(harness), 'utf8');
+      const original = chapterText(harness);
       const target = parseChapter(CHAPTER, original).blocks[1];
       if (target === undefined) throw new Error('the fixture chapter has no second block');
       // Six words, twice, inside the changed span: the one invariant a rule can settle.
@@ -99,7 +101,7 @@ describe('a Tier-0 failure parks before the text is written', () => {
       expect(result.reason).toContain('счётные проверки');
       expect(harness.logs.join('\n')).toContain('TIER0_REPEAT');
       // The chapter is the pre-image: no write, no landing, no gate, no second model call.
-      expect(readFileSync(chapterFile(harness), 'utf8')).toBe(original);
+      expect(chapterText(harness)).toBe(original);
       expect(harness.calls).toHaveLength(1);
       expect(harness.engineCalls).not.toContain('nextGate');
       expect(harness.engineCalls).not.toContain('land');

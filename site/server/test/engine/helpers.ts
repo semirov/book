@@ -3,12 +3,14 @@
  * a **scripted session** that plays writer, editor and consultant without a model (M3
  * stubs the model out; M6 swaps the ports, not the protocol).
  *
- * The scripted writer is the only thing here that writes to `manuscript/` — exactly as in
- * production, where the engine mounts the book read-only and the session on the host owns the
- * file. Nothing in `server/src` writes prose, and the arch test enforces it.
+ * Since BOOK-187 the book's text lives in rows and nowhere else, so the fixture has no
+ * `manuscript/` at all: `seedChapter` publishes a chapter that already exists (the site has
+ * served it), and `writeChapter`/`writeFront` are the **scripted session's own answer**, held
+ * in memory and sent to `land` in the request — exactly as the writer lane does it. A test that
+ * asserts a file was written cannot pass here, which is the point.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,12 +23,15 @@ import type {
 } from '@book/shared';
 
 import { loadConfig, type Config } from '../../src/config.ts';
+import { withFrame as withFrameText } from '../helpers.ts';
 import { databaseFile, openDatabase, type Db } from '../../src/db/db.ts';
 import { migrate } from '../../src/db/migrate.ts';
 import type { GateAssignment } from '../../src/engine/gates.ts';
 import { admitPremise } from '../../src/engine/premise.ts';
 import { nextDraftChapter } from '../../src/engine/draft.ts';
-import { writtenChapters } from '../../src/engine/text.ts';
+import { readChapterRows, readFrontRows, writtenChaptersOf } from '../../src/engine/text.ts';
+import { applyChapterFile } from '../../src/ingest/applyChapter.ts';
+import { applyFrontFile } from '../../src/ingest/applyFront.ts';
 import { createEngine, type DoneResult } from '../../src/engine/service.ts';
 import type { Clock, EngineAlert, EngineDeps } from '../../src/engine/types.ts';
 
@@ -56,9 +61,24 @@ export type Fixture = {
   engine: ReturnType<typeof createEngine>;
   deps: EngineDeps;
   alerts: EngineAlert[];
+  /** Publish a chapter the way the one-shot import does: the site has already served it. */
+  seedChapter: (n: number, text: string) => void;
+  /** The same, by paragraph, keeping the canon frame of ch01/ch42 — a book that exists. */
+  seedChapterBlocks: (n: number, title: string, blocks: string[]) => void;
+  /** Publish the first sheet as a row (the basis an existing book starts from). */
+  seedFront: (title: string, about: string) => void;
+  /** The scripted session's answer for chapter `n`: held in memory, sent by `land`. */
   writeChapter: (n: number, text: string) => void;
+  /** The same, keeping the canon frame of ch01/ch42 (BOOK-137). */
   writeChapterBlocks: (n: number, title: string, blocks: string[]) => void;
+  /** The scripted front lane's answer: the whole first sheet, sent by `land`. */
   writeFront: (title: string, about: string) => void;
+  /**
+   * The session's staged answer as a file (under `<root>/session/`, never `manuscript/`), for a
+   * caller that speaks HTTP and must send its text: `engine.mjs land <lease> --text <path>`.
+   */
+  stageFile: (n: number) => string;
+  /** What the site serves for chapter `n`: the rows' canonical text, or null. */
   readChapter: (n: number) => string | null;
   /** The first sheet's annotation, for a scripted front step. */
   readFrontBlocks: () => string;
@@ -105,8 +125,8 @@ export function createEngineFixture(options: {
   filings?: 'auto' | 'manual';
 } = {}): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'book-engine-root-'));
+  // BOOK-187: no `manuscript/` is created. A pass that needed one would fail here, not in prod.
   const manuscript = join(root, 'manuscript');
-  mkdirSync(manuscript, { recursive: true });
   const dataDir = mkdtempSync(join(tmpdir(), 'book-engine-data-'));
   const db = openDatabase(databaseFile(dataDir));
   migrate(db);
@@ -142,7 +162,7 @@ export function createEngineFixture(options: {
     const nextRaw = engine.next.bind(engine);
     engine.next = (input) => {
       if (input.for === 'fwd' || input.for === 'bwd') {
-        const slot = nextDraftChapter(writtenChapters(root), input.for);
+        const slot = nextDraftChapter(writtenChaptersOf(db), input.for);
         if (slot !== null) fileIfEmpty(slot);
       }
       return nextRaw(input);
@@ -156,29 +176,92 @@ export function createEngineFixture(options: {
     };
   }
 
+  /**
+   * The rows of a chapter that exists before a pass — what the one-shot import leaves behind.
+   * It goes through the real applier, so a seeded chapter has its revision and its snapshot,
+   * which is what `--revert` and `blame` read. A chapter that carries the canon frame keeps it
+   * (BOOK-137): the applier refuses a ch01/ch42 whose sentence moved, exactly as in production.
+   */
+  const seedChapter = (n: number, text: string): void => {
+    applyChapterFile({
+      db,
+      dataDir,
+      n,
+      raw: withFrameText(n, text),
+      mtimeMs: clock.now(),
+      nowMs: clock.now(),
+    });
+  };
+  const seedChapterBlocks = (n: number, title: string, blocks: string[]): void => {
+    seedChapter(n, chapterText(title, withFrame(n, blocks)));
+  };
+  const seedFront = (title: string, about: string): void => {
+    applyFrontFile({
+      db,
+      dataDir,
+      raw: `${title}\n\n${about}\n`,
+      mtimeMs: clock.now(),
+      nowMs: clock.now(),
+    });
+  };
+
+  /**
+   * The scripted session's answer, held in memory: `land` carries it in the request, and no
+   * file exists anywhere (BOOK-187). `writeChapter` is the old name, because a test says «the
+   * session wrote this» either way.
+   */
+  const staged = { chapters: new Map<number, string>(), front: null as string | null };
   const writeChapter = (n: number, text: string): void => {
-    writeFileSync(join(manuscript, `ch${String(n).padStart(2, '0')}.md`), text, 'utf8');
+    staged.chapters.set(n, text);
   };
   /**
    * BOOK-137: the canon frame opens ch01 and closes ch42, so a chapter written by paragraph
    * carries it — the land guard refuses a landing that lets the sentence move, exactly as in
-   * production. A test that needs a byte-exact file (a basis-only slot, a broken frame) writes
-   * it with `writeChapter`, which stays raw.
+   * production. A test that needs an exact text (a basis-only slot, a broken frame) stages it
+   * with `writeChapter`, which stays raw.
    */
   const writeChapterBlocks = (n: number, title: string, blocks: string[]): void => {
     writeChapter(n, chapterText(title, withFrame(n, blocks)));
   };
   const writeFront = (title: string, about: string): void => {
-    writeFileSync(join(manuscript, '00-front.md'), `${title}\n\n${about}\n`, 'utf8');
+    staged.front = `${title}\n\n${about}\n`;
+  };
+  const stageFile = (n: number): string => {
+    const dir = join(root, 'session');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `ch${String(n).padStart(2, '0')}.md`);
+    writeFileSync(path, staged.chapters.get(n) ?? '', 'utf8');
+    return path;
   };
 
   if (options.front !== null) {
     const front = options.front ?? { title: 'Без названия', about: DEFAULT_ABOUT };
-    writeFront(front.title, front.about);
+    seedFront(front.title, front.about);
   }
   for (const [n, text] of Object.entries(options.chapters ?? {})) {
-    writeChapter(Number(n), text);
+    seedChapter(Number(n), text);
   }
+
+  // `land` is where the scripted session hands its text over: the fixture attaches what it
+  // staged for that step's chapter, so a test still says «the session wrote it, then landed».
+  const landRaw = engine.land.bind(engine);
+  engine.land = (leaseId, options = {}) => {
+    const target = db
+      .prepare(
+        `SELECT s.chapter AS chapter, s.pass AS pass FROM leases l JOIN steps s ON s.step_id = l.step_id
+          WHERE l.id = ?`,
+      )
+      .get(leaseId) as { chapter: number | null; pass: string } | undefined;
+    const chapter = target?.chapter ?? null;
+    const forFront = target?.pass === 'front';
+    const text = options.text ?? (chapter === null ? undefined : staged.chapters.get(chapter));
+    const frontRaw = options.frontRaw ?? (forFront ? (staged.front ?? undefined) : undefined);
+    return landRaw(leaseId, {
+      ...options,
+      ...(text === undefined ? {} : { text }),
+      ...(frontRaw === undefined ? {} : { frontRaw }),
+    });
+  };
 
   return {
     root,
@@ -190,24 +273,18 @@ export function createEngineFixture(options: {
     engine,
     deps,
     alerts,
+    seedChapter,
+    seedChapterBlocks,
+    seedFront,
     writeChapter,
     writeChapterBlocks,
     writeFront,
+    stageFile,
     readChapter: (n) => {
-      try {
-        return readFileSync(join(manuscript, `ch${String(n).padStart(2, '0')}.md`), 'utf8');
-      } catch {
-        return null;
-      }
+      const rows = readChapterRows(db, n);
+      return rows.exists ? rows.raw : null;
     },
-    readFrontBlocks: () => {
-      try {
-        const raw = readFileSync(join(manuscript, '00-front.md'), 'utf8');
-        return raw.split('\n').slice(2).join('\n').trim();
-      } catch {
-        return DEFAULT_ABOUT;
-      }
-    },
+    readFrontBlocks: () => readFrontRows(db).about ?? DEFAULT_ABOUT,
     close: () => {
       db.close();
       rmSync(root, { recursive: true, force: true });

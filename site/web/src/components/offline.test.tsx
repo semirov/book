@@ -14,7 +14,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { OFFLINE_SENTENCE as WORKER_SENTENCE, offlineDocument } from '../../../scripts/lib/sw.mjs';
+import { firstDeclarations } from './cssRules.ts';
 import { Offline, OFFLINE_RETRY, OFFLINE_SENTENCE, isOffline } from './Offline.tsx';
+
+/** Every stylesheet as text: the row's shape is a claim about the sheet, not a snapshot. */
+const sheets = import.meta.glob<string>('../styles/*.css', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -52,6 +60,26 @@ describe('the offline page', () => {
     expect(button?.type).toBe('button');
     // One fact and one verb: the whole surface is those two strings.
     expect(container.textContent).toBe(`${OFFLINE_SENTENCE}${OFFLINE_RETRY}`);
+  });
+
+  /**
+   * BOOK-197 (audit #9) — the sentence is prose (serif 15) and the retry is a mark (mono 12):
+   * the two may not share a line. The row is a block and the button is a block-level control
+   * after it, still a 44 px target.
+   */
+  it('stacks the sentence over the retry: one face and one size per line', () => {
+    const chrome = sheets['../styles/chrome.css'] ?? '';
+    const row = firstDeclarations(chrome, '.state-line');
+    const button = firstDeclarations(chrome, '.state-line button');
+    expect(row).toContain('display: block');
+    expect(row).toContain('font-family: var(--serif)');
+    expect(row).toContain('font-size: var(--fs-note)');
+    expect(row).not.toContain('display: flex');
+    expect(button).toContain('display: flex');
+    expect(button).toContain('margin-top: 4px');
+    expect(button).toContain('font-family: var(--mono)');
+    expect(button).toContain('font-size: var(--fs-micro)');
+    expect(button).toContain('min-height: 44px');
   });
 
   it('says exactly what the worker’s offline document already says', () => {

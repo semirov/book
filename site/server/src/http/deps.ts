@@ -62,4 +62,9 @@ export type RouteDeps = {
   authorsCount: () => AuthorsCountDto;
   /** §9/BOOK-114: the book's outlay — one whole-book aggregate, memoised by book state. */
   bookCost: () => BookCostDto;
+  /**
+   * BOOK-189: the VAPID public key, or `null` when push is off (no readable key file). Read once
+   * at boot by `push/vapid.ts`; the route answers `503 PUSH_OFF` on `null`, never a guess.
+   */
+  pushKey: string | null;
 };

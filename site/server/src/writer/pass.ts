@@ -1,10 +1,15 @@
 /**
  * One writer pass, end to end (`docs/writer-lane.md` §1, §5–§6). The order:
  * ```
- * state → money guard (estimate vs the caps) → assignment → queued → start → pre-snapshot
- *   → prompt → read → belt (re-estimate) → model call(s) → validate (one retry with the reason)
- *   → continuation calls → atomic write → land → gates (verdict ×2, one revision) → landed → done
+ * state → money guard (estimate vs the caps) → assignment → queued → start → prompt (rows)
+ *   → read → belt (re-estimate) → model call(s) → validate (one retry with the reason)
+ *   → continuation calls → land (the text travels in the request) → gates (verdict ×2, one
+ *   revision) → landed → done
  * ```
+ *
+ * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
+ * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
+ * and no pre-image to keep.
  *
  * Everything the pass touches is injected — engine, transport, clock, log. It holds no database,
  * no socket, no key; the talking lives in `passLane.ts`, the prompts in `prompt.ts` / `gates.ts`.
@@ -19,18 +24,19 @@
  * `landed` carries the pass's money line (writer + gate calls); `done` the writer's tokens only.
  */
 
-import { readFileSync } from 'node:fs';
-
 import { isChapterNumber, type BudgetDto, type WriteMode, type WriterAssignment } from '@book/shared';
 
-import { chapterPath, isWrittenChapter, readChapter } from '../engine/text.ts';
+import { isWrittenView } from '../engine/text.ts';
+import { readBuildStamp } from '../buildStamp.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
-import type { EngineClient, EngineStateView, LandView, StartView } from './client.ts';
-import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
+import type { EngineClient, LandView, StartView } from './client.ts';
+import { capLine, estimatePassUsd } from './estimate.ts';
+import { moneyGuard } from './passGuard.ts';
 import { createLane, assignmentData, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
-import { buildWriterPrompt, type BuiltPrompt } from './prompt.ts';
+import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
 import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
+import { finalize } from './prose.ts';
 import { chooseMode, RIPPLE_MODE, type ModeChoice, type ModeInput } from './mode.ts';
 import { afterPatch } from './ripple/afterPatch.ts';
 import { writeChapter } from './writePhase.ts';
@@ -57,6 +63,8 @@ export type PassDeps = {
   config: WriterConfig;
   bookRoot: string;
   dataDir: string;
+  /** ADR-043 G3: the prompt bundle this image carries; absent reads the build stamp. */
+  promptBundle?: string | null;
   engine: EngineClient;
   provider: ProviderCall;
   now: () => number;
@@ -89,37 +97,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   }
 
   // 1. The money guard (§6, BOOK-117): a pass that would cross a cap never asks for a job.
-  let state: EngineStateView;
-  try {
-    state = await engine.state();
-  } catch (error) {
-    return { status: 'refused', reason: reasonOf(error) };
-  }
-  // Tokens are information, not a bound (2026-10-27): the $ cap is, so `tokens.today` is unread.
-  const budget: BudgetDto | null = state.budget ?? null;
-  let estimate: PassEstimate | null = null;
-  if (budget === null) {
-    // An engine from before the cap reports no money: say so — a silent pretend-bound is worse.
-    deps.log('[writer] бюджет недоступен: движок не отдаёт потолки — проход идёт без денежной проверки');
-  } else if (budget.state === 'stop' || budget.state === 'pause') {
-    deps.log(`[writer] idle ${budget.line}`);
-    return { status: 'idle', reason: budget.line };
-  } else {
-    // The estimate precedes the assignment: a pass that would not fit is never opened.
-    let priced: PassEstimate;
-    try {
-      priced = estimatePassUsd({ pricing: config.pipeline.pricing, bookRoot, continueMax: config.continueMax });
-    } catch (error) {
-      return { status: 'refused', reason: error instanceof Error ? error.message : 'оценка прохода не собрана' };
-    }
-    estimate = priced;
-    deps.log(estimateLine(priced, budget));
-    const crossed = capLine(budget, priced.usd);
-    if (crossed !== null) {
-      deps.log(`[writer] idle ${crossed}`);
-      return { status: 'idle', reason: crossed };
-    }
-  }
+  const guard = await moneyGuard({ config, bookRoot, engine, log: deps.log });
+  if (!guard.ok) return guard.result;
+  const { budget, estimate } = guard;
 
   // 2. The assignment: a named chapter, or the lane's next slot.
   let picked: WriterAssignment | null;
@@ -174,7 +154,15 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     rights: job.verdicts.rights === true,
   };
   const lane = createLane(
-    { config, bookRoot, dataDir: deps.dataDir, engine, provider: deps.provider, now, log: deps.log },
+    {
+      config,
+      bookRoot,
+      engine,
+      provider: deps.provider,
+      now,
+      log: deps.log,
+      promptBundle: deps.promptBundle === undefined ? readBuildStamp().promptBundleSha : deps.promptBundle,
+    },
     job,
     chapter,
     answered,
@@ -223,7 +211,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     let rewritePrompt: BuiltPrompt | null = null;
 
     if (!resume) {
-      // 4. `start`, then the pre-image — before a single byte of the chapter changes.
+      // 4. `start`, then the pre-image.
       let started: StartView;
       try {
         started = await engine.start(job.leaseId);
@@ -231,31 +219,48 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
+      // The pre-image is the rows themselves (BOOK-187): nothing has been touched yet, so a
+      // refusal leaves the chapter exactly as the site serves it. The text a prompt quotes is read
+      // from the engine in one call — the target and its two neighbours.
       try {
-        lane.preSnapshot(now());
-      } catch {
-        return await lane.park({ detail: 'не удалось сохранить снимок главы перед проходом' });
+        await lane.loadText([chapter - 1, chapter, chapter + 1]);
+        // The same bytes a landing writes (one trailing newline), so a no-op compares equal and
+        // Tier 0 sees the edit rather than a lost newline.
+        beforeText = finalize(chapterQuote(lane.textOf(chapter)));
+      } catch (error) {
+        return await lane.park(failureOf(error));
       }
-      beforeText = readChapter(bookRoot, chapter).exists ? readFileSync(chapterPath(bookRoot, chapter), 'utf8') : '';
 
       // 5. The mode (§4), the prompt, and the stage that says both were assembled.
       //    The rewrite prompt is built even in patch mode: the model may decline in one step.
-      const own = readChapter(bookRoot, chapter);
-      choice = deps.ripple === undefined ? chooseMode(modeInput, isWrittenChapter(own)) : RIPPLE_MODE;
+      // `WRITER_MODE_DEFAULT=rewrite` forces the whole-chapter path for every ordinary pass; a
+      // ripple chapter keeps its own mode (a rewrite there is what the ripple is not).
+      choice =
+        deps.ripple === undefined
+          ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
+          : RIPPLE_MODE;
       let built: BuiltPrompt;
       let patchPrompt: PatchPrompt | null = null;
       try {
         const data = assignmentData(job);
-        rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data });
-        if (choice.mode === 'patch') patchPrompt = buildPatchPrompt({ bookRoot, chapter, assignment: data, ripple: deps.ripple ?? null });
+        rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data, chapterText: lane.textOf });
+        if (choice.mode === 'patch') {
+          patchPrompt = buildPatchPrompt({
+            bookRoot,
+            chapter,
+            assignment: data,
+            own: lane.textOf(chapter),
+            ripple: deps.ripple ?? null,
+          });
+        }
         built = patchPrompt ?? rewritePrompt;
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
-      lane.setPrompt(built.sections.length, built.promptSha256, built.prefixSha256);
+      lane.setPrompt({ sections: built.sections, promptSha256: built.promptSha256, prefixSha256: built.prefixSha256 });
       lane.setMode(choice.mode, null);
       const neighbours = [chapter - 1, chapter + 1].filter(
-        (n) => isChapterNumber(n) && isWrittenChapter(readChapter(bookRoot, n)),
+        (n) => isChapterNumber(n) && isWrittenView(lane.textOf(n)),
       );
       await lane.emit({
         stage: 'read',
@@ -300,9 +305,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         }
       }
 
-      // 7. The writing phase (`writePhase.ts`): patch or rewrite, one session, one attempt.
-      //    Only the model's own refusal of the work refuses the premise; a failed call, a cut
-      //    answer or a broken patch is a pass that broke.
+      // 7. The writing phase (`writePhase.ts`): patch or rewrite, one session, one attempt. Only
+      //    the model's own refusal refuses the premise; a broken patch is a pass that broke.
       const written = await writeChapter({
         lane,
         bookRoot,
@@ -310,6 +314,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         mode: choice,
         rewrite: rewritePrompt as BuiltPrompt,
         patch: patchPrompt,
+        chapterText: lane.textOf,
         continueMax: config.continueMax,
         patchMaxFraction: config.patchMaxFraction,
         patchMaxEdits: config.patchMaxEdits,
@@ -328,10 +333,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // BOOK-173 §2: the patch's characters edits travel to `land`, which is what keeps ids.
       lane.setMode(written.mode, written.patch, written.sentences);
 
-      // 7b. BOOK-DOC-80, Tier 0 — the countable invariants, **before** a byte is written: the
-      //     bytes the applier proved are the bytes the book would hold, so a broken invariant
-      //     costs nothing but the writing call that produced it. Only a patch names a span to
-      //     check; a rewrite is judged by the pair, which it always takes (`chapter_edge`).
+      // 7b. BOOK-DOC-80, Tier 0 — the countable invariants, **before** a byte is written. Only a
+      //     patch names a span; a rewrite is judged by the pair, which it always takes.
       if (lane.mode() === 'patch') {
         tier0 = tier0Of({ bookRoot, chapter, before: beforeText, after: text });
         if (!tier0.ok) {
@@ -340,27 +343,21 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         }
       }
 
-      // 8. The write, and the landing that makes it a revision.
-      try {
-        lane.writeText(text);
-      } catch {
-        return await lane.park({ detail: 'не удалось записать главу' });
-      }
+      // 8. The landing that makes the answer a revision — the text travels, no file is touched.
       let landing: LandView;
       try {
-        landing = await lane.land();
+        landing = await lane.land(text);
       } catch (error) {
         return gone(error) ?? (await lane.park(failureOf(error)));
       }
-      // BOOK-173 §5: the silent no-op, said out loud — a pass that spent ten thousand tokens and
-      // moved no byte must not read in the log like a landing.
+      // BOOK-173 §5: the silent no-op, said out loud — a pass that moved no byte must not read
+      // in the log like a landing.
       if (lane.mode() === 'rewrite' && text === beforeText) deps.log(`[writer] ${NO_OP_LINE}, глава ${String(chapter)}`);
       const reaction = await afterPatch({ plan: landing.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
       if (reaction.kind === 'park') return await lane.park({ detail: reaction.sentence, ...(reaction.cause === undefined ? {} : { cause: reaction.cause }) });
 
-      // 8b. BOOK-DOC-80, Tier 1 and the table: the local judge reads the changed span and the
-      //     policy says whether the full pair is still needed. A `GAP` here goes to the pair —
-      //     the pair is the judge of the judge — never straight to the reader.
+      // 8b. BOOK-DOC-80: Tier 1 and the table decide whether the full pair is still needed. A
+      //     `GAP` here goes to the pair — the judge of the judge — never to the reader.
       const verified = await verifyChange({
         config,
         bookRoot,
@@ -381,13 +378,17 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       answered.consultant = false;
       answered.rights = false;
     } else {
-      // A resumed step: this file is the pre-image of a revision the gates may ask for below.
-      if (!readChapter(bookRoot, chapter).exists) {
-        return await lane.park({ detail: 'текста главы нет на диске — проход не возобновить' });
+      // A resumed step: the rows hold the landed text the gates may ask for below.
+      try {
+        await lane.loadText([chapter]);
+      } catch (error) {
+        return await lane.park(failureOf(error));
       }
-      text = readFileSync(chapterPath(bookRoot, chapter), 'utf8');
+      if (!lane.textOf(chapter).exists) {
+        return await lane.park({ detail: 'текста главы нет в базе — проход не возобновить' });
+      }
+      text = finalize(chapterQuote(lane.textOf(chapter)));
       beforeText = text;
-      lane.preSnapshot(now());
     }
 
     // 9. The gates (`gatesPass.ts`, BOOK-DOC-80): the full pair only on a trigger, Gate B always.
@@ -482,7 +483,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       tokens: lane.writerTokens(),
       costUsd: passCost,
     };
-    lane.transcript(result);
+    await lane.transcript(result);
     deps.log(
       `[writer] closed ${closed.stepId}: ${closed.outcome}, глава ${String(chapter)}, ${String(parsed.chars)} знаков, $${passCost.toFixed(4)}`,
     );
@@ -491,7 +492,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     const stepped = gone(error);
     if (stepped !== null) return stepped;
     const parked = await lane.park(failureOf(error));
-    lane.transcript(parked);
+    await lane.transcript(parked);
     return parked;
   }
 }

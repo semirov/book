@@ -2,8 +2,9 @@
  * The writer lane's harness: a real engine, a real control API on a loopback port, a real engine
  * client, and a **scripted provider** — no network, no model, no key beyond a temp file.
  *
- * The engine fixture writes nothing to `manuscript/` except through a scripted session, exactly
- * as the engine does; here it is the writer lane that writes, which is what the tests check.
+ * Since BOOK-187 nobody writes a manuscript: the engine fixture seeds chapters as rows, and the
+ * writer lane sends its answer to `land`. A test that finds a `manuscript/` under the fixture root
+ * is a regression, and several of them assert exactly that.
  */
 
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,6 @@ import type { AddressInfo } from 'node:net';
 
 import type { BudgetDto, WriterAssignment } from '@book/shared';
 
-import { applyChapterFile } from '../../src/ingest/applyChapter.ts';
 import { buildControl } from '../../src/engine/control.ts';
 import { admitPremise } from '../../src/engine/premise.ts';
 import { newChangeId } from '../../src/util/ulid.ts';
@@ -25,7 +25,6 @@ import type { PipelineUsage } from '../../src/writer/pipeline.ts';
 import { runPass, type PassDeps, type PassResult } from '../../src/writer/pass.ts';
 import type { ProviderRequest, ProviderResult, WriterMessage } from '../../src/writer/provider.ts';
 import { createEngineFixture, type Fixture } from '../engine/helpers.ts';
-import { inertProse } from './inert.ts';
 
 export const SITE_ROOT = resolve(import.meta.dirname, '..', '..', '..');
 /** The book's own root: the canon is read from here, never written. */
@@ -46,12 +45,13 @@ function copyCanon(root: string): void {
 export const TOKEN = 'writer-harness-token';
 export const FAKE_KEY = 'sk-writer-harness-never-print-2b91';
 
+/** Inert Russian prose: long enough for the floor, plain enough for every shape rule. */
+const FILLER = 'служебный абзац для проверки объёма страницы, он не является текстом книги. ';
+
 /** A valid chapter answer for any chapter: a title line, four paragraphs, ~2 400 characters. */
 export function chapterAnswer(title = 'Глава сорок', marker = ''): string {
-  const blocks = [0, 1, 2, 3].map((index) => {
-    const paragraph = inertProse(520, index * 41);
-    return marker.length === 0 ? paragraph : `${paragraph} ${marker}`.trim();
-  });
+  const paragraph = `${FILLER.repeat(4).trim()} ${FILLER.repeat(4).trim()}`;
+  const blocks = [0, 1, 2, 3].map(() => (marker.length === 0 ? paragraph : `${paragraph} ${marker}`.trim()));
   return `${title}\n\n${blocks.join('\n\n')}\n`;
 }
 
@@ -89,7 +89,11 @@ export type Harness = {
   env: NodeJS.ProcessEnv;
   tokenFile: string;
   provider: PassDeps['provider'];
-  /** The watcher's half: publish a chapter file that is already on disk as a revision. */
+  /**
+   * BOOK-187: a chapter is rows, and the fixture published them at creation. `ingest(n)` is the
+   * old «the site serves this file» step kept for the tests that say it out loud: it publishes
+   * the chapter the harness was created with, and is a no-op when the row is already there.
+   */
   ingest(chapter: number): void;
   assignment(chapter: number, session?: string): WriterAssignment;
   premised(chapter: number, intent: string): string;
@@ -105,6 +109,31 @@ export type Harness = {
   }): Promise<PassResult>;
   close(): Promise<void>;
 };
+
+/**
+ * BOOK-187 AC7: a pass's receipt as the rows it is now — the call rows in order, and the pass's
+ * own facts, which travel on the last row (`pass_transcripts.content_redacted`).
+ */
+export function receiptsOf(
+  harness: Harness,
+  passId: string,
+): {
+  rows: Array<{ seq: number; role: string; tokensIn: number; tokensOut: number; facts: Record<string, unknown> }>;
+  pass: Record<string, unknown>;
+} {
+  const rows = harness.fixture.db
+    .prepare('SELECT seq, role, tokens_in, tokens_out, content_redacted FROM pass_transcripts WHERE pass_id = ? ORDER BY seq')
+    .all(passId) as Array<{ seq: number; role: string; tokens_in: number; tokens_out: number; content_redacted: string }>;
+  const parsed = rows.map((row) => ({
+    seq: row.seq,
+    role: row.role,
+    tokensIn: row.tokens_in,
+    tokensOut: row.tokens_out,
+    facts: JSON.parse(row.content_redacted) as Record<string, unknown>,
+  }));
+  const pass = (parsed.at(-1)?.facts.pass ?? {}) as Record<string, unknown>;
+  return { rows: parsed, pass };
+}
 
 /** The engine's own state, read straight from the fixture's database. */
 export function stepRow(fixture: Fixture, stepId: string): Record<string, unknown> | undefined {
@@ -201,17 +230,9 @@ export async function createHarness(options: { chapters?: Record<number, string>
     env: writerEnv,
     tokenFile,
     provider,
-    ingest: (chapter) => {
-      const raw = fixture.readChapter(chapter);
-      if (raw === null) throw new Error(`no chapter ${String(chapter)} on disk to ingest`);
-      applyChapterFile({
-        db: fixture.db,
-        dataDir: fixture.dataDir,
-        n: chapter,
-        raw,
-        mtimeMs: fixture.clock.now(),
-        nowMs: fixture.clock.now(),
-      });
+    ingest: (chapter: number) => {
+      const text = (options.chapters ?? {})[chapter];
+      if (text !== undefined && fixture.readChapter(chapter) === null) fixture.seedChapter(chapter, text);
     },
     assignment: (chapter, session = 'writer-test') => fixture.engine.openChapterPass(chapter, session) as WriterAssignment,
     premised: (chapter, intent) => {

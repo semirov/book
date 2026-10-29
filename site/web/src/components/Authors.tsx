@@ -123,16 +123,20 @@ export function Authors({
         <ol className="authors-list">
           <li className="authors-row is-author">
             <span className="authors-name">{imprint.author}</span>
-            <span className="authors-role">автор</span>
-            <span className="authors-share">{authors === null ? '—' : formatShare(authors.author.share)}</span>
+            <span className="authors-meta">
+              <span className="authors-role">автор</span>
+              <span className="authors-share">{authors === null ? '—' : formatShare(authors.author.share)}</span>
+            </span>
           </li>
           {contributors.map((contributor) => (
             <li className="authors-row ym-disable-clickmap" key={contributor.identityId}>
               <span className="authors-name">{contributor.label}</span>
-              <span className="authors-role">
-                {contributor.edits > 0 ? `правок: ${contributor.edits}` : 'читатель'}
+              <span className="authors-meta">
+                <span className="authors-role">
+                  {contributor.edits > 0 ? `правок: ${contributor.edits}` : 'читатель'}
+                </span>
+                <span className="authors-share">{formatShare(contributor.share)}</span>
               </span>
-              <span className="authors-share">{formatShare(contributor.share)}</span>
             </li>
           ))}
         </ol>

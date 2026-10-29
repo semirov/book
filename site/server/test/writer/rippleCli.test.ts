@@ -16,7 +16,7 @@ import { claimPlan, storePlan, type RipplePlan } from '../../src/ledger/graph/pl
 import type { DrainOutcome } from '../../src/writer/ripple/drain.ts';
 import { runPlanCli, runRippleCli, type RippleCliInput } from '../../src/writer/rippleCli.ts';
 import { AT, seedChange } from '../ledger/helpers.ts';
-import { main } from '../../src/writer/main.ts';
+import { databaseFile, openDatabase as openVolume } from '../../src/db/db.ts';
 import { blockOf, rippleGraph, rippleHarness, statusPatch } from './ripple/fixtures.ts';
 
 const NODE = {
@@ -190,14 +190,24 @@ describe('main --ripple drains a real plan through the door and releases the cla
       );
 
       const lines: string[] = [];
-      const code = await main({
-        argv: ['--ripple'],
-        env: harness.env,
-        provider: harness.provider,
-        now: () => harness.fixture.clock.now(),
-        log: (line) => lines.push(line),
-        claimedBy: 'proc-cli',
-      });
+      // The operator's door, not the writer's: `--ripple` opens the volume itself (bin/ledger.mjs).
+      const volume = openVolume(databaseFile(harness.dataDir));
+      let code: number;
+      try {
+        code = await runRippleCli({
+          db: volume,
+          config: harness.config,
+          bookRoot: harness.bookRoot,
+          dataDir: harness.dataDir,
+          engine: harness.client,
+          provider: harness.provider,
+          now: () => harness.fixture.clock.now(),
+          log: (line) => lines.push(line),
+          claimedBy: 'proc-cli',
+        });
+      } finally {
+        volume.close();
+      }
       // Both chapters landed and the closure verified: 0 says the plan is finished.
       expect(code).toBe(0);
       expect(lines.join('\n')).toContain('ripple done');

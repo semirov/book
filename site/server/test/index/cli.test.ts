@@ -1,35 +1,42 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { databaseFile, openDatabase } from '../../src/db/db.ts';
+import { migrate } from '../../src/db/migrate.ts';
 import { runIndex } from '../../src/index/cli.ts';
 import { artifactPath, readIndex } from '../../src/index/store.ts';
+import { applyChapterFile } from '../../src/ingest/applyChapter.ts';
 
 type Captured = { code: number; out: string[]; err: string[] };
 
-function run(args: string[], input: { bookRoot: string; dataDir: string }): Captured {
+function run(args: string[], input: { db: ReturnType<typeof openDatabase>; dataDir: string }): Captured {
   const out: string[] = [];
   const err: string[] = [];
   const code = runIndex(args, { log: (line) => out.push(line), error: (line) => err.push(line) }, input);
   return { code, out, err };
 }
 
-function fixture(): { bookRoot: string; dataDir: string; close: () => void } {
-  const bookRoot = mkdtempSync(join(tmpdir(), 'book-index-cli-'));
+/** BOOK-187: the CLI reads the volume, so its fixture is a database with one chapter in it. */
+function fixture(): { db: ReturnType<typeof openDatabase>; dataDir: string; close: () => void } {
   const dataDir = mkdtempSync(join(tmpdir(), 'book-index-cli-data-'));
-  mkdirSync(join(bookRoot, 'manuscript'), { recursive: true });
-  writeFileSync(
-    join(bookRoot, 'manuscript', 'ch12.md'),
-    'Глава двенадцатая\n\nПриказ № 4 выдан утром.\n',
-    'utf8',
-  );
+  const db = openDatabase(databaseFile(dataDir));
+  migrate(db);
+  applyChapterFile({
+    db,
+    dataDir,
+    n: 12,
+    raw: 'Глава двенадцатая\n\nПриказ № 4 выдан утром.\n',
+    mtimeMs: Date.UTC(2026, 9, 25),
+    nowMs: Date.UTC(2026, 9, 25),
+  });
   return {
-    bookRoot,
+    db,
     dataDir,
     close: () => {
-      rmSync(bookRoot, { recursive: true, force: true });
+      db.close();
       rmSync(dataDir, { recursive: true, force: true });
     },
   };
@@ -70,9 +77,10 @@ describe('bin/index.mjs (BOOK-18 observability)', () => {
   it('reports a failed rebuild and an unknown command with their own exit codes', () => {
     const book = fixture();
     try {
-      const blocked = join(book.bookRoot, 'not-a-directory');
+      // A file where the artifact's directory must be: the write fails, the CLI says so.
+      const blocked = join(book.dataDir, 'not-a-directory');
       writeFileSync(blocked, 'occupied', 'utf8');
-      expect(run(['rebuild'], { bookRoot: book.bookRoot, dataDir: blocked }).code).toBe(1);
+      expect(run(['rebuild'], { db: book.db, dataDir: blocked }).code).toBe(1);
       const unknown = run(['dance'], book);
       expect(unknown.code).toBe(2);
       expect(unknown.err.join('\n')).toContain('usage: index.mjs');

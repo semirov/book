@@ -18,6 +18,7 @@ import { parseChapter } from '../../src/ingest/parseChapter.ts';
 import { buildPatchPrompt } from '../../src/writer/patch/prompt.ts';
 import { PromptError, canonText, type WriterAssignmentData } from '../../src/writer/prompt.ts';
 import { sha256Hex } from '../../src/util/hash.ts';
+import { textOf } from './textView.ts';
 
 const SITE = resolve(import.meta.dirname, '..', '..', '..');
 const REPO = resolve(SITE, '..');
@@ -61,8 +62,8 @@ describe('buildPatchPrompt — one prefix, one chapter at a time', () => {
     const root = tempBook();
     write(root, 12, 'Глава двенадцать', BLOCKS);
     write(root, 13, 'Глава тринадцать', BLOCKS);
-    const one = buildPatchPrompt({ bookRoot: root, chapter: 12, assignment: assignment(12) });
-    const two = buildPatchPrompt({ bookRoot: root, chapter: 13, assignment: assignment(13) });
+    const one = buildPatchPrompt({ bookRoot: root, chapter: 12, own: textOf(root)(12), assignment: assignment(12) });
+    const two = buildPatchPrompt({ bookRoot: root, chapter: 13, own: textOf(root)(13), assignment: assignment(13) });
 
     expect(one.system).toBe(two.system);
     expect(one.prefixSha256).toBe(two.prefixSha256);
@@ -90,7 +91,7 @@ describe('buildPatchPrompt — one prefix, one chapter at a time', () => {
   it('prints every block with its id, and the ids are the chapter’s own', () => {
     const root = tempBook();
     const text = write(root, 12, 'Глава двенадцать', BLOCKS);
-    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, assignment: assignment(12) });
+    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, own: textOf(root)(12), assignment: assignment(12) });
     const parsed = parseChapter(12, text);
 
     expect(prompt.blocks).toEqual(parsed.blocks.map((block) => ({ id: block.id, text: block.text })));
@@ -108,7 +109,7 @@ describe('buildPatchPrompt — one prefix, one chapter at a time', () => {
     write(root, 11, 'Глава одиннадцать', ['СОСЕД-МАРКЕР до: этого текста в промпте быть не должно.']);
     write(root, 12, 'Глава двенадцать', BLOCKS);
     write(root, 13, 'Глава тринадцать', ['СОСЕД-МАРКЕР после: этого текста в промпте быть не должно.']);
-    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, assignment: assignment(12) });
+    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, own: textOf(root)(12), assignment: assignment(12) });
     expect(`${prompt.system}\n${prompt.user}`).not.toContain('СОСЕД-МАРКЕР');
     expect(prompt.user).toContain('Абзацы этой главы');
   });
@@ -116,7 +117,7 @@ describe('buildPatchPrompt — one prefix, one chapter at a time', () => {
   it('states the protocol’s own bounds in the prefix', () => {
     const root = tempBook();
     write(root, 12, 'Глава двенадцать', BLOCKS);
-    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, assignment: assignment(12) });
+    const prompt = buildPatchPrompt({ bookRoot: root, chapter: 12, own: textOf(root)(12), assignment: assignment(12) });
     expect(prompt.system).toContain('"mode":"patch"');
     expect(prompt.system).toContain('до 8');
     expect(prompt.system).toContain('2000');
@@ -127,9 +128,9 @@ describe('buildPatchPrompt — one prefix, one chapter at a time', () => {
 
   it('refuses a chapter with no prose to patch', () => {
     const root = tempBook();
-    expect(() => buildPatchPrompt({ bookRoot: root, chapter: 12, assignment: assignment(12) })).toThrowError(PromptError);
+    expect(() => buildPatchPrompt({ bookRoot: root, chapter: 12, own: textOf(root)(12), assignment: assignment(12) })).toThrowError(PromptError);
     write(root, 12, 'Глава двенадцать', BLOCKS);
     writeFileSync(join(root, 'manuscript', 'ch01.md'), 'Я вошёл в пустую комнату. Её освещал яркий свет.');
-    expect(() => buildPatchPrompt({ bookRoot: root, chapter: 1, assignment: assignment(1) })).toThrowError(PromptError);
+    expect(() => buildPatchPrompt({ bookRoot: root, chapter: 1, own: textOf(root)(1), assignment: assignment(1) })).toThrowError(PromptError);
   });
 });

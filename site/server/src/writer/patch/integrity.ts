@@ -2,10 +2,10 @@
  * Narrative integrity after a patch (BOOK-173 §3) — **no model**, and no judgement a test
  * cannot pin. Three checks, each with a closed rule:
  *
- *  · **neighbours** — patch mode writes one file, so neighbours cannot move; yet the prompt was
- *    built from them as they were, and a neighbour can land between build and `land`. Hashes,
- *    not a reading: re-read and compare (`PATCH_NEIGHBOUR_MOVED`, park, do not land). This is
- *    the one function here that touches the disk, and `applyPatch` never calls it.
+ *  · **neighbours** — patch mode touches one chapter, so neighbours cannot move; yet the prompt
+ *    was built from them as they were, and a neighbour can land between build and `land`. Hashes,
+ *    not a reading: re-read the rows and compare (`PATCH_NEIGHBOUR_MOVED`, park, do not land).
+ *    The lookup is injected, so this module reads no file and no database of its own.
  *  · **dangling references** — a block that opens on «Он …» after its antecedent was deleted is
  *    a chapter a gate would read as prose and a reader as a hole. The token sets are closed and
  *    exported, so the test pins them: a wider heuristic is a new decision, not a tweak.
@@ -14,11 +14,10 @@
  *    therefore never a patch: the model answers `mode:"rewrite"` and says why.
  */
 
-import { readFileSync } from 'node:fs';
-
 import { TOTAL_CHAPTERS, isChapterNumber } from '@book/shared';
 
-import { chapterPath } from '../../engine/text.ts';
+import type { ChapterTextLookup } from '../prompt.ts';
+import { chapterQuote } from '../prompt.ts';
 import { sha256Hex } from '../../util/hash.ts';
 import type { PatchAnswer, PatchEdit } from './protocol.ts';
 
@@ -180,22 +179,24 @@ export function factsIntact(input: { text: string; patch: PatchAnswer }): FactsR
 
 export type NeighbourDigests = { before: string | null; after: string | null };
 
-function digestOf(bookRoot: string, chapter: number): string | null {
+function digestOf(chapterText: ChapterTextLookup, chapter: number): string | null {
   if (!isChapterNumber(chapter) || chapter < 1 || chapter > TOTAL_CHAPTERS) return null;
-  try {
-    return sha256Hex(readFileSync(chapterPath(bookRoot, chapter), 'utf8'));
-  } catch {
-    return null;
-  }
+  const view = chapterText(chapter);
+  if (!view.exists) return null;
+  return sha256Hex(chapterQuote(view));
 }
 
 /** The neighbours as they were when the prompt was built: two hashes, no second copy of prose. */
-export function neighbourDigests(bookRoot: string, chapter: number): NeighbourDigests {
-  return { before: digestOf(bookRoot, chapter - 1), after: digestOf(bookRoot, chapter + 1) };
+export function neighbourDigests(chapterText: ChapterTextLookup, chapter: number): NeighbourDigests {
+  return { before: digestOf(chapterText, chapter - 1), after: digestOf(chapterText, chapter + 1) };
 }
 
 /** Re-read before landing: a moved neighbour means the patch was written against another book. */
-export function neighbourMoved(bookRoot: string, chapter: number, recorded: NeighbourDigests): boolean {
-  const now = neighbourDigests(bookRoot, chapter);
+export function neighbourMoved(
+  chapterText: ChapterTextLookup,
+  chapter: number,
+  recorded: NeighbourDigests,
+): boolean {
+  const now = neighbourDigests(chapterText, chapter);
   return now.before !== recorded.before || now.after !== recorded.after;
 }

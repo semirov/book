@@ -81,7 +81,8 @@ describe('the ledger footprint', () => {
         `(${String(CHAPTERS)} chapters × ${String(BLOCKS)} blocks × ${String(BLOCK_CHARS)} chars)`,
     );
     // The span repeats the text and adds its envelope; the checkpoint holds the text once per
-    // block. A whole-chapter snapshot per revision would dwarf both.
+    // block. A whole-chapter copy **as ledger rows** per revision would dwarf both — which is why
+    // the chapter's copy lives in the `versions/` store as a file (BOOK-187), not in a table.
     expect(spansBytes).toBeGreaterThan(10_000);
     expect(spansBytes).toBeLessThan(BLOCKS * BLOCK_CHARS * 8);
     // One copy of the prose per block (UTF-8 Cyrillic is 2 bytes a character), and never more

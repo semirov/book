@@ -33,7 +33,7 @@ import type { EngineAlert } from '../../engine/types.ts';
 import { recordAlertRow } from '../../engine/alerts.ts';
 import { getMeta, setMeta } from '../../engine/rows.ts';
 import { parseGateAnswer, buildGatePrompt } from '../gates.ts';
-import { readChapter } from '../../engine/text.ts';
+import { readChapterRows, textViewsOf } from '../../engine/text.ts';
 import {
   attachFinding,
   markRechecked,
@@ -135,7 +135,7 @@ export async function runAuditSamples(input: AuditInput): Promise<number> {
   /** The rows this run could not read: the ones a failure alert has not been raised for yet. */
   const failed: string[] = [];
   for (const sample of queue) {
-    const chapter = readChapter(input.bookRoot, sample.chapter);
+    const chapter = readChapterRows(input.db, sample.chapter);
     if (!chapter.exists) {
       input.log(`[writer] аудит ${sample.changeId}: текста главы ${String(sample.chapter)} нет — образец остаётся в очереди`);
       recordSample(input.db, sample.planRowId, 'error', sampleAt(input.now()));
@@ -143,12 +143,17 @@ export async function runAuditSamples(input: AuditInput): Promise<number> {
       failed.push(sample.planRowId);
       continue;
     }
+    // The sample is a gate's own reading, so it quotes the rows exactly as a gate does: the
+    // chapter that landed, and its neighbours through the same lookup (`POST /internal/text`).
+    const views = new Map(textViewsOf(input.db, [sample.chapter - 1, sample.chapter, sample.chapter + 1]).map((view) => [view.n, view]));
+    const chapterText = (n: number) => views.get(n) ?? { n, title: null, exists: false, basis: false, chars: 0, text: '' };
     const prompt = buildGatePrompt({
       bookRoot: input.bookRoot,
       role: 'editor',
       chapter: sample.chapter,
       assignment: { chapter: sample.chapter, pass: 'audit-sample', role: 'editor', cycle: 0, source: 'audit-sample' },
       landedText: chapter.text,
+      chapterText,
       indexSlice: null,
       refusal: null,
     });

@@ -56,7 +56,8 @@
 
 /* The word's three facts: 12 px mono, lowercase, one per line, 2 px apart (no labels, no
    table, no uppercase). The first line is the hand and takes the book's ink; the rest are the
-   quiet facts. The gloss is the label register in `--ink-3`, 6 px above the block's own end. */
+   quiet facts. The gloss is one sentence of prose under them — serif 15, 6 px above the
+   block's own end. */
 .prov-facts {
   display: grid;
   gap: 2px;
@@ -82,10 +83,11 @@
 .prov-loss {
   color: var(--ink-3);
 }
+/* The gloss explains a word in a sentence: prose, serif 15 (§2). */
 .prov-gloss {
   margin: 6px 0 0;
-  font-family: var(--ui);
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.35;
   color: var(--ink-3);
 }
