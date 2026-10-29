@@ -9,6 +9,7 @@ import { migrateV25 } from './migrateV25.ts';
 import { migrateV26 } from './migrateV26.ts';
 import { migrateV27 } from './migrateV27.ts';
 import { migrateV28 } from './migrateV28.ts';
+import { migrateV29 } from './migrateV29.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -315,21 +316,20 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
     },
   },
-  // BOOK-176 (BOOK-DOC-69): the span ledger, the mirror and a legacy span per live block, from
-  // the same constants a fresh install uses. Idempotent to the statement.
+  // BOOK-176 (BOOK-DOC-69): the span ledger and the mirror, from the constants a fresh install uses.
   { to: 22, up: migrateV22 },
   // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
   { to: 23, up: migrateV23 },
-  // The sentence (ADR-044, BOOK-DOC-74): `migrateV25.ts` segments the live book and re-anchors the
-  // filings. 25, not 24: v24 is ADR-043's, still to be written — a gap in the cursor is fine.
+  // The sentence (ADR-044, BOOK-DOC-74). 25, not 24: v24 is ADR-043's, still to be written.
   { to: 25, up: migrateV25 },
   // BOOK-189: the push tables — subscriptions, the claim and the outbox (26: 24 stays ADR-043's).
   { to: 26, up: migrateV26 },
   // BOOK-174: the chain and the counters (27 — v24 is ADR-043's, and the cursor has passed it).
   { to: 27, up: migrateV27 },
-  // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the redacted transcripts and
-  // the block deltas — additive, and a fresh install runs it too, so a v27 volume gets the seeded rows.
+  // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the transcripts, the deltas.
   { to: 28, up: migrateV28 },
+  // BOOK-185 stage 3 (BOOK-DOC-77, ADR-040 §2.1): `migrateV29.ts` — runs, facts, edges, threads.
+  { to: 29, up: migrateV29 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

@@ -14,10 +14,17 @@
  */
 
 import type { Db } from '../db/db.ts';
+import { FACT_KINDS } from '../db/ledgerTables.ts';
 import { toIso } from '../util/time.ts';
 import { ulid } from '../util/ulid.ts';
 
-export type FactKind = 'document' | 'decision' | 'testimony' | 'erasure' | 'state';
+/**
+ * The ten kind words of `facts` (BOOK-176, widened by BOOK-185): the seven carriers the graph
+ * extraction fills and the three the ledger shipped with. Declared in `ledgerTables.ts` because
+ * the table's CHECK reads the same list — a second union here would let a TypeScript type and the
+ * database disagree about what a fact may be.
+ */
+export type FactKind = (typeof FACT_KINDS)[number];
 
 export type FactRow = {
   id: string;
@@ -31,6 +38,14 @@ export type FactRow = {
   invalidated_at: string | null;
   invalidated_by_change: string | null;
   created_at: string;
+  /** BOOK-185: the normalised identity (`date:2065-09-14`); `''` for a fact nobody keyed. */
+  key: string;
+  /** BOOK-185: the sentence that first asserts it; `''` when it was never given one. */
+  sentence: string;
+  /** BOOK-DOC-77: the run that wrote it, `''` when the ledger itself did. */
+  extracted_by: string;
+  /** BOOK-DOC-77: the run that retired it; null while the row is the graph. */
+  superseded_by_extraction: string | null;
 };
 
 export type AssertFactInput = {
@@ -44,6 +59,10 @@ export type AssertFactInput = {
    * a fact with no live sentence is still a fact, it just cannot be quoted from the text.
    */
   sentenceId?: string | null;
+  /** BOOK-185: the normalised identity (`date:2065-09-14`); '' for a fact nobody keyed. */
+  key?: string;
+  /** BOOK-185: the sentence that first asserts it. */
+  sentence?: string;
   /** Defaults to `chapter`: a fact is true from the chapter that states it. */
   validFromChapter?: number;
   id?: string;
@@ -54,6 +73,10 @@ export type AssertFactInput = {
  * The facts true as of a chapter. `LEFT JOIN changes` keeps a fact whose invalidating change
  * row is gone (it cannot be, `changes` is the ledger too, but a join that dropped it would make
  * a fact silently valid forever). Ordered by arrival, so a reader sees the world build up.
+ *
+ * A row a later extraction run retired (`superseded_by_extraction`) is history, not the graph
+ * (BOOK-DOC-77 §5): it stays in the table for the audit and is never the answer to «what is
+ * true». The filter is here, in the one read the ledger exposes, so no caller can forget it.
  */
 export function factAsOf(db: Db, chapter: number): FactRow[] {
   return db
@@ -61,6 +84,7 @@ export function factAsOf(db: Db, chapter: number): FactRow[] {
       `SELECT f.* FROM facts f LEFT JOIN changes c ON c.id = f.invalidated_by_change
         WHERE f.valid_from_chapter <= ?
           AND (f.invalidated_by_change IS NULL OR c.chapter > ?)
+          AND f.superseded_by_extraction IS NULL
         ORDER BY f.valid_from_chapter, f.id`,
     )
     .all(chapter, chapter) as FactRow[];
@@ -72,8 +96,9 @@ export function assertFact(db: Db, input: AssertFactInput): string {
   db.prepare(
     `INSERT INTO facts
        (id, chapter, kind, statement, term, sentence_id, valid_from_chapter, invalidated_at,
-        invalidated_by_change, created_at)
-     VALUES (@id, @chapter, @kind, @statement, @term, @sentenceId, @validFrom, NULL, NULL, @createdAt)`,
+        invalidated_by_change, created_at, key, sentence)
+     VALUES (@id, @chapter, @kind, @statement, @term, @sentenceId, @validFrom, NULL, NULL, @createdAt,
+             @key, @sentence)`,
   ).run({
     id,
     chapter: input.chapter,
@@ -83,6 +108,8 @@ export function assertFact(db: Db, input: AssertFactInput): string {
     sentenceId: input.sentenceId ?? null,
     validFrom: input.validFromChapter ?? input.chapter,
     createdAt: input.at ?? toIso(Date.now()),
+    key: input.key ?? '',
+    sentence: input.sentence ?? '',
   });
   return id;
 }

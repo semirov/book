@@ -49,7 +49,7 @@ describe('migrate — BOOK-187 (v28): the book’s own state', () => {
   it('creates the four tables, their indexes and the two frame rows on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(28);
+    expect(SCHEMA_VERSION).toBe(29);
 
     for (const table of ['book_frame', 'writer_state', 'pass_transcripts', 'block_deltas']) {
       expect(columns(db, table).length, table).toBeGreaterThan(0);
@@ -85,7 +85,7 @@ describe('migrate — BOOK-187 (v28): the book’s own state', () => {
     ).run(FRAME_FIRST_SENTENCE);
     asV27(db);
 
-    expect(migrate(db)).toEqual({ from: 27, to: 28 });
+    expect(migrate(db)).toEqual({ from: 27, to: SCHEMA_VERSION });
     expect(columns(db, 'block_deltas')).toEqual(
       expect.arrayContaining(['block_uid', 'from_ver', 'to_ver', 'chapter', 'rev', 'ops', 'old_len', 'new_len', 'source', 'hseq', 'at']),
     );
@@ -101,7 +101,7 @@ describe('migrate — BOOK-187 (v28): the book’s own state', () => {
     migrate(db);
     const before = frameRows(db);
     // A second run, and a direct seed, both leave the rows exactly as they were.
-    expect(migrate(db)).toEqual({ from: 28, to: 28 });
+    expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     seedFrame(db, '2030-01-01T00:00:00Z');
     expect(frameRows(db)).toEqual(before);
     db.close();

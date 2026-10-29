@@ -6,7 +6,9 @@
  *
  * What the ledger is: the book's storage moves from «the block's text is the truth» to «every
  * change of a block is one span that can be undone» — `block_versions.spans` holds the spans
- * of a version, `facts` holds the world's statements with their lifetime, `threads` and
+ * of a version, `facts` holds the world's statements with their lifetime, `fact_dependency`
+ * holds the registered claim that one fact is the reason another holds (BOOK-185),
+ * `extraction_runs` is the audit of the model pass that wrote them, `threads` and
  * `thread_events` hold a story line and the state machine it may move through, `mentions` binds
  * a stretch of block text to a fact, a thread or a literal, `literals` is the extracted
  * document/date index, and `blocks_fts` is the full-text mirror of `blocks` the search reads.
@@ -21,29 +23,214 @@
  */
 
 /**
- * The ordinary tables of the ledger, their indexes and the one guard the decision names.
- * Order matters only for readability: `facts` and `threads` come first because `mentions` and
- * `thread_events` reference them; SQLite resolves the references when a row is written.
+ * BOOK-185: the ten kind words a fact may carry. The first seven are the carriers the extraction
+ * stage fills — a date, a document number, a person's name, a term, a promise, a decision, an
+ * absence; the last three are the vocabulary BOOK-176 shipped with and must keep working, because
+ * a row written then is real history. Declared once here: the CHECK below, the boot probe and
+ * migration v29 all read this list.
  */
-export const LEDGER_TABLES_SQL = `
+export const FACT_KINDS = [
+  'document',
+  'date',
+  'name',
+  'term',
+  'promise',
+  'decision',
+  'absence',
+  'testimony',
+  'erasure',
+  'state',
+] as const;
+
+const FACT_KIND_CHECK = FACT_KINDS.map((kind) => `'${kind}'`).join(',');
+
+/**
+ * The columns of `facts` in the order both the fresh install and migration v29 declare them: the
+ * v22 set first, then ADR-044's sentence, then the BOOK-185 and BOOK-DOC-77 columns. `migrateV29`
+ * copies the intersection of this list and the old table's own columns, so the rebuild never
+ * invents a value.
+ */
+export const FACTS_COLUMNS = [
+  'id',
+  'chapter',
+  'kind',
+  'statement',
+  'term',
+  'sentence_id',
+  'valid_from_chapter',
+  'invalidated_at',
+  'invalidated_by_change',
+  'created_at',
+  'key',
+  'sentence',
+  'extracted_by',
+  'superseded_by_extraction',
+] as const;
+
+/**
+ * BOOK-185 / BOOK-DOC-77 — the record of one extraction pass: what was asked (chapter, revision,
+ * text and prompt hashes, model, pass), what came back (`response`, kept verbatim so a run can be
+ * replayed and audited), what it cost and what it produced.
+ *
+ * **Append-only, and that is the design note's §5.** The question's tuple is an index, not a key:
+ * a forced re-ask inserts another row and keeps the previous raw answer, because «supersede, never
+ * overwrite» is about the audit too. A row is never updated in place; reuse reads the **latest**
+ * `status = 'ok'` row for the tuple and answers from it, and the rows a run wrote name their own
+ * run through `extracted_by` / `superseded_by_extraction`.
+ */
+export const EXTRACTION_RUNS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS extraction_runs (
+  id             TEXT PRIMARY KEY,
+  chapter        INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
+  rev            INTEGER NOT NULL,
+  text_sha       TEXT NOT NULL,                     -- the chapter text the model read
+  prompt_sha     TEXT NOT NULL,                     -- the bundle's own version
+  model          TEXT NOT NULL,
+  pass           TEXT NOT NULL CHECK (pass IN ('extract','recall')),
+  at             TEXT NOT NULL,
+  status         TEXT NOT NULL CHECK (status IN ('ok','refused','error')),
+  request_sha    TEXT NOT NULL DEFAULT '',
+  response       TEXT NOT NULL DEFAULT '',           -- the raw model answer, for replay and audit
+  tokens_in      INTEGER NOT NULL DEFAULT 0,
+  tokens_out     INTEGER NOT NULL DEFAULT 0,
+  tokens_cached  INTEGER NOT NULL DEFAULT 0,
+  usd            REAL NOT NULL DEFAULT 0,
+  facts          INTEGER NOT NULL DEFAULT 0,          -- counts the validator accepted
+  uses           INTEGER NOT NULL DEFAULT 0,
+  edges          INTEGER NOT NULL DEFAULT 0,
+  threads        INTEGER NOT NULL DEFAULT 0,
+  rejects        TEXT NOT NULL DEFAULT '[]',          -- JSON [{code, item}], never a rewrite
+  error          TEXT
+);
+CREATE INDEX IF NOT EXISTS extraction_runs_chapter ON extraction_runs(chapter, rev);
+CREATE INDEX IF NOT EXISTS extraction_runs_question
+  ON extraction_runs(chapter, rev, text_sha, prompt_sha, model, pass);
+`;
+
+/**
+ * A fact is the world's statement, and BOOK-185 gives it an identity: `key` is the normalised
+ * form the extraction stage derives (`date:2065-09-14`, `document:65-11877-арх`,
+ * `name:ковалев`), and `sentence` is the sentence that first asserts it, so the graph can be read
+ * without re-reading the chapter. Both default to `''`: a row written before v29 was never given
+ * either, and inventing one would be a lie.
+ *
+ * ADR-044's `sentence_id` (v25) stays: the identity of the sentence row the statement is told in,
+ * with no `REFERENCES` clause for the same reason as before (SQLite cannot add one by `ALTER`,
+ * and fresh and migrated installs must match).
+ *
+ * BOOK-DOC-77 adds the provenance: `extracted_by` names the run that wrote the row (`''` on a row
+ * the ledger wrote itself), and `superseded_by_extraction` names the run that retired it. A
+ * superseded row stays — it is what the book believed before that run — but it is no longer the
+ * graph, so every live read excludes it (`factAsOf`, the closure).
+ */
+export const FACTS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS facts (
   id                    TEXT PRIMARY KEY,
   chapter               INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
-  kind                  TEXT NOT NULL CHECK (kind IN ('document','decision','testimony','erasure','state')),
+  kind                  TEXT NOT NULL CHECK (kind IN (${FACT_KIND_CHECK})),
   statement             TEXT NOT NULL,
   term                  TEXT,                       -- canonical surface form used for mention binding
-  -- ADR-044: the sentence that carries this statement. Null for a row written before v25; no
-  -- REFERENCES clause (SQLite cannot add one by ALTER, and fresh and migrated installs must match).
+  -- ADR-044: the sentence that carries this statement. Null for a row written before v25.
   sentence_id           TEXT,
   valid_from_chapter    INTEGER NOT NULL CHECK (valid_from_chapter BETWEEN 1 AND 67),
   invalidated_at        TEXT,                       -- ISO time; null while valid
   invalidated_by_change TEXT REFERENCES changes(id),
-  created_at            TEXT NOT NULL
+  created_at            TEXT NOT NULL,
+  key                   TEXT NOT NULL DEFAULT '',   -- BOOK-185: normalised identity, '' for a pre-v29 row
+  sentence              TEXT NOT NULL DEFAULT '',   -- BOOK-185: the asserting sentence (≤280 chars)
+  extracted_by          TEXT NOT NULL DEFAULT '',   -- BOOK-DOC-77: the run that wrote it, '' if none
+  superseded_by_extraction TEXT REFERENCES extraction_runs(id)   -- retired by a later run, never deleted
 );
+`;
+
+/**
+ * The same table under another name — migration v29 builds the new shape beside the old one,
+ * copies, then swaps the names. It deliberately never renames `facts` aside: with foreign keys
+ * enabled SQLite rewrites every child's `REFERENCES` to the renamed table, which would leave
+ * `mentions` and `thread_events` naming a table that no longer exists. Dropping the old table and
+ * renaming the new one in touches no child clause on either setting.
+ */
+export function factsTableSql(name: string): string {
+  return FACTS_TABLE_SQL.replace('CREATE TABLE IF NOT EXISTS facts', `CREATE TABLE IF NOT EXISTS ${name}`);
+}
+
+/**
+ * The partial unique index is the one-live-fact-per-key rule: a second assertion of the same
+ * date or document in a later chapter is a `use` mention, not a new fact. An invalidated row and
+ * its live successor coexist — that is what invalidation means — and the empty key of a legacy
+ * row never collides with another empty one.
+ *
+ * It is a statement of its own, not part of `FACTS_INDEXES_SQL`, because it names `key` — a
+ * column a pre-v29 table does not have. The shared ledger text runs on a pre-v22 install *before*
+ * v29 rebuilds the table, and an index over a missing column would fail that boot. A fresh
+ * install reads it from `SCHEMA_SQL`, the upgrade from `migrateV29`, and both end in one shape.
+ */
+export const FACTS_KEY_INDEX_SQL = `
+CREATE UNIQUE INDEX IF NOT EXISTS facts_key_live ON facts(key)
+  WHERE invalidated_at IS NULL AND key <> '';
+`;
+
+export const FACTS_INDEXES_SQL = `
 CREATE INDEX IF NOT EXISTS facts_asof ON facts(valid_from_chapter, invalidated_by_change);
 CREATE INDEX IF NOT EXISTS facts_term ON facts(term);
+`;
+
+export const FACTS_TRIGGER_SQL = `
 CREATE TRIGGER IF NOT EXISTS facts_no_delete BEFORE DELETE ON facts
   BEGIN SELECT RAISE(ABORT, 'facts are never deleted (BOOK-DOC-69)'); END;
+`;
+
+/**
+ * BOOK-185 / ADR-040 §2.1 — the edge the closure walks: one registered claim that `"from"` is the
+ * reason `"to"` holds, told in a chapter, in one of five world kinds. `stance` is how the reader
+ * learns it, not what holds (ADR-040 §2.2), so it is a second column rather than a sixth kind. An
+ * edge is retired through `superseded_by`, never deleted — there is no delete trigger because
+ * deleting an edge loses no world statement, and the accept path retires instead.
+ *
+ * The end columns are ADR-040's `"from"`/`"to"`, quoted because `from` is a keyword: the doctor's
+ * closure probe (`doctor/inspect.ts`) reads exactly those two names, and the recursive walk in
+ * `graph/closure.ts` is written against them.
+ *
+ * ADR-040's `line TEXT REFERENCES lanes(line)` names the book's eight narrative lanes. This
+ * repository's `lane` table is the single-row FIFO mutex (§6A.3), not that vocabulary: an FK to it
+ * would be satisfied by every row at once and would lie about what the column means. `line` is
+ * therefore plain text — the lane's own key, once that table exists — and no reference is
+ * declared until it can be truthful.
+ */
+export const FACT_DEPENDENCY_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS fact_dependency (
+  id            TEXT PRIMARY KEY,
+  "from"        TEXT NOT NULL REFERENCES facts(id),         -- the reason
+  "to"          TEXT NOT NULL REFERENCES facts(id),         -- what holds because of it
+  chapter       INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),   -- where it is TOLD
+  kind          TEXT NOT NULL CHECK (kind IN ('cause','promise','document','absence','decision')),
+  stance        TEXT NOT NULL DEFAULT 'plain' CHECK (stance IN ('plain','revealed','concealed')),
+  line          TEXT,                                       -- the lane's key; null outside the lanes
+  statement     TEXT NOT NULL,                              -- ≤200 chars by convention, not enforced
+  origin        TEXT NOT NULL CHECK (origin IN ('registered','inferred')),
+  step_id       TEXT NOT NULL,
+  rev           INTEGER NOT NULL,
+  superseded_by TEXT REFERENCES fact_dependency(id),        -- retired, never deleted
+  at            TEXT NOT NULL,
+  extracted_by  TEXT NOT NULL DEFAULT '',                   -- BOOK-DOC-77: the run that wrote it
+  retired_by_run TEXT REFERENCES extraction_runs(id),       -- BOOK-DOC-77: the run that retired it
+  UNIQUE ("from", "to", kind, chapter)
+);
+CREATE INDEX IF NOT EXISTS fact_dependency_from ON fact_dependency("from", chapter);
+CREATE INDEX IF NOT EXISTS fact_dependency_to   ON fact_dependency("to", chapter);
+`;
+
+/**
+ * The ordinary tables of the ledger, their indexes and the one guard the decision names.
+ * Order matters only for readability: `extraction_runs` comes first (both `facts` and
+ * `fact_dependency` reference it), then `facts` and `threads`, which `fact_dependency`,
+ * `mentions` and `thread_events` reference; SQLite resolves the references when a row is written.
+ * Every statement is `IF NOT EXISTS`, so a reset restoring the guard re-runs this text.
+ */
+export const LEDGER_TABLES_SQL = `
+${EXTRACTION_RUNS_TABLE_SQL}
+${FACTS_TABLE_SQL}${FACTS_INDEXES_SQL}${FACTS_TRIGGER_SQL}
+${FACT_DEPENDENCY_TABLE_SQL}
 
 CREATE TABLE IF NOT EXISTS threads (
   id                TEXT PRIMARY KEY,
@@ -51,7 +238,8 @@ CREATE TABLE IF NOT EXISTS threads (
   direction         TEXT NOT NULL CHECK (direction IN ('forward','backward')),
   opened_at_chapter INTEGER NOT NULL CHECK (opened_at_chapter BETWEEN 1 AND 67),
   closed_at_chapter INTEGER CHECK (closed_at_chapter BETWEEN 1 AND 67),
-  state             TEXT NOT NULL CHECK (state IN ('opened','advanced','complicated','closed'))
+  state             TEXT NOT NULL CHECK (state IN ('opened','advanced','complicated','closed')),
+  extracted_by      TEXT NOT NULL DEFAULT ''     -- BOOK-DOC-77: the run that opened it, '' if none
 );
 CREATE TABLE IF NOT EXISTS thread_events (
   id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,7 +320,9 @@ END;
 
 /** The ledger tables the boot probe insists on: a missing one is a schema that lies. */
 export const LEDGER_REQUIRED_TABLES = [
+  'extraction_runs',
   'facts',
+  'fact_dependency',
   'threads',
   'thread_events',
   'mentions',

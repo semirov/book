@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 28** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 29** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -30,6 +30,10 @@
  * disposition chain to the comment and its counters. BOOK-187 adds the book's own state (v28 —
  * ADR-043 G6, ADR-041 §2.2): the canon frame, the lane's counters, the redacted transcripts and
  * the block deltas live in `bookStateTables.ts` (`V28_TABLES_SQL`), and the text lives in rows.
+ * BOOK-185 stage 3 (v29) widens `facts` to the ten kind words with its own identity (`key`), its
+ * asserting `sentence` and the run that wrote or retired it, and adds `fact_dependency` (ADR-040
+ * §2.1) and `extraction_runs` (BOOK-DOC-77); `threads` names the run that opened it.
+ *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
  * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
@@ -43,7 +47,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
@@ -53,7 +57,7 @@ export const SCHEMA_VERSION = 28;
  */
 import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { V28_REQUIRED_TABLES, V28_TABLES_SQL } from './bookStateTables.ts';
-import { LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
+import { FACTS_KEY_INDEX_SQL, LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
 import { SENTENCE_REQUIRED_TABLES, SENTENCE_TABLES_SQL } from './sentenceTables.ts';
 
@@ -328,7 +332,7 @@ ${PASS_SPEND_TABLE_SQL}
 
 ${COMMENT_ATTEMPTS_TABLE_SQL}
 
-${LEDGER_TABLES_SQL}${LEDGER_FTS_SQL}   -- BOOK-176 / BOOK-DOC-69: the ledger and its full-text mirror
+${LEDGER_TABLES_SQL}${FACTS_KEY_INDEX_SQL}${LEDGER_FTS_SQL}   -- BOOK-176/BOOK-185: the ledger, its key rule and the full-text mirror
 ${V28_TABLES_SQL}   -- BOOK-187 (v28): frame, lane state, redacted transcripts, deltas
 
 ${SENTENCE_TABLES_SQL}                  -- ADR-044: the sentence rows and their touch ledger

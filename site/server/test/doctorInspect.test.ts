@@ -372,9 +372,11 @@ describe('inspectDataDir', () => {
 });
 
 describe('inspectGraph', () => {
-  it('is not shipped on this schema', () => {
+  it('is shipped on this schema, with an empty graph and no closure to time', () => {
     const fixture = framed();
-    expect(inspectGraph(fixture.db)).toEqual({ shipped: false });
+    // BOOK-185 stage 3 (v29): the edge table is in this image, so the answer is «shipped» even
+    // on a volume whose graph has not been built yet — the CLI then reports the counts as zero.
+    expect(inspectGraph(fixture.db)).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null });
   });
 
   it('counts facts, threads and edges and times the closure once stage 3 is in the image', () => {

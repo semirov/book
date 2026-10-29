@@ -2,9 +2,10 @@
  * The fact-shaped recogniser (ADR-043 D4, L8; BOOK-176).
  *
  * It answers one question and only one: **does this text contain a carrier a machine can be
- * certain about?** A full date, an `n/m` document number, a `№` reference. Nothing softer — a
- * name, a term, an implied decision — because a recogniser that guesses is worse than a counted
- * gap: the land refuses on what it can prove, and the gap counts what it cannot.
+ * certain about?** A full date, a day and a month with no year (`19.02`, ADR-043 §2.2), an `n/m`
+ * document number, a `№` reference. Nothing softer — a name, a term, an implied decision —
+ * because a recogniser that guesses is worse than a counted gap: the land refuses on what it can
+ * prove, and the gap counts what it cannot.
  *
  * A recognised token is **not** a fact. It is the floor: the text of a chapter may not contain
  * one without a fact mention covering it (`FACT_SHAPED_UNBOUND`), which is how a chapter full of
@@ -27,6 +28,20 @@ export type FactShapedToken = {
 /** `14.09.2065`, `14/09/2065`, `2065-09-14`. */
 const DOTTED_DATE_RE = /\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b/gu;
 const ISO_DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b/gu;
+/**
+ * `19.02`, `20.02` — a day and a month as the office stamps them (ADR-043 §2.2 names `19.02` as a
+ * date example). A full date that starts at the same place is longer and wins the overlap rule
+ * below, so `14.09.2065` stays one token; this form is what is left when the year is not written.
+ */
+const MONTH_DAY_RE = /(?<!\d)(\d{1,2})\.(\d{1,2})(?!\d)/gu;
+
+/**
+ * Contexts where `n.m` is a clause, an article or a figure rather than a date: «пунктом 6.2»,
+ * «ст. 4.2», «рис. 3.1», «форма 2.1». A decimal with a percent sign is not a date either.
+ */
+const NOT_A_DATE_BEFORE = /(?:пункт\p{L}*|пп?\.|ст\.|ч\.|раздел\p{L}*|форм\p{L}*|рис\.)\s*$/iu;
+const PERCENT_AFTER = /^\s*%/u;
+
 /** `65/11877/арх` — a document number as the book writes it. */
 const DOCUMENT_RE = /(\d{1,4})\s*\/\s*(\d{1,6})\s*\/\s*([A-Za-zА-Яа-яЁё]+)/gu;
 /** `№ 1136`, `№ 44/17-ДОП`. */
@@ -45,6 +60,15 @@ function collect(text: string): RawHit[] {
   for (const match of text.matchAll(DOTTED_DATE_RE)) hits.push({ raw: match[0], kind: 'date', index: match.index });
   for (const match of text.matchAll(DOCUMENT_RE)) hits.push({ raw: match[0], kind: 'document', index: match.index });
   for (const match of text.matchAll(REFERENCE_RE)) hits.push({ raw: match[0], kind: 'reference', index: match.index });
+  for (const match of text.matchAll(MONTH_DAY_RE)) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    if (day < 1 || day > 31 || month < 1 || month > 12) continue;
+    const before = text.slice(Math.max(0, match.index - 16), match.index);
+    if (NOT_A_DATE_BEFORE.test(before)) continue;
+    if (PERCENT_AFTER.test(text.slice(match.index + match[0].length))) continue;
+    hits.push({ raw: match[0], kind: 'date', index: match.index });
+  }
   // Earliest first, longest at one position; whatever overlaps an accepted token loses, so
   // `№ 44/17-ДОП` is one reference and never a reference plus a fragment of itself.
   hits.sort((left, right) => left.index - right.index || right.raw.length - left.raw.length);
