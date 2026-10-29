@@ -71,10 +71,20 @@ export type TriageVerdictResult =
 
 export type TriageFailResult = { tries: number; nextAt: string | null; cap: boolean; already?: true };
 
+/** What one failed call cost, when the provider reported it: the money is still spent. */
+export type TriageFailSpend = TriageSpendInput;
+
 export type FilingTriage = {
   next(session: string): TriageNextResult;
   verdict(input: { commentId: string; n: number; verdict: unknown; spend: TriageSpendInput }): TriageVerdictResult;
-  fail(input: { commentId: string; n: number; code: string; detail?: string }): TriageFailResult;
+  fail(input: {
+    commentId: string;
+    n: number;
+    code: string;
+    detail?: string;
+    /** AC5: a call that failed still cost money, and the ledger is where a day is bounded. */
+    spend?: TriageFailSpend;
+  }): TriageFailResult;
 };
 
 /** The anchor paragraph and its neighbours, read from rows and bounded — never a manuscript. */
@@ -207,7 +217,13 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
     })();
   }
 
-  function fail(input: { commentId: string; n: number; code: string; detail?: string }): TriageFailResult {
+  function fail(input: {
+    commentId: string;
+    n: number;
+    code: string;
+    detail?: string;
+    spend?: TriageFailSpend;
+  }): TriageFailResult {
     const atMs = deps.clock.now();
     const at = iso(atMs);
     return db.transaction((): TriageFailResult => {
@@ -228,6 +244,21 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       });
       if (reported) {
         return { tries: attempt.tries, nextAt: attempt.next_at, cap: attempt.tries >= TRIAGE_MAX_TRIES, already: true };
+      }
+      // The call happened and the provider priced it: the row is the try's own pass id, so a
+      // retried report cannot charge the same call twice (`INSERT OR IGNORE`).
+      if (input.spend !== undefined) {
+        const chapter = (db.prepare('SELECT chapter FROM comments WHERE id = ?').get(input.commentId) as
+          | { chapter: number }
+          | undefined)?.chapter;
+        if (chapter !== undefined) {
+          chargeTriageSpend(db, {
+            chapter,
+            passId: `triage:${input.commentId}:${String(input.n)}:${String(attempt.tries)}`,
+            at,
+            ...input.spend,
+          });
+        }
       }
       appendCommentEvent(db, input.commentId, 'triage.failed', at, {
         code: input.code.slice(0, 60),
@@ -282,6 +313,8 @@ const triageFailBody = z.object({
   /** An engine code (`PROVIDER_TIMEOUT`, `READING_MALFORMED`, `INTENT_SHAPE`), never prose. */
   code: z.string().min(1).max(60),
   detail: z.string().max(400).optional(),
+  /** AC5: present when the provider reported usage — a failed call is money all the same. */
+  spend: triageSpendBody.optional(),
 });
 
 /** The three routes, registered by `buildControl` under the same bearer guard as every other. */

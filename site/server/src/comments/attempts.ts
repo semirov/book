@@ -131,6 +131,11 @@ export type DueTriage = {
  * own ledger (`comment_attempts`): a `new` filing with no disposition whose latest attempt is
  * still `submitted`, has no verdict yet, has tries left, is not waiting out a backoff and is not
  * claimed by another writer. Nothing else is armed at posting — this is a query, not a queue.
+ *
+ * The rights door comes first: the query asks only for `rights_verdict = 'CLEAR'`, because a
+ * model read is never bought for a filing Gate B has not cleared (BOOK-61). A flagged row waits
+ * there, on the operator's surface (`feedback.mjs inbox --rights`), and becomes due the moment
+ * the verdict is recorded — never before.
  */
 export function dueTriage(db: Db, now: string, limit = 8): DueTriage[] {
   return db
@@ -139,6 +144,7 @@ export function dueTriage(db: Db, now: string, limit = 8): DueTriage[] {
          FROM comments c
          JOIN comment_attempts a ON a.comment_id = c.id
         WHERE c.status = 'new' AND c.disposition IS NULL
+          AND c.rights_verdict = 'CLEAR'
           AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
           AND a.outcome = 'submitted'
           AND a.verdict IS NULL
@@ -227,17 +233,22 @@ export function latestAttempt(db: Db, commentId: string): AttemptVerdict | undef
 }
 
 /**
- * Is this filing's open attempt out of tries and still unanswered? Then the page says so
+ * Is this filing's attempt out of tries with no placement to show for it? Then the page says so
  * (`attempt: 'failed'`): the row stays `new` and visible as a defect, never silently terminal.
+ *
+ * Two shapes count, both at the cap: an attempt the writer gave up on (`submitted`, no verdict),
+ * and one the applier could not place (settled `held` — a corrupt reading, a gate that never
+ * cleared). A held attempt below the cap is a gate's own hold and says nothing about triage.
  */
 export function triageAttemptFailed(db: Db, commentId: string): boolean {
   const row = db
     .prepare(
-      `SELECT tries, verdict FROM comment_attempts WHERE comment_id = ? AND outcome = 'submitted'
+      `SELECT tries, verdict, outcome FROM comment_attempts WHERE comment_id = ?
         ORDER BY n DESC LIMIT 1`,
     )
-    .get(commentId) as { tries: number; verdict: string | null } | undefined;
-  return row !== undefined && row.verdict === null && row.tries >= TRIAGE_MAX_TRIES;
+    .get(commentId) as { tries: number; verdict: string | null; outcome: string | null } | undefined;
+  if (row === undefined || row.tries < TRIAGE_MAX_TRIES) return false;
+  return row.outcome === 'held' || row.verdict === null;
 }
 
 /** The comment columns a state is read from; a locked row has no identity of its own. */

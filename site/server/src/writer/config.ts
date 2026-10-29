@@ -65,8 +65,6 @@ export type WriterConfigRedacted = {
   triagePollMs: number;
   /** The reading call's cap: one verdict and one reading, a reasoning call like a gate's. */
   triageTokens: number;
-  /** Calls per attempt before the filing is a visible defect instead of a retry. */
-  triageMaxTries: number;
   engineUrl: string;
   /** The engine's own cap, per request (`WRITER_ENGINE_TIMEOUT_MS`). */
   engineTimeoutMs: number;
@@ -191,7 +189,6 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     // its fifteen minutes; a triage call is a gate-sized answer, never a chapter.
     triagePollMs: integer(env, 'TRIAGE_POLL_MS', 5_000, 100),
     triageTokens: integer(env, 'TRIAGE_MAX_TOKENS', 8_000, 1),
-    triageMaxTries: integer(env, 'TRIAGE_MAX_TRIES', 3, 1),
     engineUrl,
     // The engine's own cap, and 60 s rather than the old 10: the engine is local but it is busy,
     // and on the measured pass (chapter 65) `land` outran 10 s *after* the chapter had landed and

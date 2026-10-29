@@ -88,11 +88,14 @@ export function reopenEscalated(db: Db, at: string): string[] {
     )
     .all() as ReopenRow[];
   for (const row of rows) {
-    // The chain and the decision go; `audit_*` is gate C's own answer and stays.
+    // The chain and the decision go; `audit_*` is gate C's own answer and stays. The link to a
+    // change and the receipt go too: an escalated row starts the new path with **no** link, so
+    // `acceptComment` cannot no-op over a change the old door never placed, and the new change
+    // is the only one this filing will ever name.
     db.prepare(
       `UPDATE comments
           SET status = 'new', disposition = NULL, lock = NULL, carrier_kind = NULL, quote_kept = NULL,
-              decided_at = NULL, reason = NULL
+              decided_at = NULL, reason = NULL, change_id = NULL, applied_chapter = NULL, applied_rev = NULL
         WHERE id = ?`,
     ).run(row.id);
     reopenEvent(db, row.id, at);

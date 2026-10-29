@@ -348,7 +348,7 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
           asSaid,
         );
       }
-      // One rung up: the paper it could be, then the words as said, then the author.
+      // One rung up: the paper it could be, then the words as said — the floor.
       return oneRungUp();
     case 'through_paper':
     case 'inadmissible':

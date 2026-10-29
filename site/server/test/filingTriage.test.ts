@@ -16,6 +16,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { readCommentRow } from '../src/comments/repo.ts';
 import { migrateV30 } from '../src/db/migrateV30.ts';
+import { runFeedback } from '../src/feedback/cli.ts';
+import { placeFiling } from '../src/feedback/triageApplier.ts';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   BLOCK_TEXT,
   INTENT,
@@ -134,14 +139,25 @@ describe('a filing moves by itself (BOOK-206)', () => {
 
   it('re-opens an escalated row: the reading is asked, the stored OFF is never rewritten', async () => {
     context = await bootTriage();
-    const { db } = context;
+    const { db, h } = context;
 
     // The owner's row shape (BOOK-206 AC8): a filing the ladder once parked for a person.
     const owner = 'cmt_01M635KZP466CGBC0CKS1NWS4Z';
     seedEscalated(context, owner);
 
+    // An old door could leave a link behind: the receipt and the change must not survive the
+    // re-open, or `acceptComment` would no-op over a change nobody placed (BOOK-206 B2).
+    db.prepare(
+      `INSERT INTO changes (id, kind, chapter, intent, status, anchor, proposed_text, source_comment,
+         source_session, base_rev, base_sha256, base_blocks, scope_hint, premise, enqueued_at)
+       VALUES ('chg_stale_link', 'accepted_comment', 8, 'старое намерение', 'pending', NULL, NULL, NULL,
+         NULL, 1, '', '[]', 'phrase', 0, ?)`,
+    ).run(new Date(h.clock.ms).toISOString());
+    db.prepare(`UPDATE comments SET change_id = 'chg_stale_link', applied_chapter = 8, applied_rev = 1 WHERE id = ?`).run(owner);
+
     // The v30 step re-opens it and arms one submitted attempt — no id is special-cased anywhere.
     migrateV30(db);
+    expect(readCommentRow(db, owner)).toMatchObject({ change_id: null, applied_chapter: null, applied_rev: null });
     expect(readCommentRow(db, owner)).toMatchObject({
       status: 'new',
       disposition: null,
@@ -173,6 +189,71 @@ describe('a filing moves by itself (BOOK-206)', () => {
       disposition: 'as_said',
       audit_verdict: 'OFF',
     });
-    expect(changeOf(db)).toMatchObject({ status: 'pending', source_comment: owner });
+    // The new change is the one this filing names; the stale link is history and was cleared.
+    expect(db.prepare('SELECT status, source_comment FROM changes WHERE source_comment = ?').get(owner)).toEqual({
+      status: 'pending',
+      source_comment: owner,
+    });
+  });
+});
+
+describe('the rights door comes before the model (BOOK-61, BOOK-206 B1)', () => {
+  it('buys no read for a filing Gate B has not cleared, and places it once the verdict lands', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    const id = await context.post();
+    // Gate B has not spoken: a flagged filing waits on the operator's surface, and no model is
+    // paid for it.
+    h.db.prepare(`UPDATE comments SET rights_verdict = NULL WHERE id = ?`).run(id);
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+
+    await context.pulse();
+    expect(context.calls).toHaveLength(0);
+    expect(attemptOf(db, id)).toMatchObject({ tries: 0, verdict: null });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', audit_verdict: null });
+
+    // The clearance is recorded and the very next tick reads it.
+    const dir = mkdtempSync(join(tmpdir(), 'book-triage-rights-'));
+    try {
+      expect(runFeedback(['rights', id, '--verdict', 'CLEAR'], { db, dir, now: h.clock.now, print: () => {} })).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    expect(readCommentRow(db, id)).toMatchObject({ rights_verdict: 'CLEAR' });
+
+    await context.pulse();
+    expect(context.calls).toHaveLength(1);
+    expect(attemptOf(db, id).verdict).not.toBeNull();
+    expect(context.place()).toBe(1);
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'accepted', disposition: 'as_said' });
+    expect(changeOf(db)).toMatchObject({ status: 'pending', source_comment: id });
+  });
+
+  it('parks a row whose reading arrives before the clearance, with one event per attempt', async () => {
+    context = await bootTriage();
+    const { db, h } = context;
+    const id = await context.post();
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+    await context.pulse();
+    // The verdict is stored; the clearance is then withdrawn (a race the production path has:
+    // a row is re-opened by `release` while a reading waits, and its verdict is cleared).
+    h.db.prepare(`UPDATE comments SET rights_verdict = NULL WHERE id = ?`).run(id);
+
+    // The query asks for CLEAR, so this is the race the guard exists for: the applier is asked
+    // about a row whose clearance vanished between the read and the write.
+    const options = { db, emit: () => {}, notify: () => {}, now: h.clock.now };
+    for (let tick = 0; tick < 3; tick += 1) {
+      expect(placeFiling(options, id)).toBe(false);
+    }
+    const waiting = db
+      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.waiting-gate'`)
+      .all(id) as Array<{ meta: string }>;
+    expect(waiting).toHaveLength(1);
+    expect(JSON.parse(waiting[0]!.meta)).toMatchObject({ code: 'RIGHTS_REQUIRED', attempt: 1 });
+    // The attempt stays open for the clearance, and the row is parked six hours ahead.
+    const parked = attemptOf(db, id);
+    expect(parked).toMatchObject({ outcome: 'submitted' });
+    expect(Date.parse(parked.next_at as string) - h.clock.ms).toBe(6 * 60 * 60_000);
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
   });
 });

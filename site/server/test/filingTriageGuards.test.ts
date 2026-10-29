@@ -116,7 +116,7 @@ describe('the applier never guesses (BOOK-206)', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get()).toEqual({ n: 0 });
   });
 
-  it('does not place a filing a gate has not cleared', async () => {
+  it('treats a missing gate C column as a defect, once, and stops the loop (BOOK-206 B2)', async () => {
     context = await bootTriage();
     const { db } = context;
     const id = await context.post();
@@ -125,10 +125,75 @@ describe('the applier never guesses (BOOK-206)', () => {
     // The gates are not this path's to override: without gate C's column, nothing is placed.
     db.prepare('UPDATE comments SET audit_verdict = NULL WHERE id = ?').run(id);
 
-    expect(context.place()).toBe(0);
-    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held' });
+    for (let tick = 0; tick < 3; tick += 1) expect(context.place()).toBe(0);
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: 3 });
     expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.defect'`).get()).toEqual({ n: 1 });
+    // The page names the attempt as failed, and the row claims no reading.
+    expect(toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms).attempt).toBe('failed');
+  });
+
+  it('does not call an acceptance that wrote nothing a placement (BOOK-206 B2)', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+    await context.pulse();
+    // A row that already points at a change: `acceptComment` answers with that id and writes
+    // nothing at all, so `status` stays `new` and no chain is stored.
+    const posted = db.prepare('SELECT block_id, quote, prefix, suffix, base_rev, chapter FROM comments WHERE id = ?').get(id) as {
+      block_id: string | null;
+      quote: string | null;
+      prefix: string | null;
+      suffix: string | null;
+      base_rev: number | null;
+      chapter: number;
+    };
+    db.prepare(
+      `INSERT INTO changes (id, kind, chapter, intent, status, anchor, proposed_text, source_comment,
+         source_session, base_rev, base_sha256, base_blocks, scope_hint, premise, enqueued_at)
+       VALUES ('chg_legacy_link', 'accepted_comment', ?, 'старое намерение', 'pending', ?, NULL, NULL,
+         NULL, ?, '', '[]', 'phrase', 0, ?)`,
+    ).run(
+      posted.chapter,
+      JSON.stringify({ blockIds: posted.block_id === null ? [] : [posted.block_id], quote: posted.quote, prefix: posted.prefix, suffix: posted.suffix }),
+      posted.base_rev ?? 1,
+      context.h.clock.now().toISOString(),
+    );
+    db.prepare('UPDATE comments SET change_id = ? WHERE id = ?').run('chg_legacy_link', id);
+
+    const frames: string[] = [];
+    const notified: string[] = [];
+    const options = {
+      db,
+      emit: (type: string) => frames.push(type),
+      notify: (commentId: string) => notified.push(commentId),
+      now: context.h.clock.now,
+    };
+    expect(placeFiling(options, id)).toBe(false);
+    expect(placeFiling(options, id)).toBe(false);
+    // Nothing was announced — a push here would say «отклонена» for a filing nobody placed.
+    expect(frames).toEqual([]);
+    expect(notified).toEqual([]);
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: 3 });
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.not-placed'`).get()).toEqual({ n: 1 });
+  });
+
+  it('processes a corrupt stored verdict once, and settles it as a defect (BOOK-206 M1)', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+    await context.pulse();
+    // Not an object at all: `safeJson` gives null, and the row must not be retried every second.
+    db.prepare('UPDATE comment_attempts SET verdict = ? WHERE comment_id = ? AND n = 1').run('{not json', id);
+
+    for (let tick = 0; tick < 3; tick += 1) expect(context.place()).toBe(0);
+    expect(attemptOf(db, id)).toMatchObject({ outcome: 'held', tries: 3 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.verdict-invalid'`).get()).toEqual({ n: 1 });
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+    expect(toCommentDto(db, readCommentRow(db, id)!, context.h.clock.ms).attempt).toBe('failed');
   });
 });
 
@@ -185,5 +250,45 @@ describe('a broken call is retried, counted, and shown — never a silent termin
     expect(context.calls).toHaveLength(0);
     expect(attemptOf(db, id)).toMatchObject({ tries: 0, claim_by: null, next_at: null });
     expect(readCommentRow(db, id)).toMatchObject({ status: 'new', disposition: null });
+  });
+});
+
+describe('a failed call is money too (BOOK-206 M3, AC5)', () => {
+  it('charges a call whose answer the engine refused, with the try in the pass id', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    // A well-formed envelope with a reading the parser must refuse: a paper with no carrier.
+    context.script.push(
+      answerOf({ itemId: id } as Call, 'FITS', { rung: 'through_paper', lock: null, intent: INTENT, carrier: null, refusal: null }),
+    );
+
+    await context.pulse();
+    expect(attemptOf(db, id)).toMatchObject({ tries: 1, verdict: null });
+    const spend = db.prepare('SELECT pass_id, usd, tokens_in, tokens_out, model FROM pass_spend').all() as Array<
+      Record<string, unknown>
+    >;
+    // One row, keyed by attempt **and try**, priced by the provider's own usage.
+    expect(spend).toHaveLength(1);
+    expect(spend[0]).toMatchObject({ pass_id: `triage:${id}:1:1` });
+    expect(Number(spend[0]?.usd)).toBeGreaterThan(0);
+    expect(Number(spend[0]?.tokens_in)).toBeGreaterThan(0);
+    // The day's total is the ledger's sum, so the caps see this call.
+    const total = db
+      .prepare('SELECT COALESCE(SUM(usd), 0) AS usd FROM pass_spend WHERE day = ?')
+      .get(new Date(context.h.clock.ms).toISOString().slice(0, 10)) as { usd: number };
+    expect(total.usd).toBeCloseTo(Number(spend[0]?.usd), 6);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 1 });
+  });
+
+  it('charges nothing for a transport failure that reported no usage', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    // The script is empty: the provider throws before any usage exists.
+    await context.pulse();
+    expect(attemptOf(db, id)).toMatchObject({ tries: 1, verdict: null });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get()).toEqual({ n: 0 });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 1 });
   });
 });

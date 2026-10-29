@@ -337,7 +337,15 @@ export async function main(deps: MainDeps = {}): Promise<number> {
   // pause, and triage never touches `writer_state` — a reader's filing does not eat a pass.
   let proseDueAt = now();
   while (!stopping) {
-    const triage = await runTriage({ config, bookRoot, engine, provider, now, log });
+    // A missing prompt file (or any other triage fault) is a line and a pause, never a dead lane:
+    // prose is the writer's job and a filing is not worth stopping it for.
+    let triage: Awaited<ReturnType<typeof runTriage>>;
+    try {
+      triage = await runTriage({ config, bookRoot, engine, provider, now, log });
+    } catch (error) {
+      log(`[writer] триаж: ${error instanceof Error ? error.message : String(error)}`);
+      triage = { triaged: 0, failed: 1, budget: false };
+    }
     if (stopping) break;
     // A paused day buys neither a reading nor a pass, and nothing is lost: the filing stays
     // `new` and the next tick asks again.

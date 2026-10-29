@@ -356,9 +356,10 @@ export type CommentDecisionPayload = {
   chapter: number;
   /**
    * BOOK-206 — the frame carries the answer a filing got, and the removed fifth state is not one
-   * of them: every filing is accepted, refused under a lock, or still waiting (`new`).
+   * of them: every filing is accepted, registered as paperwork, refused under a lock, or still
+   * waiting (`new`). `registered` is the paperwork branch's own word (BOOK-137).
    */
-  status: 'accepted' | 'rejected' | 'expired' | 'quarantined';
+  status: 'accepted' | 'registered' | 'rejected' | 'expired' | 'quarantined';
   reason: string;
   decidedAt: string;
   batchId: string | null;

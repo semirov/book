@@ -16,6 +16,7 @@
  * inside the claim.
  */
 
+import { TRIAGE_MAX_TRIES } from '../comments/attempts.ts';
 import type { PipelineUsage } from './pipeline.ts';
 import { costUsd } from './pipeline.ts';
 import { estimateTriageUsd } from './estimate.ts';
@@ -73,8 +74,9 @@ function failureCodeOf(error: unknown): string {
 
 /**
  * The day's money, before any call: the estimate of one triage call against the engine's own
- * snapshot. An engine that cannot answer is not a licence to spend, and not a refusal either —
- * the guard inside the claim is the authority, so a failed read only means this check is skipped.
+ * snapshot. The guard **inside the claim** is the authority; this is only the writer's own early
+ * refusal, so an engine that cannot answer skips the pre-check (`return true`) and the claim
+ * then decides — a failed read is never treated as an approval, and never as a stop.
  */
 async function budgetAllows(deps: TriageDeps, log: (line: string) => void): Promise<boolean> {
   const estimate = estimateTriageUsd({
@@ -102,7 +104,8 @@ async function budgetAllows(deps: TriageDeps, log: (line: string) => void): Prom
 async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
   const log = deps.log ?? (() => {});
   const prompt = buildTriagePrompt({ bookRoot: deps.bookRoot, ask });
-  const fail = async (code: string, detail?: string): Promise<boolean> => {
+  /** Report a broken call. `spend` is present only when the provider answered with usage. */
+  const fail = async (code: string, detail?: string, spend?: PipelineUsage): Promise<boolean> => {
     log(`[writer] триаж ${ask.commentId} #${String(ask.attempt)}: ${code}`);
     try {
       const result = await deps.engine.failTriage({
@@ -110,9 +113,22 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
         n: ask.attempt,
         code,
         ...(detail === undefined ? {} : { detail }),
+        // AC5: a call that failed the post-check or the recorded-verdict guard still cost money.
+        ...(spend === undefined
+          ? {}
+          : {
+              spend: {
+                model: deps.config.apiModel,
+                tokensIn: Math.max(0, Math.trunc(spend.in)),
+                tokensOut: Math.max(0, Math.trunc(spend.out)),
+                usd: costUsd(deps.config.pipeline.pricing, spend),
+              },
+            }),
       });
       // At the cap the engine raises its own alert; this line is the operator's copy of it.
-      if (result.cap) log(`[writer] триаж ${ask.commentId}: ${String(deps.config.triageMaxTries)} попытки исчерпаны — видимый дефект`);
+      if (result.cap) {
+        log(`[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки исчерпаны — видимый дефект`);
+      }
     } catch (error) {
       log(`[writer] триаж: отказ не записан (${failureCodeOf(error)})`);
     }
@@ -137,11 +153,11 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
   }
 
   const answer = parseAnswer(result.text);
-  if (answer === null) return fail('PROVIDER_SHAPE');
+  if (answer === null) return fail('PROVIDER_SHAPE', undefined, result.usage);
   // A recording filing is never re-judged: the stored verdict travels back with the answer, and
   // a model that changes it is a failed call, not a second judgement.
   if (ask.recordedVerdict !== null && answer.verdict !== ask.recordedVerdict) {
-    return fail('VERDICT_CONFLICT', 'the recorded verdict was changed');
+    return fail('VERDICT_CONFLICT', 'the recorded verdict was changed', result.usage);
   }
 
   const usage: PipelineUsage = result.usage;
@@ -167,7 +183,9 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
   } catch (error) {
     // A transport failure may have stored the answer already: only a refusal is a failed call.
     if (error instanceof EngineRefusalError && !isEngineTransportCode(error.code)) {
-      return fail(error.code, error.message);
+      // The answer reached the engine and was refused (a malformed reading, a locked verdict):
+      // the call is still priced, so its money goes to the ledger with the failure.
+      return fail(error.code, error.message, result.usage);
     }
     log(`[writer] триаж ${ask.commentId}: движок не ответил (${failureCodeOf(error)})`);
     return false;

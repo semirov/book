@@ -11,9 +11,12 @@
  * change or a registered document) or it meets a lock (and is refused with the lock's own
  * clause). `escalated` is not an output of this path at all.
  *
- * Idempotence is the rows, not a flag: the query is `status='new' AND disposition IS NULL`, the
- * first placement writes both, and `acceptComment` no-ops on a `change_id` it already holds — so
- * a second poll, a restarted site or a second process changes nothing.
+ * Idempotence is the rows, not a flag: the query is `status='new' AND disposition IS NULL` with a
+ * verdict and Gate B's clearance, the first placement writes both, and `acceptComment` no-ops on
+ * a `change_id` it already holds — so a second poll, a restarted site or a second process changes
+ * nothing. Every way of *not* placing is bounded too: a gate that has not spoken parks the row for
+ * six hours with one event, and a broken row is settled `held` at the tries cap, so no tick can
+ * re-process the same row once a second.
  */
 
 import type { CommentDecisionPayload, DispositionReport } from '@book/shared';
@@ -21,7 +24,7 @@ import type { CommentDecisionPayload, DispositionReport } from '@book/shared';
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { readQueue } from '../engineState/reader.ts';
 import type { Db } from '../db/db.ts';
-import { latestAttempt } from '../comments/attempts.ts';
+import { TRIAGE_MAX_TRIES, latestAttempt } from '../comments/attempts.ts';
 import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import { acceptComment } from './accept.ts';
 import type { DecisionEmit } from './decisions.ts';
@@ -65,15 +68,17 @@ export function proposalOfReading(reading: TriageReading): DispositionProposal {
  * The filings that have a stored verdict and no placement yet, oldest first.
  *
  * The attempt must still be **open** (`outcome = 'submitted'`): placing settles it, and a row
- * whose attempt was settled without a placement (a corrupt stored reading, a gate that has not
- * spoken) is a visible defect on the page — not a row this tick re-processes once a second.
+ * whose attempt was settled without a placement (a corrupt stored reading, a gate that never
+ * cleared) is a visible defect on the page — not a row this tick re-processes once a second.
+ * Gate B's clearance is asked here as well as in `dueTriage`: a filing whose rights verdict is
+ * missing waits on the operator's surface, not in this query.
  */
 function duePlacements(db: Db, limit: number): string[] {
   return (
     db
       .prepare(
         `SELECT c.id AS id FROM comments c
-          WHERE c.status = 'new' AND c.disposition IS NULL
+          WHERE c.status = 'new' AND c.disposition IS NULL AND c.rights_verdict = 'CLEAR'
             AND EXISTS (
               SELECT 1 FROM comment_attempts a
                WHERE a.comment_id = c.id AND a.verdict IS NOT NULL AND a.outcome = 'submitted'
@@ -84,6 +89,30 @@ function duePlacements(db: Db, limit: number): string[] {
       )
       .all(limit) as Array<{ id: string }>
   ).map((row) => row.id);
+}
+
+/** Six hours: how long a filing waits for a gate to speak before the applier asks again. */
+export const TRIAGE_GATE_WAIT_MS = 6 * 60 * 60_000;
+
+/** One event per attempt: a tick cannot turn a standing fact into a stream of rows. */
+function appendOnce(
+  db: Db,
+  commentId: string,
+  type: string,
+  at: string,
+  meta: { code?: string; attempt: number },
+): void {
+  const prior = db
+    .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = ?`)
+    .all(commentId, type) as Array<{ meta: string | null }>;
+  const seen = prior.some((event) => {
+    try {
+      return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === meta.attempt;
+    } catch {
+      return false;
+    }
+  });
+  if (!seen) appendCommentEvent(db, commentId, type, at, meta);
 }
 
 function queueAhead(db: Db, changeId: string | null): number {
@@ -103,7 +132,8 @@ function nowOf(options: TriageApplierOptions): () => Date {
 function emitDecision(
   options: TriageApplierOptions,
   row: CommentRow,
-  status: CommentDecisionPayload['status'],
+  /** The row's own word after the write: `accepted`, `registered` (paperwork) or `rejected`. */
+  status: 'accepted' | 'registered' | 'rejected',
   report: DispositionReport | null,
   at: string,
 ): void {
@@ -125,29 +155,62 @@ function emitDecision(
 }
 
 /**
+ * Settle an attempt the applier cannot place: one event, `held`, and the tries moved to the cap,
+ * so the row is a visible defect (`attempt: 'failed'`) instead of a row this tick re-processes
+ * every second. Returns nothing — every caller answers `false`.
+ */
+function defect(
+  db: Db,
+  row: CommentRow,
+  attempt: number,
+  at: string,
+  type: string,
+  code: string,
+): void {
+  appendOnce(db, row.id, type, at, { code, attempt });
+  settleAttempt(db, { commentId: row.id, chapter: row.chapter, outcome: 'held', at });
+  db.prepare('UPDATE comment_attempts SET tries = ? WHERE comment_id = ? AND n = ?').run(
+    TRIAGE_MAX_TRIES,
+    row.id,
+    attempt,
+  );
+}
+
+/**
  * Place one filing. Returns whether anything was written, so `poll` can count a tick honestly.
- * A row this function cannot place (a corrupt stored verdict, a gate that has not spoken) is
- * recorded as an event and its attempt settled `held` — the filing stays `new` and visible, and
- * the tick does not retry the same broken row forever.
+ *
+ * Three answers are possible and only one of them is a placement:
+ *
+ *   · a rung — the reading lands (`acceptComment` wrote a change and a chain) or a lock refuses
+ *     the row (`disposeRejection`): the attempt is settled and the frame is announced;
+ *   · a gate that has not spoken — `RIGHTS_REQUIRED`/`QUARANTINED`: **nothing is settled**, one
+ *     `triage.waiting-gate` event is written per attempt and the row is parked for six hours. The
+ *     later clearance re-arms it, because the query asks for `rights_verdict = 'CLEAR'`;
+ *   · a broken row — a corrupt stored verdict, an unreadable reading, `AUDIT_REQUIRED` for an
+ *     answer that was stored as though it had one: one event, `held`, tries at the cap. Visible
+ *     as a defect, never silent, never a loop.
  */
 export function placeFiling(options: TriageApplierOptions, commentId: string): boolean {
   const { db } = options;
-  const at = nowOf(options)().toISOString();
-  const placed = db.transaction((): { row: CommentRow; status: CommentDecisionPayload['status'] } | null => {
+  const nowMs = nowOf(options)().getTime();
+  const at = new Date(nowMs).toISOString();
+  const placed = db.transaction((): { row: CommentRow; status: 'accepted' | 'registered' | 'rejected' } | null => {
     const row = readCommentRow(db, commentId);
     if (row === undefined || row.status !== 'new' || row.disposition !== null) return null;
-    // Only the **latest** attempt is placed: a revision replaced the words and cleared the chain.
     // Only the **latest** attempt is placed, and only while it is still open: a settled attempt
     // was already answered (placed, held or refused) and this tick must not answer it again.
     const attempt = latestAttempt(db, commentId);
     if (attempt === undefined || attempt.outcome !== 'submitted') return null;
+    // A verdict that is not one object is a broken row, not a reason to retry once a second.
     const stored = attempt.verdict === null ? null : safeJson<StoredVerdict>(attempt.verdict);
-    if (stored === null) return null;
+    if (stored === null) {
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', 'VERDICT_UNREADABLE');
+      return null;
+    }
     const verdict = stored.verdict === 'OFF' ? 'OFF' : 'FITS';
     const parsed = parseReadingBlock(stored.reading, verdict);
     if (!parsed.ok) {
-      appendCommentEvent(db, commentId, 'triage.verdict-invalid', at, { code: parsed.code, attempt: attempt.n });
-      settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'held', at });
+      defect(db, row, attempt.n, at, 'triage.verdict-invalid', parsed.code);
       return null;
     }
 
@@ -169,16 +232,36 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
       reason: decision.reason,
       decision,
     });
-    if ('error' in accepted || 'escalated' in accepted) {
-      // A gate that has not spoken is not this path's to answer; the filing keeps its row.
-      appendCommentEvent(db, commentId, 'triage.not-placed', at, {
-        code: 'error' in accepted ? accepted.code ?? 'REFUSED' : 'ESCALATED',
-      });
-      settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'held', at });
+    if ('error' in accepted) {
+      const code = accepted.code ?? 'REFUSED';
+      if (code === 'RIGHTS_REQUIRED' || code === 'QUARANTINED') {
+        // Gate B has not cleared it (or Gate A holds it): a model read was bought for a row the
+        // operator still has to clear, and the answer waits. The attempt stays open, one event
+        // says why, and the row is not asked for again until the six hours pass — or immediately
+        // after the verdict is recorded, because the query reads `rights_verdict`.
+        appendOnce(db, row.id, 'triage.waiting-gate', at, { code, attempt: attempt.n });
+        db.prepare('UPDATE comment_attempts SET next_at = ? WHERE comment_id = ? AND n = ?').run(
+          new Date(nowMs + TRIAGE_GATE_WAIT_MS).toISOString(),
+          row.id,
+          attempt.n,
+        );
+        return null;
+      }
+      // A verdict was stored, so the audit must have spoken; a caller that gets here is a defect.
+      defect(db, row, attempt.n, at, 'triage.defect', code);
+      return null;
+    }
+
+    const after = readCommentRow(db, commentId) ?? row;
+    if (after.status === 'new' || after.disposition === null) {
+      // `acceptComment` answered without writing a chain and a status: the filing was not placed,
+      // and nothing may be announced — a push here would tell the reader «отклонена» for a row
+      // nobody refused and nobody placed.
+      defect(db, row, attempt.n, at, 'triage.not-placed', 'PLACEMENT_EMPTY');
       return null;
     }
     settleAttempt(db, { commentId, chapter: row.chapter, outcome: 'accepted', at });
-    return { row: readCommentRow(db, commentId) ?? row, status: 'accepted' };
+    return { row: after, status: after.status === 'registered' ? 'registered' : 'accepted' };
   })();
 
   if (placed === null) return false;

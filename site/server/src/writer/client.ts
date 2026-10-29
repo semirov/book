@@ -109,7 +109,18 @@ export type TriageVerdictInput = {
 export type TriageVerdictView = { stored: boolean; already?: true };
 
 /** A failed call: a code the engine records, never the reader's text. */
-export type TriageFailInput = { commentId: string; n: number; code: string; detail?: string };
+/**
+ * BOOK-206 (AC5): a failed call is still money. `spend` is present when the provider answered
+ * with usage (a shape failure, a recorded-verdict conflict, an engine refusal of the answer) and
+ * absent for a transport failure that never reported any.
+ */
+export type TriageFailInput = {
+  commentId: string;
+  n: number;
+  code: string;
+  detail?: string;
+  spend?: TriageVerdictInput['spend'];
+};
 
 export type TriageFailView = { tries: number; nextAt: string | null; cap: boolean };
 
