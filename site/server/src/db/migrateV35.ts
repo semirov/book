@@ -17,12 +17,13 @@
  * every number `main` took since — BOOK-117's `steps.reopened_at` (31), BOOK-218's
  * `comments.number` (32), BOOK-173's `change_plans` (33) and BOOK-209's `reader_places` (34).
  * `user_version` only moves forward, so an install already at 34 would never run a step numbered
- * below it, and the reader's place keeps the number main gave it. The step's own `steps.mode`
+ * below it: the reader's place keeps v34, and this step is v35. The step's own `steps.mode`
  * is gone: BOOK-173's plan already records the write mode (`change_plans.mode`), and the ladder's
  * widening is read from `steps.widened` — one knob for one fact.
  */
 
 import type { Db } from './db.ts';
+import { ensureStepLifecycle } from './migrate.ts';
 import { PASS_STAGES_TABLE_SQL } from './tables.ts';
 
 /** The columns both the old and the new `pass_stages` carry — the rebuild copies them. */
@@ -58,6 +59,9 @@ export function migrateV35(db: Db): void {
   addColumn(db, 'steps', 'widened', 'TEXT');
   addColumn(db, 'comment_attempts', 'widened', 'TEXT');
   addColumn(db, 'comment_attempts', 'desperate', 'INTEGER NOT NULL DEFAULT 0');
+  // The ladder's two columns are last in the declared shape; a `steps` table that got them by
+  // `ALTER TABLE` after v31's own append is rebuilt to the one order (§10.8).
+  ensureStepLifecycle(db);
 
   const current = db
     .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_stages'`)

@@ -40,7 +40,12 @@ export type ModeReason =
   | 'model'
   | 'revision'
   /** `WRITER_MODE_DEFAULT=rewrite`: the owner's kill switch, before any other rule. */
-  | 'default-rewrite';
+  | 'default-rewrite'
+  /**
+   * BOOK-DOC-84 §10.8 — the ladder widened this attempt: the third failure widened the
+   * requirement, so the attempt is a whole chapter whatever the filing asked for.
+   */
+  | 'widened';
 
 export type ModeChoice = { mode: WriteMode; reason: ModeReason };
 

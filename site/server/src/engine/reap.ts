@@ -220,11 +220,13 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
       // once more (a paragraph, then the chapter), the fifth hands over to the desperate sixth.
       // Each widening is recorded on the step and re-issued, so the next `pass:accepted` names
       // the attempt it opens and the writer runs under the widened mode.
+      // The mode is not stored on the step: BOOK-173 records it with the plan, and a widened
+      // attempt is a rewrite by definition (`writer/mode.ts` reads `widened` before its table).
       const widening =
         attempts === 3 && step.widened === null
-          ? { widened: 'wider-edit', mode: 'rewrite' as const }
+          ? { widened: 'wider-edit' }
           : attempts === 4 && step.widened === 'wider-edit'
-            ? { widened: 'whole-chapter', mode: step.mode }
+            ? { widened: 'whole-chapter' }
             : null;
       if (widening !== null) {
         store.updateStep(db, step.step_id, widening);

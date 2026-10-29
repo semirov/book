@@ -407,7 +407,11 @@ export function ensureStepLifecycle(db: Db): boolean {
   const byName = new Map(info.map((column) => [column.name, column]));
   const missing = STEPS_COLUMNS.filter((column) => !byName.has(column));
   const outcomeNotNull = byName.get('outcome')?.notnull === 1;
-  if (missing.length === 0 && !outcomeNotNull) return false;
+  // BOOK-DOC-84 §10.8: a column appended by a later step (v31's `reopened_at` after v34's own)
+  // leaves a shape that holds every column in the wrong order. A migrated install must equal a
+  // fresh one, so the repair also runs when the declaration order differs.
+  const sameOrder = info.map((column) => column.name).join(',') === STEPS_COLUMNS.join(',');
+  if (missing.length === 0 && !outcomeNotNull && sameOrder) return false;
 
   const shared = STEPS_COLUMNS.filter((column) => byName.has(column));
   db.pragma('foreign_keys = OFF');

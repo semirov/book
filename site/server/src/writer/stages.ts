@@ -85,6 +85,8 @@ const MODE_REASONS: Record<ModeReason, string> = {
   model: 'просит модель',
   revision: 'замечания гейта',
   'default-rewrite': 'переключатель WRITER_MODE_DEFAULT',
+  // §10.8: the ladder made the requirement wider; the attempt is a rewrite, not a patch.
+  widened: 'третья неудача расширила требования',
 };
 
 /**
