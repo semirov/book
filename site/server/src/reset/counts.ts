@@ -55,6 +55,12 @@ const COUNTERS: ReadonlyArray<{ key: string; label: string; sql: string }> = [
   // BOOK-176: the ledger's own rows. Without these the wipe would look complete while a fact,
   // a mention or a literal survived it — `assertWiped` reads exactly this list.
   { key: 'facts', label: 'facts', sql: 'SELECT COUNT(*) AS n FROM facts' },
+  // BOOK-DOC-77: the extraction runs a fact or an edge names. A reset that kept them would leave
+  // the audit of a book that no longer exists.
+  { key: 'extraction_runs', label: 'extraction_runs', sql: 'SELECT COUNT(*) AS n FROM extraction_runs' },
+  // BOOK-185: the edges. Retired through `superseded_by` in the book, but the launch reset is the
+  // one wipe that empties them — a closure over facts that no longer exist is not history.
+  { key: 'fact_dependency', label: 'fact_dependency', sql: 'SELECT COUNT(*) AS n FROM fact_dependency' },
   { key: 'threads', label: 'threads', sql: 'SELECT COUNT(*) AS n FROM threads' },
   { key: 'thread_events', label: 'thread_events', sql: 'SELECT COUNT(*) AS n FROM thread_events' },
   { key: 'mentions', label: 'mentions', sql: 'SELECT COUNT(*) AS n FROM mentions' },
