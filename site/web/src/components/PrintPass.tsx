@@ -12,9 +12,10 @@
  *     the DOM's node count does not grow with the text;
  *   • **a deletion's ghost** keeps the removed text's geometry as an absolutely positioned
  *     overlay (one node, `text-indent` places its first line), a 1 px strike in the rule colour,
- *     a 600 ms fade, then one reflow at the swap. Never "delete by not drawing";
+ *     a 600 ms fade, then gone. Never "delete by not drawing";
  *   • **a replacement** strikes and fades the old text while the new one inks at the same place —
- *     the ghost holds the geometry until the fade ends, then the single reflow;
+ *     the ghost holds the geometry as an overlay, and the swap moves nothing: an absolutely
+ *     positioned node is out of flow, so there is no reflow at the fade's end (or at any point);
  *   • **reduced motion**: the final text at once, the strike for 600 ms, no ink, no caret;
  *   • **mid-print arrival** joins the pass's own timeline (`startAt` is absolute and the clock is
  *     clamped at zero), never a restart.
@@ -29,6 +30,7 @@ import type { PassSpan } from '../lib/passDiff.ts';
 import { geometryOf, measureGraphemes, type PrintGeometry } from '../lib/passMeasure.ts';
 import { PRINT, caretIndexAt, planPrint, settleMs, type PrintPlan } from '../lib/printPlan.ts';
 import { beginPrint, reportCaret } from '../lib/printFollow.ts';
+import { printProbeOn } from '../lib/printProbe.ts';
 import { graphemes } from '../lib/reveal.ts';
 
 /** Measure before paint in the browser; do nothing during a server render (tests). */
@@ -148,12 +150,15 @@ export function PrintPass({
 
     block.dataset.revealed = '0';
     // The harness's one window onto the clock: the plan's own ink times, so a sampler can ask
-    // "what should be revealed now?" instead of trusting the DOM's own number. No reader path
-    // reads it, and it is removed with the renderer.
+    // "what should be revealed now?" instead of trusting the DOM's own number. A reader's page
+    // publishes nothing — the seam exists only behind the harness's own `?probe=print` flag.
+    const probe = printProbeOn();
     const debug = window as unknown as {
       __print?: { blockId: string; startAt: number; inkTimes: number[]; total: number; at: number };
     };
-    debug.__print = { blockId, startAt, inkTimes: [...plan.inkTimes], total: plan.graphemes.length, at: 0 };
+    if (probe) {
+      debug.__print = { blockId, startAt, inkTimes: [...plan.inkTimes], total: plan.graphemes.length, at: 0 };
+    }
     // The copy's own document top, read once: the follow control never re-reads layout.
     const copyDocTop = copy.getBoundingClientRect().top + window.scrollY;
 
@@ -207,7 +212,7 @@ export function PrintPass({
     let handle = 0;
 
     const paint = (at: number): boolean => {
-      if (debug.__print !== undefined) debug.__print.at = at;
+      if (probe && debug.__print !== undefined) debug.__print.at = at;
       const revealed = caretIndexAt(plan, at);
       if (revealed !== shownRevealed) {
         shownRevealed = revealed;
@@ -262,7 +267,7 @@ export function PrintPass({
 
     return () => {
       dead = true;
-      if ((window as unknown as { __print?: unknown }).__print !== undefined) delete (window as unknown as { __print?: unknown }).__print;
+      if (probe && debug.__print !== undefined) delete debug.__print;
       stopPrinting();
       if (handle !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(handle);
     };

@@ -131,14 +131,16 @@ describe('the retry matrix', () => {
   });
 
   it('hides the word when the retry cap is spent, and says what is left', () => {
+    // §10.8: the sink is the desperate sixth. The fifth failure still has that rung coming, so
+    // the word stands there — this fixture is the sixth's own frame, not the fifth's.
     const reading: LiveReading = {
       commentId: 'cmt_1',
       chapter: 8,
       phase: 'failed',
-      attempt: 5,
-      maxAttempts: 5,
+      attempt: 6,
+      maxAttempts: 6,
       widened: null,
-      desperate: false,
+      desperate: true,
       since: 1,
       deadlineAt: null,
       retryAt: null,
@@ -148,6 +150,14 @@ describe('the retry matrix', () => {
       kind: 'spent',
       line: REVISE_EXHAUSTED,
     });
+    // The same read one rung earlier: a failed fifth is a wait, and the word is not withdrawn.
+    expect(
+      retryOffer({
+        ...noFrames,
+        comment: filing({ attempt: 'failed' }),
+        reading: { ...reading, attempt: 5, maxAttempts: 5, desperate: false },
+      }),
+    ).toEqual({ kind: 'word' });
     const update: FilingUpdatePayload = {
       commentId: 'cmt_1',
       chapter: 8,

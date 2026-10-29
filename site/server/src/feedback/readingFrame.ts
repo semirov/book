@@ -121,7 +121,15 @@ export function filingReadingPayload(db: Db, event: ReadingEventRow): FilingRead
   const attemptRow = attemptOf(db, event.comment_id, meta?.attempt ?? null);
   if (attemptRow === undefined) return null;
 
-  const desperate = attemptRow.desperate === 1 || meta?.try === DESPERATE_ATTEMPT;
+  // §10.8 — a `failed` frame counts **the try that failed**, and only the desperate sixth is the
+  // sink. The fifth failure marks the row `desperate` in the same transaction (`filingTriage.ts`),
+  // but the ladder's fifth rung is still 5 of 5: the row's flag says the *next* rung is the last
+  // one. So a failure reads its own `try`, and a phase that narrates the next attempt (claim,
+  // answer, widening) keeps the row's flag.
+  const desperate =
+    phase === 'failed'
+      ? meta?.try === DESPERATE_ATTEMPT
+      : attemptRow.desperate === 1 || meta?.try === DESPERATE_ATTEMPT;
   const attempt = desperate
     ? DESPERATE_ATTEMPT
     : Math.max(1, Math.min(MAX_ATTEMPTS, meta?.try ?? attemptRow.tries));

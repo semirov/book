@@ -10,8 +10,9 @@
  *
  *   • a claim whose **own** `deadlineAt` has passed is not work — it reads as the wait, never as
  *     «машина читает» (a stale claim is the lie this rule exists for);
- *   • a deadline that passes changes no word of its own: nothing becomes `не дошло` because a
- *     clock moved, only because a frame said so;
+ *   • a deadline never changes the **state**, only the wait's detail: nothing becomes `не дошло`
+ *     because a clock moved, a stale claim is still a wait, and a recovery is a frame
+ *     (`triage.abandoned`) — never a timer;
  *   • the three endings (landed, refused, not delivered) rest for `LINGER_MS` from their own
  *     `at`, then the line is gone — no timer invents a word, one timer only ends this one.
  *

@@ -44,7 +44,7 @@ export const PRINT = {
   planGuardMs: 3_600_000,
   /** The beat before the first grapheme: a replacement selects, an insertion points, a deletion holds. */
   holdMs: { replacement: 260, insertion: 220, deletion: 400 },
-  /** The strike's life on a ghost (deletion and replacement): the fade, then the one reflow. */
+  /** The strike's life on a ghost (deletion and replacement): the fade, then it is gone. */
   strikeMs: 600,
 } as const;
 

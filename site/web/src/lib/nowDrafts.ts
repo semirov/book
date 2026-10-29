@@ -10,9 +10,11 @@
 
 import {
   aheadDigitsWord,
+  attemptWord,
   chapterAccusativeWord,
   chapterWord,
   clockWord,
+  DESPERATE_ATTEMPT,
   editionWord,
   filingWord,
   gateRoundWord,
@@ -26,6 +28,7 @@ import {
 
 import { openPassesOf, type ClientState } from './clientState.ts';
 import { LINGER_MS, type Draft, type NowDoor } from './nowState.ts';
+import { readingSunk } from './readingSink.ts';
 
 /** A number the sequence carries, or `null` — never a default. */
 export function numberOr(value: unknown): number | null {
@@ -138,9 +141,10 @@ export function fromReading(
   }
 
   if (reading.phase === 'failed') {
-    // A failure with a try left is a retry — a wait with its hour. The last try is the one that
-    // ends the ladder: `не дошло`, with the engine's own class and no invented sentence.
-    if (reading.attempt >= reading.maxAttempts) {
+    // §10.8 — the sink is the desperate sixth, never the fifth: a failed fifth still has its last
+    // rung coming (the deterministic sixth), so it is a wait whose detail names that rung, and
+    // only the sixth's own frame says `не дошло` — with the engine's class, no invented sentence.
+    if (readingSunk(reading)) {
       const reason = (reading.reason ?? '').trim();
       return {
         kind: 'defect',
@@ -154,12 +158,17 @@ export function fromReading(
         untilMs: reading.since + LINGER_MS,
       };
     }
+    const lastRung = reading.attempt >= reading.maxAttempts;
     return {
       kind: 'waiting',
-      parts: [waitingPart(seq, null), { text: attempt }, ...clockPart(reading.since)],
+      parts: [
+        waitingPart(seq, null),
+        { text: lastRung ? attemptWord(DESPERATE_ATTEMPT, DESPERATE_ATTEMPT) : attempt },
+        ...clockPart(reading.since),
+      ],
       door,
       at: reading.since,
-      untilMs: reading.retryAt,
+      untilMs: lastRung ? null : reading.retryAt,
     };
   }
 

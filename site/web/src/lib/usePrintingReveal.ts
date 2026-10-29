@@ -75,10 +75,10 @@ export function usePrintingReveal(input: {
       });
       setReveal(revealed);
       /**
-       * The harness's one window onto the reveal's own clock (the same seam the clip renderer
-       * publishes as `window.__print`): its zero, the instant its first grapheme inks, and its
-       * end — so a capture can ask "what could the clock have inked by now?" instead of trusting
-       * a fixed threshold. No reader path reads it, and it is removed with the print.
+       * The harness's one window onto the reveal's own clock (the block renderer publishes its
+       * plan the same way, behind `?probe=print`): its zero, the instant its first grapheme inks,
+       * and its end — so a capture can ask "what could the clock have inked by now?" instead of
+       * trusting a fixed threshold. No reader path reads it, and it is removed with the print.
        */
       if (startAt !== undefined && typeof window !== 'undefined') {
         const first = revealed.blocks[0];

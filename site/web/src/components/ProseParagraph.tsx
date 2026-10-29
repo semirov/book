@@ -73,8 +73,6 @@ export type ProseParagraphProps = {
   onReanchor?: (draft: SeamDraft) => void;
   /** The reveal's caret rests after this block (§11.3); printing is the lane's own state. */
   caret?: { printing: boolean; live: boolean } | null;
-  /** A rewrite cross-fades in place (§10.4). */
-  revised?: boolean;
   /** A step is rewriting this block: the ochre label and rule (§11.5). */
   revising?: string | null;
   /**
@@ -98,7 +96,6 @@ export function ProseParagraph({
   onPosted,
   onReanchor,
   caret = null,
-  revised = false,
   revising = null,
   history,
 }: ProseParagraphProps) {
@@ -161,7 +158,6 @@ export function ProseParagraph({
   const classes = ['p'];
   if (caret?.printing === true) classes.push('is-printing');
   if (revising !== null) classes.push('is-revising');
-  if (revised) classes.push('is-revised');
 
   const openAt = useCallback(
     (offset: number, target: HTMLElement): void => {

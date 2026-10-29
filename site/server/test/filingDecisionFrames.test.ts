@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { appendCommentEvent } from '../src/comments/repo.ts';
+import { createEngine } from '../src/engine/service.ts';
 import { EngineBridge } from '../src/engineState/bridge.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
+import { poll } from '../src/feedback/triageApplier.ts';
 import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
@@ -255,6 +257,53 @@ describe('BOOK-DOC-84 §10.1 — `filing:reading`, one frame per attempt', () =>
     engine.tick();
     const abandoned = frames.find((frame) => frame.type === 'filing:reading')?.data;
     expect(abandoned).toMatchObject({ phase: 'failed', attempt: 2, reason: 'обрыв связи' });
+  });
+
+  it('counts the failure that failed: the fifth is 5 of 5, only the desperate sixth is 6 of 6', async () => {
+    const h = await boot();
+    const id = await post(h);
+    clearGates(h, id);
+    // The real ledger writes the rows and the events, exactly as the writer's client drives it:
+    // five bought tries that fail, then the site's own deterministic settlement of the sixth.
+    const triage = createEngine({
+      db: h.db,
+      config: { ...h.config, drafting: 'on' },
+      bookRoot: h.fixture.root,
+      clock: { now: () => h.clock.ms },
+      alert: () => {},
+    });
+    const frames: Frame[] = [];
+    const narrator = bridge(h, frames, { replay: true });
+    const readings = (): Array<Record<string, unknown>> =>
+      frames.filter((frame) => frame.type === 'filing:reading').map((frame) => frame.data);
+
+    for (let tryNo = 0; tryNo < 5; tryNo += 1) {
+      expect(triage.triage.next('writer-1')).toMatchObject({ commentId: id });
+      triage.triage.fail({ commentId: id, n: 1, code: 'PROVIDER_TIMEOUT' });
+      // Past the retry's own backoff (60 s, 10 min, 6 h, 6 h): the next try is due.
+      h.clock.advance(6 * 60 * 60_000 + 1_000);
+      narrator.tick();
+    }
+
+    // The fifth failure marks the row `desperate` in the same transaction, and the ladder's
+    // fifth rung is still 5 of 5 — the sixth has not run yet.
+    expect(
+      h.db.prepare('SELECT tries, desperate FROM comment_attempts WHERE comment_id = ? AND n = 1').get(id),
+    ).toEqual({ tries: 5, desperate: 1 });
+    const fifth = readings().filter((frame) => frame.phase === 'failed').at(-1);
+    expect(fifth).toMatchObject({ attempt: 5, maxAttempts: 5, desperate: false, retryAt: null, reason: 'таймаут' });
+
+    // The site settles the sixth deterministically: no call, one event, and that frame is the sink.
+    poll({ db: h.db, emit: () => {}, notify: () => {}, now: h.clock.now });
+    narrator.tick();
+    const sixth = readings().filter((frame) => frame.phase === 'failed').at(-1);
+    expect(sixth).toMatchObject({ attempt: 6, maxAttempts: 6, desperate: true, retryAt: null, reason: 'сбой вызова' });
+    // Exactly one frame per failure: five bought attempts, one settlement — and a second tick
+    // over the same rows says nothing twice.
+    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(6);
+    poll({ db: h.db, emit: () => {}, notify: () => {}, now: h.clock.now });
+    narrator.tick();
+    expect(readings().filter((frame) => frame.phase === 'failed')).toHaveLength(6);
   });
 
   it('says nothing for a withdrawn filing', async () => {

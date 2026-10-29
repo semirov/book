@@ -164,7 +164,7 @@ export async function newChapter({ cdp, run, dir, stepId, check, log, shot, pars
   };
   // A fresh page at the slot: the previous stage left this one mid-print, and a list of 42
   // slots is what the create needs (the chapter has no prose yet, only its row).
-  await cdp.send('Page.navigate', { url: `${String(run.api)}/#ch-${String(chapter)}` });
+  await cdp.send('Page.navigate', { url: `${String(run.api)}/?probe=print#ch-${String(chapter)}` });
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const count = await evaluate(`document.querySelectorAll('article.ch').length`);
     if (typeof count === 'number' && count >= 40) break;
@@ -264,7 +264,7 @@ export async function newChapter({ cdp, run, dir, stepId, check, log, shot, pars
   );
   // A fresh page for the next stage: the catalog this one holds was read before the create, so
   // the folio cannot name a page while the reader stands in a chapter it has never heard of.
-  await cdp.send('Page.navigate', { url: `${String(run.api)}/#ch-${String(run.chapter)}` });
+  await cdp.send('Page.navigate', { url: `${String(run.api)}/?probe=print#ch-${String(run.chapter)}` });
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const ready = await evaluate(`document.querySelectorAll('article.ch').length > 0`);
     if (ready === true) break;

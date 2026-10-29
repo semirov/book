@@ -28,7 +28,8 @@
 }
 
 /* ---------- the ghost: text that is leaving, still at its own geometry ---------- */
-/* One node, absolutely positioned: it has no effect on flow and never adds a line.
+/* One node, absolutely positioned: it has no effect on flow and never adds a line — so the
+   ghost's fade and its removal are never a reflow, at the swap or at any other moment.
    The renderer writes its top (the run's first line), its width (the copy's) and its
    `text-indent` (the run's x), so its first line starts where the removed text stood
    and its wrap is the copy's wrap. The strike is the rule's colour, 1 px: the mark of

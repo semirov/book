@@ -210,16 +210,59 @@ describe('§11.1 — a filing is read, waited for, widened or given up', () => {
     expect(now(state).door).toEqual({ commentId: 'cmt_012', chapter: 4 });
   });
 
-  it('says not delivered when the last try failed — with the engine’s own class', () => {
+  it('says not delivered only at the desperate sixth — the fifth still has its last rung', () => {
     resetSeq();
-    const state = apply(
+    // The fifth failure: the row is already marked desperate, the ladder's own frame is 5 of 5.
+    const fifth = apply(
       withChange(page()),
       'filing:reading',
       reading('failed', { attempt: 5, reason: 'не успели', retryAt: null, readingSeq: 4 }),
     ).state;
-    expect(line(state)).toBe('не дошло: не успели · правка 012 · 17:04');
-    expect(now(state).terminal).toBe(true);
-    expect(line(state, T + LINGER_MS)).toBeNull();
+    expect(line(fifth, T + MINUTE)).toBe('правка 012 ждёт · последняя, шестая · 17:04');
+    expect(now(fifth, T + MINUTE).terminal).toBe(false);
+
+    // The settlement: the sixth's own frame is the sink, and it rests four seconds.
+    const sunk = apply(
+      fifth,
+      'filing:reading',
+      reading('failed', { attempt: 6, maxAttempts: 6, desperate: true, reason: 'сбой вызова', retryAt: null, readingSeq: 5 }),
+    ).state;
+    expect(line(sunk, T + LINGER_MS - 1)).toBe('не дошло: сбой вызова · правка 012 · 17:04');
+    expect(now(sunk, T + LINGER_MS - 1).terminal).toBe(true);
+    expect(line(sunk, T + LINGER_MS)).toBeNull();
+  });
+
+  it('runs the ladder’s last two rungs in order: 5 из 5, the sixth named, then the sink', () => {
+    resetSeq();
+    // The fifth claim is ordinary work under the widened rules — «попытка 5 из 5».
+    const claimed = apply(
+      withChange(page()),
+      'filing:reading',
+      reading('claimed', { attempt: 5, at: T + MINUTE, readingSeq: 2 }),
+    ).state;
+    expect(line(claimed, T + MINUTE)).toBe('машина читает правку 012 · попытка 5 из 5 · 17:05');
+    // Its failure names the rung that is still coming, and it is not the sink.
+    const failed = apply(
+      claimed,
+      'filing:reading',
+      reading('failed', { attempt: 5, reason: 'таймаут', at: T + 2 * MINUTE, readingSeq: 3 }),
+    ).state;
+    expect(line(failed, T + 2 * MINUTE)).toBe('правка 012 ждёт · последняя, шестая · 17:06');
+    expect(now(failed, T + 2 * MINUTE).kind).not.toBe('defect');
+    // The sixth's frame is the one that ends it: never the fifth, never a timer.
+    const sunk = apply(
+      failed,
+      'filing:reading',
+      reading('failed', {
+        attempt: 6,
+        maxAttempts: 6,
+        desperate: true,
+        reason: 'таймаут',
+        at: T + 3 * MINUTE,
+        readingSeq: 4,
+      }),
+    ).state;
+    expect(now(sunk, T + 3 * MINUTE).kind).toBe('defect');
   });
 
   it('names the widening as a changed approach, never as machinery', () => {

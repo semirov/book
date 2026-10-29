@@ -171,7 +171,7 @@ export class EngineBridge {
     const passes = this.passes.tick();
     const cascades = this.drainCascade(nowMs) + this.flushProgress(nowMs);
     const changes = this.drainChanges(nowMs);
-    const filing = this.drainFilingEvents(nowMs);
+    const filing = this.drainFilingEvents();
     const history = this.drainHistory();
     changed =
       engine || revisions > 0 || passes > 0 || cascades > 0 || changes > 0 || filing > 0 || history > 0;
@@ -294,7 +294,7 @@ export class EngineBridge {
    * Every other row still moves the cursor — a restart primes it, so a replay of yesterday's
    * failures is never narrated as today's.
    */
-  private drainFilingEvents(_nowMs: number): number {
+  private drainFilingEvents(): number {
     const rows = this.db
       .prepare('SELECT id, comment_id, at, type, meta FROM comment_events WHERE id > ? ORDER BY id')
       .all(this.commentCursor) as CommentEventRow[];

@@ -39,7 +39,8 @@ import { Skeleton } from './Skeleton.tsx';
  * - new text prints on the print engine's clock (30 cps desk / 26 phone, BOOK-220 §11.2),
  *   block by block, only in the viewport; everything else is already set (ADR-006 — the server
  *   never streams tokens);
- * - a revision is applied by `rev`; a rewrite cross-fades, it never re-types old text;
+ * - a revision is applied by `rev`; a reader's change prints, and a block with no print plan
+ *   (a machine rewrite, a patch too large to carry) is set as final text — never a cross-fade;
  * - the caret sits after the block being printed, or after the last block of the lane's
  *   chapter; a cascade moves no caret;
  * - blocks named by `block:revising` carry the ochre rule, not the whole chapter;
@@ -111,7 +112,6 @@ export function ChapterArticle({
    */
   const [reanchor, setReanchor] = useState<{ draft: SeamDraft; blockGone: boolean } | null>(null);
   const [chapter, setChapter] = useState<ChapterDto | null>(null);
-  const [revisedIds, setRevisedIds] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState(false);
   const [inView, setInView] = useState(false);
   const loading = useRef(false);
@@ -139,7 +139,7 @@ export function ChapterArticle({
    */
   const busy = showsText && inView && chapter === null && !failed && basisSentence === null;
   const stage = usePending(busy);
-  const load = useCallback(async (clock?: number) => {
+  const load = useCallback(async (clock?: number, silent = false) => {
     if (loading.current) return;
     loading.current = true;
     try {
@@ -154,6 +154,12 @@ export function ChapterArticle({
       // request, and never a pass landing — a write is printed only by an applied record.
       const changed = changeIds.current;
       changeIds.current = null;
+      if (silent) {
+        // No print plan behind this revision: the text is final the moment it lands. Nothing
+        // types, nothing fades — an appearance without a clock would be an invented one.
+        setReveal(null);
+        return;
+      }
       // BOOK-220 §11.2 — a chapter being written has one clock: `appliedAt`. A page load has
       // none, and only a young chapter's tail prints there.
       startReveal(result, changed, clock);
@@ -234,15 +240,16 @@ export function ChapterArticle({
           updatedAt: revision.updatedAt,
           blocks: patched,
         });
+        // No block appears by fading: a change the reader caused prints (§11.2), and a block
+        // with no print plan — the machine's own rewrite — is simply the final text, set at
+        // once. An opacity appearance was the cross-fade the owner asked us to drop.
         if (!printsChange(revision)) {
-          setRevisedIds(new Set(revisedBlockIds(revision.patch)));
-          // A machine rewrite cross-fades; it never re-types. If text was printing, stop.
+          // Whatever was printing is the older truth now; the newer text stands set.
           setReveal((current) => (current === null ? current : finishReveal(current)));
           return;
         }
         // BOOK-117: a change the reader made is *seen being written*: its blocks print.
         const change = revisedBlockIds(revision.patch);
-        setRevisedIds(new Set());
         line.current = change[0] ?? null;
         setReveal(
           createReveal(patched.filter((block) => change.includes(block.id)), {
@@ -254,17 +261,14 @@ export function ChapterArticle({
         return;
       }
     }
-    // A patch this client cannot apply is refetched; the change behind it travels with the
-    // request, so the refetched text still prints instead of appearing whole.
-    if (
-      revision !== null &&
-      revision.n === entry.n &&
-      revision.rev > chapter.rev &&
-      printsChange(revision)
-    ) {
-      changeIds.current = new Set(revisedBlockIds(revision.patch));
-    }
-    void load();
+    // A patch this client cannot apply is refetched. A change behind it travels with the request
+    // and prints; a **revision with no print plan** (a truncated patch, a machine rewrite) prints
+    // nothing at all — the text settles as final, never with an appearance. A plain refetch that
+    // no revision asked for is still a page load and keeps its own rule.
+    const staleRevision = revision !== null && revision.n === entry.n && revision.rev > chapter.rev;
+    const hasPlan = staleRevision && printsChange(revision);
+    if (hasPlan) changeIds.current = new Set(revisedBlockIds(revision.patch));
+    void load(undefined, staleRevision && !hasPlan);
   }, [chapter, entry, printClock, showsText, inView, load, revision]);
 
   // The reload that a stale send asks for is the moment to re-key the draft: the new block
@@ -388,7 +392,6 @@ export function ChapterArticle({
           entry={entry}
           chapter={chapter}
           reveal={reveal}
-          revisedIds={revisedIds}
           revising={revising}
           caret={caret}
           printing={printing}

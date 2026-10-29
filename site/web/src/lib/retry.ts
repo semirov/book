@@ -15,6 +15,7 @@
 import type { CommentDecisionPayload, CommentDto, FilingUpdatePayload, LiveReading } from '@book/shared';
 
 import type { ChangeLine } from './clientState.ts';
+import { readingSunk } from './readingSink.ts';
 import { REVISE_EXHAUSTED } from './revise.ts';
 
 /** The record's word for the act, and the line it prints while the filings are re-queued. */
@@ -93,9 +94,11 @@ export function retryOffer(input: {
 
   const left = triesLeft(comment, update);
   const spent = left === 0 || comment.revise?.closed === true;
+  // §10.8 — the same sink as the head's line: a failed fifth still has the desperate sixth
+  // coming, so the word is offered until that rung's own frame (`readingSunk`).
   const failedReading =
     reading !== null && reading.commentId === comment.id && reading.phase === 'failed'
-      ? reading.attempt >= reading.maxAttempts || spent
+      ? readingSunk(reading) || spent
       : false;
 
   const outcome = outcomeOf(input.change);

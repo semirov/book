@@ -373,6 +373,34 @@ describe('«следить»', () => {
   });
 });
 
+describe('the harness’s probe is not a shipped global', () => {
+  const text = 'Она походила на мою подпись, как тень на человека, брошенная на снег.';
+  const probe = (): { blockId: string; total: number } | undefined =>
+    (window as unknown as { __print?: { blockId: string; total: number } }).__print;
+
+  afterEach(() => {
+    delete (window as unknown as { __print?: unknown }).__print;
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('publishes no `__print` on a reader’s page', async () => {
+    await draw({ text, before: '', after: text });
+    expect(probe()).toBeUndefined();
+    // The DOM alone carries the print's own numbers for a reader.
+    const paragraph = container?.querySelector<HTMLParagraphElement>('p.p-pass');
+    expect(paragraph?.getAttribute('data-revealed')).not.toBeNull();
+  });
+
+  it('publishes the plan only behind the explicit `?probe=print` flag', async () => {
+    window.history.replaceState({}, '', '/book?probe=print#ch-1');
+    const paragraph = await draw({ text, before: '', after: text });
+    expect(paragraph.getAttribute('data-revealed')).toBe('0');
+    const plan = probe();
+    expect(plan?.blockId).toBe('ch01#aaaa1111');
+    expect(plan?.total).toBeGreaterThan(0);
+  });
+});
+
 describe('the sheet', () => {
   it('names the one caret and the ghost and nothing character-sized', () => {
     const css = sheet('pass-live.css');

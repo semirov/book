@@ -38,8 +38,6 @@ export type ChapterProseProps = {
   chapter: ChapterDto;
   /** The printing reveal the chapter is running, or null when everything is already set. */
   reveal: RevealState | null;
-  /** Blocks a revision marked (`BOOK-117`): the cross-fade's own set. */
-  revisedIds: ReadonlySet<string>;
   revising: BlockRevisingPayload | null;
   caret: { show: boolean; live: boolean } | null;
   printing: boolean;
@@ -67,7 +65,6 @@ export function ChapterProse({
   entry,
   chapter,
   reveal,
-  revisedIds,
   revising,
   caret,
   printing,
@@ -148,7 +145,6 @@ export function ChapterProse({
                 history={history}
                 onReanchor={onReanchor}
                 caret={caretBlockId === block.id ? { printing, live: caret?.live === true && !printing } : null}
-                revised={revisedIds.has(block.id)}
                 revising={revisingCause === null ? null : revisingCause === 'cascade' ? 'правится · по замечанию' : 'правится'}
               />
             ) : (

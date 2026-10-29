@@ -109,7 +109,8 @@ async function openPage(cdp, run) {
   });
   await cdp.send('Page.navigate', { url: 'about:blank' });
   await sleep(150);
-  await cdp.send('Page.navigate', { url: `${API}/#ch-${String(run.chapter)}` });
+  // The harness's own probe flag: the print's plan is published only behind `?probe=print`.
+  await cdp.send('Page.navigate', { url: `${API}/?probe=print#ch-${String(run.chapter)}` });
   const started = Date.now();
   let still = 0;
   let lastScroll = -1;

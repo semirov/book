@@ -103,14 +103,19 @@ function appendOnce(
   commentId: string,
   type: string,
   at: string,
-  meta: { code?: string; attempt: number } & Record<string, unknown>,
+  meta: { code?: string; attempt: number; try?: number } & Record<string, unknown>,
 ): void {
   const prior = db
     .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = ?`)
     .all(commentId, type) as Array<{ meta: string | null }>;
   const seen = prior.some((event) => {
     try {
-      return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === meta.attempt;
+      const stored = JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number };
+      if (stored.attempt !== meta.attempt) return false;
+      // §10.8: a ladder's failures share the attempt number, and the **try** is what tells the
+      // fifth from the desperate sixth — one frame per try, or the sink is swallowed by the
+      // failure that armed it (BOOK-220 M1).
+      return meta.try === undefined || stored.try === meta.try;
     } catch {
       return false;
     }

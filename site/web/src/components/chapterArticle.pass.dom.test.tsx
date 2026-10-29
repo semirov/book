@@ -223,6 +223,29 @@ describe('a write prints from its applied record', () => {
     expect(view.querySelector('.p-pass')).toBeNull();
   });
 
+  it('prints nothing for a truncated patch with no plan: the text settles as final, never fades in', async () => {
+    // The first fetch is the chapter the page holds; the second is the refetch the truncated
+    // patch forces, and it already carries the new text.
+    const fetchMock = vi.fn(async () =>
+      answer(
+        fetchMock.mock.calls.length === 1
+          ? LOADED
+          : { ...LOADED, rev: 2, blocks: [LOADED.blocks[0]!, { ...LOADED.blocks[1]!, id: 'ch01#dddd4444', text: NEW_TEXT }, LOADED.blocks[2]!] },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const view = await draw();
+    // A patch too large to carry, and a cause that is nobody's reader change: no print plan.
+    await draw({ entry: { ...ENTRY, rev: 2 }, revision: { ...REVISION, patchTruncated: true } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(view.querySelectorAll('p.p-pass')).toHaveLength(0);
+    expect(view.textContent).toContain(NEW_TEXT);
+    const block = view.querySelector('[data-block-id="ch01#dddd4444"]');
+    expect(block?.className).not.toContain('is-printing');
+    expect(block?.className).not.toContain('is-revised');
+  });
+
   it('prints nothing for a write older than the six-second window', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => answer(LOADED)));
     const view = await draw();
