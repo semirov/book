@@ -19,6 +19,7 @@ import {
   norm,
   parseBatchFile,
   quoteIn,
+  QUOTE_MIN_CHARS,
   type FilingEnvelope,
 } from '../../src/feedback/envelope.ts';
 
@@ -121,6 +122,20 @@ describe('norm and quoteIn — the post-check', () => {
     // Short quotes cannot be checked: half of any paragraph would match.
     expect(quoteIn(VALUES.text, 'абзац')).toBe(false);
     expect(quoteIn(null, 'Абзац читается')).toBe(false);
+  });
+
+  it('bounds the quote by the field, not by the filing: a short field is quoted in full', () => {
+    // BOOK-206 probe finding: «он чихнул» is the whole text of the owner's filing and normalises
+    // to fewer than twelve characters, so the only checkable quote of it is all of it.
+    const short = 'он чихнул';
+    expect(norm(short).length).toBeLessThan(QUOTE_MIN_CHARS);
+    expect(quoteIn(short, short)).toBe(true);
+    expect(quoteIn(short, 'он ')).toBe(false);
+    expect(quoteIn('', short)).toBe(false);
+    expect(quoteIn(short, '')).toBe(false);
+    // A long field keeps the bound: eleven characters still match half of a paragraph.
+    expect(quoteIn(VALUES.text, 'В абзаце дв')).toBe(false);
+    expect(quoteIn(VALUES.text, 'В абзаце два')).toBe(true);
   });
 
   it('holds the canonical framing sentence as one string, fence included', () => {

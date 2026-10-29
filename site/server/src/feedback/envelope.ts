@@ -263,13 +263,26 @@ export function norm(value: string): string {
   return foldForMatch(spaceInvisible(value).replace(/\s+/gu, ' ').trim());
 }
 
-/** A quote shorter than this cannot be checked: it would match half the book. */
+/**
+ * The bound on a quote: past this a match is evidence, below it the quote would match half the
+ * book. It is a bound on the **quote**, never on the filing — a field shorter than this has
+ * exactly one checkable quote, itself (see `quoteIn`).
+ */
 export const QUOTE_MIN_CHARS = 12;
 
-/** A quote qualifies only when it is long enough and really sits in the field it names. */
+/**
+ * A quote qualifies only when it is long enough and really sits in the field it names.
+ *
+ * The minimum is per field, capped by the field's own length: «a quote must be checkable», not
+ * «a filing must be long». A filing whose whole text is «он чихнул» (nine normalised characters)
+ * can never carry a twelve-character quote of itself, so its one checkable quote is its whole
+ * text — a three-character prefix of it is still refused, because it is shorter than the field.
+ */
 export function quoteIn(fieldValue: string | null, quote: string): boolean {
   if (fieldValue === null) return false;
+  const hay = norm(fieldValue);
   const needle = norm(quote);
-  if (needle.length < QUOTE_MIN_CHARS) return false;
-  return norm(fieldValue).includes(needle);
+  if (hay.length === 0 || needle.length === 0) return false;
+  const min = Math.min(QUOTE_MIN_CHARS, hay.length);
+  return needle.length >= min && hay.includes(needle);
 }

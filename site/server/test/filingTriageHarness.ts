@@ -87,14 +87,19 @@ function shim(control: FastifyInstance): FetchLike {
 }
 
 /** One `book.verdict/v1` answer quoting the world, with the reading the test wants to place. */
-export function answerOf(call: Pick<Call, 'itemId'>, verdict: 'FITS' | 'OFF', reading: Record<string, unknown>): Record<string, unknown> {
+export function answerOf(
+  call: Pick<Call, 'itemId'>,
+  verdict: 'FITS' | 'OFF',
+  reading: Record<string, unknown>,
+  evidence: Array<{ field: string; quote: string }> = [{ field: 'world', quote: EVIDENCE }],
+): Record<string, unknown> {
   return {
     envelope: 'book.verdict/v1',
     itemId: call.itemId,
     gate: 'C',
     verdict,
     rule: null,
-    evidence: [{ field: 'world', quote: EVIDENCE }],
+    evidence,
     reason: verdict === 'OFF' ? 'вне книги: бумага не меняет ни одного факта' : null,
     reading,
   };

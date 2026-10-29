@@ -115,6 +115,23 @@ describe('a filing moves by itself (BOOK-206)', () => {
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE status = 'rejected'`).get()).toEqual({ n: 0 });
   });
 
+  it('reads a filing shorter than the quote bound: its whole text is the checkable quote', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    // «он чихнул» normalises to nine characters — the owner's filing is exactly this shape, and
+    // before BOOK-206's probe finding every answer that quoted it failed the post-check.
+    const id = await context.post({ body: 'он чихнул' });
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid(), [{ field: 'text', quote: 'он чихнул' }]));
+
+    await context.pulse();
+    expect(attemptOf(db, id).verdict).not.toBeNull();
+    expect(readCommentRow(db, id)).toMatchObject({ audit_verdict: 'FITS' });
+
+    expect(context.place()).toBe(1);
+    expect(readCommentRow(db, id)).toMatchObject({ status: 'accepted', disposition: 'as_said' });
+    expect(changeOf(db)).toMatchObject({ status: 'pending', source_comment: id });
+  });
+
   it('re-opens an escalated row: the reading is asked, the stored OFF is never rewritten', async () => {
     context = await bootTriage();
     const { db } = context;
