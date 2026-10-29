@@ -140,18 +140,28 @@
   --offset-top: 64px;
   --offset-bottom: 8px;
 
-  /* BOOK-90 — the margin's own geometry. Measured from the prose's right edge, never from the
-     frame: 228 px of channel = a 40 px gap (the mark's target) + a 188 px note. Reusing
-     `--gut`/`--measure`/`--shell` would make the margin move when the frame changes, which is
-     exactly what the one-column frame must not do.
+  /* BOOK-90/BOOK-208 — the margin's own geometry. Measured from the prose's right edge, never
+     from the frame, and every number in it is air the reader can see: 16 px of clear space
+     between the measure and the first margin object, then the mark's 40 px target, then the
+     note, then 8 px before the viewport's edge. Reusing `--gut`/`--measure`/`--shell` would
+     make the margin move when the frame changes, which is exactly what the one-column frame
+     must not do.
+     `--note-gap` is therefore 56 (16 + 40): the note starts where the mark's target ends, and
+     the numeral no longer touches the last glyph of the line it belongs to.
      `--note-fit` (BOOK-91) is the note's used width: the design's 188 px while the channel
-     holds it, the channel itself (minus the mark's target and 8 px of air) from there down to
-     1024 — a centred 640 px column leaves 144 at 1024, so the note narrows instead of being
-     cut by `body { overflow-x: hidden }`. The same width carries the opened revision object. */
+     holds it, the channel itself from there down — 188 at 1440, 128 at 1024 — and never below
+     `--note-min`, the width under which the channel does not hold a note at all: there the
+     paragraph is a strip and the note is not painted, so the floor is a statement, not a
+     squeeze.
+     These are the numbers the pass measures with: `lib/marginPass.ts` sums `--mark-air` and
+     `--mark-hit` for the gap, because `--note-gap`'s own value is the `calc()` above and a
+     custom property's computed value is that unevaluated token stream. */
   --mark-hit: 40px;
-  --note-gap: var(--mark-hit);
+  --mark-air: 16px;
+  --note-gap: calc(var(--mark-air) + var(--mark-hit));
+  --note-min: 120px;
   --note-w: 188px;
-  --note-fit: min(var(--note-w), max(0px, calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));
+  --note-fit: min(var(--note-w), max(var(--note-min), calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));
   --note-step: 12px;
 
   /* motion */

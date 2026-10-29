@@ -18,7 +18,7 @@
     "build": "npm run build -w @book/shared && npm run build -w @book/server && npm run build -w @book/web && node scripts/sw-build.mjs",
     "release:publish": "node scripts/release.mjs publish",
     "proof": "tsx scripts/proof-release.ts",
-    "typecheck": "npm run build -w @book/shared && tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "typecheck": "npm run build -w @book/shared && tsc -p shared/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit && tsc -p web/tsconfig.harness.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "arch": "node scripts/arch.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -42,6 +42,7 @@
     "test:model:pass": "node model-lane/pass.mjs",
     "accordion:cdp": "node scripts/accordion-cdp.mjs",
     "line:fonts": "node scripts/line-fonts-cdp.mjs",
+    "margin:check": "node scripts/margin-cdp.mjs",
     "record:tap": "node scripts/record-tap.mjs"
   },
   "devDependencies": {

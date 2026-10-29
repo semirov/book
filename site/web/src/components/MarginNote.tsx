@@ -14,13 +14,14 @@ const useMeasuredLayout = typeof window === 'undefined' ? useEffect : useLayoutE
  *
  * One `<button>` per filing, the whole box tappable. It is `position: absolute` inside the
  * sentence's span, so it contributes **zero** to the paragraph's layout: the prose cannot
- * move because a note appeared. The 188 px box starts 40 px right of the prose's right edge
- * (`--note-gap` = the mark's target), its tie is the top hairline, and every number is a
- * token — nothing here reads the frame's `--shell`/`--measure`.
+ * move because a note appeared. The 188 px box starts past the mark: 16 px of air right of
+ * the prose's right edge (`--mark-air`), then the numeral's 40 px target (`--mark-hit`), so
+ * `--note-gap` is 56 and the note starts where the numeral's target ends. Its tie is the top
+ * hairline, and every number is a token — nothing here reads the frame's `--shell`/`--measure`.
  *
  * What a reader sees without a click: the record's numeral, the state word, the quoted
  * phrase, the kind and the author, and the one line of what happens next. No timestamp: the
- * stamp belongs to the opened object.
+ * stamp belongs to the record this note opens.
  */
 export function MarginNote({
   comment,

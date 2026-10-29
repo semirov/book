@@ -39,16 +39,20 @@ function declarations(css: string, selector: string): string {
 /** The body of the 1023 px step, from its opening to the end of the sheet. */
 const narrow = sheet.slice(sheet.indexOf('@media (max-width: 1023px)'));
 
-describe('the four tokens, and where they live', () => {
-  it('declares the margin geometry in tokens.css, with one gap = the mark’s target', () => {
+describe('the margin tokens, and where they live', () => {
+  it('declares the margin geometry in tokens.css: 16 px of air, the mark’s 40 px, a 56 px gap', () => {
+    // BOOK-208: the air is a token of its own, so the gap is the sum and not a magic 56.
     expect(tokens).toContain('--mark-hit: 40px;');
-    expect(tokens).toContain('--note-gap: var(--mark-hit);');
+    expect(tokens).toContain('--mark-air: 16px;');
+    expect(tokens).toContain('--note-gap: calc(var(--mark-air) + var(--mark-hit));');
+    expect(tokens).toContain('--note-min: 120px;');
     expect(tokens).toContain('--note-w: 188px;');
     expect(tokens).toContain('--note-step: 12px;');
-    // BOOK-91: the used width is the design's 188 px, or the channel itself where the centred
-    // column leaves less — the note narrows, it is never clipped.
+    // BOOK-91/BOOK-208: the used width is the design's 188 px, or the channel itself where the
+    // centred column leaves less, but never under `--note-min` — under it there is no note at
+    // all (the paragraph is a strip), so the floor is a statement, not a squeeze.
     expect(tokens).toContain(
-      '--note-fit: min(var(--note-w), max(0px, calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));',
+      '--note-fit: min(var(--note-w), max(var(--note-min), calc((100vw - var(--measure)) / 2 - var(--note-gap) - 8px)));',
     );
     // No new type rung and no new colour: the margin adds lengths and nothing else.
     expect(sheet).not.toMatch(/--fs-[a-z0-9-]+\s*:/u);
@@ -83,12 +87,18 @@ describe('the measured guard (BOOK-DOC-47 §7)', () => {
 });
 
 describe('the note is outside the prose and cannot move it', () => {
-  it('is absolutely positioned from the prose’s right edge, at the channel’s width', () => {
+  it('sits past the air and the mark’s target, at the channel’s fitted width', () => {
     const note = declarations(marginalia, '.margin-note');
     expect(note).toContain('position: absolute');
-    expect(note).toContain('left: calc(100% + var(--note-gap))');
-    // BOOK-91: `--note-fit` — 188 px while the channel holds it, the channel itself at 1024.
-    expect(note).toContain('width: var(--note-fit)');
+    // BOOK-208: the note starts where the mark's target ends — 16 px of air + the 40 px mark.
+    // The fallback is part of the contract: without it a page that lost the tokens resolved
+    // `left` to `auto` and the note landed inside the prose it annotates.
+    expect(note).toContain('left: calc(100% + var(--note-gap, 56px))');
+    expect(note).not.toContain('left: calc(100% + var(--note-gap))');
+    // BOOK-91: `--note-fit` — 188 px while the channel holds it, the channel itself at 1024,
+    // and the fallback chain `--note-fit` → `--note-w` → 188 keeps `width` off `auto`.
+    expect(note).toContain('width: var(--note-fit, var(--note-w, 188px))');
+    expect(note).not.toContain('width: var(--note-fit)');
     expect(note).toContain('padding: 6px 0 8px');
     expect(note).toContain('border-top: 1px solid var(--rule)');
     // The box is one button; the quote is two clamped lines of the book's serif.
@@ -123,10 +133,14 @@ describe('the mark keeps the note’s measure, and the object is gone', () => {
     expect(declarations(marginalia, '.margin-note')).not.toContain('box-shadow');
   });
 
-  it('keeps the glyph off the prose: the box starts at the edge, the numeral 4 px inside', () => {
+  it('keeps the glyph off the prose: the box starts +16 px past the measure, the numeral 4 px inside', () => {
+    // BOOK-208: the box stands after the air, so the numeral is 16 + 4 px from the last glyph.
+    expect(declarations(marginalia, '.filing-mark')).toContain('left: calc(100% + var(--mark-air, 16px))');
     expect(declarations(marginalia, '.filing-mark')).toContain('padding: 0 0 0 4px');
     expect(declarations(marginalia, '.filing-mark-num')).toContain('padding: 1px 0');
-    // The phone tick sits 2 px inside the 24 px target (the design's 368 in [366, 390]).
+    // The phone tick sits 2 px inside the 24 px target (the design's 368 in [366, 390]) and
+    // keeps the measure's own edge: there is no air to stand in on the phone.
+    expect(declarations(narrow, '.filing-mark')).toContain('left: 100%');
     expect(declarations(narrow, '.filing-mark')).toContain('padding-left: 2px');
   });
 });

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>margin harness</title>
+    <style>
+      /* Enough page under the fixture to scroll: the pass places in viewport space, and a
+         measurement taken on a page shorter than the screen is a measurement of nothing. */
+      .harness-tail {
+        height: 1800px;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      BOOK-208 — the CDP harness page for the margin's geometry.
+
+      This is not a route of the site: it mounts the real `ProseParagraph` with a written
+      chapter's own fixture — two filings, so two `.margin-note`s and two alive `.filing-mark`s —
+      plus an open `SentenceBlock` in a paragraph of its own, with the site's own stylesheets
+      and tokens. A browser can then measure what jsdom cannot: where those boxes land relative
+      to the prose's content box at every width. `scripts/margin-cdp.mjs` drives it over CDP and
+      prints the numbers; the numbers, not this page, decide pass/fail.
+    -->
+    <main class="canvas">
+      <article class="page ch" id="ch-1" data-n="1" data-rev="1" aria-label="глава 1">
+        <div class="ch-h">
+          <span class="ch-id"><span class="ch-n">01</span></span>
+        </div>
+        <div id="mount"></div>
+        <div id="mount-objects"></div>
+      </article>
+    </main>
+    <!-- A page tall enough that the margin is never the last thing on it: the pass grows the
+         tail by whatever the last object reaches past the flow's bottom. -->
+    <div class="harness-tail" aria-hidden="true"></div>
+    <script type="module" src="/harness/margin.tsx"></script>
+  </body>
+</html>

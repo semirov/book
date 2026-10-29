@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
-import { marginFits, noteWidth } from '../lib/marginPass.ts';
+import { marginFits, noteWidth, NOTE_GAP } from '../lib/marginPass.ts';
 import { anchorFor } from '../lib/seam.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { resetRecordMemory } from '../lib/record.ts';
@@ -277,17 +277,20 @@ describe('the block obeys the margin’s one rule', () => {
   });
 
   it('the note arithmetic the deleted margin used still holds its own tokens', () => {
-    // The design's arithmetic, with the tokens the sheet uses: a centred 640 px measure at 1440
-    // ends at 1040, the tie starts at 1080, the note's used width is 188, and 8 px of air stay
-    // between the item and the frame (BOOK-91 / BOOK-DOC-47 §7). Pure, so it needs no layout.
+    // BOOK-208 — the design's arithmetic, with the tokens the sheet uses: a centred 640 px
+    // measure at 1440 ends at 1040, 16 px of air and the mark's 40 px target stand between it
+    // and the note (56 px), the note's used width is 188, and 8 px of air stay between the item
+    // and the frame (BOOK-91 / BOOK-DOC-47 §7). Pure, so it needs no layout.
     const proseRight = (1440 + 640) / 2;
+    expect(NOTE_GAP).toBe(56);
     expect(noteWidth(1440, 640)).toBe(188);
-    expect(proseRight + 40 + noteWidth(1440, 640) + 8).toBeLessThanOrEqual(1440);
+    expect(proseRight + NOTE_GAP + noteWidth(1440, 640) + 8).toBeLessThanOrEqual(1440);
     expect(marginFits(proseRight, 1440)).toBe(true);
-    // And at 1024 the same rule narrows the item instead of demoting the paragraph to a strip.
-    expect(noteWidth(1024, 640)).toBe(144);
-    // The pass passes the width it computed, not the design's 188: 832 + 40 + 144 + 8 = 1024.
-    expect(marginFits((1024 + 640) / 2, 1024, 40, 144)).toBe(true);
+    // And at 1024 the same rule narrows the item instead of demoting the paragraph to a strip:
+    // 192 of channel, minus the 56 px gap and 8 px of air.
+    expect(noteWidth(1024, 640)).toBe(128);
+    // The pass passes the width it computed, not the design's 188: 832 + 56 + 128 + 8 = 1024.
+    expect(marginFits((1024 + 640) / 2, 1024, NOTE_GAP, 128)).toBe(true);
   });
 });
 
