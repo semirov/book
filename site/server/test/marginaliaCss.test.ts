@@ -6,11 +6,12 @@ import { describe, expect, it } from 'vitest';
 /**
  * BOOK-90 AC5 — the marginalia's CSS contract, in the style-guard idiom.
  *
- * What a jsdom test cannot prove: that the margin is measured from the **prose's right edge**
- * (not from `--shell`/`--measure`/`--gut`), that the note is `position: absolute` and cannot
- * move the prose, that the one breakpoint is 1023, and that the strip cannot scroll
- * sideways. The column frame (≤1000 px, `--shell` in `tokens.css`) is the other branch's and
- * is left untouched: nothing here may read it.
+ * What a jsdom test cannot prove: that the mark is measured from the **prose's right edge**
+ * (not from `--shell`/`--measure`/`--gut`), that the one breakpoint is 1023, and that the strip
+ * cannot scroll sideways. The old channel **object** (the revision panel with its absolute
+ * placement and the phone's fixed sheet) is gone; these claims now assert its absence, and the
+ * record's own surfaces are checked to have no positioned layer at all. The column frame is the
+ * other branch's: nothing here may read it.
  */
 
 const STYLES = join(import.meta.dirname, '../../web/src/styles');
@@ -18,6 +19,10 @@ const marginalia = readFileSync(join(STYLES, 'marginalia.css'), 'utf8');
 const tokens = readFileSync(join(STYLES, 'tokens.css'), 'utf8');
 const base = readFileSync(join(STYLES, 'base.css'), 'utf8');
 const book = readFileSync(join(STYLES, 'book.css'), 'utf8');
+/** The sentences' own surfaces: the record, its notice and change sections, and the card. */
+const reading = ['record.css', 'record-notice.css', 'record-change.css', 'panels.css'].map((name) =>
+  withoutComments(readFileSync(join(STYLES, name), 'utf8')),
+);
 
 /** Comments blanked out: a rule is a declaration, and the sheet's prose is not one. */
 function withoutComments(css: string): string {
@@ -59,11 +64,8 @@ describe('the four tokens, and where they live', () => {
     expect(tokens).not.toContain('--column');
     expect(base).toContain('max-width: calc(var(--measure) + 2 * var(--gut));');
     for (const forbidden of ['--shell', '--column', '--measure']) expect(sheet).not.toContain(forbidden);
-    // `--gut` only pads a sheet (the phone one and the measured-guard sheet), never the
-    // channel's geometry.
-    const gutLines = sheet.split('\n').filter((line) => line.includes('var(--gut)'));
-    expect(gutLines.length).toBeGreaterThan(0);
-    for (const line of gutLines) expect(line).toContain('padding: 12px var(--gut)');
+    // The reading surfaces own no positioning: the channel and its layers are absent, not moved.
+    for (const css of reading) expect(css).not.toMatch(/position:\s*(fixed|absolute)/u);
   });
 });
 
@@ -72,8 +74,10 @@ describe('the measured guard (BOOK-DOC-47 §7)', () => {
     // The pass writes `data-margin` per paragraph; this is not a second breakpoint.
     expect(declarations(sheet, ".p[data-margin='strip'] .margin-note")).toContain('display: none');
     expect(declarations(sheet, ".p[data-margin='strip'] .phone-strip")).toContain('display: block');
-    // An object opened in such a paragraph takes the phone sheet, never the clipped channel.
-    expect(declarations(sheet, ".p[data-margin='strip'] .revision")).toContain('position: fixed');
+    // The old object's phone sheet is gone: no selector, no fixed layer, no second surface.
+    expect(declarations(sheet, ".p[data-margin='strip'] .revision")).toBe('');
+    expect(sheet).not.toContain('.revision');
+    expect(sheet).not.toContain('position: fixed');
     expect(sheet).not.toMatch(/@media[^{]*(min-width|width\s*>=)/u);
   });
 });
@@ -111,14 +115,12 @@ describe('the note is outside the prose and cannot move it', () => {
   });
 });
 
-describe('the object and the mark share the note’s measure', () => {
-  it('puts the revision object in the same channel, at the same width, with no shadow', () => {
-    const object = declarations(marginalia, '.revision');
-    expect(object).toContain('position: absolute');
-    expect(object).toContain('left: calc(100% + var(--note-gap))');
-    expect(object).toContain('width: var(--note-fit)');
-    expect(object).toContain('box-shadow: none');
-    expect(object).toContain('background: var(--paper-2)');
+describe('the mark keeps the note’s measure, and the object is gone', () => {
+  it('has no revision object in the margin: no selector, no absolute placement, no shadow', () => {
+    // The object is not relocated to a second selector either: the whole channel is absent.
+    expect(declarations(marginalia, '.revision')).toBe('');
+    expect(marginalia).not.toContain('.revision');
+    expect(declarations(marginalia, '.margin-note')).not.toContain('box-shadow');
   });
 
   it('keeps the glyph off the prose: the box starts at the edge, the numeral 4 px inside', () => {
@@ -161,12 +163,9 @@ describe('one breakpoint', () => {
   it('steps at 1023 and never at min-width', () => {
     expect(sheet).toContain('@media (max-width: 1023px)');
     expect(sheet).not.toMatch(/@media[^{]*min-width/u);
-    // The phone sheet is the same box, fixed at the bottom, no scrim.
-    const phoneSheet = declarations(narrow, '.revision');
-    expect(phoneSheet).toContain('position: fixed');
-    expect(phoneSheet).toContain('border-top: 1px solid var(--rule-2)');
-    expect(phoneSheet).toContain('box-shadow: var(--shadow)');
-    expect(phoneSheet).toContain('max-height: 62dvh');
-    expect(phoneSheet).not.toContain('transform');
+    // The phone sheet for the object is gone with the object: no fixed box in the step.
+    expect(declarations(narrow, '.revision')).toBe('');
+    expect(narrow).not.toContain('position: fixed');
+    expect(reading.join('\n')).not.toMatch(/position:\s*(fixed|absolute)/u);
   });
 });

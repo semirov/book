@@ -1,4 +1,4 @@
-import { changeHref, commentInkClass, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import { changeHref, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';

@@ -22,7 +22,6 @@ vi.mock('./analytics.ts', async (importOriginal) => {
 });
 
 import { track } from './analytics.ts';
-import { setChangeOpener } from './changeDoor.ts';
 import { useDeepLink } from './useDeepLink.ts';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -119,31 +118,6 @@ describe('useDeepLink', () => {
 
     await act(async () => root.render(<Probe ready />));
     expect(track).toHaveBeenCalledTimes(1);
-  });
-
-  it('opens a change from an old #проход- address, once, and never a page of its own', async () => {
-    const open = vi.fn();
-    setChangeOpener(open);
-    window.location.hash = '#проход-chg_9';
-    try {
-      await act(async () => root.render(<Probe ready />));
-      await settle();
-      expect(open).toHaveBeenCalledTimes(1);
-      expect(open).toHaveBeenCalledWith('chg_9');
-      await act(async () => root.render(<Probe ready />));
-      expect(open).toHaveBeenCalledTimes(1);
-    } finally {
-      setChangeOpener(null);
-    }
-  });
-
-  it('lands a bare #проход-<chapter>-<pass> on the chapter it wrote', async () => {
-    window.location.hash = '#проход-4-stp_bare';
-    chapter(4);
-    await act(async () => root.render(<Probe ready />));
-    await settle();
-    expect(track).toHaveBeenCalledWith('deep_link_open', { chapter: 4 });
-    expect(scroll).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a hash that is not a chapter of this book', async () => {

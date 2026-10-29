@@ -120,8 +120,10 @@ describe('the history fact has one reader in the SPA (BOOK-56)', () => {
     // BOOK-128 comment #3815 — the word's record and the phrase's facts are the paragraph's own
     // margin items, not two page-root surfaces reading `live` for themselves: two surfaces that
     // took `live={history}` at the root are gone, and the paragraphs get it through the same
-    // `history` prop the chapter list carries.
-    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(6);
+    // `history` prop the chapter list carries. The focus view took one more (`live={history}`)
+    // and is gone with its route, so the floor is five: the cover, the chapter list, the
+    // discussion, the end matter and the chronicle.
+    expect(app.match(/live=\{history\}/gu)?.length).toBeGreaterThanOrEqual(5);
     expect(app.match(/live=\{chronicle\}/gu)).toHaveLength(1);
     expect(app.match(/started=\{chronicle\}/gu)).toHaveLength(1);
     // The chronicle's own fact reaches two places: the page's view switch and the surface

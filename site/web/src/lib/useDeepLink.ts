@@ -2,8 +2,6 @@ import { TOTAL_CHAPTERS } from '@book/shared';
 import { useEffect, useRef } from 'react';
 
 import { track } from './analytics.ts';
-import { requestChange } from './changeDoor.ts';
-import { passHashOf } from './passHash.ts';
 import { landFragment } from './place.ts';
 import { chapterLinkFromHash } from './route.ts';
 
@@ -34,22 +32,7 @@ export function useDeepLink(ready: boolean): void {
       const hash = window.location.hash;
       if (hash === landed.current) return;
       const link = chapterLinkFromHash(hash, TOTAL_CHAPTERS);
-      if (link === null) {
-        // An old `#проход-…` address: a change opens the record's `правка` section at its
-        // sentence, a bare pass lands on the chapter it wrote. There is no page either way.
-        const pass = passHashOf(hash);
-        if (pass === null) return;
-        if (pass.kind === 'change') {
-          // No opener yet (the app is still booting): the hash stays unclaimed for a later ready.
-          if (requestChange(pass.changeId)) landed.current = hash;
-          return;
-        }
-        landed.current = hash;
-        void landFragment({ fragment: { chapter: pass.chapter, blockIndex: null } }).then((landedHere) => {
-          if (landedHere) track('deep_link_open', { chapter: pass.chapter });
-        });
-        return;
-      }
+      if (link === null) return;
       landed.current = hash;
       // The prose may still be on its way: the fragment is landed once the chapter is read,
       // and a link that moved nothing is not reported as an open (a silent no-op is not a fact).
