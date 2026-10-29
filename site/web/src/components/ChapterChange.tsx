@@ -40,7 +40,7 @@ export function ChapterChange({ chapter, comments }: { chapter: number; comments
   };
 
   return (
-    <section className="rec-chapter-change" aria-label={read.change === null ? 'правка' : `правка ${changeNumber(read.change.seq)}`}>
+    <section className="rec-chapter-change ym-hide-content" aria-label={read.change === null ? 'правка' : `правка ${changeNumber(read.change.seq)}`}>
       <div className="rec-chapter-change-h">
         <span className="rec-section-label">правка</span>
         {read.change === null ? null : <span className="rec-section-count">{changeNumber(read.change.seq)}</span>}

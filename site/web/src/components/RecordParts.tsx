@@ -170,7 +170,7 @@ export function FilingBody({
   after?: string | null;
 }) {
   return (
-    <div className="rec-filing" data-kind="filing">
+    <div className="rec-filing ym-hide-content" data-kind="filing">
       <button type="button" className="rec-back" onClick={onBack}>
         ← замечания
       </button>
