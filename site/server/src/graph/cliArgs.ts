@@ -16,14 +16,12 @@ import { migrate } from '../db/migrate.ts';
 
 export type GraphFlags = {
   dataDir: string | null;
-  bookRoot: string | null;
   chapters: string | null;
   all: boolean;
   pending: boolean;
   force: boolean;
   dryRun: boolean;
   noRecall: boolean;
-  noReconcile: boolean;
   json: boolean;
   limit: number | null;
   /** `graph closure --fact`: one seed fact id. */
@@ -67,14 +65,12 @@ export function maxOutputProblem(value: number | null): string | null {
 export function parseFlags(argv: readonly string[]): GraphFlags {
   const flags: GraphFlags = {
     dataDir: null,
-    bookRoot: null,
     chapters: null,
     all: false,
     pending: false,
     force: false,
     dryRun: false,
     noRecall: false,
-    noReconcile: false,
     json: false,
     limit: null,
     fact: null,
@@ -119,7 +115,6 @@ export function parseFlags(argv: readonly string[]): GraphFlags {
       return parsed;
     };
     if (name === '--data-dir') flags.dataDir = value();
-    else if (name === '--book-root') flags.bookRoot = value();
     else if (name === '--chapters') flags.chapters = value();
     else if (name === '--limit') flags.limit = numeric();
     else if (name === '--fact') flags.fact = value();
@@ -133,7 +128,6 @@ export function parseFlags(argv: readonly string[]): GraphFlags {
     else if (name === '--force') flags.force = true;
     else if (name === '--dry-run') flags.dryRun = true;
     else if (name === '--no-recall') flags.noRecall = true;
-    else if (name === '--no-reconcile') flags.noReconcile = true;
     else if (name === '--json') flags.json = true;
     else flags.unknown.push(arg);
   }

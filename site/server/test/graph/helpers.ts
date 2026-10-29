@@ -1,7 +1,7 @@
 /**
  * Fixtures for the closure (BOOK-174). The graph is seeded row by row rather than extracted from
- * a manuscript: the closure is a query over the ledger, and a test that had to import chapters
- * would be testing the extractor a second time instead of the walk.
+ * a chapter: the closure is a query over the ledger, and a test that had to build blocks and
+ * mentions first would be testing the extractor a second time instead of the walk.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -68,7 +68,7 @@ export function seedEdge(
 ): string {
   db.prepare(
     `INSERT INTO fact_dependency
-       (id, from_fact, to_fact, chapter, kind, stance, statement, origin, step_id, rev, superseded_by, at,
+       (id, "from", "to", chapter, kind, stance, statement, origin, step_id, rev, superseded_by, at,
         retired_by_run)
      VALUES (?, ?, ?, ?, ?, 'plain', ?, 'inferred', 'test', 1, ?, ?, ?)`,
   ).run(

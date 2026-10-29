@@ -219,12 +219,12 @@ export function mandatoryOf(
     const placeholders = ids.map(() => '?').join(', ');
     const rows = db
       .prepare(
-        `SELECT e.id, e.from_fact AS fromFact, e.to_fact AS toFact
+        `SELECT e.id, e."from" AS fromFact, e."to" AS toFact
            FROM fact_dependency e
-           JOIN facts f ON f.id = e.from_fact
+           JOIN facts f ON f.id = e."from"
           WHERE e.superseded_by IS NULL AND e.retired_by_run IS NULL
             AND ${liveFactOf('f')}
-            AND e.to_fact IN (${placeholders})
+            AND e."to" IN (${placeholders})
           ORDER BY e.id`,
       )
       .all(...ids) as Array<{ id: string; fromFact: string; toFact: string }>;

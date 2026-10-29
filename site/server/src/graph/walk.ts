@@ -81,8 +81,8 @@ export function liveFactOf(alias: string): string {
  * fact reaches nothing.
  */
 function walkSql(direction: 'ancestor' | 'descendant'): string {
-  const from = direction === 'ancestor' ? 'e.from_fact' : 'e.to_fact';
-  const joinOn = direction === 'ancestor' ? 'e.to_fact = walk.id' : 'e.from_fact = walk.id';
+  const from = direction === 'ancestor' ? 'e."from"' : 'e."to"';
+  const joinOn = direction === 'ancestor' ? 'e."to" = walk.id' : 'e."from" = walk.id';
   return `WITH RECURSIVE walk(id) AS (
       SELECT :seed
       UNION
@@ -123,10 +123,10 @@ export function loadFacts(db: Db, ids: readonly string[]): Map<string, FactRow> 
 export function loadLiveEdges(db: Db): Map<string, EdgeRow> {
   const rows = db
     .prepare(
-      `SELECT e.id, e.from_fact AS fromFact, e.to_fact AS toFact, e.kind, e.chapter
+      `SELECT e.id, e."from" AS fromFact, e."to" AS toFact, e.kind, e.chapter
          FROM fact_dependency e
-         JOIN facts f ON f.id = e.from_fact
-         JOIN facts t ON t.id = e.to_fact
+         JOIN facts f ON f.id = e."from"
+         JOIN facts t ON t.id = e."to"
         WHERE ${LIVE_EDGE}
           AND ${liveFactOf('f')}
           AND ${liveFactOf('t')}`,

@@ -3,7 +3,7 @@
  *
  * The prose lives in `validateFixture.ts` and is synthetic on purpose: the real chapters carry the
  * lesson (ch04's «кто подписал?», ch15's list of dates), and the fixture quotes those shapes
- * without needing the manuscript. Every case states which rule it proves and what a reader would
+ * without needing the volume. Every case states which rule it proves and what a reader would
  * see if the rule were missing.
  */
 

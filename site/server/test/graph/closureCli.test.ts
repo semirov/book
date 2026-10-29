@@ -2,9 +2,9 @@
  * `graph closure` (BOOK-174): a fact or a quoted sentence, the whole closure, the mandatory and
  * optional split, the mode and the price.
  *
- * The database is seeded with facts and edges and **no manuscript**: the command must be usable on
- * a projection that was imported elsewhere, and a quote resolves through the mentions and the
- * facts' own sentences, not through a chapter file.
+ * The database is seeded with facts and edges and **no files at all**: the command must be usable
+ * on a volume that was filled elsewhere, and a quote resolves through the mentions and the facts'
+ * own sentences, not through a chapter file.
  */
 
 import { rmSync } from 'node:fs';
@@ -104,7 +104,7 @@ describe('graph closure', () => {
   it('prints the split and the price for one fact', () => {
     const dir = prepare();
     const captured = io();
-    const code = runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f'], captured, { bookRoot: dir });
+    const code = runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f'], captured, {});
     expect(code).toBe(0);
     const text = captured.out.join('\n');
     expect(text).toContain('1 seed: fct_f (document:65-11877-арх, ch02)');
@@ -126,7 +126,7 @@ describe('graph closure', () => {
   it('prints the whole object with --json, including the mandatory/optional split', () => {
     const dir = prepare();
     const captured = io();
-    const code = runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--json'], captured, { bookRoot: dir });
+    const code = runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--json'], captured, {});
     expect(code).toBe(0);
     const payload = JSON.parse(captured.out.join('\n')) as {
       seeds: string[];
@@ -154,7 +154,7 @@ describe('graph closure', () => {
     const code = runGraph(
       ['closure', '--data-dir', dir, '--chapter', '2', '--quote', '65-11877-арх', '--changed-chars', '480', '--json'],
       captured,
-      { bookRoot: dir },
+      {},
     );
     expect(code).toBe(0);
     const payload = JSON.parse(captured.out.join('\n')) as {
@@ -173,7 +173,6 @@ describe('graph closure', () => {
     const seedsFor = (chapter: string, quote: string): string[] => {
       const captured = io();
       expect(runGraph(['closure', '--data-dir', dir, '--chapter', chapter, '--quote', quote, '--json'], captured, {
-        bookRoot: dir,
       })).toBe(0);
       return (JSON.parse(captured.out.join('\n')) as { seeds: string[] }).seeds;
     };
@@ -192,7 +191,7 @@ describe('graph closure', () => {
     const code = runGraph(
       ['closure', '--data-dir', dir, '--chapter', '15', '--quote', '12.02, 15.02'],
       captured,
-      { bookRoot: dir },
+      {},
     );
     expect(code).toBe(0);
     const text = captured.out.join('\n');
@@ -209,7 +208,7 @@ describe('graph closure', () => {
     const code = runGraph(
       ['closure', '--data-dir', dir, '--chapter', '3', '--quote', 'ни одного такого слова'],
       captured,
-      { bookRoot: dir },
+      {},
     );
     expect(code).toBe(0);
     expect(captured.err).toEqual([]);
@@ -220,7 +219,7 @@ describe('graph closure', () => {
   it('benchmarks every live fact and reports the budget it measured', () => {
     const dir = prepare();
     const captured = io();
-    const code = runGraph(['bench', '--data-dir', dir, '--json'], captured, { bookRoot: dir });
+    const code = runGraph(['bench', '--data-dir', dir, '--json'], captured, {});
     const result = JSON.parse(captured.out.join('\n')) as { runs: number; p95: number; nodesMax: number };
     expect(result.runs).toBe(7);
     // Load tolerance, not the budget: an upper bound two orders of magnitude over 25 ms catches a
@@ -233,20 +232,20 @@ describe('graph closure', () => {
 
     const text = io();
     // Same measurement in the human format; its own exit code is covered by the JSON run above.
-    runGraph(['bench', '--data-dir', dir], text, { bookRoot: dir });
+    runGraph(['bench', '--data-dir', dir], text, {});
     expect(text.out.join('\n')).toContain('bench: 7 runs');
     expect(text.out.join('\n')).toContain('json');
   });
 
   it('is a usage error without a seed and a missing-fact error for an unknown id', () => {
     const dir = prepare();
-    expect(runGraph(['closure', '--data-dir', dir], io(), { bookRoot: dir })).toBe(2);
+    expect(runGraph(['closure', '--data-dir', dir], io(), {})).toBe(2);
     expect(
-      runGraph(['closure', '--data-dir', dir, '--chapter', 'двенадцать', '--quote', 'x'], io(), { bookRoot: dir }),
+      runGraph(['closure', '--data-dir', dir, '--chapter', 'двенадцать', '--quote', 'x'], io(), {}),
     ).toBe(2);
-    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--nonsense'], io(), { bookRoot: dir })).toBe(2);
+    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--nonsense'], io(), {})).toBe(2);
     const captured = io();
-    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_nope'], captured, { bookRoot: dir })).toBe(1);
+    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_nope'], captured, {})).toBe(1);
     expect(captured.err.join('\n')).toContain('no fact fct_nope');
   });
 
@@ -255,7 +254,7 @@ describe('graph closure', () => {
     for (const extra of [['--chapter', '2'], ['--quote', '65/11877/арх'], ['--chapter', '2', '--quote', 'x']]) {
       const captured = io();
       expect(
-        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', ...extra], captured, { bookRoot: dir }),
+        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', ...extra], captured, {}),
       ).toBe(2);
       expect(captured.err.join('\n')).toContain('one selector per run');
       // Nothing was measured: a silent second selector would have priced a change nobody asked for.
@@ -268,14 +267,13 @@ describe('graph closure', () => {
     // A bare flag has no number at all, which is also a usage error rather than a silent zero.
     const bare = io();
     expect(
-      runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--changed-chars'], bare, { bookRoot: dir }),
+      runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--changed-chars'], bare, {}),
     ).toBe(2);
     expect(bare.err.join('\n')).toContain('--changed-chars needs a number');
     for (const value of ['abc', '-1', '4o0']) {
       const captured = io();
       expect(
         runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--changed-chars', value], captured, {
-          bookRoot: dir,
         }),
       ).toBe(2);
       expect(captured.err.join('\n')).toContain('is not a non-negative number');
@@ -284,7 +282,6 @@ describe('graph closure', () => {
     const zero = io();
     expect(
       runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--changed-chars', '0', '--json'], zero, {
-        bookRoot: dir,
       }),
     ).toBe(0);
     expect((JSON.parse(zero.out.join('\n')) as { price: { changedChars: number } }).price.changedChars).toBe(0);
@@ -295,7 +292,7 @@ describe('graph closure', () => {
     const decideWith = (apply: string[]): unknown => {
       const captured = io();
       expect(
-        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', ...apply, '--json'], captured, { bookRoot: dir }),
+        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', ...apply, '--json'], captured, {}),
       ).toBe(0);
       return (JSON.parse(captured.out.join('\n')) as { decision: { refused: unknown } }).decision.refused;
     };
@@ -316,7 +313,7 @@ describe('graph closure', () => {
     const dir = prepare();
     for (const value of ['двенадцать', '0', '2,x', '68']) {
       expect(
-        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--apply', value], io(), { bookRoot: dir }),
+        runGraph(['closure', '--data-dir', dir, '--fact', 'fct_f', '--apply', value], io(), {}),
       ).toBe(2);
     }
   });
@@ -324,7 +321,7 @@ describe('graph closure', () => {
   it('stays local when the only crossing edge touches nothing that changed', () => {
     const dir = prepareOptionalCrossing();
     const captured = io();
-    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_s', '--json'], captured, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_s', '--json'], captured, {})).toBe(0);
     const payload = JSON.parse(captured.out.join('\n')) as {
       decision: { mode: string; refused: unknown; reasons: string[] };
       edges: Array<{ id: string; fromFact: string; toFact: string }>;
@@ -339,7 +336,7 @@ describe('graph closure', () => {
   it('is a ripple when a touched fact registers an edge into another chapter', () => {
     const dir = prepareTouchedCrossing();
     const captured = io();
-    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_s', '--json'], captured, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['closure', '--data-dir', dir, '--fact', 'fct_s', '--json'], captured, {})).toBe(0);
     const payload = JSON.parse(captured.out.join('\n')) as {
       mandatory: Array<{ factId: string }>;
       decision: { mode: string };

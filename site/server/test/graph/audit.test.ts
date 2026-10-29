@@ -106,35 +106,35 @@ describe('the command', () => {
   it('prints the findings and exits 1, and exits 0 on a clean chapter', () => {
     seed();
     const dirty = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir], dirty, { bookRoot: fixture.dataDir })).toBe(1);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir], dirty, {})).toBe(1);
     expect(dirty.out[0]).toContain('ch5 document:12');
     expect(dirty.out.at(-1)).toBe('audit: 2 live facts checked, 1 unsupported');
 
     const clean = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', '3'], clean, { bookRoot: '' })).toBe(0);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', '3'], clean, {})).toBe(0);
     expect(clean.out.at(-1)).toBe('audit: 1 live facts checked, 0 unsupported');
 
     const json = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--json'], json, { bookRoot: '' })).toBe(1);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--json'], json, {})).toBe(1);
     expect(JSON.parse(json.out[0] ?? '{}')).toMatchObject({ checked: 2, failed: 1 });
   });
 
   it('refuses a missing data directory, an unknown flag and a non-chapter', () => {
     seed();
     const missing = io();
-    expect(runGraph(['audit'], missing, { bookRoot: '' })).toBe(2);
+    expect(runGraph(['audit'], missing, {})).toBe(2);
     expect(missing.err[0]).toBe('graph: --data-dir is required');
 
     const unknown = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--nope'], unknown, { bookRoot: '' })).toBe(2);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--nope'], unknown, {})).toBe(2);
     expect(unknown.err[0]).toContain('--nope');
 
     const badChapter = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', 'первая'], badChapter, { bookRoot: '' })).toBe(2);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', 'первая'], badChapter, {})).toBe(2);
     expect(badChapter.err[0]).toBe('graph: --chapter must be a chapter number');
 
     const outOfRange = io();
-    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', '68'], outOfRange, { bookRoot: '' })).toBe(2);
+    expect(runGraph(['audit', '--data-dir', fixture.dataDir, '--chapter', '68'], outOfRange, {})).toBe(2);
     expect(outOfRange.err[0]).toBe('graph: --chapter must be between 1 and 67');
   });
 });

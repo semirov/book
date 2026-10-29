@@ -21,8 +21,9 @@
  * the diagnostic knob a truncation is read against.
  *
  * `--data-dir` is required by the CLI on purpose: a measurement run must not be able to land in
- * the live data directory by accident of an unset variable. BOOK_ROOT still defaults to the site
- * config, because the manuscript is read-only and has only one home.
+ * the live data directory by accident of an unset variable. The text is read from that database
+ * (ADR-043, BOOK-DOC-76) — the tool never imports a manuscript: a chapter with no blocks is
+ * `NO_CHAPTER_TEXT`, and the one-shot import is the operator's own door.
  *
  * `audit` re-asks the support question of every live fact's own witness and writes nothing: it
  * exits 1 when a witness does not prove its value, so it can be a gate.
@@ -41,16 +42,12 @@ async function main() {
     console.error('graph: the server is not built — run `npm run build -w @book/server` first');
     return 1;
   }
-  const [{ loadConfig }, { runGraph }] = await Promise.all([
-    import(pathToFileURL(join(DIST, 'config.js')).href),
-    import(pathToFileURL(entry).href),
-  ]);
-  const config = loadConfig();
+  const { runGraph } = await import(pathToFileURL(entry).href);
   // `extract` is async (it waits on the model); every other command returns its number at once.
   return await runGraph(
     process.argv.slice(2),
     { log: (line) => console.log(line), error: (line) => console.error(line) },
-    { bookRoot: config.bookRoot },
+    {},
   );
 }
 

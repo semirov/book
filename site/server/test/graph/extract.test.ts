@@ -162,8 +162,8 @@ describe('one answer, written in one transaction', () => {
 
     const edge = rows('SELECT * FROM fact_dependency')[0] ?? {};
     expect(edge).toMatchObject({
-      from_fact: idOf('fct', 'document:77-1-арх'),
-      to_fact: idOf('fct', 'document:65-11877-арх'),
+      from: idOf('fct', 'document:77-1-арх'),
+      to: idOf('fct', 'document:65-11877-арх'),
       kind: 'document',
       chapter: 2,
       stance: 'plain',

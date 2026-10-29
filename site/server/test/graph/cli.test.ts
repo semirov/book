@@ -2,8 +2,8 @@
  * `bin/graph.mjs`'s command layer (BOOK-185): a chapter list is a chapter list, a missing data
  * directory is a usage error, and the commands leave a database the operator can read.
  *
- * The database is built here rather than reconciled from the manuscript: the CLI must not depend
- * on the manuscript being mounted, and the measurement run covers the real import. The model is a
+ * The database is built here, the way the volume itself is built: the CLI reads a chapter's blocks
+ * from rows and never a file, and the measurement run covers the real volume. The model is a
  * fake provider passed as the seam (`GraphDefaults.model`) — no network, no key, no money — so a
  * `--dry-run` and a `--pending` can be tested for what they do to the database rather than for
  * whether a key happens to be on the machine.
@@ -86,8 +86,7 @@ describe('runGraph', () => {
 
     const extract = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapters', '1,2', '--no-recall'], extract, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--chapters', '1,2', '--no-recall'], extract, {
         model,
       }),
     ).toBe(0);
@@ -101,7 +100,7 @@ describe('runGraph', () => {
     expect(model.provider).toBeDefined();
 
     const report = io();
-    expect(runGraph(['report', '--data-dir', dir, '--json'], report, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['report', '--data-dir', dir, '--json'], report, {})).toBe(0);
     const parsed = JSON.parse(report.out.join('\n')) as {
       totals: {
         facts: number;
@@ -121,7 +120,7 @@ describe('runGraph', () => {
     expect(parsed.chapters[0]?.runs.last.promptSha).toHaveLength(64);
 
     const samples = io();
-    expect(runGraph(['samples', '--data-dir', dir, '--limit', '1'], samples, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['samples', '--data-dir', dir, '--limit', '1'], samples, {})).toBe(0);
     const [sample] = JSON.parse(samples.out.join('\n')) as Array<Record<string, unknown>>;
     expect(sample).toMatchObject({
       chapter: 1,
@@ -138,12 +137,11 @@ describe('runGraph', () => {
   it('prints the report as a table when --json is absent', async () => {
     const { db, dir } = prepare();
     db.close();
-    await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--no-recall'], io(), {
-      bookRoot: dir,
+    await runGraph(['extract', '--data-dir', dir, '--chapter', '1', '--no-recall'], io(), {
       model: seam(ANSWER_CH1),
     });
     const report = io();
-    expect(runGraph(['report', '--data-dir', dir], report, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['report', '--data-dir', dir], report, {})).toBe(0);
     expect(report.out[0]).toContain('facts');
     expect(report.out.join('\n')).toContain('ledger_gap 0');
     expect(report.out.join('\n')).toContain('runs 1 — ok 1, refused 0, error 0');
@@ -155,10 +153,9 @@ describe('runGraph', () => {
     const fake = fakeProvider(answerText(ANSWER_CH1));
     const out = io();
     const code = await runGraph(
-      ['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--dry-run', '--json', '--no-recall'],
+      ['extract', '--data-dir', dir, '--chapter', '1', '--dry-run', '--json', '--no-recall'],
       out,
       {
-      bookRoot: dir,
         model: { pipeline: PIPELINE, provider: fake },
       },
     );
@@ -199,8 +196,7 @@ describe('runGraph', () => {
     };
     const fake = fakeProvider(answerText(ANSWER_CH1), answerText(addition));
     const out = io();
-    const code = await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--json'], out, {
-      bookRoot: dir,
+    const code = await runGraph(['extract', '--data-dir', dir, '--chapter', '1', '--json'], out, {
       model: { pipeline: PIPELINE, provider: fake },
     });
     expect(code).toBe(0);
@@ -229,7 +225,7 @@ describe('runGraph', () => {
 
     // The table report says what the second pass bought, and what each pass cost.
     const report = io();
-    expect(runGraph(['report', '--data-dir', dir], report, { bookRoot: dir })).toBe(0);
+    expect(runGraph(['report', '--data-dir', dir], report, {})).toBe(0);
     const text = report.out.join('\n');
     expect(text).toContain('ch01 recall: +1 facts, +0 edges, +0 threads');
     expect(text).toContain('recall added 1 facts, 0 edges, 0 threads');
@@ -242,8 +238,7 @@ describe('runGraph', () => {
     seedChapter(db, { chapter: 3, texts: [LONG_TAIL] });
     db.close();
     const out = io();
-    const code = await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '3', '--no-recall'], out, {
-      bookRoot: dir,
+    const code = await runGraph(['extract', '--data-dir', dir, '--chapter', '3', '--no-recall'], out, {
       model: seam({ facts: [], uses: [], edges: [], threads: [] }),
     });
     expect(code).toBe(1);
@@ -265,24 +260,23 @@ describe('runGraph', () => {
     const model = seam(ANSWER_CH1, narrowed);
     const first = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--no-recall'], first, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--chapter', '1', '--no-recall'], first, {
         model,
       }),
     ).toBe(0);
     const forced = io();
     expect(
       await runGraph(
-        ['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--force', '--json', '--no-recall'],
+        ['extract', '--data-dir', dir, '--chapter', '1', '--force', '--json', '--no-recall'],
         forced,
-        { bookRoot: dir, model },
+        { model },
       ),
     ).toBe(0);
     const row = JSON.parse(forced.out.join('\n')) as { run: string; mode: string };
     expect(row.mode).toBe('model');
 
     const report = io();
-    runGraph(['report', '--data-dir', dir, '--json'], report, { bookRoot: dir });
+    runGraph(['report', '--data-dir', dir, '--json'], report, {});
     const parsed = JSON.parse(report.out.join('\n')) as {
       chapters: Array<{ chapter: number; runs: { total: number; last: { run: string } } }>;
       totals: { runs: { total: number; ok: number } };
@@ -298,16 +292,14 @@ describe('runGraph', () => {
     db.close();
     const model = seam(ANSWER_CH1, ANSWER_CH2_USE);
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--no-recall'], io(), {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--chapter', '1', '--no-recall'], io(), {
         model,
       }),
     ).toBe(0);
 
     const out = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--pending', '--json', '--no-recall'], out, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--pending', '--json', '--no-recall'], out, {
         model,
       }),
     ).toBe(0);
@@ -317,8 +309,7 @@ describe('runGraph', () => {
     // Now every written chapter is answered: a second --pending asks nothing and says so.
     const again = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--pending', '--no-recall'], again, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--pending', '--no-recall'], again, {
         model,
       }),
     ).toBe(0);
@@ -335,7 +326,7 @@ describe('runGraph', () => {
     delete process.env.DEEPSEEK_API_KEY;
     try {
       const out = io();
-      expect(await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1'], out, { bookRoot: dir })).toBe(1);
+      expect(await runGraph(['extract', '--data-dir', dir, '--chapter', '1'], out, {})).toBe(1);
       const message = out.err.join('\n');
       expect(message).toContain('KEY_MISSING');
       expect(message).not.toContain('DEEPSEEK_API_KEY_FILE=');
@@ -350,30 +341,30 @@ describe('runGraph', () => {
 
   it('answers 2 for an unknown command, a bad flag, a missing --data-dir and no selector', async () => {
     const unknown = io();
-    expect(runGraph(['nope'], unknown, { bookRoot: '.' })).toBe(2);
+    expect(runGraph(['nope'], unknown, {})).toBe(2);
     expect(unknown.err[0]).toContain('usage');
 
     const badFlag = io();
-    expect(runGraph(['report', '--data-dir', '/tmp/x', '--wat'], badFlag, { bookRoot: '.' })).toBe(2);
+    expect(runGraph(['report', '--data-dir', '/tmp/x', '--wat'], badFlag, {})).toBe(2);
 
     const noDir = io();
-    expect(runGraph(['samples'], noDir, { bookRoot: '.' })).toBe(2);
+    expect(runGraph(['samples'], noDir, {})).toBe(2);
     expect(noDir.err[0]).toContain('--data-dir is required');
 
     const badChapters = io();
-    expect(await runGraph(['extract', '--data-dir', '/tmp/x', '--chapters', 'first'], badChapters, { bookRoot: '.' })).toBe(2);
+    expect(await runGraph(['extract', '--data-dir', '/tmp/x', '--chapters', 'first'], badChapters, {})).toBe(2);
 
     const noSelector = io();
-    expect(await runGraph(['extract', '--data-dir', '/tmp/x'], noSelector, { bookRoot: '.' })).toBe(2);
+    expect(await runGraph(['extract', '--data-dir', '/tmp/x'], noSelector, {})).toBe(2);
     expect(noSelector.err[0]).toContain('--chapter');
 
     const twoSelectors = io();
     expect(
-      await runGraph(['extract', '--data-dir', '/tmp/x', '--all', '--pending'], twoSelectors, { bookRoot: '.' }),
+      await runGraph(['extract', '--data-dir', '/tmp/x', '--all', '--pending'], twoSelectors, {}),
     ).toBe(2);
 
     const badLimit = io();
-    expect(runGraph(['samples', '--data-dir', '/tmp/x', '--limit', '0'], badLimit, { bookRoot: '.' })).toBe(2);
+    expect(runGraph(['samples', '--data-dir', '/tmp/x', '--limit', '0'], badLimit, {})).toBe(2);
   });
 
   it('answers 1 when the data directory holds no chapter to extract', async () => {
@@ -384,12 +375,37 @@ describe('runGraph', () => {
     db.close();
     const result = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1'], result, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--chapter', '1'], result, {
         model: seam(ANSWER_CH1),
       }),
     ).toBe(1);
     expect(result.err.join('\n')).toContain('no chapter row for 1');
+  });
+
+  it('refuses a chapter whose text is not in the volume with NO_CHAPTER_TEXT, and asks no model', async () => {
+    // ADR-043, BOOK-DOC-76: the text is a row. A chapter row without blocks has nothing to ask
+    // about, and the tool imports nothing — the one-shot import is the operator's door.
+    const dir = mkdtempSync(join(tmpdir(), 'book-graph-notext-'));
+    dataDir = dir;
+    const db = openDatabase(databaseFile(dir));
+    migrate(db);
+    db.prepare(
+      `INSERT INTO chapters (n, rev, title, sha256, chars, block_count, basis, written_at, updated_at)
+       VALUES (3, 1, NULL, 'sha-empty', 0, 0, 0, ?, ?)`,
+    ).run('2026-10-29T09:00:00Z', '2026-10-29T09:00:00Z');
+    db.close();
+
+    const fake = fakeProvider(answerText(ANSWER_CH1));
+    const result = io();
+    const code = await runGraph(['extract', '--data-dir', dir, '--chapter', '3'], result, {
+      model: { pipeline: PIPELINE, provider: fake },
+    });
+    expect(code).toBe(1);
+    expect(result.err.join('\n')).toContain('NO_CHAPTER_TEXT');
+    expect(result.err.join('\n')).toContain('no blocks');
+    expect(fake.calls).toHaveLength(0);
+    // Nothing was imported behind the operator's back: the chapter still has no blocks.
+    expect(count(dir, 'blocks')).toBe(0);
   });
 });
 
@@ -400,9 +416,9 @@ describe('--max-output', () => {
     const fake = fakeProvider(answerText(ANSWER_CH1), answerText(ANSWER_CH1));
     const out = io();
     const code = await runGraph(
-      ['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--max-output', '65536', '--json'],
+      ['extract', '--data-dir', dir, '--chapter', '1', '--max-output', '65536', '--json'],
       out,
-      { bookRoot: dir, model: { pipeline: PIPELINE, provider: fake } },
+      { model: { pipeline: PIPELINE, provider: fake } },
     );
     expect(code).toBe(0);
     const [row] = out.out.map((line) => JSON.parse(line) as { maxOutput: number; ok: boolean });
@@ -419,8 +435,7 @@ describe('--max-output', () => {
     const fake = fakeProvider(answerText(ANSWER_CH1));
     const out = io();
     expect(
-      await runGraph(['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--json'], out, {
-        bookRoot: dir,
+      await runGraph(['extract', '--data-dir', dir, '--chapter', '1', '--json'], out, {
         model: { pipeline: PIPELINE, provider: fake },
       }),
     ).toBe(0);
@@ -437,9 +452,9 @@ describe('--max-output', () => {
       const fake = fakeProvider(answerText(ANSWER_CH1));
       const out = io();
       const code = await runGraph(
-        ['extract', '--data-dir', dir, '--no-reconcile', '--chapter', '1', '--max-output', value],
+        ['extract', '--data-dir', dir, '--chapter', '1', '--max-output', value],
         out,
-        { bookRoot: dir, model: { pipeline: PIPELINE, provider: fake } },
+        { model: { pipeline: PIPELINE, provider: fake } },
       );
       expect(code, value).toBe(2);
       expect(out.out).toEqual([]);
@@ -450,7 +465,7 @@ describe('--max-output', () => {
 
   it('exits 2 when the flag carries no value at all', async () => {
     const out = io();
-    expect(await runGraph(['extract', '--data-dir', '/tmp/x', '--chapter', '1', '--max-output'], out, { bookRoot: '.' })).toBe(2);
+    expect(await runGraph(['extract', '--data-dir', '/tmp/x', '--chapter', '1', '--max-output'], out, {})).toBe(2);
     expect(out.err.join('\n')).toContain('--max-output');
   });
 });

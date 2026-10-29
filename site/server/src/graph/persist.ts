@@ -18,7 +18,7 @@
  *      chapter.
  *
  * The edge ids are derived from the claim and not from the run for the same reason as the facts':
- * `fact_dependency` has `UNIQUE (from_fact, to_fact, kind, chapter)`, and a stable id means the
+ * `fact_dependency` has `UNIQUE ("from", "to", kind, chapter)`, and a stable id means the
  * upsert keeps the row (and its history) instead of colliding with it.
  */
 
@@ -128,7 +128,7 @@ function endpointId(endpoint: EdgeEndpoint, ids: ReadonlyMap<string, string>): s
 
 const UPSERT_EDGE = `
 INSERT INTO fact_dependency
-  (id, from_fact, to_fact, chapter, kind, stance, line, statement, origin, step_id, rev,
+  (id, "from", "to", chapter, kind, stance, line, statement, origin, step_id, rev,
    superseded_by, at, extracted_by, retired_by_run)
 VALUES (@id, @fromFact, @toFact, @chapter, @kind, 'plain', NULL, @statement, 'inferred', @stepId,
         @rev, NULL, @at, @extractedBy, NULL)
@@ -180,7 +180,7 @@ function persistEdges(db: Db, input: PersistEdgesInput): { written: number; reti
   // compared, not the id, because a row written before the ids were derived keeps its own id.
   const rows = db
     .prepare(
-      `SELECT id, from_fact AS fromFact, to_fact AS toFact, kind FROM fact_dependency
+      `SELECT id, "from" AS fromFact, "to" AS toFact, kind FROM fact_dependency
         WHERE chapter = ? AND superseded_by IS NULL AND retired_by_run IS NULL
         ORDER BY id`,
     )

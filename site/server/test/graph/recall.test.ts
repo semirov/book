@@ -169,9 +169,9 @@ describe('the recall adds to the first answer', () => {
     // The edge the recall added names the recall run; the first pass's edge never does.
     const paper = idOf('fct', 'document:77-1-арх');
     const nameId = idOf('fct', 'name:сорокин');
-    const edges = rows('SELECT from_fact, to_fact, extracted_by FROM fact_dependency');
-    const recallEdge = edges.find((edge) => edge.from_fact === nameId);
-    const firstEdge = edges.find((edge) => edge.from_fact === paper);
+    const edges = rows('SELECT "from" AS fromFact, "to" AS toFact, extracted_by FROM fact_dependency');
+    const recallEdge = edges.find((edge) => edge.fromFact === nameId);
+    const firstEdge = edges.find((edge) => edge.fromFact === paper);
     expect(stamp(recallEdge?.extracted_by).pass).toBe('recall');
     expect(stamp(firstEdge?.extracted_by).pass).toBe('extract');
 

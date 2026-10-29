@@ -1,27 +1,26 @@
 /**
- * `bin/graph.mjs`'s implementation (BOOK-185): extraction over the manuscript, and the two views
- * that make it checkable — a per-chapter report and a quoted sample. The closure and the benchmark
- * live in `closureCli.ts`; the flag parser and the connection live in `cliArgs.ts`.
+ * `bin/graph.mjs`'s implementation (BOOK-185): extraction over the volume's own rows, and the two
+ * views that make it checkable — a per-chapter report and a quoted sample. The closure and the
+ * benchmark live in `closureCli.ts`; the flag parser and the connection live in `cliArgs.ts`.
  *
  * Exit codes are the index CLI's, because two tools that disagree about what a failed run looks
  * like are two tools an operator has to remember separately: 0 done, 1 missing or unbuildable
- * (no database, no chapters, an extraction that refuses, no model key), 2 bad usage or an unknown
- * command.
+ * (no database, no chapter text, an extraction that refuses, no model key), 2 bad usage or an
+ * unknown command.
  *
  * `extract` drives the model pass (BOOK-DOC-77): the provider is the pipeline's pin and the key,
  * and every chapter prints what it produced and what it cost. `--dry-run` asks the model and
  * writes nothing; `--pending` is «every chapter whose current text has no completed run»; a
  * missing key is `KEY_MISSING` and nothing else — never its path, never its value.
  *
- * `extract` imports the manuscript first when the requested chapters are not in the projection:
- * the database is a projection of the files (ADR-002), and extracting a projection nobody
- * refreshed would measure last week's text. `--no-reconcile` exists for a caller that has just
- * imported and does not want a second scan.
+ * **The text is a row, not a file** (ADR-043, BOOK-DOC-76): `extract` reads the chapter's blocks
+ * from the volume and never a manuscript directory. A chapter whose blocks are not there cannot
+ * be asked about, and the command says so with `NO_CHAPTER_TEXT` instead of importing anything:
+ * the one-shot import is the operator's door (`POST /internal/reconcile`), not this tool's.
  */
 
 import type { Db } from '../db/db.ts';
 import { listChapterRows } from '../db/repo/chapters.ts';
-import { reconcile } from '../ingest/reconcile.ts';
 import { apiModelOf, loadPipeline, type Pipeline } from '../pipeline.ts';
 import { toIso } from '../util/time.ts';
 import { auditFacts, renderAudit } from './audit.ts';
@@ -38,7 +37,7 @@ export type GraphIo = { log: (line: string) => void; error: (line: string) => vo
 /** The model seam: the pin the run is charged at, and the transport it asks. Injected by tests. */
 export type ModelSeam = { pipeline: Pipeline; provider: Provider };
 
-export type GraphDefaults = { bookRoot: string; model?: ModelSeam };
+export type GraphDefaults = { model?: ModelSeam };
 
 /** `1-15,20` → [1..15, 20]; anything that is not a chapter number is a usage error. */
 export function parseChapters(spec: string): number[] | null {
@@ -177,25 +176,8 @@ async function extractCommand(argv: readonly string[], io: GraphIo, defaults: Gr
   const db = openGraphDb(dataDir);
   try {
     const at = toIso(Date.now());
-    let present = listChapterRows(db).map((row) => row.n);
+    const present = listChapterRows(db).map((row) => row.n);
     const requested = selector.explicit;
-    // The database is a projection of the files, so the import runs when the question is about
-    // text this projection may not hold: the whole book (`--all`/`--pending`), a chapter with no
-    // row or no blocks, or an empty data directory. `--no-reconcile` is the caller's override.
-    const needsImport =
-      !flags.noReconcile &&
-      (selector.all ||
-        selector.pending ||
-        present.length === 0 ||
-        (requested ?? []).some((n) => !present.includes(n) || !hasBlocks(db, n)));
-    if (needsImport) {
-      const report = reconcile(db, { bookRoot: flags.bookRoot ?? defaults.bookRoot, dataDir, now: new Date(at) });
-      io.log(
-        `reconcile: scanned ${String(report.scanned)} — created ${report.created.length}, revised ${report.revised.length}, ` +
-          `unchanged ${report.unchanged.length}, removed ${report.removed.length}`,
-      );
-      present = listChapterRows(db).map((row) => row.n);
-    }
     // The recall is on by default (BOOK-DOC-77 §4); the operator's `--no-recall` is the cheap path.
     (flags.json ? io.error : io.log)(flags.noRecall ? 'recall: off' : 'recall: on');
 
@@ -204,6 +186,16 @@ async function extractCommand(argv: readonly string[], io: GraphIo, defaults: Gr
       const missing = requested.filter((n) => !present.includes(n));
       if (missing.length > 0) {
         io.error(`graph: no chapter row for ${missing.join(', ')}`);
+        return 1;
+      }
+      // ADR-043: the text is a row. A chapter with no blocks has nothing to ask about, and a
+      // tool that imported one from a file would be a second door into the book.
+      const empty = requested.filter((n) => !hasBlocks(db, n));
+      if (empty.length > 0) {
+        io.error(
+          `graph: NO_CHAPTER_TEXT — chapter ${empty.join(', ')} has no blocks in ${dataDir}; ` +
+            'the text is a row (ADR-043), so import it through the engine (POST /internal/reconcile) first',
+        );
         return 1;
       }
       chapters = requested;
