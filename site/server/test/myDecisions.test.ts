@@ -272,6 +272,39 @@ describe('GET /api/me/decisions (BOOK-13)', () => {
     });
   });
 
+  it('says a stopped change is one state — a `failed` change reads as a refusal too (BOOK-206 B2)', async () => {
+    harness = await bootComments();
+    seedComment(harness, {
+      id: 'cmt_failed',
+      identityId: harness.identity.id,
+      status: 'accepted',
+      decidedAt: '2026-10-25T12:00:00Z',
+      // The acceptance sentence is what the row still carries; it is not a fact about the stop.
+      reason: 'принято · входит в книгу',
+      auditVerdict: 'FITS',
+    });
+    seedChange(harness, {
+      id: 'chg_failed',
+      seq: 6,
+      status: 'failed',
+      outcome: 'origin',
+      reason: 'повторные обрывы — правка остановлена',
+      commentId: 'cmt_failed',
+      finishedAt: '2026-10-25T13:00:00Z',
+    });
+
+    // The same derivation the filing DTO reads: `failed` and `escalated` are one terminal state,
+    // and the sentence is the change's own — never the row's acceptance line.
+    expect((await mine(harness)).items[0]).toMatchObject({
+      outcome: 'refused',
+      reason: 'повторные обрывы — правка остановлена',
+      waves: null,
+      blocks: null,
+      shareAtDecision: null,
+      chapters: [],
+    });
+  });
+
   it('shows an accepted change as waiting, not as a result', async () => {
     harness = await bootComments();
     seedComment(harness, {

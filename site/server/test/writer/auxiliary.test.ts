@@ -69,7 +69,7 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
   });
 
   it('falls back to the caller’s sentence, and never returns a code word', () => {
-    expect(readerReason('LEASE_RELEASED', 'проход остановлен — заявка остаётся в очереди')).toContain('проход остановлен');
+    expect(readerReason('LEASE_RELEASED', 'проход остановлен — правка остановлена')).toContain('проход остановлен');
     expect(readerReason(null, 'не удалось записать главу')).toBe('не удалось записать главу');
     // Every sentence is a sentence: bounded, no machine token, no colon-led code.
     for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
@@ -79,6 +79,17 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
     }
     // A verbose fallback is cut, not printed whole: a note is read on a page.
     expect(readerReason(null, 'а'.repeat(500)).length).toBe(200);
+  });
+
+  it('never promises a queue: a parked pass is a stopped change (BOOK-219, audit B2/B5)', () => {
+    for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
+      // An escalated change is terminal (`rejected`); nothing retries it and the reader has no
+      // lever — both phrases were the lie the audit named.
+      expect(sentence).not.toContain('остаётся в очереди');
+      expect(sentence).not.toContain('ждёт решения');
+      // And each of them names the stop in the one word `follow.ts` prints for `escalated`.
+      expect(sentence).toContain('правка остановлена');
+    }
   });
 });
 
@@ -234,7 +245,9 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toBe(readerSentences.rightsMissing);
+      // BOOK-219: the sentence says what happened to the text — the close never confirmed it, so
+      // the new revision stands without a close, and the filing waits for a person.
+      expect(result.reason).toBe(readerSentences.closeStanding);
       expect(parkedLine(harness)).toContain('RIGHTS_REQUIRED');
       expect(listStages(harness.fixture.db, CHAPTER).at(-1)?.stage).toBe('refused');
     } finally {

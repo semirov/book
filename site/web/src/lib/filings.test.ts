@@ -1,4 +1,4 @@
-import type { ChangeSummaryDto, CommentDto } from '@book/shared';
+import type { ChangeStatus, ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 import {
   attemptsOf,
@@ -23,7 +23,15 @@ import {
 } from './filings.ts';
 import { placeHref } from './place.ts';
 
-function comment(overrides: Partial<CommentDto> & { id: string; createdAt: string }): CommentDto {
+/** A filing with the facts a closed change adds (BOOK-206 B1), which the DTO's type predates. */
+type FilingsOverrides = Omit<Partial<CommentDto>, 'changeStatus'> & {
+  id: string;
+  createdAt: string;
+  changeStatus?: ChangeStatus | null;
+  retryAt?: string | null;
+};
+
+function comment(overrides: FilingsOverrides): CommentDto {
   return {
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 2, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
@@ -42,7 +50,7 @@ function comment(overrides: Partial<CommentDto> & { id: string; createdAt: strin
     refusal: null,
     attempt: null,
     ...overrides,
-  };
+  } as CommentDto;
 }
 
 const NEW = comment({ id: 'cmt_01J9Z8K4Q7', createdAt: '2026-10-21T12:03:00Z' });
@@ -354,5 +362,54 @@ describe('the landing frame (BOOK-219)', () => {
     expect(landingOf({ ...landing, applied: { chapter: 8, rev: -1 } })).toBeNull();
     expect(landingOf('applied')).toBeNull();
     expect(landingOf(null)).toBeNull();
+  });
+});
+
+/**
+ * BOOK-206 audit B1 — the frame that says the change's next attempt is scheduled. Its only fact
+ * is the retry time; the reader's line is the frame's own `reason`, so the row must never keep
+ * «в очереди на запись» while a stopped attempt is being retried.
+ */
+describe('the frame’s scheduled retry (BOOK-206 B1)', () => {
+  const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' });
+
+  it('carries the retry onto its own row and stops the row promising a queue place', () => {
+    const next = withDecisionReport([row], {
+      id: 'cmt_A',
+      status: 'accepted',
+      reason: 'провайдер не ответил — повтор в 12:05',
+      decidedAt: '2026-10-29T12:00:00Z',
+      attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' },
+    });
+    expect(next?.[0]).toMatchObject({ retryAt: '2026-10-29T12:05:00Z', reason: 'провайдер не ответил — повтор в 12:05' });
+  });
+
+  it('is idempotent, and a spent attempt clears the retry it carried before', () => {
+    const held = withDecisionReport([row], { id: 'cmt_A', attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' } });
+    expect(held).not.toBeNull();
+    const again = withDecisionReport(held ?? [], { id: 'cmt_A', attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' } });
+    expect(again).toBeNull();
+    const spent = withDecisionReport(held ?? [], { id: 'cmt_A', attempt: { state: 'spent', retryAt: null } });
+    expect(spent?.[0]?.retryAt).toBeNull();
+    // A frame that says nothing about the attempt leaves the fact where it was.
+    expect(withDecisionReport(held ?? [], { id: 'cmt_A', status: 'accepted' })).toBeNull();
+  });
+});
+
+/**
+ * BOOK-206 audit B1 — the mark's ink follows the state, not only the row's status: a filing
+ * whose change landed is the `applied` ink, one whose change stopped is the `expired` ink.
+ */
+describe('the mark’s ink for a closed change (BOOK-206 B1)', () => {
+  it('paints a landed change as the landing and a stopped one as stopped', () => {
+    const landed = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'done' });
+    expect(filingInk(landed)).toMatchObject({ word: 'внесено', rule: 'none', tone: 'done' });
+    for (const changeStatus of ['escalated', 'failed', 'void'] as const) {
+      const stopped = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus });
+      expect(filingInk(stopped), changeStatus).toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'stopped' });
+    }
+    // The two states the page already knew are untouched.
+    expect(filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' })))
+      .toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'live' });
   });
 });

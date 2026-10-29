@@ -1,7 +1,7 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import { changeNumber } from './changeStatus.ts';
-import { filingMarginalia } from './marginalia.ts';
+import { filingMarginalia, landedChange, stoppedChange, type FilingFacts } from './marginalia.ts';
 import { placeHref } from './place.ts';
 import type { WordFiling } from './provenance.ts';
 
@@ -56,11 +56,20 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
 };
 
 /** State → the ink, the rule shape and the word; unknown states fall to the quiet row. */
-export function filingInk(
-  comment: Pick<CommentDto, 'status'> & { premise?: boolean; changeStatus?: CommentDto['changeStatus'] },
-): FilingInk {
-  const shape = SHAPES[comment.status] ?? SHAPES.new!;
-  return { word: filingMarginalia(comment).word, ...shape };
+export function filingInk(comment: FilingFacts): FilingInk {
+  return { word: filingMarginalia(comment).word, ...shapeOf(comment) };
+}
+
+/**
+ * BOOK-206 audit B1 — the shape follows the **state** where the row's own status lags behind
+ * its change: a filing whose change landed is the `applied` ink (no rule, done), and one whose
+ * change stopped is the `expired` ink (a stopped tone, nothing coming). Both are existing rows
+ * of the table; no shape is invented here.
+ */
+function shapeOf(comment: FilingFacts): Omit<FilingInk, 'word'> {
+  if (landedChange(comment)) return SHAPES.applied!;
+  if (stoppedChange(comment)) return SHAPES.expired!;
+  return SHAPES[comment.status] ?? SHAPES.new!;
 }
 
 /** The paragraph's sentence still exists: a stale anchor shows no rule and no mark. */
@@ -217,7 +226,20 @@ export type CommentDecisionFrame = {
   applied?: CommentDto['applied'];
   disposition?: CommentDto['disposition'];
   report?: CommentDto['report'];
+  /**
+   * BOOK-206 audit B1 — the change's next attempt, when the frame says one is scheduled: the
+   * time it will be retried at, and the state that attempt is in. Only the fact is applied; the
+   * sentence a reader reads is the frame's `reason`, so the page never formats a time of its own.
+   */
+  attempt?: { state?: string; retryAt?: string | null } | null;
 };
+
+/**
+ * A filing as the live page holds it: the server's DTO plus the one fact only a frame can bring
+ * — a scheduled retry (`retryAt`). The extra field is optional everywhere, so a plain
+ * `CommentDto` is still a filing row and the durable refresh replaces the row wholesale.
+ */
+export type FilingRow = CommentDto & { retryAt?: string | null };
 
 export function decisionFrameOf(data: unknown): CommentDecisionFrame | null {
   if (data === null || typeof data !== 'object') return null;
@@ -247,13 +269,13 @@ export function landingOf(data: unknown): { chapter: number; rev: number } | nul
 
 /** The feed with the frame's report carried onto its own row, or `null` when nothing changed. */
 export function withDecisionReport(
-  comments: readonly CommentDto[],
+  comments: readonly FilingRow[],
   frame: CommentDecisionFrame,
-): CommentDto[] | null {
+): FilingRow[] | null {
   const at = comments.findIndex((row) => row.id === frame.id);
   if (at < 0) return null;
-  const row = comments[at] as CommentDto;
-  const next: CommentDto = {
+  const row = comments[at] as FilingRow;
+  const next: FilingRow = {
     ...row,
     ...(frame.status === undefined ? {} : { status: frame.status }),
     ...(frame.reason === undefined ? {} : { reason: frame.reason }),
@@ -264,6 +286,9 @@ export function withDecisionReport(
     ...(frame.applied === undefined ? {} : { applied: frame.applied }),
     ...(frame.disposition === undefined ? {} : { disposition: frame.disposition }),
     ...(frame.report === undefined ? {} : { report: frame.report }),
+    // B1 — a scheduled retry (or its absence) is a fact of the row until the durable read says
+    // otherwise; the word stays the row's own and the line is the frame's `reason`.
+    ...(frame.attempt === undefined ? {} : { retryAt: retryAtOf(frame.attempt) }),
   };
   if (
     next.status === row.status &&
@@ -271,13 +296,20 @@ export function withDecisionReport(
     next.decidedAt === row.decidedAt &&
     next.changeId === row.changeId &&
     sameApplied(next.applied, row.applied) &&
-    (next.report ?? null) === (row.report ?? null)
+    (next.report ?? null) === (row.report ?? null) &&
+    (next.retryAt ?? null) === (row.retryAt ?? null)
   ) {
     return null;
   }
   const out = [...comments];
   out[at] = next;
   return out;
+}
+
+/** The retry time a frame names, or `null` when the attempt carries none (a spent one). */
+function retryAtOf(attempt: CommentDecisionFrame['attempt']): string | null {
+  const at = attempt?.retryAt;
+  return typeof at === 'string' && at.length > 0 ? at : null;
 }
 
 /** The receipt by value: a frame always carries a fresh object, so identity cannot decide it. */

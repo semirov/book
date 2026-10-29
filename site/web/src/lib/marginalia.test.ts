@@ -1,4 +1,4 @@
-import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeStatus, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -26,7 +26,16 @@ import { clampQuote } from './seam.ts';
  * paragraph's own text, by the same rule the mark uses.
  */
 
-function comment(overrides: Partial<CommentDto> = {}): CommentDto {
+/**
+ * A filing with the facts a closed change adds (BOOK-206 B1): the DTO's own type names two
+ * change statuses today, and a scheduled retry only a frame can bring.
+ */
+type FilingOverrides = Omit<Partial<CommentDto>, 'changeStatus'> & {
+  changeStatus?: ChangeStatus | null;
+  retryAt?: string | null;
+};
+
+function comment(overrides: FilingOverrides = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
     chapter: 8,
@@ -47,7 +56,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     refusal: null,
     attempt: null,
     ...overrides,
-  };
+  } as CommentDto;
 }
 
 /** A change summary, only the fields the vocabulary reads. */
@@ -113,9 +122,46 @@ describe('the state words', () => {
     for (const [status, word] of table) expect(filingMarginalia(comment({ status })).word, status).toBe(word);
     expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('working');
     expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('waiting');
+    // B1 — a change the writer closed as `done` wrote the text: the row is «внесено» even
+    // before the durable read replaces it with the `applied` DTO.
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'done' }))).toBe('landed');
+    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'done' })).word).toBe('внесено');
+    // B2 — a change that stopped keeps the waiting word (the change table's own), and the next
+    // test proves it never prints a queue place.
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'escalated' }))).toBe('waiting');
     expect(filingState(comment({ status: 'rejected' }))).toBe('refused');
     // A rights refusal heads its row with B's own word, never C's.
     expect(filingMarginalia(comment({ status: 'rejected', refusal: 'rights' })).word).toBe('не принято');
+  });
+
+  it('does not print a queue place over a change that stopped (B1/B2)', () => {
+    for (const changeStatus of ['escalated', 'failed', 'void'] as const) {
+      const marginalia = filingMarginalia(comment({ status: 'accepted', changeStatus }));
+      expect(marginalia.word, changeStatus).toBe('ждёт');
+      // The `expired` entry's own line, borrowed whole: nothing is coming for this row.
+      expect(marginalia.consequence, changeStatus).toBe('правка не состоялась');
+      expect(marginalia.consequence, changeStatus).not.toContain('в очереди');
+    }
+    // A landed change owes the word-free receipt an `applied` row prints.
+    const landed = filingMarginalia(comment({ status: 'accepted', changeStatus: 'done', applied: { chapter: 8, rev: 4 } }));
+    expect(landed.word).toBe('внесено');
+    expect(landed.consequence).toBe('глава 8 · ревизия 4');
+    // The writer is still at it: the state and the line are unchanged by any of this.
+    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('пишется');
+  });
+
+  it('repeats the server’s own sentence for a scheduled retry, never «в очереди»', () => {
+    const waiting = filingMarginalia(
+      comment({
+        status: 'accepted',
+        changeStatus: 'pending',
+        retryAt: '2026-10-29T12:05:00Z',
+        reason: 'провайдер не ответил — повтор в 12:05',
+      }),
+    );
+    expect(waiting.word).toBe('ждёт');
+    expect(waiting.consequence).toBe('провайдер не ответил — повтор в 12:05');
+    expect(waiting.consequence).not.toContain('в очереди');
   });
 
   it('keeps a premise outside the queue: it waits, and only its first edition is «внесено»', () => {

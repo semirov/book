@@ -38,6 +38,7 @@ import {
 } from '@book/shared';
 
 import { dispositionFieldsOf } from '../comments/dispositionReport.ts';
+import { isStopped, stoppedLine } from '../comments/states.ts';
 import { premiseLanded } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
 import { decisionOutcome, publicIntent } from '../engineState/changes.ts';
@@ -203,6 +204,8 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
     // An attempt is not a decision: a landed premise is applied, an unsettled one still waits —
     // it never reads as «замысел не взят» on the strength of an engine code.
     if (landed) return 'applied';
+    // BOOK-206 B2: a stopped premise is the same terminal state an ordinary filing reads.
+    if (isStopped(row.change_status)) return 'refused';
     if (holdsInternalCode(row.change_reason)) return 'queued';
   }
   if (row.change_id === null || row.change_status === null) {
@@ -217,7 +220,10 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
   if (row.change_outcome === 'registered') return 'registered';
   // One vocabulary for the outcome, shared with the frame and the change card. BOOK-206: the
   // reader's own vocabulary has no «waits for the author» — a change a gate stopped is «не
-  // принята» with the gate's own line, exactly as a landed refusal reads.
+  // принята» with the gate's own line, exactly as a landed refusal reads. BOOK-206 B2: a stop
+  // is one state (`isStopped`), the same one the filing DTO derives — `escalated` and `failed`
+  // never split into two reader answers.
+  if (isStopped(row.change_status)) return 'refused';
   const outcome = decisionOutcome({
     status: row.change_status as ChangeStatus,
     outcome: row.change_outcome as ChangeOutcome | null,
@@ -231,6 +237,10 @@ function reasonOf(row: DecisionRow, outcome: MyDecisionOutcome): string | null {
   // line or the change's. A filing refused under a lock has no change and speaks with its own
   // line; a change a gate stopped (outcome `refused` since BOOK-206) speaks with the change's.
   if (row.change_id === null) return readerReason(row.comment_reason);
+  // BOOK-206 B2: a stopped change speaks with its own stop sentence, derived exactly as the
+  // filing DTO derives it. The row's acceptance line («входит в книгу») is not a fact about a
+  // pass the engine stopped, and «остаётся в очереди» is not one either.
+  if (isStopped(row.change_status)) return stoppedLine(row.change_reason);
   if (outcome === 'refused') return readerReason(row.comment_reason) ?? readerReason(row.change_reason);
   const changeReason = readerReason(row.change_reason);
   // A premise that landed answers with its own acceptance line when the change row carries an

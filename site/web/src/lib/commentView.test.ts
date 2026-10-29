@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeStatus, type CommentDto } from '@book/shared';
 
 import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
 import { GATE_WORDS, HELD_LINE, STATE_WORDS } from './marginalia.ts';
 
-function comment(overrides: Partial<CommentDto> = {}): CommentDto {
+/** A filing with the facts a closed change adds (BOOK-206 B1), which the DTO's type predates. */
+type LineOverrides = Omit<Partial<CommentDto>, 'changeStatus'> & { changeStatus?: ChangeStatus | null };
+
+function comment(overrides: LineOverrides = {}): CommentDto {
   return {
     id: 'cmt_1',
     chapter: 8,
@@ -26,7 +29,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     refusal: null,
     attempt: null,
     ...overrides,
-  };
+  } as CommentDto;
 }
 
 describe('comment thread copy (§11.6)', () => {
@@ -47,6 +50,15 @@ describe('comment thread copy (§11.6)', () => {
     expect(
       commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', changeStatus: 'processing' })),
     ).toMatchObject({ state: 'идёт', detail: 'пишется', tone: 'live' });
+    // B1 — the change the writer closed is the word, not the queue: a landing reaches the row
+    // through its receipt before the DTO's own status catches up, ink included.
+    expect(
+      commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', applied: { chapter: 8, rev: 4 } })),
+    ).toMatchObject({ state: 'внесено', detail: 'глава 8 · ревизия 4', tone: 'done' });
+    // A `done` whose receipt storage lost its row leaves the word alone, not an empty clause.
+    expect(
+      commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', changeStatus: 'done' })),
+    ).toMatchObject({ state: 'внесено', detail: null, tone: 'done' });
     // The owner's landed row: one state word and one line — «внесено · глава 8 · ревизия 3».
     // A stored reason on an applied row is not printed: the receipt is the fact.
     expect(

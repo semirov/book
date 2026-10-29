@@ -28,7 +28,7 @@ import { safeJson } from '../engineState/rows.ts';
 import { findLiveSentence } from '../sentences/store.ts';
 import { dispositionFieldsOf } from './dispositionReport.ts';
 import { refusalHint, reviseState, triageAttemptFailed, unrevisedState } from './attempts.ts';
-import { failedAttempt, OWN_STATES, premiseStatus, refusalOf } from './states.ts';
+import { failedAttempt, isStopped, OWN_STATES, premiseStatus, refusalOf, stoppedLine } from './states.ts';
 // BOOK-174 taught storage to hand the ladder's report out; BOOK-136's selection reads the
 // changes a filing became, so `states.ts` keeps the pure words and this module stays rows.
 import { filingChanges, filingStatus, linkedChangeStatus } from './filingState.ts';
@@ -348,6 +348,8 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   const changeStatus: CommentDto['changeStatus'] =
     !premise && !OWN_STATES.has(rowStatus) ? linkedChangeStatus(change) : null;
   // The reason is a sentence, and which sentence depends on who spoke last:
+  //  - a stopped change (escalated/failed) speaks with its own stop sentence, sanitized once —
+  //    the same derivation every surface reads (BOOK-206 B2), never «остаётся в очереди»;
   //  - a change that carries an internal code did not speak — it tried. Its code never reaches
   //    the reader, and the row's own line (the acceptance sentence) is the answer;
   //  - a premise speaks with its change: the writer's refusal, the landing line, the
@@ -358,15 +360,24 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   //  - a row that decided itself keeps its own sentence — the gate's refusal is the row's, and
   //    a paperwork filing's line carries the mode it was filed as.
   const rowLine = readerReason(row.reason);
-  const changeLine = change === undefined ? null : readerReason(change.reason);
+  // BOOK-206 B2 — a stopped change speaks with its own stop sentence, sanitized once: an engine
+  // code becomes the fixed stop line, never «заявка остаётся в очереди» (nothing will read it).
+  const stopped = change !== undefined && isStopped(change.status);
+  const changeLine = change === undefined ? null : stopped ? stoppedLine(change.reason) : readerReason(change.reason);
   const codeInChange = change !== undefined && holdsInternalCode(change.reason);
-  const changeDecided =
-    !premise &&
-    change !== undefined &&
+  const changeSpoke =
     !OWN_STATES.has(rowStatus) &&
+    change !== undefined &&
     (status === 'applied' || status === 'rejected' || status === 'superseded');
-  const reason =
-    premise && !codeInChange ? (changeLine ?? rowLine) : changeDecided ? changeLine : rowLine;
+  const reason = premise
+    ? stopped
+      ? changeLine
+      : codeInChange
+        ? rowLine
+        : (changeLine ?? rowLine)
+    : changeSpoke
+      ? changeLine
+      : rowLine;
   // The receipt of a premise is the **derived** landing, never `written` alone: a rejected or
   // superseded premise on a written chapter decided against that text and carries no receipt.
   // A landing has no receipt columns of its own — the chapter it entered and that chapter's
@@ -393,9 +404,11 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // once, here, from the stored verdicts and the attempt ledger, so no surface can disagree.
   const refusal = refusalOf(row);
   // The attempt counts are read only for a row a revision could reopen: a settling row on a
-  // public list owes no ledger question (three COUNTs per row otherwise).
+  // public list owes no ledger question (three COUNTs per row otherwise). A stopped change
+  // (BOOK-206 B2) is not a gate's refusal either — its row was never refused, so the door was
+  // never open and there is nothing to count.
   const revise =
-    status === 'rejected' ? reviseState(db, row, nowMs) : unrevisedState();
+    status === 'rejected' && !stopped ? reviseState(db, row, nowMs) : unrevisedState();
   // BOOK-174: how the filing was read, from the five stored columns — the report is derived
   // here, once, so every surface prints the same three lines.
   const { disposition, report } = dispositionFieldsOf(db, row);
@@ -426,8 +439,10 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     // an `OFF` reaches the reader only as this `reason`.
     reason,
     attempt,
-    // BOOK-158: the actionable line beside a refusal, and the way back to another try.
-    hint: refusalHint({ status, refusal, rights_rule: row.rights_rule }),
+    // BOOK-158: the actionable line beside a refusal, and the way back to another try. A stopped
+    // change (BOOK-206 B2) is not a refusal of the reader's wording, so it owes no advice — the
+    // door is not open on it either (`revise.allowed` is false for a row triage did not refuse).
+    hint: stopped ? null : refusalHint({ status, refusal, rights_rule: row.rights_rule }),
     revise,
     createdAt: row.created_at,
     decidedAt: row.decided_at,

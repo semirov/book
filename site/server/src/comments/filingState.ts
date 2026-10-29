@@ -21,7 +21,7 @@
 import type { CommentStatus } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { decided, OWN_STATES } from './states.ts';
+import { decided, isStopped, OWN_STATES, STOPPED_STATUS } from './states.ts';
 
 /** One change of a filing, as this module reads it: the columns a state is chosen from. */
 export type FilingChange = {
@@ -105,9 +105,13 @@ export function filingChanges(db: Db, commentId: string, changeId: string | null
  *   1. a row that decided itself keeps its own word;
  *   2. `done` + a landing outcome is `applied`; `done` + `registered` is the paperwork row;
  *   3. `void` + a **human sentence** is a decision: a supersede, or the writer's refusal;
- *   4. everything else — `pending`, `processing`, `stale`, a `void` with an internal code (a
+ *   4. a change the engine **stopped** (`escalated`/`failed`) is one terminal state, whatever
+ *      its outcome: the text was not written (or was put back before the stop), and nothing
+ *      will retry the filing. BOOK-206 B2 — the word and the sentence come from here, so the
+ *      card, the record and the change card cannot answer three ways about one stop;
+ *   5. everything else — `pending`, `processing`, `stale`, a `void` with an internal code (a
  *      failed attempt) — has not decided, so the filing keeps its own word;
- *   5. no linked change at all: the row's word is the whole record.
+ *   6. no linked change at all: the row's word is the whole record.
  */
 export function filingStatus(change: FilingChange | undefined, fallback: CommentStatus): CommentStatus {
   if (OWN_STATES.has(fallback) || change === undefined) return fallback;
@@ -119,6 +123,9 @@ export function filingStatus(change: FilingChange | undefined, fallback: Comment
   if (change.status === 'void' && decided(change.reason)) {
     return change.outcome === 'superseded' ? 'superseded' : 'rejected';
   }
+  // BOOK-206 B2: a stopped change is a terminal state, never a queue place. Its reason is the
+  // change's own public line (`states.ts` `stoppedLine`), read by every surface that prints it.
+  if (isStopped(change.status)) return STOPPED_STATUS;
   return fallback;
 }
 

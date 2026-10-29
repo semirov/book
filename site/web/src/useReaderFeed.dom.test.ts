@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { filingMarginalia } from './lib/marginalia.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 
 /**
@@ -163,5 +164,67 @@ describe('acceptComment (BOOK-111)', () => {
     expect(feed.comments[1]).toBe(revised);
     expect(feed.chapterFeed[65]?.items.map((row) => row.id)).toEqual(['cmt_older', POSTED.id]);
     expect(feed.chapterFeed[65]?.items[1]).toBe(revised);
+  });
+});
+
+/**
+ * BOOK-206 audit B1 — the frame is what moves a live record, and it must move **both** feeds:
+ * the register's row and its chapter's. The durable read stays the truth; this is the half a
+ * reader sees before the request lands.
+ */
+describe('the live record (BOOK-206 B1)', () => {
+  // `POSTED` is a premise note in the register's own fixture; a filing that goes to the writer
+  // carries a kind and is not a premise.
+  const accepted: CommentDto = {
+    ...POSTED,
+    premise: false,
+    interventionKind: 'testimony',
+    id: 'cmt_own',
+    status: 'accepted',
+    changeId: 'chg_1',
+  };
+
+  it('lands an accepted row in the thread and in its chapter on the landing frame', () => {
+    act(() => feed.acceptComment(accepted));
+    act(() =>
+      feed.noteDecision({
+        id: 'cmt_own',
+        chapter: 65,
+        status: 'applied',
+        reason: 'правка внесена в главу 65',
+        decidedAt: '2026-10-29T12:00:00Z',
+        changeId: 'chg_1',
+        applied: { chapter: 65, rev: 2 },
+      }),
+    );
+
+    for (const row of [feed.comments[0], feed.chapterFeed[65]?.items[0]]) {
+      expect(row?.status).toBe('applied');
+      expect(filingMarginalia(row as CommentDto).word).toBe('внесено');
+      expect(filingMarginalia(row as CommentDto).consequence).toBe('глава 65 · ревизия 2');
+    }
+  });
+
+  it('a scheduled retry replaces «в очереди» with the server’s sentence, on both feeds', () => {
+    act(() => feed.acceptComment({ ...accepted, changeStatus: 'pending' }));
+    const before = filingMarginalia(feed.comments[0] as CommentDto);
+    expect(before.consequence).toBe('в очереди на запись');
+
+    act(() =>
+      feed.noteDecision({
+        id: 'cmt_own',
+        chapter: 65,
+        status: 'accepted',
+        reason: 'провайдер не ответил — повтор в 12:05',
+        attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' },
+      }),
+    );
+
+    for (const row of [feed.comments[0], feed.chapterFeed[65]?.items[0]]) {
+      const marginalia = filingMarginalia(row as CommentDto);
+      expect(marginalia.word).toBe('ждёт');
+      expect(marginalia.consequence).toBe('провайдер не ответил — повтор в 12:05');
+      expect(marginalia.consequence).not.toContain('в очереди');
+    }
   });
 });

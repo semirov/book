@@ -240,8 +240,9 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
       expect(revisionsOf(harness, CHAPTER).map((row) => row.kind)).toEqual(['draft']);
       expect(harness.engineCalls).not.toContain('restore');
       expect(harness.logs.join('\n')).toContain('откат не нужен');
-      // And the reader is still not told the queue is the whole story: the text stands unverified.
-      expect(result.reason).toBe(readerSentences.unverified);
+      // And the reader is still not told the queue is the whole story: the text stands, and the
+      // close never confirmed it.
+      expect(result.reason).toBe(readerSentences.closeStanding);
     } finally {
       await harness.close();
     }

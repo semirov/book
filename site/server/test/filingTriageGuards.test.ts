@@ -6,7 +6,7 @@
  * path's to answer.
  */
 
-import { LOCK_REASONS } from '@book/shared';
+import { LOCK_REASONS, READING_RESCHEDULED_LINE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readCommentRow, toCommentDto } from '../src/comments/repo.ts';
@@ -31,6 +31,8 @@ afterEach(async () => {
 });
 
 const OWNER = 'cmt_01M635KZP466CGBC0CKS1NWS4Z';
+/** The fixture clock starts 2026-10-25 09:00 UTC, so its next midnight is this one. */
+const NEXT_UTC_MIDNIGHT = '2026-10-26T00:00:00.000Z';
 
 describe('the applier never guesses (BOOK-206)', () => {
   it('does not re-process a settled attempt: a corrupt stored verdict is recorded once', async () => {
@@ -198,7 +200,7 @@ describe('the applier never guesses (BOOK-206)', () => {
 });
 
 describe('a broken call is retried, counted, and shown — never a silent terminal row (BOOK-206)', () => {
-  it('backs off by the try, raises one alert at the cap, and the page says the attempt failed', async () => {
+  it('backs off by the try, and at the cap gives the attempt the next day instead of a dead row (B5)', async () => {
     context = await bootTriage();
     const { db, h } = context;
     const id = await context.post();
@@ -216,22 +218,44 @@ describe('a broken call is retried, counted, and shown — never a silent termin
     expect(Date.parse(attemptOf(db, id).next_at as string) - h.clock.ms).toBe(600_000);
     h.clock.advance(600_001);
     await context.pulse();
-    expect(attemptOf(db, id)).toMatchObject({ tries: 3, verdict: null });
     expect(context.alerts).toHaveLength(1);
     expect(context.alerts[0]).toMatchObject({ kind: 'triage' });
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 3 });
+    expect(context.alerts[0]?.detail).toContain('retry after');
+    const failed = db.prepare(`SELECT meta FROM comment_events WHERE type = 'triage.failed'`).all() as Array<{
+      meta: string;
+    }>;
+    expect(failed).toHaveLength(3);
+    // The cap is a fact in the event's own meta, so the site's bridge can draw a frame from it.
+    expect(JSON.parse(failed[2]!.meta)).toMatchObject({ cap: true, retryAt: NEXT_UTC_MIDNIGHT });
+    expect(JSON.parse(failed[0]!.meta).cap).toBeUndefined();
 
-    // No fourth call, no disposition, no change: the row stays `new`, and the page names the
-    // attempt as failed instead of waiting forever.
+    // B5: not a terminal. The attempt goes back to 00:00 UTC with a fresh budget, and the row's
+    // own line names the time — the page never says «остаётся в очереди» about a row `dueTriage`
+    // had excluded.
+    expect(attemptOf(db, id)).toMatchObject({ tries: 0, verdict: null, claim_until: null, next_at: NEXT_UTC_MIDNIGHT });
+    const row = readCommentRow(db, id)!;
+    expect(row).toMatchObject({ status: 'new', disposition: null, reason: READING_RESCHEDULED_LINE });
+    expect(READING_RESCHEDULED_LINE).toBe('чтение не состоялось — следующая попытка после 00:00 UTC');
+    const dto = toCommentDto(db, row, h.clock.ms);
+    // «ждёт» with the rescheduled sentence: never the failed state that nothing would retry.
+    expect(dto.attempt).toBeNull();
+    expect(dto.reason).toBe(READING_RESCHEDULED_LINE);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+
+    // No fourth call before midnight, and the next UTC day is the new reading budget.
     const callsBefore = context.calls.length;
-    h.clock.advance(6 * 60 * 60_000 + 1);
+    h.clock.advance(6 * 60 * 60_000);
     await context.pulse();
     expect(context.calls).toHaveLength(callsBefore);
     expect(context.alerts).toHaveLength(1);
-    const row = readCommentRow(db, id)!;
-    expect(row).toMatchObject({ status: 'new', disposition: null, decided_at: null });
-    expect(toCommentDto(db, row, h.clock.ms).attempt).toBe('failed');
-    expect(db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+    h.clock.ms = Date.parse(NEXT_UTC_MIDNIGHT) + 60_000;
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+    await context.pulse();
+    expect(context.calls).toHaveLength(callsBefore + 1);
+    expect(attemptOf(db, id)).toMatchObject({ tries: 1 });
+    expect(attemptOf(db, id).verdict).not.toBeNull();
+    // The reading happened, so the sentence that named the wait is gone before the placement.
+    expect(readCommentRow(db, id)?.reason).toBeNull();
   });
 
   it('a paused day hands out nothing and touches no row', async () => {

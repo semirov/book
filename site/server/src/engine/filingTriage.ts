@@ -14,7 +14,10 @@
  *     `{stored:false, already:true}` and charges nothing.
  *   · `POST /internal/triage/fail {commentId, n, code}` — the try was spent, not the filing:
  *     the backoff goes on the attempt row, one `comment_events('triage.failed')` records the
- *     code, and at the cap an engine alert makes it a visible defect. The row stays `new`.
+ *     code, and at the cap the row is **not** left out of every query: the attempt goes back to
+ *     the next UTC midnight with a fresh budget, the row's line names the time, and an engine
+ *     alert makes the rate visible (BOOK-206 B5). A claim that expired with its process is
+ *     settled the same way, once, with a `triage.abandoned` marker (M4). The row stays `new`.
  *
  * What never happens here: a filing is never refused, never escalated and never deleted. The
  * ladder that places it lives in `feedback/disposition.ts` and runs in the site (ADR-045 §5).
@@ -29,10 +32,13 @@ import { assertBudgetAllowsPass, budgetCapsOf } from '../budget.ts';
 import {
   TRIAGE_MAX_TRIES,
   claimTriage,
+  clearRetryLine,
   dueTriage,
   readAttempt,
+  rescheduleTomorrow,
   scheduleRetry,
   triageBackoffMs,
+  utcDayEnd,
 } from '../comments/attempts.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
@@ -69,6 +75,11 @@ export type TriageVerdictResult =
   | { stored: true; attempt: number; verdict: 'FITS' | 'OFF'; rung: string }
   | { stored: false; already: true };
 
+/**
+ * One failed try's answer. `cap` is the day's last try — and, since BOOK-206 B5, not a terminal:
+ * the engine has already put the attempt back to the next UTC midnight (`nextAt`) with a fresh
+ * budget, so `tries` in the result is the spent count and the row is due again tomorrow.
+ */
 export type TriageFailResult = { tries: number; nextAt: string | null; cap: boolean; already?: true };
 
 /** What one failed call cost, when the provider reported it: the money is still spent. */
@@ -117,6 +128,34 @@ export function triageAskOf(db: Db, row: CommentRow): { envelope: FilingEnvelope
   return { envelope: withWorld(envelope, world), world };
 }
 
+/** An attempt whose whole budget is spent and no call is live: nothing will pick it up again. */
+type CappedAttempt = { commentId: string; n: number; tries: number; claimUntil: string | null };
+
+/**
+ * BOOK-206 B5/M4 — the rows no query reaches any more: the latest attempt still waits for an
+ * answer, its tries are all spent and no claim is live. A writer killed after `next` three times
+ * lands here (the claims expired, no `fail` was ever called), as does a row an older build left
+ * at the cap; without this sweep both are excluded from `dueTriage` forever, silently.
+ */
+function cappedAttempts(db: Db, now: string, limit = 8): CappedAttempt[] {
+  return db
+    .prepare(
+      `SELECT c.id AS commentId, a.n AS n, a.tries AS tries, a.claim_until AS claimUntil
+         FROM comments c
+         JOIN comment_attempts a ON a.comment_id = c.id
+        WHERE c.status = 'new' AND c.disposition IS NULL
+          AND c.rights_verdict = 'CLEAR'
+          AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
+          AND a.outcome = 'submitted'
+          AND a.verdict IS NULL
+          AND a.tries >= ?
+          AND (a.claim_until IS NULL OR a.claim_until <= ?)
+        ORDER BY c.created_at, c.id
+        LIMIT ?`,
+    )
+    .all(TRIAGE_MAX_TRIES, now, limit) as CappedAttempt[];
+}
+
 export function createFilingTriage(deps: EngineDeps): FilingTriage {
   const { db, config } = deps;
   const caps = budgetCapsOf(config);
@@ -133,8 +172,21 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       }
       throw error;
     }
-    for (const candidate of dueTriage(db, iso(at))) {
-      const now = iso(at);
+    const now = iso(at);
+    // BOOK-206 M4/B5: a row whose claims all expired (a writer killed under the call) never
+    // called `fail`, so nothing else would ever reach it. It gets the next day, once, with an
+    // alert — the same honest shape the cap takes.
+    settleAbandoned(now);
+    for (const candidate of dueTriage(db, now)) {
+      // The try about to be spent is the last one, and the claim before it expired rather than
+      // ended in `fail`: the previous claims were abandoned with the process (M4).
+      if (
+        candidate.tries >= TRIAGE_MAX_TRIES - 1 &&
+        candidate.claimUntil !== null &&
+        Date.parse(candidate.claimUntil) <= at
+      ) {
+        noteAbandoned(candidate.commentId, candidate.n, candidate.tries, now, 'claim-abandoned');
+      }
       if (!claimTriage(db, { commentId: candidate.commentId, n: candidate.n, session, now })) continue;
       const row = readCommentRow(db, candidate.commentId);
       if (row === undefined) continue;
@@ -150,6 +202,44 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       };
     }
     return null;
+  }
+
+  /**
+   * One alert per attempt, ever: a marker event makes the writer's 5 s cadence silent after the
+   * first, and `comment_events` is also where the site's bridge reads the fact. The detail names
+   * the shape (`claim-abandoned`, `cap-abandoned`), never a model's words.
+   */
+  function noteAbandoned(commentId: string, n: number, tries: number, at: string, detail: string): void {
+    const prior = db
+      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.abandoned'`)
+      .all(commentId) as Array<{ meta: string | null }>;
+    const seen = prior.some((event) => {
+      try {
+        return (JSON.parse(event.meta ?? '{}') as { attempt?: number }).attempt === n;
+      } catch {
+        return false;
+      }
+    });
+    if (seen) return;
+    appendCommentEvent(db, commentId, 'triage.abandoned', at, { attempt: n, tries, detail });
+    recordAlert(deps, {
+      kind: 'triage' satisfies EngineAlert['kind'],
+      at,
+      changeId: null,
+      cascadeId: null,
+      stepId: null,
+      detail: `triage ${commentId} #${String(n)}: ${detail} after ${String(tries)} tries`,
+    });
+  }
+
+  /** Give every capped attempt its next day: `tries` 0, `next_at` 00:00 UTC, the sentence written. */
+  function settleAbandoned(now: string): void {
+    for (const capped of cappedAttempts(db, now)) {
+      // An expired claim is a process that died under the call; no claim at all is an older build
+      // that left the row at the cap. Both are abandoned, and both are named as such.
+      noteAbandoned(capped.commentId, capped.n, capped.tries, now, capped.claimUntil === null ? 'cap-abandoned' : 'claim-abandoned');
+      rescheduleTomorrow(db, { commentId: capped.commentId, n: capped.n, nowMs: Date.parse(now) });
+    }
   }
 
   function verdict(input: {
@@ -193,6 +283,9 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         )
         .run(JSON.stringify(stored), at, input.commentId, input.n).changes;
       if (written !== 1) return { stored: false, already: true };
+      // BOOK-206 B5: the reading the rescheduled sentence promised has happened — the line goes,
+      // and the row waits for its placement like any filing (the acceptance writes its own).
+      clearRetryLine(db, input.commentId);
       // Gate C's own columns: first answer wins, and a recorded verdict is never rewritten.
       db.prepare(
         `UPDATE comments
@@ -234,14 +327,20 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       const prior = db
         .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'triage.failed'`)
         .all(input.commentId) as Array<{ meta: string | null }>;
-      const reported = prior.some((event) => {
+      const metas = prior.map((event) => {
         try {
-          const meta = JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number };
-          return meta.attempt === input.n && meta.try === attempt.tries;
+          return JSON.parse(event.meta ?? '{}') as { attempt?: number; try?: number; cap?: boolean };
         } catch {
-          return false;
+          return {};
         }
       });
+      // B5: the cap already moved this attempt to the next day (`tries` 0). A retried report must
+      // not re-count it — it would append a second event, charge the same call again and pull the
+      // day's budget back to a 60 s retry.
+      if (attempt.tries === 0 && metas.some((meta) => meta.attempt === input.n && meta.cap === true)) {
+        return { tries: attempt.tries, nextAt: attempt.next_at, cap: true, already: true };
+      }
+      const reported = metas.some((meta) => meta.attempt === input.n && meta.try === attempt.tries);
       if (reported) {
         return { tries: attempt.tries, nextAt: attempt.next_at, cap: attempt.tries >= TRIAGE_MAX_TRIES, already: true };
       }
@@ -260,24 +359,32 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
           });
         }
       }
+      const backoff = triageBackoffMs(attempt.tries);
+      // B5: the cap's own hour — the next UTC midnight, the one the row's sentence names.
+      const capAt = backoff === null ? iso(utcDayEnd(atMs)) : null;
       appendCommentEvent(db, input.commentId, 'triage.failed', at, {
         code: input.code.slice(0, 60),
         attempt: input.n,
         try: attempt.tries,
+        // BOOK-206 B5: the cap is a fact the site's bridge must be able to draw a frame from —
+        // `retryAt` names the hour the next reading is bought, and the event carries it.
+        ...(capAt === null ? {} : { cap: true, retryAt: capAt }),
       });
-      const backoff = triageBackoffMs(attempt.tries);
       if (backoff === null) {
-        // The row stays `new` and the page says the attempt came back empty: a defect a person
-        // can see, never a silent terminal state.
+        const retryAt = capAt ?? iso(utcDayEnd(atMs));
+        // BOOK-206 B5: the last reading of the day does not end the filing. One new UTC day is a
+        // new reading budget: the attempt goes back to 00:00 UTC, and the row's own line names
+        // the time. A person is told as well — a cap is a rate the operator must see.
+        const nextAt = rescheduleTomorrow(db, { commentId: input.commentId, n: input.n, nowMs: atMs }) ?? retryAt;
         recordAlert(deps, {
           kind: 'triage' satisfies EngineAlert['kind'],
           at,
           changeId: null,
           cascadeId: null,
           stepId: null,
-          detail: `triage ${input.commentId} #${String(input.n)}: ${TRIAGE_MAX_TRIES} tries, last code ${input.code.slice(0, 60)}`,
+          detail: `triage ${input.commentId} #${String(input.n)}: ${TRIAGE_MAX_TRIES} tries, last code ${input.code.slice(0, 60)}, retry after ${nextAt}`,
         });
-        return { tries: attempt.tries, nextAt: attempt.next_at, cap: true };
+        return { tries: attempt.tries, nextAt, cap: true };
       }
       const nextAt = iso(atMs + backoff);
       scheduleRetry(db, { commentId: input.commentId, n: input.n, nextAt });

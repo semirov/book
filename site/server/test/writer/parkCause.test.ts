@@ -7,7 +7,8 @@
  * gate's own budget, which is a thinking call's and not the writing call's.
  *
  * BOOK-219 shares this scenario: a first write cannot be put back, so the park has to say the
- * text stands unverified (`readerSentences.unverified`) instead of «заявка остаётся в очереди».
+ * text stands unverified (`readerSentences.unverified`) instead of claiming a queue place — a
+ * parked pass escalates the change, and an escalated change is terminal.
  */
 
 import { existsSync } from 'node:fs';

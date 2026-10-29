@@ -11,7 +11,6 @@ import type {
   FrontUpdatedPayload,
   HelloPayload,
   HistoryEventFrame,
-  PassStageEvent,
   ServerEventType,
   StateUpdatedPayload,
   ViewerDto,
@@ -56,6 +55,7 @@ import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
 import { decisionFrameHandler } from './lib/decisionFrame.ts';
+import { liveFeedHandler } from './lib/liveFeed.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
@@ -181,9 +181,13 @@ export function App() {
 
   useEffect(() => {
     const onDecision = decisionFrameHandler({ noteRecord, noteDecision, refreshComments, refreshCatalog, noteRevision });
+    // BOOK-206 audit B1 — the frames that move a live record without a decision of their own
+    // (the writer claiming a change, a change closing, a pass landing): `lib/liveFeed.ts`.
+    const onFeed = liveFeedHandler({ refreshComments, refreshCatalog, noteRevision, noteStage: stages.note });
     const socket = new BookSocket(websocketUrl(window.location.origin), {
       onEvent: (event: Envelope) => {
         const frame = event as Envelope<ServerEventType, unknown>;
+        onFeed(frame);
         switch (frame.type) {
           case 'hello': {
             const hello = frame.data as HelloPayload;
@@ -282,11 +286,6 @@ export function App() {
             applyRevisingMark(frame.data as BlockRevisingPayload, setRevising, (run, ms) => {
               timers.current.push(window.setTimeout(run, ms));
             });
-            break;
-          case 'pass:stage':
-            // A pass is the only notice a page gets that a chapter's text is being written:
-            // `landed` is the engine's, and the site's watcher then publishes no revision.
-            stages.note(frame.data as PassStageEvent);
             break;
           case 'history:event': {
             // BOOK-102: the frame is a bare tick, `{ hseq, at }` — no narration. The page says

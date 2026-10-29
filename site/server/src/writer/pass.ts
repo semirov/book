@@ -5,12 +5,13 @@
  * state → money guard (estimate vs the caps) → assignment → queued → start → prompt (rows)
  *   → read → belt (re-estimate the real prompt) → model call(s) → validate (one retry with the
  *   reason) → continuation calls → land (the text travels in the request) → gates (verdict ×2, at
- *   most one revision cycle) → landed → done
+ *   most one revision cycle) → done (the close; it announces the landing) → landed (the stage)
  * ```
  *
  * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
  * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
- * and no pre-image to keep.
+ * and no pre-image to keep. A base that moved is answered by the writer at `start` (`relevance.ts`),
+ * and every exit without `done` takes this pass's own landing back (`recovery.ts`, BOOK-219).
  *
  * Everything the pass touches is injected: the engine client, the model transport, the clock and
  * the logger. The pass holds no database, no socket and no key of its own; the talking lives in
@@ -33,7 +34,7 @@ import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/sh
 import { formatUsd } from '../budget.ts';
 import { readBuildStamp } from '../buildStamp.ts';
 import { isWrittenView } from '../engine/text.ts';
-import type { EngineClient, EngineStateView, StartView } from './client.ts';
+import type { EngineClient, EngineStateView } from './client.ts';
 import { estimatePassUsd, type PassEstimate } from './estimate.ts';
 import { createLane, finalize, assignmentData, type GateRun, type PassResult, type ProviderCall } from './passLane.ts';
 import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
@@ -42,7 +43,9 @@ import { continueDraft, draftAnswer } from './answer.ts';
 import { rightsRefusal } from './rightsGate.ts';
 import { codeOf, failureOf, isTransportFailure, readerFallbacks, readerSentences, reasonOf, type Failure } from './reasons.ts';
 import { closePass } from './closePass.ts';
-import { putBack } from './putBack.ts';
+import { backSentence } from './putBack.ts';
+import { createRecovery } from './recovery.ts';
+import { startWriting } from './relevance.ts';
 import { stageSummary } from './stages.ts';
 import type { WriterConfig } from './config.ts';
 
@@ -219,6 +222,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   let preRev: number | null = null;
   let preSha = '';
   let landedHere = false;
+  /** The text as it now stands: the last revision this pass landed (or the resumed one). */
+  let text = '';
+
+  /** BOOK-219: every exit without `done` takes this pass's own landing back first. */
+  const recovery = createRecovery({
+    engine,
+    lane,
+    job,
+    chapter,
+    state: { rev: () => preRev, sha: () => preSha, landed: () => landedHere, text: () => text },
+    log: deps.log,
+  });
 
   function goneOf(code: string | null, detail: string): PassResult | null {
     if (code === null || !GONE_CODES.has(code)) return null;
@@ -267,16 +282,15 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
     // A resumed step already has its text on disk: the lane continues at the gates, not at the pen.
     const resume = job.landed === true;
-    let text = '';
 
     if (!resume) {
-      // 4. `start`, then the pre-image — before a single byte of the chapter changes.
-      let started: StartView;
-      try {
-        started = await engine.start(job.leaseId);
-      } catch (error) {
-        return gone(error) ?? (await lane.park(failureOf(error)));
+      // 4. `start`, then the pre-image — before a single byte of the chapter changes. A base the
+      //    engine says has moved is answered by the writer here (`relevance.ts`), never parked.
+      const opened = await startWriting({ engine, lane, job, chapter, log: deps.log });
+      if (!opened.ok) {
+        return goneOf(opened.failure.code, opened.failure.detail) ?? (await lane.park(opened.failure));
       }
+      const started = opened.started;
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
       // The revision and the text this pass starts from: what a revert has to return to (BOOK-219).
       preRev = typeof started.expectedRev === 'number' ? started.expectedRev : null;
@@ -389,11 +403,12 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       if (!round.ok) {
         const stepped = goneOf(round.failure.code ?? null, round.failure.detail);
         if (stepped !== null) return stepped;
-        // A rights failure is not auxiliary: the step cannot close without an answer, so the
-        // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
+        // A rights failure is not auxiliary: the step cannot close without an answer, and the
+        // text it landed has no rights result, so it goes back before the pass parks.
         const code = round.failure.code ?? '';
         if (code.startsWith('RIGHTS') || code === 'GATE_UNPARSED') {
-          return await lane.park({ ...round.failure, fallback: readerFallbacks.gate });
+          const back = await recovery.takeBack('гейт не ответил');
+          return await recovery.parkAfter({ ...round.failure, fallback: readerFallbacks.gate }, back, code.startsWith('RIGHTS') ? 'rights' : 'gate');
         }
         failed = round.failure;
         break;
@@ -401,8 +416,17 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       const { editor, consultant, rightsClosed } = round;
       if (rightsClosed) {
         // The rights gate refused the text and the engine closed the step: no `done`, no revision.
+        // The refused text is live, so it is taken back first, and the sentence says which of the
+        // two happened — a refusal never reads as «правка не принята» over published prose.
         deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
-        const refused = rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
+        const back = await recovery.takeBack('права отказали');
+        const refused = rightsRefusal({
+          stepId: job.stepId,
+          changeId: job.changeId,
+          lane,
+          config,
+          sentence: backSentence(back, 'rights') ?? readerSentences.rightsUnverified,
+        });
         await lane.transcript(refused);
         return refused;
       }
@@ -411,7 +435,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       revisions += 1;
       const revised = await lane.reviseText([...editor.findings, ...(consultant?.findings ?? [])]);
       if (revised === null) {
-        return await lane.park({ detail: 'правка после замечаний гейта не прошла проверку' });
+        const back = await recovery.takeBack('правка не прошла проверку');
+        return await recovery.parkAfter({ detail: 'правка после замечаний гейта не прошла проверку' }, back);
       }
       text = revised;
       answered.editor = false;
@@ -424,33 +449,36 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       // BOOK-219, the compensating revert: a pass that published and then lost its verdict takes
       // its own landing back before it parks. Nothing here reorders the gate — the engine still
       // requires `landed_at` to dispatch one — so the undo is the fix, and the sentence says it.
-      const back = await putBack({
-        engine,
-        job,
-        chapter,
-        started: { rev: preRev, sha: preSha },
-        landing: lane.landedAt(),
-        landed: landedHere,
-        log: deps.log,
-      });
-      if (back.kind !== 'none') {
-        return await lane.park({
-          ...failed,
-          sentence: back.kind === 'reverted' ? readerSentences.reverted : readerSentences.unverified,
-          detail: back.kind === 'reverted' ? failed.detail : `${failed.detail} · ${back.detail}`.slice(0, 300),
-          cause: 'failed',
-        });
-      }
+      const back = await recovery.takeBack('гейт не ответил');
+      if (back.kind !== 'none') return await recovery.parkAfter({ ...failed, cause: 'failed' }, back);
       // Nothing of ours was published (a resumed step): the text is not ours to undo.
       deps.log('[writer] откат не нужен: текст опубликован не этим проходом — шаг закрывается');
     }
 
     // 10–11. `landed`, then `done`: the close is its own seam (`closePass.ts`), because the
     //     money it reports and the words it closes with are BOOK-219's business too.
-    return await closePass({ lane, engine, config, chapter, job, text, beforeText, failed, log: deps.log, now });
+    return await closePass({
+      lane,
+      engine,
+      config,
+      chapter,
+      job,
+      text,
+      beforeText,
+      failed,
+      started: { rev: preRev, sha: preSha },
+      landing: lane.landedAt(),
+      landed: landedHere,
+      log: deps.log,
+      now,
+    });
   } catch (error) {
     const stepped = gone(error);
     if (stepped !== null) return stepped;
+    // BOOK-219's invariant covers a thrown failure too: after our own landing the text goes back
+    // before the pass parks, or a reader keeps a revision a broken pass published.
+    const back = await recovery.takeBack('проход сломался');
+    if (back.kind !== 'none') return await recovery.parkAfter(failureOf(error), back);
     // `park` sends the receipt itself, once, after the outcome it states.
     return await lane.park(failureOf(error));
   }

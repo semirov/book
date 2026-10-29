@@ -444,14 +444,14 @@ export function seamReason(raw: unknown, max = 200): string {
  * A failed attempt is **not** a filing's state: the lane tried the filing, the model answered
  * off-shape, the engine timed out, and the filing is still waiting for its turn. The reader is
  * told that in one sentence, and the engine's own word for the failure never leaves the server.
- *
- * This is the deck's line for the most common failure (a model that answered in the wrong
- * shape); the other two are the engine's silence and any failure whose code the reader has no
- * business reading.
+ * The first is the most common failure (a model that answered in the wrong shape); the others
+ * are the engine's silence and a code the reader has no business reading — the cap is not a queue
+ * place at all, so it has its own line, `READING_RESCHEDULED_LINE`, with the hour in it.
  */
 export const FAILED_ATTEMPT_LINE = 'модель ответила не по форме — заявка остаётся в очереди';
 export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
 export const ATTEMPT_LINE = 'попытка не удалась — заявка остаётся в очереди';
+export const READING_RESCHEDULED_LINE = 'чтение не состоялось — следующая попытка после 00:00 UTC';
 
 /**
  * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`), or one of the two

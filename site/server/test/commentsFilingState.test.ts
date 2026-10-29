@@ -13,9 +13,11 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { CommentDto } from '@book/shared';
+import type { CommentDto, CommentStatus } from '@book/shared';
 
 import { insertComment, readCommentRow, toCommentDto } from '../src/comments/repo.ts';
+import { filingStatus } from '../src/comments/filingState.ts';
+import { STOPPED_LINE } from '../src/comments/states.ts';
 import { countPending, headPending, insertChange } from '../src/engine/store.ts';
 import { bootComments, type Harness } from './comments/helpers.ts';
 
@@ -277,6 +279,89 @@ describe('one state per filing, read from its change (BOOK-136)', () => {
 
     expect(countPending(h.db)).toBe(1);
     expect(headPending(h.db)?.id).toBe('chg_pending');
+  });
+});
+
+describe('BOOK-206 B2 — one derivation, four surfaces', () => {
+  /** One change row as the state derivation reads it. */
+  function change(status: string, outcome: string | null, reason: string | null = null, seq = 1) {
+    return { id: 'chg', seq, premise: 0, status, outcome, reason, chapter: 8 };
+  }
+
+  it('maps ChangeStatus × outcome to one word — a stop included', () => {
+    // The whole table in one place: every row the writer can close a filing with, and the one
+    // word the card, the record and the change card print for it.
+    const table: Array<[string, ReturnType<typeof change> | undefined, CommentStatus]> = [
+      ['no change at all', undefined, 'accepted'],
+      ['done · applied', change('done', 'applied'), 'applied'],
+      ['done · adapted', change('done', 'adapted'), 'applied'],
+      ['done · finding', change('done', 'finding'), 'applied'],
+      ['done · registered', change('done', 'registered'), 'registered'],
+      ['void · dropped (a human sentence)', change('void', 'dropped', 'не входит в книгу — правка ждёт решения'), 'rejected'],
+      ['void · superseded', change('void', 'superseded', 'текст успел измениться'), 'superseded'],
+      ['void · a failed attempt (an engine code)', change('void', 'dropped', 'PROVIDER_SHAPE'), 'accepted'],
+      ['escalated', change('escalated', 'gate_timeout', 'проверка не ответила вовремя — шаг остановлен'), 'rejected'],
+      ['failed', change('failed', 'origin', 'повторные обрывы'), 'rejected'],
+      ['pending', change('pending', null), 'accepted'],
+      ['processing', change('processing', null), 'accepted'],
+      ['stale', change('stale', null), 'accepted'],
+    ];
+    for (const [label, row, expected] of table) {
+      expect(filingStatus(row, 'accepted'), label).toBe(expected);
+    }
+    // A row that decided itself is never upgraded by a change behind it.
+    expect(filingStatus(change('escalated', 'origin', 'повторные обрывы'), 'rejected')).toBe('rejected');
+  });
+
+  it('never serializes a stopped filing as «в очереди» — the DTO says `rejected`, with the sentence', async () => {
+    const h = await bootComments();
+    harness = h;
+    seedRow(h, 'cmt_stop', 'accepted', 'принято · входит в книгу');
+    seedChange(h, {
+      id: 'chg_stop',
+      commentId: 'cmt_stop',
+      status: 'pending',
+      outcome: null,
+      reason: null,
+    });
+    h.db
+      .prepare(
+        `UPDATE changes SET status = 'escalated', outcome = 'delta',
+           reason = 'починка задела слишком много текста — нужно решение' WHERE id = 'chg_stop'`,
+      )
+      .run();
+
+    const stopped = dto(h, 'cmt_stop');
+    // The terminal word, the change's own sentence, and no queue place — the three things three
+    // surfaces used to disagree about.
+    expect(stopped.status).toBe('rejected');
+    expect(stopped.reason).toBe('починка задела слишком много текста — нужно решение');
+    expect(stopped.changeStatus).toBeNull();
+    expect(stopped.applied).toBeNull();
+    // A stop is not a refusal of the reader's wording: no attempt line, no advice, no door.
+    expect(stopped.attempt).toBeNull();
+    expect(stopped.hint).toBeNull();
+    expect(stopped.revise?.allowed).toBe(false);
+    expect(JSON.stringify(stopped)).not.toContain('в очереди на запись');
+    expect(JSON.stringify(stopped)).not.toContain('входит в книгу');
+  });
+
+  it('never prints an engine code as a stop’s sentence', async () => {
+    const h = await bootComments();
+    harness = h;
+    seedRow(h, 'cmt_code', 'accepted', 'входит в книгу');
+    seedChange(h, { id: 'chg_code', commentId: 'cmt_code', status: 'pending', outcome: null, reason: null });
+    h.db
+      .prepare(`UPDATE changes SET status = 'failed', outcome = 'origin', reason = 'модель не ответила: PROVIDER_SHAPE'
+                 WHERE id = 'chg_code'`)
+      .run();
+
+    const stopped = dto(h, 'cmt_code');
+    expect(stopped.status).toBe('rejected');
+    expect(stopped.reason).toBe(STOPPED_LINE);
+    expect(JSON.stringify(stopped)).not.toContain('PROVIDER_SHAPE');
+    // `readerReason` would answer «заявка остаётся в очереди» here — the lie B5 named.
+    expect(stopped.reason).not.toContain('остаётся в очереди');
   });
 });
 

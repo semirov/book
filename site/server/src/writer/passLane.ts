@@ -278,7 +278,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         reason: 'lease released by the engine — taking the next filing',
       };
     }
-    // A sentence the pass names itself wins: a revert must not read as «остаётся в очереди».
+    // A sentence the pass names itself wins: a revert must not read as a queue place.
     const sentence =
       why.sentence ?? readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };

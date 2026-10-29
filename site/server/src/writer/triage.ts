@@ -125,9 +125,10 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
               },
             }),
       });
-      // At the cap the engine raises its own alert; this line is the operator's copy of it.
+      // At the cap the engine alerts and puts the attempt back to the next UTC midnight; this
+      // line is the operator's copy of that fact, never «видимый дефект» (BOOK-206 B5).
       if (result.cap) {
-        log(`[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки исчерпаны — видимый дефект`);
+        log(`[writer] триаж ${ask.commentId}: ${String(TRIAGE_MAX_TRIES)} попытки за день — следующее чтение после 00:00 UTC`);
       }
     } catch (error) {
       log(`[writer] триаж: отказ не записан (${failureCodeOf(error)})`);

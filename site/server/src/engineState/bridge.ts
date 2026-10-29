@@ -15,16 +15,12 @@
 import {
   parseSeams,
   readerReason,
-  type CommentDecisionPayload,
-  type CommentStatus,
   type ServerEventType,
   type StateSnapshot,
 } from '@book/shared';
 
-import { filingChanges, filingStatus, isLanding } from '../comments/filingState.ts';
-import { readChapterBase, readCommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
-import { reportOfDecision, storedDecision } from '../feedback/dispositionStore.ts';
+import { filingCloseFrame, filingFailureFrame } from './filingFrame.ts';
 import {
   chaptersOfChange,
   decisionOutcome,
@@ -64,6 +60,17 @@ type ChangeEventRow = {
   meta: string | null;
 };
 
+type CommentEventRow = {
+  id: number;
+  comment_id: string;
+  at: string;
+  type: string;
+  meta: string | null;
+};
+
+/** The filing events that owe the open page a frame (BOOK-206 B5): a read that never happened. */
+const FILING_FAILURE_EVENTS = new Set(['triage.failed', 'triage.abandoned']);
+
 type HistoryRow = {
   hseq: number;
   at: string;
@@ -91,6 +98,8 @@ export class EngineBridge {
 
   private changeCursor = 0;
   private eventCursor = 0;
+  /** BOOK-206 B5 — the filing's own audit log; a read that failed is a fact the page must hear. */
+  private commentCursor = 0;
   /** Every log entry is a chronicle tick, not only the cascade's (§11.10, §6F.1). */
   private historyCursor = 0;
   private status: string | null = null;
@@ -129,32 +138,37 @@ export class EngineBridge {
     if (this.replay) {
       this.changeCursor = 0;
       this.eventCursor = 0;
+      this.commentCursor = 0;
       this.historyCursor = 0;
     } else {
       const change = this.db.prepare('SELECT MAX(id) AS id FROM change_events').get() as { id: number | null };
       const event = this.db.prepare('SELECT MAX(hseq) AS hseq FROM events').get() as { hseq: number | null };
+      // BOOK-206 B5: a restart must not replay yesterday's cap failures as today's news.
+      const comment = this.db.prepare('SELECT MAX(id) AS id FROM comment_events').get() as { id: number | null };
       this.changeCursor = change.id ?? 0;
       this.eventCursor = event.hseq ?? 0;
+      this.commentCursor = comment.id ?? 0;
       this.historyCursor = event.hseq ?? 0;
     }
     this.status = readEngineHealth(this.db, this.now()).status;
   }
 
   /** One poll. Public so a test can drive the bridge without waiting 500 ms. */
-  tick(): { changes: number; cascades: number; engine: boolean } {
+  tick(): { changes: number; cascades: number; engine: boolean; filing: number } {
     const nowMs = this.now();
     let changed = false;
 
     const engine = this.narrateEngine(nowMs);
     const cascades = this.drainCascade(nowMs) + this.flushProgress(nowMs);
     const changes = this.drainChanges(nowMs);
+    const filing = this.drainFilingEvents(nowMs);
     const history = this.drainHistory();
-    changed = engine || cascades > 0 || changes > 0 || history > 0;
+    changed = engine || cascades > 0 || changes > 0 || filing > 0 || history > 0;
 
     if (changed && this.snapshot !== null) {
       this.emit('state:updated', { ...this.snapshot(), reason: 'engine' });
     }
-    return { changes, cascades, engine };
+    return { changes, cascades, engine, filing };
   }
 
   // ── engine:state ──────────────────────────────────────────────────────────
@@ -214,11 +228,12 @@ export class EngineBridge {
       } else if (row.type === 'decided' || row.type === 'escalated' || row.type === 'cancelled') {
         this.emit('change:decided', this.decidedPayload(change, row.at, nowMs));
         emitted += 1;
-        // BOOK-219 — the change's own word is not the filing's: the open page moves a filing row
-        // only on `comment:decision`, so a close that landed the reader's text speaks here too.
-        // One row, one frame: the drain cursor has already passed this row, so a later tick
-        // cannot repeat it.
-        const filing = this.landingFrame(change, row.at, nowMs);
+        // BOOK-219/BOOK-206 B2 — the change's own word is not the filing's: the open page moves a
+        // filing row only on `comment:decision`, so a close that decided the filing speaks here
+        // too — a landing (`applied`) and a stop (`rejected`, escalated or failed) alike. One row,
+        // one frame: the drain cursor has already passed this row, so a later tick cannot repeat
+        // it. The change's own frames above are never replaced by it.
+        const filing = filingCloseFrame(this.db, change, row.at, nowMs);
         if (filing !== null) {
           this.emit('comment:decision', filing);
           emitted += 1;
@@ -278,59 +293,39 @@ export class EngineBridge {
     };
   }
 
+  // ── comment:decision from the filing's own audit log ────────────────────
+
   /**
-   * BOOK-219 — the filing's own word beside the change's, once per close that landed its text.
+   * BOOK-206 B5 — a read that never happened is a filing transition, and `comment_events` is
+   * where the engine writes it. The bridge drained `change_events` and `events` and not this
+   * table, so a reader connected to the socket never saw the cap: the page kept «ждёт» while
+   * `dueTriage` had already excluded the row.
    *
-   * The engine writes facts; the reader's page moves a filing row only on `comment:decision`, so
-   * a close that is a **landing** must speak one here — otherwise the chapter's text and the
-   * record of the filing that put it there disagree until a reload. The decision itself is not
-   * re-made: the state, the reading and the receipt are the ones storage already derives for the
-   * filing, and `null` means there is nothing truthful to say (no filing, no landing, no state).
+   * Only the two failure kinds owe a frame (`triage.failed`, `triage.abandoned`), and the
+   * attempt's own `retryAt` rides along so the page can name the hour the next read is bought.
+   * Every other row still moves the cursor — a restart primes it, so a replay of yesterday's
+   * failures is never narrated as today's.
    */
-  private landingFrame(change: ChangeRow, at: string, nowMs: number): CommentDecisionPayload | null {
-    // A change the author filed (a continuity pass, an operator's edit) has no reader behind it,
-    // and a withdrawn filing is stored for the operator and never republished (BOOK-101).
-    if (change.source_comment === null) return null;
-    const comment = readCommentRow(this.db, change.source_comment);
-    if (comment === undefined || comment.status === 'hidden') return null;
-
-    // Only a landing speaks `applied`. A dropped, superseded, escalated or cancelled close
-    // decided the change, not the reader's text: `change:decided` says what it says, and this
-    // frame is not emitted at all rather than claiming a chapter that never received it.
-    if (!isLanding(change)) return null;
-
-    // The receipt the filing derives (comments/repo.ts): the landing is the newest `done` change
-    // whose outcome took the text, and the chapter's own revision is where the text stands. The
-    // derived state is read through the same helpers, so the frame cannot disagree with the DTO.
-    const { landed, attempt } = filingChanges(this.db, comment.id, comment.change_id);
-    const state = filingStatus(landed ?? attempt, comment.status as CommentStatus);
-    if (state !== 'applied') return null;
-    const chapter = landed?.chapter ?? change.chapter;
-    const base = readChapterBase(this.db, chapter);
-    const applied =
-      base !== undefined
-        ? { chapter, rev: base.rev }
-        : comment.applied_chapter !== null && comment.applied_rev !== null
-          ? { chapter: comment.applied_chapter, rev: comment.applied_rev }
-          : null;
-
-    // The reading travels with the frame exactly as the row stores it (BOOK-174 §5); a row with
-    // no chain has no reading, and nothing here invents one.
-    const stored = storedDecision(comment);
-    return {
-      id: comment.id,
-      chapter: comment.chapter,
-      status: 'applied',
-      // The frame is a public surface: a sentence, never an engine code.
-      reason: readerReason(landed?.reason ?? change.reason) ?? readerReason(comment.reason) ?? '',
-      decidedAt: comment.decided_at ?? change.finished_at ?? at,
-      batchId: comment.batch_id,
-      changeId: landed?.id ?? change.id,
-      queue: { depth: readQueue(this.db, nowMs).depth, ahead: 0 },
-      report: stored === null ? null : reportOfDecision(this.db, stored, comment),
-      disposition: stored?.disposition ?? null,
-      applied,
-    };
+  private drainFilingEvents(nowMs: number): number {
+    const rows = this.db
+      .prepare('SELECT id, comment_id, at, type, meta FROM comment_events WHERE id > ? ORDER BY id')
+      .all(this.commentCursor) as CommentEventRow[];
+    let emitted = 0;
+    for (const row of rows) {
+      this.commentCursor = row.id;
+      if (!FILING_FAILURE_EVENTS.has(row.type)) continue;
+      const frame = filingFailureFrame(
+        this.db,
+        row.comment_id,
+        row.at,
+        nowMs,
+        safeJson<{ retryAt?: string }>(row.meta),
+      );
+      if (frame === null) continue;
+      this.emit('comment:decision', frame);
+      emitted += 1;
+    }
+    return emitted;
   }
 
   // ── history:event — a bare tick: the log moved, the client refetches ─────

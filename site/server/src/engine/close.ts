@@ -34,6 +34,7 @@ import {
   type CascadeStepFact,
   type CloseCopyKey,
 } from './cascade.ts';
+import { changeForStep } from './helpers.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
 import { stepProvenance } from './model.ts';
 import { settleDraftPremise } from './premise.ts';
@@ -411,6 +412,18 @@ export function closeStep(
     // BOOK-117: the pass's one ledger row, in this transaction — the money lives in `budget.ts`.
     recordCloseSpend(db, { step, changeId: cascadeRow?.change_id ?? lease?.change_id ?? null, now, model: spend.model, tokensIn: spend.tokensIn, tokensOut: spend.tokensOut, provenance: spend.provenance });
 
+    // BOOK-189/BOOK-219: the landing is announced here, at the close, never at `land` — there the
+    // text may still be taken back (a rights refusal, a gate that never answered). A step that
+    // closes by restore (`escalated`) says nothing about a landing; a draft (no change on its
+    // lease) and a step with no change at all notify nobody, and a cascade step for a neighbour's
+    // chapter is filtered by `recipientOf` — the reader asked about theirs.
+    if (input.outcome !== 'escalated' && step.chapter !== null && step.landed_at !== null) {
+      const landedChange = changeForStep(db, step);
+      if (landedChange !== undefined) {
+        sendPassEvent(db, { kind: 'landed', chapter: step.chapter, changeId: landedChange.id }, now);
+      }
+    }
+
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
       const change = cascade ? store.getChange(db, cascade.change_id) : findOriginChange(db, step);
@@ -437,7 +450,10 @@ export function closeStep(
       if (!change) refuse('CHANGE_MISSING', 500, `step ${step.step_id} has no change`);
       if (input.seamsOut.length === 0) {
         const status = input.changeStatus ?? 'done';
-        const outcome = input.changeOutcome ?? 'applied';
+        // §6A.7: `adapt` is the writer's answer recorded at `start`, and a close that names no
+        // outcome of its own must keep it — everything else (a reopened step's old escalation
+        // cause included) is replaced by the default, as it always was.
+        const outcome = input.changeOutcome ?? (change.outcome === 'adapted' ? 'adapted' : 'applied');
         closeChange(deps, change, status, outcome, input.changeReason ?? null, now);
         return { cascadeId: null, outcome: input.outcome, changeStatus: status };
       }

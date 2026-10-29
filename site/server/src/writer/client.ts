@@ -153,6 +153,16 @@ export type GateAssignmentView = {
   expiresAt: string;
 };
 
+/**
+ * The writer's relevance answer, sent with `start` (§6A.7): a base that moved is the normal
+ * case under FIFO, and only the writer may say what the change still means.
+ */
+export type StartInput = {
+  decision?: 'adapt' | 'drop' | 'void';
+  reason?: string;
+  intent?: string;
+};
+
 /** What `land` sends: the writer's text, held in memory and never written to a file (BOOK-187). */
 export type LandInput = {
   text?: string;
@@ -284,7 +294,7 @@ export type EngineClient = {
   /** BOOK-61: the rights gate, offered for every prose pass — a clean scan answers mechanically. */
   nextRightsGate(session: string): Promise<RightsAssignmentView | null>;
   pass(chapter: number, session: string): Promise<WriterAssignment>;
-  start(leaseId: string): Promise<StartView>;
+  start(leaseId: string, input?: StartInput): Promise<StartView>;
   land(leaseId: string, input?: LandInput): Promise<LandView>;
   /** The text a prompt may quote, from rows only: `{ n, title, exists, basis, chars, text }`. */
   text(chapters: number[]): Promise<{ chapters: ChapterTextView[] }>;
@@ -420,7 +430,15 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     nextGate: async (role, session) =>
       (await post('/internal/next', { role, session })) as GateAssignmentView | null,
     pass: async (chapter, session) => (await post('/internal/pass', { chapter, session })) as WriterAssignment,
-    start: async (leaseId) => (await post('/internal/start', { leaseId })) as StartView,
+    start: async (leaseId, input) =>
+      (await post('/internal/start', {
+        leaseId,
+        // The engine records the decision before the text is touched; an absent one is a
+        // `start` that only captures the pre-image.
+        ...(input?.decision === undefined ? {} : { decision: input.decision }),
+        ...(input?.reason === undefined ? {} : { reason: input.reason }),
+        ...(input?.intent === undefined ? {} : { intent: input.intent }),
+      })) as StartView,
     land: async (leaseId, input) =>
       (await post('/internal/land', {
         leaseId,
