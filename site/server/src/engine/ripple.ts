@@ -22,7 +22,7 @@
 import { appendEvent } from '../history/log.ts';
 import { listBlocks } from '../db/repo/chapters.ts';
 import type { Db } from '../db/db.ts';
-import { rebindMentions, retireUnassertedFacts } from '../ledger/graph/edges.ts';
+import { rebindMentions, retireUnassertedFacts } from '../ledger/graph/land.ts';
 import {
   buildPlan,
   changedChars,

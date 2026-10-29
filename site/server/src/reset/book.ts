@@ -170,9 +170,11 @@ const WIPE_BEFORE_COMMENTS = [
   'mentions',
   'thread_events',
   'threads',
-  // BOOK-173: an edge names two facts, so it must go before them.
-  'edges',
+  // BOOK-185: an edge names two facts, so it goes before them; BOOK-DOC-77: a fact and an edge
+  // name the extraction run that wrote or retired them, so `extraction_runs` goes after both.
+  'fact_dependency',
   'facts',
+  'extraction_runs',
   // ADR-044: a touch names a sentence, so the ledger goes before the rows it describes.
   'sentence_touches',
   'sentences',

@@ -1,7 +1,7 @@
 /**
  * `--plan <changeId>` and `--ripple` — the two commands that read the ripple (BOOK-173).
  *
- * They live here rather than in `main.ts` for the same reason `--backfill-ledger` does: the CLI
+ * They live here rather than in `main.ts` because they open the volume themselves: the CLI
  * file is the argument parser, and every command that needs the ledger, the lane and the engine
  * belongs next to its own rules. Both read the engine's database directly — the short-lived
  * reader `--revert` uses, because the CLI is co-located with the engine by construction — and

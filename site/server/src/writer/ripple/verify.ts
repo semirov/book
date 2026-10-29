@@ -3,8 +3,10 @@
  *
  * Five questions, all of them `SELECT`s, all of them ≤ a few milliseconds on the real graph:
  *
- *   1. **the ledger is closed** — every `edges` endpoint is a live fact (`FACT_DANGLING`), and no
- *      fact is used before the chapter that established it (`CAUSE_UNSUPPORTED`);
+ *   1. **the ledger is closed** — every `fact_dependency` endpoint is a fact row (`FACT_DANGLING`),
+ *      and no fact is used before the chapter that established it (`CAUSE_UNSUPPORTED`). A
+ *      dependency whose end was retired by the change is history, not a gap: BOOK-185 keeps the
+ *      row and drops it from every live read, so it is skipped here too;
  *   2. **the frames hold** — `frameIntact` for every chapter the ripple changed (`FRAME_CHANGED`);
  *   3. **the chapter is irreversible** — every changed chapter has ≥1 live fact of kind
  *      `decision` / `document` / `erasure` asserted there (`IRREVERSIBLE_LOST`). This reads the
@@ -24,9 +26,11 @@ import type { RipplePlan } from '../../ledger/graph/plan.ts';
 
 export type LiveFact = { chapter: number; validFrom: number; kind: string };
 
-/** The snapshot the checks read: live facts, every edge, every `use`-mention. */
+/** The snapshot the checks read: the live facts, every fact id that exists, every dependency, every `use`-mention. */
 export type LedgerFacts = {
   live: ReadonlyMap<string, LiveFact>;
+  /** Every fact row, retired or not: «the row is gone» and «the row was retired» are two answers. */
+  known: ReadonlySet<string>;
   edges: ReadonlyArray<{ id: string; from: string; to: string }>;
   uses: ReadonlyArray<{ factId: string; chapter: number }>;
 };
@@ -67,11 +71,18 @@ export function readLedgerFacts(db: Db, asOf = 42): LedgerFacts {
   for (const fact of factAsOf(db, asOf)) {
     live.set(fact.id, { chapter: fact.chapter, validFrom: fact.valid_from_chapter, kind: fact.kind });
   }
-  const edges = db.prepare('SELECT id, from_fact AS "from", to_fact AS "to" FROM edges ORDER BY id').all() as Array<{
-    id: string;
-    from: string;
-    to: string;
-  }>;
+  // BOOK-185's graph, live rows only: a retired dependency is history and is not a claim about
+  // the book that could dangle.
+  const known = new Set(
+    (db.prepare('SELECT id FROM facts').all() as Array<{ id: string }>).map((row) => row.id),
+  );
+  const edges = db
+    .prepare(
+      `SELECT id, "from" AS "from", "to" AS "to" FROM fact_dependency
+        WHERE superseded_by IS NULL AND retired_by_run IS NULL
+        ORDER BY id`,
+    )
+    .all() as Array<{ id: string; from: string; to: string }>;
   const uses = db
     .prepare(
       `SELECT fact_id AS factId, chapter FROM mentions
@@ -79,17 +90,19 @@ export function readLedgerFacts(db: Db, asOf = 42): LedgerFacts {
         ORDER BY chapter, fact_id`,
     )
     .all() as Array<{ factId: string; chapter: number }>;
-  return { live, edges, uses };
+  return { live, known, edges, uses };
 }
 
 function ledgerClosed(facts: LedgerFacts): VerifyFailure[] {
   const failures: VerifyFailure[] = [];
   for (const edge of facts.edges) {
-    if (!facts.live.has(edge.from)) {
-      failures.push({ code: 'FACT_DANGLING', detail: `${edge.id}: from ${edge.from} is not a live fact` });
+    // A missing row is a dangling pointer; a retired row is a claim the book stopped making, and
+    // BOOK-185's own rule already keeps that edge out of the closure.
+    if (!facts.known.has(edge.from)) {
+      failures.push({ code: 'FACT_DANGLING', detail: `${edge.id}: from ${edge.from} has no fact row` });
     }
-    if (!facts.live.has(edge.to)) {
-      failures.push({ code: 'FACT_DANGLING', detail: `${edge.id}: to ${edge.to} is not a live fact` });
+    if (!facts.known.has(edge.to)) {
+      failures.push({ code: 'FACT_DANGLING', detail: `${edge.id}: to ${edge.to} has no fact row` });
     }
   }
   for (const use of facts.uses) {

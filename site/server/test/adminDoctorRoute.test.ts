@@ -91,7 +91,9 @@ describe('GET /api/admin/doctor', () => {
     expect(body.frame.source).toBe('book_frame');
     expect(body.frame.rows.map((row) => row.chapter)).toEqual([1, 42]);
     expect(body.frame.rows.every((row) => /^[0-9a-f]{64}$/u.test(row.sha256))).toBe(true);
-    expect(body.graph).toEqual({ shipped: false });
+    // BOOK-185 stage 3 (v29): the edge table is in this image, so a fresh volume reports the
+    // graph as shipped and counts zero rows — the CLI reads `shipped` before the numbers.
+    expect(body.graph).toEqual({ shipped: true, facts: 0, threads: 0, edges: 0, closureMs: null });
 
     expect(response.body).not.toContain(FRAME_FIRST_SENTENCE);
     expect(response.body).not.toContain(FRAME_LAST_SENTENCE);

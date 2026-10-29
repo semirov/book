@@ -52,7 +52,6 @@ describe('the plan the engine computes at land', () => {
       const mandatory = plan.nodes.filter((node) => node.mandatory);
       expect(mandatory.map((node) => node.chapter).sort()).toEqual([12, 19]);
       expect(plan.seeds.map((seed) => seed.factId)).toEqual(['f:d:допуск@ch05#status']);
-      expect(plan.seeds[0]?.changed).toEqual(['status']);
       expect(plan.edgeDetail).toHaveLength(2);
 
       // 2. The reader's line, on the origin pass, from the plan and nothing else.

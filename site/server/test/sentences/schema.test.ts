@@ -29,12 +29,8 @@ function foreignKeys(db: Db, table: string): string[] {
   );
 }
 
-/** The v24 shape: no sentence tables, no carrier columns — and no v26 graph either. */
+/** The v24 shape: no sentence tables, no carrier columns. */
 function shapeAsV24(db: Db): void {
-  db.exec('DROP TRIGGER IF EXISTS facts_retire_edges');
-  db.exec('DROP VIEW IF EXISTS fact_dependency');
-  db.exec('DROP TABLE IF EXISTS change_plans');
-  db.exec('DROP TABLE IF EXISTS edges');
   db.exec('DROP TABLE sentence_touches');
   db.exec('DROP TABLE sentences');
   for (const column of ['sel_end', 'sel_start', 'sentence_id']) db.exec(`ALTER TABLE comments DROP COLUMN ${column}`);
@@ -49,8 +45,6 @@ describe('v25 — fresh install equals a migrated one', () => {
     const upgraded = openDatabase(':memory:');
     migrate(upgraded);
     shapeAsV24(upgraded);
-    // The cursor runs to the head of the build: v26–v29 ride along and change none of the
-    // sentence shapes this test compares.
     expect(migrate(upgraded)).toEqual({ from: 24, to: SCHEMA_VERSION });
 
     for (const table of CARRIERS) {

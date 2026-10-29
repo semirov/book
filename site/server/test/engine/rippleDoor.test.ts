@@ -38,9 +38,9 @@ function plan(changeId: string, outcome: RipplePlan['outcome']): RipplePlan {
     blockId: null,
     mandatory: outcome === 'ripple',
     reason: 'CAUSE_CHANGED:edg_doc_12' as const,
-    direction: 'forward' as const,
+    direction: 'descendant' as const,
     hops: 1,
-    via: [],
+    via: '',
     quote: 'Допуск всё ещё выдан.',
   };
   return {

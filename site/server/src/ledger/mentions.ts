@@ -41,12 +41,20 @@ export type LiteralMatch = {
   end: number;
 };
 
-/** `14.09.2065` → `2065-09-14`; a dotted or slashed date, or an ISO one left as it is. */
+/**
+ * `14.09.2065` → `2065-09-14`; `19.02` → `--02-19` (the year is not in the text, and a made-up
+ * one would be a lie); an ISO date and anything else are left as they are.
+ */
 function normaliseDate(raw: string): string {
   const dotted = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/u.exec(raw);
-  if (dotted === null) return raw;
-  const [, day, month, year] = dotted;
-  return `${year ?? ''}-${(month ?? '').padStart(2, '0')}-${(day ?? '').padStart(2, '0')}`;
+  if (dotted !== null) {
+    const [, day, month, year] = dotted;
+    return `${year ?? ''}-${(month ?? '').padStart(2, '0')}-${(day ?? '').padStart(2, '0')}`;
+  }
+  const dayMonth = /^(\d{1,2})[./](\d{1,2})$/u.exec(raw);
+  if (dayMonth === null) return raw;
+  const [, day, month] = dayMonth;
+  return `--${(month ?? '').padStart(2, '0')}-${(day ?? '').padStart(2, '0')}`;
 }
 
 /** `65/11877/арх` → `65-11877-арх`: the document number without its separators. */
@@ -153,8 +161,8 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
     kind: 'fact' | 'thread' | 'document' | 'date';
     factId: string | null;
     threadId: string | null;
-    /** ADR-043 D3: only a fact span carries a role; stage 2 adds 'use'. */
-    role: 'assert' | null;
+    /** ADR-043 D3/L3: a fact span carries a role — asserted here, or used from an earlier chapter. */
+    role: 'assert' | 'use' | null;
   }): string | null => {
     // ADR-044 §4: the sentence that carries this span. A span that straddles a boundary belongs
     // to neither sentence, and `null` is the honest answer — a guessed carrier is a fact filed
@@ -185,11 +193,15 @@ export function insertSpanMentions(db: Db, input: InsertMentionsInput): Inserted
 
   for (const block of input.blocks) {
     for (const fact of facts) {
+      // ADR-043 L3: a mention of a fact this chapter establishes is an assertion; a mention of
+      // one an earlier chapter established is a use. Binding by `factAsOf` alone cannot tell the
+      // two apart, and a `use` where the chapter asserts is exactly the lie the closure refuses.
+      const role = fact.chapter < input.chapter ? 'use' : 'assert';
       for (const hit of occurrences(block.text, fact.term ?? '')) {
         const key = `${block.spanId}|${String(hit.start)}|${String(hit.end)}|fact`;
         if (seen.has(key)) continue;
         seen.add(key);
-        bind({ block, start: hit.start, end: hit.end, kind: 'fact', factId: fact.id, threadId: null, role: 'assert' });
+        bind({ block, start: hit.start, end: hit.end, kind: 'fact', factId: fact.id, threadId: null, role });
       }
     }
     for (const thread of threads) {

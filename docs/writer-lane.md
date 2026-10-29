@@ -109,9 +109,10 @@ one implementation of "open a draft step, ride its premise, take its lease".
 - `--dry-run` — resolve config, prompt, assignment and validation shape; **zero** model calls,
   nothing written, no transcript.
 - `--loop` — the supervised shape: one pass, then sleep; the launchd job `dev.book-writer`.
-- `--ripple`, `--plan ID`, `--backfill-ledger`, `--audit-samples [N]` — **operator commands**, not
-  the lane: they need the ledger and open the volume, so they live in `site/bin/ledger.mjs`
-  (`backfill`, `plan <id>`, `ripple`, `audit [N]`) and the writer refuses the flag with that line.
+- `--ripple`, `--plan ID`, `--audit-samples [N]` — **operator commands**, not the lane: they need
+  the ledger and open the volume, so they live in `site/bin/ledger.mjs` (`plan <id>`, `ripple`,
+  `audit [N]`) and the writer refuses the flag with that line. The graph they read is filled by
+  BOOK-185's extractor, `node site/bin/graph.mjs` — never by the writer.
 - `--revert --chapter N [--rev R]` — publish the earlier text as a **new** revision through
   `POST /internal/restore` (`cause_kind='restore'`); the old text is read from the revision's
   snapshot row, never from a file. The revert prints the new revision and the sha it verified.

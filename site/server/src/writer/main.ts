@@ -29,7 +29,7 @@ import { markWriterBoot } from './verify/cli.ts';
 const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 export const USAGE = [
-  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--backfill-ledger] [--audit-samples [N]]',
+  'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--audit-samples [N]]',
   '',
   '  --once            one pass, then exit (default)',
   '  --chapter N       open the first pass for chapter N instead of the lane’s next slot',
@@ -38,13 +38,12 @@ export const USAGE = [
   '  --loop            one pass, then pause (WRITER_PAUSE_MS), until SIGTERM',
   '  --ripple          drain the oldest ripple still owed work (BOOK-173), then exit',
   '  --plan ID         print the reviewable table of change ID’s ripple plan; nothing is written',
-  '  --backfill-ledger read the written chapters into the ledger graph (facts, mentions, edges)',
   '  --audit-samples [N]  re-read the queued local-only samples with the editor (default 3)',
   '  --help            this text',
 ].join('\n');
 
 export type Cli = {
-  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'backfill' | 'audit';
+  mode: 'run' | 'revert' | 'help' | 'ripple' | 'plan' | 'audit';
   once: boolean;
   loop: boolean;
   dryRun: boolean;
@@ -58,7 +57,7 @@ export type Cli = {
 export type ParsedArgs = { ok: true; cli: Cli } | { ok: false; error: string };
 
 const VALUE_FLAGS = new Set(['chapter', 'plan']);
-const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help', 'ripple', 'backfill-ledger']);
+const BOOLEAN_FLAGS = new Set(['once', 'loop', 'dry-run', 'revert', 'help', 'ripple']);
 /** A flag whose value is optional: `--audit-samples` alone takes the default, `=N` names a count. */
 const OPTIONAL_VALUE_FLAGS = new Set(['audit-samples']);
 
@@ -126,11 +125,10 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
   const revert = flags.has('revert');
   const ripple = flags.has('ripple');
-  const backfill = flags.has('backfill-ledger');
   const loop = flags.has('loop');
   const once = flags.has('once');
   // The sample audit reads chapters and calls the editor: it is one command, not a pass.
-  if (auditFlag && (revert || ripple || loop || backfill || chapter !== null || changeId !== null || once)) {
+  if (auditFlag && (revert || ripple || loop || chapter !== null || changeId !== null || once)) {
     return { ok: false, error: '--audit-samples runs alone: no chapter, no pass, no drain' };
   }
   if (revert && chapter === null) return { ok: false, error: '--revert needs --chapter N' };
@@ -138,26 +136,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   if (loop && revert) return { ok: false, error: '--loop cannot revert' };
   if (ripple && revert) return { ok: false, error: '--ripple and --revert are two different shapes' };
   if (ripple && chapter !== null) return { ok: false, error: '--ripple chooses its own chapter from the plan' };
-  if (changeId !== null && (revert || ripple || loop || backfill)) {
+  if (changeId !== null && (revert || ripple || loop)) {
     return { ok: false, error: '--plan prints a table; it runs nothing' };
   }
-  // A ledger backfill reads files and writes rows: it is neither a pass nor a drain, and it takes
-  // no chapter — the whole book is the unit.
-  if (backfill && (revert || ripple || loop || chapter !== null || once || flags.has('dry-run'))) {
-    return { ok: false, error: '--backfill-ledger runs alone: no chapter, no pass, no drain' };
-  }
 
-  const mode = auditFlag
-    ? 'audit'
-    : backfill
-      ? 'backfill'
-      : changeId !== null
-        ? 'plan'
-        : ripple
-          ? 'ripple'
-          : revert
-            ? 'revert'
-            : 'run';
+  const mode = auditFlag ? 'audit' : changeId !== null ? 'plan' : ripple ? 'ripple' : revert ? 'revert' : 'run';
   return {
     ok: true,
     cli: { mode, once: !loop, loop, dryRun: flags.has('dry-run'), chapter, changeId, audit },
@@ -260,7 +243,7 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     return 0;
   }
 
-  if (cli.mode === 'backfill' || cli.mode === 'plan' || cli.mode === 'ripple' || cli.mode === 'audit') {
+  if (cli.mode === 'plan' || cli.mode === 'ripple' || cli.mode === 'audit') {
     // The writer holds no database handle (BOOK-187, BOOK-183): every command that needs the
     // ledger is an operator tool in `site/bin/ledger.mjs`, which opens the volume itself the way
     // `bin/restore.mjs` and `bin/index.mjs` do.

@@ -233,9 +233,11 @@ describe('the fact-shaped guard and the published gap (D4, D9, L8)', () => {
     });
     expect(second).toMatchObject({ ok: true, warnings: 0, ledgerGap: 0 });
 
-    // ADR-043 D3: the fact span carries its role and its witness; stage 2 turns 'use' on.
+    // ADR-043 D3/L3: the fact span carries its role and its witness. The fact was established in
+    // chapter 5 and is mentioned in chapter 8, so the mention is a `use` — the chapter does not
+    // assert it, it consumes it.
     expect(db.prepare(`SELECT role, witness, edge_path, fact_id FROM mentions WHERE kind = 'fact'`).get()).toEqual({
-      role: 'assert',
+      role: 'use',
       witness: '14.09.2065',
       edge_path: '[]',
       fact_id: 'fct_act',

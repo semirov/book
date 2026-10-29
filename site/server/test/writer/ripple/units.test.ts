@@ -7,7 +7,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Db } from '../../../src/db/db.ts';
-import { assertDependency } from '../../../src/ledger/graph/edges.ts';
 import type { RipplePlan } from '../../../src/ledger/graph/plan.ts';
 import {
   JUDGE_MAX_EDGES,
@@ -27,7 +26,7 @@ import { afterPatch } from '../../../src/writer/ripple/afterPatch.ts';
 import { readLedgerFacts, verifyRipple } from '../../../src/writer/ripple/verify.ts';
 import type { Lane } from '../../../src/writer/passLane.ts';
 import type { WriterAssignment } from '@book/shared';
-import { AT, ledgerFixture, seedChange, seedChapter, type LedgerFixture } from '../../ledger/helpers.ts';
+import { AT, ledgerFixture, seedChapter, type LedgerFixture } from '../../ledger/helpers.ts';
 
 const BOOK_ROOT = new URL('../../../../..', import.meta.url).pathname;
 
@@ -39,9 +38,9 @@ function plan(overrides: Partial<RipplePlan> = {}): RipplePlan {
     blockId: `ch${String(chapter)}#a1`,
     mandatory,
     reason: reason as never,
-    direction: 'forward' as never,
+    direction: 'descendant' as const,
     hops: 1,
-    via: [],
+    via: 'dep_1',
     quote: `утверждение ${factId}`,
   });
   return {
@@ -49,10 +48,10 @@ function plan(overrides: Partial<RipplePlan> = {}): RipplePlan {
     chapter: 5,
     outcome: 'ripple',
     proven: true,
-    seeds: [{ factId: 'f:seed', chapter: 5, blockId: 'ch05#a1', changed: ['status'] }],
+    seeds: [{ factId: 'f:seed', chapter: 5, blockId: 'ch05#a1' }],
     nodes: [node('f:a', 12, true, 'CAUSE_CHANGED:edg_1'), node('f:b', 19, false, 'TONE')],
     edges: ['edg_1'],
-    edgeDetail: [{ id: 'edg_1', from: 'f:seed', to: 'f:a', kind: 'references', on: 'status', statement: '' }],
+    edgeDetail: [{ id: 'edg_1', from: 'f:seed', to: 'f:a', kind: 'cause', statement: '' }],
     patches: [],
     closureSize: { nodes: 3, edges: 1, chapters: 3, parts: 1 },
     chaptersTouched: [5, 12, 19],
@@ -154,18 +153,17 @@ describe('the causality judge', () => {
       chapter: 12,
       blockId: null,
       mandatory: index % 2 === 0,
-      reason: 'CAUSE_CHANGED:edg' as never,
-      direction: 'forward' as never,
+      reason: 'sole support: dep_1',
+      direction: 'descendant' as const,
       hops: 1,
-      via: [],
+      via: 'dep_1',
       quote: 'ц'.repeat(200),
     }));
     const edges = Array.from({ length: 40 }, (_, index) => ({
       id: `edg_${String(index)}`,
       from: 'f:seed',
       to: `f:${String(index)}`,
-      kind: 'references',
-      on: 'status',
+      kind: 'cause',
       statement: 'свидетельство',
     }));
     const prompt = buildJudgePrompt({ bookRoot: BOOK_ROOT, plan: plan({ nodes: many, edgeDetail: edges }) });
@@ -222,6 +220,15 @@ describe('the verification after a chapter lands', () => {
     ).run(id, chapter, kind, validFrom, AT);
   }
 
+  /** One dependency row, BOOK-185's own table: the closure reads `fact_dependency` and nothing else. */
+  function graphEdge(input: { from: string; to: string; chapter: number; kind?: string }): void {
+    db.prepare(
+      `INSERT INTO fact_dependency
+         (id, "from", "to", chapter, kind, stance, statement, origin, step_id, rev, at)
+       VALUES (?, ?, ?, ?, ?, 'plain', 'утверждение', 'registered', 'stp_unit', 1, ?)`,
+    ).run(`dep_${input.from}_${input.to}`, input.from, input.to, input.chapter, input.kind ?? 'cause', AT);
+  }
+
   function use(factId: string, chapter: number): void {
     const block = db.prepare('SELECT id FROM blocks WHERE chapter = ?').get(chapter) as { id: string };
     db.prepare(
@@ -237,7 +244,7 @@ describe('the verification after a chapter lands', () => {
     fact('f:seed', 5, 'document');
     fact('f:a', 12, 'document');
     fact('f:b', 19, 'decision');
-    assertDependency(db, { from: 'f:seed', to: 'f:a', chapter: 12, kind: 'references', onComponent: 'status' });
+    graphEdge({ from: 'f:seed', to: 'f:a', chapter: 12, kind: 'cause' });
     const result = verifyRipple({
       plan: plan(),
       recomputed: plan(),
@@ -254,12 +261,11 @@ describe('the verification after a chapter lands', () => {
     fact('f:seed', 5, 'state');
     fact('f:a', 12, 'state');
     fact('f:b', 19, 'state');
-    // A fact that left the book while an edge still names it: `FACT_DANGLING`, not a crash — facts
-    // are retired, never deleted, and an edge whose endpoint was invalidated is the same dangling.
-    const retired = seedChange(db, { id: 'chg_retire', chapter: 5 });
-    fact('f:gone', 12, 'state');
-    db.prepare('UPDATE facts SET invalidated_at = ?, invalidated_by_change = ? WHERE id = ?').run(AT, retired, 'f:gone');
-    assertDependency(db, { from: 'f:seed', to: 'f:gone', chapter: 12, kind: 'references' });
+    // A dependency that names a fact row nobody has is `FACT_DANGLING`, not a crash. The row is
+    // written with the foreign keys off, because no ordinary write could create it.
+    db.pragma('foreign_keys = OFF');
+    graphEdge({ from: 'f:seed', to: 'f:ghost', chapter: 12, kind: 'cause' });
+    db.pragma('foreign_keys = ON');
     fact('f:late', 19, 'state');
     use('f:late', 12);
     const result = verifyRipple({

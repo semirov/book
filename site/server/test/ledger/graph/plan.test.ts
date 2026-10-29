@@ -12,10 +12,12 @@ import {
   RIPPLE_MAX_ITERATIONS,
   RIPPLE_MAX_USD,
 } from '../../../src/ledger/graph/plan.ts';
+import { closure } from '../../../src/graph/closure.ts';
 import { AT, seedChange } from '../helpers.ts';
-import { promiseFixture } from './fixtures.ts';
+import { graphFixture, promiseFixture, type GraphFixture } from './fixtures.ts';
 
 let db: Db;
+let fixture: GraphFixture;
 
 afterEach(() => {
   db.close();
@@ -24,11 +26,12 @@ afterEach(() => {
 function open(): void {
   db = openDatabase(':memory:');
   migrate(db);
+  fixture = graphFixture(db);
 }
 
-/** The design's filing: the promise in ch05, the deadline restated in ch12, a value change. */
+/** The design's filing: the promise in ch05, the deadline restated in ch12. */
 function filing(): { promise: string; deadline: string; edgeId: string } {
-  return promiseFixture(db, 'value');
+  return promiseFixture(db);
 }
 
 const BEFORE = 'Я обещаю вернуть акт через 30 дней.';
@@ -37,8 +40,7 @@ const AFTER = 'Я обещаю вернуть акт через 45 дней.';
 describe('buildPlan — three outcomes, priced before any money', () => {
   it('is local when nothing mandatory hangs off the change', () => {
     open();
-    const blocks = promiseFixture(db, 'value');
-    void blocks;
+    promiseFixture(db);
     // Only the seed is in the graph, and no seed is a consequence.
     const plan = buildPlan({
       db,
@@ -71,10 +73,7 @@ describe('buildPlan — three outcomes, priced before any money', () => {
        SELECT 'bkd_T12_0:1:0', ?, 12, 0, 10, 'fact', 'f:n:30@ch19#cc', 'assert', witness, '[]'
          FROM mentions WHERE block_id = ? LIMIT 1`,
     ).run(block.id, block.id);
-    db.prepare(
-      `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
-       VALUES ('edg_second', ?, 'f:n:30@ch19#cc', 19, 'follows', 'value', '', 'writer', ?)`,
-    ).run(promise, AT);
+    fixture.edge({ id: 'dep_second', from: promise, to: 'f:n:30@ch19#cc', chapter: 19, kind: 'cause' });
 
     const plan = buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER });
     expect(plan.outcome).toBe('ripple');
@@ -109,9 +108,9 @@ describe('buildPlan — three outcomes, priced before any money', () => {
     expect(plan.nodes).toHaveLength(1);
   });
 
-  it('is wide when the iteration bound is passed, the valve trips, or an outcome reverses', () => {
+  it('is wide when the iteration bound is passed, a bound trips, or the money is over', () => {
     open();
-    const { promise, deadline } = filing();
+    const { promise } = filing();
     const changeId = seedChange(db, { id: 'chg_wide_misc', chapter: 5 });
     expect(buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER, bounds: { iterationsUsed: 5 } }).outcome).toBe(
       'wide',
@@ -131,45 +130,41 @@ describe('buildPlan — three outcomes, priced before any money', () => {
         bounds: { estimatedUsd: 1.2 },
       }).outcome,
     ).toBe('wide');
-    // An outcome reversal inside the closure is a `contradicts` edge — the owner decides, not the
-    // engine — and it counts even when the walk reached both ends by another path.
-    db.prepare(
-      `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
-       VALUES ('edg_reverse', ?, ?, 5, 'contradicts', 'status', '', 'writer', ?)`,
-    ).run(deadline, promise, AT);
-    expect(buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER }).outcome).toBe('wide');
+    // The edge bound is a data-bug valve: a closure past it is `wide` with the closure intact.
+    expect(buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER, bounds: { edges: 0 } }).outcome).toBe(
+      'wide',
+    );
   });
 
-  it('flags a reversal inside the closure even when the walk never used its edge', () => {
+  it('builds its closure from main’s closure() over fact_dependency, and from nothing else', () => {
     open();
-    const blocks = promiseFixture(db, 'value');
-    void blocks;
-    const changeId = seedChange(db, { id: 'chg_reverse', chapter: 5 });
-    for (const id of ['f:aaa', 'f:bbb']) {
-      db.prepare(
-        `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, created_at)
-         VALUES (?, 5, 'state', 'утверждение', 'утверждение', 5, ?)`,
-      ).run(id, AT);
-    }
-    db.prepare(
-      `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
-       VALUES ('edg_to_a', 'f:p:обещание@ch05#aa', 'f:aaa', 5, 'follows', 'value', '', 'writer', ?),
-              ('edg_to_b', 'f:p:обещание@ch05#aa', 'f:bbb', 5, 'follows', 'value', '', 'writer', ?),
-              ('edg_reverse', 'f:aaa', 'f:bbb', 5, 'contradicts', 'status', '', 'writer', ?)`,
-    ).run(AT, AT, AT);
-    const plan = buildPlan({
-      db,
-      changeId,
-      chapter: 5,
-      seeds: ['f:p:обещание@ch05#aa'],
-      before: BEFORE,
-      after: AFTER,
+    const { promise, deadline, edgeId } = filing();
+    const changeId = seedChange(db, { id: 'chg_main_closure', chapter: 5 });
+    // A second consequence in another chapter, so the closure has to cross a chapter boundary.
+    const second = fixture.fact({ id: 'f:second@ch19#cc', chapter: 19, statement: 'Оплата через тридцать дней.' });
+    fixture.edge({ id: 'dep_second', from: promise, to: second, chapter: 19, kind: 'cause' });
+
+    const expected = closure(db, [promise]);
+    const plan = buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER });
+
+    expect(plan.edges).toEqual(expected.edges.map((edge) => edge.id));
+    expect(plan.chaptersTouched).toEqual(expected.chapters);
+    expect(plan.closureSize).toEqual({
+      nodes: expected.nodes.length,
+      edges: expected.edges.length,
+      chapters: expected.chapters.length,
+      parts: expected.parts.length,
     });
-    // Both ends are in the closure and the walk found each from the seed, so `edg_reverse` was
-    // never used — the reversal is still a reversal.
-    expect(plan.nodes.map((node) => node.factId)).toEqual(expect.arrayContaining(['f:aaa', 'f:bbb']));
-    expect(plan.edges).not.toContain('edg_reverse');
-    expect(plan.outcome).toBe('wide');
+    // Every node of the plan is a node of main's closure, minus the seed itself.
+    const closureIds = new Set(expected.nodes.map((node) => node.factId));
+    for (const node of plan.nodes) expect(closureIds.has(node.factId)).toBe(true);
+    expect(plan.nodes.map((node) => node.factId).sort()).toEqual([deadline, second].sort());
+    expect(plan.edgeDetail.map((edge) => edge.id).sort()).toEqual([edgeId, 'dep_second'].sort());
+
+    // The graph is `fact_dependency`: retire the edge and the consequence leaves the plan.
+    db.prepare(`UPDATE fact_dependency SET retired_by_run = NULL, superseded_by = id WHERE id = ?`).run(edgeId);
+    const after = buildPlan({ db, changeId, chapter: 5, seeds: [promise], before: BEFORE, after: AFTER });
+    expect(after.nodes.map((node) => node.factId)).not.toContain(deadline);
   });
 
   it('prints proven:false when a seed names no live fact — never «ничего не зависит»', () => {
@@ -207,7 +202,6 @@ describe('buildPlan — three outcomes, priced before any money', () => {
     expect(plan.proven).toBe(false);
     expect(plan.unresolved).toEqual(['f:missing']);
     expect(plan.seeds.map((seed) => seed.factId)).toEqual([promise, 'f:second_seed'].sort());
-    expect(plan.seeds.every((seed) => seed.changed.includes('value'))).toBe(true);
     // A fact stated in ch12 is not a seed at ch05 — it is a consequence the walk reaches instead.
     expect(plan.seeds.map((seed) => seed.factId)).not.toContain('f:n:30@ch12#bb');
     expect(plan.nodes.map((node) => node.factId)).toContain('f:n:30@ch12#bb');

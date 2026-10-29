@@ -161,17 +161,17 @@ function park(input: DrainInput, at: number, code: string, detail: string): stri
 }
 
 /**
- * Recompute the closure against the book as it stands. The seeds keep the components the original
- * plan measured; **the executed set is the journal's** (round 3, fix 2) — a node the change already
- * patched, this iteration or an earlier one, is not mandatory again, so a repair that keeps the
- * claim's wording leaves the mandatory set instead of parking `CLOSURE_UNSTABLE`.
+ * Recompute the closure against the book as it stands — main's `closure()` over `fact_dependency`,
+ * the same seeds. **The executed set is the journal's** (round 3, fix 2) — a node the change
+ * already patched, this iteration or an earlier one, is not mandatory again, so a repair that
+ * keeps the claim's wording leaves the mandatory set instead of parking `CLOSURE_UNSTABLE`.
  */
 export function recomputePlan(db: Db, plan: RipplePlan, executedIds: readonly string[] = []): RipplePlan {
   return buildPlan({
     db,
     changeId: plan.changeId,
     chapter: plan.chapter,
-    seeds: plan.seeds.map((seed) => ({ factId: seed.factId, changed: seed.changed })),
+    seeds: plan.seeds.map((seed) => seed.factId),
     before: '',
     after: '',
     executed: executedIds,

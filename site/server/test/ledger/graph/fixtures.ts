@@ -2,11 +2,39 @@
  * Fixtures for the ripple's graph (BOOK-173): chapters with real blocks, so a mention can bind to
  * text that stands, and facts that say what the prose says. `seedChapter` is the ledger's own
  * helper — the block ids a mention names are the ids the applier would write, not invented ones.
+ *
+ * The edges are BOOK-185's: rows of `fact_dependency`, written with the columns the extractor
+ * writes, because the closure the plan reads is that table and no other.
  */
 
 import type { Db } from '../../../src/db/db.ts';
-import { assertDependency, type AssertDependencyInput, type EdgeRow } from '../../../src/ledger/graph/edges.ts';
 import { AT, seedChapter, type SeededBlock } from '../helpers.ts';
+
+/** ADR-040 §2.1: the five claims one fact can be the reason for another. */
+export type DependencyKind = 'cause' | 'promise' | 'document' | 'absence' | 'decision';
+
+export type DependencyRow = {
+  id: string;
+  from: string;
+  to: string;
+  chapter: number;
+  kind: DependencyKind;
+  statement: string;
+  origin: 'registered' | 'inferred';
+};
+
+export type DependencyInput = {
+  id?: string;
+  from: string;
+  to: string;
+  chapter: number;
+  kind?: DependencyKind;
+  statement?: string;
+  origin?: 'registered' | 'inferred';
+  stepId?: string;
+  rev?: number;
+  at?: string;
+};
 
 export type GraphFixture = {
   db: Db;
@@ -16,10 +44,10 @@ export type GraphFixture = {
   fact: (input: { id: string; chapter: number; statement: string; kind?: string; term?: string }) => string;
   /** A fact bound to a block: the witness is the block's text from `start` to `end`. */
   mention: (input: { factId: string; block: SeededBlock; chapter: number; start?: number; end?: number }) => void;
-  edge: (input: AssertDependencyInput) => EdgeRow;
+  edge: (input: DependencyInput) => DependencyRow;
 };
 
-const KINDS = new Set(['document', 'decision', 'testimony', 'erasure', 'state']);
+const KINDS = new Set(['document', 'date', 'name', 'term', 'promise', 'decision', 'absence', 'testimony', 'erasure', 'state']);
 
 export function graphFixture(db: Db): GraphFixture {
   return {
@@ -46,12 +74,32 @@ export function graphFixture(db: Db): GraphFixture {
          VALUES (?, ?, ?, ?, ?, 'fact', ?, NULL, NULL, 'assert', ?, '[]')`,
       ).run(`${input.block.uid}:1:0`, input.block.id, input.chapter, start, end, input.factId, Array.from(text).slice(start, end).join(''));
     },
-    edge: (input) => assertDependency(db, input),
+    edge: (input) => {
+      const id = input.id ?? `dep_${String(input.from)}_${String(input.to)}_${String(input.chapter)}`;
+      db.prepare(
+        `INSERT INTO fact_dependency
+           (id, "from", "to", chapter, kind, stance, line, statement, origin, step_id, rev, at, extracted_by)
+         VALUES (?, ?, ?, ?, ?, 'plain', NULL, ?, ?, ?, ?, ?, '')`,
+      ).run(
+        id,
+        input.from,
+        input.to,
+        input.chapter,
+        input.kind ?? 'cause',
+        input.statement ?? 'служебная зависимость',
+        input.origin ?? 'registered',
+        input.stepId ?? 'stp_fixture',
+        input.rev ?? 1,
+        input.at ?? AT,
+      );
+      const row = db.prepare(`SELECT id, "from" AS "from", "to" AS "to", chapter, kind, statement, origin FROM fact_dependency WHERE id = ?`).get(id) as DependencyRow;
+      return row;
+    },
   };
 }
 
 /** The design's constructed fixture: a promise in ch05, its deadline restated in ch12. */
-export function promiseFixture(db: Db, onComponent: 'value' | 'identity'): {
+export function promiseFixture(db: Db): {
   fixture: GraphFixture;
   promise: string;
   deadline: string;
@@ -79,15 +127,13 @@ export function promiseFixture(db: Db, onComponent: 'value' | 'identity'): {
   fixture.mention({ factId: promise, block: promiseBlock, chapter: 5 });
   fixture.mention({ factId: deadline, block: deadlineBlock, chapter: 12 });
   const edge = fixture.edge({
+    id: 'dep_fixture_promise',
     from: promise,
     to: deadline,
     chapter: 12,
-    kind: 'fulfils',
-    onComponent,
-    evidence: '«тридцать дней»: ch05 → ch12',
-    origin: 'backfill',
+    kind: 'promise',
+    statement: '«тридцать дней»: ch05 → ch12',
     at: AT,
-    id: 'edg_fixture_promise',
   });
   return { fixture, promise, deadline, edgeId: edge.id };
 }

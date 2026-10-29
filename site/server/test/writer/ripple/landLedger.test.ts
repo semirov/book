@@ -9,7 +9,7 @@
  *   · a mention bound to a block id dangles the moment a patch replaces that block. Here the
  *     mention is re-bound in the same transaction, `assertedFacts` reads the chapter's text rather
  *     than an id, and the node it names stays mandatory — until a contradicting patch removes the
- *     claim, which retires the fact and its edges;
+ *     claim, which retires the fact and drops its dependencies;
  *   · a revision the site's watcher published first still gets its plan (round 3, fix 1): the
  *     ingest answers `unchanged`, and the ledger is settled anyway, so the change cannot close
  *     `applied` with the ripple silently unplanned.
@@ -17,7 +17,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { assertedFacts, walk } from '../../../src/ledger/graph/edges.ts';
+import { assertedFacts } from '../../../src/ledger/graph/land.ts';
+import { closure } from '../../../src/graph/closure.ts';
 import { buildPlan } from '../../../src/ledger/graph/plan.ts';
 import { listStages } from '../../../src/stages/repo.ts';
 import type { WriterAssignment } from '@book/shared';
@@ -164,7 +165,11 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
       expect(db.prepare('SELECT invalidated_at FROM facts WHERE id = ?').get(graph.deadline)).toEqual({
         invalidated_at: null,
       });
-      expect(db.prepare('SELECT COUNT(*) AS n FROM edges WHERE from_fact = ? OR to_fact = ?').get(graph.deadline, graph.deadline)).toEqual({ n: 1 });
+      expect(
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM fact_dependency WHERE "from" = ? OR "to" = ?`)
+          .get(graph.deadline, graph.deadline),
+      ).toEqual({ n: 1 });
 
       // …and the plan still puts that node in the closure as mandatory.
       const plan = buildPlan({
@@ -172,7 +177,7 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
         changeId: 'chg_asserted',
         chapter: ORIGIN,
         // The change moved the document's *status* — the component the ch12 edge consumes.
-        seeds: [{ factId: graph.seed, changed: ['status'] }],
+        seeds: [graph.seed],
         before: '',
         after: '',
       });
@@ -183,7 +188,7 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
     }
   });
 
-  it('a contradicting patch retires the fact and its edges, and no walk reaches the node', async () => {
+  it('a contradicting patch retires the fact and its dependencies, and no closure reaches the node', async () => {
     const harness = await rippleHarness();
     try {
       const graph = rippleGraph(harness);
@@ -207,15 +212,20 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
       expect(db.prepare('SELECT invalidated_by_change AS by FROM facts WHERE id = ?').get(graph.deadline)).toEqual({
         by: changeId,
       });
-      // …and `facts_retire_edges` took its incident edges, so a later walk cannot reach the node.
-      expect(db.prepare('SELECT COUNT(*) AS n FROM edges WHERE from_fact = ? OR to_fact = ?').get(graph.deadline, graph.deadline)).toEqual({ n: 0 });
-      const reached = walk(db, [graph.seed]).nodes.map((node) => node.factId);
+      // …and the row of the dependency stays as history, while the closure no longer reaches the
+      // node: BOOK-185's live-edge rule drops an edge whose end is retired, without deleting it.
+      expect(
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM fact_dependency WHERE "from" = ? OR "to" = ?`)
+          .get(graph.deadline, graph.deadline),
+      ).toEqual({ n: 1 });
+      const reached = closure(db, [graph.seed]).nodes.map((node) => node.factId);
       expect(reached).not.toContain(graph.deadline);
       const plan = buildPlan({
         db,
         changeId: 'chg_unasserted',
         chapter: ORIGIN,
-        seeds: [{ factId: graph.seed, changed: ['status'] }],
+        seeds: [graph.seed],
         before: '',
         after: '',
       });
@@ -254,7 +264,11 @@ describe('a patched paragraph keeps its fact asserted — by text, not by block 
       expect(db.prepare('SELECT invalidated_at FROM facts WHERE id = ?').get(graph.deadline)).toEqual({
         invalidated_at: null,
       });
-      expect(db.prepare('SELECT COUNT(*) AS n FROM edges WHERE from_fact = ? OR to_fact = ?').get(graph.deadline, graph.deadline)).toEqual({ n: 1 });
+      expect(
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM fact_dependency WHERE "from" = ? OR "to" = ?`)
+          .get(graph.deadline, graph.deadline),
+      ).toEqual({ n: 1 });
     } finally {
       await harness.close();
     }

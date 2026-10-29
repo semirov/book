@@ -90,7 +90,7 @@ export function buildJudgePrompt(input: { bookRoot: string; plan: RipplePlan }):
   lines.push('', '## Связи', `${String(edges.length)} из ${String(plan.edgeDetail.length)}`);
   for (const edge of edges) {
     const evidence = edge.statement.length > 0 ? ` · «${clip(edge.statement, JUDGE_QUOTE_CHARS)}»` : '';
-    lines.push(`${edge.from} → ${edge.to} · ${edge.kind} · on=${edge.on}${evidence}`);
+    lines.push(`${edge.from} → ${edge.to} · ${edge.kind}${evidence}`);
   }
   lines.push('', '## Правки', `${String(patches.length)} из ${String(plan.patches.length)}`);
   if (patches.length === 0) lines.push('правок ещё нет: решение принимается до первой из них');

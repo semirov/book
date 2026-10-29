@@ -3,13 +3,14 @@
  * bin/ledger.mjs — the operator's ledger commands (BOOK-173, BOOK-DOC-80).
  *
  * The writer process holds no database handle (BOOK-187, BOOK-183): the text lives in rows and
- * every store the lane needs is reached through the engine. These four commands need the ledger
- * itself — a graph backfill, a plan table, the ripple drain and the sample audit — so they live
- * here, in the operator's own tool, and open the volume exactly the way `bin/restore.mjs`,
- * `bin/index.mjs` and `bin/export.mjs` do: a short-lived host process, never the lane.
+ * every store the lane needs is reached through the engine. These three commands need the plan
+ * rows themselves — a plan table, the ripple drain and the sample audit — so they live here, in
+ * the operator's own tool, and open the volume exactly the way `bin/restore.mjs`, `bin/index.mjs`
+ * and `bin/export.mjs` do: a short-lived host process, never the lane.
  *
- *   node bin/ledger.mjs backfill            → read the written chapters into the graph (facts,
- *                                             mentions, edges); safe to repeat, touches no prose
+ * The graph itself is not filled here: BOOK-185's extractor is `node bin/graph.mjs` (extract, one
+ * chapter per call, with the model and its run ledger), and the ripple only reads it.
+ *
  *   node bin/ledger.mjs plan <changeId>     → print the reviewable table of that change's plan
  *                                             (exit 1 when the change has none)
  *   node bin/ledger.mjs ripple              → drain the oldest plan still owed work, one chapter
@@ -18,7 +19,7 @@
  *
  * Exit codes: `0` done · `1` a plan is parked / something was flagged · `2` could not run
  * (usage, config, no database, an unreachable engine). The interface per command is documented
- * in `server/src/writer/rippleCli.ts`, `backfillRun.ts` and `verify/cli.ts`.
+ * in `server/src/writer/rippleCli.ts` and `verify/cli.ts`.
  *
  * Environment: DATA_DIR and BOOK_ROOT as the site and the lane read them; the ripple and the
  * audit also need the lane's own config (`WRITER_*`, `BOOK_*`) and the engine token.
@@ -33,9 +34,8 @@ const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = join(SITE_ROOT, 'server', 'dist');
 
 const USAGE = [
-  'usage: ledger.mjs <backfill|plan <changeId>|ripple|audit [N]> [--data-dir DIR]',
+  'usage: ledger.mjs <plan <changeId>|ripple|audit [N]> [--data-dir DIR]',
   '',
-  '  backfill            the ledger graph from the written chapters (facts, mentions, edges)',
   '  plan <changeId>     print the frozen plan of one change; exit 1 when it has none',
   '  ripple              drain the oldest ripple still owed work, then exit',
   '  audit [N]           re-read N queued local-only samples with the editor (default 3)',
@@ -88,7 +88,7 @@ async function main() {
     console.log(USAGE);
     return command === null ? 2 : 0;
   }
-  if (!['backfill', 'plan', 'ripple', 'audit'].includes(command)) {
+  if (!['plan', 'ripple', 'audit'].includes(command)) {
     console.error(`ledger: unknown command ${command}`);
     console.error(USAGE);
     return 2;
@@ -133,11 +133,6 @@ async function main() {
   } catch (error) {
     console.error(`ledger: ${error instanceof Error ? error.message : 'data dir refused'}`);
     return 2;
-  }
-
-  if (command === 'backfill') {
-    const { runBackfillCli } = await module('writer/backfillRun.js');
-    return runBackfillCli({ dataDir: volume, bookRoot, now, log, error: (line) => console.error(line) });
   }
 
   const db = openDatabase(file);

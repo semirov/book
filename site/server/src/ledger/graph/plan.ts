@@ -1,16 +1,17 @@
 /**
  * The plan of a ripple (BOOK-173, BOOK-DOC-75 §3).
  *
- * `buildPlan` is the whole deterministic half of the ripple: resolve the seeds, walk the graph in
- * both directions with no chapter window, classify every reachable node, and freeze the result
- * with its caps. It calls no model and writes nothing; `storePlan` is the one writer.
+ * `buildPlan` is the whole deterministic half of the ripple: resolve the seeds, take **main's
+ * closure** of them (`graph/closure.ts`, both directions, no chapter window), let `mandatoryOf()`
+ * split the nodes, and freeze the result with its caps. It calls no model and writes nothing;
+ * `storePlan` is the one writer.
  *
  * Three outcomes, and the difference is not a mood:
  *
  *   · `local`  — no mandatory node: the change is patched at the point and nothing else claims it;
  *   · `ripple` — mandatory nodes exist and every cap holds: each one is patched on its chapter;
- *   · `wide`   — a cap is exceeded, the node valve trips, or a `contradicts` edge sits on the walk
- *                (an outcome reversal): the owner decides, the closure is printed whole.
+ *   · `wide`   — a cap is exceeded (changed characters, money, iterations, the node or edge bound):
+ *                the owner decides, the closure is printed whole.
  *
  * **`proven: false` is not «nothing depends on it».** When a seed names no live fact the plan says
  * so — `unresolved[]` lists the ids it could not bind — and the reader is told «не доказано». The
@@ -22,14 +23,14 @@
  * closure intact, never to a smaller closure.
  */
 
-import { partOf, type WriteMode } from '@book/shared';
+import type { WriteMode } from '@book/shared';
 
 import type { Db } from '../../db/db.ts';
+import { closure, type Direction } from '../../graph/closure.ts';
+import { loadFacts } from '../../graph/walk.ts';
 import { toIso } from '../../util/time.ts';
 import { ulid } from '../../util/ulid.ts';
-import { classify, type Reason } from './classify.ts';
-import { movedComponents, type Component } from './components.ts';
-import { allEdges, assertedFacts, liveFactsAsOf, walk, WALK_EDGE_VALVE, WALK_NODE_VALVE, type WalkDirection } from './edges.ts';
+import { classify } from './classify.ts';
 
 /** BOOK-DOC-75 §6: 4 000 changed characters per change, cumulative. */
 export const RIPPLE_MAX_CHANGED_CHARS = 4_000;
@@ -37,6 +38,9 @@ export const RIPPLE_MAX_CHANGED_CHARS = 4_000;
 export const RIPPLE_MAX_USD = 0.6;
 /** BOOK-DOC-75 §4: four iterations, then `CLOSURE_UNSTABLE` unless the plan is verified. */
 export const RIPPLE_MAX_ITERATIONS = 4;
+/** The node and edge bounds of a plan: a closure past them is a data bug, and the plan says `wide`. */
+export const RIPPLE_MAX_NODES = 1_500;
+export const RIPPLE_MAX_EDGES = 3_000;
 
 export type PlanOutcome = 'local' | 'ripple' | 'wide';
 
@@ -44,7 +48,6 @@ export type PlanSeed = {
   factId: string;
   chapter: number;
   blockId: string | null;
-  changed: Component[];
   /**
    * The fact's own claim, verbatim — the same `statement` a node carries. The local judge
    * (`writer/verify/tier1.ts`) needs the claims of the facts **inside** the changed paragraphs, and
@@ -59,11 +62,11 @@ export type PlanNode = {
   chapter: number;
   blockId: string | null;
   mandatory: boolean;
-  reason: Reason;
-  direction: WalkDirection;
+  reason: string;
+  direction: Direction;
   hops: number;
-  /** The edge ids from the seed to this node — the reviewable `via` chain. */
-  via: string[];
+  /** The edge that reached this node at its smallest distance — the reviewable `via`, `''` if none. */
+  via: string;
   /**
    * The node's claim, verbatim (BOOK-DOC-75 §3): what the causality judge is shown instead of a
    * chapter. Empty when the fact row has no statement — the judge prints the id then.
@@ -72,11 +75,11 @@ export type PlanNode = {
 };
 
 /**
- * One edge of the walk as the judge and the review table print it (BOOK-DOC-75 §5): the two ends,
- * the kind, the component the target consumes, and the evidence the backfill recorded. Frozen with
- * the plan, so a judge re-run asks the same question of the same rows.
+ * One edge of the closure as the judge and the review table print it (BOOK-DOC-75 §5): the two
+ * ends, the kind, and the statement the row was told with (`fact_dependency.statement`). Frozen
+ * with the plan, so a judge re-run asks the same question of the same rows.
  */
-export type PlanEdge = { id: string; from: string; to: string; kind: string; on: string; statement: string };
+export type PlanEdge = { id: string; from: string; to: string; kind: string; statement: string };
 
 /** A patch is the writer's, produced per chapter; at planning the list is empty by design. */
 export type PlanPatch = { chapter: number; blockId: string; oldText: string; newText: string; reason: string };
@@ -131,8 +134,8 @@ export type BuildPlanInput = {
   db: Db;
   changeId: string;
   chapter: number;
-  /** Seed fact ids, or the same with the components the caller measured for each. */
-  seeds: ReadonlyArray<string | { factId: string; changed?: readonly Component[] }>;
+  /** Seed fact ids — the facts the patch touched. */
+  seeds: readonly string[];
   before: string;
   after: string;
   bounds?: PlanCaps;
@@ -184,8 +187,8 @@ function capsOf(input: PlanCaps): PlanBounds {
     chars: input.chars ?? RIPPLE_MAX_CHANGED_CHARS,
     usd: input.usd ?? RIPPLE_MAX_USD,
     iterations: input.iterations ?? RIPPLE_MAX_ITERATIONS,
-    nodes: input.nodes ?? WALK_NODE_VALVE,
-    edges: input.edges ?? WALK_EDGE_VALVE,
+    nodes: input.nodes ?? RIPPLE_MAX_NODES,
+    edges: input.edges ?? RIPPLE_MAX_EDGES,
   };
 }
 
@@ -194,42 +197,33 @@ function compare(left: string, right: string): number {
 }
 
 /**
- * Assemble, classify and freeze the plan. Deterministic: the same rows and the same two texts
- * produce a byte-identical plan, so a stored plan and a recomputed one can be compared.
+ * Assemble, classify and freeze the plan from **main's closure** (BOOK-185): `closure()` walks
+ * `fact_dependency` in both directions with no chapter cap, and `mandatoryOf()` decides the split.
+ * Deterministic: the same rows and the same two texts produce a byte-identical plan, so a stored
+ * plan and a recomputed one can be compared.
  */
 export function buildPlan(input: BuildPlanInput): RipplePlan {
   const { db } = input;
   const bounds = capsOf(input.bounds ?? {});
-  const live = liveFactsAsOf(db, input.chapter);
   const blocks = blockOfFacts(db);
   const statements = statementsOf(db);
-  const measured = movedComponents(input.before, input.after);
-  const unresolved: string[] = [];
-  const seeds: PlanSeed[] = [];
-  for (const raw of input.seeds) {
-    const wanted = typeof raw === 'string' ? { factId: raw, changed: undefined } : raw;
-    const fact = live.get(wanted.factId);
-    if (fact === undefined) {
-      unresolved.push(wanted.factId);
-      continue;
-    }
-    seeds.push({
-      factId: fact.id,
-      chapter: fact.chapter,
-      blockId: blocks.get(fact.id) ?? null,
-      changed: [...(wanted.changed ?? measured)].sort(),
-      quote: statements.get(fact.id) ?? '',
-    });
-  }
-  seeds.sort((left, right) => compare(left.factId, right.factId));
-  const seedIds = seeds.map((seed) => seed.factId);
+  const wanted = [...new Set(input.seeds)].sort(compare);
+  // A seed the ledger does not have live is printed, not swallowed: `proven: false`.
+  const live = loadFacts(db, wanted);
+  const unresolved = wanted.filter((factId) => !live.has(factId));
+  const seedIds = wanted.filter((factId) => live.has(factId));
+  const seeds: PlanSeed[] = seedIds.map((factId) => ({
+    factId,
+    chapter: live.get(factId)?.chapter ?? input.chapter,
+    blockId: blocks.get(factId) ?? null,
+    quote: statements.get(factId) ?? '',
+  }));
 
-  const walked = walk(db, seedIds, { direction: 'both', nodeValve: bounds.nodes });
-  const moved = new Set<Component>(seeds.flatMap((seed) => seed.changed));
-  const classified = classify(walked.nodes, {
-    moved,
+  const closed = closure(db, seedIds);
+  const classified = classify(db, closed.nodes, {
+    origin: input.chapter,
     seeds: seedIds,
-    asserted: assertedFacts(db),
+    touched: seedIds,
     executed: new Set(input.executed ?? []),
   });
   const nodes: PlanNode[] = classified.map((node) => ({
@@ -244,28 +238,18 @@ export function buildPlan(input: BuildPlanInput): RipplePlan {
     quote: statements.get(node.factId) ?? '',
   }));
 
-  const chaptersTouched = [...new Set([...seeds.map((seed) => seed.chapter), ...nodes.map((node) => node.chapter)])].sort(
-    (left, right) => left - right,
-  );
-  const parts = new Set(chaptersTouched.map((chapter) => partOf(chapter) ?? 'frame'));
+  // The chapters and the parts are the closure's own reading, so a plan and the closure it was
+  // built from cannot count different books.
+  const chaptersTouched = closed.chapters;
   const mandatory = nodes.filter((node) => node.mandatory).length;
-  // A reversal inside the closure is a `wide` even when the walk found both ends by another
-  // path: the contradiction is a statement about the change, not about the discovery tree.
-  const closure = new Set(walked.nodes.map((node) => node.factId));
-  const reversed = allEdges(db).some(
-    (edge) => edge.kind === 'contradicts' && closure.has(edge.from_fact) && closure.has(edge.to_fact),
-  );
+  const statementsByEdge = statementsOfEdges(db, closed.edges.map((edge) => edge.id));
   const overChars = changedChars(input.before, input.after) > bounds.chars;
   const overMoney = input.bounds?.estimatedUsd !== undefined && input.bounds.estimatedUsd > bounds.usd;
   const overIterations =
     input.bounds?.iterationsUsed !== undefined && input.bounds.iterationsUsed > bounds.iterations;
-  const overValve = walked.truncated || walked.edges.length > bounds.edges;
+  const overValve = closed.nodes.length > bounds.nodes || closed.edges.length > bounds.edges;
   const outcome: PlanOutcome =
-    overChars || overMoney || overIterations || overValve || reversed
-      ? 'wide'
-      : mandatory > 0
-        ? 'ripple'
-        : 'local';
+    overChars || overMoney || overIterations || overValve ? 'wide' : mandatory > 0 ? 'ripple' : 'local';
 
   return {
     changeId: input.changeId,
@@ -275,27 +259,40 @@ export function buildPlan(input: BuildPlanInput): RipplePlan {
     proven: seeds.length > 0 && unresolved.length === 0,
     seeds,
     nodes,
-    edges: walked.edges.map((edge) => edge.id),
-    edgeDetail: walked.edges.map((edge) => ({
+    edges: closed.edges.map((edge) => edge.id),
+    edgeDetail: closed.edges.map((edge) => ({
       id: edge.id,
-      from: edge.from_fact,
-      to: edge.to_fact,
+      from: edge.fromFact,
+      to: edge.toFact,
       kind: edge.kind,
-      on: edge.on_component,
-      statement: edge.evidence,
+      statement: statementsByEdge.get(edge.id) ?? '',
     })),
     patches: [],
     closureSize: {
-      nodes: walked.nodes.length,
-      edges: walked.edges.length,
+      nodes: closed.nodes.length,
+      edges: closed.edges.length,
       chapters: chaptersTouched.length,
-      parts: parts.size,
+      parts: closed.parts.length,
     },
     chaptersTouched,
     bounds,
     unresolved,
-    truncated: walked.truncated,
+    // Main's walk has no valve — it stops when the frontier is empty — so a truncated plan is
+    // not a state the closure can produce. The field stays for a plan frozen before this step.
+    truncated: false,
   };
+}
+
+/** The reading aid an edge was told with, by id: `fact_dependency.statement`. */
+function statementsOfEdges(db: Db, ids: readonly string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  if (ids.length === 0) return map;
+  const placeholders = ids.map(() => '?').join(', ');
+  const rows = db
+    .prepare(`SELECT id, statement FROM fact_dependency WHERE id IN (${placeholders})`)
+    .all(...ids) as Array<{ id: string; statement: string }>;
+  for (const row of rows) map.set(row.id, row.statement);
+  return map;
 }
 
 type PlanRow = {

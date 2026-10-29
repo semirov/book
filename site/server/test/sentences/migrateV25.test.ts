@@ -37,12 +37,6 @@ function columns(db: Db, table: string): string[] {
 
 /** Turn a v25 database into the v24 one an upgrade finds: no sentence notion anywhere. */
 function shapeAsV24(db: Db): void {
-  // The head of the build is past v26 now, so the ripple's graph has to go too: a v24 install
-  // knows neither the sentence nor the edge, and the step under test must build what it finds.
-  db.exec('DROP TRIGGER IF EXISTS facts_retire_edges');
-  db.exec('DROP VIEW IF EXISTS fact_dependency');
-  db.exec('DROP TABLE IF EXISTS change_plans');
-  db.exec('DROP TABLE IF EXISTS edges');
   db.exec('DROP TABLE sentence_touches');
   db.exec('DROP TABLE sentences');
   for (const column of ['sel_end', 'sel_start', 'sentence_id']) {
@@ -98,8 +92,6 @@ describe('migrate v25 — the sentence becomes a stored row', () => {
     const db = v24Database();
     expect(columns(db, 'comments')).not.toContain('sentence_id');
 
-    // The cursor reaches the head of the build; v26–v29 ride along and touch none of the rows
-    // this file asserts about.
     expect(migrate(db)).toEqual({ from: 24, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
@@ -157,9 +149,7 @@ describe('migrate v25 — the sentence becomes a stored row', () => {
     expect(count(db, 'SELECT COUNT(*) AS n FROM mentions')).toBe(0);
 
     // `edges` belongs to ADR-041: v25 adds a column to it if it is there, and never creates it.
-    // The head of the build is past that point — v26 creates the graph — so the assertion is that
-    // the sentence step invents no fact, edge or touch of its own, not that no table exists.
-    expect(count(db, 'SELECT COUNT(*) AS n FROM edges')).toBe(0);
+    expect(columns(db, 'edges')).toEqual([]);
     const meta = Object.fromEntries(
       db.prepare(`SELECT k, v FROM meta WHERE k LIKE 'sentences.%'`).all().map((row) => {
         const entry = row as { k: string; v: string };
@@ -214,9 +204,7 @@ describe('migrate v25 — the sentence becomes a stored row', () => {
   it('adds the carrier to an `edges` table a later ADR has created, and never makes one', () => {
     const db = v24Database();
     db.exec('CREATE TABLE edges (id TEXT PRIMARY KEY)');
-    // The step itself, not the whole run: v26 (the graph) creates `edges` *after* this step, so the
-    // «a table is already there» case is exactly v25 running on a build that has one.
-    migrateV25(db);
+    migrate(db);
     expect(columns(db, 'edges')).toEqual(['id', 'sentence_id']);
     db.close();
   });

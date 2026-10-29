@@ -67,20 +67,21 @@ export function seedFact(db: Db, input: FactSeed): string {
   return input.id;
 }
 
+/** One dependency row of BOOK-185's graph — the table the closure walks. */
 export function seedEdge(
   db: Db,
-  input: { id: string; from: string; to: string; chapter: number; kind?: string; on?: string },
+  input: { id: string; from: string; to: string; chapter: number; kind?: string },
 ): void {
   db.prepare(
-    `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'backfill', ?)`,
+    `INSERT INTO fact_dependency
+       (id, "from", "to", chapter, kind, stance, statement, origin, step_id, rev, at)
+     VALUES (?, ?, ?, ?, ?, 'plain', ?, 'registered', 'stp_fixture', 1, ?)`,
   ).run(
     input.id,
     input.from,
     input.to,
     input.chapter,
-    input.kind ?? 'references',
-    input.on ?? 'status',
+    input.kind ?? 'cause',
     `«выдан»: ch05 → ch${String(input.chapter)}`,
     AT,
   );
@@ -147,11 +148,14 @@ export function rippleGraph(
   return { seed, deadline, payment, extra: extras };
 }
 
-/** Retire a repaired fact the way a real repair does: the claim and its edge leave the book. */
+/**
+ * Retire a repaired fact the way a real repair does: the claim leaves the book. The dependency rows
+ * stay as history (BOOK-185 retires, never deletes) — the closure drops them because one of their
+ * ends is no longer a live fact.
+ */
 export function retire(db: Db, factIds: readonly string[], changeId: string): void {
   const at = new Date().toISOString();
   for (const factId of factIds) {
-    db.prepare('DELETE FROM edges WHERE to_fact = ? OR from_fact = ?').run(factId, factId);
     db.prepare('DELETE FROM mentions WHERE fact_id = ?').run(factId);
     db.prepare('UPDATE facts SET invalidated_at = ?, invalidated_by_change = ? WHERE id = ?').run(at, changeId, factId);
   }

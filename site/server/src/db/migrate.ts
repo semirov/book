@@ -10,17 +10,17 @@ import { migrateV26 } from './migrateV26.ts';
 import { migrateV27 } from './migrateV27.ts';
 import { migrateV28 } from './migrateV28.ts';
 import { migrateV29 } from './migrateV29.ts';
+import { migrateV30 } from './migrateV30.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
 /**
- * Apply schema migrations in order, then probe the result. `user_version` is the migration
- * cursor; later milestones append steps rather than editing this one.
+ * Apply schema migrations in order, then probe the result. `user_version` is the cursor; later
+ * milestones append steps rather than editing this one.
  *
  * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a
- * projection of the manuscript or an engine table that has never been written before M3, and the
- * retired `obligations`/`cascade_stages` tables must disappear. Files win for text (§18), so a
- * field install of the skeleton loses only its projection.
+ * projection of the manuscript or an engine table never written before M3, and the retired
+ * `obligations`/`cascade_stages` tables must disappear — a field install loses only a projection.
  */
 const MIGRATIONS: Migration[] = [
   {
@@ -315,21 +315,21 @@ const MIGRATIONS: Migration[] = [
       addColumn(db, 'pass_spend', 'provenance', "TEXT CHECK (provenance IN ('pipeline','operator'))");
     },
   },
-  // BOOK-176 (BOOK-DOC-69): the span ledger, the mirror and a legacy span per live block, from
-  // the same constants a fresh install uses. Idempotent to the statement.
+  // BOOK-176 (BOOK-DOC-69): the span ledger and the mirror, from the constants a fresh install uses.
   { to: 22, up: migrateV22 },
   // The author marker (owner, 2026-10-28): `migrateV23.ts` holds the column, the decision, the backfill.
   { to: 23, up: migrateV23 },
-  // The sentence (ADR-044) took 25; BOOK-173's graph and plan follow as v29 — never v24 or v26.
+  // The sentence (ADR-044, BOOK-DOC-74). 25, not 24: v24 is ADR-043's, still to be written.
   { to: 25, up: migrateV25 },
   // BOOK-189: the push tables — subscriptions, the claim and the outbox (26: 24 stays ADR-043's).
   { to: 26, up: migrateV26 },
   // BOOK-174: the chain and the counters (27 — v24 is ADR-043's, and the cursor has passed it).
   { to: 27, up: migrateV27 },
-  // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, transcripts and deltas.
+  // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the transcripts, the deltas.
   { to: 28, up: migrateV28 },
-  // BOOK-173 (BOOK-DOC-75): the graph and the frozen plan — 29, because 26–28 were taken upstream.
+  // BOOK-185 stage 3 (BOOK-DOC-77): `migrateV29.ts` — runs, facts, edges, threads; v30 is BOOK-173's plan.
   { to: 29, up: migrateV29 },
+  { to: 30, up: migrateV30 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

@@ -99,8 +99,8 @@ const TIME_RULES: Array<{ kind: TimeMarkerKind; re: RegExp }> = [
 
 /**
  * The papers the index knows: a generic “документ” plus the office's own nouns. Exported because
- * the ledger's ripple reads the same closed list (`ledger/graph/components.ts`): a second copy
- * would let the index and the graph disagree about what a document is.
+ * one closed list of document nouns is the index's, and a second copy elsewhere would let the
+ * search and the extraction disagree about what a paper is.
  */
 export const DOCUMENT_NOUNS = [
   'служебная записка',

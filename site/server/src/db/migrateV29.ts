@@ -1,66 +1,158 @@
 /**
- * Migration v29 (BOOK-173, BOOK-DOC-75) — the graph a consequence walks on, and the plan of a
- * change with the mode and the price it was written in.
+ * Migration v29 (BOOK-185 stage 3, BOOK-DOC-77) — the graph the model fills and code judges, on
+ * the volume that already holds the book (ADR-043, BOOK-DOC-76: the rows are the home of the
+ * text).
  *
- * The step is **additive and touches no row that exists**:
+ * Three things happen here, and none of them changes a row's meaning:
  *
- *   · `edges` — «this fact stands on that one», with the component of the source the target
- *     consumes (`on_component`) and who wrote the row (`origin`). `fact_dependency`, the owner's
- *     name for the relation, is a view over it, so the name a reader was promised is queryable
- *     without a second copy of the data;
- *   · `change_plans` — the frozen plan of a change: the closure without its patches, the patches
- *     the writer produced, the caps frozen at estimate, the fixpoint's iteration journal, the
- *     lane claim and the park — plus, from this version, `mode` (`patch`|`rewrite`) and
- *     `price_usd`: the estimate frozen with the plan, replaced by the actual when the pass
- *     closes, so a change carries how it was written and what it cost rather than leaving both
- *     to a log line.
- *   · the verification record of that plan (BOOK-DOC-80): `tier1_verdict`, `tier1_usd`,
- *     `gates_mode`, and the safeguard's queue — `sample_requested`, `sampled_at`,
- *     `sample_verdict`. All nullable (or defaulted to 0) because every plan written before this
- *     step was verified by the full pair and has nothing to say here.
+ *   · `extraction_runs` — one row per model call: what was asked (`chapter`, `rev`, `text_sha`,
+ *     `prompt_sha`, `model`, `pass`), what came back (the raw `response`), what it cost and what
+ *     the validator kept. The row is append-only: the tuple is a plain index, so a forced re-ask
+ *     adds another answer instead of rewriting the one the book was built from, and reuse reads
+ *     the **latest** `status = 'ok'` row;
+ *   · `facts` is **rebuilt** with the columns BOOK-185 gives a fact — `key`, the normalised
+ *     identity the extraction derives, and `sentence`, the sentence that first asserts it — plus
+ *     the provenance of BOOK-DOC-77 (`extracted_by`, `superseded_by_extraction`) and the widened
+ *     `kind` CHECK, from the ledger's five words to the seven carriers plus the three ledger
+ *     words. SQLite cannot widen an inline CHECK, so the new shape is built beside the old table,
+ *     filled from it and swapped in: the same constant a fresh install reads, which is what makes
+ *     «a migrated install equals a fresh one» a property rather than a hope. ADR-044's
+ *     `sentence_id` (v25) and every other v28 column is copied as it stands;
+ *   · `fact_dependency` (ADR-040 §2.1) is created with its two indexes, and `threads` gains
+ *     `extracted_by`.
  *
- * Both statements live in `ledgerTables.ts` next to the tables v22 created, so a fresh install
- * (which reads them from `SCHEMA_SQL`) and an upgraded one (which reads them from here) build the
- * same objects — table for table, index for index, view for view. Every statement is
- * `IF NOT EXISTS` and every column is added only when `table_info` lacks it, so a database that
- * already ran this step, a fresh one that got the tables before the migration ran, and an install
- * that carries the tables in their pre-`mode` shape all converge on the same schema.
+ * **The step invents nothing.** A row written before v29 keeps every value it had and reads
+ * `key = ''`, `sentence = ''` and `extracted_by = ''`: it was never given an identity, an
+ * asserting sentence or a run, and a migration that guessed one would put a made-up fact in the
+ * graph the closure trusts. `superseded_by_extraction` stays NULL — no run retired it.
  *
- * **v29, not v24/26.** This step was written as v24 while `main` was at v23; the sentence (ADR-044,
- * BOOK-182) then took **25** on `main` while this branch held 24, and `main` has no v24 at all.
- * `user_version` only moves forward: an install already at 25 would never run a step numbered 24,
- * so it would boot without `edges` or `change_plans` — a server that answers every consequence
- * with nothing. The step was then renumbered to 26 — and `main` took 26 (push, BOOK-189),
- * 27 (BOOK-174) and 28 (BOOK-187, the db-home) before this landed. It is **29** now, so the six
- * upgrade paths (fresh, 22, 23, 25, 27, 28) all arrive at the same schema and no number a step
- * already took on `main` is reused.
+ * **A fresh install equals a migrated one.** Every object comes from `ledgerTables.ts`, which
+ * `SCHEMA_SQL`, `migrateV22`, the reset and this step all read, and `ADD COLUMN` appends, so the
+ * migrated column order, NOT NULL flags, defaults and foreign keys are the fresh install's too.
+ *
+ * Idempotent to the statement: a table that already has every column and the whole kind
+ * vocabulary is left untouched, so a fresh install — created at the newest version already — and
+ * a replayed step both pass through without a rebuild.
+ *
+ * **29, not 23/24:** main owns v23–v28 (the author marker, the sentence, the push tables, the
+ * disposition chain, the book's own state), and v24 is still ADR-043's reserved number, so this
+ * step appends after them.
  */
 
 import type { Db } from './db.ts';
-import { CHANGE_PLANS_SQL, LEDGER_GRAPH_SQL } from './ledgerTables.ts';
+import {
+  EXTRACTION_RUNS_TABLE_SQL,
+  FACT_DEPENDENCY_TABLE_SQL,
+  FACT_KINDS,
+  FACTS_COLUMNS,
+  FACTS_INDEXES_SQL,
+  FACTS_KEY_INDEX_SQL,
+  FACTS_TABLE_SQL,
+  FACTS_TRIGGER_SQL,
+  factsTableSql,
+} from './ledgerTables.ts';
 
-/** Columns `change_plans` gains in this step, for an install that created the table earlier. */
-const COLUMN_ADDITIONS: ReadonlyArray<readonly [column: string, definition: string]> = [
-  ['mode', "TEXT CHECK (mode IN ('patch','rewrite'))"],
-  ['price_usd', 'REAL'],
-  // BOOK-DOC-80: the verification record and the sample queue of a `local only` change.
-  ['tier1_verdict', "TEXT CHECK (tier1_verdict IN ('HOLDS','GAP','UNSURE','TIER1_UNPARSED'))"],
-  ['tier1_usd', 'REAL'],
-  ['gates_mode', "TEXT CHECK (gates_mode IN ('local only','full','local_only_rechecked'))"],
-  ['sample_requested', 'INTEGER NOT NULL DEFAULT 0'],
-  ['sampled_at', 'TEXT'],
-  ['sample_verdict', "TEXT CHECK (sample_verdict IN ('ok','gap','error'))"],
-];
+const FACTS_INDEX_NAMES = ['facts_asof', 'facts_term', 'facts_key_live'] as const;
+/** The new shape while the old one still holds the name: `facts` is the table every child names. */
+const FACTS_REBUILD_TABLE = 'facts_v29';
 
-function addColumn(db: Db, table: string, column: string, definition: string): void {
-  const columns = new Set(
-    (db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name),
-  );
-  if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+function columnNames(db: Db, table: string): Set<string> {
+  const info = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  return new Set(info.map((column) => column.name));
 }
 
+function tableExists(db: Db, name: string): boolean {
+  return db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name) !== undefined;
+}
+
+/** `ALTER TABLE … ADD COLUMN` unless the column is already there — every step is idempotent. */
+function addColumn(db: Db, table: string, column: string, definition: string): void {
+  if (!columnNames(db, table).has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+/** The `facts` table a fresh install builds: every column and every kind word. */
+export function factsShapeIsCurrent(db: Db): boolean {
+  const row = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'facts'`)
+    .get() as { sql: string } | undefined;
+  if (row === undefined) return false;
+  const columns = columnNames(db, 'facts');
+  if (!FACTS_COLUMNS.every((column) => columns.has(column))) return false;
+  return FACT_KINDS.every((kind) => row.sql.includes(`'${kind}'`));
+}
+
+/**
+ * Rebuild `facts` to the v29 shape. Returns whether the table was rebuilt, so a caller can tell a
+ * no-op from a rewrite. The table, its indexes and its trigger come from the same constants
+ * `SCHEMA_SQL` uses; nothing here is a second declaration of the shape.
+ */
+export function rebuildFacts(db: Db): boolean {
+  const columns = columnNames(db, 'facts');
+  if (columns.size === 0) {
+    db.exec(FACTS_TABLE_SQL);
+    db.exec(FACTS_INDEXES_SQL);
+    db.exec(FACTS_KEY_INDEX_SQL);
+    db.exec(FACTS_TRIGGER_SQL);
+    return true;
+  }
+  if (factsShapeIsCurrent(db)) {
+    // The one index that is not in the shared ledger text — it names `key`, which a pre-v29 table
+    // lacks — still has to exist, or a skipped rebuild and a fresh install differ index for index.
+    db.exec(FACTS_KEY_INDEX_SQL);
+    return false;
+  }
+  // `migrate` runs every step with `foreign_keys` off, which is what makes dropping the old table
+  // legal while `mentions` and `thread_events` still name it. A caller outside a transaction gets
+  // the same guarantee here; inside one the pragma cannot change, and the step then fails loudly
+  // rather than leaving a half-rebuilt table.
+  const foreignKeys = Number(db.pragma('foreign_keys', { simple: true }) ?? 0);
+  const switchForeignKeys = foreignKeys === 1 && !db.inTransaction;
+  if (switchForeignKeys) db.pragma('foreign_keys = OFF');
+  // A savepoint, not a transaction: `migrate` already holds one, and the swap has to be
+  // all-or-nothing for a caller that does not — the book must never be left without `facts`.
+  db.exec('SAVEPOINT facts_v29');
+  try {
+    // The trigger and the indexes are recreated from the constants below, so they go first: an
+    // index would otherwise travel with whichever table this step leaves behind.
+    db.exec('DROP TRIGGER IF EXISTS facts_no_delete');
+    for (const index of FACTS_INDEX_NAMES) db.exec(`DROP INDEX IF EXISTS ${index}`);
+    db.exec(`DROP TABLE IF EXISTS ${FACTS_REBUILD_TABLE}`);
+    db.exec(factsTableSql(FACTS_REBUILD_TABLE));
+    // Only the columns the old table actually has are copied; the new ones take their defaults.
+    // A pre-v29 row was never given a key, a sentence or a run and keeps none.
+    const shared = FACTS_COLUMNS.filter((column) => columns.has(column));
+    db.exec(
+      `INSERT INTO ${FACTS_REBUILD_TABLE} (${shared.join(', ')})
+         SELECT ${shared.join(', ')} FROM facts`,
+    );
+    db.exec('DROP TABLE facts');
+    db.exec(`ALTER TABLE ${FACTS_REBUILD_TABLE} RENAME TO facts`);
+    db.exec(FACTS_INDEXES_SQL);
+    db.exec(FACTS_KEY_INDEX_SQL);
+    db.exec(FACTS_TRIGGER_SQL);
+    db.exec('RELEASE facts_v29');
+  } catch (error) {
+    db.exec('ROLLBACK TO facts_v29');
+    db.exec('RELEASE facts_v29');
+    throw error;
+  } finally {
+    if (switchForeignKeys) db.pragma('foreign_keys = ON');
+  }
+  return true;
+}
+
+/**
+ * The v29 step: the run ledger, the rebuilt `facts` and the edge table. `run` is a transaction in
+ * `migrate`, so a failure here leaves neither a half-rebuilt table nor a bumped `user_version`.
+ *
+ * Order matters: `extraction_runs` before the rebuild, because the new `facts` carries a foreign
+ * key to it; `fact_dependency` after, because it names `facts` in both of its end columns.
+ */
 export function migrateV29(db: Db): void {
-  db.exec(LEDGER_GRAPH_SQL);
-  db.exec(CHANGE_PLANS_SQL);
-  for (const [column, definition] of COLUMN_ADDITIONS) addColumn(db, 'change_plans', column, definition);
+  db.exec(EXTRACTION_RUNS_TABLE_SQL);
+  rebuildFacts(db);
+  db.exec(FACT_DEPENDENCY_TABLE_SQL);
+  // `threads` may predate this step (the ledger created it at v22) or already carry the column
+  // (a fresh install); `ADD COLUMN` appends, so the two shapes stay equal.
+  if (tableExists(db, 'threads')) addColumn(db, 'threads', 'extracted_by', `TEXT NOT NULL DEFAULT ''`);
 }

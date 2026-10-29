@@ -222,7 +222,8 @@ describe('the drainer', () => {
             from: 'f:d:допуск@ch05#status',
             to: 'f:d:допуск@ch19#status',
             chapter: 19,
-            kind: 'follows',
+            // A second claim of the same support: the tuple is unique on (from, to, kind, chapter).
+            kind: 'decision',
           });
           return { landed: true, changedChars: 90, costUsd: 0.11 };
         },
@@ -232,7 +233,7 @@ describe('the drainer', () => {
       expect(outcome.reason).toContain('замыкание не сходится');
       expect(outcome.reason).not.toContain('CLOSURE_UNSTABLE');
       const node = outcome.plan.nodes.find((entry) => entry.factId === 'f:d:допуск@ch19#status');
-      expect(node?.reason).toBe('CAUSE_CHANGED:edg_doc_19_follows');
+      expect(node?.reason).toContain('edg_doc_19_follows');
       const parked = harness.fixture.db
         .prepare('SELECT parked_at FROM change_plans WHERE id = ?')
         .get(planRowId) as { parked_at: string | null };

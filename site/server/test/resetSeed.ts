@@ -130,14 +130,47 @@ export function seedBook(target: Fixture): string {
   ).run(owner, AT);
   // BOOK-176: one row of every ledger table. The counters must count them and the wipe must
   // remove them; the offsets are nominal — this fixture writes no prose of its own.
+  // BOOK-DOC-77: the extraction run the fact and the edges below name. It goes first: `facts` and
+  // `fact_dependency` carry a foreign key to it, and the wipe removes it after both.
   db.prepare(
-    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, invalidated_at,
-                        invalidated_by_change, created_at)
-     VALUES ('fct_one', 8, 'state', 'Служебное утверждение.', 'служебный термин', 8, NULL, NULL, ?)`,
+    `INSERT INTO extraction_runs (id, chapter, rev, text_sha, prompt_sha, model, pass, at, status)
+     VALUES ('run_one', 8, 1, 'sha-text', 'sha-prompt', 'test-model', 'extract', ?, 'ok')`,
   ).run(AT);
   db.prepare(
-    `INSERT INTO threads (id, label, direction, opened_at_chapter, closed_at_chapter, state)
-     VALUES ('thr_one', 'служебная линия', 'forward', 8, NULL, 'opened')`,
+    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, invalidated_at,
+                        invalidated_by_change, created_at, key, sentence, extracted_by,
+                        superseded_by_extraction)
+     VALUES ('fct_one', 8, 'state', 'Служебное утверждение.', 'служебный термин', 8, NULL, NULL, ?,
+             '', '', '', NULL)`,
+  ).run(AT);
+  // BOOK-185: a second fact, so the edges below point at two real rows rather than at themselves,
+  // and a row the run retired — the two supersession columns mean different things.
+  db.prepare(
+    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, invalidated_at,
+                        invalidated_by_change, created_at, key, sentence, extracted_by,
+                        superseded_by_extraction)
+     VALUES ('fct_two', 8, 'date', 'Служебная дата.', NULL, 8, NULL, NULL, ?, 'date:2065-09-14',
+             'Акт 14.09.2065 подшит в дело.', 'run_one', 'run_one')`,
+  ).run(AT);
+  // BOOK-185 / ADR-040: two edges — one retired by the other, which the run also records. The
+  // successor is written first: `superseded_by` is a real reference, resolved when the row lands.
+  db.prepare(
+    `INSERT INTO fact_dependency (id, "from", "to", chapter, kind, stance, line, statement, origin,
+                                  step_id, rev, superseded_by, retired_by_run, at, extracted_by)
+     VALUES ('fdp_two', 'fct_two', 'fct_one', 8, 'cause', 'plain', NULL,
+             'Служебная дата — причина служебного утверждения.', 'registered', 'stp_one', 1,
+             NULL, NULL, ?, 'run_one')`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO fact_dependency (id, "from", "to", chapter, kind, stance, line, statement, origin,
+                                  step_id, rev, superseded_by, retired_by_run, at, extracted_by)
+     VALUES ('fdp_one', 'fct_two', 'fct_one', 8, 'document', 'plain', NULL,
+             'Служебная дата подшита в служебное утверждение.', 'registered', 'stp_one', 1,
+             'fdp_two', 'run_one', ?, '')`,
+  ).run(AT);
+  db.prepare(
+    `INSERT INTO threads (id, label, direction, opened_at_chapter, closed_at_chapter, state, extracted_by)
+     VALUES ('thr_one', 'служебная линия', 'forward', 8, NULL, 'opened', 'run_one')`,
   ).run();
   db.prepare(
     `INSERT INTO thread_events (thread_id, chapter, kind, fact_id, note, at)
@@ -167,16 +200,8 @@ export function seedBook(target: Fixture): string {
   if (sentence !== undefined) {
     touchSentence(db, { sentenceId: sentence.id, changeId: 'chg_one', kind: 'born', at: AT });
   }
-  // BOOK-173: one edge and its plan. A reset must remove the graph before the facts it names and
-  // the plan before the change it priced, or the wipe commits a dangling reference.
-  db.prepare(
-    `INSERT INTO facts (id, chapter, kind, statement, term, valid_from_chapter, created_at)
-     VALUES ('fct_two', 8, 'state', 'Второе служебное утверждение.', 'второй термин', 8, ?)`,
-  ).run(AT);
-  db.prepare(
-    `INSERT INTO edges (id, from_fact, to_fact, chapter, kind, on_component, evidence, origin, created_at)
-     VALUES ('edg_seed', 'fct_one', 'fct_two', 8, 'follows', 'value', 'служебная связь', 'backfill', ?)`,
-  ).run(AT);
+  // BOOK-173: one plan. A reset must remove it before the change it priced, or the wipe commits
+  // a dangling reference.
   db.prepare(
     `INSERT INTO change_plans (id, change_id, chapter, outcome, closure, patches, bounds, iterations, created_at)
      VALUES ('pln_seed', 'chg_one', 8, 'ripple', '{}', '[]', '{}', '[]', ?)`,
@@ -222,6 +247,10 @@ export const CONTENT_KEYS = [
   // BOOK-176: the ledger's own rows are content too — a reset that left them behind would
   // publish rows pointing at a book that no longer exists.
   'facts',
+  // BOOK-DOC-77: the extraction run ledger and BOOK-185's edges — the audit of the pass that
+  // wrote the graph, and the graph itself.
+  'extraction_runs',
+  'fact_dependency',
   'threads',
   'thread_events',
   'mentions',
@@ -230,8 +259,7 @@ export const CONTENT_KEYS = [
   // the reset deleted.
   'sentences',
   'sentence_touches',
-  // BOOK-173: the ripple's graph and its plans.
-  'edges',
+  // BOOK-173: the frozen plans of the ripple.
   'change_plans',
   'overwrites',
   'contributions',
@@ -270,13 +298,14 @@ export function expectedCounts(target: Fixture): Record<string, number> {
     block_lineage: count(db, 'SELECT COUNT(*) AS n FROM block_lineage'),
     block_versions: count(db, 'SELECT COUNT(*) AS n FROM block_versions'),
     facts: 2,
+    extraction_runs: 1,
+    fact_dependency: 2,
     threads: 1,
     thread_events: 1,
     mentions: 1,
     literals: 1,
     sentences: seededSentences(db),
     sentence_touches: 1,
-    edges: 1,
     change_plans: 1,
     overwrites: 0,
     contributions: 1,
