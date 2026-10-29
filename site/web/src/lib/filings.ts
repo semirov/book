@@ -1,7 +1,7 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import { changeNumber } from './changeStatus.ts';
-import { filingMarginalia, landedChange, stoppedChange, type FilingFacts } from './marginalia.ts';
+import { filingMarginalia, type FilingFacts } from './marginalia.ts';
 import { placeHref } from './place.ts';
 import type { WordFiling } from './provenance.ts';
 
@@ -61,14 +61,13 @@ export function filingInk(comment: FilingFacts): FilingInk {
 }
 
 /**
- * BOOK-206 audit B1 — the shape follows the **state** where the row's own status lags behind
- * its change: a filing whose change landed is the `applied` ink (no rule, done), and one whose
- * change stopped is the `expired` ink (a stopped tone, nothing coming). Both are existing rows
- * of the table; no shape is invented here.
+ * BOOK-219 — the shape follows the **row's own fact**: a receipt on the row means the text is in a
+ * chapter, so the row takes the `applied` ink whatever word its status still carries before the
+ * durable read replaces it. Every other row reads its status's own row of the table; nothing is
+ * re-derived from the linked change here (the server already turned that into the status).
  */
 function shapeOf(comment: FilingFacts): Omit<FilingInk, 'word'> {
-  if (landedChange(comment)) return SHAPES.applied!;
-  if (stoppedChange(comment)) return SHAPES.expired!;
+  if (comment.applied !== null && comment.applied !== undefined) return SHAPES.applied!;
   return SHAPES[comment.status] ?? SHAPES.new!;
 }
 

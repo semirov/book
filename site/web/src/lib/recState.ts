@@ -5,8 +5,7 @@ import { PASS_HAND } from './provenance.ts';
 import { filingNumber } from './filings.ts';
 import {
   filingConsequence,
-  filingState,
-  GATE_WORDS,
+  filingMarginalia,
   landedReceiptLine,
   STATE_WORDS,
 } from './marginalia.ts';
@@ -116,11 +115,18 @@ export function recordStateOf(input: {
 
   if (filing !== null) {
     const mine = ownFiling !== null && filing.id === ownFiling.id;
+    // BOOK-90 — the word is the deck's, read once (`filingMarginalia`): this module decides the
+    // situation and the line, never a second word for the same row.
+    const { word } = filingMarginalia(filing);
+    // BOOK-219 — a receipt on the row is the server's landing fact, the one receipt shape of the
+    // block: «внесено · глава 67 · ревизия 4», whatever the row's status still says.
+    const receipt = landedReceiptLine(filing.applied);
+    if (receipt !== null) return { situation: 'landed', word, ink: 'ink', line: receipt, empty: false };
     switch (filing.status) {
       case 'new':
         return {
           situation: mine ? 'waitingOwn' : 'waiting',
-          word: STATE_WORDS.waiting,
+          word,
           ink: 'live',
           line: mine ? 'ваша — в очереди' : 'решения ещё нет',
           empty: false,
@@ -129,7 +135,7 @@ export function recordStateOf(input: {
       case 'delivered':
         return {
           situation: 'working',
-          word: STATE_WORDS.working,
+          word,
           ink: 'live',
           line: 'в очереди на запись',
           empty: false,
@@ -141,7 +147,7 @@ export function recordStateOf(input: {
         if (filing.changeStatus === 'processing') {
           return {
             situation: 'working',
-            word: STATE_WORDS.working,
+            word,
             ink: 'live',
             line: 'пишется',
             empty: false,
@@ -149,35 +155,34 @@ export function recordStateOf(input: {
         }
         return {
           situation: mine ? 'waitingOwn' : 'waiting',
-          word: STATE_WORDS.waiting,
+          word,
           ink: 'live',
           line: mine ? 'ваша — в очереди' : 'в очереди на запись',
           empty: false,
         };
       case 'quarantined':
-        return { situation: 'held', word: STATE_WORDS.waiting, ink: 'live', line: 'ждёт человека', empty: false };
+        return { situation: 'held', word, ink: 'live', line: 'ждёт человека', empty: false };
       case 'applied': {
-        // BOOK-189 — the one receipt shape of every surface: «глава 7 · ревизия 4». The word
-        // above is «внесено», so the line never repeats it and never carries the rights clause
-        // (where the text went, not what a reader signed away — #3862 §2).
-        const receipt = landedReceiptLine(filing.applied);
-        if (receipt !== null) {
-          return { situation: 'landed', word: STATE_WORDS.landed, ink: 'ink', line: receipt, empty: false };
-        }
+        // BOOK-189 — the receipt path returned above; a row without one prints the deck's own
+        // line and never an invented revision.
         const fallback = filingConsequence(filing);
         return {
           situation: 'landed',
-          word: STATE_WORDS.landed,
+          word,
           ink: 'ink',
           line: fallback.length === 0 ? null : fallback,
           empty: false,
         };
       }
+      case 'registered':
+        // BOOK-137 — a paperwork row is decided, not refused: the thread's own line, and the
+        // word is the deck's «рассмотрено».
+        return { situation: 'landed', word, ink: 'ink', line: filingConsequence(filing), empty: false };
       case 'rejected':
         // The gate's own word and the reason **whole** — a refusal is a decision, not an error.
         return {
           situation: 'refused',
-          word: filing.refusal === 'rights' ? GATE_WORDS.rights : GATE_WORDS.auditor,
+          word,
           ink: 'revise',
           line: `: ${filing.reason ?? filingConsequence(filing)}`,
           empty: false,
@@ -186,7 +191,7 @@ export function recordStateOf(input: {
         // `superseded`, `expired`, `hidden`: the deck's own word and line, printed, not re-decided.
         return {
           situation: 'refused',
-          word: GATE_WORDS.auditor,
+          word,
           ink: 'revise',
           line: `: ${filingConsequence(filing)}`,
           empty: false,
@@ -263,13 +268,9 @@ export function interventionRows(input: {
   });
 }
 
-/** The word a filing's row prints: the deck's state word, or the gate's when it refused. */
+/** The word a filing's row prints: the deck's own table, read from `filingMarginalia` once. */
 function stateWordOf(comment: CommentDto): string {
-  if (comment.status === 'rejected') return comment.refusal === 'rights' ? GATE_WORDS.rights : GATE_WORDS.auditor;
-  if (comment.status === 'quarantined') return GATE_WORDS.held;
-  // BOOK-189: the deck's own table, so a row's word cannot disagree with the state block above
-  // (an `accepted` filing the writer has not reached is «ждёт», not «идёт»).
-  return STATE_WORDS[filingState(comment)];
+  return filingMarginalia(comment).word;
 }
 
 export type HistoryRow = {

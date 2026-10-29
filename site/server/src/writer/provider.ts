@@ -4,17 +4,13 @@
  *
  * The exchange is deliberately plain: `POST` to the pinned endpoint with the pinned wire model,
  * the messages, `max_tokens`, `stream: true` and `stream_options: { include_usage: true }` — **no
- * sampling overrides**. A writer pass that let the provider sample differently from the pin would
- * make the money line and the prose irreproducible, and the pin is the only place a model may be
- * named.
+ * sampling overrides**: the pin is the only place a model may be named, and the money line and the
+ * prose stay irreproducible otherwise.
  *
  * Why the stream and not a plain body: measured against this endpoint, a non-streaming call
- * answers `200` and then the body is reset (`ECONNRESET`, `TypeError: terminated`) ~20 s later on
- * a long answer, while the same request as SSE completes. The model reasons before it writes and
- * long generations are the norm here, so a non-streaming call would always hit the reset. The
- * answer is therefore assembled from `choices[0].delta.content` frames, the provider's own
- * `finish_reason` and the last `usage` object (the final frame carries `choices: []` and the
- * usage) — the same `ProviderResult` a plain body used to yield.
+ * answers `200` and is reset (`ECONNRESET`) ~20 s later on a long answer, while the same request
+ * as SSE completes. The answer is assembled from `choices[0].delta.content` frames and the last
+ * `usage` object (the final frame carries `choices: []`).
  *
  * The shape is the provider's, the retry is ours: transport failures, `429` and `5xx` are
  * retried **once** after a short fixed backoff; every other `4xx` is final — a bad key or a bad
@@ -27,17 +23,14 @@
  *  · **A good answer is never a shape failure.** A `200` whose stream ends without a usable
  *    `usage` object used to be `PROVIDER_SHAPE`, and the pass — with its chapter already
  *    published — parked instead of closing. Now the text is the answer and the money is
- *    **estimated** from the bytes we sent and received (`estimateUsage`). The calibration of that
- *    run: 74 943 prompt chars → 25 300 tokens (≈2.96 chars/token), 28 383 answer chars → 15 068
- *    completion tokens with reasoning (≈1.88 chars/token); the constants sit **below** both
- *    ratios and every count is `ceil`ed, so the estimate is at or above the truth.
+ *    **estimated** (`estimateUsage`), by the calibration below.
  *  · **An empty answer gets one more chance, unstreamed**: one more call as a plain body
  *    (`stream: false`, no `stream_options`). Only a second empty answer is `PROVIDER_SHAPE`.
  *
  * The call reports the model's own `finish_reason` and does not judge it: `length` means the
  * answer was cut at `max_tokens` — a reasoning model spends completion tokens before it writes
  * anything, so a tight cap truncates a chapter silently. That is the model's answer, not a
- * transport fault, so it is not retried here; the gate (`validate.ts`) refuses it.
+ * transport fault, not retried here; the gate (`validate.ts`) refuses it.
  *
  * The transport is injected so the tests need no network, and this file lives outside
  * `engine/**`, which is where the architecture rule forbids `fetch` (ADR-012).
@@ -94,16 +87,34 @@ export type ProviderCode =
   | `PROVIDER_HTTP_${number}`
   | 'PROVIDER_SHAPE';
 
-/** BOOK-219's calibration, in characters per token — under the measured 2.96 / 1.88, ceil()ed. */
+/**
+ * BOOK-219's calibration, in characters per token: 74 943 prompt chars → 25 300 tokens (≈2.96),
+ * 28 383 answer chars → 15 068 completion tokens with reasoning (≈1.88). Both constants sit
+ * **below** the measured ratios and every count is `ceil`ed, so the estimate stays at or above
+ * the truth — for a long answer.
+ *
+ * A short one does not: the same `25 300`-token prompt wrote a `500`-char gate verdict in
+ * `15 068` completion tokens (≈0.6 of the prompt, nearly all of it reasoning), so a charge read
+ * off the answer's length paid a tenth of the call. Hence the floor below, and `maxTokens` as its
+ * ceiling: the provider cannot spend past its own cap.
+ */
 export const PROMPT_CHARS_PER_TOKEN = 2.9;
 export const ANSWER_CHARS_PER_TOKEN = 1.8;
+export const REASONING_SHARE = 0.6;
 
-/** The charge of a call that reported no usage: the prompt we sent, the answer we got, rounded up. */
-export function estimateUsage(messages: readonly WriterMessage[], text: string): PipelineUsage {
+/**
+ * The charge of a call that reported no usage: the prompt we sent, the answer we got — and for a
+ * short answer, the reasoning that arrived before it. `maxTokens` is the request's cap when the
+ * caller knows it; `undefined` leaves the floor uncapped.
+ */
+export function estimateUsage(messages: readonly WriterMessage[], text: string, maxTokens?: number): PipelineUsage {
   const promptChars = messages.reduce((sum, message) => sum + message.content.length, 0);
+  const inTokens = Math.ceil(promptChars / PROMPT_CHARS_PER_TOKEN);
+  const fromAnswer = Math.ceil(text.length / ANSWER_CHARS_PER_TOKEN);
+  const reasoned = Math.max(fromAnswer, Math.ceil(inTokens * REASONING_SHARE));
   return {
-    in: Math.ceil(promptChars / PROMPT_CHARS_PER_TOKEN),
-    out: Math.ceil(text.length / ANSWER_CHARS_PER_TOKEN),
+    in: inTokens,
+    out: maxTokens === undefined ? reasoned : Math.min(reasoned, Math.max(maxTokens, 0)),
     cachedIn: 0,
     estimated: true,
   };
@@ -140,10 +151,7 @@ type AttemptFail = {
 
 type Attempt = AttemptOk | AttemptFail;
 
-/**
- * What one stream has said so far: `chars` is how much prose has arrived (the retry decision),
- * `usage` is the last usage object seen, `finishReason` the first one reported.
- */
+/** What one stream has said so far: prose chars, the last usage object, the first finish reason. */
 type Accumulated = {
   parts: string[];
   chars: number;
@@ -169,10 +177,7 @@ function tokenCount(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
 }
 
-/**
- * `finish_reason`, read as the provider writes it: a non-empty string is the value, anything
- * else (absent, `null`, an empty string, a number) is "the provider said nothing".
- */
+/** `finish_reason`: a non-empty string is the value, anything else is "the provider said nothing". */
 function finishReasonOf(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const reason = value.trim();
@@ -233,8 +238,8 @@ function consumeLine(line: string, acc: Accumulated): 'ok' | 'bad' {
 }
 
 /**
- * Whole lines out of a byte-decoded buffer. SSE frames arrive on chunk boundaries anywhere, so
- * the tail is kept until the next chunk (or until the stream ends, when it is a frame of its own).
+ * Whole lines out of a byte-decoded buffer: SSE frames split anywhere, so the tail waits for the
+ * next chunk (or is a frame of its own when the stream ends).
  */
 function drainLines(buffer: string, acc: Accumulated, final: boolean): { rest: string; broken: boolean } {
   const parts = buffer.split('\n');
@@ -247,9 +252,8 @@ function drainLines(buffer: string, acc: Accumulated, final: boolean): { rest: s
 }
 
 /**
- * One read, abandoned when the stream goes quiet for `stallMs`. A stalled generation is dead, so
- * the caller aborts the call (`onStall`) and stops reading; the abandoned read is left to settle
- * on its own (the caller attaches a handler) rather than awaited.
+ * One read, abandoned when the stream goes quiet for `stallMs`: a stalled generation is dead, so
+ * the caller aborts it and the abandoned read settles on its own rather than being awaited.
  */
 async function readOrStall<T>(
   pending: Promise<T>,
@@ -272,10 +276,8 @@ async function readOrStall<T>(
 
 /**
  * A transport failure, before the stream or inside it. A retry re-sends the whole prompt, so the
- * decision is made on how much prose has already arrived: before any content a retry is cheap and
- * safe, after content it is not — a reset mid-answer means a half-read long generation, and
- * re-running it doubles the cost while the same reset usually happens again. A half-read answer
- * is therefore final (BOOK-117, the writer's first real pass died exactly this way).
+ * decision is made on how much prose arrived: after content it is not safe — a reset mid-answer
+ * re-runs a half-read generation, doubling the cost while the reset usually repeats.
  */
 function partial(code: ProviderCode, acc: Accumulated): AttemptFail {
   return { ok: false, code, retryable: acc.chars === 0 };
@@ -297,6 +299,7 @@ function assembled(input: {
   responseModel: string;
   finishReason: string | null;
   messages: readonly WriterMessage[];
+  maxTokens: number;
 }): Attempt {
   const text = input.text;
   if (text.trim().length === 0) return shape(true);
@@ -306,7 +309,7 @@ function assembled(input: {
   const outTokens = tokenCount(input.usage?.completion_tokens);
   // No usable usage: the answer is charged at the estimate, never refused for its own invoice.
   if (input.usage === null || inTokens === null || outTokens === null) {
-    return { ok: true, text, responseModel, usage: estimateUsage(input.messages, text), finishReason };
+    return { ok: true, text, responseModel, usage: estimateUsage(input.messages, text, input.maxTokens), finishReason };
   }
   const details = record(input.usage.prompt_tokens_details);
   const cached = tokenCount(input.usage.prompt_cache_hit_tokens) ?? tokenCount(details?.cached_tokens) ?? 0;
@@ -322,13 +325,11 @@ function assemble(acc: Accumulated, request: ProviderRequest): Attempt {
     responseModel: acc.model.length > 0 ? acc.model : request.apiModel,
     finishReason: acc.finishReason,
     messages: request.messages,
+    maxTokens: request.maxTokens,
   });
 }
 
-/**
- * The plain-body answer — the retry an empty stream gets: `choices[0].message.content`, the
- * `finish_reason`, the `usage`. A body that cannot be read carried no prose, so it is empty.
- */
+/** The plain-body answer an empty stream is re-asked for: content, finish reason, usage. */
 async function readBody(response: Response, request: ProviderRequest): Promise<Attempt> {
   let payload: unknown;
   try {
@@ -349,6 +350,7 @@ async function readBody(response: Response, request: ProviderRequest): Promise<A
     responseModel: model.length > 0 ? model : request.apiModel,
     finishReason: finishReasonOf(choice.finish_reason),
     messages: request.messages,
+    maxTokens: request.maxTokens,
   });
 }
 

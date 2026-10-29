@@ -69,7 +69,14 @@ export type TriageAssignment = {
 
 export type TriageNextResult = TriageAssignment | null | { assignment: null; reason: 'budget' };
 
-export type TriageSpendInput = { model: string; tokensIn: number; tokensOut: number; usd: number };
+export type TriageSpendInput = {
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  usd: number;
+  /** BOOK-219: the provider reported no usage; the writer read the counts off the text. */
+  estimated?: boolean;
+};
 
 export type TriageVerdictResult =
   | { stored: true; attempt: number; verdict: 'FITS' | 'OFF'; rung: string }
@@ -300,6 +307,9 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         tokensIn: input.spend.tokensIn,
         tokensOut: input.spend.tokensOut,
         usd: input.spend.usd,
+        // BOOK-219: an answer the provider did not measure is the pipeline's estimate, and the
+        // ledger row says so — the prose lane's close writes the same word for the same reason.
+        ...(input.spend.estimated === true ? { estimated: true } : {}),
       });
       return {
         stored: true,
@@ -405,6 +415,8 @@ const triageSpendBody = z.object({
   tokensIn: z.number().int().min(0).max(100_000_000),
   tokensOut: z.number().int().min(0).max(100_000_000),
   usd: z.number().min(0).max(1_000),
+  /** BOOK-219: the provider reported no usage — the writer's estimate, named as one. */
+  estimated: z.boolean().optional(),
 });
 const triageVerdictBody = z.object({
   commentId,

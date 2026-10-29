@@ -28,6 +28,7 @@ import {
 import { estimateUsage, type ProviderRequest, type ProviderResult, type WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import { storeTranscript, type CallKind, type CallRecord, type CallVerdict, type PromptSectionFact } from './transcript.ts';
+import { servesText } from './putBack.ts';
 import { rightsRunner } from './rightsGate.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
@@ -187,6 +188,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     const remaining = config.maxTokensPerPass - (all.in + all.out);
     if (remaining <= 0) throw new PassRefusal('лимит токенов на проход исчерпан');
+    const cap = Math.min(kind.startsWith('gate:') ? config.gateTokens : config.maxTokensPerCall, remaining);
     let result: ProviderResult;
     try {
       result = await input.provider({
@@ -194,13 +196,13 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiKey: config.apiKey,
         apiModel: config.apiModel,
         messages,
-        maxTokens: Math.min(kind.startsWith('gate:') ? config.gateTokens : config.maxTokensPerCall, remaining),
+        maxTokens: cap,
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
       // A failed call still sent its prompt: the pass pays for the request it made, so the prompt
       // is charged at the estimate and the park can never read as a free pass (BOOK-219).
-      const spent = estimateUsage(messages, '');
+      const spent = estimateUsage(messages, '', cap);
       all = addUsage(all, spent);
       attempted = addUsage(attempted, spent);
       throw new PassRefusal(reasonOf(error), codeOf(error));
@@ -333,13 +335,19 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
   /**
    * `land`: the text travels in the request. A refusal touches nothing — the rows keep the text
    * the site serves — so there is no image to put back (BOOK-187).
+   *
+   * A lost answer is not a refused landing (BOOK-219): the rows are the fact, so the chapter is
+   * read back, and one that already serves this text *is* this pass's landing — closed or taken
+   * back like any other, instead of parking over live prose with no revision of ours on record.
    */
   async function land(value: string): Promise<void> {
     try {
       const published = await engine.land(job.leaseId, { text: value });
       landing = { rev: published.revAfter, sha: published.sha };
     } catch (error) {
-      throw new PassRefusal(reasonOf(error), codeOf(error));
+      if ((await servesText(engine, chapter, value)) !== true) throw new PassRefusal(reasonOf(error), codeOf(error));
+      input.log(`[writer] land не ответил (${codeOf(error) ?? 'транспорт'}): глава уже несёт этот текст — считаю публикацией`);
+      landing = null;
     }
   }
 

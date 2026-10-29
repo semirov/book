@@ -17,6 +17,7 @@ import {
   ANSWER_CHARS_PER_TOKEN,
   DEFAULT_STALL_MS,
   PROMPT_CHARS_PER_TOKEN,
+  REASONING_SHARE,
   callProvider,
   estimateUsage,
   type FetchLike,
@@ -283,6 +284,35 @@ describe('callProvider — a stream it cannot use', () => {
     expect(result.usage.cachedIn).toBe(0);
     expect(result.usage.in).toBeGreaterThan(0);
     expect(result.usage.out).toBeGreaterThan(0);
+  });
+
+  it('floors a short answer at the reasoning its prompt paid for, and never above max_tokens', () => {
+    // The incident: a 25 300-token prompt wrote a 500-character verdict in 15 068 completion
+    // tokens — nearly all of it reasoning. Read off the answer alone it would have been 278.
+    const promptChars = 25_000 * PROMPT_CHARS_PER_TOKEN;
+    const messages = [{ role: 'system' as const, content: 'x'.repeat(promptChars) }];
+    const verdict = 'y'.repeat(500);
+    const inTokens = Math.ceil(promptChars / PROMPT_CHARS_PER_TOKEN);
+
+    const floored = estimateUsage(messages, verdict, 32_000);
+    expect(floored.in).toBe(inTokens);
+    expect(floored.out).toBeGreaterThanOrEqual(Math.ceil(inTokens * REASONING_SHARE));
+    expect(floored.out).toBeGreaterThan(Math.ceil(verdict.length / ANSWER_CHARS_PER_TOKEN));
+
+    // The call's own cap is the ceiling: a gate at 2 000 tokens cannot have spent 15 000.
+    expect(estimateUsage(messages, verdict, 2_000).out).toBe(2_000);
+    // A long answer is still read off its own length: the floor never shrinks it.
+    const long = 'y'.repeat(40_000);
+    expect(estimateUsage(messages, long, 32_000).out).toBe(Math.ceil(long.length / ANSWER_CHARS_PER_TOKEN));
+  });
+
+  it('caps a lost-usage answer at the call’s own max_tokens', async () => {
+    const body = [prose('Абзац.'), finish('stop'), DONE];
+    const { transport } = scripted(streamResponse(streamOf(body)));
+    // The prompt already pays a reasoning floor above a two-token cap; the cap still wins.
+    const result = await callProvider(request({ maxTokens: 2 }), { transport, sleep: fastSleep });
+    expect(result.usage.out).toBe(2);
+    expect(result.usage.estimated).toBe(true);
   });
 
   it('charges the same estimate when a usage frame is there but unusable', async () => {

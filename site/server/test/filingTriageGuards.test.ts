@@ -305,6 +305,25 @@ describe('a failed call is money too (BOOK-206 M3, AC5)', () => {
     expect(db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'triage.failed'`).get()).toEqual({ n: 1 });
   });
 
+  it('names an estimated failed call the pipeline’s estimate, priced all the same (BOOK-219)', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    // The provider reported no usage: the writer read the counts off the text, and a refused
+    // answer costs the same estimate as a stored one.
+    context.reportUsage({ in: 1_200, out: 300, cachedIn: 0, estimated: true });
+    context.script.push(
+      answerOf({ itemId: id } as Call, 'FITS', { rung: 'through_paper', lock: null, intent: INTENT, carrier: null, refusal: null }),
+    );
+
+    await context.pulse();
+    expect(attemptOf(db, id)).toMatchObject({ tries: 1, verdict: null });
+    const spend = db.prepare('SELECT usd, priced, provenance FROM pass_spend').all() as Array<Record<string, unknown>>;
+    expect(spend).toHaveLength(1);
+    expect(spend[0]).toMatchObject({ priced: 1, provenance: 'pipeline-estimated' });
+    expect(Number(spend[0]?.usd)).toBeGreaterThan(0);
+  });
+
   it('charges nothing for a transport failure that reported no usage', async () => {
     context = await bootTriage();
     const { db } = context;

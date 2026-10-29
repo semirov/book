@@ -2,8 +2,9 @@
  * BOOK-219's way back, at its own seams: the three answers `putBack` gives.
  *
  * `passEstimated.test.ts` and `closeAtomic.test.ts` prove the pass uses it; these cases pin the
- * guards the invariant depends on — a resumed step's text is not ours, a chapter somebody else has
- * written since is not ours either, and a chapter that cannot be read is never restored blind.
+ * guards the invariant depends on — the guard is **this run's** landing, never the step's
+ * (`job.landed`), so a resumed pass that re-lands puts its own revision back; a chapter somebody
+ * else has written since is not ours either, and one that cannot be read is never restored blind.
  * The doors are stubbed here so each guard is asked alone, without a fixture book.
  */
 
@@ -49,6 +50,7 @@ function engineOf(doors: Doors): Pick<EngineClient, 'text' | 'restore' | 'reconc
 
 const base = {
   chapter: CHAPTER,
+  job: { stepId: 'stp_1' },
   started: { rev: 1, sha: PRE_SHA },
   landing: { rev: 2, sha: LANDED_SHA },
   text: LANDED,
@@ -57,29 +59,33 @@ const base = {
 };
 
 describe('putBack — three answers, three guards', () => {
-  it('never touches a resumed step’s text: it was published before this run', async () => {
-    const doors = { text: 'чужой текст', calls: [] as string[] };
-    const back = await putBack({ ...base, engine: engineOf(doors), job: { stepId: 'stp_1', landed: true }, landed: true });
-    expect(back).toEqual({ kind: 'none' });
-    expect(doors.calls).toEqual([]);
+  it('puts a re-landed resumed pass’s own landing back: the base is the revision the step stood at', async () => {
+    const lines: string[] = [];
+    const doors = { text: 'первый абзац\n\nвторой абзац', calls: [] as string[] };
+    // The earlier run landed revision 5; this run re-landed (2) and now takes its own landing
+    // back — the guard is `landed` (this run), never the step's own `job.landed`.
+    const back = await putBack({
+      ...base,
+      started: { rev: 5, sha: PRE_SHA },
+      engine: engineOf(doors),
+      landed: true,
+      log: (line) => lines.push(line),
+    });
+    expect(back).toEqual({ kind: 'reverted' });
+    expect(doors.calls).toEqual(['text', 'restore', 'reconcile:откат прохода stp_1: права отказали, текст возвращён к ревизии 5']);
+    expect(lines.join('\n')).toContain('ревизия 5 возвращена (2 → 3)');
   });
 
   it('has nothing to undo when this run landed nothing', async () => {
     const doors = { text: 'чужой текст', calls: [] as string[] };
-    const back = await putBack({ ...base, engine: engineOf(doors), job: { stepId: 'stp_1', landed: false }, landed: false });
+    const back = await putBack({ ...base, engine: engineOf(doors), landed: false });
     expect(back).toEqual({ kind: 'none' });
     expect(doors.calls).toEqual([]);
   });
 
   it('says the text stands when there is no revision behind a first write', async () => {
     const doors = { text: base.text.replace('второй', 'второй'), calls: [] as string[] };
-    const back = await putBack({
-      ...base,
-      started: { rev: null, sha: '' },
-      engine: engineOf(doors),
-      job: { stepId: 'stp_1', landed: false },
-      landed: true,
-    });
+    const back = await putBack({ ...base, started: { rev: null, sha: '' }, engine: engineOf(doors), landed: true });
     expect(back).toMatchObject({ kind: 'unverified' });
     // No restore was attempted, because there is nothing to restore to.
     expect(doors.calls).toEqual([]);
@@ -91,7 +97,6 @@ describe('putBack — three answers, three guards', () => {
     const back = await putBack({
       ...base,
       engine: engineOf(doors),
-      job: { stepId: 'stp_1', landed: false },
       landed: true,
       log: (line) => lines.push(line),
     });
@@ -102,7 +107,7 @@ describe('putBack — three answers, three guards', () => {
 
   it('never restores blind when the chapter cannot be read', async () => {
     const doors = { text: null, calls: [] as string[] };
-    const back = await putBack({ ...base, engine: engineOf(doors), job: { stepId: 'stp_1', landed: false }, landed: true });
+    const back = await putBack({ ...base, engine: engineOf(doors), landed: true });
     expect(back).toMatchObject({ kind: 'unverified' });
     expect(doors.calls).toEqual(['text']);
   });
@@ -110,13 +115,7 @@ describe('putBack — three answers, three guards', () => {
   it('brings the pre-pass revision back and marks the restore with the reason it was taken', async () => {
     const lines: string[] = [];
     const doors = { text: 'первый абзац\n\nвторой абзац', calls: [] as string[] };
-    const back = await putBack({
-      ...base,
-      engine: engineOf(doors),
-      job: { stepId: 'stp_1', landed: false },
-      landed: true,
-      log: (line) => lines.push(line),
-    });
+    const back = await putBack({ ...base, engine: engineOf(doors), landed: true, log: (line) => lines.push(line) });
     expect(back).toEqual({ kind: 'reverted' });
     expect(doors.calls).toEqual([
       'text',
@@ -124,5 +123,19 @@ describe('putBack — three answers, three guards', () => {
       'reconcile:откат прохода stp_1: права отказали, текст возвращён к ревизии 1',
     ]);
     expect(lines.join('\n')).toContain('ревизия 1 возвращена (2 → 3)');
+  });
+
+  it('names an unknown landing revision instead of inventing rev 0', async () => {
+    const lines: string[] = [];
+    const doors = { text: 'первый абзац\n\nвторой абзац', calls: [] as string[] };
+    const back = await putBack({
+      ...base,
+      engine: engineOf(doors),
+      landing: null,
+      landed: true,
+      log: (line) => lines.push(line),
+    });
+    expect(back).toEqual({ kind: 'reverted' });
+    expect(lines.join('\n')).toContain('ревизия 1 возвращена (— → 3)');
   });
 });

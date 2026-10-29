@@ -3,7 +3,6 @@ import {
   FAILED_ATTEMPT_LINE,
   framePaperworkReason,
   RETRO_MODES,
-  type ChangeStatus,
   type ChangeSummaryDto,
   type CommentDto,
   type RetroMode,
@@ -34,9 +33,13 @@ import { receiptLine } from './terms.ts';
  * The code's comment status `accepted` («принято, правка в очереди») is a place in the writer's
  * work, not a state of its own: it is `идёт` only while the linked change is `processing`, and
  * `ждёт` while the lane has not reached it (BOOK-189). Only `applied` is «внесено»; only
- * `registered` is «рассмотрено»; only `rejected` is «отклонено». A linked change the writer
- * closed is read the same way (BOOK-206 audit B1): `done` is «внесено», and a stopped change
- * keeps the waiting word with the `expired` entry's own line — never «в очереди на запись».
+ * `registered` is «рассмотрено»; only `rejected` is «отклонено».
+ *
+ * Every terminal word is the **server's** (`server/src/comments/states.ts` derives a filing's
+ * status and its sentence once, in one place): this module reads `status`, `reason` and `applied`,
+ * and re-derives no terminal word of its own — a change in the server's derivation drives the
+ * page, instead of disagreeing with a second copy of the rule. `changeStatus` is read only where
+ * the DTO itself names it: the live words `pending`/`processing` (BOOK-189).
  */
 
 export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'refused';
@@ -77,14 +80,6 @@ export const GATE_WORDS: Readonly<Record<GateWord, string>> = {
 export const HELD_LINE = 'замечание сохранено и ждёт человека — из него пока не делают правку';
 
 /**
- * The line for a change that stopped and put no text in the book — the `expired` entry's own
- * sentence, borrowed whole (BOOK-206 audit B2). It is not a new reader word: the filing keeps
- * the state word the change's own table gives a stopped status («ждёт»), and this line says the
- * one thing that word cannot — nothing is coming. «В очереди на запись» would be the lie here.
- */
-const STOPPED_CHANGE_LINE = 'правка не состоялась';
-
-/**
  * BOOK-137 — the paperwork's second line: the mode it was filed as, and the one fact that matters
  * — the sentence did not change. One source for the filing and the change alike.
  */
@@ -107,16 +102,12 @@ export type FilingFacts = Pick<CommentDto, 'status'> & {
   chapter?: number;
   /**
    * BOOK-189 — the linked change's own place: the writer has the filing in hand (`processing`)
-   * or the lane holds it (`pending`). `null`/absent for a filing that landed, was refused, or
-   * that no change ever held. It is the only fact that separates «идёт» from «ждёт» on an
-   * `accepted` row: the row's word alone cannot say whether the writer is there yet.
-   *
-   * BOOK-206 audit B1 — the whole `ChangeStatus` vocabulary is read, not only the two values
-   * the DTO names today: a change closed as `done` left the text in a chapter, and `escalated`/
-   * `failed`/`void` are the lane stopping. An accepted row carrying either must stop printing
-   * «в очереди на запись» over prose that exists, or over a queue that no longer holds it.
+   * or the lane holds it (`pending`) — the two values the DTO names (a terminal change reaches
+   * the page as `status` and `reason`, never as this field). It is the only fact that separates
+   * «идёт» from «ждёт» on an `accepted` row: the row's word alone cannot say whether the writer
+   * is there yet.
    */
-  changeStatus?: ChangeStatus | null;
+  changeStatus?: CommentDto['changeStatus'];
   /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
   refusal?: CommentDto['refusal'];
   /**
@@ -150,25 +141,12 @@ function isNote(comment: FilingFacts): boolean {
 }
 
 /**
- * BOOK-206 audit B1 — the linked change is closed and put no text in the book (`escalated`,
- * `failed`, `void`). An accepted row that names one is not waiting for the writer any more:
- * there is no queue place left to promise.
+ * BOOK-219 — a landing's receipt on the row itself (`applied: { chapter, rev }`). It is the
+ * server's own landing fact: a row that carries one has its text in a chapter, whatever word the
+ * row's status still says before the durable read replaces it.
  */
-export function stoppedChange(comment: FilingFacts): boolean {
-  if (comment.status !== 'accepted') return false;
-  const status: string | null | undefined = comment.changeStatus;
-  return status === 'escalated' || status === 'failed' || status === 'void';
-}
-
-/**
- * BOOK-206 audit B1 — the linked change is closed as `done`: the text is in a chapter, whatever
- * the filing's own status still says. A receipt on an accepted row means the same thing.
- */
-export function landedChange(comment: FilingFacts): boolean {
-  if (comment.status !== 'accepted') return false;
-  if (comment.applied !== null && comment.applied !== undefined) return true;
-  const status: string | null | undefined = comment.changeStatus;
-  return status === 'done';
+function hasReceipt(comment: FilingFacts): boolean {
+  return comment.applied !== null && comment.applied !== undefined;
 }
 
 /** The chapter a filing was entered into, for the receipt and the premise line. */
@@ -231,11 +209,10 @@ export function filingState(comment: FilingFacts): State {
     case 'delivered':
       return 'working';
     case 'accepted':
-      // B1 — a change closed as `done` (or a receipt on the row) already wrote the text: the
-      // record says «внесено» at once, not after the refetch replaces this row.
-      if (landedChange(comment)) return 'landed';
-      // The row's own word stops at triage: only the linked change says whether the writer is
-      // at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
+      // A receipt on the row is the server's landing fact: the text is in a chapter already.
+      if (hasReceipt(comment)) return 'landed';
+      // The row's own word stops at triage: only the live `changeStatus` says whether the writer
+      // is at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
       // A failed attempt carries no `changeStatus` and waits with the deck's sentence.
       return comment.changeStatus === 'processing' ? 'working' : 'waiting';
     default:
@@ -292,7 +269,7 @@ export function filingConsequence(comment: FilingFacts): string {
     case 'batched':
     case 'delivered':
       return 'читает триаж';
-    case 'accepted':
+    case 'accepted': {
       // BOOK-189: one line for each side of the writer's work. «пишется» is the writer at this
       // filing; «в очереди на запись» is the lane holding it. An `accepted` row carries no queue
       // word at all — the queue is counted by the writer, never by a comment status.
@@ -300,11 +277,11 @@ export function filingConsequence(comment: FilingFacts): string {
       // B1 — a scheduled retry is the frame's own sentence: the row says «ждёт» and repeats
       // what the server said, and it never claims a queue place for an attempt that failed.
       if (comment.retryAt !== null && comment.retryAt !== undefined) return comment.reason ?? '';
-      // B1 — a landed change (or a receipt) owes the same word-free line an `applied` row prints.
-      if (landedChange(comment)) return landedReceiptLine(comment.applied) ?? '';
-      // B2 — the change stopped and nothing is coming: the `expired` entry's own line.
-      if (stoppedChange(comment)) return STOPPED_CHANGE_LINE;
+      // A receipt owes the same word-free line an `applied` row prints; no receipt, no line.
+      const receipt = landedReceiptLine(comment.applied);
+      if (receipt !== null) return receipt;
       return comment.changeStatus === 'processing' ? 'пишется' : 'в очереди на запись';
+    }
     case 'applied': {
       // A note moved no text and transferred no right: its terminal stays «замечание сохранено».
       if (isNote(comment)) return 'замечание сохранено';
@@ -324,7 +301,8 @@ export function filingConsequence(comment: FilingFacts): string {
       // A hold's line, never the guard's taxonomy: the rule an operator reads is `held_rule`.
       return `${GATE_WORDS.held}: ${HELD_LINE}`;
     case 'expired':
-      return STOPPED_CHANGE_LINE;
+      // A stored legacy value: the server's own sentence, or none — nothing is written here.
+      return comment.reason ?? '';
     case 'hidden':
       return 'скрыто';
     default:

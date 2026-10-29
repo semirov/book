@@ -31,7 +31,7 @@ import { refusalHint, reviseState, triageAttemptFailed, unrevisedState } from '.
 import { failedAttempt, isStopped, OWN_STATES, premiseStatus, refusalOf, stoppedLine } from './states.ts';
 // BOOK-174 taught storage to hand the ladder's report out; BOOK-136's selection reads the
 // changes a filing became, so `states.ts` keeps the pure words and this module stays rows.
-import { filingChanges, filingStatus, linkedChangeStatus } from './filingState.ts';
+import { decisiveChange, filingChanges, filingStatus, linkedChangeStatus } from './filingState.ts';
 
 // BOOK-7: the premise's landing rule is read by the author's own record and the engine alike;
 // it is re-exported here so a caller that already imports storage does not need a second path.
@@ -323,7 +323,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // rows point at an escalated attempt while a `done applied` change landed the same text), so
   // the state reads the whole set and the landing is the last word.
   const { landed, attempt: latest } = filingChanges(db, row.id, row.change_id);
-  const change = landed ?? latest;
+  // BOOK-136/BOOK-206 B2 — the newest fact wins: a stop on the current attempt outranks an older
+  // landing, and a landing newer than the stop is still the filing's answer.
+  const change = decisiveChange({ landed, attempt: latest });
   // BOOK-111: a chapter-level filing with no change yet IS the chapter's premise — the schema's
   // own definition (`base_rev 0`, no anchor). Without this an unwritten chapter kept reading
   // as an empty slot and refused the reader's next tap as a duplicate.

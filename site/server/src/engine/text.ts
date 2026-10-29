@@ -46,6 +46,18 @@ export type ChapterTextView = {
   text: string;
 };
 
+/**
+ * One step's own state (`POST /internal/trace`): the read a pass makes when an answer was lost.
+ * `state` is the only fact a close needs — `open` means the close is still the pass's to make or
+ * undo, `closed` means the engine already closed it, whatever the writer heard.
+ */
+export type StepStateView = {
+  stepId: string;
+  state: 'open' | 'closed';
+  outcome: string | null;
+  revAfter: number | null;
+};
+
 /** The canonical text of a chapter from its parts: what a snapshot and a revision hash. */
 export function canonicalChapterRaw(title: string | null, blocks: readonly { text: string }[]): string {
   const body = blocks.map((block) => block.text).join('\n\n');

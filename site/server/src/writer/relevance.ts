@@ -14,7 +14,7 @@ import type { WriterAssignment } from '@book/shared';
 
 import type { EngineClient, StartView } from './client.ts';
 import type { Lane } from './passLane.ts';
-import { codeOf, failureOf, type Failure } from './reasons.ts';
+import { codeOf, failureOf, reasonOf, type Failure } from './reasons.ts';
 
 export type StartInput = {
   engine: Pick<EngineClient, 'start'>;
@@ -61,4 +61,21 @@ export async function startWriting(input: StartInput): Promise<OpenResult> {
       : `[writer] relevance: adapt к редакции ${String(rev)}`,
   );
   return { ok: true, started };
+}
+
+/**
+ * A **resumed** step's base (BOOK-219): `start` on a step that already landed answers the revision
+ * it stands at and touches nothing, so it is the read for "what does a revert return to". The pass
+ * needs it because a resumed step's gate may still say `revise`, and the re-landing that follows is
+ * this run's own — it must have a revision to go back to. A refusal here only leaves the base
+ * unknown, which the way back reports as such; it never stops the pass.
+ */
+export async function resumeBase(input: Omit<StartInput, 'lane'>): Promise<{ rev: number | null; sha: string }> {
+  try {
+    const started = await input.engine.start(input.job.leaseId);
+    return { rev: typeof started.revAfter === 'number' ? started.revAfter : null, sha: started.sha ?? '' };
+  } catch (error) {
+    input.log(`[writer] база возобновлённого шага не прочитана: ${reasonOf(error)}`);
+    return { rev: null, sha: '' };
+  }
 }

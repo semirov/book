@@ -132,6 +132,12 @@ export const readerSentences = {
    */
   closeReverted: 'шаг не закрылся — текст возвращён к прежней редакции, правка остановлена',
   closeStanding: 'шаг не закрылся — новый текст стоит без подтверждения, правка остановлена',
+  /**
+   * A `done` whose answer was lost twice: the close may have happened (the reader may already be
+   * told) or not, and a restore would contradict a close that did. Nothing is taken back, and the
+   * sentence says exactly that instead of claiming either fact.
+   */
+  closeUncertain: 'закрытие шага не подтверждено — новый текст стоит, правка остановлена',
 } as const;
 
 /**

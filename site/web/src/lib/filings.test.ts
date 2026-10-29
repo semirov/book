@@ -1,4 +1,4 @@
-import type { ChangeStatus, ChangeSummaryDto, CommentDto } from '@book/shared';
+import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 import {
   attemptsOf,
@@ -23,11 +23,10 @@ import {
 } from './filings.ts';
 import { placeHref } from './place.ts';
 
-/** A filing with the facts a closed change adds (BOOK-206 B1), which the DTO's type predates. */
-type FilingsOverrides = Omit<Partial<CommentDto>, 'changeStatus'> & {
+/** A filing with the one fact only a frame can bring (BOOK-206 B1). */
+type FilingsOverrides = Partial<CommentDto> & {
   id: string;
   createdAt: string;
-  changeStatus?: ChangeStatus | null;
   retryAt?: string | null;
 };
 
@@ -397,19 +396,34 @@ describe('the frame’s scheduled retry (BOOK-206 B1)', () => {
 });
 
 /**
- * BOOK-206 audit B1 — the mark's ink follows the state, not only the row's status: a filing
- * whose change landed is the `applied` ink, one whose change stopped is the `expired` ink.
+ * BOOK-219 — the mark's ink follows the row's own fact: a receipt is a landing, and a stop
+ * reaches the page as the server's `rejected` row. Nothing is re-derived from the linked change
+ * here, because the server already turned that change into the status.
  */
-describe('the mark’s ink for a closed change (BOOK-206 B1)', () => {
-  it('paints a landed change as the landing and a stopped one as stopped', () => {
-    const landed = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'done' });
+describe('the mark’s ink for a closed change (BOOK-206 B2)', () => {
+  it('paints a landed row as the landing and a stopped one as stopped', () => {
+    const landed = comment({
+      id: 'cmt_A',
+      createdAt: '2026-10-25T12:00:00Z',
+      status: 'applied',
+      applied: { chapter: 8, rev: 4 },
+    });
     expect(filingInk(landed)).toMatchObject({ word: 'внесено', rule: 'none', tone: 'done' });
-    for (const changeStatus of ['escalated', 'failed', 'void'] as const) {
-      const stopped = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus });
-      expect(filingInk(stopped), changeStatus).toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'stopped' });
-    }
-    // The two states the page already knew are untouched.
-    expect(filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' })))
-      .toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'live' });
+    // A receipt is the landing fact even on a row whose word has not been refetched yet.
+    expect(
+      filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', applied: { chapter: 8, rev: 4 } })),
+    ).toMatchObject({ word: 'внесено', rule: 'none', tone: 'done' });
+    // The server's stopped filing: `rejected`, and the deck's refusal word with the stopped ink.
+    const stopped = comment({
+      id: 'cmt_A',
+      createdAt: '2026-10-25T12:00:00Z',
+      status: 'rejected',
+      reason: 'правка остановлена — текст остался прежним',
+    });
+    expect(filingInk(stopped)).toMatchObject({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
+    // The live row keeps the live ink and its word.
+    expect(
+      filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' })),
+    ).toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'live' });
   });
 });

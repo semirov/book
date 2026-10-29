@@ -346,6 +346,69 @@ describe('BOOK-206 B2 — one derivation, four surfaces', () => {
     expect(JSON.stringify(stopped)).not.toContain('входит в книгу');
   });
 
+  it('reads the newest fact: a stop after a landing is the filing’s state (BOOK-206 B2)', async () => {
+    const h = await bootComments();
+    harness = h;
+    const base = h.db.prepare('SELECT rev FROM chapters WHERE n = 8').get() as { rev: number };
+    // A premise that landed, and a **later** pass the engine gave up on: the stop is the current
+    // attempt, and the chapter's text is not what became of the filing that was tried again.
+    seedRow(h, 'cmt_pstop', 'accepted', 'принято в основу');
+    seedChange(h, { id: 'chg_pold', commentId: 'cmt_pstop', status: 'done', outcome: 'applied', reason: null });
+    h.db.prepare("UPDATE changes SET premise = 1 WHERE id = 'chg_pold'").run();
+    seedChange(h, { id: 'chg_pstop', commentId: 'cmt_pstop', status: 'pending', outcome: null, reason: null });
+    h.db
+      .prepare(
+        `UPDATE changes SET premise = 1, status = 'escalated', outcome = 'gate_timeout', reason = ?
+          WHERE id = 'chg_pstop'`,
+      )
+      .run('проверка не ответила вовремя — шаг остановлен');
+    // The stale link of the owner's rows: `comments.change_id` still names the older landing.
+    link(h, 'cmt_pstop', 'chg_pold');
+
+    const stopped = dto(h, 'cmt_pstop');
+    expect(stopped).toMatchObject({
+      premise: true,
+      status: 'rejected',
+      reason: 'проверка не ответила вовремя — шаг остановлен',
+      applied: null,
+      changeStatus: null,
+    });
+
+    // The same rule the other way round: a landing **newer** than the stop is the answer.
+    seedRow(h, 'cmt_pland', 'accepted', 'принято в основу');
+    seedChange(h, { id: 'chg_stop0', commentId: 'cmt_pland', status: 'pending', outcome: null, reason: null });
+    h.db
+      .prepare(`UPDATE changes SET premise = 1, status = 'escalated', outcome = 'gate_timeout', reason = ?
+                 WHERE id = 'chg_stop0'`)
+      .run('проверка не ответила вовремя — шаг остановлен');
+    seedChange(h, { id: 'chg_land1', commentId: 'cmt_pland', status: 'done', outcome: 'applied', reason: null });
+    h.db.prepare("UPDATE changes SET premise = 1 WHERE id = 'chg_land1'").run();
+    link(h, 'cmt_pland', 'chg_stop0');
+
+    expect(dto(h, 'cmt_pland')).toMatchObject({
+      premise: true,
+      status: 'applied',
+      applied: { chapter: 8, rev: base.rev },
+      changeStatus: null,
+    });
+
+    // An ordinary filing obeys the same precedence: the newer stop wins over the older landing.
+    seedRow(h, 'cmt_ostop', 'accepted', 'входит в книгу');
+    seedChange(h, { id: 'chg_oold', commentId: 'cmt_ostop', status: 'done', outcome: 'applied', reason: null });
+    seedChange(h, { id: 'chg_onew', commentId: 'cmt_ostop', status: 'pending', outcome: null, reason: null });
+    h.db
+      .prepare(`UPDATE changes SET status = 'failed', outcome = 'origin', reason = 'повторные обрывы — правка остановлена'
+                 WHERE id = 'chg_onew'`)
+      .run();
+    link(h, 'cmt_ostop', 'chg_oold');
+
+    expect(dto(h, 'cmt_ostop')).toMatchObject({
+      status: 'rejected',
+      reason: 'повторные обрывы — правка остановлена',
+      applied: null,
+    });
+  });
+
   it('never prints an engine code as a stop’s sentence', async () => {
     const h = await bootComments();
     harness = h;

@@ -221,6 +221,42 @@ describe('runPass — BOOK-219: an estimated close and the compensating revert',
     }
   });
 
+  it('puts a resumed step’s own re-landing back: the guard is this run, not the step', async () => {
+    const harness = await createHarness();
+    try {
+      // A previous run landed this step's text and died at the gate; the row is open, `landed`.
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
+      const assignment = harness.assignment(CHAPTER);
+      harness.fixture.engine.start(assignment.leaseId);
+      harness.fixture.writeChapter(CHAPTER, chapterAnswer('Глава сорок', 'первый прогон'));
+      harness.fixture.engine.land(assignment.leaseId);
+      const base = harness.fixture.readChapter(CHAPTER);
+
+      // The gate asks for a revision, so this run re-lands — and that landing is its own.
+      harness.script.push(
+        'GAP\nblocker · глава 40, «служебный абзац» · повтор вместо прозы · переписать абзац',
+        chapterAnswer('Глава сорок', 'правка'),
+        'HOLDS',
+        'HOLDS',
+      );
+      harness.hooks.beforeCall = (name) => {
+        if (name !== 'done') return;
+        throw new EngineRefusalError('VERDICTS_REQUIRED', 'the step has no verdicts', 409);
+      };
+
+      const result = await harness.run({ lanes: ['fwd'] });
+
+      expect(result.status).toBe('parked');
+      // The chapter goes back to the revision the resumed step stood at — not to nothing, and
+      // not left at the text this run published.
+      expect(harness.fixture.readChapter(CHAPTER)).toBe(base);
+      expect(revisionsOf(harness, CHAPTER)[0]?.kind).toBe('restore');
+      expect(result.reason).toBe(readerSentences.closeReverted);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it('does not undo a resumed step’s text: it is not this run’s landing', async () => {
     const harness = await createHarness();
     try {

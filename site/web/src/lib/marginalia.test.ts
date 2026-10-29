@@ -1,4 +1,4 @@
-import { FAILED_ATTEMPT_LINE, type ChangeStatus, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -27,13 +27,10 @@ import { clampQuote } from './seam.ts';
  */
 
 /**
- * A filing with the facts a closed change adds (BOOK-206 B1): the DTO's own type names two
- * change statuses today, and a scheduled retry only a frame can bring.
+ * A filing with the one fact only a frame can bring (BOOK-206 B1): the scheduled retry. The
+ * `changeStatus` field is the DTO's own (`pending`/`processing`), so a terminal one is unspellable.
  */
-type FilingOverrides = Omit<Partial<CommentDto>, 'changeStatus'> & {
-  changeStatus?: ChangeStatus | null;
-  retryAt?: string | null;
-};
+type FilingOverrides = Partial<CommentDto> & { retryAt?: string | null };
 
 function comment(overrides: FilingOverrides = {}): CommentDto {
   return {
@@ -120,34 +117,35 @@ describe('the state words', () => {
       ['hidden', 'ждёт'],
     ];
     for (const [status, word] of table) expect(filingMarginalia(comment({ status })).word, status).toBe(word);
+    // BOOK-189 — `accepted` reads only the two live values the DTO names for `changeStatus`.
     expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('working');
     expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('waiting');
-    // B1 — a change the writer closed as `done` wrote the text: the row is «внесено» even
-    // before the durable read replaces it with the `applied` DTO.
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'done' }))).toBe('landed');
-    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'done' })).word).toBe('внесено');
-    // B2 — a change that stopped keeps the waiting word (the change table's own), and the next
-    // test proves it never prints a queue place.
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'escalated' }))).toBe('waiting');
+    // BOOK-219 — a receipt on the row is the server's landing fact, ahead of the durable read.
+    expect(filingState(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } }))).toBe('landed');
+    expect(filingMarginalia(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } })).word).toBe('внесено');
     expect(filingState(comment({ status: 'rejected' }))).toBe('refused');
     // A rights refusal heads its row with B's own word, never C's.
     expect(filingMarginalia(comment({ status: 'rejected', refusal: 'rights' })).word).toBe('не принято');
   });
 
-  it('does not print a queue place over a change that stopped (B1/B2)', () => {
-    for (const changeStatus of ['escalated', 'failed', 'void'] as const) {
-      const marginalia = filingMarginalia(comment({ status: 'accepted', changeStatus }));
-      expect(marginalia.word, changeStatus).toBe('ждёт');
-      // The `expired` entry's own line, borrowed whole: nothing is coming for this row.
-      expect(marginalia.consequence, changeStatus).toBe('правка не состоялась');
-      expect(marginalia.consequence, changeStatus).not.toContain('в очереди');
-    }
-    // A landed change owes the word-free receipt an `applied` row prints.
-    const landed = filingMarginalia(comment({ status: 'accepted', changeStatus: 'done', applied: { chapter: 8, rev: 4 } }));
+  it('reads a landed and a stopped filing from the server’s status and sentence (BOOK-206 B2)', () => {
+    // The server turns a stopped change into `rejected` with its own sentence: the page prints
+    // that sentence, and a word the deck already owns — it keeps no copy of the rule itself.
+    const stopped = filingMarginalia(
+      comment({ status: 'rejected', reason: 'правка остановлена — текст остался прежним' }),
+    );
+    expect(stopped.word).toBe('отклонено');
+    expect(stopped.consequence).toBe('правка остановлена — текст остался прежним');
+    expect(stopped.consequence).not.toContain('в очереди');
+    // A landed change reaches the page as `applied` with the server's receipt.
+    const landed = filingMarginalia(comment({ status: 'applied', applied: { chapter: 8, rev: 4 } }));
     expect(landed.word).toBe('внесено');
     expect(landed.consequence).toBe('глава 8 · ревизия 4');
-    // The writer is still at it: the state and the line are unchanged by any of this.
+    // The live words stay live: the writer is at it, or the lane holds it.
     expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('пишется');
+    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'pending' })).consequence).toBe(
+      'в очереди на запись',
+    );
   });
 
   it('repeats the server’s own sentence for a scheduled retry, never «в очереди»', () => {
@@ -162,6 +160,8 @@ describe('the state words', () => {
     expect(waiting.word).toBe('ждёт');
     expect(waiting.consequence).toBe('провайдер не ответил — повтор в 12:05');
     expect(waiting.consequence).not.toContain('в очереди');
+    // A frame that schedules a retry before it can write a sentence keeps the word alone.
+    expect(filingConsequence(comment({ status: 'accepted', retryAt: '2026-10-29T12:05:00Z' }))).toBe('');
   });
 
   it('keeps a premise outside the queue: it waits, and only its first edition is «внесено»', () => {
@@ -210,7 +210,11 @@ describe('the deck’s second line', () => {
     expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(
       'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
     );
-    expect(filingConsequence(comment({ status: 'expired' }))).toBe('правка не состоялась');
+    expect(filingConsequence(comment({ status: 'expired' }))).toBe('');
+    // A stored legacy row prints the server's sentence, and none is invented without one.
+    expect(filingConsequence(comment({ status: 'expired', reason: 'правка остановлена — текст остался прежним' }))).toBe(
+      'правка остановлена — текст остался прежним',
+    );
     expect(filingConsequence(comment({ status: 'hidden' }))).toBe('скрыто');
     expect(filingConsequence(comment({ status: 'unknown' as CommentDto['status'] }))).toBe('попадёт в триаж');
   });

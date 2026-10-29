@@ -95,6 +95,22 @@ export function filingChanges(db: Db, commentId: string, changeId: string | null
 }
 
 /**
+ * BOOK-136/BOOK-206 B2 — the change a filing's state is read from.
+ *
+ * The landing is the last word about text — except when the filing's **current** attempt is a
+ * stop that came after it: a pass the engine gave up on is the newest fact, and an earlier
+ * landing is not what became of the filing that was tried again. A landing newer than the stop is
+ * still the answer, so both directions read the same rule: the newest fact wins.
+ */
+export function decisiveChange(facts: FilingChanges): FilingChange | undefined {
+  const { landed, attempt } = facts;
+  if (attempt !== undefined && isStopped(attempt.status) && (landed === undefined || attempt.seq >= landed.seq)) {
+    return attempt;
+  }
+  return landed ?? attempt;
+}
+
+/**
  * BOOK-136 — an ordinary filing's public state, from the change that decided it.
  *
  * The owner's prod rows: the change was `done applied` and the comment stayed `accepted`, so

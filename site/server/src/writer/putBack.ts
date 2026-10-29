@@ -11,9 +11,10 @@
  *
  * Three answers, and the caller says a different sentence for two of them:
  *
- *  · `none` — this pass landed nothing of its own. A **resumed** step's text was published before
- *    this run and is not ours to undo (`job.landed`), a pass that never landed has nothing to put
- *    back, and a chapter that no longer reads this pass's text belongs to somebody else's write;
+ *  · `none` — **this run** landed nothing of its own: a pass that never landed, and above all a
+ *    resumed step that only read the gates (`landed` is *this run's* landing, never the step's
+ *    `job.landed` — a resumed pass that re-lands holds its own revision and puts that one back);
+ *    a chapter that no longer reads this pass's text belongs to somebody else's write;
  *  · `reverted` — the chapter is the pre-pass text again (verified by sha);
  *  · `unverified` — the restore itself did not complete (or there was no revision behind a first
  *    write, or the chapter could not be read). The landed text **stands**, and the park says so:
@@ -26,18 +27,19 @@
 import type { WriterAssignment } from '@book/shared';
 
 import { parseChapter } from '../ingest/parseChapter.ts';
+import type { ChapterTextView } from '../engine/text.ts';
 import type { EngineClient } from './client.ts';
 import { readerSentences, reasonOf } from './reasons.ts';
 
 export type PutBackInput = {
   engine: Pick<EngineClient, 'restore' | 'reconcile' | 'text'>;
-  job: Pick<WriterAssignment, 'stepId' | 'landed'>;
+  job: Pick<WriterAssignment, 'stepId'>;
   chapter: number;
   /** What `start` said before the pass touched anything: the rev and sha a revert returns to. */
   started: { rev: number | null; sha: string };
-  /** The last landing of this pass (`Lane.landedAt`), `null` before one. */
+  /** The last landing of this pass (`Lane.landedAt`), `null` before one or when unread. */
   landing: { rev: number; sha: string } | null;
-  /** Whether this run landed at all. */
+  /** Whether **this run** landed at all — a resumed step's earlier landing is not counted. */
   landed: boolean;
   /** The text this pass landed: a chapter that no longer reads it is not ours to undo. */
   text: string;
@@ -56,16 +58,25 @@ function bodyOf(chapter: number, text: string): string {
   return parseChapter(chapter, text).blocks.map((block) => block.text).join('\n\n').trim();
 }
 
-/** Does the site still serve the text this pass landed? `null` when the chapter cannot be read. */
-async function stillOurs(input: PutBackInput): Promise<boolean | null> {
+/**
+ * Does the site serve this text for this chapter? `true`/`false` from the rows, `null` when the
+ * chapter cannot be read at all. The one question both the way back and a `land` whose answer was
+ * lost ask: the rows are the fact, the response was a report about them.
+ */
+export async function servesText(
+  engine: Pick<EngineClient, 'text'>,
+  chapter: number,
+  text: string,
+): Promise<boolean | null> {
+  let view: ChapterTextView | undefined;
   try {
-    const answer = await input.engine.text([input.chapter]);
-    const view = answer.chapters.find((entry) => entry.n === input.chapter);
-    if (view === undefined || !view.exists) return false;
-    return view.text.trim() === bodyOf(input.chapter, input.text);
+    const answer = await engine.text([chapter]);
+    view = answer.chapters.find((entry) => entry.n === chapter);
   } catch {
     return null;
   }
+  if (view === undefined || !view.exists) return false;
+  return view.text.trim() === bodyOf(chapter, text);
 }
 
 /**
@@ -81,13 +92,17 @@ export function backSentence(back: PutBack, kind: 'gate' | 'rights' = 'gate'): s
 }
 
 export async function putBack(input: PutBackInput): Promise<PutBack> {
-  if (input.job.landed === true || !input.landed) return { kind: 'none' };
+  // BOOK-219: the guard is *this run's* landing, never the step's (`job.landed`). A resumed step
+  // whose gate said `revise` re-lands, and that re-landing is ours to put back.
+  if (!input.landed) return { kind: 'none' };
   const rev = input.started.rev;
-  const at = `текст стоит на ревизии ${String(input.landing?.rev ?? 0)}`;
+  const at = input.landing === null
+    ? 'ревизия прохода неизвестна'
+    : `текст стоит на ревизии ${String(input.landing.rev)}`;
   if (rev === null || rev < 1) return { kind: 'unverified', detail: `у главы нет ревизии до прохода — ${at}` };
   // BOOK-219: only the text this pass published may be taken back. A chapter somebody else has
   // written since is a newer fact, and undoing it would throw their work away.
-  const ours = await stillOurs(input);
+  const ours = await servesText(input.engine, input.chapter, input.text);
   if (ours === null) return { kind: 'unverified', detail: `глава не прочитана — ${at}` };
   if (!ours) {
     input.log('[writer] откат не нужен: глава уже не та, что опубликовал проход');
@@ -100,7 +115,7 @@ export async function putBack(input: PutBackInput): Promise<PutBack> {
       return { kind: 'unverified', detail: `откат вернул не ту редакцию: ${at}, а не ревизия ${String(rev)}` };
     }
     input.log(
-      `[writer] откат: ревизия ${String(rev)} возвращена (${String(input.landing?.rev ?? 0)} → ${String(restored.rev)})`,
+      `[writer] откат: ревизия ${String(rev)} возвращена (${input.landing === null ? '—' : String(input.landing.rev)} → ${String(restored.rev)})`,
     );
     try {
       // The mark is the panel's, not the reader's: a refusal here cannot undo a text that is

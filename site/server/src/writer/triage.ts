@@ -20,7 +20,7 @@ import { TRIAGE_MAX_TRIES } from '../comments/attempts.ts';
 import type { PipelineUsage } from './pipeline.ts';
 import { costUsd } from './pipeline.ts';
 import { estimateTriageUsd } from './estimate.ts';
-import { EngineRefusalError, isEngineTransportCode, type EngineClient, type TriageAskView } from './client.ts';
+import { EngineRefusalError, isEngineTransportCode, type EngineClient, type TriageAskView, type TriageVerdictInput } from './client.ts';
 import type { WriterConfig } from './config.ts';
 import { ProviderError, type ProviderRequest, type ProviderResult } from './provider.ts';
 import { buildTriagePrompt } from './triagePrompt.ts';
@@ -101,6 +101,21 @@ async function budgetAllows(deps: TriageDeps, log: (line: string) => void): Prom
   }
 }
 
+/**
+ * One call's money from the book's one rate table. BOOK-219: when the provider reported no usage
+ * the writer read the counts off the text, and `estimated` travels with them — the engine books
+ * the row as `pipeline-estimated` instead of letting an estimate pass for a measurement.
+ */
+function spendOf(deps: TriageDeps, usage: PipelineUsage): TriageVerdictInput['spend'] {
+  return {
+    model: deps.config.apiModel,
+    tokensIn: Math.max(0, Math.trunc(usage.in)),
+    tokensOut: Math.max(0, Math.trunc(usage.out)),
+    usd: costUsd(deps.config.pipeline.pricing, usage),
+    ...(usage.estimated === true ? { estimated: true } : {}),
+  };
+}
+
 async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
   const log = deps.log ?? (() => {});
   const prompt = buildTriagePrompt({ bookRoot: deps.bookRoot, ask });
@@ -114,16 +129,7 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
         code,
         ...(detail === undefined ? {} : { detail }),
         // AC5: a call that failed the post-check or the recorded-verdict guard still cost money.
-        ...(spend === undefined
-          ? {}
-          : {
-              spend: {
-                model: deps.config.apiModel,
-                tokensIn: Math.max(0, Math.trunc(spend.in)),
-                tokensOut: Math.max(0, Math.trunc(spend.out)),
-                usd: costUsd(deps.config.pipeline.pricing, spend),
-              },
-            }),
+        ...(spend === undefined ? {} : { spend: spendOf(deps, spend) }),
       });
       // At the cap the engine alerts and puts the attempt back to the next UTC midnight; this
       // line is the operator's copy of that fact, never «видимый дефект» (BOOK-206 B5).
@@ -162,12 +168,7 @@ async function readOne(deps: TriageDeps, ask: TriageAskView): Promise<boolean> {
   }
 
   const usage: PipelineUsage = result.usage;
-  const spend = {
-    model: deps.config.apiModel,
-    tokensIn: Math.max(0, Math.trunc(usage.in)),
-    tokensOut: Math.max(0, Math.trunc(usage.out)),
-    usd: costUsd(deps.config.pipeline.pricing, usage),
-  };
+  const spend = spendOf(deps, usage);
   try {
     const stored = await deps.engine.verdictTriage({
       commentId: ask.commentId,

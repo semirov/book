@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 
 import { openDatabase, type Db } from '../src/db/db.ts';
 import { migrate } from '../src/db/migrate.ts';
-import { SCHEMA_VERSION } from '../src/db/schema.ts';
+import { PASS_SPEND_TABLE_SQL, SCHEMA_VERSION } from '../src/db/schema.ts';
 
 function tables(db: Db): string[] {
   return db
@@ -136,6 +136,66 @@ describe('migrate — the money ledger (BOOK-117)', () => {
     const sql = db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_spend'`).get() as { sql: string };
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect((db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_spend'`).get() as { sql: string }).sql).toBe(sql.sql);
+    db.close();
+  });
+
+  it('finishes a rebuild a previous boot was killed in the middle of (BOOK-219)', () => {
+    const db = openDatabase(':memory:');
+    migrate(db);
+    const oldLedger = (): void => {
+      db.exec('DROP INDEX IF EXISTS pass_spend_day');
+      db.exec('DROP TABLE pass_spend');
+      db.exec(`CREATE TABLE pass_spend (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL, day TEXT NOT NULL, pass_id TEXT NOT NULL UNIQUE, chapter INTEGER,
+        pass TEXT NOT NULL CHECK (pass IN ('draft','change','cascade','front','ending','sweep','triage')),
+        change_id TEXT, model TEXT, tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL,
+        usd REAL NOT NULL, priced INTEGER NOT NULL CHECK (priced IN (0,1)),
+        provenance TEXT CHECK (provenance IN ('pipeline','operator')))`);
+      db.exec('CREATE INDEX pass_spend_day ON pass_spend(day)');
+      db.prepare(
+        `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, tokens_in, tokens_out, usd, priced, provenance)
+         VALUES ('2026-10-29T09:00:00Z', '2026-10-29', 'stp_old', 1, 'draft', 25300, 15068, 0.046533, 1, 'pipeline')`,
+      ).run();
+    };
+    /** The three deaths the four statements of a rebuild can have, one by one. */
+    const cutRebuild = (stage: 'renamed' | 'created' | 'copied'): void => {
+      db.exec('DROP INDEX IF EXISTS pass_spend_day');
+      db.exec('ALTER TABLE pass_spend RENAME TO pass_spend_pre_v31');
+      if (stage === 'renamed') return;
+      db.exec(PASS_SPEND_TABLE_SQL);
+      if (stage === 'created') return;
+      db.exec(`INSERT INTO pass_spend (id, at, day, pass_id, chapter, pass, change_id, model,
+                 tokens_in, tokens_out, usd, priced, provenance)
+               SELECT id, at, day, pass_id, chapter, pass, change_id, model,
+                 tokens_in, tokens_out, usd, priced, provenance FROM pass_spend_pre_v31`);
+    };
+
+    for (const stage of ['renamed', 'created', 'copied'] as const) {
+      oldLedger();
+      cutRebuild(stage);
+      // The next boot must finish the job, not read "no pass_spend" as nothing to do.
+      expect(migrate(db), stage).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+      expect(tables(db), stage).not.toContain('pass_spend_pre_v31');
+      expect(db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get(), stage).toEqual({ n: 1 });
+      expect(db.prepare('SELECT pass_id, tokens_in, provenance FROM pass_spend').get(), stage).toEqual({
+        pass_id: 'stp_old',
+        tokens_in: 25300,
+        provenance: 'pipeline',
+      });
+      expect(
+        (db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pass_spend'`).get() as { sql: string }).sql,
+        stage,
+      ).toContain("'pipeline-estimated'");
+      // The index is part of the shape a rebuild owes, whichever statement it was cut at.
+      expect(
+        db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'pass_spend_day'`).get(),
+        stage,
+      ).toEqual({ name: 'pass_spend_day' });
+      // Idempotent after the repair: a second boot copies nothing and leaves one row.
+      expect(migrate(db), stage).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
+      expect(db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get(), stage).toEqual({ n: 1 });
+    }
     db.close();
   });
 

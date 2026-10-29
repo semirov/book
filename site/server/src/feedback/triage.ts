@@ -24,6 +24,12 @@ export type TriageSpend = {
   tokensIn: number;
   tokensOut: number;
   usd: number;
+  /**
+   * BOOK-219: the provider reported no usage and the writer read the numbers off the text. The
+   * row is still **priced** (`priced = 1`) — the word says the amount is an estimate, not that
+   * the call was free; the prose lane closes the same way.
+   */
+  estimated?: boolean;
 };
 
 export type SettleInput = {
@@ -87,15 +93,21 @@ export function settleAttempt(db: Db, input: SettleInput): SettledAttempt | null
  * One row of the money ledger for one triage call: `pass = 'triage'`, a `pass_id` per attempt,
  * `INSERT OR IGNORE` so a retried caller cannot charge twice. BOOK-206's engine writes it from
  * the answer it stored — the same row the CLI's `--usd` writes, through the same function.
+ *
+ * An **estimated** call (BOOK-219) is the pipeline's own: the pinned model ran, the tokens were
+ * read off the text, so the row is priced and its `provenance` says `pipeline-estimated`. A
+ * measured or unmeasured row leaves the column as it was — who ran a CLI pass is not this
+ * helper's to declare.
  */
 export function chargeTriageSpend(
   db: Db,
   input: TriageSpend & { chapter: number; passId: string; at: string },
 ): void {
+  const estimated = input.estimated === true;
   db.prepare(
     `INSERT OR IGNORE INTO pass_spend
-       (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced)
-     VALUES (?, ?, ?, ?, 'triage', NULL, ?, ?, ?, ?, ?)`,
+       (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced, provenance)
+     VALUES (?, ?, ?, ?, 'triage', NULL, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.at,
     utcDay(Date.parse(input.at)),
@@ -106,6 +118,8 @@ export function chargeTriageSpend(
     input.tokensOut,
     input.usd,
     // An amount above zero is a measurement; a zero is the honest «never priced» (BOOK-23).
-    input.usd > 0 ? 1 : 0,
+    // An estimated call is priced all the same: the rate is known, only the counts are read.
+    input.usd > 0 || estimated ? 1 : 0,
+    estimated ? 'pipeline-estimated' : null,
   );
 }

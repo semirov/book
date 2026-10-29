@@ -134,11 +134,13 @@ export function premiseLanded(facts: {
  * Order matters, and each step is one fact:
  *   1. a row that decided itself (`rejected`, `quarantined`, `superseded`, `hidden`) keeps its
  *      own word — a linked change may only leave it alone, never upgrade it;
- *   2. a premise that landed is `applied` (`premiseLanded` — a refusal beats a landing);
- *   3. a change that decided in human words is the premise's answer, even over a written
+ *   2. a change the engine **stopped** is the same terminal state an ordinary filing reads
+ *      (BOOK-206 B2), and it outranks the chapter's text: the premise's own pass never landed,
+ *      whatever another pass wrote into that chapter. A landing **newer** than the stop is the
+ *      answer instead — the caller passes the newest fact (`decisiveChange`);
+ *   3. a premise that landed is `applied` (`premiseLanded` — a refusal beats a landing);
+ *   4. a change that decided in human words is the premise's answer, even over a written
  *      chapter: the writer refused it, or it was superseded;
- *   4. a change the engine stopped is the same terminal state an ordinary filing reads
- *      (BOOK-206 B2): nothing will retry it, whatever the chapter's text says;
  *   5. what is left waits: a queued change reads as `accepted`, anything else keeps its row.
  */
 export function premiseStatus(
@@ -147,6 +149,7 @@ export function premiseStatus(
   written: boolean,
 ): CommentStatus {
   if (OWN_STATES.has(fallback)) return fallback;
+  if (change !== undefined && isStopped(change.status)) return STOPPED_STATUS;
   if (
     change !== undefined &&
     premiseLanded({ premise: change.premise, status: change.status, reason: change.reason, written })
@@ -156,7 +159,6 @@ export function premiseStatus(
   if (change !== undefined && change.status === 'void' && decided(change.reason)) {
     return change.outcome === 'superseded' ? 'superseded' : 'rejected';
   }
-  if (change !== undefined && isStopped(change.status)) return STOPPED_STATUS;
   if (change !== undefined && change.status === 'pending') return 'accepted';
   return fallback;
 }

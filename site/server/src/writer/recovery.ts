@@ -24,7 +24,7 @@ export type RecoveryState = {
   rev: () => number | null;
   /** The sha `start` named. */
   sha: () => string;
-  /** Whether this run landed anything. */
+  /** Whether **this run** landed anything (a resumed step's earlier landing is not counted). */
   landed: () => boolean;
   /** The text as it now stands: the last revision this run landed. */
   text: () => string;
@@ -40,7 +40,7 @@ export type Recovery = {
 export function createRecovery(input: {
   engine: Pick<EngineClient, 'restore' | 'reconcile' | 'text'>;
   lane: Pick<Lane, 'park' | 'landedAt'>;
-  job: Pick<WriterAssignment, 'stepId' | 'landed'>;
+  job: Pick<WriterAssignment, 'stepId'>;
   chapter: number;
   state: RecoveryState;
   log: (line: string) => void;

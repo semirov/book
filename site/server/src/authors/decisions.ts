@@ -38,6 +38,7 @@ import {
 } from '@book/shared';
 
 import { dispositionFieldsOf } from '../comments/dispositionReport.ts';
+import { filingChanges, decisiveChange } from '../comments/filingState.ts';
 import { isStopped, stoppedLine } from '../comments/states.ts';
 import { premiseLanded } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
@@ -76,6 +77,15 @@ type DecisionRow = {
   /** The chapter of the intervention as the book has it now. */
   chapter_basis: number | null;
   chapter_blocks: number | null;
+};
+
+/** The change the record reads, after `decisiveChange` — never the linked row alone (BOOK-136). */
+type DecisionState = {
+  id: string;
+  status: string;
+  outcome: string | null;
+  reason: string | null;
+  premise: boolean;
 };
 
 /**
@@ -154,32 +164,66 @@ export function readMyDecisions(db: Db, identityId: string): MyDecisionsDto {
   };
 }
 
+/**
+ * The change the record reads: the filing's **newest** fact (BOOK-136), so a stop on the current
+ * attempt outranks an older landing and a landing newer than the stop is still the answer
+ * (`comments/filingState.ts` `decisiveChange`). `null` means the linked change row is gone.
+ */
+function stateOf(db: Db, row: DecisionRow): DecisionState | null {
+  if (row.change_id === null) return null;
+  const chosen = decisiveChange(filingChanges(db, row.comment_id, row.change_id));
+  if (chosen === undefined) {
+    // A legacy row whose change row the ledger does not hold: its own stored columns are the
+    // record.
+    return row.change_status === null
+      ? null
+      : {
+          id: row.change_id,
+          status: row.change_status,
+          outcome: row.change_outcome,
+          reason: row.change_reason,
+          premise: row.change_premise === 1,
+        };
+  }
+  return {
+    id: chosen.id,
+    status: chosen.status,
+    outcome: chosen.outcome,
+    reason: chosen.reason,
+    premise: chosen.premise === 1,
+  };
+}
+
 function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto {
-  const outcome = outcomeOf(row);
+  const state = stateOf(db, row);
+  const outcome = outcomeOf(row, state);
   const measured = outcome === 'applied' || outcome === 'adapted';
   // BOOK-7: a premise has no ripple of its own — no waves, no paragraphs to count; it entered
   // the chapter's first edition, and saying more than that would invent facts.
-  const premise = row.change_premise === 1;
+  const premise = state?.premise ?? row.change_premise === 1;
+  // A change read from the ledger that is not the linked row tells the outcome, not the numbers:
+  // the projection in the SQL row belongs to the linked change, and no number is borrowed.
+  const linked = state === null || state.id === row.change_id;
+  const impactId = linked ? row.change_id : (state?.id ?? null);
   // The change's own close is when its effect became a fact; a comment without a change is
   // decided by the comment's own decision.
   const decidedAt = row.change_finished_at ?? row.decided_at ?? row.comment_created_at;
   // `recordImpact` lands a moment after the close event the frame announces, so a decision
   // read in that instant may not have its projection yet: compute it, once, for that case.
+  const storedBlocks = linked ? row.blocks_changed : null;
   const impact =
-    measured && !premise && row.blocks_changed === null && row.change_id !== null
-      ? readImpact(db, row.change_id)
-      : null;
+    measured && !premise && storedBlocks === null && impactId !== null ? readImpact(db, impactId) : null;
   return {
     commentId: row.comment_id,
-    changeId: row.change_id,
+    changeId: impactId,
     chapter: row.chapter,
     premise,
-    intent: measured && row.change_intent !== null ? publicIntent(row.change_intent) : null,
+    intent: measured && linked && row.change_intent !== null ? publicIntent(row.change_intent) : null,
     outcome,
-    reason: reasonOf(row, outcome),
-    chapters: measured ? chaptersOf(touchedChapters(row, impact), row.chapter) : [],
-    waves: measured && !premise ? row.waves : null,
-    blocks: measured && !premise ? (row.blocks_changed ?? impact?.blocksChanged ?? null) : null,
+    reason: reasonOf(row, outcome, state),
+    chapters: measured ? chaptersOf(linked ? touchedChapters(row, impact) : (impact?.chaptersTouched ?? []), row.chapter) : [],
+    waves: measured && !premise && linked ? row.waves : null,
+    blocks: measured && !premise ? (storedBlocks ?? impact?.blocksChanged ?? null) : null,
     // A refusal has no share of its own to show: the number is absent, never zero.
     shareAtDecision: measured ? shareThen(db, identityId, decidedAt) : null,
     decidedAt,
@@ -189,63 +233,65 @@ function toDecision(db: Db, identityId: string, row: DecisionRow): MyDecisionDto
   };
 }
 
-function outcomeOf(row: DecisionRow): MyDecisionOutcome {
+function outcomeOf(row: DecisionRow, state: DecisionState | null): MyDecisionOutcome {
   // A failed attempt on a premise decides nothing — the attempt's code is not a
   // verdict, so its chapter's text answers for it: written means applied, unwritten means the
   // filing is still waiting. A change that decided in human words (a refusal, a supersede)
   // keeps its own mapping below, and a refusal always beats a landing.
-  if (row.change_premise === 1) {
+  if (state !== null && state.premise) {
+    // BOOK-206 B2 — a stop on the **current** attempt outranks the chapter's text: the premise's
+    // own pass never landed, whatever another pass wrote into that chapter. A landing newer than
+    // the stop is the state instead (`decisiveChange`), so it reads `applied` below.
+    if (isStopped(state.status)) return 'refused';
     const landed = premiseLanded({
       premise: 1,
-      status: row.change_status ?? '',
-      reason: row.change_reason,
+      status: state.status,
+      reason: state.reason,
       written: row.chapter_basis === 0 && (row.chapter_blocks ?? 0) > 0,
     });
     // An attempt is not a decision: a landed premise is applied, an unsettled one still waits —
     // it never reads as «замысел не взят» on the strength of an engine code.
     if (landed) return 'applied';
-    // BOOK-206 B2: a stopped premise is the same terminal state an ordinary filing reads.
-    if (isStopped(row.change_status)) return 'refused';
-    if (holdsInternalCode(row.change_reason)) return 'queued';
+    if (holdsInternalCode(state.reason)) return 'queued';
   }
-  if (row.change_id === null || row.change_status === null) {
+  if (state === null) {
     // BOOK-206: a filing is never parked for a person any more, so the old «waits for the
     // author» outcome is gone. A legacy row (written before the boot migration re-opened it)
     // reads as a refusal with the gate's own line: the record never invents a wait.
     return row.comment_status === 'rejected' || row.comment_status === 'escalated' ? 'refused' : 'dropped';
   }
-  if (WAITING.has(row.change_status)) return 'queued';
+  if (WAITING.has(state.status)) return 'queued';
   // BOOK-137: paperwork is not text. A filing accepted on the frozen frame is «рассмотрено»,
   // and the reader's own record must not borrow the word a landing earned.
-  if (row.change_outcome === 'registered') return 'registered';
+  if (state.outcome === 'registered') return 'registered';
   // One vocabulary for the outcome, shared with the frame and the change card. BOOK-206: the
   // reader's own vocabulary has no «waits for the author» — a change a gate stopped is «не
   // принята» with the gate's own line, exactly as a landed refusal reads. BOOK-206 B2: a stop
   // is one state (`isStopped`), the same one the filing DTO derives — `escalated` and `failed`
   // never split into two reader answers.
-  if (isStopped(row.change_status)) return 'refused';
+  if (isStopped(state.status)) return 'refused';
   const outcome = decisionOutcome({
-    status: row.change_status as ChangeStatus,
-    outcome: row.change_outcome as ChangeOutcome | null,
+    status: state.status as ChangeStatus,
+    outcome: state.outcome as ChangeOutcome | null,
   });
   return outcome === 'escalated' ? 'refused' : outcome;
 }
 
 /** A refusal's reason is the comment's public line; a stop's is the change's own. */
-function reasonOf(row: DecisionRow, outcome: MyDecisionOutcome): string | null {
+function reasonOf(row: DecisionRow, outcome: MyDecisionOutcome, state: DecisionState | null): string | null {
   // A reason is a sentence a reader may read — never an internal code, on either the comment's
   // line or the change's. A filing refused under a lock has no change and speaks with its own
   // line; a change a gate stopped (outcome `refused` since BOOK-206) speaks with the change's.
-  if (row.change_id === null) return readerReason(row.comment_reason);
+  if (state === null) return readerReason(row.comment_reason);
   // BOOK-206 B2: a stopped change speaks with its own stop sentence, derived exactly as the
   // filing DTO derives it. The row's acceptance line («входит в книгу») is not a fact about a
   // pass the engine stopped, and «остаётся в очереди» is not one either.
-  if (isStopped(row.change_status)) return stoppedLine(row.change_reason);
-  if (outcome === 'refused') return readerReason(row.comment_reason) ?? readerReason(row.change_reason);
-  const changeReason = readerReason(row.change_reason);
+  if (isStopped(state.status)) return stoppedLine(state.reason);
+  if (outcome === 'refused') return readerReason(row.comment_reason) ?? readerReason(state.reason);
+  const changeReason = readerReason(state.reason);
   // A premise that landed answers with its own acceptance line when the change row carries an
   // engine code instead of a landing: the failed attempt is not what happened to the premise.
-  if (outcome === 'applied' && row.change_premise === 1 && holdsInternalCode(row.change_reason)) {
+  if (outcome === 'applied' && state.premise && holdsInternalCode(state.reason)) {
     return readerReason(row.comment_reason) ?? changeReason;
   }
   return changeReason;
