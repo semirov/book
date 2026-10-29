@@ -31,6 +31,6 @@
     ".legal p code",
     ".ticket",
     ".follow-word",
-    ".sled-head / .sled-line"
+    ".screen-exit / .sled-head / .sled-line"
   ]
 }

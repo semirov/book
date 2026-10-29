@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { MyFilingsDto } from '@book/shared';
 
 import { bootComments, type Harness } from './comments/helpers.ts';
-import { otherReader, seedComment } from './myDecisions/seeds.ts';
+import { otherReader, seedChange, seedComment } from './myDecisions/seeds.ts';
 
 /**
  * BOOK-207 — `GET /api/me/filings`, the trail's own read.
@@ -65,6 +65,27 @@ describe('GET /api/me/filings (BOOK-207)', () => {
     expect(answer.items.map((item) => item.id)).toEqual(['cmt_new', 'cmt_mid', 'cmt_old']);
     // The other reader's filing never appears under this session.
     expect(answer.items.some((item) => item.id === 'cmt_boris')).toBe(false);
+  });
+
+  it('carries the linked change’s own number — and null when no change holds it (BOOK-221)', async () => {
+    harness = await bootComments();
+    own(harness, 'cmt_numbered', '2026-10-25T09:00:00Z');
+    own(harness, 'cmt_plain', '2026-10-24T09:00:00Z');
+    seedChange(harness, {
+      id: 'chg_numbered',
+      seq: 14,
+      chapter: 12,
+      status: 'done',
+      outcome: 'applied',
+      commentId: 'cmt_numbered',
+    });
+
+    const answer = (await get(harness, harness.cookie)).json() as MyFilingsDto;
+    const byId = new Map(answer.items.map((item) => [item.id, item]));
+    // The trail prints «правка 014» from this: the change's own sequence, never a cut id.
+    expect(byId.get('cmt_numbered')?.changeSeq).toBe(14);
+    // A filing no change holds has no number — the page names it by its chapter instead.
+    expect(byId.get('cmt_plain')?.changeSeq).toBeNull();
   });
 
   it('caps the page at the newest 50', async () => {

@@ -420,6 +420,9 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
     premise,
     // BOOK-136 — the linked change's own place in the writer's work, when it has one.
     changeStatus,
+    // BOOK-221 — the same change's public number, so the trail prints «правка 014» from a real
+    // ordinal. `null` when no change holds the filing: the row is then named by its chapter.
+    changeSeq: change?.seq ?? null,
     // Audit m5: the public DTO carries the verdict the reader is told (`status`, `reason`)
     // and nothing else. `guard`/`flags` stay in the row for the operator — a rendered
     // taxonomy is a map of the detector. BOOK-9: `audit_*` never leaves the row either;
