@@ -32,7 +32,8 @@ import { getChapterRow } from '../db/repo/chapters.ts';
 import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import * as store from './store.ts';
-import { isBasisSlot, isWrittenIn } from './text.ts';
+import { nextDraftChapter } from './draft.ts';
+import { isBasisSlot, isWrittenIn, writtenChaptersOf } from './text.ts';
 import type { EngineDeps, PremiseCause } from './types.ts';
 
 /** «у главы уже есть замысел» — the second premise of one chapter, told to its reader. */
@@ -51,6 +52,26 @@ export function queuedPremise(db: Db, chapter: number): store.ChangeRow | undefi
   return db
     .prepare(`SELECT * FROM changes WHERE premise = 1 AND chapter = ? AND status = 'pending' ORDER BY seq LIMIT 1`)
     .get(chapter) as store.ChangeRow | undefined;
+}
+
+/** BOOK-166: the refusal a pass nobody filed for speaks — the words BOOK-202 did not change. */
+export function noFilingReason(chapter: number): string {
+  return `глава ${chapter} не заказана заявкой — книга пишется только при воздействиях`;
+}
+
+/**
+ * BOOK-202 — the just-reset exception to BOOK-166. A reset volume holds **exactly one written
+ * chapter, ch01**, and no filings at all; the owner's `pass start` must be able to open ch02, the
+ * first chapter the reset emptied. That shape and nothing else: one more written chapter, any
+ * filing, or any other chapter (a gap included) keeps the plain BOOK-166 refusal — so the
+ * exception expires the moment ch02 lands, and a book that was never reset cannot use it.
+ */
+export function passableWithoutFiling(db: Db, chapter: number): boolean {
+  const filings = (db.prepare('SELECT COUNT(*) AS n FROM changes').get() as { n: number }).n;
+  if (filings !== 0) return false;
+  const written = writtenChaptersOf(db);
+  const justReset = written.size === 1 && written.has(1);
+  return justReset && chapter === 2 && nextDraftChapter(written, 'fwd') === chapter;
 }
 
 export type PremiseInput = {

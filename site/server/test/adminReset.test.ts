@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { FRAME_FIRST_SENTENCE, FRAME_LAST_SENTENCE, splitSentences } from '@book/shared';
+import { FRAME_LAST_SENTENCE, splitSentences } from '@book/shared';
 
 import { REQUIRED_TRIGGERS } from '../src/db/schema.ts';
+import { appendEvent } from '../src/history/log.ts';
 import { BackupFailedError, countBook, resetBook } from '../src/reset/book.ts';
 import { AT, CONTENT_KEYS, count, expectedCounts, ZEROS } from './resetSeed.ts';
 import { createResetHarness } from './resetApp.ts';
@@ -80,10 +81,15 @@ describe('POST /api/admin/reset/book — the guard and the dry run', () => {
     ]);
     expect(body.frame).toEqual([1, 42]);
     expect(body.engine).toEqual({ openSteps: 0, liveLeases: 0 });
+    // BOOK-202: chapter 1 is kept, so the report names it and the content below excludes it.
+    expect(body.chapter1).toMatchObject({ chapter: 1, blocks: expect.any(Number), sentences: expect.any(Number) });
+    expect(body.chapter1.sha256After).toBe(body.chapter1.sha256Before);
     // BOOK-187: what the wipe removes, counted from rows — written chapters, characters,
     // paragraphs. There is no manuscript file to report.
-    const chars = target.db.prepare('SELECT chars AS n FROM chapters WHERE basis = 0').get() as { n: number };
-    const blocks = target.db.prepare('SELECT COUNT(*) AS n FROM blocks').get() as { n: number };
+    const chars = target.db
+      .prepare('SELECT COALESCE(SUM(chars), 0) AS n FROM chapters WHERE basis = 0 AND n <> 1')
+      .get() as { n: number };
+    const blocks = target.db.prepare('SELECT COUNT(*) AS n FROM blocks WHERE chapter <> 1').get() as { n: number };
     expect(body.content).toEqual({ written: 1, chars: chars.n, blocks: blocks.n });
     expect(body.backup).toBeNull();
     expect(body.backupSkipped).toBeNull();
@@ -132,9 +138,13 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     expect(body.total).toBe(total(before));
 
     const db = target.db;
-    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0')).toBe(0);
+    // BOOK-202: every other chapter goes; ch01 is the chapter the reset keeps.
+    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0 AND n <> 1')).toBe(0);
     expect(
-      count(db, 'SELECT COUNT(*) AS n FROM blocks JOIN chapters AS c ON c.n = blocks.chapter WHERE c.basis = 0'),
+      count(
+        db,
+        'SELECT COUNT(*) AS n FROM blocks JOIN chapters AS c ON c.n = blocks.chapter WHERE c.basis = 0 AND c.n <> 1',
+      ),
     ).toBe(0);
     for (const table of [
       'changes',
@@ -144,21 +154,24 @@ describe('POST /api/admin/reset/book — the wipe', () => {
       'rate_events',
       'contributions',
       'contribution_history',
-      'revisions',
-      'block_versions',
-      'block_lineage',
       'sentence_touches',
     ]) {
       expect(count(db, `SELECT COUNT(*) AS n FROM ${table}`), table).toBe(0);
     }
-    // ADR-044: the only sentence rows a wiped book holds are the two frame paragraphs', and the
-    // counter ignores them the way it ignores their blocks.
+    // The histories are the wiped chapters' only: ch01's rows are still there.
+    expect(count(db, 'SELECT COUNT(*) AS n FROM revisions WHERE chapter <> 1')).toBe(0);
+    expect(count(db, 'SELECT COUNT(*) AS n FROM block_versions WHERE chapter <> 1')).toBe(0);
+    expect(count(db, 'SELECT COUNT(*) AS n FROM block_lineage WHERE chapter <> 1')).toBe(0);
+    expect(count(db, 'SELECT COUNT(*) AS n FROM revisions WHERE chapter = 1')).toBeGreaterThan(0);
+    // ADR-044: a wiped book holds the finale's frame paragraph and ch01's own sentences — the
+    // counter ignores both, because neither is content the reset removed (BOOK-202).
     const frameSentences = (
       db
         .prepare('SELECT b.text AS text FROM blocks b JOIN chapters c ON c.n = b.chapter WHERE c.basis = 1')
         .all() as Array<{ text: string }>
     ).reduce((sum, block) => sum + splitSentences(block.text).length, 0);
-    expect(count(db, 'SELECT COUNT(*) AS n FROM sentences')).toBe(frameSentences);
+    const keptSentences = count(db, 'SELECT COUNT(*) AS n FROM sentences WHERE erased_at IS NULL');
+    expect(keptSentences - frameSentences).toBe(body.chapter1.sentences);
     expect(countBook(db).find((entry) => entry.key === 'sentences')?.rows).toBe(0);
     // The people and the canon stay; only the frame is re-projected.
     expect(count(db, 'SELECT COUNT(*) AS n FROM identities')).toBe(1);
@@ -177,17 +190,14 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     ]);
     expect(db.prepare('SELECT holder, heartbeat_at FROM lane').get()).toEqual({ holder: null, heartbeat_at: null });
 
-    // Two basis slots, each with the frozen sentence as its one paragraph.
+    // The finale is the frozen basis slot; ch01 keeps the chapter it had (BOOK-202).
     const basis = db
-      .prepare('SELECT n, basis, chars, block_count, rev FROM chapters ORDER BY n')
+      .prepare('SELECT n, basis, chars, block_count, rev FROM chapters WHERE basis = 1 ORDER BY n')
       .all() as Array<{ n: number; basis: number; chars: number; block_count: number; rev: number }>;
-    expect(basis).toEqual([
-      { n: 1, basis: 1, chars: 0, block_count: 1, rev: 0 },
-      { n: 42, basis: 1, chars: 0, block_count: 1, rev: 0 },
-    ]);
-    expect((db.prepare('SELECT text FROM blocks WHERE chapter = 1').get() as { text: string }).text).toBe(
-      FRAME_FIRST_SENTENCE,
-    );
+    expect(basis).toEqual([{ n: 42, basis: 1, chars: 0, block_count: 1, rev: 0 }]);
+    expect(
+      db.prepare('SELECT basis, block_count FROM chapters WHERE n = 1').get(),
+    ).toEqual({ basis: 0, block_count: body.chapter1.blocks });
     expect((db.prepare('SELECT text FROM blocks WHERE chapter = 42').get() as { text: string }).text).toBe(
       FRAME_LAST_SENTENCE,
     );
@@ -199,11 +209,46 @@ describe('POST /api/admin/reset/book — the wipe', () => {
     // BOOK-176: the ledger's guards are restored with the log's — a reset empties the book but
     // keeps every promise that makes the tables mean something.
     expect(triggers).toEqual([...REQUIRED_TRIGGERS].sort());
-    // A fresh book numbers its fifo from 1: the counters restarted with the rows.
-    expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name IN ('changes', 'events')")).toBe(0);
+    // A fresh book numbers its fifo from 1: `changes` restarted with its rows. `events` does not
+    // restart — ch01's kept `hseq` pointers still address the log's old numbers (BOOK-202).
+    expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name = 'changes'")).toBe(0);
+    expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name = 'events'")).toBe(1);
   });
 
-  it('removes revisions that name a step and a cascade — the delete order defers the foreign keys', async () => {
+  it('restarts the log counter when nothing kept addresses the old numbers', async () => {
+    // A volume that never held ch01: no kept row carries an `hseq`, so the log is a fresh log.
+    const target = await h.live();
+    const db = target.db;
+    db.exec('DELETE FROM sentences WHERE block_id IN (SELECT id FROM blocks WHERE chapter = 1)');
+    for (const table of ['block_versions', 'block_lineage', 'revisions']) {
+      db.exec(`DELETE FROM ${table} WHERE chapter = 1`);
+    }
+    db.exec('DELETE FROM blocks WHERE chapter = 1');
+    db.exec('DELETE FROM chapters WHERE n = 1');
+
+    expect((await h.call({ dryRun: false })).statusCode).toBe(200);
+    expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name = 'events'")).toBe(0);
+    expect(count(db, "SELECT COUNT(*) AS n FROM sqlite_sequence WHERE name = 'changes'")).toBe(0);
+  });
+
+  it('keeps the log counter under ch01’s hseq pointers, so the next event cannot reuse one', async () => {
+    const target = await h.live();
+    const db = target.db;
+    // Every number ch01's kept rows address in the log — a restart would reuse one of these.
+    const kept = Math.max(
+      count(db, 'SELECT COALESCE(MAX(hseq), 0) AS n FROM revisions WHERE chapter = 1'),
+      count(db, 'SELECT COALESCE(MAX(hseq), 0) AS n FROM block_versions WHERE chapter = 1'),
+      count(db, 'SELECT COALESCE(MAX(first_hseq), 0) AS n FROM block_lineage WHERE chapter = 1'),
+      count(db, 'SELECT COALESCE(MAX(last_hseq), 0) AS n FROM block_lineage WHERE chapter = 1'),
+    );
+    expect(kept).toBeGreaterThan(0);
+
+    expect((await h.call({ dryRun: false })).statusCode).toBe(200);
+    const next = appendEvent(db, { kind: 'chapter.revised', chapter: 8, authorKind: 'operator' }, Date.now());
+    expect(next).toBeGreaterThan(kept);
+  });
+
+  it('removes revisions that name a step and a cascade — and keeps ch01’s with its pointers cleared', async () => {
     const target = await h.live();
     // A real book's revisions carry the step and cascade that wrote them, and both are deleted
     // before `revisions` in the wipe order. The reset must survive that order.
@@ -213,7 +258,12 @@ describe('POST /api/admin/reset/book — the wipe', () => {
 
     const response = await h.call({ dryRun: false });
     expect(response.statusCode).toBe(200);
-    expect(count(target.db, 'SELECT COUNT(*) AS n FROM revisions')).toBe(0);
+    expect(count(target.db, 'SELECT COUNT(*) AS n FROM revisions WHERE chapter <> 1')).toBe(0);
+    // BOOK-202: ch01's revision is kept, and the pointers into the wiped tables are nulled
+    // rather than left dangling for `foreign_key_check` to catch.
+    expect(
+      target.db.prepare('SELECT chapter, change_id, cascade_id, step_id FROM revisions').all(),
+    ).toEqual([{ chapter: 1, change_id: null, cascade_id: null, step_id: null }]);
     expect(target.db.pragma('foreign_key_check')).toEqual([]);
   });
 
@@ -283,30 +333,32 @@ describe('POST /api/admin/reset/book — the wipe', () => {
 });
 
 describe('the book the API serves after a reset', () => {
-  it('renders an unwritten book with its frame, and no comments', async () => {
-    await h.live();
+  it('renders the kept chapter 1, the finale frame, and no comments', async () => {
+    const target = await h.live();
+    const kept = target.db.prepare('SELECT block_count FROM chapters WHERE n = 1').get() as { block_count: number };
     await h.call({ dryRun: false });
 
     const state = (await h.get('/api/state')).json();
-    expect(state.chapters.written).toEqual([]);
-    expect(state.chapters.count).toBe(0);
-    expect(state.chapters.basis).toEqual([1, 42]);
+    // BOOK-202: ch01 is a written chapter now, not a basis slot.
+    expect(state.chapters.written).toEqual([1]);
+    expect(state.chapters.count).toBe(1);
+    expect(state.chapters.basis).toEqual([42]);
     expect(state.history.live).toBe(false);
 
     const comments = (await h.get('/api/comments')).json();
     expect(comments).toEqual({ items: [], nextBefore: null });
 
-    for (const [n, sentence] of [
-      [1, FRAME_FIRST_SENTENCE],
-      [42, FRAME_LAST_SENTENCE],
-    ] as const) {
-      const chapter = await h.get(`/api/chapters/${String(n)}`);
-      expect(chapter.statusCode, String(n)).toBe(200);
-      const body = chapter.json();
-      expect(body.basis).toBe(true);
-      expect(body.blocks).toHaveLength(1);
-      expect(body.blocks[0].text).toBe(sentence);
-    }
+    const chapter1 = await h.get('/api/chapters/1');
+    expect(chapter1.statusCode).toBe(200);
+    expect(chapter1.json()).toMatchObject({ basis: false, blocks: expect.any(Array) });
+    expect(chapter1.json().blocks).toHaveLength(kept.block_count);
+
+    const finale = await h.get('/api/chapters/42');
+    expect(finale.statusCode).toBe(200);
+    expect(finale.json().basis).toBe(true);
+    expect(finale.json().blocks).toHaveLength(1);
+    expect(finale.json().blocks[0].text).toBe(FRAME_LAST_SENTENCE);
+
     const missing = await h.get('/api/chapters/8');
     expect(missing.statusCode).toBe(404);
     expect(missing.json()).toMatchObject({ code: 'NOT_WRITTEN' });
@@ -376,7 +428,8 @@ describe('the reset refuses rather than destroying', () => {
     const refused = await h.call({ dryRun: false });
     expect(refused.statusCode).toBe(500);
     expect(refused.json()).toMatchObject({ code: 'BACKUP_FAILED' });
-    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0')).toBe(1);
+    // BOOK-202: ch01 is kept, so the marker of «not wiped» is the other chapter's row.
+    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE n = 8')).toBe(1);
     expect(backups(target.dataDir)).toEqual([]);
 
     const forced = await h.call({ dryRun: false, backupOk: true });
@@ -384,7 +437,7 @@ describe('the reset refuses rather than destroying', () => {
     const body = forced.json();
     expect(body.backup).toBeNull();
     expect(body.warning).toBe('no backup: backupOk was given');
-    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE basis = 0')).toBe(0);
+    expect(count(db, 'SELECT COUNT(*) AS n FROM chapters WHERE n = 8')).toBe(0);
     expect(count(db, 'SELECT COUNT(*) AS n FROM identities')).toBe(1);
   });
 });
