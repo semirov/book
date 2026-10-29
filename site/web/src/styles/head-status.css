@@ -1,16 +1,16 @@
 /**
  * BOOK-220 §11.1 — the head's **status line**, and the print's one control beside the head.
  *
- * The line is its own row under the brand row: it spans the page column, and it is placed
- * absolutely in the header's bottom gutter (`.top-in` is the positioning context), so the
- * prose never moves by a pixel when it appears or goes. Idle prints no node at all — no word,
- * no placeholder and no reserved space: the gutter is the header's own 10 px of air, the line
- * starts under the header's hairline, and nothing below it knows whether it is there.
+ * The line is its own row under the brand row: it spans the page column and sits **in the
+ * head's flow** (a block after `.top-row` inside `.top-in`), so it adds its own height to the
+ * sticky head and never overlays the running head or the prose. Idle prints no node at all —
+ * no word, no placeholder and no reserved space: the head is then exactly the running head.
+ * `useStickyOffsets` observes `.top`, so `--offset-top` follows the height the line adds.
  *
  * One register: mono at the 12 px floor, lowercase, the quiet ink, tabular figures, no box, no
- * background of its own beyond the page's paper (the head sticks over the prose) and no second
- * size. The whole line is the door (`components/HeadLine.tsx` renders one `<a>`), so it is
- * underlined like every other way into the book, in `--rule` and never in a second colour.
+ * background of its own (the head's own paper is behind it) and no second size. The whole line
+ * is the door (`components/HeadLine.tsx` renders one `<a>`), so it is underlined like every
+ * other way into the book, in `--rule` and never in a second colour.
  *
  * **The phone's step (≤599).** The line may wrap to two rows and never three: the filing's
  * number and the clock are dropped first (a `hl-filing` / `hl-time` part is hidden, and the
@@ -19,22 +19,11 @@
  * register, through an inline `·` — two rows in total, never three.
  */
 
-/* The line is positioned against the head's own box, and the head's box must not know it. */
-.top-in {
-  position: relative;
-}
-
+/* The line is a block in the head's flow: the running head keeps its row above it, and the
+   head's measured height (`.top`'s box) includes the line, so `--offset-top` follows it. */
 .head-line {
-  position: absolute;
-  inset-inline: 0;
-  /* The header's bottom gutter: `.top-in`'s padding-bottom is the air above the hairline, and
-     the line's own padding is the same 10 px of air below it. `top: 100%` is the bottom edge of
-     the head's box, so the line hangs under the rule and never inside the row. */
-  top: 100%;
+  position: static;
   padding-top: 10px;
-  /* The head sticks over the prose: the line carries the sheet's own paper, never a shadow. */
-  background: var(--paper);
-  z-index: 1;
   margin: 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
@@ -118,13 +107,8 @@
   text-decoration: none;
 }
 
-/* The row is the column's width, not a shrink-to-fit line: above 1024 `.top-row` is a flex item
-   of `.top-in` (`justify-content: space-between`), so without this its free space sits *outside*
-   the row. Its items are unchanged — the folio is a fixed box up there — so no line moves;
-   below 1024 the row is already the column, and this declaration changes nothing. */
-.top-in .top-row:first-child {
-  flex: 1;
-}
+/* The phone keeps the row's facts together: the brand, the chapter (number **and** title) and
+   the folio; one gap size less, so a normal title fits beside them. */
 @media (max-width: 767px) {
   .top-in .top-row:first-child {
     gap: 12px;

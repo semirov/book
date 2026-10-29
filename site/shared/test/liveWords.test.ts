@@ -11,6 +11,8 @@ import {
   WIDENED_CODES,
   aheadDigitsWord,
   aheadWord,
+  CAPACITY_HEAD_WORD,
+  offlineWord,
   attemptWord,
   chapterAccusativeWord,
   chapterWord,
@@ -24,6 +26,7 @@ import {
   isWidenedCode,
   minutesWord,
   moneyWord,
+  NOW_VERBS,
   visibleLineWord,
   widenedWord,
   type LinePart,
@@ -59,10 +62,13 @@ function assertHuman(text: string): void {
   expect(violationOf(text)).toBeNull();
 }
 
-describe('§10.9 — the seven head words', () => {
-  it('are exactly the owner’s seven strings', () => {
+describe('§10.9 — the head words, with idle rendered as nothing', () => {
+  it('keeps `idle` as an internal kind and prints no word for it', () => {
+    // Owner, 2026-10-29: «если ничего не происходит — строку не показываем». The key stays so
+    // the derivation can name the state; its rendered value is empty, and nothing prints it.
+    expect(HEAD_WORDS.idle).toBe('');
     expect(Object.values(HEAD_WORDS)).toEqual([
-      'тихо',
+      '',
       'правку читают',
       'правка ждёт',
       'главу пишут',
@@ -72,9 +78,12 @@ describe('§10.9 — the seven head words', () => {
     ]);
   });
 
-  it('map every derived kind to a head word, and a defect to `тихо`', () => {
-    for (const kind of Object.values(HEAD_WORD_OF)) expect(HEAD_WORDS[kind]).toBeTruthy();
-    expect(HEAD_WORDS[HEAD_WORD_OF['сбой']]).toBe('тихо');
+  it('maps every derived kind to a word, and idle/defect to the empty internal kind', () => {
+    for (const kind of Object.keys(HEAD_WORD_OF) as (keyof typeof HEAD_WORD_OF)[]) {
+      if (kind === 'тихо' || kind === 'сбой') expect(HEAD_WORDS[HEAD_WORD_OF[kind]]).toBe('');
+      else expect(HEAD_WORDS[HEAD_WORD_OF[kind]]).toBeTruthy();
+    }
+    expect(HEAD_WORDS[HEAD_WORD_OF['сбой']]).toBe('');
   });
 
   it('all pass the two rules', () => {
@@ -264,5 +273,29 @@ describe('§11.1 — the head’s line', () => {
       if (/\d\s*\/\s*\d/u.test(text)) bad.push(text);
     }
     expect(bad.slice(0, 5)).toEqual([]);
+  });
+});
+
+describe('§11.1 — the connection’s words, in the vocabulary and nowhere else', () => {
+  it('says nothing before the second failure, the fact from the second, the retry from the fourth', () => {
+    expect(offlineWord(0)).toBeNull();
+    expect(offlineWord(1)).toBeNull();
+    expect(offlineWord(2)).toBe('связи нет');
+    expect(offlineWord(3)).toBe('связи нет');
+    expect(offlineWord(4)).toBe('связи нет · пробуем снова');
+    expect(offlineWord(9)).toBe('связи нет · пробуем снова');
+  });
+
+  it('names the connection the same way the head’s deck does, so one fact has one word', () => {
+    expect(NOW_VERBS.offline).toBe(HEAD_WORDS.offline);
+  });
+
+  it('gives the full hall its own word: no lost connection, no machine noun', () => {
+    // The plate says there are no seats and the page waits for one (`stateWords.ts`
+    // `CAPACITY_PLATE`); the head says the same thing short, and never «связи нет».
+    expect(CAPACITY_HEAD_WORD).toBe('мест нет · ждём места');
+    expect(CAPACITY_HEAD_WORD).not.toContain('связи нет');
+    assertHuman(CAPACITY_HEAD_WORD);
+    for (const attempts of [2, 3, 4, 6]) assertHuman(offlineWord(attempts) ?? '');
   });
 });

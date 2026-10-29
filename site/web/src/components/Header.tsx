@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { ClientState } from '../lib/clientState.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
+import type { ConnectionState } from '../lib/socketStatus.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
 import { HeadLine } from './HeadLine.tsx';
 import { PageNumber } from './PageNumber.tsx';
@@ -34,10 +35,10 @@ function titleOf(catalog: readonly CatalogEntry[], n: number | null): string | n
  * panels, the chronicle and the end matter: the chip that used to stand here («пишется
  * глава N», «правка приостановлена», «последняя запись · 25.10», «глав ещё нет») is gone.
  *
- * One fact is the exception (BOOK-156 #3814, owner 2026-10-28): **whether the book is being
- * written now**. It is not a chip in the row — it is one 12 px line in the row's free space,
- * present only while a pass is in flight, so the reading surface says the one thing a reader
- * looking up from the prose needs and nothing else.
+ * One fact is the exception (BOOK-156 #3814, owner 2026-10-28; BOOK-DOC-84 §11.1): **what the
+ * book is doing now**. It is not a chip in the row — it is one 12 px line in the head's flow
+ * under the row, present only while a state is live, so the reading surface says the one thing
+ * a reader looking up from the prose needs and nothing else. Idle prints no line at all.
  *
  * BOOK-104 / BOOK-207: the head names the chapter at the reading line and the folio prints its
  * page — one model, resolved once in `App` and handed down.
@@ -50,7 +51,7 @@ export function Header({
   onOpenChange,
   live,
   client,
-  offlineAt,
+  connection,
   nowMs,
   reading,
 }: {
@@ -66,8 +67,12 @@ export function Header({
    * (`lib/nowState.ts`), never from a second fetch. Absent where a caller draws no line.
    */
   client?: ClientState | null;
-  /** The moment the socket went down; `нет связи` outranks every word while it is set. */
-  offlineAt?: number | null;
+  /**
+   * §11.1 — what the socket is doing (`lib/socketStatus.ts`): a connection word outranks the
+   * state line while it has something true to say, and says nothing at all while `connecting`.
+   * Absent where a caller draws no line.
+   */
+  connection?: ConnectionState | null;
   /** A fixed clock for a test; a page hands none in. */
   nowMs?: number;
   /**
@@ -124,10 +129,10 @@ export function Header({
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />
         </div>
-        {/* BOOK-220 §11.1 — the head's status line: its own row under the brand row, spanning
-            the column, in the header's bottom gutter. Absolutely placed, so it never moves the
-            prose, and idle renders no node at all. */}
-        <HeadLine client={client} offlineAt={offlineAt} nowMs={nowMs} />
+        {/* BOOK-220 §11.1 — the head's status line: its own block under the brand row, in the
+            head's flow (inside `.top-in`, after `.top-row`), so the head's measured height
+            includes it and `--offset-top` follows. Idle renders no node at all. */}
+        <HeadLine client={client} connection={connection} nowMs={nowMs} />
       </div>
       <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} live={live} />
     </header>

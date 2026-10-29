@@ -6,6 +6,11 @@
  * own, so the socket waits with its own slow cadence (`capacityDelay`, BOOK-75) and reports
  * `'capacity'` while it waits — the plate takes no click.
  *
+ * **One status per moment.** A failure is reported once, from `reconnect()`: `'closed'` with
+ * the 1-based `attempt` the head counts (`lib/socketStatus.ts`) and the close's own code. The
+ * close handler does not report a second `'closed'`, because two statuses for one fact are two
+ * renders and a counter a reader of `onStatus` could take twice.
+ *
  * The transport is injected so the reconnect rules can be tested without a browser.
  */
 
@@ -36,6 +41,14 @@ export type WebSocketLike = {
 
 export type SocketFactory = (url: string) => WebSocketLike;
 export type Scheduler = (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+
+/**
+ * The default wait. It is a **wrapper**, not `setTimeout` itself: a browser's `setTimeout` is a
+ * method of `window` and throws «Illegal invocation» when it is called as `this.schedule(…)`,
+ * which is exactly how a field default is used — the first close would end the reconnect with an
+ * exception and the page would stay `closed` with one attempt forever.
+ */
+const defaultSchedule: Scheduler = (callback, delayMs) => setTimeout(callback, delayMs);
 
 const MIN_DELAY_MS = 500;
 const MAX_DELAY_MS = 15_000;
@@ -73,7 +86,7 @@ export class BookSocket {
     private readonly url: string,
     private readonly handlers: BookSocketHandlers,
     private readonly factory: SocketFactory = (target) => new WebSocket(target) as unknown as WebSocketLike,
-    private readonly schedule: Scheduler = setTimeout,
+    private readonly schedule: Scheduler = defaultSchedule,
     private readonly random: () => number = Math.random,
   ) {}
 
@@ -129,7 +142,7 @@ export class BookSocket {
       socket = this.factory(this.url);
     } catch {
       this.waiting = false;
-      this.handlers.onStatus?.('closed');
+      // One report per failure, from `reconnect()` — never a second one here.
       this.reconnect();
       return;
     }
@@ -151,8 +164,7 @@ export class BookSocket {
         return;
       }
       this.waiting = false;
-      this.handlers.onStatus?.('closed', { closeCode: event.code });
-      this.reconnect();
+      this.reconnect(event.code);
     };
     socket.onerror = () => {
       // The close event follows and owns the retry; an error alone is not a second path.
@@ -189,12 +201,17 @@ export class BookSocket {
     this.handlers.onEvent(envelope as Envelope);
   }
 
-  private reconnect(): void {
+  /**
+   * One failure, one report: the attempt number the head counts, and the close's own code.
+   * Reporting the close from `onclose` *and* from here made every failure two statuses — two
+   * renders of the same fact, and a counter a consumer could read twice.
+   */
+  private reconnect(closeCode?: number): void {
     if (this.stopped) return;
     if (this.timer !== null) clearTimeout(this.timer);
     const delay = reconnectDelay(this.attempt, this.random);
     this.attempt += 1;
-    this.handlers.onStatus?.('closed', { attempt: this.attempt });
+    this.handlers.onStatus?.('closed', { ...(closeCode === undefined ? {} : { closeCode }), attempt: this.attempt });
     this.timer = this.schedule(() => {
       this.timer = null;
       this.open();

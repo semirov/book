@@ -1,37 +1,39 @@
 // @vitest-environment jsdom
-import {
-  partOf,
-  STAGE_DEADLINE_MS,
-  TOTAL_CHAPTERS,
-  type CatalogEntry,
-  type ChangeQueuedPayload,
-  type ChapterAppliedPayload,
-  type FilingReadingPayload,
-  type LivePayload,
-  type PassAcceptedPayload,
-  type PassStageEvent,
-  type StateSnapshot,
-} from '@book/shared';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { initialClientState, withLive, type ClientState } from '../lib/clientState.ts';
+import type { ClientState } from '../lib/clientState.ts';
 import { apply, resetSeq } from '../lib/framesFixtures.ts';
 import { LINGER_MS } from '../lib/nowState.ts';
+import {
+  applied,
+  accepted,
+  base,
+  CATALOG,
+  page,
+  queued,
+  reading,
+  stage,
+  STATE,
+  T,
+} from './headLineFixtures.ts';
 import { Header } from './Header.tsx';
 import { firstDeclarations } from './cssRules.ts';
 
 /**
  * BOOK-DOC-84 §11.1 — the head's status line, mounted in the real head.
  *
- * What is asserted here is the DOM contract: the line is its own row under the brand row (not a
- * node in `.top-row`, not a badge), it is one real `<a>` to the place it names (or no link at
- * all), it rests four seconds after an ending and then the node is gone, the author's line
- * exists only for the author, and no rendered word is machinery. The **pixel** check — the
- * first paragraph's top moving ≤1 px, and two rows at 390 / one at 1440 — needs a layout engine
- * and lives in `scripts/head-cdp.mjs`; jsdom has none, so the reserved height is asserted as the
- * style that makes it zero (`position: absolute` inside the head's own box).
+ * What is asserted here is the DOM contract: the line is its own block under the running head
+ * (not a node in `.top-row`, not a badge), it is one real `<a>` to the place it names (or no
+ * link at all), it rests four seconds after an ending and then the node is gone, the author's
+ * line exists only for the author, and no rendered word is machinery. The running head keeps
+ * its three facts — brand, chapter number + title, page number — in both states, and the
+ * phone's width queries no longer hide them. The **pixel** checks — the row and line boxes not
+ * intersecting, the head growing by the line, `--offset-top` following it, one row at 390 /
+ * one at 1440 — need a layout engine and live in `scripts/head-cdp.mjs`; jsdom has none, so the
+ * flow guarantee is asserted as the style that puts the line in it (`position: static` inside
+ * `.top-in`, after `.top-row`).
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -42,157 +44,10 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   eager: true,
 });
 
-/** 17:04 in Moscow — the contract's example time. */
-const T = Date.parse('2026-10-29T14:04:00Z');
-const MINUTE = 60_000;
-
-const STATE: StateSnapshot = {
-  version: 1,
-  at: '2026-10-29T14:04:00Z',
-  engine: { status: 'running', heartbeatAt: '2026-10-29T14:03:30Z', laneId: 'forward' },
-  phase: 'draft',
-  front: { title: 'Бланк', about: null, rev: 1, updatedAt: '2026-10-29T10:00:00Z' },
-  chapters: { total: TOTAL_CHAPTERS, written: [1], empty: [], count: 1, totalChars: 12_000, basis: [] },
-  cursors: {} as StateSnapshot['cursors'],
-  toc: [],
-  meeting: { forwardFront: 1, backwardFront: TOTAL_CHAPTERS, gap: 0, converged: false, seam: 'not_reached' },
-  cascade: null,
-  queue: {
-    depth: 0,
-    byState: { pending: 0, processing: 0, stale: 0, escalated: 0, done24h: 0 },
-    head: null,
-    processing: null,
-    lastDecidedAt: null,
-  },
-  revising: [],
-  current: null,
-  unresolved: [],
-  activity: { lastFileChangeAt: null, lastEngineEventAt: null, lastLogLineAt: null, source: 'files' },
-  history: { live: false, readerChanges: 0, started: false },
-};
-
-const CATALOG: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index) => {
-  const n = index + 1;
-  return {
-    n,
-    part: partOf(n),
-    title: null,
-    rev: n === 1 ? 2 : 0,
-    chars: n === 1 ? 600 : 0,
-    blocks: n === 1 ? 1 : 0,
-    written: n === 1,
-    basis: false,
-    opening: null,
-    writtenAt: n === 1 ? '2026-10-29T12:00:00Z' : null,
-    updatedAt: n === 1 ? '2026-10-29T12:00:00Z' : null,
-    direction: n <= 21 ? 'forward' : 'backward',
-  } as CatalogEntry;
-});
-
-const LIVE: LivePayload = {
-  at: '2026-10-29T14:04:00Z',
-  passes: [],
-  applied: null,
-  queue: { depth: 0, pending: [] },
-  filings: [{ commentId: 'cmt_012', chapter: 4, state: 'accepted', attempts: 1, attemptsLeft: 3, changeId: 'chg_12', at: '2026-10-29T14:04:00Z' }],
-  lane: { passesToday: 1, maxPasses: 4, writerAt: null },
-  lastCost: { kind: 'pass', usd: 0.05, at: T, estimated: false, dayUsd: 0.05 },
-};
-
-function page(overrides: Partial<LivePayload> = {}): ClientState {
-  return withLive(initialClientState(), { ...LIVE, ...overrides });
-}
-
-const queued: ChangeQueuedPayload = {
-  id: 'chg_12',
-  seq: 12,
-  kind: 'reader_edit',
-  chapter: 4,
-  intent: 'поправить',
-  source: { commentId: 'cmt_012', author: 'Аня' },
-  queue: { depth: 3, ahead: 2 },
-  base: { rev: 1 },
-  scopeHint: 'phrase',
-  at: T - 5 * MINUTE,
-  eventSeq: 1,
-};
-
-/** The page after a change was accepted: its number is the change's own `seq`. */
-const base = (): ClientState => apply(page(), 'change:queued', queued).state;
-
-const reading = (overrides: Partial<FilingReadingPayload> = {}): FilingReadingPayload => ({
-  commentId: 'cmt_012',
-  chapter: 4,
-  phase: 'claimed',
-  attempt: 1,
-  maxAttempts: 5,
-  widened: null,
-  desperate: false,
-  at: T,
-  deadlineAt: T + 900_000,
-  retryAt: null,
-  reason: null,
-  costUsd: null,
-  estimated: false,
-  readingSeq: 1,
-  ...overrides,
-});
-
-const accepted: PassAcceptedPayload = {
-  stepId: 'stp_1',
-  chapter: 1,
-  lane: 'forward',
-  pass: 'change',
-  premiseChangeId: 'chg_12',
-  at: T,
-  ahead: 0,
-  attempt: 1,
-  maxAttempts: 5,
-  widened: null,
-  desperate: false,
-  deadlineAt: T + 225 * MINUTE,
-  retryAt: null,
-};
-
-const stage = (name: PassStageEvent['stage'], overrides: Partial<PassStageEvent> = {}): PassStageEvent => ({
-  passId: 'stp_1',
-  chapter: 1,
-  stageSeq: 1,
-  stage: name,
-  at: T,
-  actor: { process: 'writer', model: null },
-  changeId: 'chg_12',
-  summary: '',
-  span: null,
-  tokens: null,
-  costUsd: null,
-  attempt: 1,
-  maxAttempts: 5,
-  deadlineAt: T + STAGE_DEADLINE_MS,
-  ...overrides,
-});
-
-const applied: ChapterAppliedPayload = {
-  n: 1,
-  rev: 13,
-  hseq: 9,
-  appliedAt: Date.parse('2026-10-29T14:12:00Z'),
-  createdAt: '2026-10-29T14:12:00Z',
-  kind: 'edit',
-  cause: { stepId: 'stp_1', changeId: 'chg_12', cascadeId: null, lane: 'forward', direction: 'forward' },
-  patch: [{ op: 'replace', id: 'ch01#a', i: 0, newId: 'ch01#b', text: 'Новый абзац' }],
-  patchTruncated: false,
-  span: [{ blockId: 'ch01#a', before: 'Старый абзац', after: 'Новый абзац', truncated: false }],
-  chars: 120,
-  delta: 20,
-  blocksTouched: 1,
-  attributed: true,
-};
-
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-async function mount(client: ClientState, options: { nowMs?: number | null; offlineAt?: number | null } = {}): Promise<void> {
+async function mount(client: ClientState, options: { nowMs?: number | null } = {}): Promise<void> {
   await act(async () => {
     root?.render(
       <Header
@@ -203,7 +58,6 @@ async function mount(client: ClientState, options: { nowMs?: number | null; offl
         onOpenChange={() => undefined}
         live
         client={client}
-        offlineAt={options.offlineAt ?? null}
         {...(options.nowMs === null ? {} : { nowMs: options.nowMs ?? T })}
         reading={{ n: 1, page: 1 }}
       />,
@@ -220,6 +74,18 @@ function text(): string | null {
   if (node === null) return null;
   return (node.textContent ?? '').replace(/\u00a0/gu, ' ').replace(/\s+/gu, ' ').trim();
 }
+
+/** The running head's three facts, as the DOM prints them. */
+function runningHead(): { brand: string | null; chapterN: string | null; chapterW: string | null; page: string | null } {
+  return {
+    brand: container.querySelector('.brand')?.textContent ?? null,
+    chapterN: container.querySelector('.top-chapter-n')?.textContent ?? null,
+    chapterW: container.querySelector('.top-chapter-w')?.textContent ?? null,
+    page: container.querySelector('.folio')?.textContent ?? null,
+  };
+}
+
+const RUNNING_HEAD = { brand: 'Бланк', chapterN: '1', chapterW: 'Ночная смена', page: '1' };
 
 beforeEach(async () => {
   resetSeq();
@@ -245,17 +111,52 @@ afterEach(async () => {
 });
 
 describe('§11.1 — idle is no node at all', () => {
-  it('renders nothing, and the head reserves no room for it', async () => {
+  it('renders no status word and no line node: the head is one row', async () => {
     await mount(page());
     expect(container.querySelector('.head-line')).toBeNull();
     // The row is still one row, the brand and the folio as before; no placeholder, no word.
     expect(container.querySelectorAll('.top-row')).toHaveLength(1);
     expect(text()).toBeNull();
-    // The reserved height is zero by construction: the line is absolutely placed in the head's
-    // own box, so nothing below it is given a spacer (the pixel proof is the CDP harness).
+    // The vocabulary keeps `idle` as an internal kind with no rendered word: «тихо» is nowhere.
+    expect(container.textContent).not.toContain('тихо');
+    // The line is in the head's flow, so the head's height includes it when it exists (the
+    // pixel proof of the growth is the CDP harness).
     const css = sheets['../styles/head-status.css'] ?? '';
-    expect(firstDeclarations(css, '.head-line')).toContain('position: absolute');
-    expect(firstDeclarations(css, '.top-in')).toContain('position: relative');
+    const line = firstDeclarations(css, '.head-line');
+    expect(line).toContain('position: static');
+    expect(line).not.toContain('position: absolute');
+    expect(line).not.toContain('top: 100%');
+    // The head is a block formatting context, so the line is a block *under* the row.
+    expect(firstDeclarations(sheets['../styles/chrome.css'] ?? '', '.top-in')).toContain('display: block');
+    // The three facts of the running head are all there in idle.
+    expect(runningHead()).toEqual(RUNNING_HEAD);
+  });
+
+  it('keeps the chapter number and title on the phone, by the sheets', () => {
+    // Owner, 2026-10-29: the head reads brand, chapter number + title, page number at 390 as
+    // well. A width query may not hide the cluster or its title.
+    const running = sheets['../styles/running-head.css'] ?? '';
+    const live = sheets['../styles/live.css'] ?? '';
+    expect(running).not.toMatch(/\.top-chapter-w\s*\{[^}]*display:\s*none/u);
+    expect(live).not.toMatch(/\.top-chapter\s*\{[^}]*display:\s*none/u);
+  });
+});
+
+describe('§11.1 — the line is a block in the head’s flow, under the running head', () => {
+  it('follows the row as a sibling, keeps the three facts, and is not in the row', async () => {
+    const client = apply(apply(base(), 'pass:accepted', accepted).state, 'pass:stage', stage('drafting')).state;
+    await mount(client);
+    const row = container.querySelector('.top-row');
+    const line = container.querySelector('.head-line');
+    expect(row).not.toBeNull();
+    expect(line).not.toBeNull();
+    if (row === null || line === null) return;
+    // The line is the row's next sibling inside `.top-in`, not a node in the row: in block flow
+    // it can only sit below, and the head's measured height includes it.
+    expect(row.contains(line)).toBe(false);
+    expect(line.parentElement).toBe(row.parentElement);
+    expect(row.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(runningHead()).toEqual(RUNNING_HEAD);
   });
 });
 
@@ -339,15 +240,6 @@ describe('§11.1 — the ending rests four seconds, then the node is gone', () =
     expect(container.querySelector('.head-line')).toBeNull();
     const css = sheets['../styles/head-status.css'] ?? '';
     expect(firstDeclarations(css, '.head-line')).toContain('transition: none');
-  });
-});
-
-describe('§11.1 — no link where there is nothing to open', () => {
-  it('prints нет связи without a door', async () => {
-    await mount(page(), { nowMs: T, offlineAt: T });
-    expect(text()).toBe('нет связи · 17:04');
-    expect(container.querySelector('.head-line a')).toBeNull();
-    expect(container.querySelector('.head-line')?.getAttribute('data-kind')).toBe('offline');
   });
 });
 

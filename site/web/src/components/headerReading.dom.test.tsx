@@ -388,25 +388,18 @@ describe('the head’s copy', () => {
     expect(chip().textContent).toBe('21');
   });
 
-  it('keeps the number alone on the phone (the title is hidden by the sheet)', async () => {
+  it('keeps the chapter number and title on the phone (owner, 2026-10-29)', async () => {
     const catalog = catalogOf([{ n: 21, title: 'Перевод смены' }]);
     buildBook(catalog);
     await mount(catalog);
     await anchorTo(21);
-    // The DOM keeps both; the 599 step hides the title, so the phone prints the number alone.
+    // Both facts stay in the running head on the phone: the number and the real title.
     expect(chip().querySelector('.top-chapter-n')?.textContent).toBe('21');
     expect(chip().querySelector('.top-chapter-w')?.textContent).toBe('Перевод смены');
     const css = sheets['../styles/running-head.css'] ?? '';
-    // The step that hides it, read from the query it is written in: `mediaBlocks` throws when
-    // the sheet states no such block, where a regex over the flat text could match a comment.
-    const phone = mediaBlocks(css, 'max-width: 599px').join('\n');
-    expect(unionDeclarations(phone, '.top-chapter-w'), 'running-head.css @media (max-width: 599px)').toContain(
-      'display: none',
-    );
-    // A step written after it still matches at 390 and wins there: no other query of the sheet
-    // may state a display for the word at all, or the phone would print the title again.
+    // No width query may hide the title: the phone's head reads brand, chapter number + title,
+    // page number. A title that truly does not fit is dropped by `Header`'s measurement.
     for (const block of mediaBlockList(css)) {
-      if (block.query === 'max-width: 599px') continue;
       expect(unionDeclarations(block.body, '.top-chapter-w'), `running-head.css @media (${block.query})`).not.toMatch(
         /display:/u,
       );
@@ -447,28 +440,25 @@ describe('the head’s layout', () => {  it('keeps the brand, the chapter slot a
   });
 });
 
-describe('one number in the phone head', () => {
-  it('hides the chapter chip below 768 and keeps the folio in the row', () => {
+describe('the phone head keeps both numbers', () => {
+  it('shows the chapter chip beside the folio below 768', () => {
     const live = sheets['../styles/live.css'] ?? '';
-    // Every block of the phone query, not the first: a second `(max-width: 767px)` block that
-    // re-showed the chip or fixed the folio again would undo the one number as surely as the
-    // flat rule the first block replaces. A missing query throws here.
+    // Every block of the phone query, not the first: no block may hide the chapter cluster, and
+    // the folio stays the row's last item.
     const phones = mediaBlocks(live, 'max-width: 767px');
     const phone = phones.join('\n');
-    // BOOK-104: two bare numerals — chapter 61 beside page 64, «1 | 1» at the first chapter —
-    // read as a duplicate, so the phone head prints the page alone.
-    expect(unionDeclarations(phone, '.top-chapter')).toContain('display: none');
-    // The folio is that one number: it stays the row's last item, and nothing under 768 hides it.
+    expect(unionDeclarations(phone, '.top-chapter'), 'live.css @media (max-width: 767px)').not.toMatch(
+      /display:\s*none/u,
+    );
     expect(unionDeclarations(phone, '.folio')).toContain('position: static');
-    // And no block of the step re-states either the other way: the chip is not shown again and
-    // the folio is not put back into the margin inside the same query.
     for (const [index, body] of phones.entries()) {
       const block = `live.css phone block ${index + 1}`;
-      expect(unionDeclarations(body, '.top-chapter'), block).not.toMatch(/display:\s*(?!\s*none\b)/u);
+      expect(unionDeclarations(body, '.top-chapter'), block).not.toMatch(/display:\s*none/u);
       expect(unionDeclarations(body, '.folio'), block).not.toMatch(/position:\s*(?!\s*static\b)/u);
     }
     for (const css of Object.values(sheets)) {
       expect(css).not.toMatch(/\.folio\s*\{[^}]*display:\s*none/u);
+      expect(css).not.toMatch(/\.top-chapter\s*\{[^}]*display:\s*none/u);
     }
     // Above 768 nothing changes: the chip is still a chip, the folio still in the margin. The
     // base rule is the first one of the selector, above the two narrow steps.
@@ -477,9 +467,9 @@ describe('one number in the phone head', () => {
     expect(firstDeclarations(live, '.folio')).toContain('position: fixed');
   });
 
-  it('keeps the chip in the markup and reads as the brand and the page alone', async () => {
+  it('keeps the chip and the folio in the markup, with no status line when idle', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
-    const catalog = catalogOf();
+    const catalog = catalogOf([{ n: 21, title: 'Перевод смены' }]);
     buildBook(catalog);
     await mount(catalog);
     await anchorTo(21);
@@ -488,12 +478,13 @@ describe('one number in the phone head', () => {
     // Exactly one folio numeral in the row, and it is the page the contents prints.
     expect(row.querySelectorAll('.folio')).toHaveLength(1);
     expect(row.querySelector('.folio')?.textContent).toBe(String(chapterStartPages(catalog).get(21)));
-    // The chip is still rendered — its hiding is the sheet's, not the markup's.
+    // The chapter number and its title are in the same row on the phone — not hidden by a query
+    // and not removed from the markup.
     expect(row.querySelector('.top-chapter')?.getAttribute('data-n')).toBe('21');
+    expect(row.querySelector('.top-chapter-n')?.textContent).toBe('21');
+    expect(row.querySelector('.top-chapter-w')?.textContent).toBe('Перевод смены');
     // BOOK-220 §11.1: idle prints no status line — no word, no placeholder, no reserved space.
-    const phone = row.cloneNode(true) as HTMLElement;
-    phone.querySelector('.top-chapter')?.remove();
-    phone.querySelector('.head-line')?.remove();
-    expect(phone.textContent).toBe(`Бланк${chapterStartPages(catalog).get(21)}`);
+    expect(row.querySelector('.head-line')).toBeNull();
+    expect(container.querySelector('.head-line')).toBeNull();
   });
 });

@@ -26,12 +26,9 @@
 .top-chapter-n {
   min-width: 2ch;
 }
-@media (max-width: 599px) {
-  /* One fact kept: the number alone when the title does not fit. */
-  .top-chapter-w {
-    display: none;
-  }
-}
+/* The phone keeps the whole running head (owner, 2026-10-29): brand, chapter number + title,
+   page number. A title that truly does not fit is dropped by `Header`'s own measurement (the
+   number stands alone), never hidden by a width query and never ellipsized. */
 /* BOOK-89's folio is the first row's last item below 768; the chapter cluster keeps the left. */
 @media (max-width: 767px) {
   .top-row:first-child .folio {

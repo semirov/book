@@ -272,6 +272,37 @@ describe('the generated sw.js', () => {
     expect(source).toContain('caches.open(CACHE).then((cache) => cache.addAll(PRECACHE))');
   });
 
+  it('lets a new build take over on the next navigation: a document never comes from a cache', () => {
+    // BOOK-157 §4 — the stale-bundle defect the deploy crashed into twice: a phone that kept the
+    // old bundle after a new release. The rule that makes it impossible is here, in the worker:
+    // a navigation is a **document** (network, `no-store` from `http/cache.ts`, the constant only
+    // when the network fails), and the one cache-first class is `/assets/`, whose file names *are*
+    // their bytes. So the next navigation's `index.html` names the new hashes and the old cache
+    // cannot answer for them.
+    expect(classify('/', 'navigate')).toBe('document');
+    expect(classify('/ch/3', 'navigate')).toBe('document');
+    expect(classify('/index.html', '')).toBe('document');
+    expect(classify('/assets/index-Bx12_3de.js', '')).toBe('asset');
+    expect(classify('/theme.js', '')).toBe('unhashed');
+
+    // The generated worker's document answer is a fetch with the constant as its fallback: no
+    // `caches` in that path at all — a cached HTML would be the stale bundle with a new coat.
+    const documentAnswer = /async function documentAnswer\(request\) \{([\s\S]*?)\n\}/u.exec(source)?.[1] ?? '';
+    expect(documentAnswer).toContain('await fetch(request)');
+    expect(documentAnswer).not.toContain('caches');
+    expect(documentAnswer).toContain('offlineAnswer()');
+
+    // A new build stamp is a new cache with its own name, and activation deletes every other
+    // `book-shell-*`: two releases never share one cache, and the old one cannot keep answering.
+    const next = cacheNameOf({ ...info, stamp: '28.10 09:41', builtAt: '2026-10-28T06:41:12.000Z' });
+    expect(next).not.toBe(cacheName);
+    const nextSource = swSource({ cacheName: next, precache, offline });
+    expect(cacheNameFromSource(nextSource)).toBe(next);
+    expect(nextSource).toMatch(/name\.indexOf\(PREFIX\) === 0 && name !== CACHE/u);
+    // And the worker itself is `no-cache` on the wire (BOOK-157), so a browser revalidates it
+    // before every use and never runs an older release's worker (`cache.ts`).
+  });
+
   it('is valid JavaScript a worker can parse', () => {
     // Compiled, not run: the file calls `self.addEventListener` at the top level, which only a
     // worker has. A syntax error here would ship a worker that never installs.

@@ -10,6 +10,7 @@ import type { ReactElement } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { ClientState } from '../lib/clientState.ts';
+import type { ConnectionState } from '../lib/socketStatus.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import type { BookView } from './ViewSwitch.tsx';
 import { CapacityPlate } from './CapacityPlate.tsx';
@@ -60,7 +61,7 @@ export function RecordMode({
   onOpenChange,
   live,
   client,
-  offlineAt,
+  connection,
   filings,
   filingUpdates,
   reading,
@@ -82,8 +83,8 @@ export function RecordMode({
   live: boolean;
   /** BOOK-DOC-84 §11.1: the page's folded frames — the record's head is derived from them. */
   client?: ClientState | null;
-  /** BOOK-218: the moment the page lost the machine, so a record page's head says `связи нет`. */
-  offlineAt?: number | null;
+  /** BOOK-218/BOOK-DOC-84: the socket's state, so a record page's head says `связи нет` too. */
+  connection?: ConnectionState | null;
   /** The viewer's own filings from `hello.live.filings` / `filing:update` (no mount-only fetch). */
   filings?: readonly LiveFiling[];
   filingUpdates?: Readonly<Record<string, FilingUpdatePayload>>;
@@ -102,7 +103,7 @@ export function RecordMode({
         <TrailView
           state={state} ribbon={ribbon} catalog={catalog}
           markers={markers} onOpenChange={onOpenChange}
-          live={live} client={client} offlineAt={offlineAt} reading={reading} viewer={viewer}
+          live={live} client={client} connection={connection} reading={reading} viewer={viewer}
           filings={filings} filingUpdates={filingUpdates}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
           exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}

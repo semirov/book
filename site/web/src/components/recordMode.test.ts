@@ -72,7 +72,7 @@ describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
         onOpenChange: () => undefined,
         live,
         client: initialClientState(),
-        offlineAt: offline ? Date.parse('2026-10-29T12:00:00Z') : null,
+        connection: offline ? { status: 'closed' as const, attempts: 2 } : undefined,
         reading: { n: null, page: null },
         viewer: { signedIn: false, displayName: null },
         front,
@@ -96,9 +96,10 @@ describe('a record page and the page’s facts (BOOK-218, BOOK-225)', () => {
 
   it('hands the page’s connection to the record’s head (BOOK-218)', () => {
     stubDocument();
-    // The head says `нет связи` from the fact the page holds, so the record must receive it —
+    // The head says `связи нет` from the socket's own state, so the record must receive it —
     // the trail has no socket of its own to fall back on.
     expect(render('trail', true)).toContain(NOW_VERBS.offline);
+    // A page whose socket is fine (the default) prints no connection word at all.
     expect(render('trail', false)).not.toContain(NOW_VERBS.offline);
   });
 });

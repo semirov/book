@@ -11,12 +11,10 @@ import type { RetroMode } from './change.ts';
 import type { CarrierKind, Disposition, DispositionLock } from './disposition.ts';
 import { DEFAULT_FRAME_MODE } from './frame.ts';
 import { boundWord, countWord, ordinalWord } from './naming.ts';
-/**
- * The running head's deck: one short word, lowercase, about **now** (owner, 2026-10-29).
- * `web/src/lib/headStatus.ts` chooses it; `HeadStatus.tsx` draws it.
- */
+/** The running head's deck, one word about **now**; `idle` is an internal kind with no rendered
+ * word (owner, 2026-10-29) — its entry is empty, and nothing prints a line when nothing happens. */
 export const HEAD_WORDS = {
-  idle: 'тихо',
+  idle: '',
   reading: 'правку читают',
   waiting: 'правка ждёт',
   drafting: 'главу пишут',

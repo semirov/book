@@ -3,104 +3,44 @@
   "origin": "http://127.0.0.1:5173",
   "widths": [
     {
-      "width": 1440,
-      "idle": {
-        "firstTop": 207.6,
-        "headerHeight": 40.2
-      },
-      "states": [
-        {
-          "state": "reading",
-          "rows": 1,
-          "text": "машина читает правку 012 · попытка 1 из 5 · 17:04",
-          "expected": "машина читает правку 012 · попытка 1 из 5 · 17:04",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": null
-        },
-        {
-          "state": "approach",
-          "rows": 1,
-          "text": "машина меняет подход к правке 012 · попытка 3 из 5 · 17:06",
-          "expected": "машина меняет подход к правке 012 · попытка 3 из 5 · 17:06",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": null
-        },
-        {
-          "state": "waiting",
-          "rows": 1,
-          "text": "правка 012 ждёт: впереди 2 · 16:59",
-          "expected": "правка 012 ждёт: впереди 2 · 16:59",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": null
-        },
-        {
-          "state": "writing",
-          "rows": 1,
-          "text": "машина пишет главу 1 · правка 012 · попытка 1 из 5 · 17:04",
-          "expected": "машина пишет главу 1 · правка 012 · попытка 1 из 5 · 17:04",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": null
-        },
-        {
-          "state": "checking",
-          "rows": 1,
-          "text": "машина проверяет главу 1 · правка 012 · редактор, раунд 1 · 17:08",
-          "expected": "машина проверяет главу 1 · правка 012 · редактор, раунд 1 · 17:08",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": null
-        },
-        {
-          "state": "fixing",
-          "rows": 1,
-          "text": "машина правит по замечанию · правка 012 · поправка 2 из 5 · 17:09",
-          "expected": "машина правит по замечанию · правка 012 · поправка 2 из 5 · 17:09",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": null
-        },
-        {
-          "state": "applied",
-          "rows": 1,
-          "text": "внесено · глава 1, редакция 13 · 17:12",
-          "expected": "внесено · глава 1, редакция 13 · 17:12",
-          "firstTop": 207.6,
-          "firstTopDelta": 0,
-          "headerHeight": 40.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": null
-        }
-      ],
-      "authorRow": null
-    },
-    {
       "width": 390,
       "idle": {
-        "firstTop": 258.9,
-        "headerHeight": 35.2
+        "headHeight": 35.2,
+        "offsetTop": 43,
+        "offsetMinusHead": 7.799999999999997,
+        "line": false,
+        "facts": {
+          "brand": "Бланк",
+          "chapter": "Третья",
+          "page": "7"
+        },
+        "shot": "shots/live/head/390-idle.png"
+      },
+      "active": {
+        "headHeight": 61.4,
+        "offsetTop": 69,
+        "offsetMinusHead": 7.600000000000001,
+        "grewBy": 26.199999999999996,
+        "rows": 1,
+        "line": "машина пишет главу 1 · попытка 1 из 5",
+        "rowRect": {
+          "top": 11,
+          "bottom": 27.2,
+          "left": 24,
+          "right": 366,
+          "width": 342,
+          "height": 16.2
+        },
+        "lineRect": {
+          "top": 38.2,
+          "bottom": 52.2,
+          "left": 24,
+          "right": 290.4
+        },
+        "overlap": 0,
+        "firstTop": 285.1,
+        "firstTopMovedBy": 26.200000000000045,
+        "shot": "shots/live/head/390-active.png"
       },
       "states": [
         {
@@ -108,96 +48,201 @@
           "rows": 1,
           "text": "машина читает правку · попытка 1 из 5",
           "expected": "машина читает правку · попытка 1 из 5",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": "shots/live/head/reading-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-4"
         },
         {
           "state": "approach",
           "rows": 1,
           "text": "машина меняет подход к правке · попытка 3 из 5",
           "expected": "машина меняет подход к правке · попытка 3 из 5",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": "shots/live/head/approach-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-4"
         },
         {
           "state": "waiting",
           "rows": 1,
           "text": "правка 012 ждёт: впереди 2",
           "expected": "правка 012 ждёт: впереди 2",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-4",
-          "shot": "shots/live/head/waiting-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-4"
         },
         {
           "state": "writing",
           "rows": 1,
           "text": "машина пишет главу 1 · попытка 1 из 5",
           "expected": "машина пишет главу 1 · попытка 1 из 5",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": "shots/live/head/writing-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-1"
         },
         {
           "state": "checking",
           "rows": 1,
           "text": "машина проверяет главу 1 · редактор, раунд 1",
           "expected": "машина проверяет главу 1 · редактор, раунд 1",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": "shots/live/head/checking-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-1"
         },
         {
           "state": "fixing",
           "rows": 1,
           "text": "машина правит по замечанию · поправка 2 из 5",
           "expected": "машина правит по замечанию · поправка 2 из 5",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": "shots/live/head/fixing-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-1"
         },
         {
           "state": "applied",
           "rows": 1,
           "text": "внесено · глава 1, редакция 13",
           "expected": "внесено · глава 1, редакция 13",
-          "firstTop": 258.9,
-          "firstTopDelta": 0,
-          "headerHeight": 35.2,
-          "headerDelta": 0,
-          "href": "#ch-1",
-          "shot": "shots/live/head/applied-390.png"
+          "offsetTop": 69,
+          "headHeight": 61.4,
+          "href": "#ch-1"
         }
       ],
       "authorRow": {
         "rows": 2,
         "text": "машина правит по замечанию · поправка 2 из 5 · впереди 2 · 0,05 $",
-        "expected": "машина правит по замечанию · поправка 2 из 5 · впереди 2 · 0,05 $",
-        "shot": "shots/live/head/author-390.png"
+        "expected": "машина правит по замечанию · поправка 2 из 5 · впереди 2 · 0,05 $"
+      },
+      "scrolled": {
+        "scrollY": 448,
+        "articleTop": 69.2,
+        "headingTop": 125.2,
+        "headBottom": 61.4,
+        "offsetTop": 69
+      }
+    },
+    {
+      "width": 1440,
+      "idle": {
+        "headHeight": 40.2,
+        "offsetTop": 48,
+        "offsetMinusHead": 7.799999999999997,
+        "line": false,
+        "facts": {
+          "brand": "Бланк",
+          "chapter": "Третья",
+          "page": "7"
+        },
+        "shot": "shots/live/head/1440-idle.png"
+      },
+      "active": {
+        "headHeight": 66.4,
+        "offsetTop": 74,
+        "offsetMinusHead": 7.599999999999994,
+        "grewBy": 26.200000000000003,
+        "rows": 1,
+        "line": "машина пишет главу 1 · правка 012 · попытка 1 из 5 · 17:04",
+        "rowRect": {
+          "top": 14,
+          "bottom": 30.2,
+          "left": 400,
+          "right": 1040,
+          "width": 640,
+          "height": 16.2
+        },
+        "lineRect": {
+          "top": 41.2,
+          "bottom": 55.2,
+          "left": 400,
+          "right": 817.6
+        },
+        "overlap": 0,
+        "firstTop": 233.8,
+        "firstTopMovedBy": 26.200000000000017,
+        "shot": "shots/live/head/1440-active.png"
+      },
+      "states": [
+        {
+          "state": "reading",
+          "rows": 1,
+          "text": "машина читает правку 012 · попытка 1 из 5 · 17:04",
+          "expected": "машина читает правку 012 · попытка 1 из 5 · 17:04",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-4"
+        },
+        {
+          "state": "approach",
+          "rows": 1,
+          "text": "машина меняет подход к правке 012 · попытка 3 из 5 · 17:06",
+          "expected": "машина меняет подход к правке 012 · попытка 3 из 5 · 17:06",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-4"
+        },
+        {
+          "state": "waiting",
+          "rows": 1,
+          "text": "правка 012 ждёт: впереди 2 · 16:59",
+          "expected": "правка 012 ждёт: впереди 2 · 16:59",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-4"
+        },
+        {
+          "state": "writing",
+          "rows": 1,
+          "text": "машина пишет главу 1 · правка 012 · попытка 1 из 5 · 17:04",
+          "expected": "машина пишет главу 1 · правка 012 · попытка 1 из 5 · 17:04",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-1"
+        },
+        {
+          "state": "checking",
+          "rows": 1,
+          "text": "машина проверяет главу 1 · правка 012 · редактор, раунд 1 · 17:08",
+          "expected": "машина проверяет главу 1 · правка 012 · редактор, раунд 1 · 17:08",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-1"
+        },
+        {
+          "state": "fixing",
+          "rows": 1,
+          "text": "машина правит по замечанию · правка 012 · поправка 2 из 5 · 17:09",
+          "expected": "машина правит по замечанию · правка 012 · поправка 2 из 5 · 17:09",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-1"
+        },
+        {
+          "state": "applied",
+          "rows": 1,
+          "text": "внесено · глава 1, редакция 13 · 17:12",
+          "expected": "внесено · глава 1, редакция 13 · 17:12",
+          "offsetTop": 74,
+          "headHeight": 66.4,
+          "href": "#ch-1"
+        }
+      ],
+      "authorRow": null,
+      "scrolled": {
+        "scrollY": 371,
+        "articleTop": 74.1,
+        "headingTop": 74.1,
+        "headBottom": 66.4,
+        "offsetTop": 74
       }
     }
   ],
   "idleEmpty": true,
   "pass": true,
   "violations": [],
-  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium"
+  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+  "shots": [
+    "390-idle.png",
+    "390-active.png",
+    "1440-idle.png",
+    "1440-active.png"
+  ]
 }

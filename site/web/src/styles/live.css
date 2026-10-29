@@ -277,9 +277,7 @@
     position: static;
     padding-inline-start: 12px;
   }
-  /* BOOK-104: on the phone the head carries one number — the page: a chapter numeral beside it
-     reads as a duplicate («1 | 1»), and the chapter keeps its own in its row and in the contents. */
-  .top-chapter {
-    display: none;
-  }
+  /* The phone keeps the chapter cluster too (owner, 2026-10-29): brand, chapter number + title,
+     page number — all three facts of the running head, in both states. The title is dropped by
+     `Header`'s own measurement only when it genuinely does not fit. */
 }

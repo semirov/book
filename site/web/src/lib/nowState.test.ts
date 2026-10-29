@@ -28,12 +28,12 @@ import { LINGER_MS, nowStateOf, shortReason, type NowState } from './nowState.ts
 const T = Date.parse('2026-10-29T14:04:00Z');
 const MINUTE = 60_000;
 
-function line(state: ClientState, nowMs = T, offlineAt: number | null = null): string | null {
-  return nowStateOf({ state, nowMs, offlineAt }).line;
+function line(state: ClientState, nowMs = T): string | null {
+  return nowStateOf({ state, nowMs }).line;
 }
 
-function now(state: ClientState, nowMs = T, offlineAt: number | null = null): NowState {
-  return nowStateOf({ state, nowMs, offlineAt });
+function now(state: ClientState, nowMs = T): NowState {
+  return nowStateOf({ state, nowMs });
 }
 
 /** The page after `hello`: the live block and the viewer, with no frame of its own yet. */
@@ -381,19 +381,14 @@ describe('§11.1 — the three endings', () => {
   });
 });
 
-describe('§11.1 — no link where there is nothing to open', () => {
-  it('says the connection is gone, and it is not a door', () => {
-    resetSeq();
-    const state = page();
-    expect(line(state, T, T)).toBe('нет связи · 17:04');
-    expect(now(state, T, T).door).toBeNull();
-    expect(now(state, T, T).terminal).toBe(false);
-  });
-
-  it('outranks every word while it is set', () => {
+describe('§11.1 — the derivation reads the frames, never the socket', () => {
+  it('prints no connection word: `связи нет` is a fact about the socket, not about the frames', () => {
+    // The head composes the two (`components/HeadLine.tsx`); a state derived from a dead
+    // connection would be the stale claim this file refuses to print.
     resetSeq();
     const state = apply(withChange(page()), 'pass:accepted', accepted()).state;
-    expect(line(state, T, T)).toBe('нет связи · 17:04');
+    expect(line(state, T) ?? '').not.toContain('связи нет');
+    expect(now(state, T).door).not.toBeNull();
   });
 });
 
@@ -446,7 +441,6 @@ describe('§11.1 — the vocabulary holds on every line', () => {
       line(apply(page(), 'chapter:applied', applied).state, applied.appliedAt),
       line(apply(withChange(page()), 'comment:decision', refused).state, Date.parse(refused.decidedAt)),
       line(apply(page(), 'pass:closed', closed).state, closed.at),
-      line(page(), T, T),
     ];
     for (const text of lines) {
       expect(text).not.toBeNull();

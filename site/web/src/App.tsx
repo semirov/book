@@ -24,7 +24,8 @@ import { useAgeGate } from './lib/useAgeGate.ts';
 import { withFreshFront, withRevision, type BookData } from './lib/bookState.ts';
 import { escalationMarkers } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
-import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
+import { BookSocket, websocketUrl } from './lib/ws.ts';
+import { connectionAfter, FIRST_CONNECTION, type ConnectionState } from './lib/socketStatus.ts';
 import { publishLiveChange } from './lib/liveChange.ts';
 import { publishFilingLive } from './lib/filingLive.ts';
 import { applyFrame, initialClientState, type ClientState, type FrameEffect } from './lib/frames.ts';
@@ -62,13 +63,13 @@ export function App() {
   /** The reducer's own copy of the page: a frame is applied synchronously, in order. */
   const pageRef = useRef(page);
   const [failed, setFailed] = useState(false);
-  const [connection, setConnection] = useState<SocketStatus>('connecting');
   /**
-   * BOOK-DOC-84 §11.1 — the moment the page lost the machine, `null` while it can see it. The
-   * head's `нет связи` is that fact and not a stage: it appears on a dropped socket only after a
-   * `hello` proved the page was connected, and it is cleared by the reconnect's own `hello`.
+   * BOOK-DOC-84 §11.1 — what the socket is doing and how many consecutive attempts have failed.
+   * The head's `связи нет` is one mapping over this (`lib/socketStatus.ts`), never a stage and
+   * never the absence of `open`: the counter resets on the socket's own `open`, so a reconnect
+   * that heals takes the word away with it.
    */
-  const [offlineAt, setOfflineAt] = useState<number | null>(null);
+  const [connection, setConnection] = useState<ConnectionState>(FIRST_CONNECTION);
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
   /**
@@ -266,11 +267,8 @@ export function App() {
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
       onEvent: (event) => handleRef.current(event),
-      onStatus: (status) => {
-        setConnection(status);
-        // A socket that never opened is a page still booting, not a lost connection.
-        setOfflineAt(status === 'closed' && helloSeen.current ? Date.now() : null);
-      },
+      // §11.1 — the socket's report, folded by the one function that owns the counter.
+      onStatus: (status, info) => setConnection((current) => connectionAfter(current, status, info)),
       // §3.3 — a delivery gap is healed by one snapshot, never by a replay (the hub keeps none).
       onGap: () => socketRef.current?.sendResync(pageRef.current.seq),
     });
@@ -372,10 +370,10 @@ export function App() {
       <RecordMode
         mode={recordMode} view={view} onViewChange={setView} state={state} ribbon={page.ribbon}
         catalog={catalog} markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-        live={history} client={page} offlineAt={offlineAt}
+        live={history} client={page} connection={connection}
         filings={page.filings} filingUpdates={page.filingUpdates}
         reading={reading} viewer={page.viewer} front={front}
-        historyTick={page.historyTick} plate={connection === 'capacity'}
+        historyTick={page.historyTick} plate={connection.status === 'capacity'}
         doorLine={doorLine === null ? connectionLine : <>{doorLine}{connectionLine}</>}
         loadChapter={loadChapter}
       />
@@ -395,7 +393,7 @@ export function App() {
         onViewChange={setView}
         motion={page.titleMotion}
         live={history} chronicle={chronicle}
-        client={page} offlineAt={offlineAt}
+        client={page} connection={connection}
         reading={reading}
         gated={!age.acknowledged}
       />
@@ -461,8 +459,8 @@ export function App() {
           {doorLine}
           {connectionLine}
           <NoticeTicket notice={notice} onGo={go} onDismiss={() => update((current) => ({ ...current, notice: null }))} />
-          <FootJumps live={history} plate={connection === 'capacity'} />
-          <CapacityPlate active={connection === 'capacity'} />
+          <FootJumps live={history} plate={connection.status === 'capacity'} />
+          <CapacityPlate active={connection.status === 'capacity'} />
         </>
       ) : null}
     </>

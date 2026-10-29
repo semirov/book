@@ -24,6 +24,10 @@ export type NowKind =
 /**
  * The 1:1 rows of §10.9's table. `расширение` is deliberately absent: it keeps the surface's
  * word («правку читают» / «главу пишут») and its note is the author's line, never the head's.
+ *
+ * `тихо` and `сбой` map to the **internal** `idle` kind, whose `HEAD_WORDS` entry is empty:
+ * idle is not a rendered word (owner, 2026-10-29). A surface gets `null`/no node from the
+ * derivation and never prints the key itself.
  */
 export const HEAD_WORD_OF: Record<Exclude<NowKind, 'расширение'>, HeadWord> = {
   тихо: 'idle',
@@ -223,9 +227,17 @@ export const NOW_VERBS = {
   notDelivered: 'не дошло',
   /** `не принято: …` — a filing the book answered with a no. */
   refused: 'не принято',
-  /** `нет связи` — the page cannot see the machine; it is not a stage. */
-  offline: 'нет связи',
+  /** `связи нет` — the page cannot see the machine; it is not a stage. */
+  offline: 'связи нет',
+  /** `пробуем снова` — what the page is doing about it, once the wait is no longer a moment. */
+  retrying: 'пробуем снова',
 } as const;
+
+/**
+ * §11.1 — the full hall in the head's words: the plate's own meaning (`CAPACITY_PLATE`), short,
+ * lowercase, and no machine noun. The plate carries the sentence; this is the line above it.
+ */
+export const CAPACITY_HEAD_WORD = 'мест нет · ждём места';
 
 /** The book's nouns around the verbs, so no surface spells them itself. */
 export const NOW_NOUNS = {
@@ -250,6 +262,20 @@ export const GATE_WORD: Record<string, string> = {
 
 /** The separator of the head's parts, and the space it carries in the rendered line. */
 export const LINE_SEPARATOR = '·';
+
+/**
+ * §11.1 — the head's line while the page cannot see the machine, at a count of **consecutive**
+ * failed attempts (the counter the socket resets on every open).
+ *
+ * One failed attempt is a moment, not a fact: nothing is said before the second. From the fourth
+ * the line also says what the page is doing about it — a wait with no word about the retry reads
+ * as «it is over», and the retry is the one true thing left to say.
+ */
+export function offlineWord(attempts: number): string | null {
+  const failed = Number.isFinite(attempts) ? Math.max(0, Math.trunc(attempts)) : 0;
+  if (failed < 2) return null;
+  return failed >= 4 ? `${NOW_VERBS.offline} ${LINE_SEPARATOR} ${NOW_VERBS.retrying}` : NOW_VERBS.offline;
+}
 
 /**
  * `правка 012` — a filing's number is its change's own sequence, padded to three figures (the

@@ -16,16 +16,19 @@
  *   • the three endings (landed, refused, not delivered) rest for `LINGER_MS` from their own
  *     `at`, then the line is gone — no timer invents a word, one timer only ends this one.
  *
+ * What it does **not** read is the socket: `связи нет` is a fact about the connection, above the
+ * frames, and it has its own one mapping (`lib/socketStatus.ts`). A state derived from a dead
+ * connection would be the stale claim this file refuses to print.
+ *
  * Precedence is **newest frame wins** among the work states, and a work state always outranks a
  * resting ending: a new pass starts while the previous `внесено` is still on screen, and the line
  * must be the new work. Nothing active and nothing resting is idle — no line, no placeholder.
  */
 
-import { aheadDigitsWord, aheadWord, headLineWord, moneyWord, NOW_VERBS, type LinePart } from '@book/shared';
+import { aheadDigitsWord, aheadWord, headLineWord, moneyWord, type LinePart } from '@book/shared';
 
 import type { ClientState } from './clientState.ts';
 import {
-  clockPart,
   fromApplied,
   fromChangeFailure,
   fromClose,
@@ -46,7 +49,6 @@ export const PHONE_DROPS = ['filing', 'time', 'gate'] as const;
 
 export type NowKind =
   | 'idle'
-  | 'offline'
   | 'reading'
   | 'approach'
   | 'waiting'
@@ -71,7 +73,7 @@ export type NowState = {
   line: string | null;
   /** The same facts without the clock: the record's sentence and the trail's row. */
   sentence: string | null;
-  /** The whole line's target; `null` for idle and for `нет связи` (neither is a link). */
+  /** The whole line's target; `null` for idle (a state with nothing to open is not a link). */
   door: NowDoor | null;
   /** The frame's own moment — what the line's clock prints. */
   at: number | null;
@@ -85,8 +87,6 @@ export type NowState = {
 export type NowInput = {
   /** The page's folded frames. */
   state: ClientState;
-  /** The moment the socket went down, `null` while the page can see the machine. */
-  offlineAt?: number | null;
   /** The page's clock: it decides two things only — a stale claim and a finished linger. */
   nowMs: number;
 };
@@ -138,24 +138,8 @@ function authorLine(state: ClientState): string | null {
 }
 
 /** The one derived state of the head, the record and the trail (§11.1/§11.4). */
-export function nowStateOf({ state, offlineAt = null, nowMs }: NowInput): NowState {
+export function nowStateOf({ state, nowMs }: NowInput): NowState {
   const author = authorLine(state);
-  // The page cannot see the machine: that is the whole line, and it is not a link (§11.1).
-  if (offlineAt !== null) {
-    const parts: LinePart[] = [{ text: NOW_VERBS.offline }, ...clockPart(offlineAt)];
-    return {
-      kind: 'offline',
-      parts,
-      line: headLineWord(parts),
-      sentence: headLineWord([{ text: NOW_VERBS.offline }]),
-      door: null,
-      at: offlineAt,
-      untilMs: null,
-      terminal: false,
-      author,
-    };
-  }
-
   // One rule, one order: the newest frame wins, and a work state takes the tie over an ending
   // (a pass's own `landed` and the write it carries are the same moment).
   const draft = newest([

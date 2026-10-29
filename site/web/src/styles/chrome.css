@@ -13,13 +13,13 @@
 }
 /* BOOK-DOC-35 §5 / BOOK-90 B / BOOK-112 — the running head: one row at the frame's width.
    The brand (the book's own title) and the chapter slot sit together on the left (one 24 px
-   gap); the folio keeps the row's right end. There is no status row: state belongs to
-   panels, the chronicle and the end matter, never to the reading surface. */
+   gap); the folio keeps the row's right end. The status line (BOOK-DOC-84 §11.1) is a second
+   block under the row and only while something happens; the row itself never carries state. */
 .top-in {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
+  /* Block, not a row of items: the running head is one `.top-row`, and the status line is a
+     second block **in the head's flow** under it (BOOK-DOC-84 §11.1). The head's own height
+     therefore includes the line, and `useStickyOffsets` measures that height as one number. */
+  display: block;
   padding-top: 14px;
   padding-bottom: 10px;
 }
@@ -147,7 +147,6 @@
 /* BOOK-DOC-35 §3 — the narrow steps of the same system: tablet, then phone. */
 @media (max-width: 1023px) {
   .top-in {
-    display: block;
     padding-top: 11px;
     padding-bottom: 8px;
   }

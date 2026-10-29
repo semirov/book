@@ -11,7 +11,7 @@
  * the same column, at the same size, on the same paper.
  */
 
-import type { ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 
 /** The one fact and the one verb. Pinned by `offline.test.tsx`. */
 export const OFFLINE_SENTENCE = 'сети нет — главы читаются с сервера, офлайн их нет';
@@ -25,7 +25,23 @@ export function isOffline(doc: Document = document, online: boolean = navigator.
   return doc.documentElement.dataset.offline === '1' || online === false;
 }
 
+/**
+ * BOOK-157 — **one reload when the network comes back**, which is the stale-bundle guard for the
+ * crash-loop case: the document this page booted from was the worker's *own* constant, and it
+ * names the release that served it. When the host returns, the reader is looking at an old
+ * bundle answering a new server; one navigation is all it takes to get the deploy, and the
+ * offline page has no print to interrupt. One event, once, injected so a test can fire it.
+ */
+export function reloadWhenOnline(
+  events: Pick<EventTarget, 'addEventListener' | 'removeEventListener'>,
+  reload: () => void,
+): () => void {
+  events.addEventListener('online', reload, { once: true });
+  return () => events.removeEventListener('online', reload);
+}
+
 export function Offline(): ReactElement {
+  useEffect(() => reloadWhenOnline(window, () => window.location.reload()), []);
   return (
     <main className="page" data-offline-surface="1">
       <div className="state-line">

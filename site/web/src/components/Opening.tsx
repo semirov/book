@@ -2,6 +2,7 @@ import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
 import type { ClientState } from '../lib/clientState.ts';
+import type { ConnectionState } from '../lib/socketStatus.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
@@ -44,7 +45,7 @@ export function Opening({
   live,
   chronicle,
   client,
-  offlineAt,
+  connection,
   reading,
   gated = false,
 }: {
@@ -67,8 +68,8 @@ export function Opening({
   chronicle?: boolean;
   /** BOOK-DOC-84 §11.1 — the page's folded frames: the head's line is derived from them. */
   client?: ClientState | null;
-  /** The moment the socket went down, `null` while the page can see the machine. */
-  offlineAt?: number | null;
+  /** BOOK-DOC-84 §11.1 — the socket's own state, for the head's one connection word. */
+  connection?: ConnectionState | null;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
   /**
@@ -98,7 +99,7 @@ export function Opening({
         onOpenChange={onOpenChange}
         live={live}
         client={client}
-        offlineAt={offlineAt}
+        connection={connection}
         reading={reading}
       />
       {/* BOOK-225 — a gated page has no second mode: the record's past chapters are prose. */}

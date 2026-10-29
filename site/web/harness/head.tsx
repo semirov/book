@@ -189,6 +189,11 @@ const mount = document.getElementById('mount');
 if (mount === null) throw new Error('the harness has no mount');
 const root = createRoot(mount);
 
+/** The chapter the reader is in: a real catalogue title, so the running head has all three facts. */
+const CHAPTER = 3;
+const PAGE = 7;
+const CATALOG = BOOK.catalog.map((row) => (row.n === CHAPTER ? { ...row, title: 'Третья', rev: 1, written: true } : row));
+
 let shown: string | null = new URLSearchParams(window.location.search).get('state');
 /** The author's own line, on demand: the two-row case the phone must still hold. */
 let author = false;
@@ -200,7 +205,7 @@ function render(): void {
     <Header
       state={BOOK.state}
       ribbon={null}
-      catalog={BOOK.catalog}
+      catalog={CATALOG}
       markers={[]}
       onOpenChange={() => undefined}
       live={false}
@@ -208,7 +213,7 @@ function render(): void {
         client === null ? null : author ? { ...client(), viewer: { signedIn: true, displayName: 'Аня', isAuthor: true } } : client()
       }
       {...(name === null ? {} : { nowMs: AT[name] ?? T })}
-      reading={{ n: 1, page: 1 }}
+      reading={{ n: CHAPTER, page: PAGE }}
     />,
   );
 }

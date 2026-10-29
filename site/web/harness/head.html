@@ -4,6 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>head harness</title>
+    <style>
+      /* The React root adds no box of its own: `.top` must be a child of the one canvas so its
+         `position: sticky` is bounded by the page, exactly as in `main.tsx`. */
+      #mount {
+        display: contents;
+      }
+    </style>
   </head>
   <body>
     <!--
@@ -17,9 +24,11 @@
       the line takes at 390 and 1440, measures the first paragraph's top before and after, and
       saves one screenshot per state. Nothing is measured in this file: the numbers decide.
     -->
-    <!-- The page's own shell (`main.tsx`): the canvas states the column and its gutters. -->
-    <div class="canvas"><div id="mount"></div></div>
-    <main class="canvas">
+    <!-- The page's own shell (`main.tsx`): one canvas holds the head and the prose, so the head's
+         `position: sticky` is bounded by the page, as it is in the app. -->
+    <div class="canvas">
+      <div id="mount"></div>
+      <main class="page">
       <article class="page ch" id="ch-1" data-n="1" data-rev="2" aria-label="глава 1">
         <div class="ch-h">
           <span class="ch-id"><span class="ch-n">01</span></span>
@@ -30,7 +39,33 @@
           улица начнёт просыпаться.
         </p>
       </article>
-    </main>
+      <!-- The scrolled case: a chapter far enough down that `scrollIntoView` must scroll, and
+           whose heading must land under the sticky head, not beneath it. -->
+      <article class="page ch" id="ch-2" data-n="2" data-rev="0" aria-label="глава 2">
+        <div class="ch-h">
+          <span class="ch-id"><span class="ch-n">02</span></span>
+          <span class="ch-meta">глава 2</span>
+        </div>
+        <p class="p" id="second">
+          Дверь закрылась за спиной, и коридор стал длиннее, чем был. Я шёл, считая лампы.
+        </p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+        <p class="p">Первый час шёл снег. Второй час стало тихо. Третий час вышел Петров.</p>
+      </article>
+      </main>
+    </div>
     <script type="module" src="/harness/head.tsx"></script>
   </body>
 </html>
