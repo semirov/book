@@ -7,22 +7,23 @@
 
 import { validateReason, type CommentAuditVerdict } from '@book/shared';
 
+import { openAttempt } from '../comments/attempts.ts';
 import { readCommentRow } from '../comments/repo.ts';
-import { appendDecision } from './decisionsFile.ts';
 import { readAnswer } from './answer.ts';
 import { recordAudit } from './audit.ts';
-import { settleAttempt, spendFromFlags } from './triage.ts';
+import { chargeTriageSpend, spendFromFlags } from './triage.ts';
 import { operatorLabel, type OperatorArgs, type OperatorIo } from './operator.ts';
 
 /**
  * `audit <commentId> --verdict FITS|OFF --reason "…" [--by label]` (BOOK-9), or the auditor's
  * own answer: `audit <commentId> --answer <json | @file | ->` (BOOK-61 review B2).
  *
- * The verdict is recorded once, before triage, and no change exists without `FITS`. BOOK-174:
- * `OFF` is answered by the ladder — a `legal`/`illegal-content` filing becomes the harm lock,
- * everything else escalates — and the auditor's own note stays for the operator, in the event.
- * An `--answer` is parsed and post-checked against the batch's envelope first: a malformed
- * answer, or a quote that is not in the field it names, records nothing and exits 1.
+ * The verdict is recorded once, before triage, and no change exists without `FITS`. BOOK-206:
+ * `OFF` **records and leaves** — the row keeps its state and the automatic applier places the
+ * reading the answer carried, so this command writes no decision line and closes no attempt.
+ * The auditor's own note stays for the operator (`audit_reason`). An `--answer` is parsed and
+ * post-checked against the batch's envelope first: a malformed answer, or a quote that is not
+ * in the field it names, records nothing and exits 1.
  */
 export function audit(parsed: OperatorArgs, io: OperatorIo, now: () => Date): number {
   const commentId = parsed.positionals[0];
@@ -101,33 +102,20 @@ export function audit(parsed: OperatorArgs, io: OperatorIo, now: () => Date): nu
     return 1;
   }
   if (verdict === 'OFF') {
-    // BOOK-174: the answer the row was given decides the ledger's word — a lock refused it,
-    // an escalation only stopped it until a person reads it.
-    const answered = readCommentRow(io.db, comment.id);
+    // BOOK-206: the row is left exactly as it is — no line, no status, no closed attempt — so
+    // the automatic applier can place the reading. The model call is still charged: it was paid.
     if (spend !== null && 'spend' in spend) {
-      settleAttempt(io.db, {
-        commentId: comment.id,
-        chapter: comment.chapter,
-        outcome: answered?.status === 'rejected' ? 'refused' : 'held',
-        at,
-        spend: spend.spend,
-      });
+      const open = openAttempt(io.db, comment.id);
+      if (open !== undefined) {
+        chargeTriageSpend(io.db, {
+          chapter: comment.chapter,
+          passId: `triage:${comment.id}:${String(open.n)}`,
+          at,
+          ...spend.spend,
+        });
+      }
     }
-    // The reader's line is the one the row now carries — the harm lock's clause or the author's
-    // question — never the auditor's note about the canvas.
-    appendDecision(io.dir, {
-      id: comment.id,
-      status: 'rejected',
-      reason: answered?.reason ?? reason ?? 'вне книги',
-      at,
-      batch: comment.batch_id,
-      changeId: null,
-    });
-    io.print(
-      answered?.status === 'escalated'
-        ? `${comment.id}: OFF · ждёт решения автора`
-        : `${comment.id}: OFF · не принято, читатель увидит почему`,
-    );
+    io.print(`${comment.id}: OFF записан · чтение вынесет триаж`);
     return 0;
   }
   io.print(`${comment.id}: FITS · можно решать`);

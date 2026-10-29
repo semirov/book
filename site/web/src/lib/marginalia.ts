@@ -1,6 +1,5 @@
 import {
   DEFAULT_FRAME_MODE,
-  DISPOSITION_WORDS,
   FAILED_ATTEMPT_LINE,
   framePaperworkReason,
   RETRO_MODES,
@@ -25,8 +24,9 @@ import { clampQuote, splitSentences } from './seam.ts';
  * another.
  *
  * «Рассмотрено» is never printed for a filing applied to text, and «внесено» never for one that
- * was not. A refusal is a state of its own — it never waits, never reads as a queue place — and
- * an escalated filing is decided yet not refused: it waits for the author, in its own word.
+ * was not. A refusal is a state of its own — it never waits, never reads as a queue place. There
+ * is no author's door any more (BOOK-206): every filing is placed by the ladder, and a legacy
+ * `escalated` row — which the boot migration re-opens — reads as any undecided row does.
  *
  * The word alone does not carry the facts: a superseded anchor, a held check and an expired pass
  * are all «ждёт», and the second line (`consequence`) says which one — the deck is vocabulary.
@@ -37,7 +37,7 @@ import { clampQuote, splitSentences } from './seam.ts';
  * `registered` is «рассмотрено»; only `rejected` is «отклонено».
  */
 
-export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'escalated' | 'refused';
+export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'refused';
 
 /** The deck's one line for a premise that waits for the chapter's first pass (one source). */
 export const PREMISE_PENDING = 'принято в основу, до первой редакции';
@@ -48,10 +48,6 @@ export const STATE_WORDS: Readonly<Record<State, string>> = {
   working: 'идёт',
   landed: 'внесено',
   registered: 'рассмотрено',
-  // BOOK-174 — the ladder could not place the filing and no lock applies: it is decided (the
-  // author will decide it) and it is not a refusal. The word is the shared one, so the margin
-  // and the report cannot drift apart.
-  escalated: DISPOSITION_WORDS.escalated,
   // BOOK-189 — a refusal is its own state; `filingMarginalia` heads it with the gate's word.
   refused: 'отклонено',
 };
@@ -181,9 +177,10 @@ export function filingState(comment: FilingFacts): State {
     // BOOK-137: accepted as paperwork — nothing was written, and it is decided, so not «ждёт».
     case 'registered':
       return 'registered';
-    // BOOK-174: escalated is decided and not refused — the author's turn, said in its own words.
+    // BOOK-206: a legacy `escalated` row (before the boot migration re-opens it) is neither
+    // landed nor refused — it waits like any undecided filing, and no author's word is printed.
     case 'escalated':
-      return 'escalated';
+      return 'waiting';
     // BOOK-189: a refusal is a decision, not a queue place. It never reads as waiting.
     case 'rejected':
       return 'refused';
@@ -261,8 +258,8 @@ export function filingConsequence(comment: FilingFacts): string {
       return landedReceiptLine(comment.applied) ?? '';
     }
     case 'escalated':
-      // BOOK-174: nothing landed, so there is no receipt — the fact is whose turn it is.
-      return 'решает автор';
+      // BOOK-206: nothing landed and nobody is owed it any more — a legacy row claims no fact.
+      return '';
     case 'superseded':
       return 'снято: текст успел измениться';
     case 'rejected':

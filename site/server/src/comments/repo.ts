@@ -375,7 +375,7 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // The attempt counts are read only for a row a revision could reopen: a settling row on a
   // public list owes no ledger question (three COUNTs per row otherwise).
   const revise =
-    status === 'rejected' || status === 'escalated' ? reviseState(db, row, nowMs) : unrevisedState();
+    status === 'rejected' ? reviseState(db, row, nowMs) : unrevisedState();
   // BOOK-174: how the filing was read, from the five stored columns — the report is derived
   // here, once, so every surface prints the same three lines.
   const { disposition, report } = dispositionFieldsOf(db, row);

@@ -237,7 +237,7 @@ describe('GET /api/me/decisions (BOOK-13)', () => {
     expect(guard?.decidedAt).toBe('2026-10-25T12:20:00Z');
   });
 
-  it('says a change was stopped for the author, and keeps no wave or share claim', async () => {
+  it('says a change a gate stopped is not accepted, and keeps no wave or share claim', async () => {
     harness = await bootComments();
     seedComment(harness, {
       id: 'cmt_esc',
@@ -260,8 +260,10 @@ describe('GET /api/me/decisions (BOOK-13)', () => {
     seedCascade(harness, 'csc_esc', 'chg_esc', 2);
     seedImpact(harness, 'chg_esc', [8, 9], 5);
 
+    // BOOK-206: the reader's own vocabulary has no «waits for the author» — a stopped change is
+    // «не принята», with the gate's own line as the reason.
     expect((await mine(harness)).items[0]).toMatchObject({
-      outcome: 'escalated',
+      outcome: 'refused',
       reason: 'дальше нужен автор: правка меняет решение героя',
       waves: null,
       blocks: null,

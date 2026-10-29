@@ -53,12 +53,6 @@ import { chooseFor, paperDecisionOf, storeChain } from './dispositionStore.ts';
 
 export type AcceptResult =
   | { changeId: string; created: boolean; superseded?: boolean }
-  /**
-   * BOOK-174 — the ladder could not place the filing and no lock applies: nothing is written
-   * here, no change and no rejection. The caller records the escalation and tells the reader
-   * that the author decides.
-   */
-  | { escalated: true; decision: DispositionDecision }
   | {
       error: string;
       /**
@@ -219,10 +213,9 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
 
     // BOOK-174: how this filing is read is decided once, here, before anything is written — by
     // the chooser over the decision line's own reading, or by the caller that already chose. The
-    // `escalated` answer below is the ladder's old fifth state: BOOK-206 made `chooseDisposition`
-    // total, so only a chain stored by an older build can still reach it (step 3 deletes it).
+    // chooser is total (BOOK-206, ADR-045 §5), so a decision with no lock always places: there is
+    // no fifth state and no author's door left for a caller to reach.
     const decision = precomputed ?? chooseFor(db, comment, input.proposal ?? null);
-    if (decision.escalated) return { escalated: true, decision };
     // A lock can only reach here through the finale (the other three are refused before this
     // point); the chain is stored so the refusal is reported as the book's word, not a code.
     if (decision.disposition === 'inadmissible') {

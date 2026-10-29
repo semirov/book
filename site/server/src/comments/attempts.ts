@@ -332,9 +332,10 @@ export function attemptState(db: Db, comment: AttemptComment, nowMs: number): At
   const reopenAt = new Date(utcDayEnd(nowMs)).toISOString();
 
   const decidedMs = comment.decided_at === null ? Number.NaN : Date.parse(comment.decided_at);
-  // BOOK-174: an escalated filing waits for the author exactly as long as a refused one waits
-  // for its cooldown — the reader's way back is the same door, and the counters are the same.
-  const reworkable = comment.status === 'rejected' || comment.status === 'escalated';
+  // BOOK-206: a refusal under a lock is the only state the reader may rework. The removed fifth
+  // state is gone from this door too — a legacy `escalated` row is re-opened by the boot
+  // migration, and until then it waits like any undecided row.
+  const reworkable = comment.status === 'rejected';
   const cooldownUntil =
     reworkable && Number.isFinite(decidedMs)
       ? new Date(decidedMs + REFUSAL_COOLDOWN_MS).toISOString()

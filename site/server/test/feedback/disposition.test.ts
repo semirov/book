@@ -95,7 +95,6 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       sentenceId: SENTENCE_ID,
       blockIndex: 3,
       sentenceIndex: 1,
-      escalated: false,
       alternate: false,
     });
     expect(chainReport(decision, ANCHOR, true)).toEqual({
@@ -155,7 +154,6 @@ describe('the ladder — each of the five outcomes is reachable', () => {
         quoteKept: null,
         blockIndex: null,
         sentenceIndex: null,
-        escalated: false,
       });
       expect(chainReport(decision, ANCHOR, true)).toEqual({
         line1: 'не принято',
@@ -179,8 +177,6 @@ describe('the ladder — each of the five outcomes is reachable', () => {
     expect(decision).toMatchObject({
       disposition: 'as_said',
       lock: null,
-      escalated: false,
-      question: null,
       sentenceId: null,
       carrierKind: null,
     });
@@ -385,12 +381,12 @@ describe('the report’s two forms and its bounds', () => {
   });
 
   it('has one closed word per reading and a closed label per carrier', () => {
+    // BOOK-206: four readings and no fifth — a filing is placed, never parked for a person.
     expect(Object.values(DISPOSITION_WORDS)).toEqual([
       'прочитано как сказано',
       'прочитано через бумагу',
       'прочитано как отказ в мире',
       'не принято',
-      'ждёт решения автора',
     ]);
     expect(Object.values(CARRIER_LABELS)).toEqual([
       'документ',

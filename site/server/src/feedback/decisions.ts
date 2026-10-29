@@ -135,30 +135,23 @@ export class DecisionsTailer {
     if (comment === undefined) return 0;
 
     const at = typeof decision.at === 'string' ? decision.at : this.now().toISOString();
-    // BOOK-174: an escalated filing waits for the author, and the author answers through the same
-    // file every other decision travels in. Exactly one second line is accepted — an `accepted`
-    // one — and a `rejected` line on an escalated row is the escalation's own line re-read, so a
-    // replay stays a no-op.
-    const secondDecision = comment.status === 'escalated' && decision.status === 'accepted';
-    if (comment.decided_at !== null && !secondDecision) {
+    // BOOK-206: first decision wins, always — there is no second decision and no author's door.
+    if (comment.decided_at !== null) {
       // First decision wins. A replay of the same decision is announced once more (the CLI
       // writes the DB state before the tailer reads the line, so this is the normal path);
       // a different decision is recorded and ignored.
       const sameChange =
         decision.status === 'accepted'
           ? decision.changeId !== null && comment.change_id === decision.changeId
-          : comment.status === 'rejected' || comment.status === 'escalated';
+          : comment.status === 'rejected';
       if (!sameChange) {
         appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'first decision wins' });
         return 0;
       }
-      // BOOK-174: an escalated row keeps its own word — the file says `rejected`, the row says
-      // «ждёт решения автора», and the frame carries the row's answer, never the line's.
-      const escalated = comment.status === 'escalated';
       this.emit('comment:decision', {
         id: comment.id,
         chapter: comment.chapter,
-        status: escalated ? 'escalated' : decision.status,
+        status: decision.status,
         reason: comment.reason ?? decision.reason,
         decidedAt: comment.decided_at,
         batchId: comment.batch_id,
@@ -177,8 +170,8 @@ export class DecisionsTailer {
     }
 
     if (decision.status === 'rejected') {
-      this.reject(comment, decision.reason, at, decision.batch ?? null);
-      return 1;
+      // BOOK-206: a refusal with no lock writes nothing, and the tick counts nothing for it.
+      return this.reject(comment, decision.reason, at, decision.batch ?? null) ? 1 : 0;
     }
 
     // BOOK-16: the kind stored with the comment reaches the intent validation and then the
@@ -200,8 +193,7 @@ export class DecisionsTailer {
       kind: storedKind === null ? null : storedKind.kind,
     });
     if (!verdict.ok) {
-      this.reject(comment, verdict.reason, at, decision.batch ?? null);
-      return 1;
+      return this.reject(comment, verdict.reason, at, decision.batch ?? null) ? 1 : 0;
     }
 
     const accepted = acceptComment(this.db, {
@@ -226,14 +218,7 @@ export class DecisionsTailer {
         this.refuseAtGate(comment, accepted.error, at, decision.batch ?? null);
         return 1;
       }
-      this.reject(comment, accepted.error, at, decision.batch ?? null);
-      return 1;
-    }
-    // BOOK-174: the ladder could not place the filing and no lock applies — the author decides.
-    // Nothing was written by `acceptComment`; the escalation record is the rejection helper's.
-    if ('escalated' in accepted) {
-      this.reject(comment, accepted.decision.reason, at, decision.batch ?? null);
-      return 1;
+      return this.reject(comment, accepted.error, at, decision.batch ?? null) ? 1 : 0;
     }
 
     const queue = readQueue(this.db, this.now().getTime());
@@ -292,15 +277,22 @@ export class DecisionsTailer {
 
   /**
    * BOOK-174 — a content rejection is not a refusal any more unless a lock applies. The one
-   * helper decides: a lock → `rejected` with its chain and the lock's own line; no lock →
-   * `escalated`, the author's question as the reason, and a frame that says so. A gate that
-   * has not spoken (`AUDIT_REQUIRED`, `RIGHTS_REQUIRED`, `QUARANTINED`) never reaches here.
+   * helper decides: a lock → `rejected` with its chain and the lock's own line; no lock → nothing
+   * at all (`false`), because the ladder places every filing and a person's line cannot refuse
+   * one. A gate that has not spoken (`AUDIT_REQUIRED`, `RIGHTS_REQUIRED`, `QUARANTINED`) never
+   * reaches here.
    */
-  private reject(comment: CommentRow, reason: string, at: string, batch: string | null): void {
+  private reject(comment: CommentRow, reason: string, at: string, batch: string | null): boolean {
     // The engine's note stays in the event, where an operator can look it up; the reader is
     // owed the book's own word (`refuseAtGate` below keeps the old sentence for a gate that has
     // spoken and not decided anything about how the filing should be read).
     const result = disposeRejection(this.db, { comment, at, batch, note: publicDecisionReason(reason) });
+    // BOOK-206: no lock, no refusal. The line is a diagnostic that asked for a state the ladder
+    // cannot produce; the row keeps its own answer and nothing is emitted for it.
+    if (result.status === 'no-lock') {
+      appendCommentEvent(this.db, comment.id, 'decision-ignored', at, { reason: 'a refusal needs a lock' });
+      return false;
+    }
     this.emit('comment:decision', {
       id: comment.id,
       chapter: comment.chapter,
@@ -317,6 +309,7 @@ export class DecisionsTailer {
     // A filing with no change never gets a close to announce it, so this is its only answer — and
     // BOOK-174 makes the answer the reading, not a word about a refusal.
     this.notify?.(comment.id, reportOfDecision(this.db, result.decision, comment));
+    return true;
   }
 
   /** The report of a row that already carries a chain; null for a row read before v27. */

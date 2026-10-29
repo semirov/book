@@ -254,6 +254,8 @@ describe('a refusal spends nothing (BOOK-158)', () => {
     expect(posted.statusCode).toBe(201);
     const id = posted.json().comment.id as string;
     expect(cli(h, 'inbox').code).toBe(0);
+    // BOOK-206: a refusal is a lock — the legal flag is the harm lock's fact.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
     const refused = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
     expect(refused.code).toBe(0);
     expect(editKeys(h)).toEqual([]);

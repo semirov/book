@@ -19,8 +19,9 @@
  *
  * Every comment is audited (`audit`, BOOK-9) before it can be decided: the auditor judges
  * whether the intervention fits the book's canvas — `process/ROLE_PROMPTS.md` §0 is the
- * brief, and this CLI only records its verdict. `FITS` permits a later `decide`; `OFF`
- * refuses the comment to the reader, with the auditor's reason, in the same act.
+ * brief, and this CLI only records its verdict. `FITS` permits a later `decide`; `OFF` records
+ * the verdict and leaves the row to the automatic applier, which places the reading it asked
+ * for (BOOK-206).
  *
  * BOOK-61 adds Gate A's two operator acts: `hold` is the A pass's write (a stopped filing
  * becomes `quarantined` with the rule that stopped it, and the evidence passes the same
@@ -42,7 +43,6 @@ import {
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
-import { escalatedInbox } from './author.ts';
 import {
   closeBatch,
   createBatch,
@@ -83,7 +83,7 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const name = arg.slice(2);
-    if (name === 'help' || name === 'json' || name === 'held' || name === 'rights' || name === 'escalated') {
+    if (name === 'help' || name === 'json' || name === 'held' || name === 'rights') {
       flags.set(name, 'true');
       continue;
     }
@@ -96,7 +96,7 @@ export function parseFeedbackArgs(argv: string[]): ParsedArgs {
 }
 
 const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|close|list|limits> [...]
-  inbox  [--limit 20] [--chapter 8] [--held] [--rights] [--escalated]
+  inbox  [--limit 20] [--chapter 8] [--held] [--rights]
   audit  <commentId> --verdict FITS|OFF --reason "…" [--by label]
   audit  <commentId> --answer <json | @file | ->
   hold   <commentId> --rule <INJ-…> --evidence <field>:<quote> [--by label]
@@ -110,7 +110,7 @@ const USAGE = `usage: feedback.mjs <inbox|audit|hold|rights|release|read|decide|
   list   [--status new] [--limit 50]
   limits            the editor's check: отказа в мире больше 1 в 4 · 1 в 6 · 0 в части
   a filing on the frozen frame is accepted as paperwork: --mode names the document it became
-  a rejected filing is escalated to the author unless a lock (право, безопасность, рамка, финал) applies`;
+  decide rejected refuses only under a lock (право, безопасность, рамка, финал): otherwise a filing is placed by the ladder`;
 
 export function runFeedback(argv: string[], io: FeedbackIo): number {
   const now = io.now ?? (() => new Date());
@@ -162,7 +162,6 @@ export function runFeedback(argv: string[], io: FeedbackIo): number {
 
 function inbox(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): number {
   if (parsed.flags.has('held')) return heldInbox(parsed, io);
-  if (parsed.flags.has('escalated')) return escalatedInbox(parsed, io);
   if (parsed.flags.has('rights')) return rightsInbox(parsed, io);
   const limit = intFlag(parsed.flags.get('limit'), 20);
   let chapter: number | undefined;

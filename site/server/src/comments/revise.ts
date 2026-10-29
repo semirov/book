@@ -63,7 +63,7 @@ export function reviseComment(
   // BOOK-174: two states are still the reader's to rework — a refusal under a lock, and a filing
   // that waits for the author. An escalated filing is not a verdict about the words; a revision
   // withdraws it from the author's desk and puts the new words back in the queue.
-  if (comment.status !== 'rejected' && comment.status !== 'escalated') {
+  if (comment.status !== 'rejected') {
     return fail(409, 'NOT_REVISABLE', 'поправить можно только отклонённое замечание');
   }
 
@@ -125,7 +125,7 @@ export function reviseComment(
                 rights_verdict = NULL, rights_rule = NULL, rights_at = NULL, rights_by = NULL,
                 rights_source = NULL, held_rule = NULL, held_by = NULL, held_at = NULL,
                 disposition = NULL, lock = NULL, carrier_kind = NULL, quote_kept = NULL
-          WHERE id = ? AND status IN ('rejected','escalated')`,
+          WHERE id = ? AND status = 'rejected'`,
       )
       .run(
         text.body.text,

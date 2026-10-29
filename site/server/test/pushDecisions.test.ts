@@ -79,10 +79,12 @@ function tailerWith(h: Harness, notified: string[]): DecisionsTailer {
 }
 
 describe('a decided filing reaches the push hook', () => {
-  it('tells it about a refusal the operator already applied, once', async () => {
+  it('tells it about a refusal under a lock the operator already applied, once', async () => {
     const h = await boot();
     const id = await comment(h);
-    // The running site's path: `feedback.mjs decide` writes the row, then the line.
+    // The running site's path: `feedback.mjs decide` writes the row, then the line. BOOK-206:
+    // the one refusal left is a lock, so the row carries its fact.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
     expect(cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст этой главы').code).toBe(0);
 
     const notified: string[] = [];
@@ -94,7 +96,7 @@ describe('a decided filing reaches the push hook', () => {
     expect(notified).toEqual([id]);
   });
 
-  it('tells it about a refusal that exists only as a line', async () => {
+  it('stays silent for a rejected line the ladder did not place (BOOK-206)', async () => {
     const h = await boot();
     const id = await comment(h);
     const notified: string[] = [];
@@ -106,8 +108,10 @@ describe('a decided filing reaches the push hook', () => {
       `${JSON.stringify({ id, status: 'rejected', reason: 'вне рамок: не про текст', at: h.clock.now().toISOString() })}\n`,
       'utf8',
     );
-    expect(tailer.poll()).toBe(1);
-    expect(notified).toEqual([id]);
+    // No lock, no refusal: the line writes nothing and no reader is told anything.
+    expect(tailer.poll()).toBe(0);
+    expect(notified).toEqual([]);
+    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'new' });
   });
 
   it('stays silent for an accepted line: its change speaks when it is decided', async () => {
