@@ -124,20 +124,37 @@ describe('bootDatabase — a fresh volume (BOOK-187)', () => {
     db.close();
   });
 
-  it('writes the volume marker once, and never overwrites it (BOOK-187)', async () => {
+  it('writes the named volume marker once, upgrades the legacy shape, and leaves a foreign file alone', async () => {
     const dataDir = tempDir();
     const first = await boot(dataDir);
     first.db.close();
     const marker = join(dataDir, '.book-volume');
-    expect(readFileSync(marker, 'utf8')).toBe(`${String(SCHEMA_VERSION)}\n`);
+    const named = `book-volume 1\nschema=${String(SCHEMA_VERSION)}\n`;
+    expect(readFileSync(marker, 'utf8')).toBe(named);
     // 0644: a readable fact about the volume, never a secret.
     expect(statSync(marker).mode & 0o777).toBe(0o644);
 
-    // The marker is the volume's own record: a later boot does not rewrite it.
-    writeFileSync(marker, '24\n');
+    // The marker is the volume's own record: a later boot does not rewrite the named shape.
+    writeFileSync(marker, 'book-volume 1\nschema=24\n');
     const second = await boot(dataDir);
     second.db.close();
-    expect(readFileSync(marker, 'utf8')).toBe('24\n');
+    expect(readFileSync(marker, 'utf8')).toBe('book-volume 1\nschema=24\n');
+
+    // The shape BOOK-187's first image wrote — the live volume's `28\n` — is upgraded once, in
+    // place: the marker's own shape is migrated like the schema it describes.
+    writeFileSync(marker, '28\n');
+    const third = await boot(dataDir);
+    third.db.close();
+    expect(readFileSync(marker, 'utf8')).toBe(named);
+    expect(readdirSync(dataDir).filter((name) => name === '.book-volume')).toEqual(['.book-volume']);
+    // The upgrade stages `.book-volume.tmp` and renames it: nothing of it is left behind.
+    expect(readdirSync(dataDir).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+
+    // Anything else is an operator's file: the boot writes no byte of it and the doctor names it.
+    writeFileSync(marker, 'hello\n');
+    const fourth = await boot(dataDir);
+    fourth.db.close();
+    expect(readFileSync(marker, 'utf8')).toBe('hello\n');
   });
 
   it('serves without the marker when the volume cannot take the line', async () => {
@@ -147,6 +164,23 @@ describe('bootDatabase — a fresh volume (BOOK-187)', () => {
     const { db, lines } = await boot(dataDir);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect(lines.join('\n')).toContain('BOOK_VOLUME');
+    db.close();
+  });
+
+  it('leaves the legacy marker alone when the upgrade cannot be staged, and still serves', async () => {
+    const dataDir = tempDir();
+    const first = await boot(dataDir);
+    first.db.close();
+    const marker = join(dataDir, '.book-volume');
+    writeFileSync(marker, '28\n');
+    // A directory where the staging file goes: the write fails, and the boot must not delete it,
+    // must not leave the marker half-written, and must still serve the book.
+    mkdirSync(`${marker}.tmp`);
+    const { db, lines } = await boot(dataDir);
+    expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
+    expect(lines.join('\n')).toContain('BOOK_VOLUME');
+    expect(readFileSync(marker, 'utf8')).toBe('28\n');
+    expect(statSync(`${marker}.tmp`).isDirectory()).toBe(true);
     db.close();
   });
 });
