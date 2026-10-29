@@ -361,17 +361,19 @@ describe('main — --revert and --dry-run', () => {
  * itself (exit 1) after three consecutive parks instead of spinning.
  */
 describe('main — the loop’s breath and its brake', () => {
-  it('takes the next filing on the breath, never the 15-minute pause, and exits 1 after three parks', async () => {
+  it('takes the next filing on the breath, never the 15-minute pause, and exits 1 after five parks', async () => {
     // A one-millisecond breath and the shipped pause: if the loop ever waits the pause, this
     // test times out instead of passing slowly. The engine's poll stays the shipped 100 ms floor.
     const harness = await createHarness({
-      env: { WRITER_BREATH_MS: '1', WRITER_PAUSE_MS: '900000', TRIAGE_POLL_MS: '100' },
+      // §10.8: the brake is five parks, and a parked pass counts toward the day — so the day's
+      // own bound is lifted here, or the day (4 passes) would stop the lane before five parks.
+      env: { WRITER_BREATH_MS: '1', WRITER_PAUSE_MS: '900000', TRIAGE_POLL_MS: '100', WRITER_MAX_PASSES_PER_DAY: '10' },
     });
     try {
-      for (const chapter of [40, 41, 42]) harness.premised(chapter, `в главе ${String(chapter)} появляется документ о допуске`);
-      // Three refused answers, one per filing: each park closes its step and leaves the next
-      // filing waiting, so the loop must walk all three on the breath and then stop.
-      for (let index = 0; index < 3; index += 1) harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
+      for (const chapter of [40, 41, 42, 43, 44]) harness.premised(chapter, `в главе ${String(chapter)} появляется документ о допуске`);
+      // Five refused answers, one per filing (§10.8's brake): each park closes its step and
+      // leaves the next filing waiting, so the loop must walk all five on the breath and stop.
+      for (let index = 0; index < 5; index += 1) harness.script.push('Извините, я не могу написать эту главу.', 'Извините, я не могу.');
 
       const lines: string[] = [];
       const started = Date.now();
@@ -387,11 +389,11 @@ describe('main — the loop’s breath and its brake', () => {
       const elapsed = Date.now() - started;
 
       expect(code).toBe(1);
-      expect(lines.join('\n')).toContain('писатель остановлен после трёх отказов');
+      expect(lines.join('\n')).toContain('писатель остановлен после 5 отказов');
       // Three passes, not one pass and a 15-minute sleep: the whole run is a few seconds.
       expect(elapsed).toBeLessThan(15_000);
       const steps = harness.fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get() as { n: number };
-      expect(steps.n).toBe(3);
+      expect(steps.n).toBe(5);
     } finally {
       await harness.close();
     }
@@ -405,7 +407,7 @@ describe('main — the loop’s breath and its brake', () => {
     expect(proseDelayMs('gone', true, config)).toBe(3_000);
     expect(proseDelayMs('parked', true, config)).toBe(3_000);
     expect(proseDelayMs('idle', true, config)).toBe(900_000);
-    expect(PARK_LIMIT).toBe(3);
+    expect(PARK_LIMIT).toBe(5);
   });
 
   it('keeps the shipped breath at three seconds and the pause as the idle poll', async () => {

@@ -7,7 +7,18 @@
  * operator pass with no reader surface and is not announced.
  */
 
-import type { PassAcceptedPayload, PassClosedPayload, PassKind, ServerEventType } from '@book/shared';
+import {
+  DESPERATE_ATTEMPT,
+  DESPERATE_DEADLINE_MS,
+  MAX_ATTEMPTS,
+  STEP_WALL_MS,
+  widenedWord,
+  type PassAcceptedPayload,
+  type PassClosedPayload,
+  type PassKind,
+  type ServerEventType,
+  type WidenedNote,
+} from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { readCascadeRow, readStepRow } from './changes.ts';
@@ -73,14 +84,32 @@ export class PassNarrator {
     // BOOK-220 — a `front` step has no chapter (`live.passes` names it `'front'`), so a claim
     // that needs one is not invented: the pass is announced by its stages and its close.
     if (step.chapter === null) return null;
+    // §10.8: the attempt is the step's own lease count; a desperate step is always 6 of 6.
+    const leases = this.deps.db.prepare('SELECT COUNT(*) AS n FROM leases WHERE step_id = ?').get(step.step_id) as {
+      n: number;
+    };
+    const desperate = step.desperate === 1;
+    const attempt = desperate ? DESPERATE_ATTEMPT : Math.max(1, Math.min(MAX_ATTEMPTS, leases.n));
+    const widened: WidenedNote | null =
+      step.widened === null ? null : { code: step.widened as WidenedNote['code'], sentence: widenedWord(step.widened) };
+    const atMs = Date.parse(at);
     return {
       stepId: step.step_id,
       chapter: step.chapter,
       lane: step.lane,
       pass,
       premiseChangeId: step.premise_change,
-      at: Date.parse(at),
+      at: atMs,
       ahead: 0,
+      attempt,
+      maxAttempts: desperate ? DESPERATE_ATTEMPT : Math.max(attempt, MAX_ATTEMPTS),
+      widened,
+      desperate,
+      // §10.8: the attempt's own bound — a desperate attempt is a dispatch (180 s), not work.
+      deadlineAt: atMs + (desperate ? DESPERATE_DEADLINE_MS : STEP_WALL_MS),
+      // §10.8: a re-issued attempt (more than one lease) says when it came back; a first claim
+      // has nothing to announce as a retry.
+      retryAt: attempt > 1 ? atMs : null,
     };
   }
 

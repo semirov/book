@@ -29,7 +29,7 @@ import { PASS_STOPS, isChapterNumber, type BudgetDto, type WriterAssignment } fr
 import { isWrittenView } from '../engine/text.ts';
 import { readBuildStamp } from '../buildStamp.ts';
 import type { EngineClient, LandView } from './client.ts';
-import { capLine, estimatePassUsd } from './estimate.ts';
+import { capLine, estimateLine, estimatePassUsd } from './estimate.ts';
 import { moneyGuard, triageGuard } from './passGuard.ts';
 import { createLane, assignmentData, type PassResult, type ProviderCall } from './passLane.ts';
 import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
@@ -254,10 +254,14 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         await lane.loadText([chapter - 1, chapter, chapter + 1]);
         // The same bytes a landing writes (one trailing newline), so a no-op compares equal.
         beforeText = finalize(chapterQuote(lane.textOf(chapter)));
+        // BOOK-173 §4 chooses the ordinary mode; BOOK-DOC-84 §10.8's widening overrides it once
+        // the third failure has forced the whole chapter — a widened attempt is never a patch.
         choice =
-          deps.ripple === undefined
-            ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
-            : RIPPLE_MODE;
+          job.widened !== null
+            ? { mode: 'rewrite', reason: 'widened' }
+            : deps.ripple === undefined
+              ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
+              : RIPPLE_MODE;
       } catch (error) {
         return await lane.park(failureOf(error));
       }
@@ -414,13 +418,30 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       beforeText = text;
     }
 
+    // §10.8: a widened attempt announces the widening as its own stage, once, on attempt 4.
+    if (job.attempt === 4 && job.widened !== null && !job.desperate) {
+      await lane.emit({
+        stage: 'widening',
+        chapter,
+        passId: job.stepId,
+        changeId: job.changeId,
+        summary: stageSummary.widening({
+          attempt: job.attempt,
+          max: job.maxAttempts,
+          sentence: job.widened.sentence,
+        }),
+        model: null,
+        widened: job.widened.code,
+        at: now(),
+      });
+    }
     // 9. The gates (`gatesPass.ts`, BOOK-DOC-80): the full pair only on a trigger, Gate B always.
     //    A `local only` change closes on the local judge's word; a resumed step has no verification
     //    record, so it takes the pair exactly as it always did.
     const gateOutcome = await runGates({
       lane,
       log: deps.log,
-      full: gates === null || gates.gatesMode !== 'local only',
+      full: !job.desperate && (gates === null || gates.gatesMode !== 'local only'),
       answered,
     });
     if (gateOutcome.kind === 'rights') {

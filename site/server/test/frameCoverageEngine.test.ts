@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
+
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -352,7 +353,22 @@ describe('§2.1 — the engine’s own rows', () => {
       );
       bridge.tick();
       const state = first(frames, 'engine:state');
-      expect(state.data).toMatchObject({ status: 'running', passesToday: 0, maxPasses: 4, writerAt: null });
+      expect(state.data).toMatchObject({ status: 'running', passesToday: 0, maxPasses: 4, writerAt: null, resumeAt: null });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('#22 a throttled day names its resume time, never a silent stop', () => {
+    const { fixture, frames, bridge } = siteRig();
+    try {
+      fixture.db.prepare(`INSERT INTO meta (k, v) VALUES ('engine.heartbeat', ?), ('engine.status', 'throttled')`).run(
+        new Date(T0).toISOString(),
+      );
+      bridge.tick();
+      const state = first(frames, 'engine:state');
+      expect(state.data).toMatchObject({ status: 'throttled' });
+      expect(state.data.resumeAt).toBe('2026-10-26T00:00:00.000Z');
     } finally {
       fixture.close();
     }

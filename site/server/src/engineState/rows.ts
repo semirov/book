@@ -104,6 +104,12 @@ export type StepRow = {
   note: string | null;
   cycle: number;
   closed_at: string | null;
+  /** §10.8: 1 = the sixth, deterministic attempt; 0 otherwise. */
+  desperate: number;
+  /** §10.8: the widening code this attempt runs under, null before the third failure. */
+  widened: string | null;
+  /** The writer's mode for this attempt: a patch, or the widened rewrite. */
+  mode: 'patch' | 'rewrite' | null;
 };
 
 export type LeaseRow = {

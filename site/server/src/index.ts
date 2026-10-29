@@ -98,8 +98,17 @@ async function main(): Promise<void> {
     resolveViewer: (request): ViewerContext => {
       const session = sessions.read(parseCookies(request.headers.cookie)[SESSION_COOKIE]);
       return session === null
-        ? { viewer: { signedIn: false, displayName: null }, identityId: null }
-        : { viewer: { signedIn: true, displayName: session.identity.display_name }, identityId: session.identity.id };
+        ? { viewer: { signedIn: false, displayName: null, isAuthor: false }, identityId: null }
+        : {
+            // BOOK-DOC-84 §10.4: the author marker is the identity's own column, read here and
+            // never fetched again — `hello.viewer.isAuthor` is the only carrier.
+            viewer: {
+              signedIn: true,
+              displayName: session.identity.display_name,
+              isAuthor: session.identity.is_author === 1,
+            },
+            identityId: session.identity.id,
+          };
     },
   });
 

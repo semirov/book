@@ -73,7 +73,17 @@ export function buildTriagePrompt(input: TriagePromptInput): BuiltPrompt {
   const role = rolePromptOf(source, '0');
   const recorded =
     input.ask.recordedVerdict === null ? [] : ['## Уже вынесено', recordedVerdictLine(input.ask.recordedVerdict), ''];
-  const system = [role.trimEnd(), '', ...recorded, TRIAGE_CONTRACT].join('\n');
+  // §10.8 — the widened reading. The requirement is one rung wider, not a different question:
+  // the filing may be read as a document (`through_paper`) even where the words would stand.
+  const widened =
+    input.ask.widened === null || input.ask.widened === undefined
+      ? []
+      : [
+          '## Требования расширены',
+          'Это четвёртая или пятая попытка: просим читать как документ. Если текст можно принять за основу главы, выбирай `through_paper`, а не `as_said`.',
+          '',
+        ];
+  const system = [role.trimEnd(), '', ...recorded, ...widened, TRIAGE_CONTRACT].join('\n');
 
   const payload = promptPayload(input.ask);
   // One fence, the same line at both ends: `JSON.stringify` escapes every newline inside a value,

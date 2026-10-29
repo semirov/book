@@ -15,6 +15,7 @@ import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
 import { lastLeaseOfStep, releaseLease, stampEscalatedRelease, stepWallOf } from './leases.ts';
 import * as store from './store.ts';
+import { changeForStep } from './helpers.ts';
 import { isWrittenChapter, readChapterRows, readFrontRows } from './text.ts';
 import { isEngineError, type EngineDeps } from './types.ts';
 
@@ -64,7 +65,18 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
   // escalated, and its lease released, however healthy the session looks. A walled step is
   // escalated, never re-issued — three attempts at 45 minutes each is a loop.
   for (const step of store.listOpenSteps(db)) {
-    if (stepWallOf(deps, step) > now) continue;
+    // §10.8: a desperate attempt is a dispatch (180 s), not work, and its short bound runs from
+    // the attempt's own lease — never from the step's opening, or the wall would close the sixth
+    // before a session could claim it. An unclaimed desperate step waits for its attempt.
+    const desperateLease = step.desperate === 1 ? store.liveLeaseForStep(db, step.step_id) : undefined;
+    if (step.desperate === 1) {
+      if (desperateLease === undefined) continue;
+      if (Date.parse(desperateLease.acquired_at) + deps.config.desperateDeadlineMs > now) continue;
+    } else if (stepWallOf(deps, step) > now) {
+      continue;
+    }
+    // The bound this stop names: the desperate dispatch's own 180 s, or the step's window.
+    const wall = step.desperate === 1 ? deps.config.desperateDeadlineMs : deps.config.stepWallMs;
     // Closing a walled step may close its whole cascade (a ripple owns no work in flight),
     // so a later step of the same snapshot may already be closed by the time it is reached.
     if (store.getStep(db, step.step_id)?.outcome !== null) continue;
@@ -77,7 +89,7 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
           outcome: 'escalated',
           seamsOut: parseSeams(null),
           // The note is read by an operator and copied to a page: a sentence, never a constant.
-          note: `глава не закрылась за отведённое время (${String(Math.round(deps.config.stepWallMs / 60_000))} мин) — проход остановлен`,
+          note: `глава не закрылась за отведённое время (${String(Math.round(wall / 60_000))} мин) — проход остановлен`,
           model: null,
           tokensIn: 0,
           tokensOut: 0,
@@ -140,7 +152,45 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         report.recovered.push(step.step_id);
         continue;
       }
-      if (attempts > 2) {
+      // §10.8 — the ladder: the third failure widens the requirements, the fourth widens them
+      // once more (a paragraph, then the chapter), the fifth hands over to the desperate sixth.
+      // Each widening is recorded on the step and re-issued, so the next `pass:accepted` names
+      // the attempt it opens and the writer runs under the widened mode.
+      const widening =
+        attempts === 3 && step.widened === null
+          ? { widened: 'wider-edit', mode: 'rewrite' as const }
+          : attempts === 4 && step.widened === 'wider-edit'
+            ? { widened: 'whole-chapter', mode: step.mode }
+            : null;
+      if (widening !== null) {
+        store.updateStep(db, step.step_id, widening);
+        // §10.8's scope widening: a change that failed three times is no longer a phrase —
+        // the next attempt's scope is the chapter. The column is the public fact the card reads.
+        const served = changeForStep(db, step);
+        if (served !== undefined && served.scope_hint !== 'chapter') {
+          store.updateChange(db, served.id, { scope_hint: 'chapter' });
+        }
+        appendEvent(
+          db,
+          { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true, widened: widening.widened } },
+          now,
+        );
+        report.reissued.push(step.step_id);
+        continue;
+      }
+      if (attempts > 4 && step.desperate !== 1) {
+        // §10.8: five ordinary attempts, then one desperate sixth, then the close. The step is
+        // marked (the sixth is the same step, cheaper) and re-issued with its own short bound.
+        store.updateStep(db, step.step_id, { desperate: 1 });
+        appendEvent(
+          db,
+          { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true, desperate: true } },
+          now,
+        );
+        report.reissued.push(step.step_id);
+        continue;
+      }
+      if (attempts > 4) {
         closeStep(
           deps,
           step.step_id,
@@ -159,11 +209,16 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
         continue;
       }
       report.reissued.push(step.step_id);
+      appendEvent(
+        db,
+        { kind: 'step.opened', stepId: step.step_id, cascadeId: step.cascade_id, chapter: step.chapter, payload: { pass: step.pass, reissued: true } },
+        now,
+      );
       continue;
     }
 
     // Landed, but the session vanished: the gates may continue under a fresh lease.
-    if (attempts > 2) {
+    if (attempts > 4) {
       closeStep(deps, step.step_id, {
         outcome: 'escalated',
         seamsOut: parseSeams(null),

@@ -38,7 +38,6 @@ import {
   rescheduleTomorrow,
   scheduleRetry,
   triageBackoffMs,
-  utcDayEnd,
 } from '../comments/attempts.ts';
 import { appendCommentEvent, readBlock, readCommentRow, type CommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
@@ -65,6 +64,8 @@ export type TriageAssignment = {
   world: string | null;
   /** Gate C's stored answer, when the filing was already judged: only the reading is asked. */
   recordedVerdict: 'FITS' | 'OFF' | null;
+  /** §10.8: the widening this attempt runs under (`as-document` after the third failure). */
+  widened: string | null;
 };
 
 export type TriageNextResult = TriageAssignment | null | { assignment: null; reason: 'budget' };
@@ -87,7 +88,14 @@ export type TriageVerdictResult =
  * the engine has already put the attempt back to the next UTC midnight (`nextAt`) with a fresh
  * budget, so `tries` in the result is the spent count and the row is due again tomorrow.
  */
-export type TriageFailResult = { tries: number; nextAt: string | null; cap: boolean; already?: true };
+export type TriageFailResult = {
+  tries: number;
+  nextAt: string | null;
+  cap: boolean;
+  /** §10.8: the fifth failure hands over to the deterministic sixth — no call, no wait. */
+  desperate?: true;
+  already?: true;
+};
 
 /** What one failed call cost, when the provider reported it: the money is still spent. */
 export type TriageFailSpend = TriageSpendInput;
@@ -156,6 +164,9 @@ function cappedAttempts(db: Db, now: string, limit = 8): CappedAttempt[] {
           AND a.outcome = 'submitted'
           AND a.verdict IS NULL
           AND a.tries >= ?
+          -- §10.8: a desperate attempt is not abandoned — it waits for the site's deterministic
+          -- settlement, and sweeping it to the next day would undo the ladder's last rung.
+          AND a.desperate = 0
           AND (a.claim_until IS NULL OR a.claim_until <= ?)
         ORDER BY c.created_at, c.id
         LIMIT ?`,
@@ -197,6 +208,14 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
       if (!claimTriage(db, { commentId: candidate.commentId, n: candidate.n, session, now })) continue;
       const row = readCommentRow(db, candidate.commentId);
       if (row === undefined) continue;
+      const claimed = readAttempt(db, candidate.commentId, candidate.n);
+      // §10.1: the claim is a row the page hears (`filing:reading{claimed}`), with the try it just
+      // bought. One row per claim, named by the attempt it belongs to.
+      appendCommentEvent(db, candidate.commentId, 'triage.claimed', now, {
+        attempt: candidate.n,
+        try: claimed?.tries ?? 0,
+        ...(claimed?.widened === null || claimed?.widened === undefined ? {} : { widened: claimed.widened }),
+      });
       const ask = triageAskOf(db, row);
       return {
         commentId: row.id,
@@ -206,6 +225,7 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         envelope: ask.envelope,
         world: ask.world,
         recordedVerdict: row.audit_verdict === 'FITS' || row.audit_verdict === 'OFF' ? row.audit_verdict : null,
+        widened: claimed?.widened ?? null,
       };
     }
     return null;
@@ -299,6 +319,14 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
             SET audit_verdict = ?, audit_reason = ?, audited_at = ?, audited_by = ?
           WHERE id = ? AND audit_verdict IS NULL`,
       ).run(stored.verdict, stored.reason, at, `triage:${input.spend.model}`.slice(0, 64), input.commentId);
+      // §10.1: the answer landing is its own frame (`filing:reading{read}`), with the try that
+      // bought it; the sink (`comment:decision`) is the site's, never this row.
+      appendCommentEvent(db, input.commentId, 'triage.read', at, {
+        attempt: input.n,
+        try: attempt.tries,
+        verdict: stored.verdict,
+        ...(attempt.widened === null ? {} : { widened: attempt.widened }),
+      });
       chargeTriageSpend(db, {
         chapter: row.chapter,
         passId: `triage:${input.commentId}:${String(input.n)}`,
@@ -344,12 +372,6 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
           return {};
         }
       });
-      // B5: the cap already moved this attempt to the next day (`tries` 0). A retried report must
-      // not re-count it — it would append a second event, charge the same call again and pull the
-      // day's budget back to a 60 s retry.
-      if (attempt.tries === 0 && metas.some((meta) => meta.attempt === input.n && meta.cap === true)) {
-        return { tries: attempt.tries, nextAt: attempt.next_at, cap: true, already: true };
-      }
       const reported = metas.some((meta) => meta.attempt === input.n && meta.try === attempt.tries);
       if (reported) {
         return { tries: attempt.tries, nextAt: attempt.next_at, cap: attempt.tries >= TRIAGE_MAX_TRIES, already: true };
@@ -370,33 +392,50 @@ export function createFilingTriage(deps: EngineDeps): FilingTriage {
         }
       }
       const backoff = triageBackoffMs(attempt.tries);
-      // B5: the cap's own hour — the next UTC midnight, the one the row's sentence names.
-      const capAt = backoff === null ? iso(utcDayEnd(atMs)) : null;
+      const nextAt = backoff === null ? null : iso(atMs + backoff);
+      // §10.8: the third failure widens the reading itself — one event, one code, attempts 4–5
+      // run under it. The widening is the row's state, never a client's guess.
+      const widensNow = attempt.tries === 3 && attempt.widened === null;
+      if (widensNow) {
+        db.prepare('UPDATE comment_attempts SET widened = ? WHERE comment_id = ? AND n = ?').run(
+          'as-document',
+          input.commentId,
+          input.n,
+        );
+        appendCommentEvent(db, input.commentId, 'triage.widened', at, {
+          attempt: input.n,
+          try: attempt.tries,
+          widened: 'as-document',
+        });
+      }
       appendCommentEvent(db, input.commentId, 'triage.failed', at, {
         code: input.code.slice(0, 60),
         attempt: input.n,
         try: attempt.tries,
-        // BOOK-206 B5: the cap is a fact the site's bridge must be able to draw a frame from —
-        // `retryAt` names the hour the next reading is bought, and the event carries it.
-        ...(capAt === null ? {} : { cap: true, retryAt: capAt }),
+        // §10.8: the sixth is not a wait. The cap carries no `retryAt`: it is the last try, and
+        // the site settles what a desperate attempt can settle without a model call.
+        ...(nextAt === null ? { cap: true, desperate: true } : { retryAt: nextAt }),
+        ...(attempt.widened === null && !widensNow ? {} : { widened: attempt.widened ?? 'as-document' }),
       });
-      if (backoff === null) {
-        const retryAt = capAt ?? iso(utcDayEnd(atMs));
-        // BOOK-206 B5: the last reading of the day does not end the filing. One new UTC day is a
-        // new reading budget: the attempt goes back to 00:00 UTC, and the row's own line names
-        // the time. A person is told as well — a cap is a rate the operator must see.
-        const nextAt = rescheduleTomorrow(db, { commentId: input.commentId, n: input.n, nowMs: atMs }) ?? retryAt;
+      if (nextAt === null) {
+        // §10.8: five failures are the ceiling of bought calls. The sixth is deterministic and
+        // cheap; the engine marks it and alerts once, and the site's applier settles it.
+        db.prepare(
+          'UPDATE comment_attempts SET desperate = 1, next_at = NULL, claim_by = NULL, claim_until = NULL WHERE comment_id = ? AND n = ?',
+        ).run(
+          input.commentId,
+          input.n,
+        );
         recordAlert(deps, {
           kind: 'triage' satisfies EngineAlert['kind'],
           at,
           changeId: null,
           cascadeId: null,
           stepId: null,
-          detail: `triage ${input.commentId} #${String(input.n)}: ${TRIAGE_MAX_TRIES} tries, last code ${input.code.slice(0, 60)}, retry after ${nextAt}`,
+          detail: `triage ${input.commentId} #${String(input.n)}: ${TRIAGE_MAX_TRIES} tries, last code ${input.code.slice(0, 60)} — desperate sixth`,
         });
-        return { tries: attempt.tries, nextAt, cap: true };
+        return { tries: attempt.tries, nextAt: null, cap: true, desperate: true };
       }
-      const nextAt = iso(atMs + backoff);
       scheduleRetry(db, { commentId: input.commentId, n: input.n, nextAt });
       return { tries: attempt.tries, nextAt, cap: false };
     })();

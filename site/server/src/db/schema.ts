@@ -43,6 +43,9 @@
  * verification record (BOOK-DOC-80).
  * BOOK-209 (v34) adds `reader_places` — the reader's anchor in the book, one row per identity,
  * so a second device resumes where the first stopped (`READER_PLACES_TABLE_SQL`).
+ * BOOK-220 (v35, BOOK-DOC-84 §10.8) adds the ladder's own facts: `steps.desperate`/
+ * `steps.widened` and `comment_attempts.widened`/`desperate`, plus the two stages `revising` and
+ * `desperate` in `pass_stages` (`migrateV35.ts`).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
@@ -59,7 +62,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 /**
  * BOOK-209 (v34) — the reader's place: one row per identity, so a second device resumes where

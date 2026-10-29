@@ -2,6 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ATTEMPT_LINE,
+  HEAD_WORDS,
+  HEAD_WORD_OF,
+  WIDENED_CODES,
+  aheadWord,
+  attemptWord,
+  isWidenedCode,
+  minutesWord,
+  moneyWord,
+  widenedWord,
   FAILURE_LINES,
   LOCK_LINES,
   outcomeLine,
@@ -237,5 +246,171 @@ describe('one reason line per outcome (BOOK-218, owner 2026-10-29)', () => {
       reading: 'through_paper',
       carrierKind: 'speech',
     });
+
+/* ── BOOK-DOC-84 §10.9 — the copy contract over the whole output ──────────────── */
+
+/** The words a reader was promised never to see (§10.9). */
+const MACHINE_NOUNS = [
+  'модель',
+  'LLM',
+  'триаж',
+  'вердикт',
+  'гейт',
+  'итерация',
+  'сокет',
+  'лейн',
+  'очередь',
+];
+
+/** The counter is never printed as `2 / 5`. */
+const SLASH_NUMBER = /\d\s*\/\s*\d/u;
+
+/** Every rule violation in one string, or `null` — a range test asserts once, not per item. */
+function violationOf(text: string): string | null {
+  for (const noun of MACHINE_NOUNS) {
+    if (text.toLowerCase().includes(noun.toLowerCase())) return `"${text}" names ${noun}`;
+  }
+  if (SLASH_NUMBER.test(text)) return `"${text}" prints a slash counter`;
+  return null;
+}
+
+function assertHuman(text: string): void {
+  expect(violationOf(text)).toBeNull();
+}
+
+describe('§10.9 — the seven head words', () => {
+  it('are exactly the owner’s seven strings', () => {
+    expect(Object.values(HEAD_WORDS)).toEqual([
+      'тихо',
+      'правку читают',
+      'правка ждёт',
+      'главу пишут',
+      'главу проверяют',
+      'внесено',
+      'связи нет',
+    ]);
+  });
+
+  it('map every derived kind to a head word, and a defect to `тихо`', () => {
+    for (const kind of Object.values(HEAD_WORD_OF)) expect(HEAD_WORDS[kind]).toBeTruthy();
+    expect(HEAD_WORDS[HEAD_WORD_OF['сбой']]).toBe('тихо');
+  });
+
+  it('all pass the two rules', () => {
+    for (const word of Object.values(HEAD_WORDS)) assertHuman(word);
   });
 });
+
+describe('§10.9 — attempts 1..6', () => {
+  it('print exactly the listed forms', () => {
+    expect([1, 2, 3, 4, 5, 6].map((n) => attemptWord(n, 5))).toEqual([
+      'первая из пяти',
+      'вторая из пяти',
+      'третья из пяти',
+      'четвёртая из пяти',
+      'пятая из пяти',
+      'последняя, шестая',
+    ]);
+  });
+
+  it('take the fix noun for written text', () => {
+    expect(attemptWord(3, 5, 'fix')).toBe('третья поправка из пяти');
+    expect(attemptWord(4, 5, 'fix')).toBe('четвёртая поправка из пяти');
+    expect(attemptWord(6, 6, 'fix')).toBe('последняя, шестая поправка');
+  });
+
+  it('a desperate sixth is the last of six, and every form is human', () => {
+    expect(attemptWord(6, 6)).toBe('последняя, шестая');
+    for (let n = 1; n <= 6; n += 1) {
+      for (const form of ['attempt', 'fix'] as const) {
+        for (const max of [5, 6]) assertHuman(attemptWord(n, max, form));
+      }
+    }
+  });
+});
+
+describe('§10.9 — elapsed and waits', () => {
+  it('uses whole words from a second to three days', () => {
+    expect(minutesWord(0)).toBe('меньше минуты');
+    expect(minutesWord(59_000)).toBe('меньше минуты');
+    expect(minutesWord(60_000)).toBe('минута');
+    expect(minutesWord(119_000)).toBe('минута');
+    expect(minutesWord(2 * 60_000)).toBe('две минуты');
+    expect(minutesWord(4 * 60_000)).toBe('четыре минуты');
+    expect(minutesWord(5 * 60_000)).toBe('пять минут');
+    expect(minutesWord(21 * 60_000)).toBe('двадцать одна минута');
+    expect(minutesWord(60 * 60_000)).toBe('час');
+    expect(minutesWord(2 * 60 * 60_000)).toBe('два часа');
+    expect(minutesWord(5 * 60 * 60_000)).toBe('пять часов');
+    expect(minutesWord(24 * 60 * 60_000)).toBe('сутки');
+    expect(minutesWord(2 * 24 * 60 * 60_000)).toBe('двое суток');
+    expect(minutesWord(3 * 24 * 60 * 60_000)).toBe('трое суток');
+  });
+
+  it('holds the rules across the whole range (0 s … 3 days, every step)', () => {
+    const bad: string[] = [];
+    for (let ms = 0; ms <= 3 * 24 * 60 * 60_000; ms += 60_000) {
+      const text = minutesWord(ms);
+      if (violationOf(text) !== null) bad.push(text);
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+    // Every hour and every day boundary is covered too (the step above is one minute).
+    for (const hours of [1, 2, 5, 11, 21, 23]) {
+      expect(violationOf(minutesWord(hours * 60 * 60_000))).toBeNull();
+    }
+  });
+});
+
+describe('§10.9 — the queue', () => {
+  it('names the place in words', () => {
+    expect(aheadWord(0)).toBe('следом');
+    expect(aheadWord(1)).toBe('впереди одна правка');
+    expect(aheadWord(2)).toBe('впереди две правки');
+    expect(aheadWord(3)).toBe('впереди три правки');
+    expect(aheadWord(4)).toBe('впереди четыре правки');
+    expect(aheadWord(5)).toBe('впереди пять правок');
+    expect(aheadWord(21)).toBe('впереди двадцать одна правка');
+  });
+
+  it('holds the rules for 0..50', () => {
+    const all = Array.from({ length: 51 }, (_, n) => aheadWord(n));
+    expect(all.filter((text) => violationOf(text) !== null)).toEqual([]);
+  });
+});
+
+describe('§10.9 — the price', () => {
+  it('is two decimals, a comma and a space before the sign', () => {
+    expect(moneyWord(0.05)).toBe('0,05 $');
+    expect(moneyWord(1.2)).toBe('1,20 $');
+    expect(moneyWord(0)).toBe('0,00 $');
+  });
+
+  it('keeps the estimate’s mark', () => {
+    expect(moneyWord(0.05, true)).toBe('≈ 0,05 $');
+  });
+
+  it('holds the machine-noun rule for 0 … 100 $', () => {
+    const bad: string[] = [];
+    for (let cents = 0; cents <= 10_000; cents += 1) {
+      const text = moneyWord(cents / 100, cents % 2 === 0);
+      if (violationOf(text) !== null) bad.push(text);
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+});
+
+describe('§10.9 — the widening', () => {
+  it('is the four human sentences', () => {
+    expect(widenedWord('wider-edit')).toBe('правим шире: не строку, а абзац');
+    expect(widenedWord('whole-chapter')).toBe('правим шире: всю главу');
+    expect(widenedWord('as-document')).toBe('просим читать как документ');
+    expect(widenedWord('stricter-check')).toBe('проверяем строже');
+    expect(widenedWord('unknown')).toBe('');
+  });
+
+  it('validates codes instead of captioning anything', () => {
+    for (const code of WIDENED_CODES) {
+      expect(isWidenedCode(code)).toBe(true);
+      assertHuman(widenedWord(code));
+    }
+    expect(isWidenedCode('переписывание вместо патча')).toBe(false);

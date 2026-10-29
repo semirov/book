@@ -68,7 +68,7 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
       const down = runStubStep(fixture, { title: 'Перед', blocks: ['Служебная строка.'], seams: [] }, 'bwd');
       expect(down?.assignment.chapter).toBe(5);
 
-      // Three revisions are allowed; the fourth blocker stops the step instead of publishing.
+      // Five revisions are allowed (§10.8); the sixth blocker stops the step instead of publishing.
       const repair = runStubStep(fixture, {
         title: 'После',
         blocks: ['Тестовый абзац номер два. Это служебный текст, он не является текстом книги.'],
@@ -76,7 +76,7 @@ describe('a physics claim that fails the pass never lands (BOOK-76)', () => {
         consultant: { verdict: 'GAP', findings: blocker() },
       });
       expect(repair?.assignment.chapter).toBe(7);
-      expect(repair?.revisions).toBe(3);
+      expect(repair?.revisions).toBe(5);
       expect(repair?.result.outcome).toBe('escalated');
 
       const trace = fixture.engine.trace(change.id);

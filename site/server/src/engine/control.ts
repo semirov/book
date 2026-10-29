@@ -21,6 +21,7 @@ import * as bodies from './bodySchemas.ts';
 import { registerTriageRoutes } from './filingTriage.ts';
 import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
 import { registerWriterDoors } from './writerDoors.ts';
+import { stageBody } from './stageBody.ts';
 import { isEngineError } from './types.ts';
 import type { Engine } from './service.ts';
 
@@ -195,32 +196,6 @@ const enqueueBody = z.object({
   scopeHint: z.enum(['phrase', 'chapter']).optional(),
   commentId: z.string().max(80).nullish(),
   sessionId: z.string().max(64).nullish(),
-});
-
-/**
- * A lane stage (`docs/writer-lane.md §2`): the shape is checked here, the vocabulary and the bounds
- * are `stage.ts`'s job, and `chapter`/`changeId` come from the step, never from the body.
- */
-const stageBody = z.object({
-  passId: id,
-  stageSeq: z.number().int().min(1).max(1_000_000).nullish(),
-  stage: z.string().min(1).max(32),
-  at: z.number().int().min(0),
-  actor: z.object({ process: z.string().min(1).max(32), model: z.string().max(120).nullish() }),
-  summary: z.string().min(1).max(4_000),
-  span: z
-    .array(
-      z.object({
-        blockId: z.string().max(120).nullish(),
-        before: z.string().max(20_000),
-        after: z.string().max(20_000),
-        truncated: z.boolean().optional(),
-      }),
-    )
-    .max(64)
-    .nullish(),
-  tokens: z.object({ in: z.number().int().min(0), out: z.number().int().min(0) }).nullish(),
-  costUsd: z.number().min(0).max(1_000_000).nullish(),
 });
 
 /**

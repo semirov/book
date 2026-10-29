@@ -106,6 +106,9 @@ describe('migrate — the attempt ledger (BOOK-158)', () => {
       'next_at',
       'verdict',
       'verdict_at',
+      // BOOK-DOC-84 §10.8 (v31): the widening code and the desperate sixth.
+      'widened',
+      'desperate',
     ]);
     expect(indexes(db)).toEqual(
       expect.arrayContaining(['comment_attempts_day', 'comment_attempts_comment', 'comment_attempts_body', 'comment_attempts_due']),

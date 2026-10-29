@@ -7,9 +7,53 @@
  * itself. Nothing here names a reader: the actor is a process and, when a model ran, its id.
  */
 
-export const PASS_STAGES = ['queued', 'read', 'verdict', 'drafting', 'typing', 'landed', 'refused'] as const;
+import { isWidenedCode, widenedWord, type WidenedCode } from './stateWords.ts';
+
+export const PASS_STAGES = [
+  'queued',
+  'read',
+  'verdict',
+  'drafting',
+  'typing',
+  'landed',
+  'refused',
+  // BOOK-DOC-84 §10.8 — the widening and the revision are states of their own: an iteration is
+  // never folded into `verdict`, and the widening is never a sentence on another stage.
+  'revising',
+  'widening',
+] as const;
 
 export type PassStage = (typeof PASS_STAGES)[number];
+
+/** §10.8: five attempts of the surface, then one desperate sixth — everywhere. */
+export const MAX_ATTEMPTS = 5;
+/** The sixth is the last: deterministic, cheapest, and always labelled. */
+export const DESPERATE_ATTEMPT = 6;
+/** A gate round's own bound: the call cap (420 s) plus a margin (60 s). */
+export const STAGE_DEADLINE_MS = 480_000;
+/** §10.8 — a desperate attempt is a dispatch, not work: 180 s. */
+export const DESPERATE_DEADLINE_MS = 180_000;
+/** A pass iterates at most four times inside five gate cycles (BOOK-DOC-84 §10.7). */
+export const MAX_ITERATIONS = 4;
+/**
+ * §10.8 — a step's wall must fit five attempts of its own bound: 225 minutes (5 × 45), not the
+ * 45-minute wall that closed the ladder at its second attempt.
+ */
+export const STEP_WALL_MS = 225 * 60_000;
+
+/** The three gates the pass names; a stage that is not a gate carries `null`. */
+export const GATE_NAMES = ['editor', 'consultant', 'rights'] as const;
+export type GateName = (typeof GATE_NAMES)[number];
+
+/** A gate's answer, as the stage carries it — never parsed out of the summary's prose. */
+export const STAGE_VERDICTS = ['HOLDS', 'GAP', 'CLEAR', 'REFUSED'] as const;
+export type StageVerdictWord = (typeof STAGE_VERDICTS)[number];
+
+/**
+ * §10.8/§10.9 — the widening the machine stated. The engine writes the **code**; the sentence is
+ * `widenedWord(code)` from `stateWords.ts`, so no call site invents copy.
+ */
+export type WidenedNote = { code: WidenedCode; sentence: string };
 
 /** Who did the work: the engine's scheduler, the writer, the site, or a gate. */
 export const STAGE_ACTOR_PROCESSES = ['engine', 'writer', 'site', 'auditor'] as const;
@@ -50,6 +94,28 @@ export type PassStageEvent = {
   tokens: { in: number; out: number } | null;
   /** On `landed`: this pass, from pipeline.json rates. */
   costUsd: number | null;
+  // ── §10.8's ladder fields ─────────────────────────────────────────────────
+  // Optional on the wire (PROTOCOL_VERSION 5): a stage row written before the amendment has no
+  // number, and a consumer that demands one would have to invent it. The store fills every new
+  // row; the server's own writers always send them.
+  /** The attempt this stage belongs to (1..6), and the ladder's ceiling. */
+  attempt?: number;
+  maxAttempts?: number;
+  /** The engine's widening for this attempt, `null` before the third failure. */
+  widened?: WidenedNote | null;
+  /** §10.8: the sixth attempt is the desperate one — deterministic, cheapest, labelled. */
+  desperate?: boolean;
+  /** The gate this stage belongs to; `null` on every non-gate stage. */
+  gate?: GateName | null;
+  /** The gate round inside the pass (1..5); `null` off `verdict`. */
+  round?: number | null;
+  /** `steps.cycle` at the pass's start (0..4) — how many times the text was revised. */
+  iteration?: number;
+  maxIterations?: number;
+  /** The gate's own answer when the stage is a `verdict`; `null` before it or off a gate. */
+  verdict?: StageVerdictWord | null;
+  /** `at + STAGE_DEADLINE_MS`: an open stage past it has a deadline that passed, not a stop. */
+  deadlineAt?: number;
 };
 
 export const STAGE_SUMMARY_MAX_CHARS = 200;
@@ -80,6 +146,17 @@ export type StageInput = {
   span?: readonly StageSpanInput[] | null;
   tokens?: { in: number; out: number } | null;
   costUsd?: number | null;
+  /** §10.8 — the ladder's fields; the store fills `attempt`/`iteration` from its own rows. */
+  attempt?: number | null;
+  maxAttempts?: number | null;
+  widened?: string | null;
+  desperate?: boolean;
+  gate?: GateName | null;
+  round?: number | null;
+  iteration?: number | null;
+  maxIterations?: number | null;
+  verdict?: StageVerdictWord | null;
+  deadlineAt?: number | null;
 };
 
 /** A validated input: the vocabulary is narrowed, the bounds are already applied. */
@@ -95,6 +172,16 @@ export type NormalizedStage = {
   span: StageSpan[] | null;
   tokens: { in: number; out: number } | null;
   costUsd: number | null;
+  attempt: number;
+  maxAttempts: number;
+  widened: WidenedNote | null;
+  desperate: boolean;
+  gate: GateName | null;
+  round: number | null;
+  iteration: number;
+  maxIterations: number;
+  verdict: StageVerdictWord | null;
+  deadlineAt: number;
 };
 
 export type StageRefusalCode = 'INVALID_STAGE' | 'UNKNOWN_STAGE' | 'UNKNOWN_ACTOR';
@@ -225,6 +312,68 @@ export function normalizeStageEvent(input: unknown): StageVerdict {
     return refuse('INVALID_STAGE', 'changeId is a string of at most 80 characters, or null');
   }
 
+  // §10.8 — the ladder's fields. `desperate` is the strongest fact: it fixes attempt 6 of 6,
+  // so a caller cannot label a desperate attempt as an ordinary one (the invariant is the row).
+  const desperate = input.desperate === true;
+  const rawAttempt = input.attempt;
+  if (rawAttempt !== undefined && rawAttempt !== null && (typeof rawAttempt !== 'number' || !Number.isInteger(rawAttempt))) {
+    return refuse('INVALID_STAGE', 'attempt is an integer 1..6');
+  }
+  const attempt = desperate
+    ? DESPERATE_ATTEMPT
+    : typeof rawAttempt === 'number' && rawAttempt >= 1 && rawAttempt <= MAX_ATTEMPTS
+      ? rawAttempt
+      : 1;
+  const rawMax = input.maxAttempts;
+  if (rawMax !== undefined && rawMax !== null && (typeof rawMax !== 'number' || !Number.isInteger(rawMax))) {
+    return refuse('INVALID_STAGE', 'maxAttempts is an integer 5 or 6');
+  }
+  const maxAttempts = desperate ? DESPERATE_ATTEMPT : Math.max(attempt, typeof rawMax === 'number' ? rawMax : MAX_ATTEMPTS);
+
+  if (input.gate !== undefined && input.gate !== null && !isOneOf(GATE_NAMES, input.gate)) {
+    return refuse('UNKNOWN_STAGE', `gate must be one of: ${GATE_NAMES.join(', ')}, or null`);
+  }
+  const gate = (input.gate ?? null) as GateName | null;
+
+  const rawRound = input.round;
+  if (rawRound !== undefined && rawRound !== null) {
+    if (typeof rawRound !== 'number' || !Number.isInteger(rawRound) || rawRound < 1 || rawRound > 5) {
+      return refuse('INVALID_STAGE', 'round is an integer 1..5, or null');
+    }
+  }
+  const round = typeof rawRound === 'number' ? rawRound : null;
+
+  const rawIteration = input.iteration;
+  if (
+    rawIteration !== undefined &&
+    rawIteration !== null &&
+    (typeof rawIteration !== 'number' || !Number.isInteger(rawIteration) || rawIteration < 0 || rawIteration > MAX_ITERATIONS)
+  ) {
+    return refuse('INVALID_STAGE', `iteration is an integer 0..${String(MAX_ITERATIONS)}`);
+  }
+  const iteration = typeof rawIteration === 'number' ? rawIteration : 0;
+
+  if (input.verdict !== undefined && input.verdict !== null && !isOneOf(STAGE_VERDICTS, input.verdict)) {
+    return refuse('UNKNOWN_STAGE', `verdict must be one of: ${STAGE_VERDICTS.join(', ')}, or null`);
+  }
+  const verdict = (input.verdict ?? null) as StageVerdictWord | null;
+
+  if (input.widened !== undefined && input.widened !== null && !isWidenedCode(input.widened)) {
+    return refuse('INVALID_STAGE', 'widened is one of the four widening codes, or null');
+  }
+  const widened =
+    input.widened === undefined || input.widened === null
+      ? null
+      : { code: input.widened as WidenedCode, sentence: widenedWord(input.widened) };
+
+  const rawDeadline = input.deadlineAt;
+  if (rawDeadline !== undefined && rawDeadline !== null) {
+    if (typeof rawDeadline !== 'number' || !Number.isInteger(rawDeadline) || rawDeadline < input.at) {
+      return refuse('INVALID_STAGE', 'deadlineAt is the stage’s ms epoch bound, at or after `at`');
+    }
+  }
+  const deadlineAt = typeof rawDeadline === 'number' ? rawDeadline : input.at + STAGE_DEADLINE_MS;
+
   return {
     ok: true,
     value: {
@@ -238,6 +387,16 @@ export function normalizeStageEvent(input: unknown): StageVerdict {
       span: span.span,
       tokens,
       costUsd: typeof rawCost === 'number' ? rawCost : null,
+      attempt,
+      maxAttempts,
+      widened,
+      desperate,
+      gate,
+      round,
+      iteration,
+      maxIterations: MAX_ITERATIONS,
+      verdict,
+      deadlineAt,
     },
   };
 }

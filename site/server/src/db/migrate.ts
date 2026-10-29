@@ -16,6 +16,7 @@ import { migrateV30 } from './migrateV30.ts';
 import { migrateV32 } from './migrateV32.ts';
 import { migrateV33 } from './migrateV33.ts';
 import { migrateV34 } from './migrateV34.ts';
+import { migrateV35 } from './migrateV35.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -340,6 +341,9 @@ const MIGRATIONS: Migration[] = [
   { to: 33, up: migrateV33 },
   // BOOK-209: `migrateV34.ts` — the reader's place, one row per identity (BOOK-173 took 33).
   { to: 34, up: migrateV34 },
+  // BOOK-220 (BOOK-DOC-84 §10.8): the ladder's counters, the widening codes, the two stages —
+  // 35, after BOOK-209's `reader_places` (34).
+  { to: 35, up: migrateV35 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

@@ -82,6 +82,12 @@ export type WriterPromptInput = {
   assignment: WriterAssignmentData;
   /** The text of any chapter the prompt quotes: the neighbours and the target itself. */
   chapterText: ChapterTextLookup;
+  /**
+   * §10.8 — the writer's mode, the owner's own widening knob. `patch` is the ordinary attempt;
+   * `rewrite` is the widened attempt (the third failure widened the requirements), and the
+   * prompt says so in one line. The prompt itself is not rewritten: one appended section.
+   */
+  mode?: 'patch' | 'rewrite';
 };
 
 export type PromptSection = { id: string; chars: number; sha256: string };
@@ -379,7 +385,25 @@ export function buildWriterPrompt(input: WriterPromptInput): BuiltPrompt {
     ...(own === null ? [] : [own]),
     assignmentSection(assignment),
     reminderSection(),
+    // §10.8: a widened attempt says so in one appended section; the ordinary prompt is untouched.
+    ...(input.mode === 'rewrite' ? [modeSection()] : []),
   ];
   return assemble(prefix, tail);
+}
+
+/**
+ * §10.8 — the widened attempt's one directive. The widened requirement is «a rewrite, not a
+ * patch»: the same contract, a wider bound. It is a section of its own so the ordinary prompt is
+ * byte-identical to the one measured before the widening.
+ */
+function modeSection(): Part {
+  return part(
+    'mode',
+    [
+      '## Режим этого прохода',
+      'Требования к этому проходу расширены после трёх неудачных попыток: это переписывание, а не точечная правка.',
+      'Перепиши абзац (а при повторе — главу) целиком, сохраняя голос и факты книги.',
+    ].join('\n'),
+  );
 }
 

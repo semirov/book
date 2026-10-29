@@ -242,8 +242,11 @@ export function proseDelayMs(
   return config.pauseMs;
 }
 
-/** §7 IFACE: three consecutive parks stop the lane (exit 1) — the brake D4 keeps. */
-export const PARK_LIMIT = 3;
+/**
+ * §7 IFACE / §10.8 — five consecutive parks stop the lane (exit 1), the brake D4 keeps. At three
+ * the supervisor stopped a filing's ladder before its fifth attempt — the owner's ladder is five.
+ */
+export const PARK_LIMIT = 5;
 
 /** A pass that spent money counts toward the day, closed or parked. */
 function spent(result: PassResult): boolean {
@@ -476,7 +479,7 @@ export async function main(deps: MainDeps = {}): Promise<number> {
         if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
         parks = result.status === 'parked' ? parks + 1 : 0;
         if (parks >= PARK_LIMIT) {
-          log('[writer] писатель остановлен после трёх отказов');
+          log(`[writer] писатель остановлен после ${String(PARK_LIMIT)} отказов`);
           return 1;
         }
         // BOOK-DOC-84 D4: no artificial silence while work waits. A closed pass is followed by

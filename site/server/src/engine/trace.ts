@@ -21,7 +21,8 @@ import type {
   WriterAssignment,
 } from '@book/shared';
 import {
-  CHAPTER_CHARS, TOTAL_CHAPTERS, normalizeInterventionKind, normalizeScopeHint, parseSeams } from '@book/shared';
+  CHAPTER_CHARS, DESPERATE_ATTEMPT, DESPERATE_DEADLINE_MS, MAX_ATTEMPTS, TOTAL_CHAPTERS,
+  normalizeInterventionKind, normalizeScopeHint, parseSeams, widenedWord } from '@book/shared';
 
 import { findLiveSentence } from '../sentences/store.ts';
 import type { StepRow, VerdictRow } from './store.ts';
@@ -225,6 +226,15 @@ export function writerAssignment(
   // What sent the writer back: the findings of the verdict that forced the last revision.
   // Stored on the step because a re-land replaces the verdict row (one row per role).
   const gapFindings = step.cycle > 0 ? json<Finding[]>(step.last_findings, []) : [];
+  const leaseCount = (
+    deps.db.prepare('SELECT COUNT(*) AS n FROM leases WHERE step_id = ?').get(step.step_id) as { n: number }
+  ).n;
+  // §10.8: the attempt's own bound runs from its lease — a desperate dispatch is 180 s from the
+  // moment a session picked it up, never from the step's opening (which may be hours old).
+  const lease = deps.db.prepare('SELECT acquired_at FROM leases WHERE id = ?').get(leaseId) as
+    | { acquired_at: string }
+    | undefined;
+  const attemptStartedAt = lease === undefined ? Date.parse(step.at) : Date.parse(lease.acquired_at);
   return {
     stepId: step.step_id,
     leaseId,
@@ -277,5 +287,16 @@ export function writerAssignment(
         : null,
     changeId: changeId ?? null,
     cascadeId: step.cascade_id,
+    // §10.8 — the ladder, read from the step's own rows: the lease count is the attempt, the
+    // desperate marker fixes 6 of 6, and the widened code is the only thing that widens.
+    attempt: step.desperate === 1 ? DESPERATE_ATTEMPT : Math.max(1, Math.min(MAX_ATTEMPTS, leaseCount)),
+    maxAttempts: step.desperate === 1 ? DESPERATE_ATTEMPT : MAX_ATTEMPTS,
+    widened:
+      step.widened === null
+        ? null
+        : { code: step.widened as NonNullable<WriterAssignment['widened']>['code'], sentence: widenedWord(step.widened) },
+    desperate: step.desperate === 1,
+    deadlineAt: attemptStartedAt + (step.desperate === 1 ? DESPERATE_DEADLINE_MS : deps.config.stepWallMs),
+    retryAt: leaseCount > 1 ? attemptStartedAt : null,
   };
 }

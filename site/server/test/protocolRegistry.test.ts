@@ -38,15 +38,15 @@ function serverSource(): string {
 const TYPES = Object.keys(FRAME_REGISTRY) as ServerEventType[];
 
 describe('the frame registry', () => {
-  it('has exactly the 25 types of BOOK-DOC-84 §2.1', () => {
-    expect(TYPES).toHaveLength(25);
-    expect(new Set(TYPES).size).toBe(25);
+  it('has exactly the 26 types of BOOK-DOC-84 §2.1 + §10.1', () => {
+    expect(TYPES).toHaveLength(26);
+    expect(new Set(TYPES).size).toBe(26);
     // The deleted three are gone: no handler, no emitter, no type.
     for (const deleted of ['block:revising', 'cursor:moved', 'presence']) {
       expect(TYPES).not.toContain(deleted);
     }
-    // …and the five added ones are in.
-    for (const added of ['chapter:applied', 'pass:accepted', 'pass:closed', 'filing:update', 'change:adapted']) {
+    // …and the six added ones are in (the fifth is §10.1's `filing:reading`).
+    for (const added of ['chapter:applied', 'pass:accepted', 'pass:closed', 'filing:update', 'filing:reading', 'change:adapted']) {
       expect(TYPES).toContain(added);
     }
   });

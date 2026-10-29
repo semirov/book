@@ -119,4 +119,7 @@ export const STAGE_WORDS: Readonly<Record<PassStage, string>> = {
   typing: 'набрано',
   landed: 'записано',
   refused: 'отказ',
+  // §10.8: the two stages the ladder adds. A revision and a widening are work, not verdicts.
+  revising: 'доработка',
+  widening: 'шире',
 };

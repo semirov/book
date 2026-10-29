@@ -12,16 +12,22 @@
  */
 
 import {
+  DESPERATE_ATTEMPT,
   LIVE_APPLIED_MAX_BYTES,
   LIVE_APPLIED_WINDOW_MS,
   LIVE_FILINGS_MAX,
+  MAX_ATTEMPTS,
   STAGE_DEADLINE_MS,
+  widenedWord,
+  type GateName,
   type Lane,
   type LiveApplied,
+  type LiveCost,
   type LiveFiling,
   type LivePass,
   type LivePayload,
   type PatchOp,
+  type WidenedNote,
 } from '@book/shared';
 import { ATTEMPTS_PER_FILING_DAY } from '../comments/attempts.ts';
 import type { Db } from '../db/db.ts';
@@ -29,6 +35,7 @@ import { filingStateOf } from '../comments/filingState.ts';
 import { readApplied } from '../engineState/applied.ts';
 import { readLaneDay, readQueue } from '../engineState/reader.ts';
 import { patchSize } from '../ingest/patchBlocks.ts';
+import { openReading } from '../feedback/readingFrame.ts';
 
 export type LiveDeps = {
   db: Db;
@@ -48,9 +55,23 @@ type StepRow = {
   premise_change: string | null;
   at: string;
   closed_at: string | null;
+  cycle: number;
+  desperate: number;
+  widened: string | null;
 };
 
-type StageRow = { stage: string; stage_seq: number; at: string };
+type StageRow = {
+  stage: string;
+  stage_seq: number;
+  at: string;
+  gate: string | null;
+  round: number | null;
+  iteration: number | null;
+  attempt: number | null;
+  max_attempts: number | null;
+  desperate: number;
+  widened: string | null;
+};
 
 /** Open steps, oldest first: the engine opens at most one step per chapter. */
 function openPasses(deps: LiveDeps): LivePass[] {
@@ -58,6 +79,7 @@ function openPasses(deps: LiveDeps): LivePass[] {
   const steps = deps.db
     .prepare(
       `SELECT s.step_id, s.chapter, s.pass, s.lane, s.premise_change, s.at, s.closed_at,
+              s.cycle, s.desperate, s.widened,
               COALESCE(
                 (SELECT l.change_id FROM leases l
                   WHERE l.step_id = s.step_id AND l.change_id IS NOT NULL
@@ -68,8 +90,10 @@ function openPasses(deps: LiveDeps): LivePass[] {
     )
     .all() as StepRow[];
   const stageOf = deps.db.prepare(
-    'SELECT stage, stage_seq, at FROM pass_stages WHERE pass_id = ? ORDER BY stage_seq DESC LIMIT 1',
+    `SELECT stage, stage_seq, at, gate, round, iteration, attempt, max_attempts, desperate, widened
+       FROM pass_stages WHERE pass_id = ? ORDER BY stage_seq DESC LIMIT 1`,
   );
+  const leases = deps.db.prepare('SELECT COUNT(*) AS n FROM leases WHERE step_id = ?');
   const passes: LivePass[] = [];
   for (const step of steps) {
     // `sweep` is an operator pass with no reader surface; the five public kinds are the rest.
@@ -78,6 +102,13 @@ function openPasses(deps: LiveDeps): LivePass[] {
     }
     const stage = stageOf.get(step.step_id) as StageRow | undefined;
     const since = Date.parse(stage?.at ?? step.at);
+    const leaseCount = (leases.get(step.step_id) as { n: number }).n;
+    const desperate = step.desperate === 1 || stage?.desperate === 1;
+    const attempt = desperate ? DESPERATE_ATTEMPT : Math.max(1, Math.min(MAX_ATTEMPTS, stage?.attempt ?? leaseCount));
+    const widened: WidenedNote | null =
+      (stage?.widened ?? step.widened) === null
+        ? null
+        : { code: (stage?.widened ?? step.widened) as WidenedNote['code'], sentence: widenedWord((stage?.widened ?? step.widened) as string) };
     passes.push({
       chapter: step.chapter ?? 'front',
       passId: step.step_id,
@@ -87,6 +118,13 @@ function openPasses(deps: LiveDeps): LivePass[] {
       stageSeq: stage?.stage_seq ?? 0,
       since,
       deadlineAt: since + STAGE_DEADLINE_MS,
+      attempt,
+      maxAttempts: desperate ? DESPERATE_ATTEMPT : Math.max(attempt, MAX_ATTEMPTS),
+      gate: (stage?.gate ?? null) as GateName | null,
+      round: stage?.round ?? null,
+      iteration: stage?.iteration ?? step.cycle,
+      widened,
+      desperate,
     });
   }
   return passes;
@@ -152,13 +190,51 @@ function viewerFilings(deps: LiveDeps, identityId: string | null, nowMs: number)
   }));
 }
 
+/** §10.4 — the last closed unit's price and the UTC day's total, from the one money ledger. */
+function lastCost(deps: LiveDeps, nowMs: number): LiveCost | null {
+  const row = deps.db
+    .prepare('SELECT pass_id, at, usd, priced, provenance FROM pass_spend ORDER BY at DESC, id DESC LIMIT 1')
+    .get() as { pass_id: string; at: string; usd: number; priced: number; provenance: string | null } | undefined;
+  if (row === undefined || row.priced !== 1) return null;
+  const day = new Date(nowMs).toISOString().slice(0, 10);
+  const total = deps.db
+    .prepare('SELECT COALESCE(SUM(usd), 0) AS usd FROM pass_spend WHERE day = ? AND priced = 1')
+    .get(day) as { usd: number };
+  return {
+    kind: row.pass_id.startsWith('triage:') ? 'reading' : 'pass',
+    usd: row.usd,
+    at: Date.parse(row.at),
+    estimated: row.provenance === 'pipeline-estimated',
+    dayUsd: total.usd,
+  };
+}
+
 /** The whole block, built from rows only. */
 export function liveSnapshot(deps: LiveDeps, identityId: string | null): LivePayload {
   const nowMs = deps.now();
   const queue = readQueue(deps.db, nowMs, { pendingLimit: deps.queueSoftCap });
+  const reading = openReading(deps.db);
   return {
     at: new Date(nowMs).toISOString(),
     passes: openPasses(deps),
+    // §10.1: the fields a reconnect rebuilds the word from — `since` is the row's own `at`.
+    reading:
+      reading === null
+        ? null
+        : {
+            commentId: reading.commentId,
+            chapter: reading.chapter,
+            phase: reading.phase,
+            attempt: reading.attempt,
+            maxAttempts: reading.maxAttempts,
+            widened: reading.widened,
+            desperate: reading.desperate,
+            since: reading.at,
+            deadlineAt: reading.deadlineAt,
+            retryAt: reading.retryAt,
+            reason: reading.reason,
+          },
+    lastCost: lastCost(deps, nowMs),
     applied: appliedWithin(deps, nowMs),
     queue: { depth: queue.depth, pending: queue.pending ?? [] },
     filings: viewerFilings(deps, identityId, nowMs),

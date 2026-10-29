@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { READING_RESCHEDULED_LINE } from '@book/shared';
-
 import { appendCommentEvent } from '../src/comments/repo.ts';
 import { EngineBridge } from '../src/engineState/bridge.ts';
 import { DecisionsTailer } from '../src/feedback/decisions.ts';
-import { bootComments, commentBody, type Clock, type Harness } from './comments/helpers.ts';
+import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
 /**
@@ -151,63 +149,115 @@ describe('BOOK-206 B1 — a gate refusal speaks the filing’s own word', () => 
   });
 });
 
-describe('BOOK-206 B5 — a read that never happened reaches the page', () => {
-  it('drains `triage.failed` at the cap and `triage.abandoned`, once each', async () => {
+describe('BOOK-DOC-84 §10.1 — `filing:reading`, one frame per attempt', () => {
+  it('drains the claim, the answer, the failure and the widening, each once', async () => {
     const h = await boot();
     const id = await post(h);
-    h.db.prepare(`UPDATE comments SET reason = ? WHERE id = ?`).run(READING_RESCHEDULED_LINE, id);
+    clearGates(h, id);
+    const claimedUntil = '2026-10-25T12:10:00.000Z';
+    h.db.prepare(`UPDATE comment_attempts SET tries = 1, claim_until = ? WHERE comment_id = ?`).run(claimedUntil, id);
     const frames: Frame[] = [];
     const engine = bridge(h, frames, { replay: true });
 
-    // The cap: the attempt is back at the next UTC midnight with its line rescheduled.
-    const retryAt = '2026-10-26T00:00:00.000Z';
-    h.db.prepare(`UPDATE comment_attempts SET tries = 3, next_at = ? WHERE comment_id = ?`).run(retryAt, id);
-    appendCommentEvent(h.db, id, 'triage.failed', '2026-10-25T12:10:00.000Z', {
-      code: 'PROVIDER_SHAPE',
+    appendCommentEvent(h.db, id, 'triage.claimed', '2026-10-25T12:05:00.000Z', { attempt: 1, try: 1 });
+    engine.tick();
+
+    const claimed = frames.find((frame) => frame.type === 'filing:reading')?.data;
+    expect(claimed).toMatchObject({
+      commentId: id,
+      chapter: 8,
+      phase: 'claimed',
+      attempt: 1,
+      maxAttempts: 5,
+      desperate: false,
+      widened: null,
+      reason: null,
+      costUsd: null,
+      at: Date.parse('2026-10-25T12:05:00.000Z'),
+      deadlineAt: Date.parse(claimedUntil),
+      retryAt: null,
+    });
+    // The cursor is the row's own id: a replay of this row is a no-op on the client.
+    expect(claimed?.readingSeq).toBe(
+      (h.db.prepare(`SELECT MAX(id) AS id FROM comment_events WHERE comment_id = ?`).get(id) as { id: number }).id,
+    );
+
+    // The answer: one frame, priced from the ledger row the verdict wrote.
+    h.db
+      .prepare(
+        `INSERT INTO pass_spend (at, day, pass_id, chapter, pass, change_id, model, tokens_in, tokens_out, usd, priced, provenance)
+         VALUES (?, ?, ?, 8, 'triage', NULL, 'm', 10, 20, 0.05, 1, 'pipeline-estimated')`,
+      )
+      .run('2026-10-25T12:06:00.000Z', '2026-10-25', `triage:${id}:1`);
+    appendCommentEvent(h.db, id, 'triage.read', '2026-10-25T12:06:00.000Z', { attempt: 1, try: 1 });
+    engine.tick();
+    const read = frames.filter((frame) => frame.type === 'filing:reading').at(-1)?.data;
+    expect(read).toMatchObject({ phase: 'read', attempt: 1, costUsd: 0.05, estimated: true, reason: null });
+
+    // A failed try carries the six-word class and the hour the next one is bought.
+    h.db.prepare(`UPDATE comment_attempts SET tries = 2, next_at = ? WHERE comment_id = ?`).run(
+      '2026-10-25T12:16:00.000Z',
+      id,
+    );
+    appendCommentEvent(h.db, id, 'triage.failed', '2026-10-25T12:06:30.000Z', {
+      code: 'PROVIDER_TIMEOUT',
+      attempt: 1,
+      try: 2,
+      retryAt: '2026-10-25T12:16:00.000Z',
+    });
+    engine.tick();
+    const failed = frames.filter((frame) => frame.type === 'filing:reading').at(-1)?.data;
+    expect(failed).toMatchObject({
+      phase: 'failed',
+      attempt: 2,
+      reason: 'таймаут',
+      retryAt: Date.parse('2026-10-25T12:16:00.000Z'),
+      deadlineAt: null,
+      costUsd: null,
+    });
+
+    // The third failure widened the reading: its own frame, with the engine's code and the
+    // human sentence from the vocabulary module.
+    h.db.prepare(`UPDATE comment_attempts SET widened = 'as-document', tries = 3 WHERE comment_id = ?`).run(id);
+    appendCommentEvent(h.db, id, 'triage.widened', '2026-10-25T12:07:00.000Z', {
       attempt: 1,
       try: 3,
-      cap: true,
-      retryAt,
+      widened: 'as-document',
     });
-
     engine.tick();
-
-    const cap = frames.find((frame) => frame.type === 'comment:decision')?.data;
-    expect(cap).toMatchObject({
-      id,
-      chapter: 8,
-      // The row's own sentence is the one the DTO prints — never «остаётся в очереди».
-      status: 'new',
-      reason: READING_RESCHEDULED_LINE,
-      changeId: null,
-      applied: null,
+    const widened = frames.filter((frame) => frame.type === 'filing:reading').at(-1)?.data;
+    expect(widened).toMatchObject({
+      phase: 'widened',
+      attempt: 3,
+      widened: { code: 'as-document', sentence: 'просим читать документ'.replace('документ', 'как документ') },
+      reason: null,
+      retryAt: null,
     });
-    expect(cap?.attempt).toEqual({ state: 'failed', retryAt });
-    expect(JSON.stringify(cap)).not.toContain('остаётся в очереди');
 
-    // An abandoned claim carries no `retryAt` of its own: the rescheduled attempt row is the fact.
-    appendCommentEvent(h.db, id, 'triage.abandoned', '2026-10-25T12:20:00.000Z', {
-      attempt: 2,
-      tries: 3,
-      detail: 'claim-abandoned',
-    });
+    // One frame per row: the cursor has passed all four.
     const seen = frames.length;
     engine.tick();
-
-    const abandoned = frames
-      .slice(seen)
-      .filter((frame) => frame.type === 'comment:decision')
-      .map((frame) => frame.data);
-    expect(abandoned).toHaveLength(1);
-    expect(abandoned[0]?.attempt).toEqual({ state: 'failed', retryAt });
-
-    // One frame per transition: the cursor has already passed both rows.
-    const after = frames.length;
-    engine.tick();
-    expect(frames.slice(after).filter((frame) => frame.type === 'comment:decision')).toEqual([]);
+    expect(frames.slice(seen).filter((frame) => frame.type === 'filing:reading')).toEqual([]);
   });
 
-  it('says nothing for an event whose filing is withdrawn', async () => {
+  it('a claim abandoned by a crash speaks as a failure, never as silence', async () => {
+    const h = await boot();
+    const id = await post(h);
+    clearGates(h, id);
+    const frames: Frame[] = [];
+    const engine = bridge(h, frames, { replay: true });
+    h.db.prepare('UPDATE comment_attempts SET tries = 2 WHERE comment_id = ?').run(id);
+    appendCommentEvent(h.db, id, 'triage.abandoned', '2026-10-25T12:12:00.000Z', {
+      attempt: 1,
+      tries: 2,
+      detail: 'claim-abandoned',
+    });
+    engine.tick();
+    const abandoned = frames.find((frame) => frame.type === 'filing:reading')?.data;
+    expect(abandoned).toMatchObject({ phase: 'failed', attempt: 2, reason: 'обрыв связи' });
+  });
+
+  it('says nothing for a withdrawn filing', async () => {
     const h = await boot();
     const gone = await post(h);
     const withdrawn = await post(h, 'В абзаце дважды «слово» — оставить одно.');
@@ -219,20 +269,16 @@ describe('BOOK-206 B5 — a read that never happened reaches the page', () => {
       code: 'PROVIDER_SHAPE',
       attempt: 1,
       try: 3,
-      cap: true,
-      retryAt: '2026-10-26T00:00:00.000Z',
     });
-    appendCommentEvent(h.db, withdrawn, 'triage.abandoned', '2026-10-25T12:12:00.000Z', {
+    appendCommentEvent(h.db, withdrawn, 'triage.failed', '2026-10-25T12:12:00.000Z', {
       attempt: 1,
-      tries: 3,
-      detail: 'claim-abandoned',
+      try: 3,
     });
     engine.tick();
 
-    // Only the filing that still stands speaks; a withdrawn row is never republished.
-    const decisions = frames.filter((frame) => frame.type === 'comment:decision');
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0]?.data.id).toBe(gone);
+    const readings = frames.filter((frame) => frame.type === 'filing:reading');
+    expect(readings).toHaveLength(1);
+    expect(readings[0]?.data.commentId).toBe(gone);
   });
 
   it('primes its cursor: a restart does not replay yesterday’s failure', async () => {
@@ -242,16 +288,11 @@ describe('BOOK-206 B5 — a read that never happened reaches the page', () => {
       code: 'PROVIDER_SHAPE',
       attempt: 1,
       try: 3,
-      cap: true,
-      retryAt: '2026-10-25T00:00:00.000Z',
     });
     const frames: Frame[] = [];
-
     const engine = bridge(h, frames, { replay: false });
-    const clock: Clock = h.clock;
-    clock.advance(60_000);
+    h.clock.advance(60_000);
     engine.tick();
-
-    expect(frames.filter((frame) => frame.type === 'comment:decision')).toEqual([]);
+    expect(frames.filter((frame) => frame.type === 'filing:reading')).toEqual([]);
   });
 });

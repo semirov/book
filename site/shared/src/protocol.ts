@@ -18,12 +18,31 @@ import type { CatalogEntry, Lane, StateSnapshot } from './types.ts';
 import type { ComposerInfo } from './comment.ts';
 import type { Direction, Part } from './book.ts';
 import type { StageSpan } from './stage.ts';
+import type { GateName, WidenedNote } from './stage.ts';
+import type {
+  LiveApplied,
+  LiveCost,
+  LiveFiling,
+  LiveLane,
+  LiveQueue,
+  LiveReading,
+} from './reading.ts';
+export type {
+  FilingReadingPhase,
+  FilingReadingPayload,
+  LiveApplied,
+  LiveCost,
+  LiveFiling,
+  LiveLane,
+  LiveQueue,
+  LiveReading,
+} from './reading.ts';
 
 /** The envelope version. Bumped only by an incompatible frame shape. */
 export const ENVELOPE_VERSION = 1;
 
-/** The protocol revision named in `hello` (§10.3). 4 — BOOK-DOC-84's frame set. */
-export const PROTOCOL_VERSION = 4;
+/** The protocol revision named in `hello` (§10.3). 5 — BOOK-DOC-84 §10's amendment. */
+export const PROTOCOL_VERSION = 5;
 
 export type ServerEventType =
   | 'hello'
@@ -50,6 +69,8 @@ export type ServerEventType =
   | 'pass:closed'
   /** BOOK-DOC-84 #17: a filing's own row — accepted, refused, held, expired, quarantined. */
   | 'filing:update'
+  /** BOOK-DOC-84 §10.1: a filing's reading, attempt by attempt — the now state's own frame. */
+  | 'filing:reading'
   | 'comment:added'
   | 'comment:decision'
   | 'feedback:batch'
@@ -108,6 +129,7 @@ export const FRAME_REGISTRY: Record<ServerEventType, FrameRegistryEntry> = {
   'pass:stage': { emitter: 'stages/tailer.ts → poll', handler: 'lib/frames.ts → passStage' },
   'pass:closed': { emitter: 'engineState/bridge.ts → drainPasses', handler: 'lib/frames.ts → passClosed' },
   'filing:update': { emitter: 'feedback/decisions.ts → apply', handler: 'lib/frames.ts → filingUpdate' },
+  'filing:reading': { emitter: 'engineState/bridge.ts → drainFilingEvents', handler: 'lib/frames.ts → filingReading' },
   'comment:added': { emitter: 'comments/service.ts → post', handler: 'lib/frames.ts → commentAdded' },
   'comment:decision': { emitter: 'feedback/decisions.ts → apply', handler: 'lib/frames.ts → commentDecision' },
   'feedback:batch': { emitter: 'feedback/decisions.ts → announceBatches', handler: 'lib/frames.ts → feedbackBatch' },
@@ -187,7 +209,7 @@ export type StateSnapshotPayload = { state: StateSnapshot; live: LivePayload; re
 // ── the live block (§2.2: one builder, two carriers) ───────────────────────
 
 /** A pass may not be clocked closer than this: a stage's deadline is its own `since` + bound. */
-export const STAGE_DEADLINE_MS = 480_000;
+// STAGE_DEADLINE_MS lives in `stage.ts` (the stage's own bound); re-exported by the package root.
 /** The print's window (D5): an older write is simply there, never replay: a `live.applied` older
  *  than this is not carried at all, and a fresh page cannot join a print it cannot see. */
 export const LIVE_APPLIED_WINDOW_MS = 6_000;
@@ -207,38 +229,17 @@ export type LivePass = {
   stageSeq: number;
   /** ms epoch of that stage (the step's `at` for `queued`). */
   since: number;
-  /** `since + STAGE_DEADLINE_MS`: an open pass past it is «сейчас тихо», not «работает». */
+  /** `since + STAGE_DEADLINE_MS`: an open pass past it has a deadline that passed, not a stop. */
   deadlineAt: number;
-};
-
-export type LiveApplied = {
-  n: number;
-  rev: number;
-  appliedAt: number;
-  patch: PatchOp[];
-  patchTruncated: boolean;
-  span: StageSpan[] | null;
-};
-
-export type LiveQueue = {
-  depth: number;
-  pending: Array<{ id: string; chapter: number; seq: number; ahead: number; kind: string; enqueuedAt: string }>;
-};
-
-export type LiveFiling = {
-  commentId: string;
-  chapter: number;
-  state: string;
-  attempts: number;
-  attemptsLeft: number;
-  changeId: string | null;
-  at: string;
-};
-
-export type LiveLane = {
-  passesToday: number;
-  maxPasses: number;
-  writerAt: string | null;
+  // §10.8's ladder fields, optional on the wire like `PassStageEvent`'s: a `live` block built by
+  // an older reader of this type has no number, and a consumer must not invent one.
+  attempt?: number;
+  maxAttempts?: number;
+  gate?: GateName | null;
+  round?: number | null;
+  iteration?: number;
+  widened?: WidenedNote | null;
+  desperate?: boolean;
 };
 
 export type LivePayload = {
@@ -246,6 +247,13 @@ export type LivePayload = {
   at: string;
   /** Every open pass, with its stage — the backlog a mid-pass joiner needs. */
   passes: LivePass[];
+  /**
+   * §10.1 — the filing whose reading is in flight, the fields a reconnect rebuilds the word from.
+   * `null` when no filing is being read; a cap or a wait is a `filing:reading` frame, not this.
+   */
+  reading?: LiveReading | null;
+  /** §10.4: the last closed unit's cost and the day's total; `null` before anything was priced. */
+  lastCost?: LiveCost | null;
   /** The write inside its print window and small enough to print; `null` otherwise. */
   applied: LiveApplied | null;
   queue: LiveQueue;
@@ -397,6 +405,16 @@ export type PassAcceptedPayload = {
   at: number;
   /** Pending filings older than this pass's own change; 0 for a draft/premise step. */
   ahead: number;
+  /** §10.8: the step's lease count (1..6), and the ladder's ceiling for this attempt. */
+  attempt: number;
+  maxAttempts: number;
+  /** The engine's widening, `null` before the third failure. */
+  widened: WidenedNote | null;
+  desperate: boolean;
+  /** The attempt's own bound in ms (`at + STEP_WALL_MS`, or the desperate one). */
+  deadlineAt: number;
+  /** Set on a re-issue: the hour the pass is expected back, `null` on a first claim. */
+  retryAt: number | null;
 };
 
 /**
@@ -439,8 +457,7 @@ export type FilingUpdatePayload = {
 };
 
 /** BOOK-DOC-84 #11 — relevance narrowed the intent; `intent` is the narrowed text. */
-export type ChangeAdaptedPayload = {
-  id: string;
+export type ChangeAdaptedPayload = {  id: string;
   chapter: number;
   intent: string;
   reason: string;

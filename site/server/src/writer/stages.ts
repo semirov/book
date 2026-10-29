@@ -12,7 +12,13 @@
  * well under `STAGE_SUMMARY_MAX_CHARS`.
  */
 
-import { STAGE_SUMMARY_MAX_CHARS, type PassStage, type StageSpan } from '@book/shared';
+import {
+  STAGE_SUMMARY_MAX_CHARS,
+  type GateName,
+  type PassStage,
+  type StageSpan,
+  type StageVerdictWord,
+} from '@book/shared';
 
 import type { ModeChoice, ModeReason } from './mode.ts';
 
@@ -32,6 +38,15 @@ export type StageEmitInput = {
   span?: readonly StageSpan[] | null;
   tokens?: { in: number; out: number } | null;
   costUsd?: number | null;
+  /** §10.8: the ladder's facts — the writer fills what it knows, the store the rest. */
+  attempt?: number | null;
+  maxAttempts?: number | null;
+  widened?: string | null;
+  desperate?: boolean;
+  gate?: GateName | null;
+  round?: number | null;
+  iteration?: number | null;
+  verdict?: StageVerdictWord | null;
   at: number;
 };
 
@@ -181,6 +196,17 @@ export const stageSummary = {
     ]),
 
   refused: (input: { reason: string }): string => line([`проход остановлен: ${input.reason}`]),
+
+  /** §10.8 — the widened round, its own stage: the machine states what it changed. */
+  widening: (input: { attempt: number; max: number; sentence: string }): string =>
+    line([`расширение: попытка ${String(input.attempt)} из ${String(input.max)}`, input.sentence]),
+
+  /** §10.7 — one revision of the landed text: an iteration is never folded into `verdict`. */
+  revising: (input: { iteration: number; max: number; findings: number }): string =>
+    line([
+      `доработка ${String(input.iteration)} из ${String(input.max)}`,
+      input.findings === 0 ? 'замечаний нет' : `замечаний ${String(input.findings)}`,
+    ]),
 };
 
 /**
@@ -201,6 +227,16 @@ export async function emitStage(sink: StageSink, input: StageEmitInput): Promise
       span: input.span === null || input.span === undefined ? null : [...input.span],
       tokens: input.tokens ?? null,
       costUsd: input.costUsd ?? null,
+      // §10.8: only the ladder facts the writer actually holds travel; the store fills the rest
+      // (its own lease count and `steps.cycle`), so a null is never sent as a claim.
+      ...(input.attempt === null || input.attempt === undefined ? {} : { attempt: input.attempt }),
+      ...(input.maxAttempts === null || input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts }),
+      ...(input.widened === null || input.widened === undefined ? {} : { widened: input.widened }),
+      ...(input.desperate === true ? { desperate: true } : {}),
+      ...(input.gate === null || input.gate === undefined ? {} : { gate: input.gate }),
+      ...(input.round === null || input.round === undefined ? {} : { round: input.round }),
+      ...(input.iteration === null || input.iteration === undefined ? {} : { iteration: input.iteration }),
+      ...(input.verdict === null || input.verdict === undefined ? {} : { verdict: input.verdict }),
     });
     return { ok: true };
   } catch (error) {

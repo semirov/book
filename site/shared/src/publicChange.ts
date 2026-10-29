@@ -272,6 +272,11 @@ export type EngineStatePayload = {
   maxPasses: number;
   /** ISO of the last spending pass, `null` when none has run. */
   writerAt: string | null;
+  /**
+   * BOOK-DOC-84 §10.1 — when the engine will hand out work again: the next 00:00 UTC while the
+   * day is throttled, else `null`. A pause mid-ladder is a wait with a time, never a silent stop.
+   */
+  resumeAt: string | null;
 };
 
 export type ChangeQueuedPayload = {

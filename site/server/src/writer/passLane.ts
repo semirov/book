@@ -95,7 +95,24 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
 
   /** Observability, not a fact: a stage sink that refuses or throws is logged, never fatal — an
    *  auxiliary call must not escalate a step whose text already landed (owner, 2026-10-28). */
-  async function emit(stage: StageEmitInput): Promise<void> {
+  /**
+   * §10.8 — every stage of this pass carries the ladder: the attempt (the engine's lease number),
+   * its ceiling, the widening the attempt runs under and the desperate marker. One place, so no
+   * emitter can forget a field and read as a different attempt.
+   */
+  function withLadder(stage: StageEmitInput): StageEmitInput {
+    return {
+      ...stage,
+      attempt: stage.attempt ?? job.attempt,
+      maxAttempts: stage.maxAttempts ?? job.maxAttempts,
+      iteration: stage.iteration ?? job.cycle,
+      widened: stage.widened ?? job.widened?.code ?? null,
+      desperate: stage.desperate ?? job.desperate,
+    };
+  }
+
+  async function emit(raw: StageEmitInput): Promise<void> {
+    const stage = withLadder(raw);
     try {
       input.log(stageLogLine(stage.at, stage.stage, stage.summary));
       const stored = await emitStage(sink, stage);
@@ -139,11 +156,12 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     const remaining = config.maxTokensPerPass - (all.in + all.out);
     if (remaining <= 0) throw new PassRefusal('лимит токенов на проход исчерпан');
     // The causality judge and Tier 1 are bounded questions, not writing turns: the gate's cap.
-    const cap = Math.min(
+    const baseCap =
       options?.maxTokens ??
-        (kind.startsWith('gate:') || kind === 'judge' || kind === 'tier1' ? config.gateTokens : config.maxTokensPerCall),
-      remaining,
-    );
+      (kind.startsWith('gate:') || kind === 'judge' || kind === 'tier1' ? config.gateTokens : config.maxTokensPerCall);
+    // §10.8: the desperate sixth is the cheapest honest path — one call at 8 000 tokens, never a
+    // second full-size reasoning pass.
+    const cap = Math.min(job.desperate ? config.desperateTokens : baseCap, remaining);
     let result: ProviderResult;
     try {
       result = await input.provider({

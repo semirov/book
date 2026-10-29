@@ -7,11 +7,9 @@
  * A second derivation here would let the frame and the row disagree the day one of them moves —
  * exactly the class the audit named (B2: three surfaces, three answers about one stop).
  *
- * Two doors into this module:
- *   · `filingCloseFrame` — a change's close that left the filing in a terminal state: a landing
- *     (`applied`, with the chapter's receipt) or a stop (`rejected`, with its own sentence);
- *   · `filingFailureFrame` — a read that never happened (`triage.failed` at the cap, an abandoned
- *     claim), carrying the filing's current state and the hour the next read is bought.
+ * One door into this module: `filingCloseFrame` — a change's close that left the filing in a
+ * terminal state: a landing (`applied`, with the chapter's receipt) or a stop (`rejected`, with
+ * its own sentence). A reading's own phases are `filing:reading` (§10.1), not this frame.
  *
  * A change no reader filed (a continuity pass, an operator's edit) has no filing, and a withdrawn
  * one is never republished (BOOK-101): both answer `null` here rather than an empty frame.
@@ -43,7 +41,6 @@ export function filingFrameOf(
   comment: CommentRow,
   at: string,
   nowMs: number,
-  attempt?: CommentDecisionPayload['attempt'],
 ): CommentDecisionPayload {
   const dto = toCommentDto(db, comment, nowMs);
   return {
@@ -66,7 +63,6 @@ export function filingFrameOf(
     // own moment in ms. A frame without them leaves the row printing a count it no longer has.
     attemptsLeft: attemptCounts(db, comment.id, nowMs).attemptsLeft,
     at: Date.parse(at),
-    ...(attempt === undefined ? {} : { attempt }),
   };
 }
 
@@ -86,30 +82,4 @@ export function filingCloseFrame(
   if (comment === undefined || comment.status === 'hidden') return null;
   const frame = filingFrameOf(db, comment, at, nowMs);
   return TERMINAL_FILING_STATES.has(frame.status) ? frame : null;
-}
-
-/**
- * The frame a filing's own audit event owes the page (BOOK-206 B5). `meta.retryAt` is the hour
- * the next read is bought, written by the engine at the cap; an abandoned claim carries none and
- * the attempt row's `next_at` is then the fact.
- */
-export function filingFailureFrame(
-  db: Db,
-  commentId: string,
-  at: string,
-  nowMs: number,
-  meta: { retryAt?: string } | null,
-): CommentDecisionPayload | null {
-  const comment = readCommentRow(db, commentId);
-  if (comment === undefined || comment.status === 'hidden') return null;
-  const retryAt = meta?.retryAt ?? attemptRetryAt(db, commentId);
-  return filingFrameOf(db, comment, at, nowMs, { state: 'failed', retryAt });
-}
-
-/** The hour the newest attempt at this filing is due again, or `null` when none is scheduled. */
-export function attemptRetryAt(db: Db, commentId: string): string | null {
-  const row = db
-    .prepare('SELECT next_at FROM comment_attempts WHERE comment_id = ? ORDER BY n DESC LIMIT 1')
-    .get(commentId) as { next_at: string | null } | undefined;
-  return row?.next_at ?? null;
 }

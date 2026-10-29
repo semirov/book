@@ -497,3 +497,188 @@ export const AGE_WORDS = {
   leave: 'мне нет 18 — уйти',
   refusal: 'книга 18+ — сначала подтвердите, что вам есть 18',
 } as const;
+
+/* ── BOOK-DOC-84 §10.9 — the book's own counters and the ladder's words ─────────────────────── */
+
+/** §10.2's internal kinds, mapped to the head word they take (§10.9's table). */
+export type NowKind =
+  | 'тихо'
+  | 'читается'
+  | 'повтор'
+  | 'ждёт'
+  | 'пишется'
+  | 'проверяется'
+  | 'доработка'
+  | 'расширение'
+  | 'нет связи'
+  | 'сбой';
+
+/**
+ * The 1:1 rows of §10.9's table. `расширение` is deliberately absent: it keeps the surface's
+ * word («правку читают» / «главу пишут») and its note is the author's line, never the head's.
+ */
+export const HEAD_WORD_OF: Record<Exclude<NowKind, 'расширение'>, HeadWord> = {
+  тихо: 'idle',
+  читается: 'reading',
+  повтор: 'waiting',
+  ждёт: 'waiting',
+  пишется: 'drafting',
+  проверяется: 'gates',
+  доработка: 'drafting',
+  'нет связи': 'offline',
+  // A defect is not a kind the head prints: the machine runs nothing, and `тихо` is true.
+  сбой: 'idle',
+};
+
+/** Attempts 1..6: the forms of a filing's try and of a fix to written text. */
+export type AttemptForm = 'attempt' | 'fix';
+
+const ORDINAL_FEMININE = ['первая', 'вторая', 'третья', 'четвёртая', 'пятая', 'шестая'] as const;
+const GENITIVE_COUNT: Record<number, string> = { 5: 'пяти', 6: 'шести' };
+
+const UNIT_FEMININE = [
+  'ноль',
+  'одна',
+  'две',
+  'три',
+  'четыре',
+  'пять',
+  'шесть',
+  'семь',
+  'восемь',
+  'девять',
+  'десять',
+  'одиннадцать',
+  'двенадцать',
+  'тринадцать',
+  'четырнадцать',
+  'пятнадцать',
+  'шестнадцать',
+  'семнадцать',
+  'восемнадцать',
+  'девятнадцать',
+] as const;
+
+const UNIT_MASCULINE = [
+  'ноль',
+  'один',
+  'два',
+  'три',
+  'четыре',
+  'пять',
+  'шесть',
+  'семь',
+  'восемь',
+  'девять',
+  'десять',
+  'одиннадцать',
+  'двенадцать',
+  'тринадцать',
+  'четырнадцать',
+  'пятнадцать',
+  'шестнадцать',
+  'семнадцать',
+  'восемнадцать',
+  'девятнадцать',
+] as const;
+
+const TENS = ['', '', 'двадцать', 'тридцать', 'сорок', 'пятьдесят'] as const;
+
+/** A whole number in words, 0..59 — the only range a counter or a minute can take. */
+function cardinal(value: number, unit: readonly string[]): string {
+  const n = Math.max(0, Math.min(59, Math.trunc(value)));
+  if (n < 20) return unit[n] ?? 'ноль';
+  const tens = TENS[Math.floor(n / 10)] ?? '';
+  const rest = n % 10;
+  return rest === 0 ? tens : `${tens} ${unit[rest] ?? ''}`.trim();
+}
+
+/** Russian plural for a counted noun: 1 → one, 2..4 → few, else many. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = Math.abs(n) % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return many;
+  if (mod10 === 1) return one;
+  if (mod10 >= 2 && mod10 <= 4) return few;
+  return many;
+}
+
+/**
+ * §10.9: attempts 1..6, as the author's line prints them.
+ *
+ * `attemptWord(2, 5)` → `вторая из пяти`; `attemptWord(3, 5, 'fix')` → `третья поправка из пяти`;
+ * the sixth is always the last one and always says so: `последняя, шестая`.
+ */
+export function attemptWord(n: number, max: number, form: AttemptForm = 'attempt'): string {
+  const count = Math.max(5, Math.min(6, Math.trunc(max)));
+  const number = Math.max(1, Math.min(6, Math.trunc(n)));
+  if (number === 6) return form === 'fix' ? 'последняя, шестая поправка' : 'последняя, шестая';
+  const ordinal = ORDINAL_FEMININE[number - 1] ?? 'первая';
+  const of = GENITIVE_COUNT[count] ?? 'пяти';
+  return form === 'fix' ? `${ordinal} поправка из ${of}` : `${ordinal} из ${of}`;
+}
+
+/**
+ * §10.9: an elapsed time or a wait, in whole words.
+ *
+ * under 60 s → `меньше минуты`; 60–119 s → `минута`; then whole minutes; from an hour, hours;
+ * from a day, days. A negative span is the same as zero (clocks disagree; a deadline does not).
+ */
+export function minutesWord(ms: number): string {
+  const value = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+  if (value < 60_000) return 'меньше минуты';
+  if (value < 120_000) return 'минута';
+  const totalMinutes = Math.floor(value / 60_000);
+  if (totalMinutes < 60) {
+    return `${cardinal(totalMinutes, UNIT_FEMININE)} ${plural(totalMinutes, 'минута', 'минуты', 'минут')}`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours < 24) {
+    if (hours === 1) return 'час';
+    return `${cardinal(hours, UNIT_MASCULINE)} ${plural(hours, 'час', 'часа', 'часов')}`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'сутки';
+  if (days === 2) return 'двое суток';
+  if (days === 3) return 'трое суток';
+  if (days === 4) return 'четверо суток';
+  return `${cardinal(days, UNIT_FEMININE)} суток`;
+}
+
+/** §10.9: the queue's place. 0 → `следом`; the rest name the filings ahead, in words. */
+export function aheadWord(n: number): string {
+  const ahead = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+  if (ahead === 0) return 'следом';
+  const count = cardinal(ahead, UNIT_FEMININE);
+  return `впереди ${count} ${plural(ahead, 'правка', 'правки', 'правок')}`;
+}
+
+/** §10.9: `0,05 $` measured, `≈ 0,05 $` estimated — two decimals, comma, space before the sign. */
+export function moneyWord(usd: number, estimated = false): string {
+  const value = Number.isFinite(usd) ? Math.max(0, usd) : 0;
+  const amount = `${value.toFixed(2).replace('.', ',')} $`;
+  return estimated ? `≈ ${amount}` : amount;
+}
+
+/** The four widenings the engine may name; the sentence is the reader's, the code is the fact. */
+export type WidenedCode = 'wider-edit' | 'whole-chapter' | 'as-document' | 'stricter-check';
+
+const WIDENED_WORDS: Record<WidenedCode, string> = {
+  'wider-edit': 'правим шире: не строку, а абзац',
+  'whole-chapter': 'правим шире: всю главу',
+  'as-document': 'просим читать как документ',
+  'stricter-check': 'проверяем строже',
+};
+
+/** §10.9: the widening in human words — never «переписывание вместо патча». */
+export function widenedWord(code: string): string {
+  return WIDENED_WORDS[code as WidenedCode] ?? '';
+}
+
+/** The runtime list, for a validator that must reject an unknown code rather than caption it. */
+export const WIDENED_CODES = Object.keys(WIDENED_WORDS) as WidenedCode[];
+
+/** Is this string one the engine may store as a widening code? */
+export function isWidenedCode(value: unknown): value is WidenedCode {
+  return typeof value === 'string' && (WIDENED_CODES as readonly string[]).includes(value);
+}

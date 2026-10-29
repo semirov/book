@@ -70,6 +70,10 @@ export type WriterConfigRedacted = {
   triagePollMs: number;
   /** The reading call's cap: one verdict and one reading, a reasoning call like a gate's. */
   triageTokens: number;
+  /** §10.8: the desperate sixth's cap — one cheap call, never a second reasoning pass. */
+  desperateTokens: number;
+  /** §10.8: the ordinary writing mode. A widening switches this attempt to `rewrite`. */
+  mode: 'patch' | 'rewrite';
   engineUrl: string;
   /** The engine's own cap, per request (`WRITER_ENGINE_TIMEOUT_MS`). */
   engineTimeoutMs: number;
@@ -236,6 +240,10 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     // its fifteen minutes; a triage call is a gate-sized answer, never a chapter.
     triagePollMs: integer(env, 'TRIAGE_POLL_MS', 5_000, 100),
     triageTokens: integer(env, 'TRIAGE_MAX_TOKENS', 8_000, 1),
+    // §10.8: the sixth attempt is the cheapest honest path — one call at 8 000 tokens.
+    desperateTokens: integer(env, 'WRITER_DESPERATE_TOKENS', 8_000, 1),
+    // §10.8: the writer works in patches; the widened attempt (and only it) rewrites.
+    mode: text(env, 'WRITER_MODE_DEFAULT', 'patch') === 'rewrite' ? 'rewrite' : 'patch',
     engineUrl,
     // The engine's own cap, and 60 s rather than the old 10: the engine is local but it is busy,
     // and on the measured pass (chapter 65) `land` outran 10 s *after* the chapter had landed and

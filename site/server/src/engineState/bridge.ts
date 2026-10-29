@@ -24,10 +24,12 @@ import {
 import type { Db } from '../db/db.ts';
 import { aheadOf, decidedPayload, queuedPayload, type ChangeEventRow } from './bridgePayloads.ts';
 import { ChapterNarrator } from './chapterFrames.ts';
-import { filingCloseFrame, filingFailureFrame } from './filingFrame.ts';
+import { filingCloseFrame } from './filingFrame.ts';
+import { READING_EVENTS, filingReadingPayload } from '../feedback/readingFrame.ts';
 import { PassNarrator } from './passFrames.ts';
 
 import { publicIntent, readCascadeRow, readChangeRow, readRelevance, readStepRow } from './changes.ts';
+import { utcDayEnd } from '../comments/attempts.ts';
 import { toHistoryFrame } from '../history/events.ts';
 import { readEngineHealth, readLaneDay, readQueue, stepsOfCascade } from './reader.ts';
 import { boundaryOf, chapterOfStep, safeJson, type CascadeRow, type ChangeRow, type StepRow } from './rows.ts';
@@ -64,8 +66,6 @@ type CommentEventRow = {
   meta: string | null;
 };
 
-/** The filing events that owe the open page a frame (BOOK-206 B5): a read that never happened. */
-const FILING_FAILURE_EVENTS = new Set(['triage.failed', 'triage.abandoned']);
 
 type HistoryRow = {
   hseq: number;
@@ -198,6 +198,8 @@ export class EngineBridge {
       passesToday: lane.passesToday,
       maxPasses: lane.maxPasses,
       writerAt: lane.writerAt,
+      // §10.1: a throttled day is a wait with a resume time — the next 00:00 UTC, never silence.
+      resumeAt: health.status === 'throttled' ? new Date(utcDayEnd(nowMs)).toISOString() : null,
     };
     this.emit('engine:state', payload);
     return true;
@@ -287,28 +289,22 @@ export class EngineBridge {
    * table, so a reader connected to the socket never saw the cap: the page kept «ждёт» while
    * `dueTriage` had already excluded the row.
    *
-   * Only the two failure kinds owe a frame (`triage.failed`, `triage.abandoned`), and the
-   * attempt's own `retryAt` rides along so the page can name the hour the next read is bought.
+   * §10.1: every reading row owes exactly one `filing:reading` — the claim, the answer, the
+   * failure and the widening — and the frame is built from that row's own id (`readingSeq`).
    * Every other row still moves the cursor — a restart primes it, so a replay of yesterday's
    * failures is never narrated as today's.
    */
-  private drainFilingEvents(nowMs: number): number {
+  private drainFilingEvents(_nowMs: number): number {
     const rows = this.db
       .prepare('SELECT id, comment_id, at, type, meta FROM comment_events WHERE id > ? ORDER BY id')
       .all(this.commentCursor) as CommentEventRow[];
     let emitted = 0;
     for (const row of rows) {
       this.commentCursor = row.id;
-      if (!FILING_FAILURE_EVENTS.has(row.type)) continue;
-      const frame = filingFailureFrame(
-        this.db,
-        row.comment_id,
-        row.at,
-        nowMs,
-        safeJson<{ retryAt?: string }>(row.meta),
-      );
+      if (!READING_EVENTS.has(row.type)) continue;
+      const frame = filingReadingPayload(this.db, row);
       if (frame === null) continue;
-      this.emit('comment:decision', frame);
+      this.emit('filing:reading', frame);
       emitted += 1;
     }
     return emitted;

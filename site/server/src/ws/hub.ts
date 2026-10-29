@@ -163,7 +163,7 @@ export class WsHub {
       return;
     }
 
-    const resolved = this.resolveViewer?.(request) ?? { viewer: { signedIn: false, displayName: null }, identityId: null };
+    const resolved = this.resolveViewer?.(request) ?? { viewer: { signedIn: false, displayName: null, isAuthor: false }, identityId: null };
     const conn: Connection = {
       id: this.idFactory(),
       socket,

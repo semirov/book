@@ -18,6 +18,8 @@ export type TriageAskView = {
   envelope: Record<string, unknown>;
   world: string | null;
   recordedVerdict: 'FITS' | 'OFF' | null;
+  /** §10.8: the widening this attempt runs under (`as-document` after the third failure). */
+  widened?: string | null;
 };
 
 /** `assignment: null` with `reason: 'budget'` is the engine's own stop for a paused day. */
@@ -46,4 +48,4 @@ export type TriageFailInput = {
   spend?: TriageVerdictInput['spend'];
 };
 
-export type TriageFailView = { tries: number; nextAt: string | null; cap: boolean };
+export type TriageFailView = { tries: number; nextAt: string | null; cap: boolean; desperate?: true };

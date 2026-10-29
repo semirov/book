@@ -22,7 +22,7 @@ describe('migration v30 — the triage ledger', () => {
   it('a fresh install carries every v30 column, in the order the step appends them', () => {
     const db = openDatabase(':memory:');
     migrate(db);
-    expect(SCHEMA_VERSION).toBe(34);
+    expect(SCHEMA_VERSION).toBe(35);
     expect(columns(db, 'comment_attempts')).toEqual([
       'id',
       'comment_id',
@@ -40,6 +40,9 @@ describe('migration v30 — the triage ledger', () => {
       'usd',
       'priced',
       ...V30_ATTEMPT_COLUMNS.map(([name]) => name),
+      // BOOK-DOC-84 §10.8 (v31): the widening code and the desperate sixth.
+      'widened',
+      'desperate',
     ]);
     expect(
       db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'comment_attempts_due'`).get(),
