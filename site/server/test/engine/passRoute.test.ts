@@ -216,6 +216,96 @@ describe('POST /internal/pass — a first pass for one named chapter (BOOK-117 �
   });
 });
 
+describe('BOOK-202 — a pass on the book a launch reset leaves behind', () => {
+  const resetShaped = () =>
+    createEngineFixture({
+      // No reader filings: the just-reset book has none, and ch01 is the one written chapter.
+      filings: 'manual',
+      chapters: { 1: chapterText('Глава первая', ['Служебный абзац первой главы.']) },
+    });
+
+  it('opens the next chapter in order when the book has no filings at all', () => {
+    const fixture = resetShaped();
+    try {
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+      const assignment = fixture.engine.openChapterPass(2, 'writer-seed') as WriterAssignment | null;
+      if (!assignment) throw new Error('expected a writer assignment');
+      expect(assignment).toMatchObject({ pass: 'draft', chapter: 2 });
+      // One step on the next chapter, its lease held by the session that asked for the pass.
+      expect(leaseOf(fixture, assignment.stepId)).toMatchObject({ id: assignment.leaseId, session: 'writer-seed' });
+      expect(fixture.db.prepare('SELECT chapter, pass FROM steps').all()).toEqual([{ chapter: 2, pass: 'draft' }]);
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('still refuses ch01 as written, a chapter out of order, and any chapter with a filing present', () => {
+    const fixture = resetShaped();
+    try {
+      let refusal: unknown = null;
+      try {
+        fixture.engine.openChapterPass(1, 'writer-seed');
+      } catch (error) {
+        refusal = error;
+      }
+      expect((refusal as { code?: string }).code).toBe('CHAPTER_WRITTEN');
+      expect((refusal as Error).message).toContain('глава 1 уже написана');
+      // A gap is not the next slot: BOOK-166's refusal stands.
+      expect(codeOf(() => fixture.engine.openChapterPass(3, 'writer-seed'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(stepCount(fixture)).toEqual({ n: 0 });
+
+      // One filing anywhere in the book turns the just-reset exception off (BOOK-166 intact).
+      premiseOn(fixture, 5, 'в главе 5 появляется документ о допуске');
+      expect(codeOf(() => fixture.engine.openChapterPass(2, 'writer-seed'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(stepCount(fixture)).toEqual({ n: 0 });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it('does not extend the exception to a book whose written set is not exactly ch01', () => {
+    // One written chapter, but not the one a reset leaves: not the just-reset shape.
+    const other = createEngineFixture({
+      filings: 'manual',
+      chapters: { 5: chapterText('Глава пятая', ['Служебный абзац пятой главы.']) },
+    });
+    try {
+      expect(codeOf(() => other.engine.openChapterPass(6, 'writer-seed'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(stepCount(other)).toEqual({ n: 0 });
+    } finally {
+      other.close();
+    }
+
+    // ch01 plus one more written chapter — the exception is for {1} alone.
+    const longer = createEngineFixture({
+      filings: 'manual',
+      chapters: {
+        1: chapterText('Глава первая', ['Служебный абзац первой главы.']),
+        4: chapterText('Глава четвёртая', ['Служебный абзац четвёртой главы.']),
+      },
+    });
+    try {
+      expect(codeOf(() => longer.engine.openChapterPass(2, 'writer-seed'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(stepCount(longer)).toEqual({ n: 0 });
+    } finally {
+      longer.close();
+    }
+  });
+
+  it('closes the exception once ch02 is written: ch03 still needs a filing', () => {
+    const fixture = resetShaped();
+    try {
+      // The seeding is the applier's, not a pass: no `changes` row is written.
+      fixture.seedChapterBlocks(2, 'Глава вторая', ['Служебный абзац второй главы.']);
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+      expect(codeOf(() => fixture.engine.openChapterPass(3, 'writer-seed'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(stepCount(fixture)).toEqual({ n: 0 });
+    } finally {
+      fixture.close();
+    }
+  });
+});
+
 describe('POST /internal/pass — the route', () => {
   it('requires the bearer token and the chapter bounds, and returns the assignment', async () => {
     const fixture = createEngineFixture();

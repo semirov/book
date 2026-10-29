@@ -298,8 +298,8 @@ function printBudgetResult(parsed, body) {
 
 /**
  * The reset answer as the operator reads it: one line per counter, the total, what survived,
- * and what happened to the backup. Counts only — the server never sends a row and this printer
- * never asks for one.
+ * what happened to the backup. Counts and chapter 1's digest — the server never sends a row,
+ * a text or a token, and this printer never asks for one.
  */
 function printResetResult(body) {
   const dryRun = body.dryRun !== false;
@@ -312,7 +312,15 @@ function printResetResult(body) {
   console.log(`  ${tables.length} entries, ${body.total ?? 0} rows${dryRun ? '' : ' removed'}`);
   const kept = Array.isArray(body.kept) ? body.kept : [];
   console.log(`kept: ${kept.map((entry) => `${entry.key} ${entry.rows ?? 0}`).join(' · ')}`);
-  console.log('frame: ch01, ch42 seeded from book_frame');
+  // BOOK-202: chapter 1 survives the wipe. Its counts, not its text — the digest stays in the
+  // answer (a dry run is counts-only on the terminal, so it is not printed here).
+  const chapter1 = body.chapter1 ?? {};
+  console.log(
+    `kept: chapter 1 · ${chapter1.blocks ?? 0} blocks · ${chapter1.sentences ?? 0} sentences · ` +
+      `${chapter1.chars ?? 0} characters`,
+  );
+  // ch01 is reported by the kept line above; it is seeded from `book_frame` only when absent.
+  console.log('frame: ch42 seeded from book_frame');
   if (dryRun) {
     // What the wipe removes, from the rows, and the one refusal a dry run can see coming: a live
     // engine refuses the wipe rather than being reset under. A frame slot that is prose is

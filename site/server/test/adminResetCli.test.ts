@@ -142,6 +142,9 @@ type Probe = {
   tables: Array<{ key: string; label: string; rows: number }>;
   total: number;
   kept: Array<{ key: string; rows: number }>;
+  content: { written: number; chars: number; blocks: number };
+  /** BOOK-202: chapter 1 survives, and the runbook prints its counts on their own line. */
+  chapter1: { chapter: 1; blocks: number; sentences: number; chars: number };
 };
 
 function probe(): Promise<Probe> {
@@ -166,6 +169,14 @@ function tableLines(body: Probe, dryRun: boolean): string[] {
 
 function keptLine(body: Probe): string {
   return `kept: ${body.kept.map((entry) => `${entry.key} ${String(entry.rows)}`).join(' · ')}`;
+}
+
+/** BOOK-202: the second kept line, built from the answer's own `chapter1`. */
+function chapter1Line(body: Probe): string {
+  return (
+    `kept: chapter 1 · ${String(body.chapter1.blocks)} blocks · ` +
+    `${String(body.chapter1.sentences)} sentences · ${String(body.chapter1.chars)} characters`
+  );
 }
 
 describe('reset book — the CLI refusals it owns', () => {
@@ -202,7 +213,9 @@ describe('reset book — the CLI refusals it owns', () => {
       const failure = await failed(`reset book --url ${base} --yes`);
       expect(failure.code).toBe(6);
       expect(failure.stderr).toContain('DATA_DIR_IN_REPO');
-      const chapters = db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE basis = 0').get() as { n: number };
+      const chapters = db
+        .prepare('SELECT COUNT(*) AS n FROM chapters WHERE basis = 0 AND n <> 1')
+        .get() as { n: number };
       expect(chapters.n).toBe(1);
     } finally {
       // The scratch dir is inside the checkout: it must not outlive this test even if an
@@ -248,14 +261,23 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — dry run, nothing is written');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, true));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 seeded from book_frame');
+    expect(lines[2 + body.tables.length + 1]).toBe(chapter1Line(body));
+    expect(lines[3 + body.tables.length + 1]).toBe('frame: ch42 seeded from book_frame');
+    // BOOK-202: ch01 is kept, so the content line counts the chapters and blocks a wipe removes.
+    expect(stdout).toContain(
+      `content: ${String(body.content.written)} written chapter(s) · ${String(body.content.chars)} characters · ` +
+        `${String(body.content.blocks)} blocks — the wipe removes them`,
+    );
     // No backup line on a dry run: nothing is written, so nothing is backed up. And no warning:
     // the manuscript holds no prose and the engine is idle.
     expect(stdout).not.toContain('backup:');
     expect(stdout).not.toContain('manuscript:');
     expect(stdout).not.toContain('engine:');
 
-    const chapters = target.db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE basis = 0').get() as { n: number };
+    // The wipe removes one chapter; the other written chapter is ch01, which is kept (BOOK-202).
+    const chapters = target.db
+      .prepare('SELECT COUNT(*) AS n FROM chapters WHERE basis = 0 AND n <> 1')
+      .get() as { n: number };
     expect(chapters.n).toBe(1);
   });
 
@@ -268,14 +290,23 @@ describe('reset book — the lines the runbook prints', () => {
     expect(lines[0]).toBe('reset book — done');
     expect(lines.slice(1, 1 + body.tables.length + 1)).toEqual(tableLines(body, false));
     expect(lines[1 + body.tables.length + 1]).toBe(keptLine(body));
-    expect(lines[2 + body.tables.length + 1]).toBe('frame: ch01, ch42 seeded from book_frame');
-    expect(lines[3 + body.tables.length + 1]).toMatch(
+    expect(lines[2 + body.tables.length + 1]).toBe(chapter1Line(body));
+    expect(lines[3 + body.tables.length + 1]).toBe('frame: ch42 seeded from book_frame');
+    expect(lines[4 + body.tables.length + 1]).toMatch(
       /^backup: .*book-reset-\d{8}T\d{6}Z\.db \(0600, integrity ok, counts match\)$/u,
     );
-    expect(done.stdout.trimEnd().split('\n')).toHaveLength(4 + body.tables.length + 1);
+    expect(done.stdout.trimEnd().split('\n')).toHaveLength(5 + body.tables.length + 1);
 
-    const chapters = target.db.prepare('SELECT COUNT(*) AS n FROM chapters WHERE basis = 0').get() as { n: number };
-    expect(chapters.n).toBe(0);
+    // The fixture's ch01 is the frame here, so it survives as the basis row it was; the written
+    // chapter (ch08) is gone and the finale is re-seeded.
+    const chapters = target.db.prepare('SELECT n, basis FROM chapters ORDER BY n').all() as Array<{
+      n: number;
+      basis: number;
+    }>;
+    expect(chapters).toEqual([
+      { n: 1, basis: 1 },
+      { n: 42, basis: 1 },
+    ]);
 
     const again = await run(`reset book --url ${base} --yes`);
     expect(again.stdout).toContain('reset book — done');
@@ -285,24 +316,26 @@ describe('reset book — the lines the runbook prints', () => {
 });
 
 describe('reset book — the two refusals a dry run names', () => {
-  it('reports the content the wipe removes, and refuses a frame slot that is prose', async () => {
-    // A frame slot that is prose is a canon problem, read from its row: the reset refuses, and
-    // the operator's remedy is the canon (the row), never a file.
+  it('reports the content the wipe removes, and refuses a finale slot that is prose', async () => {
+    // A finale slot that is prose is a canon problem, read from its row: the reset refuses, and
+    // the operator's remedy is the canon (the row), never a file. BOOK-202: ch01 is kept, so
+    // prose there is the chapter the reset preserves, not a refusal.
     const { base } = await live({
       files: {
-        'ch01.md': longProse(['Глава первая. Теперь это обычная глава, а не кадр.']),
-        'ch42.md': FRAME_LAST_SENTENCE,
+        'ch01.md': FRAME_FIRST_SENTENCE,
+        'ch42.md': longProse(['Финал. Теперь это обычная глава, а не кадр.']),
         'ch08.md': longProse(['Служебный абзац.']),
       },
     });
 
     const dry = await run(`reset book --url ${base}`);
+    // BOOK-202: ch01 is kept, so the content the wipe removes is ch08 and the finale.
     expect(dry.stdout).toMatch(/content: 2 written chapter\(s\) · \d+ characters · \d+ blocks — the wipe removes them/u);
 
     const failure = await failed(`reset book --url ${base} --yes`);
     expect(failure.code).toBe(5);
     expect(failure.stderr).toContain('FRAME_NOT_BASIS');
-    expect(failure.stderr).toContain('chapter 1');
+    expect(failure.stderr).toContain('chapter 42');
     expect(failure.stderr).not.toContain('manuscript/');
     expect(failure.stdout ?? '').not.toContain('reset book — done');
   });

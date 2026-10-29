@@ -52,8 +52,12 @@ describe('the engine writes only on a filing', () => {
       expect(fixture.engine.next({ for: 'fwd', session: 'w1' })).toBeNull();
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
       expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM pass_spend').get()).toEqual({ n: 0 });
-      // And a named pass speaks the code instead of inventing a chapter.
+      // And a named pass speaks the code instead of inventing a chapter. The fixture has ch01–04
+      // written and no filings, which is not the just-reset shape (BOOK-202 keeps that exception
+      // to a book whose only written chapter is ch01), so the next slot refuses like any gap.
       expect(codeOf(() => fixture.engine.openChapterPass(5, 'w1'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(codeOf(() => fixture.engine.openChapterPass(6, 'w1'))).toBe('NO_FILING_FOR_CHAPTER');
+      expect(fixture.db.prepare('SELECT COUNT(*) AS n FROM steps').get()).toEqual({ n: 0 });
     } finally {
       fixture.close();
     }

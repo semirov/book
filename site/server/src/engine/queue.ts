@@ -35,7 +35,7 @@ import {
 } from './helpers.ts';
 import { closeUnfiledDraft } from './filings.ts';
 import { acquireLease } from './leases.ts';
-import { admitPremise, queuedPremise } from './premise.ts';
+import { admitPremise, noFilingReason, passableWithoutFiling, queuedPremise } from './premise.ts';
 import { gradeRelevance, needsWriterDecision } from './relevance.ts';
 import { currentRev } from './close.ts';
 import * as store from './store.ts';
@@ -364,7 +364,8 @@ export function createQueue(deps: EngineDeps) {
    * for every pass in between; an operator may name the chapter instead. It is the *same*
    * pass: one open draft step per chapter, the premise ride-along, the boundary and one lease.
    * A refusal is a code the caller branches on, never a silent null: `NOT_DRAFTING`,
-   * `CHAPTER_WRITTEN`, `BUDGET_PAUSED`/`BUDGET_STOPPED`, `PASS_LEASED` (and the lease bounds
+   * `CHAPTER_WRITTEN`, `NO_FILING_FOR_CHAPTER` (BOOK-166, with the just-reset exception of
+   * BOOK-202), `BUDGET_PAUSED`/`BUDGET_STOPPED`, `PASS_LEASED` (and the lease bounds
    * from `acquireLease`).
    */
   function openPass(session: string, chapter: number, at: number): WriterAssignment | null {
@@ -381,15 +382,12 @@ export function createQueue(deps: EngineDeps) {
     // book are the owner's numbers, and they are the same line on every surface.
     budgetGuard(at);
 
-    // BOOK-166 (owner, 2026-10-28): the book is written only on interventions. A draft pass
-    // exists only when a filing asks for this chapter; with none there is no work at all.
+    // BOOK-166 (owner, 2026-10-28): a draft pass exists only when a filing asks for this
+    // chapter. BOOK-202: a just-reset book — no filings at all, and exactly the forward lane's
+    // next chapter — may open that chapter in order; a gap still refuses.
     const premise = queuedPremise(db, chapter);
-    if (premise === undefined) {
-      refuse(
-        'NO_FILING_FOR_CHAPTER',
-        409,
-        `глава ${chapter} не заказана заявкой — книга пишется только при воздействиях`,
-      );
+    if (premise === undefined && !passableWithoutFiling(db, chapter)) {
+      refuse('NO_FILING_FOR_CHAPTER', 409, noFilingReason(chapter));
     }
 
     // One pass per chapter: an open draft step of this chapter *is* the pass, whoever holds it.

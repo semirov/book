@@ -27,9 +27,10 @@
  *
  * BOOK-137 adds one more write: `POST /api/admin/reset/book` empties the book's content and
  * progress before a launch. It still edits no paragraph — it deletes what the manuscript no
- * longer backs and re-reads the two frame slots from `manuscript/`, which is why the one write
- * this route performs is a *reset* and not an edit. The rule itself lives in `reset/book.ts`;
- * this file only guards, maps refusals to statuses and answers with counts.
+ * longer backs and re-seeds the finale slot from `book_frame`, which is why the one write this
+ * route performs is a *reset* and not an edit; chapter 1 is kept whole (BOOK-202). The rule
+ * itself lives in `reset/book.ts`; this file only guards, maps refusals to statuses and answers
+ * with counts and chapter 1's digest.
  */
 
 import { readFileSync } from 'node:fs';
@@ -314,12 +315,13 @@ export function registerAdminRoutes(app: FastifyInstance, deps: RouteDeps): void
    *
    * The body is `{ dryRun?: boolean, backupOk?: boolean }` and an absent body is a dry run:
    * the destructive shape is the one that has to be asked for explicitly, never the default of
-   * a request that lost its body. Counts are the answer in both shapes; nothing here returns a
-   * row, a text or a token.
+   * a request that lost its body. Counts are the answer in both shapes, and BOOK-202 adds
+   * chapter 1's digest (`sha256Before`/`sha256After`) because ch01 survives the wipe; nothing
+   * here returns a row, a text or a token.
    *
-   * Refusals: `FRAME_MISSING` / `FRAME_NOT_BASIS` (no row holds the canon, or a frame slot holds
-   * prose — BOOK-187 reads both from the volume, never from a file), `ENGINE_BUSY` (a step is
-   * writing into the rows about to be deleted) and `BACKUP_FAILED`.
+   * Refusals: `FRAME_MISSING` / `FRAME_NOT_BASIS` (no row holds the canon, or the finale slot
+   * holds prose — BOOK-187 reads both from the volume, never from a file), `ENGINE_BUSY` (a step
+   * is writing into the rows about to be deleted) and `BACKUP_FAILED`.
    */
   app.post('/api/admin/reset/book', async (request, reply) => {
     if (!guard(deps, request, reply)) return reply;
