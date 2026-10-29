@@ -120,7 +120,7 @@ describe('the reaper gives up only after three attempts (§6A.11)', () => {
       expect(row.status).toBe('escalated');
       expect(row.outcome).toBe('gate_timeout');
       expect(row.attempts).toBe(3);
-      expect(row.reason).toContain('вовремя');
+      expect(row.reason).toMatch(/^не дошло: /u);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
       expect(fixture.db.prepare('SELECT holder FROM lane WHERE id = 1').get()).toEqual({ holder: null });
     } finally {

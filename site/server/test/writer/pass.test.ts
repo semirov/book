@@ -14,6 +14,7 @@ import { formatUsd } from '../../src/budget.ts';
 import { main } from '../../src/writer/main.ts';
 import type { PassDeps } from '../../src/writer/pass.ts';
 import { runPass } from '../../src/writer/pass.ts';
+import { readerSentences } from '../../src/writer/reasons.ts';
 import { costUsd } from '../../src/writer/pipeline.ts';
 import { listStages } from '../../src/stages/repo.ts';
 import { toIso } from '../../src/util/time.ts';
@@ -182,7 +183,7 @@ describe('runPass — one pass, end to end', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('модель отказалась писать');
+      expect(result.reason).toBe(readerSentences.refusal);
       expect(harness.logs.join('\n')).toContain('ANSWER_REFUSAL');
       expect(existsSync(join(harness.bookRoot, 'manuscript'))).toBe(false);
 

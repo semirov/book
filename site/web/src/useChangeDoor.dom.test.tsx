@@ -57,6 +57,7 @@ const CHANGE: ChangeDto = {
 const FILING: CommentDto = {
   attempt: null,
   id: 'cmt_1',
+  number: 2,
   chapter: 8,
   // The filing was made on the sentence **before** the change rewrote it: the stored quote is
   // gone from the text, and the prefix names the place the live sentence stands at now.

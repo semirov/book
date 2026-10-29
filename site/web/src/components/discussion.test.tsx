@@ -2,6 +2,8 @@ import { AUTHOR_COLORS, FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type Comment
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { queueLabel } from '../lib/format.ts';
+import { STATE_LINES, STATE_WORDS } from '../lib/marginalia.ts';
 import { Discussion } from './Discussion.tsx';
 import { firstDeclarations } from './cssRules.ts';
 
@@ -12,9 +14,14 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   eager: true,
 });
 
+let filed = 0;
+
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
+  filed += 1;
   return {
     id: 'cmt_1',
+    // BOOK-218 — the filing's own number; the counter keeps the rows of one list distinct.
+    number: filed,
     chapter: 8,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -98,8 +105,8 @@ describe('the register’s two anchors', () => {
 
 /**
  * BOOK-59 / BOOK-70 — the two counters of the register. A bare «обсуждение 4» is a number
- * without its noun, «в очереди 3» could be read as three chapters, and a chip never counts
- * nothing: the zero states are sentences («замечаний нет», «в очереди пусто»).
+ * without its noun, «в работе 3» could be read as three chapters, and a chip never counts
+ * nothing: the zero states are sentences («замечаний нет», «правок в работе нет»).
  */
 describe('the register’s counters', () => {
   /** Read as a reader reads it: tags stripped, so a `<b>` between number and noun is no alibi. */
@@ -117,15 +124,17 @@ describe('the register’s counters', () => {
       />,
     );
     expect(text(html)).toContain('3 замечания');
-    expect(text(html)).toContain('в очереди 3 правки');
+    expect(text(html)).toContain(queueLabel(3));
+    expect(text(html)).toContain('в работе 3 правки');
   });
 
   it('uses the singular and the plural count forms', () => {
     expect(
       text(renderToStaticMarkup(<Discussion depth={1} complete comments={[comment({ id: 'cmt_1' })]} live />)),
     ).toContain('1 замечание');
-    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} live />))).toContain('в очереди 1 правка');
-    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} live />))).toContain('в очереди 5 правок');
+    expect(text(renderToStaticMarkup(<Discussion depth={1} comments={[]} live />))).toContain('в работе 1 правка');
+    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} live />))).toContain(queueLabel(5));
+    expect(text(renderToStaticMarkup(<Discussion depth={5} comments={[]} live />))).toContain('в работе 5 правок');
   });
 
   it('splits the stamp: a comment’s moment is a stamp-time, never the old shared `.stamp`', () => {
@@ -145,8 +154,9 @@ describe('the register’s counters', () => {
     expect(text(html)).not.toContain('замечаний нет');
     // The teaching line belongs to a settled empty feed, not to a read that never answered.
     expect(text(html)).not.toContain('Их читают как данные');
-    expect(text(html)).toContain('в очереди пусто');
-    for (const wrong of ['0 замечаний', 'в очереди 0', '0 правок']) expect(text(html), wrong).not.toContain(wrong);
+    expect(text(html)).toContain(queueLabel(0));
+    expect(text(html)).toContain('правок в работе нет');
+    for (const wrong of ['0 замечаний', 'в работе 0', '0 правок', '0 правка']) expect(text(html), wrong).not.toContain(wrong);
   });
 
   /**
@@ -217,7 +227,7 @@ describe('the register while its feed is landing', () => {
     expect(html).toMatch(/<span class="sec-meta"><span role="status"/u);
     // The queue line has its own, already-settled source: it is not a second waiting claim,
     // and at zero it is a sentence, not a count of nothing (BOOK-70).
-    expect(html).toContain('в очереди пусто');
+    expect(html).toContain(queueLabel(0));
   });
 
   it('carries the slow sentence in the same slot, still without the count', () => {
@@ -310,7 +320,7 @@ function text(html: string): string {
 /**
  * One filing is one entry: a premise is the chapter's row (never a block here), and a change
  * is the attempt of the filing it came from (never a second row). The prod page said «в
- * очереди пусто» over two rows it presented as waiting, and showed the same premise twice: as
+ * ждёт своей главы» over two rows it presented as waiting, and showed the same premise twice: as
  * a filing and as the chapter's row.
  */
 describe('one state per filing on the register', () => {
@@ -326,6 +336,7 @@ describe('one state per filing on the register', () => {
           // the chapter's own row — the thread prints no block for it.
           comment({
             id: 'cmt_65',
+            number: 3,
             chapter: 65,
             premise: true,
             status: 'applied',
@@ -343,8 +354,8 @@ describe('one state per filing on the register', () => {
     );
     const plain = text(html);
     expect(plain).toContain('ждёт');
-    expect(plain).toContain('в очереди 1 правка');
-    expect(plain).not.toContain('в очереди пусто');
+    expect(plain).toContain(queueLabel(1));
+    expect(plain).not.toContain(queueLabel(0));
     // The premise's word is its row's, not the thread's: one entry, one state, no duplicate.
     expect(plain).not.toContain('внесено');
     expect(plain).toContain('1 замечание');
@@ -364,14 +375,14 @@ describe('one state per filing on the register', () => {
       />,
     );
     expect(text(html)).toContain(FAILED_ATTEMPT_LINE);
-    expect(text(html)).toContain('в очереди 1 правка');
+    expect(text(html)).toContain(queueLabel(1));
     expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
   });
 
   it('prints one state per filing: landed over an older attempt, pending, refused (BOOK-189)', () => {
     // The owner's rows: one filing whose `change_id` pointed at an older `escalated` attempt while
     // a later `done applied` landed it, one the lane still holds, one refused. The queue line is
-    // the writer's (`depth`), so one pending change reads «в очереди 1 правка» over three rows.
+    // the writer's (`depth`), so one pending change reads «в работе 1 правка» over three rows.
     const html = renderToStaticMarkup(
       <Discussion
         depth={1}
@@ -379,6 +390,7 @@ describe('one state per filing on the register', () => {
         comments={[
           comment({
             id: 'cmt_applied',
+            number: 4,
             status: 'applied',
             chapter: 3,
             applied: { chapter: 3, rev: 4 },
@@ -389,6 +401,7 @@ describe('one state per filing on the register', () => {
           comment({ id: 'cmt_pending', status: 'accepted', changeStatus: 'pending', changeId: 'chg_pending' }),
           comment({
             id: 'cmt_refused',
+            number: 5,
             status: 'rejected',
             refusal: 'auditor',
             reason: 'вне книги: этот мир не просит чудес',
@@ -417,15 +430,18 @@ describe('one state per filing on the register', () => {
     );
     const plain = text(html);
     expect(plain).toContain('внесено');
-    expect(plain).toContain('глава 3 · ревизия 4');
-    expect(plain).toContain('ждёт');
-    expect(plain).toContain('в очереди на запись');
-    expect(plain).toContain('отклонено');
+    expect(plain).toContain('в главу 3. это четвёртая редакция');
+    // BOOK-218 — `accepted` with no change in hand is one row: the word and its one line.
+    expect(plain).toContain(STATE_WORDS.accepted);
+    expect(plain).toContain(STATE_LINES.accepted);
+    // BOOK-218 — two sinks, one word each: a refusal says `не принято`.
+    expect(plain).toContain('не принято');
     expect(plain).toContain('вне книги: этот мир не просит чудес');
-    expect(plain).toContain('в очереди 1 правка');
-    // The failed attempt is history, not the state: no queue word, no second landing claim.
+    expect(plain).toContain(queueLabel(1));
+    // The failed attempt is history, not the state: no machinery word, no second landing claim.
     expect(plain).not.toContain('идёт');
-    expect(plain).not.toContain('правка в очереди');
+    expect(plain).not.toContain('в очереди');
+    expect(plain).not.toContain('впишется 4-й');
     expect(plain).not.toContain('входит в книгу');
     expect(html).not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
   });
@@ -433,7 +449,7 @@ describe('one state per filing on the register', () => {
   it('an empty queue is one sentence and no list', () => {
     const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} changes={[]} live />);
     const plain = text(html);
-    expect(plain).toContain('в очереди пусто');
+    expect(plain).toContain(queueLabel(0));
     expect(plain).toContain('замечаний нет');
     expect(html).not.toContain('class="talks-list"');
     expect(html).not.toContain('class="comment"');

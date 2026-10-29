@@ -15,7 +15,7 @@ import type {
   ParagraphChainDto,
   ParagraphVersionDto,
 } from '@book/shared';
-import { allChapterNumbers } from '@book/shared';
+import { allChapterNumbers, changeNumber } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { OUT_OF_PROCESS_LABEL } from '../ingest/attribution.ts';
@@ -104,7 +104,7 @@ function attributionPart(seq: number | null, actor: { label: string } | null): s
       : actor !== null && actor.label === 'автор'
         ? ' (автор)'
         : '';
-  return `правкой ${seq}${who}`;
+  return `правкой ${changeNumber(seq)}${who}`;
 }
 
 /** «правка 3 (Аня)» — the previous link of the chain. */
@@ -116,7 +116,7 @@ function previousPart(seq: number | null, actor: { label: string } | null): stri
       : actor !== null && actor.label === 'автор'
         ? ' (автор)'
         : '';
-  return `правка ${seq}${who}`;
+  return `правка ${changeNumber(seq)}${who}`;
 }
 
 function chainLine(latest: VersionRow, previous: VersionRow | undefined, seqs: Map<string, number>): string {

@@ -6,7 +6,7 @@ import { track } from '../lib/analytics.ts';
 import { commentStamp } from '../lib/commentView.ts';
 import { draftSummary, emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
 import { filingInk, filingNumber, filingQuote, stripFilings, type SentenceFilings } from '../lib/filings.ts';
-import { filingMarginalia } from '../lib/marginalia.ts';
+import { filingMarginalia, STATE_WORDS } from '../lib/marginalia.ts';
 import { attachOutsideClose } from '../lib/outsideClose.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
@@ -302,7 +302,7 @@ export function Seam({
           key={comment.id}
           data-door={`filing-${comment.id}`}
           data-status={comment.status}
-          aria-label={`замечание ${filingNumber(comment)} · ${filingInk(comment).word} · «${filingQuote(comment)}»`}
+          aria-label={`${filingNumber(comment)} · ${filingInk(comment).word} · «${filingQuote(comment)}»`}
           onClick={(event) => openFiling(comment, event.currentTarget)}
         >
           <span className={`seam-filing-line ink-${comment.status === 'new' ? 'quiet' : 'live'}`}>
@@ -355,12 +355,12 @@ export function Seam({
                 // A landed filing clears the refusal it may have answered (BOOK-63).
                 setRefusal(null);
                 setOpen(false);
-                // BOOK-90: «зарегистрировано» is the deed word; the state is the deck's own
-                // word for the posted row, so the receipt cannot drift from the feed.
-                const marginalia = filingMarginalia(comment);
-                // A held filing says what holds it (BOOK-111 §5): word, then the check line.
-                const held = comment.status === 'quarantined' ? ` · ${marginalia.consequence}` : '';
-                setReceipt(`${filingNumber(comment)} зарегистрировано · ${marginalia.word}${held}`);
+                // BOOK-218 — the strip's receipt says what the act was and which filing it
+                // made: `принято · замечание 12`. One state, once: the word for the act, never
+                // the row's own state beside it (the row below prints that, from the module).
+                const held =
+                  comment.status === 'quarantined' ? ` · ${filingMarginalia(comment).consequence}` : '';
+                setReceipt(`${STATE_WORDS.accepted} · ${filingNumber(comment)}${held}`);
                 // BOOK-63: the receipt is the fact the reader came for; the id stays out.
                 track('receipt_seen', {});
                 onPosted(comment);

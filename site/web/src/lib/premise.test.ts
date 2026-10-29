@@ -1,11 +1,15 @@
 import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { filingMarginalia } from './marginalia.ts';
+import { STATE_WORDS, filingMarginalia } from './marginalia.ts';
 import { canTakePremise, PREMISE_EXISTS, PREMISE_HINT, premiseAction, premiseFiling, premiseRefusal, premiseRow } from './premise.ts';
 
+let filed = 0;
+
 function comment(overrides: Partial<CommentDto> & { id: string; chapter: number; createdAt: string }): CommentDto {
+  filed += 1;
   return {
+    number: filed,
     anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
     authorColor: '#6f9bb5',
@@ -50,7 +54,7 @@ describe('premiseFiling and the refusal', () => {
 
   it('refuses a second premise by name and points at the first', () => {
     expect(PREMISE_EXISTS).toBe('у главы уже есть замысел');
-    expect(premiseRefusal(first)).toEqual({ line: PREMISE_EXISTS, detail: 'первый замысел — замечание №MT1' });
+    expect(premiseRefusal(first)).toEqual({ line: PREMISE_EXISTS, detail: 'первый замысел — замечание 1' });
   });
 
   it('keeps the row copy honest about what a premise is', () => {
@@ -84,7 +88,7 @@ describe('premiseRow', () => {
     const premise = comment({ id: 'cmt_3', chapter: 7, createdAt: '2026-10-20T09:00:00Z', status: 'accepted' });
     expect(premiseRow({ n: 7, written: false, basis: false }, premise)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
-      word: 'ждёт',
+      word: STATE_WORDS.accepted,
     });
     // The word is the deck's, from `filingMarginalia` — never a second copy of the vocabulary.
     expect(premiseRow({ n: 7, written: false, basis: false }, premise)?.word).toBe(filingMarginalia(premise).word);
@@ -99,20 +103,21 @@ describe('premiseRow', () => {
     expect(pending.premise).toBe(true);
     expect(premiseRow({ n: 40, written: false, basis: false }, pending)).toMatchObject({
       quote: 'в главе должен быть документ о переводе смены',
-      word: 'ждёт',
+      word: STATE_WORDS.accepted,
     });
   });
 
   it('says under the row that the attempt came back empty, and only then (BOOK-136)', () => {
     const failed = comment({
       id: 'cmt_failed',
+      number: 1,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       attempt: 'failed',
     });
-    // The word is «ждёт»; the line under it is the deck's one sentence, in the deck's words.
+    // The word is «принято»; the line under it is the deck's one sentence, in the deck's words.
     expect(premiseRow({ n: 40, written: false, basis: false }, failed)).toMatchObject({
-      word: 'ждёт',
+      word: STATE_WORDS.accepted,
       note: FAILED_ATTEMPT_LINE,
     });
     // A plain wait owes no note: the word is the whole fact.
@@ -121,6 +126,7 @@ describe('premiseRow', () => {
     // A landed premise keeps its receipt: the attempt behind it is stale news.
     const landed = comment({
       id: 'cmt_landed',
+      number: 2,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',
@@ -131,6 +137,7 @@ describe('premiseRow', () => {
     // A refusal decided itself: its own sentence is the line, never the attempt's.
     const refused = comment({
       id: 'cmt_refused',
+      number: 3,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'rejected',
@@ -144,6 +151,7 @@ describe('premiseRow', () => {
     const NOW = Date.parse('2026-10-28T12:00:00Z');
     const refused = comment({
       id: 'cmt_refused',
+      number: 4,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'rejected',
@@ -178,6 +186,7 @@ describe('premiseRow', () => {
     // block in the thread. The row is the filing's only home, written or not.
     const landed = comment({
       id: 'cmt_landed',
+      number: 5,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',
@@ -198,6 +207,7 @@ describe('premiseRow', () => {
       premiseLanded: false,
       sourceCommentId: 'cmt_3',
       id: 'chg_7',
+      number: 6,
       seq: 1,
       chapter: 7,
       intent: 'документ о переводе смены',
@@ -230,6 +240,7 @@ describe('premiseRow', () => {
   it('shortens a long premise to its first line, written or not (BOOK-77)', () => {
     const long = comment({
       id: 'cmt_long',
+      number: 8,
       chapter: 40,
       createdAt: '2026-10-27T18:04:17Z',
       status: 'applied',

@@ -130,7 +130,7 @@ const CHAIN = {
       changeId: null,
       changeSeq: null,
       stepId: null,
-      actor: { kind: 'writer', label: 'печатник', identityId: 'id-pass' },
+      actor: { kind: 'writer', label: 'машина', identityId: 'id-pass' },
       replacedBy: null,
     },
     {
@@ -146,7 +146,7 @@ const CHAIN = {
       changeId: 'chg_12',
       changeSeq: 12,
       stepId: null,
-      actor: { kind: 'writer', label: 'печатник', identityId: 'id-pass' },
+      actor: { kind: 'writer', label: 'машина', identityId: 'id-pass' },
       replacedBy: null,
     },
   ],

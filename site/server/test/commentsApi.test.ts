@@ -426,6 +426,31 @@ describe('GET /api/comments', () => {
     expect(secondPage.json().items[0].id).not.toBe(firstPage.json().items[0].id);
   });
 
+  it('gives every filing its own public number, ascending and never an id (BOOK-218)', async () => {
+    const h = await boot();
+    const numbered: number[] = [];
+    for (let index = 1; index <= 3; index += 1) {
+      h.clock.advance(1_000);
+      const response = await post(h, commentBody({ body: `Замечание ${index}` }));
+      expect(response.statusCode).toBe(201);
+      numbered.push((response.json().comment as { number: number }).number);
+    }
+    // 1-based, monotonic, the row's own insertion order — not a count of the visible page.
+    expect(numbered).toEqual([1, 2, 3]);
+
+    // The thread and the single-item read carry the same number: one row, one number.
+    const page = await h.app.inject({ method: 'GET', url: '/api/comments?chapter=8' });
+    const items = page.json().items as Array<{ id: string; number: number }>;
+    expect(items.map((item) => item.number)).toEqual([1, 2, 3]);
+    const one = await h.app.inject({ method: 'GET', url: `/api/comments/${items[1]?.id ?? ''}` });
+    expect((one.json() as { number: number }).number).toBe(2);
+
+    // A hidden row keeps its number out of the public page but never renumbers the others.
+    h.db.prepare("UPDATE comments SET status = 'hidden' WHERE id = ?").run(items[0]?.id ?? '');
+    const after = await h.app.inject({ method: 'GET', url: '/api/comments?chapter=8' });
+    expect((after.json().items as Array<{ number: number }>).map((item) => item.number)).toEqual([2, 3]);
+  });
+
   it('answers 404 for an unknown comment and 400 for a bad chapter', async () => {
     const h = await boot();
     expect((await h.app.inject({ method: 'GET', url: '/api/comments/cmt_unknown' })).statusCode).toBe(404);

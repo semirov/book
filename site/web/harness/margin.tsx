@@ -63,6 +63,8 @@ const ENTRY: CatalogEntry = {
 /** The filing on the first paragraph: new, so the mark is alive and the note is drawn. */
 const FILING: CommentDto = {
   id: 'cmt_harness_margin_A7K',
+  // BOOK-218 — the filing's own public number, a column of the record.
+  number: 7,
   chapter: 1,
   anchor: { blockId: 'ch01#harness', blockIndex: 0, quote: TEXT, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -86,6 +88,8 @@ const FILING: CommentDto = {
 const SECOND_FILING: CommentDto = {
   ...FILING,
   id: 'cmt_harness_margin_C4T',
+  // BOOK-218 — its own public number, not the first filing's: two marks must not print one 7.
+  number: 8,
   anchor: { blockId: 'ch01#harness-b', blockIndex: 1, quote: SECOND, prefix: null, suffix: null, resolved: true },
   author: 'Филипп',
   body: 'коридор не должен светиться: дверь ведёт в темноту',

@@ -9,7 +9,11 @@
  */
 
 import {
+  FAILURE_LINES,
   TOTAL_CHAPTERS,
+  isOutcomeLine,
+  changeName,
+  changeNumber,
   type ChangeDto,
   type ChangeOutcome,
   type ChangeStepDto,
@@ -20,7 +24,17 @@ import {
 } from '@book/shared';
 
 import { plural } from './format.ts';
-import { changeWord, PREMISE_PENDING, registrationLine, STATE_WORDS } from './marginalia.ts';
+import {
+  changeWord,
+  draftingLine,
+  FILING_LINES,
+  NOTE_SAVED_LINE,
+  PREMISE_LINES,
+  PREMISE_PENDING,
+  registrationLine,
+  STATE_WORDS,
+  turnLine,
+} from './marginalia.ts';
 
 export type ChangeLines = {
   first: string;
@@ -37,10 +51,12 @@ export function stampCopy(
   return changeWord(change);
 }
 
-/** `14` → `014`, the change's public number (§DESIGN 7.12). */
-export function changeNumber(seq: number): string {
-  return String(Math.trunc(seq)).padStart(3, '0');
-}
+/**
+ * `14` → `014`, the change's public number (§DESIGN 7.12). BOOK-218 — the one implementation
+ * lives in `@book/shared`'s `stateWords.ts` beside `changeName`, so a surface cannot pad a
+ * number one way and name it another; this module re-exports it for the page's callers.
+ */
+export { changeName, changeNumber };
 
 function reached(change: Pick<ChangeSummaryDto, 'chapters' | 'chapter'>): number[] {
   return change.chapters.filter((chapter) => chapter !== change.chapter);
@@ -88,7 +104,9 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
     if (change.status === 'void') {
       return {
         first,
-        second: change.reason ?? (change.outcome === 'superseded' ? 'снято: у главы уже есть замысел' : 'замысел не взят'),
+        second:
+          change.reason ??
+          (change.outcome === 'superseded' ? PREMISE_LINES.supersededSentence : PREMISE_LINES.refused),
         tone: 'quiet',
       };
     }
@@ -97,7 +115,7 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
     }
     return {
       first,
-      second: change.reason ?? 'нужно решение автора',
+      second: change.reason ?? FAILURE_LINES.ourFailure,
       tone: 'escalated',
     };
   }
@@ -107,20 +125,19 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
     return { first, second: registrationLine(change.frameMode ?? undefined), tone: 'done' };
   }
   if (change.status === 'pending') {
-    return {
-      first,
-      second: `${change.position ?? 1}-я в очереди`,
-      tone: 'waiting',
-    };
+    // BOOK-218 line 6 — a change's turn, in the chapter's words: never a place in a queue.
+    return { first, second: turnLine(change.position), tone: 'waiting' };
   }
   if (change.status === 'stale') {
     return { first, second: 'основа изменилась, решается заново', tone: 'live' };
   }
   if (change.status === 'processing') {
-    return { first, second: `пишется глава ${change.chapter}`, tone: 'live' };
+    // BOOK-218 line 7 — the chapter is being drafted. The summary carries no start moment (the
+    // full `ChangeDto` does, and `changeVerdict` prints it), so the word stands alone here.
+    return { first, second: draftingLine(), tone: 'live' };
   }
   if (change.status === 'escalated') {
-    return { first, second: change.reason ?? 'нужно решение автора', tone: 'escalated' };
+    return { first, second: change.reason ?? FAILURE_LINES.ourFailure, tone: 'escalated' };
   }
   if (change.status === 'failed') {
     return { first, second: change.reason ?? 'не удалось внести', tone: 'escalated' };
@@ -128,7 +145,7 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
   if (isDropped(change)) {
     return {
       first,
-      second: change.reason ?? (change.outcome === 'superseded' ? 'перекрыто более поздней правкой' : 'снято'),
+      second: change.reason ?? (change.outcome === 'superseded' ? 'перекрыто более поздней правкой' : STATE_WORDS.dropped),
       tone: 'quiet',
     };
   }
@@ -139,19 +156,23 @@ export function changeLines(change: ChangeSummaryDto): ChangeLines {
   };
 }
 
-/** The one-line trace `принято → внесено → дошло до глав 7–9` (§20 M4). */
+/**
+ * The one-line trace `принято → внесено → дошло до глав 7–9` (§20 M4). BOOK-218 — the words are
+ * the module's, never a second literal of them.
+ */
 export function progressLine(change: ChangeSummaryDto): string {
   const state = changeWord(change);
+  const accepted = STATE_WORDS.accepted;
   if (change.premise) {
     if (change.premiseLanded === true || change.status === 'done') {
-      return `принято в основу → ${state} → вошло в первую редакцию`;
+      return `${accepted} в основу → ${state} → вошло в первую редакцию`;
     }
-    return `принято в основу → ${state}`;
+    return `${accepted} в основу → ${state}`;
   }
   // BOOK-137 — paperwork travelled nowhere: no reach to print after the word.
-  if (change.outcome === 'registered') return `принято → ${state}`;
-  if (change.status === 'done') return `принято → ${state} → ${reachCopy(change)}`;
-  return `принято → ${state}`;
+  if (change.outcome === 'registered') return `${accepted} → ${state}`;
+  if (change.status === 'done') return `${accepted} → ${state} → ${reachCopy(change)}`;
+  return `${accepted} → ${state}`;
 }
 
 // ── the change card's vocabulary (public fields only) ────────────────────────
@@ -172,35 +193,31 @@ export function premiseOutcomeCopy(change: Pick<ChangeDto, 'status' | 'outcome'>
   return 'в основе главы';
 }
 
+/** BOOK-218 — every word of a change's outcome is the module's, never a literal of its own. */
 export function outcomeCopy(outcome: ChangeOutcome | null): string {
-  if (outcome === 'applied') return 'внесено';
-  if (outcome === 'adapted') return 'внесено частично';
+  if (outcome === 'applied') return STATE_WORDS.landed;
+  if (outcome === 'adapted') return `${STATE_WORDS.landed} частично`;
   // BOOK-137 — the paperwork's own word, from the one vocabulary: the sentence did not change.
   if (outcome === 'registered') return STATE_WORDS.registered;
-  if (outcome === 'dropped') return 'снято';
+  if (outcome === 'dropped') return STATE_WORDS.dropped;
   if (outcome === 'superseded') return 'перекрыто';
-  // BOOK-59: the wave bound is where a deeper change asks for a decision, not a failure, and
-  // the word must not name money to a reader who never met a budget.
-  if (outcome === 'budget') return 'остановлено: дальше — решением владельца';
-  if (outcome === 'oscillation') return 'остановлено: ходит по кругу';
-  if (outcome === 'origin') return 'остановлено: нужно решение';
-  if (outcome === 'delta') return 'остановлено: слишком много текста';
-  if (outcome === 'finding') return 'внесено · замечание сохранено';
+  // BOOK-218 line 13 — the day's printing money is gone. It is said as a fact about the day,
+  // and it is explicitly not about the reader's own edit.
+  if (outcome === 'budget') return FILING_LINES.money;
+  // BOOK-218 — the only reason vocabulary: a stop is our failure, never «нужно решение».
+  if (outcome === 'oscillation') return FAILURE_LINES.ourFailure;
+  if (outcome === 'origin') return FAILURE_LINES.ourFailure;
+  if (outcome === 'delta') return FAILURE_LINES.ourFailure;
+  if (outcome === 'finding') return `${STATE_WORDS.landed} · ${NOTE_SAVED_LINE}`;
   // BOOK-76: a physics stop is not «внесено» and not «замечание сохранено» — the claim
   // never entered the book and the change waits for a decision.
-  if (outcome === 'science') return 'остановлено: физика не подтверждена';
-  if (outcome === 'ending') return 'финал проверен, нужно решение';
-  // BOOK-61: Gate B's one word. The card's reason carries the rule's own sentence — never
-  // «внесено», and never the auditor's word for a refusal about the law.
-  if (outcome === 'rights') return 'не принято';
-  if (outcome === 'gate_timeout') return 'остановлено: проверка не ответила';
-  // BOOK-173: the patch is in the book and its consequences are their own chapters — «идёт» would
-  // say the change is still being written, which it is not.
-  if (outcome === 'ripple') return 'внесено · следствия идут';
-  // BOOK-173 §5: the silent no-op, in one factual line — a rewrite that changed nothing is not
-  // «внесено», and the reader is owed the fact rather than a word that reads like a landing.
-  if (outcome === 'no-op') return 'перепись не изменила ни одного байта';
-  return 'идёт';
+  if (outcome === 'science') return FAILURE_LINES.ourFailure;
+  if (outcome === 'ending') return FAILURE_LINES.ourFailure;
+  // BOOK-61/BOOK-218: a Gate B stop is our failure — the text was not judged, so the edit is
+  // not rejected, and the card carries the one line that says so.
+  if (outcome === 'rights') return FAILURE_LINES.ourFailure;
+  if (outcome === 'gate_timeout') return FAILURE_LINES.outOfTime;
+  return STATE_WORDS.reading;
 }
 
 /**
@@ -214,8 +231,13 @@ export function outcomeLine(change: Pick<ChangeDto, 'premise' | 'status' | 'outc
   reason: string | null;
 } {
   const word = change.premise ? premiseOutcomeCopy(change) : outcomeCopy(change.outcome);
-  if (change.reason !== null && change.reason.startsWith(word)) return { word: null, reason: change.reason };
-  return { word, reason: change.reason };
+  const reason = change.reason;
+  // BOOK-218 — one reason line: a stored outcome sentence is the whole verdict, and a reason
+  // that already opens with the word is that line too. Nothing is printed twice.
+  if (reason !== null && reason.length > 0) {
+    if (isOutcomeLine(reason) || reason.startsWith(word)) return { word: null, reason };
+  }
+  return { word, reason };
 }
 
 /**

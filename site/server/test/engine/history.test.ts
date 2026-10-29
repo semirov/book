@@ -32,8 +32,8 @@ describe('M6b — the engine writes history, not only files (§6F.1)', () => {
         .run();
       fixture.db
         .prepare(
-          `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, audit_verdict, rights_verdict)
-           VALUES ('cmt_9', 'idt_9', 1, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z', 'FITS', 'CLEAR')`,
+          `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, audit_verdict, rights_verdict, number)
+           VALUES ('cmt_9', 'idt_9', 1, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z', 'FITS', 'CLEAR', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
         )
         .run();
       const change = fixture.engine.enqueue({

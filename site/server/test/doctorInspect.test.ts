@@ -317,6 +317,26 @@ describe('inspectDataDir', () => {
     expect(inspectDataDir(dir).stray).toEqual([join(dir, '.book-volume')]);
   });
 
+  it('does not report a dump’s own `-wal`/`-shm` as a stray (BOOK-217)', () => {
+    const dir = tempDir('data-dir-sidecar-');
+    const dump = 'book-before-ch65-drop-20261028T183821Z.db';
+    for (const name of ['book.db', dump, `${dump}-wal`, `${dump}-shm`]) {
+      writeFileSync(join(dir, name), '');
+    }
+    // The doctor and the deploy gate share one classifier: the sidecars the incident's home gate
+    // refused are the dump's own files here too.
+    const report = inspectDataDir(dir);
+    expect(report.entries).toEqual([dump, `${dump}-shm`, `${dump}-wal`, 'book.db']);
+    expect(report.stray).toEqual([]);
+  });
+
+  it('still reports a `-wal` whose base is not allow-listed', () => {
+    const dir = tempDir('data-dir-sidecar-stray-');
+    writeFileSync(join(dir, 'book.db'), '');
+    writeFileSync(join(dir, 'notes.db-wal'), '');
+    expect(inspectDataDir(dir).stray).toEqual([join(dir, 'notes.db-wal')]);
+  });
+
   it('reports an extra top-level entry as stray by its absolute path, and keeps the tokens booleans', () => {
     const dir = tempDir('data-dir-stray-');
     writeFileSync(join(dir, 'book.db'), '');

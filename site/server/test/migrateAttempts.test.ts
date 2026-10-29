@@ -146,8 +146,8 @@ describe('migrate — the attempt ledger (BOOK-158)', () => {
        VALUES ('idt_1', 'yandex-1', 'Аня', '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z')`,
     ).run();
     db.prepare(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-       VALUES ('cmt_1', 'idt_1', 8, 'Аня', 'текст', 'sha', 'a', 'new', '2026-10-25T12:00:00Z')`,
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+       VALUES ('cmt_1', 'idt_1', 8, 'Аня', 'текст', 'sha', 'a', 'new', '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     ).run();
     const insert = db.prepare(
       `INSERT INTO comment_attempts (comment_id, n, at, day, body_sha, anchor_sha, outcome)

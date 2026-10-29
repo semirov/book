@@ -14,16 +14,16 @@ import { migrateV28 } from './migrateV28.ts';
 import { migrateV29 } from './migrateV29.ts';
 import { migrateV30 } from './migrateV30.ts';
 import { migrateV32 } from './migrateV32.ts';
+import { migrateV33 } from './migrateV33.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
 /**
- * Apply schema migrations in order, then probe the result. `user_version` is the cursor; later
- * milestones append steps rather than editing this one.
- *
- * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a
- * projection of the manuscript or an engine table never written before M3, and the retired
- * `obligations`/`cascade_stages` tables must disappear — a field install loses a projection only.
+ * Apply schema migrations in order, then probe the result. `user_version` is the migration
+ * cursor; later milestones append steps rather than editing this one. The M0 step (any version
+ * < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a projection of the
+ * manuscript or an engine table never written before M3, the retired `obligations` and
+ * `cascade_stages` must disappear, and files win for text (§18).
  */
 const MIGRATIONS: Migration[] = [
   {
@@ -327,14 +327,16 @@ const MIGRATIONS: Migration[] = [
   { to: 28, up: migrateV28 },
   // BOOK-185 stage 3 (BOOK-DOC-77): `migrateV29.ts` — runs, facts, edges, threads.
   { to: 29, up: migrateV29 },
-  // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict, and every escalated filing re-opened.
+  // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict.
   { to: 30, up: migrateV30 },
   // BOOK-117: `steps.reopened_at` — where the wall's second window starts. Additive and nullable:
   // a row written before a reopen existed was never re-opened, and no value is invented for it.
   { to: 31, up(db) { addColumn(db, 'steps', 'reopened_at', 'TEXT'); } },
-  // BOOK-173: `migrateV32.ts` — the frozen plan, its mode, price and verification record
-  // (BOOK-206 took 30, BOOK-117's `reopened_at` took 31).
+  // BOOK-218: `migrateV32.ts` — the filing's own number, backfilled by the old rowid.
   { to: 32, up: migrateV32 },
+  // BOOK-173: `migrateV33.ts` — the frozen plan, its mode, price and verification record
+  // (BOOK-206 took 30, BOOK-117's `reopened_at` took 31, BOOK-218's `comments.number` took 32).
+  { to: 33, up: migrateV33 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

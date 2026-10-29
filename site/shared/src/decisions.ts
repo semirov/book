@@ -16,7 +16,6 @@
  */
 
 import type { CommentDto } from './comment.ts';
-import type { DispositionReport } from './disposition.ts';
 
 /** The endpoint's bound: the newest 20 decisions of one reader, never a history dump. */
 export const MY_DECISIONS_LIMIT = 20;
@@ -95,12 +94,6 @@ export type MyDecisionDto = {
    */
   shareAtDecision: MeasuredShareDto | null;
   decidedAt: string;
-  /**
-   * BOOK-174 — how the filing was read, in the same three lines its own record prints (line 1
-   * says the reading, line 2 why, line 3 where it stands). `null`/absent for a filing written
-   * before the disposition existed.
-   */
-  report?: DispositionReport | null;
 };
 
 /** The reader's own record (`GET /api/me/decisions`), newest first. */

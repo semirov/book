@@ -71,9 +71,9 @@ function seed(target: Fixture): void {
   }).id;
   target.db
     .prepare(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
        VALUES ('cmt_one', ?, 8, 'Филипп Семиров', 'Служебное замечание.', 'sha', 'hash-one', 'new',
-               '2026-10-25T12:00:00Z')`,
+               '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     )
     .run(owner);
   target.db

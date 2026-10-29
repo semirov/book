@@ -8,27 +8,23 @@
  *
  * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
  * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
- * and no pre-image to keep. A base that moved is answered by the writer at `start` (`relevance.ts`),
- * and every exit without `done` takes this pass's own landing back (`recovery.ts`, BOOK-219).
+ * and no pre-image to keep; a base that moved is answered at `start` (`relevance.ts`), and every
+ * exit without `done` takes its own landing back (`recovery.ts`, BOOK-219).
  *
- * A filing is **read before it is patched** (`passGuard.ts` `triageGuard`, BOOK-206/BOOK-173 §4):
- * a patch keys the reader's words to a verdict, so an unread filing is refused before the prompt is
- * bought. That refusal is the earlier, cheaper door; the engine's close (`VERDICTS_REQUIRED`) stays
- * the second one, and neither let text land without the verdict that admitted the filing.
- *
- * Everything the pass touches is injected — engine, transport, clock, log. It holds no database,
- * no socket, no key; the talking lives in `passLane.ts`, the prompts in `prompt.ts` / `gates.ts`,
- * the writing phase in `writePhase.ts`, the close in `closePass.ts`.
+ * Everything the pass touches is injected: the engine client, the model transport, the clock and
+ * the logger. The talking lives in `passLane.ts`, the prompts in `prompt.ts`, the gates in `gates.ts`.
  *
  * A refusal the engine states (`CHAPTER_WRITTEN`, `PASS_LEASED`, `TOKENS_EXHAUSTED`) is returned,
  * never thrown. The bound this file enforces is money, not tokens: the estimate (`estimate.ts`)
  * is checked before the pass is opened and again, from the real prompt, before the first call.
- * Past the first landing a gate failure is auxiliary (owner, 2026-10-28) only when there is no
- * landing of our own to take back; BOOK-219's rule — no landed text without a verdict — is the
- * one this file keeps with `recovery.ts` and `closePass.ts`.
+ * A failure after the lease parks the pass — one sentence and a `refused` stage, never dropped
+ * silently; past the first landing it is auxiliary (owner, 2026-10-28): a stage, a transcript or
+ * a transport that fails is logged, never escalated over text that landed. The close must land.
+ *
+ * `landed` carries the whole money line; `done` the writer's own tokens (the engine adds each gate's).
  */
 
-import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { PASS_STOPS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { isWrittenView } from '../engine/text.ts';
 import { readBuildStamp } from '../buildStamp.ts';
@@ -141,8 +137,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
   const job: WriterAssignment = picked;
   if (typeof job.chapter !== 'number') {
-    // A `front` step has no chapter, so there is nowhere to put a `refused` stage: the sentence stands.
-    const reason = 'этот проход не про главу — его ведёт другая полоса, а не писатель';
+    // A `front` step has no chapter, so no `refused` stage; BOOK-218 — the reader's sentence.
+    const reason = PASS_STOPS.notAChapter;
+    deps.log(`[writer] assignment without a chapter: step ${job.stepId}, pass ${job.pass}`);
     try {
       await engine.escalate(job.leaseId, reason);
     } catch (error) {
@@ -244,7 +241,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return (await goneAfterBack(opened.failure.code, opened.failure.detail)) ?? (await lane.park(opened.failure));
       }
       const started = opened.started;
-      if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
+      if (typeof started.sha !== 'string') return await lane.park({ detail: PASS_STOPS.startMissing });
+      // The revision and the text this pass starts from: what a revert has to return to (BOOK-219).
       preRev = typeof started.expectedRev === 'number' ? started.expectedRev : null;
       preSha = started.sha;
 
@@ -276,7 +274,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         }
         built = patchPrompt ?? rewrite;
       } catch (error) {
-        return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
+        deps.log(`[writer] промпт не собран: ${reasonOf(error)}`.slice(0, 300));
+        return await lane.park({ detail: PASS_STOPS.promptMissing });
       }
       lane.setPrompt({ sections: built.sections, promptSha256: built.promptSha256, prefixSha256: built.prefixSha256 });
       lane.setMode(choice.mode, null);
@@ -409,7 +408,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return await lane.park(failureOf(error));
       }
       if (!lane.textOf(chapter).exists) {
-        return await lane.park({ detail: 'текста главы нет в базе — проход не возобновить' });
+        return await lane.park({ detail: PASS_STOPS.chapterMissing });
       }
       text = finalize(chapterQuote(lane.textOf(chapter)));
       beforeText = text;

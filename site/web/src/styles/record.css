@@ -126,6 +126,10 @@
   text-decoration: underline 1px var(--live);
   text-underline-offset: 3px;
 }
+/* BOOK-218 — two mono lines of the record: the head's own (`замечание 12 · ваша · 29.10, 12:07`,
+   what this is and when the reader's action happened) and the hand's in `история`, where the
+   hand is the subject. One geometry: mono 12, quiet ink, tabular figures. */
+.rec-what,
 .rec-hand {
   margin: 6px 0 0;
   font-family: var(--mono);

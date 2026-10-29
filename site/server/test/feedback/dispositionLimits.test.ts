@@ -53,8 +53,8 @@ function file(
   db.prepare(
     `INSERT INTO comments
        (id, identity_id, chapter, author, body, body_sha, flags, ip_hash, status, created_at,
-        decided_at, reason, disposition)
-     VALUES (?, ?, ?, 'Аня', 'Служебное замечание.', ?, '[]', 'ip', ?, ?, ?, 'принято', ?)`,
+        decided_at, reason, disposition, number)
+     VALUES (?, ?, ?, 'Аня', 'Служебное замечание.', ?, '[]', 'ip', ?, ?, ?, 'принято', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(
     id,
     input.identity ?? 'idt_reader',

@@ -72,8 +72,8 @@ export function seedBook(target: Fixture): string {
      VALUES (1, 'Книга', 'Служебная аннотация для проверки.', 1, 'sha-front', 'sha-about', ?)`,
   ).run(AT);
   db.prepare(
-    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES ('cmt_one', ?, 8, 'Филипп Семиров', 'Служебное замечание.', 'sha-body', 'hash-one', 'accepted', ?)`,
+    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES ('cmt_one', ?, 8, 'Филипп Семиров', 'Служебное замечание.', 'sha-body', 'hash-one', 'accepted', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(owner, AT);
   db.prepare('INSERT INTO comment_events (comment_id, at, type) VALUES (?, ?, ?)').run('cmt_one', AT, 'posted');
   db.prepare('INSERT INTO feedback_batches (id, created_at, count, path, comment_ids) VALUES (?, ?, ?, ?, ?)').run(

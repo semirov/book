@@ -5,6 +5,7 @@ import {
   EDIT_MAX_CHARS,
   INTERVENTION_KIND_LABELS,
   PREMISE_FROZEN_REASON,
+  TOO_MANY_FILINGS,
 } from '@book/shared';
 
 /**
@@ -107,7 +108,8 @@ export function errorCopy(error: ComposerError): { line: string; detail: string 
     case 'NOT_FOUND':
       return { line: 'замечание не найдено — обновите страницу', detail: null, canRetry: false };
     case 'QUEUE_FULL':
-      return { line: 'очередь правок заполнена — попробуйте позже', detail: retryCopy(error.retryAfterMs), canRetry: true };
+      // BOOK-218 — the same sentence the server sends: one constant, both sides.
+      return { line: TOO_MANY_FILINGS, detail: retryCopy(error.retryAfterMs), canRetry: true };
     case 'ENDING_FROZEN':
       return { line: 'финал заморожен: правка читателя туда не входит', detail: null, canRetry: false };
     case 'FROZEN_FRAME':

@@ -18,7 +18,7 @@ import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
 const CHAPTER = 1;
-const SENTENCE = 'рамка книги — фраза этой главы не меняется, текст не опубликован';
+const SENTENCE = 'не дошло: мы не смогли проверить текст. это наша ошибка, правка не отклонена — нажмите «повторить»';
 
 function stagesOf(harness: Harness): string[] {
   return listStages(harness.fixture.db, CHAPTER).map((stage) => stage.stage);

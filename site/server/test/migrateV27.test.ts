@@ -51,8 +51,8 @@ function identity(db: Db): void {
 
 function comment(db: Db, id: string): void {
   db.prepare(
-    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, flags, ip_hash, status, created_at)
-     VALUES (?, 'idt_reader', 12, 'Аня', 'Служебное замечание.', ?, '[]', 'ip', 'rejected', ?)`,
+    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, flags, ip_hash, status, created_at, number)
+     VALUES (?, 'idt_reader', 12, 'Аня', 'Служебное замечание.', ?, '[]', 'ip', 'rejected', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(id, `sha-${id}`, AT);
 }
 
@@ -67,7 +67,7 @@ describe('migration v27 — the disposition chain', () => {
   it('creates the four columns and the counts table on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(32);
+    expect(SCHEMA_VERSION).toBe(33);
 
     const names = columns(db, 'comments').map((column) => column.name);
     for (const column of CHAIN) expect(names).toContain(column);

@@ -69,12 +69,12 @@ describe('the capacity plate', () => {
     expect(plate?.getAttribute('aria-live')).toBe('polite');
     expect(plate?.getAttribute('data-capacity')).toBe('waiting');
     expect(container.textContent).toContain(
-      'Все места заняты. Вы в очереди: кто-то уйдёт — и вы войдёте.',
+      CAPACITY_PLATE,
     );
     expect(container.textContent).toContain(
       'Чтение идёт. Подключится само, когда освободится место.',
     );
-    expect(CAPACITY_PLATE).toBe('Все места заняты. Вы в очереди: кто-то уйдёт — и вы войдёте.');
+    expect(CAPACITY_PLATE).toBe('Все места заняты. Вы ждёте места: кто-то уйдёт — и вы войдёте.');
     expect(CAPACITY_STATE).toBe('Чтение идёт. Подключится само, когда освободится место.');
     expect(errorCount()).toBe(0);
   });

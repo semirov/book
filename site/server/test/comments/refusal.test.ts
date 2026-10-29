@@ -150,7 +150,7 @@ describe('a refusal renders a reason and an actionable hint for each gate', () =
 
     const row = dto(database, id);
     expect(row).toMatchObject({ status: 'quarantined', refusal: 'held' });
-    expect(row.hint).toBe('уберите из текста указания в адрес модели');
+    expect(row.hint).toBe('уберите из текста указания в адрес машины');
     // A hold is not a decision: nothing to wait out, and nothing the reader may revise yet.
     expect(row.revise).toMatchObject({ allowed: false, blocked: null, at: null });
   });
@@ -201,7 +201,7 @@ describe('a refusal renders a reason and an actionable hint for each gate', () =
       'переформулируйте так, чтобы это было одним событием этой главы',
     );
     expect(refusalHint({ status: 'quarantined', refusal: 'held', rights_rule: 'RIGHTS-QUOTE' })).toBe(
-      'уберите из текста указания в адрес модели',
+      'уберите из текста указания в адрес машины',
     );
   });
 });

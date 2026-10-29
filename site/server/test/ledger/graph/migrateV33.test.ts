@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { openDatabase, type Db } from '../../../src/db/db.ts';
 import { migrate } from '../../../src/db/migrate.ts';
 import { migrateV25 } from '../../../src/db/migrateV25.ts';
-import { migrateV32 } from '../../../src/db/migrateV32.ts';
+import { migrateV33 } from '../../../src/db/migrateV33.ts';
 import { LEDGER_REQUIRED_TABLES, SCHEMA_VERSION } from '../../../src/db/schema.ts';
 import { seedChange, seedChapter } from '../helpers.ts';
 import { claimPlan, parkPlan, storePlan, type RipplePlan } from '../../../src/ledger/graph/plan.ts';
 
 /**
- * The v32 shape a fresh install and every upgraded one must share (BOOK-173, BOOK-DOC-80).
+ * The v33 shape a fresh install and every upgraded one must share (BOOK-173, BOOK-DOC-80).
  *
  * The failure this file exists for is the review's blocker, three times over. `main` already had a
  * v23 (the author marker), so a plan step that claimed 23 never ran on a server already at 23 —
@@ -17,9 +17,9 @@ import { claimPlan, parkPlan, storePlan, type RipplePlan } from '../../../src/le
  * (the sentence), 26 (push), 27 (BOOK-174), 28 (BOOK-187, the db-home), **29** (BOOK-185 stage
  * 3, the graph), 30 (BOOK-206's triage ledger) and 31 (BOOK-117's `steps.reopened_at`), and
  * `user_version` only moves forward: a step numbered below an install's version is skipped
- * silently. The plan is **v32**, after all of them, and the paths are proven here: **fresh → 32**,
- * **v22 → 32**, **v23 → 32**, **v25 → 32**, **v28 → 32**, **v29 → 32**, **v30 → 32** and
- * **v31 → 32**.
+ * silently. Then `main` took **32** (BOOK-218's `comments.number`). The plan is **v33**, after all
+ * of them, and the paths are proven here: **fresh → 33**, **v22 → 33**, **v23 → 33**,
+ * **v25 → 33**, **v28 → 33**, **v29 → 33**, **v30 → 33**, **v31 → 33** and **v32 → 33**.
  *
  * The graph itself is main's `fact_dependency`, created by `migrateV29.ts`; this file asserts the
  * plan does not duplicate it.
@@ -61,10 +61,10 @@ afterEach(() => {
   db.close();
 });
 
-describe('migration v32 — the frozen plan on a fresh install', () => {
-  it('creates change_plans, reaches version 32, and does not duplicate main’s graph', () => {
+describe('migration v33 — the frozen plan on a fresh install', () => {
+  it('creates change_plans, reaches version 33, and does not duplicate main’s graph', () => {
     db = openDatabase(':memory:');
-    expect(SCHEMA_VERSION).toBe(32);
+    expect(SCHEMA_VERSION).toBe(33);
     expect(migrate(db).to).toBe(SCHEMA_VERSION);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
@@ -94,7 +94,7 @@ describe('migration v32 — the frozen plan on a fresh install', () => {
   });
 });
 
-describe('migration v32 — the same shape on an upgraded install', () => {
+describe('migration v33 — the same shape on an upgraded install', () => {
   it('builds the same objects from a v22 database, and stays idempotent', () => {
     db = openDatabase(':memory:');
     migrate(db);
@@ -110,7 +110,7 @@ describe('migration v32 — the same shape on an upgraded install', () => {
 
     // A second boot has nothing to do, and the step itself is idempotent for a build that re-runs it.
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
-    expect(() => migrateV32(db)).not.toThrow();
+    expect(() => migrateV33(db)).not.toThrow();
     expect(objectsOf(db)).toEqual(fresh);
   });
 
@@ -158,7 +158,7 @@ describe('migration v32 — the same shape on an upgraded install', () => {
 
     expect(migrate(db)).toEqual({ from: 25, to: SCHEMA_VERSION });
     expect(objectsOf(db)).toEqual(fresh);
-    // Row for row: no id re-derived, no hash moved, no span re-cut, no touch invented by v32.
+    // Row for row: no id re-derived, no hash moved, no span re-cut, no touch invented by v33.
     expect(db.prepare('SELECT * FROM sentences ORDER BY id').all()).toEqual(sentencesBefore);
     expect(db.prepare('SELECT COUNT(*) AS n FROM sentence_touches').get()).toEqual({ n: 0 });
     expect(planColumns(db)).toEqual([...PLAN_COLUMNS]);
@@ -210,7 +210,7 @@ describe('migration v32 — the same shape on an upgraded install', () => {
 
     expect(migrate(db)).toEqual({ from: 29, to: SCHEMA_VERSION });
     expect(objectsOf(db)).toEqual(fresh);
-    // v32 is the plan only: BOOK-185's rows are exactly what the v29 install left.
+    // v33 is the plan only: BOOK-185's rows are exactly what the v29 install left.
     expect(db.prepare('SELECT * FROM fact_dependency ORDER BY id').all()).toEqual(graphBefore);
     expect(db.prepare('SELECT COUNT(*) AS n FROM facts').get()).toEqual({ n: 2 });
     expect(db.pragma('foreign_key_check')).toEqual([]);
@@ -260,12 +260,12 @@ describe('migration v32 — the same shape on an upgraded install', () => {
 
     shapeWithoutPlan(db, 31);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(31);
-    // v31 is main's step and stays applied: the column is there before v32 runs.
+    // v31 is main's step and stays applied: the column is there before v33 runs.
     expect(planColumns(db)).toEqual([]);
 
     expect(migrate(db)).toEqual({ from: 31, to: SCHEMA_VERSION });
     expect(objectsOf(db)).toEqual(fresh);
-    // The reopen is where the wall measures the second window from: v32 must not reset it.
+    // The reopen is where the wall measures the second window from: v33 must not reset it.
     expect(db.prepare('SELECT step_id, at, reopened_at FROM steps ORDER BY step_id').all()).toEqual(stepsBefore);
     expect(planColumns(db)).toEqual([...PLAN_COLUMNS]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
@@ -275,11 +275,11 @@ describe('migration v32 — the same shape on an upgraded install', () => {
     db = openDatabase(':memory:');
     migrate(db);
     // Each upgrade path lands on the head version, and a second boot changes nothing.
-    for (const from of [22, 23, 25, 28, 29, 30, 31]) {
+    for (const from of [22, 23, 25, 28, 29, 30, 31, 32]) {
       shapeWithoutPlan(db, from);
       expect(migrate(db)).toEqual({ from, to: SCHEMA_VERSION });
     }
-    // A v33 volume is not served by a v32 build: the boot refuses, no DDL.
+    // A v34 volume is not served by a v33 build: the boot refuses, no DDL.
     db.pragma(`user_version = ${SCHEMA_VERSION + 1}`);
     expect(() => migrate(db)).toThrow(/understands/u);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION + 1);
@@ -290,7 +290,7 @@ describe('migration v32 — the same shape on an upgraded install', () => {
     migrate(db);
     seedChange(db, { id: 'chg_plan', chapter: 12, at: AT });
     db.exec('DROP TABLE change_plans');
-    // The pre-v32 shape: the same table without `mode` and `price_usd`.
+    // The pre-v33 shape: the same table without `mode` and `price_usd`.
     db.exec(`
       CREATE TABLE change_plans (
         id           TEXT PRIMARY KEY,

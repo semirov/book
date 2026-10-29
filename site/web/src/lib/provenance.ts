@@ -1,3 +1,4 @@
+import { changeNumber } from './changeStatus.ts';
 import { formatDate, formatTime, plural } from './format.ts';
 
 /**
@@ -8,7 +9,7 @@ import { formatDate, formatTime, plural } from './format.ts';
  * uppercase table, its CTA and its own ✕ are gone with the panel. What is left is what a
  * margin can carry: **three facts and, for one hand only, one sentence.**
  *
- * The hand is the book's, not the web's: a pass wrote the prose (`печатник` — never «автор»,
+ * The hand is the book's, not the web's: a pass wrote the prose (`машина` — never «автор»,
  * which is false on a book a shift wrote), the frame holds the canon sentence (`рамка книги`),
  * page 2 is the basis (`основание книги`), a reader lent their name, and a version the log
  * cannot assign is `правка вне процесса`. When a reader's filing stands on the word, the hand
@@ -37,21 +38,21 @@ export type TraceShare =
 export type ProvenanceVariant = 'machine' | 'frozen' | 'reader' | 'unattributed';
 
 /** THE hand of a pass-written book: one word, everywhere a word is attributed. */
-export const PASS_HAND = 'печатник';
+export const PASS_HAND = 'машина';
 export const FRAME_HAND = 'рамка книги';
 export const BASIS_HAND = 'основание книги';
 export const UNATTRIBUTED_HAND = 'правка вне процесса';
 
 /**
- * The one sentence the layer may print, and only under `печатник`: a reader cannot know what
- * a shift is. It never repeats a fact above it, never says what will happen (the strip says
- * that before typing) and never speaks for the machine.
+ * The one sentence the layer may print, and only under `машина`: who acted, and who holds the
+ * frame. It never repeats a fact above it, never says what will happen (the strip says that
+ * before typing) and never speaks for the reader.
  */
-export const PASS_GLOSS = 'печатник — смена, которая пишет книгу; рамку держит автор.';
+export const PASS_GLOSS = 'машина внесла правку; рамку держит автор.';
 
 /** A filing standing on the word: its own numeral, its state word, and the place it stands on. */
 export type WordFiling = {
-  /** The record's own numeral (`№A7K`); `lib/filings.ts` forbids an invented ordinal. */
+  /** The filing's own public number, bare (`12`); `lib/filings.ts` owns the noun. */
   number: string;
   /**
    * The number of the change this filing's latest attempt became (`12`), read from the page's
@@ -67,12 +68,12 @@ export type WordFiling = {
 };
 
 /**
- * The numeral a filing prints: its change's number (`№12`) when the window carries the attempt,
- * the record's own suffix (`№A7K`) when it does not — never a padded `012`, which the owner
- * reads as a book ordinal the row no longer claims.
+ * The object a word's filing **stands for**, named with its own noun (BOOK-218): `правка 012`
+ * when the window carries the change it became, `замечание 12` when it does not. One noun never
+ * carries two counters — `12` under «правка» is a change, never a filing.
  */
 export function filingNumeral(filing: WordFiling): string {
-  return filing.seq === null ? filing.number : `№${filing.seq}`;
+  return filing.seq === null ? `замечание ${filing.number}` : `правка ${changeNumber(filing.seq)}`;
 }
 
 /** What the margin prints for one word: three facts, one sentence, one door. */
@@ -83,7 +84,7 @@ export type WordFacts = {
   when: string;
   /** Line 3 — the trace, or the filing standing on the word. */
   trace: string;
-  /** The gloss; `null` for every hand but `печатник`. */
+  /** The gloss; `null` for every hand but `машина`. */
   gloss: string | null;
   /** The filing the trace line opens, when one stands on this word. */
   filing: WordFiling | null;
@@ -132,7 +133,7 @@ export function shareFor(input: {
 export function traceLine(share: TraceShare): string {
   switch (share.kind) {
     case 'own':
-      return `пережила ${share.survivedRevisions} ${plural(share.survivedRevisions, 'ревизию', 'ревизии', 'ревизий')}`;
+      return `пережила ${share.survivedRevisions} ${plural(share.survivedRevisions, 'редакцию', 'редакции', 'редакций')}`;
     case 'public':
     case 'unknown':
       return 'след не измерен';
@@ -163,7 +164,8 @@ export function variantOf(input: { frozen: boolean; actorKind: string | null | u
 
 /** The hand a word's line 1 prints. Never a machine noun and never «автор». */
 function handOf(input: WordInput): string {
-  if (input.filing !== null) return `правка · ${filingNumeral(input.filing)}`;
+  // The hand names the object it has: a change, or the filing itself.
+  if (input.filing !== null) return filingNumeral(input.filing);
   if (input.variant === 'frozen') return input.frozenOf === 'basis' ? BASIS_HAND : FRAME_HAND;
   if (input.variant === 'unattributed') return UNATTRIBUTED_HAND;
   if (input.variant === 'reader') return input.actor ?? PASS_HAND;

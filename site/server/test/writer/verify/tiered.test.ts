@@ -15,6 +15,8 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { STOP_REASONS } from '@book/shared';
+
 import { parseChapter } from '../../../src/ingest/parseChapter.ts';
 import { createHarness, receiptsOf, type Harness } from '../harness.ts';
 import { inertParagraph } from '../inert.ts';
@@ -98,7 +100,8 @@ describe('a Tier-0 failure parks before the text is written', () => {
       const result = await harness.run({ lanes: ['fwd'] });
       expect(result.status).toBe('parked');
       expect(result.code).toBe('TIER0_FAILED');
-      expect(result.reason).toContain('счётные проверки');
+      // The register's one stop line (BOOK-218); the code word stays in the log below.
+      expect(result.reason).toBe(STOP_REASONS.stopped);
       expect(harness.logs.join('\n')).toContain('TIER0_REPEAT');
       // The chapter is the pre-image: no write, no landing, no gate, no second model call.
       expect(chapterText(harness)).toBe(original);

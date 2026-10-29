@@ -5,7 +5,7 @@
  *    gates» — the chapter was written, published and printed, and a `land`/gate call that timed
  *    out parked the pass anyway;
  *  · «the note in the DB must never be a code word alone» — the reader saw
- *    «движок отказал: ENGINE_TIMEOUT: …» for an intervention that had, in fact, been written.
+ *    «машина отказала: ENGINE_TIMEOUT: …» for an intervention that had, in fact, been written.
  *
  * So this file has two halves: the pure mapping from a code to the sentence a reader gets
  * (`reasons.ts`), and a pass driven through a real engine where the *auxiliary* things — the
@@ -57,25 +57,28 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
     });
     expect(failureOf(new EngineRefusalError('ENGINE_TIMEOUT', 'the engine did not answer', 0))).toEqual({
       code: 'ENGINE_TIMEOUT',
-      detail: 'движок отказал: ENGINE_TIMEOUT: the engine did not answer',
+      detail: 'машина отказала: ENGINE_TIMEOUT: the engine did not answer',
     });
     // A refusal with nothing to quote says only the code: there is no detail to print.
-    expect(failureOf(new EngineRefusalError('ENGINE_REFUSED', '   ', 0)).detail).toBe('движок отказал: ENGINE_REFUSED');
+    expect(failureOf(new EngineRefusalError('ENGINE_REFUSED', '   ', 0)).detail).toBe('машина отказала: ENGINE_REFUSED');
     // Anything that is not an error at all still owes the log a sentence and carries no code.
-    expect(failureOf(new Error('boom'))).toEqual({ code: null, detail: 'сбой прохода: Error' });
-    expect(failureOf('boom')).toEqual({ code: null, detail: 'сбой прохода' });
+    // BOOK-218: the log's sentence names the machine, never a reader's state word.
+    expect(failureOf(new Error('boom'))).toEqual({ code: null, detail: 'сбой машины: Error' });
+    expect(failureOf('boom')).toEqual({ code: null, detail: 'сбой машины' });
     expect(isTransportFailure({ code: 'ENGINE_UNREACHABLE', detail: '' })).toBe(true);
     expect(isTransportFailure({ code: 'PROVIDER_TIMEOUT', detail: '' })).toBe(false);
   });
 
   it('falls back to the caller’s sentence, and never returns a code word', () => {
-    expect(readerReason('LEASE_RELEASED', 'проход остановлен — правка остановлена')).toContain('проход остановлен');
+    expect(readerReason('LEASE_RELEASED', readerFallbacks.stopped)).toBe(readerFallbacks.stopped);
     expect(readerReason(null, 'не удалось записать главу')).toBe('не удалось записать главу');
     // Every sentence is a sentence: bounded, no machine token, no colon-led code.
     for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
       expect(sentence.length).toBeLessThanOrEqual(200);
       expect(sentence).not.toMatch(CODE_TOKEN);
-      expect(sentence).not.toContain(':');
+      // The one colon is the verdict's own — `не дошло: …` — never a code-led `ENGINE: …`.
+      expect(sentence.match(/:/gu) ?? []).toHaveLength(1);
+      expect(sentence.startsWith('не дошло:')).toBe(true);
     }
     // A verbose fallback is cut, not printed whole: a note is read on a page.
     expect(readerReason(null, 'а'.repeat(500)).length).toBe(200);
@@ -113,8 +116,9 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
       // lever — both phrases were the lie the audit named.
       expect(sentence).not.toContain('остаётся в очереди');
       expect(sentence).not.toContain('ждёт решения');
-      // And each of them names the stop in the one word `follow.ts` prints for `escalated`.
-      expect(sentence).toContain('правка остановлена');
+      // BOOK-218 — every stop says the edit was not rejected, and what to do next.
+      expect(sentence).toContain('правка не отклонена');
+      expect(sentence).toContain('нажмите «повторить»');
     }
   });
 });
@@ -223,7 +227,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const note = noteOf(harness, result.stepId ?? '');
       expect(note).toBe(readerSentences.unverified);
       expect(note).not.toMatch(CODE_TOKEN);
-      expect(note).not.toContain(':');
+      expect(note.match(/:/gu) ?? []).toHaveLength(1);
       // The code and its detail are in the log, which is where an operator looks.
       expect(parkedLine(harness)).toContain('ENGINE_TIMEOUT');
       expect(parkedLine(harness)).toContain('did not answer within 60000 ms');

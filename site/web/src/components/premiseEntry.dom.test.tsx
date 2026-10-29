@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { queueLabel } from '../lib/format.ts';
+import { STATE_WORDS } from '../lib/marginalia.ts';
 import { hideFiling } from '../lib/useFiling.ts';
 import { closeSeam } from '../lib/useSeam.ts';
 import { ChapterArticle } from './ChapterArticle.tsx';
@@ -15,7 +17,7 @@ import { Discussion } from './Discussion.tsx';
  *
  * The prod page showed the premise `cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4` twice: as a comment block
  * in `ОБСУЖДЕНИЕ` and as the chapter's own premise row — the same words, two numbers, two
- * states, and «в очереди пусто» printed above an entry that looked queued. The owner's phone
+ * states, and «правок в работе нет» printed above an entry that looked queued. The owner's phone
  * shows the pair; this file pins the single entry and counts it three ways: by
  * `data-comment-id`, by the attempt's number and by the `правка →` link.
  *
@@ -43,6 +45,7 @@ const ENTRY: CatalogEntry = {
 const PREMISE: CommentDto = {
   attempt: null,
   id: 'cmt_01M5Z8HKWHPHZQDHP5MCXS5RB4',
+  number: 1,
   chapter: 40,
   anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -90,6 +93,7 @@ const ATTEMPT: ChangeSummaryDto = {
 const NOTE: CommentDto = {
   ...PREMISE,
   id: 'cmt_note',
+  number: 3,
   chapter: 9,
   premise: false,
   interventionKind: null,
@@ -127,7 +131,7 @@ afterEach(async () => {
 
 /**
  * BOOK-189 — `depth` is the writer's lane, never the rows: a page full of waiting filings prints
- * «в очереди пусто» until the writer actually holds a change.
+ * «правок в работе нет» until the writer actually holds a change.
  */
 async function mount(comments: CommentDto[], changes: ChangeSummaryDto[], depth = 0): Promise<void> {
   const page: ReactElement = (
@@ -180,8 +184,11 @@ describe('one filing, one entry (BOOK-137)', () => {
 
     // No contradiction with the queue line: the premise holds no queue place, and nothing on
     // the page presents it as queued.
-    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди пусто');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain(queueLabel(0));
     expect(count(text, 'ждёт')).toBe(0);
+    // The work sentence names the work («правок в работе нет»); no row does.
+    const labels = [...container.querySelectorAll('.premise-label')].map((row) => row.textContent);
+    expect(labels).toEqual([STATE_WORDS.landed]);
   });
 
   it('renders a premise and an unrelated filing as two entries, each once', async () => {
@@ -198,7 +205,7 @@ describe('one filing, one entry (BOOK-137)', () => {
     expect(container.querySelectorAll('.premise-open')).toHaveLength(1);
     expect(count(text, 'правка →')).toBe(1);
     // The line counts the writer's lane (one change the writer holds), never the rows.
-    expect(container.querySelector('#discussion .qline')?.textContent).toContain('в очереди 1 правка');
+    expect(container.querySelector('#discussion .qline')?.textContent).toContain(queueLabel(1));
   });
 
   it('keeps the attempts inside the premise’s card: one number on the row, none in the panel', async () => {
@@ -257,7 +264,7 @@ describe('one filing, one entry (BOOK-137)', () => {
 
     const row = container.querySelector<HTMLElement>('#ch-40 .premise-row');
     expect(row?.getAttribute('data-comment-id')).toBe(waiting.id);
-    expect(row?.querySelector('.premise-label')?.textContent).toBe('ждёт');
+    expect(row?.querySelector('.premise-label')?.textContent).toBe(STATE_WORDS.accepted);
     const meta = container.querySelector('#ch-40 .premise-meta');
     expect(meta?.querySelector('.premise-attempt')?.textContent).toBe('002');
     expect(meta?.querySelectorAll('.premise-open')).toHaveLength(1);

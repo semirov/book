@@ -214,7 +214,7 @@ describe('the engine beats an open step by itself (BOOK-34)', () => {
       };
       expect(change.status).toBe('escalated');
       expect(change.outcome).toBe('gate_timeout');
-      expect(change.reason).toContain('отведённое время');
+      expect(change.reason).toMatch(/^не дошло: /u);
       expect(fixture.alerts.map((alert) => alert.kind)).toContain('gate_timeout');
 
       // A walled step is stopped, never re-issued: the next poll never hands it out again.

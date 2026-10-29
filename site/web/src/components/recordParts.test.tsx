@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { RECORD_CUT, rowWindow, type RowWindow } from '../lib/recState.ts';
-import { RowsList } from './RecordParts.tsx';
+import { ReceiptBody, RowsList } from './RecordParts.tsx';
 
 /**
  * BOOK-128 #3900 §1 / BOOK-199 m3 — the fold's count is a fact about the list it drew, and a
@@ -145,5 +145,48 @@ describe('the door', () => {
       expect(drawn(), `folded ${String(total)}`).toBe(RECORD_CUT);
       expect(container.textContent ?? '').toContain(`показаны ${String(RECORD_CUT)} из ${String(total)}`);
     }
+  });
+});
+
+describe('the receipt after posting (BOOK-218)', () => {
+  const receipt = {
+    id: 'cmt_01J9Z8K4Q7',
+    number: 12,
+  } as Parameters<typeof ReceiptBody>[0]['comment'];
+
+  it('names the filing with its own number, then the module’s one line', () => {
+    const html = renderToStaticMarkup(
+      <ReceiptBody comment={receipt} line="впишется, когда машина возьмёт главу" />,
+    );
+    expect(html).toContain('принято · замечание 12');
+    expect(html).toContain('впишется, когда машина возьмёт главу');
+    // One line under the receipt, not two: the old body printed the consequence and the state.
+    expect(html.match(/rec-line/gu) ?? []).toHaveLength(1);
+    // No code token, no id: the reader reads a number.
+    expect(html).not.toMatch(/cmt_/u);
+    expect(html).not.toContain('№');
+  });
+
+  it('prints no second line when the module has none', () => {
+    const html = renderToStaticMarkup(<ReceiptBody comment={receipt} line={null} />);
+    expect(html).toContain('принято · замечание 12');
+    expect(html).not.toContain('rec-line');
+  });
+});
+
+describe('a row the head already states (BOOK-218)', () => {
+  it('keeps the facts and drops the second line', () => {
+    const rows = rowWindow(
+      [
+        { id: 'cmt_1', facts: 'замечание 12 · 29.10, 12:07 · ваше', specimen: '', own: true },
+        { id: 'cmt_2', facts: 'замечание 9 · 27.10, 09:00 · ждёт', specimen: 'её ещё не читали', own: false },
+      ],
+      true,
+    );
+    const html = renderToStaticMarkup(
+      <RowsList rows={rows} lifted onLift={noop} onFold={noop} onOpen={noop} />,
+    );
+    expect(html.match(/rec-row-specimen/gu) ?? []).toHaveLength(1);
+    expect(html).toContain('замечание 12 · 29.10, 12:07 · ваше');
   });
 });

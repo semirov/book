@@ -145,6 +145,7 @@ const CHAIN: ParagraphChainDto = {
 const filing: CommentDto = {
   attempt: null,
   id: 'cmt_01J9Z8K4Q7',
+  number: 1,
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
   author: 'Аня',
@@ -252,7 +253,7 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
       'class="prov-block"',
       'class="prov"',
       'class="sentence-block"',
-      'печатник',
+      'машина',
       'authors-list',
       'authors-note',
       'Авторы',
@@ -299,7 +300,8 @@ describe('a pending filing is visible at its anchor while history stays off (BOO
     document.body.innerHTML = html;
     const note = document.querySelector('.margin-note');
     expect(note, 'the margin note renders with history off').not.toBeNull();
-    expect(note?.textContent ?? '').toContain('ждёт');
+    // BOOK-218 — the note is the pointer (number, quote, who); the word travels in its name.
+    expect(note?.getAttribute('aria-label') ?? '').toContain('ждёт');
     expect(note?.textContent ?? '').toContain('Её освещал яркий свет.');
     // The phone strip is the same object at <1024, and it prints the same word.
     expect(document.querySelector('.phone-strip')?.textContent ?? '').toContain('ждёт');
@@ -405,7 +407,7 @@ describe('the first reader change turns every surface on (AC3)', () => {
     // BOOK-128 comment #3815 — the two layers are marginalia with three facts each, and their
     // words are the book's own, not the panel's: no rows, no table, no uppercase label.
     expect(html).toContain('class="prov-block');
-    expect(html).toContain('печатник');
+    expect(html).toContain('машина');
     expect(html).toContain('следа нет');
     expect(html).toContain('class="sentence-block');
     expect(html).toContain('правка · №7');

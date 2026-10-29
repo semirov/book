@@ -283,6 +283,53 @@ rollback_allowed() { # (health_ms budget_ms plain_commit target_commit) -> sets 
   return 0
 }
 
+# --- the recovery a failed release takes (BOOK-217) ---------------------------------------------
+#
+# A release that fails after its new image booted may have already migrated the volume: the boot
+# writes `backups/pre-v<from>-<stamp>.db` BEFORE any DDL (`server/src/db/boot.ts`), and a
+# `user_version` the build does not understand is `SCHEMA_FUTURE` — the older image refuses to boot.
+# Putting the previous image back on a migrated volume is therefore how a deploy turns a degraded
+# site into a crash loop (BOOK-217: a v30 volume left behind, two v29 containers looping, prod 502).
+#
+# One rule, four outcomes, and every failed run that reached `up` says which one it is in exactly one
+# line. Both runtimes call these two functions, so the sentence a human reads cannot depend on which
+# driver ran the release.
+#
+# The fact is TRI-state: `1` the volume moved, `0` it did not, and `unknown` — a read that failed —
+# which is neither. `unknown` must not fall through to `image-rollback`: an image swap on a volume
+# that may have migrated is the crash loop, and a dump restore on a volume that may not have is an
+# old copy written over the live book. It is its own outcome (`none`): nothing is swapped, nothing is
+# restored, and a human looks.
+
+# (migrated 1|0|unknown, serving 0|1) -> roll-forward | dump-restore | image-rollback | none.
+# `serving` is the failed attempt's own verdict (`HEALTH` was fast|late): a new image that answers is
+# alive. Anything other than `1`/`0` is an unknown fact, including an empty value.
+recovery_choice() {
+  case "${1:-unknown}" in
+    1)
+      if [ "${2:-0}" = "1" ]; then printf 'roll-forward'; else printf 'dump-restore'; fi ;;
+    0) printf 'image-rollback' ;;
+    *) printf 'none' ;;
+  esac
+}
+
+# (choice, detail) -> the one `recovery:` line. The sentences are fixed: an operator (and the audit)
+# matches on them, and `detail` is the fact they are decided from (the migration, its absence, or the
+# reason it could not be read).
+recovery_line() {
+  case "${1:-}" in
+    roll-forward)
+      printf 'recovery: roll-forward — a migration ran (%s), so the previous image is NOT put back; the new image keeps serving (degraded, alive)\n' "${2:-unknown}" ;;
+    dump-restore)
+      printf 'recovery: dump-restore — a migration ran (%s) and the new image does not serve, so the pre-deploy dump was restored over book.db and the previous image runs\n' "${2:-unknown}" ;;
+    image-rollback)
+      printf 'recovery: image-rollback — no migration ran (%s), so the previous image is restored on the same schema\n' "${2:-unknown}" ;;
+    none)
+      printf 'recovery: none — %s; nothing was rolled back and nothing was restored, a human must look\n' "${2:-unknown}" ;;
+    *) return 1 ;;
+  esac
+}
+
 # --- the box ------------------------------------------------------------------------------------
 
 # The load the guard needs, parsed here instead of through a helper: `sysctl -n vm.loadavg` prints

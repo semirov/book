@@ -48,6 +48,7 @@ const BLOCKS = [
 
 const FILING: CommentDto = {
   id: 'cmt_01J9Z8K4Q7',
+  number: 1,
   chapter: 9,
   anchor: {
     blockId: 'ch09#b1',

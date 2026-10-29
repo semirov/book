@@ -114,7 +114,7 @@ describe('BOOK-206 B1 — a triage accept speaks the filing, with no receipt', (
     // Acceptance is not application: the receipt is present and null (BOOK-206 B2), and the
     // change's own queue frame still arrives — the filing frame is never instead of it.
     expect(decision?.applied).toBeNull();
-    expect('report' in (decision ?? {})).toBe(true);
+    expect('disposition' in (decision ?? {})).toBe(true);
     expect(frames.map((frame) => frame.type)).toContain('change:queued');
 
     // One frame per transition: a re-read of the same line re-announces the same decision — never

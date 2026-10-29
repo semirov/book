@@ -30,7 +30,7 @@ describe('migrate — schema v32', () => {
     const db = openDatabase(':memory:');
     const result = migrate(db);
     expect(result).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(32);
+    expect(SCHEMA_VERSION).toBe(33);
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
 
     const present = tables(db);
@@ -261,9 +261,9 @@ describe('migrate — schema v32', () => {
     );
     db.exec(
       `INSERT INTO comments (id, identity_id, chapter, author, body, proposed_text, body_sha, ip_hash,
-                             status, created_at)
+                             status, created_at, number)
        VALUES ('cmt_old', 'idn_1', 8, 'Аня', 'Старое замечание.', 'Старая правка.', 'a', 'f', 'new',
-               '2026-10-25T12:00:00Z')`,
+               '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     );
     db.pragma('user_version = 9');
 

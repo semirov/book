@@ -6,7 +6,16 @@
  * verdict is summarised as «замечание сохранено» (§6F.1 rule 5, §6F.7).
  */
 
-import { TOTAL_CHAPTERS, readerReason, type HistoryKind } from '@book/shared';
+import {
+  TOTAL_CHAPTERS,
+  changeGenitive,
+  changeName,
+  changeNumber,
+  chronicleWaiting,
+  chronicleWorking,
+  readerReason,
+  type HistoryKind,
+} from '@book/shared';
 
 import { AUTHOR_LABEL, OUT_OF_PROCESS_LABEL, OPERATOR_LABEL } from '../ingest/attribution.ts';
 
@@ -50,7 +59,8 @@ function byChange(subject: SummarySubject): string {
     subject.authorKind === 'reader' && subject.authorLabel.length > 0 && subject.authorLabel !== AUTHOR_LABEL
       ? ` (${subject.authorLabel})`
       : '';
-  return ` правкой ${subject.changeSeq}${who}`;
+  // BOOK-218 — a change is «правка 007»: one padded number, one noun, on every surface.
+  return ` правкой ${changeNumber(subject.changeSeq)}${who}`;
 }
 
 /** The payload's reason as a reader may read it: a sentence, or nothing at all — never a code. */
@@ -64,13 +74,13 @@ function decisionCopy(subject: SummarySubject): string {
   const reason = publicReason(subject.payload);
   if (status === 'void' || outcome === 'dropped' || outcome === 'superseded') {
     const tail = reason.length > 0 ? `: ${reason.slice(0, 120)}` : '';
-    return `правка ${subject.changeSeq ?? '?'} не применена${tail}`;
+    return `${changeName(subject.changeSeq)} не применена${tail}`;
   }
   if (status === 'escalated' || outcome === 'origin' || outcome === 'budget' || outcome === 'oscillation') {
-    return `правка ${subject.changeSeq ?? '?'} требует решения${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;
+    return `${changeName(subject.changeSeq)} требует решения${reason.length > 0 ? `: ${reason.slice(0, 120)}` : ''}`;
   }
-  if (outcome === 'adapted') return `правка ${subject.changeSeq ?? '?'} внесена в суженном виде`;
-  return `правка ${subject.changeSeq ?? '?'} внесена`;
+  if (outcome === 'adapted') return `${changeName(subject.changeSeq)} внесена в суженном виде`;
+  return `${changeName(subject.changeSeq)} внесена`;
 }
 
 function premiseDecisionCopy(subject: SummarySubject): string {
@@ -102,7 +112,7 @@ export function summarize(subject: SummarySubject): string {
       return `${where} ${verb}${by}`;
     }
     case 'chapter.restored':
-      return `${where} восстановлена из прежней ревизии`;
+      return `${where} восстановлена из прежней редакции`;
     case 'front.revised':
       // Page 2 is basis against a pass (BOOK-DOC-6), but an owner hand edit may replace it
       // (BOOK-7). A refused rewrite still says so; an accepted annotation change is named
@@ -115,20 +125,22 @@ export function summarize(subject: SummarySubject): string {
     case 'change.queued':
       // BOOK-7: a premise is not queued, it waits for its chapter's first pass.
       if (subject.payload.premise === true) return `замысел главы ${subject.chapter ?? '?'} принят`;
-      return `правка ${subject.changeSeq ?? '?'} встала в очередь`;
+      // BOOK-218 — the line is the module's, in the book's nouns: there is no queue to stand in.
+      return chronicleWaiting(subject.changeSeq);
     case 'change.processing':
-      return `правка ${subject.changeSeq ?? '?'} в работе`;
+      return chronicleWorking(subject.changeSeq);
     case 'change.stale':
-      return `правка ${subject.changeSeq ?? '?'}: основа изменилась`;
+      return `${changeName(subject.changeSeq)}: основа изменилась`;
     case 'change.decided':
       if (subject.payload.premise === true) return premiseDecisionCopy(subject);
       return decisionCopy(subject);
     case 'cascade.opened':
-      return `правка ${subject.changeSeq ?? '?'} пошла волной`;
+      return `${changeName(subject.changeSeq)} пошла волной`;
     case 'cascade.closed': {
       const outcome = typeof subject.payload.outcome === 'string' ? subject.payload.outcome : null;
-      if (outcome !== null && outcome.startsWith('escalated:')) return `волна правки ${subject.changeSeq ?? '?'} остановлена`;
-      return `волна правки ${subject.changeSeq ?? '?'} закончена`;
+      const wave = `волна ${changeGenitive(subject.changeSeq)}`;
+      if (outcome !== null && outcome.startsWith('escalated:')) return `${wave} остановлена`;
+      return `${wave} закончена`;
     }
     case 'step.opened':
       return `шаг ${targetGenitive(subject)} открыт${by}`;

@@ -95,6 +95,7 @@ export function mountPage(): void {
 export function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_1',
+    number: 1,
     chapter: 3,
     anchor: {
       blockId: 'ch03#b12',

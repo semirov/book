@@ -302,7 +302,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     const item = (listed.json() as { items: Array<Record<string, unknown>> }).items[0] ?? {};
     // BOOK-206: an `OFF` records the verdict and leaves the row — nothing is decided, no report
     // exists, and the reader is told neither the note nor a verdict word.
-    expect(item).toMatchObject({ id, status: 'new', reason: null, disposition: null, report: null });
+    expect(item).toMatchObject({ id, status: 'new', reason: null, disposition: null });
     expect(item.refusal).toBeNull();
     const body = JSON.stringify(listed.json());
     for (const word of ['auditVerdict', 'audit_verdict', 'FITS', 'OFF']) expect(body).not.toContain(word);

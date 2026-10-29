@@ -7,7 +7,7 @@
  * into a sentence: every reader-authored value is a separate, bounded string.
  */
 
-import type { Disposition, DispositionReport } from './disposition.ts';
+import type { CarrierKind, Disposition } from './disposition.ts';
 import type { FrameMark } from './frame.ts';
 import type { InterventionKind } from './intervention.ts';
 
@@ -173,6 +173,12 @@ export type CommentRevise = {
 
 export type CommentDto = {
   id: string;
+  /**
+   * BOOK-218 — the filing's own public number, 1-based and monotonic (the row's insertion
+   * order). It is what a reader reads (`замечание 12`); it is not an id and carries nothing from
+   * the machinery.
+   */
+  number: number;
   chapter: number;
   anchor: CommentAnchor;
   /** Display name snapshot at posting time; never the Yandex subject (§6C.5). */
@@ -263,11 +269,10 @@ export type CommentDto = {
    */
   disposition?: Disposition | null;
   /**
-   * BOOK-174 §5 — the three lines the reader is owed: what was read, because why, and where it
-   * stands in the book. Derived server-side from the stored chain (`dispositionReport`), so no
-   * surface can spell its own version of the words. `null` when nothing was read this way.
+   * BOOK-174 — the carrier a `through_paper` reading named (`document`, `speech`, …). The
+   * reader's line names the place with it; `null` for every other reading and every old row.
    */
-  report?: DispositionReport | null;
+  carrierKind?: CarrierKind | null;
 };
 
 export type CommentPage = {
@@ -394,13 +399,13 @@ export type CommentDecisionPayload = {
    * row — so it leaves the field out.
    */
   source?: 'llm';
-  /** BOOK-174 §5 — the three lines of the reading, carried with the frame itself. */
-  report?: DispositionReport | null;
   /**
    * BOOK-174 — how the filing was read, when the frame is about a row that carries a chain. The
-   * open card takes it with the report instead of waiting for the reload.
+   * open card takes it with the frame instead of waiting for the reload.
    */
   disposition?: Disposition | null;
+  /** BOOK-174 — the carrier a `through_paper` reading named, carried with the frame. */
+  carrierKind?: CarrierKind | null;
   /**
    * BOOK-219 — a landing: the chapter the filing's text entered, and that chapter's revision.
    * The receipt storage derives for the filing (`comments/repo.ts`), never a number made up on

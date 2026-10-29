@@ -7,10 +7,9 @@ import { holdAnchor } from '../lib/anchorHold.ts';
 import { useChangeRead } from '../lib/changeCache.ts';
 import { changeBefore } from '../lib/changeView.ts';
 import { emptyDraft, seamDrafts, type SeamDraft } from '../lib/draft.ts';
-import { filingNumber, isAlive, sortFilings } from '../lib/filings.ts';
+import { isAlive, sortFilings } from '../lib/filings.ts';
 import { offsetTopOfPage } from '../lib/headerOffset.ts';
 import { keepPlace } from '../lib/keepPlace.ts';
-import { filingConsequence } from '../lib/marginalia.ts';
 import { useChainRead } from '../lib/paragraphChainCache.ts';
 import {
   countOf,
@@ -18,14 +17,16 @@ import {
   historyRows,
   interventionRows,
   isOwn,
+  recordHeadOf,
   recordStateOf,
+  receiptLineOf,
   rowWindow,
   type RecordState,
 } from '../lib/recState.ts';
 import { seamKey, type SeamAnchor } from '../lib/seam.ts';
 import { RecordChangeSection } from './ChangeSection.tsx';
 import { InterventionForm } from './InterventionForm.tsx';
-import { ExistingFilingNotice, FilingBody, QuoteBody, RowsList, SectionHeader } from './RecordParts.tsx';
+import { ExistingFilingNotice, FilingBody, QuoteBody, ReceiptBody, RowsList, SectionHeader } from './RecordParts.tsx';
 
 /**
  * BOOK-128 comments #3863 / #3862 — **the sentence's record**: one block, in the flow, after
@@ -261,7 +262,8 @@ export function Record({
     frozen,
   });
   const hand = handOf({ chain, frozen });
-  const rows = interventionRows({ filings: sorted, own });
+  const head = recordHeadOf({ filings: sorted, own });
+  const rows = interventionRows({ filings: sorted, own, headId: head.filing?.id ?? null });
   const windowed = rowWindow(rows, lifted);
   const historyList = historyRows(chain);
   const historyWindowed = rowWindow(historyList, lifted);
@@ -279,7 +281,10 @@ export function Record({
     setMarker(false);
   };
 
-  const headState = receipt !== null ? `ждёт · ${filingNumber(receipt)}` : state.word;
+  /** BOOK-218 — one state, once: the open receipt states its filing; the head repeats no line. */
+  const receiptHere = body === 'receipt' && receipt !== null;
+  const [headState, headLine] = receiptHere ? [null, null] : [state.word, state.line];
+  const receiptLine = receipt === null ? null : receiptLineOf(state, receipt);
   /** #3862 — `вмешаться` is one act: the form, or the live filing said out loud first. */
   const openIntervention = (): void => {
     keepPlace(headRef.current, () => setBody(aliveFiling === null ? 'form' : 'notice'));
@@ -331,7 +336,7 @@ export function Record({
                 «<QuoteBody quote={quote} word={word} sentenceStart={quoteStart} />»
               </blockquote>
             )}
-            <p className="rec-hand">{hand.line}</p>
+            <p className="rec-what">{head.line}</p>
 
             <div className="rec-head" ref={headRef}>
               <span className="rec-state" data-ink={state.ink}>
@@ -354,7 +359,7 @@ export function Record({
                 ✕
               </button>
             </div>
-            {state.line === null ? null : <p className="rec-state-line">{state.line}</p>}
+            {headLine === null ? null : <p className="rec-state-line">{headLine}</p>}
             {/* BOOK-137 — the frozen frame says before typing what will not move. */}
             {frozen !== null ? (
               <p className="rec-frame-note">
@@ -389,16 +394,11 @@ export function Record({
                 }}
               />
             ) : body === 'receipt' && receipt !== null ? (
-              <div className="rec-receipt-body">
-                <p className="rec-receipt" role="status">
-                  {`принято · ${filingNumber(receipt)}`}
-                </p>
-                <p className="rec-line rec-quiet">{filingConsequence(receipt)}</p>
-                {state.line === null ? null : <p className="rec-line rec-quiet">{state.line}</p>}
-              </div>
+              <ReceiptBody comment={receipt} line={receiptLine} />
             ) : body === 'filing' && openFiling !== null ? (
               <FilingBody
                 comment={openFiling}
+                headId={head.filing?.id ?? null}
                 before={
                   openFiling.anchor.quote === null || openFiling.anchor.quote === quote
                     ? null
@@ -468,17 +468,23 @@ export function Record({
                       onPress={(control) => toggleSection('history', control)}
                     />
                     {section === 'history' ? (
-                      <RowsList
-                        rows={historyWindowed}
-                        lifted={lifted}
-                        onLift={() => {
-                          keepPlace(sheetRef.current, () => setLifted(true));
-                        }}
-                        onFold={() => {
-                          keepPlace(sheetRef.current, () => setLifted(false));
-                        }}
-                        history
-                      />
+                      <>
+                        {/* BOOK-218 — the hand is `история`'s subject, so its line lives here and
+                            nowhere else: `машина · 28.10.2026, 00:24` is a fact about the text,
+                            not about the reader's filing. */}
+                        <p className="rec-hand">{hand.line}</p>
+                        <RowsList
+                          rows={historyWindowed}
+                          lifted={lifted}
+                          onLift={() => {
+                            keepPlace(sheetRef.current, () => setLifted(true));
+                          }}
+                          onFold={() => {
+                            keepPlace(sheetRef.current, () => setLifted(false));
+                          }}
+                          history
+                        />
+                      </>
                     ) : null}
                   </>
                 ) : null}

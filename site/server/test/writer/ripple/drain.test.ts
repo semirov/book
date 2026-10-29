@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { claimPlan, releasePlanClaim, type RipplePlan } from '../../../src/ledger/graph/plan.ts';
 import { drainAll, drainRipple, frameProbe, readIterations, type ChapterRun } from '../../../src/writer/ripple/drain.ts';
 import { drainablePlans, latestPlan } from '../../../src/engine/ripple.ts';
-import type { WriterAssignment } from '@book/shared';
+import { STOP_REASONS, type WriterAssignment } from '@book/shared';
 import type { Harness } from '../harness.ts';
 import {
   CONSEQUENCES,
@@ -156,8 +156,9 @@ describe('the drainer', () => {
       // The estimate alone stopped it: one chapter ran, the second was never touched.
       expect(touched).toEqual([12]);
       expect(outcome.status).toBe('wide');
-      // The park is a sentence for the author; the code stays in the log and in the journal.
-      expect(outcome.reason).toContain('замыкание вышло за границы');
+      // The park is a sentence for the author — the register's one stop line (BOOK-218) — and the
+      // code stays in the log and in the journal.
+      expect(outcome.reason).toBe(STOP_REASONS.stopped);
       expect(outcome.verification).toBeNull();
       const parked = harness.fixture.db
         .prepare('SELECT parked_at, park_reason FROM change_plans WHERE id = ?')
@@ -230,7 +231,7 @@ describe('the drainer', () => {
       });
 
       expect(outcome.status).toBe('unstable');
-      expect(outcome.reason).toContain('замыкание не сходится');
+      expect(outcome.reason).toBe(STOP_REASONS.stopped);
       expect(outcome.reason).not.toContain('CLOSURE_UNSTABLE');
       const node = outcome.plan.nodes.find((entry) => entry.factId === 'f:d:допуск@ch19#status');
       expect(node?.reason).toContain('edg_doc_19_follows');
@@ -272,14 +273,14 @@ describe('the drainer', () => {
         runChapter: async () => ({ landed: false, changedChars: 0, costUsd: 0.03, reason: 'гейты отказали', code: 'RIGHTS_REQUIRED' }),
       });
       expect(second.status).toBe('parked');
-      expect(second.reason).toContain('дважды не приняла правку');
+      expect(second.reason).toBe(STOP_REASONS.stopped);
       expect(second.reason).not.toContain('RIPPLE_REFUSED');
       expect(readIterations(harness.fixture.db, planRowId)).toHaveLength(2);
       const parked = harness.fixture.db
         .prepare('SELECT parked_at, park_reason FROM change_plans WHERE id = ?')
         .get(planRowId) as { parked_at: string | null; park_reason: string | null };
       expect(parked.parked_at).not.toBeNull();
-      expect(parked.park_reason).toContain('дважды не приняла правку');
+      expect(parked.park_reason).toBe(STOP_REASONS.stopped);
       // Nothing may re-run a parked plan — not this driver, not the next one.
       expect(drainablePlans(harness.fixture.db)).toEqual([]);
       expect(ORIGIN).toBe(5);

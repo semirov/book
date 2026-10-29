@@ -37,14 +37,16 @@
  * stored verdict, so a filing is claimed out of its own ledger and no filing waits for a person.
  * v31 adds `steps.reopened_at` (BOOK-117): a re-opened step is a fresh window for the step wall,
  * and the column is how the wall knows where that window starts.
- * v32 adds the frozen plan of a change (BOOK-173, `change_plans`): its `mode`/`price_usd` and the
+ * v32 gives a filing its own public number (`comments.number`, BOOK-218): written down instead of
+ * inferred from the rowid, so a number a reader was shown never moves under them.
+ * v33 adds the frozen plan of a change (BOOK-173, `change_plans`): its `mode`/`price_usd` and the
  * verification record (BOOK-DOC-80).
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
  * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
  * only door a file may still come through. BOOK-173 adds the frozen plan of a change
- * (`change_plans`, v32) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
+ * (`change_plans`, v33) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
  * ripple's graph itself is BOOK-185's `fact_dependency`, not a second table. The engine tables are the only
  * home of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
@@ -55,7 +57,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 33;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,
@@ -63,7 +65,7 @@ export const SCHEMA_VERSION = 32;
  * `tables.ts` (§13.3, §6F.3, BOOK-6, BOOK-174), BOOK-187's four in `bookStateTables.ts`; they are
  * re-exported so a reader of the schema still finds every table in one place.
  */
-import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
+import { BLOCK_VERSIONS_TABLE_SQL, CHAPTERS_TABLE_SQL, COMMENTS_NUMBER_INDEX_SQL, COMMENTS_TABLE_SQL, COMMENT_ATTEMPTS_TABLE_SQL, DISPOSITION_COUNTS_TABLE_SQL, EVENTS_TABLE_SQL, GATE_TABLES_SQL, PASS_SPEND_TABLE_SQL, PASS_STAGES_TABLE_SQL, RECONCILES_TABLE_SQL, STEPS_TABLE_SQL } from './tables.ts';
 import { V28_REQUIRED_TABLES, V28_TABLES_SQL } from './bookStateTables.ts';
 import { FACTS_KEY_INDEX_SQL, LEDGER_FTS_SQL, LEDGER_REQUIRED_TABLES, LEDGER_REQUIRED_TRIGGERS, LEDGER_TABLES_SQL } from './ledgerTables.ts';
 import { PUSH_REQUIRED_TABLES, PUSH_TABLES_SQL } from './pushTables.ts';
@@ -233,6 +235,7 @@ CREATE TABLE lane (                                -- single row; the FIFO mutex
 INSERT INTO lane (id, holder, heartbeat_at) VALUES (1, NULL, NULL);
 
 ${COMMENTS_TABLE_SQL}
+${COMMENTS_NUMBER_INDEX_SQL}
 CREATE INDEX comments_chapter ON comments(chapter, created_at);
 CREATE INDEX comments_status  ON comments(status, created_at);
 CREATE INDEX comments_ip      ON comments(ip_hash, created_at);

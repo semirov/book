@@ -2,6 +2,7 @@ import type { CatalogEntry, StateSnapshot } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { HeadSocket } from '../lib/headStatus.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
 import type { Stages } from '../lib/useStages.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
@@ -49,6 +50,7 @@ export function Header({
   onOpenChange,
   live,
   stages,
+  socket,
   nowMs,
   reading,
 }: {
@@ -61,6 +63,8 @@ export function Header({
   live: boolean;
   /** BOOK-156 #3814: the page's stage log — the head says the book is being written. */
   stages?: Stages;
+  /** BOOK-218: the page's socket status — with no live line the head says `связи нет`. */
+  socket?: HeadSocket;
   /** A fixed clock for a test; a page hands none in. */
   nowMs?: number;
   /**
@@ -112,9 +116,9 @@ export function Header({
             )}
           </span>
           {/* BOOK-156 #3814: the book's state, in the row's free space — after the chapter
-              cluster and before the folio, which stays the row's right end. Idle prints nothing:
-              the foot's grip already says `писалась · 25.10`, and a second print is a chip. */}
-          <HeadStatus state={state} stages={stages} nowMs={nowMs} />
+              cluster and before the folio, which stays the row's right end. BOOK-218: the idle
+              word is `тихо`, and the head never prints nothing. */}
+          <HeadStatus state={state} stages={stages} socket={socket} nowMs={nowMs} />
           {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />

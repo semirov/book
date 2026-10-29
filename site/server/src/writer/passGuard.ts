@@ -7,13 +7,13 @@
  * priced) or the estimate the pass then carries to the ledger.
  */
 
-import type { BudgetDto, WriterAssignment } from '@book/shared';
+import { PASS_STOPS, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import type { EngineClient, EngineStateView } from './client.ts';
 import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
 import type { PassResult } from './laneTypes.ts';
 import type { WriteMode } from './mode.ts';
-import { readerFallbacks, readerReason } from './reasons.ts';
+import { readerFallbacks, readerReason, reasonOf } from './reasons.ts';
 import type { WriterConfig } from './config.ts';
 
 export type Guarded =
@@ -52,10 +52,9 @@ export async function moneyGuard(input: {
       continueMax: input.config.continueMax,
     });
   } catch (error) {
-    return {
-      ok: false,
-      result: { status: 'refused', reason: error instanceof Error ? error.message : 'оценка прохода не собрана' },
-    };
+    // BOOK-218: the cause is the log's, the reader gets the register's one line.
+    input.log(`[writer] смета не собрана: ${reasonOf(error)}`);
+    return { ok: false, result: { status: 'refused', reason: PASS_STOPS.costMissing } };
   }
   input.log(estimateLine(priced, budget));
   const crossed = capLine(budget, priced.usd);

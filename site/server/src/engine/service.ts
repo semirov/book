@@ -7,6 +7,7 @@
  */
 
 import {
+  FAILURE_LINES,
   NOTE_MAX_CHARS,
   REASON_MAX_CHARS,
   TOTAL_CHAPTERS,
@@ -268,7 +269,7 @@ export function createEngine(deps: EngineDeps) {
             tokensIn: options.tokensIn ?? 0,
             tokensOut: options.tokensOut ?? 0,
             escalation: 'escalated:origin',
-            changeReason: 'починка требует главы позади волны — нужно решение',
+            changeReason: FAILURE_LINES.ourFailure,
             expiredLeaseId: expired ? lease.id : null,
           },
           at,
@@ -359,8 +360,7 @@ export function createEngine(deps: EngineDeps) {
         // A no-op is filed, paid for and not applied: `comments/acceptance.ts` keeps it out of
         // LANDED_OUTCOMES, `rippleOutcomeFor` upgrades only `applied`, the cascade reads `holds`.
         changeOutcome: noOp ? 'no-op' : change?.outcome === 'adapted' ? 'adapted' : 'applied',
-        // BOOK-76: a science stop carries its own public sentence (`escalated:science`).
-        changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? 'починка вышла за границы правки — нужно решение' : null,
+        changeReason: outcome === 'escalated' && escalation !== 'escalated:science' ? FAILURE_LINES.ourFailure : null,
         escalation,
         expiredLeaseId: expired ? lease.id : null,
       },

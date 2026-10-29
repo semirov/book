@@ -5,6 +5,8 @@ export * from './types.ts';
 export * from './protocol.ts';
 export * from './change.ts';
 export * from './writeMode.ts';
+export * from './stateWords.ts';
+export * from './naming.ts';
 export * from './history.ts';
 export * from './authors.ts';
 export * from './cost.ts';

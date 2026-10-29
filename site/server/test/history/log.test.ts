@@ -15,8 +15,8 @@ function seedReaderChange(db: Db, options: { chapter: number; cascadeId?: string
      VALUES ('idt_1', 'sub-1', 'Аня', '2026-10-20T09:00:00Z', '2026-10-25T08:00:00Z')`,
   ).run();
   db.prepare(
-    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES ('cmt_1', 'idt_1', ?, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
+    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES ('cmt_1', 'idt_1', ?, 'Аня', 'абзац слишком часто', 'sha', 'iph', 'accepted', '2026-10-24T09:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(options.chapter);
   db.prepare(
     `INSERT INTO changes (id, kind, chapter, intent, source_comment, base_rev, base_sha256, base_blocks,

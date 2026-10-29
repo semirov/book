@@ -222,8 +222,9 @@ describe('T-history — GET /api/history (§6F.2, §11.10)', () => {
     expect(chain.alive).toBe(true);
     expect(chain.versions.map((version) => version.op)).toEqual(['introduced', 'revised']);
     expect(chain.versions[1]?.ver).toBe(2);
-    // «переписано в 14:20 правкой 2 (Марк) · было: правка 1 (Аня)»
-    expect(chain.line).toMatch(/^переписано в \d{2}:\d{2} правкой 2 \(Марк\) · было: правка 1 \(Аня\)$/u);
+    // «переписано в 14:20 правкой 002 (Марк) · было: правка 001 (Аня)» — BOOK-218: one padded
+    // number for a change, on every surface (the card, the provenance, the chronicle).
+    expect(chain.line).toMatch(/^переписано в \d{2}:\d{2} правкой 002 \(Марк\) · было: правка 001 \(Аня\)$/u);
 
     const byUid = await app!.inject({
       method: 'GET',

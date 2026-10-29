@@ -1,10 +1,12 @@
 /**
- * The writing engine's vocabulary (ARCHITECTURE.md §6A.2, §6A.7, §6A.8, §6B.3): one source for
- * the engine, the site and `bin/engine.mjs`, so a change, a step, a seam or a verdict cannot
- * mean two things in two processes; platform-neutral, no I/O.
+ * The writing engine's vocabulary (ARCHITECTURE.md §6A.2, §6A.7, §6A.8, §6B.3).
+ *
+ * One source for three consumers — the engine, the site and `bin/engine.mjs` — so a change, a
+ * step, a seam or a verdict cannot mean two things in two processes; platform-neutral, no I/O.
  */
 
 import { TOTAL_CHAPTERS } from './book.ts';
+import { ATTEMPT_LINE, STOP_REASONS } from './stateWords.ts';
 import type { Lane } from './types.ts';
 
 /** The lane's own shapes live in `assignment.ts` (the file-size wall); the surface is here. */
@@ -42,7 +44,11 @@ export type ChangeOutcome =
    */
   | 'rights'
   | 'gate_timeout'
-  /** BOOK-137: the filing touched the frozen frame — paperwork, not an edit: no step, no ripple. */
+  /**
+   * BOOK-137: the filing touched the frozen frame and was accepted as **paperwork** — a
+   * document, not an edit. The row is `done` with no step and no ripple, and the canon
+   * sentence's letters are untouched.
+   */
   | 'registered'
   | 'ripple' // BOOK-173: the closure stood — each consequence is its own normal pass; `wide` closes escalated
   | 'no-op'; // BOOK-173 §5: a rewrite that moved no byte — filed, paid for, never applied (BOOK-DOC-65)
@@ -353,8 +359,9 @@ export type ChangeTrace = {
 // ── seam helpers ─────────────────────────────────────────────────────────────
 
 /**
- * `n` means the boundary (n−1 | n). Boundary 1 and the sentinel `'front'` are the same seam
- * (the first sheet touches chapter 1), so `1` normalises to `'front'` — one name everywhere.
+ * `n` means the boundary (n−1 | n). Boundary 1 and the sentinel `'front'` are the same
+ * seam (the first sheet touches chapter 1), so `1` normalises to `'front'` — one seam,
+ * one name, in every table and every report.
  */
 export function normalizeSeamBoundary(value: unknown): SeamBoundary | null {
   if (value === 'front' || value === 'ending') return value;
@@ -387,23 +394,20 @@ export function seamReason(raw: unknown, max = 200): string {
 // ── the reader's line for a failed attempt ──────────────────────────────────
 
 /**
- * A failed attempt is **not** a filing's state: the lane tried the filing, the model answered
- * off-shape, the engine timed out, and the filing is still waiting for its turn. The reader is
- * told that in one sentence, and the engine's own word for the failure never leaves the server.
- * The first is the most common failure (a model that answered in the wrong shape); the others
- * are the engine's silence and a code the reader has no business reading — the cap is not a queue
- * place at all, so it has its own line, `READING_RESCHEDULED_LINE`, with the hour in it.
+ * A failed attempt is **not** a filing's state: the lane tried the filing, the machine answered
+ * off-shape or did not answer at all, and the filing is still waiting for its turn — so the
+ * reader is told that in one sentence, and the engine's own word for the failure stays on the
+ * server. BOOK-218: the sentence lives in `stateWords.ts`. The cap is not a queue place at all:
+ * it has its own line, `READING_RESCHEDULED_LINE`, with the hour in it.
  */
-export const FAILED_ATTEMPT_LINE = 'модель ответила не по форме — заявка остаётся в очереди';
-export const ENGINE_SILENT_LINE = 'движок не ответил — попытка не завершилась';
-export const ATTEMPT_LINE = 'попытка не удалась — заявка остаётся в очереди';
 export const READING_RESCHEDULED_LINE = 'чтение не состоялось — следующая попытка после 00:00 UTC';
 
 /**
  * An internal code: upper-case runs joined by underscores (`PROVIDER_SHAPE`), or one of the two
  * lowercase handles the engine writes (`provider_shape`, `engine_timeout`). A lowercase snake
- * word is **not** a code by shape alone — «глава про west_wing» is a human sentence; nor is a
- * sentence with capitals and no underscore («Gate-Timeout», «глава 65 не готова»).
+ * word is **not** a code by shape alone — «глава про west_wing» is a human sentence — so only
+ * the known handles and the upper-case shape are refused. A sentence with capitals and no
+ * underscore («Gate-Timeout», «глава 65 не готова») is a sentence.
  */
 const INTERNAL_CODE = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b|\b(?:provider_shape|engine_timeout)\b/u;
 
@@ -413,15 +417,17 @@ export function holdsInternalCode(raw: unknown): boolean {
 }
 
 /**
- * Any stored reason as the reader may see it: `null` when there is none, the sentence itself when
- * it is one, the fixed failure line when it carries a code. Never a code, never an empty string.
+ * Any stored reason as the reader may see it: `null` when there is none, the sentence itself
+ * when it is one, and the fixed failure line when the text carries an internal code. Never a
+ * code, never an empty string — the UI branches on `attempt`, not on a missing sentence.
  */
 export function readerReason(raw: unknown): string | null {
   const text = seamReason(raw);
   if (text.length === 0) return null;
   if (!holdsInternalCode(text)) return text;
-  if (/provider_shape/iu.test(text)) return FAILED_ATTEMPT_LINE;
-  if (/ENGINE_TIMEOUT|timeout/iu.test(text)) return ENGINE_SILENT_LINE;
+  if (/provider_shape/iu.test(text)) return STOP_REASONS.shape;
+  if (/ENGINE_TIMEOUT/iu.test(text)) return STOP_REASONS.engineDown;
+  if (/timeout/iu.test(text)) return STOP_REASONS.modelTimeout;
   return ATTEMPT_LINE;
 }
 

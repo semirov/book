@@ -254,7 +254,7 @@ describe('opening a seam', () => {
 describe('the form and its outcomes', () => {
   it('fires form_open, kind_pick, submit_note and receipt_seen on a note', async () => {
     vi.mocked(postAnchoredComment).mockResolvedValue({
-      comment: { id: 'cmt_01J9Z8K4Q7' },
+      comment: { id: 'cmt_01J9Z8K4Q7', number: 12 },
       remaining: { remaining: 9, perHour: 10, editsRemaining: 1, editsPerDay: 1 },
     } as never);
 
@@ -272,7 +272,8 @@ describe('the form and its outcomes', () => {
 
     expect(lastCall('submit_note')).toEqual(['submit_note', {}]);
     expect(lastCall('receipt_seen')).toEqual(['receipt_seen', {}]);
-    expect(document.querySelector('.seam-receipt')?.textContent).toContain('зарегистрировано');
+    // BOOK-218 — the receipt is the reader's own words: `принято · замечание 12`, not a code.
+    expect(document.querySelector('.seam-receipt')?.textContent).toContain('принято · замечание 12');
   });
 
   it('counts the note once per open, and closing it is not an act', async () => {

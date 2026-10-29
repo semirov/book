@@ -17,13 +17,10 @@
  */
 
 import {
-  DISPOSITION_REASONS,
-  LOCK_REASONS,
-  chainReport,
+  chainLine,
   normalizeCarrierKind,
   normalizeDisposition,
   normalizeDispositionLock,
-  type DispositionReport,
 } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
@@ -141,24 +138,13 @@ export function storeChain(db: Db, commentId: string, decision: DispositionDecis
 /** The columns a re-opened row must not keep: a decision about the old words is not about the new. */
 export const CHAIN_CLEARED = 'disposition = NULL, lock = NULL, carrier_kind = NULL, quote_kept = NULL';
 
-/** The three lines of a decision, exactly as the reader of this row will read them. */
-export function reportOfDecision(
-  db: Db,
-  decision: DispositionDecision,
-  comment: CommentRow,
-): DispositionReport {
-  const anchor = dispositionAnchorOf(db, comment);
-  return chainReport(
-    {
-      disposition: decision.disposition,
-      lock: decision.lock,
-      carrierKind: decision.carrierKind,
-      quoteKept: decision.quoteKept,
-      sentenceId: comment.sentence_id,
-    },
-    { chapter: comment.chapter, blockIndex: anchor.blockIndex, sentenceIndex: anchor.sentenceIndex },
-    comment.sentence_id !== null,
-  );
+/** The one line of a decision, exactly as the reader of this row will read it. */
+export function lineOfDecision(decision: DispositionDecision): string {
+  return chainLine({
+    disposition: decision.disposition,
+    lock: decision.lock,
+    carrierKind: decision.carrierKind,
+  });
 }
 
 /**
@@ -173,7 +159,7 @@ export function paperDecisionOf(db: Db, comment: CommentRow): DispositionDecisio
     disposition: 'through_paper',
     lock: null,
     carrierKind: 'document',
-    reason: DISPOSITION_REASONS.through_paper,
+    reason: chainLine({ disposition: 'through_paper', lock: null, carrierKind: 'document' }),
     quoteKept: null,
     sentenceId: comment.sentence_id,
     blockIndex: anchor.blockIndex,
@@ -196,7 +182,7 @@ export function storedDecision(row: CommentRow): DispositionDecision | null {
     disposition,
     lock,
     carrierKind: normalizeCarrierKind(row.carrier_kind),
-    reason: disposition === 'inadmissible' && lock !== null ? LOCK_REASONS[lock] : DISPOSITION_REASONS[disposition],
+    reason: chainLine({ disposition, lock, carrierKind: normalizeCarrierKind(row.carrier_kind) }),
     quoteKept: row.quote_kept,
     sentenceId: row.sentence_id,
     blockIndex: null,

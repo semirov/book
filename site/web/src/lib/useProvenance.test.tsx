@@ -147,10 +147,10 @@ describe('the word panel’s one reader (BOOK-56)', () => {
 
     expect(cell('hand')).toBe('—');
     await load();
-    expect(cell('hand')).toBe('печатник');
+    expect(cell('hand')).toBe('машина');
     expect(cell('when')).toBe('вне правок');
     expect(cell('trace')).toBe('следа нет');
-    expect(cell('gloss')).toBe('печатник — смена, которая пишет книгу; рамку держит автор.');
+    expect(cell('gloss')).toBe('машина внесла правку; рамку держит автор.');
 
     await load();
     const chainCalls = fetchMock.mock.calls.filter(([input]) => String(input).startsWith('/api/history/paragraphs/')).length;
@@ -178,7 +178,7 @@ describe('the word panel’s one reader (BOOK-56)', () => {
 
     // The viewer's own curve only: no public number is ever printed for their own word.
     expect(cell('hand')).toBe('Аня');
-    expect(cell('trace')).toBe('пережила 4 ревизии');
+    expect(cell('trace')).toBe('пережила 4 редакции');
     expect(cell('gloss')).toBe('');
   });
 
@@ -207,12 +207,12 @@ describe('the word panel’s one reader (BOOK-56)', () => {
 
   it('names the filing standing on the word, and its state, in line 3', async () => {
     stub({ '/api/history/paragraphs/': () => json(CHAIN) });
-    probe({ filing: { number: '№A7K', seq: null, state: 'ждёт', href: '#ch-8-b3' } });
+    probe({ filing: { number: '1', seq: null, state: 'ждёт', href: '#ch-8-b3' } });
 
     await load();
 
-    expect(cell('hand')).toBe('правка · №A7K');
-    expect(cell('trace')).toBe('№A7K · ждёт');
+    expect(cell('hand')).toBe('замечание 1');
+    expect(cell('trace')).toBe('замечание 1 · ждёт');
     expect(cell('gloss')).toBe('');
   });
 

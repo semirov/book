@@ -83,7 +83,7 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      expect(result.reason).toContain('модель отказалась писать');
+      expect(result.reason).toBe(readerSentences.refusal);
       const row = changeRow(harness, changeId);
       expect(row).toMatchObject({ status: 'void', outcome: 'dropped' });
       // The reader reads a sentence; the code it came from is in the log and the transcript.

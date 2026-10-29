@@ -6,7 +6,7 @@
  * explain the run that happened, not a later build's defaults.
  */
 
-import type { BudgetScope, CascadeBudget } from '@book/shared';
+import { FAILURE_LINES, type BudgetScope, type CascadeBudget } from '@book/shared';
 
 import type { Config } from '../config.ts';
 import { WARN_RATIO, budgetSnapshot, budgetWarnLine, type BudgetCaps } from '../budget.ts';
@@ -57,16 +57,14 @@ export function budgetReason(breach: Exclude<BudgetBreach, null>, budget: Cascad
       return budget.maxWave === 1
         ? 'правка сделала одну волну — вторая волна только по решению владельца'
         : `правка ушла глубже ${String(budget.maxWave)} волн — дальше только по решению владельца`;
-    case 'steps':
-      return `правка потребовала больше ${budget.maxSteps} шагов — нужно решение`;
-    case 'chapters':
-      return `правка задела больше ${budget.maxChapters} глав — нужно решение`;
-    case 'tokens':
-      return 'правка упирается в бюджет токенов — нужно решение';
+    // BOOK-218 — the only reason vocabulary: a bound is our failure, never «нужно решение».
     case 'wall':
-      return 'правка идёт дольше отведённого времени — нужно решение';
+      return FAILURE_LINES.outOfTime;
+    case 'steps':
+    case 'chapters':
+    case 'tokens':
     default:
-      return 'правка остановлена бюджетом — нужно решение';
+      return FAILURE_LINES.ourFailure;
   }
 }
 

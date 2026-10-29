@@ -1,13 +1,16 @@
 import type { CommentDto, ParagraphChainDto } from '@book/shared';
 
+import { changeName, changeNumber } from './changeStatus.ts';
 import { formatDate, formatTime } from './format.ts';
 import { PASS_HAND } from './provenance.ts';
 import { filingNumber } from './filings.ts';
 import {
+  STATE_LINES,
+  STATE_WORDS,
   filingConsequence,
   filingMarginalia,
   landedReceiptLine,
-  STATE_WORDS,
+  waitingLine,
 } from './marginalia.ts';
 
 /**
@@ -48,8 +51,42 @@ export type RecordState = {
   empty: boolean;
 };
 
-/** The hand's word and the moment it wrote this version: `печатник · 28.10.2026, 12:08`. */
+/** The hand's word and the moment it wrote this version: `машина · 28.10.2026, 12:08`. */
 export type RecordHand = { hand: string; moment: string; line: string };
+
+/**
+ * BOOK-218 — the record's head is the **reader's**, not the machine's: what this is, and when
+ * the reader's own action happened. `замечание 12 · вы предложили · 29.10, 12:07` for the
+ * reader's own filing, `замечание 12 · 29.10, 12:07` for the newest one, and `запись о фразе`
+ * when the sentence holds no filing at all. The hand (`машина · …`) is not here: it belongs to `история`, where
+ * the hand is the subject.
+ */
+export type RecordHead = {
+  /** The filing the head names — the same one the state speaks about; `null` for no filing. */
+  filing: CommentDto | null;
+  line: string;
+};
+
+/** `запись о фразе` — the head of a sentence nothing was filed on. */
+export const RECORD_HEAD_EMPTY = 'запись о фразе';
+
+export function recordHeadOf(input: {
+  filings: readonly CommentDto[];
+  own: (comment: CommentDto) => boolean;
+}): RecordHead {
+  // The head and the state speak about the same filing: the reader's own first (it is the one
+  // they can still act on), then the newest — the order `recordStateOf` reads.
+  const filing = input.filings.find(input.own) ?? input.filings[0] ?? null;
+  if (filing === null) return { filing: null, line: RECORD_HEAD_EMPTY };
+  const line = [
+    filingNumber(filing),
+    input.own(filing) ? 'вы предложили' : null,
+    shortMoment(filing.createdAt),
+  ]
+    .filter((part): part is string => part !== null && part.length > 0)
+    .join(' · ');
+  return { filing, line };
+}
 
 /** `2026-10-28T12:08:00Z` → `28.10.2026, 12:08`; a missing moment is «вне правок». */
 export function fullMoment(iso: string | null): string {
@@ -70,7 +107,7 @@ export function handWord(input: {
   const last = (Array.isArray(input.chain?.versions) ? input.chain.versions : []).at(-1) ?? null;
   if (last === null) return PASS_HAND;
   if (last.actor?.kind === 'reader') {
-    if (last.changeSeq !== null) return `правка ${String(last.changeSeq).padStart(3, '0')}`;
+    if (last.changeSeq !== null) return changeName(last.changeSeq);
     return last.actor.label;
   }
   if (last.actor === null && last.changeSeq === null) return 'рука не названа';
@@ -108,7 +145,7 @@ export function recordStateOf(input: {
   frozen: 'frame' | 'basis' | null;
 }): RecordState {
   const { filings, chain, writing, frozen, own } = input;
-  if (writing) return { situation: 'writing', word: 'пишется', ink: 'live', line: null, empty: false };
+  if (writing) return { situation: 'writing', word: STATE_WORDS.writing, ink: 'live', line: null, empty: false };
 
   const ownFiling = filings.find(own) ?? null;
   const filing = ownFiling ?? filings[0] ?? null;
@@ -119,16 +156,17 @@ export function recordStateOf(input: {
     // situation and the line, never a second word for the same row.
     const { word } = filingMarginalia(filing);
     // BOOK-219 — a receipt on the row is the server's landing fact, the one receipt shape of the
-    // block: «внесено · глава 67 · ревизия 4», whatever the row's status still says.
+    // block: «внесено» and «в главу 67. это четвёртая редакция», whatever the row says.
     const receipt = landedReceiptLine(filing.applied);
     if (receipt !== null) return { situation: 'landed', word, ink: 'ink', line: receipt, empty: false };
     switch (filing.status) {
       case 'new':
+        // BOOK-218: nobody has read it, and possession is a fact on the line, never a word.
         return {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'решения ещё нет',
+          line: waitingLine(mine),
           empty: false,
         };
       case 'batched':
@@ -137,19 +175,22 @@ export function recordStateOf(input: {
           situation: 'working',
           word,
           ink: 'live',
-          line: 'в очереди на запись',
+          line: STATE_LINES.reading,
           empty: false,
         };
       case 'accepted':
-        // BOOK-189: the row's word stops at triage. Only the linked change says whether the
-        // writer is at this filing now (`processing` → «идёт» · «пишется») or the lane holds it
-        // («ждёт», and the reader's own line says whose it is).
+        // BOOK-189, BOOK-218: the row is «принято», and the linked change says whether the
+        // machine is writing this chapter now («пишется · глава N») or its turn has not come
+        // («впишется, когда машина возьмёт главу») — never a queue place, never a promise of
+        // minutes where the wait is hours.
         if (filing.changeStatus === 'processing') {
+          // BOOK-218 line 7 — the chapter is being drafted now. The start moment lives on the
+          // change, which the record's own filing DTO does not carry, so the word is the fact.
           return {
             situation: 'working',
             word,
             ink: 'live',
-            line: 'пишется',
+            line: null,
             empty: false,
           };
         }
@@ -157,11 +198,11 @@ export function recordStateOf(input: {
           situation: mine ? 'waitingOwn' : 'waiting',
           word,
           ink: 'live',
-          line: mine ? 'ваша — в очереди' : 'в очереди на запись',
+          line: STATE_LINES.accepted,
           empty: false,
         };
       case 'quarantined':
-        return { situation: 'held', word, ink: 'live', line: 'ждёт человека', empty: false };
+        return { situation: 'held', word, ink: 'live', line: STATE_LINES.held, empty: false };
       case 'applied': {
         // BOOK-189 — the receipt path returned above; a row without one prints the deck's own
         // line and never an invented revision.
@@ -180,22 +221,27 @@ export function recordStateOf(input: {
         return { situation: 'landed', word, ink: 'ink', line: filingConsequence(filing), empty: false };
       case 'rejected':
         // The gate's own word and the reason **whole** — a refusal is a decision, not an error.
+        // The line is the sentence alone: the word already stands above it (BOOK-218).
         return {
           situation: 'refused',
           word,
           ink: 'revise',
-          line: `: ${filing.reason ?? filingConsequence(filing)}`,
+          line: filingConsequence(filing) || filing.reason,
           empty: false,
         };
-      default:
-        // `superseded`, `expired`, `hidden`: the deck's own word and line, printed, not re-decided.
+      default: {
+        // `superseded`, `expired`, `hidden`: the deck's own word and line, printed, not
+        // re-decided — «снято · текст успел измениться», «снято · правка не состоялась»,
+        // «скрыто» with no second line (BOOK-218).
+        const line = filingConsequence(filing);
         return {
           situation: 'refused',
           word,
           ink: 'revise',
-          line: `: ${filingConsequence(filing)}`,
+          line: line.length === 0 ? null : line,
           empty: false,
         };
+      }
     }
   }
 
@@ -205,11 +251,12 @@ export function recordStateOf(input: {
     return { situation: 'landed', word: 'не меняется', ink: 'quiet', line: null, empty: false };
   }
   if (last !== null && last.changeSeq !== null) {
-    // The head row's own cell: «внесено · правка 012» — one word with its change, and no second
-    // line, because the number is part of what the word says (#3863 §4).
+    // The head row's own cell: «внесено · правка 012» — one word with its **change**, and no
+    // second line, because the number is part of what the word says (#3863 §4). A filing is a
+    // «замечание 12»: the two objects never share a noun (BOOK-218).
     return {
       situation: 'landed',
-      word: `${STATE_WORDS.landed} · правка ${String(last.changeSeq).padStart(3, '0')}`,
+      word: `${STATE_WORDS.landed} · правка ${changeNumber(last.changeSeq)}`,
       ink: 'ink',
       line: null,
       empty: false,
@@ -232,9 +279,9 @@ export function recordStateOf(input: {
 
 export type InterventionRow = {
   id: string;
-  /** `№A7K · ваше · внесено · 28.10, 12:08` — one line, the row's facts. */
+  /** `замечание 12 · 29.10, 12:07 · ваше` — one line, the row's own facts. */
   facts: string;
-  /** The pair, or the deck's own consequence. */
+  /** The pair, or the deck's own consequence; `''` when the head already states this filing. */
   specimen: string;
   own: boolean;
   /** The filing itself, for the `замечание` body state. */
@@ -249,19 +296,35 @@ function shortMoment(iso: string): string {
   return `${date.slice(0, 5)}, ${time}`;
 }
 
-/** One intervention row: the reader's own first, then pending, then newest (`sortFilings`). */
+/**
+ * One intervention row: the reader's own first, then pending, then newest (`sortFilings`).
+ *
+ * BOOK-218 — a row is readable on its own: the number (`замечание 12`), the moment, whose it is.
+ * The state word is printed **only when the head does not already state that filing**
+ * (`headId`), and the filing the head names carries no second line either: the record states
+ * it once, and the row is the pointer. No `№`, no code, no «замечание» prefix.
+ */
 export function interventionRows(input: {
   filings: readonly CommentDto[];
   own: (comment: CommentDto) => boolean;
+  /** The filing the record's head already states; `null` when the head names none of them. */
+  headId?: string | null;
 }): InterventionRow[] {
+  const headId = input.headId ?? null;
   return input.filings.map((comment) => {
     const mine = input.own(comment);
+    const inHead = comment.id === headId;
     return {
       id: comment.id,
-      facts: [filingNumber(comment), mine ? 'ваше' : null, stateWordOf(comment), shortMoment(comment.createdAt)]
+      facts: [
+        filingNumber(comment),
+        shortMoment(comment.createdAt),
+        mine ? 'ваше' : null,
+        inHead ? null : stateWordOf(comment),
+      ]
         .filter((part): part is string => part !== null && part.length > 0)
         .join(' · '),
-      specimen: filingConsequence(comment),
+      specimen: inHead ? '' : filingConsequence(comment),
       own: mine,
       comment,
     };
@@ -273,9 +336,20 @@ function stateWordOf(comment: CommentDto): string {
   return filingMarginalia(comment).word;
 }
 
+/**
+ * BOOK-218 — the receipt's **one** line after posting: the state's own line when it has one,
+ * else the filing's consequence. The reader is told once; the earlier receipt printed the
+ * consequence and the state line side by side.
+ */
+export function receiptLineOf(state: RecordState, receipt: CommentDto): string | null {
+  if (state.line !== null && state.line.length > 0) return state.line;
+  const consequence = filingConsequence(receipt);
+  return consequence.length === 0 ? null : consequence;
+}
+
 export type HistoryRow = {
   id: string;
-  /** `28.10, 12:08 · печатник · правка 012` */
+  /** `28.10, 12:08 · машина · правка 012` */
   facts: string;
   /** The pair, or the record's own confession that the pair was not stored. */
   specimen: string;
@@ -288,8 +362,8 @@ export function historyRows(chain: ParagraphChainDto | null): HistoryRow[] {
     id: `${version.blockUid}-${String(version.ver)}`,
     facts: [
       shortMoment(version.at),
-      version.actor?.label ?? PASS_HAND,
-      version.changeSeq === null ? null : `правка ${String(version.changeSeq).padStart(3, '0')}`,
+      version.actor?.kind === 'reader' ? (version.actor.label ?? PASS_HAND) : PASS_HAND,
+      version.changeSeq === null ? null : `правка ${changeNumber(version.changeSeq)}`,
     ]
       .filter((part): part is string => part !== null && part.length > 0)
       .join(' · '),

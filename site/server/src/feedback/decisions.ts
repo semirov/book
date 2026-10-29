@@ -20,7 +20,6 @@ import {
   validateIntent,
   validateInterventionKind,
   type CommentDecisionPayload,
-  type DispositionReport,
   type RetroMode,
 } from '@book/shared';
 
@@ -32,7 +31,7 @@ import { readAuthor, publicIntent } from '../engineState/changes.ts';
 import type { ChangeRow } from '../engineState/rows.ts';
 import { acceptComment } from './accept.ts';
 import { parseDispositionProposal, type DispositionProposal } from './disposition.ts';
-import { reportOfDecision, disposeRejection, storedDecision } from './dispositionStore.ts';
+import { lineOfDecision, disposeRejection, storedDecision } from './dispositionStore.ts';
 import { chapterVocabulary } from './vocabulary.ts';
 
 export type DecisionEmit = (type: 'comment:decision' | 'change:queued' | 'feedback:batch', data: unknown) => void;
@@ -77,7 +76,8 @@ export type DecisionsTailerOptions = {
    * BOOK-189/BOOK-174 — the reader's push, once per filing. The report travels with it: it is the
    * answer the notification speaks, and a filing with no reading (a gate's hold) passes `null`.
    */
-  notify?: (commentId: string, report: DispositionReport | null) => void;
+  /** The one line the answer speaks, or null when the row was never read this way. */
+  notify?: (commentId: string, reason: string | null) => void;
 };
 
 const OFFSET_KEY = 'feedback_decisions_offset';
@@ -89,7 +89,7 @@ export class DecisionsTailer {
   private readonly emit: DecisionEmit;
   private readonly now: () => Date;
   private readonly replay: boolean;
-  private readonly notify: ((commentId: string, report: DispositionReport | null) => void) | null;
+  private readonly notify: ((commentId: string, reason: string | null) => void) | null;
   private offset = 0;
   private batchCursor: string | null = null;
 
@@ -158,7 +158,7 @@ export class DecisionsTailer {
         changeId: comment.change_id,
         queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
         source: 'llm',
-        report: this.reportOf(comment),
+
         // BOOK-206 B2 — a triage decision moved no chapter's text: the receipt is null, never
         // absent, so the consumer can tell «nothing landed» from «this frame forgot to say».
         applied: null,
@@ -235,6 +235,8 @@ export class DecisionsTailer {
       change === undefined || change.premise === 1
         ? 0
         : countRows(this.db, `SELECT COUNT(*) AS n FROM changes WHERE status = 'pending' AND premise = 0 AND seq < ?`, change.seq);
+    // The chain the accept wrote: the reading the page shows at once, never a second opinion.
+    const chain = storedDecision(readCommentRow(this.db, comment.id) ?? comment);
     const payload: CommentDecisionPayload = {
       id: comment.id,
       chapter: comment.chapter,
@@ -245,8 +247,9 @@ export class DecisionsTailer {
       changeId: accepted.changeId,
       queue: { depth: queue.depth, ahead },
       source: 'llm',
-      // BOOK-174: the reading travels with the frame, so the open filing shows it at once.
-      report: this.reportOf(readCommentRow(this.db, comment.id) ?? comment),
+      // BOOK-174: the reading travels with the frame, so the open card shows it at once.
+      disposition: chain?.disposition ?? null,
+      carrierKind: chain?.carrierKind ?? null,
       // A triage accept moved no chapter's text: the receipt is present and null (BOOK-206 B2).
       applied: null,
     };
@@ -308,21 +311,24 @@ export class DecisionsTailer {
       changeId: null,
       queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
       source: 'llm',
-      report: reportOfDecision(this.db, result.decision, comment),
+
       // A lock refusal never became a change: no text moved, and the receipt says so.
       applied: null,
     } satisfies CommentDecisionPayload);
     // BOOK-189: the row is decided and the socket has spoken; the push goes out once, after both.
     // A filing with no change never gets a close to announce it, so this is its only answer — and
     // BOOK-174 makes the answer the reading, not a word about a refusal.
-    this.notify?.(comment.id, reportOfDecision(this.db, result.decision, comment));
+    this.notify?.(comment.id, lineOfDecision(result.decision));
     return true;
   }
 
-  /** The report of a row that already carries a chain; null for a row read before v27. */
-  private reportOf(row: CommentRow): DispositionReport | null {
+  /**
+   * The one line a rejected row speaks: its chain's outcome, else the public sentence the gate
+   * stored. `null` only when the row carries neither — and then the caller keeps the old word.
+   */
+  private reportOf(row: CommentRow): string | null {
     const stored = storedDecision(row);
-    return stored === null ? null : reportOfDecision(this.db, stored, row);
+    return stored === null ? row.reason : lineOfDecision(stored);
   }
 
   /** A gate's own refusal: unchanged by BOOK-174, and it stores no disposition chain. */
@@ -352,7 +358,7 @@ export class DecisionsTailer {
     // once, after both. A refused filing has no change to be decided later, so this is the only
     // moment its author can hear the answer. A gate's refusal stores no chain: the push speaks
     // the old sentence for it and nothing pretends a reading happened.
-    this.notify?.(comment.id, null);
+    this.notify?.(comment.id, publicReason);
   }
 
   private announceBatches(): number {

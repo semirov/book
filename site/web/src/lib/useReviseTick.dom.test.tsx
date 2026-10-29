@@ -30,6 +30,7 @@ function revise(overrides: Partial<CommentRevise> = {}): CommentRevise {
 function refused(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_refused',
+    number: 1,
     chapter: 8,
     anchor: {
       blockId: 'ch08#aa11bb22',
@@ -106,6 +107,7 @@ describe('nextCooldown', () => {
             items: [
               refused({
                 id: 'cmt_chapter',
+                number: 2,
                 chapter: 9,
                 revise: revise({ at: new Date(AT_MS + 5 * 60_000).toISOString(), blocked: 'cooldown' }),
               }),

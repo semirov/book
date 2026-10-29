@@ -9,6 +9,7 @@
  *     change keeps the outcome it earned and never reaches `drainablePlans`.
  */
 
+import { STOP_REASONS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { openRippleStep, rippleOutcomeFor, drainablePlans } from '../../src/engine/ripple.ts';
@@ -88,7 +89,8 @@ describe('rippleOutcomeFor — the word a closed change carries', () => {
       park_reason: string | null;
     };
     expect(row.parked_at).not.toBeNull();
-    expect(row.park_reason).toContain('решает автор');
+    // The register's one stop line (BOOK-218) — never our own sentence, never the code word.
+    expect(row.park_reason).toBe(STOP_REASONS.stopped);
     expect(row.park_reason).not.toContain('WIDE_NEEDS_AUTHOR');
   });
 

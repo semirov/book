@@ -38,6 +38,7 @@ describe('the thread’s two-line status', () => {
     const comment: CommentDto = {
       attempt: null,
       id: 'cmt_1',
+      number: 2,
       chapter: 8,
       anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },
       author: 'Аня',
@@ -72,6 +73,7 @@ describe('the thread’s two-line status', () => {
     const comment: CommentDto = {
       attempt: null,
       id: 'cmt_1',
+      number: 3,
       chapter: 8,
       anchor: { blockId: 'ch08#aa11', blockIndex: 2, quote: 'слово', prefix: null, suffix: null, resolved: true },
       author: 'Аня',

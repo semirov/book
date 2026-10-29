@@ -14,7 +14,7 @@ describe('the form’s bounds and refusals (§11.6, §12.8)', () => {
       ['RATE_LIMITED', 'слишком много', true],
       ['EDIT_DAILY_LIMIT', 'одна правка в сутки', false],
       ['DUPLICATE', 'уже отправлено', false],
-      ['QUEUE_FULL', 'очередь', true],
+      ['QUEUE_FULL', 'правок ждёт слишком много', true],
       ['ENDING_FROZEN', 'финал', false],
       ['FROZEN_FRAME', 'неподвижна', false],
       ['BLOCKED', 'не принимаются', false],

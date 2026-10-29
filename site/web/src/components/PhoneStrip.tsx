@@ -1,7 +1,7 @@
 import type { CommentDto } from '@book/shared';
 import { interventionKindLabel } from '@book/shared';
 
-import { filingInk, filingNumber, stripFilings } from '../lib/filings.ts';
+import { filingInk, filingNum, filingNumber, stripFilings } from '../lib/filings.ts';
 import { filingMarginalia } from '../lib/marginalia.ts';
 
 /**
@@ -42,7 +42,7 @@ export function PhoneStrip({
             type="button"
             className="phone-strip-row"
             data-status={comment.status}
-            data-number={filingNumber(comment)}
+            data-number={filingNum(comment)}
             onClick={(event) => onOpen(comment, event.currentTarget)}
           >
             <span className={`phone-strip-n ink-word-${ink.tone}`}>{filingNumber(comment)}</span>

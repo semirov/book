@@ -124,9 +124,9 @@ describe('applyChapterFile — a published chapter has sentences', () => {
       fixture.db
         .prepare(
           `INSERT INTO comments (id, identity_id, chapter, block_id, block_idx, base_rev, quote, sentence_id,
-                                 sel_start, sel_end, author, body, body_sha, ip_hash, status, created_at)
+                                 sel_start, sel_end, author, body, body_sha, ip_hash, status, created_at, number)
            VALUES ('cmt_1', 'idt_1', 8, ?, 1, 1, 'Второй абзац главы.', ?, 0, 5, 'Аня', 'почему так?', 'sha',
-                   'iph', 'new', '2026-10-28T09:00:00Z')`,
+                   'iph', 'new', '2026-10-28T09:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
         )
         .run(dropped.id, sentence.id);
 

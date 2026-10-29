@@ -13,7 +13,7 @@ import type { WordFacts } from '../lib/provenance.ts';
  * no fill, no shadow, no scroll, no close, no `z-index`, and **no `data-margin-item`** — the
  * page's margin pass no longer has a claim on this node.
  *
- * What it prints is three facts and, under `печатник` alone, one sentence (`lib/provenance.ts`).
+ * What it prints is three facts and, under `машина` alone, one sentence (`lib/provenance.ts`).
  * There is no CTA here: the strip's `вмешаться` is the only door, and it is already in the row
  * above this block. When a filing stands on the word, line 3 is a real `<a>` to its place —
  * never a `<button>`, so the layer owns no action of its own — and the site's one panel is

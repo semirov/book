@@ -57,7 +57,7 @@ export function SeamFilingRow({ comment }: { comment: CommentDto }) {
   return (
     <button type="button" className="seam-filing" data-status={comment.status}>
       <span className="seam-filing-line ink-quiet">
-        <span className="seam-filing-n">№A7K</span>
+        <span className="seam-filing-n">правка 12</span>
         <span className="seam-filing-word">ждёт</span>
         <span>{comment.author}</span>
         <span className="seam-filing-stamp">28.10, 14:42</span>
@@ -67,7 +67,7 @@ export function SeamFilingRow({ comment }: { comment: CommentDto }) {
   );
 }
 
-/** `Record.tsx`, opened: the sheet, the hand line and the head row of three registers. */
+/** `Record.tsx`, opened: the sheet, the head's own line and the head row of three registers. */
 export function RecordHead() {
   return (
     <div className="rec" data-acc="open" role="region" aria-label="запись о фразе">
@@ -76,7 +76,7 @@ export function RecordHead() {
           <div className="rec-gap" aria-hidden="true" />
           <div className="rec-sheet">
             <blockquote className="rec-quote">«Её освещал яркий свет, и на столе лежал лист бумаги.»</blockquote>
-            <p className="rec-hand">печатник · 28.10.2026, 14:42</p>
+            <p className="rec-what">правка 12 · ваша · 28.10, 14:42</p>
             <div className="rec-head">
               <span className="rec-state" data-ink="quiet">
                 <span>ждёт</span>

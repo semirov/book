@@ -14,6 +14,7 @@ import {
   FORWARD_LAST,
   INTENT_MAX_CHARS,
   PREMISE_FROZEN_REASON,
+  TOO_MANY_FILINGS,
   TOTAL_CHAPTERS,
   normalizeInterventionKind,
   type ChangeStatus,
@@ -128,7 +129,7 @@ export function createQueue(deps: EngineDeps) {
       // base_rev 0, no anchor, and no place in the FIFO lane.
       if (input.kind === 'reader_edit' || input.kind === 'accepted_comment') {
         if (store.countPending(db) >= config.queueSoftCap) {
-          refuse('QUEUE_FULL', 503, 'очередь правок заполнена — попробуйте позже');
+          refuse('QUEUE_FULL', 503, TOO_MANY_FILINGS);
         }
         const admitted = admitPremise(db, {
           id: newChangeId(deps.clock.now()),
@@ -145,7 +146,7 @@ export function createQueue(deps: EngineDeps) {
       refuse('CHAPTER_EMPTY', 409, `глава ${chapter} ещё не написана`);
     }
     if (store.countPending(db) >= config.queueSoftCap) {
-      refuse('QUEUE_FULL', 503, 'очередь правок заполнена — попробуйте позже');
+      refuse('QUEUE_FULL', 503, TOO_MANY_FILINGS);
     }
 
     const anchor = input.anchor

@@ -30,7 +30,7 @@ import { layoutProblemsOf, tokenPxOf } from './measure.rules.ts';
 
 export { BASE, TOKENS } from './measure.css.ts';
 export { CANVAS, CANVAS_BOUND, FOLIO_INSET } from './measure.tokens.ts';
-export { COLUMN_BOXES, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS, rootScaleProblems } from './measure.rules.ts';
+export { COLUMN_BOXES, MARGIN_CHANNEL, MARGIN_CHANNEL_NARROW, OUTSIDE_CANVAS, OVERLAYS, PROSE, REGISTERS, rootScaleProblems } from './measure.rules.ts';
 
 /** The sheets as text, and the entry point they are derived from. */
 const OUTER = import.meta.glob<string>(['../main.tsx', '../styles/*.css'], {

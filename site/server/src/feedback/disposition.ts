@@ -33,9 +33,8 @@
 
 import {
   CARRIER_KINDS,
-  DISPOSITION_REASONS,
-  LOCK_REASONS,
   STAMP_MAX_CHARS,
+  outcomeLine,
   normalizeCarrierKind,
   normalizeDisposition,
   normalizeDispositionLock,
@@ -80,7 +79,7 @@ export type DispositionDecision = {
   disposition: Disposition;
   lock: DispositionLock | null;
   carrierKind: CarrierKind | null;
-  /** Line 2 of the report: the closed clause, or the lock's own why. */
+  /** The one line the reader reads: the reading, or the lock's own sentence. */
   reason: string;
   quoteKept: string | null;
   /** The filing's own ADR-044 anchor (`snt_…`); null when it kept its block anchor. */
@@ -246,7 +245,7 @@ function landed(input: ChooseDispositionInput, landing: Landing, asSaidHeld: boo
     disposition: landing.disposition,
     lock: null,
     carrierKind: landing.carrierKind,
-    reason: DISPOSITION_REASONS[landing.disposition],
+    reason: outcomeLine({ kind: 'reading', reading: landing.disposition, carrierKind: landing.carrierKind }),
     quoteKept: landing.quoteKept,
     sentenceId: anchor.sentenceId,
     blockIndex: anchor.blockIndex,
@@ -265,7 +264,7 @@ export function lockDecision(lock: DispositionLock): DispositionDecision {
     disposition: 'inadmissible',
     lock,
     carrierKind: null,
-    reason: LOCK_REASONS[lock],
+    reason: outcomeLine({ kind: 'lock', lock }),
     quoteKept: null,
     sentenceId: null,
     blockIndex: null,

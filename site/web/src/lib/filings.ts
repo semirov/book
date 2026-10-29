@@ -15,9 +15,9 @@ import type { WordFiling } from './provenance.ts';
  * neither: it is stale, and a quiet line in the paragraph says so. States are never colour
  * alone: every ink here travels with the state's own word.
  *
- * The numeral: the schema has no filing sequence, so the mark prints the record's own short
- * suffix (`№A7K` from the ULID). A fabricated ordinal (`№012`) would be a claim about the
- * book's order that no row supports.
+ * The number: BOOK-218 gives every filing its own public number (`CommentDto.number`, the
+ * row's insertion order). A reader reads «замечание 12»; the mark and the note print the bare
+ * `12`. No id is ever cut into a number again — an id belongs to the machinery.
  */
 
 export type FilingRule = 'solid' | 'dotted' | 'none';
@@ -138,10 +138,21 @@ export function upsertFiling(comments: readonly CommentDto[], comment: CommentDt
   return next;
 }
 
-/** `№A7K` — the record's own suffix, stable across reloads and never an invented ordinal. */
-export function filingNumber(comment: Pick<CommentDto, 'id'>): string {
-  const tail = comment.id.replace(/[^A-Za-z0-9]/gu, '').slice(-3).toUpperCase();
-  return `№${tail.length === 3 ? tail : `0${tail}`.slice(-3)}`;
+/**
+ * BOOK-218 — `замечание 12`: the number with the word every card, row and strip prints.
+ *
+ * The number is the filing's own public one (`CommentDto.number`); the mark and the note print
+ * the bare numeral (`filingNum`), because there they stand beside the prose and the word would
+ * be a second word. **One noun carries one counter**: a filing is a «замечание», a change is a
+ * «правка 012» (`changeNumber`), and no surface prints one under the other's noun.
+ */
+export function filingNumber(comment: Pick<CommentDto, 'number'>): string {
+  return `замечание ${String(comment.number)}`;
+}
+
+/** `12` — the bare numeral the mark and the note print. */
+export function filingNum(comment: Pick<CommentDto, 'number'>): string {
+  return String(comment.number);
 }
 
 export type SentenceFilings = {
@@ -149,7 +160,7 @@ export type SentenceFilings = {
   quote: string | null;
   /** Pending first, then newest. */
   all: CommentDto[];
-  /** The numeral the mark prints: the newest filing's. */
+  /** The numeral the mark prints: the newest filing's, bare (`12`), never a word. */
   number: string;
   /** How many more filings share this sentence (`+2` on the mark). */
   extra: number;
@@ -170,11 +181,22 @@ export function filingsForBlock(comments: readonly CommentDto[], blockId: string
       blockId,
       quote: quote.length === 0 ? null : quote,
       all,
-      number: filingNumber(all[0] as CommentDto),
+      number: filingNum(all[0] as CommentDto),
       extra: Math.max(0, all.length - 1),
       stale: all.every(isStale),
     };
   });
+}
+
+/**
+ * BOOK-218 — **one filing is one mark**: the filings of a sentence group that the block has not
+ * shown yet. A group can be reached from more than one sentence run (the same wording twice in
+ * one paragraph, or a quote whose place resolves twice), and the mark must not repeat: the
+ * paragraph showed `12 12` beside one filing. The caller keeps the ids it has drawn for the
+ * block; what comes back here is what is still owed a mark and a note.
+ */
+export function unshownFilings(filings: SentenceFilings, shown: ReadonlySet<string>): CommentDto[] {
+  return filings.all.filter((comment) => !shown.has(comment.id));
 }
 
 /** The strip shows two rows and one quiet door to the rest (§2.5 overflow). */
@@ -224,7 +246,7 @@ export type CommentDecisionFrame = {
   changeId?: string | null;
   applied?: CommentDto['applied'];
   disposition?: CommentDto['disposition'];
-  report?: CommentDto['report'];
+  carrierKind?: CommentDto['carrierKind'];
   /**
    * BOOK-206 audit B1 — the change's next attempt, when the frame says one is scheduled: the
    * time it will be retried at, and the state that attempt is in. Only the fact is applied; the
@@ -284,7 +306,7 @@ export function withDecisionReport(
     ...(typeof frame.changeId !== 'string' ? {} : { changeId: frame.changeId }),
     ...(frame.applied === undefined ? {} : { applied: frame.applied }),
     ...(frame.disposition === undefined ? {} : { disposition: frame.disposition }),
-    ...(frame.report === undefined ? {} : { report: frame.report }),
+    ...(frame.carrierKind === undefined ? {} : { carrierKind: frame.carrierKind }),
     // B1 — a scheduled retry (or its absence) is a fact of the row until the durable read says
     // otherwise; the word stays the row's own and the line is the frame's `reason`.
     ...(frame.attempt === undefined ? {} : { retryAt: retryAtOf(frame.attempt) }),
@@ -295,7 +317,8 @@ export function withDecisionReport(
     next.decidedAt === row.decidedAt &&
     next.changeId === row.changeId &&
     sameApplied(next.applied, row.applied) &&
-    (next.report ?? null) === (row.report ?? null) &&
+    (next.disposition ?? null) === (row.disposition ?? null) &&
+    (next.carrierKind ?? null) === (row.carrierKind ?? null) &&
     (next.retryAt ?? null) === (row.retryAt ?? null)
   ) {
     return null;
@@ -338,26 +361,25 @@ export type FilingAttempt = {
   /** The attempt's own number (`001`), or null when the page's window does not carry it. */
   number: string | null;
   /**
-   * The same attempt as the log's raw sequence (`1`). The number is a *change's*, not a
-   * filing's — the schema has no filing sequence — so a caller that prints «№12» reads this.
+   * The same attempt as the log's raw sequence (`1`). The filing has its own number now
+   * (BOOK-218); this one is the change's, and a caller that prints a change reads it.
    */
   seq: number | null;
 };
 
 /**
- * The word's filing as the margin prints it (`lib/provenance.ts`): the record's numeral, the
+ * The word's filing as the margin prints it (`lib/provenance.ts`): the filing's own number, the
  * number of the change its latest attempt became, its state word, and its place as a door.
  *
- * The schema has **no filing sequence** — the number the owner's spec prints (`правка · №12`) is
- * the change's — so a filing whose attempt the page's window does not carry keeps `seq: null`
- * and is named by its own suffix (`№A7K`) alone.
+ * BOOK-218 — the filing has a public number of its own, so `number` is that number (`12`) and
+ * the provenance prints `правка · 12`: no `№`, no cut id.
  */
 export function wordFilingOf(
   comment: CommentDto,
   changes: readonly ChangeSummaryDto[] = [],
 ): WordFiling {
   return {
-    number: filingNumber(comment),
+    number: filingNum(comment),
     seq: filingAttempt(comment, changes)?.seq ?? null,
     state: filingMarginalia(comment).word,
     href: placeHref(comment),
