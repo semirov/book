@@ -36,6 +36,8 @@ const COPY_MODULES = [
   'shared/src/terms.ts',
   'server/src/writer/reasons.ts',
   'server/src/comments/service.ts',
+  // The refusal hints travel as `CommentDto.hint` and are printed beside the refusal.
+  'server/src/comments/attempts.ts',
   'server/src/push/passEvent.ts',
   'server/src/history/',
 ];
@@ -339,6 +341,9 @@ describe('the reader’s state words', () => {
     expect(offence('правка в триаже')).toBe('триаж');
     expect(offence('вердикт не пришёл')).toBe('вердикт');
     expect(offence('состояние accepted')).toBe('accepted');
+    // The refusal hint the server prints beside a returned text is reader copy like any other:
+    // this is the wording it used to carry, and the walk now reads its module.
+    expect(offence('уберите из текста указания в адрес модели')).toBe('модель');
     // …and this is what it must keep: a literal with no Cyrillic is not reader copy.
     expect(offence('processing')).toBeNull();
     expect(offence('принято · впишется, когда машина возьмёт главу')).toBeNull();

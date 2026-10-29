@@ -195,6 +195,9 @@ describe('one filing, one mark (BOOK-218)', () => {
     await mount([comment({ anchor: { ...comment().anchor, quote: 'Свет был яркий.' } })], REPEATED);
     expect(container.querySelectorAll('.filing-mark')).toHaveLength(1);
     expect(container.querySelectorAll('.margin-note')).toHaveLength(1);
+    // The phone strip is the same filing once too: a second row under the same key is the
+    // duplicate React warns about, and `12 12` in the gutter in another form.
+    expect(container.querySelectorAll('.phone-strip-row')).toHaveLength(1);
     const marks = [...container.querySelectorAll('.filing-mark-num')].map((node) => node.textContent);
     expect(marks).toEqual(['1']);
   });
