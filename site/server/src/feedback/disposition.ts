@@ -21,9 +21,12 @@
  *      needs a carrier from the closed six, ≥5 words of the reader's own wording kept verbatim
  *      and ≥1 fact changed. `refused_in_world` needs the four facts of a real refusal and the
  *      caps' leave.
- *   3. **One rung up, never down to a bin.** A failed carrier returns to `as_said`; a failed
- *      in-world refusal returns to `through_paper`, then `as_said`; and what is left is
- *      `escalated` — the author decides, and no change and no rejection is written.
+ *   3. **One rung up, never down to a bin — and the floor is `as_said`.** A failed carrier
+ *      returns to `as_said`; a failed in-world refusal returns to `through_paper`, then
+ *      `as_said`. The function is **total**: it never returns `escalated` (BOOK-206, ADR-045
+ *      §5) — a filing whose quote does not resolve and whose carrier is not licensed still
+ *      lands as `as_said` on its block anchor, because every stored filing has a place and no
+ *      filing waits for a person.
  *
  * Pure: no database, no clock, no I/O. The storage side is `dispositionStore.ts`.
  */
@@ -279,7 +282,7 @@ export function lockDecision(lock: DispositionLock): DispositionDecision {
   };
 }
 
-/** The ladder ran out: the author decides, and the filing is kept exactly as it is. */
+/** The ladder's old fifth state, kept for the CLI's rejection path until step 3 deletes it. */
 export function escalationDecision(): DispositionDecision {
   return {
     disposition: 'escalated',
@@ -326,11 +329,12 @@ export function parseDispositionProposal(raw: unknown): DispositionProposal | nu
 }
 
 /**
- * The one decision function: locks, then the ladder over the proposal, then escalation.
+ * The one decision function: locks, then the ladder over the proposal, ending at the floor.
  *
  * A proposal may not refuse: `inadmissible` without a lock is read through the paper/said
- * ladder, and a proposal that names `escalated` is treated the same way — the ladder decides,
- * and it ends at the author's door when nothing fits.
+ * ladder, and a proposal that names `escalated` is treated the same way. The ladder is **total**
+ * (ADR-045 §5): `escalated` is not in its codomain any more, and the last rung is `as_said` on
+ * the filing's own block anchor — the one answer every stored filing can be given.
  */
 export function chooseDisposition(input: ChooseDispositionInput): DispositionDecision {
   const lock = lockOf(input);
@@ -350,8 +354,13 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
           { disposition: 'through_paper', carrierKind: licence.carrierKind, quoteKept: licence.quoteKept },
           asSaid,
         );
-  /** Rung 2, else rung 1, else the author: a failed carrier never falls to a bin. */
-  const oneRungUp = (): DispositionDecision => paperOutcome() ?? (asSaid ? asSaidOutcome() : escalationDecision());
+  /**
+   * Rung 2, else the floor: a failed carrier never falls to a bin. The floor is `as_said` even
+   * when `asSaidHolds` is false — a quote that resolved to no single sentence, or a standing
+   * literal rewritten without a carrier, is still read as said against the block it was filed
+   * on, and the reader is told how. Nothing here reaches `escalated` (ADR-045 §5).
+   */
+  const oneRungUp = (): DispositionDecision => paperOutcome() ?? asSaidOutcome();
 
   switch (input.proposal.disposition ?? 'as_said') {
     case 'as_said':

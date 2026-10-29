@@ -165,6 +165,11 @@ services:
       PORT: "8081"
       # The owner's writing switch: `off` hands out no writer assignment.
       DRAFTING: ${BOOK_DRAFTING:-on}
+      # BOOK-206: the claim's money guard reads the same caps the writer does. Without these two
+      # the engine would read the code's defaults while the writer read the host's, and a paused
+      # day would still hand out triage (ADR-045 risk 5).
+      BOOK_BUDGET_DAY_USD: ${BOOK_BUDGET_DAY_USD:-10}
+      BOOK_BUDGET_BOOK_USD: ${BOOK_BUDGET_BOOK_USD:-1000}
       PUBLIC_ORIGIN: ${BOOK_PUBLIC_ORIGIN:-https://book.semirov.dev}
       LOG_LEVEL: ${BOOK_LOG_LEVEL:-info}
       BOOK_TZ: ${BOOK_TZ:-Europe/Moscow}

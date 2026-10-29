@@ -26,7 +26,7 @@ import type { Db } from '../db/db.ts';
 import { safeJson } from '../engineState/rows.ts';
 import { findLiveSentence } from '../sentences/store.ts';
 import { dispositionFieldsOf } from './dispositionReport.ts';
-import { refusalHint, reviseState, unrevisedState } from './attempts.ts';
+import { refusalHint, reviseState, triageAttemptFailed, unrevisedState } from './attempts.ts';
 import { failedAttempt, OWN_STATES, premiseStatus, refusalOf } from './states.ts';
 // BOOK-174 taught storage to hand the ladder's report out; BOOK-136's selection reads the
 // changes a filing became, so `states.ts` keeps the pure words and this module stays rows.
@@ -318,7 +318,10 @@ export function toCommentDto(db: Db, row: CommentRow, nowMs: number = Date.now()
   // reads the chapter's first pass; an ordinary filing reads the change it became, because the
   // row's own word stops at triage and never follows the text it caused.
   const status = premise ? premiseStatus(change, rowStatus, written) : filingStatus(change, rowStatus);
-  const attempt: CommentDto['attempt'] = failedAttempt(change, status);
+  // BOOK-206: a `new` filing whose open attempt ran out of triage calls is a visible defect —
+  // the page says the attempt came back empty instead of «ждёт» forever. The row stays `new`.
+  const attempt: CommentDto['attempt'] =
+    failedAttempt(change, status) ?? (rowStatus === 'new' && triageAttemptFailed(db, row.id) ? 'failed' : null);
   // BOOK-136 — the writer's own fact, and only while it is one: the filing is in hand
   // (`processing`) or the lane holds it (`pending`). A landed, refused or failed filing has no
   // queue status, so no page can print «в очереди» over text that already exists.

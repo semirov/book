@@ -106,11 +106,12 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
     expect(report?.line3).toBe('где это в книге: глава 8 · абзац 1 · предложение 1 — документ');
   });
 
-  it('escalates an acceptance the ladder cannot place, and writes no change', async () => {
+  it('lands an acceptance the ladder cannot license on the as_said floor, on its block anchor', async () => {
     const h = await boot();
     const id = await filed(h);
-    // ADR-044's «never guess»: a quote that resolves to no single sentence keeps the block
-    // anchor, so the filing carries no sentence — and nothing can be said to stand in one.
+    // ADR-044's «never guess»: a quote that resolved to no single sentence keeps the block
+    // anchor, so nothing can be said to stand in one — and the ladder is total (ADR-045 §5):
+    // the floor answers instead of a person, and the change is written.
     h.db
       .prepare('UPDATE comments SET sentence_id = NULL, sel_start = NULL, sel_end = NULL WHERE id = ?')
       .run(id);
@@ -121,10 +122,14 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
       at: h.clock.now().toISOString(),
       reason: 'входит в книгу',
     });
-    expect(accepted).toMatchObject({ escalated: true, decision: { disposition: 'escalated' } });
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
-    // Nothing was decided by the acceptance alone: the caller records the question.
-    expect(readCommentRow(h.db, id)).toMatchObject({ status: 'new', decided_at: null });
+    expect(accepted).not.toMatchObject({ escalated: true });
+    expect(readCommentRow(h.db, id)).toMatchObject({
+      status: 'accepted',
+      disposition: 'as_said',
+      carrier_kind: null,
+      sentence_id: null,
+    });
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
   });
 });
 

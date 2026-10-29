@@ -99,9 +99,16 @@ describe('migrate — the attempt ledger (BOOK-158)', () => {
       'tokens_out',
       'usd',
       'priced',
+      // BOOK-206 (v30): the claim, the tries, the backoff and the one stored verdict.
+      'claim_by',
+      'claim_until',
+      'tries',
+      'next_at',
+      'verdict',
+      'verdict_at',
     ]);
     expect(indexes(db)).toEqual(
-      expect.arrayContaining(['comment_attempts_day', 'comment_attempts_comment', 'comment_attempts_body']),
+      expect.arrayContaining(['comment_attempts_day', 'comment_attempts_comment', 'comment_attempts_body', 'comment_attempts_due']),
     );
     // The old row survived the rebuild, and the widened CHECK now takes a triage pass.
     expect(db.prepare('SELECT pass_id, usd FROM pass_spend').all()).toEqual([{ pass_id: 'stp_old', usd: 0.000011 }]);

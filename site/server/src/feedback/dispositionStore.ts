@@ -236,6 +236,12 @@ export type RejectionInput = {
    * word is — but it stays in the comment event, where an operator can look it up.
    */
   note?: string | null;
+  /**
+   * BOOK-206 — the reading a caller already chose (`chooseFor` over a proposal). A finale lock
+   * is a **decision**, not a fact of the row, so re-choosing without it would lose the lock and
+   * write the author's question instead of the lock's own clause.
+   */
+  decision?: DispositionDecision | null;
 };
 
 export type RejectionResult = {
@@ -258,7 +264,7 @@ export function disposeRejection(db: Db, input: RejectionInput): RejectionResult
   const decision =
     stored !== null && (stored.disposition !== 'inadmissible' || lockStillHolds(db, row, stored.lock))
       ? stored
-      : chooseFor(db, row, null);
+      : (input.decision ?? chooseFor(db, row, null));
   const lock = decision.disposition === 'inadmissible' ? decision : null;
   const chain = lock ?? escalationDecision();
   const status: RejectionResult['status'] = lock === null ? 'escalated' : 'rejected';

@@ -196,11 +196,20 @@ export const COMMENT_ATTEMPTS_TABLE_SQL = `CREATE TABLE comment_attempts (      
   outcome     TEXT CHECK (outcome IN ('submitted','accepted','refused','held','expired')),
   decided_at  TEXT,
   model       TEXT, tokens_in INTEGER, tokens_out INTEGER, usd REAL, priced INTEGER,
+  -- BOOK-206 (v30): the claim, the tries and the verdict. A filing is claimed by a conditional
+  -- UPDATE on this row, so the queue is the ledger the posting request already writes.
+  claim_by    TEXT,                               -- the writer session that holds the claim
+  claim_until TEXT,                               -- ISO UTC; an expired claim makes the row due again
+  tries       INTEGER NOT NULL DEFAULT 0,         -- calls bought for this attempt (cap 3)
+  next_at     TEXT,                               -- ISO UTC: the backoff a failed call set
+  verdict     TEXT,                               -- the validated book.verdict/v1 answer, written once
+  verdict_at  TEXT,
   UNIQUE (comment_id, n)
 );
 CREATE INDEX comment_attempts_day ON comment_attempts(day);
 CREATE INDEX comment_attempts_comment ON comment_attempts(comment_id, at);
-CREATE INDEX comment_attempts_body ON comment_attempts(body_sha, anchor_sha, day);`;
+CREATE INDEX comment_attempts_body ON comment_attempts(body_sha, anchor_sha, day);
+CREATE INDEX comment_attempts_due ON comment_attempts(outcome, next_at);`;
 
 /**
  * `events` — the book's clock (§6F.1), and the one table whose inline CHECK grows with the

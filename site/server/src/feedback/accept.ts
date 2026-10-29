@@ -88,6 +88,12 @@ export type AcceptInput = {
    * gates already passed, so the words are taken as said unless the chooser says otherwise.
    */
   proposal?: DispositionProposal | null;
+  /**
+   * BOOK-206 (ADR-045 §5) — the reading already chosen by the caller (`chooseFor`), so the
+   * site's triage applier decides once and this function only places it. A `through_paper`
+   * proposal without it would be chosen twice from two sets of facts.
+   */
+  decision?: DispositionDecision | null;
 };
 
 type ChapterRow = { rev: number; sha256: string; basis: number; block_count: number };
@@ -145,10 +151,18 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
       };
     }
 
-    // BOOK-9: a recorded `FITS` is the only permission a new change has. Fail closed — no
-    // default, no "assume fits" — because both the host CLI and the site's decisions tailer
-    // call this one function and neither may skip the gate.
-    if (comment.audit_verdict !== 'FITS') {
+    // BOOK-9: a recorded `FITS` is the permission a new change has, and it is checked here
+    // because both the host CLI and the site's decisions tailer call this one function.
+    //
+    // BOOK-206 (ADR-045 §5) amends one half of that rule: gate C **classifies, it does not
+    // refuse**. A caller that already chose a reading may place an `OFF` filing — iff that
+    // reading is not `inadmissible` (a lock is the only refusal). A caller that passes no
+    // reading keeps the old `FITS`-only rule, exactly as the CLI always had it.
+    const precomputed = input.decision ?? null;
+    const auditPasses =
+      comment.audit_verdict === 'FITS' ||
+      (comment.audit_verdict === 'OFF' && precomputed !== null && precomputed.disposition !== 'inadmissible');
+    if (!auditPasses) {
       return {
         code: 'AUDIT_REQUIRED',
         error: 'замечание не прошло проверку на соответствие книге — правку из него не делают',
@@ -199,14 +213,15 @@ export function acceptComment(db: Db, input: AcceptInput): AcceptResult {
     // BOOK-174: that refusal is the frame lock, and its chain is stored here so the reader's
     // report can be rendered even though nothing landed.
     if (isBasisSlot(chapter)) {
-      storeChain(db, comment.id, chooseFor(db, comment, input.proposal ?? null));
+      storeChain(db, comment.id, precomputed ?? chooseFor(db, comment, input.proposal ?? null));
       return { code: 'FROZEN_FRAME', error: PREMISE_FROZEN_REASON };
     }
 
     // BOOK-174: how this filing is read is decided once, here, before anything is written — by
-    // the chooser over the decision line's own reading. A filing the ladder cannot place and no
-    // lock holds is **escalated**: no change, no rejection, and the caller records the question.
-    const decision = chooseFor(db, comment, input.proposal ?? null);
+    // the chooser over the decision line's own reading, or by the caller that already chose. The
+    // `escalated` answer below is the ladder's old fifth state: BOOK-206 made `chooseDisposition`
+    // total, so only a chain stored by an older build can still reach it (step 3 deletes it).
+    const decision = precomputed ?? chooseFor(db, comment, input.proposal ?? null);
     if (decision.escalated) return { escalated: true, decision };
     // A lock can only reach here through the finale (the other three are refused before this
     // point); the chain is stored so the refusal is reported as the book's word, not a code.
