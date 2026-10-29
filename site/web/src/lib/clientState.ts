@@ -11,6 +11,7 @@ import {
   STAGE_DEADLINE_MS,
   type ChangeDecidedPayload,
   type CommentAddedPayload,
+  type CommentDecisionPayload,
   type EngineStatePayload,
   type ChapterAppliedPayload,
   type ChapterRevisionPayload,
@@ -19,6 +20,7 @@ import {
   type LiveFiling,
   type LivePass,
   type LivePayload,
+  type LiveReading,
   type PassAcceptedPayload,
   type PassClosedPayload,
   type PassStageEvent,
@@ -45,7 +47,16 @@ export type PageNotice = { kind: 'new'; n: number } | { kind: 'revised'; n: numb
 
 /** One change's last line on the page: the queue place, the narrowed intent, the answer. */
 export type ChangeLine =
-  | { kind: 'queued'; at: number; eventSeq: number; ahead: number; depth: number }
+  | {
+      kind: 'queued';
+      at: number;
+      eventSeq: number;
+      ahead: number;
+      depth: number;
+      /** §11.1 — the place a wait points at; absent on a row folded by an older fixture. */
+      chapter?: number;
+      commentId?: string | null;
+    }
   | { kind: 'processing'; at: number; eventSeq: number; ahead: number; attempt: number }
   | { kind: 'adapted'; at: number; eventSeq: number; intent: string; reason: string }
   | { kind: 'stale'; at: number; eventSeq: number; grade: string; evidence: string[]; options: string[] }
@@ -63,6 +74,8 @@ export type FrameCursors = {
   eventSeq: number;
   /** `(commentId, at)` — the filing domain's cursor. */
   filing: Readonly<Record<string, number>>;
+  /** `comment_events.id` — the reading domain's cursor (`filing:reading.readingSeq`). */
+  reading: number;
 };
 
 export type ClientState = {
@@ -86,10 +99,25 @@ export type ClientState = {
   filings: readonly LiveFiling[];
   /** The viewer's own filing rows from `filing:update`, by comment id (the trail's patch). */
   filingUpdates: Readonly<Record<string, FilingUpdatePayload>>;
+  /**
+   * §10.1 — the filing whose reading is in flight, as `live.reading` and `filing:reading` carry
+   * it. A reconnect restores it, so the head never says nothing over a reading it cannot see.
+   */
+  reading: LiveReading | null;
+  /** `change_events.seq` by change id (`change:queued`): the filing's number, once it exists. */
+  changeSeq: Readonly<Record<string, number>>;
+  /** The change a filing became, by comment id (`change:queued.source.commentId`). */
+  filingChange: Readonly<Record<string, string>>;
   /** Thread rows `comment:added` inserted: no refetch, the DTO is the row. */
   added: readonly CommentAddedPayload['comment'][];
   /** `comment:decision.attemptsLeft`, by comment id. */
   attemptsLeft: Readonly<Record<string, number>>;
+  /**
+   * `comment:decision` by comment id: the answer a filing got, with its own reason. The head's
+   * `не принято` and the record's refusal line read the same frame, so it is kept, not only
+   * counted.
+   */
+  decisions: Readonly<Record<string, CommentDecisionPayload>>;
   /** The change feed's own lines, by change id. */
   lines: Readonly<Record<string, ChangeLine>>;
   /** A pass's outcome, by step id (`pass:closed`). */
@@ -131,6 +159,7 @@ export const INITIAL_CURSORS: FrameCursors = Object.freeze({
   stage: {},
   eventSeq: 0,
   filing: {},
+  reading: 0,
 });
 
 export function initialClientState(book: BookData | null = null): ClientState {
@@ -149,8 +178,12 @@ export function initialClientState(book: BookData | null = null): ClientState {
     queue: [],
     filings: [],
     filingUpdates: {},
+    reading: null,
+    changeSeq: {},
+    filingChange: {},
     added: [],
     attemptsLeft: {},
+    decisions: {},
     lines: {},
     passes: {},
     accepted: {},
@@ -267,12 +300,25 @@ export function revisionOfApplied(applied: ChapterAppliedPayload, title: string 
 export function withLive(state: ClientState, live: LivePayload): ClientState {
   const stage: Record<string, number> = { ...state.cursors.stage };
   for (const pass of live.passes) stage[pass.passId] = Math.max(stage[pass.passId] ?? 0, pass.stageSeq);
+  // §10.1 — the queue's own rows carry each change's `seq`, so a filing's number survives a
+  // reconnect even when the `change:queued` frame that first named it is long gone.
+  const changeSeq: Record<string, number> = { ...state.changeSeq };
+  const filingChange: Record<string, string> = { ...state.filingChange };
+  for (const row of live.queue.pending) {
+    if (typeof row.seq === 'number' && Number.isFinite(row.seq)) changeSeq[row.id] = row.seq;
+  }
+  for (const filing of live.filings) {
+    if (filing.changeId !== null) filingChange[filing.commentId] = filing.changeId;
+  }
   return {
     ...state,
     live,
     queue: live.queue.pending,
     filings: live.filings,
     applied: live.applied,
+    reading: live.reading ?? null,
+    changeSeq,
+    filingChange,
     stages: stagesFromLive(live.passes),
     cursors: { ...state.cursors, stage },
   };

@@ -682,3 +682,155 @@ export const WIDENED_CODES = Object.keys(WIDENED_WORDS) as WidenedCode[];
 export function isWidenedCode(value: unknown): value is WidenedCode {
   return typeof value === 'string' && (WIDENED_CODES as readonly string[]).includes(value);
 }
+
+// ── §11.1 — the head's own line ────────────────────────────────────────────
+//
+// The head is one status line now (BOOK-DOC-84 §11.1), not seven words, and its grammar lives
+// here with the rest of the reader-visible vocabulary: `машина` is the one machine noun the head
+// may print, `правка`/`глава`/`редакция`/`раунд`/`попытка`/`поправка` are the book's own nouns,
+// and a gate keeps its three names. Every rendered word of the line comes from this block; the
+// line's own composition (the separators, the clock) is here too, so a module that prints a
+// status never invents a string.
+
+/** The one machine noun the head may print (§11.1). */
+export const MACHINE = 'машина';
+
+/** What the machine is doing, as the head's verb — never a stage name, never a model. */
+export const NOW_VERBS = {
+  /** `машина читает правку 012` — a filing's reading or a writer's own read. */
+  reading: 'читает',
+  /** `машина пишет главу 1` — a draft or a revision that writes text. */
+  writing: 'пишет',
+  /** `машина меняет подход к правке 012` — the widening, in the reader's words. */
+  approach: 'меняет подход к правке',
+  /** `машина проверяет главу 1` — a gate round. */
+  checking: 'проверяет',
+  /** `машина правит по замечанию` — an iteration after a gate's finding. */
+  fixing: 'правит по замечанию',
+  /** `правка 012 ждёт` — a queue place or a retry, a wait and never a claim of work. */
+  waiting: 'ждёт',
+  /** `внесено` — the one outcome the book announces. */
+  landed: 'внесено',
+  /** `не дошло: …` — a work that ended without its text. */
+  notDelivered: 'не дошло',
+  /** `не принято: …` — a filing the book answered with a no. */
+  refused: 'не принято',
+  /** `нет связи` — the page cannot see the machine; it is not a stage. */
+  offline: 'нет связи',
+} as const;
+
+/** The book's nouns around the verbs, so no surface spells them itself. */
+export const NOW_NOUNS = {
+  filing: 'правка',
+  chapter: 'глава',
+  /** The same chapter as the object of a verb: `пишет главу 1`, `проверяет главу 1`. */
+  chapterAccusative: 'главу',
+  edition: 'редакция',
+  attempt: 'попытка',
+  fix: 'поправка',
+  round: 'раунд',
+  /** `впереди` — the queue's place, then its number. */
+  ahead: 'впереди',
+} as const;
+
+/** The three gates, in the head's own register (`редактор`/`консультант`/`права`). */
+export const GATE_WORD: Record<string, string> = {
+  editor: 'редактор',
+  consultant: 'консультант',
+  rights: 'права',
+};
+
+/** The separator of the head's parts, and the space it carries in the rendered line. */
+export const LINE_SEPARATOR = '·';
+
+/**
+ * `правка 012` — a filing's number is its change's own sequence, padded to three figures (the
+ * record and the trail print the same numeral). No change named ⇒ `правка` alone: a number that
+ * no row carries is not invented (§11.1's honesty rule).
+ */
+export function filingWord(seq: number | null | undefined): string {
+  if (typeof seq !== 'number' || !Number.isFinite(seq)) return NOW_NOUNS.filing;
+  return `${NOW_NOUNS.filing} ${String(Math.trunc(seq)).padStart(3, '0')}`;
+}
+
+/** `глава 1`, `глава 7` — the book's own name for a chapter. */
+export function chapterWord(n: number): string {
+  return `${NOW_NOUNS.chapter} ${String(Math.trunc(n))}`;
+}
+
+/** `главу 1` — the same chapter as the object of a verb (`пишет`, `проверяет`). */
+export function chapterAccusativeWord(n: number): string {
+  return `${NOW_NOUNS.chapterAccusative} ${String(Math.trunc(n))}`;
+}
+
+/** `глава 1, редакция 13` — the write's own receipt. */
+export function editionWord(n: number, rev: number): string {
+  return `${chapterWord(n)}, ${NOW_NOUNS.edition} ${String(Math.trunc(rev))}`;
+}
+
+/** `попытка 1 из 5` — the frame's own numbers, never a default (§11.1). */
+export function headAttemptWord(n: number, max: number): string {
+  return `${NOW_NOUNS.attempt} ${String(Math.trunc(n))} из ${String(Math.trunc(max))}`;
+}
+
+/** `поправка 2 из 5` — an iteration that fixes text a gate has read. */
+export function headFixWord(n: number, max: number): string {
+  return `${NOW_NOUNS.fix} ${String(Math.trunc(n))} из ${String(Math.trunc(max))}`;
+}
+
+/** `впереди 2` — the queue's place, in the head's digits (the author's line keeps words). */
+export function aheadDigitsWord(n: number): string {
+  const ahead = Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+  return `${NOW_NOUNS.ahead} ${String(ahead)}`;
+}
+
+/** `редактор, раунд 1` — the gate and its round; a gate with no round is its name alone. */
+export function gateRoundWord(gate: string | null | undefined, round: number | null | undefined): string {
+  const name = gate === null || gate === undefined ? '' : (GATE_WORD[gate] ?? '');
+  if (name.length === 0) return typeof round === 'number' ? `${NOW_NOUNS.round} ${String(round)}` : '';
+  return typeof round === 'number' ? `${name}, ${NOW_NOUNS.round} ${String(round)}` : name;
+}
+
+const clockFormatter = new Intl.DateTimeFormat('ru-RU', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'Europe/Moscow',
+});
+
+/** `17:04` — the site's one timezone (Moscow, as every other moment of the book). */
+export function clockWord(ms: number): string {
+  const at = new Date(ms);
+  if (Number.isNaN(at.getTime())) return '—';
+  return clockFormatter.format(at);
+}
+
+/** The piece of a line the phone's step may drop, in this order (§11.1): id, clock, gate. */
+export type LineDrop = 'filing' | 'time' | 'gate';
+
+/**
+ * One part of the head's line. A part is a clause (`правка 012`, `попытка 1 из 5`); a number the
+ * grammar keeps inside a verb phrase (`машина читает правку 012`) travels as the part's `tail`,
+ * so the phone hides the number and never a dangling separator.
+ */
+export type LinePart = {
+  text: string;
+  tail?: { text: string; drop: LineDrop };
+  drop?: LineDrop;
+};
+
+/** The head's line: the parts and their separators — one function, one voice (§11.1). */
+export function headLineWord(parts: readonly LinePart[]): string {
+  return parts.map((part) => part.text + (part.tail?.text ?? '')).join(` ${LINE_SEPARATOR} `);
+}
+
+/** The line a reader sees at a width that has dropped `drops` — the phone's step, as text. */
+export function visibleLineWord(parts: readonly LinePart[], drops: readonly LineDrop[] = []): string {
+  const kept = parts
+    .filter((part) => part.drop === undefined || !drops.includes(part.drop))
+    .map((part) => ({
+      text: part.text,
+      ...(part.tail === undefined || drops.includes(part.tail.drop) ? {} : { tail: part.tail }),
+    }));
+  return headLineWord(kept);
+}

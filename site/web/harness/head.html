@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>head harness</title>
+  </head>
+  <body>
+    <!--
+      BOOK-DOC-84 §11.1 — the CDP harness page for the head's status line.
+
+      This is not a route of the site: it mounts the real `Header` with the page's own folded
+      frames (one fixture per state, chosen by `?state=`), the site's own stylesheets and tokens,
+      and one chapter under the head whose first paragraph is the top the line must not move.
+
+      `scripts/head-cdp.mjs` drives it over CDP: it hides and shows the line, measures the rows
+      the line takes at 390 and 1440, measures the first paragraph's top before and after, and
+      saves one screenshot per state. Nothing is measured in this file: the numbers decide.
+    -->
+    <!-- The page's own shell (`main.tsx`): the canvas states the column and its gutters. -->
+    <div class="canvas"><div id="mount"></div></div>
+    <main class="canvas">
+      <article class="page ch" id="ch-1" data-n="1" data-rev="2" aria-label="глава 1">
+        <div class="ch-h">
+          <span class="ch-id"><span class="ch-n">01</span></span>
+          <span class="ch-meta">глава 1</span>
+        </div>
+        <p class="p" id="first">
+          Свет был включён до меня, и никто не говорил об этом. Я сел у окна и стал ждать, пока
+          улица начнёт просыпаться.
+        </p>
+      </article>
+    </main>
+    <script type="module" src="/harness/head.tsx"></script>
+  </body>
+</html>

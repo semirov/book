@@ -25,14 +25,7 @@ import { escalationMarkers } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { publishLiveChange } from './lib/liveChange.ts';
-import {
-  applyFrame,
-  initialClientState,
-  laneOf,
-  openPassesOf,
-  type ClientState,
-  type FrameEffect,
-} from './lib/frames.ts';
+import { applyFrame, initialClientState, type ClientState, type FrameEffect } from './lib/frames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
@@ -68,6 +61,12 @@ export function App() {
   const pageRef = useRef(page);
   const [failed, setFailed] = useState(false);
   const [connection, setConnection] = useState<SocketStatus>('connecting');
+  /**
+   * BOOK-DOC-84 §11.1 — the moment the page lost the machine, `null` while it can see it. The
+   * head's `нет связи` is that fact and not a stage: it appears on a dropped socket only after a
+   * `hello` proved the page was connected, and it is cleared by the reconnect's own `hello`.
+   */
+  const [offlineAt, setOfflineAt] = useState<number | null>(null);
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
   /**
@@ -254,7 +253,11 @@ export function App() {
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
       onEvent: (event) => handleRef.current(event),
-      onStatus: (status) => setConnection(status),
+      onStatus: (status) => {
+        setConnection(status);
+        // A socket that never opened is a page still booting, not a lost connection.
+        setOfflineAt(status === 'closed' && helloSeen.current ? Date.now() : null);
+      },
       // §3.3 — a delivery gap is healed by one snapshot, never by a replay (the hub keeps none).
       onGap: () => socketRef.current?.sendResync(pageRef.current.seq),
     });
@@ -311,15 +314,6 @@ export function App() {
   const chronicle = historyStarted(state);
   const markers = spineMarkers(state);
   const currentChapter = state.current !== null && state.current.chapter !== 'front' ? state.current.chapter : null;
-  const passes = openPassesOf(page);
-  const lane = laneOf(page);
-  const engine = page.engine ?? { status: state.engine.status };
-  const appliedAt = page.applied?.appliedAt ?? null;
-  const closedAt =
-    Object.values(page.passes).reduce<number | null>(
-      (latest, closed) => (latest === null || closed.at > latest ? closed.at : latest),
-      null,
-    );
   const composer = page.composer ?? EMPTY_COMPOSER;
   const notice: Notice | null = page.notice;
 
@@ -363,7 +357,7 @@ export function App() {
         <TrailView
           state={state} ribbon={page.ribbon} catalog={catalog}
           markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-          live={history} passes={passes} engine={engine} lane={lane} appliedAt={appliedAt} closedAt={closedAt}
+          live={history} client={page} offlineAt={offlineAt}
           reading={reading} viewer={page.viewer}
           filings={page.filings} filingUpdates={page.filingUpdates}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
@@ -411,7 +405,7 @@ export function App() {
         onViewChange={setView}
         motion={page.titleMotion}
         live={history} chronicle={chronicle}
-        passes={passes} engine={engine} lane={lane} appliedAt={appliedAt} closedAt={closedAt}
+        client={page} offlineAt={offlineAt}
         reading={reading}
       />
       <ConsentBanner />

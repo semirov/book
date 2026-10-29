@@ -1,11 +1,11 @@
-import type { CatalogEntry, LivePass, StateSnapshot } from '@book/shared';
+import type { CatalogEntry, StateSnapshot } from '@book/shared';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { ClientState } from '../lib/clientState.ts';
 import { useStickyOffsets } from '../lib/headerOffset.ts';
-import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { CascadeRibbon } from './CascadeRibbon.tsx';
-import { HeadStatus } from './HeadStatus.tsx';
+import { HeadLine } from './HeadLine.tsx';
 import { PageNumber } from './PageNumber.tsx';
 import { PrintFollow } from './PrintFollow.tsx';
 
@@ -49,11 +49,8 @@ export function Header({
   markers: escalation,
   onOpenChange,
   live,
-  passes,
-  engine,
-  lane,
-  appliedAt,
-  closedAt,
+  client,
+  offlineAt,
   nowMs,
   reading,
 }: {
@@ -64,16 +61,13 @@ export function Header({
   onOpenChange: (changeId: string) => void;
   /** BOOK-56: the ribbon is history; off means it is not on the page at all. */
   live: boolean;
-  /** BOOK-DOC-84 §2.2: the open passes — the head says what the book is doing now (D3). */
-  passes?: readonly LivePass[];
-  /** The engine's own line (`engine:state`); `down`/`absent` makes the head quiet. */
-  engine?: HeadEngine;
-  /** BOOK-220 M2 — the lane's day bound, printed beside the word, never instead of it. */
-  lane?: HeadLane;
-  /** The write's own clock, so «сейчас записывает» lasts two seconds after `appliedAt`. */
-  appliedAt?: number | null;
-  /** The newest close, the same two-second word after a pass ends. */
-  closedAt?: number | null;
+  /**
+   * BOOK-DOC-84 §11.1 — the page's folded frames: the head's status line is derived from them
+   * (`lib/nowState.ts`), never from a second fetch. Absent where a caller draws no line.
+   */
+  client?: ClientState | null;
+  /** The moment the socket went down; `нет связи` outranks every word while it is set. */
+  offlineAt?: number | null;
   /** A fixed clock for a test; a page hands none in. */
   nowMs?: number;
   /**
@@ -124,23 +118,16 @@ export function Header({
               </>
             )}
           </span>
-          {/* BOOK-156 #3814: the book's state, in the row's free space — after the chapter
-              cluster and before the folio, which stays the row's right end. Idle prints nothing:
-              the foot's grip already says `писалась · 25.10`, and a second print is a chip. */}
-          <HeadStatus
-            passes={passes}
-            engine={engine}
-            lane={lane}
-            appliedAt={appliedAt}
-            closedAt={closedAt}
-            nowMs={nowMs}
-          />
           {/* BOOK-220 §11.2 — «следить»: the print's one control, absent when nothing prints. */}
           <PrintFollow />
           {/* D2: below 768 the folio is the last item of this row; above it, fixed in the
               margin and out of this row's flow (live.css). */}
           <PageNumber page={page} />
         </div>
+        {/* BOOK-220 §11.1 — the head's status line: its own row under the brand row, spanning
+            the column, in the header's bottom gutter. Absolutely placed, so it never moves the
+            prose, and idle renders no node at all. */}
+        <HeadLine client={client} offlineAt={offlineAt} nowMs={nowMs} />
       </div>
       <CascadeRibbon ribbon={ribbon} markers={escalation} onOpenChange={onOpenChange} live={live} />
     </header>

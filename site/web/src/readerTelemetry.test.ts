@@ -30,11 +30,12 @@ const READER = [
   '/components/ChangeSection.tsx',
   '/components/MomentControl.tsx',
   '/components/Colophon.tsx',
-  '/components/HeadStatus.tsx',
+  '/components/HeadLine.tsx',
   '/lib/changeView.ts',
   '/lib/grip.ts',
   '/lib/recState.ts',
   '/lib/history.ts',
+  '/lib/nowState.ts',
 ];
 
 function source(path: string): string {

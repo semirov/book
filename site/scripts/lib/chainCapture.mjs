@@ -308,11 +308,15 @@ export async function perf({ cdp, run, dir, stepId, check, log, shot, out }) {
 }
 
 /**
- * BOOK-220 B3 — the head's word and the folio never touch (unchanged by this contract).
+ * BOOK-220 §11.1 — the head's row and the folio never touch. The status line moved to its own
+ * row under the brand row, so the row's own last item is what the folio's box is measured
+ * against (the folio is out of the row above 768, at its right end below).
  */
 export async function folioGap({ cdp, run, dir, stepId, check }) {
   const probe = `(() => {
-    const word = document.querySelector('.head-status');
+    const row = document.querySelector('.top-row');
+    const items = row === null ? [] : [...row.children].filter((item) => !item.classList.contains('folio'));
+    const word = items.at(-1) ?? null;
     const folio = document.querySelector('.folio');
     if (word === null || folio === null) {
       return {
@@ -320,7 +324,7 @@ export async function folioGap({ cdp, run, dir, stepId, check }) {
         folioText: null,
         rects: null,
         dom: { heads: document.querySelectorAll('.top').length, folios: document.querySelectorAll('.folio').length,
-               statuses: document.querySelectorAll('.head-status').length, scrollY: Math.round(window.scrollY) },
+               rows: document.querySelectorAll('.top-row').length, scrollY: Math.round(window.scrollY) },
       };
     }
     const a = word.getBoundingClientRect();
@@ -394,10 +398,10 @@ export async function folioGap({ cdp, run, dir, stepId, check }) {
     const floor = width >= 768 ? 4 : 1;
     const numbers = (left, gap) =>
       here.rects === null
-        ? `no .head-status or no .folio on the page (${JSON.stringify(actual.dom ?? null)})`
+        ? `no .top-row item or no .folio on the page (${JSON.stringify(actual.dom ?? null)})`
         : `word «${actual.text}» ends ${String(here.rects.word.right)} px, folio starts ${String(left)} px — gap ${String(gap)} px`;
     check(
-      `folio/${width} the head's word and the folio do not touch`,
+      `folio/${width} the head's row and the folio do not touch`,
       here.overlap === false && typeof actual.text === 'string' && actual.text.length > 0 && here.gap !== null && here.gap >= floor,
       numbers(here.rects?.folio.left ?? null, here.gap),
     );

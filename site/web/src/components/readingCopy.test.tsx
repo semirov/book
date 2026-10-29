@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Ribbon } from '../lib/cascade.ts';
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { initialClientState, withLive, type ClientState } from '../lib/clientState.ts';
 import { useReading } from '../lib/pageTrack.ts';
 import { spineMarkers } from '../lib/spine.ts';
 import { EMPTY_SLOT_TEXT } from '../lib/toc.ts';
@@ -36,10 +37,10 @@ import type { ParagraphChainMode } from '../useParagraphChain.ts';
  * The fixture's quote and prose avoid the banned vocabulary: the quote is the reader's own
  * words, never a label. Negative assertions pair with positive ones — deleting the book is no fix.
  *
- * ONE exception (BOOK-207, owner 2026-10-29): while a pass is in flight the head prints
- * `сейчас пишется` in its free space — the book's state, in the book's own voice, and nothing
- * else. It is asserted literally below, and the idle head prints no such word: the exception is
- * a state, not a status row that is always there.
+ * ONE exception (BOOK-220 §11.1, superseding BOOK-207's word): while a pass is in flight the
+ * head prints one status line of its own under the brand row — the book's state, in the book's
+ * own voice, and nothing else. It is asserted literally below, and the idle head prints no such
+ * line: the exception is a state, not a status row that is always there.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -242,10 +243,17 @@ function json(body: unknown, status = 200): Response {
 let root: Root | null = null;
 let container: HTMLDivElement;
 
-/** `App` resolves `useReading` and hands it down (BOOK-207); this page does the same. */
+/** The page's frames (`App` folds them, §11.1): the head reads this, never a fixture's string. */
+function clientOf(passes: readonly LivePass[]): ClientState {
+  return withLive(initialClientState(), {
+    at: new Date(LIVE_AT).toISOString(), passes: [...passes], applied: null,
+    queue: { depth: 0, pending: [] }, filings: [], lane: { passesToday: 1, maxPasses: 4, writerAt: null },
+  });
+}
+
 function ReadingHead({ passes, nowMs }: { passes?: readonly LivePass[]; nowMs?: number }): ReactElement {
   const reading = useReading(CATALOG);
-  return <Header state={STATE} ribbon={WAITING_RIBBON} catalog={CATALOG} markers={[]} onOpenChange={() => undefined} live passes={passes} nowMs={nowMs} reading={reading} />;
+  return <Header state={STATE} ribbon={WAITING_RIBBON} catalog={CATALOG} markers={[]} onOpenChange={() => undefined} live client={clientOf(passes ?? [])} nowMs={nowMs} reading={reading} />;
 }
 
 /** One reading page: the head, the contents and the flow, exactly as `App` stacks them. */
@@ -392,7 +400,7 @@ describe('the reading surface prints the book, not the product', () => {
     await mount();
     expectNoInterfaceCopy('.top');
     // No pass in flight, so no status line at all: the foot's grip carries that fact.
-    expect(container.querySelector('.head-status')).toBeNull();
+    expect(container.querySelector('.head-line')).toBeNull();
   });
 
   it('prints the one permitted status — the book is being written — and nothing else', async () => {
@@ -400,9 +408,11 @@ describe('the reading surface prints the book, not the product', () => {
     // The exception, literally: the owner's words, the chapter the pass is writing and the
     // stage's own time in Moscow. It is a state line, not a chip: it exists only while a pass
     // runs, and the idle case above proves it is not a permanent row.
-    expect(surface('.top')).toContain('сейчас пишется');
-    expect(surface('.top')).not.toContain('глава 1 · 14:21');
-    expect(container.querySelector('.head-status')?.getAttribute('data-kind')).toBe('writing');
+    expect(surface('.top')).toContain('машина пишет главу 1');
+    expect(container.querySelector('.head-line')?.getAttribute('data-kind')).toBe('writing');
+    // The line is its own row under the brand row, never a word beside the title.
+    expect(container.querySelector('.head-line')).not.toBeNull();
+    expect(container.querySelector('.top-row .head-line')).toBeNull();
     // The rest of the rule stands under the exception: no count, no row's state word, none of
     // the chips the audits removed — the book, the chapter and the folio are still the head.
     expectNoInterfaceCopy('.top');

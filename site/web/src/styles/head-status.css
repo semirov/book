@@ -1,46 +1,95 @@
 /**
- * BOOK-207 — the book's state in the running head's free space.
+ * BOOK-220 §11.1 — the head's **status line**, and the print's one control beside the head.
  *
- * One word, 12 px mono, sentence case, the quiet ink: `сейчас пишется` while a pass is in
- * flight, `сейчас тихо` once the open pass is past its own stage deadline or the engine is gone. The nib before
- * the live word is the only ink of the pass (`--live`), and it is a drawn mark — five pixels on
- * the baseline, no pulse, no fade, no transition: a state is not an animation.
+ * The line is its own row under the brand row: it spans the page column, and it is placed
+ * absolutely in the header's bottom gutter (`.top-in` is the positioning context), so the
+ * prose never moves by a pixel when it appears or goes. Idle prints no node at all — no word,
+ * no placeholder and no reserved space: the gutter is the header's own 10 px of air, the line
+ * starts under the header's hairline, and nothing below it knows whether it is there.
  *
- * **Its cost in height is zero.** The box is one 12 px label line (16.2 px), and the row's
- * tallest item is the brand at the same 16.2 px (`base.css`'s `.top-row`), so the row cannot
- * grow; `flex: none` keeps the auto margin from shrinking it.
+ * One register: mono at the 12 px floor, lowercase, the quiet ink, tabular figures, no box, no
+ * background of its own beyond the page's paper (the head sticks over the prose) and no second
+ * size. The whole line is the door (`components/HeadLine.tsx` renders one `<a>`), so it is
+ * underlined like every other way into the book, in `--rule` and never in a second colour.
  *
- * **The phone prints it too** (BOOK-207): below 768 the word drops the auto margin and sits
- * 12 px after the brand, while the folio keeps the row's right end through its own auto margin.
- * The row is then `Бланк · сейчас пишется · 67` — one register, no second line.
+ * **The phone's step (≤599).** The line may wrap to two rows and never three: the filing's
+ * number and the clock are dropped first (a `hl-filing` / `hl-time` part is hidden, and the
+ * separator travels with the part that follows it, so a break never leaves one alone), and
+ * under 360 the gate's word goes too. The author's line joins the second row there, in the same
+ * register, through an inline `·` — two rows in total, never three.
  */
-.head-status {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  /* The free space after the chapter cluster is the only room it takes: the auto margin is what
-     pushes it to the row's right end, where the folio is a fixed box above 768. */
-  margin-inline-start: auto;
-  /* BOOK-220 B3 — the folio's own box starts 20 px outside the column (live.css) and this word
-     ends at the column's edge; at 12 px PT Mono a four-digit folio is 28.8 px, so its left edge
-     leans 8.8 px into the column and the two touch («сейчас тихо154»). The reserve keeps the
-     folio exactly where it is and leaves ≥7 px of air; `scripts/chain-print-cdp.mjs` measures
-     both rects at 1440, 768 and 390. */
-  margin-inline-end: 16px;
-  min-width: 0;
-  flex: none;
+
+/* The line is positioned against the head's own box, and the head's box must not know it. */
+.top-in {
+  position: relative;
+}
+
+.head-line {
+  position: absolute;
+  inset-inline: 0;
+  /* The header's bottom gutter: `.top-in`'s padding-bottom is the air above the hairline, and
+     the line's own padding is the same 10 px of air below it. `top: 100%` is the bottom edge of
+     the head's box, so the line hangs under the rule and never inside the row. */
+  top: 100%;
+  padding-top: 10px;
+  /* The head sticks over the prose: the line carries the sheet's own paper, never a shadow. */
+  background: var(--paper);
+  z-index: 1;
+  margin: 0;
   font-family: var(--mono);
   font-size: var(--fs-micro);
-  /* The row's own 12 px label line — 1.35, exactly what `.folio` and the chapter slot carry, so
-     the three share one baseline; 12 × 1.35 = 16.2 px is the brand's own box, so the row
-     cannot grow. */
   line-height: 1.35;
   letter-spacing: 0;
   text-transform: none;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  color: var(--ink-3);
+  white-space: normal;
+  overflow-wrap: normal;
+  /* A state is not an animation: it appears, it updates, it goes. */
+  transition: none;
+}
+.head-line-text {
+  display: inline;
+}
+/* A droppable part is no part at all when its step has dropped it. */
+.head-line .hl-filing,
+.head-line .hl-time,
+.head-line .hl-gate {
+  display: inline;
+}
+.head-line-sep {
   color: var(--ink-3);
 }
+/* The author's own line: one more line under the state, in the same register. */
+.head-line-author {
+  display: block;
+}
+/* Under the phone's step it is the second row of the same line, after the state's words, and
+   only there does it take the line's separator: alone on its own row it would start with one. */
+.head-line-author-sep {
+  display: none;
+}
+@media (max-width: 767px) {
+  .head-line-author {
+    display: inline;
+  }
+  .head-line-author-sep {
+    display: inline;
+  }
+}
+/* The phone drops the number and the clock first (§11.1); the gate's word goes under 360. */
+@media (max-width: 599px) {
+  .head-line .hl-filing,
+  .head-line .hl-time {
+    display: none;
+  }
+}
+@media (max-width: 359px) {
+  .head-line .hl-gate {
+    display: none;
+  }
+}
+
 /* BOOK-220 §11.2 — «следить»: the print's control, in the status line's area and in the same
    register (lowercase mono 12, the quiet ink, no box, no background). It exists only while
    something prints (`components/PrintFollow.tsx` renders nothing when idle), so the row's
@@ -69,42 +118,14 @@
   text-decoration: none;
 }
 
-/* The pass's own mark, before the line: five pixels resting on the baseline, in --live. */
-.head-nib {
-  flex: none;
-  align-self: baseline;
-  width: 5px;
-  height: 5px;
-  background: var(--live);
-}
-.head-status-full {
-  display: inline;
-}
-/* BOOK-220 M2 — the bound's sentence after the word, in the same 12 px mono line and ink: one
-   register, one line, never a second word. It is absent unless the fact is true. */
-.head-note,
-.head-sep {
-  display: inline;
-  color: var(--ink-3);
-}
 /* The row is the column's width, not a shrink-to-fit line: above 1024 `.top-row` is a flex item
    of `.top-in` (`justify-content: space-between`), so without this its free space sits *outside*
-   the row and `margin-inline-start: auto` would have nothing to take. Its items are unchanged —
-   the folio is a fixed box up there — so no line moves; below 1024 the row is already the
-   column, and this declaration changes nothing. */
+   the row. Its items are unchanged — the folio is a fixed box up there — so no line moves;
+   below 1024 the row is already the column, and this declaration changes nothing. */
 .top-in .top-row:first-child {
   flex: 1;
 }
 @media (max-width: 767px) {
-  /* The word follows the brand, 12 px behind it: the chapter slot is not painted here
-     (`live.css`), and the folio keeps the row's right end through its own auto margin
-     (`running-head.css`). Two auto margins would float the word into the middle. */
-  .head-status {
-    margin-inline-start: 0;
-    /* The phone's folio is the row's last item, not a fixed box: the reserve above is the
-       desktop's gap and would only push the row apart here. */
-    margin-inline-end: 0;
-  }
   .top-in .top-row:first-child {
     gap: 12px;
   }

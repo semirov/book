@@ -34,6 +34,7 @@ import {
   type EngineStatePayload,
   type Envelope,
   type FilingUpdatePayload,
+  type FilingReadingPayload,
   type FrontUpdatedPayload,
   type HelloPayload,
   type HistoryEventFrame,
@@ -55,6 +56,7 @@ import {
   withState,
 } from './bookState.ts';
 import { reduceRibbon, ribbonAfterSnapshot, ribbonFromState } from './cascade.ts';
+import { withReading } from './readingFrame.ts';
 import { nextTitleMotion } from './titleChange.ts';
 import { appendStage } from './stages.ts';
 const noop = (state: ClientState): FrameResult => ({ state, effects: [] });
@@ -251,8 +253,13 @@ export function applyFrame(
               eventSeq: queued.eventSeq,
               ahead: queued.queue.ahead,
               depth: queued.queue.depth,
+              chapter: queued.chapter,
+              commentId: queued.source.commentId,
             },
           },
+          changeSeq: { ...base.changeSeq, [queued.id]: queued.seq },
+          filingChange:
+            queued.source.commentId === null ? base.filingChange : { ...base.filingChange, [queued.source.commentId]: queued.id },
           cursors: { ...base.cursors, eventSeq: queued.eventSeq },
           // BOOK-65: an accepted comment appends `change.queued`; the record re-reads it.
           historyTick: base.historyTick + 1,
@@ -402,6 +409,9 @@ export function applyFrame(
       const closed = frame.data as PassClosedPayload;
       return { state: { ...base, passes: { ...base.passes, [closed.stepId]: closed } }, effects };
     }
+    case 'filing:reading':
+      // §10.1 — the reading's own fold and its domain cursor live in `readingFrame.ts`.
+      return withReading(base, frame.data as FilingReadingPayload);
     case 'filing:update': {
       const update = frame.data as FilingUpdatePayload;
       if (update.at <= (base.cursors.filing[update.commentId] ?? 0)) return noop(state);
@@ -443,7 +453,11 @@ export function applyFrame(
     case 'comment:decision': {
       const decision = frame.data as CommentDecisionPayload;
       return {
-        state: { ...base, attemptsLeft: { ...base.attemptsLeft, [decision.id]: decision.attemptsLeft } },
+        state: {
+          ...base,
+          attemptsLeft: { ...base.attemptsLeft, [decision.id]: decision.attemptsLeft },
+          decisions: { ...base.decisions, [decision.id]: decision },
+        },
         effects: [
           ...effects,
           { kind: 'noteRecord', event: { kind: 'frame', type: 'comment:decision', data: decision } },

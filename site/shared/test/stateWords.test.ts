@@ -5,11 +5,22 @@ import {
   HEAD_WORDS,
   HEAD_WORD_OF,
   WIDENED_CODES,
+  aheadDigitsWord,
   aheadWord,
   attemptWord,
+  chapterAccusativeWord,
+  chapterWord,
+  clockWord,
+  editionWord,
+  filingWord,
+  gateRoundWord,
+  headAttemptWord,
+  headFixWord,
+  headLineWord,
   isWidenedCode,
   minutesWord,
   moneyWord,
+  visibleLineWord,
   widenedWord,
   FAILURE_LINES,
   LOCK_LINES,
@@ -39,6 +50,16 @@ import {
   stopReasonKey,
   turnLine,
   waitingLine,
+  filingWord,
+  chapterWord,
+  chapterAccusativeWord,
+  editionWord,
+  headAttemptWord,
+  headFixWord,
+  aheadDigitsWord,
+  gateRoundWord,
+  clockWord,
+  headLineWord,
 } from '../src/stateWords.ts';
 import { outcomeOfChain } from '../src/disposition.ts';
 import { WAITING_FOR_CHAPTER_LINE, ordinalWord, queueLine } from '../src/naming.ts';
@@ -414,3 +435,74 @@ describe('§10.9 — the widening', () => {
       assertHuman(widenedWord(code));
     }
     expect(isWidenedCode('переписывание вместо патча')).toBe(false);
+  });
+});
+
+describe('§11.1 — the head’s line', () => {
+  it('prints the filing, the chapter, the edition and the gate in the book’s nouns', () => {
+    expect(filingWord(12)).toBe('правка 012');
+    expect(filingWord(7)).toBe('правка 007');
+    expect(filingWord(1234)).toBe('правка 1234');
+    // No row carried a number ⇒ the noun alone: a number nobody wrote is never invented.
+    expect(filingWord(null)).toBe('правка');
+    expect(filingWord(undefined)).toBe('правка');
+    expect(chapterWord(1)).toBe('глава 1');
+    expect(chapterAccusativeWord(7)).toBe('главу 7');
+    expect(editionWord(1, 13)).toBe('глава 1, редакция 13');
+    expect(headAttemptWord(1, 5)).toBe('попытка 1 из 5');
+    expect(headAttemptWord(6, 6)).toBe('попытка 6 из 6');
+    expect(headFixWord(2, 5)).toBe('поправка 2 из 5');
+    expect(aheadDigitsWord(2)).toBe('впереди 2');
+    expect(gateRoundWord('editor', 1)).toBe('редактор, раунд 1');
+    expect(gateRoundWord('consultant', null)).toBe('консультант');
+    expect(gateRoundWord('rights', 3)).toBe('права, раунд 3');
+    expect(gateRoundWord(null, null)).toBe('');
+  });
+
+  it('composes the line and its parts from one place', () => {
+    const parts: LinePart[] = [
+      { text: 'машина читает правку', tail: { text: ' 012', drop: 'filing' } },
+      { text: 'попытка 1 из 5' },
+      { text: '17:04', drop: 'time' },
+    ];
+    expect(headLineWord(parts)).toBe('машина читает правку 012 · попытка 1 из 5 · 17:04');
+    expect(visibleLineWord(parts, ['filing', 'time'])).toBe('машина читает правку · попытка 1 из 5');
+    expect(visibleLineWord(parts)).toBe('машина читает правку 012 · попытка 1 из 5 · 17:04');
+  });
+
+  it('prints the clock in the site’s one timezone', () => {
+    expect(clockWord(Date.parse('2026-10-29T14:04:00Z'))).toBe('17:04');
+    expect(clockWord(Date.parse('2026-10-29T21:00:00Z'))).toBe('00:00');
+    expect(clockWord(Number.NaN)).toBe('—');
+  });
+
+  it('holds the two rules over the whole range of every builder', () => {
+    const bad: string[] = [];
+    for (let n = 1; n <= 1_000; n += 1) {
+      for (const text of [filingWord(n), chapterWord(n), chapterAccusativeWord(n), editionWord(n, n)]) {
+        if (violationOf(text) !== null) bad.push(text);
+      }
+    }
+    for (let n = 1; n <= 6; n += 1) {
+      for (const text of [headAttemptWord(n, 5), headAttemptWord(n, 6), headFixWord(n, 5)]) {
+        if (violationOf(text) !== null) bad.push(text);
+      }
+    }
+    for (let n = 0; n <= 50; n += 1) {
+      const text = aheadDigitsWord(n);
+      if (violationOf(text) !== null) bad.push(text);
+    }
+    for (const gate of ['editor', 'consultant', 'rights']) {
+      for (let round = 1; round <= 5; round += 1) {
+        const text = gateRoundWord(gate, round);
+        if (violationOf(text) !== null) bad.push(text);
+      }
+    }
+    // Every minute of a day, so a two-digit hour and a midnight are covered too.
+    for (let minute = 0; minute < 24 * 60; minute += 1) {
+      const text = clockWord(Date.parse('2026-10-29T00:00:00Z') + minute * 60_000);
+      if (/\d\s*\/\s*\d/u.test(text)) bad.push(text);
+    }
+    expect(bad.slice(0, 5)).toEqual([]);
+  });
+});

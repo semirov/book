@@ -425,8 +425,8 @@ describe('the head’s layout', () => {  it('keeps the brand, the chapter slot a
     expect(rows[0]?.querySelector('.brand')).not.toBeNull();
     expect(rows[0]?.querySelector('.top-chapter')).toBe(chip());
     expect(container.querySelector('.live')).toBeNull();
-    // BOOK-218: no pass runs here, so the head prints its one idle word.
-    expect(container.querySelector('.head-status')?.textContent).toBe('тихо');
+    // BOOK-220 §11.1: no pass runs here, so the head prints no status line at all.
+    expect(container.querySelector('.head-line')).toBeNull();
     // The folio is the first row's last item: the head and the number are one line.
     expect(rows[0]?.querySelector('.folio')).not.toBeNull();
     // The old `display: contents` is what spread four items across the line; it is gone, and the

@@ -1,9 +1,9 @@
-import type { CatalogEntry, LiveFiling, LivePass, StateSnapshot, FilingUpdatePayload, ViewerDto } from '@book/shared';
+import type { CatalogEntry, LiveFiling, StateSnapshot, FilingUpdatePayload, ViewerDto } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { ClientState } from '../lib/clientState.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { Colophon } from './Colophon.tsx';
-import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { TrailPage } from './TrailPage.tsx';
 
@@ -21,11 +21,8 @@ export function TrailView({
   markers,
   onOpenChange,
   live,
-  passes,
-  engine,
-  lane,
-  appliedAt,
-  closedAt,
+  client,
+  offlineAt,
   reading,
   viewer,
   filings,
@@ -41,12 +38,10 @@ export function TrailView({
   markers: EscalationMarker[];
   onOpenChange: (changeId: string) => void;
   live: boolean;
-  passes?: readonly LivePass[];
-  engine?: HeadEngine;
-  /** BOOK-220 M2 — the lane's day bound, printed beside the head's word. */
-  lane?: HeadLane;
-  appliedAt?: number | null;
-  closedAt?: number | null;
+  /** BOOK-DOC-84 §11.1 — the page's folded frames: the head's line is derived from them. */
+  client?: ClientState | null;
+  /** The moment the socket went down, `null` while the page can see the machine. */
+  offlineAt?: number | null;
   /** The viewer's own filings from `hello.live.filings` / `filing:update` (no mount-only fetch). */
   filings?: readonly LiveFiling[];
   filingUpdates?: Readonly<Record<string, FilingUpdatePayload>>;
@@ -66,11 +61,8 @@ export function TrailView({
         markers={markers}
         onOpenChange={onOpenChange}
         live={live}
-        passes={passes}
-        engine={engine}
-        lane={lane}
-        appliedAt={appliedAt}
-        closedAt={closedAt}
+        client={client}
+        offlineAt={offlineAt}
         reading={reading}
       />
       <TrailPage

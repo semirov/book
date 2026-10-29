@@ -1,10 +1,10 @@
-import type { CatalogEntry, FrontDto, LivePass, StateSnapshot } from '@book/shared';
+import type { CatalogEntry, FrontDto, StateSnapshot } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { ClientState } from '../lib/clientState.ts';
 import type { TitleMotion } from '../lib/titleChange.ts';
 import { useFrontSequence } from '../useFrontSequence.ts';
 import { Annotation } from './Annotation.tsx';
-import type { HeadEngine, HeadLane } from '../lib/headStatus.ts';
 import { Header } from './Header.tsx';
 import { HowTheBookIsMade } from './HowTheBookIsMade.tsx';
 import { TitleSheet } from './TitleSheet.tsx';
@@ -43,11 +43,8 @@ export function Opening({
   motion,
   live,
   chronicle,
-  passes,
-  engine,
-  lane,
-  appliedAt,
-  closedAt,
+  client,
+  offlineAt,
   reading,
 }: {
   front: FrontDto;
@@ -67,13 +64,10 @@ export function Opening({
    * the chronicle too.
    */
   chronicle?: boolean;
-  /** BOOK-DOC-84 §2.2/D3: the open passes, the engine's line, and the write's clock. */
-  passes?: readonly LivePass[];
-  engine?: HeadEngine;
-  /** BOOK-220 M2 — the lane's day bound, printed beside the head's word. */
-  lane?: HeadLane;
-  appliedAt?: number | null;
-  closedAt?: number | null;
+  /** BOOK-DOC-84 §11.1 — the page's folded frames: the head's line is derived from them. */
+  client?: ClientState | null;
+  /** The moment the socket went down, `null` while the page can see the machine. */
+  offlineAt?: number | null;
   /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
   reading: { n: number | null; page: number | null };
 }) {
@@ -97,11 +91,8 @@ export function Opening({
         markers={escalation}
         onOpenChange={onOpenChange}
         live={live}
-        passes={passes}
-        engine={engine}
-        lane={lane}
-        appliedAt={appliedAt}
-        closedAt={closedAt}
+        client={client}
+        offlineAt={offlineAt}
         reading={reading}
       />
       <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
