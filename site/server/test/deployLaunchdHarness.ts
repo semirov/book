@@ -34,11 +34,35 @@ export function plist(root: string, dataDir: string, port: string): string {
 }
 
 /**
+ * `plutil -extract <key> raw <plist>` as `deploy.sh:plist_field` drives it: the string value of the
+ * **last path component** of `<key>` (`EnvironmentVariables.DATA_DIR` → `DATA_DIR`), read out of the
+ * staged plist, so `site_url`/`service_root_guard`/`data_dir_of_service` see what the fixture wrote.
+ * A key that is absent, a value that is not a string and a file that is missing all exit 1 — the
+ * contract `plist_field` relies on (`|| return 1`, `2>/dev/null`). An empty value also exits 1 (the
+ * real tool prints an empty line): no fixture writes one, and a deploy treats both the same way.
+ *
+ * The real `plutil` is macOS-only: without this fake the driven cases pass on macOS and die on the
+ * ubuntu-latest gate job with "the service names no DATA_DIR".
+ */
+function fakePlutil(): string {
+  return `[ "$1" = "-extract" ] && [ "$3" = "raw" ] && [ -n "$2" ] || exit 1
+plist="$4"
+[ -f "$plist" ] || exit 1
+key="\${2##*.}"
+# One <key>K</key><string>V</string> pair per line is how the fixture writes it; the first match is
+# the value, and a key whose neighbour is a <dict> is not a string and finds none.
+value="$(sed -n "s|.*<key>\${key}</key><string>\\(.*\\)</string>.*|\\1|p" "$plist" | head -n 1)"
+[ -n "$value" ] || exit 1
+printf '%s\\n' "$value"`;
+}
+
+/**
  * The box's tools, faked the way `deployHarness` fakes `sysctl`: `npm` succeeds and records its argv
  * (creating the `current` symlink a publish leaves, which the driver reads back), `launchctl print`
- * is a healthy job, and `kickstart` does what the boot of a new build does to the volume — the
- * pre-migration dump, once. The volume marker is NOT written: `boot.ts` never refreshes `schema=`,
- * so a driver that read it would compare one number with itself.
+ * is a healthy job, `plutil` reads the staged plist (see `fakePlutil`), and `kickstart` does what the
+ * boot of a new build does to the volume — the pre-migration dump, once. The volume marker is NOT
+ * written: `boot.ts` never refreshes `schema=`, so a driver that read it would compare one number
+ * with itself.
  */
 export function fakeTools(
   stateDir: string,
@@ -65,6 +89,7 @@ case "$1" in
     exit 0 ;;
 esac
 exit 0`,
+    plutil: fakePlutil(),
   });
 }
 
@@ -83,6 +108,20 @@ export function runDeploy(args: string[], env: Record<string, string>): Promise<
       done({ code, out });
     });
   });
+}
+
+/** Every tool the driven path has to see from the fake bin dir; a macOS-only tool resolved from
+ * `/usr/bin` instead would pass here and die on the ubuntu-latest gate job. */
+const ON_PATH = ['plutil', 'launchctl'];
+
+/** The fakes must shadow the box's own tools: `command -v`, as a shell would resolve them. */
+function assertFaked(env: Record<string, string>, bin: string): void {
+  for (const name of ON_PATH) {
+    const resolved = execFileSync(BASH, ['-c', `command -v ${name}`], { encoding: 'utf8', env }).trim();
+    if (!resolved.startsWith(bin)) {
+      throw new Error(`${name} resolves to '${resolved}', not the fake in ${bin}: the driven cases would pass on macOS and fail elsewhere`);
+    }
+  }
 }
 
 export type Staged = { root: string; stateDir: string; dataDir: string; home: string; url: string; head: string; env: Record<string, string> };
@@ -138,6 +177,7 @@ export async function stage(options: { frame?: number; boot?: string; backups?: 
     BOOK_HEALTH_TIMEOUT: '5',
     BOOK_HEALTH_GRACE: '1',
   });
+  assertFaked(env, bin);
   return { root, stateDir, dataDir, home, url, head, env };
 }
 
