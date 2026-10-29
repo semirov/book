@@ -146,8 +146,12 @@ export type RevealState = {
 
 export type RevealOptions = {
   reducedMotion?: boolean;
-  /** The device's rate: 30 cps on a desk, 26 in the hand (default 30). */
+  /** The device's rate: 30 cps on a desk, 26 in the hand (default 30); the front title: 18. */
   cps?: number;
+  /** The jitter share (default the print's ±25 %); 0 for a sheet whose timing is a table. */
+  jitter?: number;
+  /** The beat before the block's first grapheme (default the engine's; 0 or one interval). */
+  holdMs?: number;
   /**
    * The queue's own clock, absolute epoch ms (`chapter:applied.appliedAt` for a chapter being
    * written). A mount inside the print joins at `now − startAt`, never at zero.
@@ -200,11 +204,15 @@ export function createReveal(queued: readonly RevealBlockLike[], options: Reveal
       before: '',
       after: block.text,
       cps,
+      jitter: options.jitter,
+      holdMs: options.holdMs,
       seed: `${options.seed ?? ''}${block.id}`,
       reducedMotion,
     });
     let inkTimes = empty ? [] : schedule.inkTimes;
-    let durationMs = empty ? 0 : schedule.totalMs;
+    // The block is written when its last grapheme lands: the caret's rest is the caller's beat
+    // (the cover's 220 ms), not the trailing word-end interval of the schedule.
+    let durationMs = empty ? 0 : (inkTimes[inkTimes.length - 1] ?? 0);
     if (!empty && options.capBlockMs !== undefined && durationMs > options.capBlockMs) {
       // The sheet's own budget: the ink times are scaled, never a second engine.
       const scale = options.capBlockMs / durationMs;

@@ -6,6 +6,8 @@ import {
   GATE_DONE,
   GATE_RUN,
   TITLE_CAP_MS,
+  TITLE_CPS,
+  TITLE_FIRST_INK_MS,
   TITLE_REST_MS,
   TOTAL_MS,
   shouldRun,
@@ -166,6 +168,11 @@ export function useTitleTyping(title: string, running: boolean): TitleReveal | n
     const full = title;
     let state = createReveal([{ id: TITLE_BLOCK, text: full }], {
       reducedMotion: reducedMotion(),
+      // §3 — the sheet's own parameters, not a branch in the engine: 18 cps, a fixed table (no
+      // jitter), the first grapheme one interval in, and the 400 ms plateau for longer titles.
+      cps: TITLE_CPS,
+      jitter: 0,
+      holdMs: TITLE_FIRST_INK_MS,
       capBlockMs: TITLE_CAP_MS,
     });
 

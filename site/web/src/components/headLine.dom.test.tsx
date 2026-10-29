@@ -365,9 +365,30 @@ describe('§11.1 — the author’s own line', () => {
     const authorText = (container.querySelector('.head-line-author')?.textContent ?? '')
       .replace(/\u00a0/gu, ' ')
       .replace(/^\s*·\s*/u, '');
+    // §11.1/BOOK-220 — the price is the author's line and only the author's: the reader's head
+    // above printed no money at all, and this one prints the shared money word.
     expect(authorText).toBe('следом · 0,05 $');
+    expect(authorText).toContain('0,05 $');
     // The author's line is not the door: the link is the state alone.
     expect(container.querySelector('.head-line a')?.textContent).not.toContain('0,05');
+  });
+
+  it('never prices anything in a reader’s head', async () => {
+    // Every reader state the head prints: none of them may carry a price, in any currency.
+    const states: ClientState[] = [
+      apply(base(), 'filing:reading', reading()).state,
+      apply(page(), 'change:queued', queued).state,
+      apply(apply(base(), 'pass:accepted', accepted).state, 'pass:stage', stage('drafting')).state,
+      apply(page(), 'chapter:applied', applied).state,
+    ];
+    for (const client of states) {
+      expect(client.viewer.isAuthor).not.toBe(true);
+      await mount(client, { nowMs: T });
+      const shown = text() ?? '';
+      expect(shown.length).toBeGreaterThan(0);
+      expect(shown, 'a reader’s head must not price anything').not.toMatch(/[$₽]|USD/u);
+      expect(container.querySelector('.head-line-author')).toBeNull();
+    }
   });
 });
 

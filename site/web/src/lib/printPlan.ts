@@ -53,8 +53,15 @@ export type PrintPlanInput = {
   /** What the pass removed and what it wrote (the minimal span, `passDiff.ts`). */
   before: string;
   after: string;
-  /** Characters per second: the device's rate, 30 or 26. */
+  /** Characters per second: the device's rate, 30 or 26, or a sheet's own (the front title: 18). */
   cps?: number;
+  /**
+   * The seeded ±jitter share, when the caller's sheet has a fixed table instead of a hand's
+   * rhythm (the front title's 277.8 ms for «Бланк» is a constant of BOOK-DOC-49, not a print).
+   */
+  jitter?: number;
+  /** The beat before the first grapheme: the engine's own for prose, 0 or one interval for a sheet. */
+  holdMs?: number;
   /** The pass's own seed (`key`, `blockId`, anything stable): the same pass prints the same way. */
   seed: string | number;
   reducedMotion?: boolean;
@@ -212,7 +219,9 @@ export function planPrint(input: PrintPlanInput): PrintPlan {
   const base = input.cps !== undefined && Number.isFinite(input.cps) && input.cps > 0 ? input.cps : PRINT.cps.desktop;
   const baseMs = 1_000 / base;
   const seed = hashSeed(input.seed);
-  const holdMs = PRINT.holdMs[input.kind];
+  const holdMs = input.holdMs !== undefined && Number.isFinite(input.holdMs) ? Math.max(0, input.holdMs) : PRINT.holdMs[input.kind];
+  const jitterShare =
+    input.jitter !== undefined && Number.isFinite(input.jitter) ? Math.min(1, Math.max(0, input.jitter)) : PRINT.jitter;
   const strikeMs = input.kind === 'insertion' ? 0 : PRINT.strikeMs;
 
   if (reduced) {
@@ -235,7 +244,7 @@ export function planPrint(input: PrintPlanInput): PrintPlan {
   const random = randomOf(seed);
   // One draw per grapheme, before anything else draws: the jitter is a property of the run, so
   // adding a hesitation rule later cannot shift it.
-  const jitter = clusters.map(() => 1 + (random() * 2 - 1) * PRINT.jitter);
+  const jitter = clusters.map(() => 1 + (random() * 2 - 1) * jitterShare);
   const hesitations = hesitationsOf(clusters, random);
   // The hesitation's own length, drawn in the hesitations' order (one draw each).
   const hesitationMs = new Map<number, number>();
