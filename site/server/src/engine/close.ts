@@ -8,13 +8,7 @@
  * replaying the rows replays the cascade.
  */
 
-import {
-  parseSeams,
-  type CascadeOutcome,
-  type CascadeStatus,
-  type ChangeOutcome,
-  type ChangeStatus,
-} from '@book/shared';
+import { type CascadeOutcome, type CascadeStatus, type ChangeOutcome, type ChangeStatus } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { recordAcceptance } from '../comments/acceptance.ts';
@@ -27,14 +21,10 @@ import { sendPassEvent } from '../push/passEvent.ts';
 import { toIso } from '../util/time.ts';
 import { newCascadeId, newStepId } from '../util/ulid.ts';
 import { alertKind, recordAlert } from './alerts.ts';
-import {
-  closeReason,
-  planCascade,
-  type CascadeFacts,
-  type CascadeStepFact,
-  type CloseCopyKey,
-} from './cascade.ts';
+import { planCascade, type CascadeFacts } from './cascade.ts';
+import { changeForStep } from './helpers.ts';
 import { leaseForClose, releaseForExpiredClose, releaseLease } from './leases.ts';
+import { stepProvenance } from './model.ts';
 import { settleDraftPremise } from './premise.ts';
 import { pricePlanAfterPass } from '../ledger/graph/plan.ts';
 import { closeVerification } from '../ledger/graph/verification.ts';
@@ -49,65 +39,9 @@ export { openRippleStep } from './ripple.ts';
 
 // ── small readers ────────────────────────────────────────────────────────────
 
-export function changeOutcomeOf(cascade: CascadeOutcome): ChangeOutcome {
-  if (!cascade.startsWith('escalated:')) return 'applied';
-  const reason = cascade.slice('escalated:'.length);
-  if (
-    reason === 'budget' || reason === 'oscillation' || reason === 'origin' || reason === 'delta' ||
-    reason === 'finding' || reason === 'ending' || reason === 'science' || reason === 'rights' ||
-    reason === 'gate_timeout'
-  ) {
-    return reason;
-  }
-  return 'origin';
-}
+import { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
-const ESCALATION_COPY: Record<string, CloseCopyKey> = {
-  budget: 'budget',
-  oscillation: 'oscillation',
-  origin: 'origin',
-  delta: 'delta',
-  ending: 'ending',
-  finding: 'finding',
-  // BOOK-76: a stop by the physics pass reads «не входит в книгу», not «правка опубликована».
-  science: 'science',
-  // BOOK-61: Gate B's stop reads «не принято» — never the prose gates' two outcomes.
-  rights: 'rights',
-  gate_timeout: 'gate',
-};
-
-/** The public reason for a stop, in the words the stop table uses (§6A.6). */
-export function escalationCopy(outcome: CascadeOutcome): string {
-  const suffix = outcome.startsWith('escalated:') ? outcome.slice('escalated:'.length) : 'origin';
-  return closeReason(ESCALATION_COPY[suffix] ?? 'origin');
-}
-
-export function currentRev(db: Db, chapter: number): number {
-  const row = db.prepare('SELECT rev FROM chapters WHERE n = ?').get(chapter) as { rev: number } | undefined;
-  return row?.rev ?? 0;
-}
-
-export function stepFacts(row: store.StepRow): CascadeStepFact {
-  return {
-    seq: row.seq,
-    pass: row.pass,
-    chapter: row.chapter,
-    lane: row.lane,
-    wave: row.wave,
-    outcome: row.outcome,
-    seamsIn: parseSeams(safeJson(row.seams_in)),
-    seamsOut: parseSeams(safeJson(row.seams_out)),
-  };
-}
-
-function safeJson(raw: string | null): unknown {
-  if (raw === null) return null;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
+export { changeOutcomeOf, currentRev, escalationCopy, stepFacts } from './closeRead.ts';
 
 // ── change close ─────────────────────────────────────────────────────────────
 
@@ -376,7 +310,7 @@ export function closeStep(
       model: spend.model,
       tokens_in: spend.tokensIn,
       tokens_out: spend.tokensOut,
-      provenance: input.provenance ?? 'pipeline',
+      provenance: stepProvenance(input.provenance ?? 'pipeline'),
       closed_at: toIso(now),
       ms,
       lease_id: lease?.id ?? step.lease_id,
@@ -426,6 +360,18 @@ export function closeStep(
     const actualUsd = closedChangeId === null ? null : passUsdOf(db, step.step_id);
     if (closedChangeId !== null && actualUsd !== null) pricePlanAfterPass(db, closedChangeId, actualUsd);
 
+    // BOOK-189/BOOK-219: the landing is announced here, at the close, never at `land` — there the
+    // text may still be taken back (a rights refusal, a gate that never answered). A step that
+    // closes by restore (`escalated`) says nothing about a landing; a draft (no change on its
+    // lease) and a step with no change at all notify nobody, and a cascade step for a neighbour's
+    // chapter is filtered by `recipientOf` — the reader asked about theirs.
+    if (input.outcome !== 'escalated' && step.chapter !== null && step.landed_at !== null) {
+      const landedChange = changeForStep(db, step);
+      if (landedChange !== undefined) {
+        sendPassEvent(db, { kind: 'landed', chapter: step.chapter, changeId: landedChange.id }, now);
+      }
+    }
+
     if (input.outcome === 'escalated') {
       const cascade = step.cascade_id ? store.getCascade(db, step.cascade_id) : undefined;
       const change = cascade ? store.getChange(db, cascade.change_id) : findOriginChange(db, step);
@@ -452,7 +398,10 @@ export function closeStep(
       if (!change) refuse('CHANGE_MISSING', 500, `step ${step.step_id} has no change`);
       if (input.seamsOut.length === 0) {
         const status = input.changeStatus ?? 'done';
-        const outcome = input.changeOutcome ?? 'applied';
+        // §6A.7: `adapt` is the writer's answer recorded at `start`, and a close that names no
+        // outcome of its own must keep it — everything else (a reopened step's old escalation
+        // cause included) is replaced by the default, as it always was.
+        const outcome = input.changeOutcome ?? (change.outcome === 'adapted' ? 'adapted' : 'applied');
         closeChange(deps, change, status, outcome, input.changeReason ?? null, now);
         return { cascadeId: null, outcome: input.outcome, changeStatus: status };
       }

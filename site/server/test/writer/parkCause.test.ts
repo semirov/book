@@ -5,6 +5,10 @@
  * owner's premise was dropped as if the writer had refused it. These are the two causes a park
  * now carries — `failed` for a broken call, `refused` only for the model's own refusal — plus the
  * gate's own budget, which is a thinking call's and not the writing call's.
+ *
+ * BOOK-219 shares this scenario: a first write cannot be put back, so the park has to say the
+ * text stands unverified (`readerSentences.unverified`) instead of claiming a queue place — a
+ * parked pass escalates the change, and an escalated change is terminal.
  */
 
 import { existsSync } from 'node:fs';
@@ -27,7 +31,7 @@ const changeRow = (harness: Harness, id: string): Record<string, unknown> | unde
     | undefined;
 
 describe('a parked pass tells a broken call from a refusal', () => {
-  it('parks a failed gate call as `failed`, and the premise of the written chapter stays applied', async () => {
+  it('parks a failed gate call as `failed`, and says the first text stands unverified', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
@@ -38,7 +42,6 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine: harness.client,
         now: () => harness.fixture.clock.now(),
         log: (line) => harness.logs.push(line),
@@ -52,8 +55,9 @@ describe('a parked pass tells a broken call from a refusal', () => {
       const result = await runPass(deps);
 
       expect(result.status).toBe('parked');
-      // The reader's sentence, not the code (owner's rule, 2026-10-28); the code is in the log.
-      expect(result.reason).toContain('модель ответила не по форме');
+      // BOOK-219: this chapter had no revision behind it, so nothing can be put back — and the
+      // sentence says what is true: the new text stands, unverified, and the filing waits.
+      expect(result.reason).toBe(readerSentences.unverified);
       expect(harness.logs.some((line) => line.includes('PROVIDER_SHAPE'))).toBe(true);
       // The chapter the broken pass wrote is the first edition the premise entered.
       expect(harness.fixture.readChapter(CHAPTER)).not.toBeNull();

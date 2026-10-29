@@ -15,7 +15,12 @@ import {
   type Pipeline as PipelinePin,
 } from '../pipeline.ts';
 
-export type PipelineUsage = { in: number; out: number; cachedIn: number };
+/**
+ * One call's tokens. `estimated` (BOOK-219) says the numbers were **read off the text**, because
+ * the provider answered with prose and no usable `usage` object: the charge is then at or above
+ * the truth (see `provider.ts`), and every surface that reports it must say so.
+ */
+export type PipelineUsage = { in: number; out: number; cachedIn: number; estimated?: boolean };
 
 /** One model's rates, USD per million tokens (BOOK-114's shape). */
 export type PipelineRates = { input: number; output: number; cacheRead: number };

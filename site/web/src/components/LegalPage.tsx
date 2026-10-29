@@ -5,6 +5,7 @@ import { track } from '../lib/analytics.ts';
 import { CONSENT_COPY, setConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
 import type { StaticPage } from '../lib/route.ts';
+import { ScreenExit } from './ScreenExit.tsx';
 import {
   MACHINE_TOOL_CAVEAT,
   MACHINE_TOOL_RULES,
@@ -38,6 +39,9 @@ function Privacy() {
   const consent = useConsent();
   return (
     <main className="page legal">
+      {/* BOOK-221 — a document is a separate screen: one exit at its top, and the book is another
+          document, so the browser navigates and the back button returns here. */}
+      <ScreenExit href="/#toc" />
       <p className="kicker">приватность</p>
       <h1 className="title">Что здесь видят другие</h1>
       <p className="legal-lead">
@@ -121,6 +125,8 @@ function Privacy() {
 function Rules() {
   return (
     <main className="page legal">
+      {/* BOOK-221 — the same one exit, in the same place, on the other static document. */}
+      <ScreenExit href="/#toc" />
       <p className="kicker">правила</p>
       <h1 className="title">Что такое вмешательство</h1>
       <p className="legal-lead">

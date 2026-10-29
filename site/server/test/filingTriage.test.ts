@@ -137,6 +137,26 @@ describe('a filing moves by itself (BOOK-206)', () => {
     expect(changeOf(db)).toMatchObject({ status: 'pending', source_comment: id });
   });
 
+  it('an answer the provider did not measure books an estimated spend, still priced (BOOK-219)', async () => {
+    context = await bootTriage();
+    const { db } = context;
+    const id = await context.post();
+    // No `usage` on the wire: the tokens are the writer's own estimate, and the ledger says so
+    // instead of letting an estimate pass for a measurement.
+    context.reportUsage({ in: 1_200, out: 300, cachedIn: 0, estimated: true });
+    context.script.push(answerOf({ itemId: id } as Call, 'FITS', asSaid()));
+
+    await context.pulse();
+    expect(attemptOf(db, id).verdict).not.toBeNull();
+    const spend = db.prepare('SELECT usd, priced, provenance FROM pass_spend WHERE pass = ?').all('triage') as Array<
+      Record<string, unknown>
+    >;
+    expect(spend).toHaveLength(1);
+    expect(spend[0]).toMatchObject({ priced: 1, provenance: 'pipeline-estimated' });
+    // Estimated is not free: the rate is known, only the counts were read off the text.
+    expect(Number(spend[0]?.usd)).toBeGreaterThan(0);
+  });
+
   it('re-opens an escalated row: the reading is asked, the stored OFF is never rewritten', async () => {
     context = await bootTriage();
     const { db, h } = context;

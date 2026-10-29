@@ -3,6 +3,7 @@ import { backfillRights } from '../rights/backfill.ts';
 import type { Db } from './db.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { widenPassSpend } from './widenPassSpend.ts';
+import { widenSpendProvenance } from './widenSpendProvenance.ts';
 import { migrateV22 } from './migrateV22.ts';
 import { migrateV23 } from './migrateV23.ts';
 import { migrateV25 } from './migrateV25.ts';
@@ -21,7 +22,7 @@ type Migration = { to: number; up: (db: Db) => void };
  *
  * The M0 step (any version < 3 → 3) is deliberately a rebuild: every table of revision 1/2 is a
  * projection of the manuscript or an engine table never written before M3, and the retired
- * `obligations`/`cascade_stages` tables must disappear — a field install loses only a projection.
+ * `obligations`/`cascade_stages` tables must disappear — a field install loses a projection only.
  */
 const MIGRATIONS: Migration[] = [
   {
@@ -327,8 +328,7 @@ const MIGRATIONS: Migration[] = [
   { to: 29, up: migrateV29 },
   // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict, and every escalated filing re-opened.
   { to: 30, up: migrateV30 },
-  // BOOK-173 (BOOK-DOC-75 §3, BOOK-DOC-80): `migrateV31.ts` — the frozen plan, its mode and price,
-  // and the verification record. 31, not 30: BOOK-206's triage ledger took 30 first.
+  // BOOK-173: `migrateV31.ts` — the frozen plan, its mode, price and verification record (BOOK-206 took 30).
   { to: 31, up: migrateV31 },
 ];
 
@@ -339,7 +339,6 @@ function addColumn(db: Db, table: string, column: string, definition: string): v
   );
   if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
-
 /** The columns both the v13 gate tables and the v14 ones carry — the rebuild copies them. */
 const DISPATCH_COLUMNS = ['step_id', 'role', 'session', 'dispatched_at', 'expires_at'] as const;
 const VERDICT_COLUMNS = [
@@ -411,6 +410,7 @@ export function migrate(db: Db): { from: number; to: number } {
   }
 
   ensureStepLifecycle(db);
+  widenSpendProvenance(db); // BOOK-219: the ledger's CHECK gains `pipeline-estimated`, idempotently.
   // BOOK-61 review B3: a row posted before Gate B existed carries no rights answer, and every
   // gate behind it reads `NULL` as "no answer" — the filing would wait forever. One deterministic
   // pass over the undecided, still-open rows; marked done in `meta`, so a boot costs nothing.

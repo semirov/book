@@ -51,6 +51,47 @@ export const OWN_STATES = new Set<CommentStatus>(['rejected', 'quarantined', 'su
 /** Change states that are an attempt, not a landing — a `void` here is a failed try. */
 const ATTEMPT_STATES = new Set<string>(['void', 'failed', 'escalated']);
 
+// ── BOOK-206 B2: a change the engine stopped is one terminal filing state ────────────────────
+//
+// The audit's B2: an escalated change left the filing `accepted` with `changeStatus: null`, so
+// the card printed «в очереди на запись», `/me/decisions` printed «правка не принята» and the
+// change card printed «правка остановлена» — three answers, one fact. The derivation below is
+// the only answer: `escalated` and `failed` are one terminal state, and the sentence is the
+// change's own public line (never an engine code, never «остаётся в очереди»). Every surface
+// that reads a filing — the thread DTO, the bridge's frames, the reader's own record — reads
+// this, so the same row cannot print two sentences.
+
+/**
+ * The terminal word a stopped change leaves the filing with. `rejected` is the page's own
+ * word for «decided against»: the text is not in the book and nothing more is coming for it.
+ */
+export const STOPPED_STATUS: CommentStatus = 'rejected';
+
+/**
+ * What the reader is told when the stop carries no sentence of its own (an engine code, a
+ * missing reason). `readerReason` would answer «заявка остаётся в очереди» here, which is the
+ * lie the audit named: a stopped change is not in any queue. The writer restores the pre-pass
+ * revision before it stops (B4), so «text unchanged» is the fact the sentence claims.
+ */
+export const STOPPED_LINE = 'правка остановлена — текст остался прежним';
+
+/** Is this change state a stop: the engine gave the filing up, nothing will retry it? */
+export function isStopped(status: string | null | undefined): boolean {
+  return status === 'escalated' || status === 'failed';
+}
+
+/**
+ * A stop's public sentence: the change's own line when it wrote one, the fixed stop line when
+ * it carries only an internal code or nothing at all. Never an engine word.
+ */
+export function stoppedLine(reason: string | null | undefined): string {
+  if (!holdsInternalCode(reason)) {
+    const sentence = readerReason(reason);
+    if (sentence !== null) return sentence;
+  }
+  return STOPPED_LINE;
+}
+
 /**
  * Did this change decide in **human words**? A `void` whose reason is a sentence is the
  * writer's refusal or a supersede; a `void` whose reason is an internal code is an attempt
@@ -93,10 +134,14 @@ export function premiseLanded(facts: {
  * Order matters, and each step is one fact:
  *   1. a row that decided itself (`rejected`, `quarantined`, `superseded`, `hidden`) keeps its
  *      own word — a linked change may only leave it alone, never upgrade it;
- *   2. a premise that landed is `applied` (`premiseLanded` — a refusal beats a landing);
- *   3. a change that decided in human words is the premise's answer, even over a written
+ *   2. a change the engine **stopped** is the same terminal state an ordinary filing reads
+ *      (BOOK-206 B2), and it outranks the chapter's text: the premise's own pass never landed,
+ *      whatever another pass wrote into that chapter. A landing **newer** than the stop is the
+ *      answer instead — the caller passes the newest fact (`decisiveChange`);
+ *   3. a premise that landed is `applied` (`premiseLanded` — a refusal beats a landing);
+ *   4. a change that decided in human words is the premise's answer, even over a written
  *      chapter: the writer refused it, or it was superseded;
- *   4. what is left waits: a queued change reads as `accepted`, anything else keeps its row.
+ *   5. what is left waits: a queued change reads as `accepted`, anything else keeps its row.
  */
 export function premiseStatus(
   change: LinkedChange | undefined,
@@ -104,6 +149,7 @@ export function premiseStatus(
   written: boolean,
 ): CommentStatus {
   if (OWN_STATES.has(fallback)) return fallback;
+  if (change !== undefined && isStopped(change.status)) return STOPPED_STATUS;
   if (
     change !== undefined &&
     premiseLanded({ premise: change.premise, status: change.status, reason: change.reason, written })

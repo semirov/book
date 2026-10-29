@@ -5,7 +5,10 @@ import { FAILED_ATTEMPT_LINE, type CommentDto } from '@book/shared';
 import { anchorCopy, CHIP_MAX_CHARS, commentStamp, commentStatusLine } from './commentView.ts';
 import { GATE_WORDS, HELD_LINE, STATE_WORDS } from './marginalia.ts';
 
-function comment(overrides: Partial<CommentDto> = {}): CommentDto {
+/** A filing; `changeStatus` is the DTO's own (`pending`/`processing`), never a terminal word. */
+type LineOverrides = Partial<CommentDto>;
+
+function comment(overrides: LineOverrides = {}): CommentDto {
   return {
     id: 'cmt_1',
     chapter: 8,
@@ -26,7 +29,7 @@ function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     refusal: null,
     attempt: null,
     ...overrides,
-  };
+  } as CommentDto;
 }
 
 describe('comment thread copy (§11.6)', () => {
@@ -47,6 +50,19 @@ describe('comment thread copy (§11.6)', () => {
     expect(
       commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', changeStatus: 'processing' })),
     ).toMatchObject({ state: 'идёт', detail: 'пишется', tone: 'live' });
+    // BOOK-219 — the change the writer closed reaches the row through the server's `applied`
+    // status and its receipt, never through a terminal `changeStatus` (the DTO cannot carry one).
+    expect(
+      commentStatusLine(comment({ status: 'applied', changeId: 'chg_1', applied: { chapter: 8, rev: 4 } })),
+    ).toMatchObject({ state: 'внесено', detail: 'глава 8 · ревизия 4', tone: 'done' });
+    // BOOK-219 — a receipt on the row is the landing fact even ahead of the durable read.
+    expect(
+      commentStatusLine(comment({ status: 'accepted', changeId: 'chg_1', applied: { chapter: 8, rev: 4 } })),
+    ).toMatchObject({ state: 'внесено', detail: 'глава 8 · ревизия 4', tone: 'done' });
+    // A landing whose receipt storage lost its row leaves the word alone, not an empty clause.
+    expect(
+      commentStatusLine(comment({ status: 'applied', interventionKind: 'testimony', changeId: 'chg_1' })),
+    ).toMatchObject({ state: 'внесено', detail: null, tone: 'done' });
     // The owner's landed row: one state word and one line — «внесено · глава 8 · ревизия 3».
     // A stored reason on an applied row is not printed: the receipt is the fact.
     expect(
@@ -122,7 +138,10 @@ describe('comment thread copy (§11.6)', () => {
       'в очереди на запись',
     );
     expect(commentStatusLine(comment({ status: 'superseded' })).detail).toContain('снято: текст успел измениться');
-    expect(commentStatusLine(comment({ status: 'expired' })).detail).toContain('правка не состоялась');
+    // A stored legacy row prints the server's sentence; without one it invents no line.
+    expect(commentStatusLine(comment({ status: 'expired', reason: 'правка остановлена — текст остался прежним' })).detail)
+      .toBe('правка остановлена — текст остался прежним');
+    expect(commentStatusLine(comment({ status: 'expired' })).detail).toBeNull();
     // Every state — the whole matrix — is a chip, and the form is computed here, nowhere else.
     for (const status of ['new', 'batched', 'delivered', 'accepted', 'applied', 'superseded', 'rejected', 'quarantined', 'expired', 'hidden'] as const) {
       const line = commentStatusLine(comment({ status }));
@@ -133,10 +152,12 @@ describe('comment thread copy (§11.6)', () => {
   });
 
   it('says "not considered" instead of pretending', () => {
-    expect(commentStatusLine(comment({ status: 'expired' }))).toMatchObject({
-      state: 'ждёт',
-      detail: 'правка не состоялась',
-    });
+    // BOOK-206 B2 — an `expired` row is a stored legacy value: its line is the server's own
+    // sentence, and a row without one keeps the word alone instead of a local one.
+    expect(
+      commentStatusLine(comment({ status: 'expired', reason: 'правка остановлена — текст остался прежним' })),
+    ).toMatchObject({ state: 'ждёт', detail: 'правка остановлена — текст остался прежним' });
+    expect(commentStatusLine(comment({ status: 'expired' }))).toMatchObject({ state: 'ждёт', detail: null });
     // BOOK-189 — a refusal is a state of its own: the gate's word heads it, the reason is the
     // whole line, and nothing in it waits.
     expect(commentStatusLine(comment({ status: 'rejected', reason: 'вне рамок: форма книги' }))).toMatchObject({

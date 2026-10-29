@@ -119,7 +119,6 @@ describe('the patch path sits behind the filing’s read (BOOK-206 + BOOK-173)',
     const result: PassResult = await runPass({
       config: harness.config,
       bookRoot: BOOK_ROOT,
-      dataDir: harness.h.fixture.dataDir,
       engine: harness.client,
       provider,
       now: () => harness.h.clock.ms,

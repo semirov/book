@@ -1,5 +1,6 @@
 import { interventionKindLabel, type CommentDto } from '@book/shared';
 
+import { filingInk } from './filings.ts';
 import {
   failedAttempt,
   filingConsequence,
@@ -87,7 +88,11 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       // sentence («входит в книгу») is not a fact about the writer's lane. One explanatory line
       // only: «пишется» while the writer is at it, «в очереди на запись» while the lane holds
       // it, or the failed-attempt sentence when the attempt behind it came back empty.
-      return lineOf(word, filingConsequence(comment), 'live');
+      //
+      // B1 — the ink follows the line: a change that landed (or stopped) moved the row's state,
+      // and its shape table already says which tone that is. A landing without a receipt, or a
+      // retry the server explained elsewhere, leaves no line rather than an empty one.
+      return lineOf(word, nullIfEmpty(filingConsequence(comment)), filingInk(comment).tone);
     case 'registered':
       // BOOK-137 — the paperwork's own line: «рассмотрено · оформление · фраза не изменилась»,
       // and nothing else. The reason is that same sentence on the row, so printing it too would
@@ -119,7 +124,8 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       // HELD: the word «проверяется» and the hold's own line, never the guard's taxonomy.
       return lineOf(word, filingConsequence(comment), 'stopped');
     case 'expired':
-      return lineOf(word, joinDetail('правка не состоялась', comment.reason), 'stopped');
+      // A stored legacy value: the server's own sentence, or none — no sentence is written here.
+      return lineOf(word, comment.reason, 'stopped');
     case 'hidden':
       return lineOf(word, joinDetail('скрыто', comment.reason), 'stopped');
     default:

@@ -418,6 +418,7 @@ export function createEngine(deps: EngineDeps) {
         model: options.model ?? null,
         tokensIn: options.tokensIn ?? 0,
         tokensOut: options.tokensOut ?? 0,
+        provenance: options.provenance,
         escalation: outcome,
         changeReason: because.slice(0, REASON_MAX_CHARS),
         premiseCause: options.cause ?? 'refused',

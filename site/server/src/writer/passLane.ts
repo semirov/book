@@ -10,26 +10,19 @@
  * landing — a refusal leaves the rows exactly as they were, which is the pre-image.
  */
 
-import { readFileSync } from 'node:fs';
-
 import { type WriterAssignment } from '@book/shared';
 
 import { sha256Hex } from '../util/hash.ts';
 import type { ChapterTextView } from '../engine/text.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
-import type { GateAssignmentView, LandView } from './client.ts';
+import type { LandView } from './client.ts';
 import type { PassEstimate } from './estimate.ts';
-import { buildGatePrompt, type GateFinding, type GateRoleName } from './gates.ts';
+import type { GateRoleName } from './gates.ts';
+import { createGates } from './laneGates.ts';
 import type { WriteMode } from './mode.ts';
 import { costUsd, type PipelineUsage } from './pipeline.ts';
-import {
-  buildWriterPrompt,
-  chapterQuote,
-  noChapterText,
-  type ChapterTextLookup,
-  type WriterAssignmentData,
-} from './prompt.ts';
-import type { ProviderResult, WriterMessage } from './provider.ts';
+import { noChapterText, type ChapterTextLookup } from './prompt.ts';
+import { estimateUsage, type ProviderResult, type WriterMessage } from './provider.ts';
 import { PassRefusal, codeOf, failureOf, readerFallbacks, readerReason, reasonOf, type Failure, type ParkInput } from './reasons.ts';
 import {
   storeTranscript,
@@ -40,13 +33,11 @@ import {
   type PromptSectionFact,
 } from './transcript.ts';
 import type { GatesRecord } from './verify/run.ts';
-import { rightsRunner } from './rightsGate.ts';
+import { servesText } from './putBack.ts';
 import { emitStage, stageLogLine, stageSummary, type StageEmitInput, type StageSink } from './stages.ts';
 import { validateAnswer } from './validate.ts';
-import { askGateAnswer } from './gateAnswer.ts';
-import { reviseAnswer } from './answer.ts';
 
-import type { Answer, AskOptions, GateRun, Lane, LaneInput, PassResult } from './laneTypes.ts';
+import type { Answer, AskOptions, Lane, LaneInput, PassResult } from './laneTypes.ts';
 
 /** A step the engine already took away: a scheduling event, never a prose event. */
 export const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
@@ -63,39 +54,27 @@ export type {
 } from './laneTypes.ts';
 
 function addUsage(total: PipelineUsage, usage: PipelineUsage): PipelineUsage {
-  return { in: total.in + usage.in, out: total.out + usage.out, cachedIn: total.cachedIn + usage.cachedIn };
-}
-
-/** The assignment as the prompt may quote it (`prompt.ts` narrows it the same way). */
-export function assignmentData(assignment: WriterAssignment): WriterAssignmentData {
-  if (typeof assignment.chapter !== 'number') {
-    throw new PassRefusal('этот проход не про главу — его ведёт другая полоса, а не писатель');
-  }
   return {
-    chapter: assignment.chapter,
-    pass: assignment.pass,
-    intent: assignment.intent,
-    interventionKind: assignment.interventionKind,
-    premise: assignment.premise === null ? null : { intent: assignment.premise.intent, kind: assignment.premise.kind },
-    expectation: assignment.expectation,
+    in: total.in + usage.in,
+    out: total.out + usage.out,
+    cachedIn: total.cachedIn + usage.cachedIn,
+    // BOOK-219: the flag is sticky — one estimated call makes the pass's line an estimate.
+    ...(total.estimated === true || usage.estimated === true ? { estimated: true } : {}),
   };
 }
 
-/** The index slice is a path the engine returned; a missing file is not a gate failure. */
-function sliceText(path: string | null): string | null {
-  if (path === null || path.length === 0) return null;
-  try {
-    return readFileSync(path, 'utf8');
-  } catch {
-    return null;
-  }
-}
+// The text values live apart (`laneText.ts`) because this file is at its arch bound.
+export { assignmentData, charsOf, finalize, mergeContinuation } from './laneText.ts';
 
 export function createLane(input: LaneInput, job: WriterAssignment, chapter: number, answered: Record<GateRoleName, boolean>): Lane {
   const { config, engine, bookRoot, now } = input;
   const sink: StageSink = { stage: (event) => engine.stage(event) };
   const calls: CallRecord[] = [];
   const written = { in: 0, out: 0 };
+  /** The prompt of calls that threw (BOOK-219): the request left, so its prompt was paid for. */
+  let attempted: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
+  /** The last landing of this pass, as the engine answered it: what a revert must move off. */
+  let landing: { rev: number; sha: string } | null = null;
   let all: PipelineUsage = { in: 0, out: 0, cachedIn: 0 };
   /** The prompt's sections as facts (AC7): ids, hashes, lengths — the receipt's only census. */
   let sections: PromptSectionFact[] = [];
@@ -159,6 +138,12 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     }
     const remaining = config.maxTokensPerPass - (all.in + all.out);
     if (remaining <= 0) throw new PassRefusal('лимит токенов на проход исчерпан');
+    // The causality judge and Tier 1 are bounded questions, not writing turns: the gate's cap.
+    const cap = Math.min(
+      options?.maxTokens ??
+        (kind.startsWith('gate:') || kind === 'judge' || kind === 'tier1' ? config.gateTokens : config.maxTokensPerCall),
+      remaining,
+    );
     let result: ProviderResult;
     try {
       result = await input.provider({
@@ -166,15 +151,15 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         apiKey: config.apiKey,
         apiModel: config.apiModel,
         messages,
-        // The causality judge and Tier 1 are bounded questions, not writing turns: the gate's cap.
-        maxTokens: Math.min(
-          options?.maxTokens ??
-            (kind.startsWith('gate:') || kind === 'judge' || kind === 'tier1' ? config.gateTokens : config.maxTokensPerCall),
-          remaining,
-        ),
+        maxTokens: cap,
         timeoutMs: config.timeoutMs,
       });
     } catch (error) {
+      // A failed call still sent its prompt: the pass pays for the request it made, so the prompt
+      // is charged at the estimate and the park can never read as a free pass (BOOK-219).
+      const spent = estimateUsage(messages, '', cap);
+      all = addUsage(all, spent);
+      attempted = addUsage(attempted, spent);
       throw new PassRefusal(reasonOf(error), codeOf(error));
     }
     // The writer's own tokens: what `done` reports — each gate's verdict row is added by the close.
@@ -271,14 +256,23 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
         code,
       };
     }
-    const sentence = readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
+    // A sentence the pass names itself wins: a revert must not read as a queue place.
+    const sentence =
+      why.sentence ?? readerReason(code, why.fallback ?? (code === null ? why.detail : readerFallbacks.stopped));
     failure = { code, detail: why.detail };
     input.log(`[writer] parked ${code ?? 'без кода'}: ${why.detail.slice(0, 300)}`);
-    // BOOK-117: a parked pass spent money too — the writer's own calls travel with the escalate, and
-    // each gate's verdict row is added by the close. A park before the first call claims neither.
-    const spent = calls.length === 0
+    // BOOK-117: a parked pass spent money too — the writer's calls travel with the escalate and
+    // each gate's verdict row is added by the close. A park before the first call claims neither;
+    // BOOK-219: a call that threw is paid for, so its prompt travels too, and the ledger's word
+    // says whether these numbers were measured or estimated.
+    const spent = all.in + all.out === 0
       ? { tokensIn: 0, tokensOut: 0 }
-      : { model: config.model, tokensIn: written.in, tokensOut: written.out };
+      : {
+          model: config.model,
+          tokensIn: written.in + attempted.in,
+          tokensOut: written.out + attempted.out,
+          provenance: all.estimated === true ? ('pipeline-estimated' as const) : ('pipeline' as const),
+        };
     try {
       await engine.escalate(job.leaseId, sentence.slice(0, 400), spent, why.cause ?? 'failed');
     } catch (error) {
@@ -320,17 +314,27 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
    * the site serves — so there is no image to put back (BOOK-187). The answer carries the plan the
    * engine froze with the revision (BOOK-173 §7), and the mode, the edits and the estimate this
    * pass states about itself.
+   *
+   * A lost answer is not a refused landing (BOOK-219): the rows are the fact, so the chapter is
+   * read back, and one that already serves this text *is* this pass's landing — closed or taken
+   * back like any other, instead of parking over live prose with no revision of ours on record.
    */
-  async function land(value: string): Promise<LandView> {
+  async function land(value: string): Promise<LandView | null> {
     try {
-      return await engine.land(job.leaseId, {
+      const published = await engine.land(job.leaseId, {
         text: value,
         ...(sentences === null ? {} : { sentences }),
         ...(mode === null ? {} : { mode }),
         ...(estimate === null ? {} : { estimateUsd: estimate.usd }),
       });
+      landing = { rev: published.revAfter, sha: published.sha };
+      return published;
     } catch (error) {
-      throw new PassRefusal(reasonOf(error), codeOf(error));
+      if ((await servesText(engine, chapter, value)) !== true) throw new PassRefusal(reasonOf(error), codeOf(error));
+      input.log(`[writer] land не ответил (${codeOf(error) ?? 'транспорт'}): глава уже несёт этот текст — считаю публикацией`);
+      // The revision this pass stands on is unknown; the way back says so instead of guessing.
+      landing = null;
+      return null;
     }
   }
 
@@ -348,97 +352,7 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     return validateAnswer(value, { chapter, finishReason: finishReason ?? null });
   }
 
-  /** One gate: the dispatch, the prompt, the answer, the verdict. */
-  async function runGate(role: GateRoleName, refusal?: string | null): Promise<GateRun> {
-    if (answered[role]) return { revise: false, findings: [] };
-    let gate: GateAssignmentView | null;
-    try {
-      gate = await engine.nextGate(role, config.session);
-    } catch (error) {
-      throw new PassRefusal(reasonOf(error), codeOf(error));
-    }
-    if (gate === null) throw new PassRefusal(`гейт ${role} не выдал задание на эту главу`);
-    await loadText([chapter]);
-    const gateAssignment = {
-      chapter,
-      pass: job.pass,
-      intent: job.intent,
-      premise: job.premise,
-      cycle: gate.cycle,
-      role,
-      note: gate.note,
-    };
-    const gateAnswer = await askGateAnswer({
-      role,
-      build: (hint) =>
-        buildGatePrompt({
-          bookRoot,
-          role,
-          chapter,
-          assignment: gateAssignment,
-          landedText: chapterQuote(textOf(chapter)),
-          chapterText: textOf,
-          // BOOK-173 §7: the dispatched gate judges the text against the plan the engine froze.
-          plan: gate.plan,
-          indexSlice: role === 'editor' ? sliceText(gate.indexSlice) : null,
-          refusal: hint,
-        }),
-      ask: (messages) => ask(role === 'editor' ? 'gate:editor' : 'gate:consultant', messages),
-      log: input.log,
-      refusal: refusal ?? null,
-    });
-    const parsed = gateAnswer.parsed;
-    let action: string;
-    try {
-      const verdict = await engine.verdict({
-        stepId: gate.stepId,
-        role,
-        session: gate.session,
-        verdict: parsed.verdict,
-        findings: parsed.findings,
-        // The pin, never the wire id: the verdict row is read by the ledger's arithmetic.
-        model: config.model,
-        tokensIn: gateAnswer.usage.in,
-        tokensOut: gateAnswer.usage.out,
-      });
-      action = verdict.action;
-    } catch (error) {
-      throw new PassRefusal(reasonOf(error), codeOf(error));
-    }
-    answered[role] = true;
-    markVerdict(role === 'editor' ? 'gate:editor' : 'gate:consultant', parsed.verdict);
-    await emit({
-      stage: 'verdict',
-      chapter,
-      passId: job.stepId,
-      changeId: job.changeId,
-      summary: stageSummary.verdict({
-        role,
-        verdict: parsed.verdict,
-        findings: parsed.findings.length,
-        blockers: parsed.findings.filter((finding) => finding.severity === 'blocker').length,
-      }),
-      model: config.model,
-      at: now(),
-    });
-    return { revise: action === 'revise', findings: parsed.findings };
-  }
-
-  /** One revision of the landed text, with the findings as data. Throws on a model/engine failure. */
-  async function reviseText(findings: GateFinding[]): Promise<string | null> {
-    await loadText([chapter - 1, chapter, chapter + 1]);
-    const rebuilt = buildWriterPrompt({ bookRoot, assignment: assignmentData(job), chapterText: textOf });
-    const revised = await reviseAnswer({
-      rebuilt,
-      findings,
-      ask: (messages) => ask('repair', messages, 'repair'),
-      check,
-      log: input.log,
-    });
-    if (revised === null) return null;
-    await land(revised);
-    return revised;
-  }
+  const gateRunner = createGates({ deps: { ask, emit, loadText, textOf, land, check, markVerdict }, config, engine, bookRoot, chapter, job, answered, now, log: input.log });
 
   return {
     emit,
@@ -452,26 +366,15 @@ export function createLane(input: LaneInput, job: WriterAssignment, chapter: num
     land,
     transcript,
     check,
-    runGate: (role) => runGate(role),
-    runRightsGate: async () => {
-      const run = await rightsRunner({
-        config,
-        engine,
-        bookRoot,
-        chapter,
-        chapterText: textOf,
-        passId: job.stepId,
-        changeId: job.changeId,
-        now,
-        ask,
-        emit: (event) => emit(event),
-      })();
-      markVerdict('gate:rights', run.verdict);
-      return run;
-    },
-    reviseText,
+    runGate: (role) => gateRunner.runGate(role),
+    runRightsGate: () => gateRunner.runRightsGate(),
+    reviseText: (findings) => gateRunner.reviseText(findings),
     usage: () => all,
-    writerTokens: () => ({ ...written }),
+    // A gate call that threw has no verdict row to be charged from, so its prompt is reported
+    // with the writer's tokens: the close takes the larger of the two, and the money is counted.
+    writerTokens: () => ({ in: written.in + attempted.in, out: written.out + attempted.out }),
+    estimated: () => all.estimated === true,
+    landedAt: () => landing,
     model: () => laneModel(),
     setPrompt: (value) => {
       sections = value.sections;

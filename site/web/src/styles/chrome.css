@@ -313,6 +313,33 @@
 
 /* The two static documents live in legal.css — BOOK-88 (booted right after this sheet). */
 
+/* BOOK-221 — the one way back, at the top of every separate screen (the trail, /rules, /privacy):
+   one line of mono 12, lowercase, the quiet ink, no underline. It is the column's first child, so
+   it is the first stop in tab order, and the whole block may move the page by **at most its own
+   line**: one 1.35 line box and a 4 px margin that stays inside it. Tokens only: no second face
+   and no second size on that line.
+
+   `.legal .screen-exit` is not decoration: `legal.css` is booted after this sheet and its
+   `.legal p` (0,1,1) out-specifies a bare class, so without the second selector the two static
+   documents painted the exit at serif `--fs-body`. `legalPage.test.tsx` resolves the cascade of
+   both sheets and fails if this selector stops winning. */
+.screen-exit,
+.legal .screen-exit {
+  margin: 0 0 4px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.screen-exit a {
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.screen-exit a:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+
 /* The legal nav's links take the colophon's treatment: one rule, kept with the frame. */
 .legal-nav a,
 .colophon a {

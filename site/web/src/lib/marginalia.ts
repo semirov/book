@@ -9,7 +9,6 @@ import {
 } from '@book/shared';
 
 import { receiptLine } from './terms.ts';
-import { clampQuote, splitSentences } from './seam.ts';
 
 /**
  * BOOK-90 — marginalia: one vocabulary for the marks in the margin.
@@ -35,6 +34,12 @@ import { clampQuote, splitSentences } from './seam.ts';
  * work, not a state of its own: it is `идёт` only while the linked change is `processing`, and
  * `ждёт` while the lane has not reached it (BOOK-189). Only `applied` is «внесено»; only
  * `registered` is «рассмотрено»; only `rejected` is «отклонено».
+ *
+ * Every terminal word is the **server's** (`server/src/comments/states.ts` derives a filing's
+ * status and its sentence once, in one place): this module reads `status`, `reason` and `applied`,
+ * and re-derives no terminal word of its own — a change in the server's derivation drives the
+ * page, instead of disagreeing with a second copy of the rule. `changeStatus` is read only where
+ * the DTO itself names it: the live words `pending`/`processing` (BOOK-189).
  */
 
 export type State = 'waiting' | 'working' | 'landed' | 'registered' | 'refused';
@@ -90,16 +95,17 @@ export type Marginalia = {
   consequence: string;
 };
 
-type FilingFacts = Pick<CommentDto, 'status'> & {
+export type FilingFacts = Pick<CommentDto, 'status'> & {
   premise?: boolean;
   interventionKind?: CommentDto['interventionKind'];
   applied?: CommentDto['applied'];
   chapter?: number;
   /**
    * BOOK-189 — the linked change's own place: the writer has the filing in hand (`processing`)
-   * or the lane holds it (`pending`). `null`/absent for a filing that landed, was refused, or
-   * that no change ever held. It is the only fact that separates «идёт» from «ждёт» on an
-   * `accepted` row: the row's word alone cannot say whether the writer is there yet.
+   * or the lane holds it (`pending`) — the two values the DTO names (a terminal change reaches
+   * the page as `status` and `reason`, never as this field). It is the only fact that separates
+   * «идёт» from «ждёт» on an `accepted` row: the row's word alone cannot say whether the writer
+   * is there yet.
    */
   changeStatus?: CommentDto['changeStatus'];
   /** BOOK-61 — which gate refused it; the reader's line is chosen from this, not from `reason`. */
@@ -111,6 +117,12 @@ type FilingFacts = Pick<CommentDto, 'status'> & {
   reason?: string | null;
   /** The linked change's attempt failed; the filing itself keeps its state. */
   attempt?: 'failed' | null;
+  /**
+   * BOOK-206 audit B1 — the `attempt.retryAt` a `comment:decision` frame carries: the change's
+   * next attempt is scheduled. It is a fact, never a word and never a second clock: the line is
+   * the frame's own `reason` (a sentence the server wrote), and no time is formatted here.
+   */
+  retryAt?: string | null;
   /** BOOK-137 — the mode when the caller has it (a change's summary), never guessed. */
   frameMode?: RetroMode | null;
 };
@@ -126,6 +138,15 @@ type ChangeFacts = Pick<ChangeSummaryDto, 'status' | 'outcome'> & {
 /** A note (no kind, no proposed text) never lands text: its terminal is «сохранено». */
 function isNote(comment: FilingFacts): boolean {
   return comment.interventionKind === null || comment.interventionKind === undefined;
+}
+
+/**
+ * BOOK-219 — a landing's receipt on the row itself (`applied: { chapter, rev }`). It is the
+ * server's own landing fact: a row that carries one has its text in a chapter, whatever word the
+ * row's status still says before the durable read replaces it.
+ */
+function hasReceipt(comment: FilingFacts): boolean {
+  return comment.applied !== null && comment.applied !== undefined;
 }
 
 /** The chapter a filing was entered into, for the receipt and the premise line. */
@@ -188,8 +209,10 @@ export function filingState(comment: FilingFacts): State {
     case 'delivered':
       return 'working';
     case 'accepted':
-      // The row's own word stops at triage: only the linked change says whether the writer is
-      // at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
+      // A receipt on the row is the server's landing fact: the text is in a chapter already.
+      if (hasReceipt(comment)) return 'landed';
+      // The row's own word stops at triage: only the live `changeStatus` says whether the writer
+      // is at this filing now (`processing` → «идёт») or the lane has not reached it («ждёт»).
       // A failed attempt carries no `changeStatus` and waits with the deck's sentence.
       return comment.changeStatus === 'processing' ? 'working' : 'waiting';
     default:
@@ -246,11 +269,19 @@ export function filingConsequence(comment: FilingFacts): string {
     case 'batched':
     case 'delivered':
       return 'читает триаж';
-    case 'accepted':
+    case 'accepted': {
       // BOOK-189: one line for each side of the writer's work. «пишется» is the writer at this
       // filing; «в очереди на запись» is the lane holding it. An `accepted` row carries no queue
       // word at all — the queue is counted by the writer, never by a comment status.
+      //
+      // B1 — a scheduled retry is the frame's own sentence: the row says «ждёт» and repeats
+      // what the server said, and it never claims a queue place for an attempt that failed.
+      if (comment.retryAt !== null && comment.retryAt !== undefined) return comment.reason ?? '';
+      // A receipt owes the same word-free line an `applied` row prints; no receipt, no line.
+      const receipt = landedReceiptLine(comment.applied);
+      if (receipt !== null) return receipt;
       return comment.changeStatus === 'processing' ? 'пишется' : 'в очереди на запись';
+    }
     case 'applied': {
       // A note moved no text and transferred no right: its terminal stays «замечание сохранено».
       if (isNote(comment)) return 'замечание сохранено';
@@ -270,7 +301,8 @@ export function filingConsequence(comment: FilingFacts): string {
       // A hold's line, never the guard's taxonomy: the rule an operator reads is `held_rule`.
       return `${GATE_WORDS.held}: ${HELD_LINE}`;
     case 'expired':
-      return 'правка не состоялась';
+      // A stored legacy value: the server's own sentence, or none — nothing is written here.
+      return comment.reason ?? '';
     case 'hidden':
       return 'скрыто';
     default:
@@ -318,174 +350,9 @@ export function landingReceipt(chapter: number, rev: number | null = null): stri
   return rev === null ? receipt : `${receipt} · ревизия ${rev}`;
 }
 
-export type RevisionStatus = 'same' | 'changed' | 'unresolved';
-
-export type Revision = {
-  /** `anchor.quote`: the sentence the filing was made on. */
-  before: string | null;
-  /** The sentence that stands at that place now — only when it differs from `before`. */
-  after: string | null;
-  /** `same`: nothing changed there; `unresolved`: the place cannot be found. */
-  status: RevisionStatus;
-};
-
-/** How much context the stored prefix/suffix carries (the server's own bound). */
-const CONTEXT = 40;
-/** The shortest context match worth trusting; below it a coincidence decides the place. */
-const MIN_CONTEXT = 8;
-
 /**
- * The longest suffix of `want` that `text` ends with, 0 when it is too short. Edge whitespace
- * is not a fact about the place (a stored prefix ends with the space the sentence starts after).
+ * BOOK-90 — the place arithmetic moved to `anchor.ts` when the deck grew past the file bound;
+ * the deck's own consumers (a mark's sentence, «стало», the record's door) keep this one import.
  */
-function tailMatch(text: string, want: string): number {
-  const left = text.trimEnd();
-  const right = want.trimEnd();
-  for (let size = Math.min(right.length, CONTEXT); size >= MIN_CONTEXT; size -= 1) {
-    if (left.endsWith(right.slice(-size))) return size;
-  }
-  return 0;
-}
-
-/** The longest prefix of `want` that `text` starts with (edge whitespace ignored). */
-function headMatch(text: string, want: string): number {
-  const left = text.trimStart();
-  const right = want.trimStart();
-  for (let size = Math.min(right.length, CONTEXT); size >= MIN_CONTEXT; size -= 1) {
-    if (left.startsWith(right.slice(0, size))) return size;
-  }
-  return 0;
-}
-
-/** Every occurrence of `quote` in `text`, in order. */
-function offsetsOf(text: string, quote: string): number[] {
-  const out: number[] = [];
-  for (let at = text.indexOf(quote); at >= 0; at = text.indexOf(quote, at + 1)) out.push(at);
-  return out;
-}
-
-/**
- * The one occurrence of `needle`, or — when the context repeats — the single occurrence whose
- * stored context (`suffix` after, `prefix` before) matches best. `null` when the occurrence is
- * ambiguous (a repeated clause is not a place) or absent.
- */
-function uniqueByContext(
-  text: string,
-  needle: string,
-  context: string,
-  side: 'after' | 'before',
-): number | null {
-  const first = text.indexOf(needle);
-  if (first < 0) return null;
-  if (first === text.lastIndexOf(needle)) return first;
-  let best = -1;
-  let bestScore = 0;
-  let tie = false;
-  for (let at = first; at >= 0; at = text.indexOf(needle, at + 1)) {
-    const around =
-      side === 'after'
-        ? text.slice(at + needle.length, at + needle.length + CONTEXT)
-        : text.slice(Math.max(0, at - CONTEXT), at);
-    const score = side === 'after' ? headMatch(around, context) : tailMatch(around, context);
-    if (score > bestScore) {
-      bestScore = score;
-      best = at;
-      tie = false;
-    } else if (score === bestScore && score > 0) {
-      tie = true;
-    }
-  }
-  return bestScore > 0 && !tie ? best : null;
-}
-
-/**
- * Where the anchored sentence starts in the current text.
- *
- * The **place**, not the wording, is the anchor: the stored quote (its first occurrence, or the
- * one whose stored prefix/suffix context matches when the wording repeats), else the tail of
- * the stored prefix, else the head of the stored suffix. `null` when neither context survives
- * — the paragraph was rewritten under the filing and no sentence may be claimed for it.
- */
-function anchoredAt(text: string, anchor: CommentDto['anchor']): number | null {
-  const quote = anchor.quote ?? '';
-  const prefix = anchor.prefix ?? '';
-  const suffix = anchor.suffix ?? '';
-  if (quote.length > 0) {
-    const offsets = offsetsOf(text, quote);
-    if (offsets.length === 1) return offsets[0] ?? null;
-    if (offsets.length > 1) {
-      let best: { at: number; score: number } | null = null;
-      let tie = false;
-      for (const at of offsets) {
-        const before = text.slice(Math.max(0, at - CONTEXT), at);
-        const after = text.slice(at + quote.length, at + quote.length + CONTEXT);
-        const score = tailMatch(before, prefix) + headMatch(after, suffix);
-        if (best === null || score > best.score) {
-          best = { at, score };
-          tie = false;
-        } else if (score === best.score && score > 0) {
-          tie = true;
-        }
-      }
-      // A repeated wording with no context to tell the occurrences apart is ambiguous.
-      if (best !== null && best.score > 0 && !tie) return best.at;
-      if (prefix.length === 0 && suffix.length === 0) return null;
-    }
-  }
-  if (prefix.length > 0) {
-    for (let size = Math.min(prefix.length, CONTEXT); size >= MIN_CONTEXT; size -= 1) {
-      const needle = prefix.slice(-size);
-      const at = uniqueByContext(text, needle, suffix, 'after');
-      if (at !== null) return at + size;
-      // The context exists but repeats too often to name a place: shorter is never unique.
-      if (text.includes(needle)) return null;
-    }
-  }
-  if (suffix.length > 0) {
-    for (let size = Math.min(suffix.length, CONTEXT); size >= MIN_CONTEXT; size -= 1) {
-      const needle = suffix.slice(0, size);
-      const at = uniqueByContext(text, needle, prefix, 'before');
-      if (at !== null) return Math.max(0, at - 1);
-      if (text.includes(needle)) return null;
-    }
-  }
-  return null;
-}
-
-/**
- * BOOK-90 — the revision object's two rows, resolved **by position**.
- *
- * The anchored sentence is the one at the place the stored quote/prefix/suffix points to in
- * the paragraph's current text. When the sentence found there is the same wording, nothing
- * changed at that place: no «стало» is printed. When it is different, that sentence is
- * «стало» — the applied text, never the reader's `proposedText`. When the place cannot be
- * found, the object says «текст изменился после правки» instead of inventing a sentence.
- */
-/**
- * BOOK-90 — the sentence the anchor's **place** points at in the current text.
- *
- * A landed change rewrites its own sentence, so the stored quote no longer equals any
- * sentence's text; the place still does. The tick and «стало» resolve through this one
- * function, so the mark can never stand on a different sentence from the record it opens.
- * Null when the anchor is unresolved or the place cannot be named.
- */
-export function sentenceAt(text: string, anchor: CommentDto['anchor']): number | null {
-  if (!anchor.resolved) return null;
-  const at = anchoredAt(text, anchor);
-  if (at === null) return null;
-  const sentence = splitSentences(text).find((item) => item.start <= at && at < item.end);
-  return sentence === undefined ? null : sentence.start;
-}
-
-export function revisionOf(comment: Pick<CommentDto, 'anchor'>, text: string): Revision {
-  const before = comment.anchor.quote;
-  if (before === null || before.length === 0) return { before: null, after: null, status: 'unresolved' };
-  if (!comment.anchor.resolved) return { before, after: null, status: 'unresolved' };
-  const at = anchoredAt(text, comment.anchor);
-  if (at === null) return { before, after: null, status: 'unresolved' };
-  const sentence = splitSentences(text).find((item) => item.start <= at && at < item.end);
-  if (sentence === undefined) return { before, after: null, status: 'unresolved' };
-  // The sentence at that place is the one we already have: the paragraph did not change there.
-  if (clampQuote(sentence.text) === before) return { before, after: null, status: 'same' };
-  return { before, after: sentence.text, status: 'changed' };
-}
+export { revisionOf, sentenceAt } from './anchor.ts';
+export type { Revision, RevisionStatus } from './anchor.ts';

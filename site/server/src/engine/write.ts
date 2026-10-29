@@ -31,7 +31,6 @@ import { getFrontRow } from '../db/repo/front.ts';
 import type { RipplePlan } from '../ledger/graph/plan.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
-import { sendPassEvent } from '../push/passEvent.ts';
 import { sha256Hex } from '../util/hash.ts';
 import { toIso } from '../util/time.ts';
 import { closeStep, currentRev } from './close.ts';
@@ -387,22 +386,10 @@ export function createWriteOps(deps: EngineDeps) {
       },
       at,
     );
-    // BOOK-173 §7: the plan is priced here, in the engine, because the ledger is here. It was
-    // frozen inside the ingest's transaction (`ingestLanding`), so nothing is written at this
-    // point; the writer receives it on this response and reacts; the model call it leads to is the
-    // writer's (§9: the engine never calls a model). A landing that moved nothing has no plan.
-    const planned = ingested.planned;
-    // BOOK-189: the reader who filed for this chapter hears that it landed. `changeForStep` is
-    // the step's link to its change (the lease, or the cascade's change), and the event carries
-    // the step's own chapter, so a cascade step rewriting a neighbour notifies nobody — the reader
-    // asked about theirs. A **draft** is not announced: its lease names no change, because its
-    // premise is not taken yet, and only the premise's own settlement speaks. That is what keeps a
-    // later refusal from being contradicted by an earlier «написана». A step with no change at all
-    // (an operator edit, a sweep) has no claimant either.
-    if (changedFromStart && step.chapter !== null) {
-      const change = changeForStep(db, step);
-      if (change !== undefined) sendPassEvent(db, { kind: 'landed', chapter: step.chapter, changeId: change.id }, at);
-    }
+    // BOOK-189/BOOK-219: nothing is announced here. `land` publishes text the pass may still take
+    // back (a rights refusal, a gate that never answered), so the reader is told the chapter
+    // landed at the close — `closeStep` sends that event once the verdicts are in, and a step
+    // that closes by restore says nothing about a landing.
     return {
       landed: true,
       revAfter,
@@ -410,7 +397,7 @@ export function createWriteOps(deps: EngineDeps) {
       changed: changedFromStart,
       deltaRatio: measured.ratio,
       blocksTouched: measured.touched,
-      ...(planned === null ? {} : { plan: planned.plan }),
+      ...(ingested.planned === null ? {} : { plan: ingested.planned.plan }),
     };
   }
 

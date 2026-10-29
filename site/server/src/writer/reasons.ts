@@ -73,6 +73,12 @@ export type ParkInput = {
   detail: string;
   fallback?: string;
   cause?: PremiseCause;
+  /**
+   * A sentence the pass names itself, used **instead of** the code's own (BOOK-219): a pass that
+   * put its own landed text back cannot be read as a queue place — what happened to the text is
+   * the fact the reader needs, and it is not one code's answer.
+   */
+  sentence?: string;
 };
 
 /** A note is read on a page and inside a stage summary: it is bounded here, once. */
@@ -81,50 +87,87 @@ const MAX_CHARS = 200;
 /**
  * The reader's words, one sentence per way a pass can stop. Short on purpose: the note is copied
  * into a stage summary, and a summary is a single line.
+ *
+ * The register is **stopped**, never queued (BOOK-219, audit B2/B5): a parked pass escalates the
+ * step, and an escalated change is a terminal filing state (`rejected`, one word on every
+ * surface — `comments/states.ts`) — nothing retries it, so «заявка остаётся в очереди» and
+ * «заявка ждёт решения» are both lies. Every sentence therefore names what happened to the text
+ * and says «правка остановлена»: the word `follow.ts` prints for `escalated`.
  */
 export const readerSentences = {
-  shape: 'модель ответила не по форме — заявка остаётся в очереди',
-  modelTimeout: 'модель не ответила вовремя — проход остановлен, заявка остаётся в очереди',
-  modelDown: 'модель недоступна — проход остановлен, заявка остаётся в очереди',
-  truncated: 'ответ модели оборвался — проход остановлен, заявка остаётся в очереди',
-  refusal: 'модель отказалась писать — заявка остаётся в очереди',
-  answerRejected: 'ответ модели не прошёл проверку — заявка остаётся в очереди',
-  engineDown: 'движок не ответил — проход остановлен, заявка остаётся в очереди',
+  shape: 'модель ответила не по форме — правка остановлена',
+  modelTimeout: 'модель не ответила вовремя — правка остановлена',
+  modelDown: 'модель недоступна — правка остановлена',
+  truncated: 'ответ модели оборвался — правка остановлена',
+  refusal: 'модель отказалась писать — правка остановлена',
+  answerRejected: 'ответ модели не прошёл проверку — правка остановлена',
+  engineDown: 'движок не ответил — правка остановлена',
   /** `land` on a step the engine has already closed: nothing was written, so nothing is left. */
   rightsMissing:
-    'права на текст не подтверждены — заявка остаётся в очереди',
+    'права на текст не подтверждены — правка остановлена',
   frameChanged:
-    'рамка книги — фраза этой главы не меняется, текст не опубликован',
-  stepClosed: 'шаг закрылся, пока текст писался — текст не опубликован',
+    'рамка книги — фраза этой главы не меняется, текст не опубликован, правка остановлена',
+  stepClosed: 'шаг закрылся, пока текст писался — текст не опубликован, правка остановлена',
+  /**
+   * BOOK-219: a pass landed its text, the gate never answered, and the pass put the chapter back
+   * to the revision it started from. Nothing new is live, and the change is stopped.
+   */
+  reverted: 'проверка не ответила — текст возвращён к прежней редакции, правка остановлена',
+  /**
+   * The same pass, and the way back failed: the new text **stands**, unverified. Saying the
+   * filing merely waits would hide a published revision; the note says which one, honestly.
+   */
+  unverified: 'проверка не ответила — новый текст стоит без проверки, правка остановлена',
+  /**
+   * BOOK-61/BOOK-219: Gate B refused the text. The pass takes its own landing back first, so the
+   * reader is never told a refused revision stands — and when the way back fails, the note says
+   * the text stands with no rights answer instead of hiding it.
+   */
+  rightsReverted: 'права на текст не подтверждены — текст возвращён к прежней редакции, правка остановлена',
+  rightsUnverified: 'права на текст не подтверждены — новый текст стоит без проверки прав, правка остановлена',
+  /**
+   * BOOK-219: the engine refused the close itself after the gates answered. The pass took its own
+   * landing back (or could not): the reader hears which, never the queue over text that may still
+   * be live.
+   */
+  closeReverted: 'шаг не закрылся — текст возвращён к прежней редакции, правка остановлена',
+  closeStanding: 'шаг не закрылся — новый текст стоит без подтверждения, правка остановлена',
+  /**
+   * A `done` whose answer was lost twice: the close may have happened (the reader may already be
+   * told) or not, and a restore would contradict a close that did. Nothing is taken back, and the
+   * sentence says exactly that instead of claiming either fact.
+   */
+  closeUncertain: 'закрытие шага не подтверждено — новый текст стоит, правка остановлена',
   /**
    * BOOK-173: the ripple's own refusals. Each is a sentence about the book, not a code: «две
-   * попытки» is what the author needs to know, `RIPPLE_REFUSED` is what the log carries.
+   * попытки» is what the author needs to know, `RIPPLE_REFUSED` is what the log carries. The
+   * register is BOOK-219's like every line above: a stop, never a queue place.
    */
-  notARipple: 'эта правка не тянет за собой другие главы — волна не открыта',
-  planMissing: 'плана у этой правки нет — волну не с чего начинать',
-  notPlanned: 'эта глава не названа планом — волне нечего в ней делать',
-  neighbourMissing: 'соседняя глава ещё не написана — волне некуда идти',
-  invalidChapter: 'такой главы в книге нет',
-  wideNeedsAuthor: 'правка задевает слишком много — решает автор, волна не открыта',
-  rippleRefused: 'соседняя глава дважды не приняла правку — волна остановлена, нужен автор',
-  chapterRefused: 'глава не приняла правку — попытка записана, волна повторит',
-  closureUnstable: 'замыкание не сходится — волна остановлена, нужен автор',
-  closureBound: 'замыкание вышло за границы правки — решает автор',
-  closureDrift: 'замыкание разъехалось с планом — волна остановлена, нужен автор',
-  irreversibleLost: 'глава изменилась и не держит необратимого — нужен автор',
-  laneLost: 'полоса потеряна, пока писалась глава — правка остаётся в очереди',
-  judgeVeto: 'судья причин не подтвердил замыкание — волна остановлена, нужен автор',
+  notARipple: 'эта правка не тянет за собой другие главы — волна не открыта, правка остановлена',
+  planMissing: 'плана у этой правки нет — волну не с чего начинать, правка остановлена',
+  notPlanned: 'эта глава не названа планом — волне нечего в ней делать, правка остановлена',
+  neighbourMissing: 'соседняя глава ещё не написана — волне некуда идти, правка остановлена',
+  invalidChapter: 'такой главы в книге нет — правка остановлена',
+  wideNeedsAuthor: 'правка задевает слишком много — решает автор, правка остановлена',
+  rippleRefused: 'соседняя глава дважды не приняла правку — нужен автор, правка остановлена',
+  chapterRefused: 'глава не приняла правку — попытка записана, нужен автор, правка остановлена',
+  closureUnstable: 'замыкание не сходится — нужен автор, правка остановлена',
+  closureBound: 'замыкание вышло за границы правки — решает автор, правка остановлена',
+  closureDrift: 'замыкание разъехалось с планом — нужен автор, правка остановлена',
+  irreversibleLost: 'глава изменилась и не держит необратимого — нужен автор, правка остановлена',
+  laneLost: 'полоса потеряна, пока писалась глава — правка остановлена',
+  judgeVeto: 'судья причин не подтвердил замыкание — нужен автор, правка остановлена',
   /**
    * BOOK-DOC-80: the countable checks refused the patch before it was written. The sentence names
    * the fact, not the code: the codes (`TIER0_REPEAT`, `TIER0_NUMBER`, …) live in the log and the
    * transcript, where an operator reads them.
    */
-  tier0Failed: 'правка не прошла счётные проверки — текст не тронут, правка остаётся в очереди',
+  tier0Failed: 'правка не прошла счётные проверки — текст не тронут, правка остановлена',
   /**
    * BOOK-206 + BOOK-173 §4: the filing the patch would be written from has not been read yet.
    * The sentence says the fact (nobody judged the words), never the machinery (a claim, a try).
    */
-  triageRequired: 'заявка ещё не прочитана — правка не внесена, шаг остаётся в очереди',
+  triageRequired: 'заявка ещё не прочитана — правка остановлена',
 } as const;
 
 /**
@@ -133,9 +176,9 @@ export const readerSentences = {
  */
 export const readerFallbacks = {
   /** Any coded failure with no words of its own. */
-  stopped: 'проход остановлен — заявка остаётся в очереди',
+  stopped: 'проход остановлен — правка остановлена',
   /** The gates could not be asked: the model's answer never became a verdict. */
-  gate: 'ответ модели не прошёл проверку — проход остановлен, заявка остаётся в очереди',
+  gate: 'ответ модели не прошёл проверку — правка остановлена',
 } as const;
 
 function sentenceFor(code: string): string | null {

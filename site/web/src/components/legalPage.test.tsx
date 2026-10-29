@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import { CONSENT_COPY } from '../lib/consent.ts';
 import { formatNumber } from '../lib/format.ts';
+import baseCss from '../styles/base.css?raw';
+import chromeCss from '../styles/chrome.css?raw';
+import legalCss from '../styles/legal.css?raw';
+import trailCss from '../styles/trail.css?raw';
 import {
   MACHINE_TOOL_CAVEAT,
   MACHINE_TOOL_RULES,
@@ -77,6 +81,23 @@ describe('/privacy', () => {
     expect(html).toContain('её история станет частью книги с первой читательской правкой');
     expect(html).not.toContain('вся история книги работают без CAPTCHA');
   });
+});
+
+describe('the way back (BOOK-221)', () => {
+  for (const page of ['privacy', 'rules'] as const) {
+    it(`opens /${page} with the one exit at its top, a real link to the book`, () => {
+      const html = renderToStaticMarkup(<LegalPage page={page} />);
+      // The column's first child, before the kicker and the title: the first stop in tab order.
+      expect(html.startsWith('<main class="page legal"><p class="screen-exit"><a href="/#toc">к оглавлению</a></p>')).toBe(
+        true,
+      );
+      expect(html.indexOf('class="screen-exit"')).toBeLessThan(html.indexOf('class="kicker"'));
+      // The book is another document, so the href is absolute: the browser navigates and the
+      // back button returns here. The copy is said once, in one place.
+      expect(/href="([^"]+)"/u.exec(html)?.[1]).toBe('/#toc');
+      expect(html.match(/к оглавлению/gu)).toHaveLength(1);
+    });
+  }
 });
 
 describe('/rules', () => {
@@ -306,5 +327,163 @@ describe('/rules', () => {
     expect(refusedAt).toBeGreaterThan(-1);
     expect(readersAt).toBeGreaterThan(refusedAt);
     expect(readersAt).toBeLessThan(worksAt);
+  });
+});
+
+/* ---------- the exit's face, resolved from the sheets (BOOK-221) ---------- */
+
+/**
+ * `.legal p` (0,1,1) out-specifies a bare class and `legal.css` boots after `chrome.css`, so a
+ * markup assertion cannot see that `/rules` painted the exit at serif 18. These tests resolve the
+ * cascade of the real sheets for the element itself: the declarations are read from the file
+ * text, specificity is counted the way the cascade counts it, and the winning rule is named.
+ * `@media` blocks are skipped — the exit's face is a base rule, and a narrower step that changed
+ * it is a line the browser harness (`line:fonts`) measures.
+ */
+
+type CssNode = { tag: string; classes: readonly string[] };
+type Compound = { tag: string | null; classes: string[] };
+type Selector = { compounds: Compound[]; combinators: string[] };
+type Won = { value: string; selector: string };
+
+/** `.legal > p.screen-exit` as compounds and the combinators between them. A tag, `.classes` or
+ *  `*` — an attribute or a pseudo selector is not one this reader understands, so such a rule is
+ *  dropped; none of these four sheets needs one here. */
+function parseSelector(text: string): Selector | null {
+  const compounds: Compound[] = [];
+  const combinators: string[] = [];
+  for (const token of text.replace(/\s*>\s*/gu, ' > ').trim().split(/\s+/u)) {
+    if (token === '>') {
+      if (compounds.length === 0) return null;
+      combinators[compounds.length - 1] = '>';
+      continue;
+    }
+    const match = /^(\*|[a-z][a-z0-9-]*)?((?:\.[a-z0-9-]+)*)$/u.exec(token);
+    if (match === null) return null;
+    compounds.push({
+      tag: match[1] === undefined || match[1] === '*' ? null : match[1],
+      classes: [...(match[2] ?? '').matchAll(/\.([a-z0-9-]+)/gu)].map((one) => one[1] ?? ''),
+    });
+  }
+  for (let index = 0; index < compounds.length - 1; index += 1) combinators[index] ??= ' ';
+  return compounds.length === 0 ? null : { compounds, combinators };
+}
+
+function matchesFrom(selector: Selector, path: readonly CssNode[], at: number, depth: number): boolean {
+  if (depth < 0) return true;
+  if (at < 0) return false;
+  const compound = selector.compounds[depth] as Compound;
+  const node = path[at] as CssNode;
+  if (compound.tag !== null && compound.tag !== node.tag) return false;
+  if (!compound.classes.every((name) => node.classes.includes(name))) return false;
+  if (depth === 0) return true;
+  if (selector.combinators[depth - 1] === '>') return matchesFrom(selector, path, at - 1, depth - 1);
+  for (let before = at - 1; before >= 0; before -= 1) {
+    if (matchesFrom(selector, path, before, depth - 1)) return true;
+  }
+  return false;
+}
+
+function outranks(left: number[], right: number[]): boolean {
+  for (let index = 0; index < left.length; index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return false;
+}
+
+/** Every property that lands on `path`, at the declaration that actually wins it. */
+function cascade(path: readonly CssNode[], ignore?: string): Map<string, Won> {
+  const rules: Array<{ selector: string; parsed: Selector; body: string; order: number }> = [];
+  for (const sheet of [baseCss, chromeCss, legalCss, trailCss]) {
+    let bare = sheet.replace(/\/\*[\s\S]*?\*\//gu, '');
+    while (bare.includes('@media')) {
+      const at = bare.indexOf('@media');
+      let depth = 0;
+      let cursor = bare.indexOf('{', at);
+      for (; cursor < bare.length; cursor += 1) {
+        if (bare[cursor] === '{') depth += 1;
+        if (bare[cursor] === '}') depth -= 1;
+        if (depth === 0) break;
+      }
+      bare = `${bare.slice(0, at)}${bare.slice(cursor + 1)}`;
+    }
+    for (const match of bare.matchAll(/([^{}]+)\{([^{}]*)\}/gu)) {
+      for (const text of (match[1] ?? '').split(',')) {
+        const parsed = parseSelector(text.trim());
+        if (parsed !== null) {
+          rules.push({ selector: text.trim(), parsed, body: match[2] ?? '', order: rules.length });
+        }
+      }
+    }
+  }
+  const won = new Map<string, Won>();
+  const rank = new Map<string, number[]>();
+  for (const rule of rules) {
+    if (rule.selector === ignore) continue;
+    if (!matchesFrom(rule.parsed, path, path.length - 1, rule.parsed.compounds.length - 1)) continue;
+    let classes = 0;
+    let tags = 0;
+    for (const compound of rule.parsed.compounds) {
+      classes += compound.classes.length;
+      if (compound.tag !== null) tags += 1;
+    }
+    // `[ids, classes, tags, order]` — the cascade's own comparison, and these sheets carry no ids.
+    const weight = [0, classes, tags, rule.order];
+    for (const declaration of rule.body.matchAll(/([a-z-]+)\s*:\s*([^;]+)/gu)) {
+      const property = declaration[1] ?? '';
+      const held = rank.get(property);
+      if (held !== undefined && !outranks(weight, held)) continue;
+      rank.set(property, weight);
+      won.set(property, { value: (declaration[2] ?? '').trim(), selector: rule.selector });
+    }
+  }
+  return won;
+}
+
+/** The exit's own path: the column it stands in (`main.page.legal` or the trail's section), the
+ *  line, and — when asked for — the link inside it. */
+function exitPath(inDocument: boolean, link = false): CssNode[] {
+  const column: CssNode = inDocument
+    ? { tag: 'main', classes: ['page', 'legal'] }
+    : { tag: 'section', classes: ['page', 'sheet', 'sled'] };
+  const path: CssNode[] = [
+    { tag: 'html', classes: [] },
+    { tag: 'body', classes: [] },
+    { tag: 'div', classes: ['canvas'] },
+    column,
+    { tag: 'p', classes: ['screen-exit'] },
+  ];
+  return link ? [...path, { tag: 'a', classes: [] }] : path;
+}
+
+describe('the exit’s face, taken from the sheets (BOOK-221)', () => {
+  it('wins on the static documents and on the trail: mono 12, the quiet ink, no underline', () => {
+    for (const [where, inDocument] of [
+      ['/privacy and /rules', true],
+      ['the trail', false],
+    ] as const) {
+      const line = cascade(exitPath(inDocument));
+      expect(line.get('font-family')?.value, `${where}: face`).toBe('var(--mono)');
+      expect(line.get('font-size')?.value, `${where}: size`).toBe('var(--fs-micro)');
+      // One line of movement at most: the margin stays inside the 1.35 line box.
+      expect(line.get('margin')?.value, `${where}: margin`).toBe('0 0 4px');
+      const anchor = cascade(exitPath(inDocument, true));
+      expect(anchor.get('color')?.value, `${where}: ink`).toBe('var(--ink-3)');
+      expect(anchor.get('text-decoration')?.value, `${where}: no underline`).toBe('none');
+      // No second face or size on the line: the link declares neither and inherits the `p`'s.
+      expect(anchor.get('font-family'), `${where}: one face`).toBeUndefined();
+      expect(anchor.get('font-size'), `${where}: one size`).toBeUndefined();
+    }
+  });
+
+  it('names the selector that beats `.legal p` — and loses the face without it', () => {
+    // The reviewed defect: the document's paragraph rule really does declare serif at the body
+    // size, so the second selector is the whole reason the exit is mono. Drop it and the cascade
+    // lands on `.legal p` — the failure this pin exists to catch.
+    expect(cascade(exitPath(true)).get('font-size')?.selector).toBe('.legal .screen-exit');
+    const unguarded = cascade(exitPath(true), '.legal .screen-exit');
+    expect(unguarded.get('font-family')).toEqual({ value: 'var(--serif)', selector: '.legal p' });
+    expect(unguarded.get('font-size')).toEqual({ value: 'var(--fs-body)', selector: '.legal p' });
   });
 });

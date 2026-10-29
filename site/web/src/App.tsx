@@ -11,7 +11,6 @@ import type {
   FrontUpdatedPayload,
   HelloPayload,
   HistoryEventFrame,
-  PassStageEvent,
   ServerEventType,
   StateUpdatedPayload,
   ViewerDto,
@@ -55,6 +54,8 @@ import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
+import { decisionFrameHandler } from './lib/decisionFrame.ts';
+import { liveFeedHandler } from './lib/liveFeed.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
@@ -179,9 +180,14 @@ export function App() {
   useQueuePoll(dataRef, setData);
 
   useEffect(() => {
+    const onDecision = decisionFrameHandler({ noteRecord, noteDecision, refreshComments, refreshCatalog, noteRevision });
+    // BOOK-206 audit B1 — the frames that move a live record without a decision of their own
+    // (the writer claiming a change, a change closing, a pass landing): `lib/liveFeed.ts`.
+    const onFeed = liveFeedHandler({ refreshComments, refreshCatalog, noteRevision, noteStage: stages.note });
     const socket = new BookSocket(websocketUrl(window.location.origin), {
       onEvent: (event: Envelope) => {
         const frame = event as Envelope<ServerEventType, unknown>;
+        onFeed(frame);
         switch (frame.type) {
           case 'hello': {
             const hello = frame.data as HelloPayload;
@@ -281,11 +287,6 @@ export function App() {
               timers.current.push(window.setTimeout(run, ms));
             });
             break;
-          case 'pass:stage':
-            // A pass is the only notice a page gets that a chapter's text is being written:
-            // `landed` is the engine's, and the site's watcher then publishes no revision.
-            stages.note(frame.data as PassStageEvent);
-            break;
           case 'history:event': {
             // BOOK-102: the frame is a bare tick, `{ hseq, at }` — no narration. The page says
             // «the log moved» and re-reads the record it prints.
@@ -298,15 +299,11 @@ export function App() {
             void refreshComments(commentFrameChapter(frame.data) ?? undefined);
             break;
           }
-          case 'comment:decision': {
-            // A decision frame is a broadcast; only the viewer's own comment earns a reload
-            // of the durable record. Everybody else's is simply the thread's business.
-            // BOOK-174: the frame carries the reading, onto the open record at once.
-            noteRecord({ kind: 'frame', type: frame.type, data: frame.data });
-            noteDecision(frame.data);
-            void refreshComments(commentFrameChapter(frame.data) ?? undefined);
+          case 'comment:decision':
+            // BOOK-174/BOOK-219: the record, the reading and — for a landing — the text, in one
+            // breath; the rule itself lives in `lib/decisionFrame.ts`.
+            onDecision(frame);
             break;
-          }
           case 'change:queued': {
             void refreshChanges();
             // BOOK-65: a comment accepted through the interface appends `change.queued`, so

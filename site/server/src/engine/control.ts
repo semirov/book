@@ -135,8 +135,8 @@ const doneBody = z.object({
   model: z.string().max(120).optional(),
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
-  /** BOOK-117: `operator` closes on the model that answered; the default is the pinned lane. */
-  provenance: z.enum(['pipeline', 'operator']).optional(),
+  /** BOOK-117/BOOK-219: `operator` closes on the model that answered; `pipeline-estimated` says the money was read off the text. */
+  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(),
   /**
    * BOOK-173 §4/§5: how the pass wrote. A `rewrite` whose text is byte-identical to the pre-image
    * closes the change as `no-op` — the silent no-op of a rewrite must be a visible fact, not a
@@ -164,6 +164,8 @@ const escalateBody = z.object({
   tokensOut: z.number().int().min(0).optional(),
   /** `failed` when the pass broke rather than refused the work; a broken pass is not a refusal. */
   cause: z.enum(['refused', 'failed']).optional(),
+  /** BOOK-219: a park after a paid call says whether its tokens are estimated. */
+  provenance: z.enum(['pipeline', 'operator', 'pipeline-estimated']).optional(),
 });
 const reopenBody = z.object({ stepId: id, because: z.string().max(200).optional() });
 const beatBody = z.object({ leaseId: id });
@@ -352,6 +354,7 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
         tokensIn: body.tokensIn,
         tokensOut: body.tokensOut,
         cause: body.cause,
+        provenance: body.provenance,
       }),
     };
   });

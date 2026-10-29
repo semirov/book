@@ -2,38 +2,40 @@
  * One writer pass, end to end (`docs/writer-lane.md` §1, §5–§6). The order:
  * ```
  * state → money guard (estimate vs the caps) → assignment → queued → start → prompt (rows)
- *   → read → belt (re-estimate) → model call(s) → validate (one retry with the reason)
- *   → continuation calls → land (the text travels in the request) → gates (verdict ×2, one
- *   revision) → landed → done
+ *   → read → belt (re-estimate) → model call(s) → tier 0 → land (the text travels) → gates
+ *   (verdict ×2, one revision) → done (the close; it announces the landing) → landed (the stage)
  * ```
  *
  * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
  * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
- * and no pre-image to keep.
+ * and no pre-image to keep. A base that moved is answered by the writer at `start` (`relevance.ts`),
+ * and every exit without `done` takes this pass's own landing back (`recovery.ts`, BOOK-219).
+ *
+ * A filing is **read before it is patched** (`passGuard.ts` `triageGuard`, BOOK-206/BOOK-173 §4):
+ * a patch keys the reader's words to a verdict, so an unread filing is refused before the prompt is
+ * bought. That refusal is the earlier, cheaper door; the engine's close (`VERDICTS_REQUIRED`) stays
+ * the second one, and neither let text land without the verdict that admitted the filing.
  *
  * Everything the pass touches is injected — engine, transport, clock, log. It holds no database,
- * no socket, no key; the talking lives in `passLane.ts`, the prompts in `prompt.ts` / `gates.ts`.
+ * no socket, no key; the talking lives in `passLane.ts`, the prompts in `prompt.ts` / `gates.ts`,
+ * the writing phase in `writePhase.ts`, the close in `closePass.ts`.
  *
  * A refusal the engine states (`CHAPTER_WRITTEN`, `PASS_LEASED`, `TOKENS_EXHAUSTED`) is returned,
  * never thrown. The bound this file enforces is money, not tokens: the estimate (`estimate.ts`)
  * is checked before the pass is opened and again, from the real prompt, before the first call.
- * A failure after the lease parks the pass — `escalate` with one sentence, never silently dropped.
- * Past the first landing a failure is auxiliary (owner, 2026-10-28): logged and remembered, never
- * escalated over text that landed; the close is the fact that must land.
- *
- * `landed` carries the pass's money line (writer + gate calls); `done` the writer's tokens only.
+ * Past the first landing a gate failure is auxiliary (owner, 2026-10-28) only when there is no
+ * landing of our own to take back; BOOK-219's rule — no landed text without a verdict — is the
+ * one this file keeps with `recovery.ts` and `closePass.ts`.
  */
 
-import { isChapterNumber, type BudgetDto, type WriteMode, type WriterAssignment } from '@book/shared';
+import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { isWrittenView } from '../engine/text.ts';
 import { readBuildStamp } from '../buildStamp.ts';
-import { parseChapter } from '../ingest/parseChapter.ts';
-import type { EngineClient, LandView, StartView } from './client.ts';
+import type { EngineClient, LandView } from './client.ts';
 import { capLine, estimatePassUsd } from './estimate.ts';
 import { moneyGuard, triageGuard } from './passGuard.ts';
 import { createLane, assignmentData, type PassResult, type ProviderCall } from './passLane.ts';
-import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
 import { buildPatchPrompt, type PatchPrompt } from './patch/prompt.ts';
 import { finalize } from './prose.ts';
@@ -42,27 +44,29 @@ import { afterPatch } from './ripple/afterPatch.ts';
 import { writeChapter } from './writePhase.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { rightsRefusal } from './rightsGate.ts';
-import { codeOf, failureOf, readerFallbacks, reasonOf, type Failure } from './reasons.ts';
-import { changedSpans } from './span.ts';
+import { codeOf, failureOf, readerFallbacks, readerSentences, reasonOf, type Failure } from './reasons.ts';
 import { NO_OP_LINE, stageSummary } from './stages.ts';
-import { closeTick } from './closeTick.ts';
 import { runGates } from './gatesPass.ts';
 import { tier0Detail, tier0Of, verifyChange, type GatesRecord } from './verify/run.ts';
 import type { Tier0Result } from './verify/tier0.ts';
+import { closePass } from './closePass.ts';
+import { backSentence } from './putBack.ts';
+import { createRecovery } from './recovery.ts';
+import { resumeBase, startWriting } from './relevance.ts';
 import type { WriterConfig } from './config.ts';
 
 export type { PassResult, PassStatus, ProviderCall } from './passLane.ts';
 
 /**
  * BOOK-145: a step the engine already took away is not a failure of this pass — a step wall, a
- * released lease, a step closed under us. One line, `next` again, and never a park on a dead step.
+ * released lease, a step closed by the engine. The lane says so in one line, asks `next` again at
+ * once and never closes the dead step; a run that landed puts its own text back first (BOOK-219).
  */
 const GONE_CODES = new Set(['STEP_WALL', 'LEASE_RELEASED', 'LEASE_NOT_FOUND']);
 
 export type PassDeps = {
   config: WriterConfig;
   bookRoot: string;
-  dataDir: string;
   /** ADR-043 G3: the prompt bundle this image carries; absent reads the build stamp. */
   promptBundle?: string | null;
   engine: EngineClient;
@@ -101,7 +105,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   if (!guard.ok) return guard.result;
   const { budget, estimate } = guard;
 
-  // 2. The assignment: a named chapter, or the lane's next slot.
+  // 2. The assignment: a named chapter, a ripple chapter, or the lane's next slot.
   let picked: WriterAssignment | null;
   try {
     if (deps.ripple !== undefined) {
@@ -169,7 +173,28 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
   );
   // The estimate that let the pass open travels with it: the transcript is where money is proved.
   if (estimate !== null) lane.setEstimate(estimate);
+
+  /** BOOK-219: the revision this run started from (or resumed at), and its sha. */
+  let preRev: number | null = null;
+  let preSha = '';
+  let landedHere = false;
+  /** The text as it now stands: the last revision this pass landed (or the resumed one). */
+  let text = '';
   let beforeText = '';
+  /** BOOK-DOC-80: Tier 0's verdict (before the write, for a patch) and the gates record. */
+  let tier0: Tier0Result = { ok: true, findings: [], notes: [] };
+  let gates: GatesRecord | null = null;
+  const published = (): boolean => landedHere || lane.landedAt() !== null;
+
+  /** BOOK-219: every exit without `done` takes this pass's own landing back first. */
+  const recovery = createRecovery({
+    engine,
+    lane,
+    job,
+    chapter,
+    state: { rev: () => preRev, sha: () => preSha, landed: published, text: () => text },
+    log: deps.log,
+  });
 
   function goneOf(code: string | null, detail: string): PassResult | null {
     if (code === null || !GONE_CODES.has(code)) return null;
@@ -182,9 +207,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     };
   }
 
-  /** The same check for a thrown engine refusal. */
-  function gone(error: unknown): PassResult | null {
-    return goneOf(codeOf(error), reasonOf(error));
+  /**
+   * BOOK-145 + BOOK-219: the wall that took the step away is why `gone` is right, but a run that
+   * landed has already published, so the text goes back first — `gone` on its own is the answer
+   * only when the way back finds nothing of ours (`none`), exactly as the rights path tells it.
+   */
+  async function goneAfterBack(code: string | null, detail: string): Promise<PassResult | null> {
+    const answer = goneOf(code, detail);
+    if (answer === null) return null;
+    if (!published()) return answer;
+    const back = await recovery.takeBack('шаг снят движком');
+    if (back.kind === 'unverified') deps.log(`[writer] откат не подтверждён: ${back.detail}`);
+    return answer;
   }
 
   try {
@@ -201,60 +235,46 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
     // A resumed step already has its text on disk: the lane continues at the gates, not at the pen.
     const resume = job.landed === true;
-    let text = '';
-    /** BOOK-DOC-80: Tier 0's verdict (always run before the write) and the gates record. */
-    let tier0: Tier0Result = { ok: true, findings: [], notes: [] };
-    let gates: GatesRecord | null = null;
-    // What the writing phase needs from above: the mode and the rewrite prompt it falls back to.
-    const modeInput: ModeInput = { pass: job.pass, scopeHint: job.scopeHint, sentenceAnchor: job.sentenceAnchor };
-    let choice: ModeChoice = chooseMode(modeInput, false);
-    let rewritePrompt: BuiltPrompt | null = null;
 
     if (!resume) {
-      // 4. `start`, then the pre-image.
-      let started: StartView;
-      try {
-        started = await engine.start(job.leaseId);
-      } catch (error) {
-        return gone(error) ?? (await lane.park(failureOf(error)));
+      // 4. `start`, then the pre-image — before a single byte of the chapter changes. A base the
+      //    engine says has moved is answered by the writer here (`relevance.ts`), never parked.
+      const opened = await startWriting({ engine, lane, job, chapter, log: deps.log });
+      if (!opened.ok) {
+        return (await goneAfterBack(opened.failure.code, opened.failure.detail)) ?? (await lane.park(opened.failure));
       }
+      const started = opened.started;
       if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
-      // The pre-image is the rows themselves (BOOK-187): nothing has been touched yet, so a
-      // refusal leaves the chapter exactly as the site serves it. The text a prompt quotes is read
-      // from the engine in one call — the target and its two neighbours.
+      preRev = typeof started.expectedRev === 'number' ? started.expectedRev : null;
+      preSha = started.sha;
+
+      // 5. The mode (§4), the prompt, and the stage that says both were assembled. The rewrite
+      //    prompt is built even in patch mode: the model may decline in one step.
+      const modeInput: ModeInput = { pass: job.pass, scopeHint: job.scopeHint, sentenceAnchor: job.sentenceAnchor };
+      let choice: ModeChoice;
       try {
         await lane.loadText([chapter - 1, chapter, chapter + 1]);
-        // The same bytes a landing writes (one trailing newline), so a no-op compares equal and
-        // Tier 0 sees the edit rather than a lost newline.
+        // The same bytes a landing writes (one trailing newline), so a no-op compares equal.
         beforeText = finalize(chapterQuote(lane.textOf(chapter)));
+        choice =
+          deps.ripple === undefined
+            ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
+            : RIPPLE_MODE;
       } catch (error) {
         return await lane.park(failureOf(error));
       }
-
-      // 5. The mode (§4), the prompt, and the stage that says both were assembled.
-      //    The rewrite prompt is built even in patch mode: the model may decline in one step.
-      // `WRITER_MODE_DEFAULT=rewrite` forces the whole-chapter path for every ordinary pass; a
-      // ripple chapter keeps its own mode (a rewrite there is what the ripple is not).
-      choice =
-        deps.ripple === undefined
-          ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
-          : RIPPLE_MODE;
-      const unread = triageGuard(job, choice.mode, deps.log); // BOOK-206: read before patch.
+      // BOOK-206 + BOOK-173 §4: a patch is refused before it is written when the filing behind it
+      // has not been read. It runs before the prompt is bought and long before the landing.
+      const unread = triageGuard(job, choice.mode, deps.log);
       if (unread !== null) return unread;
-      let built: BuiltPrompt, patchPrompt: PatchPrompt | null = null;
+      let built: BuiltPrompt, patchPrompt: PatchPrompt | null = null, rewrite: BuiltPrompt;
       try {
         const data = assignmentData(job);
-        rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data, chapterText: lane.textOf });
+        rewrite = buildWriterPrompt({ bookRoot, assignment: data, chapterText: lane.textOf });
         if (choice.mode === 'patch') {
-          patchPrompt = buildPatchPrompt({
-            bookRoot,
-            chapter,
-            assignment: data,
-            own: lane.textOf(chapter),
-            ripple: deps.ripple ?? null,
-          });
+          patchPrompt = buildPatchPrompt({ bookRoot, chapter, assignment: data, own: lane.textOf(chapter), ripple: deps.ripple ?? null });
         }
-        built = patchPrompt ?? rewritePrompt;
+        built = patchPrompt ?? rewrite;
       } catch (error) {
         return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
       }
@@ -300,20 +320,18 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
             }
           }
         } catch (error) {
-          // A failed re-read is not a licence to spend: the pre-estimate already passed, and the
-          // engine refuses the next call of a pass it will not hand out.
+          // A failed re-read is not a licence to spend: the pre-estimate already passed.
           deps.log(`[writer] пересчёт оценки не выполнен: ${reasonOf(error)}`);
         }
       }
 
-      // 7. The writing phase (`writePhase.ts`): patch or rewrite, one session, one attempt. Only
-      //    the model's own refusal refuses the premise; a broken patch is a pass that broke.
+      // 7. The writing phase (`writePhase.ts`): patch or rewrite, one session, one attempt.
       const written = await writeChapter({
         lane,
         bookRoot,
         chapter,
         mode: choice,
-        rewrite: rewritePrompt as BuiltPrompt,
+        rewrite,
         patch: patchPrompt,
         chapterText: lane.textOf,
         continueMax: config.continueMax,
@@ -331,11 +349,10 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         });
       }
       text = written.text;
-      // BOOK-173 §2: the patch's characters edits travel to `land`, which is what keeps ids.
+      // BOOK-173 §2: the patch's character edits travel to `land`, which is what keeps ids.
       lane.setMode(written.mode, written.patch, written.sentences);
 
-      // 7b. BOOK-DOC-80, Tier 0 — the countable invariants, **before** a byte is written. Only a
-      //     patch names a span; a rewrite is judged by the pair, which it always takes.
+      // 7b. BOOK-DOC-80, Tier 0 — the countable invariants, **before** a byte is written.
       if (lane.mode() === 'patch') {
         tier0 = tier0Of({ bookRoot, chapter, before: beforeText, after: text });
         if (!tier0.ok) {
@@ -345,27 +362,29 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       }
 
       // 8. The landing that makes the answer a revision — the text travels, no file is touched.
-      let landing: LandView;
+      let landing: LandView | null;
       try {
         landing = await lane.land(text);
+        landedHere = true;
       } catch (error) {
-        return gone(error) ?? (await lane.park(failureOf(error)));
+        return (await goneAfterBack(codeOf(error), reasonOf(error))) ?? (await lane.park(failureOf(error)));
       }
       // BOOK-173 §5: the silent no-op, said out loud — a pass that moved no byte must not read
       // in the log like a landing.
       if (lane.mode() === 'rewrite' && text === beforeText) deps.log(`[writer] ${NO_OP_LINE}, глава ${String(chapter)}`);
-      const reaction = await afterPatch({ plan: landing.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
+      const reaction = await afterPatch({ plan: landing?.plan ?? null, chapter, job, lane, bookRoot, now, log: deps.log });
+      // A ripple park is the design's own verdict (a `wide`, a refusal the author decides), and its
+      // sentence says the point patch stays: the text is not taken back behind that sentence.
       if (reaction.kind === 'park') return await lane.park({ detail: reaction.sentence, ...(reaction.cause === undefined ? {} : { cause: reaction.cause }) });
 
-      // 8b. BOOK-DOC-80: Tier 1 and the table decide whether the full pair is still needed. A
-      //     `GAP` here goes to the pair — the judge of the judge — never to the reader.
+      // 8b. BOOK-DOC-80: Tier 1 and the table decide whether the full pair is still needed.
       const verified = await verifyChange({
         config,
         bookRoot,
         chapter,
         before: beforeText,
         after: text,
-        plan: landing.plan ?? null,
+        plan: landing?.plan ?? null,
         mode: lane.mode(),
         tier0,
         lane,
@@ -379,7 +398,11 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       answered.consultant = false;
       answered.rights = false;
     } else {
-      // A resumed step: the rows hold the landed text the gates may ask for below.
+      // A resumed step: the rows hold the landed text the gates may ask for below, and the base
+      // its own re-landing returns to is the revision the step stands at (`resumeBase`, BOOK-219).
+      const base = await resumeBase({ engine, job, chapter, log: deps.log });
+      preRev = base.rev;
+      preSha = base.sha;
       try {
         await lane.loadText([chapter]);
       } catch (error) {
@@ -403,97 +426,72 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     });
     if (gateOutcome.kind === 'rights') {
       // The rights gate refused the text and the engine closed the step: no `done`, no revision.
+      // The refused text is live, so it is taken back first, and the sentence says which happened.
       deps.log('[writer] права: отказ — шаг закрыт движком, проход завершён');
-      return rightsRefusal({ stepId: job.stepId, changeId: job.changeId, lane, config });
+      const back = await recovery.takeBack('права отказали');
+      const refused = rightsRefusal({
+        stepId: job.stepId,
+        changeId: job.changeId,
+        lane,
+        config,
+        sentence: backSentence(back, 'rights') ?? readerSentences.rightsUnverified,
+      });
+      await lane.transcript(refused);
+      return refused;
     }
+    // A revision this pass landed is part of its own text: the way back and the close read *it*.
+    if (gateOutcome.revised !== undefined) text = gateOutcome.revised;
     if (gateOutcome.kind === 'park') {
-      const stepped = goneOf(gateOutcome.failure.code ?? null, gateOutcome.failure.detail);
+      const stepped = await goneAfterBack(gateOutcome.failure.code ?? null, gateOutcome.failure.detail);
       if (stepped !== null) return stepped;
-      return await lane.park({ ...gateOutcome.failure, fallback: gateOutcome.fallback });
+      // A rights failure (or an unreadable gate answer, or a revision that never validated) is not
+      // auxiliary: the text it landed has no verdict, so it goes back before the pass parks.
+      const code = gateOutcome.failure.code ?? '';
+      const back = await recovery.takeBack(code === '' ? 'правка не прошла проверку' : 'гейт не ответил');
+      return await recovery.parkAfter(
+        { ...gateOutcome.failure, fallback: gateOutcome.fallback },
+        back,
+        code.startsWith('RIGHTS') ? 'rights' : 'gate',
+      );
     }
     const survived: Failure | null = gateOutcome.survived;
-
-    // 10. `landed`: the span, the tokens, the money — a stage, so it can never throw.
-    const usage = lane.usage();
-    const passCost = costUsd(config.pipeline.pricing, usage);
-    const parsed = parseChapter(chapter, text);
-    await lane.emit({
-      stage: 'landed',
-      chapter,
-      passId: job.stepId,
-      changeId: job.changeId,
-      summary: stageSummary.landed({
-        chapter,
-        chars: parsed.chars,
-        blocks: parsed.blocks.length,
-        tokensIn: usage.in,
-        tokensOut: usage.out,
-        tokensCachedIn: usage.cachedIn,
-        gates: gates === null ? null : gates.word,
-        costUsd: passCost,
-      }),
-      model: config.model,
-      span: changedSpans(beforeText, text, chapter),
-      tokens: { in: usage.in, out: usage.out },
-      costUsd: passCost,
-      at: now(),
-    });
-
-    // 11. `done`: the writer's tokens only (the engine adds each gate's). `STEP_CLOSED` is the
-    //     close this pass asked for; a transport failure gets one more try (`closeTick.ts`).
-    const passMode: WriteMode | null = lane.mode();
-    const { closed, failure: closeFailure } = await closeTick({
-      engine,
-      stepId: job.stepId,
-      log: deps.log,
-      body: {
-        leaseId: job.leaseId,
-        note: `глава ${String(chapter)}: ${String(parsed.chars)} знаков, ${String(parsed.blocks.length)} абзацев`,
-        model: config.model,
-        tokensIn: lane.writerTokens().in,
-        tokensOut: lane.writerTokens().out,
-        seams: [],
-        // BOOK-173 §4: how this pass wrote — the one thing the engine cannot state itself.
-        ...(passMode === null ? {} : { mode: passMode }),
-        // BOOK-DOC-80: which tiers judged it, so `change_plans` and the sample queue learn it.
-        ...(gates === null
-          ? {}
-          : {
-              verification: {
-                gatesMode: gates.gatesMode,
-                why: gates.why,
-                tier1Verdict: gates.tier1Verdict,
-                tier1Usd: gates.tier1Usd,
-              },
-            }),
-      },
-    });
-    if (closed === null) {
-      // The gate's own failure is why the verdicts never arrived; the close's refusal is its own.
-      const why: Failure =
-        closeFailure?.code === 'VERDICTS_REQUIRED' && survived !== null
-          ? survived
-          : (closeFailure ?? { code: null, detail: 'шаг не закрылся: движок не подтвердил закрытие' });
-      return await lane.park({ ...why, fallback: why === survived ? readerFallbacks.gate : readerFallbacks.stopped });
+    if (survived !== null) {
+      lane.remember(survived);
+      deps.log(`[writer] гейт не ответил (${survived.code ?? 'без кода'}): ${survived.detail}`);
+      // BOOK-219, the compensating revert: a pass that published and then lost its verdict takes
+      // its own landing back before it parks — the engine requires `landed_at` to dispatch a gate.
+      const back = await recovery.takeBack('гейт не ответил');
+      if (back.kind !== 'none') return await recovery.parkAfter({ ...survived, cause: 'failed' }, back);
+      // `none`: this run published nothing (a resumed step that only read the gates).
+      deps.log('[writer] откат не нужен: текст опубликован не этим проходом — шаг закрывается');
     }
 
-    const result: PassResult = {
-      status: 'closed',
-      stepId: closed.stepId,
-      changeId: job.changeId,
-      tokens: lane.writerTokens(),
-      costUsd: passCost,
-    };
-    await lane.transcript(result);
-    deps.log(
-      `[writer] closed ${closed.stepId}: ${closed.outcome}, глава ${String(chapter)}, ${String(parsed.chars)} знаков, $${passCost.toFixed(4)}`,
-    );
-    return result;
+    // 10–11. `landed`, then `done`: the close is its own seam (`closePass.ts`) — the money it
+    //     reports and the words it closes with are BOOK-219's business too.
+    return await closePass({
+      lane,
+      engine,
+      config,
+      chapter,
+      job,
+      text,
+      beforeText,
+      failed: survived,
+      started: { rev: preRev, sha: preSha },
+      landing: lane.landedAt(),
+      landed: published(),
+      mode: lane.mode(),
+      gates,
+      log: deps.log,
+      now,
+    });
   } catch (error) {
-    const stepped = gone(error);
+    const stepped = await goneAfterBack(codeOf(error), reasonOf(error));
     if (stepped !== null) return stepped;
-    const parked = await lane.park(failureOf(error));
-    await lane.transcript(parked);
-    return parked;
+    // BOOK-219's invariant covers a thrown failure too: after our own landing the text goes back
+    // before the pass parks, or a reader keeps a revision a broken pass published.
+    const back = await recovery.takeBack('проход сломался');
+    if (back.kind !== 'none') return await recovery.parkAfter(failureOf(error), back);
+    return await lane.park(failureOf(error));
   }
 }

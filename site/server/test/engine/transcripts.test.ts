@@ -16,7 +16,9 @@ import { toIso } from '../../src/util/time.ts';
 import { createEngineFixture, type Fixture } from './helpers.ts';
 
 const TOKEN = 'transcript-token';
-const DAY = Date.UTC(2026, 9, 28, 12, 0, 0);
+// Today's noon UTC at run time, not a fixed date: retention is measured against the real clock, so
+// a pinned day would turn the "29 days ago, fresh" row into a prune as soon as the calendar moved on.
+const DAY = Math.floor(Date.now() / 86_400_000) * 86_400_000 + 12 * 60 * 60 * 1000;
 
 let closeApp: (() => Promise<void>) | null = null;
 

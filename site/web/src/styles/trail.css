@@ -1,9 +1,10 @@
 /**
  * BOOK-207 — «ваш след», the reader's own page.
  *
- * One sheet in the book's column (640/622/342 through `.page.sheet`): a mono 12 head, the
- * serif 15 trace line, and one row per filing — a mono 12 meta line, the quote as a door, and
- * the state's detail in the quiet ink. No count, no box, no floating layer; the page grows and
+ * One sheet in the book's column (640/622/342 through `.page.sheet`): the one exit at its top
+ * (`.screen-exit`, BOOK-221), a mono 12 head, the serif 15 trace line, and one row per filing —
+ * a mono 12 meta line (its number, chapter and moment), the quote as a door, and the state's
+ * one sentence in the reader's voice. No count, no box, no floating layer; the page grows and
  * the page is the scroller.
  */
 
@@ -93,13 +94,13 @@
   line-height: 1.5;
   color: var(--ink-3);
 }
-.sled-exit {
-  margin: 24px 0 0;
-}
-.sled-exit a {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 1.35;
-  color: var(--ink-3);
-  text-decoration: none;
+/* BOOK-221 — the row's own sentence: serif note rung, the reader's ink, and it may wrap. It
+   replaced the state word plus `commentStatusLine().detail`, and the page's one exit moved to
+   `.screen-exit` at the top (chrome.css), so nothing is printed twice. */
+.sled-state {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink-2);
 }

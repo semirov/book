@@ -96,9 +96,9 @@ export async function runRippleCli(input: RippleCliInput): Promise<number> {
         runDrainChapter(
           {
             db: input.db,
+            dataDir: input.dataDir,
             config: input.config,
             bookRoot: input.bookRoot,
-            dataDir: input.dataDir,
             engine: input.engine,
             provider: input.provider,
             now: input.now,
@@ -107,7 +107,6 @@ export async function runRippleCli(input: RippleCliInput): Promise<number> {
               runPass({
                 config: input.config,
                 bookRoot: input.bookRoot,
-                dataDir: input.dataDir,
                 engine: input.engine,
                 provider: input.provider,
                 now: input.now,

@@ -103,7 +103,7 @@ export type Harness = {
    */
   run(options?: {
     chapter?: number | null;
-    lanes?: Array<'fwd' | 'bwd'>;
+    lanes?: Array<'fwd' | 'bwd' | 'filing'>;
     dryRun?: boolean;
     filed?: boolean;
   }): Promise<PassResult>;
@@ -265,7 +265,6 @@ export async function createHarness(options: { chapters?: Record<number, string>
       return runPass({
         config,
         bookRoot: fixture.root,
-        dataDir: fixture.dataDir,
         engine,
         provider,
         now: () => fixture.clock.now(),

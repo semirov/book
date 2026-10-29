@@ -19,7 +19,7 @@
  * the reason: a model can write a reason, a string test is not a verdict (`repo.ts` `refusalOf`).
  */
 
-import type { CommentRefusal, CommentRevise } from '@book/shared';
+import { READING_RESCHEDULED_LINE, type CommentRefusal, type CommentRevise } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { sha256Hex } from '../util/hash.ts';
@@ -112,35 +112,38 @@ export function openAttempt(db: Db, commentId: string): { n: number } | undefine
 /** Calls bought for one attempt before it is a visible defect instead of a retry. */
 export const TRIAGE_MAX_TRIES = 3;
 
-/** The claim's lease: above the writer's own 420 s call, so a live call is never bought twice. */
-export const TRIAGE_CLAIM_TTL_MS = 600_000;
+/** One provider call's cap: the writer's `WRITER_TIMEOUT_MS` default (`writer/config.ts`, 420 s). */
+export const TRIAGE_CALL_TIMEOUT_MS = 420_000;
+
+/**
+ * The claim's lease: **two** call caps plus a margin (900 s). `writer/provider.ts` retries a
+ * broken call once, so one triage call can take 2 × 420 s and still be live; a 600 s lease let a
+ * restarted writer claim the same attempt under a running call and buy it twice (BOOK-206 M2).
+ */
+export const TRIAGE_CLAIM_TTL_MS = 2 * TRIAGE_CALL_TIMEOUT_MS + 60_000;
 
 /** The backoff a failed call sets, by the try that failed: 60 s → 10 min → 6 h. */
 export const TRIAGE_BACKOFF_MS: readonly number[] = [60_000, 600_000, 6 * 60 * 60_000];
 
-/** One filing a run may be asked to read: the row, its attempt, and the tries already spent. */
+/** One filing a run may be asked to read, and the claim the previous writer held (M4). */
 export type DueTriage = {
   commentId: string;
   n: number;
   chapter: number;
   tries: number;
+  claimUntil: string | null;
 };
 
 /**
- * The filings that are due for a read, oldest first. The row that drives triage is the filing's
- * own ledger (`comment_attempts`): a `new` filing with no disposition whose latest attempt is
- * still `submitted`, has no verdict yet, has tries left, is not waiting out a backoff and is not
- * claimed by another writer. Nothing else is armed at posting — this is a query, not a queue.
- *
- * The rights door comes first: the query asks only for `rights_verdict = 'CLEAR'`, because a
- * model read is never bought for a filing Gate B has not cleared (BOOK-61). A flagged row waits
- * there, on the operator's surface (`feedback.mjs inbox --rights`), and becomes due the moment
- * the verdict is recorded — never before.
+ * The filings due for a read, oldest first: a `new` filing with no disposition whose latest
+ * attempt is `submitted`, unread, has tries left, is not backing off and is claimed by nobody —
+ * this is a query, not a queue. The rights door comes first (`rights_verdict = 'CLEAR'`): no read
+ * is bought for a row Gate B has not cleared (BOOK-61), and the verdict landing makes it due.
  */
 export function dueTriage(db: Db, now: string, limit = 8): DueTriage[] {
   return db
     .prepare(
-      `SELECT c.id AS commentId, a.n AS n, c.chapter AS chapter, a.tries AS tries
+      `SELECT c.id AS commentId, a.n AS n, c.chapter AS chapter, a.tries AS tries, a.claim_until AS claimUntil
          FROM comments c
          JOIN comment_attempts a ON a.comment_id = c.id
         WHERE c.status = 'new' AND c.disposition IS NULL
@@ -192,7 +195,46 @@ export function scheduleRetry(db: Db, input: { commentId: string; n: number; nex
   );
 }
 
-/** The backoff for the try that just failed; `null` at the cap (no fourth call). */
+/**
+ * BOOK-206 B5 — the day's last try is not the filing's last: one new UTC day is a new reading
+ * budget. The attempt is put back to the next 00:00 UTC with `tries` at zero and the claim
+ * released, and the row's public line says the time (`READING_RESCHEDULED_LINE`) — a reader must
+ * never be told «остаётся в очереди» about a row `dueTriage` had already excluded.
+ *
+ * One transaction with the caller's, so the budget and the sentence cannot disagree. Returns the
+ * new `next_at`, or `null` when the attempt is no longer open (an answer landed meanwhile).
+ */
+export function rescheduleTomorrow(db: Db, input: { commentId: string; n: number; nowMs: number }): string | null {
+  const nextAt = new Date(utcDayEnd(input.nowMs)).toISOString();
+  const run = db.transaction((): string | null => {
+    const moved = db
+      .prepare(
+        `UPDATE comment_attempts SET next_at = ?, tries = 0, claim_by = NULL, claim_until = NULL
+          WHERE comment_id = ? AND n = ? AND outcome = 'submitted' AND verdict IS NULL`,
+      )
+      .run(nextAt, input.commentId, input.n).changes;
+    if (moved !== 1) return null;
+    // The row's own line is the only place the page reads a fact about a `new` filing
+    // (`commentView.ts` prints `reason` beside the word), so the sentence lives there.
+    db.prepare(`UPDATE comments SET reason = ? WHERE id = ? AND status = 'new' AND disposition IS NULL`).run(
+      READING_RESCHEDULED_LINE,
+      input.commentId,
+    );
+    return nextAt;
+  });
+  return run();
+}
+
+/**
+ * Give back the sentence a rescheduled attempt wrote: the next reading happened, so the row's
+ * line must stop naming a wait that is over (BOOK-206 B5). Conditional on the exact sentence, so
+ * a line the gate or the ladder wrote is never touched.
+ */
+export function clearRetryLine(db: Db, commentId: string): void {
+  db.prepare(`UPDATE comments SET reason = NULL WHERE id = ? AND reason = ?`).run(commentId, READING_RESCHEDULED_LINE);
+}
+
+/** The backoff for the try that just failed; `null` at the cap (no fourth call today). */
 export function triageBackoffMs(tries: number): number | null {
   if (tries >= TRIAGE_MAX_TRIES) return null;
   return TRIAGE_BACKOFF_MS[Math.max(0, tries - 1)] ?? null;
@@ -239,6 +281,10 @@ export function latestAttempt(db: Db, commentId: string): AttemptVerdict | undef
  * Two shapes count, both at the cap: an attempt the writer gave up on (`submitted`, no verdict),
  * and one the applier could not place (settled `held` — a corrupt reading, a gate that never
  * cleared). A held attempt below the cap is a gate's own hold and says nothing about triage.
+ *
+ * BOOK-206 B5: a capped attempt is **rescheduled** (`rescheduleTomorrow`) — `tries` back to zero
+ * and `next_at` at the next UTC midnight — so the count below no longer reaches the cap and the
+ * page reads «ждёт» with the rescheduled sentence, never a failed state nothing will retry.
  */
 export function triageAttemptFailed(db: Db, commentId: string): boolean {
   const row = db

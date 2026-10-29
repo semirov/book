@@ -46,6 +46,8 @@ export type EscalateOptions = {
   tokensOut?: number;
   now?: number;
   cause?: PremiseCause;
+  /** BOOK-219: a park after a paid call is priced too, and says if its numbers are estimated. */
+  provenance?: Provenance;
 };
 
 export type CloseStepInput = {
@@ -55,8 +57,11 @@ export type CloseStepInput = {
   model: string | null;
   tokensIn: number;
   tokensOut: number;
-  /** Who ran the pass (`pipeline` | `operator`): the history answers «machine or repair». */
-  provenance?: 'pipeline' | 'operator' | null;
+  /**
+   * Who ran the pass (`pipeline`, `operator`, `pipeline-estimated`): the history answers «machine or
+   * repair», the ledger also answers «measured or estimated» (BOOK-219).
+   */
+  provenance?: Provenance | null;
   /** The change's outcome, decided from relevance before the write (void/dropped or applied). */
   changeOutcome?: ChangeOutcome | null;
   /** Overrides for a step that closes a change without editing it (void/dropped). */

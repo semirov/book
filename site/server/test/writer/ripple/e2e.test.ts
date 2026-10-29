@@ -127,9 +127,9 @@ describe('one ripple end to end', () => {
           runDrainChapter(
             {
               db,
+              dataDir: harness.dataDir,
               config: harness.config,
               bookRoot: harness.bookRoot,
-              dataDir: harness.dataDir,
               engine,
               provider: harness.provider,
               now: () => harness.fixture.clock.now(),
@@ -138,7 +138,6 @@ describe('one ripple end to end', () => {
                 runPass({
                   config: harness.config,
                   bookRoot: harness.bookRoot,
-                  dataDir: harness.dataDir,
                   engine,
                   provider: harness.provider,
                   now: () => harness.fixture.clock.now(),

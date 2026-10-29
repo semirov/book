@@ -77,9 +77,10 @@ export type Lane = {
   textOf: ChapterTextLookup;
   /**
    * The one way the pass's text becomes a fact: the request body carries it, no file (BOOK-187).
-   * The answer is the landing, because BOOK-173 §7 hands the frozen plan back to the pass.
+   * The answer is the landing, because BOOK-173 §7 hands the frozen plan back to the pass; a
+   * landing whose answer was lost (`null`) is still this pass's text — the rows said so (BOOK-219).
    */
-  land(value: string): Promise<LandView>;
+  land(value: string): Promise<LandView | null>;
   /** The pass's receipt, sent once after its outcome is known; never fatal (AC7). */
   transcript(result: PassResult): Promise<void>;
   /** Validate one answer; `finishReason` is the provider's, because `length` is a cut chapter. */
@@ -107,4 +108,8 @@ export type Lane = {
   setEstimate(value: PassEstimate): void;
   /** BOOK-DOC-80: the gates record — the receipt carries it and the close writes it down. */
   setGates(value: GatesRecord): void;
+  /** BOOK-219: some call's usage was read off the text — the close and the park name the estimate. */
+  estimated(): boolean;
+  /** The revision the pass's own last landing published, `null` before it landed anything. */
+  landedAt(): { rev: number; sha: string } | null;
 };

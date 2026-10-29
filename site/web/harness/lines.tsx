@@ -212,7 +212,7 @@ function Gallery() {
           }}
         />
       </Line>
-      <Line id=".sled-head / .sled-line">
+      <Line id=".screen-exit / .sled-head / .sled-line">
         <TrailPage viewer={{ signedIn: false, displayName: null }} />
       </Line>
       <Line id=".premise-row / .premise-meta">

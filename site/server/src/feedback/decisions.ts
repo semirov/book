@@ -159,6 +159,9 @@ export class DecisionsTailer {
         queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
         source: 'llm',
         report: this.reportOf(comment),
+        // BOOK-206 B2 — a triage decision moved no chapter's text: the receipt is null, never
+        // absent, so the consumer can tell «nothing landed» from «this frame forgot to say».
+        applied: null,
       } satisfies CommentDecisionPayload);
       if (comment.change_id !== null) this.announceQueued(comment.change_id);
       // BOOK-189: this is the **normal** path for a refusal, not an edge — `feedback.mjs decide`
@@ -244,6 +247,8 @@ export class DecisionsTailer {
       source: 'llm',
       // BOOK-174: the reading travels with the frame, so the open filing shows it at once.
       report: this.reportOf(readCommentRow(this.db, comment.id) ?? comment),
+      // A triage accept moved no chapter's text: the receipt is present and null (BOOK-206 B2).
+      applied: null,
     };
     this.emit('comment:decision', payload);
     this.announceQueued(accepted.changeId);
@@ -304,6 +309,8 @@ export class DecisionsTailer {
       queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
       source: 'llm',
       report: reportOfDecision(this.db, result.decision, comment),
+      // A lock refusal never became a change: no text moved, and the receipt says so.
+      applied: null,
     } satisfies CommentDecisionPayload);
     // BOOK-189: the row is decided and the socket has spoken; the push goes out once, after both.
     // A filing with no change never gets a close to announce it, so this is its only answer — and
@@ -338,6 +345,8 @@ export class DecisionsTailer {
       changeId: null,
       queue: { depth: readQueue(this.db, this.now().getTime()).depth, ahead: 0 },
       source: 'llm',
+      // A gate's refusal is not a landing: the receipt is present and null (BOOK-206 B2).
+      applied: null,
     } satisfies CommentDecisionPayload);
     // BOOK-189: the row is decided and the reader has been told on the socket; the push goes out
     // once, after both. A refused filing has no change to be decided later, so this is the only

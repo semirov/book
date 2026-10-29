@@ -1,6 +1,5 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
-
 import {
   attemptsOf,
   earlierAttempts,
@@ -12,6 +11,7 @@ import {
   insertFiling,
   isPending,
   isStale,
+  landingOf,
   sortFilings,
   staleLine,
   stripFilings,
@@ -19,10 +19,18 @@ import {
   upsertFiling,
   withDecisionReport,
   wordFilingOf,
+  type CommentDecisionFrame,
 } from './filings.ts';
 import { placeHref } from './place.ts';
 
-function comment(overrides: Partial<CommentDto> & { id: string; createdAt: string }): CommentDto {
+/** A filing with the one fact only a frame can bring (BOOK-206 B1). */
+type FilingsOverrides = Partial<CommentDto> & {
+  id: string;
+  createdAt: string;
+  retryAt?: string | null;
+};
+
+function comment(overrides: FilingsOverrides): CommentDto {
   return {
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 2, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
@@ -41,7 +49,7 @@ function comment(overrides: Partial<CommentDto> & { id: string; createdAt: strin
     refusal: null,
     attempt: null,
     ...overrides,
-  };
+  } as CommentDto;
 }
 
 const NEW = comment({ id: 'cmt_01J9Z8K4Q7', createdAt: '2026-10-21T12:03:00Z' });
@@ -298,5 +306,124 @@ describe('the decision frame’s report (BOOK-174)', () => {
     const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z' });
     expect(withDecisionReport([row], { id: 'cmt_missing', report })).toBeNull();
     expect(withDecisionReport([row], { id: 'cmt_A' })).toBeNull();
+  });
+});
+
+/**
+ * BOOK-219 — a close that landed the filing's text is a second decision about the same filing:
+ * `comment:decision` with `status: 'applied'` and the receipt. The row must move to `applied` in
+ * that frame (the open page must not print «ждёт» over a chapter that already holds the text),
+ * and the frame must name the chapter whose prose the page has to read again.
+ */
+describe('the landing frame (BOOK-219)', () => {
+  const report = { line1: 'прочитано как сказано', line2: 'потому что так и было', line3: 'глава 8 · абзац 3' };
+  const landing: CommentDecisionFrame = {
+    id: 'cmt_A',
+    chapter: 8,
+    status: 'applied',
+    reason: 'правка внесена в главу 8',
+    decidedAt: '2026-10-25T13:00:00Z',
+    changeId: 'chg_landed',
+    applied: { chapter: 8, rev: 4 },
+    report,
+  };
+
+  it('moves the row to applied with its receipt and its reading', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeId: 'chg_old' });
+    const next = withDecisionReport([row], landing);
+    expect(next?.[0]).toMatchObject({
+      id: 'cmt_A',
+      status: 'applied',
+      reason: 'правка внесена в главу 8',
+      decidedAt: '2026-10-25T13:00:00Z',
+      changeId: 'chg_landed',
+      applied: { chapter: 8, rev: 4 },
+      report,
+    });
+  });
+
+  it('takes the receipt as the last word, including “no receipt”', () => {
+    const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'applied', applied: { chapter: 8, rev: 3 } });
+    const next = withDecisionReport([row], { id: 'cmt_A', status: 'applied', applied: null });
+    // The server derives the receipt; a landing whose chapter row is gone carries none, and the
+    // page must not keep printing the number it had.
+    expect(next?.[0]?.applied).toBeNull();
+  });
+
+  it('names the chapter whose text must be read again — and only for a landing', () => {
+    expect(landingOf(landing)).toEqual({ chapter: 8, rev: 4 });
+    // Triage's own frames move the record and no text: accepted, refused, or applied without
+    // the receipt the server derives.
+    expect(landingOf({ ...landing, status: 'accepted', applied: null })).toBeNull();
+    expect(landingOf({ ...landing, status: 'rejected' })).toBeNull();
+    expect(landingOf({ ...landing, applied: null })).toBeNull();
+    expect(landingOf({ ...landing, applied: { chapter: 0, rev: 4 } })).toBeNull();
+    expect(landingOf({ ...landing, applied: { chapter: 8, rev: -1 } })).toBeNull();
+    expect(landingOf('applied')).toBeNull();
+    expect(landingOf(null)).toBeNull();
+  });
+});
+
+/**
+ * BOOK-206 audit B1 — the frame that says the change's next attempt is scheduled. Its only fact
+ * is the retry time; the reader's line is the frame's own `reason`, so the row must never keep
+ * «в очереди на запись» while a stopped attempt is being retried.
+ */
+describe('the frame’s scheduled retry (BOOK-206 B1)', () => {
+  const row = comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' });
+
+  it('carries the retry onto its own row and stops the row promising a queue place', () => {
+    const next = withDecisionReport([row], {
+      id: 'cmt_A',
+      status: 'accepted',
+      reason: 'провайдер не ответил — повтор в 12:05',
+      decidedAt: '2026-10-29T12:00:00Z',
+      attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' },
+    });
+    expect(next?.[0]).toMatchObject({ retryAt: '2026-10-29T12:05:00Z', reason: 'провайдер не ответил — повтор в 12:05' });
+  });
+
+  it('is idempotent, and a spent attempt clears the retry it carried before', () => {
+    const held = withDecisionReport([row], { id: 'cmt_A', attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' } });
+    expect(held).not.toBeNull();
+    const again = withDecisionReport(held ?? [], { id: 'cmt_A', attempt: { state: 'failed', retryAt: '2026-10-29T12:05:00Z' } });
+    expect(again).toBeNull();
+    const spent = withDecisionReport(held ?? [], { id: 'cmt_A', attempt: { state: 'spent', retryAt: null } });
+    expect(spent?.[0]?.retryAt).toBeNull();
+    // A frame that says nothing about the attempt leaves the fact where it was.
+    expect(withDecisionReport(held ?? [], { id: 'cmt_A', status: 'accepted' })).toBeNull();
+  });
+});
+
+/**
+ * BOOK-219 — the mark's ink follows the row's own fact: a receipt is a landing, and a stop
+ * reaches the page as the server's `rejected` row. Nothing is re-derived from the linked change
+ * here, because the server already turned that change into the status.
+ */
+describe('the mark’s ink for a closed change (BOOK-206 B2)', () => {
+  it('paints a landed row as the landing and a stopped one as stopped', () => {
+    const landed = comment({
+      id: 'cmt_A',
+      createdAt: '2026-10-25T12:00:00Z',
+      status: 'applied',
+      applied: { chapter: 8, rev: 4 },
+    });
+    expect(filingInk(landed)).toMatchObject({ word: 'внесено', rule: 'none', tone: 'done' });
+    // A receipt is the landing fact even on a row whose word has not been refetched yet.
+    expect(
+      filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', applied: { chapter: 8, rev: 4 } })),
+    ).toMatchObject({ word: 'внесено', rule: 'none', tone: 'done' });
+    // The server's stopped filing: `rejected`, and the deck's refusal word with the stopped ink.
+    const stopped = comment({
+      id: 'cmt_A',
+      createdAt: '2026-10-25T12:00:00Z',
+      status: 'rejected',
+      reason: 'правка остановлена — текст остался прежним',
+    });
+    expect(filingInk(stopped)).toMatchObject({ word: 'отклонено', rule: 'solid', tone: 'stopped' });
+    // The live row keeps the live ink and its word.
+    expect(
+      filingInk(comment({ id: 'cmt_A', createdAt: '2026-10-25T12:00:00Z', status: 'accepted', changeStatus: 'pending' })),
+    ).toMatchObject({ word: 'ждёт', rule: 'solid', tone: 'live' });
   });
 });

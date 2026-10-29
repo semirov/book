@@ -32,7 +32,7 @@ const SITE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '
 export const USAGE = [
   'usage: writer [--once] [--chapter N] [--dry-run] [--revert --chapter N] [--loop] [--ripple] [--plan ID] [--audit-samples [N]]',
   '',
-  '  --once            one pass, then exit (default)',
+  '  --once            one triage pulse and one pass, then exit (default)',
   '  --chapter N       open the first pass for chapter N instead of the lane’s next slot',
   '  --dry-run         resolve config, assignment and prompt; no engine, no model, no writes',
   '  --revert --chapter N  put the chapter back to its pre-pass state, verify the sha, reconcile',
@@ -346,7 +346,6 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     runPass({
       config,
       bookRoot,
-      dataDir,
       engine,
       provider,
       now,
@@ -356,6 +355,18 @@ export async function main(deps: MainDeps = {}): Promise<number> {
     });
 
   if (!cli.loop) {
+    // BOOK-206 (--once): a manual run reads one pulse before the pass. Without it a one-shot run
+    // left the reader's queue unread and the operator blind to it; `--loop` is unchanged.
+    try {
+      const triage = await runTriage({ config, bookRoot, engine, provider, now, log });
+      log(
+        `[writer] триаж: прочитано ${String(triage.triaged)}, без ответа ${String(triage.failed)}` +
+          (triage.budget ? ', день на паузе' : ''),
+      );
+    } catch (error) {
+      // A broken pulse is a line, not a reason to skip the pass the operator asked for.
+      log(`[writer] триаж: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const counter = await dayCounter(engine, todayUtc(now()), log);
     if (counter.passes >= config.maxPassesPerDay) {
       log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);

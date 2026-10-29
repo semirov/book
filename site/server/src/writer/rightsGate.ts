@@ -168,19 +168,22 @@ export class RightsGateUnparsed extends Error {
 
 /**
  * The pass's end when Gate B refused: the engine already closed the step (`escalated:rights`),
- * so the lane reports the refusal with the pass's own money and writes no `done`.
+ * so the lane reports the refusal with the pass's own money and writes no `done`. The sentence
+ * says what happened to the text — the caller names it, because the pass takes its own landing
+ * back before it answers (BOOK-219).
  */
 export function rightsRefusal(input: {
   stepId: string;
   changeId: string | null;
   lane: { writerTokens(): { in: number; out: number }; usage(): PipelineUsage };
   config: WriterConfig;
+  sentence: string;
 }): PassResult {
   return {
     status: 'parked',
     stepId: input.stepId,
     changeId: input.changeId,
-    reason: 'права на текст не подтверждены — правка не принята',
+    reason: input.sentence,
     tokens: input.lane.writerTokens(),
     costUsd: costUsd(input.config.pipeline.pricing, input.lane.usage()),
   };

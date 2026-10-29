@@ -158,6 +158,8 @@ export const stageSummary = {
     /** BOOK-DOC-80: which gates judged the chapter — `local only` is a fact, not a silence. */
     gates?: string | null;
     costUsd: number;
+    /** BOOK-219: the tokens were read off the text, so the number is `≈$0.0465`, not `$0.0465`. */
+    estimated?: boolean;
   }): string =>
     line([
       `глава ${String(input.chapter)}: ${grouped(input.chars)} знаков, ${String(input.blocks)} абзацев`,
@@ -166,7 +168,8 @@ export const stageSummary = {
         ? null
         : `кэш ${grouped(input.tokensCachedIn)}`,
       input.gates === undefined || input.gates === null ? null : input.gates,
-      money(input.costUsd),
+      // BOOK-219: tokens read off the text are named as an estimate, never as a metered price.
+      input.estimated === true ? `≈${money(input.costUsd)}` : money(input.costUsd),
     ]),
 
   refused: (input: { reason: string }): string => line([`проход остановлен: ${input.reason}`]),

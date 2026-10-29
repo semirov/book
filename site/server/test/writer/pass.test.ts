@@ -155,7 +155,7 @@ describe('runPass — one pass, end to end', () => {
       harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
       // ADR-038 §2: other weights are evidence, not a refusal — the pass takes this provider here.
       const deps: PassDeps = {
-        config: harness.config, bookRoot: harness.bookRoot, dataDir: harness.dataDir, engine: harness.client,
+        config: harness.config, bookRoot: harness.bookRoot, engine: harness.client,
         now: () => harness.fixture.clock.now(), log: (line) => harness.logs.push(line), chapter: CHAPTER,
         provider: async (request) => ({ ...(await harness.provider(request)), responseModel: 'deepseek-v4-pro-0901' }),
       };

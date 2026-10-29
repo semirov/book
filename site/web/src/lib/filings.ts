@@ -1,7 +1,7 @@
 import type { ChangeSummaryDto, CommentDto } from '@book/shared';
 
 import { changeNumber } from './changeStatus.ts';
-import { filingMarginalia } from './marginalia.ts';
+import { filingMarginalia, type FilingFacts } from './marginalia.ts';
 import { placeHref } from './place.ts';
 import type { WordFiling } from './provenance.ts';
 
@@ -56,11 +56,19 @@ const SHAPES: Record<string, Omit<FilingInk, 'word'>> = {
 };
 
 /** State → the ink, the rule shape and the word; unknown states fall to the quiet row. */
-export function filingInk(
-  comment: Pick<CommentDto, 'status'> & { premise?: boolean; changeStatus?: CommentDto['changeStatus'] },
-): FilingInk {
-  const shape = SHAPES[comment.status] ?? SHAPES.new!;
-  return { word: filingMarginalia(comment).word, ...shape };
+export function filingInk(comment: FilingFacts): FilingInk {
+  return { word: filingMarginalia(comment).word, ...shapeOf(comment) };
+}
+
+/**
+ * BOOK-219 — the shape follows the **row's own fact**: a receipt on the row means the text is in a
+ * chapter, so the row takes the `applied` ink whatever word its status still carries before the
+ * durable read replaces it. Every other row reads its status's own row of the table; nothing is
+ * re-derived from the linked change here (the server already turned that into the status).
+ */
+function shapeOf(comment: FilingFacts): Omit<FilingInk, 'word'> {
+  if (comment.applied !== null && comment.applied !== undefined) return SHAPES.applied!;
+  return SHAPES[comment.status] ?? SHAPES.new!;
 }
 
 /** The paragraph's sentence still exists: a stale anchor shows no rule and no mark. */
@@ -202,6 +210,10 @@ export function filingQuote(comment: CommentDto, max = 120): string {
  * row with the same id only — and only when the report it carries is one the row does not have.
  * `refreshComments` remains the durable truth; this keeps the open card from saying «ждёт» for
  * the frame before the reload lands.
+ *
+ * BOOK-219 — a close that landed the filing's text arrives on the same frame with
+ * `status: 'applied'` and the receipt (`applied: { chapter, rev }`); both move the row here, so
+ * the record and the text agree in one breath instead of after a reload.
  */
 export type CommentDecisionFrame = {
   id: string;
@@ -209,9 +221,24 @@ export type CommentDecisionFrame = {
   status?: CommentDto['status'];
   reason?: string;
   decidedAt?: string;
+  changeId?: string | null;
+  applied?: CommentDto['applied'];
   disposition?: CommentDto['disposition'];
   report?: CommentDto['report'];
+  /**
+   * BOOK-206 audit B1 — the change's next attempt, when the frame says one is scheduled: the
+   * time it will be retried at, and the state that attempt is in. Only the fact is applied; the
+   * sentence a reader reads is the frame's `reason`, so the page never formats a time of its own.
+   */
+  attempt?: { state?: string; retryAt?: string | null } | null;
 };
+
+/**
+ * A filing as the live page holds it: the server's DTO plus the one fact only a frame can bring
+ * — a scheduled retry (`retryAt`). The extra field is optional everywhere, so a plain
+ * `CommentDto` is still a filing row and the durable refresh replaces the row wholesale.
+ */
+export type FilingRow = CommentDto & { retryAt?: string | null };
 
 export function decisionFrameOf(data: unknown): CommentDecisionFrame | null {
   if (data === null || typeof data !== 'object') return null;
@@ -219,33 +246,76 @@ export function decisionFrameOf(data: unknown): CommentDecisionFrame | null {
   return typeof value.id === 'string' && value.id.length > 0 ? (value as CommentDecisionFrame) : null;
 }
 
+/**
+ * BOOK-219 — the chapter a landing frame rewrote, or `null` for every other decision frame.
+ *
+ * A `comment:decision` about a filing is not news about the prose: triage accepts it long before
+ * a chapter moves, and a refusal moves nothing. Only the frame that says `applied` **and**
+ * carries the receipt names a chapter whose text the page must read again; the number comes from
+ * the server's receipt, never from the frame's own chapter.
+ */
+export function landingOf(data: unknown): { chapter: number; rev: number } | null {
+  if (data === null || typeof data !== 'object') return null;
+  const value = data as { status?: unknown; applied?: unknown };
+  if (value.status !== 'applied') return null;
+  const receipt = value.applied;
+  if (receipt === null || typeof receipt !== 'object') return null;
+  const { chapter, rev } = receipt as { chapter?: unknown; rev?: unknown };
+  if (typeof chapter !== 'number' || !Number.isInteger(chapter) || chapter <= 0) return null;
+  if (typeof rev !== 'number' || !Number.isInteger(rev) || rev < 0) return null;
+  return { chapter, rev };
+}
+
 /** The feed with the frame's report carried onto its own row, or `null` when nothing changed. */
 export function withDecisionReport(
-  comments: readonly CommentDto[],
+  comments: readonly FilingRow[],
   frame: CommentDecisionFrame,
-): CommentDto[] | null {
+): FilingRow[] | null {
   const at = comments.findIndex((row) => row.id === frame.id);
   if (at < 0) return null;
-  const row = comments[at] as CommentDto;
-  const next: CommentDto = {
+  const row = comments[at] as FilingRow;
+  const next: FilingRow = {
     ...row,
     ...(frame.status === undefined ? {} : { status: frame.status }),
     ...(frame.reason === undefined ? {} : { reason: frame.reason }),
     ...(frame.decidedAt === undefined ? {} : { decidedAt: frame.decidedAt }),
+    // A landing names the change it became: the row's link may still point at the attempt that
+    // escalated (BOOK-136), and the door must open the change the state now comes from.
+    ...(typeof frame.changeId !== 'string' ? {} : { changeId: frame.changeId }),
+    ...(frame.applied === undefined ? {} : { applied: frame.applied }),
     ...(frame.disposition === undefined ? {} : { disposition: frame.disposition }),
     ...(frame.report === undefined ? {} : { report: frame.report }),
+    // B1 — a scheduled retry (or its absence) is a fact of the row until the durable read says
+    // otherwise; the word stays the row's own and the line is the frame's `reason`.
+    ...(frame.attempt === undefined ? {} : { retryAt: retryAtOf(frame.attempt) }),
   };
   if (
     next.status === row.status &&
     next.reason === row.reason &&
     next.decidedAt === row.decidedAt &&
-    (next.report ?? null) === (row.report ?? null)
+    next.changeId === row.changeId &&
+    sameApplied(next.applied, row.applied) &&
+    (next.report ?? null) === (row.report ?? null) &&
+    (next.retryAt ?? null) === (row.retryAt ?? null)
   ) {
     return null;
   }
   const out = [...comments];
   out[at] = next;
   return out;
+}
+
+/** The retry time a frame names, or `null` when the attempt carries none (a spent one). */
+function retryAtOf(attempt: CommentDecisionFrame['attempt']): string | null {
+  const at = attempt?.retryAt;
+  return typeof at === 'string' && at.length > 0 ? at : null;
+}
+
+/** The receipt by value: a frame always carries a fresh object, so identity cannot decide it. */
+function sameApplied(left: CommentDto['applied'], right: CommentDto['applied']): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  return left.chapter === right.chapter && left.rev === right.rev;
 }
 
 /**

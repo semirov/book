@@ -28,11 +28,27 @@ export type ModelWhere = 'done' | 'seen' | 'verdict';
  * a person: it may use any model the operator actually ran, because the rule is honesty about
  * who answered, not a relabelled pin — the record says `provenance: operator` and the model it
  * names is the model whose tokens the ledger charges.
+ *
+ * `pipeline-estimated` (BOOK-219) is still the pipeline: the pinned model ran, and the row is
+ * **priced** (`priced = 1`) — the word says the numbers were read off the text (`provider.ts`'s
+ * estimate) because the provider reported no usage, not that the pass was free or unpriced. A
+ * call that spent its prompt and threw is charged the same way: a park after a paid request must
+ * not read as zero.
  */
-export type Provenance = 'pipeline' | 'operator';
+export type Provenance = 'pipeline' | 'operator' | 'pipeline-estimated';
 
 export function normalizeProvenance(raw: unknown): Provenance {
-  return raw === 'operator' ? 'operator' : 'pipeline';
+  if (raw === 'operator') return 'operator';
+  if (raw === 'pipeline-estimated') return 'pipeline-estimated';
+  return 'pipeline';
+}
+
+/**
+ * The step's own column keeps the two words it has always had — *who ran the pass*. The estimate
+ * is a statement about the money, and the money's own record is `pass_spend.provenance`.
+ */
+export function stepProvenance(provenance: Provenance): 'pipeline' | 'operator' {
+  return provenance === 'operator' ? 'operator' : 'pipeline';
 }
 
 /**

@@ -50,7 +50,6 @@ describe('a ripple chapter', () => {
       const result = await runPass({
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),

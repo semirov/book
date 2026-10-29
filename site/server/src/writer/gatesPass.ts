@@ -26,9 +26,14 @@ export type GatesOutcome =
    * failure the pass lived through — the close's refusal (`VERDICTS_REQUIRED`) is what brings it
    * back into words, which is why the pass keeps it.
    */
-  | { kind: 'done'; survived: Failure | null }
+  | {
+      kind: 'done';
+      survived: Failure | null;
+      /** The text as it stands after the last revision, when a revision landed. */
+      revised?: string;
+    }
   /** The pass must stop: a rights refusal closed the step, or a gate broke the pass. */
-  | { kind: 'park'; failure: Failure; fallback: string }
+  | { kind: 'park'; failure: Failure; fallback: string; revised?: string }
   /** Gate B refused the text and the engine closed the step: no `done`, no revision. */
   | { kind: 'rights' };
 
@@ -84,6 +89,8 @@ export async function runGates(input: GatesInput): Promise<GatesOutcome> {
 
   let revisions = 0;
   let failed: Failure | null = null;
+  /** The last revision this pass landed: what its own way back must read (BOOK-173 + BOOK-219). */
+  let revised: string | undefined;
   for (;;) {
     let round = await gateRound(input.lane);
     // A transport failure and a refused answer both get one retry; the parse failure carries
@@ -97,7 +104,7 @@ export async function runGates(input: GatesInput): Promise<GatesOutcome> {
       // pass stops here with a sentence instead of walking into `RIGHTS_REQUIRED`.
       const code = round.failure.code ?? '';
       if (code.startsWith('RIGHTS') || code === 'GATE_UNPARSED') {
-        return { kind: 'park', failure: round.failure, fallback: readerFallbacks.gate };
+        return { kind: 'park', failure: round.failure, fallback: readerFallbacks.gate, ...(revised === undefined ? {} : { revised }) };
       }
       failed = round.failure;
       break;
@@ -108,14 +115,16 @@ export async function runGates(input: GatesInput): Promise<GatesOutcome> {
     if (revisions >= MAX_REVISIONS) break;
     revisions += 1;
     const findings: GateFinding[] = [...editor.findings, ...(consultant?.findings ?? [])];
-    const revised = await input.lane.reviseText(findings);
-    if (revised === null) {
+    const next = await input.lane.reviseText(findings);
+    if (next === null) {
       return {
         kind: 'park',
         failure: { code: null, detail: 'правка после замечаний гейта не прошла проверку' },
         fallback: readerFallbacks.stopped,
+        ...(revised === undefined ? {} : { revised }),
       };
     }
+    revised = next;
     input.answered.editor = false;
     input.answered.consultant = false;
     input.answered.rights = false;
@@ -125,5 +134,5 @@ export async function runGates(input: GatesInput): Promise<GatesOutcome> {
     input.log(`[writer] гейт не ответил (${failed.code ?? 'без кода'}): ${failed.detail} — шаг закрывается`);
     input.lane.remember(failed);
   }
-  return { kind: 'done', survived: failed };
+  return { kind: 'done', survived: failed, ...(revised === undefined ? {} : { revised }) };
 }

@@ -16,6 +16,7 @@
 import type { BudgetDto, BudgetScope, BudgetState } from '@book/shared';
 
 import type { Db } from './db/db.ts';
+import type { Provenance } from './engine/model.ts';
 import { refuse } from './engine/types.ts';
 import { rateFor } from './cost/rates.ts';
 import { toIso } from './util/time.ts';
@@ -162,8 +163,8 @@ export type PassSpendInput = {
   chapter: number | null;
   pass: 'draft' | 'change' | 'cascade' | 'front' | 'ending' | 'sweep';
   changeId: string | null;
-  /** Who ran the pass; the ledger and the steps row carry the same word (BOOK-117). */
-  provenance?: 'pipeline' | 'operator';
+  /** Who ran the pass, and whether its numbers are measured (BOOK-117, BOOK-219). */
+  provenance?: Provenance;
   /** The model the step closed with; null when no model ran (then the pass is not priced). */
   model: string | null;
   tokensIn: number;
@@ -177,7 +178,7 @@ export type PassSpendInput = {
  */
 export function passSpendOf(
   step: { step_id: string; chapter: number | null; pass: PassSpendInput['pass'] },
-  close: { model: string | null; tokensIn: number; tokensOut: number; provenance?: 'pipeline' | 'operator' },
+  close: { model: string | null; tokensIn: number; tokensOut: number; provenance?: Provenance },
   changeId: string | null,
   now: number,
 ): PassSpendInput {
@@ -224,8 +225,8 @@ export function usdOfModel(
 export function spendOfClose(
   db: Db,
   stepId: string,
-  reported: { model: string | null; tokensIn: number; tokensOut: number; provenance?: 'pipeline' | 'operator' },
-): { model: string | null; tokensIn: number; tokensOut: number; provenance: 'pipeline' | 'operator' } {
+  reported: { model: string | null; tokensIn: number; tokensOut: number; provenance?: Provenance },
+): { model: string | null; tokensIn: number; tokensOut: number; provenance: Provenance } {
   const stages = db
     .prepare(
       `SELECT COALESCE(SUM(tokens_in), 0) AS tokensIn, COALESCE(SUM(tokens_out), 0) AS tokensOut,
@@ -264,7 +265,7 @@ export function recordCloseSpend(
     model: string | null;
     tokensIn?: number;
     tokensOut?: number;
-    provenance?: 'pipeline' | 'operator';
+    provenance?: Provenance;
   },
 ): boolean {
   const spend = spendOfClose(db, input.step.step_id, {

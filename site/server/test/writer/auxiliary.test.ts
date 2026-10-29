@@ -69,7 +69,7 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
   });
 
   it('falls back to the caller’s sentence, and never returns a code word', () => {
-    expect(readerReason('LEASE_RELEASED', 'проход остановлен — заявка остаётся в очереди')).toContain('проход остановлен');
+    expect(readerReason('LEASE_RELEASED', 'проход остановлен — правка остановлена')).toContain('проход остановлен');
     expect(readerReason(null, 'не удалось записать главу')).toBe('не удалось записать главу');
     // Every sentence is a sentence: bounded, no machine token, no colon-led code.
     for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
@@ -106,6 +106,17 @@ describe('readerReason — a sentence for the reader, the code for the log', () 
       expect(sentence.length).toBeGreaterThan(10);
     }
   });
+
+  it('never promises a queue: a parked pass is a stopped change (BOOK-219, audit B2/B5)', () => {
+    for (const sentence of [...Object.values(readerSentences), ...Object.values(readerFallbacks)]) {
+      // An escalated change is terminal (`rejected`); nothing retries it and the reader has no
+      // lever — both phrases were the lie the audit named.
+      expect(sentence).not.toContain('остаётся в очереди');
+      expect(sentence).not.toContain('ждёт решения');
+      // And each of them names the stop in the one word `follow.ts` prints for `escalated`.
+      expect(sentence).toContain('правка остановлена');
+    }
+  });
 });
 
 describe('runPass — a landed step survives its auxiliary calls', () => {
@@ -131,7 +142,6 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const deps: PassDeps = {
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
@@ -171,7 +181,6 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const result = await runPass({
         config: harness.config,
         bookRoot: harness.bookRoot,
-        dataDir: harness.dataDir,
         engine,
         provider: harness.provider,
         now: () => harness.fixture.clock.now(),
@@ -189,7 +198,7 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
     }
   });
 
-  it('parks a landed step only because the engine refuses to close it, and says so in words', async () => {
+  it('parks a landed first write when the gate never answers, and says the text stands unverified', async () => {
     const harness = await createHarness();
     try {
       const changeId = harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
@@ -207,11 +216,12 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       const result = await harness.run({ chapter: CHAPTER });
 
       expect(result.status).toBe('parked');
-      // The landed step was offered for closing before anything was escalated.
-      expect(harness.engineCalls).toContain('done');
+      // BOOK-219: a chapter with no revision behind it cannot be put back, so the pass does not
+      // pretend a close is imminent — it says the new text stands, unverified, and escalates.
+      expect(harness.engineCalls).not.toContain('done');
       expect(harness.engineCalls).toContain('escalate');
       const note = noteOf(harness, result.stepId ?? '');
-      expect(note).toBe(readerSentences.engineDown);
+      expect(note).toBe(readerSentences.unverified);
       expect(note).not.toMatch(CODE_TOKEN);
       expect(note).not.toContain(':');
       // The code and its detail are in the log, which is where an operator looks.
@@ -243,6 +253,29 @@ describe('runPass — a landed step survives its auxiliary calls', () => {
       expect(result.stepId).toBe(listStages(harness.fixture.db, CHAPTER)[0]?.passId);
       expect(harness.engineCalls).toContain('done');
       expect(harness.engineCalls).not.toContain('escalate');
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('parks with a sentence when the close itself is refused after the gates answered', async () => {
+    const harness = await createHarness();
+    try {
+      harness.premised(CHAPTER, 'в главе 40 появляется документ о допуске');
+      harness.script.push(chapterAnswer(), 'HOLDS', 'HOLDS');
+      // Every verdict is in, and the engine still refuses the close: the pass says why, in words.
+      harness.hooks.beforeCall = (name) => {
+        if (name === 'done') throw new EngineRefusalError('RIGHTS_REQUIRED', 'право на текст не подтверждено', 409);
+      };
+
+      const result = await harness.run({ chapter: CHAPTER });
+
+      expect(result.status).toBe('parked');
+      // BOOK-219: the sentence says what happened to the text — the close never confirmed it, so
+      // the new revision stands without a close, and the filing waits for a person.
+      expect(result.reason).toBe(readerSentences.closeStanding);
+      expect(parkedLine(harness)).toContain('RIGHTS_REQUIRED');
+      expect(listStages(harness.fixture.db, CHAPTER).at(-1)?.stage).toBe('refused');
     } finally {
       await harness.close();
     }

@@ -25,8 +25,9 @@ import { poll } from '../src/feedback/triageApplier.ts';
 import { chapterVocabulary } from '../src/feedback/vocabulary.ts';
 import { createEngineClient, type EngineClient, type FetchLike } from '../src/writer/client.ts';
 import { loadWriterConfig, type WriterConfig } from '../src/writer/config.ts';
-import { runTriage } from '../src/writer/triage.ts';
+import type { PipelineUsage } from '../src/writer/pipeline.ts';
 import type { ProviderRequest, ProviderResult } from '../src/writer/provider.ts';
+import { runTriage } from '../src/writer/triage.ts';
 
 const SITE_ROOT = resolve(import.meta.dirname, '..', '..');
 /** The book's own root: the role prompt is read from here, never written. */
@@ -53,6 +54,8 @@ export type Context = {
   frames: Array<{ type: string; data: unknown }>;
   post: (overrides?: { body?: string; quote?: string }) => Promise<string>;
   script: Array<Record<string, unknown>>;
+  /** What the scripted provider reports as usage; `estimated` is BOOK-219's «read off the text». */
+  reportUsage: (usage: PipelineUsage) => void;
   pulse: () => Promise<void>;
   place: () => number;
   close: () => Promise<void>;
@@ -168,6 +171,9 @@ export async function bootTriage(): Promise<Context> {
   const calls: Call[] = [];
   const script: Array<Record<string, unknown>> = [];
   const frames: Array<{ type: string; data: unknown }> = [];
+  // What the provider says it spent. A test sets it to `estimated: true` for the BOOK-219 shape:
+  // an answer with no usage object, whose counts the writer read off the text.
+  let reportedUsage: PipelineUsage = { in: 1_200, out: 300, cachedIn: 0 };
   // The scripted provider: it answers the next scripted object, standing in for the pinned model.
   // An empty script is a broken call, which is what the failure bounds are proven against.
   const provider = async (request: ProviderRequest): Promise<ProviderResult> => {
@@ -180,7 +186,7 @@ export async function bootTriage(): Promise<Context> {
     return {
       text: JSON.stringify(next),
       responseModel: config.apiModel,
-      usage: { in: 1_200, out: 300, cachedIn: 0 },
+      usage: reportedUsage,
       latencyMs: 1,
       attempts: 1,
       finishReason: 'stop',
@@ -197,6 +203,9 @@ export async function bootTriage(): Promise<Context> {
     calls,
     frames,
     script,
+    reportUsage: (usage) => {
+      reportedUsage = usage;
+    },
     post: async (overrides = {}) => {
       const block = h.db.prepare('SELECT id FROM blocks WHERE chapter = 8 ORDER BY idx LIMIT 1').get() as {
         id: string;
