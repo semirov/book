@@ -51,46 +51,64 @@ export function placeMargin(
   return { tops, tail: tops.length === 0 ? 0 : Math.max(0, bottom - flowBottom) };
 }
 
-/** The item attribute; the note and the opened object are the only kinds of item. */
+/** The item attribute; the note and the sentence's block are the only kinds of item. */
 const MARGIN_ITEM = 'data-margin-item';
 const MARGIN_TAIL = 'data-margin-tail';
 /** The least air the design leaves between the note's right edge and the viewport (§7). */
-const MARGIN_AIR = 8;
+const VIEWPORT_AIR = 8;
+/** The clear space between the measure and the first margin object (`--mark-air`). */
+export const MARK_AIR = 16;
+/** The mark's own target: the numeral's room, not the gap (`--mark-hit`). */
+export const MARK_HIT = 40;
+/** `--note-gap`: where the note starts, right of the prose — the air plus the mark's target. */
+export const NOTE_GAP = MARK_AIR + MARK_HIT;
+/** `--note-min`: under this width the channel does not hold a note, it holds a strip. */
+export const NOTE_MIN = 120;
 
 /**
  * BOOK-DOC-47 §7 — may this paragraph carry a margin note at all?
  *
  * The channel is measured from the paragraph's own right edge: `right + gap + width + air`
  * must stay inside the viewport, or the note would be clipped by `body { overflow-x: hidden }`.
- * The decision is per paragraph, not per viewport: the one-column frame widens the page while
- * the prose keeps its measure, and a paragraph that grows past this bound is a strip, not
- * a margin. Pure, so the three widths can be asserted without a browser.
+ * A width of 0 means the channel does not hold a note (see `noteWidth`), and a zero-width note
+ * is not a margin: it is the strip. The decision is per paragraph, not per viewport: the
+ * one-column frame widens the page while the prose keeps its measure, and a paragraph that
+ * grows past this bound is a strip, not a margin. Pure, so the three widths can be asserted
+ * without a browser.
  */
 export function marginFits(
   paragraphRight: number,
   viewport: number,
-  gap = 40,
+  gap: number = NOTE_GAP,
   width = 188,
-  air: number = MARGIN_AIR,
+  air: number = VIEWPORT_AIR,
 ): boolean {
+  if (width <= 0) return false;
   return paragraphRight + gap + width + air <= viewport;
 }
 
 /**
  * BOOK-91 — the note's used width: `--note-w` (188) while the centred column leaves room,
- * otherwise the channel itself, minus the mark's target and the 8 px of air. `marginalia.css`
- * states the same expression as `--note-fit`; the pass measures what the browser paints, so
- * at 1024 (a 640 px column) the note is 144 wide and the paragraph keeps its margin instead of
- * being demoted to a strip for a note that would no longer be clipped.
+ * otherwise the channel itself, minus the gap (16 px of air + the mark's 40 px target) and the
+ * 8 px of air before the viewport's edge. `marginalia.css` states the same expression as
+ * `--note-fit`; the pass measures what the browser paints, so at 1024 (a 640 px column) the
+ * note is 128 wide and the paragraph keeps its margin instead of being demoted to a strip for a
+ * note that would no longer be clipped.
+ *
+ * Below `--note-min` (120) the channel is not a margin: the function answers **0**, which
+ * `marginFits` reads as "does not fit". The floor is never forced into a width — a 91 px note
+ * at 900 would be narrower than the object it holds, and the strip is the honest answer there.
  */
 export function noteWidth(
   viewport: number,
   measure: number,
-  gap = 40,
+  gap: number = NOTE_GAP,
   noteW = 188,
-  air: number = MARGIN_AIR,
+  air: number = VIEWPORT_AIR,
+  min: number = NOTE_MIN,
 ): number {
-  return Math.max(0, Math.min(noteW, (viewport - measure) / 2 - gap - air));
+  const channel = (viewport - measure) / 2 - gap - air;
+  return channel < min ? 0 : Math.min(noteW, channel);
 }
 
 /** A token's px value from the root, with the design's number as the last resort. */
@@ -104,6 +122,20 @@ function tokenPx(doc: Document, name: string, fallback: number): number {
 }
 
 type Item = { element: HTMLElement; anchorTop: number; height: number; originTop: number };
+
+/**
+ * BOOK-208 — the gap the pass measures with: `--mark-air` + `--mark-hit`, both plain px.
+ *
+ * The sheet states `--note-gap: calc(var(--mark-air) + var(--mark-hit))`, and a custom
+ * property's computed value is an **unevaluated token stream**: `getPropertyValue('--note-gap')`
+ * answers the `calc(…)` text, so `Number.parseFloat` on it is `NaN` and the pass silently used
+ * the fallback — the sheet was never read, and "the pass and the sheet agree" was a claim with
+ * no measurement behind it. Reading the two px tokens the `calc` is made of is the same sum the
+ * browser paints; the design's own numbers are the last resort only.
+ */
+export function noteGapFrom(doc: Document): number {
+  return tokenPx(doc, '--mark-air', MARK_AIR) + tokenPx(doc, '--mark-hit', MARK_HIT);
+}
 
 /** Measure every item in document order; a fixed object (the phone sheet) is not an item. */
 function measure(doc: Document): Item[] {
@@ -150,9 +182,10 @@ export function runMarginPass(doc: Document = document): MarginPlacement {
   // The guard compares against the viewport the design proved against (innerWidth), not the
   // layout width minus a classic scrollbar: at 1024 the narrowed note ends at 1024 of 1024.
   const viewport = doc.defaultView?.innerWidth ?? doc.documentElement.clientWidth;
-  const gap = tokenPx(doc, '--note-gap', 40);
+  const gap = noteGapFrom(doc);
   const noteW = tokenPx(doc, '--note-w', 188);
-  const width = noteWidth(viewport, tokenPx(doc, '--measure', 640), gap, noteW);
+  const min = tokenPx(doc, '--note-min', NOTE_MIN);
+  const width = noteWidth(viewport, tokenPx(doc, '--measure', 640), gap, noteW, VIEWPORT_AIR, min);
   const paragraphs = new Set<HTMLElement>();
   for (const element of all) {
     const paragraph = element.closest<HTMLElement>('.p');
