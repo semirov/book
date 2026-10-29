@@ -43,6 +43,20 @@ export function temp(prefix: string): string {
   return dir;
 }
 
+/**
+ * BOOK-217: a directory that stands in for the named data volume, so the one-shot `sh` calls the
+ * release makes around `up` (`ls backups/`, the marker's `schema=` line, the dump restore) act on
+ * files instead of on a string in a log. The shape is the prod one after the incident's first image
+ * booted: a v29 database, the marker that names it, and the `backups/` directory the boot dumps into.
+ */
+export function volumeFixture(): string {
+  const dir = temp('book-217-volume-');
+  mkdirSync(join(dir, 'backups'), { recursive: true });
+  writeFileSync(join(dir, 'book.db'), 'BOOK-DB-v29\n', 'utf8');
+  writeFileSync(join(dir, '.book-volume'), 'book-volume 1\nschema=29\n', 'utf8');
+  return dir;
+}
+
 /** A git clone fixture: one commit and an `origin` pointing at itself, so `git fetch` works. */
 export function gitRoot(): string {
   const dir = temp('book-172-root-');
@@ -56,6 +70,23 @@ export function gitRoot(): string {
 export const sha = (root: string) => execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 
 /**
+ * BOOK-217: a commit whose `site/server/src/db/schema.ts` carries `SCHEMA_VERSION = <version>`, so the
+ * release's `git show <sha>:site/server/src/db/schema.ts` reads a real number (the deployed image and
+ * a rollback target are both commits of this clone). Returns the commit's sha.
+ */
+export function commitSchema(root: string, version: number): string {
+  mkdirSync(join(root, 'site', 'server', 'src', 'db'), { recursive: true });
+  writeFileSync(
+    join(root, 'site', 'server', 'src', 'db', 'schema.ts'),
+    `export const SCHEMA_VERSION = ${String(version)};\n`,
+    'utf8',
+  );
+  execFileSync('git', ['-C', root, 'add', '-A']);
+  execFileSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', `schema v${String(version)}`]);
+  return sha(root);
+}
+
+/**
  * A fake `docker` that answers the calls the release script makes and records every argv. `up`
  * writes the image tag it was given into `$STATE_DIR/current` — that file is what the test server
  * answers `/healthz` with, so "the stack moved" and "the gate noticed" are one causal chain
@@ -64,8 +95,20 @@ export const sha = (root: string) => execFileSync('git', ['-C', root, 'rev-parse
  * It is template-aware: `inspect -f '{{.Config.Image}}'` answers the image, while
  * `inspect -f '{{.State.Status}} …'` answers the container state per service (`FAKE_STATE_SITE`,
  * `FAKE_STATE_ENGINE`, `FAKE_STATE_WRITER`; a value prefixed `once:` is read once and then falls back
- * to the healthy default). The defaults are the healthy stack — site and engine `running healthy`,
- * the writer `running` (it has no healthcheck by design).
+ * to the healthy default) and `{{.RestartCount}}` answers `FAKE_RESTARTS_<SERVICE>` (default 0; a
+ * value `before,after` answers `before` on the first read and `after` on every later one — the shape
+ * of a container that keeps restarting under the run). The defaults are the healthy stack — site and
+ * engine `running healthy`, the writer `running` (it has no healthcheck by design).
+ *
+ * BOOK-217: the one-shot `sh` the release runs around `up` acts on `FAKE_VOLUME_DIR` (a directory
+ * from `volumeFixture()`): the dump listing and the restore. `FAKE_DUMPS_FAIL=after` makes the second
+ * listing fail (the fact the run cannot read); `before` makes the first fail. `up -d` simulates the
+ * boot's pre-migration dump under `FAKE_MIGRATE_ON_UP=1` — one dump, once (the migration happens on
+ * the boot of the new image, not on every `up`), with `FAKE_MIGRATE_STAMP` as its name; the volume
+ * marker is NOT bumped, because the real boot writes it once and never refreshes `schema=`.
+ * `FAKE_STOP_FAIL=1` refuses `dc stop`. A stray `writer/`, `manuscript/` or `notes.txt` in that
+ * fixture is what `home-check` refuses, and `home-migrate --apply` folds the `writer/` one away — the
+ * shape of a fixable leftover and a genuinely stray file.
  */
 export function fakeDocker(stateDir: string): string {
   const dir = temp('book-172-bin-');
@@ -74,6 +117,19 @@ printf '%s BOOK_IMAGE_TAG=%s\\n' "$*" "\${BOOK_IMAGE_TAG:-}" >> "${stateDir}/doc
 if [ "$1" = "version" ]; then echo "Docker version 29.8.2"; exit 0; fi
 if [ "$1" = "inspect" ] && [ "$2" = "-f" ]; then
   case "$3" in
+    *'.RestartCount'*)
+      name="\${4#id-}"
+      upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
+      var="FAKE_RESTARTS_$upper"
+      raw="\${!var:-0}"
+      case "$raw" in
+        *,*)
+          counter="${stateDir}/restarts-$name"
+          if [ -e "$counter" ]; then printf '%s\\n' "\${raw#*,}"; else : > "$counter"; printf '%s\\n' "\${raw%%,*}"; fi
+          exit 0 ;;
+      esac
+      printf '%s\\n' "$raw"
+      exit 0 ;;
     *'.State.Status'*)
       name="\${4#id-}"
       upper="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')"
@@ -104,8 +160,77 @@ case "$*" in
   *" ps -q "*) printf 'id-%s\\n' "\${!#}"; exit 0 ;;
   *"image ls "*) [ "\${FAKE_IMAGE_LS_EMPTY:-0}" = "1" ] || printf '2026-10-28 18:00:00 +0300 MSK book:0000000\\n'; exit 0 ;;
   *" build site"*) exit 0 ;;
+  # BOOK-217: the volume read and the dump restore, one-shot 'sh' on the site image. No service
+  # command is passed, so (as in the real image) nothing boots and no DDL can run here. The shapes
+  # the release uses are told apart by their own text.
+  *" run --rm -T --no-deps --entrypoint sh site -c "*)
+    cmd="\${!#}"
+    [ -n "\${FAKE_VOLUME_DIR:-}" ] || exit 0
+    case "$cmd" in
+      *"cp /data/backups/"*)
+        # The restore: the same file operations the release runs, on the fixture volume.
+        name="$(printf '%s' "$cmd" | tr ' ' '\\n' | sed -n 's#^/data/backups/##p' | head -n 1)"
+        [ -f "\${FAKE_VOLUME_DIR}/backups/$name" ] || { echo "restore: backups/$name is not there"; exit 1; }
+        rm -f "\${FAKE_VOLUME_DIR}/book.db-wal" "\${FAKE_VOLUME_DIR}/book.db-shm"
+        cp "\${FAKE_VOLUME_DIR}/backups/$name" "\${FAKE_VOLUME_DIR}/backups/.book.db.restoring"
+        mv "\${FAKE_VOLUME_DIR}/backups/.book.db.restoring" "\${FAKE_VOLUME_DIR}/book.db"
+        printf 'restored backups/%s\\n' "$name"
+        exit 0 ;;
+      *"ls -1 /data/backups"*)
+        # FAKE_DUMPS_FAIL=before: the pre-up listing fails; =after: every later listing fails.
+        if [ "\${FAKE_DUMPS_FAIL:-0}" = "before" ] && [ ! -e "${stateDir}/dumps-first-read" ]; then
+          : > "${stateDir}/dumps-first-read"
+          echo "ls: cannot access '/data/backups': No such file or directory" >&2
+          exit 1
+        fi
+        if [ "\${FAKE_DUMPS_FAIL:-0}" = "after" ]; then
+          if [ -e "${stateDir}/dumps-first-read" ]; then
+            echo "ls: cannot access '/data/backups': No such file or directory" >&2
+            exit 1
+          fi
+          : > "${stateDir}/dumps-first-read"
+        fi
+        if [ -d "\${FAKE_VOLUME_DIR}/backups" ]; then
+          ls -1 "\${FAKE_VOLUME_DIR}/backups" 2>/dev/null | grep -E '^pre-v.*[.]db$' | sort
+          exit 0
+        fi
+        # A volume that never took a dump has no 'backups/', and the real 'ls' fails on it (exit 2,
+        # the status 'docker compose run' passes on) — unless the command asks first, in which case
+        # the guarded one-shot succeeds with no names. The fake answers what the real shell would,
+        # so a driver that never asks cannot call the absence an empty listing.
+        case "$cmd" in *"[ -d /data/backups ]"*) exit 0 ;; esac
+        echo "ls: cannot access '/data/backups': No such file or directory" >&2
+        exit 2 ;;
+    esac
+    exit 0 ;;
+  # BOOK-217: the home gate, one-shot 'node'. 'home-migrate --apply' folds the old writer's files away
+  # (as the real one does), and 'home-check' refuses what is left and names the path — the sentence an
+  # operator reads. A 'notes.txt' is the genuinely stray file '--apply' cannot fix.
+  *" run --rm -T --no-deps --entrypoint node site "*)
+    case "$*" in
+      *"home-migrate.mjs --apply"*)
+        rm -rf "\${FAKE_VOLUME_DIR:-}/writer"
+        exit 0 ;;
+      *"home-check.mjs"*)
+        for stray in writer manuscript notes.txt; do
+          if [ -e "\${FAKE_VOLUME_DIR:-}/$stray" ]; then
+            echo "home-check: /data/$stray may not be here — run bin/home-migrate.mjs --apply"
+            exit 1
+          fi
+        done ;;
+    esac
+    exit 0 ;;
+  # BOOK-217: the stack is stopped before the dump goes over book.db; a stop that fails must not be
+  # followed by a restore.
+  *" stop "*) [ "\${FAKE_STOP_FAIL:-0}" = "1" ] && exit 1; exit 0 ;;
   *" up -d "*)
     printf '%s\\n' "\${BOOK_IMAGE_TAG:-}" > "${stateDir}/current"
+    if [ "\${FAKE_MIGRATE_ON_UP:-0}" = "1" ] && [ ! -e "${stateDir}/migrated" ]; then
+      : > "${stateDir}/migrated"
+      stamp="\${FAKE_MIGRATE_STAMP:-20261029T085300Z}"
+      mkdir -p "\${FAKE_VOLUME_DIR:-.}/backups"
+      printf 'DUMP v29 %s\\n' "$stamp" > "\${FAKE_VOLUME_DIR:-.}/backups/pre-v29-$stamp.db"
+    fi
     if [ "\${FAKE_UP_FAIL_ONCE:-0}" = "1" ] && [ ! -e "${stateDir}/up-failed" ]; then : > "${stateDir}/up-failed"; exit 1; fi
     exit 0 ;;
   *" restart site"*) exit 0 ;;
