@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  ATTEMPT_LINE,
-  ENGINE_SILENT_LINE,
-  FAILED_ATTEMPT_LINE,
-  holdsInternalCode,
-  readerReason,
-} from '../src/change.ts';
+import { holdsInternalCode, readerReason } from '../src/change.ts';
+import { ATTEMPT_LINE, STOP_REASONS } from '../src/stateWords.ts';
 
 /**
  * A public reason is a sentence a reader may read.
@@ -32,23 +27,26 @@ describe('readerReason', () => {
   });
 
   it('replaces an off-shape model answer with the deck’s line', () => {
-    expect(readerReason('модель не ответила: PROVIDER_SHAPE')).toBe(FAILED_ATTEMPT_LINE);
-    expect(FAILED_ATTEMPT_LINE).toBe('модель ответила не по форме — заявка остаётся в очереди');
+    expect(readerReason('модель не ответила: PROVIDER_SHAPE')).toBe(STOP_REASONS.shape);
+    expect(STOP_REASONS.shape).toBe(STOP_REASONS.shape);
+    expect(STOP_REASONS.shape).toMatch(/^не дошло: /u);
   });
 
   it('names the engine’s silence, in either spelling', () => {
     expect(readerReason('движок отказал: ENGINE_TIMEOUT: the engine did not answer within 10000 ms')).toBe(
-      ENGINE_SILENT_LINE,
+      STOP_REASONS.engineDown,
     );
     // The word alone, with no code, is a sentence the row already carries — it is not rewritten.
     expect(readerReason('timeout: 10 s')).toBe('timeout: 10 s');
-    expect(readerReason('провайдер: TIMEOUT_LIMIT (timeout 10000 ms)')).toBe(ENGINE_SILENT_LINE);
-    expect(ENGINE_SILENT_LINE).toBe('движок не ответил — попытка не завершилась');
+    // A timeout behind a code is the machine being slow, not the engine being gone.
+    expect(readerReason('провайдер: TIMEOUT_LIMIT (timeout 10000 ms)')).toBe(STOP_REASONS.modelTimeout);
+    expect(STOP_REASONS.engineDown).toMatch(/^не дошло: /u);
+    expect(STOP_REASONS.engineDown).toContain('нажмите «повторить»');
   });
 
   it('falls back to one plain line for any other code, and never lets a code through', () => {
     expect(readerReason('движок отказал: PROVIDER_ONLY_CODE')).toBe(ATTEMPT_LINE);
-    expect(ATTEMPT_LINE).toBe('попытка не удалась — заявка остаётся в очереди');
+    expect(ATTEMPT_LINE).toBe('попытка не удалась — правка ждёт');
     const raw = ['модель не ответила: PROVIDER_SHAPE', 'движок: ENGINE_TIMEOUT', 'стоп: GATE_ABORT_X'];
     for (const line of raw) expect(readerReason(line) ?? '').not.toMatch(/[A-Z]{2,}_[A-Z]/u);
   });
@@ -60,8 +58,8 @@ describe('readerReason', () => {
     // code, and it never reaches the reader either.
     expect(holdsInternalCode('provider_shape')).toBe(true);
     expect(holdsInternalCode('движок: engine_timeout')).toBe(true);
-    expect(readerReason('модель: provider_shape')).toBe(FAILED_ATTEMPT_LINE);
-    expect(readerReason('движок: engine_timeout')).toBe(ENGINE_SILENT_LINE);
+    expect(readerReason('модель: provider_shape')).toBe(STOP_REASONS.shape);
+    expect(readerReason('движок: engine_timeout')).toBe(STOP_REASONS.engineDown);
     // A sentence with capitals and no underscore is a sentence; a lowercase word is not a code.
     expect(holdsInternalCode('глава 65 не готова')).toBe(false);
     expect(holdsInternalCode('Gate-Timeout')).toBe(false);

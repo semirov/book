@@ -14,6 +14,7 @@
 
 import {
   CASCADE_MAX_WAVE,
+  STATE_WORDS,
   type CascadeWingDto,
   type CascadeWingsDto,
   type CascadeProgressPayload,
@@ -89,7 +90,7 @@ export function wingOfChapter(chapter: number, origin: number): Wing | 'origin' 
  */
 export function wingStateCopy(state: CascadeWingDto['state']): string {
   if (state === 'waiting') return '';
-  if (state === 'moving') return 'идёт';
+  if (state === 'moving') return STATE_WORDS.reading;
   if (state === 'stopped') return 'остановлено';
   return 'остановилось';
 }

@@ -1,6 +1,7 @@
 import type { CatalogEntry, StateSnapshot, ViewerDto } from '@book/shared';
 
 import type { EscalationMarker, Ribbon } from '../lib/cascade.ts';
+import type { HeadSocket } from '../lib/headStatus.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import type { Stages } from '../lib/useStages.ts';
 import { Colophon } from './Colophon.tsx';
@@ -22,6 +23,7 @@ export function TrailView({
   onOpenChange,
   live,
   stages,
+  socket,
   reading,
   viewer,
   imprint,
@@ -36,6 +38,7 @@ export function TrailView({
   onOpenChange: (changeId: string) => void;
   live: boolean;
   stages: Stages;
+  socket?: HeadSocket;
   reading: { n: number | null; page: number | null };
   viewer: ViewerDto;
   imprint: { author: string; copyright: string };
@@ -53,6 +56,7 @@ export function TrailView({
         onOpenChange={onOpenChange}
         live={live}
         stages={stages}
+        socket={socket}
         reading={reading}
       />
       <TrailPage viewer={viewer} {...(loadChapter === undefined ? {} : { onLoadChapter: loadChapter })} />

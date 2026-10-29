@@ -59,8 +59,8 @@ function seedV24(db: Db): void {
   // A legacy filing: no sentence columns exist yet, exactly as it was stored before v25.
   const insert = db.prepare(
     `INSERT INTO comments (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix,
-                           author, body, body_sha, ip_hash, status, created_at)
-     VALUES (?, 'idt_1', ?, ?, ?, 1, ?, ?, ?, 'Аня', 'почему так?', 'sha', 'iph', 'new', ?)`,
+                           author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES (?, 'idt_1', ?, ?, ?, 1, ?, ?, ?, 'Аня', 'почему так?', 'sha', 'iph', 'new', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   );
   // Inside one sentence: the last sentence of the first ch12 block.
   insert.run('cmt_inside', 12, ch12[0]?.id ?? null, 0, 'Почерк был чужой.', null, null, AT);
@@ -70,8 +70,8 @@ function seedV24(db: Db): void {
   insert.run('cmt_noquote', 12, ch12[1]?.id ?? null, 1, null, null, null, AT);
   db.prepare(
     `INSERT INTO comments (id, identity_id, chapter, block_id, block_idx, base_rev, quote, prefix, suffix,
-                           author, body, body_sha, ip_hash, status, created_at)
-     VALUES ('cmt_chapter', 'idt_1', 8, NULL, NULL, 1, NULL, NULL, NULL, 'Аня', 'о главе', 'sha2', 'iph', 'new', ?)`,
+                           author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES ('cmt_chapter', 'idt_1', 8, NULL, NULL, 1, NULL, NULL, NULL, 'Аня', 'о главе', 'sha2', 'iph', 'new', ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(AT);
 }
 

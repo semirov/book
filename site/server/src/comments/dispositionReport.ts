@@ -1,25 +1,16 @@
 /**
  * The disposition a filing carries to the page (BOOK-174 §5), and the anchor it is read against.
  *
- * One place builds the reader's three lines from the stored chain, so the panel, the thread and
- * the reader's own record cannot disagree about how a filing was read. A row written before v27
- * keeps `disposition: null` and no report at all: the absence is the honest answer, and nothing
- * invents a reading for a filing nobody read this way.
+ * The word is the stored fact; the sentence a reader reads is the stored `reason`, made once by
+ * `outcomeLine` (BOOK-218). A row written before v27 keeps `disposition: null` and no reading:
+ * the absence is the honest answer, and nothing invents one for a filing nobody read.
  *
  * The place comes from ADR-044, never from a second segmentation: the filing's own
  * `sentence_id` names the sentence, `sentences.idx` is its display order and the live block's
- * `idx` is the paragraph. A sentence whose row is gone is history, not an anchor — the report
- * then names the chapter and the paragraph only.
+ * `idx` is the paragraph. A sentence whose row is gone is history, not an anchor.
  */
 
-import {
-  chainReport,
-  normalizeCarrierKind,
-  normalizeDisposition,
-  normalizeDispositionLock,
-  type Disposition,
-  type DispositionReport,
-} from '@book/shared';
+import { normalizeCarrierKind, normalizeDisposition, type CarrierKind, type Disposition } from '@book/shared';
 
 import type { Db } from '../db/db.ts';
 import { readBlock } from './repo.ts';
@@ -61,28 +52,15 @@ export function dispositionAnchorOf(db: Db, row: Pick<DispositionColumns, 'block
 
 export type DispositionFields = {
   disposition: Disposition | null;
-  report: DispositionReport | null;
+  /** The carrier a `through_paper` reading named, so its line can name the place. */
+  carrierKind: CarrierKind | null;
 };
 
-/** The DTO's two fields: the stored word (dropped when this build does not know it) + report. */
-export function dispositionFieldsOf(db: Db, row: DispositionColumns): DispositionFields {
+/** The DTO's two fields: the stored word and place, dropped when this build does not know them. */
+export function dispositionFieldsOf(_db: Db, row: DispositionColumns): DispositionFields {
   const disposition = normalizeDisposition(row.disposition);
-  if (disposition === null) return { disposition: null, report: null };
-  const anchor = dispositionAnchorOf(db, row);
   return {
     disposition,
-    report: chainReport(
-      {
-        disposition,
-        lock: normalizeDispositionLock(row.lock),
-        carrierKind: normalizeCarrierKind(row.carrier_kind),
-        quoteKept: row.quote_kept,
-        sentenceId: row.sentence_id,
-      },
-      { chapter: row.chapter, blockIndex: anchor.blockIndex, sentenceIndex: anchor.sentenceIndex },
-      // «Exactly one sentence» is the stored anchor: the `as_said` plan existed when the filing
-      // carried one, and a sentence that has since closed is not a second opinion about it.
-      row.sentence_id !== null,
-    ),
+    carrierKind: disposition === 'through_paper' ? normalizeCarrierKind(row.carrier_kind) : null,
   };
 }

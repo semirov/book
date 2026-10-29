@@ -19,7 +19,7 @@
  * re-process the same row once a second.
  */
 
-import type { CommentDecisionPayload, DispositionReport } from '@book/shared';
+import type { CommentDecisionPayload } from '@book/shared';
 
 import { countRows, safeJson } from '../engineState/rows.ts';
 import { readQueue } from '../engineState/reader.ts';
@@ -29,7 +29,7 @@ import { appendCommentEvent, readCommentRow, type CommentRow } from '../comments
 import { acceptComment } from './accept.ts';
 import type { DecisionEmit } from './decisions.ts';
 import type { DispositionProposal } from './disposition.ts';
-import { chooseFor, disposeRejection, reportOfDecision, storedDecision } from './dispositionStore.ts';
+import { chooseFor, disposeRejection, lineOfDecision, storedDecision } from './dispositionStore.ts';
 import { settleAttempt } from './triage.ts';
 import { parseReadingBlock, type TriageReading } from './triageReading.ts';
 
@@ -39,7 +39,7 @@ export const TRIAGE_PLACE_LIMIT = 2;
 export type TriageApplierOptions = {
   db: Db;
   emit: DecisionEmit;
-  notify: (commentId: string, report: DispositionReport | null) => void;
+  notify: (commentId: string, reason: string | null) => void;
   now?: () => Date;
   limit?: number;
 };
@@ -134,7 +134,6 @@ function emitDecision(
   row: CommentRow,
   /** The row's own word after the write: `accepted`, `registered` (paperwork) or `rejected`. */
   status: 'accepted' | 'registered' | 'rejected',
-  report: DispositionReport | null,
   at: string,
 ): void {
   options.emit('comment:decision', {
@@ -150,7 +149,6 @@ function emitDecision(
       ahead: queueAhead(options.db, row.change_id),
     },
     source: 'llm',
-    report,
   } satisfies CommentDecisionPayload);
 }
 
@@ -267,13 +265,13 @@ export function placeFiling(options: TriageApplierOptions, commentId: string): b
   if (placed === null) return false;
   const after = placed.row;
   const chain = storedDecision(after);
-  const report = chain === null ? null : reportOfDecision(db, chain, after);
-  emitDecision(options, after, placed.status, report, at);
+  const line = chain === null ? null : lineOfDecision(chain);
+  emitDecision(options, after, placed.status, at);
   // BOOK-206 M9: a push at placement is owed only where no change speaks for the filing — a lock
   // refusal (it never becomes a change) and paperwork (its document is not the chapter's text).
   // An accepted filing is announced by its change's own decision push when the chapter lands;
   // pushing here spent the (identity, chapter) claim and swallowed «глава N написана».
-  if (placed.status !== 'accepted') options.notify(commentId, report);
+  if (placed.status !== 'accepted') options.notify(commentId, line);
   return true;
 }
 

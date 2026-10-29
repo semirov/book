@@ -217,7 +217,10 @@ export async function matrix(cdp, origin, page, width, log) {
       await tap(cdp, mobile, await pointOn(cdp, 1));
       await sleep(420);
       const opened = await scan(cdp);
-      const empty = await cdp.evaluate("window.__recordTap.count('.rec-empty')");
+      // BOOK-218 — an untouched sentence is not a list: the head says what the record is, the
+      // hand lives in `история` (the section is not printed here at all), and no `замечания`
+      // label stands above a filing the sentence does not hold.
+      const head = await cdp.evaluate("window.__recordTap.text('.rec-what')");
       const hand = await cdp.evaluate("window.__recordTap.text('.rec-hand')");
       const labels = await cdp.evaluate(
         "Array.from(document.querySelectorAll('.rec-section-label')).map((node) => node.textContent)",
@@ -225,9 +228,10 @@ export async function matrix(cdp, origin, page, width, log) {
       return {
         pass:
           opened.rec === 1 && opened.acc === 'open' &&
-          (empty === 1 || (typeof hand === 'string' && hand.includes('печатник'))) &&
+          head === 'запись о фразе' &&
+          hand === null &&
           !labels.includes('замечания'),
-        detail: { opened, empty, hand, labels },
+        detail: { opened, head, hand, labels },
       };
     }),
   );

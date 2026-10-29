@@ -75,6 +75,7 @@ const AUTHORS: AuthorsDto = {
 const COMMENT: CommentDto = {
   attempt: null,
   id: 'cmt_1',
+  number: 1,
   chapter: 8,
   anchor: { blockId: 'ch08#aa11bb22', blockIndex: 3, quote: SENTINEL.quote, prefix: null, suffix: null, resolved: true },
   author: SENTINEL.name,

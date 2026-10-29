@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { blankComments, exactly, rulesOf } from './measure.css.ts';
+import { blankComments, exactly, rulesOf, squash } from './measure.css.ts';
 import { tokenPxOf } from './measure.rules.ts';
 import {
   BASE,
   CANVAS_BOUND,
   COLUMN_BOXES,
   FOLIO_INSET,
+  MARGIN_CHANNEL,
+  MARGIN_CHANNEL_NARROW,
   OUTSIDE_CANVAS,
   PROSE,
   REGISTER_COMPONENTS,
@@ -415,6 +417,58 @@ describe('the guard fires on every class of violation it names', () => {
     // Re-widened to the canvas from a later sheet is the same bug stated as a box of its own.
     const wide = layoutProblems(seeded('../styles/seam.css', '.seam { max-width: var(--column); }'));
     expect(wide.some((problem) => problem.includes('.seam { max-width: var(--column) }'))).toBe(true);
+  });
+
+  it('keeps the margin channel’s two objects where the sheet puts them (BOOK-218)', () => {
+    // The seed-free run above already holds this; the rows are pinned here so a future edit
+    // widens the channel on purpose or not at all.
+    const mark = declarationsIn('../styles/marginalia.css', '.filing-mark');
+    expect(mark.get('position')).toBe('absolute');
+    expect(mark.get('left')).toBe('calc(100% + var(--mark-air, 16px))');
+    expect(mark.get('width')).toBe('var(--mark-hit, 40px)');
+    expect(mark.get('height')).toBe('44px');
+    const note = declarationsIn('../styles/marginalia.css', '.margin-note');
+    expect(note.get('left')).toBe('calc(100% + var(--note-gap, 56px))');
+    expect(note.get('width')).toBe('var(--note-fit, var(--note-w, 188px))');
+    expect(MARGIN_CHANNEL.map((row) => row.selector)).toEqual(['.filing-mark', '.margin-note']);
+    // Below 1024 the numeral leaves the text and the target narrows to the 24 px tick.
+    const narrow = rulesOf('../styles/marginalia.css', blankComments(sheets['../styles/marginalia.css'] ?? '')).filter(
+      (rule) => exactly(rule, '.filing-mark') && rule.at.some((query) => squash(query).includes('max-width:1023px')),
+    );
+    expect(narrow.map((rule) => rule.declarations.get('width'))).toEqual(['24px']);
+    expect(MARGIN_CHANNEL_NARROW.map((row) => row.selector)).toEqual(['.filing-mark', '.filing-mark-num']);
+  });
+
+  it('fires when the mark leaves the channel, is raised, or loses its target', () => {
+    // A mark back on the prose line: the air past the right edge is what keeps it in the channel.
+    const inline = layoutProblems(
+      replaced('../styles/marginalia.css', '  left: calc(100% + var(--mark-air, 16px));', '  left: 0;'),
+    );
+    const wants = '.filing-mark does not state left: calc(100% + var(--mark-air, 16px))';
+    expect(inline.some((problem) => problem.includes(wants))).toBe(true);
+
+    // A mark raised over the page: a fixed layer or a shadow is the defect, not a fix.
+    const fixed = layoutProblems(seeded('../styles/marginalia.css', '.filing-mark { position: fixed; }'));
+    expect(fixed.some((problem) => problem.includes('the margin channel has no fixed layer above 1023'))).toBe(true);
+    const shadow = layoutProblems(seeded('../styles/marginalia.css', '.filing-mark { box-shadow: 0 1px 2px black; }'));
+    expect(shadow.some((problem) => problem.includes('a channel object is not raised above the page'))).toBe(true);
+
+    // Geometry that animates is geometry that moves under the reader.
+    const moving = layoutProblems(
+      seeded('../styles/marginalia.css', '.margin-note { transition: top 200ms ease; }'),
+    );
+    expect(moving.some((problem) => problem.includes("no transition on the channel's geometry"))).toBe(true);
+
+    // The 1023 step's own numbers: a 40 px target on the phone is not the design's tick.
+    const wide = replaced('../styles/marginalia.css', '    width: 24px;', '    width: 40px;');
+    expect(layoutProblems(wide).some((problem) => problem.includes('.filing-mark does not state width: 24px'))).toBe(true);
+
+    // `left: 100%` is the prose's right edge only while the prose is the containing block: a
+    // positioned sentence span would put the mark in the middle of the line.
+    const span = layoutProblems(seeded('../styles/seam.css', '.p [data-s] { position: relative; }'));
+    expect(span.some((problem) => problem.includes('a sentence span is no containing block'))).toBe(true);
+    const prose = layoutProblems(replaced('../styles/seam.css', '.p {\n  position: relative;', '.p {'));
+    expect(prose.some((problem) => problem.includes('.p does not state position: relative'))).toBe(true);
   });
 
   it('does not fire on the copy caps or the column restated', () => {

@@ -1,6 +1,6 @@
 import type { ParagraphChainDto, ParagraphVersionDto } from '@book/shared';
 
-import { formatDate, formatTime } from './format.ts';
+import { formatTime } from './format.ts';
 import {
   BASIS_HAND,
   FRAME_HAND,
@@ -15,7 +15,7 @@ import {
  * header, its `ver` rows and its `blockId` codes are gone with the panel.
  *
  * The three facts of a phrase:
- *   1. the hand **and** the moment of its last version — `печатник · 28.10, 12:08`; the frame
+ *   1. the hand of its last version — `машина`, a reader's name or their change; the frame
  *      and the basis are hands without a moment, and a version no actor claims is
  *      `правка вне процесса`;
  *   2. whether it can still change — `меняется` / `не меняется` (the frame, the basis, or a
@@ -54,15 +54,6 @@ export const MUTABLE = 'меняется';
 export const FIXED = 'не меняется';
 export const NO_REWRITES = 'правок не было';
 
-/** `2026-10-28T12:08:00Z` → «28.10, 12:08» — the sentence register's short moment. */
-function shortMoment(iso: string | null): string {
-  if (iso === null) return '—';
-  const date = formatDate(iso);
-  const time = formatTime(iso);
-  if (date === '—' || time === '—') return '—';
-  return `${date.slice(0, 5)}, ${time}`;
-}
-
 function handOf(last: ParagraphVersionDto | null, frame: SentenceFrame): string {
   if (frame === 'basis') return BASIS_HAND;
   if (frame === 'frame') return FRAME_HAND;
@@ -77,8 +68,9 @@ function handOf(last: ParagraphVersionDto | null, frame: SentenceFrame): string 
   }
   // Nothing claims it: no actor and no change behind it.
   if (last.actor === null && last.changeSeq === null) return UNATTRIBUTED_HAND;
-  const moment = shortMoment(last.at);
-  return moment === '—' ? PASS_HAND : `${PASS_HAND} · ${moment}`;
+  // The machine's act is the hand alone; the moment it wrote is the trail's own fact, and
+  // printing it here would be a second telling of the same history.
+  return PASS_HAND;
 }
 
 /**

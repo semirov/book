@@ -18,6 +18,7 @@ const TEXT = 'Я вошёл в пустую комнату. Её освещал 
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: {
       blockId: BLOCK,
@@ -69,6 +70,7 @@ describe('the marks of a paragraph', () => {
     const pending = comment({ anchor: { ...comment().anchor, quote: 'Свет был включён' } });
     const landed = comment({
       id: 'cmt_01J9Z8K4Q8',
+      number: 2,
       status: 'applied',
       applied: { chapter: 8, rev: 4 },
       anchor: { ...comment().anchor, quote: 'горел всю ночь' },

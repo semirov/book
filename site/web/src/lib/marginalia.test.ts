@@ -1,16 +1,26 @@
-import { FAILED_ATTEMPT_LINE, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import {
+  DISPOSITION_LOCKS,
+  FAILED_ATTEMPT_LINE,
+  LOCK_LINES,
+  type ChangeSummaryDto,
+  type CommentDto,
+  type DispositionLock,
+} from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
   changeState,
   changeWord,
+  DROPPED_LINES,
   filingConsequence,
   filingMarginalia,
+  filingSentence,
   filingState,
-  HELD_LINE,
-  landingReceipt,
+  NOTE_SAVED_LINE,
+  PREMISE_LINES,
   revisionOf,
   sentenceAt,
+  STATE_LINES,
   STATE_WORDS,
 } from './marginalia.ts';
 import { changeLines as changeLinesFor } from './changeStatus.ts';
@@ -20,7 +30,7 @@ import { clampQuote } from './seam.ts';
  * BOOK-90 / BOOK-137 — the state words and the deck under them.
  *
  * One table for a filing, one for a change: every status has exactly one of «ждёт» · «идёт» ·
- * «внесено» · «рассмотрено» · «отклонено» (BOOK-189; BOOK-206 removed the author's word), and
+ * «внесено» · «рассмотрено» · «не принято» (BOOK-189; BOOK-206 removed the author's word), and
  * the second line carries what the word cannot (a refusal, a superseded anchor, a held check,
  * an expired pass, the paperwork mode). The revision object's two rows are resolved on the
  * paragraph's own text, by the same rule the mark uses.
@@ -35,6 +45,7 @@ type FilingOverrides = Partial<CommentDto> & { retryAt?: string | null };
 function comment(overrides: FilingOverrides = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId: 'ch08#aa11bb22', blockIndex: 1, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -84,42 +95,51 @@ function change(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 }
 
 describe('the state words', () => {
-  it('are the only vocabulary: ждёт · идёт · внесено · рассмотрено · отклонено', () => {
+  it('are the whole vocabulary, one word per state (BOOK-218)', () => {
     expect(STATE_WORDS).toEqual({
       waiting: 'ждёт',
-      working: 'идёт',
+      reading: 'идёт',
+      accepted: 'принято',
+      writing: 'главу пишут',
       landed: 'внесено',
       registered: 'рассмотрено',
-      // BOOK-189: a refusal is decided too, and it is not a wait.
-      refused: 'отклонено',
+      held: 'проверяется',
+      // BOOK-218: two sinks, one word each — a refusal is `не принято`, whatever door it came
+      // through. The sentence on the line is what separates them.
+      refused: 'не принято',
+      // Our failure is its own word: the filing was never judged, so «не принято» would be a
+      // verdict nobody made (owner, 2026-10-29).
+      undelivered: 'не дошло',
+      dropped: 'снято',
+      hidden: 'скрыто',
     });
   });
 
   it('map every filing status onto exactly one of them, and «accepted» reads the change', () => {
     const table: Array<[CommentDto['status'], string]> = [
-      ['new', 'ждёт'],
-      ['batched', 'идёт'],
-      ['delivered', 'идёт'],
-      // BOOK-189: `accepted` is not a state. It is «идёт» only while the writer is at it, and
-      // «ждёт» while the lane has not reached it.
-      ['accepted', 'ждёт'],
-      ['applied', 'внесено'],
+      ['new', STATE_WORDS.waiting],
+      ['batched', STATE_WORDS.reading],
+      ['delivered', STATE_WORDS.reading],
+      // BOOK-189: `accepted` is «принято» until the linked change says the machine is writing.
+      ['accepted', STATE_WORDS.accepted],
+      ['applied', STATE_WORDS.landed],
       // BOOK-137: accepted as paperwork — decided, and nothing was written.
-      ['registered', 'рассмотрено'],
+      ['registered', STATE_WORDS.registered],
       // BOOK-206: a legacy `escalated` row (before the boot migration re-opens it) waits like any
       // undecided filing; the author's word is gone.
-      ['escalated', 'ждёт'],
-      ['superseded', 'ждёт'],
+      ['escalated', STATE_WORDS.waiting],
+      // BOOK-218: the text moved under it, or the attempt never landed.
+      ['superseded', STATE_WORDS.dropped],
       // BOOK-189: a refusal is a decision of its own.
-      ['rejected', 'отклонено'],
-      ['quarantined', 'ждёт'],
-      ['expired', 'ждёт'],
-      ['hidden', 'ждёт'],
+      ['rejected', STATE_WORDS.refused],
+      ['quarantined', STATE_WORDS.held],
+      ['expired', STATE_WORDS.dropped],
+      ['hidden', STATE_WORDS.hidden],
     ];
     for (const [status, word] of table) expect(filingMarginalia(comment({ status })).word, status).toBe(word);
     // BOOK-189 — `accepted` reads only the two live values the DTO names for `changeStatus`.
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('working');
-    expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('waiting');
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('writing');
+    expect(filingState(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('accepted');
     // BOOK-219 — a receipt on the row is the server's landing fact, ahead of the durable read.
     expect(filingState(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } }))).toBe('landed');
     expect(filingMarginalia(comment({ status: 'accepted', applied: { chapter: 8, rev: 4 } })).word).toBe('внесено');
@@ -134,56 +154,41 @@ describe('the state words', () => {
     const stopped = filingMarginalia(
       comment({ status: 'rejected', reason: 'правка остановлена — текст остался прежним' }),
     );
-    expect(stopped.word).toBe('отклонено');
+    expect(stopped.word).toBe('не принято');
     expect(stopped.consequence).toBe('правка остановлена — текст остался прежним');
     expect(stopped.consequence).not.toContain('в очереди');
     // A landed change reaches the page as `applied` with the server's receipt.
     const landed = filingMarginalia(comment({ status: 'applied', applied: { chapter: 8, rev: 4 } }));
     expect(landed.word).toBe('внесено');
-    expect(landed.consequence).toBe('глава 8 · ревизия 4');
-    // The live words stay live: the writer is at it, or the lane holds it.
-    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('пишется');
+    expect(landed.consequence).toBe('в главу 8. это четвёртая редакция');
+    // The live words stay live: «пишется» names the chapter the machine is writing, and a row
+    // the machine has not reached names the chapter's turn (BOOK-218).
+    expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'processing' })).consequence).toBe('');
     expect(filingMarginalia(comment({ status: 'accepted', changeStatus: 'pending' })).consequence).toBe(
-      'в очереди на запись',
+      STATE_LINES.accepted,
     );
-  });
-
-  it('repeats the server’s own sentence for a scheduled retry, never «в очереди»', () => {
-    const waiting = filingMarginalia(
-      comment({
-        status: 'accepted',
-        changeStatus: 'pending',
-        retryAt: '2026-10-29T12:05:00Z',
-        reason: 'провайдер не ответил — повтор в 12:05',
-      }),
-    );
-    expect(waiting.word).toBe('ждёт');
-    expect(waiting.consequence).toBe('провайдер не ответил — повтор в 12:05');
-    expect(waiting.consequence).not.toContain('в очереди');
-    // A frame that schedules a retry before it can write a sentence keeps the word alone.
-    expect(filingConsequence(comment({ status: 'accepted', retryAt: '2026-10-29T12:05:00Z' }))).toBe('');
   });
 
   it('keeps a premise outside the queue: it waits, and only its first edition is «внесено»', () => {
-    expect(filingMarginalia(comment({ premise: true, status: 'accepted' })).word).toBe('ждёт');
+    expect(filingMarginalia(comment({ premise: true, status: 'accepted' })).word).toBe(STATE_WORDS.accepted);
     expect(filingMarginalia(comment({ premise: true, status: 'applied', applied: { chapter: 5, rev: 1 } })).word).toBe('внесено');
     expect(filingState({ status: 'something' as CommentDto['status'] })).toBe('waiting');
   });
 
   it('map a change’s status onto the same words', () => {
     const table: Array<[Partial<ChangeSummaryDto>, string]> = [
-      [{ status: 'pending' }, 'идёт'],
-      [{ status: 'processing' }, 'идёт'],
-      [{ status: 'done' }, 'внесено'],
+      [{ status: 'pending' }, STATE_WORDS.reading],
+      [{ status: 'processing' }, STATE_WORDS.reading],
+      [{ status: 'done' }, STATE_WORDS.landed],
       // BOOK-137: `done` with `outcome: 'registered'` is a document, not an edit of the text.
-      [{ status: 'done', outcome: 'registered', frameMode: 'оформление' }, 'рассмотрено'],
-      [{ status: 'stale' }, 'ждёт'],
-      [{ status: 'escalated' }, 'ждёт'],
-      [{ status: 'failed' }, 'ждёт'],
-      [{ status: 'void', outcome: 'dropped' }, 'ждёт'],
-      [{ premise: true, status: 'pending' }, 'ждёт'],
-      [{ premise: true, status: 'done' }, 'внесено'],
-      [{ premise: true, status: 'void', outcome: 'superseded' }, 'ждёт'],
+      [{ status: 'done', outcome: 'registered', frameMode: 'оформление' }, STATE_WORDS.registered],
+      [{ status: 'stale' }, STATE_WORDS.waiting],
+      [{ status: 'escalated' }, STATE_WORDS.waiting],
+      [{ status: 'failed' }, STATE_WORDS.waiting],
+      [{ status: 'void', outcome: 'dropped' }, STATE_WORDS.waiting],
+      [{ premise: true, status: 'pending' }, STATE_WORDS.waiting],
+      [{ premise: true, status: 'done' }, STATE_WORDS.landed],
+      [{ premise: true, status: 'void', outcome: 'superseded' }, STATE_WORDS.waiting],
     ];
     for (const [overrides, word] of table) expect(changeWord(change(overrides)), JSON.stringify(overrides)).toBe(word);
     expect(changeState(change({ status: 'done' }))).toBe('landed');
@@ -192,43 +197,39 @@ describe('the state words', () => {
 
 describe('the deck’s second line', () => {
   it('says what is still to come or what befell the filing', () => {
-    expect(filingConsequence(comment({ status: 'new' }))).toBe('попадёт в триаж');
-    expect(filingConsequence(comment({ status: 'batched' }))).toBe('читает триаж');
-    expect(filingConsequence(comment({ status: 'delivered' }))).toBe('читает триаж');
-    expect(filingConsequence(comment({ status: 'accepted' }))).toBe('в очереди на запись');
-    expect(filingConsequence(comment({ status: 'accepted', interventionKind: null }))).toBe('в очереди на запись');
-    // BOOK-189 — the writer is at this filing: one line, and it never says «в очереди».
-    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('пишется');
-    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe('в очереди на запись');
-    expect(filingConsequence(comment({ status: 'superseded' }))).toBe('снято: текст успел измениться');
+    expect(filingConsequence(comment({ status: 'new' }))).toBe(STATE_LINES.waiting);
+    expect(filingConsequence(comment({ status: 'batched' }))).toBe(STATE_LINES.reading);
+    expect(filingConsequence(comment({ status: 'delivered' }))).toBe(STATE_LINES.reading);
+    expect(filingConsequence(comment({ status: 'accepted' }))).toBe(STATE_LINES.accepted);
+    expect(filingConsequence(comment({ status: 'accepted', interventionKind: null }))).toBe(STATE_LINES.accepted);
+    // BOOK-189 — the machine is at this filing: the chapter it writes, never a queue place.
+    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'processing' }))).toBe('');
+    expect(filingConsequence(comment({ status: 'accepted', changeStatus: 'pending' }))).toBe(STATE_LINES.accepted);
+    expect(filingConsequence(comment({ status: 'superseded' }))).toBe(DROPPED_LINES.superseded);
+    // BOOK-206: a legacy `escalated` row claims no fact — the wait is the whole answer.
+    expect(filingConsequence(comment({ status: 'escalated' }))).toBe('');
     // A refusal's line is its public reason; with none, the gate's own sentence.
-    expect(filingConsequence(comment({ status: 'rejected' }))).toBe('отклонено');
+    expect(filingConsequence(comment({ status: 'rejected' }))).toBe(STATE_WORDS.refused);
     expect(filingConsequence(comment({ status: 'rejected', refusal: 'rights' }))).toBe('не принято');
     expect(filingConsequence(comment({ status: 'rejected', reason: 'вне рамок: форма книги' }))).toBe(
       'вне рамок: форма книги',
     );
-    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(
-      'проверяется: замечание сохранено и ждёт человека — из него пока не делают правку',
-    );
-    expect(filingConsequence(comment({ status: 'expired' }))).toBe('');
-    // A stored legacy row prints the server's sentence, and none is invented without one.
-    expect(filingConsequence(comment({ status: 'expired', reason: 'правка остановлена — текст остался прежним' }))).toBe(
-      'правка остановлена — текст остался прежним',
-    );
-    expect(filingConsequence(comment({ status: 'hidden' }))).toBe('скрыто');
-    expect(filingConsequence(comment({ status: 'unknown' as CommentDto['status'] }))).toBe('попадёт в триаж');
+    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(STATE_LINES.held);
+    expect(filingConsequence(comment({ status: 'expired' }))).toBe(DROPPED_LINES.expired);
+    // «скрыто» is the whole word: no second line.
+    expect(filingConsequence(comment({ status: 'hidden' }))).toBe('');
+    expect(filingConsequence(comment({ status: 'unknown' as CommentDto['status'] }))).toBe(STATE_LINES.waiting);
   });
 
   it('names the receipt of a landed intervention, and «замечание сохранено» for a note', () => {
-    // BOOK-189 — one word-free shape on every surface: «глава 7 · ревизия 4». The state word
-    // above already says «внесено», and the rights clause is not a fact about this row.
+    // BOOK-218 line 10 — one word-free shape on every surface: `в главу 7. это четвёртая
+    // редакция`. The state word above already says «внесено».
     expect(filingConsequence(comment({ status: 'applied', applied: { chapter: 7, rev: 4 } }))).toBe(
-      'глава 7 · ревизия 4',
+      'в главу 7. это четвёртая редакция',
     );
-    expect(filingConsequence(comment({ status: 'applied', interventionKind: null }))).toBe('замечание сохранено');
+    expect(filingConsequence(comment({ status: 'applied', interventionKind: null }))).toBe(NOTE_SAVED_LINE);
     // No receipt was stored (a hand-written fixture): no line at all, and no invented revision.
     expect(filingConsequence(comment({ status: 'applied' }))).toBe('');
-    expect(landingReceipt(7, 4)).toBe('внесено в главу 07 · право на ваш текст перешло автору книги · ревизия 4');
   });
 
   it('says what a paperwork filing was filed as, and that the sentence did not change', () => {
@@ -260,12 +261,12 @@ describe('the deck’s second line', () => {
   });
 
   it('keeps a premise’s whole lifecycle on one honest line', () => {
-    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe('принято в основу, до первой редакции');
+    expect(filingConsequence(comment({ premise: true, status: 'accepted', chapter: 5 }))).toBe(PREMISE_LINES.pending);
     expect(filingConsequence(comment({ premise: true, status: 'applied', applied: { chapter: 5, rev: 2 } }))).toBe(
       'вошло в первую редакцию главы 5',
     );
     expect(filingConsequence(comment({ premise: true, status: 'rejected' }))).toBe('замысел не взят');
-    expect(filingConsequence(comment({ premise: true, status: 'superseded' }))).toBe('снято: у главы уже есть замысел');
+    expect(filingConsequence(comment({ premise: true, status: 'superseded' }))).toBe(PREMISE_LINES.superseded);
   });
 });
 
@@ -401,7 +402,7 @@ describe('the sentence a filing stands on', () => {
 
 describe('the gate’s word beside the state’s word (BOOK-61)', () => {
   it('gives a hold the hold’s line, not the guard’s taxonomy', () => {
-    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(`проверяется: ${HELD_LINE}`);
+    expect(filingConsequence(comment({ status: 'quarantined' }))).toBe(STATE_LINES.held);
     expect(filingConsequence(comment({ status: 'quarantined' }))).not.toContain('возможная инструкция');
   });
 
@@ -418,7 +419,7 @@ describe('the gate’s word beside the state’s word (BOOK-61)', () => {
     expect(filingConsequence(comment({ status: 'rejected', refusal: 'auditor', reason: 'вне книги' }))).toBe(
       'вне книги',
     );
-    expect(filingConsequence(comment({ status: 'rejected', refusal: 'auditor' }))).toBe('отклонено');
+    expect(filingConsequence(comment({ status: 'rejected', refusal: 'auditor' }))).toBe('не принято');
     // A rights reason that is the gate's word alone is not the line again: the word is the state.
     expect(filingConsequence(comment({ status: 'rejected', refusal: 'rights', reason: 'не принято' }))).toBe(
       'не принято',
@@ -428,18 +429,52 @@ describe('the gate’s word beside the state’s word (BOOK-61)', () => {
     );
   });
 
-  it('heads a refusal with its gate’s word, and a hold with «ждёт»', () => {
-    // BOOK-189: a refusal no longer waits — «ждёт» is the held check's alone.
-    expect(filingMarginalia(comment({ status: 'quarantined', refusal: 'held' })).word).toBe('ждёт');
+  it('heads a refusal with its gate’s word, and a hold with «проверяется»', () => {
+    // BOOK-189, BOOK-218: a refusal never waits — a hold keeps the person's own word.
+    expect(filingMarginalia(comment({ status: 'quarantined', refusal: 'held' })).word).toBe(STATE_WORDS.held);
     expect(filingMarginalia(comment({ status: 'rejected', refusal: 'rights' })).word).toBe('не принято');
-    expect(filingMarginalia(comment({ status: 'rejected', refusal: 'auditor' })).word).toBe('отклонено');
+    expect(filingMarginalia(comment({ status: 'rejected', refusal: 'auditor' })).word).toBe('не принято');
   });
 });
 
-/**
- * A filing is one state: its own row plus one fact about its chapter. A failed
- * attempt behind it is not a state, and a premise whose chapter has text has landed.
- */
+describe('a lock’s own sentence (BOOK-218 line 11)', () => {
+  const locked = (lock: DispositionLock): FilingOverrides => ({
+    status: 'rejected',
+    disposition: 'inadmissible',
+    reason: LOCK_LINES[lock],
+  });
+
+  it('reads the verdict from the stored line', () => {
+    for (const lock of DISPOSITION_LOCKS) {
+      expect(filingState(comment(locked(lock))), lock).toBe('refused');
+      expect(filingMarginalia(comment(locked(lock))).word, lock).toBe('не принято');
+    }
+    expect(filingState(comment({ status: 'rejected' }))).toBe('refused');
+    expect(filingSentence(comment({ status: 'rejected', disposition: 'as_said' }))).toBe('не принято');
+  });
+
+  it.each([
+    ['rights', 'не принято: это чужой текст, а чужое мы не переписываем'],
+    ['harm', 'не принято: этим можно навредить живому человеку'],
+    ['frame', 'не принято: у этой главы есть рамка, и её не сдвигают'],
+    ['finale', 'не принято: финал уже назван, его не меняют'],
+  ] as const)('says the %s lock’s own line, the verdict word in front', (lock, sentence) => {
+    expect(filingSentence(comment(locked(lock)))).toBe(sentence);
+    const marginalia = filingMarginalia(comment(locked(lock)));
+    expect(marginalia.word).toBe('не принято');
+    expect(`не принято: ${marginalia.consequence}`).toBe(sentence);
+  });
+
+  it('gives our failure its own word, and never a lock’s sentence', () => {
+    const tail = 'мы не смогли проверить текст. это наша ошибка, правка не отклонена — нажмите «повторить»';
+    const failed = comment({ status: 'rejected', disposition: 'as_said', reason: `не дошло: ${tail}` });
+    expect(filingState(failed)).toBe('undelivered');
+    expect(filingMarginalia(failed)).toEqual({ state: 'undelivered', word: 'не дошло', consequence: tail });
+    expect(filingSentence(failed)).not.toContain('прочитали как');
+    expect(filingSentence(failed)).not.toContain('не принято');
+  });
+});
+
 describe('a failed attempt and a landed premise', () => {
   it('keeps the filing’s word and says the attempt came back empty', () => {
     const failed = filingMarginalia(comment({ status: 'new', attempt: 'failed' }));

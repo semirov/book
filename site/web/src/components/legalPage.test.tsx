@@ -254,7 +254,7 @@ describe('/rules', () => {
 
   it('keeps the frozen ending and the promise that a refusal has a public reason', () => {
     expect(text).toContain('реальные люди');
-    expect(text).toContain('указания модели');
+    expect(text).toContain('указания машине');
     expect(text).toContain('глава 42 заморожена');
     expect(text).toContain('публичной причиной');
     expect(html).toContain('href="/privacy"');
@@ -288,7 +288,8 @@ describe('/rules', () => {
     const flat = text.replace(/\s+/gu, ' ');
     const paragraph =
       'Деньги, которые приходят по ссылке «поддержать книгу», — подарок. Они ничего не оплачивают: ' +
-      'ни доступа, ни глав, ни решений по правкам. Книга остаётся бесплатной, а очередь правок — общей.';
+      'ни доступа, ни глав, ни решений по правкам. Книга остаётся бесплатной, а правки идут по одной, ' +
+      'в порядке записи.';
     expect(flat).toContain(paragraph);
     expect(flat).toContain('Платёж проводит банк: кто его сделал, мы не видим.');
     // One section, one print of the control's name.

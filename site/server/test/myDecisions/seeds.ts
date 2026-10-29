@@ -25,8 +25,8 @@ export function seedComment(h: Harness, seed: CommentSeed): void {
     .prepare(
       `INSERT INTO comments
          (id, identity_id, chapter, author, body, body_sha, flags, ip_hash, status, guard,
-          created_at, decided_at, reason, change_id, audit_verdict)
-       VALUES (?, ?, ?, 'Аня', 'тело', ?, '[]', 'ip', ?, NULL, ?, ?, ?, NULL, ?)`,
+          created_at, decided_at, reason, change_id, audit_verdict, number)
+       VALUES (?, ?, ?, 'Аня', 'тело', ?, '[]', 'ip', ?, NULL, ?, ?, ?, NULL, ?, (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     )
     .run(
       seed.id,

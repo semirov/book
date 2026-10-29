@@ -16,7 +16,7 @@
 import type { Db } from '../db/db.ts';
 
 /** The hands the book prints. Level 1 has no other vocabulary. */
-export const HAND_WRITER = 'печатник';
+export const HAND_WRITER = 'машина';
 export const HAND_FRAME = 'рамка книги';
 export const HAND_EDIT = 'правка';
 export const HAND_UNATTRIBUTED = 'правка вне процесса';
@@ -53,9 +53,15 @@ type VersionRow = {
   step_id: string | null;
 };
 
-/** The hand a version row prints: its own label, else the word its actor kind means. */
+/**
+ * The hand a version row prints: its own label, else the word its actor kind means. A machine
+ * row never prints a stored label — the hand is the book's word (`машина`), not a label an old
+ * build wrote — while a reader's own name is theirs and is kept.
+ */
 export function handOf(actorKind: string, actorLabel: string | null): string {
-  if (actorLabel !== null && actorLabel.trim() !== '') return actorLabel;
+  if (actorKind !== 'writer' && actorKind !== 'author' && actorLabel !== null && actorLabel.trim() !== '') {
+    return actorLabel;
+  }
   switch (actorKind) {
     case 'writer':
       return HAND_WRITER;

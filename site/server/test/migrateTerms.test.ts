@@ -40,8 +40,8 @@ describe('migrate — the terms record (BOOK-58, v19)', () => {
        VALUES ('idn_v18', 'yandex-v18', 'Аня', '2026-10-27T11:00:00Z', '2026-10-27T11:00:00Z')`,
     );
     db.exec(
-      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-       VALUES ('cmt_v18', 'idn_v18', 8, 'Аня', 'Замечание без типа.', 'a', 'f', 'new', '2026-10-27T12:00:00Z')`,
+      `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+       VALUES ('cmt_v18', 'idn_v18', 8, 'Аня', 'Замечание без типа.', 'a', 'f', 'new', '2026-10-27T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     );
     // Shape a v18 install: the terms record did not exist before this step.
     for (const column of TERMS_COLUMNS) db.exec(`ALTER TABLE comments DROP COLUMN ${column}`);

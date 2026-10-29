@@ -71,8 +71,8 @@ describe('Gate C’s OFF is answered by the ladder (BOOK-174)', () => {
 
     const row = readCommentRow(h.db, id)!;
     expect(row).toMatchObject({ status: 'new', disposition: null, lock: null, decided_at: null, audit_verdict: 'OFF' });
-    // No report exists before the reading: the DTO says nothing the ladder has not said.
-    expect(toCommentDto(h.db, row).report).toBeNull();
+    // No reading exists before the ladder speaks: the DTO says nothing it has not said.
     expect(toCommentDto(h.db, row).disposition).toBeNull();
+    expect(toCommentDto(h.db, row).carrierKind).toBeNull();
   });
 });

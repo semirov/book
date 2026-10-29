@@ -1,4 +1,4 @@
-import type { HistoryKind } from '@book/shared';
+import { STOP_REASONS, type HistoryKind } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readCommentRow } from '../../src/comments/repo.ts';
@@ -198,9 +198,9 @@ function acceptThroughInterface(local: Fixture, at = '2026-10-25T10:00:00Z'): { 
   local.db
     .prepare(
       `INSERT INTO comments (id, identity_id, chapter, block_id, author, body, body_sha, ip_hash, status,
-                             created_at, audit_verdict, rights_verdict)
+                             created_at, audit_verdict, rights_verdict, number)
        VALUES ('cmt_iface', 'idt_1', 8, 'ch08#aa11bb22', 'Аня', 'абзац слишком часто', 'sha-1', 'iph',
-               'new', '2026-10-24T09:00:00Z', 'FITS', 'CLEAR')`,
+               'new', '2026-10-24T09:00:00Z', 'FITS', 'CLEAR', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     )
     .run();
   const comment = readCommentRow(local.db, 'cmt_iface');
@@ -381,7 +381,7 @@ describe('the public reason a row may print', () => {
     appendEvent(db, { kind: 'change.decided', changeId: row.changeId, chapter: 34 }, BASE_MS);
 
     const [item] = readRecord(db).items;
-    expect(item?.reason).toBe('модель ответила не по форме — заявка остаётся в очереди');
+    expect(item?.reason).toBe(STOP_REASONS.shape);
     expect(item?.reason ?? '').not.toMatch(/PROVIDER_SHAPE|ENGINE_TIMEOUT/u);
   });
 });

@@ -391,6 +391,13 @@ CREATE INDEX steps_open ON steps(outcome, at);
  */
 export const COMMENTS_TABLE_SQL = `CREATE TABLE comments (
   id           TEXT PRIMARY KEY,               -- 'cmt_01JB7…' (ULID, sortable)
+  -- BOOK-218: the filing's own public number — what a reader reads («замечание 12»). It is
+  -- explicit, not an implicit rowid: VACUUM and a table rebuild may renumber a rowid, and a
+  -- number a reader was shown must never move. Assigned at insert, unique, 1-based.
+  -- DEFAULT 0 is what makes ALTER TABLE … ADD COLUMN NOT NULL legal on a v29 install, and the
+  -- default is stated here so the fresh and the migrated shapes are one: the product's writer
+  -- always assigns the next number, and the unique index refuses a second unnumbered row.
+  number       INTEGER NOT NULL DEFAULT 0,
   identity_id  TEXT NOT NULL REFERENCES identities(id),   -- Yandex subject (ADR-021)
   chapter      INTEGER NOT NULL CHECK (chapter BETWEEN 1 AND 67),
   block_id     TEXT,                           -- null = chapter-level
@@ -462,6 +469,13 @@ export const COMMENTS_TABLE_SQL = `CREATE TABLE comments (
   idem_key     TEXT UNIQUE
 );
 `;
+
+/**
+ * BOOK-218 — the filing's public number is unique and never reused. Created beside the table so
+ * a fresh install (`SCHEMA_SQL`) and an upgrade (`migrateV32`) state the same index once.
+ */
+export const COMMENTS_NUMBER_INDEX_SQL =
+  'CREATE UNIQUE INDEX IF NOT EXISTS comments_number ON comments(number);';
 
 /**
  * BOOK-174 §7 — the editor's materialised reading of how often the world refuses. One row per

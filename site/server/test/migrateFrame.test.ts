@@ -32,9 +32,9 @@ describe('migrate — BOOK-137 (v16)', () => {
     );
     db.exec(
       `INSERT INTO comments (id, identity_id, chapter, block_id, quote, author, body, body_sha, ip_hash,
-                             status, created_at)
+                             status, created_at, number)
        VALUES ('cmt_v13', 'idn_14', 1, 'ch01#frame', 'Я вошёл в пустую комнату.', 'Аня', 'К первой фразе.',
-               'a', 'f', 'new', '2026-10-25T12:00:00Z')`,
+               'a', 'f', 'new', '2026-10-25T12:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
     );
     db.exec(
       `INSERT INTO changes (id, kind, chapter, intent, base_rev, base_sha256, base_blocks, scope_hint, status,

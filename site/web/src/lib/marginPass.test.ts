@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  anchorTopFor,
   marginFits,
   noteGapFrom,
   noteWidth,
@@ -22,6 +23,10 @@ import {
  * air: 16 px at the measure, the mark's 40 px target (`--note-gap` = 56), the note, 8 px to the
  * viewport. A channel under `--note-min` (120) holds no note at all: `noteWidth` answers 0 and
  * the paragraph is a strip.
+ *
+ * BOOK-218 — the mark at a sentence is an item of the same ledger, but a **column of its own**:
+ * the mark is centred on its line (`anchorTopFor`) and cursors are per column, so a mark and the
+ * note of the same line each keep their own tie, and neither pushes the other.
  */
 
 const STEP = 12;
@@ -175,7 +180,94 @@ describe('placeMargin', () => {
     expect(placeMargin([], STEP, 1_000)).toEqual({ tops: [], tail: 0 });
   });
 
-  it('counts a tall item as an item of the same pass', () => {
+  it('keeps one cursor per column: a mark owns its gutter, a note owns the channel (BOOK-218)', () => {
+    // The sentence's line is at 200, its line box 25 px, the mark's target 44: the mark's box
+    // hangs half its height either side of the line, so its numeral stands on the line.
+    const markTop = anchorTopFor('mark', 200, 25, 44);
+    expect(markTop).toBeCloseTo(200 + 12.5 - 22, 6);
+    expect(markTop + 22).toBeCloseTo(200 + 12.5, 6);
+    // A note keeps the line's top: its hairline is the tie.
+    expect(anchorTopFor('note', 200, 25, 96)).toBe(200);
+    const placed = placeMargin(
+      [
+        { anchorTop: markTop, height: 44, kind: 'mark' },
+        { anchorTop: 200, height: 96, kind: 'note' },
+        { anchorTop: 260, height: 96, kind: 'note' },
+      ],
+      STEP,
+      1_000,
+    );
+    // The note of the same line keeps its own tie — the mark is not in its column — and only
+    // the *next note* starts under the note above it.
+    expect(placed.tops[0]).toBeCloseTo(190.5, 6);
+    expect(placed.tops[1]).toBe(200);
+    expect(placed.tops[2]).toBeCloseTo(200 + 96 + STEP, 6);
+    // Nothing is placed above its own anchor: `max(anchorTop, cursor)` can only push down.
+    expect(placed.tops[0]).toBeGreaterThanOrEqual(markTop - 1e-9);
+    expect(placed.tops[1]).toBeGreaterThanOrEqual(200);
+  });
+
+  it('never lets a note move a mark, or a mark move a note', () => {
+    // A tall note on the line above a mark: the mark stays centred on its own line.
+    const above = placeMargin(
+      [
+        { anchorTop: 100, height: 300, kind: 'note' },
+        { anchorTop: 400, height: 44, kind: 'mark' },
+      ],
+      STEP,
+      1_000,
+    );
+    expect(above.tops).toEqual([100, 400]);
+    // The mirror: a mark on the line above never pushes the note below it.
+    const below = placeMargin(
+      [
+        { anchorTop: 100, height: 44, kind: 'mark' },
+        { anchorTop: 100, height: 96, kind: 'note' },
+      ],
+      STEP,
+      1_000,
+    );
+    expect(below.tops).toEqual([100, 100]);
+    // The tail is the deepest bottom of both columns, not the last item's.
+    const deep = placeMargin(
+      [
+        { anchorTop: 900, height: 200, kind: 'note' },
+        { anchorTop: 1_000, height: 44, kind: 'mark' },
+      ],
+      STEP,
+      1_000,
+    );
+    expect(deep.tail).toBe(100);
+  });
+
+  it('keeps two marks on adjacent lines from overlapping', () => {
+    // Two 44 px targets on 24 px lines: the second starts a step under the first, never at
+    // its own (higher) line — the same rule notes obey, in the mark's own column.
+    const first = anchorTopFor('mark', 100, 24, 44);
+    const second = anchorTopFor('mark', 124, 24, 44);
+    expect(second - first).toBe(24);
+    const placed = placeMargin(
+      [
+        { anchorTop: first, height: 44, kind: 'mark' },
+        { anchorTop: second, height: 44, kind: 'mark' },
+      ],
+      STEP,
+      1_000,
+    );
+    expect(placed.tops[0]).toBeCloseTo(first, 6);
+    expect(placed.tops[1]).toBeCloseTo(first + 44 + STEP, 6);
+    expect((placed.tops[1] ?? 0)).toBeGreaterThanOrEqual((placed.tops[0] ?? 0) + 44);
+  });
+
+  it('centres a mark on the line even when the line’s height is unknown', () => {
+    // jsdom and a not-yet-laid-out font answer `normal`: the mark still starts at the line, and
+    // never above it, so the ledger's `max` can only push it down.
+    expect(anchorTopFor('mark', 300, Number.NaN, 44)).toBe(300);
+    expect(anchorTopFor('mark', 300, 0, 44)).toBe(300);
+    expect(anchorTopFor('note', 300, Number.NaN, 44)).toBe(300);
+  });
+
+  it('counts an opened object as an item of the same pass', () => {
     const closed = placeMargin([{ anchorTop: 100, height: 96 }, { anchorTop: 250, height: 96 }], STEP, 1_000);
     const opened = placeMargin([{ anchorTop: 100, height: 300 }, { anchorTop: 250, height: 96 }], STEP, 1_000);
     expect(closed.tops[1]).toBe(250);

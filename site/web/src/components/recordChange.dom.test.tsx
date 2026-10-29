@@ -93,6 +93,7 @@ function filing(): CommentDto {
   return {
     attempt: null,
     id: 'cmt_1',
+    number: 2,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',

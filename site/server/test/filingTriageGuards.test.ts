@@ -6,7 +6,7 @@
  * path's to answer.
  */
 
-import { LOCK_REASONS, READING_RESCHEDULED_LINE } from '@book/shared';
+import { LOCK_LINES, READING_RESCHEDULED_LINE } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readCommentRow, toCommentDto } from '../src/comments/repo.ts';
@@ -84,7 +84,7 @@ describe('the applier never guesses (BOOK-206)', () => {
     const placed = readCommentRow(db, id);
     expect(placed).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'finale', change_id: null });
     // The reader is owed the lock's own closed clause, never the author's question.
-    expect(placed?.reason).toBe(LOCK_REASONS.finale);
+    expect(placed?.reason).toBe(LOCK_LINES.finale);
     expect(placed?.reason).not.toBe('можно ли оформить это бумагой?');
     expect(
       db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE status = 'escalated' OR disposition = 'escalated'`).get(),

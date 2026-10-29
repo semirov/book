@@ -39,6 +39,7 @@ export const BLOCK_ID = 'ch01#aa11bb22';
 export function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 1,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Её освещал яркий свет.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',

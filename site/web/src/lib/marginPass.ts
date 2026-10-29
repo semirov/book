@@ -12,6 +12,11 @@
  * must grow to hold the last one. The DOM runner measures and writes; it never invents a
  * number. Heights are always measured: a note is 95.8 / 116.8 / 134.3 px depending on its own
  * text, and a hard-coded height would be a lie on the second note.
+ *
+ * BOOK-218 — the mark at a sentence is an item too (`data-margin-item="mark"`): the numeral
+ * used to be positioned by its own component, which is how it ended up on the prose line and
+ * over the note above it. One ledger for the whole channel, and one kind-aware anchor: a note
+ * hangs from the line's top, a mark is centred on it.
  */
 
 export type MarginAnchor = {
@@ -19,7 +24,34 @@ export type MarginAnchor = {
   anchorTop: number;
   /** The measured height of the object; 0 for an item that is not laid out (hidden phone). */
   height: number;
+  /**
+   * BOOK-218 — the **column** the item stands in. Marks and notes are different x-columns, so
+   * they advance different cursors: a note never pushes a mark and a mark never pushes a note.
+   * Absent is a note, which is what every item was before the mark joined the ledger.
+   */
+  kind?: MarginKind;
 };
+
+/**
+ * BOOK-218 — how an item ties to its line. A **note** hangs from the top of the line it belongs
+ * to (its hairline is the tie); a **mark** is centred on that line, so its 44 px target keeps
+ * the numeral where the design puts it. Both are anchors of the same ledger.
+ */
+export type MarginKind = 'note' | 'mark';
+
+/** The top an item's box takes for the line it is anchored to. */
+export function anchorTopFor(
+  kind: MarginKind,
+  lineTop: number,
+  lineHeight: number,
+  height: number,
+): number {
+  if (kind !== 'mark') return lineTop;
+  // A line height the browser has not resolved (`normal`, a font still swapping) is no line
+  // height: the mark then starts at the line rather than guessing where its centre is.
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return lineTop;
+  return lineTop + lineHeight / 2 - height / 2;
+}
 
 export type MarginPlacement = {
   tops: number[];
@@ -27,31 +59,43 @@ export type MarginPlacement = {
   tail: number;
 };
 
-/** `max(anchorTop, cursor)`, step between objects, never a dropped or reordered item. */
+/**
+ * `max(anchorTop, cursor)`, step between objects, never a dropped or reordered item.
+ *
+ * BOOK-218 — **one cursor per column** (`kind`): the mark stands in its own 40 px gutter and
+ * the note beyond it, so the two are independent vertically. One shared cursor booked the same
+ * line twice: a mark 46 px wide of the prose pushed the note of its own sentence down the
+ * margin, and a note pushed the next mark. Each column keeps its own `top + height + step`,
+ * and the tail is the deepest bottom of both.
+ */
 export function placeMargin(
   items: readonly MarginAnchor[],
   step: number,
   flowBottom: number,
 ): MarginPlacement {
   const tops: number[] = [];
-  let cursor = Number.NEGATIVE_INFINITY;
+  const cursors: Record<MarginKind, number> = {
+    note: Number.NEGATIVE_INFINITY,
+    mark: Number.NEGATIVE_INFINITY,
+  };
   let bottom = Number.NEGATIVE_INFINITY;
   for (const item of items) {
+    const kind = item.kind ?? 'note';
     // A zero-height item is not laid out (the phone hides the margin): it keeps its anchor
     // and consumes no room, so the next visible object still starts from the cursor.
     if (item.height <= 0) {
       tops.push(item.anchorTop);
       continue;
     }
-    const top = Math.max(item.anchorTop, cursor);
+    const top = Math.max(item.anchorTop, cursors[kind]);
     tops.push(top);
     bottom = Math.max(bottom, top + item.height);
-    cursor = top + item.height + step;
+    cursors[kind] = top + item.height + step;
   }
   return { tops, tail: tops.length === 0 ? 0 : Math.max(0, bottom - flowBottom) };
 }
 
-/** The item attribute; the note and the sentence's block are the only kinds of item. */
+/** The item attribute; the note, the sentence's block and the mark are the kinds of item. */
 const MARGIN_ITEM = 'data-margin-item';
 const MARGIN_TAIL = 'data-margin-tail';
 /** The least air the design leaves between the note's right edge and the viewport (§7). */
@@ -121,7 +165,12 @@ function tokenPx(doc: Document, name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-type Item = { element: HTMLElement; anchorTop: number; height: number; originTop: number };
+type Item = { element: HTMLElement; anchorTop: number; height: number; originTop: number; kind: MarginKind };
+
+/** The kind an element declares; anything that is not a mark hangs from its line's top. */
+function kindOf(element: HTMLElement): MarginKind {
+  return element.dataset.marginItem === 'mark' ? 'mark' : 'note';
+}
 
 /**
  * BOOK-208 — the gap the pass measures with: `--mark-air` + `--mark-hit`, both plain px.
@@ -155,11 +204,17 @@ function measure(doc: Document): Item[] {
     if (element.offsetParent === null) continue; // not laid out: the margin is not shown
     const box = element.getBoundingClientRect();
     const anchor = element.parentElement;
-    const anchorTop = anchor === null ? box.top : anchor.getBoundingClientRect().top;
+    const lineTop = anchor === null ? box.top : anchor.getBoundingClientRect().top;
+    // A mark is centred on the line it belongs to; a note hangs from its top (BOOK-218).
+    const lineHeight =
+      anchor === null || typeof getComputedStyle === 'undefined'
+        ? Number.NaN
+        : Number.parseFloat(getComputedStyle(anchor).lineHeight);
+    const anchorTop = anchorTopFor(kindOf(element), lineTop, lineHeight, box.height);
     // The paragraph's own top, read now: every read in the pass happens before any write, so
     // the loop never thrashes layout, and `top` is written in the paragraph's coordinate space.
     const originTop = (element.offsetParent as HTMLElement | null)?.getBoundingClientRect().top ?? 0;
-    out.push({ element, anchorTop, height: box.height, originTop });
+    out.push({ element, anchorTop, height: box.height, originTop, kind: kindOf(element) });
   }
   return out;
 }

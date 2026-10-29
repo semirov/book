@@ -46,7 +46,7 @@ export function premiseAction(existing: CommentDto | null): { kind: 'card' | 'fo
 
 /** What a second attempt is told, and where the first one is. */
 export function premiseRefusal(first: CommentDto): { line: string; detail: string } {
-  return { line: PREMISE_EXISTS, detail: `первый замысел — замечание ${filingNumber(first)}` };
+  return { line: PREMISE_EXISTS, detail: `первый замысел — ${filingNumber(first)}` };
 }
 
 /**

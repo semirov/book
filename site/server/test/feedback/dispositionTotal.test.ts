@@ -202,6 +202,6 @@ describe('the applier places a reading it cannot license (BOOK-206)', () => {
       n: 0,
     });
     expect(h.db.prepare('SELECT status FROM changes').get()).toEqual({ status: 'pending' });
-    expect(toCommentDto(h.db, row).report).toMatchObject({ line1: 'прочитано как сказано' });
+    expect(toCommentDto(h.db, row).disposition).toBe('as_said');
   });
 });

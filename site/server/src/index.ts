@@ -115,8 +115,8 @@ async function main(): Promise<void> {
     // BOOK-189: a filing refused at triage never becomes a change, so the engine's close hook can
     // never speak for it. Its author hears the answer here, once — and push never throws, so a
     // broken push table cannot stop the tailer.
-    notify: (commentId, report) => {
-      sendPassEvent(db, { kind: 'commentDecision', commentId, report }, now().getTime());
+    notify: (commentId, reason) => {
+      sendPassEvent(db, { kind: 'commentDecision', commentId, reason }, now().getTime());
     },
   });
   decisions.prime();
@@ -134,8 +134,8 @@ async function main(): Promise<void> {
       pollTriage({
         db,
         emit: (type, data) => hub.publish(type, data),
-        notify: (commentId, report) => {
-          sendPassEvent(db, { kind: 'commentDecision', commentId, report }, now().getTime());
+        notify: (commentId, reason) => {
+          sendPassEvent(db, { kind: 'commentDecision', commentId, reason }, now().getTime());
         },
         now,
       });

@@ -425,8 +425,8 @@ describe('the head’s layout', () => {  it('keeps the brand, the chapter slot a
     expect(rows[0]?.querySelector('.brand')).not.toBeNull();
     expect(rows[0]?.querySelector('.top-chapter')).toBe(chip());
     expect(container.querySelector('.live')).toBeNull();
-    // BOOK-156 #3814: no pass runs here, so the head prints no status line at all.
-    expect(container.querySelector('.head-status')).toBeNull();
+    // BOOK-218: no pass runs here, so the head prints its one idle word.
+    expect(container.querySelector('.head-status')?.textContent).toBe('тихо');
     // The folio is the first row's last item: the head and the number are one line.
     expect(rows[0]?.querySelector('.folio')).not.toBeNull();
     // The old `display: contents` is what spread four items across the line; it is gone, and the
@@ -491,9 +491,9 @@ describe('one number in the phone head', () => {
     expect(row.querySelector('.folio')?.textContent).toBe(String(chapterStartPages(catalog).get(21)));
     // The chip is still rendered — its hiding is the sheet's, not the markup's.
     expect(row.querySelector('.top-chapter')?.getAttribute('data-n')).toBe('21');
-    // With the slot hidden, the phone row says the book's own title and the page, nothing else.
+    // With the slot hidden, the phone row says the book's title, its idle word and the page.
     const phone = row.cloneNode(true) as HTMLElement;
     phone.querySelector('.top-chapter')?.remove();
-    expect(phone.textContent).toBe(`Бланк${chapterStartPages(catalog).get(21)}`);
+    expect(phone.textContent).toBe(`Бланктихо${chapterStartPages(catalog).get(21)}`);
   });
 });

@@ -44,7 +44,7 @@ describe('migration v26 — the push tables', () => {
   it('creates all three on a fresh install', () => {
     const db = openDatabase(':memory:');
     expect(migrate(db)).toEqual({ from: 0, to: SCHEMA_VERSION });
-    expect(SCHEMA_VERSION).toBe(31);
+    expect(SCHEMA_VERSION).toBe(32);
 
     for (const table of ['push_subscriptions', 'push_log', 'push_outbox']) {
       expect(tableExists(db, table), table).toBe(true);

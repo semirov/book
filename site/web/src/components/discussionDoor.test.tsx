@@ -28,6 +28,8 @@ describe('the last five and the door to the rest (BOOK-207)', () => {
   function comment(overrides: Partial<CommentDto> = {}): CommentDto {
     return {
       id: 'cmt_1',
+      // BOOK-218 — the filing's own number, a column of the record (never the rowid).
+      number: 1,
       chapter: 8,
       anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },
       author: 'Аня',

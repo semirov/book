@@ -11,15 +11,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  CARRIER_LABELS,
-  DISPOSITION_REASONS,
-  LOCK_ALTERNATIVES,
-  LOCK_REASONS,
-  REPORT_LINE_MAX_CHARS,
+  LOCK_LINES,
+  READING_LINES,
+  READING_PLACES,
   STAMP_MAX_CHARS,
-  chainReport,
-  dispositionReport,
-  DISPOSITION_WORDS,
+  chainLine,
 } from '@book/shared';
 
 import {
@@ -39,9 +35,6 @@ const WORDING = 'В регистратуре выдают уведомление
 /** Five words of the wording, verbatim. */
 const KEPT = 'срок тридцать дней и подпись';
 const STAMP = 'не соответствует форме';
-/** The place a decision is rendered against: block 3, sentence 1 → «абзац 4 · предложение 2». */
-const ANCHOR = { chapter: 12, blockIndex: 3, sentenceIndex: 1 };
-
 function input(overrides: Partial<ChooseDispositionInput> = {}): ChooseDispositionInput {
   return {
     chapterIsBasis: false,
@@ -91,17 +84,13 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       disposition: 'as_said',
       lock: null,
       carrierKind: null,
-      reason: DISPOSITION_REASONS.as_said,
+      reason: READING_LINES.as_said,
       sentenceId: SENTENCE_ID,
       blockIndex: 3,
       sentenceIndex: 1,
       alternate: false,
     });
-    expect(chainReport(decision, ANCHOR, true)).toEqual({
-      line1: 'прочитано как сказано',
-      line2: DISPOSITION_REASONS.as_said,
-      line3: 'где это в книге: глава 12 · абзац 4 · предложение 2',
-    });
+    expect(chainLine(decision)).toBe(READING_LINES.as_said);
   });
 
   it('through_paper: a carrier keeps five verbatim words and changes a fact', () => {
@@ -114,9 +103,7 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       // Both plans existed: the report names the one that was declined.
       alternate: true,
     });
-    expect(chainReport(decision, ANCHOR, true).line3).toBe(
-      'где это в книге: глава 12 · абзац 4 · предложение 2 — документ',
-    );
+    expect(chainLine(decision)).toBe(READING_LINES.through_paper);
   });
 
   it('refused_in_world: the four facts and the caps let the world answer, the stamp is line 3', () => {
@@ -125,13 +112,9 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       disposition: 'refused_in_world',
       quoteKept: STAMP,
       sentenceId: SENTENCE_ID,
-      reason: DISPOSITION_REASONS.refused_in_world,
+      reason: READING_LINES.refused_in_world,
     });
-    expect(chainReport(decision, ANCHOR, true)).toEqual({
-      line1: 'прочитано как отказ в мире',
-      line2: DISPOSITION_REASONS.refused_in_world,
-      line3: `где это в книге: глава 12 · абзац 4 · предложение 2 — «${STAMP}»`,
-    });
+    expect(chainLine(decision)).toBe(READING_LINES.refused_in_world);
   });
 
   it('inadmissible: every lock answers with its own line and its own alternative', () => {
@@ -147,7 +130,7 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       expect(decision, lock).toMatchObject({
         disposition: 'inadmissible',
         lock,
-        reason: LOCK_REASONS[lock],
+        reason: LOCK_LINES[lock],
         // A lock carries its sentence, and nothing that would point at a place in the book.
         carrierKind: null,
         sentenceId: null,
@@ -155,11 +138,8 @@ describe('the ladder — each of the five outcomes is reachable', () => {
         blockIndex: null,
         sentenceIndex: null,
       });
-      expect(chainReport(decision, ANCHOR, true)).toEqual({
-        line1: 'не принято',
-        line2: LOCK_REASONS[lock],
-        line3: `сработает иначе: ${LOCK_ALTERNATIVES[lock]}`,
-      });
+      // A lock decides the sentence: one line, its verdict word leading.
+      expect(chainLine(decision)).toBe(LOCK_LINES[lock]);
     }
   });
 
@@ -180,11 +160,8 @@ describe('the ladder — each of the five outcomes is reachable', () => {
       sentenceId: null,
       carrierKind: null,
     });
-    expect(chainReport(decision, ANCHOR, false)).toEqual({
-      line1: 'прочитано как сказано',
-      line2: DISPOSITION_REASONS.as_said,
-      line3: 'где это в книге: глава 12 · абзац 4 · предложение 2',
-    });
+    // The reading needs no anchor any more: one line says what was read, not where it sits.
+    expect(chainLine(decision)).toBe(READING_LINES.as_said);
   });
 });
 
@@ -226,7 +203,7 @@ describe('one rung up — a failed carrier never falls to a bin', () => {
   });
 });
 
-describe('the 200-character bound of a line (BOOK-174 §5)', () => {
+describe('one line per outcome (BOOK-218)', () => {
   it('refuses an overlong stamp: the refusal is not licensed and the reading goes one rung up', () => {
     const stamp = 'не соответствует форме '.repeat(14).trim(); // 300 characters
     expect(stamp.length).toBeGreaterThan(STAMP_MAX_CHARS);
@@ -237,33 +214,22 @@ describe('the 200-character bound of a line (BOOK-174 §5)', () => {
     expect(decision.quoteKept).toBeNull();
   });
 
-  it('refuses to render a line past the bound, rather than trimming a decision', () => {
-    expect(() =>
-      dispositionReport({
-        disposition: 'refused_in_world',
-        chapter: 12,
-        blockIndex: 3,
-        sentence: 1,
-        sentenceResolved: true,
-        stamp: 'ф'.repeat(REPORT_LINE_MAX_CHARS),
-      }),
-    ).toThrow(/bound/u);
-  });
-
-  it('keeps a stored row readable: the formatter cuts an unlicensed stamp to the bound', () => {
-    const report = chainReport(
-      {
-        disposition: 'refused_in_world',
-        lock: null,
-        carrierKind: null,
-        quoteKept: 'ф'.repeat(300),
-        sentenceId: SENTENCE_ID,
-      },
-      ANCHOR,
-      true,
-    );
-    for (const line of Object.values(report)) expect(line.length).toBeLessThanOrEqual(REPORT_LINE_MAX_CHARS);
-    expect(report.line3).toContain('…');
+  it('formats every decision as exactly one line, with no code and no second verdict', () => {
+    const decisions = [
+      chooseDisposition(input()),
+      chooseDisposition(paper()),
+      chooseDisposition(inWorld()),
+      chooseDisposition(input({ rightsVerdict: 'REFUSED' })),
+      chooseDisposition(input({ quote: TWO_SENTENCES, proposal: { disposition: 'refused_in_world' } })),
+    ];
+    for (const decision of decisions) {
+      const line = chainLine(decision);
+      expect(line.length).toBeGreaterThan(0);
+      // One sentence: no line break, no second verdict word in the middle.
+      expect(line).not.toContain('\n');
+      expect(line).not.toMatch(/[A-Z_]{4,}/u);
+      expect(line.match(/не дошло|не принято|прочитали как/gu) ?? []).toHaveLength(1);
+    }
   });
 });
 
@@ -309,13 +275,12 @@ describe('the anti-cheat caps of an in-world refusal', () => {
   });
 });
 
-describe('the report’s two forms and its bounds', () => {
-  it('names the declined plan only when the as_said rung really held', () => {
+describe('the reading’s one form and its closed place', () => {
+  it('keeps the declined plan as a field and never as a second line', () => {
     const both = chooseDisposition(paper());
     expect(both.alternate).toBe(true);
-    expect(chainReport(both, ANCHOR, true).line1).toBe('прочитано через бумагу, а не как сказано');
+    expect(chainLine(both)).toBe(READING_LINES.through_paper);
 
-    // No sentence resolved: the said plan never existed.
     const unresolved = chooseDisposition(
       input({
         quote: TWO_SENTENCES,
@@ -325,76 +290,31 @@ describe('the report’s two forms and its bounds', () => {
       }),
     );
     expect(unresolved.alternate).toBe(false);
-    expect(chainReport(unresolved, { chapter: 12, blockIndex: 3, sentenceIndex: null }, false).line1).toBe(
-      'прочитано через бумагу',
-    );
-
-    // The `as_said` rung is what decides, never the sentence alone: a carrier waives the
-    // repeated-literal rule (a document may carry a standing number), so that wording really had
-    // the said plan and the second form is honest.
-    const withLiteral = chooseDisposition(
-      input({
-        blockText: 'Срок — 30 дней. Он вошёл.',
-        quote: 'Срок — 30 дней.',
-        body: 'Срок 30 дней и всё, что было сказано.',
-        proposedText: null,
-        proposal: {
-          disposition: 'through_paper',
-          carrierKind: 'document',
-          quoteKept: 'Срок 30 дней и всё',
-          factsChanged: 1,
-        },
-      }),
-    );
-    expect(withLiteral.disposition).toBe('through_paper');
-    expect(withLiteral.alternate).toBe(true);
-
-    // …while the same wording with no carrier fails `as_said` and has no paper to fall back on:
-    // it lands at the floor, and no report claims a plan that never existed.
-    const noCarrier = chooseDisposition(
-      input({
-        blockText: 'Срок — 30 дней. Он вошёл.',
-        quote: 'Срок — 30 дней.',
-        body: 'Срок 30 дней и всё, что было сказано.',
-        proposedText: null,
-      }),
-    );
-    expect(noCarrier.disposition).toBe('as_said');
-    expect(noCarrier.alternate).toBe(false);
+    expect(chainLine(unresolved)).toBe(READING_LINES.through_paper);
   });
 
-  it('keeps every line of every report within 200 characters', () => {
-    const decisions = [
-      chooseDisposition(input()),
-      chooseDisposition(paper()),
-      chooseDisposition(inWorld()),
-      chooseDisposition(input({ rightsVerdict: 'REFUSED' })),
-      chooseDisposition(input({ quote: TWO_SENTENCES, proposal: { disposition: 'refused_in_world' } })),
-    ];
-    for (const decision of decisions) {
-      for (const line of Object.values(chainReport(decision, ANCHOR, true))) {
-        expect(line.length).toBeLessThanOrEqual(REPORT_LINE_MAX_CHARS);
-        // No code, no gate name, no findings — the reader reads words.
-        expect(line).not.toMatch(/[A-Z_]{4,}/u);
-      }
-    }
+  it('names the place the row carries, and the plain document when it carries none', () => {
+    expect(chainLine({ disposition: 'through_paper', lock: null, carrierKind: 'registry_discrepancy' })).toBe(
+      'прочитали как бумагу — в сцене это некому сказать, поэтому слово ушло в запись регистратуры',
+    );
+    expect(chainLine({ disposition: 'through_paper', lock: null, carrierKind: null })).toBe(
+      READING_LINES.through_paper,
+    );
   });
 
-  it('has one closed word per reading and a closed label per carrier', () => {
-    // BOOK-206: four readings and no fifth — a filing is placed, never parked for a person.
-    expect(Object.values(DISPOSITION_WORDS)).toEqual([
-      'прочитано как сказано',
-      'прочитано через бумагу',
-      'прочитано как отказ в мире',
-      'не принято',
+  it('has one closed line per accepted reading and one place per carrier', () => {
+    expect(Object.values(READING_LINES)).toEqual([
+      'прочитали как сказано — ваши слова остались в этом самом предложении',
+      'прочитали как бумагу — в сцене это некому сказать, поэтому слово ушло в документ',
+      'прочитали как ответ мира — в книге это уже установлено, и миру остаётся только ответить',
     ]);
-    expect(Object.values(CARRIER_LABELS)).toEqual([
-      'документ',
-      'чья-то речь',
-      'расхождение в реестре',
-      'предмет с номером',
-      'шутка, которую никто не подхватил',
-      'анекдот по протоколу',
+    expect(Object.values(READING_PLACES)).toEqual([
+      'в документ',
+      'в чью-то реплику',
+      'в запись регистратуры',
+      'в предмет с номером',
+      'в шутку, которую никто не подхватил',
+      'в анекдот по протоколу',
     ]);
   });
 });
@@ -426,10 +346,8 @@ describe('as_said’s own exclusions', () => {
       input({ quote: null, blockText: null, blockIndex: null, sentenceId: null, sentenceIndex: null }),
     );
     expect(decision.disposition).toBe('as_said');
-    // Nothing landed on a sentence, so the report names the chapter and no place in it.
-    expect(chainReport(decision, { chapter: 12, blockIndex: null, sentenceIndex: null }, false).line3).toBe(
-      'где это в книге: глава 12',
-    );
+    // No sentence and no place: the reading's one line still stands, with no anchor to invent.
+    expect(chainLine(decision)).toBe(READING_LINES.as_said);
   });
 });
 

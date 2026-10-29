@@ -78,12 +78,16 @@ describe('BOOK-219/BOOK-206 B2 — a close reaches the filing, not only the chan
     ).run(new Date(T0).toISOString(), new Date(T0).toISOString());
   }
 
+  /** BOOK-218 — a filing's public number is a column now, unique: every seeded row gets one. */
+  let filed = 0;
+
   function seedComment(db: Db, id: string, chapter: number, disposition: string | null): void {
+    filed += 1;
     db.prepare(
       `INSERT INTO comments
          (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, decided_at,
-          reason, batch_id, disposition)
-       VALUES (?, 'idn_book219', ?, 'Аня', 'в главе дважды «слово»', ?, ?, 'accepted', ?, ?, 'принято · входит в книгу', 'btc_1', ?)`,
+          reason, batch_id, disposition, number)
+       VALUES (?, 'idn_book219', ?, 'Аня', 'в главе дважды «слово»', ?, ?, 'accepted', ?, ?, 'принято · входит в книгу', 'btc_1', ?, ?)`,
     ).run(
       id,
       chapter,
@@ -92,6 +96,7 @@ describe('BOOK-219/BOOK-206 B2 — a close reaches the filing, not only the chan
       new Date(T0).toISOString(),
       new Date(T0 + 1_000).toISOString(),
       disposition,
+      filed,
     );
   }
 
@@ -149,7 +154,8 @@ describe('BOOK-219/BOOK-206 B2 — a close reaches the filing, not only the chan
         .get() as { rev: number };
       expect(filing.applied).toEqual({ chapter: 9, rev: revision.rev });
       // The reading travels with the frame, exactly as the row stores it (BOOK-174 §5).
-      expect((filing.report as { line1: string }).line1).toBe('прочитано как сказано');
+      expect(filing.disposition).toBe('as_said');
+      expect(filing.carrierKind).toBeNull();
 
       // One frame per close: the drain cursor has already passed the row.
       const seen = frames.length;

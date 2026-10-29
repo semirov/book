@@ -1,151 +1,35 @@
-import type { CommentDto, MyFilingsDto, MyTraceDto, ViewerDto } from '@book/shared';
+import { outcomeLine, type CommentDto, type MyFilingsDto, type MyTraceDto, type ViewerDto } from '@book/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getMyFilings, getMyTrace, postAuthorsHide } from '../api.ts';
 import { changeNumber } from '../lib/changeStatus.ts';
 import { anchorCopy, commentStamp } from '../lib/commentView.ts';
-import { GATE_WORDS, filingConsequence, refusalDetail } from '../lib/marginalia.ts';
+import { filingSentence, outcomeOf } from '../lib/marginalia.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { traceLine } from '../lib/trace.ts';
 import { PlaceLink } from './PlaceLink.tsx';
 import { ScreenExit } from './ScreenExit.tsx';
 
 /**
- * BOOK-221 — the trail row's two lines, in the reader's own vocabulary (BOOK-DOC-82).
+ * BOOK-221 / BOOK-218 — the trail row, in the reader's own vocabulary (BOOK-DOC-82).
  *
  * The row used to print our machinery: «замечание №A7K · внесено» and «в очереди на запись».
  * A reader is owed a number («правка 014»), the chapter and the moment, and one sentence that
- * says what became of **their** edit. Every such string lives here and nowhere else:
- * `TRAIL_STATE_WORDS` holds the sentences that need no data, `TRAIL_STATE_LINES` the templates
- * that do (a chapter, a revision, a refused reason, the paperwork's mode), and `trailStateLine`
- * chooses between them.
- *
- * BOOK-218 lands `shared/src/stateWords.ts` with this same vocabulary. When that module is in
- * `main`, this block is deleted and `trailStateLine` becomes one import — the merge is an import
- * swap, so no string is re-typed on either side.
+ * says what became of **their** edit. That sentence is the module's — `filingSentence` from
+ * `@book/shared`'s `stateWords.ts` through `lib/marginalia.ts` — and this file spells no state
+ * word of its own.
  */
-const TRAIL_STATE_WORDS = {
-  // BOOK-218 spells these two as a word and its line (`ждёт` · `её ещё не читали`); the trail
-  // joins them with the site's ` · ` so the merge stays an import swap.
-  waiting: 'ждёт · её ещё не читали',
-  reading: 'идёт · её читают',
-  accepted: 'принято · впишется, когда машина возьмёт главу',
-  landed: 'внесено',
-  // A note moved no text (BOOK-190): its terminal is its own, never «внесено · глава N».
-  note: 'замечание сохранено',
-  registered: 'рассмотрено',
-  held: 'проверяется · ждёт человека',
-  // BOOK-61 keeps one word per gate in `marginalia.ts` — the law's word and the reading's are
-  // different words, and both live there. The trail prints them from that one source instead of
-  // spelling a second copy here, so the two refusals can never merge into one sentence.
-  refusedRights: GATE_WORDS.rights,
-  refusedAuditor: GATE_WORDS.auditor,
-  superseded: 'снято · текст успел измениться',
-  expired: 'снято · правка не состоялась',
-  hidden: 'скрыто',
-  premise: 'принято в основу · до первой редакции',
-  escalated: 'ждёт решения автора',
-  // BOOK-206 — the machine tried and the attempt came back empty. The row still waits, and this
-  // is the sentence that says so; `shared`'s own line still names a queue, which BOOK-218 removes.
-  attempt: 'попытка не удалась — правка ждёт',
-} as const;
-
-/** The sentences that carry a fact; each placeholder is filled once, from the row's own data. */
-const TRAIL_STATE_LINES = {
-  writing: 'пишется · глава {chapter}',
-  landed: 'внесено · глава {chapter} · ревизия {rev}',
-  // BOOK-137 — the mode a frame filing was filed as is derived (`filingConsequence`), never
-  // assumed: «оформление» is only the default, and «поправка»/«расхождение» are real modes.
-  registered: 'рассмотрено · {mode}',
-  refused: '{word} · {reason}',
-} as const;
-
-/** The states a failed attempt is printed over: a landed or refused row keeps its own sentence. */
-const STILL_WAITING: ReadonlySet<CommentDto['status']> = new Set<CommentDto['status']>([
-  'new',
-  'batched',
-  'delivered',
-  'accepted',
-]);
-
-/** One template, one pass: a placeholder with no value stays as written, never as «undefined». */
-function trailLine(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/gu, (whole: string, key: string) => values[key] ?? whole);
-}
-
-/** The one sentence a row says about its own state — from the table, never from a state code. */
-export function trailStateLine(comment: CommentDto): string {
-  // BOOK-206 — the attempt came back empty: a row that still waits says so, instead of letting a
-  // failed try read as «её ещё не читали». A landed or refused row decides itself and keeps its
-  // own sentence; the failed attempt behind it is not the reader's answer.
-  if (comment.attempt === 'failed' && STILL_WAITING.has(comment.status)) return TRAIL_STATE_WORDS.attempt;
-  switch (comment.status) {
-    case 'applied': {
-      // A note moved no text: it never landed a variant, so «внесено · глава N» would be a lie.
-      if (comment.interventionKind === null || comment.interventionKind === undefined) {
-        return TRAIL_STATE_WORDS.note;
-      }
-      // The receipt is the chapter it entered and that chapter's revision. With none recorded the
-      // word stands alone: a chapter number here would be invented.
-      const applied = comment.applied;
-      if (applied === null) return TRAIL_STATE_WORDS.landed;
-      return trailLine(TRAIL_STATE_LINES.landed, {
-        chapter: String(applied.chapter),
-        rev: String(applied.rev),
-      });
-    }
-    case 'rejected': {
-      const word =
-        comment.refusal === 'rights' ? TRAIL_STATE_WORDS.refusedRights : TRAIL_STATE_WORDS.refusedAuditor;
-      // `refusalDetail` drops the gate's own word and its colon, so the reason is said once.
-      const reason = refusalDetail(comment);
-      return reason === null ? word : trailLine(TRAIL_STATE_LINES.refused, { word, reason });
-    }
-    case 'registered': {
-      // BOOK-137 — the paperwork's mode, derived the way every other surface derives it. The
-      // helper answers a failed attempt before the mode, and that line still names a queue
-      // (BOOK-218 removes it), so such a row keeps the bare word; no mode → the bare word too,
-      // never a guessed «оформление».
-      const mode = comment.attempt === 'failed' ? '' : filingConsequence(comment);
-      return mode.length === 0
-        ? TRAIL_STATE_WORDS.registered
-        : trailLine(TRAIL_STATE_LINES.registered, { mode });
-    }
-    case 'quarantined':
-      return TRAIL_STATE_WORDS.held;
-    case 'superseded':
-      return TRAIL_STATE_WORDS.superseded;
-    case 'expired':
-      return TRAIL_STATE_WORDS.expired;
-    case 'hidden':
-      return TRAIL_STATE_WORDS.hidden;
-    case 'escalated':
-      // BOOK-206: a legacy value the boot migration re-opens. It keeps its own honest sentence.
-      return TRAIL_STATE_WORDS.escalated;
-    case 'batched':
-    case 'delivered':
-      return TRAIL_STATE_WORDS.reading;
-    case 'accepted':
-      // A premise has no change of its own yet: it is the chapter's starting point, and it waits
-      // for the first edition rather than for a turn. Otherwise the writer is at the chapter
-      // (`processing`) or the acceptance waits its turn.
-      if (comment.premise) return TRAIL_STATE_WORDS.premise;
-      return comment.changeStatus === 'processing'
-        ? trailLine(TRAIL_STATE_LINES.writing, { chapter: String(comment.chapter) })
-        : TRAIL_STATE_WORDS.accepted;
-    default:
-      // `new`: filed, not read yet. A premise no change holds says the same in its own words.
-      return comment.premise ? TRAIL_STATE_WORDS.premise : TRAIL_STATE_WORDS.waiting;
-  }
-}
 
 /**
- * `правка 014 · глава 12 · 28.10, 12:04` — the row's number, its chapter and its moment.
- *
- * The number is the linked change's own `seq` (`CommentDto.changeSeq`), printed by
- * `changeNumber`: the schema has no filing sequence, so a filing no change holds is named by its
- * chapter — an ordinal cut out of an id would be a claim no row makes.
+ * The one sentence a row says about its own state — the module's, never a table of its own.
+ * BOOK-218: where the row names an outcome (a reading, a lock, our failure) that outcome is the
+ * whole sentence; otherwise the deck's own line stands.
  */
+export function trailStateLine(comment: CommentDto): string {
+  const outcome = outcomeOf(comment);
+  return outcome === null ? filingSentence(comment) : outcomeLine(outcome);
+}
+
 export function trailMetaLine(comment: CommentDto): string {
   const head =
     comment.changeSeq === null || comment.changeSeq === undefined
@@ -315,12 +199,6 @@ export function TrailPage({
                         </p>
                       )}
                       <p className="sled-state">{trailStateLine(comment)}</p>
-                      {comment.report === null || comment.report === undefined ? null : (
-                        <>
-                          <p className="sled-detail">{comment.report.line1}</p>
-                          <p className="sled-detail">{comment.report.line2}</p>
-                        </>
-                      )}
                     </li>
                   );
                 })}

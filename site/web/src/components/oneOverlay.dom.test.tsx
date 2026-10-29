@@ -62,6 +62,7 @@ const CLOSES = '.seam-close, .prov-close, .filing-close, .rec-close';
 function comment(overrides: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'cmt_01J9Z8K4Q7',
+    number: 1,
     chapter: 8,
     anchor: { blockId: BLOCK_ID, blockIndex: 0, quote: 'Я вошёл в пустую комнату.', prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -317,6 +318,7 @@ describe('one close on screen for every surface combination', () => {
     refusing(
       comment({
         id: 'cmt_x',
+        number: 2,
         chapter: 7,
         premise: true,
         anchor: { blockId: null, blockIndex: null, quote: null, prefix: null, suffix: null, resolved: true },

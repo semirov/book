@@ -14,7 +14,7 @@
  * than a promise: the scheduler has no expression that could plan a distant chapter.
  */
 
-import { TOTAL_CHAPTERS } from '@book/shared';
+import { FAILURE_LINES, FILING_LINES, TOTAL_CHAPTERS } from '@book/shared';
 import type {
   CascadeBudget,
   CascadeOutcome,
@@ -86,18 +86,20 @@ const CLOSE_COPY = {
   consistent: 'правка прошла по книге и дальше держится',
   absorbed: 'правка осталась в соседних главах',
   frontier: 'правка дошла до ещё не написанной главы',
-  budget: 'правка остановлена бюджетом — нужно решение',
-  oscillation: 'правка ходит по кругу — нужно решение',
-  origin: 'починка требует главы позади волны — нужно решение',
+  // BOOK-218 — the only reason vocabulary: our failure (`не дошло`) or the day's money, never
+  // «нужно решение» — there is nobody to decide a filing at this point.
+  budget: FILING_LINES.money,
+  oscillation: FAILURE_LINES.ourFailure,
+  origin: FAILURE_LINES.ourFailure,
   finding: 'замечание сохранено, правка опубликована',
-  delta: 'починка задела слишком много текста — нужно решение',
-  ending: 'финал проверен, но требует решения',
+  delta: FAILURE_LINES.ourFailure,
+  ending: FAILURE_LINES.ourFailure,
   // BOOK-76: the claim itself did not enter the book — never «правка опубликована».
-  science: 'не входит в книгу — правка ждёт решения',
+  science: FAILURE_LINES.ourFailure,
   // BOOK-61: Gate B's one word (§5). The card's reason carries the rule's own fixed
   // sentence; this line is the fallback when a close names no rule.
-  rights: 'не принято',
-  gate: 'проверка не ответила вовремя — шаг остановлен',
+  rights: FAILURE_LINES.ourFailure,
+  gate: FAILURE_LINES.outOfTime,
 } as const;
 
 const SEAM_FALLBACK = 'соседняя глава изменена';

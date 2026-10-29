@@ -1,10 +1,10 @@
 /**
  * BOOK-207 — the book's state in the running head's free space.
  *
- * One word, 12 px mono, sentence case, the quiet ink: `сейчас пишется` while a pass is in
- * flight, `сейчас тихо` when it has said nothing for 90 s or the engine is gone. The nib before
- * the live word is the only ink of the pass (`--live`), and it is a drawn mark — five pixels on
- * the baseline, no pulse, no fade, no transition: a state is not an animation.
+ * One word, 12 px mono, sentence case, the quiet ink: `главу пишут` while a pass is in flight,
+ * `тихо` when nothing is (or the pass has said nothing for 90 s), `связи нет` with no live line.
+ * The nib before a pass's word is the only ink of the pass (`--live`), and it is a drawn mark —
+ * five pixels on the baseline, no pulse, no fade, no transition: a state is not an animation.
  *
  * **Its cost in height is zero.** The box is one 12 px label line (16.2 px), and the row's
  * tallest item is the brand at the same 16.2 px (`base.css`'s `.top-row`), so the row cannot
@@ -12,7 +12,7 @@
  *
  * **The phone prints it too** (BOOK-207): below 768 the word drops the auto margin and sits
  * 12 px after the brand, while the folio keeps the row's right end through its own auto margin.
- * The row is then `Бланк · сейчас пишется · 67` — one register, no second line.
+ * The row is then `Бланк · главу пишут · 67` — one register, no second line.
  */
 .head-status {
   display: inline-flex;

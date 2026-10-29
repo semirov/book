@@ -10,26 +10,23 @@
  *
  * Nothing is written until `land`, and the only thing written is a row (BOOK-187): the writer
  * holds the chapter in memory, sends it, and the engine publishes it. There is no manuscript file
- * and no pre-image to keep. A base that moved is answered by the writer at `start` (`relevance.ts`),
- * and every exit without `done` takes this pass's own landing back (`recovery.ts`, BOOK-219).
+ * and no pre-image to keep; a base that moved is answered at `start` (`relevance.ts`), and every
+ * exit without `done` takes its own landing back (`recovery.ts`, BOOK-219).
  *
  * Everything the pass touches is injected: the engine client, the model transport, the clock and
- * the logger. The pass holds no database, no socket and no key of its own; the talking lives in
- * `passLane.ts`, the prompts and the answer contracts in `prompt.ts` / `gates.ts`.
+ * the logger. The talking lives in `passLane.ts`, the prompts in `prompt.ts`, the gates in `gates.ts`.
  *
  * A refusal the engine states (`CHAPTER_WRITTEN`, `PASS_LEASED`, `TOKENS_EXHAUSTED`) is returned,
  * never thrown. The bound this file enforces is money, not tokens: the estimate (`estimate.ts`)
  * is checked before the pass is opened and again, from the real prompt, before the first call.
- * A failure after the lease parks the pass — one plain sentence plus a `refused` stage, never
- * silently dropped. Past the first landing a failure is auxiliary instead (owner, 2026-10-28):
- * a stage, a transcript or an engine transport that fails is logged, never escalated over text
- * that landed; the close is the fact that must land.
+ * A failure after the lease parks the pass — one sentence and a `refused` stage, never dropped
+ * silently; past the first landing it is auxiliary (owner, 2026-10-28): a stage, a transcript or
+ * a transport that fails is logged, never escalated over text that landed. The close must land.
  *
- * `landed` carries the pass's whole money line (writer calls and gate calls); `done` carries the
- * writer's own tokens only, because the engine adds each gate's from its verdict rows.
+ * `landed` carries the whole money line; `done` the writer's own tokens (the engine adds each gate's).
  */
 
-import { isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
+import { PASS_STOPS, isChapterNumber, type BudgetDto, type WriterAssignment } from '@book/shared';
 
 import { formatUsd } from '../budget.ts';
 import { readBuildStamp } from '../buildStamp.ts';
@@ -153,7 +150,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
     try {
       priced = estimatePassUsd({ pricing: config.pipeline.pricing, bookRoot, continueMax: config.continueMax });
     } catch (error) {
-      return { status: 'refused', reason: error instanceof Error ? error.message : 'оценка прохода не собрана' };
+      deps.log(`[writer] смета не собрана: ${reasonOf(error)}`); // BOOK-218: the cause is the log's
+      return { status: 'refused', reason: PASS_STOPS.costMissing };
     }
     deps.log(estimateLine(priced, budget));
     const crossed = capLine(budget, priced.usd);
@@ -197,8 +195,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
 
   const job: WriterAssignment = picked;
   if (typeof job.chapter !== 'number') {
-    // A `front` step has no chapter, so there is nowhere to put a `refused` stage: the sentence stands.
-    const reason = 'этот проход не про главу — его ведёт другая полоса, а не писатель';
+    // A `front` step has no chapter, so no `refused` stage; BOOK-218 — the reader's sentence.
+    const reason = PASS_STOPS.notAChapter;
+    deps.log(`[writer] assignment without a chapter: step ${job.stepId}, pass ${job.pass}`);
     try {
       await engine.escalate(job.leaseId, reason);
     } catch (error) {
@@ -301,7 +300,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return (await goneAfterBack(opened.failure.code, opened.failure.detail)) ?? (await lane.park(opened.failure));
       }
       const started = opened.started;
-      if (typeof started.sha !== 'string') return await lane.park({ detail: 'движок не зафиксировал исходный текст главы' });
+      if (typeof started.sha !== 'string') return await lane.park({ detail: PASS_STOPS.startMissing });
       // The revision and the text this pass starts from: what a revert has to return to (BOOK-219).
       preRev = typeof started.expectedRev === 'number' ? started.expectedRev : null;
       preSha = started.sha;
@@ -314,7 +313,8 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         beforeText = chapterQuote(lane.textOf(chapter));
         built = buildWriterPrompt({ bookRoot, assignment: assignmentData(job), chapterText: lane.textOf });
       } catch (error) {
-        return await lane.park({ detail: `промпт не собран: ${error instanceof Error ? error.message : 'ошибка'}`.slice(0, 300) });
+        deps.log(`[writer] промпт не собран: ${reasonOf(error)}`.slice(0, 300));
+        return await lane.park({ detail: PASS_STOPS.promptMissing });
       }
       lane.setPrompt(built);
       const neighbours = [chapter - 1, chapter + 1].filter(
@@ -397,7 +397,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         return await lane.park(failureOf(error));
       }
       if (!lane.textOf(chapter).exists) {
-        return await lane.park({ detail: 'текста главы нет в базе — проход не возобновить' });
+        return await lane.park({ detail: PASS_STOPS.chapterMissing });
       }
       text = chapterQuote(lane.textOf(chapter));
       beforeText = text;
@@ -451,7 +451,7 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
       const revised = await lane.reviseText([...editor.findings, ...(consultant?.findings ?? [])]);
       if (revised === null) {
         const back = await recovery.takeBack('правка не прошла проверку');
-        return await recovery.parkAfter({ detail: 'правка после замечаний гейта не прошла проверку' }, back);
+        return await recovery.parkAfter({ detail: PASS_STOPS.revisedRejected }, back);
       }
       text = revised;
       answered.editor = false;

@@ -121,7 +121,7 @@ describe('sendPassEvent — landed', () => {
   });
 
   it('notifies nobody for a comment that does not exist', () => {
-    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: 'cmt_missing', report: null }, T0)).toEqual({
+    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: 'cmt_missing', reason: null }, T0)).toEqual({
       queued: false,
       reason: 'no-recipient',
     });
@@ -296,7 +296,7 @@ describe('sendPassEvent — decisions', () => {
     const filing = seedComment(db, author, 24);
 
     // A row nobody read this way (a gate's hold, a legacy line) keeps the old sentence.
-    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: filing, report: null }, T0)).toEqual({
+    expect(sendPassEvent(db, { kind: 'commentDecision', commentId: filing, reason: null }, T0)).toEqual({
       queued: true,
       chapter: 24,
     });
@@ -315,20 +315,16 @@ describe('sendPassEvent — decisions', () => {
         {
           kind: 'commentDecision',
           commentId: filing,
-          report: {
-            line1: 'ждёт решения автора',
-            line2: 'потому что эта правка меняет не слово, а исход',
-            line3: 'решает автор',
-          },
+          reason: 'прочитали как сказано — ваши слова остались в этом самом предложении',
         },
         T0,
       ),
     ).toEqual({ queued: true, chapter: 25 });
     const row = outbox(db)[0];
-    // The title is the book's own word and the body is where the filing stands — no identity,
-    // no comment id, no token: a lock screen is public.
-    expect(row?.title).toBe('ждёт решения автора');
-    expect(row?.body).toBe('решает автор');
+    // One line, and it is the book's own word — no identity, no comment id, no token: a lock
+    // screen is public.
+    expect(row?.title).toBe('прочитали как сказано — ваши слова остались в этом самом предложении');
+    expect(row?.body).toBe('Бланк');
     expect(row?.title).not.toContain('отклонена');
     expect(JSON.stringify(row)).not.toContain(filing);
   });
@@ -343,15 +339,11 @@ describe('sendPassEvent — decisions', () => {
       {
         kind: 'commentDecision',
         commentId: filing,
-        report: {
-          line1: 'не принято',
-          line2: 'потому что это не ваш текст',
-          line3: 'сработает иначе: перескажите своими в пяти словах',
-        },
+        reason: 'не принято: это чужой текст, а чужое мы не переписываем',
       },
       T0,
     );
-    expect(outbox(db)[0]?.title).toBe('не принято');
+    expect(outbox(db)[0]?.title).toBe('не принято: это чужой текст, а чужое мы не переписываем');
     expect(outbox(db)[0]?.title).not.toContain('отклонена');
   });
 });

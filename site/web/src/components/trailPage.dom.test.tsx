@@ -51,6 +51,8 @@ function filing(
 ): CommentDto {
   return {
     id,
+    // BOOK-218 — the filing's own number; the fixture keeps the two rows distinct.
+    number: chapter - 11,
     chapter,
     anchor: { blockId: `ch${chapter}#b${blockIndex}`, blockIndex, quote, prefix: null, suffix: null, resolved: true },
     author: 'Аня',
@@ -67,23 +69,22 @@ function filing(
     createdAt: '2026-10-28T09:08:00Z',
     decidedAt: '2026-10-28T10:00:00Z',
     changeId: 'chg_1',
-    applied: { chapter, rev: 4 },
+    // A receipt belongs to a landing only: the states below are each their own row's fact.
+    applied: null,
     refusal: null,
     attempt: null,
     // BOOK-221 — the number a row prints is the linked change's own `seq`.
     changeSeq: 14,
-    report: {
-      line1: 'прочитано через бумагу, а не как сказано',
-      line2: 'потому что в сцене это некому сказать',
-      line3: 'где это в книге: глава 12 · абзац 9',
-    },
     ...extra,
   };
 }
 
 const FILINGS: MyFilingsDto = {
   items: [
-    filing('cmt_A7K', 12, 8, 'Он вошёл в регистратуру.'),
+    filing('cmt_A7K', 12, 8, 'Он вошёл в регистратуру.', {
+      disposition: 'through_paper',
+      carrierKind: 'document',
+    }),
     filing('cmt_B2C', 13, 3, 'Дверь осталась открытой.', { changeSeq: null }),
   ],
 };
@@ -197,9 +198,10 @@ describe('«ваш след»', () => {
     expect(links[0]?.getAttribute('href')).toBe('#ch-12-b8');
     expect(links[1]?.getAttribute('href')).toBe('#ch-13-b3');
     expect(links[0]?.textContent).toBe('«Он вошёл в регистратуру.»');
-    // How it was read travels with it.
-    expect(rows[0]?.textContent).toContain('прочитано через бумагу, а не как сказано');
-    expect(rows[0]?.textContent).toContain('потому что в сцене это некому сказать');
+    // How it was read is one line, and this row was written into a document.
+    expect(rows[0]?.textContent).toContain(
+      'прочитали как бумагу — в сцене это некому сказать, поэтому слово ушло в документ',
+    );
     // The page prints no total, only the trace's own line.
     expect(container.textContent).not.toContain('всего');
     expect(container.textContent).not.toContain('50');
@@ -211,13 +213,18 @@ describe('«ваш след»', () => {
       // BOOK-206 — the attempt came back empty: the row still waits, and says so.
       [{ status: 'new', attempt: 'failed' }, 'попытка не удалась — правка ждёт'],
       [{ status: 'accepted', attempt: 'failed' }, 'попытка не удалась — правка ждёт'],
-      [{ status: 'batched' }, 'идёт · её читают'],
-      [{ status: 'delivered' }, 'идёт · её читают'],
-      [{ status: 'accepted', changeStatus: 'pending' }, 'принято · впишется, когда машина возьмёт главу'],
-      [{ status: 'accepted', changeStatus: 'processing', chapter: 7 }, 'пишется · глава 7'],
-      [{ status: 'applied', applied: { chapter: 12, rev: 4 } }, 'внесено · глава 12 · ревизия 4'],
+      // BOOK-218 line 1 — the filing was delivered to the reading.
+      [{ status: 'batched' }, 'идёт · вашу правку читают'],
+      [{ status: 'delivered' }, 'идёт · вашу правку читают'],
+      // BOOK-218 line 6 — the chapter's turn has not come.
+      [{ status: 'accepted', changeStatus: 'pending' }, 'принято · правка ждёт своей минуты'],
+      // BOOK-218 line 7 — the chapter is being drafted (the start moment is the change's, not
+      // this row's).
+      [{ status: 'accepted', changeStatus: 'processing', chapter: 7 }, 'главу пишут'],
+      // BOOK-218 line 10 — one sentence, the sink word in front of its own fact.
+      [{ status: 'applied', applied: { chapter: 12, rev: 4 } }, 'внесено в главу 12. это четвёртая редакция'],
       // A landed row keeps its receipt whatever became of an earlier attempt.
-      [{ status: 'applied', applied: { chapter: 12, rev: 4 }, attempt: 'failed' }, 'внесено · глава 12 · ревизия 4'],
+      [{ status: 'applied', applied: { chapter: 12, rev: 4 }, attempt: 'failed' }, 'внесено в главу 12. это четвёртая редакция'],
       [{ status: 'applied', applied: null }, 'внесено'],
       // A note is never «внесено · глава N»: it moved no text (BOOK-190).
       [{ status: 'applied', applied: { chapter: 12, rev: 4 }, interventionKind: null }, 'замечание сохранено'],
@@ -233,13 +240,13 @@ describe('«ваш след»', () => {
       [{ status: 'quarantined' }, 'проверяется · ждёт человека'],
       [
         { status: 'rejected', refusal: 'rights', reason: 'не принято: чужая цитата без источника' },
-        'не принято · чужая цитата без источника',
+        'не принято: чужая цитата без источника',
       ],
       [
         { status: 'rejected', refusal: 'auditor', reason: 'вне рамок: форма книги' },
-        'отклонено · вне рамок: форма книги',
+        'не принято · вне рамок: форма книги',
       ],
-      [{ status: 'rejected', refusal: 'auditor', reason: null }, 'отклонено'],
+      [{ status: 'rejected', refusal: 'auditor', reason: null }, 'не принято'],
       [{ status: 'superseded' }, 'снято · текст успел измениться'],
       [{ status: 'expired' }, 'снято · правка не состоялась'],
       [{ status: 'hidden' }, 'скрыто'],

@@ -109,7 +109,7 @@ let root: Root | null = null;
 let container: HTMLDivElement;
 
 /** Mount (or re-render) the real head with a log and a clock — the two facts the line reads. */
-async function mount(options: { stages?: Stages; nowMs?: number } = {}): Promise<void> {
+async function mount(options: { stages?: Stages; socket?: 'connecting' | 'open' | 'closed' | 'capacity'; nowMs?: number } = {}): Promise<void> {
   await act(async () => {
     root?.render(
       <Header
@@ -120,6 +120,7 @@ async function mount(options: { stages?: Stages; nowMs?: number } = {}): Promise
         onOpenChange={() => undefined}
         live
         stages={options.stages}
+        {...(options.socket === undefined ? {} : { socket: options.socket })}
         nowMs={options.nowMs}
         reading={{ n: 12, page: 1 }}
       />,
@@ -178,19 +179,31 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-describe('the head says the book is being written', () => {
-  it('prints the one line and the 5×5 nib while a pass is in flight', async () => {
+describe('the head says one word about now', () => {
+  it('prints «главу пишут» and the 5×5 nib while a pass is in flight', async () => {
     await mount({ stages: stagesOf(event('queued', 1), event('drafting', 2)), nowMs: AT + 20_000 });
     const line = status();
     expect(line).not.toBeNull();
-    expect(line?.getAttribute('data-kind')).toBe('live');
+    expect(line?.getAttribute('data-kind')).toBe('drafting');
     // One line in the markup: there is no second, shortened variant (BOOK-199).
-    expect(line?.querySelector('.head-status-full')?.textContent).toBe('сейчас пишется');
+    expect(line?.querySelector('.head-status-full')?.textContent).toBe('главу пишут');
     expect(line?.querySelector('.head-status-short')).toBeNull();
     expect(line?.querySelector('.head-nib')).not.toBeNull();
+    // The longer sentence is the line's own title, never a second visible line.
+    expect(line?.getAttribute('title')).toBe('главу пишут — начали в 14:21');
     // One status region in the head, and no second name for a pass anywhere in it.
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(container.querySelector('.top')?.textContent ?? '').not.toContain('проход');
+  });
+
+  it('prints «правку читают» and «главу проверяют» for the other two steps of a reading', async () => {
+    await mount({ stages: stagesOf(event('queued', 1), event('read', 2)), nowMs: AT + 20_000 });
+    expect(status()?.getAttribute('data-kind')).toBe('reading');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('правку читают');
+    await mount({ stages: stagesOf(event('read', 1), event('verdict', 2)), nowMs: AT + 20_000 });
+    expect(status()?.getAttribute('data-kind')).toBe('gates');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('главу проверяют');
+    expect(status()?.getAttribute('title')).toBe('написанное читает редактор');
   });
 
   it('keeps the row: the status follows the chapter cluster and the folio follows the status', async () => {
@@ -206,21 +219,38 @@ describe('the head says the book is being written', () => {
     expect(textOf('.top-chapter-n')).toBe('12');
   });
 
-  it('prints nothing at all when no pass is in flight — the foot’s grip has that fact', async () => {
-    await mount({ stages: stagesOf(event('drafting', 1), event('landed', 2)), nowMs: AT + 5_000 });
-    expect(status()).toBeNull();
-    expect(container.querySelector('.top')?.textContent ?? '').not.toContain('пишется');
-    // ...and with no log at all: nothing is live.
+  it('prints the idle word «тихо» when nothing is in flight — never an empty head', async () => {
+    await mount({ stages: stagesOf(), nowMs: AT + 5_000 });
+    expect(status()?.getAttribute('data-kind')).toBe('idle');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
+    // ...and with no log at all: nothing is live, and the word says so.
     await mount({ nowMs: AT + 5_000 });
-    expect(status()).toBeNull();
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
   });
 
-  it('says the book is not being written — the same verb, the clock, and no nib — after 90 s', async () => {
+  it('says «внесено» just after a landing', async () => {
+    await mount({ stages: stagesOf(event('drafting', 1), event('landed', 2)), nowMs: AT + 5_000 });
+    expect(status()?.getAttribute('data-kind')).toBe('landed');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('внесено');
+    expect(status()?.querySelector('.head-nib')).toBeNull();
+  });
+
+  it('says «связи нет» when the page has no live line — with the sentence as its title', async () => {
+    await mount({ stages: stagesOf(), socket: 'closed', nowMs: AT + 5_000 });
+    expect(status()?.getAttribute('data-kind')).toBe('offline');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('связи нет');
+    expect(status()?.getAttribute('title')).toBe(
+      'нет связи: страница не знает, что сейчас происходит. обновите позже',
+    );
+    expect(status()?.querySelector('.head-nib')).toBeNull();
+  });
+
+  it('is «тихо» — no nib, no clock — after the pass has been silent for 90 s', async () => {
     await mount({ stages: stagesOf(event('drafting', 2)), nowMs: AT + 2_000 + 90_001 });
     const line = status();
-    expect(line?.getAttribute('data-kind')).toBe('stopped');
-    // The book's sentence, not the engine's: no «движок», no stage name, no placeholder.
-    expect(line?.querySelector('.head-status-full')?.textContent).toBe('сейчас тихо');
+    expect(line?.getAttribute('data-kind')).toBe('idle');
+    // The book's word, not the engine's: no «движок», no stage name, no placeholder.
+    expect(line?.querySelector('.head-status-full')?.textContent).toBe('тихо');
     expect(line?.textContent ?? '').not.toContain('движок');
     expect(line?.textContent ?? '').not.toContain('глава');
     expect(line?.textContent ?? '').not.toMatch(/\d{2}:\d{2}/u);
@@ -230,30 +260,32 @@ describe('the head says the book is being written', () => {
 
 describe('the region speaks only when the state changes', () => {
   it('turns polite on the change of state, not on every render', async () => {
-    // Idle: nothing is printed, and the region has heard that state.
-    await mount({ stages: stagesOf(event('drafting', 1), event('landed', 2)), nowMs: AT + 20_000 });
-    expect(status()).toBeNull();
+    // Idle: the word is printed, and the region has heard that state.
+    await mount({ stages: stagesOf(), nowMs: AT + 20_000 });
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
+    expect(status()?.getAttribute('aria-live')).toBe('off');
     // A pass starts: the state changed, so the line is announced once…
     await mount({ stages: stagesOf(event('drafting', 3)), nowMs: AT + 20_000 });
     expect(status()?.getAttribute('aria-live')).toBe('polite');
     // …and a newer stage of the same pass is not a state change, so it is not read aloud again.
     await mount({ stages: stagesOf(event('drafting', 3), event('typing', 4)), nowMs: AT + 20_000 });
     expect(status()?.getAttribute('aria-live')).toBe('off');
-    // The pass ends: the line goes, and the region is quiet again.
+    // The pass ends in a landing: one more state, announced once, then quiet again.
     await mount({ stages: stagesOf(event('drafting', 3), event('landed', 5)), nowMs: AT + 20_000 });
-    expect(status()).toBeNull();
+    expect(status()?.getAttribute('data-kind')).toBe('landed');
+    expect(status()?.getAttribute('aria-live')).toBe('polite');
   });
 
   it('ends the silence on its own clock, with one timeout and no interval', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(AT + 2_000);
     await mount({ stages: stagesOf(event('drafting', 2)) });
-    expect(status()?.getAttribute('data-kind')).toBe('live');
+    expect(status()?.getAttribute('data-kind')).toBe('drafting');
     await act(async () => {
       vi.advanceTimersByTime(90_002);
     });
-    expect(status()?.getAttribute('data-kind')).toBe('stopped');
-    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('сейчас тихо');
+    expect(status()?.getAttribute('data-kind')).toBe('idle');
+    expect(status()?.querySelector('.head-status-full')?.textContent).toBe('тихо');
   });
 });
 

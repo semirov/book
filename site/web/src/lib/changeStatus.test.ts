@@ -1,6 +1,7 @@
-import type { ChangeStepDto, ChangeSummaryDto, HistoryRecordDto } from '@book/shared';
+import { FAILED_ATTEMPT_LINE, type ChangeStepDto, type ChangeSummaryDto, type HistoryRecordDto } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
+import { PREMISE_PENDING, STATE_WORDS, turnLine } from './marginalia.ts';
 import {
   boundaryLabel,
   CAUSE_WORDS,
@@ -48,16 +49,24 @@ function summary(overrides: Partial<ChangeSummaryDto> = {}): ChangeSummaryDto {
 }
 
 describe('the thread’s two lines', () => {
-  it('separates the queue promise from the application', () => {
+  it('separates the writer’s lane from the application', () => {
     const lines = changeLines(summary({ status: 'pending', position: 4, outcome: null, chapters: [8] }));
-    expect(lines).toMatchObject({ first: 'идёт', tone: 'waiting' });
-    expect(lines.second).toBe('4-я в очереди');
+    // BOOK-218 — a change's turn, in the chapter's words: never a place in a queue.
+    expect(lines).toMatchObject({ first: STATE_WORDS.reading, tone: 'waiting' });
+    expect(lines.second).toBe(turnLine(4));
+    // BOOK-218 line 6 — the sentence is the owner's, the count is a tail in words.
+    expect(lines.second).toBe('правка ждёт своей минуты: впереди три');
+    // The next one has nothing ahead: the tail is dropped, the reason stays.
+    expect(changeLines(summary({ status: 'pending', position: 1 })).second).toBe('правка ждёт своей минуты');
+    expect(changeLines(summary({ status: 'pending', position: null })).second).toBe('правка ждёт своей минуты');
   });
 
   it('says the chapter being written while processing', () => {
+    // BOOK-218 line 7 — the summary carries no start moment, so the word stands alone here; the
+    // full `ChangeDto` prints `главу пишут — начали в 12:10` (`changeVerdict`).
     expect(changeLines(summary({ status: 'processing', outcome: null }))).toMatchObject({
       first: 'идёт',
-      second: 'пишется глава 8',
+      second: 'главу пишут',
     });
   });
 
@@ -136,7 +145,7 @@ describe('BOOK-7 — a premise is not an edit', () => {
     expect(stampCopy(waiting)).toBe('ждёт');
     expect(changeLines(waiting)).toEqual({
       first: 'ждёт',
-      second: 'принято в основу, до первой редакции',
+      second: PREMISE_PENDING,
       tone: 'waiting',
     });
     expect(progressLine(waiting)).toBe('принято в основу → ждёт');
@@ -200,15 +209,18 @@ describe('ranges and labels', () => {
     expect(relevanceCopy('partial')).toBe('основа изменилась частично');
     expect(relevanceCopy('unknown')).toBe('основа не проверена');
     expect(outcomeCopy('finding')).toBe('внесено · замечание сохранено');
-    // BOOK-76: a physics stop never says «внесено» — the claim did not enter the book.
-    expect(outcomeCopy('science')).toBe('остановлено: физика не подтверждена');
+    // BOOK-76/BOOK-218: a physics stop never says «внесено» — the claim did not enter the book,
+    // and the line is our failure, never «нужно решение».
+    expect(outcomeCopy('science')).toMatch(/^не дошло: /u);
     expect(outcomeCopy('science')).not.toContain('внесено');
     expect(outcomeCopy('dropped')).toBe('снято');
-    // BOOK-59: stopping at the wave bound asks for a decision; the word names no money.
-    expect(outcomeCopy('budget')).toBe('остановлено: дальше — решением владельца');
+    // BOOK-218 line 13 — the day's printing money is gone, and it is not about this edit.
+    expect(outcomeCopy('budget')).toBe(
+      'на сегодня всё: деньги на печать кончились. это не про вашу правку — приходите завтра',
+    );
     expect(outcomeCopy('budget')).not.toContain('бюджет');
-    // BOOK-61: Gate B's one word — never «внесено», never the auditor's word.
-    expect(outcomeCopy('rights')).toBe('не принято');
+    // BOOK-61: a Gate B stop is our failure too — the edit was not judged by the idea.
+    expect(outcomeCopy('rights')).toMatch(/^не дошло: /u);
     expect(outcomeCopy('rights')).not.toContain('внесено');
   });
 
@@ -220,12 +232,14 @@ describe('ranges and labels', () => {
     // Every other stop keeps both parts, exactly as before this pass.
     expect(
       outcomeLine({ premise: false, status: 'escalated', outcome: 'budget', reason: 'правка остановлена бюджетом — нужно решение' }),
-    ).toEqual({ word: 'остановлено: дальше — решением владельца', reason: 'правка остановлена бюджетом — нужно решение' });
-    // A stop with no reason still says its word.
-    expect(outcomeLine({ premise: false, status: 'escalated', outcome: 'rights', reason: null })).toEqual({
-      word: 'не принято',
-      reason: null,
+    ).toEqual({
+      word: 'на сегодня всё: деньги на печать кончились. это не про вашу правку — приходите завтра',
+      reason: 'правка остановлена бюджетом — нужно решение',
     });
+    // A stop with no reason says our failure's line — not a verdict about the idea.
+    expect(outcomeLine({ premise: false, status: 'escalated', outcome: 'rights', reason: null }).word).toMatch(
+      /^не дошло: /u,
+    );
   });
 
   it('labels a step and its wing without naming a gate', () => {
@@ -312,7 +326,7 @@ describe('BOOK-65 — one state word for one public record entry', () => {
       premise: true,
       premiseLanded: true,
       status: 'void',
-      reason: 'модель ответила не по форме — заявка остаётся в очереди',
+      reason: FAILED_ATTEMPT_LINE,
     });
     expect(recordStateWord(prod)).toBeNull();
     expect(JSON.stringify(recordStateWord(prod))).not.toMatch(/не по форме|не внесено/u);
@@ -343,7 +357,7 @@ describe('BOOK-65 — one state word for one public record entry', () => {
  * (a `void` with the sanitized failure line) is not the premise's story.
  */
 describe('a landed premise on the change surfaces', () => {
-  const failedAttemptLine = 'модель ответила не по форме — заявка остаётся в очереди';
+  const failedAttemptLine = FAILED_ATTEMPT_LINE;
   const landed = summary({
     premise: true,
     premiseLanded: true,
@@ -370,7 +384,7 @@ describe('a landed premise on the change surfaces', () => {
 
   it('never invents a landing for a premise whose chapter has no text', () => {
     const waiting = summary({ premise: true, premiseLanded: false, chapter: 65, status: 'pending', outcome: null });
-    expect(changeLines(waiting)).toMatchObject({ first: 'ждёт', second: 'принято в основу, до первой редакции' });
+    expect(changeLines(waiting)).toMatchObject({ first: 'ждёт', second: PREMISE_PENDING });
     expect(progressLine(waiting)).toBe('принято в основу → ждёт');
     expect(premiseOutcomeCopy(waiting)).toBe('в основе главы');
   });

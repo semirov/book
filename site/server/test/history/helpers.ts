@@ -82,8 +82,8 @@ export function seedChange(
     ).run(identityId, `sub-${index}`, label);
   }
   db.prepare(
-    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at)
-     VALUES (?, ?, ?, ?, 'абзац слишком часто', ?, 'iph', 'accepted', '2026-10-24T09:00:00Z')`,
+    `INSERT INTO comments (id, identity_id, chapter, author, body, body_sha, ip_hash, status, created_at, number)
+     VALUES (?, ?, ?, ?, 'абзац слишком часто', ?, 'iph', 'accepted', '2026-10-24T09:00:00Z', (SELECT COALESCE(MAX(number), 0) + 1 FROM comments))`,
   ).run(commentId, identityId, options.chapter, label, `sha-${index}`);
   db.prepare(
     `INSERT INTO changes (id, kind, chapter, intent, source_comment, base_rev, base_sha256, base_blocks,

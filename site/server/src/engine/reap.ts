@@ -8,7 +8,7 @@
  * an event, so "the engine recovered" is auditable like everything else.
  */
 
-import { parseSeams } from '@book/shared';
+import { FAILURE_LINES, parseSeams } from '@book/shared';
 
 import { appendChangeEvent, appendEvent } from '../history/log.ts';
 import { toIso } from '../util/time.ts';
@@ -77,14 +77,14 @@ export function reap(deps: EngineDeps, now: number = deps.clock.now()): ReapRepo
           outcome: 'escalated',
           seamsOut: parseSeams(null),
           // The note is read by an operator and copied to a page: a sentence, never a constant.
-          note: `шаг не закрылся за отведённое время (${String(Math.round(deps.config.stepWallMs / 60_000))} мин) — проход остановлен`,
+          note: `глава не закрылась за отведённое время (${String(Math.round(deps.config.stepWallMs / 60_000))} мин) — проход остановлен`,
           model: null,
           tokensIn: 0,
           tokensOut: 0,
           // The existing wall vocabulary: a step that did not close in time is a stop, and its
           // draft premise stays queued to the next pass rather than being read as a refusal.
           escalation: 'escalated:gate_timeout',
-          changeReason: 'шаг не закрылся за отведённое время — нужно решение',
+          changeReason: FAILURE_LINES.outOfTime,
         },
         now,
       );

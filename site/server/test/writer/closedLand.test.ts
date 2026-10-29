@@ -4,18 +4,20 @@
  * The engine answers `STEP_CLOSED` on `land` when the step closed while the text was being
  * written. Since BOOK-187 the text travels in the request, so a refused landing leaves nothing
  * behind: the chapter still reads what the site served, and the pass parks with a sentence a
- * reader can read — «шаг закрылся, пока текст писался — текст не опубликован». The code stays in
+ * reader can read — «глава закрылась, пока текст писался — текст не опубликован». The code stays in
  * the log and in the transcript. Both the slot that had text and the empty slot are covered:
  * the rows are the evidence, and no gate hashed a text the site never published.
  */
 
 import { describe, expect, it } from 'vitest';
 
+import { STOP_REASONS } from '@book/shared';
+
 import { listStages } from '../../src/stages/repo.ts';
 import { chapterAnswer, createHarness, stepRow, type Harness } from './harness.ts';
 
 const CHAPTER = 40;
-const SENTENCE = 'шаг закрылся, пока текст писался — текст не опубликован';
+const SENTENCE = STOP_REASONS.stepClosed;
 
 /** The sentence the pass parks with: the `refused` stage is where a parked pass says why. */
 function refusedStage(harness: Harness): string {

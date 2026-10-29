@@ -412,7 +412,7 @@ export function App() {
         <TrailView
           state={state} ribbon={ribbon} catalog={catalog}
           markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
-          live={history} stages={stages} reading={reading} viewer={viewer}
+          live={history} stages={stages} socket={connection} reading={reading} viewer={viewer}
           imprint={front.imprint} donateUrl={front.donateUrl ?? null}
           exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
         />
@@ -457,6 +457,7 @@ export function App() {
         motion={titleMotion}
         live={history} chronicle={chronicle}
         stages={stages}
+        socket={connection}
         reading={reading}
       />
       <ConsentBanner />

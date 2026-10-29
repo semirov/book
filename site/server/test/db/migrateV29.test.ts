@@ -211,7 +211,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
   it('builds the same shape on a fresh and on a migrated install, and keeps every v28 column', () => {
     const fresh = openDatabase(':memory:');
     migrate(fresh);
-    expect(SCHEMA_VERSION).toBe(31);
+    expect(SCHEMA_VERSION).toBe(32);
     const freshShape = {
       facts: info(fresh, 'facts'),
       dependency: info(fresh, 'fact_dependency'),
@@ -291,7 +291,7 @@ describe('migration v29 — the graph on a volume that holds its text', () => {
     const built = objectSql(db, 'table', 'facts');
     const guard = objectSql(db, 'trigger', 'facts_no_delete');
     const runs = objectSql(db, 'table', 'extraction_runs');
-
+    // A fresh install is already at the newest version: the only step it could take is none.
     expect(migrate(db)).toEqual({ from: SCHEMA_VERSION, to: SCHEMA_VERSION });
     expect(Number(db.pragma('user_version', { simple: true }))).toBe(SCHEMA_VERSION);
     expect(rebuildFacts(db)).toBe(false);

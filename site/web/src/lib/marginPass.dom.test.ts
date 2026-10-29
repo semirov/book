@@ -84,6 +84,55 @@ describe('runMarginPass', () => {
     expect(tail.style.height).toBe('0px');
   });
 
+  /** A mark of its own line in the same sentence, with its own anchor and height. */
+  function markAt(fixture: Fixture, anchorTop: number, height = 44): HTMLElement {
+    const { sentence, paragraph } = fixture;
+    const mark = document.createElement('button');
+    mark.className = 'filing-mark';
+    mark.setAttribute('data-margin-item', 'mark');
+    mark.style.position = 'absolute';
+    sentence.prepend(mark);
+    Object.defineProperty(mark, 'offsetParent', { configurable: true, get: () => paragraph });
+    mark.getBoundingClientRect = () => box(anchorTop, height);
+    return mark;
+  }
+
+  it('keeps one cursor per column: the note keeps its hairline tie beside a mark (BOOK-218)', () => {
+    const owner = fixture(100, 96, 'a');
+    // The line's box is 24 px high in the browser; jsdom has no sheet, so the fixture says so.
+    owner.sentence.style.lineHeight = '24px';
+    // A 40 × 44 target centred on the same line: 100 + 12 − 22 = 90.
+    const mark = markAt(owner, 90);
+    const second = fixture(160, 96, 'b');
+
+    runMarginPass(document);
+
+    // The mark is centred on its own line; the note of the same line keeps its own tie (100),
+    // because the mark stands in another column and advances another cursor.
+    expect(mark.style.top).toBe('40px'); // 90 − the paragraph's top (50)
+    expect(second.sentence.style.lineHeight).toBe('');
+    expect(owner.note.style.top).toBe('50px'); // 100 − 50 — not pushed by the mark
+    // The next note still starts under the note above it: 100 + 96 + 12.
+    expect(second.note.style.top).toBe('158px');
+    for (const item of [mark, owner.note, second.note]) {
+      expect(item.getAttribute('data-placed')).toBe('true');
+    }
+  });
+
+  it('never lets a note move a mark', () => {
+    const tall = fixture(100, 300, 'tall');
+    const below = fixture(500, 44, 'mark-line');
+    below.sentence.style.lineHeight = '24px';
+    const mark = markAt(below, 500 + 12 - 22);
+
+    runMarginPass(document);
+
+    // The tall note reaches 400; the mark stays on its own line at 490, untouched.
+    expect(mark.style.top).toBe('440px'); // 490 − 50
+    expect(tall.note.style.top).toBe('50px'); // 100 − 50: the note's own tie
+    expect(Number.parseFloat(below.note.style.top)).toBeGreaterThanOrEqual(0);
+  });
+
   it('marks a fitting paragraph as a margin', () => {
     const { paragraph } = fixture(100, 96, 'a');
     runMarginPass(document);
