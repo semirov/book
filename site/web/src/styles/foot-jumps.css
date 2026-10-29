@@ -3,7 +3,7 @@
 
    Not a bar (#3801 §1): no cells, no separators, no numerals, no icons, no shadow, no blur,
    no fill of its own beyond the paper it is made of — the 24 px band of the column's own
-   paper with one 1 px rule on top, carrying оглавление · обсуждение · каретки. Its width is
+   paper with one 1 px rule on top, carrying оглавление · обсуждение · след. Its width is
    the column's, not the viewport's: `.page` inside the nested `.canvas` is exactly the
    measure, so the hairline runs 24…366 at 390 and 400…1040 at 1440 and stops there.
 
@@ -31,14 +31,8 @@ html:has(nav.foot-jumps) {
 .toc,
 #discussion,
 .ch,
-#pass,
 #talks {
   scroll-margin-bottom: calc(var(--grip-h) + env(safe-area-inset-bottom));
-}
-/* §3802 §4 — `#pass` is the live block's first line; it lands `--offset-top + 16` from the
-   head, because the reader came to watch the carets, not the strip's first row. */
-#pass {
-  scroll-margin-top: calc(var(--offset-top) + 16px);
 }
 /* The legacy `#talks` deep link still lands on the register's own head (§3802 §3). */
 #talks {
@@ -85,8 +79,7 @@ html:has(nav.foot-jumps) {
   height: var(--grip-h);
   /* The band is paper, not a window. The viewport almost always ends mid-line, so the band's
      24 px cover the bottom of whatever line happens to sit there: without its own fill it
-     would be that line's glyphs showing through the words, and the hairline and the meta
-     drawn over them (0.84 of a line is exactly the line it must hide). It paints the same
+     would be that line's glyphs showing through the words and the hairline (0.84 of a line is exactly the line it must hide). It paints the same
      `--paper` the page paints, from the token, so night follows without a second rule; the
      strip is opaque by construction — no shadow, no blur, no second surface. */
   background: var(--paper);
@@ -158,42 +151,6 @@ html:has(nav.foot-jumps) {
 .foot-jumps[data-open='true'] .foot-jump-word {
   transform: translateY(calc((var(--grip-row) - var(--grip-h)) / 2));
 }
-/* The meta line: the rail's own words, never a new sentence. It is out of the cell's flow —
-   an absolutely placed line, so it can never widen the word's column — centred, and inside
-   the open row's own 44 px: 30…42 from the item's top, so its bottom sits 2 px above the
-   band's edge and is never clipped by the screen. It rides the row's own two motions: the
-   10 px rise is the transform, the ink is the 120 ms fade after the rise. Closed, it is
-   inert: a tap there reaches the page or the expander, never an invisible control. */
-.foot-jump-meta {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(var(--grip-row) - 14px);
-  text-align: center;
-  line-height: var(--fs-micro);
-  white-space: nowrap;
-  opacity: 0;
-  transform: translateY(12px);
-  pointer-events: none;
-  transition:
-    opacity var(--dur-tick) var(--ease-inout),
-    transform var(--dur-ui) var(--ease-inout);
-}
-.foot-jumps[data-open='false'] .foot-jump-meta {
-  transition:
-    opacity var(--dur-tick) var(--ease-inout),
-    transform 160ms var(--ease-in);
-}
-/* The meta appears only after the words have risen: the rise owns 0…220, the line 220…340.
-   Open, it sits 30 px from the item's top (a 12 px line, ending 2 px above the row's edge)
-   and its ink catches up; closed, the same box is pushed 12 px down and faded, so nothing is
-   ever a control while it cannot be seen. */
-.foot-jumps[data-open='true'] .foot-jump-meta {
-  opacity: 1;
-  transform: translateY(0);
-  transition-delay: var(--dur-ui);
-  pointer-events: auto;
-}
 /* The expander: a button layer behind the words, covering the band and the item's own box.
    `-1px` on top: the band's hairline is inside its height, so the layer must start on the
    band's outer edge, exactly as the items do. */
@@ -219,44 +176,12 @@ html:has(nav.foot-jumps) {
   outline: 2px solid var(--live);
   outline-offset: -3px;
 }
-/* An item with no target is a word, not a control: no pointer, no ring, the quiet ink — and
-   a tap on it falls through to the expander behind, so the row still opens (never a no-op). */
-.foot-jump.is-inert {
-  pointer-events: none;
-}
-.foot-jump.is-inert .foot-jump-word,
-.foot-jump.is-inert .foot-jump-meta {
-  pointer-events: none;
-}
-
 /* ---------- cuts ---------- */
 
 /* A fling, and a keyboard-driven open, apply the state as a cut: 0 ms, no envelope. */
 .foot-jumps[data-cut='true'] .foot-jumps-in,
-.foot-jumps[data-cut='true'] .foot-jump-word,
-.foot-jumps[data-cut='true'] .foot-jump-meta {
+.foot-jumps[data-cut='true'] .foot-jump-word {
   transition: none;
-}
-
-/* ---------- the door's veil ---------- */
-
-/* A cut under a brief veil, never a scroll (#3797 §3): the chrome does not travel, the page
-   turns beneath it. Under the grip (35), under the head (40), and never in the way. */
-.foot-veil {
-  position: fixed;
-  inset: 0;
-  z-index: 34;
-  background: var(--paper);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-tick) var(--ease-inout);
-}
-.foot-veil[data-phase='in'] {
-  opacity: 0.26;
-  transition-timing-function: linear;
-}
-[data-theme='night'] .foot-veil {
-  background: var(--ink);
 }
 
 /* ---------- reduced motion ---------- */
@@ -268,9 +193,7 @@ html:has(nav.foot-jumps) {
   .foot-jumps-in,
   .foot-jumps[data-open='true'] .foot-jumps-in,
   .foot-jumps[data-open='false'] .foot-jumps-in,
-  .foot-jumps .foot-jump-word,
-  .foot-jumps .foot-jump-meta,
-  .foot-veil {
+  .foot-jumps .foot-jump-word {
     transition-duration: 0ms;
     transition-delay: 0ms;
   }

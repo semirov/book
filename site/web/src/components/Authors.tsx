@@ -1,12 +1,9 @@
-import { formatShare, type AuthorsDto, type MyDecisionsDto, type MyTraceDto } from '@book/shared';
+import { formatShare, type AuthorsDto } from '@book/shared';
 
 import { formatDate } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
-import type { ChapterLoader } from '../lib/place.ts';
 import { statusLine } from '../lib/skeleton.ts';
 import { ExportLink } from './ExportLink.tsx';
-import { OwnDecisions } from './OwnDecisions.tsx';
-import { OwnTrace } from './OwnTrace.tsx';
 import { Skeleton } from './Skeleton.tsx';
 
 /**
@@ -36,13 +33,8 @@ export function Authors({
   authorsFailed = false,
   imprint,
   lastRevisionAt,
-  ownTrace = null,
-  onToggleHidden,
-  hidePending = false,
-  decisions = null,
   live,
   exportBytes = null,
-  onLoadChapter,
 }: {
   authors: AuthorsDto | null;
   /** BOOK-DOC-43 §4 — quiet / skeleton / slow, from the request's settle. */
@@ -56,12 +48,6 @@ export function Authors({
   authorsFailed?: boolean;
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
-  /** The signed-in reader's own trace; `null` for an anonymous visitor. */
-  ownTrace?: MyTraceDto | null;
-  onToggleHidden?: (hidden: boolean) => void;
-  hidePending?: boolean;
-  /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
-  decisions?: MyDecisionsDto | null;
   /**
    * BOOK-56: `state.history.live`. The authors list is a history surface — with no reader
    * change there is no one to list, so the list itself is gated. The reader's own decisions
@@ -80,18 +66,17 @@ export function Authors({
    * payload, and then the link prints the verb alone.
    */
   exportBytes?: number | null;
-  /** BOOK-168: the page's chapter read, so a row's place door can ask for its chapter. */
-  onLoadChapter?: ChapterLoader;
 }) {
   // BOOK-56: the list is the book's past; the reader's own decisions are their present state,
   // so they render on their own rather than with the list they used to sit under.
   if (!live) {
     // BOOK-60: reading is never gated, so the download is not either. A begun book has no
-    // authors list, but it does have a file — the link stays with or without own decisions.
-    const hasDecisions = decisions !== null && decisions.items.length > 0;
+    // authors list, but it does have a file.
     return (
-      <section className="page authors" aria-label={hasDecisions ? 'ваши правки и выгрузка книги' : 'выгрузка книги'}>
-        {hasDecisions ? <OwnDecisions decisions={decisions} onLoadChapter={onLoadChapter} /> : null}
+      <section className="page authors" aria-label="выгрузка книги">
+        <p className="authors-trail">
+          <a href="#след">ваш след →</a>
+        </p>
         <div className="authors-export">
           <ExportLink exportBytes={exportBytes} />
         </div>
@@ -163,14 +148,10 @@ export function Authors({
           </span>
         </p>
       )}
-      {ownTrace === null ? null : (
-        <OwnTrace
-          trace={ownTrace}
-          pending={hidePending}
-          {...(onToggleHidden === undefined ? {} : { onToggleHidden })}
-        />
-      )}
-      <OwnDecisions decisions={decisions} onLoadChapter={onLoadChapter} />
+      {/* BOOK-207 — the reader's own trace is a page of the book now: one row stays here. */}
+      <p className="authors-trail">
+        <a href="#след">ваш след →</a>
+      </p>
       {/*
         BOOK-138 — the download keeps the end matter's own spacing (`chrome.css`,
         `.authors-export`); the link itself states no box, here or in the footer. The label

@@ -59,7 +59,8 @@ describe('the reader’s fields are never recorded', () => {
       // BOOK-77 (audit F1): every other surface that renders a reader's name, quote or body.
       ['components/Authors.tsx', 'className="page authors ym-hide-content"'],
       ['components/Authors.tsx', 'className="authors-row ym-disable-clickmap"'],
-      ['components/OwnTrace.tsx', 'className="own-trace ym-disable-clickmap"'],
+      // BOOK-207: «ваш след» is its own page now, and it still renders the reader's words.
+      ['components/TrailPage.tsx', 'className="page sheet sled ym-hide-content ym-disable-clickmap"'],
       // The one card a filing with no sentence keeps, and the record that holds the rest.
       ['components/FilingCard.tsx', 'filing-panel ym-hide-content'],
       ['components/Record.tsx', 'className="rec ym-hide-content"'],

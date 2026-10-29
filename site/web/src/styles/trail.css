@@ -1,0 +1,105 @@
+/**
+ * BOOK-207 — «ваш след», the reader's own page.
+ *
+ * One sheet in the book's column (640/622/342 through `.page.sheet`): a mono 12 head, the
+ * serif 15 trace line, and one row per filing — a mono 12 meta line, the quote as a door, and
+ * the state's detail in the quiet ink. No count, no box, no floating layer; the page grows and
+ * the page is the scroller.
+ */
+
+.sled {
+  padding-block: 0 48px;
+}
+.sled-head {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+.sled-head:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+.sled-trace,
+.sled-line {
+  margin: 12px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.sled-toggle-line {
+  margin: 4px 0 0;
+}
+.sled-toggle,
+.sled-retry button {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.sled-bound {
+  margin: 16px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  color: var(--ink-3);
+}
+.sled-rows {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.sled-row {
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+}
+.sled-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.sled-meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
+.sled-quote {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.sled-detail {
+  margin: 4px 0 0;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.sled-exit {
+  margin: 24px 0 0;
+}
+.sled-exit a {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+  color: var(--ink-3);
+  text-decoration: none;
+}

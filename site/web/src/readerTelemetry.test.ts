@@ -17,7 +17,9 @@ const surfaces = import.meta.glob<string>('./{components,lib}/**/*.{ts,tsx}', {
 
 /** Reader-facing files: the prose surfaces and the vocabulary they print. */
 const READER = [
-  '/components/PassStrip.tsx',
+  '/components/FollowWord.tsx',
+  '/components/FollowNotice.tsx',
+  '/components/TrailPage.tsx',
   '/components/Chronicle.tsx',
   '/components/Discussion.tsx',
   '/components/FootJumps.tsx',
@@ -68,8 +70,8 @@ describe('the reader’s surfaces carry no engine telemetry', () => {
     for (const path of READER) expect(source(path), path).not.toContain('PassRecordPage');
   });
 
-  it('keeps the three failure strings of the reader surfaces', () => {
-    expect(source('/components/PassStrip.tsx')).toContain('не удалось прочитать ход');
+  it('keeps the failure strings of the reader surfaces', () => {
+    expect(source('/components/TrailPage.tsx')).toContain('след не прочитался');
     expect(source('/components/Discussion.tsx')).toContain('не удалось прочитать обсуждение');
     expect(source('/components/MomentControl.tsx')).toContain('показаны');
   });

@@ -7,6 +7,7 @@
  */
 
 import {
+  MY_FILINGS_LIMIT,
   PUBLIC_COMMENT_STATUSES,
   TOTAL_CHAPTERS,
   authorColor,
@@ -219,6 +220,25 @@ export function listCommentRows(db: Db, options: ListCommentsOptions): CommentRo
     .prepare(`SELECT * FROM comments WHERE ${filters.join(' AND ')} ORDER BY id DESC LIMIT ?`)
     .all(...args) as CommentRow[];
   return rows.reverse();
+}
+
+/**
+ * BOOK-207 — the reader's own filings (`GET /api/me/filings`), newest first, bounded.
+ *
+ * Own only: the identity is the session's, never a parameter. A hidden row is stored for the
+ * operator and never republished, so it is not on the reader's own page either; a filing aimed
+ * at a number this book no longer has is not a statement about it (BOOK-155), and the same
+ * range rule is applied in SQL so the bound is a real bound.
+ */
+export function listOwnCommentRows(db: Db, identityId: string, limit: number = MY_FILINGS_LIMIT): CommentRow[] {
+  const bound = Math.max(1, Math.min(MY_FILINGS_LIMIT, Math.trunc(limit)));
+  return db
+    .prepare(
+      `SELECT * FROM comments
+        WHERE identity_id = ? AND status <> 'hidden' AND chapter BETWEEN 1 AND ?
+        ORDER BY created_at DESC, id DESC LIMIT ?`,
+    )
+    .all(identityId, TOTAL_CHAPTERS, bound) as CommentRow[];
 }
 
 export type BlockRow = { id: string; chapter: number; idx: number; text: string; hash: string };

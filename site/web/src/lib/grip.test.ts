@@ -1,22 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatDayMonth } from './format.ts';
 import {
   GRIP,
-  PASS_LABEL,
-  PASS_SILENT,
-  PASS_WATCHING,
   gripTiming,
   initialGrip,
   isCalm,
   isFling,
-  liveChapter,
   nextGrip,
-  passDoor,
-  passStateOf,
   velocityOf,
   type GripState,
-  type PassFacts,
 } from './grip.ts';
 
 /**
@@ -24,23 +16,9 @@ import {
  *
  * Every number here is the contract the component and the DOM test obey: 48 px of scroll,
  * 3 200 ms of quiet, 2 400 px/s as a fling, 120 px/s held 100 ms before an entrance, one
- * commit per 320 ms, and the door's three states. A test that needs `vi.advanceTimersByTime`
- * would be testing the harness, not the rule.
+ * commit per 320 ms. A test that needs `vi.advanceTimersByTime` would be testing the harness,
+ * not the rule. BOOK-207 removed the door's state table with the carets door.
  */
-
-const CHANGE = {
-  id: 'chg_7',
-  decidedAt: '2026-10-25T11:21:00Z',
-  enqueuedAt: '2026-10-25T10:40:00Z',
-};
-
-const facts = (over: Partial<PassFacts> = {}): PassFacts => ({
-  processing: false,
-  revising: false,
-  historyLive: true,
-  change: null,
-  ...over,
-});
 
 /** A row the reader just opened with a tap on the paper, at t = 0. */
 function opened(options: { reduced?: boolean } = {}): GripState {
@@ -216,81 +194,6 @@ describe('the fling gate', () => {
     expect(closed.open).toBe(false);
     expect(nextGrip(closed, { type: 'paper', atMs: 500 }).open).toBe(false);
     expect(nextGrip(closed, { type: 'paper', atMs: 720 }).open).toBe(true);
-  });
-});
-
-describe('the third item’s three states', () => {
-  it('is live while a pass runs, pointed at #pass and saying «пишется»', () => {
-    const door = passDoor(facts({ processing: true, change: CHANGE }));
-    expect(door.state).toBe('live');
-    expect(door.href).toBe('#pass');
-    expect(door.meta).toBe('пишется');
-    expect(door.name).toContain(PASS_LABEL);
-    // The live block's own ochre rule counts as a pass too.
-    expect(passStateOf(facts({ revising: true, change: CHANGE }))).toBe('live');
-  });
-
-  it('is a record when nothing runs and a change is behind: ?change=<id> and its day', () => {
-    const door = passDoor(facts({ change: CHANGE }));
-    expect(door.state).toBe('record');
-    // The door opens the record's `правка` section, never a pass page (owner, 2026-10-28).
-    expect(door.href).toBe('?change=chg_7');
-    // The day, not a bare time: `писалась · 25.10`.
-    expect(door.meta).toBe('писалась · 25.10');
-    expect(door.meta).toBe(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);
-    expect(door.name).toContain(PASS_LABEL);
-    // `decidedAt ?? enqueuedAt`: a change still in the queue points at its own filing day.
-    const queued = passDoor(facts({ change: { ...CHANGE, decidedAt: null } }));
-    expect(queued.meta).toBe('писалась · 25.10');
-  });
-
-  it('is silent with no target and «пока не писалась» — a word, not a disabled button', () => {
-    const door = passDoor(facts());
-    expect(door.state).toBe('silent');
-    expect(door.href).toBeNull();
-    expect(door.meta).toBe(PASS_SILENT);
-    expect(PASS_SILENT).toBe('пока не писалась');
-    expect(door.name).toContain(PASS_LABEL);
-    expect(door.name).toContain(PASS_SILENT);
-  });
-
-  it('is absent before the first pass ever, even with a change on the page', () => {
-    const door = passDoor(facts({ historyLive: false, change: CHANGE }));
-    expect(door.state).toBe('absent');
-    expect(door.href).toBeNull();
-    expect(door.meta).toBeNull();
-  });
-
-  it('says «вернуться к месту чтения» while the reader is inside the pass', () => {
-    const door = passDoor({ ...facts({ processing: true }), watching: true });
-    expect(door.label).toBe(PASS_LABEL);
-    expect(door.name).toBe(PASS_WATCHING);
-    expect(door.name).toContain(PASS_LABEL);
-  });
-
-  it('keeps one label in every state', () => {
-    for (const door of [
-      passDoor(facts({ processing: true })),
-      passDoor(facts({ change: CHANGE })),
-      passDoor(facts()),
-      passDoor(facts({ historyLive: false })),
-    ]) {
-      expect(door.label).toBe(PASS_LABEL);
-      expect(door.name).toContain(PASS_LABEL);
-    }
-  });
-});
-
-describe('the door’s chapter', () => {
-  it('takes the first active block’s chapter, else the processing change’s, else nothing', () => {
-    expect(liveChapter(12, {})).toBe(12);
-    expect(liveChapter(null, { 7: { active: true } })).toBe(7);
-    // A live block wins: a cascade step can revise a chapter while the queue reports nothing.
-    expect(liveChapter(12, { 7: { active: true } })).toBe(7);
-    // The first active one, in chapter order — an inactive entry is not a pass.
-    expect(liveChapter(null, { 3: { active: false }, 9: { active: true }, 11: { active: true } })).toBe(9);
-    expect(liveChapter(null, { 3: { active: false } })).toBeNull();
-    expect(liveChapter(null, {})).toBeNull();
   });
 });
 

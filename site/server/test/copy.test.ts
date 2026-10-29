@@ -125,3 +125,27 @@ describe('the physics pass is named where a reader looks, and nowhere else (BOOK
     for (const required of SCIENCE_ROLE_REQUIRED) expect(carriers, required).toContain(required);
   });
 });
+
+/**
+ * BOOK-207 — the deleted carets door, pass screen and strip leave no word in the reader's
+ * sources: no «каретки», no `#проход-` fragment, and no bare noun «проход» (the engine's own
+ * logs outside `web/src` may still say it). Comments are blanked first: a comment may quote
+ * the removed string, a component may not print it.
+ */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/^\s*\/\/.*$/gmu, '');
+}
+
+describe('the deleted carets door leaves no word in the reader’s sources (BOOK-207)', () => {
+  it('has no «каретки», no «#проход-» and no bare «проход»', () => {
+    const files = webSources(join(ROOT, 'web/src'));
+    expect(files.length).toBeGreaterThan(50);
+    for (const file of files) {
+      const source = withoutComments(readFileSync(file, 'utf8'));
+      expect(source, `${file}: каретки`).not.toMatch(/каретки/iu);
+      expect(source, `${file}: #проход-`).not.toContain('#проход-');
+      // The noun, not «проходит»: a word boundary on Cyrillic, both sides.
+      expect(source, `${file}: проход`).not.toMatch(/(?<![а-яё])проход(?![а-яё])/iu);
+    }
+  });
+});

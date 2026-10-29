@@ -1,8 +1,7 @@
-import type { AuthorsCountDto, AuthorsDto, MyDecisionsDto, MyTraceDto } from '@book/shared';
+import type { AuthorsDto } from '@book/shared';
 import { useCallback, useEffect, useState } from 'react';
 
-import { getAuthors, getMyTrace, postAuthorsHide } from '../api.ts';
-import type { ChapterLoader } from '../lib/place.ts';
+import { getAuthors } from '../api.ts';
 import { usePending } from '../usePending.ts';
 import { Authors } from './Authors.tsx';
 
@@ -11,112 +10,57 @@ import { Authors } from './Authors.tsx';
  *
  * The shares are a *measurement*, not a live fact: they arrive from `/api/authors`, not from
  * the socket, and a failed request must not take the page down — the author and the
- * copyright are already known from the imprint, and only the numbers wait. Hiding from the
- * list re-measures, because a reader who changed the flag asks to see the list as it now is.
+ * copyright are already known from the imprint, and only the numbers wait.
  *
  * The view switch at the top of the page is the only way into the chronicle; the end matter
  * carries no door of its own.
  *
- * A signed-in reader also sees their own trace (`/api/authors/me`, own only) and can hide
- * from the list and come back — hiding is not deletion, so the list re-measures afterwards
- * and the fresh byline count goes up to page 1 through `onAuthorsCount`.
+ * BOOK-207 — the reader's own trace and filings left this block for their own page (`#след`);
+ * the block keeps one row, «ваш след →», and no own-only request is made here.
  */
 export function EndMatter({
   imprint,
   lastRevisionAt,
-  signedIn,
-  onAuthorsCount,
-  decisions = null,
   live,
   exportBytes = null,
-  onLoadChapter,
 }: {
   imprint: { author: string; copyright: string };
   lastRevisionAt: string | null;
-  signedIn: boolean;
-  onAuthorsCount?: (count: AuthorsCountDto) => void;
-  /** The signed-in reader's own decisions (BOOK-13); `null` for an anonymous visitor. */
-  decisions?: MyDecisionsDto | null;
   /**
-   * BOOK-56: `state.history.live`; the authors list and the person's trail are history. A
-   * begun book has a chronicle with one record and no authors yet, so this block stays off
-   * until a reader has changed the text.
+   * BOOK-56: `state.history.live`; the authors list is history. A begun book has a chronicle
+   * with one record and no authors yet, so this block stays off until a reader changed the text.
    */
   live: boolean;
   /** BOOK-138: the size of the export, printed beside the download link. */
   exportBytes?: number | null;
-  /** BOOK-168: the page's chapter read, handed down to the reader's own decisions. */
-  onLoadChapter?: ChapterLoader;
 }) {
   const [authors, setAuthors] = useState<AuthorsDto | null>(null);
   /**
    * BOOK-DOC-43 §4 — the shares have a wait, and «—» must not stand for two different things
    * (BOOK-66). `authorsSettled` turns true when the request answered **or** failed, so the
    * surface leaves the waiting state on either outcome; `authorsFailed` keeps the failure
-   * distinguishable from a measurement that came back empty. A later re-measure (hiding from
-   * the list) refreshes the numbers without re-arming the wait.
+   * distinguishable from a measurement that came back empty.
    */
   const [authorsSettled, setAuthorsSettled] = useState(false);
   const [authorsFailed, setAuthorsFailed] = useState(false);
-  const [ownTrace, setOwnTrace] = useState<MyTraceDto | null>(null);
-  const [hidePending, setHidePending] = useState(false);
 
-  const load = useCallback(
-    async (fresh = false) => {
-      // BOOK-56: with history off the list is not on the page, so nothing is asked for it.
-      if (!live) return;
-      try {
-        setAuthors(await getAuthors({ fresh }));
-        setAuthorsFailed(false);
-      } catch {
-        /* the end matter keeps the author and the copyright; the shares stay «—» */
-        setAuthorsFailed(true);
-      } finally {
-        setAuthorsSettled(true);
-      }
-    },
-    [live],
-  );
-
-  const loadOwnTrace = useCallback(async () => {
-    if (!live || !signedIn) {
-      setOwnTrace(null);
-      return;
-    }
+  const load = useCallback(async () => {
+    // BOOK-56: with history off the list is not on the page, so nothing is asked for it.
+    if (!live) return;
     try {
-      setOwnTrace(await getMyTrace());
+      setAuthors(await getAuthors());
+      setAuthorsFailed(false);
     } catch {
-      /* signed out between hello and this request: an anonymous reader sees nothing */
-      setOwnTrace(null);
+      /* the end matter keeps the author and the copyright; the shares stay «—» */
+      setAuthorsFailed(true);
+    } finally {
+      setAuthorsSettled(true);
     }
-  }, [live, signedIn]);
+  }, [live]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    void loadOwnTrace();
-  }, [loadOwnTrace]);
-
-  const toggleHidden = useCallback(
-    async (hidden: boolean) => {
-      setHidePending(true);
-      try {
-        const result = await postAuthorsHide(hidden);
-        setOwnTrace((current) => (current === null ? current : { ...current, hidden: result.hidden }));
-        onAuthorsCount?.(result.authors);
-        // The list route answers `no-store` (BOOK-109); after a mutation read it past any copy
-        // the browser still holds.
-        await load(true);
-      } catch {
-        /* the flag did not change: the button stays as it was, nothing claims success */
-      } finally {
-        setHidePending(false);
-      }
-    },
-    [load, onAuthorsCount],
-  );
 
   /**
    * §4: the wait is real from the request until it settles, data or failure. §7: `busy` is
@@ -132,13 +76,8 @@ export function EndMatter({
       authorsFailed={authorsFailed}
       imprint={imprint}
       lastRevisionAt={lastRevisionAt}
-      ownTrace={ownTrace}
-      decisions={decisions}
-      hidePending={hidePending}
-      onToggleHidden={(hidden) => void toggleHidden(hidden)}
       live={live}
       exportBytes={exportBytes}
-      onLoadChapter={onLoadChapter}
     />
   );
 }

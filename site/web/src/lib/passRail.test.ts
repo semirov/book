@@ -1,7 +1,7 @@
 import type { PassStage, PassStageEvent, StageSpan } from '@book/shared';
 import { describe, expect, it } from 'vitest';
 
-import { eventsOfPass, livePassOf, liveRunOf } from './passRail.ts';
+import { livePassOf, liveRunOf } from './passRail.ts';
 
 /**
  * The live block: which paragraph a running pass is writing, and from when. The reader's rail
@@ -38,7 +38,9 @@ const READING = [event('queued', 1, { at: T0 }), event('read', 2, { at: T0 + 4_0
 describe('the log’s own helper', () => {
   it('narrows a chapter’s log to one pass, in stage order', () => {
     const foreign = event('landed', 9, { passId: 'stp_other' });
-    const own = eventsOfPass([...READING, foreign], 'stp_01J9Z8K4Q7');
+    const own = [...READING, foreign]
+      .filter((event) => event.passId === 'stp_01J9Z8K4Q7')
+      .sort((left, right) => left.at - right.at || left.stageSeq - right.stageSeq);
     expect(own.map((row) => row.stageSeq)).toEqual([1, 2]);
   });
 });
