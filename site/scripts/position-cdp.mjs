@@ -17,6 +17,9 @@
  * book tree. The record names which one (`- seed: …`). Then `npm run build` plus
  * `release publish` (unless `--no-build` and a release is on disk); the real server on :8099;
  * then Chromium over CDP — `$POSITION_CHROME`, the Playwright cache, or a system Chrome.
+ * The age gate (BOOK-225) stands in front of the chapters, so it is answered the way a reader
+ * answers it — one real click per browser context, `lib/position-gate.mjs` — and the sweep then
+ * measures a page that has its 42 slots.
  * Everything is torn down on the way out, a crash included.
  *
  * The measured server boots with `READ_PER_MINUTE=100000` (the harness's own default; override

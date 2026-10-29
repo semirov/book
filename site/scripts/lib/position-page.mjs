@@ -300,7 +300,38 @@ export function back() {
   return 'window.__position.back()';
 }
 
-/** How many contents rows the page has — the harness's own readiness gate. */
-export function rowCount() {
-  return "document.querySelectorAll('a.toc-link').length";
+/**
+ * The gate before the prose (BOOK-225), as it stands on this page: `button.gate-go` is the
+ * reader's own door, and `busy` is the button disabled while its `POST /api/age` is in flight.
+ *
+ * These three expressions read the document directly and never `window.__position`: the gate
+ * renders **instead of** the chapter flow, so the page that carries it has no contents rows and
+ * the harness's own helpers are not installed there yet.
+ */
+export function gate() {
+  return `(() => {
+    const button = document.querySelector('button.gate-go');
+    if (button === null) return { present: false, busy: false };
+    return { present: true, busy: button.disabled === true };
+  })()`;
+}
+
+/** The reader's answer, as a real click on «мне есть 18 — читать» (`POST /api/age` behind it). */
+export function gateAccept() {
+  return `(() => {
+    const button = document.querySelector('button.gate-go');
+    if (button === null) return { clicked: false, busy: false };
+    if (button.disabled === true) return { clicked: false, busy: true };
+    button.click();
+    return { clicked: true, busy: false };
+  })()`;
+}
+
+/** The chapter list the gate stands in front of: its contents, its rows, its slots' articles. */
+export function chapters() {
+  return `(() => ({
+    toc: document.querySelector('#toc') !== null,
+    rows: document.querySelectorAll('a.toc-link').length,
+    articles: document.querySelectorAll('article[data-n]').length,
+  }))()`;
 }

@@ -16,6 +16,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 import { Cdp } from './cdp.mjs';
 import * as boot from './position-boot.mjs';
+import { acknowledgeGate } from './position-gate.mjs';
 import * as page from './position-page.mjs';
 import { POSITION_TARGET_PX, POSITION_TOLERANCE_PX, round2 } from './position.mjs';
 
@@ -98,6 +99,8 @@ async function openPage(cdp, viewport, options = {}) {
   });
   loads += 1;
   await cdp.send('Page.navigate', { url: `${boot.POSITION_ORIGIN}/?row=${String(loads)}` });
+  // The gate stands where the chapters would be, so it is answered before readiness is asked for.
+  await acknowledgeGate(cdp, options.log, TOTAL_ROWS);
   await waitForApp(cdp);
   // The page a reader taps has painted: the row count and the fonts are not the whole layout
   // (a placeholder above the target can still be re-measured, and a row measured against a stale
@@ -108,22 +111,31 @@ async function openPage(cdp, viewport, options = {}) {
 
 async function waitForApp(cdp) {
   for (let attempt = 0; attempt < 600; attempt += 1) {
-    const rows = await cdp.evaluate(page.rowCount()).catch(() => 0);
-    if (rows === TOTAL_ROWS) {
+    const state = await cdp.evaluate(page.chapters()).catch(() => null);
+    if (state !== null && state.toc === true && state.rows === TOTAL_ROWS && state.articles >= TOTAL_ROWS) {
       await cdp.evaluate(page.install());
       await cdp.evaluate('document.fonts.ready.then(() => true)');
       return;
     }
+    // The contents sheet stands beside the gate (BOOK-225), so its forty-two rows are not proof of
+    // a book: rows without a slot are the gate, and waiting out its fifteen seconds would report a
+    // gate as a slow page.
+    if (state !== null && state.rows === TOTAL_ROWS && state.articles === 0) {
+      const gate = await cdp.evaluate(page.gate()).catch(() => ({ present: false }));
+      if (gate.present === true) {
+        throw harnessError(`the age gate still stands where the chapters go — the page has no slots to measure`);
+      }
+    }
     await sleep(50);
   }
-  throw harnessError(`the page never reached ${String(TOTAL_ROWS)} contents rows`);
+  throw harnessError(`the page never reached ${String(TOTAL_ROWS)} chapters`);
 }
 
 /** AC1: one row per line, on its own page load, per width. */
 export async function measureContents(cdp, viewport, rows, log) {
   const measured = [];
   for (const n of rows) {
-    await openPage(cdp, viewport, { fresh: true });
+    await openPage(cdp, viewport, { fresh: true, log });
     const sample = await cdp.evaluate(page.jump(n));
     if (sample.error !== undefined) throw harnessError(`contents row ${String(n)}: ${sample.error}`);
     const actual = sample.quiet ?? null;
@@ -153,7 +165,7 @@ export async function measureContents(cdp, viewport, rows, log) {
 
 /** AC2: a sentence parked mid-viewport, away twice, back twice — same sentence, same offset? */
 export async function measureBack(cdp, viewport, chapter, cases, log) {
-  await openPage(cdp, viewport, { fresh: true });
+  await openPage(cdp, viewport, { fresh: true, log });
   await cdp.evaluate(page.install());
   const measured = [];
   for (const item of cases) {
@@ -265,7 +277,7 @@ async function waitForAnchor(cdp, sentenceId, budgetMs = 8_000) {
  * its own line of code.
  */
 export async function measureSameDevice(cdp, viewport, chapter, index, log) {
-  await openPage(cdp, viewport, { fresh: true });
+  await openPage(cdp, viewport, { fresh: true, log });
   await cdp.evaluate(page.install());
   const placed = await cdp.evaluate(page.place(chapter, index));
   if (placed.found !== true) {
@@ -355,7 +367,7 @@ export async function measureSecondDevice(browser, viewport, session, anchor, lo
       path: '/',
       httpOnly: true,
     });
-    await openPage(cdp, viewport);
+    await openPage(cdp, viewport, { log });
     const after = await waitForAnchor(cdp, anchor.sentenceId);
     const top = await cdp.evaluate('Math.round(window.scrollY)');
     const line = await cdp.evaluate(page.readingLine());
