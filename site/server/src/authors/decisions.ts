@@ -206,27 +206,32 @@ function outcomeOf(row: DecisionRow): MyDecisionOutcome {
     if (holdsInternalCode(row.change_reason)) return 'queued';
   }
   if (row.change_id === null || row.change_status === null) {
-    // BOOK-174: an escalated filing is not a refusal and not a drop — the author decides, and
-    // the record says so in the words the page already has for it.
-    if (row.comment_status === 'escalated') return 'escalated';
-    return row.comment_status === 'rejected' ? 'refused' : 'dropped';
+    // BOOK-206: a filing is never parked for a person any more, so the old «waits for the
+    // author» outcome is gone. A legacy row (written before the boot migration re-opened it)
+    // reads as a refusal with the gate's own line: the record never invents a wait.
+    return row.comment_status === 'rejected' || row.comment_status === 'escalated' ? 'refused' : 'dropped';
   }
   if (WAITING.has(row.change_status)) return 'queued';
   // BOOK-137: paperwork is not text. A filing accepted on the frozen frame is «рассмотрено»,
   // and the reader's own record must not borrow the word a landing earned.
   if (row.change_outcome === 'registered') return 'registered';
-  // One vocabulary for the outcome, shared with the frame and the change card.
-  return decisionOutcome({
+  // One vocabulary for the outcome, shared with the frame and the change card. BOOK-206: the
+  // reader's own vocabulary has no «waits for the author» — a change a gate stopped is «не
+  // принята» with the gate's own line, exactly as a landed refusal reads.
+  const outcome = decisionOutcome({
     status: row.change_status as ChangeStatus,
     outcome: row.change_outcome as ChangeOutcome | null,
   });
+  return outcome === 'escalated' ? 'refused' : outcome;
 }
 
 /** A refusal's reason is the comment's public line; a stop's is the change's own. */
 function reasonOf(row: DecisionRow, outcome: MyDecisionOutcome): string | null {
-  // A reason is a sentence a reader may read — never an internal code, on either
-  // the comment's line or the change's.
-  if (outcome === 'refused' || row.change_id === null) return readerReason(row.comment_reason);
+  // A reason is a sentence a reader may read — never an internal code, on either the comment's
+  // line or the change's. A filing refused under a lock has no change and speaks with its own
+  // line; a change a gate stopped (outcome `refused` since BOOK-206) speaks with the change's.
+  if (row.change_id === null) return readerReason(row.comment_reason);
+  if (outcome === 'refused') return readerReason(row.comment_reason) ?? readerReason(row.change_reason);
   const changeReason = readerReason(row.change_reason);
   // A premise that landed answers with its own acceptance line when the change row carries an
   // engine code instead of a landing: the failed attempt is not what happened to the premise.

@@ -39,14 +39,7 @@ import {
   type GateAnswer,
   type RightsAssignment,
 } from './gates.ts';
-import {
-  blockHashes,
-  changeForStep,
-  measureDelta,
-  preBlocksOf,
-  safeJson,
-  sameSequence,
-} from './helpers.ts';
+import { blockHashes, changeForStep, measureDelta, preBlocksOf, safeJson, sameSequence } from './helpers.ts';
 import { beatLease, openStepForClose, releaseLease } from './leases.ts';
 import { normalizeProvenance, requirePipelineModel } from './model.ts';
 import { reconcilePremises } from './premise.ts';
@@ -61,6 +54,7 @@ import { refuse, type EngineDeps } from './types.ts';
 import { reopenStep } from './reopen.ts';
 import { createOverview } from './overview.ts';
 import { createRightsGate } from './rightsGate.ts';
+import { createFilingTriage } from './filingTriage.ts';
 import { ensureRightsScan } from './rightsScan.ts';
 import { createWriteOps } from './write.ts';
 import type { DoneOptions, EscalateOptions, SeenOptions } from './closeTypes.ts';
@@ -85,6 +79,8 @@ export function createEngine(deps: EngineDeps) {
   const queue = createQueue(deps);
   const write = createWriteOps(deps);
   const overview = createOverview(deps);
+  // BOOK-206: the filing's own ledger is the triage queue — claim, one verdict, bounded retry.
+  const triage = createFilingTriage(deps);
   const iso = (ms: number = deps.clock.now()): string => toIso(ms);
 
   const freshStep = (stepId: string): store.StepRow => {
@@ -466,6 +462,8 @@ export function createEngine(deps: EngineDeps) {
 
   return {
     next,
+    // BOOK-206: the filing's own ledger — the writer holds the only model key, so triage rides with it.
+    triage,
     /** BOOK-117 §4 + BOOK-173 §7: a chapter's pass; with a `changeId`, one chapter of its ripple. */
     openChapterPass: (chapter: number, session: string, changeId?: string): WriterAssignment | null => {
       if (!session || session.length > 64) refuse('INVALID_SESSION', 422, 'a session name is required');

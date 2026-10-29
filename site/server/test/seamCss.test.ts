@@ -33,10 +33,12 @@ function rule(css: string, selector: string): string {
 }
 
 describe('the mark’s target is 40×44 at ≥1024 and 24×44 below (BOOK-90)', () => {
-  it('starts exactly at the prose’s right edge, in one box for both marks', () => {
+  it('stands 16 px after the prose’s right edge, in one box for both marks', () => {
     const mark = rule(marginalia, '.filing-mark');
-    expect(mark).toContain('left: 100%');
-    expect(mark).toContain('width: var(--mark-hit)');
+    // BOOK-208: the air at the measure is its own token; the target stands after it. The
+    // fallbacks keep a page without the token block from resolving `left` to `auto`.
+    expect(mark).toContain('left: calc(100% + var(--mark-air, 16px))');
+    expect(mark).toContain('width: var(--mark-hit, 40px)');
     expect(mark).toContain('height: 44px');
     expect(mark).toContain('position: absolute');
     expect(mark).toContain('display: flex');

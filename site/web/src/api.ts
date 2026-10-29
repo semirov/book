@@ -15,6 +15,7 @@ import type {
   HistoryDiffDto,
   HistoryTimelineDto,
   MyDecisionsDto,
+  MyFilingsDto,
   MyTraceDto,
   ParagraphChainDto,
   PassStageEvent,
@@ -321,6 +322,14 @@ export function getMyTrace(): Promise<MyTraceDto> {
  */
 export function getMyDecisions(): Promise<MyDecisionsDto> {
   return readJson<MyDecisionsDto>('/api/me/decisions');
+}
+
+/**
+ * BOOK-207 — the reader's own filings for `#след`: own only, newest first, the newest 50.
+ * 401 for an anonymous visitor, which is the page's signed-out state, not an error.
+ */
+export function getMyFilings(): Promise<MyFilingsDto> {
+  return readJson<MyFilingsDto>('/api/me/filings');
 }
 
 /**

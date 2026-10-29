@@ -11,6 +11,7 @@ import { migrateV27 } from './migrateV27.ts';
 import { migrateV28 } from './migrateV28.ts';
 import { migrateV29 } from './migrateV29.ts';
 import { migrateV30 } from './migrateV30.ts';
+import { migrateV31 } from './migrateV31.ts';
 
 type Migration = { to: number; up: (db: Db) => void };
 
@@ -31,8 +32,7 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // M5: a comment carries the reader's suggested wording and the revision its quote came
-    // from (§12.2, §6A.7). Idempotent, because a fresh install is created at v4 already.
+    // M5: a comment carries the suggested wording and the revision its quote came from (§12.2, §6A.7).
     to: 4,
     up(db) {
       const columns = new Set(
@@ -44,9 +44,7 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // M6b: every revision names the log entry that produced it, and every paragraph keeps a
-    // stable identity (a ULID) across the rewrites that change its text (§6F.2, §6F.3).
-    // Idempotent, because a fresh install is created at v5 already.
+    // M6b: every revision names the log entry that produced it; every paragraph keeps its ULID (§6F.2, §6F.3).
     to: 5,
     up(db) {
       const columns = new Set(
@@ -58,9 +56,7 @@ const MIGRATIONS: Migration[] = [
     },
   },
   {
-    // M7: the operator's mark on a restore (§13.3). A restore is published with
-    // `attributed:0` and `cause_kind='restore'`; this table is where `reconcile` records
-    // that the gates were re-run. Idempotent, because a fresh install is created at v6.
+    // M7: the operator's mark on a restore (§13.3) — `reconcile` records that the gates were re-run.
     to: 6,
     up(db) {
       if (!tableExists(db, 'reconciles')) db.exec(RECONCILES_TABLE_SQL);
@@ -327,9 +323,13 @@ const MIGRATIONS: Migration[] = [
   { to: 27, up: migrateV27 },
   // BOOK-187 (ADR-043 G6, ADR-041 §2.2): the frame, the lane's counters, the transcripts, the deltas.
   { to: 28, up: migrateV28 },
-  // BOOK-185 stage 3 (BOOK-DOC-77): `migrateV29.ts` — runs, facts, edges, threads; v30 is BOOK-173's plan.
+  // BOOK-185 stage 3 (BOOK-DOC-77): `migrateV29.ts` — runs, facts, edges, threads.
   { to: 29, up: migrateV29 },
+  // BOOK-206 (ADR-045): `migrateV30.ts` — the claim, the tries, the verdict, and every escalated filing re-opened.
   { to: 30, up: migrateV30 },
+  // BOOK-173 (BOOK-DOC-75 §3, BOOK-DOC-80): `migrateV31.ts` — the frozen plan, its mode and price,
+  // and the verification record. 31, not 30: BOOK-206's triage ledger took 30 first.
+  { to: 31, up: migrateV31 },
 ];
 
 /** `ALTER TABLE … ADD COLUMN` unless the column is already there (every step is idempotent). */

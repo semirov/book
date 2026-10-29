@@ -26,6 +26,7 @@ import { listCatalog } from './db/repo/chapters.ts';
 import { EngineBridge } from './engineState/bridge.ts';
 import { startErosionJob } from './history/erosion.ts';
 import { DecisionsTailer } from './feedback/decisions.ts';
+import { poll as pollTriage } from './feedback/triageApplier.ts';
 import { budgetCapsOf } from './budget.ts';
 import { SessionStore, SESSION_COOKIE } from './identity/session.ts';
 import { StateService } from './ingest/stateService.ts';
@@ -126,6 +127,20 @@ async function main(): Promise<void> {
       decisions.poll();
     } catch (error) {
       console.error('feedback decisions: poll failed', error instanceof Error ? error.message : error);
+    }
+    // BOOK-206 (ADR-045 §3): the same one-second interval places what the container read — a
+    // filing with a stored verdict and no disposition, at most two a tick. No second timer.
+    try {
+      pollTriage({
+        db,
+        emit: (type, data) => hub.publish(type, data),
+        notify: (commentId, report) => {
+          sendPassEvent(db, { kind: 'commentDecision', commentId, report }, now().getTime());
+        },
+        now,
+      });
+    } catch (error) {
+      console.error('triage applier: poll failed', error instanceof Error ? error.message : error);
     }
   }, 1_000);
   decisionTimer.unref?.();

@@ -7,24 +7,17 @@
  * is what makes "first verdict wins" true even if two operators run at the same moment.
  *
  * `OFF` is one act with the answer, in a single transaction, so there is no window in which a
- * refused intervention looks acceptable. BOOK-174: that answer is not a bare refusal any more —
- * it goes through `disposeRejection` like every other content rejection, so an `OFF` on a
- * `legal`/`illegal-content` filing becomes the harm lock and every other `OFF` escalates to the
- * author. `acceptComment` still reads the same column and refuses anything that is not `FITS`.
+ * refused intervention looks acceptable. BOOK-206: it **records and leaves** — the row stays
+ * `new` (or keeps the lock it already had) and the automatic applier places the reading the
+ * auditor asked for; this path no longer refuses a filing on its own and has no escalation to
+ * write.
  *
  * The verdict's name never leaves the operator surface: the reader sees `reason` and `status`.
  */
 
-import {
-  COMMENT_AUDITED_BY_MAX_CHARS,
-  COMMENT_REASON_MAX_CHARS,
-  holdsInternalCode,
-  type CommentAuditVerdict,
-} from '@book/shared';
+import { COMMENT_AUDITED_BY_MAX_CHARS, COMMENT_REASON_MAX_CHARS, type CommentAuditVerdict } from '@book/shared';
 
-import { readCommentRow } from '../comments/repo.ts';
 import type { Db } from '../db/db.ts';
-import { disposeRejection } from './dispositionStore.ts';
 
 export type AuditVerdict = CommentAuditVerdict;
 
@@ -51,18 +44,8 @@ export type RecordAuditResult =
   | { ok: true; verdict: AuditVerdict }
   | { ok: false; code: AuditFailureCode; message: string };
 
-/** The sentence the reader is owed when the auditor's answer carried a handle, not words. */
+/** The sentence an `OFF` row carries when the auditor's answer was a handle, not words. */
 export const AUDIT_FALLBACK = 'вне книги: замечание не про текст этой главы';
-
-/**
- * BOOK-158: `comments.reason` is read by the reader, so it is a sentence. The auditor's own
- * words are stored on the verdict (`audit_reason`, operator surface); when they are an engine's
- * handle or empty, the public column takes the book's line instead of the code.
- */
-function publicAuditReason(reason: string | null): string | null {
-  if (reason === null) return null;
-  return holdsInternalCode(reason) ? AUDIT_FALLBACK : reason;
-}
 
 type CommentAuditRow = { audit_verdict: string | null; decided_at: string | null };
 
@@ -145,21 +128,10 @@ export function recordAudit(db: Db, input: RecordAuditInput): RecordAuditResult 
       };
     }
 
-    if (input.verdict === 'OFF') {
-      // Same transaction as the verdict: the answer cannot exist without it. The auditor's own
-      // sentence stays in the event (an operator can look it up); the reader is owed the book's
-      // word — the harm lock's clause, or the author's question.
-      const row = readCommentRow(db, input.commentId);
-      if (row !== undefined) {
-        disposeRejection(db, {
-          comment: row,
-          at: input.at,
-          batch: row.batch_id,
-          note: publicAuditReason(reason),
-        });
-      }
-    }
-
+    // BOOK-206: an `OFF` is gate C's answer, not the filing's end. The verdict is recorded and
+    // the row is left as it is — `new`, or already locked — and the automatic applier places the
+    // reading the answer carried. The auditor's own sentence is the verdict's `audit_reason`,
+    // where an operator reads it; the reader is owed the rung's closed lines, never this note.
     return { ok: true, verdict: input.verdict };
   });
   return run();

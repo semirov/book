@@ -3,31 +3,20 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { setChangeOpener } from '../lib/changeDoor.ts';
-import { formatDayMonth } from '../lib/format.ts';
 import { FootJumps, type FootJumpsProps } from './FootJumps.tsx';
 
 /**
- * BOOK-156 — the grip under a browser.
+ * BOOK-156 / BOOK-207 — the grip under a browser.
  *
  * The surface is extracted from `App`, so the three jumps and the row's own clock are provable
- * without a socket, the catalogue and the whole page. The thresholds are `lib/grip.test.ts`'s,
- * the geometry is `footJumpsGeom.test.ts`'s and the door is `footJumpsDoor.dom.test.tsx`'s;
- * this file proves the markup and the attributes the reader's eye reads.
+ * without a socket, the catalogue and the whole page. The thresholds are `lib/grip.test.ts`'s
+ * and the geometry is `footJumpsGeom.test.ts`'s; this file proves the markup the reader meets:
+ * `оглавление · обсуждение · след`, the `след` item always present, and the row's own clock.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-const DEFAULTS: FootJumpsProps = {
-  live: true,
-  processing: false,
-  revising: false,
-  chapter: null,
-  change: null,
-  plate: false,
-};
-
-const CHANGE = { id: 'chg_7', decidedAt: '2026-10-25T11:21:00Z', enqueuedAt: '2026-10-25T10:40:00Z' };
+const DEFAULTS: FootJumpsProps = { live: true, plate: false };
 
 let root: Root | null = null;
 let container: HTMLDivElement;
@@ -63,7 +52,6 @@ async function render(over: Partial<FootJumpsProps> = {}): Promise<HTMLDivElemen
 }
 
 const nav = (): HTMLElement => container.querySelector('nav') as HTMLElement;
-const passItem = (): HTMLElement => container.querySelector('.foot-jump-pass') as HTMLElement;
 
 /** The stubbed `prefers-reduced-motion` answer, as `chapterArticle.dom.test.tsx:80` does it. */
 function stillMotion(): void {
@@ -80,98 +68,39 @@ function stillMotion(): void {
 }
 
 describe('the grip is a landmark with real anchors', () => {
-  it('renders one nav named «переходы» with #toc, #discussion and #pass as links', async () => {
-    await render({ processing: true });
+  it('renders one nav named «переходы» with #toc, #discussion and #след as links', async () => {
+    await render();
     const landmark = nav();
     expect(landmark.tagName).toBe('NAV');
     expect(landmark.getAttribute('aria-label')).toBe('переходы');
     expect(landmark.getAttribute('data-open')).toBe('false');
-    expect(landmark.getAttribute('data-pass')).toBe('live');
-    expect(landmark.getAttribute('data-watch')).toBe('off');
-    // The nav is a programmatic focus target: the return lands here when the third cell has
-    // no target of its own (#156 M2).
     expect(landmark.getAttribute('tabindex')).toBe('-1');
     const links = [...container.querySelectorAll<HTMLAnchorElement>('a.foot-jump')];
-    expect(links.map((link) => link.getAttribute('href'))).toEqual(['#toc', '#discussion', '#pass']);
-    // The visible word is the item's own; the meta line under it is the state, not a second name.
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['#toc', '#discussion', '#след']);
     expect(links.map((link) => link.querySelector('.foot-jump-word')?.textContent)).toEqual([
       'оглавление',
       'обсуждение',
-      'каретки',
+      'след',
     ]);
-    // The words are the whole of the nav: no number, no colour word, no state word beside it.
-    for (const word of ['лайв', 'онлайн', 'эфир', 'синяя', 'красная']) {
+    // No state word, no cell, no numeral beside the words.
+    for (const word of ['каретки', 'пока не писалась', 'пишется', 'писалась']) {
       expect(landmark.textContent ?? '').not.toContain(word);
     }
     expect(errorCount()).toBe(0);
   });
 
-  it('drops the item whose target does not exist', async () => {
-    // No reader change ever: the register is not rendered and the pass never ran.
+  it('keeps «след» when there is no reader change, and drops «обсуждение»', async () => {
     await render({ live: false });
     const hrefs = [...container.querySelectorAll<HTMLAnchorElement>('a.foot-jump')].map((link) =>
       link.getAttribute('href'),
     );
-    expect(hrefs).toEqual(['#toc']);
-    expect(container.querySelector('.foot-jump-pass')).toBeNull();
-    // The nav says what is true: the third item is not there, so the state is `absent`.
-    expect(nav().getAttribute('data-pass')).toBe('absent');
+    expect(hrefs).toEqual(['#toc', '#след']);
     expect(errorCount()).toBe(0);
   });
 
   it('renders nothing at all while the capacity plate owns the bottom', async () => {
-    await render({ plate: true, processing: true });
+    await render({ plate: true });
     expect(container.innerHTML).toBe('');
-    expect(errorCount()).toBe(0);
-  });
-});
-
-describe('the third item tells the truth', () => {
-  it('is an inert word — no href, not focusable — with «пока не писалась» when no pass is running', async () => {
-    await render();
-    const item = passItem();
-    expect(item.tagName).toBe('SPAN');
-    expect(item.hasAttribute('href')).toBe(false);
-    expect(item.hasAttribute('tabindex')).toBe(false);
-    expect(item.textContent).toBe('кареткипока не писалась');
-    expect(nav().getAttribute('data-pass')).toBe('silent');
-    expect(errorCount()).toBe(0);
-  });
-
-  it('points at the record and prints the pass’s day when nothing runs', async () => {
-    await render({ change: CHANGE });
-    const item = passItem();
-    expect(item.tagName).toBe('A');
-    expect(item.getAttribute('href')).toBe('?change=chg_7');
-    expect(item.textContent).toBe('кареткиписалась · 25.10');
-    expect(item.textContent).toContain(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);
-    expect(nav().getAttribute('data-pass')).toBe('record');
-    expect(errorCount()).toBe(0);
-  });
-
-  it('opens the change’s record from the carets without navigation', async () => {
-    const open = vi.fn();
-    setChangeOpener(open);
-    try {
-      await render({ change: CHANGE });
-      const item = passItem() as HTMLAnchorElement;
-      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-      await act(async () => {
-        item.dispatchEvent(event);
-      });
-      // The page's own door takes the click: no browser navigation, the record at the sentence.
-      expect(event.defaultPrevented).toBe(true);
-      expect(open).toHaveBeenCalledWith('chg_7');
-    } finally {
-      setChangeOpener(null);
-    }
-  });
-
-  it('speaks the state in its accessible name, and the visible word is inside it', async () => {
-    await render({ change: CHANGE });
-    expect(passItem().getAttribute('aria-label')).toBe('каретки · писалась · 25.10');
-    await render({ change: null });
-    expect(passItem().getAttribute('aria-label')).toBe('каретки · пока не писалась');
     expect(errorCount()).toBe(0);
   });
 });

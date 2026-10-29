@@ -2,16 +2,17 @@
  * BOOK-174 — the chain reaches the row, the DTO and the decision frame.
  *
  * Three facts, one writer each: an acceptance stores how the filing was read, in the same
- * transaction as its status; a content rejection without a lock becomes `escalated` and writes
- * no change; a rights refusal stays `rejected` under the rights lock. The report on the DTO is
- * derived from the stored chain, so the anchor a reader sees is the one the row really has.
+ * transaction as its status; a rejection with no lock refuses and writes nothing (BOOK-206 —
+ * the ladder places every filing, so a person cannot refuse one without a lock); a rights
+ * refusal stays `rejected` under the rights lock. The report on the DTO is derived from the
+ * stored chain, so the anchor a reader sees is the one the row really has.
  */
 
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DISPOSITION_REASONS, ESCALATION_QUESTION } from '@book/shared';
+import { DISPOSITION_REASONS, LOCK_REASONS } from '@book/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { insertComment, readCommentRow, toCommentDto, type CommentRow } from '../../src/comments/repo.ts';
@@ -19,7 +20,7 @@ import { upsertIdentity } from '../../src/db/repo/identities.ts';
 import { acceptComment } from '../../src/feedback/accept.ts';
 import { runFeedback } from '../../src/feedback/cli.ts';
 import { DecisionsTailer } from '../../src/feedback/decisions.ts';
-import { dispositionCaps } from '../../src/feedback/dispositionStore.ts';
+import { disposeRejection, dispositionCaps } from '../../src/feedback/dispositionStore.ts';
 import { bootComments, commentBody, type Harness } from '../comments/helpers.ts';
 
 let harness: Harness | null = null;
@@ -106,11 +107,12 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
     expect(report?.line3).toBe('где это в книге: глава 8 · абзац 1 · предложение 1 — документ');
   });
 
-  it('escalates an acceptance the ladder cannot place, and writes no change', async () => {
+  it('lands an acceptance the ladder cannot license on the as_said floor, on its block anchor', async () => {
     const h = await boot();
     const id = await filed(h);
-    // ADR-044's «never guess»: a quote that resolves to no single sentence keeps the block
-    // anchor, so the filing carries no sentence — and nothing can be said to stand in one.
+    // ADR-044's «never guess»: a quote that resolved to no single sentence keeps the block
+    // anchor, so nothing can be said to stand in one — and the ladder is total (ADR-045 §5):
+    // the floor answers instead of a person, and the change is written.
     h.db
       .prepare('UPDATE comments SET sentence_id = NULL, sel_start = NULL, sel_end = NULL WHERE id = ?')
       .run(id);
@@ -121,37 +123,74 @@ describe('an accepted filing stores its chain (BOOK-174)', () => {
       at: h.clock.now().toISOString(),
       reason: 'входит в книгу',
     });
-    expect(accepted).toMatchObject({ escalated: true, decision: { disposition: 'escalated' } });
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
-    // Nothing was decided by the acceptance alone: the caller records the question.
-    expect(readCommentRow(h.db, id)).toMatchObject({ status: 'new', decided_at: null });
+    expect(accepted).not.toMatchObject({ escalated: true });
+    expect(readCommentRow(h.db, id)).toMatchObject({
+      status: 'accepted',
+      disposition: 'as_said',
+      carrier_kind: null,
+      sentence_id: null,
+    });
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
   });
 });
 
-describe('a content rejection outside a lock escalates (BOOK-174)', () => {
-  it('records the author’s question on the CLI, with no change and no rejection', async () => {
+describe('a rejection outside a lock writes nothing (BOOK-206)', () => {
+  it('refuses in one plain line on the CLI, and neither row nor change nor chain is written', async () => {
+    const h = await boot();
+    const id = await filed(h);
+    const before = readCommentRow(h.db, id);
+    const rejected = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
+    expect(rejected.code).toBe(1);
+    expect(rejected.out.join('\n')).toContain('отказ возможен только по замку');
+
+    // Nothing moved: no status, no chain, no decision, no change — a refusal needs a lock.
+    expect(readCommentRow(h.db, id)).toMatchObject({
+      status: before?.status,
+      disposition: null,
+      lock: null,
+      decided_at: null,
+      change_id: null,
+    });
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type IN ('decided','escalated')`).get()).toEqual({
+      n: 0,
+    });
+  });
+
+  it('refuses under a lock with the lock’s own clause', async () => {
     const h = await boot();
     const id = await filed(h);
     const rejected = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
-    expect(rejected.code).toBe(0);
-    expect(rejected.out.join('\n')).toContain('escalated');
-
+    expect(rejected.code).toBe(1);
+    // A harm lock is a stored fact: the same filing, with the flag on it, is refused by the lock.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
+    const locked = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
+    expect(locked.code).toBe(0);
     const row = readCommentRow(h.db, id);
-    expect(row).toMatchObject({
-      status: 'escalated',
-      disposition: 'escalated',
-      reason: ESCALATION_QUESTION,
-      lock: null,
-      change_id: null,
-    });
-    expect(row?.decided_at).not.toBeNull();
-    expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
-    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type = 'escalated'`).get()).toEqual({ n: 1 });
-    expect(toCommentDto(h.db, row!).report).toEqual({
-      line1: 'ждёт решения автора',
-      line2: DISPOSITION_REASONS.escalated,
-      line3: 'решает автор',
-    });
+    expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'harm', change_id: null });
+    expect(row?.reason).toBe(LOCK_REASONS.harm);
+    expect(toCommentDto(h.db, row!).report).toMatchObject({ line1: 'не принято', line2: LOCK_REASONS.harm });
+  });
+});
+
+describe('the rejection writer is a lock writer only (BOOK-206)', () => {
+  it('does not re-refuse a row whose lock no longer rests on a fact', async () => {
+    const h = await boot();
+    const id = await filed(h);
+    // A lock is a stored fact: the legal flag is the harm lock's, and it is lifted below.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
+    const refused = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
+    expect(refused.code).toBe(0);
+    expect(readCommentRow(h.db, id)).toMatchObject({ status: 'rejected', lock: 'harm' });
+
+    // The fact is lifted and the stale chain is left behind by a build that did not clear it.
+    h.db.prepare(`UPDATE comments SET status = 'new', decided_at = NULL, guard = NULL WHERE id = ?`).run(id);
+    const reopened = readCommentRow(h.db, id)!;
+    const result = disposeRejection(h.db, { comment: reopened, at: h.clock.now().toISOString() });
+    // No lock stands any more, so there is no refusal to write — and no escalation either. The
+    // stale chain is left exactly as the older build wrote it: this writer rewrites nothing.
+    expect(result).toEqual({ status: 'no-lock' });
+    expect(readCommentRow(h.db, id)).toMatchObject({ status: 'new', decided_at: null, disposition: 'inadmissible' });
   });
 });
 

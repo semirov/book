@@ -23,6 +23,7 @@ import { runPass, type PassResult } from './pass.ts';
 import { dryRunPlan } from './dryRun.ts';
 import { callProvider, type ProviderResult } from './provider.ts';
 import { reasonOf } from './reasons.ts';
+import { runTriage } from './triage.ts';
 import { revertChapter } from './revert.ts';
 import { markWriterBoot } from './verify/cli.ts';
 
@@ -392,21 +393,41 @@ export async function main(deps: MainDeps = {}): Promise<number> {
       };
     });
 
-  log(`[writer] loop: пауза ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`);
+  log(
+    `[writer] loop: триаж каждые ${String(config.triagePollMs)} мс, пауза прозы ${String(config.pauseMs)} мс, проходов в сутки ${String(config.maxPassesPerDay)}`,
+  );
+  // BOOK-206: two cadences. A filing is read every `triagePollMs`; prose still waits its own
+  // pause, and triage never touches `writer_state` — a reader's filing does not eat a pass.
+  let proseDueAt = now();
   while (!stopping) {
-    const counter = await dayCounter(engine, todayUtc(now()), log);
-    if (counter.passes >= config.maxPassesPerDay) {
-      log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
-    } else {
-      const result = await pass();
-      if (spent(result)) await countPass(engine, counter.day, log);
-      if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
-      // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
-      // the next filing is asked for in the same cycle, without the pacing pause.
-      if (result.status === 'gone' || result.filingRefused === true) continue;
+    // A missing prompt file (or any other triage fault) is a line and a pause, never a dead lane:
+    // prose is the writer's job and a filing is not worth stopping it for.
+    let triage: Awaited<ReturnType<typeof runTriage>>;
+    try {
+      triage = await runTriage({ config, bookRoot, engine, provider, now, log });
+    } catch (error) {
+      log(`[writer] триаж: ${error instanceof Error ? error.message : String(error)}`);
+      triage = { triaged: 0, failed: 1, budget: false };
     }
-    // An idle pass sleeps too: the lane is supervised, not a busy loop.
-    await pause(config.pauseMs);
+    if (stopping) break;
+    // A paused day buys neither a reading nor a pass, and nothing is lost: the filing stays
+    // `new` and the next tick asks again.
+    if (!triage.budget && now() >= proseDueAt) {
+      const counter = await dayCounter(engine, todayUtc(now()), log);
+      if (counter.passes >= config.maxPassesPerDay) {
+        log(`[writer] idle проходов на сегодня уже ${String(counter.passes)} из ${String(config.maxPassesPerDay)}`);
+        proseDueAt = now() + config.pauseMs;
+      } else {
+        const result = await pass();
+        if (spent(result)) await countPass(engine, counter.day, log);
+        if (result.reason !== undefined) log(`[writer] ${result.status}: ${result.reason}`);
+        // BOOK-145/166: a step the engine took away, or a filing it refused, is a normal event —
+        // the next filing is asked for in the same cycle, without the pacing pause.
+        proseDueAt = now() + (result.status === 'gone' || result.filingRefused === true ? 0 : config.pauseMs);
+      }
+    }
+    // The fast cadence sleeps too: the lane is supervised, not a busy loop.
+    await pause(config.triagePollMs);
   }
   log('[writer] loop stopped');
   return 0;

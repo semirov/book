@@ -84,16 +84,6 @@ describe('the geometry is the sheet’s, not a hand-wave', () => {
     expect((44 - 24) / 2).toBe(10);
     // The expander is behind the words and covers the band and the item's own box.
     expect(declarations('.foot-jumps-open').get('inset')).toBe('-1px 0 auto 0');
-    // The meta is out of the cell's flow, so it never widens the word's column, and it sits
-    // inside the open row: 30…42 of 44, 2 px above the band's edge, never clipped.
-    const meta = declarations('.foot-jump-meta');
-    expect(meta.get('position')).toBe('absolute');
-    expect(meta.get('top')).toBe('calc(var(--grip-row) - 14px)');
-    expect(meta.get('line-height')).toBe('var(--fs-micro)');
-    expect(meta.get('text-align')).toBe('center');
-    expect(44 - 14).toBe(30);
-    expect(30 + 12).toBe(42);
-    expect(42).toBeLessThan(44);
   });
 
   it('never lets the item’s box run past the viewport edge', () => {
@@ -126,24 +116,6 @@ describe('the geometry is the sheet’s, not a hand-wave', () => {
     expect(declarations('.foot-jump:focus-visible').get('outline')).toBe('none');
   });
 
-  it('keeps the closed meta inert and lets a tap on an inert word fall through', () => {
-    const meta = declarations('.foot-jump-meta');
-    expect(meta.get('opacity')).toBe('0');
-    expect(meta.get('pointer-events')).toBe('none');
-    expect(declarations(".foot-jumps[data-open='true'] .foot-jump-meta").get('pointer-events')).toBe('auto');
-    // An inert item is a word, not a control: no pointer on its box, its word or its meta, so
-    // a tap on it reaches the expander behind and the row still opens (never a no-op).
-    expect(declarations('.foot-jump.is-inert').get('pointer-events')).toBe('none');
-    const inert = rules(FOOT).find((rule) =>
-      rule.parts.some((part) => squash(part) === squash('.foot-jump.is-inert .foot-jump-word')),
-    );
-    expect(inert?.parts.map(squash)).toEqual([
-      '.foot-jump.is-inert.foot-jump-word',
-      '.foot-jump.is-inert.foot-jump-meta',
-    ]);
-    expect(inert?.declarations.get('pointer-events')).toBe('none');
-  });
-
   it('gives every item a third of the column, however many there are', () => {
     const band = declarations('.foot-jumps-in');
     // No fixed three-column template: two items split the column in halves, one takes it
@@ -173,21 +145,18 @@ describe('the geometry is the sheet’s, not a hand-wave', () => {
     // The chronicle and the legal pages have no grip: no unscoped rule reserves paper there.
     expect(declarations('body').has('padding-block-end')).toBe(false);
     expect(declarations('html').has('scroll-padding-block-end')).toBe(false);
-    for (const target of ['.toc', '#discussion', '.ch', '#pass', '#talks']) {
+    for (const target of ['.toc', '#discussion', '.ch', '#talks']) {
       expect(listed(target).get('scroll-margin-bottom'), target).toBe(reserve);
     }
-    // The pass lands its block below the head, at `--offset-top + 16`.
-    expect(declarations('#pass').get('scroll-margin-top')).toBe('calc(var(--offset-top) + 16px)');
   });
 
-  it('is fixed at the bottom under the header, and the veil is under it', () => {
+  it('is fixed at the bottom under the header', () => {
     const grip = declarations('.foot-jumps');
     expect(grip.get('position')).toBe('fixed');
     expect(grip.get('bottom')).toBe('0');
     expect(grip.get('inset-inline')).toBe('0');
     expect(grip.get('z-index')).toBe('35');
     expect(grip.get('pointer-events')).toBe('none');
-    expect(declarations('.foot-veil').get('z-index')).toBe('34');
     // 35 < 40: the head is never under the page's foot.
     const header = Number.parseFloat(declarations('.top', '../styles/chrome.css').get('z-index') ?? '0');
     expect(header).toBe(40);
@@ -225,12 +194,8 @@ describe('the geometry is the sheet’s, not a hand-wave', () => {
     // The token, so night follows with no second rule: both papers are the page's own.
     expect(declarations(':root', TOKENS).get('--paper')).toBe('#cfd3d2');
     expect(declarations("[data-theme='night']", TOKENS).get('--paper')).toBe('#0b0c0d');
-    // The veil keeps its own day/night pair — it is a wash, not the band.
-    expect(declarations('.foot-veil').get('background')).toBe('var(--paper)');
-    expect(declarations("[data-theme='night'] .foot-veil").get('background')).toBe('var(--ink)');
     // Opaque by construction: the band and the two things it is built of (the items and the
     // expander behind them) state no translucent paint, so nothing is left to show through.
-    // The meta's own fade is a word fading in, never a window in the paper.
     for (const selector of ['.foot-jumps-in', '.foot-jump', '.foot-jumps-open']) {
       const rule = declarations(selector);
       const paint = rule.get('background') ?? rule.get('background-color');
@@ -241,13 +206,8 @@ describe('the geometry is the sheet’s, not a hand-wave', () => {
   });
 
   it('carries the two transition lengths the module also states', () => {
-    // 220 ms in, 160 ms out, 120 ms for the meta's cross-fade — the same numbers as GRIP.
+    // 220 ms in, 160 ms out — the same numbers as GRIP.
     expect(declarations('.foot-jumps-in').get('transition')).toContain('var(--dur-ui)');
     expect(declarations(".foot-jumps[data-open='false'] .foot-jumps-in").get('transition')).toContain('160ms');
-    expect(declarations('.foot-jump-meta').get('transition')).toContain('var(--dur-tick)');
-    // The meta appears only after the words have risen.
-    expect(declarations(".foot-jumps[data-open='true'] .foot-jump-meta").get('transition-delay')).toBe(
-      'var(--dur-ui)',
-    );
   });
 });

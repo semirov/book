@@ -107,6 +107,150 @@ export function openAttempt(db: Db, commentId: string): { n: number } | undefine
     .get(commentId) as { n: number } | undefined;
 }
 
+// ── BOOK-206 (ADR-045 §2): the claim, the schedule and the one stored verdict ─────────────
+
+/** Calls bought for one attempt before it is a visible defect instead of a retry. */
+export const TRIAGE_MAX_TRIES = 3;
+
+/** The claim's lease: above the writer's own 420 s call, so a live call is never bought twice. */
+export const TRIAGE_CLAIM_TTL_MS = 600_000;
+
+/** The backoff a failed call sets, by the try that failed: 60 s → 10 min → 6 h. */
+export const TRIAGE_BACKOFF_MS: readonly number[] = [60_000, 600_000, 6 * 60 * 60_000];
+
+/** One filing a run may be asked to read: the row, its attempt, and the tries already spent. */
+export type DueTriage = {
+  commentId: string;
+  n: number;
+  chapter: number;
+  tries: number;
+};
+
+/**
+ * The filings that are due for a read, oldest first. The row that drives triage is the filing's
+ * own ledger (`comment_attempts`): a `new` filing with no disposition whose latest attempt is
+ * still `submitted`, has no verdict yet, has tries left, is not waiting out a backoff and is not
+ * claimed by another writer. Nothing else is armed at posting — this is a query, not a queue.
+ *
+ * The rights door comes first: the query asks only for `rights_verdict = 'CLEAR'`, because a
+ * model read is never bought for a filing Gate B has not cleared (BOOK-61). A flagged row waits
+ * there, on the operator's surface (`feedback.mjs inbox --rights`), and becomes due the moment
+ * the verdict is recorded — never before.
+ */
+export function dueTriage(db: Db, now: string, limit = 8): DueTriage[] {
+  return db
+    .prepare(
+      `SELECT c.id AS commentId, a.n AS n, c.chapter AS chapter, a.tries AS tries
+         FROM comments c
+         JOIN comment_attempts a ON a.comment_id = c.id
+        WHERE c.status = 'new' AND c.disposition IS NULL
+          AND c.rights_verdict = 'CLEAR'
+          AND a.n = (SELECT MAX(n) FROM comment_attempts WHERE comment_id = c.id)
+          AND a.outcome = 'submitted'
+          AND a.verdict IS NULL
+          AND a.tries < ?
+          AND (a.next_at IS NULL OR a.next_at <= ?)
+          AND (a.claim_until IS NULL OR a.claim_until <= ?)
+        ORDER BY c.created_at, c.id
+        LIMIT ?`,
+    )
+    .all(TRIAGE_MAX_TRIES, now, now, limit) as DueTriage[];
+}
+
+/**
+ * Claim one due attempt: one writer moves `claim_until` past now and counts the try, and
+ * `changes = 1` is the proof this caller owns the call. A second writer — or a restarted process
+ * whose claim outlived it — loses the race and buys nothing.
+ */
+export function claimTriage(
+  db: Db,
+  input: { commentId: string; n: number; session: string; now: string; ttlMs?: number },
+): boolean {
+  const until = new Date(Date.parse(input.now) + (input.ttlMs ?? TRIAGE_CLAIM_TTL_MS)).toISOString();
+  const changed = db
+    .prepare(
+      `UPDATE comment_attempts SET claim_by = ?, claim_until = ?, tries = tries + 1
+        WHERE comment_id = ? AND n = ? AND outcome = 'submitted'
+          AND (claim_until IS NULL OR claim_until <= ?)`,
+    )
+    .run(input.session, until, input.commentId, input.n, input.now).changes;
+  return changed === 1;
+}
+
+/**
+ * Schedule the next try and give the claim back: the backoff is the wait, and a claim left
+ * standing would make a 60 s retry wait out the writer's 600 s lease instead.
+ */
+export function scheduleRetry(db: Db, input: { commentId: string; n: number; nextAt: string }): boolean {
+  return (
+    db
+      .prepare(
+        `UPDATE comment_attempts SET next_at = ?, claim_by = NULL, claim_until = NULL
+          WHERE comment_id = ? AND n = ? AND outcome = 'submitted' AND verdict IS NULL`,
+      )
+      .run(input.nextAt, input.commentId, input.n).changes === 1
+  );
+}
+
+/** The backoff for the try that just failed; `null` at the cap (no fourth call). */
+export function triageBackoffMs(tries: number): number | null {
+  if (tries >= TRIAGE_MAX_TRIES) return null;
+  return TRIAGE_BACKOFF_MS[Math.max(0, tries - 1)] ?? null;
+}
+
+/** One stored attempt, as the engine and the applier read it. */
+export type AttemptVerdict = {
+  n: number;
+  outcome: string | null;
+  tries: number;
+  verdict: string | null;
+  verdict_at: string | null;
+  next_at: string | null;
+  claim_by: string | null;
+};
+
+export function readAttempt(db: Db, commentId: string, n: number): AttemptVerdict | undefined {
+  return db
+    .prepare(
+      `SELECT n, outcome, tries, verdict, verdict_at, next_at, claim_by
+         FROM comment_attempts WHERE comment_id = ? AND n = ?`,
+    )
+    .get(commentId, n) as AttemptVerdict | undefined;
+}
+
+/**
+ * The newest attempt row, whatever its outcome. A filing is decided by its **latest** submission:
+ * a revision clears the row's chain and adds the next `n`, so the sentence a model read about the
+ * old words must not place the new ones.
+ */
+export function latestAttempt(db: Db, commentId: string): AttemptVerdict | undefined {
+  return db
+    .prepare(
+      `SELECT n, outcome, tries, verdict, verdict_at, next_at, claim_by
+         FROM comment_attempts WHERE comment_id = ? ORDER BY n DESC LIMIT 1`,
+    )
+    .get(commentId) as AttemptVerdict | undefined;
+}
+
+/**
+ * Is this filing's attempt out of tries with no placement to show for it? Then the page says so
+ * (`attempt: 'failed'`): the row stays `new` and visible as a defect, never silently terminal.
+ *
+ * Two shapes count, both at the cap: an attempt the writer gave up on (`submitted`, no verdict),
+ * and one the applier could not place (settled `held` — a corrupt reading, a gate that never
+ * cleared). A held attempt below the cap is a gate's own hold and says nothing about triage.
+ */
+export function triageAttemptFailed(db: Db, commentId: string): boolean {
+  const row = db
+    .prepare(
+      `SELECT tries, verdict, outcome FROM comment_attempts WHERE comment_id = ?
+        ORDER BY n DESC LIMIT 1`,
+    )
+    .get(commentId) as { tries: number; verdict: string | null; outcome: string | null } | undefined;
+  if (row === undefined || row.tries < TRIAGE_MAX_TRIES) return false;
+  return row.outcome === 'held' || row.verdict === null;
+}
+
 /** The comment columns a state is read from; a locked row has no identity of its own. */
 export type AttemptComment = {
   id: string;
@@ -199,9 +343,10 @@ export function attemptState(db: Db, comment: AttemptComment, nowMs: number): At
   const reopenAt = new Date(utcDayEnd(nowMs)).toISOString();
 
   const decidedMs = comment.decided_at === null ? Number.NaN : Date.parse(comment.decided_at);
-  // BOOK-174: an escalated filing waits for the author exactly as long as a refused one waits
-  // for its cooldown — the reader's way back is the same door, and the counters are the same.
-  const reworkable = comment.status === 'rejected' || comment.status === 'escalated';
+  // BOOK-206: a refusal under a lock is the only state the reader may rework. The removed fifth
+  // state is gone from this door too — a legacy `escalated` row is re-opened by the boot
+  // migration, and until then it waits like any undecided row.
+  const reworkable = comment.status === 'rejected';
   const cooldownUntil =
     reworkable && Number.isFinite(decidedMs)
       ? new Date(decidedMs + REFUSAL_COOLDOWN_MS).toISOString()

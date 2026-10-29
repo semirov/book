@@ -98,6 +98,7 @@ describe('how the book is made', () => {
         onOpenChange={() => undefined}
         view="book"
         onViewChange={() => undefined}
+        reading={{ n: null, page: null }}
       live />,
     );
     const cover = opening.indexOf('class="page titul"');

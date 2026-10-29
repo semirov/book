@@ -316,6 +316,7 @@ export function ChapterArticle({
         data-n={entry.n}
         data-rev={0}
         aria-label={`глава ${entry.n}`}
+        tabIndex={-1}
         ref={article}
       >
         <PremiseEntry
@@ -342,6 +343,7 @@ export function ChapterArticle({
       data-basis={entry.basis ? 'true' : undefined}
       ref={article}
       aria-label={`глава ${entry.n}`}
+      tabIndex={-1}
       aria-busy={busy ? 'true' : undefined}
     >
       {header}

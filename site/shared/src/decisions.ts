@@ -7,13 +7,15 @@
  * reader's own record. This type is that record: own only, durable, and reachable again
  * long after the frame has been forgotten.
  *
- * Two shapes of the same fact live here. `GET /api/me/decisions` answers the durable one
+ * Three shapes of the same fact live here. `GET /api/me/decisions` answers the durable one
  * (`MyDecisionsDto`), and the client matches a live `change:decided`/`comment:decision`
  * frame against `open` — the ids of the viewer's own comments that are not decided yet —
- * so a frame about somebody else can never render as «ваша правка». No identity key is in
- * either shape: the comment ids are already public objects of the thread.
+ * so a frame about somebody else can never render as «ваша правка». `GET /api/me/filings`
+ * answers the reader's own filings for «ваш след» (`MyFilingsDto`). No identity key is in
+ * any shape: the comment ids are already public objects of the thread.
  */
 
+import type { CommentDto } from './comment.ts';
 import type { DispositionReport } from './disposition.ts';
 
 /** The endpoint's bound: the newest 20 decisions of one reader, never a history dump. */
@@ -23,8 +25,9 @@ export const MY_OPEN_LIMIT = 10;
 
 /**
  * The vocabulary a reader is shown. It carries no status code and no gate role:
- * `refused` is the guard, triage and auditor refusal told as one public fact, and
- * `escalated` means the consequence stopped and waits for the author's decision.
+ * `refused` is the guard, triage and auditor refusal told as one public fact. BOOK-206 removed
+ * the old «waits for the author» state — a filing is placed by the ladder, never parked — so a
+ * legacy row reads as `refused` with the gate's own line, never as a wait.
  */
 export type MyDecisionOutcome =
   | 'applied'
@@ -42,7 +45,6 @@ export type MyDecisionOutcome =
    */
   | 'no-op'
   | 'queued'
-  | 'escalated'
   | 'dropped'
   | 'superseded'
   | 'failed'
@@ -111,4 +113,18 @@ export type MyDecisionsDto = {
   open: string[];
   /** The viewer's surviving share now, floored exactly as `/api/authors/me` prints it. */
   share: number;
+};
+
+/** The trail's bound: the newest 50 filings of one reader, never a history dump. */
+export const MY_FILINGS_LIMIT = 50;
+
+/**
+ * The reader's own filings (`GET /api/me/filings`, BOOK-207) — the rows of `#след`.
+ *
+ * Own only and session-gated, newest first: the identity comes from the cookie and there is no
+ * id in the path or the query, so the route cannot address another reader. The DTO is the same
+ * filing the thread prints, so a row on the trail says exactly what the thread says about it.
+ */
+export type MyFilingsDto = {
+  items: CommentDto[];
 };

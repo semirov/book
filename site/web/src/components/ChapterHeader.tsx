@@ -1,6 +1,7 @@
 import { chapterLabel, type CatalogEntry } from '@book/shared';
 
 import { formatChars, formatTime } from '../lib/format.ts';
+import { FollowNotice } from './FollowNotice.tsx';
 
 /**
  * The chapter's header: BOOK-DOC-43 §6 (BOOK-66) and the chip rules of BOOK-70.
@@ -60,6 +61,8 @@ export function ChapterHeader({ entry, printing, status }: ChapterHeaderProps) {
           {status}
         </p>
       )}
+      {/* BOOK-207 — the landing notice, at the head of the chapter the reader is in. */}
+      <FollowNotice chapter={entry.n} />
     </header>
   );
 }

@@ -63,6 +63,10 @@ export type WriterConfigRedacted = {
   dailyTokens: number;
   maxPassesPerDay: number;
   pauseMs: number;
+  /** BOOK-206: the triage cadence — a filing is claimed every 5 s, prose keeps `pauseMs`. */
+  triagePollMs: number;
+  /** The reading call's cap: one verdict and one reading, a reasoning call like a gate's. */
+  triageTokens: number;
   engineUrl: string;
   /** The engine's own cap, per request (`WRITER_ENGINE_TIMEOUT_MS`). */
   engineTimeoutMs: number;
@@ -221,6 +225,10 @@ export function loadWriterConfig(env: NodeJS.ProcessEnv = process.env): WriterCo
     dailyTokens: integer(env, 'WRITER_DAILY_TOKENS', 1_500_000, 1),
     maxPassesPerDay: integer(env, 'WRITER_MAX_PASSES_PER_DAY', 4, 1),
     pauseMs: integer(env, 'WRITER_PAUSE_MS', 900_000, 0),
+    // BOOK-206: the two cadences. A filing is picked up within five seconds and prose still waits
+    // its fifteen minutes; a triage call is a gate-sized answer, never a chapter.
+    triagePollMs: integer(env, 'TRIAGE_POLL_MS', 5_000, 100),
+    triageTokens: integer(env, 'TRIAGE_MAX_TOKENS', 8_000, 1),
     engineUrl,
     // The engine's own cap, and 60 s rather than the old 10: the engine is local but it is busy,
     // and on the measured pass (chapter 65) `land` outran 10 s *after* the chapter had landed and

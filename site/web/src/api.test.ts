@@ -11,6 +11,7 @@ import {
   getComments,
   getFront,
   getMyDecisions,
+  getMyFilings,
   getMyTrace,
   getQueue,
   getState,
@@ -162,6 +163,19 @@ describe('the reader’s own surfaces (BOOK-DOC-4)', () => {
     const error = await getMyTrace().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('the reader’s own filings (BOOK-207)', () => {
+  it('reads them from the own-only path, with no id in it', async () => {
+    const spy = vi.fn(async () => new Response('{"items":[]}', { status: 200 }));
+    vi.stubGlobal('fetch', spy);
+    await expect(getMyFilings()).resolves.toEqual({ items: [] });
+    const [url, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    // Session only: no identity, no path parameter, no query.
+    expect(url).toBe('/api/me/filings');
+    expect(url).not.toContain('?');
+    expect(init.credentials).toBe('same-origin');
   });
 });
 

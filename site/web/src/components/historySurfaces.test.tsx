@@ -202,6 +202,7 @@ function page(current: StateSnapshot): string {
         onOpenChange={noop}
         view="book"
         onViewChange={noop}
+        reading={{ n: null, page: null }}
         live={live}
         chronicle={chronicle}
       />
@@ -232,12 +233,7 @@ function page(current: StateSnapshot): string {
         sentence={SENTENCE_MODE}
         history={live}
       />
-      <EndMatter
-        imprint={imprint}
-        lastRevisionAt="2026-10-25T09:20:00Z"
-        signedIn={false}
-        live={live}
-      />
+      <EndMatter imprint={imprint} lastRevisionAt="2026-10-25T09:20:00Z" live={live} />
       <Discussion depth={0} changes={[]} comments={[]} live={live} />
     </>,
   );

@@ -18,6 +18,7 @@ import { readWriterSummary } from '../db/repo/writerState.ts';
 import { appendStage, resolvePass, StageInputError } from '../stages/repo.ts';
 import { normalizeVerification, verificationSchema } from '../ledger/graph/verification.ts';
 import * as bodies from './bodySchemas.ts';
+import { registerTriageRoutes } from './filingTriage.ts';
 import { registerLaneStoreRoutes } from './laneStoreRoutes.ts';
 import { registerWriterDoors } from './writerDoors.ts';
 import { isEngineError } from './types.ts';
@@ -154,10 +155,7 @@ const seenBody = z.object({
   tokensIn: z.number().int().min(0).optional(),
   tokensOut: z.number().int().min(0).optional(),
 });
-/**
- * An escalation names no model of its own (ADR-038 §2): a caller that burned tokens reports them, one
- * that claims nothing keeps the null/0 default. BOOK-117 adds `cause` — a broken pass is no refusal.
- */
+/** ADR-038 §2: an escalation names no model of its own; BOOK-117's `cause` keeps broken ≠ refused. */
 const escalateBody = z.object({
   leaseId: id,
   because: z.string().min(1).max(400),
@@ -198,9 +196,8 @@ const enqueueBody = z.object({
 });
 
 /**
- * A lane stage (`docs/writer-lane.md §2`). The shape is checked here; the vocabulary, the summary/span
- * bounds and the `truncated` flag are `stage.ts`'s job, so the door and the store cannot drift.
- * `chapter` and `changeId` are not in the body: they are the step's.
+ * A lane stage (`docs/writer-lane.md §2`): the shape is checked here, the vocabulary and the bounds
+ * are `stage.ts`'s job, and `chapter`/`changeId` come from the step, never from the body.
  */
 const stageBody = z.object({
   passId: id,
@@ -465,8 +462,9 @@ export async function buildControl(options: ControlOptions): Promise<FastifyInst
     }
   });
 
-  // BOOK-187 AC5/AC7: the writer lane's counter and its redacted receipts, under the same guard.
+  // BOOK-187 AC5/AC7 / BOOK-206: the lane's counters, its receipts, and the filing's triage routes.
   registerLaneStoreRoutes(app, { db: options.db, transcriptRetentionDays: options.transcriptRetentionDays });
+  registerTriageRoutes(app, options.engine.triage);
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof z.ZodError) {

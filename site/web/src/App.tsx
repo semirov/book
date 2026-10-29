@@ -27,12 +27,13 @@ import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
-import { FootJumps, liveChapter } from './components/FootJumps.tsx';
+import { FootJumps } from './components/FootJumps.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
 import { NoticeTicket, type Notice } from './components/Notice.tsx';
 import { Opening } from './components/Opening.tsx';
 import { TableOfContents } from './components/TableOfContents.tsx';
+import { TrailView } from './components/TrailView.tsx';
 import { EMPTY_COMPOSER } from './lib/composer.ts';
 import { historyLive, historyStarted } from './lib/historyState.ts';
 import { applyRevisingMark } from './lib/revisingMark.ts';
@@ -63,7 +64,13 @@ import { useDeepLink } from './lib/useDeepLink.ts';
 import { setChangeOpener } from './lib/changeDoor.ts';
 import { useChangeDoor } from './useChangeDoor.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
+import { useReading } from './lib/pageTrack.ts';
+import { useTrail } from './lib/useTrail.ts';
+import { landFrame } from './lib/follow.ts';
 import { useFrontRevision } from './useFrontRevision.ts';
+
+/** No chapter slots on this mode: a stable identity, so the reading hook re-runs on return. */
+const NO_CHAPTERS: ReadonlyArray<{ n: number; chars: number }> = [];
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → live TOC →
@@ -77,7 +84,7 @@ export function App() {
   const [connection, setConnection] = useState<SocketStatus>('connecting');
   const [revisions, setRevisions] = useState<Record<number, ChapterRevisionPayload>>({});
   const [revising, setRevising] = useState<Record<number, BlockRevisingPayload>>({});
-  /** BOOK-167: the stage log — the passes in flight, and the story the strip prints. */
+  /** BOOK-167: the stage log — the passes in flight, and the paragraph they paint. */
   const stages = useStages();
   const [fresh, setFresh] = useState<number | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -93,6 +100,13 @@ export function App() {
    * page hands the whole mode down to the article instead of drawing a floating box at its root.
    */
   const sentence = useParagraphChain();
+  const trail = useTrail();
+  // BOOK-104 / BOOK-207 — the page's one reading model; a mode without chapter slots hands
+  // the hook a stable empty list, so leaving it re-measures the book.
+  const readingCatalog = trail || view !== 'book' || data === null ? NO_CHAPTERS : data.catalog;
+  const reading = useReading(readingCatalog);
+  const readingRef = useRef(reading);
+  readingRef.current = reading;
   usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
@@ -102,7 +116,7 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, commentsComplete, commentsFailed, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
+  const { changes, comments, commentsComplete, commentsFailed, chapterFeed, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
     useReaderFeed();
   // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
   const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
@@ -319,6 +333,8 @@ export function App() {
             const decided = frame.data as ChangeDecidedPayload;
             noteRecord({ kind: 'frame', type: frame.type, data: decided });
             setRibbon((current) => reduceRibbon(current, { type: frame.type, data: decided }));
+            // BOOK-207 — a followed change lands: one notice, at the chapter the reader is in.
+            landFrame(decided, readingRef.current.n);
             void refreshChanges();
             break;
           }
@@ -393,6 +409,22 @@ export function App() {
         {changeDoor.failed}
       </p>
     );
+  if (trail) {
+    return (
+      <>
+        <TrailView
+          state={state} ribbon={ribbon} catalog={catalog}
+          markers={escalationMarkers(state.unresolved)} onOpenChange={openChange}
+          live={history} stages={stages} reading={reading} viewer={viewer}
+          imprint={front.imprint} donateUrl={front.donateUrl ?? null}
+          exportBytes={front.exportBytes ?? null} loadChapter={loadChapter}
+        />
+        <ConsentBanner />
+        <CapacityPlate active={connection === 'capacity'} />
+        {doorLine}
+      </>
+    );
+  }
 
   if (view === 'chronicle' && chronicle) {
     return (
@@ -428,6 +460,7 @@ export function App() {
         motion={titleMotion}
         live={history} chronicle={chronicle}
         stages={stages}
+        reading={reading}
       />
       <ConsentBanner />
       <TableOfContents catalog={catalog} state={state} currentChapter={currentChapter} />
@@ -452,18 +485,14 @@ export function App() {
       <EndMatter
         imprint={front.imprint}
         lastRevisionAt={state.activity.lastFileChangeAt}
-        signedIn={viewer.signedIn}
-        decisions={decisions}
-        onAuthorsCount={applyAuthorsCount}
         live={history}
         exportBytes={front.exportBytes ?? null}
-        onLoadChapter={loadChapter}
       />
       <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} failed={commentsFailed} onLoadChapter={loadChapter} />
       <Colophon state={state} imprint={front.imprint} viewer={viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
       {doorLine}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
-      <FootJumps live={history} processing={state.queue.processing !== null} revising={Object.values(revising).some((block) => block.active)} chapter={liveChapter(state.queue.processing?.chapter ?? null, revising)} change={changes[0] ?? null} plate={connection === 'capacity'} onLoad={loadChapter} />
+      <FootJumps live={history} plate={connection === 'capacity'} />
       <CapacityPlate active={connection === 'capacity'} />
     </>
   );

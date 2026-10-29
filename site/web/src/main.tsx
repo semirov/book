@@ -27,8 +27,6 @@ import './styles/seam.css';
 // BOOK-121 — the pass's box, its two carets and the ink gate; after the seam, before the
 // panels, because the pass paints prose and never a panel.
 import './styles/pass-live.css';
-// BOOK-167 — the pass strip: a block in the seam's place, after the pass's own ink.
-import './styles/pass-strip.css';
 import './styles/panels.css';
 import './styles/seam-form.css';
 import './styles/marginalia.css';
@@ -40,7 +38,10 @@ import './styles/record.css';
 import './styles/record-notice.css';
 // BOOK-128 — the record's `правка` section (a change in the record's register, no sheet).
 import './styles/record-change.css';
-// BOOK-156 — the grip's band, its reserve and its veil; after the registers it sits over.
+// BOOK-207 — the follow control, its notice and «ваш след», after the registers they sit in.
+import './styles/follow.css';
+import './styles/trail.css';
+// BOOK-156 — the grip's band and its reserve; after the registers it sits over.
 import './styles/foot-jumps.css';
 // BOOK-DOC-49 — the first load's gate and stagger; last, because it overrides the caret's
 // height at title scale and owns every `data-seq` delay.

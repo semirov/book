@@ -5,21 +5,20 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { BREATHING_PX } from '../lib/headerOffset.ts';
+import { useReading } from '../lib/pageTrack.ts';
 import { Header } from './Header.tsx';
 import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
 
 /**
  * BOOK-104 — the running head's chapter, the folio's page and the contents' page are one
- * model, and one line decides it: `--offset-top` plus 2 px, at the top of the reading area.
+ * model: `--offset-top` plus 2 px decides it, at the top of the reading area.
  *
  * jsdom has no layout, so every rect comes from a table: 42 slots laid end to end below the
- * cover and the contents. A browser lands an anchor at `top − offset-top` (`scroll-margin-top`)
- * — that is what `anchorTo` reproduces — so the head must name the anchored chapter at once
- * and the folio must print the number the contents prints for it.
+ * cover and the contents. `anchorTo` reproduces `scroll-margin-top`, so the head must name the
+ * anchored chapter at once and the folio must print the contents' number for it.
  *
  * BOOK-112: the head prints the chapter's number always and a real catalogue title only —
- * never a word lifted from the slot. The empty slots here carry a `.premise-label` exactly as
- * a real page used to, so the tests prove the head ignores it.
+ * never a word lifted from the slot; the empty slots carry a `.premise-label` to prove it.
  */
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -160,14 +159,15 @@ function buildBook(catalog: readonly CatalogEntry[], tall = new Map<number, Tall
 let root: Root | null = null;
 let container: HTMLDivElement;
 
+// `App` resolves `useReading` and hands it down (BOOK-207); this harness does the same.
+function ReadingHead({ catalog }: { catalog: readonly CatalogEntry[] }) {
+  return <Header state={STATE} ribbon={null} catalog={catalog} markers={[]} onOpenChange={() => undefined} live reading={useReading(catalog)} />;
+}
+
 async function mount(catalog: readonly CatalogEntry[]): Promise<void> {
   container = document.body.appendChild(document.createElement('div'));
   root = createRoot(container);
-  await act(async () => {
-    root?.render(
-      <Header state={STATE} ribbon={null} catalog={catalog} markers={[]} onOpenChange={() => undefined} live />,
-    );
-  });
+  await act(async () => { root?.render(<ReadingHead catalog={catalog} />); });
 }
 
 function scrollTo(scroll: number): Promise<void> {

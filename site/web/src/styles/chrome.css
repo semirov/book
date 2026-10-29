@@ -311,115 +311,6 @@
   margin-top: 22px;
 }
 
-/* «Ваш след» (BOOK-DOC-4): the reader's own erosion, one plain line, no meter, no score. */
-.own-trace {
-  margin-top: 24px;
-  padding-top: 14px;
-  border-top: 1px solid var(--rule);
-}
-.own-trace-title {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0;
-  color: var(--ink-3);
-}
-.own-trace-line {
-  margin: 8px 0 0;
-  font-size: var(--fs-note);
-  color: var(--ink);
-}
-.own-trace-edits,
-.own-trace-note {
-  margin: 6px 0 0;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  color: var(--ink-3);
-}
-.own-trace-toggle {
-  margin-top: 10px;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0;
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  cursor: pointer;
-}
-.own-trace-toggle[disabled] {
-  color: var(--ink-3);
-  cursor: default;
-}
-
-/* «Ваши правки» (BOOK-13): the durable summary of the reader's own interventions. A list of
-   plain lines, no meter and no animation — the block must not resize while the reader is
-   reading, so nothing here fades, slides or reserves a moving height. */
-.own-decisions {
-  margin-top: 18px;
-}
-.own-decisions-title {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0;
-  color: var(--ink-3);
-}
-.own-decisions-list {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.own-decision {
-  margin: 0;
-  padding: 10px 0 0;
-}
-.own-decision + .own-decision {
-  margin-top: 10px;
-  border-top: 1px solid var(--rule);
-}
-.own-decision-line {
-  margin: 0;
-  font-size: var(--fs-note);
-  line-height: 1.45;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-.own-decision.is-live .own-decision-line {
-  color: var(--ink-2);
-}
-.own-decision.is-stopped .own-decision-line {
-  color: var(--ink-2);
-}
-.own-decision-intent {
-  margin: 4px 0 0;
-  font-family: var(--serif);
-  font-size: var(--fs-note);
-  line-height: 1.5;
-  color: var(--ink-3);
-  overflow-wrap: anywhere;
-}
-.own-decision-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin: 6px 0 0;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0;
-  color: var(--ink-3);
-}
-.own-decision-open {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0;
-  color: var(--ink-2);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
 /* The two static documents live in legal.css — BOOK-88 (booted right after this sheet). */
 
 /* The legal nav's links take the colophon's treatment: one rule, kept with the frame. */
@@ -436,4 +327,17 @@
   align-items: center;
   min-height: 24px;
   padding-block: 6px;
+}
+
+/* ---------- BOOK-207: the way to the reader's own page ---------- */
+/* One row in the end matter, after the list: «ваш след →». The page is `#след`. */
+.authors-trail {
+  margin: 16px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.35;
+}
+.authors-trail a {
+  color: var(--ink-3);
+  text-decoration: none;
 }

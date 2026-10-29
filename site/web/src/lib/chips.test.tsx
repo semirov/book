@@ -1,4 +1,4 @@
-import { AUTHOR_COLORS, type CommentDto, type FrontDto, type MyTraceDto, type StateSnapshot } from '@book/shared';
+import { AUTHOR_COLORS, type CommentDto, type FrontDto, type StateSnapshot } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +8,6 @@ import { CHIP_MAX_CHARS, commentStatusLine, type CommentLine } from './commentVi
 import { Colophon } from '../components/Colophon.tsx';
 import { Discussion } from '../components/Discussion.tsx';
 import { Header } from '../components/Header.tsx';
-import { OwnTrace } from '../components/OwnTrace.tsx';
 import { TitleSheet } from '../components/TitleSheet.tsx';
 
 /**
@@ -254,8 +253,6 @@ describe('the removed chips are gone from their surfaces', () => {
     authors: { count: 0, measuredAt: '2026-10-27T08:00:00Z' },
   };
 
-  const trace: MyTraceDto = { label: 'Аня', edits: 0, chars: 0, share: 0, series: [], hidden: false, isAuthor: false, survivedRevisions: 0 };
-
   beforeAll(() => {
     // The theme is read from the document at first paint, as `colophon.test.tsx` does.
     vi.stubGlobal('document', {
@@ -268,7 +265,7 @@ describe('the removed chips are gone from their surfaces', () => {
   });
 
   it('prints no state line in the header — the chip is gone, not emptied', () => {
-    const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live />);
+    const html = renderToStaticMarkup(<Header state={state} ribbon={null} catalog={[]} markers={[]} onOpenChange={() => undefined} live reading={{ n: null, page: null }} />);
     // BOOK-112: the head prints the book's own title and nothing else.
     expect(textOf(html)).toBe('Книга');
     expect(html).not.toContain('class="live"');
@@ -298,12 +295,6 @@ describe('the removed chips are gone from their surfaces', () => {
     expect(html).toContain('замечаний нет');
     expect(html).toContain('в очереди пусто');
     expect(html).not.toContain('0 замечаний');
-  });
-
-  it('prints no edit suffix when there are no edits', () => {
-    const html = renderToStaticMarkup(<OwnTrace trace={trace} />);
-    expect(html).not.toContain('правок пока нет');
-    expect(html).not.toContain('правок: 0');
   });
 
   it('prints the empty book as a sentence in the colophon', () => {

@@ -44,6 +44,9 @@ export const FORBIDDEN = Object.freeze([
     why: 'a diagnostic, not reading — a wing that never opened prints nothing (BOOK-137)',
   },
   { phrase: "'не написана'", why: 'a placeholder for a chapter with no text — absence renders nothing' },
+  // BOOK-207: the carets door and the pass screen are deleted; no reader surface may name them.
+  { phrase: 'каретки', why: 'the carets door is deleted (BOOK-207) — carets live at the sentence' },
+  { phrase: '#проход-', why: 'the pass page is deleted (BOOK-207); a change is reached by ?change=' },
   {
     phrase: 'не написана',
     // Bare text (a JSX text node), never «ещё не написана» and never the quoted literal that the

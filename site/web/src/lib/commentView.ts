@@ -111,9 +111,10 @@ export function commentStatusLine(comment: CommentDto): CommentLine {
       // stripped from its own sentence (`refusalDetail`), so the row never repeats it.
       return lineOf(word, refusalDetail(comment), 'stopped');
     case 'escalated':
-      // BOOK-174: decided, not refused — the word «ждёт решения автора» and the question the
-      // filing now asks, which is its own stored line.
-      return lineOf(word, comment.reason, 'live');
+      // BOOK-206: a legacy value the boot migration re-opens. It is neither decided nor refused,
+      // so it keeps the undecided word and claims no fact — the old question is not a line the
+      // reader is owed any more.
+      return lineOf(word, null, 'live');
     case 'quarantined':
       // HELD: the word «проверяется» and the hold's own line, never the guard's taxonomy.
       return lineOf(word, filingConsequence(comment), 'stopped');

@@ -131,13 +131,14 @@ describe('the summary of a reader’s own intervention (BOOK-13)', () => {
     expect(line.tone).toBe('stopped');
   });
 
-  it('says a stopped change waits for the author', () => {
+  it('says a refused filing is not accepted, with the gate’s own line (BOOK-206)', () => {
     const line = decisionLine(
-      applied({ outcome: 'escalated', waves: null, blocks: null, chapters: [], reason: 'дальше нужен автор' }),
+      applied({ outcome: 'refused', waves: null, blocks: null, chapters: [], reason: 'вне книги: не про эту главу' }),
       0.004,
     );
-    expect(line.text).toBe('правка остановлена · ждёт решения автора · дальше нужен автор');
+    expect(line.text).toBe('правка не принята · вне книги: не про эту главу');
     expect(line.text).not.toContain('%');
+    expect(line.text).not.toContain('автор');
   });
 
   it('says an accepted change is still waiting, not a result', () => {

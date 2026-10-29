@@ -1,0 +1,901 @@
+{
+  "page": "http://127.0.0.1:5173/harness/margin.html",
+  "chrome": "/Users/filipp/Library/Caches/ms-playwright/chromium-1148/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+  "pass": true,
+  "widths": [
+    {
+      "width": 1440,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 1096,
+          "right": 1284,
+          "top": 141.23,
+          "width": 188,
+          "proseRight": 1040,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 1056,
+          "right": 1096,
+          "top": 135.36,
+          "width": 40,
+          "proseRight": 1040,
+          "delta": 16
+        },
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 1096,
+          "right": 1284,
+          "top": 273.67,
+          "width": 188,
+          "proseRight": 1040,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 1056,
+          "right": 1096,
+          "top": 183.95,
+          "width": 40,
+          "proseRight": 1040,
+          "delta": 16
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 400,
+          "right": 1040,
+          "top": 265.66,
+          "width": 640,
+          "proseRight": 1040,
+          "delta": -640
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 400,
+          "right": 1040,
+          "top": 138.23,
+          "bottom": 168.47,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 400,
+          "right": 1040,
+          "top": 186.83,
+          "bottom": 217.06,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 400,
+          "right": 1040,
+          "top": 235.42,
+          "bottom": 314.25,
+          "width": 640,
+          "height": 78.83
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 400,
+          "right": 1040,
+          "top": 332.61,
+          "bottom": 393.08,
+          "width": 640,
+          "height": 60.47
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 400,
+          "right": 1040,
+          "top": 411.44,
+          "bottom": 441.67,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 400,
+          "right": 1040,
+          "top": 460.03,
+          "bottom": 490.27,
+          "width": 640,
+          "height": 30.23
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 1016,
+          "right": 1204,
+          "top": 141.23,
+          "width": 188,
+          "proseRight": 960,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 976,
+          "right": 1016,
+          "top": 134.36,
+          "width": 40,
+          "proseRight": 960,
+          "delta": 16
+        },
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 1016,
+          "right": 1204,
+          "top": 273.67,
+          "width": 188,
+          "proseRight": 960,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 976,
+          "right": 1016,
+          "top": 182.95,
+          "width": 40,
+          "proseRight": 960,
+          "delta": 16
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 320,
+          "right": 960,
+          "top": 265.66,
+          "width": 640,
+          "proseRight": 960,
+          "delta": -640
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 320,
+          "right": 960,
+          "top": 138.23,
+          "bottom": 168.47,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 320,
+          "right": 960,
+          "top": 186.83,
+          "bottom": 217.06,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 320,
+          "right": 960,
+          "top": 235.42,
+          "bottom": 314.25,
+          "width": 640,
+          "height": 78.83
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 320,
+          "right": 960,
+          "top": 332.61,
+          "bottom": 393.08,
+          "width": 640,
+          "height": 60.47
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 320,
+          "right": 960,
+          "top": 411.44,
+          "bottom": 441.67,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 320,
+          "right": 960,
+          "top": 460.03,
+          "bottom": 490.27,
+          "width": 640,
+          "height": 30.23
+        }
+      ]
+    },
+    {
+      "width": 1100,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 926,
+          "right": 1092,
+          "top": 141.23,
+          "width": 166,
+          "proseRight": 870,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 886,
+          "right": 926,
+          "top": 135.36,
+          "width": 40,
+          "proseRight": 870,
+          "delta": 16
+        },
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 926,
+          "right": 1092,
+          "top": 273.67,
+          "width": 166,
+          "proseRight": 870,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 886,
+          "right": 926,
+          "top": 183.95,
+          "width": 40,
+          "proseRight": 870,
+          "delta": 16
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 230,
+          "right": 870,
+          "top": 265.66,
+          "width": 640,
+          "proseRight": 870,
+          "delta": -640
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 230,
+          "right": 870,
+          "top": 138.23,
+          "bottom": 168.47,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 230,
+          "right": 870,
+          "top": 186.83,
+          "bottom": 217.06,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 230,
+          "right": 870,
+          "top": 235.42,
+          "bottom": 314.25,
+          "width": 640,
+          "height": 78.83
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 230,
+          "right": 870,
+          "top": 332.61,
+          "bottom": 393.08,
+          "width": 640,
+          "height": 60.47
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 230,
+          "right": 870,
+          "top": 411.44,
+          "bottom": 441.67,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 230,
+          "right": 870,
+          "top": 460.03,
+          "bottom": 490.27,
+          "width": 640,
+          "height": 30.23
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 888,
+          "right": 1016,
+          "top": 141.23,
+          "width": 128,
+          "proseRight": 832,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 848,
+          "right": 888,
+          "top": 135.36,
+          "width": 40,
+          "proseRight": 832,
+          "delta": 16
+        },
+        {
+          "kind": "note",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 888,
+          "right": 1016,
+          "top": 273.67,
+          "width": 128,
+          "proseRight": 832,
+          "delta": 56
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 848,
+          "right": 888,
+          "top": 183.95,
+          "width": 40,
+          "proseRight": 832,
+          "delta": 16
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 192,
+          "right": 832,
+          "top": 265.66,
+          "width": 640,
+          "proseRight": 832,
+          "delta": -640
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 192,
+          "right": 832,
+          "top": 138.23,
+          "bottom": 168.47,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 192,
+          "right": 832,
+          "top": 186.83,
+          "bottom": 217.06,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 192,
+          "right": 832,
+          "top": 235.42,
+          "bottom": 314.25,
+          "width": 640,
+          "height": 78.83
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 192,
+          "right": 832,
+          "top": 332.61,
+          "bottom": 393.08,
+          "width": 640,
+          "height": 60.47
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 192,
+          "right": 832,
+          "top": 411.44,
+          "bottom": 441.67,
+          "width": 640,
+          "height": 30.23
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 192,
+          "right": 832,
+          "top": 460.03,
+          "bottom": 490.27,
+          "width": 640,
+          "height": 30.23
+        }
+      ]
+    },
+    {
+      "width": 900,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 761,
+          "right": 785,
+          "top": 198.09,
+          "width": 24,
+          "proseRight": 761,
+          "delta": 0
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 761,
+          "right": 785,
+          "top": 299.33,
+          "width": 24,
+          "proseRight": 761,
+          "delta": 0
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 139,
+          "right": 761,
+          "top": 434.25,
+          "width": 622,
+          "proseRight": 761,
+          "delta": -622
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 139,
+          "right": 761,
+          "top": 202.39,
+          "bottom": 285.78,
+          "width": 622,
+          "height": 83.39
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 139,
+          "right": 761,
+          "top": 303.63,
+          "bottom": 387.02,
+          "width": 622,
+          "height": 83.39
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 139,
+          "right": 761,
+          "top": 404.86,
+          "bottom": 504.05,
+          "width": 622,
+          "height": 99.19
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 139,
+          "right": 761,
+          "top": 521.89,
+          "bottom": 580.67,
+          "width": 622,
+          "height": 58.78
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 139,
+          "right": 761,
+          "top": 598.52,
+          "bottom": 627.91,
+          "width": 622,
+          "height": 29.39
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 139,
+          "right": 761,
+          "top": 645.75,
+          "bottom": 675.14,
+          "width": 622,
+          "height": 29.39
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 695,
+          "right": 719,
+          "top": 199.09,
+          "width": 24,
+          "proseRight": 695,
+          "delta": 0
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 695,
+          "right": 719,
+          "top": 300.33,
+          "width": 24,
+          "proseRight": 695,
+          "delta": 0
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 73,
+          "right": 695,
+          "top": 434.25,
+          "width": 622,
+          "proseRight": 695,
+          "delta": -622
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 73,
+          "right": 695,
+          "top": 202.39,
+          "bottom": 285.78,
+          "width": 622,
+          "height": 83.39
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 73,
+          "right": 695,
+          "top": 303.63,
+          "bottom": 387.02,
+          "width": 622,
+          "height": 83.39
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 73,
+          "right": 695,
+          "top": 404.86,
+          "bottom": 504.05,
+          "width": 622,
+          "height": 99.19
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 73,
+          "right": 695,
+          "top": 521.89,
+          "bottom": 580.67,
+          "width": 622,
+          "height": 58.78
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 73,
+          "right": 695,
+          "top": 598.52,
+          "bottom": 627.91,
+          "width": 622,
+          "height": 29.39
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 73,
+          "right": 695,
+          "top": 645.75,
+          "bottom": 675.14,
+          "width": 622,
+          "height": 29.39
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 900,
+      "paragraphs": 6,
+      "objects": [
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness",
+          "position": "absolute",
+          "margin": true,
+          "left": 366,
+          "right": 390,
+          "top": 190.83,
+          "width": 24,
+          "proseRight": 366,
+          "delta": 0
+        },
+        {
+          "kind": "mark",
+          "paragraph": "ch01#harness-b",
+          "position": "absolute",
+          "margin": true,
+          "left": 366,
+          "right": 390,
+          "top": 319.25,
+          "width": 24,
+          "proseRight": 366,
+          "delta": 0
+        },
+        {
+          "kind": "sentence-block",
+          "paragraph": "ch01#harness-sentence",
+          "position": "static",
+          "margin": false,
+          "left": 24,
+          "right": 366,
+          "top": 508.48,
+          "width": 342,
+          "proseRight": 366,
+          "delta": -342
+        }
+      ],
+      "violations": [],
+      "notes": {
+        "mounted": 2,
+        "shown": 0
+      },
+      "strip": {
+        "mounted": 2,
+        "shown": 2
+      },
+      "documents": {
+        "notes": 2,
+        "marks": 2,
+        "blocks": 1,
+        "margins": 3
+      },
+      "prose": [
+        {
+          "blockId": "ch01#harness",
+          "left": 24,
+          "right": 366,
+          "top": 194.55,
+          "bottom": 305.64,
+          "width": 342,
+          "height": 111.09
+        },
+        {
+          "blockId": "ch01#harness-b",
+          "left": 24,
+          "right": 366,
+          "top": 322.97,
+          "bottom": 434.06,
+          "width": 342,
+          "height": 111.09
+        },
+        {
+          "blockId": "ch01#harness-sentence",
+          "left": 24,
+          "right": 366,
+          "top": 451.39,
+          "bottom": 578.28,
+          "width": 342,
+          "height": 126.89
+        },
+        {
+          "blockId": "ch01#harness-after-0",
+          "left": 24,
+          "right": 366,
+          "top": 595.61,
+          "bottom": 652.7,
+          "width": 342,
+          "height": 57.09
+        },
+        {
+          "blockId": "ch01#harness-after-1",
+          "left": 24,
+          "right": 366,
+          "top": 670.03,
+          "bottom": 727.13,
+          "width": 342,
+          "height": 57.09
+        },
+        {
+          "blockId": "ch01#harness-after-2",
+          "left": 24,
+          "right": 366,
+          "top": 744.45,
+          "bottom": 801.55,
+          "width": 342,
+          "height": 57.09
+        }
+      ]
+    }
+  ]
+}

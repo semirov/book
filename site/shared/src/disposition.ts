@@ -3,9 +3,10 @@
  * (BOOK-DOC-78, BOOK-174 comment #3888 §5–§6).
  *
  * A filing has four answers tried in order — `as_said` → `through_paper` →
- * `refused_in_world` → `inadmissible` — and a fifth state for the case where the ladder ran
- * out: `escalated`, the author's decision. Nothing here refuses by exhaustion: `inadmissible`
- * is reachable only through one of the four locks, and everything else is escalated.
+ * `refused_in_world` → `inadmissible`. Nothing here refuses by exhaustion: `inadmissible` is
+ * reachable only through one of the four locks, and everything else is placed by the ladder
+ * itself, at the floor if nothing above it is licensed (BOOK-206, ADR-045 §5). There is no
+ * fifth state and no author's door: a filing is never parked for a person.
  *
  * This file is the **one source** of the words a reader sees: the closed reason clauses, the
  * closed carrier labels, the lock lines and the lock alternatives. They are table entries and
@@ -18,13 +19,13 @@
  *   потому что рядом нет предложения, которое от этого станет ложным
  *   где это в книге: глава 12 · абзац 4 · предложение 2
  *
- * Line 3 exists only when the sentence exists; `inadmissible` and `escalated` land nothing,
- * so their third line is the lock's alternative or the author's name. The anchor is **1-based
- * for the reader**: the stored `block_idx` and the sentence index are 0-based.
+ * Line 3 exists only when the sentence exists; `inadmissible` lands nothing, so its third line
+ * is the lock's alternative. The anchor is **1-based for the reader**: the stored `block_idx`
+ * and the sentence index are 0-based.
  */
 
-/** The four answers, and the fifth state for a filing the ladder could not place. */
-export type Disposition = 'as_said' | 'through_paper' | 'refused_in_world' | 'inadmissible' | 'escalated';
+/** The four answers, and no fifth: the ladder is total and nothing waits for a person. */
+export type Disposition = 'as_said' | 'through_paper' | 'refused_in_world' | 'inadmissible';
 
 /** The six carriers a `through_paper` reading lands behind (BOOK-174 §2, closed list). */
 export type CarrierKind =
@@ -38,13 +39,7 @@ export type CarrierKind =
 /** The four locks, and no others: the only way to `inadmissible`. */
 export type DispositionLock = 'rights' | 'harm' | 'frame' | 'finale';
 
-export const DISPOSITIONS: readonly Disposition[] = [
-  'as_said',
-  'through_paper',
-  'refused_in_world',
-  'inadmissible',
-  'escalated',
-];
+export const DISPOSITIONS: readonly Disposition[] = ['as_said', 'through_paper', 'refused_in_world', 'inadmissible'];
 
 export const CARRIER_KINDS: readonly CarrierKind[] = [
   'document',
@@ -73,7 +68,6 @@ export const DISPOSITION_REASONS: Readonly<Record<Disposition, string>> = {
   through_paper: 'потому что в сцене это некому сказать, а в регистратуре есть кому',
   refused_in_world: 'потому что в книге это уже установлено — мир может только ответить',
   inadmissible: 'потому что это отменяет исход',
-  escalated: 'потому что эта правка меняет не слово, а исход',
 };
 
 /** Line 2 of a refusal: the lock's own why. */
@@ -100,17 +94,10 @@ export const DISPOSITION_WORDS: Readonly<Record<Disposition, string>> = {
   through_paper: 'прочитано через бумагу',
   refused_in_world: 'прочитано как отказ в мире',
   inadmissible: 'не принято',
-  escalated: 'ждёт решения автора',
 };
 
 /** The one reading that names the plan it declined: both plans really existed. */
 export const THROUGH_PAPER_NOT_AS_SAID = 'прочитано через бумагу, а не как сказано';
-
-/** The question an escalated filing asks its author — also the row's public reason. */
-export const ESCALATION_QUESTION = 'можно ли оформить это бумагой?';
-
-/** The third line of an escalated filing: nothing landed, so no anchor is owed. */
-export const ESCALATION_LINE = 'решает автор';
 
 /** The bound every line of the report keeps (§5). */
 export const REPORT_LINE_MAX_CHARS = 200;
@@ -147,6 +134,12 @@ function oneOf<T extends string>(value: string | null | undefined, allowed: read
   return typeof value === 'string' && (allowed as readonly string[]).includes(value) ? (value as T) : null;
 }
 
+/**
+ * A stored word, or null. BOOK-206 removed the ladder's old fifth state, so a row written
+ * before it may still carry `disposition='escalated'`: that word is **not** a chain any more
+ * (the boot migration re-opens every such row), and returning null is what keeps an old row a
+ * page that renders — no chain, no report, no crash.
+ */
 export function normalizeDisposition(value: string | null | undefined): Disposition | null {
   return oneOf(value, DISPOSITIONS);
 }
@@ -239,10 +232,14 @@ function thirdLineOf(input: {
   sentence?: number | null;
   stamp?: string | null;
 }): string {
-  if (input.disposition === 'escalated') return ESCALATION_LINE;
   if (input.disposition === 'inadmissible') {
+    // A lock always names itself; a chain without one is data this build cannot complete, and
+    // the reader is owed the place instead of an invented alternative.
     const lock = input.lock ?? null;
-    return lock === null ? ESCALATION_LINE : `сработает иначе: ${LOCK_ALTERNATIVES[lock]}`;
+    if (lock === null) {
+      return anchorLine({ chapter: input.chapter, blockIndex: input.blockIndex ?? null, sentenceIndex: null });
+    }
+    return `сработает иначе: ${LOCK_ALTERNATIVES[lock]}`;
   }
   const anchor = anchorLine({
     chapter: input.chapter,

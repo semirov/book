@@ -184,6 +184,30 @@ function hasLiveSentenceAnchor(db: EngineDeps['db'], raw: string | null): boolea
   return ids.some((id) => typeof id === 'string' && id.length > 0 && findLiveSentence(db, id) !== null);
 }
 
+/**
+ * BOOK-206 (ADR-045): the filing's own read, from the newest attempt of the comment a change
+ * names (`changes.source_comment`). `awaitingRead` is the one state the patch path must never run
+ * in — the attempt is `submitted` and no verdict is stored, so the reading is either in flight or
+ * not yet bought. A settled attempt with no verdict is **not** that state: an operator's own
+ * decision, or a row written before BOOK-206, is the read.
+ */
+function triageOf(
+  db: EngineDeps['db'],
+  change: store.ChangeRow,
+): { verdict: 'FITS' | 'OFF' | null; awaitingRead: boolean } {
+  const commentId = change.source_comment;
+  if (commentId === null || commentId === undefined) return { verdict: null, awaitingRead: false };
+  const row = db
+    .prepare(`SELECT outcome, verdict FROM comment_attempts WHERE comment_id = ? ORDER BY n DESC LIMIT 1`)
+    .get(commentId) as { outcome: string | null; verdict: string | null } | undefined;
+  if (row === undefined) return { verdict: null, awaitingRead: false };
+  const stored = row.verdict === null ? null : json<{ verdict?: unknown }>(row.verdict, {}).verdict;
+  return {
+    verdict: stored === 'FITS' || stored === 'OFF' ? stored : null,
+    awaitingRead: row.outcome === 'submitted' && row.verdict === null,
+  };
+}
+
 /** The writer's assignment, derived from the step (never a stored prompt, §6B.2). */
 export function writerAssignment(
   deps: EngineDeps,
@@ -222,6 +246,9 @@ export function writerAssignment(
     // id whose sentence has been erased since is history, and a patch aimed at history would
     // re-key the very sentences the filing was about.
     sentenceAnchor: change !== undefined && hasLiveSentenceAnchor(deps.db, change.anchor),
+    // BOOK-206: the filing's own read travels with the assignment, so the patch path can ask
+    // «has anyone judged these words?» from a fact rather than assuming the site's order.
+    triage: change === undefined ? { verdict: null, awaitingRead: false } : triageOf(deps.db, change),
     // BOOK-16: the writer is told which world-fact the intervention brings, as one id, so a
     // document is written as a document and not as a prose polish. Null when there is none.
     interventionKind: change === undefined ? null : normalizeInterventionKind(change.intervention_kind),

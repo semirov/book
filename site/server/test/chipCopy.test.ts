@@ -35,7 +35,7 @@ describe('BOOK-70 — the chip copy', () => {
     expect(copyProblems(WEB_SRC)).toEqual([]);
   });
 
-  it('retires twelve patterns, each with the reason it may not come back', () => {
+  it('retires fourteen patterns, each with the reason it may not come back', () => {
     expect(FORBIDDEN.map((entry) => entry.phrase)).toEqual([
       'книга начинается',
       'записи нет',
@@ -48,6 +48,8 @@ describe('BOOK-70 — the chip copy', () => {
       'волна 1',
       'не открылось',
       "'не написана'",
+      'каретки',
+      '#проход-',
       'не написана',
     ]);
     for (const entry of FORBIDDEN) expect(entry.why.length).toBeGreaterThan(10);
@@ -67,11 +69,13 @@ describe('BOOK-70 — the chip copy', () => {
         "const nine = 'волна 1';",
         "const ten = 'не открылось';",
         "const eleven = 'не написана';",
+        "const twelve = 'каретки';",
+        "const thirteen = '#проход-7';",
         '<span className="ch-meta">не написана</span>',
         '',
       ].join('\n'),
     });
-    expect(problems.map((problem) => problem.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(problems.map((problem) => problem.line)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
     expect(problems.map((problem) => problem.message)).toEqual(
       FORBIDDEN.map((entry) => expect.stringContaining(`«${entry.phrase}» is retired (BOOK-70): ${entry.why}`)),
     );

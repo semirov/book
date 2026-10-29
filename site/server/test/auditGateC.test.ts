@@ -64,36 +64,15 @@ async function comment(h: Harness): Promise<string> {
  * reader's report can be rendered.
  */
 describe('Gate C’s OFF is answered by the ladder (BOOK-174)', () => {
-  it('stores a chain and a report on an escalating OFF', async () => {
+  it('records the OFF and stores no chain: the ladder places the reading, not the audit (BOOK-206)', async () => {
     const h = await boot();
     const id = await comment(h);
     expect(cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'вне книги: этот мир не просит чудес').code).toBe(0);
 
     const row = readCommentRow(h.db, id)!;
-    expect(row).toMatchObject({ status: 'escalated', disposition: 'escalated', lock: null, audit_verdict: 'OFF' });
-    const dto = toCommentDto(h.db, row);
-    expect(dto.report).toMatchObject({
-      line1: 'ждёт решения автора',
-      line2: 'потому что эта правка меняет не слово, а исход',
-      line3: 'решает автор',
-    });
-  });
-
-  it('refuses an illegal-content filing under the harm lock, not as an escalation', async () => {
-    const h = await boot();
-    const id = await comment(h);
-    // The guard's own mark: a filing the law stops is the harm lock, and only the harm lock.
-    h.db
-      .prepare(`UPDATE comments SET guard = 'legal', flags = '["illegal-content"]' WHERE id = ?`)
-      .run(id);
-    expect(cli(h, 'audit', id, '--verdict', 'OFF', '--reason', 'угроза человеку').code).toBe(0);
-
-    const row = readCommentRow(h.db, id)!;
-    expect(row).toMatchObject({ status: 'rejected', disposition: 'inadmissible', lock: 'harm' });
-    expect(toCommentDto(h.db, row).report).toEqual({
-      line1: 'не принято',
-      line2: 'потому что это угроза человеку или чужие личные данные',
-      line3: 'сработает иначе: оставьте страх и уберите адрес — бумага умеет говорить «гражданин» и «объект»',
-    });
+    expect(row).toMatchObject({ status: 'new', disposition: null, lock: null, decided_at: null, audit_verdict: 'OFF' });
+    // No report exists before the reading: the DTO says nothing the ladder has not said.
+    expect(toCommentDto(h.db, row).report).toBeNull();
+    expect(toCommentDto(h.db, row).disposition).toBeNull();
   });
 });

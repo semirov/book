@@ -100,7 +100,9 @@ export function hold(parsed: OperatorArgs, io: OperatorIo, now: () => Date): num
     return 1;
   }
   const values = filingValues(comment);
-  if (!quoteIn(values[evidence.field], evidence.quote)) {
+  // BOOK-206: `world` is a field the engine builds from rows; a filing exchanged as a batch line
+  // carries none, so a quote from it can never be checked here and the hold is refused.
+  if (!quoteIn(evidence.field === 'world' ? null : values[evidence.field], evidence.quote)) {
     io.print(`refused (POSTCHECK_FAILED): the quote is not in «${evidence.field}» of ${comment.id}`);
     return 1;
   }

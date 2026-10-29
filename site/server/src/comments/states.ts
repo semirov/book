@@ -28,9 +28,8 @@ export type LinkedChange = { premise: number; status: string; outcome: string | 
  * when B later records its own verdict column, and the page never heads A's reason with B's
  * word. A held row is A's whatever B answered.
  *
- * BOOK-174: an **escalated** row was not refused by anyone. Its `OFF` verdict is the gate that
- * stopped the triage, not a refusal of the filing — the author has yet to answer — so the page
- * is told no refusal at all and prints the report instead.
+ * BOOK-206: a legacy **escalated** row is not a refusal of the filing either — it is re-opened
+ * by the boot migration, and until then the page is told no refusal and prints no report.
  */
 export function refusalOf(row: CommentRow): CommentRefusal | null {
   if (row.status === 'quarantined') return 'held';
@@ -40,7 +39,9 @@ export function refusalOf(row: CommentRow): CommentRefusal | null {
   }
   if (row.status === 'escalated') return row.rights_verdict === 'REFUSED' ? 'rights' : null;
   if (row.rights_verdict === 'REFUSED') return 'rights';
-  if (row.audit_verdict === 'OFF') return 'auditor';
+  // BOOK-206: an `OFF` verdict is a classification, not a refusal. Only a row the ladder placed
+  // under a lock is «не принято» (the `rejected` branch above); an undecided row that carries an
+  // `OFF` is waiting for the applier and reports no refusal at all.
   return null;
 }
 

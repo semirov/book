@@ -136,6 +136,7 @@ async function render(overrides: { front?: FrontDto; motion?: TitleMotion } = {}
         view="book"
         onViewChange={() => undefined}
         motion={overrides.motion}
+        reading={{ n: null, page: null }}
         live
       />,
     );

@@ -31,7 +31,7 @@ import { readBuildStamp } from '../buildStamp.ts';
 import { parseChapter } from '../ingest/parseChapter.ts';
 import type { EngineClient, LandView, StartView } from './client.ts';
 import { capLine, estimatePassUsd } from './estimate.ts';
-import { moneyGuard } from './passGuard.ts';
+import { moneyGuard, triageGuard } from './passGuard.ts';
 import { createLane, assignmentData, type PassResult, type ProviderCall } from './passLane.ts';
 import { costUsd } from './pipeline.ts';
 import { buildWriterPrompt, chapterQuote, type BuiltPrompt } from './prompt.ts';
@@ -239,8 +239,9 @@ export async function runPass(deps: PassDeps): Promise<PassResult> {
         deps.ripple === undefined
           ? chooseMode(modeInput, isWrittenView(lane.textOf(chapter)), config.modeDefault)
           : RIPPLE_MODE;
-      let built: BuiltPrompt;
-      let patchPrompt: PatchPrompt | null = null;
+      const unread = triageGuard(job, choice.mode, deps.log); // BOOK-206: read before patch.
+      if (unread !== null) return unread;
+      let built: BuiltPrompt, patchPrompt: PatchPrompt | null = null;
       try {
         const data = assignmentData(job);
         rewritePrompt = buildWriterPrompt({ bookRoot, assignment: data, chapterText: lane.textOf });

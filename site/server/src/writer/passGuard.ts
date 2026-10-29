@@ -7,11 +7,13 @@
  * priced) or the estimate the pass then carries to the ledger.
  */
 
-import type { BudgetDto } from '@book/shared';
+import type { BudgetDto, WriterAssignment } from '@book/shared';
 
 import type { EngineClient, EngineStateView } from './client.ts';
 import { capLine, estimateLine, estimatePassUsd, type PassEstimate } from './estimate.ts';
 import type { PassResult } from './laneTypes.ts';
+import type { WriteMode } from './mode.ts';
+import { readerFallbacks, readerReason } from './reasons.ts';
 import type { WriterConfig } from './config.ts';
 
 export type Guarded =
@@ -62,4 +64,29 @@ export async function moneyGuard(input: {
     return { ok: false, result: { status: 'idle', reason: crossed } };
   }
   return { ok: true, budget, estimate: priced };
+}
+
+/**
+ * BOOK-206 + BOOK-173 §4 — the read before the patch.
+ *
+ * `null` means the pass may go on. A **patch** over a change whose filing is still waiting for
+ * its read is refused: the writer is the only triage caller, so an attempt that is `submitted`
+ * with no verdict is a judgement nobody has made, and a patch would key the reader's words to a
+ * reading that does not exist. A rewrite is main's own path and is not what this guard owns; a
+ * settled attempt with no verdict is a read (an operator's decision) and passes.
+ */
+export function triageGuard(
+  job: Pick<WriterAssignment, 'stepId' | 'changeId' | 'triage'>,
+  mode: WriteMode,
+  log: (line: string) => void,
+): PassResult | null {
+  if (mode !== 'patch' || !job.triage.awaitingRead) return null;
+  log(`[writer] TRIAGE_REQUIRED: заявка ${job.changeId ?? '—'} ещё не прочитана — правка не внесена`);
+  return {
+    status: 'refused',
+    stepId: job.stepId,
+    changeId: job.changeId,
+    reason: readerReason('TRIAGE_REQUIRED', readerFallbacks.stopped),
+    code: 'TRIAGE_REQUIRED',
+  };
 }

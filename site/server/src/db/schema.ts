@@ -1,5 +1,5 @@
 /**
- * The schema of ARCHITECTURE.md §8, revision 4 — **version 29** (M6b added `revisions.hseq`
+ * The schema of ARCHITECTURE.md §8, revision 4 — **version 31** (M6b added `revisions.hseq`
  * and the per-version block chain; M7 adds the operator's `reconciles` mark on a restore,
  * §13.3; BOOK-6 adds `chapters.basis`, the slot that holds only its basis sentence; BOOK-7
  * adds `front_matter.about_sha256` and the chapter-level premise (`changes.premise`,
@@ -33,12 +33,14 @@
  * BOOK-185 stage 3 (v29) widens `facts` to the ten kind words with its own identity (`key`), its
  * asserting `sentence` and the run that wrote or retired it, and adds `fact_dependency` (ADR-040
  * §2.1) and `extraction_runs` (BOOK-DOC-77); `threads` names the run that opened it.
+ * BOOK-206 (v30, ADR-045) gives `comment_attempts` the claim, the tries, the backoff and the one
+ * stored verdict, so a filing is claimed out of its own ledger and no filing waits for a person.
  *
  * **The rows are the home of the text** (ADR-043, BOOK-DOC-76): `chapters`, `blocks` and
  * `front_matter` hold the prose itself, versions, blame and diff are rows too, and
  * `manuscript/` is not read at runtime — the one-shot import (`ingest/reconcile.ts`) is the
  * only door a file may still come through. BOOK-173 adds the frozen plan of a change
- * (`change_plans`, v30) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
+ * (`change_plans`, v31) — its `mode`/`price_usd` and the verification record (BOOK-DOC-80); the
  * ripple's graph itself is BOOK-185's `fact_dependency`, not a second table. The engine tables are the only
  * home of process facts. Every table §8 names exists here, and the retired `obligations` table
  * does not (§23.5, ADR-023).
@@ -49,7 +51,7 @@
  * a **storage** bound and `TOTAL_CHAPTERS` is enforced where the book is read (see `tables.ts`).
  */
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 /**
  * The table definitions that an incremental migration also needs (`chapters`, `block_versions`,

@@ -1,4 +1,4 @@
-import type { AuthorsDto, MyDecisionsDto, StateSnapshot } from '@book/shared';
+import type { AuthorsDto, StateSnapshot } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -98,117 +98,27 @@ describe('the end matter (§6C.5)', () => {
     expect(html).not.toContain('%');
   });
 
-  it('renders the signed-in reader’s own trace in the end matter, and nothing for a guest', () => {
-    const ownTrace = {
-      label: 'Аня',
-      edits: 2,
-      chars: 400,
-      share: 0.004,
-      series: [],
-      hidden: false,
-      isAuthor: false,
-      survivedRevisions: 4,
-    };
-    const signedIn = renderToStaticMarkup(
-      <Authors
-        authors={measured}
-        imprint={imprint}
-        lastRevisionAt={null}
-        ownTrace={ownTrace}
-        onToggleHidden={() => undefined}
-        live />,
-    );
-    expect(signedIn).toContain('ваш след');
-    expect(signedIn).toContain('пережила 4 ревизии, сейчас 0,4 %');
-    expect(signedIn).toContain('скрыть из списка авторов');
-
-    const guest = renderToStaticMarkup(
+  it('offers one row to the reader’s own page, for a guest and a signed-in reader alike', () => {
+    // BOOK-207: the trace and the decisions left for `#след`; this block keeps one row.
+    const html = renderToStaticMarkup(
       <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live />,
     );
-    expect(guest).not.toContain('ваш след');
+    expect(html).toContain('<a href="#след">ваш след →</a>');
+    expect(html).not.toContain('пережила');
+    expect(html).not.toContain('скрыть из списка авторов');
+    expect(html).not.toContain('ваши правки');
   });
 
-  it('says plainly when no reader’s text survives', () => {
-    const empty: AuthorsDto = {
-      ...measured,
-      author: { label: 'Филипп Семиров', share: 1, chars: 100_000 },
-      contributors: [],
-      sum: 1,
-    };
-    const html = renderToStaticMarkup(
-      <Authors authors={empty} imprint={imprint} lastRevisionAt={null} live />,
-    );
-    expect(html).toContain('100,0 %');
-    expect(html).toContain('пока весь текст написан автором');
-  });
-});
-
-describe('the reader’s own decisions outlive the history gate (BOOK-56)', () => {
-  const decisions: MyDecisionsDto = {
-    items: [
-      {
-        commentId: 'cmt_1',
-        changeId: 'chg_1',
-        chapter: 8,
-        premise: false,
-        intent: 'убрать второе «слово»',
-        outcome: 'applied',
-        reason: null,
-        chapters: [8],
-        waves: 1,
-        blocks: 2,
-        shareAtDecision: { share: 0.004, day: '2026-10-25' },
-        decidedAt: '2026-10-25T12:00:00Z',
-      },
-    ],
-    open: [],
-    share: 0.004,
-  };
-
-  it('renders them with the authors list off — they are the reader’s present state', () => {
-    const html = renderToStaticMarkup(
-      <Authors
-        authors={measured}
-        imprint={imprint}
-        lastRevisionAt="2026-10-25T09:20:00Z"
-        decisions={decisions}
-        live={false}
-      />,
-    );
-    expect(html).toContain('ваши правки');
-    expect(html).toContain('правка внесена');
-    // The book's past stays off: no list, no note, no chronicle door, no stamp.
-    expect(html).not.toContain('Авторы');
-    expect(html).not.toContain('authors-list');
-    expect(html).not.toContain('доля в окончательном тексте');
-    expect(html).not.toContain('как менялись доли');
-    expect(html).not.toContain('последняя правка');
-  });
-
-  it('keeps the download when history is off and the reader has no decisions (BOOK-60)', () => {
-    // Reading is never gated, so the export is not: a begun book has a file before it has
-    // an authors list. The section exists for the link alone, and the link says how big the
-    // file is (BOOK-138) — the edition number lives in the file, not on the page.
+  it('keeps the download when history is off — reading is never gated (BOOK-60)', () => {
+    // A begun book has a file before it has an authors list: the section exists for the link
+    // alone, and the link says how big the file is (BOOK-138).
     const html = renderToStaticMarkup(
       <Authors authors={measured} imprint={imprint} lastRevisionAt={null} live={false} exportBytes={1_500_000} />,
     );
     expect(html).toContain('<a class="export-link" href="/book.fb2" download="">скачать fb2 · 1,5 МБ</a>');
+    expect(html).toContain('<a href="#след">ваш след →</a>');
     expect(html).not.toContain('blank-');
     expect(html).not.toContain('authors-list');
-  });
-
-  it('keeps the list beside them when history is on', () => {
-    const html = renderToStaticMarkup(
-      <Authors
-        authors={measured}
-        imprint={imprint}
-        lastRevisionAt={null}
-        decisions={decisions}
-        live
-      />,
-    );
-    expect(html).toContain('Авторы');
-    expect(html).toContain('ваши правки');
   });
 });
 

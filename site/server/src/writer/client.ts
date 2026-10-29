@@ -31,6 +31,9 @@ import type { RipplePlan } from '../ledger/graph/plan.ts';
 import type { SentencePatchEdit } from '../sentences/transform.ts';
 
 export type { ChapterTextView };
+// BOOK-206's triage wire shapes live in `triageViews.ts`; this client's surface is unchanged.
+export type { TriageAskView, TriageFailInput, TriageFailView, TriageNextView, TriageVerdictInput, TriageVerdictView } from './triageViews.ts';
+import type { TriageAskView, TriageFailInput, TriageFailView, TriageNextView, TriageVerdictInput, TriageVerdictView } from './triageViews.ts';
 
 export const ENGINE_TIMEOUT_MS = 60_000;
 
@@ -81,6 +84,7 @@ export type EngineStateView = {
   /** The money answer (BOOK-117); `null` from an engine that does not report caps. */
   budget: BudgetDto | null;
 };
+
 
 /** What a gate session receives (`engine/gates.ts` `GateAssignment`), narrowed to what we read. */
 /** Gate B's assignment: its own shape (a rule, no prose findings), `rule: null` for a clean scan. */
@@ -313,6 +317,12 @@ export type EngineClient = {
    * written through the engine because the writer holds no database handle.
    */
   writerBoot(): Promise<{ marked: boolean }>;
+  /** BOOK-206: claim one due filing for a read, or learn that there is none (or no money). */
+  nextTriage(session: string): Promise<TriageNextView>;
+  /** Store one validated answer — once per attempt; a second one answers `already`. */
+  verdictTriage(input: TriageVerdictInput): Promise<TriageVerdictView>;
+  /** Report the try as failed, so the engine backs off and, at the cap, raises a defect. */
+  failTriage(input: TriageFailInput): Promise<TriageFailView>;
 };
 
 function readToken(options: EngineClientOptions): string {
@@ -470,5 +480,15 @@ export function createEngineClient(options: EngineClientOptions): EngineClient {
     transcript: async (input) =>
       (await post('/internal/transcript', { passId: input.passId, rows: input.rows })) as TranscriptStored,
     writerBoot: async () => (await post('/internal/writer-boot', {})) as { marked: boolean },
+    nextTriage: async (session) => {
+      const data = await post('/internal/triage/next', { session });
+      if (data === null) return { assignment: null, reason: null };
+      const answer = data as Record<string, unknown>;
+      // The paused day is the engine's answer, not an error: no filing is claimed and none is lost.
+      if (answer.assignment === null) return { assignment: null, reason: answer.reason === 'budget' ? 'budget' : null };
+      return { assignment: data as TriageAskView, reason: null };
+    },
+    verdictTriage: async (input) => (await post('/internal/triage/verdict', input)) as TriageVerdictView,
+    failTriage: async (input) => (await post('/internal/triage/fail', input)) as TriageFailView,
   };
 }

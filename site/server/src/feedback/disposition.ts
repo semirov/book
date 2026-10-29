@@ -7,9 +7,9 @@
  * (`comments.sentence_id`), and the two numbers the report prints come from the block and the
  * live sentence row. What it does is enforce the
  * ladder's order (`as_said` → `through_paper` → `refused_in_world` → `inadmissible`), the
- * licence of each rung, the four locks, the anti-cheat caps and the escalation — so a decision
- * line cannot buy a refusal the book cannot back, and a filing that cannot be placed goes to
- * the author instead of being thrown away.
+ * licence of each rung, the four locks and the anti-cheat caps — so a decision line cannot buy a
+ * refusal the book cannot back, and a filing that cannot be placed lands at the floor instead of
+ * being thrown away or parked for a person.
  *
  * The rules, in the order they are applied:
  *
@@ -21,9 +21,12 @@
  *      needs a carrier from the closed six, ≥5 words of the reader's own wording kept verbatim
  *      and ≥1 fact changed. `refused_in_world` needs the four facts of a real refusal and the
  *      caps' leave.
- *   3. **One rung up, never down to a bin.** A failed carrier returns to `as_said`; a failed
- *      in-world refusal returns to `through_paper`, then `as_said`; and what is left is
- *      `escalated` — the author decides, and no change and no rejection is written.
+ *   3. **One rung up, never down to a bin — and the floor is `as_said`.** A failed carrier
+ *      returns to `as_said`; a failed in-world refusal returns to `through_paper`, then
+ *      `as_said`. The function is **total**: it never returns `escalated` (BOOK-206, ADR-045
+ *      §5) — a filing whose quote does not resolve and whose carrier is not licensed still
+ *      lands as `as_said` on its block anchor, because every stored filing has a place and no
+ *      filing waits for a person.
  *
  * Pure: no database, no clock, no I/O. The storage side is `dispositionStore.ts`.
  */
@@ -31,7 +34,6 @@
 import {
   CARRIER_KINDS,
   DISPOSITION_REASONS,
-  ESCALATION_QUESTION,
   LOCK_REASONS,
   STAMP_MAX_CHARS,
   normalizeCarrierKind,
@@ -85,9 +87,6 @@ export type DispositionDecision = {
   sentenceId: string | null;
   blockIndex: number | null;
   sentenceIndex: number | null;
-  escalated: boolean;
-  /** The question an escalated filing asks its author; null for every other outcome. */
-  question: string | null;
   /** The ambiguity form: `through_paper` named the plan it declined, because both existed. */
   alternate: boolean;
 };
@@ -252,8 +251,6 @@ function landed(input: ChooseDispositionInput, landing: Landing, asSaidHeld: boo
     sentenceId: anchor.sentenceId,
     blockIndex: anchor.blockIndex,
     sentenceIndex: anchor.sentenceIndex,
-    escalated: false,
-    question: null,
     // The declined plan is named only when it really existed: the `as_said` rung held **and**
     // there was a sentence for it to stand in. A filing whose sentence never resolved had no such
     // plan — its words could not have been taken as said even if nothing else pushed back — and
@@ -273,25 +270,6 @@ export function lockDecision(lock: DispositionLock): DispositionDecision {
     sentenceId: null,
     blockIndex: null,
     sentenceIndex: null,
-    escalated: false,
-    question: null,
-    alternate: false,
-  };
-}
-
-/** The ladder ran out: the author decides, and the filing is kept exactly as it is. */
-export function escalationDecision(): DispositionDecision {
-  return {
-    disposition: 'escalated',
-    lock: null,
-    carrierKind: null,
-    reason: DISPOSITION_REASONS.escalated,
-    quoteKept: null,
-    sentenceId: null,
-    blockIndex: null,
-    sentenceIndex: null,
-    escalated: true,
-    question: ESCALATION_QUESTION,
     alternate: false,
   };
 }
@@ -326,11 +304,12 @@ export function parseDispositionProposal(raw: unknown): DispositionProposal | nu
 }
 
 /**
- * The one decision function: locks, then the ladder over the proposal, then escalation.
+ * The one decision function: locks, then the ladder over the proposal, ending at the floor.
  *
  * A proposal may not refuse: `inadmissible` without a lock is read through the paper/said
- * ladder, and a proposal that names `escalated` is treated the same way — the ladder decides,
- * and it ends at the author's door when nothing fits.
+ * ladder, and a word this build does not know is treated the same way. The ladder is **total**
+ * (ADR-045 §5): its codomain is the three rungs plus the four locks, and the last rung is
+ * `as_said` on the filing's own block anchor — the one answer every stored filing can be given.
  */
 export function chooseDisposition(input: ChooseDispositionInput): DispositionDecision {
   const lock = lockOf(input);
@@ -350,8 +329,13 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
           { disposition: 'through_paper', carrierKind: licence.carrierKind, quoteKept: licence.quoteKept },
           asSaid,
         );
-  /** Rung 2, else rung 1, else the author: a failed carrier never falls to a bin. */
-  const oneRungUp = (): DispositionDecision => paperOutcome() ?? (asSaid ? asSaidOutcome() : escalationDecision());
+  /**
+   * Rung 2, else the floor: a failed carrier never falls to a bin. The floor is `as_said` even
+   * when `asSaidHolds` is false — a quote that resolved to no single sentence, or a standing
+   * literal rewritten without a carrier, is still read as said against the block it was filed
+   * on, and the reader is told how. There is no fifth state and no author's door (ADR-045 §5).
+   */
+  const oneRungUp = (): DispositionDecision => paperOutcome() ?? asSaidOutcome();
 
   switch (input.proposal.disposition ?? 'as_said') {
     case 'as_said':
@@ -364,12 +348,13 @@ export function chooseDisposition(input: ChooseDispositionInput): DispositionDec
           asSaid,
         );
       }
-      // One rung up: the paper it could be, then the words as said, then the author.
+      // One rung up: the paper it could be, then the words as said — the floor.
       return oneRungUp();
     case 'through_paper':
     case 'inadmissible':
-    case 'escalated':
     default:
+      // Anything else — the removed fifth state, a word this build does not know — is not a
+      // proposal: the ladder reads it one rung up, exactly as it reads a paper it cannot licence.
       return oneRungUp();
   }
 }

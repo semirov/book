@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -12,10 +12,9 @@ import { bootComments, commentBody, type Harness } from './comments/helpers.ts';
 import { longProse } from './helpers.ts';
 
 /**
- * M5 acceptance: a comment becomes a queued change only through a **valid intent**, an
- * intent naming another chapter is refused, a filing on the finale is batched and decided
- * like any other (BOOK-137), the batch is the only thing a model sees, and a decision line is
- * applied once.
+ * M5 acceptance: a comment becomes a queued change only through a **valid intent**, a filing on
+ * the finale is batched and decided like any other (BOOK-137), the batch is the only thing a
+ * model sees, and a decision line is applied once.
  */
 
 let harness: Harness | null = null;
@@ -262,34 +261,29 @@ describe('feedback.mjs decide — the intent is the gate', () => {
     expect(h.db.prepare('SELECT frame, outcome FROM changes').get()).toEqual({ frame: 'untouched', outcome: null });
   });
 
-  it('records a rejection with its public reason and queues nothing', async () => {
+  it('refuses a rejection with no lock in one plain line, and writes nothing (BOOK-206)', async () => {
     const h = await boot();
     const id = await comment(h);
     cli(h, 'inbox');
+    const before = h.db.prepare('SELECT status, reason FROM comments WHERE id = ?').get(id);
     const rejected = cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст');
-    expect(rejected.code).toBe(0);
-    // BOOK-174: a content rejection with no lock escalates — the reason is the author's
-    // question, and the exchange file keeps the word the operator typed (`rejected`).
-    expect(h.db.prepare('SELECT status, reason FROM comments WHERE id = ?').get(id)).toEqual({
-      status: 'escalated',
-      reason: 'можно ли оформить это бумагой?',
-    });
-    const line = JSON.parse(readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8').trim()) as Record<string, unknown>;
-    expect(line).toMatchObject({ id, status: 'rejected', changeId: null });
+    expect(rejected.code).toBe(1);
+    expect(rejected.out.join('\n')).toContain('отказ возможен только по замку');
+    // Nothing was written and no line was appended: a refusal is a lock, not a person's word.
+    expect(h.db.prepare('SELECT status, reason FROM comments WHERE id = ?').get(id)).toEqual(before);
+    expect(existsSync(join(dir ?? '', 'decisions.jsonl'))).toBe(false);
   });
 
-  it('refuses a second decision, and an unknown id', async () => {
+  it('refuses a rejection under a lock, and a second decision, and an unknown id', async () => {
     const h = await boot();
     const id = await comment(h);
     cli(h, 'inbox');
-    // BOOK-174: the first line escalates it; a re-run is a retry, not an answer.
-    expect(cli(h, 'decide', id, 'rejected', '--reason', 'не по тексту').code).toBe(0);
+    // BOOK-206: the one refusal left is a lock — a legal flag is the harm lock's fact.
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(id);
+    expect(cli(h, 'decide', id, 'rejected', '--reason', 'вне рамок: не про текст').code).toBe(0);
     const second = cli(h, 'decide', id, 'rejected', '--reason', 'ещё раз');
     expect(second.code).toBe(1);
-    expect(second.out.join('\n')).toContain('waits for the author');
-    // The author's answer is named, and after it the row is closed for good.
-    expect(cli(h, 'decide', id, 'rejected', '--reason', 'автор: нет', '--as', 'author').code).toBe(0);
-    expect(cli(h, 'decide', id, 'rejected', '--reason', 'ещё раз', '--as', 'author').code).toBe(1);
+    expect(second.out.join('\n')).toContain('already decided');
     expect(cli(h, 'decide', 'cmt_missing', 'rejected', '--reason', 'нет такого').code).toBe(1);
   });
 
@@ -422,7 +416,7 @@ describe('decisions tailing — the site turns a file line into an event', () =>
     expect(tailer.poll()).toBe(0);
   });
 
-  it('escalates an accepted line whose intent fails the schema (BOOK-174: no bare rejection)', async () => {
+  it('ignores an accepted line whose intent fails the schema: no lock, no refusal, no state (BOOK-206)', async () => {
     const h = await boot();
     const id = await comment(h);
     const emitted: Array<{ type: string; data: unknown }> = [];
@@ -446,10 +440,14 @@ describe('decisions tailing — the site turns a file line into an event', () =>
       })}\n`,
       'utf8',
     );
-    expect(tailer.poll()).toBe(1);
-    // A filing is never thrown away outside a lock: the author decides, and the frame says so.
-    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'escalated' });
-    expect(emitted[0]).toMatchObject({ type: 'comment:decision', data: { status: 'escalated', reason: 'можно ли оформить это бумагой?' } });
+    expect(tailer.poll()).toBe(0);
+    // A line that would refuse a filing outside a lock writes nothing: the row keeps its state,
+    // no frame is emitted, and the reason is one operator event.
+    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'new' });
+    expect(emitted).toEqual([]);
+    expect(
+      h.db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE comment_id = ? AND type = 'decision-ignored'`).get(id),
+    ).toEqual({ n: 1 });
   });
 
   it('applies a rejected line idempotently and announces batches', async () => {
@@ -471,10 +469,13 @@ describe('decisions tailing — the site turns a file line into an event', () =>
       `${JSON.stringify({ id, status: 'rejected', reason: 'вне рамок: не про текст', at: h.clock.now().toISOString() })}\n`,
       'utf8',
     );
-    expect(tailer.poll()).toBe(2);
+    expect(tailer.poll()).toBe(1);
     expect(emitted.map((event) => event.type)).toContain('feedback:batch');
     expect(tailer.poll()).toBe(0);
-    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'escalated' });
+    // A rejected line with no lock is a diagnostic that asks for a state the ladder cannot make:
+    // the row is untouched and no `comment:decision` is announced for it.
+    expect(h.db.prepare('SELECT status FROM comments WHERE id = ?').get(id)).toEqual({ status: 'batched' });
+    expect(emitted.map((event) => event.type)).not.toContain('comment:decision');
   });
 
   it('ignores a malformed line and an unknown comment', async () => {

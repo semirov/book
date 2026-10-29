@@ -120,6 +120,11 @@ export const readerSentences = {
    * transcript, where an operator reads them.
    */
   tier0Failed: 'правка не прошла счётные проверки — текст не тронут, правка остаётся в очереди',
+  /**
+   * BOOK-206 + BOOK-173 §4: the filing the patch would be written from has not been read yet.
+   * The sentence says the fact (nobody judged the words), never the machinery (a claim, a try).
+   */
+  triageRequired: 'заявка ещё не прочитана — правка не внесена, шаг остаётся в очереди',
 } as const;
 
 /**
@@ -165,6 +170,8 @@ function sentenceFor(code: string): string | null {
   if (code === 'JUDGE_VETO') return readerSentences.judgeVeto;
   // BOOK-DOC-80: the countable tier refused the patch; no model was asked after it.
   if (code === 'TIER0_FAILED') return readerSentences.tier0Failed;
+  // BOOK-206: the patch waits for the filing's own read — the writer buys it, nobody else can.
+  if (code === 'TRIAGE_REQUIRED') return readerSentences.triageRequired;
   return null;
 }
 

@@ -114,6 +114,22 @@ export type EstimateInput = {
 };
 
 /**
+ * BOOK-206: one triage call, priced before it is made. The same `CHARS_PER_TOKEN` and the same
+ * rate table as a pass — a triage call is a `pass_spend` row like any other, so it is estimated
+ * the same way. `maxOutput` is the call's own cap (`TRIAGE_MAX_TOKENS`), not a guess.
+ */
+export function estimateTriageUsd(input: {
+  pricing: PipelinePricing;
+  promptChars: number;
+  maxOutput: number;
+}): { usd: number; tokensIn: number; tokensOut: number } {
+  const tokensIn = Math.ceil(input.promptChars / CHARS_PER_TOKEN);
+  const tokensOut = Math.max(0, Math.trunc(input.maxOutput));
+  const usd = costUsd(input.pricing, { in: tokensIn, out: tokensOut, cachedIn: 0 });
+  return { usd, tokensIn, tokensOut };
+}
+
+/**
  * One pass, priced before it runs: writing calls (a draft, its retry, its continuations, plus
  * the revision cycle) at a whole chapter's completion, and the gate calls at the prompt with the
  * landed chapter in it. Prompt tokens are counted per call, because every call carries a prompt.

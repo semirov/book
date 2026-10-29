@@ -44,6 +44,7 @@ export function Opening({
   live,
   chronicle,
   stages,
+  reading,
 }: {
   front: FrontDto;
   state: StateSnapshot;
@@ -64,6 +65,8 @@ export function Opening({
   chronicle?: boolean;
   /** BOOK-156 #3814: the page's stage log — the running head says the book is being written. */
   stages?: Stages;
+  /** BOOK-104 / BOOK-207: the page's one reading model, resolved in `App`. */
+  reading: { n: number | null; page: number | null };
 }) {
   const stage = useFrontSequence(motion?.token ?? 0);
   const seq = stage !== 'idle';
@@ -86,6 +89,7 @@ export function Opening({
         onOpenChange={onOpenChange}
         live={live}
         stages={stages}
+        reading={reading}
       />
       <ViewSwitch view={view} onChange={onViewChange} live={wayIn} />
     </>

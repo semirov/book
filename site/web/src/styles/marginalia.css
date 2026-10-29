@@ -1,12 +1,20 @@
 /**
- * BOOK-90 — marginalia: the mark at the sentence, the note in the margin, the phone strip
- * object, the phone strip.
+ * BOOK-90 — marginalia: the mark at the sentence, the note in the margin, the phone strip.
  *
  * One vocabulary, one geometry. Every horizontal number is measured from the **prose's right
- * edge** (`left: 100% + var(--note-gap)`, `left: 100%`), never from the frame: the note's left
- * edge must be the same distance from the same thing at every width. The five tokens are
- * declared in `tokens.css`; `--note-fit` is the note's used width — the design's 188 px while
- * the channel holds it, the channel itself from there down to 1024 (BOOK-91).
+ * edge** — the mark at `left: calc(100% + var(--mark-air))`, the note at
+ * `left: calc(100% + var(--note-gap))`, the phone's tick at `left: 100%` — never from the
+ * frame: the note's left edge must be the same distance from the same thing at every width.
+ * The tokens are declared in `tokens.css`: 16 px of air at the measure (`--mark-air`), the
+ * mark's 40 px target, then the note, then 8 px before the viewport's edge — so `--note-gap`
+ * is 56 and the note starts where the numeral's target ends. `--note-fit` is the note's used
+ * width — the design's 188 px while the channel holds it, the channel itself from there down
+ * (128 at 1024), never below `--note-min` (BOOK-91/BOOK-208).
+ *
+ * Every `left` and `width` below carries its token's own fallback (`var(--note-gap, 56px)`,
+ * `var(--note-fit, var(--note-w, 188px))`). Without one, a page that lost the token block made
+ * the declaration invalid at computed-value time: `left` fell back to `auto` and `width` to
+ * `auto`, and the note landed shrink-to-fit **inside** the text it annotates.
  *
  * No `position: fixed` above 1023, no shadow on the channel object (a form inserted into the
  * page is not raised above it), no transitions on geometry — opacity only, once.
@@ -19,11 +27,12 @@
 }
 .filing-mark {
   position: absolute;
-  left: 100%;
+  /* The mark's target stands *after* the air: its box is the numeral's room, not the gap. */
+  left: calc(100% + var(--mark-air, 16px));
   top: 0;
   display: flex;
   align-items: center;
-  width: var(--mark-hit);
+  width: var(--mark-hit, 40px);
   height: 44px;
   margin: 0;
   padding: 0 0 0 4px;
@@ -98,8 +107,8 @@
 /* ---------- the margin note (≥1024) ---------- */
 .margin-note {
   position: absolute;
-  left: calc(100% + var(--note-gap));
-  width: var(--note-fit);
+  left: calc(100% + var(--note-gap, 56px));
+  width: var(--note-fit, var(--note-w, 188px));
   margin: 0;
   padding: 6px 0 8px;
   border: 0;
@@ -176,10 +185,15 @@
 }
 
 /* ---------- the measured guard (BOOK-DOC-47 §7) ----------
-   The margin is measured from the prose's right edge; when `right + 40 + width + 8` does not fit
+   The margin is measured from the prose's right edge; when `right + 56 + width + 8` does not fit
    the viewport, the paragraph is a strip and the note would be clipped. `width` is
-   `--note-fit`, the width CSS paints (BOOK-91), so the pass and the sheet agree. The pass
-   writes `data-margin` per paragraph — this is not a second breakpoint. */
+   `--note-fit`, the width CSS paints (BOOK-91), and 56 is what the pass reads out of the
+   tokens:
+   `--mark-air` + `--mark-hit`, both plain px (`lib/marginPass.ts` `noteGapFrom`), because a
+   custom property's computed value is an unevaluated token stream and `--note-gap` itself is a
+   `calc()` no one can parse — air + target is the same sum. A channel narrower than
+   `--note-min` holds no note at all: `noteWidth` answers 0 and the paragraph is a strip. The
+   pass writes `data-margin` per paragraph — this is not a second breakpoint. */
 .p[data-margin='strip'] .margin-note {
   display: none;
 }
@@ -262,9 +276,11 @@
   min-height: var(--offset-bottom);
 }
 
-/* ---------- one breakpoint, one rule: <1024 is the strip and the sheet ---------- */
+/* ---------- one breakpoint, one rule: <1024 is the strip ---------- */
 @media (max-width: 1023px) {
   .filing-mark {
+    /* There is no channel to stand in: the tick sits at the measure's own edge, inside it. */
+    left: 100%;
     width: 24px;
     /* The design's phone tick sits 2 px inside the 24 px target (368 in [366, 390]). */
     padding-left: 2px;

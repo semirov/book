@@ -5,9 +5,12 @@
  * different jobs: the CLI parses flags and prints sentences, this module asks the gates, records
  * the answer and hands the reader a line. It never calls a model and never writes prose.
  *
- * BOOK-174 adds the one second decision the ladder allows: an escalated filing waits for the
- * author, so `decide <id> accepted` places it and `decide <id> rejected` ends it. No other row
- * may be decided twice — first decision wins, as it always did.
+ * BOOK-206 — it is a **diagnostic**, not the filing's door: the automatic path (writer → engine →
+ * applier) places every filing, and this module can only do what a person could still need on a
+ * stuck row. `decide accepted` keeps the old rule and requires a recorded `FITS` (it passes no
+ * precomputed reading, so an `OFF` filing cannot be minted into a change here). `decide rejected`
+ * refuses **only under a lock** — the ladder's one refusal — and says so in one plain line when
+ * the filing has none; it never escalates and never invents a change.
  */
 
 import {
@@ -25,7 +28,6 @@ import { isEditExempt } from '../comments/budget.ts';
 import { editIdentityKey, editIpKeyFromHash } from '../rate/policy.ts';
 import { RateLimiter, type LimitSpec } from '../rate/limiter.ts';
 import { acceptComment } from './accept.ts';
-import { refuseEscalated } from './author.ts';
 import { appendDecision } from './decisionsFile.ts';
 import { disposeRejection } from './dispositionStore.ts';
 import { chapterVocabulary } from './vocabulary.ts';
@@ -44,21 +46,10 @@ export function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): num
     io.print(`unknown comment: ${commentId}`);
     return 1;
   }
-  // BOOK-174: an escalated filing is **waiting for the author**, so this is the one row a second
-  // decision may move — and only one: once it is accepted or refused, the first decision wins
-  // again. The answer must be named as the author's (`--as author`): a re-run of the triage line
-  // that escalated the filing is a retry, not an answer, and it must not turn an escalation into
-  // a refusal (or spend the attempt twice).
-  const escalated = comment.status === 'escalated';
-  const asAuthor = parsed.flags.get('as') === 'author';
-  if (comment.decided_at !== null && !escalated) {
+  // BOOK-206: there is no second decision — the automatic path places every filing, and this CLI
+  // is a diagnostic on a row that has not been decided yet. First decision wins, always.
+  if (comment.decided_at !== null) {
     io.print(`refused: ${commentId} is already decided (first decision wins)`);
-    return 1;
-  }
-  if (escalated && !asAuthor) {
-    io.print(
-      `refused: ${commentId} waits for the author — answer with decide <id> accepted|rejected --as author`,
-    );
     return 1;
   }
   // BOOK-158: the money of the answer, named on the command line. Read before anything is
@@ -88,28 +79,15 @@ export function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): num
     return 1;
   }
   const at = now().toISOString();
-  if (verdict === 'rejected' && escalated) {
-    // The author answers the question the ladder asked. «No» is the end of the ladder, and the
-    // one refusal that needs no lock: the book's owner speaking, not a gate.
-    refuseEscalated(io.db, { comment, at, reason: reason.reason });
-    appendDecision(io.dir, {
-      id: comment.id,
-      status: 'rejected',
-      reason: reason.reason,
-      at,
-      batch: comment.batch_id,
-      changeId: null,
-    });
-    // The attempt is closed as `refused`: the author read it and said no — nobody else refused it.
-    settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
-    io.print(`${comment.id}: rejected — решает автор: отклонено`);
-    return 0;
-  }
   if (verdict === 'rejected') {
-    // BOOK-174: a rejection is a refusal only under a lock; otherwise the filing is escalated
-    // and the author decides. The exchange file keeps its two words (`rejected`), the row keeps
-    // its own: the site's tailer emits the row's status, never the line's.
+    // BOOK-206: a refusal is a lock, and only a lock. A filing with no lock is placed by the
+    // ladder, never refused by a person — the CLI says so in one line and writes nothing. The
+    // exchange file keeps its two words (`rejected`), the row keeps its own.
     const result = disposeRejection(io.db, { comment, at, batch: comment.batch_id, note: reason.reason });
+    if (result.status === 'no-lock') {
+      io.print(`refused: ${commentId} — отказ возможен только по замку — смотрите отчёт триажа`);
+      return 1;
+    }
     appendDecision(io.dir, {
       id: comment.id,
       status: 'rejected',
@@ -118,17 +96,10 @@ export function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): num
       batch: comment.batch_id,
       changeId: null,
     });
-    // BOOK-158: the answer closes the attempt it replied to and still charges the call — the model
-    // was paid either way. BOOK-174: only a lock is a refusal; an escalation is a filing waiting
-    // for a person, and the ledger says `held` rather than pretending somebody refused it.
-    settleAttempt(io.db, {
-      commentId: comment.id,
-      chapter: comment.chapter,
-      outcome: result.status === 'rejected' ? 'refused' : 'held',
-      at,
-      spend: spend.spend,
-    });
-    io.print(`${comment.id}: ${result.status}${result.decision.lock === null ? '' : ` (${result.decision.lock})`}`);
+    // BOOK-158: the answer closes the attempt it replied to and still charges the call — the
+    // model was paid either way.
+    settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'refused', at, spend: spend.spend });
+    io.print(`${comment.id}: rejected${result.decision.lock === null ? '' : ` (${result.decision.lock})`}`);
     return 0;
   }
 
@@ -216,27 +187,6 @@ export function decide(parsed: ParsedArgs, io: FeedbackIo, now: () => Date): num
     const prefix = accepted.code === undefined ? 'refused' : `refused (${accepted.code})`;
     io.print(`${prefix}: ${accepted.error}`);
     return 1;
-  }
-  // BOOK-174: the ladder could not place the filing and no lock applies. Nothing was queued, no
-  // slot is spent, and the row waits for the author — one `escalated` record and one file line.
-  if ('escalated' in accepted) {
-    const escalation = disposeRejection(io.db, {
-      comment,
-      at,
-      batch: comment.batch_id,
-      note: accepted.decision.reason,
-    });
-    appendDecision(io.dir, {
-      id: comment.id,
-      status: 'rejected',
-      reason: escalation.reason,
-      at,
-      batch: comment.batch_id,
-      changeId: null,
-    });
-    settleAttempt(io.db, { commentId: comment.id, chapter: comment.chapter, outcome: 'held', at, spend: spend.spend });
-    io.print(`${comment.id}: escalated — решает автор`);
-    return 0;
   }
   // The slot is taken only once the change exists: a refusal must leave the budget intact.
   // Both keys are recorded in one transaction, so a fault cannot spend one and not the other.

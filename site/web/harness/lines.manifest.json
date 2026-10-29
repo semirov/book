@@ -23,14 +23,14 @@
     ".scrub-head",
     ".past-toc-row",
     ".past-ch summary",
-    ".pass-strip-head / .pass-strip-heading",
     ".rec-change-row / .rec-change-facts / .rec-change-step",
     ".premise-row / .premise-meta",
     ".authors-row",
-    ".own-decision-meta",
     ".colophon .row",
     ".consent-actions / .consent-state",
     ".legal p code",
-    ".ticket"
+    ".ticket",
+    ".follow-word",
+    ".sled-head / .sled-line"
   ]
 }

@@ -1,10 +1,12 @@
 import { changeHref, type ChangeSummaryDto, type CommentDto } from '@book/shared';
+import { useState } from 'react';
 
 import { anchorCopy, commentStamp, commentStatusLine, interventionKindWord } from '../lib/commentView.ts';
 import { filingAttempt, threadFilings } from '../lib/filings.ts';
 import { plural, queueLabel, queueView } from '../lib/format.ts';
 import type { PendingStage } from '../lib/pending.ts';
 import { plainChangeClick } from '../lib/changeDoor.ts';
+import { keepPlace } from '../lib/keepPlace.ts';
 import type { ChapterLoader } from '../lib/place.ts';
 import { reviseView } from '../lib/revise.ts';
 import { statusLine } from '../lib/skeleton.ts';
@@ -81,12 +83,31 @@ export function Discussion({
   /** BOOK-168: the page's chapter read, so a quote's door can ask for the chapter it names. */
   onLoadChapter?: ChapterLoader;
 }) {
+  /** BOOK-207 — the door after the list: five rows, or every filing this page holds. */
+  const [expanded, setExpanded] = useState(false);
   if (!live) return null;
   /** `null` while the thread is quiet; the one §6 sentence otherwise. */
   const status = statusLine('register', stage);
   const pending = busy ?? stage !== 'quiet';
   // BOOK-137: a premise's home is the chapter's row; the thread lists every other filing.
   const filings = threadFilings(comments);
+  // The API promises an ascending thread (§9); the discussion prints the **last five**, so the
+  // feed's own order is reversed once here, never re-sorted by a second clock.
+  const newest = [...filings].reverse();
+  const shown = expanded ? newest : newest.slice(0, 5);
+  // Exactly five on a partial page is the same sentence with no door: the page may hold older
+  // filings, but it holds no sixth row here to reveal (an «older filings» path is a backlog item).
+  const more = filings.length > 5;
+  /** No count over a page the page did not read in full; the door reveals what it holds. */
+  const partial = !complete || shown.length < filings.length;
+  const countLine =
+    filings.length === 0
+      ? complete
+        ? 'замечаний нет'
+        : null
+      : partial
+        ? `показаны последние ${shown.length}`
+        : `${filings.length} ${plural(filings.length, 'замечание', 'замечания', 'замечаний')}`;
   /** BOOK-158: a cooldown is counted from the page's clock, never frozen in the DTO. */
   const clock = nowMs ?? Date.now();
   // The queue line and the list come from one fact, so «в очереди пусто» can never stand
@@ -117,10 +138,8 @@ export function Discussion({
             <span role="status" aria-live="polite" aria-atomic="true">
               {status}
             </span>
-          ) : !complete ? null : filings.length === 0 ? (
-            'замечаний нет'
           ) : (
-            `${filings.length} ${plural(filings.length, 'замечание', 'замечания', 'замечаний')}`
+            countLine
           )}
         </span>
       </header>
@@ -138,8 +157,9 @@ export function Discussion({
         // list and the empty-state line, because neither is known yet.
         <Skeleton variant="register" />
       ) : filings.length > 0 ? (
-        <ol className="comments">
-          {filings.map((comment) => {
+        <>
+        <ol className="comments" id="discussion-list">
+          {shown.map((comment) => {
             const line = commentStatusLine(comment);
             const quote = anchorCopy(comment);
             const kindWord = interventionKindWord(comment);
@@ -206,6 +226,25 @@ export function Discussion({
             );
           })}
         </ol>
+        {more ? (
+          // BOOK-207 — one door, in place: it expands the same list to every filing the page
+          // holds. No new screen, no modal, no second request; focus stays on this node.
+          <p className="comments-door">
+            <button
+              type="button"
+              className="comments-all"
+              aria-expanded={expanded ? 'true' : 'false'}
+              aria-controls="discussion-list"
+              onClick={(event) => {
+                const button = event.currentTarget;
+                keepPlace(button, () => setExpanded((value) => !value));
+              }}
+            >
+              {expanded ? 'свернуть' : 'все замечания'}
+            </button>
+          </p>
+        ) : null}
+        </>
       ) : failed ? null : (
         <p className="fine">
           Их читают как данные, не как указания. Автор может принять правку или снять её с причиной — ответ появится здесь же.

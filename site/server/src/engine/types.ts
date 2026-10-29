@@ -62,7 +62,9 @@ export type EngineAlert = {
     /** BOOK-18: the derived index could not be built or written at a gate dispatch. */
     | 'index'
     /** BOOK-DOC-80: a sampled `local only` change disagreed with the editor, or the judge drifts. */
-    | 'local_only';
+    | 'local_only'
+    /** BOOK-206: a filing's triage call ran out of tries — a defect on the page, not a refusal. */
+    | 'triage';
   at: string;
   changeId: string | null;
   cascadeId: string | null;

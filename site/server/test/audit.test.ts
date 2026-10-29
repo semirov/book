@@ -134,7 +134,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 1 });
   });
 
-  it('OFF records the verdict and answers the reader in the same act (BOOK-174: not a bare refusal)', async () => {
+  it('OFF records the verdict and leaves the row to the applier (BOOK-206: it answers nothing)', async () => {
     const h = await boot();
     const id = await comment(h);
     expect(cli(h, 'inbox').code).toBe(0);
@@ -144,31 +144,24 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(audited.code).toBe(0);
     expect(audited.out.join('\n')).toContain('OFF');
 
-    // The verdict is recorded; the answer is the ladder's, not the auditor's sentence: nothing
-    // about «this world does not ask for miracles» is a lock, so the author's door is the answer.
+    // The verdict is recorded and **nothing else moves**: no status, no chain, no decision, no
+    // line. The reading the answer carried is placed by the automatic applier, never here.
     const row = auditRow(h, id);
     expect(row).toMatchObject({
-      status: 'escalated',
-      reason: 'можно ли оформить это бумагой?',
-      disposition: 'escalated',
+      status: 'batched',
+      reason: null,
+      disposition: null,
       lock: null,
+      decided_at: null,
       audit_verdict: 'OFF',
       audit_reason: reason,
       audited_by: 'triage-1',
       change_id: null,
     });
-    expect(typeof row.decided_at).toBe('string');
-    // The auditor's own sentence is kept for the operator, in the event.
-    const event = h.db
-      .prepare(`SELECT meta FROM comment_events WHERE comment_id = ? AND type = 'escalated'`)
-      .get(id) as { meta: string };
-    expect(JSON.parse(event.meta)).toMatchObject({ status: 'escalated', note: reason });
-
-    // Every answer is a decision line the site tails, exactly like a triage rejection.
-    const line = JSON.parse(readFileSync(join(dir ?? '', 'decisions.jsonl'), 'utf8').trim()) as Record<string, unknown>;
-    expect(line).toMatchObject({ id, status: 'rejected', reason: 'можно ли оформить это бумагой?', changeId: null });
-
-    // No change exists, and the single choke point refuses the comment afterwards.
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM comment_events WHERE type IN ('decided','escalated')`).get()).toEqual({
+      n: 0,
+    });
+    // No answer line is written, and the single choke point still refuses the comment afterwards.
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM changes').get()).toEqual({ n: 0 });
     const refused = acceptComment(h.db, {
       comment: readCommentRow(h.db, id)!,
@@ -239,8 +232,10 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(second.out.join('\n')).toContain('already has a verdict');
     expect(auditRow(h, id)).toMatchObject({ audit_verdict: 'FITS', audit_reason: null, status: 'new' });
 
-    // A decided comment is not audited after the fact either.
+    // A decided comment is not audited after the fact either — and the one refusal left is a
+    // lock, so the row is refused under its own fact (BOOK-206).
     const other = await comment(h, 'Второй абзац стоит сократить.');
+    h.db.prepare(`UPDATE comments SET guard = 'legal' WHERE id = ?`).run(other);
     expect(cli(h, 'decide', other, 'rejected', '--reason', 'не по тексту').code).toBe(0);
     const late = cli(h, 'audit', other, '--verdict', 'FITS');
     expect(late.code).toBe(1);
@@ -296,7 +291,7 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     expect(auditRow(h, id)).toMatchObject({ audit_verdict: null, status: 'new', decided_at: null });
   });
 
-  it('shows the reader the reading, and no verdict vocabulary', async () => {
+  it('shows the reader no verdict vocabulary and no answer the ladder has not placed', async () => {
     const h = await boot();
     const id = await comment(h);
     const reason = 'вне книги: этот мир не просит чудес';
@@ -305,21 +300,14 @@ describe('feedback.mjs audit — the verdict is data, written once, before triag
     const listed = await h.app.inject({ method: 'GET', url: '/api/comments?chapter=8' });
     expect(listed.statusCode).toBe(200);
     const item = (listed.json() as { items: Array<Record<string, unknown>> }).items[0] ?? {};
-    // BOOK-174: the reader is owed the reading, not the auditor's note — an `OFF` with no lock
-    // escalates, and the report says whose turn it is.
-    expect(item).toMatchObject({
-      id,
-      status: 'escalated',
-      reason: 'можно ли оформить это бумагой?',
-      disposition: 'escalated',
-    });
-    // A gate's word is not a state and not a refusal: nothing refused this filing.
+    // BOOK-206: an `OFF` records the verdict and leaves the row — nothing is decided, no report
+    // exists, and the reader is told neither the note nor a verdict word.
+    expect(item).toMatchObject({ id, status: 'new', reason: null, disposition: null, report: null });
     expect(item.refusal).toBeNull();
-    expect((item.report as { line1: string }).line1).toBe('ждёт решения автора');
     const body = JSON.stringify(listed.json());
     for (const word of ['auditVerdict', 'audit_verdict', 'FITS', 'OFF']) expect(body).not.toContain(word);
     const single = await h.app.inject({ method: 'GET', url: `/api/comments/${id}` });
-    expect(single.json()).toMatchObject({ status: 'escalated', reason: 'можно ли оформить это бумагой?' });
+    expect(single.json()).toMatchObject({ status: 'new', reason: null });
     expect(JSON.stringify(single.json())).not.toContain('audit_verdict');
   });
 });
@@ -394,10 +382,11 @@ describe('recordAudit — the module, not the CLI, is the choke point', () => {
       recordAudit(h.db, { commentId: 'cmt_01JB7AUDIT00000000000000C', verdict: 'OFF', reason: 'вне книги:\n\n  этот   мир\nне просит чудес', by: null, at }),
     ).toEqual({ ok: true, verdict: 'OFF' });
     expect(auditRow(h, 'cmt_01JB7AUDIT00000000000000C')).toMatchObject({
-      // The note is folded and bounded for the operator; the reader is owed the answer.
+      // The note is folded and bounded for the operator; the row itself is left for the applier.
       audit_reason: 'вне книги: этот мир не просит чудес',
-      reason: 'можно ли оформить это бумагой?',
-      status: 'escalated',
+      reason: null,
+      status: 'new',
+      decided_at: null,
     });
 
     expect(
