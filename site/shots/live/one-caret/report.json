@@ -1,7 +1,7 @@
 {
-  "capturedAt": "2026-10-29T16:26:06.683Z",
+  "capturedAt": "2026-10-29T17:27:29.937Z",
   "worktree": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum",
-  "browser": "ws://127.0.0.1:9334/devtools/browser/943c0776-1680-47ea-8225-7fff9f2e404f",
+  "browser": "ws://127.0.0.1:9334/devtools/browser/a12b03b7-cfd6-44d0-a748-1347ffcf9e56",
   "contract": {
     "sampleMs": 50,
     "writeGapMs": 1200,
@@ -48,29 +48,32 @@
       "writes": [
         {
           "rev": 2,
-          "at": "2026-10-29T16:23:58.237Z",
+          "at": "2026-10-29T17:24:40.620Z",
           "phrase": "Она походила на мою",
           "replacement": "Она походила на мою подпись, как тень на человека"
         },
         {
           "rev": 3,
-          "at": "2026-10-29T16:23:59.437Z",
+          "at": "2026-10-29T17:24:41.820Z",
           "phrase": "как тень на человека",
           "replacement": "как тень на человека, брошенная на снег"
         }
       ],
       "chain": {
         "writeGapMs": 1200,
-        "insertGapMs": 1334,
-        "firstSettleAt": 1793291039569,
-        "secondFirstInkAt": 1793291039724,
-        "firstSettleToSecondInkMs": 155,
+        "insertGapMs": 1409,
+        "firstSettleAt": 1793294682027,
+        "secondFirstInkAt": 1793294682498,
+        "firstSettleToSecondInkMs": 471,
         "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
       },
       "printed": true,
       "contract": {
-        "printingSamples": 16,
+        "printingSamples": 19,
         "caretCounts": [
+          1,
+          1,
+          1,
           1,
           1,
           1,
@@ -91,8 +94,8 @@
         "caretTopFirst": 549.54,
         "caretTopLast": 579.78,
         "caretTravelPx": 30.2,
-        "caretAdvancePx": 20.1,
-        "revealedFirst": 9,
+        "caretAdvancePx": 29.2,
+        "revealedFirst": 5,
         "revealedLast": 30,
         "planTotal": 30,
         "worstPlanDelta": 0,
@@ -106,8 +109,11 @@
       "frameShape": "patchTruncated false, span 1, patch 1",
       "serverProbe": null,
       "caretWindow": {
-        "printingSamples": 16,
+        "printingSamples": 19,
         "caretCounts": [
+          1,
+          1,
+          1,
           1,
           1,
           1,
@@ -128,8 +134,8 @@
         "caretTopFirst": 549.54,
         "caretTopLast": 579.78,
         "caretTravelPx": 30.2,
-        "caretAdvancePx": 20.1,
-        "revealedFirst": 9,
+        "caretAdvancePx": 29.2,
+        "revealedFirst": 5,
         "revealedLast": 30,
         "planTotal": 30,
         "worstPlanDelta": 0,
@@ -137,14 +143,8 @@
         "goneAtSettle": true
       },
       "secondWindow": {
-        "printingSamples": 13,
+        "printingSamples": 7,
         "caretCounts": [
-          1,
-          1,
-          1,
-          1,
-          1,
-          1,
           1,
           1,
           1,
@@ -156,9 +156,9 @@
         "caretTopFirst": 579.78,
         "caretTopLast": 579.78,
         "caretTravelPx": 0,
-        "caretAdvancePx": 20.1,
-        "revealedFirst": 3,
-        "revealedLast": 18,
+        "caretAdvancePx": 12.1,
+        "revealedFirst": 14,
+        "revealedLast": 19,
         "planTotal": 19,
         "worstPlanDelta": 0,
         "boxShiftPx": 0,
@@ -166,7 +166,49 @@
       },
       "samples": [
         {
-          "t": 1793291038726,
+          "t": 1793294681000,
+          "pass": true,
+          "beat": "type",
+          "revealed": 5,
+          "expected": 5,
+          "carets": 1,
+          "caretTop": 549.54,
+          "passNodes": 5,
+          "rect": {
+            "top": 247.14,
+            "height": 454.52
+          }
+        },
+        {
+          "t": 1793294681057,
+          "pass": true,
+          "beat": "type",
+          "revealed": 7,
+          "expected": 7,
+          "carets": 1,
+          "caretTop": 549.54,
+          "passNodes": 5,
+          "rect": {
+            "top": 247.14,
+            "height": 454.52
+          }
+        },
+        {
+          "t": 1793294681109,
+          "pass": true,
+          "beat": "type",
+          "revealed": 8,
+          "expected": 8,
+          "carets": 1,
+          "caretTop": 549.54,
+          "passNodes": 5,
+          "rect": {
+            "top": 247.14,
+            "height": 454.52
+          }
+        },
+        {
+          "t": 1793294681162,
           "pass": true,
           "beat": "type",
           "revealed": 9,
@@ -180,7 +222,7 @@
           }
         },
         {
-          "t": 1793291038778,
+          "t": 1793294681216,
           "pass": true,
           "beat": "type",
           "revealed": 9,
@@ -194,7 +236,7 @@
           }
         },
         {
-          "t": 1793291038831,
+          "t": 1793294681269,
           "pass": true,
           "beat": "type",
           "revealed": 10,
@@ -208,10 +250,10 @@
           }
         },
         {
-          "t": 1793291038882,
+          "t": 1793294681323,
           "pass": true,
           "beat": "type",
-          "revealed": 11,
+          "revealed": 12,
           "expected": 12,
           "carets": 1,
           "caretTop": 579.78,
@@ -222,7 +264,7 @@
           }
         },
         {
-          "t": 1793291038935,
+          "t": 1793294681375,
           "pass": true,
           "beat": "type",
           "revealed": 13,
@@ -236,7 +278,7 @@
           }
         },
         {
-          "t": 1793291038989,
+          "t": 1793294681429,
           "pass": true,
           "beat": "type",
           "revealed": 14,
@@ -250,7 +292,7 @@
           }
         },
         {
-          "t": 1793291039042,
+          "t": 1793294681482,
           "pass": true,
           "beat": "type",
           "revealed": 15,
@@ -264,10 +306,10 @@
           }
         },
         {
-          "t": 1793291039094,
+          "t": 1793294681535,
           "pass": true,
           "beat": "type",
-          "revealed": 17,
+          "revealed": 18,
           "expected": 18,
           "carets": 1,
           "caretTop": 579.78,
@@ -278,10 +320,10 @@
           }
         },
         {
-          "t": 1793291039147,
+          "t": 1793294681588,
           "pass": true,
           "beat": "type",
-          "revealed": 19,
+          "revealed": 18,
           "expected": 19,
           "carets": 1,
           "caretTop": 579.78,
@@ -292,7 +334,7 @@
           }
         },
         {
-          "t": 1793291039200,
+          "t": 1793294681641,
           "pass": true,
           "beat": "type",
           "revealed": 20,
@@ -306,7 +348,7 @@
           }
         },
         {
-          "t": 1793291039252,
+          "t": 1793294681694,
           "pass": true,
           "beat": "type",
           "revealed": 22,
@@ -320,10 +362,10 @@
           }
         },
         {
-          "t": 1793291039305,
+          "t": 1793294681748,
           "pass": true,
           "beat": "type",
-          "revealed": 23,
+          "revealed": 24,
           "expected": 24,
           "carets": 1,
           "caretTop": 579.78,
@@ -334,7 +376,7 @@
           }
         },
         {
-          "t": 1793291039358,
+          "t": 1793294681801,
           "pass": true,
           "beat": "type",
           "revealed": 25,
@@ -348,7 +390,7 @@
           }
         },
         {
-          "t": 1793291039411,
+          "t": 1793294681855,
           "pass": true,
           "beat": "type",
           "revealed": 27,
@@ -362,7 +404,7 @@
           }
         },
         {
-          "t": 1793291039464,
+          "t": 1793294681908,
           "pass": true,
           "beat": "type",
           "revealed": 29,
@@ -376,7 +418,7 @@
           }
         },
         {
-          "t": 1793291039517,
+          "t": 1793294681961,
           "pass": true,
           "beat": "type",
           "revealed": 30,
@@ -390,7 +432,7 @@
           }
         },
         {
-          "t": 1793291039569,
+          "t": 1793294682027,
           "pass": false,
           "beat": null,
           "revealed": -1,
@@ -404,17 +446,17 @@
           }
         }
       ],
-      "secondSamples": 14,
+      "secondSamples": 8,
       "stored": [
         {
           "rev": 3,
-          "at": "2026-10-29T16:23:59.437Z",
+          "at": "2026-10-29T17:24:41.820Z",
           "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
           "snapshot": "versions/ch12/05a04ae842060882a106a174e787e072f9b8b9830bebf3350c09eb1d8407cabd.md"
         },
         {
           "rev": 2,
-          "at": "2026-10-29T16:23:58.237Z",
+          "at": "2026-10-29T17:24:40.620Z",
           "stepId": "stp_01M610XA0DV4TH0S2VJMAZN4A2",
           "snapshot": "versions/ch12/728e7115435f81489bca685e0faffb2eb6790bc57810cdb51c1cdb37bbbaf5d0.md"
         },
@@ -440,10 +482,10 @@
       "console": [],
       "reduced": {
         "rev": 4,
-        "frameAt": 1793291040701,
-        "samples": 23,
-        "staticSamples": 22,
-        "strikeSamples": 22,
+        "frameAt": 1793294683023,
+        "samples": 22,
+        "staticSamples": 21,
+        "strikeSamples": 21,
         "ghostStruck": true,
         "carets": 0,
         "beats": [
@@ -454,61 +496,61 @@
       },
       "arrivals": {
         "rev": 5,
-        "frameAt": 1793291041705,
-        "printMs": 4759,
-        "samples": 86,
+        "frameAt": 1793294683981,
+        "printMs": 4960,
+        "samples": 88,
         "rows": [
           {
             "share": 0.3,
-            "backdateMs": 1428,
+            "backdateMs": 1488,
             "rev": 6,
-            "appliedAt": 1793291044786,
-            "frameAt": 1793291046724,
-            "elapsedAtFirstSightMs": 1968,
-            "heardAtMs": 1938,
-            "revealedAtFirstSight": 47,
-            "planIndexAtFirstSight": 47,
-            "observedShare": 0.362,
+            "appliedAt": 1793294687349,
+            "frameAt": 1793294688998,
+            "elapsedAtFirstSightMs": 1703,
+            "heardAtMs": 1649,
+            "revealedAtFirstSight": 40,
+            "planIndexAtFirstSight": 40,
+            "observedShare": 0.314,
             "joined": true,
-            "settledAt": 1793291050218,
+            "settledAt": 1793294692764,
             "shot": "site/shots/live/one-caret/1440-arrival-30.png"
           },
           {
             "share": 0.7,
-            "backdateMs": 3331,
+            "backdateMs": 3472,
             "rev": 7,
-            "appliedAt": 1793291046889,
-            "frameAt": 1793291050736,
-            "elapsedAtFirstSightMs": 3877,
-            "heardAtMs": 3847,
-            "revealedAtFirstSight": 94,
-            "planIndexAtFirstSight": 94,
-            "observedShare": 0.717,
+            "appliedAt": 1793294689293,
+            "frameAt": 1793294693010,
+            "elapsedAtFirstSightMs": 3771,
+            "heardAtMs": 3717,
+            "revealedAtFirstSight": 90,
+            "planIndexAtFirstSight": 90,
+            "observedShare": 0.702,
             "joined": true,
-            "settledAt": 1793291052293,
+            "settledAt": 1793294694664,
             "shot": "site/shots/live/one-caret/1440-arrival-70.png"
           },
           {
             "share": 0.95,
-            "backdateMs": 4509,
+            "backdateMs": 4710,
             "rev": 8,
-            "appliedAt": 1793291047785,
-            "frameAt": 1793291052739,
-            "elapsedAtFirstSightMs": 5006,
-            "heardAtMs": 4954,
-            "revealedAtFirstSight": 114,
-            "planIndexAtFirstSight": 114,
-            "observedShare": 0.934,
-            "joined": true,
-            "settledAt": 1793291053146,
+            "appliedAt": 1793294689955,
+            "frameAt": 1793294695013,
+            "elapsedAtFirstSightMs": null,
+            "heardAtMs": 5058,
+            "revealedAtFirstSight": null,
+            "planIndexAtFirstSight": null,
+            "observedShare": null,
+            "joined": false,
+            "settledAt": 1793294736678,
             "shot": "site/shots/live/one-caret/1440-arrival-95.png"
           }
         ]
       },
       "late": {
         "rev": 9,
-        "appliedAt": 1793291046646,
-        "frameAt": 1793291053238,
+        "appliedAt": 1793294730179,
+        "frameAt": 1793294737130,
         "samples": 38,
         "passSeen": false,
         "dataPassSeen": false,
@@ -524,13 +566,13 @@
       "writes": [
         {
           "rev": 5,
-          "at": "2026-10-29T16:24:16.301Z",
+          "at": "2026-10-29T17:25:40.615Z",
           "phrase": "В два ноль четыре окно открылось.",
           "replacement": "В два ноль четыре окно открылось, и я поднялся."
         },
         {
           "rev": 6,
-          "at": "2026-10-29T16:24:17.501Z",
+          "at": "2026-10-29T17:25:41.815Z",
           "phrase": "окно открылось, и я поднялся.",
           "replacement": "окно открылось, и я поднялся к самому стеклу."
         }
@@ -538,15 +580,22 @@
       "chain": {
         "writeGapMs": 1200,
         "insertGapMs": 1200,
-        "firstSettleAt": 1793291057223,
-        "secondFirstInkAt": 1793291057319,
-        "firstSettleToSecondInkMs": 96,
+        "firstSettleAt": 1793294741485,
+        "secondFirstInkAt": 1793294741756,
+        "firstSettleToSecondInkMs": 271,
         "note": "the second row's `at` is 1200 ms after the first; it is inserted once the first print settled, so the second window opens on a settled paragraph"
       },
       "printed": true,
       "contract": {
-        "printingSamples": 8,
+        "printingSamples": 15,
         "caretCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
           1,
           1,
           1,
@@ -559,8 +608,8 @@
         "caretTopFirst": 414.14,
         "caretTopLast": 442.7,
         "caretTravelPx": 28.6,
-        "caretAdvancePx": 20.2,
-        "revealedFirst": 5,
+        "caretAdvancePx": 19.4,
+        "revealedFirst": 0,
         "revealedLast": 14,
         "planTotal": 14,
         "worstPlanDelta": 0,
@@ -569,7 +618,7 @@
       },
       "twoPlaces": {
         "rev": 16,
-        "frameAt": 1793291115467,
+        "frameAt": 1793294799329,
         "order": [
           {
             "id": "ch05#291e140f",
@@ -585,39 +634,39 @@
           }
         ],
         "twoAtOnce": 0,
-        "samples": 158,
+        "samples": 167,
         "shot": "site/shots/live/one-caret/390-one-caret.png"
       },
       "perf": {
         "rev": 17,
-        "frameAt": 1793291120982,
+        "frameAt": 1793294804846,
         "shot": "site/shots/live/one-caret/390-perf-27000.png",
         "out": "/Users/filipp/.local/share/openchamber-web/opencode/worktree/f51d76fc15de61b07d457a20d788593596822399/feat-live-continuum/site/shots/live/one-caret",
         "chars": 28528,
         "blocks": 15,
         "blocksSeen": 1,
         "blockChars": 1900,
-        "blockPlanMs": 92046.43042254775,
+        "blockPlanMs": 90820.95302368763,
         "blockArithmeticMs": 83898,
         "chapterArithmeticMs": 1259554,
-        "measuredCps": 20.9,
-        "windowMs": 24968,
-        "frames": 2948,
-        "p50": 13.3,
-        "p95": 25.3,
+        "measuredCps": 21,
+        "windowMs": 25092,
+        "frames": 2954,
+        "p50": 13.4,
+        "p95": 25.6,
         "passNodes": [
           6,
           5
         ],
         "documentNodes": {
-          "first": 7323,
-          "last": 7322
+          "first": 7328,
+          "last": 7320
         },
-        "samples": 99,
-        "revealedAtWindowEnd": 529,
+        "samples": 100,
+        "revealedAtWindowEnd": 531,
         "follow": {
           "on": true,
-          "samples": 98,
+          "samples": 99,
           "maxDeltaPx": 24.2,
           "targetPx": 379.8
         }
@@ -627,8 +676,15 @@
       "frameShape": "patchTruncated false, span 1, patch 1",
       "serverProbe": null,
       "caretWindow": {
-        "printingSamples": 8,
+        "printingSamples": 15,
         "caretCounts": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
           1,
           1,
           1,
@@ -641,8 +697,8 @@
         "caretTopFirst": 414.14,
         "caretTopLast": 442.7,
         "caretTravelPx": 28.6,
-        "caretAdvancePx": 20.2,
-        "revealedFirst": 5,
+        "caretAdvancePx": 19.4,
+        "revealedFirst": 0,
         "revealedLast": 14,
         "planTotal": 14,
         "worstPlanDelta": 0,
@@ -682,7 +738,119 @@
       },
       "samples": [
         {
-          "t": 1793291056791,
+          "t": 1793294740677,
+          "pass": true,
+          "beat": "hold",
+          "revealed": 0,
+          "expected": 0,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740732,
+          "pass": true,
+          "beat": "hold",
+          "revealed": 0,
+          "expected": 0,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740786,
+          "pass": true,
+          "beat": "hold",
+          "revealed": 0,
+          "expected": 0,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740839,
+          "pass": true,
+          "beat": "hold",
+          "revealed": 0,
+          "expected": 1,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740891,
+          "pass": true,
+          "beat": "type",
+          "revealed": 1,
+          "expected": 1,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740945,
+          "pass": true,
+          "beat": "type",
+          "revealed": 1,
+          "expected": 2,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294740998,
+          "pass": true,
+          "beat": "type",
+          "revealed": 3,
+          "expected": 3,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294741052,
+          "pass": true,
+          "beat": "type",
+          "revealed": 4,
+          "expected": 4,
+          "carets": 1,
+          "caretTop": 414.14,
+          "passNodes": 5,
+          "rect": {
+            "top": 271.34,
+            "height": 316.67
+          }
+        },
+        {
+          "t": 1793294741105,
           "pass": true,
           "beat": "type",
           "revealed": 5,
@@ -696,21 +864,7 @@
           }
         },
         {
-          "t": 1793291056844,
-          "pass": true,
-          "beat": "type",
-          "revealed": 6,
-          "expected": 6,
-          "carets": 1,
-          "caretTop": 414.14,
-          "passNodes": 5,
-          "rect": {
-            "top": 271.34,
-            "height": 316.67
-          }
-        },
-        {
-          "t": 1793291056897,
+          "t": 1793294741159,
           "pass": true,
           "beat": "type",
           "revealed": 7,
@@ -724,7 +878,7 @@
           }
         },
         {
-          "t": 1793291056950,
+          "t": 1793294741211,
           "pass": true,
           "beat": "type",
           "revealed": 8,
@@ -738,10 +892,10 @@
           }
         },
         {
-          "t": 1793291057004,
+          "t": 1793294741264,
           "pass": true,
           "beat": "type",
-          "revealed": 10,
+          "revealed": 9,
           "expected": 10,
           "carets": 1,
           "caretTop": 414.14,
@@ -752,7 +906,7 @@
           }
         },
         {
-          "t": 1793291057059,
+          "t": 1793294741318,
           "pass": true,
           "beat": "type",
           "revealed": 11,
@@ -766,13 +920,13 @@
           }
         },
         {
-          "t": 1793291057114,
+          "t": 1793294741372,
           "pass": true,
           "beat": "type",
-          "revealed": 13,
-          "expected": 13,
+          "revealed": 12,
+          "expected": 12,
           "carets": 1,
-          "caretTop": 442.7,
+          "caretTop": 414.14,
           "passNodes": 5,
           "rect": {
             "top": 271.34,
@@ -780,7 +934,7 @@
           }
         },
         {
-          "t": 1793291057169,
+          "t": 1793294741425,
           "pass": true,
           "beat": "type",
           "revealed": 14,
@@ -794,7 +948,7 @@
           }
         },
         {
-          "t": 1793291057223,
+          "t": 1793294741485,
           "pass": false,
           "beat": null,
           "revealed": -1,
@@ -812,13 +966,13 @@
       "stored": [
         {
           "rev": 6,
-          "at": "2026-10-29T16:24:17.501Z",
+          "at": "2026-10-29T17:25:41.815Z",
           "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
           "snapshot": "versions/ch05/d09125b0660a5dffe53bede7301dec2e10de92ff1704847796334121980303fc.md"
         },
         {
           "rev": 5,
-          "at": "2026-10-29T16:24:16.301Z",
+          "at": "2026-10-29T17:25:40.615Z",
           "stepId": "stp_01M60SCQ04SASME5SJC7P4GBH9",
           "snapshot": "versions/ch05/6f4696e8939f643854ff2bb4e040b3b81853953eb142c2d577b6856596541228.md"
         },
@@ -862,10 +1016,10 @@
       "console": [],
       "reduced": {
         "rev": 7,
-        "frameAt": 1793291058766,
-        "samples": 23,
-        "staticSamples": 22,
-        "strikeSamples": 22,
+        "frameAt": 1793294743146,
+        "samples": 22,
+        "staticSamples": 21,
+        "strikeSamples": 21,
         "ghostStruck": true,
         "carets": 0,
         "beats": [
@@ -876,62 +1030,62 @@
       },
       "arrivals": {
         "rev": 8,
-        "frameAt": 1793291059771,
-        "printMs": 4117,
-        "samples": 71,
+        "frameAt": 1793294744158,
+        "printMs": 4189,
+        "samples": 73,
         "rows": [
           {
             "share": 0.3,
-            "backdateMs": 1235,
+            "backdateMs": 1257,
             "rev": 9,
-            "appliedAt": 1793291062391,
-            "frameAt": 1793291063783,
-            "elapsedAtFirstSightMs": 1421,
-            "heardAtMs": 1392,
-            "revealedAtFirstSight": 28,
-            "planIndexAtFirstSight": 28,
-            "observedShare": 0.32,
+            "appliedAt": 1793294746906,
+            "frameAt": 1793294748676,
+            "elapsedAtFirstSightMs": 1811,
+            "heardAtMs": 1770,
+            "revealedAtFirstSight": 36,
+            "planIndexAtFirstSight": 36,
+            "observedShare": 0.407,
             "joined": true,
-            "settledAt": 1793291066829,
+            "settledAt": 1793294751353,
             "shot": "site/shots/live/one-caret/390-arrival-30.png"
           },
           {
             "share": 0.7,
-            "backdateMs": 2882,
+            "backdateMs": 2932,
             "rev": 10,
-            "appliedAt": 1793291063948,
-            "frameAt": 1793291067290,
-            "elapsedAtFirstSightMs": 3367,
-            "heardAtMs": 3342,
-            "revealedAtFirstSight": 72,
-            "planIndexAtFirstSight": 72,
-            "observedShare": 0.849,
+            "appliedAt": 1793294748424,
+            "frameAt": 1793294751682,
+            "elapsedAtFirstSightMs": 3290,
+            "heardAtMs": 3258,
+            "revealedAtFirstSight": 68,
+            "planIndexAtFirstSight": 68,
+            "observedShare": 0.811,
             "joined": true,
-            "settledAt": 1793291067914,
+            "settledAt": 1793294752481,
             "shot": "site/shots/live/one-caret/390-arrival-70.png"
           },
           {
             "share": 0.95,
-            "backdateMs": 3867,
+            "backdateMs": 3939,
             "rev": 11,
-            "appliedAt": 1793291064048,
-            "frameAt": 1793291068302,
+            "appliedAt": 1793294748543,
+            "frameAt": 1793294752685,
             "elapsedAtFirstSightMs": null,
-            "heardAtMs": 4254,
+            "heardAtMs": 4142,
             "revealedAtFirstSight": null,
             "planIndexAtFirstSight": null,
             "observedShare": null,
             "joined": false,
-            "settledAt": 1793291109919,
+            "settledAt": 1793294794280,
             "shot": "site/shots/live/one-caret/390-arrival-95.png"
           }
         ]
       },
       "late": {
         "rev": 12,
-        "appliedAt": 1793291103421,
-        "frameAt": 1793291110444,
-        "samples": 37,
+        "appliedAt": 1793294787782,
+        "frameAt": 1793294794311,
+        "samples": 39,
         "passSeen": false,
         "dataPassSeen": false,
         "shot": "site/shots/live/one-caret/390-late.png"
@@ -942,12 +1096,12 @@
   "folio": [
     {
       "width": 1440,
-      "text": "сейчас тихо",
+      "text": "следить",
       "folioText": "74",
-      "frameAt": 1793291113459,
+      "frameAt": 1793294797320,
       "word": {
-        "left": 858.4,
-        "right": 937.6,
+        "left": 610,
+        "right": 660.4,
         "top": 14,
         "bottom": 30.2
       },
@@ -957,19 +1111,19 @@
         "top": 15.6,
         "bottom": 31.8
       },
-      "gapPx": 108,
+      "gapPx": 385.2,
       "overlap": false,
       "fourDigitLeftPx": 1031.2,
-      "fourDigitGapPx": 93.6
+      "fourDigitGapPx": 370.8
     },
     {
       "width": 768,
-      "text": "сейчас тихо",
+      "text": "следить",
       "folioText": "97",
-      "frameAt": 1793291113954,
+      "frameAt": 1793294797818,
       "word": {
-        "left": 513.4,
-        "right": 592.6,
+        "left": 319,
+        "right": 369.4,
         "top": 11,
         "bottom": 27.2
       },
@@ -979,19 +1133,19 @@
         "top": 12.6,
         "bottom": 28.8
       },
-      "gapPx": 108,
+      "gapPx": 331.2,
       "overlap": false,
       "fourDigitLeftPx": 686.2,
-      "fourDigitGapPx": 93.6
+      "fourDigitGapPx": 316.8
     },
     {
       "width": 390,
-      "text": "сейчас тихо",
+      "text": "следить",
       "folioText": "80",
-      "frameAt": 1793291114462,
+      "frameAt": 1793294798319,
       "word": {
-        "left": 72,
-        "right": 151.2,
+        "left": 84,
+        "right": 134.4,
         "top": 11,
         "bottom": 27.2
       },
@@ -1001,10 +1155,10 @@
         "top": 11,
         "bottom": 27.2
       },
-      "gapPx": 188.4,
+      "gapPx": 205.2,
       "overlap": false,
       "fourDigitLeftPx": 313.2,
-      "fourDigitGapPx": 162
+      "fourDigitGapPx": 178.8
     }
   ],
   "newChapters": [
@@ -1012,12 +1166,12 @@
       "width": 1440,
       "chapter": 16,
       "rev": 1,
-      "frameAt": 1793291148075,
+      "frameAt": 1793294831422,
       "blocks": 1,
       "chars": 183,
-      "ms": 7106,
-      "cps": 25.8,
-      "samples": 69,
+      "ms": 7371,
+      "cps": 24.8,
+      "samples": 73,
       "before": {
         "numeral": null,
         "title": null,
@@ -1025,7 +1179,7 @@
         "ink": []
       },
       "firstWidths": [
-        10
+        3
       ],
       "lastWidths": [
         183
@@ -1033,18 +1187,29 @@
       "monotone": true,
       "full": true,
       "hashes": true,
+      "plan": {
+        "startAt": 1793294831254,
+        "firstInkMs": 1793294831474,
+        "appliedAt": 1793294831254
+      },
+      "firstSample": {
+        "chars": 3,
+        "atMs": 350,
+        "clockChars": 13,
+        "delta": -10
+      },
       "shot": "site/shots/live/one-caret/1440-new-chapter.png"
     },
     {
       "width": 390,
       "chapter": 17,
       "rev": 1,
-      "frameAt": 1793291148075,
+      "frameAt": 1793294831422,
       "blocks": 1,
       "chars": 183,
-      "ms": 8082,
-      "cps": 22.6,
-      "samples": 81,
+      "ms": 8179,
+      "cps": 22.4,
+      "samples": 83,
       "before": {
         "numeral": null,
         "title": null,
@@ -1052,7 +1217,7 @@
         "ink": []
       },
       "firstWidths": [
-        5
+        3
       ],
       "lastWidths": [
         183
@@ -1060,6 +1225,17 @@
       "monotone": true,
       "full": true,
       "hashes": true,
+      "plan": {
+        "startAt": 1793294840762,
+        "firstInkMs": 1793294840982,
+        "appliedAt": 1793294840762
+      },
+      "firstSample": {
+        "chars": 3,
+        "atMs": 398,
+        "clockChars": 13,
+        "delta": -10
+      },
       "shot": "site/shots/live/one-caret/390-new-chapter.png"
     }
   ],
@@ -1077,32 +1253,32 @@
     {
       "name": "one/1440 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "16 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "19 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/1440 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "16 lit samples, top travel 30.2 px (549.54 → 579.78), largest same-line x step 20.1 px"
+      "detail": "19 lit samples, top travel 30.2 px (549.54 → 579.78), largest same-line x step 29.2 px"
     },
     {
       "name": "reveal/1440 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "16 samples, 30 of 30 graphemes revealed"
+      "detail": "19 samples, 30 of 30 graphemes revealed"
     },
     {
       "name": "clock/1440 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "16 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 20 ms behind the write's clock"
+      "detail": "19 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 17 ms behind the write's clock"
     },
     {
       "name": "layout/1440 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "16 samples, largest shift 0 px"
+      "detail": "19 samples, largest shift 0 px"
     },
     {
       "name": "chain/1440 the first print mounts and settles",
       "ok": true,
-      "detail": "16 pass samples, settle 1332 ms after the write"
+      "detail": "19 pass samples, settle 1407 ms after the write"
     },
     {
       "name": "carets/1440 gone at settle",
@@ -1112,57 +1288,57 @@
     {
       "name": "chain/1440 the second print opens after the first settles, ≤ 1500 ms",
       "ok": true,
-      "detail": "155 ms between the settle and the next print"
+      "detail": "471 ms between the settle and the next print"
     },
     {
       "name": "one/1440·2 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "13 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "7 printing samples; caret counts [1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/1440·2 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "13 lit samples, top travel 0 px (579.78 → 579.78), largest same-line x step 20.1 px"
+      "detail": "7 lit samples, top travel 0 px (579.78 → 579.78), largest same-line x step 12.1 px"
     },
     {
       "name": "reveal/1440·2 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "13 samples, 18 of 19 graphemes revealed"
+      "detail": "7 samples, 19 of 19 graphemes revealed"
     },
     {
       "name": "clock/1440·2 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "13 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 13 ms behind the write's clock"
+      "detail": "7 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 18 ms behind the write's clock"
     },
     {
       "name": "layout/1440·2 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "13 samples, largest shift 0 px"
+      "detail": "7 samples, largest shift 0 px"
     },
     {
       "name": "reduced/1440 static text, a struck ghost, no caret and no ink",
       "ok": true,
-      "detail": "22 static samples, strike 22, caret elements 0, beats [\"static\",null]"
+      "detail": "21 static samples, strike 21, caret elements 0, beats [\"static\",null]"
     },
     {
       "name": "arrival/1440 a print to arrive into",
       "ok": true,
-      "detail": "4759 ms from the write to the settle"
+      "detail": "4960 ms from the write to the settle"
     },
     {
       "name": "arrival/1440 at 30 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "1968 ms of ink already painted: 47 graphemes, the plan says 47"
+      "detail": "1703 ms of ink already painted: 40 graphemes, the plan says 40"
     },
     {
       "name": "arrival/1440 at 70 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3877 ms of ink already painted: 94 graphemes, the plan says 94"
+      "detail": "3771 ms of ink already painted: 90 graphemes, the plan says 90"
     },
     {
       "name": "arrival/1440 at 95 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "5006 ms of ink already painted: 114 graphemes, the plan says 114"
+      "detail": "4710 ms back-dated of a 4960 ms print, heard at 5058 ms: the print had already ended, and nothing replayed"
     },
     {
       "name": "late/1440 after 6 s no .p-pass, no data-pass",
@@ -1182,32 +1358,32 @@
     {
       "name": "one/390 exactly one caret node, never the blue/red pair",
       "ok": true,
-      "detail": "8 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
+      "detail": "15 printing samples; caret counts [1,1,1,1,1,1,1,1]; pairs seen 0"
     },
     {
       "name": "caret/390 the caret's leading edge moves forward, and never back",
       "ok": true,
-      "detail": "8 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 20.2 px"
+      "detail": "15 lit samples, top travel 28.6 px (414.14 → 442.7), largest same-line x step 19.4 px"
     },
     {
       "name": "reveal/390 the revealed count is monotonic and reaches the run",
       "ok": true,
-      "detail": "8 samples, 14 of 14 graphemes revealed"
+      "detail": "15 samples, 14 of 14 graphemes revealed"
     },
     {
       "name": "clock/390 the revealed index is the plan's index ±2 chars, on a frame the wall clock can explain",
       "ok": true,
-      "detail": "8 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 14 ms behind the write's clock"
+      "detail": "15 paired samples, worst |DOM − plan| = 0 chars, worst frame lag 18 ms behind the write's clock"
     },
     {
       "name": "layout/390 the paragraph's box moves ≤ 1 px during the print",
       "ok": true,
-      "detail": "8 samples, largest shift 0 px"
+      "detail": "15 samples, largest shift 0 px"
     },
     {
       "name": "chain/390 the first print mounts and settles",
       "ok": true,
-      "detail": "8 pass samples, settle 922 ms after the write"
+      "detail": "15 pass samples, settle 870 ms after the write"
     },
     {
       "name": "carets/390 gone at settle",
@@ -1217,7 +1393,7 @@
     {
       "name": "chain/390 the second print opens after the first settles, ≤ 1500 ms",
       "ok": true,
-      "detail": "96 ms between the settle and the next print"
+      "detail": "271 ms between the settle and the next print"
     },
     {
       "name": "one/390·2 exactly one caret node, never the blue/red pair",
@@ -1247,62 +1423,62 @@
     {
       "name": "reduced/390 static text, a struck ghost, no caret and no ink",
       "ok": true,
-      "detail": "22 static samples, strike 22, caret elements 0, beats [\"static\",null]"
+      "detail": "21 static samples, strike 21, caret elements 0, beats [\"static\",null]"
     },
     {
       "name": "arrival/390 a print to arrive into",
       "ok": true,
-      "detail": "4117 ms from the write to the settle"
+      "detail": "4189 ms from the write to the settle"
     },
     {
       "name": "arrival/390 at 30 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "1421 ms of ink already painted: 28 graphemes, the plan says 28"
+      "detail": "1811 ms of ink already painted: 36 graphemes, the plan says 36"
     },
     {
       "name": "arrival/390 at 70 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3367 ms of ink already painted: 72 graphemes, the plan says 72"
+      "detail": "3290 ms of ink already painted: 68 graphemes, the plan says 68"
     },
     {
       "name": "arrival/390 at 95 % joins the current frame — or settles past its print, never restarts",
       "ok": true,
-      "detail": "3867 ms back-dated of a 4117 ms print, heard at 4254 ms: the print had already ended, and nothing replayed"
+      "detail": "3939 ms back-dated of a 4189 ms print, heard at 4142 ms: the print had already ended, and nothing replayed"
     },
     {
       "name": "late/390 after 6 s no .p-pass, no data-pass",
       "ok": true,
-      "detail": "37 samples over 2 s: pass false, data-pass false"
+      "detail": "39 samples over 2 s: pass false, data-pass false"
     },
     {
-      "name": "folio/1440 the head's word and the folio do not touch",
+      "name": "folio/1440 the head's row and the folio do not touch",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 937.6 px, folio starts 1045.6 px — gap 108 px"
+      "detail": "word «следить» ends 660.4 px, folio starts 1045.6 px — gap 385.2 px"
     },
     {
       "name": "folio/1440 the reserve clears a four-digit folio",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 937.6 px, folio starts 1031.2 px — gap 93.6 px"
+      "detail": "word «следить» ends 660.4 px, folio starts 1031.2 px — gap 370.8 px"
     },
     {
-      "name": "folio/768 the head's word and the folio do not touch",
+      "name": "folio/768 the head's row and the folio do not touch",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 592.6 px, folio starts 700.6 px — gap 108 px"
+      "detail": "word «следить» ends 369.4 px, folio starts 700.6 px — gap 331.2 px"
     },
     {
       "name": "folio/768 the reserve clears a four-digit folio",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 592.6 px, folio starts 686.2 px — gap 93.6 px"
+      "detail": "word «следить» ends 369.4 px, folio starts 686.2 px — gap 316.8 px"
     },
     {
-      "name": "folio/390 the head's word and the folio do not touch",
+      "name": "folio/390 the head's row and the folio do not touch",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 151.2 px, folio starts 339.6 px — gap 188.4 px"
+      "detail": "word «следить» ends 134.4 px, folio starts 339.6 px — gap 205.2 px"
     },
     {
       "name": "folio/390 the reserve clears a four-digit folio",
       "ok": true,
-      "detail": "word «сейчас тихо» ends 151.2 px, folio starts 313.2 px — gap 162 px"
+      "detail": "word «следить» ends 134.4 px, folio starts 313.2 px — gap 178.8 px"
     },
     {
       "name": "order/390 two changed places print in document order, one at a time",
@@ -1312,27 +1488,27 @@
     {
       "name": "perf/390 a 27000-character chapter prints at the device rate, not a compressed one",
       "ok": true,
-      "detail": "28528 chars: the first 1900-character block plans 92 s against 84 s of arithmetic; the chapter's arithmetic is 21 min at 26 cps; measured 20.9 cps"
+      "detail": "28528 chars: the first 1900-character block plans 91 s against 84 s of arithmetic; the chapter's arithmetic is 21 min at 26 cps; measured 21 cps"
     },
     {
       "name": "perf/390 the DOM node count does not follow the character count",
       "ok": true,
-      "detail": "the printing block holds [6,5] nodes over 99 samples (a short print's block: 5); the document 7323 → 7322"
+      "detail": "the printing block holds [6,5] nodes over 100 samples (a short print's block: 5); the document 7328 → 7320"
     },
     {
       "name": "follow/390 «следить» keeps the caret on the 45 % line (±40 px + a sample)",
       "ok": true,
-      "detail": "98 samples after the tap, largest |centre − 45 %| = 24.2 px (line 379.8 px)"
+      "detail": "99 samples after the tap, largest |centre − 45 %| = 24.2 px (line 379.8 px)"
     },
     {
       "name": "perf/390 p95 frame time stays under two frames",
       "ok": true,
-      "detail": "2948 frames, p50 13.3 ms, p95 25.3 ms"
+      "detail": "2954 frames, p50 13.4 ms, p95 25.6 ms"
     },
     {
-      "name": "chapter/1440 a created chapter prints from character 0 on the device clock",
+      "name": "chapter/1440 the plan's zero is appliedAt, and the first reveal is only what that clock could have inked",
       "ok": true,
-      "detail": "183 chars over 71 ms → 25.8 cps; first frame 10 chars, monotone true, ends on the served text true, block hashes true (1 blocks)"
+      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 3 chars at +350 ms, clock ceiling 13 → delta -10; 183 chars over 7.4 s → 24.8 cps; monotone true, ends on the served text true, block hashes true"
     },
     {
       "name": "chapter/1440 the slot shows «глава N» and the title with no skeleton",
@@ -1342,12 +1518,12 @@
     {
       "name": "chapter/1440 the title stands ahead of the prose, and one caret prints the text",
       "ok": true,
-      "detail": "title-before-prose on 68 samples, max carets 1"
+      "detail": "title-before-prose on 72 samples, max carets 1"
     },
     {
-      "name": "chapter/390 a created chapter prints from character 0 on the device clock",
+      "name": "chapter/390 the plan's zero is appliedAt, and the first reveal is only what that clock could have inked",
       "ok": true,
-      "detail": "183 chars over 81 ms → 22.6 cps; first frame 5 chars, monotone true, ends on the served text true, block hashes true (1 blocks)"
+      "detail": "plan zero = appliedAt (true), first ink +220 ms; first sample 3 chars at +398 ms, clock ceiling 13 → delta -10; 183 chars over 8.2 s → 22.4 cps; monotone true, ends on the served text true, block hashes true"
     },
     {
       "name": "chapter/390 the slot shows «глава N» and the title with no skeleton",
@@ -1357,7 +1533,7 @@
     {
       "name": "chapter/390 the title stands ahead of the prose, and one caret prints the text",
       "ok": true,
-      "detail": "title-before-prose on 78 samples, max carets 1"
+      "detail": "title-before-prose on 80 samples, max carets 1"
     },
     {
       "name": "console has no errors",

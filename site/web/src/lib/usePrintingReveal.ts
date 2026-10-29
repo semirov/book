@@ -67,14 +67,29 @@ export function usePrintingReveal(input: {
         reducedMotion: reduce,
       });
       const queued = loaded.blocks.filter((block) => plan.queued.includes(block.id));
-      setReveal(
-        createReveal(queued, {
-          reducedMotion: reduce,
-          cps: revealCps(typeof window === 'undefined' ? 390 : window.innerWidth),
+      const revealed = createReveal(queued, {
+        reducedMotion: reduce,
+        cps: revealCps(typeof window === 'undefined' ? 390 : window.innerWidth),
+        startAt,
+        now: Date.now(),
+      });
+      setReveal(revealed);
+      /**
+       * The harness's one window onto the reveal's own clock (the same seam the clip renderer
+       * publishes as `window.__print`): its zero, the instant its first grapheme inks, and its
+       * end — so a capture can ask "what could the clock have inked by now?" instead of trusting
+       * a fixed threshold. No reader path reads it, and it is removed with the print.
+       */
+      if (startAt !== undefined && typeof window !== 'undefined') {
+        const first = revealed.blocks[0];
+        (window as unknown as { __reveal?: unknown }).__reveal = {
+          n: loaded.n,
           startAt,
-          now: Date.now(),
-        }),
-      );
+          firstInkMs: first === undefined ? null : startAt + first.offsetMs + (first.inkTimes[0] ?? 0),
+          totalMs: revealed.blocks.reduce((sum, block) => sum + block.durationMs, 0),
+          blocks: revealed.blocks.length,
+        };
+      }
       measured.current = false;
     },
     [input.fresh],
@@ -119,6 +134,14 @@ export function usePrintingReveal(input: {
     }
     if (skipped.size > 0) setReveal((current) => (current === null ? current : skipBlocks(current, skipped)));
   }, [input.chapter, reveal]);
+
+  // The print's diagnostics live only while it runs (`lib/printFollow.ts`'s control does the
+  // same: a state, not a promise).
+  useEffect(() => {
+    if (printing || typeof window === 'undefined') return;
+    const holder = window as unknown as { __reveal?: unknown };
+    if (holder.__reveal !== undefined) delete holder.__reveal;
+  }, [printing]);
 
   // BOOK-117: the change is brought to the reading line, and only when it is off-screen.
   useEffect(() => {

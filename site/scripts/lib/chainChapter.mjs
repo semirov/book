@@ -15,6 +15,11 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { openDb, waitFrame } from './chainPrint.mjs';
 
 const round = (value) => (value === null || value === undefined ? null : Math.round(value * 10) / 10);
+/** The device's rate, the same two numbers the engine prints at. */
+const DESK_CPS = 30;
+const PHONE_CPS = 26;
+/** The graphemes one sample has on screen. */
+const charsOf = (state) => (state?.widths ?? []).reduce((sum, width) => sum + Math.max(0, width), 0);
 
 /**
  * The first chapter the copy still serves as unwritten (`rev = 0`): the slot the print will
@@ -127,6 +132,13 @@ export const REVEAL_SOURCE = String.raw`
     widths: blocks.map((block) => Number(block.getAttribute('data-chars') ?? '-1')),
     carets: article.querySelectorAll('.caret-inline').length,
     pass: article.classList.contains('is-printing'),
+    // The reveal's own clock, published by the hook (window.__reveal): its zero, its first
+    // grapheme's instant and its end. Absent once the print is over.
+    plan: (() => {
+      const plan = globalThis.__reveal;
+      if (!plan || plan.n !== chapter) return null;
+      return { startAt: plan.startAt, firstInkMs: plan.firstInkMs, totalMs: plan.totalMs, blocks: plan.blocks };
+    })(),
   };
 }`;
 
@@ -203,21 +215,37 @@ export async function newChapter({ cdp, run, dir, stepId, check, log, shot, pars
   const prefix = `ch${String(chapter).padStart(2, '0')}#`;
   const hashes = domIds.every((id, at) => id === `${prefix}${served.blocks[at]?.hash ?? ''}`);
   const carets = samples.filter((state) => state.found === true).map((state) => state.carets);
+  /** The reveal's own plan: its zero must be the write's moment, not a mount time. */
+  const plan = samples.map((state) => state.plan ?? null).find((value) => value !== null) ?? null;
+  const baseCps = run.width < 600 ? PHONE_CPS : DESK_CPS;
+  // How many graphemes the clock could have inked by the first observation: base rate × the
+  // time since `appliedAt`, rounded up, +2 for the sample's own jitter. Pauses and hesitations
+  // only ever make the real count smaller, so this is a ceiling, not a target.
+  const observedMs = first === null ? null : first.t - write.at;
+  const clockChars = observedMs === null ? null : Math.ceil((baseCps * observedMs) / 1_000) + 2;
+  const firstChars = first?.widths[0] ?? null;
+  const delta = firstChars === null || clockChars === null ? null : firstChars - clockChars;
+  const grew = first !== null && last !== null && last.t > first.t && charsOf(last) > charsOf(first);
   const ms = first === null || last === null ? null : last.t - first.t;
   const chars = last === null ? 0 : last.widths.reduce((sum, width) => sum + Math.max(0, width), 0);
   const cps = ms === null || ms <= 0 ? null : (chars / ms) * 1_000;
   log(
     `${String(run.width)}: chapter ${String(chapter)} prints — ${String(chars)} chars in ` +
-      `${String(ms === null ? '?' : Math.round(ms / 100) / 10)} s (${String(round(cps))} cps effective), ` +
+      `${String(ms === null ? '?' : (ms / 1_000).toFixed(1))} s (${String(round(cps))} cps effective), ` +
       `${String(samples.length)} samples`,
   );
   check(
-    `chapter/${String(run.width)} a created chapter prints from character 0 on the device clock`,
-    before.found === true && frame !== null && printed.length > 0 && (first?.widths[0] ?? -1) <= 12 &&
-      monotone === true && full === true && hashes === true && cps !== null && cps > 20 && cps < 40,
-    `${String(chars)} chars over ${String(ms === null ? '?' : Math.round(ms / 100))} ms → ${String(round(cps))} cps; ` +
-      `first frame ${String(first?.widths[0] ?? '?')} chars, monotone ${String(monotone)}, ` +
-      `ends on the served text ${String(full)}, block hashes ${String(hashes)} (${String(domIds.length)} blocks)`,
+    `chapter/${String(run.width)} the plan's zero is appliedAt, and the first reveal is only what that clock could have inked`,
+    before.found === true && frame !== null && plan !== null && plan.startAt === write.at &&
+      plan.firstInkMs !== null && plan.firstInkMs >= plan.startAt &&
+      firstChars !== null && firstChars > 0 && clockChars !== null && firstChars <= clockChars &&
+      grew === true && monotone === true && full === true && hashes === true &&
+      cps !== null && cps > 20 && cps < 40,
+    `plan zero = appliedAt (${String(plan?.startAt === write.at)}), first ink +${String(plan?.firstInkMs === null || plan === null ? '?' : plan.firstInkMs - plan.startAt)} ms; ` +
+      `first sample ${String(firstChars)} chars at +${String(observedMs === null ? '?' : observedMs)} ms, ` +
+      `clock ceiling ${String(clockChars)} → delta ${String(delta)}; ` +
+      `${String(chars)} chars over ${String(ms === null ? '?' : (ms / 1_000).toFixed(1))} s → ${String(round(cps))} cps; ` +
+      `monotone ${String(monotone)}, ends on the served text ${String(full)}, block hashes ${String(hashes)}`,
   );
   check(
     `chapter/${String(run.width)} the slot shows «глава N» and the title with no skeleton`,
@@ -258,6 +286,8 @@ export async function newChapter({ cdp, run, dir, stepId, check, log, shot, pars
     monotone,
     full,
     hashes,
+    plan: plan === null ? null : { startAt: plan.startAt, firstInkMs: plan.firstInkMs, appliedAt: write.at },
+    firstSample: { chars: firstChars, atMs: observedMs, clockChars, delta },
     shot: image,
   };
 }
