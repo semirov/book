@@ -12,7 +12,8 @@ import { boundaryLabel } from '../lib/changeStatus.ts';
  * own condition. Rings appear only while a step is in flight, so no animation exists without
  * a live cascade.
  *
- * Every chapter is a link to its own place in the book; a wing's state opens the change card.
+ * Every chapter is a link to its own place in the book; a wing's state opens the change in the
+ * record at the sentence it touched.
  * No inline style: the layout is classes and data attributes (CSP forbids inline styles).
  */
 export function CascadeRibbon({

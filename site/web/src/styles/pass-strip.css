@@ -1,22 +1,21 @@
 /* ============================================================================
-   PASS STRIP — BOOK-167: what the book is writing, under the paragraph it writes.
-   A block, not an overlay: 235 px of paper in the seam's place, the seam's own
-   two hairlines, no shadow, no radius, no scrim. The rail is a 1 px rule with
-   5 × 5 nodes; every fact is `passRail.ts`'s, and nothing here times a stage.
+   PASS STRIP — BOOK-167: one plain sentence while a chapter is written.
+   A block, not an overlay: paper in the seam's place, the seam's own two
+   hairlines, no shadow, no radius, no scrim. One serif sentence and one close.
+   No rail, no stage words, no durations, no token or money line: that is the
+   operator's console, never the reader's page.
    ============================================================================ */
 
 .pass-strip {
   position: relative;
   box-sizing: border-box;
-  height: var(--pass-h);
-  padding: 8px 0 6px;
+  padding: 10px 48px 10px 20px;
   border-top: 1px solid var(--rule-2);
   border-bottom: 1px solid var(--rule);
   background: var(--paper-2);
-  /* The strip's facts are marks: mono 12 covers the head, the rail and the receipt (§2). */
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 18px;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
   color: var(--ink-2);
 }
 /* The strip takes the seam's place: the same 10 px of air above and below the frame. */
@@ -24,43 +23,22 @@
   margin: 10px 0;
 }
 
-/* ---------- the head: one line, the words on the left, the state on the right ---------- */
+/* One line: the sentence on the left. */
 .pass-strip-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
   box-sizing: border-box;
-  height: 18px;
-  padding: 0 48px 0 20px;
-  overflow: hidden;
-}
-.pass-strip-id {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-  white-space: nowrap;
+  margin: 0;
 }
 .pass-strip-heading {
   margin: 0;
   min-width: 0;
-  overflow: hidden;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 18px;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.5;
   letter-spacing: 0;
   color: var(--ink-2);
-  white-space: nowrap;
-}
-.pass-strip-right {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  white-space: nowrap;
 }
 
 /* ---------- the close: a real 44 px target, its mark is the wordless cross ---------- */
@@ -85,140 +63,4 @@
 .pass-strip-close:focus-visible {
   outline: 1px solid var(--live);
   outline-offset: -8px;
-}
-
-/* ---------- the rail: one rule, a node per arrived stage, no node for a stage to come ------- */
-.pass-strip-rail {
-  position: relative;
-  box-sizing: border-box;
-  max-height: 172px;
-  margin: 2px 0 0;
-  padding: 0 0 0 20px;
-  overflow-y: auto;
-  list-style: none;
-}
-.pass-strip-rail::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 8px;
-  width: 1px;
-  background: var(--rule);
-}
-
-.pass-row {
-  position: relative;
-  min-height: 18px;
-  font-size: var(--fs-micro);
-  line-height: 18px;
-  color: var(--ink-2);
-}
-.pass-row-line {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 18px;
-}
-.pass-row-word {
-  white-space: nowrap;
-}
-.pass-row-time {
-  flex: 0 0 auto;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-  white-space: nowrap;
-}
-
-/* Past: a filled node. Current: hollow. Nothing to come: no node at all (no row). */
-.pass-row-node {
-  position: absolute;
-  top: 6.5px;
-  left: -14.5px;
-  box-sizing: border-box;
-  width: 5px;
-  height: 5px;
-  background: var(--ink-2);
-}
-.pass-row[data-state='live'] .pass-row-node {
-  background: transparent;
-  border: 1px solid var(--ink-2);
-}
-/* A refusal ends the rail with a 5 × 1 dash; no node, no row below it. */
-.pass-row-dash {
-  position: absolute;
-  top: 8.5px;
-  left: -14.5px;
-  width: 5px;
-  height: 1px;
-  background: var(--ink-2);
-}
-
-/* ---------- the live row: the word, three bounded facts, the paragraph ---------- */
-.pass-row[data-state='live'] {
-  min-height: 100px;
-  padding: 4px 0 0;
-}
-/* BOOK-128 comment 3900 §1 (audit 33) — the rail line is one register: the live row's word is
-   mono 12 beside its time, like every other row. The paragraph the pass quotes keeps its own
-   serif inside `.pass-row-live`; the line above it does not. */
-.pass-row[data-state='live'] .pass-row-word {
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 20px;
-  color: var(--ink);
-}
-.pass-row-live {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-top: 2px;
-}
-.pass-fact {
-  display: block;
-  max-width: 40ch;
-  font-size: var(--fs-micro);
-  line-height: 16px;
-  color: var(--ink-2);
-}
-
-/* ---------- the receipt: what the landed pass spent, never a price it does not have ------- */
-.pass-strip-receipt {
-  margin: 4px 0 0;
-  padding-left: 20px;
-  font-family: var(--mono);
-  font-size: var(--fs-micro);
-  line-height: 18px;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
-}
-
-/* ---------- motion: a row arrives with its frame, and only with it ---------- */
-.pass-strip[data-motion='motion'] .pass-row {
-  animation: pass-row-in var(--dur-tick) var(--ease-out) both;
-}
-@keyframes pass-row-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pass-strip .pass-row {
-    animation: none;
-  }
-}
-
-/* 390: the handle steps out first — the words and the state never yield to it. */
-@media (max-width: 599px) {
-  .pass-strip-id {
-    display: none;
-  }
 }

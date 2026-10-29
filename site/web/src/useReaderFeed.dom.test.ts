@@ -75,6 +75,22 @@ describe('the register’s completeness (BOOK-128 #3900 §1)', () => {
 
   it('starts incomplete, before any read has answered', () => {
     expect(feed.commentsComplete).toBe(false);
+    expect(feed.commentsFailed).toBe(false);
+  });
+
+  it('carries a failed read as a fact of its own, and clears it when an answer arrives', async () => {
+    answer({ items: [], nextBefore: null });
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsFailed).toBe(false);
+
+    vi.stubGlobal('fetch', async () => new Response('{"code":"x","message":"x"}', { status: 500 }));
+    await act(async () => feed.refreshComments());
+    // A 500 is not an empty thread: the register says it could not read, not «замечаний нет».
+    expect(feed.commentsFailed).toBe(true);
+
+    answer({ items: [], nextBefore: null });
+    await act(async () => feed.refreshComments());
+    expect(feed.commentsFailed).toBe(false);
   });
 
   it('is complete only when the page has no next cursor', async () => {

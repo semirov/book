@@ -104,7 +104,7 @@ describe('one entry per reader change (AC1)', () => {
       reason: null,
       sourceCommentId: seeded.commentId,
       changeId: seeded.changeId,
-      recordHref: `#правка-${seeded.changeId}`,
+      recordHref: `?change=${seeded.changeId}`,
       span: null,
     });
   });

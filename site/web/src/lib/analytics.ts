@@ -40,7 +40,7 @@ export const METRIKA_INIT = {
   accurateTrackBounce: true,
 } as const;
 
-export type SeamSurface = 'text' | 'premise' | 'toc';
+export type SeamSurface = 'text' | 'premise' | 'toc' | 'change';
 export type KindChoice = (typeof INTERVENTION_KINDS)[number] | 'note';
 
 /** The product's own acts, named once. An event carries nothing but these parameters. */

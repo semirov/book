@@ -54,8 +54,8 @@ export type ChronicleProps = {
   /** A new `history:event` frame: refresh the spine. */
   tick: number;
   /**
-   * BOOK-168 — the record row's door: the chronicle holds no прицел, so a change the row names
-   * opens in this page's card. Optional: a surface that draws no card still lists rows.
+   * BOOK-168 — the record row's door: a change the row names opens the book's record at its
+   * sentence. Optional: a surface without the book still lists rows.
    */
   onOpenChange?: (changeId: string) => void;
   /** BOOK-56: `state.history.started` — the log holds its first record, so the chronicle

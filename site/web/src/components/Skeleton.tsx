@@ -12,17 +12,15 @@ import { SKELETON_LINES, type SkeletonVariant } from '../lib/skeleton.ts';
  * Nothing here moves: this book's one motion is text being typed at 18 cps.
  */
 export function Skeleton({ variant }: { variant: SkeletonVariant }): ReactElement {
-  if (variant === 'chapter' || variant === 'sheet') return <Paragraphs variant={variant} />;
+  if (variant === 'chapter') return <Paragraphs variant={variant} />;
   return <Rows variant={variant} />;
 }
 
-/** The prose field: 3 / 3 / 2 lines for a chapter, 2 / 2 inside the lit sheet. */
-function Paragraphs({ variant }: { variant: 'chapter' | 'sheet' }): ReactElement {
+/** The prose field: 3 / 3 / 2 lines for a chapter. */
+function Paragraphs({ variant }: { variant: 'chapter' }): ReactElement {
   const counts = SKELETON_LINES[variant];
   const total = counts.reduce((sum, count) => sum + count, 0);
-  // The chapter walks all eight widths in order; the sheet reuses four of them, because its
-  // own paragraphs are the same prose and its last line is ragged too.
-  const order = variant === 'chapter' ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 3, 4, 6];
+  const order = [1, 2, 3, 4, 5, 6, 7, 8];
   let cursor = 0;
 
   return (

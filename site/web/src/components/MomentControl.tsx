@@ -86,7 +86,7 @@ export function MomentControl({ items, lastHseq, lastAt, more, thumb, onInput, o
           {label.isNow ? <span className="scrub-moment-now">{`${MIDDOT}сейчас`}</span> : null}
         </span>
         <span className="scrub-count">
-          запись {label.position} из {items.length}
+          показаны {label.position} из {items.length}
         </span>
       </div>
 

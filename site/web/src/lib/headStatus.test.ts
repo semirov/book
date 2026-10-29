@@ -180,7 +180,7 @@ describe('no pass in flight', () => {
     expect(headStatusOf({ stages: stagesOf(), state: bare, nowMs: AT }).kind).toBe('idle');
   });
 
-  it('says nothing without a log at all: PassRecordPage mounts the head with no stages', () => {
+  it('says nothing without a log at all: a head mounted with no stages has nothing live', () => {
     expect(headStatusOf({ stages: undefined, state: stateOf(), nowMs: AT }).kind).toBe('idle');
     expect(headStatusOf({ stages: null, state: stateOf(), nowMs: AT }).kind).toBe('idle');
   });

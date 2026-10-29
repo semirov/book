@@ -1,10 +1,10 @@
 /**
  * BOOK-111 (owner, 2026-10-27) — one overlay at a time, and who is allowed to close whom.
  *
- * The page holds three overlays: the seam's strip, the panel (a filing card or a word's DNA)
- * and the revision object. Each one is a store, and each store needs to close the others when
- * it opens — but `useFiling` closing the seam would be `useFiling` → `useSeam` → `useFiling`,
- * a cycle the bundler resolves by accident and nobody wants to reason about.
+ * The page holds three overlays: the seam's strip, the record (a sentence's whole register)
+ * and the one card (a filing with no sentence). Each one is a store, and each store needs to
+ * close the others when it opens — but `useFiling` closing the seam would be `useFiling` →
+ * `useSeam` → `useFiling`, a cycle nobody wants to reason about.
  *
  * So the rule lives here and imports nothing local: a store hands in its own closer when its
  * module loads, and the stores ask this module to close the slots they replace. A store that
@@ -12,7 +12,7 @@
  * be on the page either.
  */
 
-export type OverlayName = 'seam' | 'record' | 'filing' | 'revision' | 'pass';
+export type OverlayName = 'seam' | 'record' | 'filing' | 'pass';
 
 const closers = new Map<OverlayName, () => void>();
 

@@ -3,9 +3,7 @@ import type { CatalogEntry, ChangeSummaryDto, CommentDto, ComposerInfo, FrameMar
 import { useCallback, useEffect, useLayoutEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 import { wordOffsetIn } from '../dom.ts';
-import { FILING_PANEL_CLASS } from './FilingPanel.tsx';
 import { Seam } from './Seam.tsx';
-import { SeamPanel } from './SeamPanel.tsx';
 import { trackOnce } from '../lib/analytics.ts';
 import type { SeamDraft } from '../lib/draft.ts';
 import { isFrameParagraph } from '../lib/freeze.ts';
@@ -14,13 +12,12 @@ import { blockElementId } from '../lib/place.ts';
 import { proseMarks } from '../lib/proseMarks.ts';
 import type { WordFiling } from '../lib/provenance.ts';
 import { closeRecord, lastTouchOf, openRecord, useOpenRecord } from '../lib/record.ts';
+import { filingSentence } from '../lib/recordRoute.ts';
+import { hideWord, showWord, useOpenWord } from '../lib/useWord.ts';
 import { anchorFor, seamKey, sentenceAt, wordAt } from '../lib/seam.ts';
 import { beginPress, endsAsTap, movePress, type TapPress } from '../lib/tap.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
 import { scheduleMarginPass } from '../lib/marginPass.ts';
-import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
-import { useOpenRevision } from '../lib/useRevision.ts';
-import { useParagraphPanels } from '../lib/useParagraphPanels.ts';
 import { useProvenance } from '../lib/useProvenance.ts';
 import { PhoneStrip } from './PhoneStrip.tsx';
 import { RecordSlot } from './RecordSlot.tsx';
@@ -96,7 +93,6 @@ export function ProseParagraph({
   blockCount,
   comments,
   changes = [],
-  nowMs,
   composer,
   viewer,
   onPosted,
@@ -119,20 +115,10 @@ export function ProseParagraph({
   // Every paragraph of a written chapter has one, ch01 and ch65 alike; a tap still works here.
   const frameOnly = isFrameParagraph(entry.n, text);
   const here = seam !== null && seam.chapter === entry.n && seam.blockId === blockId;
-  /**
-   * BOOK-111: the page's one panel, not this paragraph's state — a card and a word's panel are
-   * the same slot, and only the surface that opened it draws it.
-   */
-  /** BOOK-128 #3815 — the `prov` entry means «the word's body is open» in the strip. */
-  const filing = useOpenFiling();
-  const panel = filing !== null && filing.owner === blockId ? filing : null;
-  const filingPanel = panel !== null && panel.kind === 'filing' ? panel : null;
-  const provenancePanel = panel !== null && panel.kind === 'provenance' ? panel : null;
-  /** BOOK-90: one revision object per chapter — the store, not this paragraph's state. */
-  const revision = useOpenRevision();
+  /** BOOK-128 #3815 — the word's body is the strip's own part, opened by its door. */
+  const wordPanel = useOpenWord();
+  const wordOpen = wordPanel !== null && wordPanel.owner === blockId;
   const hostRef = useRef<HTMLElement | null>(null);
-  const panels = useParagraphPanels({ blockId, hostRef });
-  const { openRevision, closeRevision, openFiling, closePanel } = panels;
   const anchor = here ? (seam?.anchor ?? null) : null;
   /**
    * BOOK-128 #3852 — the frame follows whichever surface is speaking for this paragraph: the
@@ -164,7 +150,7 @@ export function ProseParagraph({
   /** One hook reads the word's facts: one chain, one «свой след», nothing with history off. */
   const provenance = useProvenance({
     blockId,
-    word: provenancePanel?.word ?? null,
+    word: wordOpen ? wordPanel.word : null,
     frozenOf,
     history,
     signedIn: viewer.signedIn,
@@ -228,7 +214,7 @@ export function ProseParagraph({
     // A tap on the mark, the rail, «⋯» or the strip is that control's own act: the paragraph
     // must not also open a seam (BOOK-33 — the numeral is the button the reader sees).
     const control = (event.target as HTMLElement | null)?.closest(
-      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .revision, .phone-strip-row, .rec, .foot-jumps',
+      '.filing-mark, .seam-rail, .prov, .seam, .margin-note, .phone-strip, .phone-strip-row, .rec, .foot-jumps',
     );
     if (control !== null && control !== undefined) return;
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-s]');
@@ -297,42 +283,69 @@ export function ProseParagraph({
     pick(event);
   };
 
-  // The phrase's facts (the word's own line 3) and the strip's body are read by one hook.
+  // The phrase's facts (the word's own line 3) are the strip's body, read by one hook.
   const openProvenance = async (at: HTMLElement): Promise<void> => {
     // BOOK-128 comment #3815 — the door toggles: a second press puts the body away and hands
     // focus back to the door, which is the whole of the strip's dismissal contract.
-    if (provenancePanel !== null) {
-      hideFiling();
+    if (wordOpen) {
+      hideWord();
       at.focus();
       return;
     }
-    showFiling({
-      kind: 'provenance',
-      owner: blockId,
-      comment: null,
-      origin: at,
-      rect: at.getBoundingClientRect(),
-      word: anchor?.word ?? anchor?.quote ?? '',
-      // The body is the strip's own: the strip stays, and stays the one place.
-      fromSeam: true,
-    });
+    showWord({ owner: blockId, origin: at, word: anchor?.word ?? anchor?.quote ?? '' });
     await provenance.load();
+  };
+
+  /** The body put away by `Escape` or an outside tap: the door is the trigger, and it comes back. */
+  const closeProvenance = (): void => {
+    const origin = wordPanel?.owner === blockId ? wordPanel.origin : null;
+    hideWord();
+    origin?.focus({ preventScroll: true });
   };
 
   /** The sentence the strip speaks about: marked inline, never cut out of the flow. */
   const anchoredStart = anchor === null ? -1 : anchor.sentence.start;
   const view = provenance.view;
 
-  /** Line 3 opens the filing standing on the word, in the site's one panel. */
+  /**
+   * The sentence's surfaces are the record: a filing numeral, a margin note, a landed tick or a
+   * strip row opens the record on **that sentence**, with the filing's body as the open one. The
+   * paragraph computes the range locally (it holds the text), so no fetch and no card.
+   */
+  const openFiled = (comment: CommentDto, origin: HTMLElement | null, start: number): void => {
+    const at = anchorFor({ text, blockId, baseRev, offset: start });
+    if (at === null) return;
+    openRecord({
+      chapter: entry.n,
+      blockId,
+      start: at.sentence.start,
+      end: at.sentence.end,
+      word: null,
+      anchor: at,
+      origin,
+      surface: 'text',
+      filing: comment,
+    });
+  };
+
+  /** A strip row's filing may stand on another sentence of this block; its anchor names it. */
+  const openFilingRow = (comment: CommentDto, origin: HTMLElement): void => {
+    const own = filingSentence(text, comment.anchor, blockId, baseRev);
+    const start = own?.sentence.start ?? anchor?.sentence.start;
+    if (start === undefined) return;
+    openFiled(comment, origin, start);
+  };
+
+  /** Line 3 opens the filing standing on the word — in the record, not a panel. */
   const openWordFiling = (origin: HTMLElement): void => {
     if (seamFiling === null) return;
-    openFiling(seamFiling, origin);
+    openFilingRow(seamFiling, origin);
   };
 
   // BOOK-90: the margin is page-wide; this paragraph only says its anchors may have moved.
   useMeasuredLayout(() => {
     scheduleMarginPass();
-  }, [filingKey, seam?.key ?? null, text, revision?.comment.id ?? null]);
+  }, [filingKey, seam?.key ?? null, text, record?.filing?.id ?? null]);
 
   /**
    * BOOK-128 #3852 — the prose is the sentences' own runs (`SentenceRuns`), with the touched
@@ -355,10 +368,7 @@ export function ProseParagraph({
         if (recordHere && record !== null && record.start === range.start) closeRecord();
         else openTouch(range, null);
       }}
-      onOpenFiling={openFiling}
-      onOpenRevision={openRevision}
-      onCloseRevision={closeRevision}
-      revision={revision}
+      onOpenFiling={(comment, origin, range) => openFiled(comment, origin, range.start)}
     />
   );
 
@@ -381,13 +391,13 @@ export function ProseParagraph({
         closeSeam();
         origin?.focus();
       }}
-      onClosePanel={closePanel}
       onReanchor={onReanchor}
       onProvenance={(origin) => void openProvenance(origin)}
-      onOpenFiling={openFiling}
+      onOpenFiling={openFilingRow}
+      wordOpen={wordOpen}
       // The door exists while history is live (BOOK-128 §8: no door to an empty room); the body
       // under it is opened by that door, and drawn only once the log has answered.
-      prov={history ? { view, failed: provenance.failed, onFiling: openWordFiling, onClose: closePanel } : null}
+      prov={history ? { view, failed: provenance.failed, onFiling: openWordFiling, onClose: closeProvenance } : null}
     />
   ) : null;
 
@@ -395,7 +405,7 @@ export function ProseParagraph({
   // whose sentence has its seam open is skipped — the seam's own rows already show it.
   const phone =
     alive.length === 0 ? null : (
-      <PhoneStrip comments={alive} skipQuote={anchor?.quote ?? null} onOpen={openRevision} />
+      <PhoneStrip comments={alive} skipQuote={anchor?.quote ?? null} onOpen={openFilingRow} />
     );
 
   return (
@@ -478,21 +488,11 @@ export function ProseParagraph({
           className="p-stale"
           onClick={(event) => {
             const first = comments.find((comment) => comment.anchor.blockId === blockId && !comment.anchor.resolved);
-            if (first !== undefined) openFiling(first, event.currentTarget);
+            if (first !== undefined) openFilingRow(first, event.currentTarget);
           }}
         >
           {stale}
         </button>
-      )}
-      {/* BOOK-111: one box, one ✕ — and since #3815 the card is the only floating frame here. */}
-      {filingPanel === null || filingPanel.comment === null ? null : (
-        <SeamPanel
-          rootClass={FILING_PANEL_CLASS}
-          comment={filingPanel.comment}
-          anchor={filingPanel.rect}
-          nowMs={nowMs}
-          onClose={closePanel}
-        />
       )}
     </>
   );

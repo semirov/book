@@ -11,7 +11,9 @@
  *     manuscript is read-only into site and engine and only `manuscript/` is writable into the writer;
  *     `/backups` is the one host bind for state, on `site` only;
  *   · secrets are PATHS (`*_FILE`), never values, and the site and engine both get the session
- *     secret and IP salt the engine's boot refuses to start without;
+ *     secret and IP salt the engine's boot refuses to start without; the site also mounts the
+ *     OPTIONAL sign-in pair (BOOK-205), so a host without those files is "sign-in off", not a 503
+ *     nobody can explain;
  *   · healthchecks mean something: `/healthz` AND the image's own commit (site), the token-guarded
  *     `/internal/health` (engine), and none for the portless writer.
  *
@@ -197,8 +199,37 @@ describe.skipIf(skip)('the compose topology', () => {
       expect(config.services[name]?.env_file, name).toBeUndefined();
     }
     const secrets = (config.services.site?.volumes ?? []).filter((volume) => volume.target.startsWith('/run/secrets'));
-    expect(secrets.map((volume) => volume.target).sort()).toEqual(['/run/secrets/ip_salt', '/run/secrets/session_secret']);
+    // BOOK-205: the regression that shipped was exactly this list being two entries long while the
+    // service's own `*_FILE` named a third and a fourth path nothing mounted — prod answered 503
+    // OAUTH_UNCONFIGURED forever. The four names are the contract now.
+    expect(secrets.map((volume) => volume.target).sort()).toEqual([
+      '/run/secrets/ip_salt',
+      '/run/secrets/session_secret',
+      '/run/secrets/yandex_client_id',
+      '/run/secrets/yandex_client_secret',
+    ]);
     expect(secrets.every((volume) => volume.read_only)).toBe(true);
+    // Each mount is the single file the variable names, never the secrets directory (that would hand
+    // the site the writer's model key as well).
+    expect(mount(config.services.site as Service, '/run/secrets/yandex_client_id')?.source).toBe(
+      '/tmp/book-172/secrets/yandex_client_id',
+    );
+    expect(mount(config.services.site as Service, '/run/secrets/yandex_client_secret')?.source).toBe(
+      '/tmp/book-172/secrets/yandex_client_secret',
+    );
+    for (const volume of config.services.site?.volumes ?? []) {
+      expect(volume.source, volume.target).not.toBe('/tmp/book-172/secrets');
+    }
+    // Sign-in is on only when both files are there and reachable under the names the boot reads.
+    expect(site.YANDEX_CLIENT_ID_FILE).toBe('/run/secrets/yandex_client_id');
+    expect(site.YANDEX_CLIENT_SECRET_FILE).toBe('/run/secrets/yandex_client_secret');
+    // Every `*_FILE` that points into `/run/secrets` names a mount: a path with nothing behind it is
+    // how this deploy shipped a 503 with a healthy container.
+    const mounted = new Set(secrets.map((volume) => volume.target));
+    for (const [key, value] of Object.entries(site)) {
+      if (!key.endsWith('_FILE') || !value.startsWith('/run/secrets/')) continue;
+      expect(mounted.has(value), `${key} → ${value}`).toBe(true);
+    }
   });
 
   it('gives the site and engine a healthcheck that means something, and the writer none', () => {

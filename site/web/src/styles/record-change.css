@@ -1,0 +1,101 @@
+/* ============================================================================
+   THE RECORD'S `правка` SECTION — a change in the record's register.
+
+   A change has no sheet of its own any more. Its content is rows of the sentence's record:
+   the numeral is the section header's value (`.rec-section-count`), and the body is stacked
+   pairs — a mono 12 label above a serif value — plus the change's own one-line facts and one
+   line per step. Nothing here is fixed, floating, absolutely positioned or scrollable: the
+   page is the scroller and the record only grows.
+   ============================================================================ */
+
+.rec-change {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+/* One pair: the label on its own line, the value under it. A serif value never stands beside
+   a mono mark (the canon sweep's one-line rule). */
+.rec-change-row {
+  display: block;
+  margin: 0;
+}
+.rec-change-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.rec-change-quote {
+  display: block;
+  font-family: var(--serif);
+  font-size: var(--fs-note);
+  line-height: 1.4;
+  color: var(--ink);
+}
+.rec-change-intent {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--rule-2);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: var(--fs-note);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.rec-change-facts {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+/* The steps: one line each, the same hairline between them as the other registers. */
+.rec-change-steps {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rec-change-step {
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--serif);
+  font-size: var(--fs-meta);
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.rec-change-close {
+  justify-self: start;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--ink-2);
+}
+
+/* ---- the chapter's own row: a change with no sentence -------------------------------- */
+/* A premise, an author's change or a lost paragraph: the chapter prints the same rows after
+   its premise row. The left hairline ties it to the chapter's spine, exactly as `.rec` does. */
+.rec-chapter-change {
+  display: block;
+  margin: 10px 0 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--rule-2);
+}
+.rec-chapter-change-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.rec-chapter-change-h .rec-section-count {
+  margin-right: auto;
+}

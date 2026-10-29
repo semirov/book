@@ -99,9 +99,6 @@
 .skel-chain {
   min-height: 220px;
 }
-.skel-sheet {
-  min-height: 176px;
-}
 
 .skel-row {
   display: grid;
@@ -194,23 +191,6 @@
 }
 .skel-actor {
   width: 6ch;
-}
-
-/* ---- the прицел sheet ---------------------------------------------------------------
-   Two paragraphs of two lines inside the lit sheet: 4 × 1.62em + one 0.9em gap + 36 padding
-   is the 176 px reserve. */
-
-.skel-sheet {
-  padding: 18px;
-  font-size: var(--fs-lead);
-}
-
-.skel-sheet .skel-line {
-  height: 1.62em;
-}
-
-.skel-sheet .skel-p + .skel-p {
-  margin-top: 0.9em;
 }
 
 /* ---- the boot field (BOOK-66) -------------------------------------------------------

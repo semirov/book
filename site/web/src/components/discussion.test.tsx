@@ -137,6 +137,14 @@ describe('the register’s counters', () => {
   it('states the zeros as sentences, never as counts of nothing', () => {
     const html = renderToStaticMarkup(<Discussion depth={0} complete comments={[]} live />);
     expect(text(html)).toContain('замечаний нет');
+  });
+
+  it('a failed read is not an empty thread: it says so, and the empty state is not printed', () => {
+    const html = renderToStaticMarkup(<Discussion depth={0} failed comments={[]} live />);
+    expect(text(html)).toContain('не удалось прочитать обсуждение');
+    expect(text(html)).not.toContain('замечаний нет');
+    // The teaching line belongs to a settled empty feed, not to a read that never answered.
+    expect(text(html)).not.toContain('Их читают как данные');
     expect(text(html)).toContain('в очереди пусто');
     for (const wrong of ['0 замечаний', 'в очереди 0', '0 правок']) expect(text(html), wrong).not.toContain(wrong);
   });

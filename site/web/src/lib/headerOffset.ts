@@ -46,7 +46,7 @@ export const HEADER_SELECTOR = '.top';
  * BOOK-128 comment #3815 moved the word's and the phrase's records into the margin, where they
  * scroll with the text.
  */
-export const BOTTOM_BANDS: readonly string[] = ['.capacity-plate', '.change-card', '.ticket'];
+export const BOTTOM_BANDS: readonly string[] = ['.capacity-plate', '.ticket'];
 
 export const OFFSET_TOP_PROPERTY = '--offset-top';
 export const OFFSET_BOTTOM_PROPERTY = '--offset-bottom';

@@ -140,7 +140,7 @@ export function record(overrides: Partial<HistoryRecordDto> = {}): HistoryRecord
     reason: null,
     sourceCommentId: 'cmt_9',
     changeId: 'chg_9',
-    recordHref: '#правка-chg_9',
+    recordHref: '?change=chg_9',
     span: null,
     ...overrides,
   };

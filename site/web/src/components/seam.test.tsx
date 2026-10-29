@@ -152,7 +152,7 @@ describe('the mark on a sentence', () => {
   it('prints the record numeral and the overflow as a real button', () => {
     const filings = FILINGS[0];
     const html = renderToStaticMarkup(
-      <FilingMark filings={filings!} onOpen={() => undefined} onOpenRevision={() => undefined} />,
+      <FilingMark filings={filings!} onOpen={() => undefined} />,
     );
     // The numeral is the button: what the reader sees is what the reader taps.
     expect(html).toMatch(/<button[^>]*class="filing-mark filing-alive[^"]*"[^>]*>\s*<span class="filing-mark-num">№4Q7/u);
@@ -164,7 +164,7 @@ describe('the mark on a sentence', () => {
     const second = comment({ id: 'cmt_01J9Z8K5AA', createdAt: '2026-10-22T09:00:00Z' });
     const [group] = filingsForBlock([comment(), second], 'ch08#aa11bb22');
     const html = renderToStaticMarkup(
-      <FilingMark filings={group!} onOpen={() => undefined} onOpenRevision={() => undefined} />,
+      <FilingMark filings={group!} onOpen={() => undefined} />,
     );
     // BOOK-33: a «+N» glyph would widen the mark past its box; the count lives in the label
     // (and the strip's «ещё N →») instead of pushing the numeral out of the target.

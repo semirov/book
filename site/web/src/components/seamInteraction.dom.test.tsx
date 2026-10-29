@@ -54,29 +54,15 @@ describe('a refusal survives the panel that its own door opens (BOOK-111)', () =
       refused?.click();
       for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
     });
-    expect(document.querySelector('.filing-panel')).not.toBeNull();
-    // BOOK-128 comment #3815 — the strip under a card is its one line (`card` was `prov` while a
-    // word's panel could own the frame; there is no such panel any more).
-    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('card');
-    expect(document.querySelector('.seam-form')).toBeNull();
-
-    // Closing the panel rebuilds the strip — with the refusal and its door, not a clean form.
-    await act(async () => {
-      (document.querySelector('.filing-close') as HTMLElement).click();
-      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
-    });
+    // The door opens that filing in the record at its sentence: no card, and the strip it came
+    // from is the record's price (one reading surface, one close).
     expect(document.querySelector('.filing-panel')).toBeNull();
-    expect(document.querySelector('.seam')?.getAttribute('data-state')).toBe('form');
-    expect(document.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe(
-      'Свет был включён до меня, и это видно по тени.',
-    );
-    expect(document.querySelector('.seam-error')?.textContent).toContain('такое замечание уже отправлено');
-    expect(document.querySelector('.seam-error')?.getAttribute('role')).toBe('alert');
-    // The door is back, and the focus that the panel's close hands back lands on it — never
-    // on `<body>` (the form was unmounted and mounted again under the panel).
-    expect(document.querySelector('[data-door="duplicate"]')).not.toBeNull();
-    expect(document.activeElement?.getAttribute('data-door')).toBe('duplicate');
-    expect(document.activeElement).not.toBe(document.body);
+    expect(document.querySelector('.rec')?.getAttribute('data-body')).toBe('filing');
+    expect(document.querySelector('.rec')?.textContent).toContain('Аня');
+    expect(document.querySelector('.seam')).toBeNull();
+    expect(document.querySelector('.seam-form')).toBeNull();
+    // The draft is not destroyed by the move: reopening the strip finds it again (BOOK-33).
+    expect(document.querySelector('.seam-error')).toBeNull();
   });
 });
 
@@ -104,8 +90,8 @@ describe('a sentence longer than the anchor bound keeps its mark (major 9)', () 
     await act(async () => {
       (document.querySelector('.filing-mark') as HTMLElement).click();
     });
-    expect(document.querySelector('.filing-panel')).not.toBeNull();
-    expect(document.querySelector('.filing-panel')?.textContent).toContain('замечание');
+    expect(document.querySelector('.rec')?.getAttribute('data-body')).toBe('filing');
+    expect(document.querySelector('.rec')?.textContent).toContain('Аня');
   });
 });
 

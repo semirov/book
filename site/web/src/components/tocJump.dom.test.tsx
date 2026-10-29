@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { partOf, TOTAL_CHAPTERS, type CatalogEntry, type ChangeDto, type StateSnapshot } from '@book/shared';
+import { partOf, TOTAL_CHAPTERS, type CatalogEntry, type StateSnapshot } from '@book/shared';
 import { act, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,6 @@ import {
   offsetTopOfPage,
   useStickyOffsets,
 } from '../lib/headerOffset.ts';
-import { ChangeCard } from './ChangeCard.tsx';
 import { firstDeclarations, unionDeclarations } from './cssRules.ts';
 import { TableOfContents } from './TableOfContents.tsx';
 
@@ -35,8 +34,6 @@ const HEADER_PX = 56;
 /** `--offset-top` as the page gets it: the measured head plus the site's breathing space. */
 const OFFSET_TOP = offsetOf(HEADER_PX);
 const GRIP_PX = 44;
-/** An open change card over the bottom edge: a band of a known height. */
-const CARD_PX = 320;
 
 /** A chapter's document top: far enough apart that landing one chapter off is visible. */
 function chapterTop(n: number): number {
@@ -71,38 +68,6 @@ const CATALOG: CatalogEntry[] = Array.from({ length: TOTAL_CHAPTERS }, (_, index
 });
 
 const STATE = { chapters: { total: TOTAL_CHAPTERS }, front: { title: 'Бланк' } } as unknown as StateSnapshot;
-
-/** The change card's own facts: nothing here is what the bottom-offset contract reads. */
-function cardChange(): ChangeDto {
-  return {
-    id: 'chg_1',
-    seq: 3,
-    kind: 'accepted_comment',
-    interventionKind: null,
-    chapter: 2,
-    intent: 'убрать второе упоминание абзаца',
-    premise: false,
-    premiseLanded: false,
-    source: { commentId: 'cmt_1', author: 'Аня' },
-    base: { rev: 1 },
-    scopeHint: 'phrase',
-    status: 'done',
-    outcome: 'applied',
-    reason: null,
-    position: null,
-    relevance: null,
-    cascade: null,
-    modes: [],
-    steps: [],
-    appliedRevs: [],
-    cost: null,
-    scienceCheck: null,
-    history: null,
-    enqueuedAt: '2026-10-27T09:00:00Z',
-    startedAt: null,
-    decidedAt: '2026-10-27T09:10:00Z',
-  };
-}
 
 let container: HTMLDivElement;
 let root: Root | null = null;
@@ -287,38 +252,6 @@ describe('the footer’s bottom contract', () => {
     expect(headerHeight(document)).toBe(HEADER_PX);
     expect(document.documentElement.style.getPropertyValue(OFFSET_TOP_PROPERTY)).toBe(`${OFFSET_TOP}px`);
     expect(offsetTopOfPage(document)).toBe(OFFSET_TOP);
-  });
-});
-
-describe('a band that closes without a resize gives the bottom edge back', () => {
-  /**
-   * The owner's rule for `--offset-bottom`: it is written on plate mount, on head resize and on
-   * window resize. A change card and the provenance chain are bands of the same kind, so a card
-   * that **closes** (a `×`, a chapter tap, another card) must re-measure too — otherwise the
-   * footer keeps reserving room for a box that is gone until the next resize.
-   */
-  it('measures the change card when it opens and re-measures when it closes', async () => {
-    // jsdom has no layout: the card reports the height a browser would give it.
-    const native = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
-      return this.classList.contains('change-card') ? rect(0, CARD_PX) : native.call(this);
-    };
-    const host = document.body.appendChild(document.createElement('div'));
-    const card = createRoot(host);
-    try {
-      await act(async () => card.render(<ChangeCard change={cardChange()} onClose={() => undefined} />));
-      expect(document.querySelector('.change-card')).not.toBeNull();
-      expect(document.documentElement.style.getPropertyValue(OFFSET_BOTTOM_PROPERTY)).toBe(
-        `${CARD_PX + BREATHING_PX}px`,
-      );
-
-      // Closed, and no resize happened: the offset shrinks back on its own.
-      await act(async () => card.unmount());
-      expect(document.documentElement.style.getPropertyValue(OFFSET_BOTTOM_PROPERTY)).toBe('');
-    } finally {
-      Element.prototype.getBoundingClientRect = native;
-      host.remove();
-    }
   });
 });
 

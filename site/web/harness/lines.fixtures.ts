@@ -278,7 +278,7 @@ export const READER_RECORD: HistoryRecordDto = {
   outcome: 'applied',
   reason: null,
   changeId: 'chg_12',
-  recordHref: '#правка-chg_12',
+  recordHref: '?change=chg_12',
   span: { before: 'старый фонарь', after: 'новый фонарь' },
 };
 

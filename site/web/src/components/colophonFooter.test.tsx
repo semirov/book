@@ -1,20 +1,17 @@
 import {
   IMPRINT_AUTHOR,
   IMPRINT_COPYRIGHT,
-  type BookCostDto,
   type StateSnapshot,
   type ViewerDto,
 } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { costLine, costMoney } from '../lib/bookCost.ts';
 import { Colophon } from './Colophon.tsx';
-import { firstDeclarations, hasRule, mediaBlockList, mediaBlocks, unionDeclarations } from './cssRules.ts';
-import { BASE, TOKENS, tokenPx } from './measure.guard.ts';
+import { firstDeclarations, hasRule, mediaBlocks, unionDeclarations } from './cssRules.ts';
 
 /**
- * The footer's two last rows — the way out (BOOK-115) and the outlay (BOOK-114): how they read
+ * The footer's last rows — the way out (BOOK-115) and the download (BOOK-138): how they read
  * and how they fit.
  *
  * A sibling of `colophon.test.tsx`, which owns the imprint and the order of the rows: the markup
@@ -28,15 +25,6 @@ const sheets = import.meta.glob<string>('../styles/*.css', {
   import: 'default',
   eager: true,
 });
-
-/** One declaration of a rule as a number of px, `em` resolved against the rule's own size. */
-function px(css: string, selector: string, property: string, emPx: number): number {
-  const raw = new RegExp(`(?:^|;)\\s*${property}:\\s*([\\d.]+)(em|px)`, 'u').exec(
-    unionDeclarations(css, selector),
-  );
-  const value = Number.parseFloat(raw?.[1] ?? '0');
-  return raw?.[2] === 'em' ? value * emPx : value;
-}
 
 const state = {
   chapters: { total: 42, written: [], empty: [], count: 0, totalChars: 0 },
@@ -54,7 +42,6 @@ function stubDocument(): void {
 function renderFooter(
   extra: {
     viewer?: ViewerDto;
-    cost?: BookCostDto | null;
     donateUrl?: string | null;
     exportBytes?: number | null;
   } = {},
@@ -65,7 +52,6 @@ function renderFooter(
       state={state}
       imprint={{ author: IMPRINT_AUTHOR, copyright: IMPRINT_COPYRIGHT }}
       viewer={extra.viewer ?? { signedIn: false, displayName: null }}
-      cost={extra.cost ?? null}
       donateUrl={extra.donateUrl ?? null}
       exportBytes={extra.exportBytes ?? null}
     />,
@@ -84,19 +70,6 @@ function seenText(html: string): string {
     .replace(/<[^>]*>/gu, '')
     .replace(/[ \t\n\r]+/gu, ' ')
     .trim();
-}
-
-/** A measured outlay; overrides make the unpriced shape. */
-function costFixture(overrides: Partial<BookCostDto> = {}): BookCostDto {
-  return {
-    tokens: 1_234_567,
-    tokensIn: 1_000_000,
-    tokensOut: 234_567,
-    steps: 9,
-    usd: 12.34,
-    unpriced: [],
-    ...overrides,
-  };
 }
 
 describe('the way out (BOOK-115)', () => {
@@ -139,44 +112,6 @@ describe('the way out (BOOK-115)', () => {
     expect(footer).not.toContain('logout-row');
     expect(footer).not.toContain('выйти');
     expect(footer).not.toContain('войти');
-  });
-});
-
-describe('the cost line in the footer (BOOK-114)', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  // BOOK-114 AC1 — the line is the sentence the pure formatter writes, split in two spans so
-  // it may break between the count and the money and nowhere else.
-  it('prints the measured outlay as the last line of the page', () => {
-    const footer = renderFooter({ cost: costFixture() });
-    expect(seenText(footer)).toContain(`израсходовано 1\u00a0234\u00a0567 токенов · 12,34\u00a0$`);
-    expect(footer.match(/class="cost-line"/gu)).toHaveLength(1);
-    // Two fragments: the count with its separator, then the money.
-    const line = /<span class="cost-line">([\s\S]*?)<\/span><\/div>/u.exec(footer);
-    if (line === null) throw new Error('the colophon has no cost line');
-    const parts = [...(line[1] ?? '').replace(/<!--[\s\S]*?-->/gu, '').matchAll(/<span>([\s\S]*?)<\/span>/gu)].map(
-      (match) => match[1],
-    );
-    expect(parts).toEqual([`израсходовано 1\u00a0234\u00a0567 токенов ·`, `12,34\u00a0$`]);
-  });
-
-  // BOOK-114 AC2 — an unknown total is not a zero: before the first read nothing is rendered,
-  // neither a row nor a placeholder.
-  it('prints no row at all while the total is unknown', () => {
-    const footer = renderFooter({ cost: null });
-    expect(footer).not.toContain('cost-line');
-    expect(footer).not.toContain('израсходовано');
-    expect(footer).not.toContain('цена не задана');
-    // The default prop is the same absence, not a zero.
-    expect(renderFooter()).not.toContain('израсходовано');
-  });
-
-  it('names the unpriced state instead of a partial figure', () => {
-    const footer = renderFooter({ cost: costFixture({ usd: null, unpriced: ['mystery-llm'] }) });
-    expect(seenText(footer)).toContain(`израсходовано 1\u00a0234\u00a0567 токенов · цена не задана`);
-    expect(footer).not.toContain('$');
   });
 });
 
@@ -238,81 +173,6 @@ describe('the gift row’s sheet (BOOK-126)', () => {
     expect(rule).not.toMatch(/overflow:/u);
     // The underline is the colophon's own link treatment, untouched by this rule.
     expect(rule).not.toContain('text-decoration');
-  });
-});
-
-describe('the cost line’s sheet (BOOK-114)', () => {
-  // BOOK-114 AC3 — the line is the marks' register in mono, tabular, and neither half may
-  // break: the number is one word and the currency travels with its figure.
-  it('is mono, micro and tabular, with unbreakable fragments', () => {
-    const book = sheets['../styles/book.css'] ?? '';
-    const line = unionDeclarations(book, '.colophon .cost-line');
-    expect(hasRule(book, '.colophon .cost-line')).toBe(true);
-    expect(line).toContain('font-family: var(--mono)');
-    expect(line).toContain('font-size: var(--fs-micro)');
-    expect(line).toContain('color: var(--ink-3)');
-    expect(line).toContain('font-variant-numeric: tabular-nums');
-    expect(unionDeclarations(book, '.colophon .cost-line > span')).toContain('white-space: nowrap');
-    // No box of its own: the row is the column, and the line adds no padding or margin.
-    expect(line).not.toMatch(/(?:^|;)\s*padding/u);
-    expect(line).not.toMatch(/(?:^|;)\s*margin/u);
-    expect(line).not.toMatch(/overflow:/u);
-    // No width step touches it: the line reads the same at 390 and at 1440 — in every block of
-    // every query, not only the first. `book.css` writes `(max-width: 599px)` twice, and a
-    // reader that answered with the first block would scan it twice and the second one never;
-    // `mediaBlockList` enumerates them all, and its count against the sheet's own `@media` count
-    // is what proves no block went unread.
-    const blocks = Object.entries(sheets).flatMap(([file, css]) =>
-      mediaBlockList(css).map((block) => ({ file, ...block })),
-    );
-    expect(blocks).toHaveLength(
-      Object.values(sheets).reduce(
-        (count, css) => count + [...css.matchAll(/@media\s*\([^)]*\)\s*\{/gu)].length,
-        0,
-      ),
-    );
-    // The query the 390 claim rests on is stated at all: a missing one throws here.
-    mediaBlocks(book, 'max-width: 599px');
-    for (const { file, query, body } of blocks) {
-      expect(unionDeclarations(body, '.colophon .cost-line'), `${file} @media (${query})`).toBe('');
-    }
-  });
-
-  // BOOK-114 AC3 — «fits the column at 390 and at 1440», claimed the way `measure.test.ts`
-  // claims the measure: every number below is read from the token or the rule it belongs to, and
-  // the copy is built by the formatter the footer actually prints, so a changed line, a changed
-  // tracking or a changed token fails here rather than in a screenshot.
-  it('fits the 342 px phone column and the 640 px column, and wraps rather than clips', () => {
-    const book = sheets['../styles/book.css'] ?? '';
-    const micro = tokenPx('--fs-micro', { file: TOKENS });
-    // PT Mono's advance is the codebase's own constant (`measure.test.ts`): 0,6em, plus the
-    // line's own tracking, which the rule states in em against the same size.
-    const advance = 0.6 * micro + px(book, '.colophon .cost-line', 'letter-spacing', micro);
-    const phone = 390 - 2 * tokenPx('--gut', { query: 'phone', file: BASE });
-    const desk = tokenPx('--measure', { file: TOKENS });
-    expect({ micro, phone, desk }).toEqual({ micro: 12, phone: 342, desk: 640 });
-
-    const measured: BookCostDto = {
-      tokens: 1_234_567,
-      tokensIn: 1_000_000,
-      tokensOut: 234_567,
-      steps: 9,
-      usd: 12.34,
-      unpriced: [],
-    };
-    const unmeasured: BookCostDto = { ...measured, usd: null, unpriced: ['mystery-llm'] };
-    const priced = costLine(measured);
-    const unpriced = costLine(unmeasured);
-    expect(priced.length).toBe(41);
-    expect(priced.length * advance).toBeCloseTo(305.04, 2);
-    expect(priced.length * advance).toBeLessThan(phone);
-    expect(priced.length * advance).toBeLessThan(desk);
-    // The unpriced variant is 7 characters longer (`цена не задана` is 14, `12,34 $` is 7), so at
-    // 390 it falls to a second line instead of crossing the column edge — a clipped tail would be
-    // worse than a second line. Each fragment alone still fits.
-    expect(unpriced.length - priced.length).toBe(7);
-    expect(unpriced.length * advance).toBeGreaterThan(phone);
-    expect(costMoney(unmeasured).length * advance).toBeLessThan(phone);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   type GripState,
   type PassFacts,
 } from '../lib/grip.ts';
+import { plainChangeClick } from '../lib/changeDoor.ts';
 import { openPassStrip } from '../lib/usePassStrip.ts';
 
 /**
@@ -421,8 +422,23 @@ export function FootJumps({
                 ref={doorRef}
                 // The state table governs the label and the href, never whether the return is
                 // reachable: a pass that settles while the reader is inside it still has a way
-                // back (#156 M2).
-                onClick={door.state === 'live' || watch !== 'off' ? onDoor : undefined}
+                // back (#156 M2). A finished pass opens the record's `правка` at its sentence;
+                // a modified click keeps the browser's own `?change=` act.
+                onClick={
+                  door.state === 'record'
+                    ? (event) => {
+                        // Inside the pass, the same item is the way back, not a second door.
+                        if (watch !== 'off') {
+                          event.preventDefault();
+                          leaveDoor();
+                          return;
+                        }
+                        if (facts.change !== null) plainChangeClick(event, facts.change.id);
+                      }
+                    : door.state === 'live' || watch !== 'off'
+                      ? onDoor
+                      : undefined
+                }
               >
                 <span className="foot-jump-word">{door.label}</span>
                 {door.meta === null ? null : <span className="foot-jump-meta">{door.meta}</span>}

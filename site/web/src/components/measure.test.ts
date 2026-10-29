@@ -417,7 +417,7 @@ describe('the guard fires on every class of violation it names', () => {
     expect(wide.some((problem) => problem.includes('.seam { max-width: var(--column) }'))).toBe(true);
   });
 
-  it('does not fire on the copy caps, the column restated, or the overlays', () => {
+  it('does not fire on the copy caps or the column restated', () => {
     // The false positives that would make the guard useless: a `ch`/percentage cap is copy, not
     // a box; a register restating the column states the same box; an overlay is not a page
     // register, and the no-JS fallback's own row is the one box allowed the old text box.
@@ -430,7 +430,6 @@ describe('the guard fires on every class of violation it names', () => {
         '.media-free { max-width: none; }',
         '.ribbon { max-width: var(--measure); }',
         '.page { max-width: var(--measure); }',
-        '.focus-stage { max-width: 590px; margin-inline: auto; }',
       ].join('\n'),
     );
     expect(layoutProblems(legitimate)).toEqual([]);

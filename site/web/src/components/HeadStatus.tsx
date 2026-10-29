@@ -28,7 +28,7 @@ export function HeadStatus({
   nowMs,
 }: {
   state: HeadState;
-  /** BOOK-167's log; absent for a caller that holds none (`PassRecordPage`) — then nothing is live. */
+  /** BOOK-167's log; absent for a caller that holds none — then nothing is live. */
   stages?: Stages;
   /** A fixed clock for a test; a page hands none in and the component reads its own. */
   nowMs?: number;

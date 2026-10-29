@@ -9,7 +9,7 @@
  * here would report the guard instead of the thing under test.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,6 +28,16 @@ export function secretFile(value: string): string {
 /** A path under the same directory that no test ever writes: a declared file that is absent. */
 export function absentSecretFile(name: string): string {
   return join(secretsDir, `absent-${name.toLowerCase()}`);
+}
+
+/**
+ * An empty DIRECTORY, which is what Docker mounts when a declared bind source is absent: a
+ * declared `*_FILE` that points at one is "nothing to read", never a file.
+ */
+export function secretDirectory(name: string): string {
+  const path = join(secretsDir, `dir-${name.toLowerCase()}`);
+  mkdirSync(path, { recursive: true });
+  return path;
 }
 
 export function cleanupSecretFiles(): void {

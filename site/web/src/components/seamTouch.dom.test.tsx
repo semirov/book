@@ -5,9 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
+import { resetRecordMemory } from '../lib/record.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
 import { hideFiling } from '../lib/useFiling.ts';
-import { hideRevision } from '../lib/useRevision.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
@@ -139,7 +139,6 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => {
     hideFiling();
-    hideRevision();
     closeSeam();
   });
   if (root !== null) await act(async () => root?.unmount());
@@ -276,43 +275,41 @@ describe('a thumb on the page (BOOK-111)', () => {
     expect(document.querySelector<HTMLTextAreaElement>('textarea.seam-text')?.value).toBe('');
   });
 
-  it('opening a seam closes the panel it replaces', async () => {
+  it('a filing row opens the record, and a tap on another sentence moves it', async () => {
     touchDevice();
     await mountParagraph('ch08#replace1', [comment('ch08#replace1')]);
     await act(async () => (document.querySelector('.seam-filing') as HTMLElement).click());
-    expect(document.querySelector('.filing-panel')).not.toBeNull();
-
-    // A tap on another sentence is the reader's own act: the strip moves, the panel goes.
-    const second = [...document.querySelectorAll<HTMLElement>('.p span[data-s]')].at(-1) as HTMLElement;
-    await act(async () => tap(second, 5, 5));
+    // The strip's row opens the record, never a card: the strip is gone with it.
     expect(document.querySelector('.filing-panel')).toBeNull();
-    // The tap is an explicit act: the record replaces the card and the strip in one commit.
+    expect(document.querySelector('.rec')?.getAttribute('data-body')).toBe('filing');
+    expect(seam()).toBeNull();
+
+    // A tap on another sentence is the reader's own act: the record moves there, one block only.
+    // (The filing sits on the second sentence; the first is the other one.)
+    const first = document.querySelector<HTMLElement>('.p span[data-s]') as HTMLElement;
+    await act(async () => tap(first, 5, 5));
     expect(anyBlock()).toHaveLength(1);
-    expect(document.querySelector('.rec')).not.toBeNull();
+    expect(document.querySelector('.rec')?.getAttribute('data-body')).toBe('list');
   });
 
-  it('a pointerdown inside a filing panel closes nothing', async () => {
+  it('a pointerdown inside the record closes nothing', async () => {
     for (const device of [touchDevice, desktopDevice]) {
       device();
       await mountParagraph(`ch08#panel${device === touchDevice ? 1 : 2}`, [
         comment(`ch08#panel${device === touchDevice ? 1 : 2}`),
       ]);
       await openForm();
-      // The strip's own row opens the filing panel; the form collapses to the strip behind it.
       await act(async () => (document.querySelector('.seam-filing') as HTMLElement).click());
-      const panel = document.querySelector<HTMLElement>('.filing-panel');
-      expect(panel).not.toBeNull();
-      // One overlay at a time: the card collapsed the form, the strip stays as its anchor.
-      expect(seam()?.getAttribute('data-open')).toBe('false');
-      expect(document.querySelector('.seam-form')).toBeNull();
-      const body = panel?.querySelector('.filing-body') as HTMLElement;
-      await act(async () => tap(body));
-      // Neither the panel nor the strip behind it was closed by a press inside the panel.
-      expect(document.querySelector('.filing-panel')).not.toBeNull();
-      expect(seam()).not.toBeNull();
+      const block = document.querySelector<HTMLElement>('.rec-sheet');
+      expect(block).not.toBeNull();
+      expect(seam()).toBeNull();
+      await act(async () => tap(block as HTMLElement));
+      // A press inside the record is the record's own: nothing closes it.
+      expect(document.querySelector('.rec')).not.toBeNull();
       await act(async () => {
         hideFiling();
         closeSeam();
+        resetRecordMemory();
       });
       await act(async () => root?.unmount());
       container = document.body.appendChild(document.createElement('div'));

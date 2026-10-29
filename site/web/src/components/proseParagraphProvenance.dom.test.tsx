@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EMPTY_COMPOSER } from '../lib/composer.ts';
 import { resetParagraphChainCache } from '../lib/paragraphChainCache.ts';
+import { closeRecord, resetRecordMemory } from '../lib/record.ts';
 import { anchorFor, seamKey } from '../lib/seam.ts';
+import { hideFiling } from '../lib/useFiling.ts';
 import { closeSeam, openSeam } from '../lib/useSeam.ts';
+import { hideWord } from '../lib/useWord.ts';
 import { ProseParagraph } from './ProseParagraph.tsx';
 
 /**
@@ -55,6 +58,9 @@ let root: Root | null = null;
 
 beforeEach(() => {
   resetParagraphChainCache();
+  resetRecordMemory();
+  hideFiling();
+  hideWord();
   vi.stubGlobal('IntersectionObserver', class {
     observe(): void {}
     unobserve(): void {}
@@ -65,6 +71,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   closeSeam();
+  closeRecord();
+  hideFiling();
+  hideWord();
   if (root !== null) await act(async () => root?.unmount());
   root = null;
   document.body.innerHTML = '';

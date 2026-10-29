@@ -20,7 +20,7 @@ import {
  * that block pass for nothing, so the reads are pinned non-empty first.
  */
 
-const SURFACES: readonly SkeletonSurface[] = ['boot', 'chapter', 'register', 'chronicle', 'authors', 'chain', 'sheet'];
+const SURFACES: readonly SkeletonSurface[] = ['boot', 'chapter', 'register', 'chronicle', 'authors', 'chain'];
 
 describe('the shape of a placeholder', () => {
   it('draws a chapter as 3 / 3 / 2 prose lines and every list as three rows', () => {
@@ -29,7 +29,6 @@ describe('the shape of a placeholder', () => {
     expect(SKELETON_LINES.chronicle).toEqual([3]);
     expect(SKELETON_LINES.authors).toEqual([3]);
     expect(SKELETON_LINES.chain).toEqual([3]);
-    expect(SKELETON_LINES.sheet).toEqual([2, 2]);
   });
 
   it('ends its lines raggedly: the eight §3 widths, in order, none of them full', () => {
@@ -45,7 +44,6 @@ describe('the shape of a placeholder', () => {
       chronicle: 150,
       authors: 132,
       chain: 220,
-      sheet: 176,
     });
   });
 
@@ -81,7 +79,6 @@ describe('the one sentence a wait may say', () => {
       'записи читаются',
       'доли считаются',
       'цепочка читается…',
-      'правка читается',
     ]);
     expect(SURFACES.map((surface) => statusLine(surface, 'slow', 7))).toEqual([
       'опись идёт дольше обычного · книга откроется здесь же',
@@ -90,7 +87,6 @@ describe('the one sentence a wait may say', () => {
       'записи идут дольше обычного · хроника появится здесь же',
       'доли считаются дольше обычного · цифры появятся здесь же',
       'цепочка идёт дольше обычного · история появится здесь же',
-      'правка идёт дольше обычного · лист заполнится здесь же',
     ]);
     // No surface promises progress the page cannot measure.
     for (const surface of SURFACES) {

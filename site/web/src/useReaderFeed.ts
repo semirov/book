@@ -40,6 +40,11 @@ export function useReaderFeed() {
    * are all of them. It starts false and stays false after a failed read (fail closed).
    */
   const [commentsComplete, setCommentsComplete] = useState(false);
+  /**
+   * The thread's read failed (as opposed to answering an empty page): the register must not
+   * print «замечаний нет» for it. A later refresh that answers clears the fact.
+   */
+  const [commentsFailed, setCommentsFailed] = useState(false);
   const [chapterFeed, setChapterFeed] = useState<Record<number, ChapterFeed>>({});
   const [decisions, setDecisions] = useState<MyDecisionsDto | null>(null);
   /**
@@ -82,9 +87,11 @@ export function useReaderFeed() {
       const page = await getComments({ limit: 20 });
       setComments(page.items);
       setCommentsComplete(page.nextBefore === null);
+      setCommentsFailed(false);
     } catch {
       /* the next comment event or reconnect retries — and an unread page may not be counted */
       setCommentsComplete(false);
+      setCommentsFailed(true);
     }
     if (chapter !== undefined) await refreshChapter(chapter);
   }, [refreshChapter]);
@@ -193,6 +200,7 @@ export function useReaderFeed() {
     changes,
     comments,
     commentsComplete,
+    commentsFailed,
     chapterFeed,
     decisions,
     threadSettled,

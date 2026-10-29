@@ -1,8 +1,7 @@
-import { TOTAL_CHAPTERS, type BookCostDto, type FrontDto, type StateSnapshot, type ViewerDto } from '@book/shared';
+import { TOTAL_CHAPTERS, type FrontDto, type StateSnapshot, type ViewerDto } from '@book/shared';
 import { useState } from 'react';
 
 import { useCounterConfigured } from '../lib/analytics.ts';
-import { costMoney, costTokens } from '../lib/bookCost.ts';
 import { BUILD, composeBuildStamp, type BuildId } from '../lib/buildStamp.ts';
 import { resetConsent, useConsent } from '../lib/consent.ts';
 import { formatNumber, plural } from '../lib/format.ts';
@@ -45,7 +44,6 @@ export function Colophon({
   imprint,
   build = BUILD,
   viewer = { signedIn: false, displayName: null },
-  cost = null,
   donateUrl = null,
   exportBytes = null,
   reload,
@@ -58,7 +56,6 @@ export function Colophon({
    */
   build?: BuildId;
   viewer?: ViewerDto;
-  cost?: BookCostDto | null;
   /**
    * BOOK-126: the gift link, already validated at boot (`donateUrlOf`). `null` prints no row —
    * a deployment that does not ask for gifts says nothing about money at all.
@@ -188,17 +185,6 @@ export function Colophon({
         <div className="row">
           <span className="build-stamp">{composeBuildStamp(build)}</span>
         </div>
-        {cost === null ? null : (
-          <div className="row">
-            {/* BOOK-114: two fragments, one sentence — the line breaks between the count and
-                the money at 390, never inside either half. Last row of the page: the build
-                stamp above it says which copy this is, this says what the copy cost. */}
-            <span className="cost-line">
-              <span>{costTokens(cost)}</span>{' '}
-              <span>{costMoney(cost)}</span>
-            </span>
-          </div>
-        )}
       </footer>
       {/* BOOK-90 §1.10: the margin's tail lives after the colophon — below everything. */}
       <MarginTail />

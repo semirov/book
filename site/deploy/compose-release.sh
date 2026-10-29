@@ -38,13 +38,18 @@
 #     check and no host process against the data dir run here — Docker and curl only, and the one
 #     node that runs (the home gate) runs in a container, on the same volume, one kernel. The full
 #     test suite is CI's (gate.yml); the deploy's own gate is the container health gate, five HTTP
-#     smokes and the volume's home gate;
+#     reads, the volume's home gate and, when the host carries a usable OAuth client id, the sign-in
+#     redirect (BOOK-205);
 #   * the data dir is the named volume `${BOOK_DATA_VOLUME:-book-data}`, never a host bind (BOOK-183):
 #     a volume without `book.db` is refused with a named reason BEFORE anything is built or started, and
 #     a rollback does not run either — a stack on an empty volume is a 500, not a deploy. Only a
 #     one-shot `-v <volume>:/v:ro` is used to READ it (the same volume, inside the VM: one kernel).
 #   * `/locks` (the entrypoint's single-instance lock dir) is created here if it is missing, owned by
 #     this uid and 0755 — Docker would create the bind source as root and every service would exit 75.
+#   * the sign-in pair (BOOK-205) is mounted as two files, and Docker turns an absent source into an
+#     empty directory: the deploy removes such a directory under `${BOOK_SECRETS_DIR:-./secrets}`
+#     before the build and refuses a non-empty one by name, so dropping the 0600 file in stays the
+#     documented switch and no release ships red because of the other shape.
 #
 # The deploy lock is `$STATE_DIR/deploy.lock`. A flip holds it for the whole flip and runs this script
 # as its child with `BOOK_LOCK_INHERITED=1`, so the child neither re-takes it (it would refuse its own
@@ -85,6 +90,21 @@ LOCKS_DIR="${BOOK_LOCKS_DIR:-$HOME/.local/state/book-locks}"
 DATA_VOLUME="${BOOK_DATA_VOLUME:-book-data}"
 BACKUPS_DIR="${BOOK_BACKUPS_DIR:-$HOME/book-site-backups}"
 
+# BOOK-205: the host directory the compose file mounts each secret from (`${BOOK_SECRETS_DIR:-./secrets}`
+# there, and compose resolves a relative one against the compose file's own directory). The sign-in smoke
+# only asks whether ONE name there is a usable file (`yandex_client_id`); no value is read and no path
+# other than that name is printed.
+secrets_dir() {
+  local dir="${BOOK_SECRETS_DIR:-./secrets}" base=""
+  case "$dir" in
+    /*) printf '%s' "$dir" ;;
+    *) base="$(dirname "$COMPOSE_FILE")"
+       # A compose file that is not on disk has no secrets dir: an empty answer, never a failed `cd`.
+       [ -d "$base" ] || return 0
+       printf '%s/%s' "$(cd "$base" && pwd)" "${dir#./}" ;;
+  esac
+}
+
 MODE="deploy"
 REF="main"
 DRY_RUN=0
@@ -97,6 +117,9 @@ SMOKE_WHY=""
 SERVICE_WHY=""
 GATE_REFUSED=""
 HOME_WHY=""
+# BOOK-205: 1 while the gate is judging an image that is going back into service (an automatic rollback
+# inside a red deploy, or `--rollback`). Only then may the sign-in read pass instead of refusing.
+ROLLING_BACK=0
 STEP="start"
 REASON_PRINTED=0
 AUDIT_WRITTEN=0
@@ -230,6 +253,26 @@ ensure_backups_dir() {
   say "backups: $BACKUPS_DIR (owner $owner)"
 }
 
+# BOOK-205: the sign-in pair is mounted per file, and Docker creates an absent bind SOURCE as a
+# directory — so one `up` on a host without OAuth leaves `${SECRETS_DIR}/yandex_client_id` as a
+# directory and the operator's next `cp` lands inside it, which makes the documented "put the file
+# there" switch impossible. The empty directory is the no-OAuth shape and is removed here; a non-empty
+# one is a named refusal before anything is built. The two names are printed by name, never a value.
+ensure_signin_mounts() {
+  local dir="" name="" path=""
+  dir="$(secrets_dir)"
+  [ -n "$dir" ] || return 0
+  for name in yandex_client_id yandex_client_secret; do
+    path="${dir}/${name}"
+    [ -d "$path" ] || continue
+    if rmdir "$path" 2>/dev/null; then
+      say "secrets: removed the empty directory Docker left at ${path} — put the 0600 ${name} file there to turn sign-in on"
+      continue
+    fi
+    die "${path} is a directory, not the 0600 file — remove it with 'sudo rm -rf ${path}' and put the ${name} file in place; nothing was built and nothing was rolled back"
+  done
+}
+
 # BOOK-183: the release never seeds and never starts on an empty volume. Both are named refusals with
 # exit 1, and by then nothing has been built, started or rolled back.
 data_volume_preflight() {
@@ -274,9 +317,36 @@ resolve_ref() { # (ref) -> SHA, or 1
   SHA="$sha"
 }
 
+# BOOK-205: sign-in. A host whose `yandex_client_id` is a USABLE file says the operator configured
+# OAuth, so `/auth/yandex/start` must send the browser to Yandex — a 503 there is `OAUTH_UNCONFIGURED`
+# and the release would ship with nobody able to sign in (the measured prod state). "Usable" is the
+# rule `configSecrets.ts` reads as "sign-in off": absent, a directory (what Docker mounts for an absent
+# bind source), empty, or unreadable — a touched 0-byte file must not strand a release. A host with no
+# credential has sign-in off by design (ADR-021) and this check says nothing. Names only: no value is
+# read, the redirect is never printed.
+signin_smoke() {
+  local file="" reply="" code="" location=""
+  file="$(secrets_dir)/yandex_client_id"
+  [ -f "$file" ] && [ -s "$file" ] && [ -r "$file" ] || return 0
+  # `%{redirect_url}` is the `location` a 302 carries, read without following it.
+  reply="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 5 "${SITE_URL}/auth/yandex/start" 2>/dev/null || true)"
+  code="${reply%% *}"
+  location="${reply#* }"
+  if [ "$code" != "302" ]; then
+    SMOKE_WHY="sign-in is off although the host carries the client id (/auth/yandex/start answered ${code:-nothing}, not 302)"
+    return 1
+  fi
+  case "$location" in
+    *oauth.yandex.ru/authorize*) return 0 ;;
+  esac
+  SMOKE_WHY="/auth/yandex/start does not redirect to oauth.yandex.ru/authorize"
+  return 1
+}
+
 # Five HTTP reads a browser would notice: the poll, the опись, one chapter from the volume, the
 # install manifest and the worker. `/api/state` and `/api/chapters` answer plain JSON (an object and
-# an array, no `ok` envelope), so the shape is checked, not a wrapper.
+# an array, no `ok` envelope), so the shape is checked, not a wrapper. Plus the conditional sign-in
+# read (BOOK-205): it only speaks when the host carries the OAuth client id.
 smoke() {
   local code ct cc body
   code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${SITE_URL}/api/state" 2>/dev/null || true)"
@@ -297,6 +367,18 @@ smoke() {
   case "$ct" in *+json*) ;; *) SMOKE_WHY="/manifest.webmanifest content-type '${ct:-none}'"; return 1 ;; esac
   cc="$(curl -sSI --max-time 5 "${SITE_URL}/sw.js" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p' | head -n 1)"
   case "$cc" in *no-cache*) ;; *) SMOKE_WHY="/sw.js cache-control '${cc:-none}'"; return 1 ;; esac
+  # BOOK-205, last and separate: sign-in is a different contract from the five reads above, and a
+  # rollback exists to get the book serving again. `ROLLING_BACK` — set for an automatic rollback and
+  # for `--rollback` — is what keeps this read from refusing one; the compose file mounts the same two
+  # files for any image, so an older image with sign-in off is never a reason to reject the swap back.
+  if ! signin_smoke; then
+    if [ "$ROLLING_BACK" = "1" ]; then
+      say "smoke: ${SMOKE_WHY} — accepted on a rollback (the book serves)"
+      SMOKE_WHY=""
+      return 0
+    fi
+    return 1
+  fi
   return 0
 }
 
@@ -471,6 +553,10 @@ rollback_to() { # (image tag, expected commit)
   local tag="$1" expect="$2"
   "$DOCKER" image inspect "$tag" >/dev/null 2>&1 || { say "rollback: ${tag} is not on disk"; return 1; }
   say "rollback: $tag (${expect})"
+  # BOOK-205: from here on the gate judges an image that is going back into service, not a release, so
+  # the sign-in read reports instead of refusing — an automatic rollback must not become red because of
+  # a check that has nothing to do with the book being served.
+  ROLLING_BACK=1
   PREV_SHA7=""
   up_and_gate "$tag" "$expect"
 }
@@ -579,6 +665,9 @@ if [ "$MODE" = "rollback" ]; then
   # A rollback has no "previous build" of its own to classify as stale: the only identity that
   # matters is the one the target image carries.
   PREV_SHA7=""
+  # BOOK-205: what `rollback_to()` sets for an automatic rollback — this path must never be refused
+  # because the older image answers 503 on sign-in.
+  ROLLING_BACK=1
   roll_code=0
   up_and_gate "$PREV_IMAGE" "$ROLLBACK_SHA7" || roll_code=$?
   if [ "$roll_code" -eq 0 ]; then
@@ -626,6 +715,9 @@ STEP="validate"
 dc config -q || die "docker compose config is invalid"
 ensure_locks_dir
 ensure_backups_dir
+# BOOK-205: before the build, so a stray directory at a mount source is a named refusal and not a
+# release that ships with sign-in silently off.
+ensure_signin_mounts
 data_volume_preflight
 
 STEP="build"

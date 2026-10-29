@@ -4,7 +4,6 @@ import type {
   CascadeProgressPayload,
   ChangeDecidedPayload,
   ChangeProcessingPayload,
-  ChangeStalePayload,
   ChapterCreatedPayload,
   ChapterRevisionPayload,
   CommentDto,
@@ -23,13 +22,11 @@ import { getChapters, getFront, getState } from './api.ts';
 import { chapterInViewport, elementInViewport, scrollToChapter } from './dom.ts';
 import { EndMatter } from './components/EndMatter.tsx';
 import { BootWait } from './components/BootWait.tsx';
-import { ChangeCard } from './components/ChangeCard.tsx';
 import { CapacityPlate } from './components/CapacityPlate.tsx';
 import { Chronicle } from './components/Chronicle.tsx';
 import { ConsentBanner } from './components/ConsentBanner.tsx';
 import { ViewSwitch, type BookView } from './components/ViewSwitch.tsx';
 import { ChapterList } from './components/ChapterList.tsx';
-import { FocusView } from './components/FocusView.tsx';
 import { FootJumps, liveChapter } from './components/FootJumps.tsx';
 import { Colophon } from './components/Colophon.tsx';
 import { Discussion } from './components/Discussion.tsx';
@@ -52,25 +49,21 @@ import {
   withState,
   type BookData,
 } from './lib/bookState.ts';
-import { escalationMarkers, reduceRibbon, ribbonAfterSnapshot, ribbonFromState, ribbonMaxWave, type Ribbon } from './lib/cascade.ts';
+import { escalationMarkers, reduceRibbon, ribbonAfterSnapshot, ribbonFromState, type Ribbon } from './lib/cascade.ts';
 import { spineMarkers } from './lib/spine.ts';
 import { IDLE_TITLE, nextTitleMotion, type TitleMotion } from './lib/titleChange.ts';
 import { BookSocket, websocketUrl, type SocketStatus } from './lib/ws.ts';
-import { useChangeCard } from './useChangeCard.ts';
 import { commentFrameChapter } from './lib/commentFrames.ts';
 import { useReaderFeed } from './useReaderFeed.ts';
 import { useReviseTick } from './lib/useReviseTick.ts';
 import { usePageTitle } from './usePageTitle.ts';
 import { usePending } from './usePending.ts';
-import { useFocusMode } from './useFocus.ts';
-import { closeOverlays } from './lib/overlays.ts';
 import { useParagraphChain } from './useParagraphChain.ts';
 import { useDeepLink } from './lib/useDeepLink.ts';
+import { setChangeOpener } from './lib/changeDoor.ts';
+import { useChangeDoor } from './useChangeDoor.ts';
 import { useQueuePoll } from './useQueuePoll.ts';
-import { useBookCost } from './useBookCost.ts';
 import { useFrontRevision } from './useFrontRevision.ts';
-import { usePassRecord } from './lib/usePassRecord.ts';
-import { PassRecordPage } from './components/PassRecordPage.tsx';
 
 /**
  * One page, the book in order (ARCHITECTURE §11.2; BOOK-DOC-5 §5): cover → page 2 → live TOC →
@@ -91,8 +84,6 @@ export function App() {
   const [ribbon, setRibbon] = useState<Ribbon | null>(null);
   const [viewer, setViewer] = useState<ViewerDto>({ signedIn: false, displayName: null });
   const [composer, setComposer] = useState(EMPTY_COMPOSER);
-  /** BOOK-DOC-4 rule 3: the wave bound arrives in `hello.limits`; null until that frame. */
-  const [maxWave, setMaxWave] = useState<number | null>(null);
   const [titleMotion, setTitleMotion] = useState<TitleMotion>(IDLE_TITLE);
   /** «книга · хроника»: one page, two ways of reading it (§11.10). */
   const [view, setView] = useState<BookView>('book');
@@ -102,19 +93,6 @@ export function App() {
    * page hands the whole mode down to the article instead of drawing a floating box at its root.
    */
   const sentence = useParagraphChain();
-  /**
-   * The card and the focus view («прицел», §11.9). The focus view is a mode of this page,
-   * selected by `#правка-<id>`; its session (hash, change, impact) lives in `useFocusMode`.
-   */
-  const card = useChangeCard();
-  // BOOK-111: entering the прицел closes the seam, the panel and the revision object.
-  const enterFocus = useCallback(() => {
-    card.close();
-    closeOverlays();
-  }, [card.close]);
-  const focus = useFocusMode(enterFocus);
-  /** BOOK-166: `#проход-…` is a mode of this page, beside the прицел — its own read and state. */
-  const passRecord = usePassRecord();
   usePageTitle(data === null ? undefined : data.front.title);
   const socketRef = useRef<BookSocket | null>(null);
   const helloSeen = useRef(false);
@@ -124,12 +102,28 @@ export function App() {
    * The thread, the summary of decisions and the record behind it (BOOK-13): the frame is
    * only the trigger, the own-only endpoint is the durable line the page reloads into.
    */
-  const { changes, comments, commentsComplete, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
+  const { changes, comments, commentsComplete, commentsFailed, chapterFeed, decisions, threadSettled, loadThread, refreshChanges, refreshComments, acceptComment, loadChapter, refreshLoaded, noteRecord, noteDecision } =
     useReaderFeed();
   // BOOK-158: the frozen `revise` is re-read from this one clock (countdown + chapter refresh).
   const nowMs = useReviseTick(comments, chapterFeed, refreshComments);
   /** §4 — the thread waits until both feeds settle; a later frame never re-arms it. */
   const stage = usePending(!threadSettled);
+  /**
+   * The one door to a change: it lands on the change's sentence and opens the record there with
+   * the `правка` section expanded. A change never gets a surface of its own again.
+   */
+  const changeDoor = useChangeDoor({ ready: data !== null && view === 'book', loadChapter });
+  const openChange = useCallback(
+    (changeId: string) => {
+      setView('book');
+      changeDoor.open(changeId);
+    },
+    [changeDoor.open],
+  );
+  useEffect(() => {
+    setChangeOpener(openChange);
+    return () => setChangeOpener(null);
+  }, [openChange]);
 
   /**
    * REST fallback and resync. The initial call must not overwrite a `hello` that already
@@ -169,8 +163,6 @@ export function App() {
 
   // `/api/queue` is polled only while the engine is alive (§9); the socket carries the rest.
   useQueuePoll(dataRef, setData);
-  /** BOOK-114: the footer's outlay, re-read when the book state version moves. */
-  const cost = useBookCost(data?.state.version ?? null);
 
   useEffect(() => {
     const socket = new BookSocket(websocketUrl(window.location.origin), {
@@ -183,7 +175,6 @@ export function App() {
             setData((current) => bookFromHello(hello, current));
             setViewer(hello.viewer);
             setComposer(hello.composer);
-            setMaxWave(ribbonMaxWave(hello.limits.maxWave));
             setRibbon(ribbonFromState(hello.state));
             setNotice(null);
             setRevisions({});
@@ -314,15 +305,11 @@ export function App() {
             const processing = frame.data as ChangeProcessingPayload;
             setRibbon((current) => reduceRibbon(current, { type: frame.type, data: processing }));
             void refreshChanges();
-            focus.bump(processing.id);
             break;
           }
-          case 'change:stale': {
-            const stale = frame.data as ChangeStalePayload;
+          case 'change:stale':
             void refreshChanges();
-            focus.bump(stale.id);
             break;
-          }
           case 'cascade:progress': {
             const progress = frame.data as CascadeProgressPayload;
             setRibbon((current) => reduceRibbon(current, { type: frame.type, data: progress }));
@@ -333,8 +320,6 @@ export function App() {
             noteRecord({ kind: 'frame', type: frame.type, data: decided });
             setRibbon((current) => reduceRibbon(current, { type: frame.type, data: decided }));
             void refreshChanges();
-            card.refresh(decided.id);
-            focus.bump(decided.id);
             break;
           }
           default:
@@ -355,7 +340,7 @@ export function App() {
       for (const timer of timers.current) window.clearTimeout(timer);
       timers.current = [];
     };
-  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, card.refresh, focus.bump, applyAuthorsCount, noteRevision]);
+  }, [refreshAll, refreshCatalog, refreshChanges, refreshComments, refreshLoaded, noteRecord, applyAuthorsCount, noteRevision]);
 
   if (failed && data === null) {
     return (
@@ -390,8 +375,6 @@ export function App() {
     }
     scrollToChapter(target.n);
   };
-  /** Reaching a chapter (a card's step, a record's link): the card closes, the book view is on. */
-  const toChapter = (n: number): void => void (card.close(), setView('book'), scrollToChapter(n));
   /**
    * A filing was posted (BOOK-DOC-34, BOOK-111): the 201 DTO enters the feed in the same frame,
    * so the mark and the strip are there with no reload; the chapter's feed and the register
@@ -404,19 +387,11 @@ export function App() {
   };
 
   // BOOK-166 — the record is a mode of the same page: the head, the record, the colophon.
-  if (passRecord.phase !== 'idle') return <PassRecordPage record={passRecord} chrome={{ state, front, ribbon, catalog, escalation: escalationMarkers(state.unresolved), viewer, cost, donateUrl: front.donateUrl ?? null, exportBytes: front.exportBytes ?? null, capacity: connection === 'capacity', live: history }} card={card.change} onCloseCard={card.close} onOpenChange={card.open} onOpenChapter={toChapter} />;
-  const focusView =
-    focus.id === null ? null : (
-      <FocusView
-        change={focus.change}
-        impact={focus.impact}
-        missing={focus.missing}
-        ribbon={ribbon}
-        maxWave={maxWave ?? undefined}
-        revisions={revisions}
-        onClose={focus.close}
-        live={history}
-      />
+  const doorLine =
+    changeDoor.failed === null ? null : (
+      <p className="state-line" role="status">
+        {changeDoor.failed}
+      </p>
     );
 
   if (view === 'chronicle' && chronicle) {
@@ -428,16 +403,13 @@ export function App() {
           catalog={catalog}
           frontRev={front.rev}
           tick={historyTick}
-          onOpenChange={card.open}
+          onOpenChange={openChange}
           started={chronicle}
           live={history}
           onLoadChapter={loadChapter}
         />
-        {card.change === null ? null : (
-          <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />
-        )}
         <CapacityPlate active={connection === 'capacity'} />
-        {focusView}
+        {doorLine}
       </>
     );
   }
@@ -450,7 +422,7 @@ export function App() {
         ribbon={ribbon}
         catalog={catalog}
         escalation={escalationMarkers(state.unresolved)}
-        onOpenChange={card.open}
+        onOpenChange={openChange}
         view={view}
         onViewChange={setView}
         motion={titleMotion}
@@ -487,13 +459,12 @@ export function App() {
         exportBytes={front.exportBytes ?? null}
         onLoadChapter={loadChapter}
       />
-      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} onLoadChapter={loadChapter} />
-      <Colophon state={state} imprint={front.imprint} viewer={viewer} cost={cost} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
-      {card.change === null ? null : <ChangeCard change={card.change} onClose={card.close} onOpenChapter={toChapter} />}
+      <Discussion depth={state.queue.depth} stage={stage} busy={!threadSettled} complete={commentsComplete} changes={changes} comments={comments} nowMs={nowMs} live={history} failed={commentsFailed} onLoadChapter={loadChapter} />
+      <Colophon state={state} imprint={front.imprint} viewer={viewer} donateUrl={front.donateUrl ?? null} exportBytes={front.exportBytes ?? null} />
+      {doorLine}
       <NoticeTicket notice={notice} onGo={go} onDismiss={() => setNotice(null)} />
       <FootJumps live={history} processing={state.queue.processing !== null} revising={Object.values(revising).some((block) => block.active)} chapter={liveChapter(state.queue.processing?.chapter ?? null, revising)} change={changes[0] ?? null} plate={connection === 'capacity'} onLoad={loadChapter} />
       <CapacityPlate active={connection === 'capacity'} />
-      {focusView}
     </>
   );
 }

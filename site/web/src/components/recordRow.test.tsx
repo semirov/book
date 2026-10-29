@@ -41,7 +41,7 @@ const READER: HistoryRecordDto = {
   outcome: 'applied',
   reason: null,
   changeId: 'chg_9',
-  recordHref: '#правка-chg_9',
+  recordHref: '?change=chg_9',
   span: { before: 'старый фонарь', after: 'новый фонарь' },
 };
 
@@ -60,7 +60,7 @@ const PASS: HistoryRecordDto = {
   outcome: null,
   reason: null,
   changeId: null,
-  recordHref: '#проход-9-stp_7',
+  recordHref: '#ch-9',
   span: null,
 };
 
@@ -79,7 +79,7 @@ describe('one public record entry (BOOK-65)', () => {
     // button, not a card door beside the record's own.
     expect(html.match(/<button/gu)).toBeNull();
     expect(html.match(/<a /gu)).toHaveLength(2);
-    expect(html).toContain('href="#правка-chg_9"');
+    expect(html).toContain('href="?change=chg_9"');
     expect(html).not.toContain('chr-deed');
   });
 
@@ -120,7 +120,7 @@ describe('one public record entry (BOOK-65)', () => {
   it('names the row for assistive tech with the same facts and the door it opens', () => {
     const html = renderToStaticMarkup(<RecordRow record={READER} />);
     expect(html).toContain(
-      `aria-label="27.10.2026${MID}15:40, глава 9 · Тестовая глава, «старый фонарь» → «новый фонарь», правка читателя — открыть прицел правки"`,
+      `aria-label="27.10.2026${MID}15:40, глава 9 · Тестовая глава, «старый фонарь» → «новый фонарь», правка читателя — открыть правку"`,
     );
   });
 
@@ -128,7 +128,7 @@ describe('one public record entry (BOOK-65)', () => {
     const html = renderToStaticMarkup(<RecordRow record={PASS} />);
     expect(html).toContain('<span class="chr-cause">писалась</span>');
     expect(html).toContain('<a class="place-link chr-place" href="#ch-9">глава 9</a>');
-    expect(html).toContain('href="#проход-9-stp_7"');
+    expect(html).toContain('href="#ch-9"');
     expect(html).toContain('>запись</a>');
     expect(html).not.toContain('правка читателя');
   });

@@ -32,7 +32,7 @@ function record(hseq: number, chapter: number): HistoryRecordDto {
     outcome: 'applied',
     reason: null,
     changeId: `chg_${chapter}`,
-    recordHref: `#правка-chg_${chapter}`,
+    recordHref: `?change=chg_${chapter}`,
     span: null,
   };
 }

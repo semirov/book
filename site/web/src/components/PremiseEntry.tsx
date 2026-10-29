@@ -6,7 +6,8 @@ import { premiseAction, premiseFiling, premiseRow } from '../lib/premise.ts';
 import { hideFiling, showFiling, useOpenFiling } from '../lib/useFiling.ts';
 import { reviseFiling } from '../lib/useRevise.ts';
 import { closeSeam, openSeam, useOpenSeam } from '../lib/useSeam.ts';
-import { FilingPanel } from './FilingPanel.tsx';
+import { FilingCard } from './FilingCard.tsx';
+import { ChapterChange } from './ChapterChange.tsx';
 import { PremiseRow } from './PremiseRow.tsx';
 import { Seam } from './Seam.tsx';
 
@@ -57,10 +58,7 @@ export function PremiseEntry({
   /** BOOK-111: the page's one panel; this chapter's premise owns only its own slot in it. */
   const filing = useOpenFiling();
   const owner = `ch${entry.n}:premise`;
-  const panel =
-    filing !== null && filing.kind === 'filing' && filing.owner === owner && filing.comment !== null
-      ? { comment: filing.comment, rect: filing.rect }
-      : null;
+  const panel = filing !== null && filing.owner === owner ? { comment: filing.comment } : null;
   const premise = premiseFiling(comments, entry.n);
   const row = premiseRow(entry, premise, changes, nowMs);
   const draftKey = `ch${entry.n}:premise`;
@@ -88,14 +86,7 @@ export function PremiseEntry({
    * strip's one line, anything else closes the strip it would have stood beside.
    */
   const openFiling = (comment: CommentDto, origin: HTMLElement): void => {
-    showFiling({
-      kind: 'filing',
-      owner,
-      comment,
-      origin,
-      rect: origin.getBoundingClientRect(),
-      fromSeam: origin.closest('.seam') !== null,
-    });
+    showFiling({ owner, comment, origin });
   };
 
   return (
@@ -129,6 +120,7 @@ export function PremiseEntry({
           }}
         />
       )}
+      <ChapterChange chapter={entry.n} comments={comments} />
       {strip ? (
         <Seam
           entry={entry}
@@ -141,7 +133,6 @@ export function PremiseEntry({
           viewer={viewer}
           onPosted={(comment) => onPosted?.(comment)}
           onClose={closeSeam}
-          onClosePanel={hideFiling}
           onProvenance={() => undefined}
           // A premise has no word behind a door: the strip prints «замысел», not a record.
           prov={null}
@@ -150,9 +141,8 @@ export function PremiseEntry({
         />
       ) : null}
       {panel === null ? null : (
-        <FilingPanel
+        <FilingCard
           comment={panel.comment}
-          anchor={panel.rect}
           earlierAttempts={earlier}
           premiseIntent={intent}
           nowMs={nowMs}

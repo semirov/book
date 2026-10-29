@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setChangeOpener } from '../lib/changeDoor.ts';
 import { formatDayMonth } from '../lib/format.ts';
 import { FootJumps, type FootJumpsProps } from './FootJumps.tsx';
 
@@ -141,11 +142,29 @@ describe('the third item tells the truth', () => {
     await render({ change: CHANGE });
     const item = passItem();
     expect(item.tagName).toBe('A');
-    expect(item.getAttribute('href')).toBe('#проход-chg_7');
+    expect(item.getAttribute('href')).toBe('?change=chg_7');
     expect(item.textContent).toBe('кареткиписалась · 25.10');
     expect(item.textContent).toContain(`писалась · ${formatDayMonth(CHANGE.decidedAt)}`);
     expect(nav().getAttribute('data-pass')).toBe('record');
     expect(errorCount()).toBe(0);
+  });
+
+  it('opens the change’s record from the carets without navigation', async () => {
+    const open = vi.fn();
+    setChangeOpener(open);
+    try {
+      await render({ change: CHANGE });
+      const item = passItem() as HTMLAnchorElement;
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+      await act(async () => {
+        item.dispatchEvent(event);
+      });
+      // The page's own door takes the click: no browser navigation, the record at the sentence.
+      expect(event.defaultPrevented).toBe(true);
+      expect(open).toHaveBeenCalledWith('chg_7');
+    } finally {
+      setChangeOpener(null);
+    }
   });
 
   it('speaks the state in its accessible name, and the visible word is inside it', async () => {

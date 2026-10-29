@@ -6,7 +6,6 @@ import type { ProseMarks } from '../lib/proseMarks.ts';
 import type { Sentence } from '../lib/seam.ts';
 import { citedClass, FilingMark } from './FilingMark.tsx';
 import { MarginNote } from './MarginNote.tsx';
-import { RevisionObject } from './RevisionObject.tsx';
 
 /**
  * BOOK-68 / BOOK-128 #3852 — the paragraph as slices of its own text, never re-assembled.
@@ -18,7 +17,7 @@ import { RevisionObject } from './RevisionObject.tsx';
  *
  * The touched range is one more cut **inside** its sentence: the mark is an inline span, so no
  * line box moves and the paragraph reads the same closed, open and closed again. The sentence's
- * edge objects (the filing numeral, the margin note, the revision object) follow the text, as
+ * edge objects (the filing numeral, the margin note) follow the text, as
  * they always have.
  */
 export function SentenceRuns({
@@ -35,9 +34,6 @@ export function SentenceRuns({
   controls,
   onToggle,
   onOpenFiling,
-  onOpenRevision,
-  onCloseRevision,
-  revision,
 }: {
   text: string;
   sentences: readonly Sentence[];
@@ -56,10 +52,8 @@ export function SentenceRuns({
   frozen: boolean;
   controls: string;
   onToggle: (range: { start: number; end: number }) => void;
-  onOpenFiling: (comment: CommentDto, origin: HTMLElement) => void;
-  onOpenRevision: (comment: CommentDto, origin: HTMLElement) => void;
-  onCloseRevision: () => void;
-  revision: { comment: CommentDto } | null;
+  /** The sentence's own range travels with the filing: the record opens **there**. */
+  onOpenFiling: (comment: CommentDto, origin: HTMLElement, range: { start: number; end: number }) => void;
 }): ReactNode[] {
   const nodes: ReactNode[] = [];
   let cursor = from;
@@ -126,16 +120,14 @@ export function SentenceRuns({
         </span>
         {filings === undefined || filings.stale ? null : (
           <>
-            <FilingMark filings={filings} onOpen={onOpenFiling} onOpenRevision={onOpenRevision} />
-            {filings.all
-              .filter(isAlive)
-              .filter((comment) => revision?.comment.id !== comment.id)
-              .map((comment) => (
-                <MarginNote key={comment.id} comment={comment} onOpen={onOpenRevision} />
-              ))}
-            {revision !== null && filings.all.some((comment) => comment.id === revision.comment.id) ? (
-              <RevisionObject comment={revision.comment} text={text} onClose={onCloseRevision} />
-            ) : null}
+            <FilingMark filings={filings} onOpen={(comment, origin) => onOpenFiling(comment, origin, { start: sentence.start, end: sentence.end })} />
+            {filings.all.filter(isAlive).map((comment) => (
+              <MarginNote
+                key={comment.id}
+                comment={comment}
+                onOpen={(item, origin) => onOpenFiling(item, origin, { start: sentence.start, end: sentence.end })}
+              />
+            ))}
           </>
         )}
       </span>,

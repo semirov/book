@@ -22,7 +22,6 @@ import type { Ribbon } from '../lib/cascade.ts';
 import { Chronicle } from './Chronicle.tsx';
 import { Discussion } from './Discussion.tsx';
 import { EndMatter } from './EndMatter.tsx';
-import { FocusWings } from './FocusWings.tsx';
 import { Opening } from './Opening.tsx';
 import { ProvenanceBlock } from './ProvenanceBlock.tsx';
 import { SentenceBlock } from './SentenceBlock.tsx';
@@ -216,7 +215,6 @@ function page(current: StateSnapshot): string {
           onFiling={noop}
         />
       ) : null}
-      <FocusWings wings={ribbon.wings} live={live} />
       {live ? (
         <SentenceBlock chain={CHAIN} loading={false} failed={false} quote={TEXT} frame="none" place="flow" onRetry={noop} onClose={noop} />
       ) : null}
@@ -265,7 +263,6 @@ describe('on an empty log the history surfaces are not in the markup (AC1, AC6)'
       'class="page talks"',
       'обсуждение',
       'class="views',
-      'focus-wings',
     ]) {
       expect(html, `with an empty log the page must not render «${gone}»`).not.toContain(gone);
     }
@@ -337,7 +334,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
   it('renders the chronicle and its way in, and keeps every other history surface off', () => {
     expect(html).toContain('class="chronicle');
     expect(html).toContain('class="views');
-    for (const gone of ['class="ribbon', 'волна', 'class="prov-block"', 'class="sentence-block"', 'authors-list', 'authors-note', 'Авторы', 'class="page talks', 'focus-wings']) {
+    for (const gone of ['class="ribbon', 'волна', 'class="prov-block"', 'class="sentence-block"', 'authors-list', 'authors-note', 'Авторы', 'class="page talks']) {
       expect(html, `before the first reader change the page must not render «${gone}»`).not.toContain(gone);
     }
     // BOOK-60/BOOK-138: the download is book matter and survives the history gate.
@@ -385,7 +382,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
           outcome: null,
           reason: null,
           changeId: null,
-          recordHref: `#проход-2-stp_1`,
+          recordHref: '#ch-2',
           span: null,
         },
       ],
@@ -395,7 +392,7 @@ describe('a begun book has a chronicle with one starting record (BOOK-56)', () =
     const rows = container.querySelectorAll('li.chr-row');
     expect(rows).toHaveLength(1);
     expect(rows[0]?.querySelector('.chr-cause')?.textContent).toBe('писалась');
-    expect(rows[0]?.querySelector('.chr-change')?.getAttribute('href')).toBe('#проход-2-stp_1');
+    expect(rows[0]?.querySelector('.chr-change')?.getAttribute('href')).toBe('#ch-2');
     expect(container.textContent).not.toContain('перематывать пока нечего');
     // The reader-driven surfaces are still off, as `live` says.
     expect(container.querySelector('.chain')).toBeNull();
@@ -409,7 +406,6 @@ describe('the first reader change turns every surface on (AC3)', () => {
     expect(html).toContain('class="chronicle');
     expect(html).toContain('class="ribbon');
     expect(html).toContain('волна 2');
-    expect(html).toContain('class="focus-wings"');
     // BOOK-128 comment #3815 — the two layers are marginalia with three facts each, and their
     // words are the book's own, not the panel's: no rows, no table, no uppercase label.
     expect(html).toContain('class="prov-block');

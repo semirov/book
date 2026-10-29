@@ -3,7 +3,7 @@ import { INTERVENTION_KINDS, INTERVENTION_KIND_LABELS } from '@book/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { ChangeCard } from './ChangeCard.tsx';
+import { ChangeSection } from './ChangeSection.tsx';
 import { Discussion } from './Discussion.tsx';
 import { InterventionKinds } from './InterventionKinds.tsx';
 
@@ -137,9 +137,8 @@ describe('the kind in the thread and on the change card (BOOK-16)', () => {
     expect(html).not.toContain('свидетельство');
   });
 
-  it('names the kind on the change card and leaks no id or gate role', () => {
-    const html = renderToStaticMarkup(<ChangeCard change={change} onClose={() => undefined} />);
-    expect(html).toContain('вносит документ');
+  it('leaks no id or gate role in the change’s record section', () => {
+    const html = renderToStaticMarkup(<ChangeSection change={change} before={null} after={null} />);
     for (const id of IDS) expect(html, id).not.toContain(id);
     for (const word of TAXONOMY) expect(html, word).not.toContain(word);
   });

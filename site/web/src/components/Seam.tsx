@@ -10,8 +10,6 @@ import { filingMarginalia } from '../lib/marginalia.ts';
 import { attachOutsideClose } from '../lib/outsideClose.ts';
 import { PREMISE_HINT } from '../lib/premise.ts';
 import type { SeamAnchor } from '../lib/seam.ts';
-import { useOpenFiling } from '../lib/useFiling.ts';
-import { useOpenRevision } from '../lib/useRevision.ts';
 import type { ComposerError } from '../lib/composer.ts';
 import type { WordFacts } from '../lib/provenance.ts';
 import { InterventionForm } from './InterventionForm.tsx';
@@ -66,12 +64,6 @@ export type SeamProps = {
   /** BOOK-111: the posted DTO itself — the feed shows the row without a reload. */
   onPosted: (comment: CommentDto) => void;
   onClose: () => void;
-  /**
-   * BOOK-111 (owner, 2026-10-27): a verdict on the floating panel belongs to the surface that
-   * opened it — the paragraph (its own close, focus back on the trigger) or the premise row's
-   * chapter. The strip only asks for it when the panel is what the outside click landed out of.
-   */
-  onClosePanel?: () => void;
   onReanchor?: (draft: SeamDraft) => void;
   onProvenance: (origin: HTMLElement) => void;
   onOpenFiling: (comment: CommentDto, origin: HTMLElement) => void;
@@ -83,11 +75,13 @@ export type SeamProps = {
   prov: {
     view: WordFacts | null;
     failed: boolean;
-    /** The filing standing on the word, opened in the site's one panel. */
+    /** The filing standing on the word, opened in the record at that sentence. */
     onFiling: (origin: HTMLElement) => void;
     /** `Escape` and an outside tap put the body away — the strip's own ✕ stays the one close. */
     onClose: () => void;
   } | null;
+  /** The word's body is open in this strip (its own part, not a second surface). */
+  wordOpen?: boolean;
   /** The premise explanation line; the first empty row carries it instead while closed. */
   premiseHint?: boolean;
 };
@@ -104,11 +98,11 @@ export function Seam({
   viewer,
   onPosted,
   onClose,
-  onClosePanel,
   onReanchor,
   onProvenance,
   onOpenFiling,
   prov,
+  wordOpen = false,
   premiseHint = true,
 }: SeamProps) {
   const premise = anchor === null;
@@ -126,20 +120,11 @@ export function Seam({
   const [open, setOpen] = useState(() => seamDrafts.read(draftKey) !== null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const node = useRef<HTMLDivElement>(null);
-  /** BOOK-111: the page's one panel — a card or a revision object collapses this form. */
-  const panel = useOpenFiling();
-  const revision = useOpenRevision();
   /**
-   * BOOK-111 (owner, 2026-10-27) — «Два поповера, нужно чтобы был один или поменялся контекст
-   * в существующем». A **filing card** opened from this strip is not a second box beside it: the
-   * strip collapses to one line and the floating card is the only full frame.
-   *
-   * BOOK-128 comment #3815 — the word's provenance is not a card at all: it is this strip's own
-   * body (`prov-block`, marginalia at ≥1024, in flow under the row at ≤1023), so it never
-   * collapses the strip and never takes the ✕ away from it.
+   * BOOK-128 comment #3815 — the word's provenance is this strip's own body (`prov-block`),
+   * so it never collapses the strip and never takes the ✕ away from it. A filing row opens the
+   * record at its sentence; there is no card to collapse this strip for any more.
    */
-  const wordOpen = panel !== null && panel.kind === 'provenance';
-  const collapsed = panel !== null && panel.kind === 'filing' && panel.fromSeam;
   /**
    * BOOK-158 — a strip opened by «исправить» is a revision of the filing this chapter's row
    * already holds. «У главы уже есть замысел» would be the wrong thing to say above a form
@@ -182,8 +167,7 @@ export function Seam({
       onOutside: () => {
         // The phrase's block is its own layer: a tap outside it is its own close, not ours.
         if (document.querySelector('.sentence-block') !== null) return;
-        if (collapsed) (onClosePanel ?? onClose)();
-        else if (prov !== null && wordOpen) prov.onClose();
+        if (prov !== null && wordOpen) prov.onClose();
         else onClose();
       },
     });
@@ -192,45 +176,15 @@ export function Seam({
       document.removeEventListener('keydown', onKey);
       detach();
     };
-  }, [collapsed, onClose, onClosePanel, prov, wordOpen]);
+  }, [onClose, prov, wordOpen]);
 
   /**
-   * BOOK-111 (owner, 2026-10-27) — the door a collapsed card came from. It is a *new* node when
-   * the strip rebuilds its rows out of the collapsed line, so the key is written on the door
-   * (not the node kept) and focus is handed back here, after the rows exist again.
-   */
-  const door = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (collapsed) {
-      door.current = panel?.origin?.getAttribute('data-door') ?? null;
-      return;
-    }
-    const key = door.current;
-    door.current = null;
-    if (key === null) return;
-    const target = node.current?.querySelector<HTMLElement>(`[data-door="${key}"]`);
-    // The door may be gone with the body it lived in (a refusal that was cleared, a form the
-    // reader closed): the strip still has an action, and focus never lands on `<body>`.
-    target?.focus();
-    if (target === null || target === undefined) {
-      node.current?.querySelector<HTMLElement>('.seam-cta, .seam-prov, .seam-filing')?.focus();
-    }
-  }, [collapsed, panel]);
-
-  /**
-   * BOOK-111 — one overlay at a time. A filing card or a revision object the reader opens
-   * collapses this form; the strip stays, so the card still has the row it came from behind it.
-   *
-   * BOOK-128 comment #3815: the word's body is not a panel — it is this strip's own second
-   * section — so opening it closes the form too (two half-written surfaces never coexist), and
-   * the body goes with the form when anything else on the page takes the reader's attention.
+   * Two half-written surfaces never coexist: the word's facts are a section of this strip, so
+   * opening them puts the form away (the strip stays, and stays the anchor). The draft is kept.
    */
   useEffect(() => {
-    if (panel === null && revision === null) return;
-    if (panel !== null && panel.kind === 'filing' && panel.fromSeam) return;
-    setOpen(false);
-  }, [panel, revision]);
+    if (wordOpen) setOpen(false);
+  }, [wordOpen]);
 
   const summary = receipt === null ? draftSummary(draft) : null;
   const rows = filings === null ? { shown: [] as CommentDto[], more: 0 } : stripFilings(filings);
@@ -251,38 +205,6 @@ export function Seam({
       /* the refusal line stays: the reader still knows it was sent, even if the read failed */
     }
   };
-
-  /**
-   * BOOK-111 (owner, 2026-10-27) — the strip under a **card** is a state of the same place,
-   * not a second box: one line, no ✕, no action. The floating card is the only full frame on
-   * screen, and closing it hands these rows back exactly as they were (`open` and `receipt` are
-   * untouched by the collapse, so the form and the receipt return with the draft).
-   */
-  if (collapsed && panel !== null) {
-    const label = panel.comment === null ? 'замечание' : `замечание ${filingNumber(panel.comment)}`;
-    return (
-      <div
-        className="seam ym-hide-content"
-        role="group"
-        aria-label={`место вмешательства · глава ${String(entry.n).padStart(2, '0')}`}
-        data-state="card"
-        data-open="false"
-        data-frozen={frameTouched ? 'true' : undefined}
-        data-premise={premise ? 'true' : undefined}
-        data-base-rev={draft.baseRev ?? ''}
-        data-block={draft.blockId ?? ''}
-        ref={node}
-      >
-        <span className="seam-announce" role="status" aria-live="polite" />
-        <span className="seam-prov-line">
-          <span className="seam-prov-word">{word}</span>
-          <span className="seam-prov-trail">
-            {` · глава ${String(entry.n).padStart(2, '0')} · ${label}`}
-          </span>
-        </span>
-      </div>
-    );
-  }
 
   return (
     <div

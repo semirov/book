@@ -401,18 +401,18 @@ describe('the build stamp in the end matter (BOOK-109)', () => {
 });
 
 /**
- * BOOK-114, BOOK-115, BOOK-126 — the order of the rows below the imprint line, with the gift
+ * BOOK-115, BOOK-126 — the order of the rows below the imprint line, with the gift
  * row and the build stamp (BOOK-109) between them: who is reading, what the book is, how to
- * support it, which copy it is, what it cost. The rendering and the sheets of the new rows live
+ * support it, which copy it is. The rendering and the sheets of the new rows live
  * in `colophonFooter.test.tsx` — the colophon is read as one document, and its tests are two
  * because a file has a line limit.
  */
-describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () => {
+describe('the order of the footer (BOOK-109, BOOK-115, BOOK-126)', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it('puts the logout row, then the imprint, then the gift row, then the build stamp, then the cost line', () => {
+  it('puts the logout row, then the imprint, then the gift row, then the build stamp', () => {
     stubDocument();
     const html = renderToStaticMarkup(
       <Colophon
@@ -421,7 +421,6 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () 
         viewer={{ signedIn: true, displayName: 'Филипп' }}
         donateUrl="https://t.tb.ru/pm_short/11T50nT6AL"
         build={{ commit: '5558449', stamp: '27.10 20:52' }}
-        cost={{ tokens: 1_234_567, tokensIn: 1_000_000, tokensOut: 234_567, steps: 9, usd: 12.34, unpriced: [] }}
       />,
     );
     const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
@@ -432,7 +431,6 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () 
     const theme = footer.indexOf('class="theme"');
     const donate = footer.indexOf('class="donate"');
     const build = footer.indexOf('class="build-stamp"');
-    const cost = footer.indexOf('class="cost-line"');
     expect(logout).toBeGreaterThan(-1);
     expect(imprint).toBeGreaterThan(-1);
     expect(download).toBeGreaterThan(-1);
@@ -440,7 +438,6 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () 
     expect(theme).toBeGreaterThan(-1);
     expect(donate).toBeGreaterThan(-1);
     expect(build).toBeGreaterThan(-1);
-    expect(cost).toBeGreaterThan(-1);
     expect(logout).toBeLessThan(imprint);
     // BOOK-138 keeps the download straight after the imprint and the gift straight after the
     // download: those two rows are the reader's way out, and the facts below them — the legal
@@ -450,21 +447,19 @@ describe('the order of the footer (BOOK-109, BOOK-114, BOOK-115, BOOK-126)', () 
     expect(donate).toBeLessThan(legal);
     expect(legal).toBeLessThan(theme);
     expect(theme).toBeLessThan(build);
-    expect(build).toBeLessThan(cost);
     // BOOK-137 — one row per fact: the imprint, the legal pages with the source link, and the
     // theme are three rows, not one crammed line, and each fact is printed once.
     expect(footer.match(/class="imprint-line"/gu) ?? []).toHaveLength(1);
     expect(footer.match(/class="legal-line"/gu) ?? []).toHaveLength(1);
     expect(footer.match(/class="theme"/gu) ?? []).toHaveLength(1);
     expect(footer.match(/class="donate"/gu) ?? []).toHaveLength(1);
-    expect(footer.match(/class="cost-line"/gu) ?? []).toHaveLength(1);
     expect(footer.match(/class="build-stamp"/gu) ?? []).toHaveLength(1);
     expect(footer.match(/class="logout-row"/gu) ?? []).toHaveLength(1);
-    // Nothing follows the cost line: it is the last row of the page, after both legal links.
-    expect(cost).toBeGreaterThan(footer.indexOf('href="/privacy"'));
-    expect(cost).toBeGreaterThan(footer.indexOf('href="/rules"'));
+    // The build stamp is the last row of the page, after both legal links.
+    expect(build).toBeGreaterThan(footer.indexOf('href="/privacy"'));
+    expect(build).toBeGreaterThan(footer.indexOf('href="/rules"'));
     const rows = [...footer.matchAll(/<div class="row">/gu)];
     expect(rows.length).toBeGreaterThan(0);
-    expect(footer.slice(rows.at(-1)?.index ?? 0)).toContain('class="cost-line"');
+    expect(footer.slice(rows.at(-1)?.index ?? 0)).toContain('class="build-stamp"');
   });
 });
