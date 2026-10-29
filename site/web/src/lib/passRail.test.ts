@@ -192,11 +192,31 @@ describe('the strip’s head', () => {
     expect(receiptTextOf(refused.receipt)).toBeNull();
   });
 
-  it('prints what it has when no stage was stored', () => {
+  it('claims no pass when no stage was stored — the absence, in words', () => {
     const empty = passStripModel({ chapter: 7, events: [], nowMs: T0 });
-    expect(empty.heading).toBe('книга пишется\u00a0·\u00a0глава 7');
+    // A failed `getStages` is not liveness: no lead, no time, no row (BOOK-199, audit #2).
+    expect(empty.phase).toBe('absent');
+    expect(empty.heading).toBe('пока ничего не записано\u00a0·\u00a0глава 7');
+    expect(empty.heading).not.toContain('пишется');
     expect(empty.rows).toEqual([]);
     expect(empty.right).toBeNull();
+    expect(empty.receipt).toEqual({ tokens: null, costUsd: null, durationMs: null });
+    expect(empty.refused).toBe(false);
+    // Lowercase, as every mark line is.
+    expect(empty.heading).toBe(empty.heading.toLowerCase());
+  });
+
+  it('claims no pass when the stored stages print no row — a typing-only story', () => {
+    // `typing` is not a row of its own: the rail is empty, and an empty rail is not liveness on
+    // any path, not only when the read came back with nothing at all (BOOK-199, audit #2).
+    const typing = passStripModel({ chapter: 7, events: [event('typing', 5)], nowMs: T0 + MIN });
+    expect(typing.phase).toBe('absent');
+    expect(typing.heading).toBe('пока ничего не записано\u00a0·\u00a0глава 7');
+    expect(typing.heading).not.toContain('пишется');
+    expect(typing.rows).toEqual([]);
+    expect(typing.right).toBeNull();
+    expect(typing.receipt).toEqual({ tokens: null, costUsd: null, durationMs: null });
+    expect(typing.refused).toBe(false);
   });
 });
 

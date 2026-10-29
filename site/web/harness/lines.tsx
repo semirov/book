@@ -151,7 +151,9 @@ function Gallery() {
       </Line>
       <Line id=".ch-h / .ch-print">
         <article className="page ch" data-n={1}>
-          <ChapterHeader entry={ENTRY} printing status={null} basisSentence={null} />
+          {/* The header's two lines as one section: the apparatus line (`■ печатается`, the
+              data) and the wait sentence on its own block line (BOOK-199 m5). */}
+          <ChapterHeader entry={ENTRY} printing status="читаем главу 01" basisSentence={null} />
         </article>
       </Line>
       <Line id=".seam-row">
@@ -167,7 +169,7 @@ function Gallery() {
         <RecordHead />
       </Line>
       <Line id=".rec-row">
-        <RowsList rows={REC_WINDOW} lifted={false} total={REC_WINDOW.rows.length} onLift={noop} onFold={noop} />
+        <RowsList rows={REC_WINDOW} lifted={false} onLift={noop} onFold={noop} />
       </Line>
       <Line id=".comment-meta / .sec-h / .comment-attempt / .qline">
         <Discussion depth={0} comments={COMMENTS} changes={[ATTEMPT]} live nowMs={FIXED_NOW} />

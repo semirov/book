@@ -235,7 +235,7 @@ body.is-focus {
 }
 .focus-wing-r {
   font-family: var(--mono);
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
   letter-spacing: 0.02em;
   color: #cfd3d2;
 }
@@ -397,7 +397,7 @@ body.is-focus {
 .focus-steps button,
 .focus-steps span {
   font-family: var(--serif);
-  font-size: var(--fs-label);
+  font-size: var(--fs-note);
   text-align: left;
   color: #b0b2ae;
   border-bottom: 1px solid transparent;

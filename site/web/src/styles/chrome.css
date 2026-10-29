@@ -96,22 +96,22 @@
   overflow-wrap: break-word;
   hyphens: manual;
 }
-/* The byline is a name — the one 13 px line of the cover, mono and lowercase as written
+/* The byline is a name — the cover's one mark line, mono 12 and lowercase as written
    (BOOK-128 #3900: the cover's caps are retired with the label register). */
 .author {
   margin: 24px 0 0;
   font-family: var(--mono);
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
   font-weight: 400;
   line-height: 1.5;
   letter-spacing: 0;
   color: var(--ink-2);
 }
-/* «+ 3» — a reference chip beside the signature: the byline's own 13 px rung and line box, so
+/* «+ 3» — a reference chip beside the signature: the byline's own 12 px rung and line box, so
    the line is one face at one size. Zero readers print nothing at all (BOOK-70). */
 .author-plus {
   font-family: var(--mono);
-  font-size: var(--fs-label);
+  font-size: var(--fs-micro);
   line-height: 1.5;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -239,7 +239,8 @@
 .authors-empty,
 .authors-updated {
   margin: 8px 0 0;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   color: var(--ink-3);
 }
 .authors-list {
@@ -331,7 +332,8 @@
 .own-trace-edits,
 .own-trace-note {
   margin: 6px 0 0;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   color: var(--ink-3);
 }
 .own-trace-toggle {
@@ -393,7 +395,8 @@
 }
 .own-decision-intent {
   margin: 4px 0 0;
-  font-size: var(--fs-label);
+  font-family: var(--serif);
+  font-size: var(--fs-note);
   line-height: 1.5;
   color: var(--ink-3);
   overflow-wrap: anywhere;

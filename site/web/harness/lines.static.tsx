@@ -200,7 +200,6 @@ export function HeadRow() {
           <span className="head-status" data-kind="live" role="status">
             <span className="head-nib" aria-hidden="true" />
             <span className="head-status-full">книга пишется · глава 7 · 14:21</span>
-            <span className="head-status-short">пишется · 14:21</span>
           </span>
           <span className="folio" data-page={142} aria-hidden="true">
             142

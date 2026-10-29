@@ -42,6 +42,19 @@
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
+/* The wait sentence has its own block line (BOOK-199 m5): it is the surface's sentence, not
+   the apparatus's data, so it sits under `.ch-meta` instead of inside it — mono 12, no chip
+   glyph. `.ch-meta` keeps `знаки · время` and the printing chip alone. */
+.ch-status {
+  display: block;
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: 0;
+  color: var(--ink-3);
+}
 /* S chip: «печатается» — mono 12, lowercase, live while the text arrives. */
 .ch-print {
   font-family: var(--mono);
@@ -158,29 +171,15 @@
   letter-spacing: 0;
   color: var(--ink-3);
 }
+/* BOOK-199 (audit #21) — one ink for people: the name carries the identity, not the hue.
+   Six colours for six readers measured 1.98–2.41:1 on the day paper — the least legible word
+   in the row — and nothing here is load-bearing: a reader's own filing is marked by the word
+   `ваше` in `--ink`, a textual fact that survives any palette. The wire still carries
+   `authorColor` (the server stores it); this sheet no longer paints it. */
 .comment-author {
   letter-spacing: 0;
   font-size: var(--fs-micro);
-}
-/* BOOK-30 — a reader's ink is a class, not a style attribute: no colour value in the
-   markup, one themeable rule per palette slot (shared/src/comment.ts). */
-.comment-author.author-ink-0 {
-  color: #6f9bb5;
-}
-.comment-author.author-ink-1 {
-  color: #a98b6f;
-}
-.comment-author.author-ink-2 {
-  color: #7d9b6f;
-}
-.comment-author.author-ink-3 {
-  color: #9b7f9e;
-}
-.comment-author.author-ink-4 {
-  color: #b58f6f;
-}
-.comment-author.author-ink-5 {
-  color: #6f8fb5;
+  color: var(--ink);
 }
 .comment-quote {
   margin: 4px 0 2px;

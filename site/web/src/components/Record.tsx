@@ -452,7 +452,6 @@ export function Record({
                         onFold={() => {
                           keepPlace(sheetRef.current, () => setLifted(false));
                         }}
-                        total={rows.length}
                         onOpen={(row) => {
                           keepPlace(sheetRef.current, () => {
                             setOpenFiling(row.comment);
@@ -481,7 +480,6 @@ export function Record({
                         onFold={() => {
                           keepPlace(sheetRef.current, () => setLifted(false));
                         }}
-                        total={historyList.length}
                         history
                       />
                     ) : null}

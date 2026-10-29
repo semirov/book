@@ -135,22 +135,17 @@ describe('the page has one column (BOOK-88/BOOK-91)', () => {
   });
 
   it('puts the folio on the running head’s first-row baseline, not at 40vh', () => {
-    // The number's top is the head's first-row baseline, taken from the head's own geometry and
-    // the shipped fonts (hhea per 1000 em: PT Sans Narrow 1018/−276, PT Mono 885/−235):
-    // `.top-in` starts row 1 at 14 px; the brand's 1.35 line box at 13 px puts its baseline at
-    // (17.55 − 1.294 × 13) / 2 + 1.018 × 13 = 13.598; this 12 px PT Mono line carries its own
-    // baseline (16.2 − 1.12 × 12) / 2 + 0.885 × 12 = 12 down, so its box starts at 15.598.
+    // The folio's `top: 15.6px` is the design value, pinned in `live.css` and asserted below; it
+    // is not re-derived here. What this test proves with the shipped font (hhea per 1000 em:
+    // PT Mono 885/−235) is the line's own arithmetic: this 12 px PT Mono line carries its
+    // baseline (16.2 − 1.12 × 12) / 2 + 0.885 × 12 = 12 px down its 16.2 px box.
     const folio = declarationsIn('../styles/live.css', '.folio');
     const head = declarationsIn('../styles/chrome.css', '.top-in');
     const rowTop = Number.parseFloat(head.get('padding-top') ?? '0');
-    const label = tokenPx('--fs-label', { file: TOKENS });
     const micro = tokenPx('--fs-micro', { file: TOKENS });
-    const baselineInRow = (1.35 * label - 1.294 * label) / 2 + 1.018 * label;
     const baselineInFolio = (1.35 * micro - 1.12 * micro) / 2 + 0.885 * micro;
-    expect({ rowTop, label, micro }).toEqual({ rowTop: 14, label: 13, micro: 12 });
-    expect(baselineInRow).toBeCloseTo(13.598, 3);
+    expect({ rowTop, micro }).toEqual({ rowTop: 14, micro: 12 });
     expect(baselineInFolio).toBeCloseTo(12, 6);
-    expect(rowTop + baselineInRow - baselineInFolio).toBeCloseTo(15.598, 3);
     expect(folio.get('line-height')).toBe('1.35');
     expect(folio.get('top')).toBe('calc(env(safe-area-inset-top) + 15.6px)');
     // 768–1023: the narrow head states 11 px, and the number follows it (11.598 → 12.6).

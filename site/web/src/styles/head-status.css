@@ -2,18 +2,20 @@
  * BOOK-156 #3814 — the book's state in the running head's free space.
  *
  * One line, 12 px mono, sentence case, the quiet ink: `книга пишется · глава 12 · 14:21` while a
- * pass is in flight, `движок остановлен · 14:21` when the engine stopped with a pass still open.
- * The nib before the live line is the only ink of the pass (`--live`), and it is a drawn mark —
- * five pixels on the baseline, no pulse, no fade, no transition: a state is not an animation.
+ * pass is in flight, `книга не пишется · 14:21` when it stopped with a pass still open. The nib
+ * before the live line is the only ink of the pass (`--live`), and it is a drawn mark — five
+ * pixels on the baseline, no pulse, no fade, no transition: a state is not an animation.
  *
  * **Its cost in height is zero.** The box is one 12 px label line (16.2 px), and the row's
- * tallest item is the brand at 17.55 px (13 px × 1.35, `base.css`'s `.top-row`), so the row
- * cannot grow; `flex: none` keeps the auto margin from shrinking it. Measured in Chromium:
- * `.top-in` 41.55 px at 1440 and 36.55 px at 390, the folio's y at 15.59 / 11.67 — identical
- * with and without the line.
+ * tallest item is the brand at the same 16.2 px (`base.css`'s `.top-row`), so the row cannot
+ * grow; `flex: none` keeps the auto margin from shrinking it. Measured in Chromium: `.top-in`
+ * 40.2 px at 1440 and 35.2 px at 390, the folio's y at 15.59 / 11 — identical with and without
+ * the line.
  *
- * The phrase is never wrapped and never ellipsized: both variants live in the markup and the
- * phone step below prints the short one, so the row chooses the words instead of cutting them.
+ * **The phone prints the page, not the telemetry** (BOOK-199, audit #1; owner 2026-10-29): at
+ * ≤767 the row is the book's own title and the folio, and nothing else. A status line beside
+ * them made 390 read like a dashboard («БЛАНК · пишется · 14:21 · 67»), so below 768 the status
+ * is not painted at all — no second line, no shortened variant, no mark.
  */
 .head-status {
   display: inline-flex;
@@ -27,7 +29,7 @@
   font-family: var(--mono);
   font-size: var(--fs-micro);
   /* The row's own 12 px label line — 1.35, exactly what `.folio` and the chapter slot carry, so
-     the three share one baseline; 12 × 1.35 = 16.2 px is under the brand's 17.55 px, so the row
+     the three share one baseline; 12 × 1.35 = 16.2 px is the brand's own box, so the row
      cannot grow. */
   line-height: 1.35;
   letter-spacing: 0;
@@ -47,9 +49,6 @@
 .head-status-full {
   display: inline;
 }
-.head-status-short {
-  display: none;
-}
 /* The row is the column's width, not a shrink-to-fit line: above 1024 `.top-row` is a flex item
    of `.top-in` (`justify-content: space-between`), so without this its free space sits *outside*
    the row and `margin-inline-start: auto` would have nothing to take. Its items are unchanged —
@@ -59,16 +58,10 @@
   flex: 1;
 }
 @media (max-width: 767px) {
-  /* The phone prints the short line: the full one is 32 characters, and the row has ~200 px. */
-  .head-status-full {
+  /* The phone is the page and the book's name, nothing else. The folio keeps the row's right
+     end through its own auto margin (running-head.css); hidden is hidden, so no `:has`
+     exception is needed and the row's height is what it was without a status. */
+  .head-status {
     display: none;
-  }
-  .head-status-short {
-    display: inline;
-  }
-  /* The status owns the void on the phone: the folio keeps the row's right end beside it
-     instead of splitting the free space in two. */
-  .top-in .top-row:first-child:has(.head-status) .folio {
-    margin-inline-start: 0;
   }
 }

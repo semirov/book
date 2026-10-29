@@ -171,18 +171,36 @@ describe('the six situations', () => {
 describe('the count law', () => {
   const rows = Array.from({ length: 7 }, (_, index) => ({ id: String(index) }));
 
-  it('prints three, then `ещё N`, up to six', () => {
+  it('prints three, and the door names the rest', () => {
     const windowed = rowWindow(rows.slice(0, 5), false);
     expect(windowed.rows).toHaveLength(3);
-    expect(windowed.more).toBe(2);
-    expect(windowed.over).toBe(0);
+    expect(windowed.rest).toBe(2);
+    // The lifted state reveals every row, so the door's promise is exactly what it shows.
+    const lifted = rowWindow(rows.slice(0, 5), true);
+    expect(lifted.rows).toHaveLength(5);
+    expect(lifted.rest).toBe(0);
   });
 
-  it('above six prints the count and `свернуть` instead of `ещё`', () => {
+  it('a long list folds to three and opens whole — never a count without a door', () => {
     const windowed = rowWindow(rows, false);
     expect(windowed.rows).toHaveLength(3);
-    expect(windowed.more).toBe(0);
-    expect(windowed.over).toBe(4);
+    expect(windowed.rest).toBe(4);
+    expect(rowWindow(rows, true).rows).toHaveLength(7);
+    expect(rowWindow(rows, true).rest).toBe(0);
+  });
+
+  it('holds the law for every list length 1..12 and both steps', () => {
+    for (let size = 1; size <= 12; size += 1) {
+      const list = Array.from({ length: size }, (_, index) => ({ id: String(index) }));
+      for (const lifted of [false, true]) {
+        const windowed = rowWindow(list, lifted);
+        // The window is a window: shown + hidden is the whole list, and a hidden row is always
+        // counted by the door that reveals it.
+        expect(windowed.rows.length + windowed.rest, `${size}/${String(lifted)}`).toBe(size);
+        expect(windowed.rest === 0).toBe(lifted || size <= 3);
+        if (!lifted) expect(windowed.rows).toHaveLength(Math.min(3, size));
+      }
+    }
   });
 
   it('never counts a zero or a one', () => {

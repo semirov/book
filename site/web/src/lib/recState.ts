@@ -301,26 +301,25 @@ export function historyRows(chain: ParagraphChainDto | null): HistoryRow[] {
 /* ---------- the count law ---------- */
 
 export const RECORD_CUT = 3;
-export const RECORD_LIFT = 6;
 
 export type RowWindow<T> = {
   rows: T[];
-  /** `ещё N →` after the cut, when the list holds more than the cut. */
-  more: number;
-  /** `показаны 6 из N` above the lift ceiling. */
-  over: number;
+  /**
+   * Rows the fold still hides — the count `ещё N →` promises, and the exact number its control
+   * reveals. 0 when nothing remains, and then only `свернуть` is printed.
+   */
+  rest: number;
 };
 
-/** Three visible, six lifted, then the count — one law for every list in the block. */
+/**
+ * Three visible, then one door for the rest (BOOK-199 m3). A count with no door is a defect:
+ * the lifted state shows **every** row, so the fold line that prints `показаны N из M` always
+ * carries a control that reveals exactly the M − N it names. One law for every list in the
+ * block; no inner scroll, no pagination, no second request.
+ */
 export function rowWindow<T>(rows: readonly T[], lifted: boolean): RowWindow<T> {
-  const visible = lifted ? RECORD_LIFT : RECORD_CUT;
-  const shown = rows.slice(0, visible);
-  const rest = rows.length - shown.length;
-  return {
-    rows: shown,
-    more: rest > 0 && rows.length <= RECORD_LIFT ? rest : 0,
-    over: rest > 0 && rows.length > RECORD_LIFT ? rest : 0,
-  };
+  const shown = lifted ? [...rows] : rows.slice(0, RECORD_CUT);
+  return { rows: shown, rest: rows.length - shown.length };
 }
 
 /** A count that is printed beside a header: never a zero, never a one. */

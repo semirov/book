@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { ChapterArticle } from './ChapterArticle.tsx';
+import { ChapterHeader } from './ChapterHeader.tsx';
 import { firstDeclarations } from './cssRules.ts';
 
 /** Every stylesheet as text: the failed row's shape is a claim about the sheet. */
@@ -99,6 +100,39 @@ describe('a chapter slot on the reading page (§11.2, BOOK-6, BOOK-70)', () => {
     expect(unwritten).not.toContain('ch-data');
     expect(unwritten).not.toContain('ch-meta');
     expect(unwritten).toContain('class="premise-row"');
+  });
+
+  // BOOK-199 m5 — the wait sentence is not apparatus: it takes its own block line under the
+  // numeral, and `.ch-meta` keeps the data (`знаки · время`) and the printing chip alone.
+  it('puts the wait sentence on its own line, never inside the apparatus line', () => {
+    const written = entry(7, { written: true, chars: 9_003, updatedAt: '2026-10-25T09:52:00Z' });
+    const html = renderToStaticMarkup(
+      <ChapterHeader entry={written} printing={false} status="читаем главу 07" basisSentence={null} />,
+    );
+    expect(html).toContain('class="ch-status"');
+    expect(html).toContain('читаем главу 07');
+    // The apparatus data is still its own line, and the sentence is not inside it.
+    expect(html).toContain('class="ch-meta"');
+    expect(html).toMatch(/<p class="ch-status" role="status" aria-live="polite" aria-atomic="true">читаем главу 07<\/p>/u);
+    // The sentence follows the closed apparatus line: it is not inside `.ch-meta`.
+    expect(html).toMatch(/<\/span><p class="ch-status"/u);
+    // The chip glyph stays on the chip: a sentence is not a chip.
+    expect(html).not.toContain('■');
+  });
+
+  it('prints the printing chip in `.ch-meta` and nothing when there is no fact at all', () => {
+    const printing = renderToStaticMarkup(
+      <ChapterHeader entry={entry(7)} printing status={null} basisSentence={null} />,
+    );
+    expect(printing).toContain('class="ch-meta"');
+    expect(printing).toContain('class="ch-print"');
+    expect(printing).not.toContain('class="ch-status"');
+
+    const bare = renderToStaticMarkup(
+      <ChapterHeader entry={entry(7)} printing={false} status={null} basisSentence={null} />,
+    );
+    expect(bare).not.toContain('class="ch-meta"');
+    expect(bare).not.toContain('class="ch-status"');
   });
 
   // BOOK-197 (§2, audit #9): a failed read's sentence and its retry never share a line — the row

@@ -12,10 +12,11 @@
  * second name for a pass:
  *
  *   - **live** — a pass is in flight and its newest fact is younger than `HEAD_SILENCE_MS`:
- *     `книга пишется · глава 12 · 14:21`, shortened to `пишется · 14:21` on the phone;
+ *     `книга пишется · глава 12 · 14:21`;
  *   - **stopped** — a pass is in flight but its newest fact is older than 90 s, or the engine is
- *     `down`/`absent`: `движок остановлен · 14:21`. A pass that died is a fact about now, so the
- *     head keeps the line instead of dropping back to silence;
+ *     `down`/`absent`: `книга не пишется · 14:21`. The words are the same verb as the live line —
+ *     the reader's sentence about the book, never the machine's. A pass that died is a fact
+ *     about now, so the head keeps the line instead of dropping back to silence;
  *   - **idle** — no pass in flight: nothing at all. The foot's grip already says `писалась ·
  *     25.10`, and a second print of the same fact is the chip this head refuses.
  *
@@ -33,19 +34,18 @@ export const HEAD_SILENCE_MS = 90_000;
 
 /** The live lead: the book writes itself, in the owner's words (never «проход»). */
 export const HEAD_LIVE = 'книга пишется';
-/** The phone's lead: the same verb, the subject dropped — the brand beside it is the book. */
-export const HEAD_LIVE_SHORT = 'пишется';
-/** The engine stopped while a pass was still in flight. */
-export const HEAD_STOPPED = 'движок остановлен';
+/** The stopped lead: the live verb, negated — the book's own sentence, not the engine's. */
+export const HEAD_STOPPED = 'книга не пишется';
 
 export type HeadKind = 'live' | 'stopped' | 'idle';
 
 export type HeadStatus = {
   kind: HeadKind;
-  /** The full line, printed at ≥768; `null` when the head prints nothing. */
+  /**
+   * The line, printed at ≥768; `null` when the head prints nothing. There is no second, shorter
+   * variant: the phone prints the page and the book's name, not the state (BOOK-199).
+   */
   full: string | null;
-  /** The phone's line, printed below 768; `null` when the head prints nothing. */
-  short: string | null;
   /** The moment the line's time came from, epoch ms — what the silence timer counts from. */
   atMs: number | null;
 };
@@ -143,7 +143,7 @@ export function headStatusOf({ stages, state, nowMs }: HeadInput): HeadStatus {
     atMs = parseAt(processing.startedAt);
   } else {
     const [first] = revising;
-    if (first === undefined) return { kind: 'idle', full: null, short: null, atMs: null };
+    if (first === undefined) return { kind: 'idle', full: null, atMs: null };
     chapter = first.chapter ?? null;
     atMs = parseAt(first.since);
   }
@@ -158,10 +158,9 @@ export function headStatusOf({ stages, state, nowMs }: HeadInput): HeadStatus {
   if (gone || silent) {
     return {
       kind: 'stopped',
-      // The phone keeps the state word and drops the clock: the word is the fact, the time is
-      // the detail, and both never fit one row at 390.
+      // The clock is the detail that fits: the fact is the words, and a known moment rides
+      // after them; an unknown one is omitted, never printed as a placeholder.
       full: lineOf([HEAD_STOPPED, time]),
-      short: HEAD_STOPPED,
       atMs: anchor,
     };
   }
@@ -169,9 +168,6 @@ export function headStatusOf({ stages, state, nowMs }: HeadInput): HeadStatus {
   return {
     kind: 'live',
     full: lineOf([HEAD_LIVE, chapter === null ? null : `глава ${chapter}`, time]),
-    // The phone drops the place: the reader is in that chapter, and the row has room for one
-    // clause and the clock.
-    short: lineOf([HEAD_LIVE_SHORT, time]),
     atMs: anchor,
   };
 }
